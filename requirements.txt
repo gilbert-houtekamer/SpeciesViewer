@@ -1,0 +1,11 @@
+# picture handling
+exif
+opencv-python
+pyexiftool
+configparser
+pygbif
+
+# testing/tools
+pytest
+black
+
