@@ -38,4 +38,6 @@ def run():
     feet_entry.focus()
     root.bind("<Return>", calculate)
 
+    print(f"{mainframe}")
+
     root.mainloop()

@@ -6,6 +6,8 @@
 
 # python
 __pycache__
+build
+dist
 
 # source code
 venv
