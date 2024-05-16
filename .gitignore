@@ -4,5 +4,9 @@
 *.NEF
 *.csv
 
+# python
+__pycache__
 
-
+# source code
+venv
+.envrc

@@ -5,7 +5,13 @@ pyexiftool
 configparser
 pygbif
 
+# Outgoing REST calls
+requests
+
 # testing/tools
 pytest
 black
+ruff
 
+# create executable
+pyinstaller
