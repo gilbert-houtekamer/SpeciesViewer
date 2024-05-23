@@ -1,0 +1,45 @@
+Eerste set:
+
+
+	
+- nu een overzicht scherm van repository
+	
+	
+	
+	
+Acties:
+
+- KIES OF MAAK EEN REPOSITORY
+	Naam
+	path
+	Description
+	Plaatje
+	
+	bereikbaar via knopje op main pagina, Git voorbeeld
+- HOOFDPAGINA REPOSITORY
+  - toon: hoeveel soorten
+  - toon: (species.csv over all projecten heen (komt uit GBIF), en een at te splitsen SpeciesPictures 
+    (entry voor elk project))
+  - toon:aan projecten en actie:  eentje gekozen of maken
+		Naam (implied, want LLQ)
+		path (volledig path).  Code voegt * toe voor auto subdirs
+		Description (user input)
+   		Plaatje (auto eerste em)
+  - Nog niet gemaakt een “cleanup” stap om een nieuwe set metadata te maken als er files zijn weggehaald uit biota.  Bv ik heb 100 eigenlijk niet goede foto’s van een duinpieper, en ik krijg 100 veel betere.  Dan wil ik (deel van) de oude files weggooien.  Alle onderdelen zijn er wel.
+			
+		
+
+- PROJECT pagina
+	a.	svReadDirExif.py – (vervangt readEXIF) – Het lezen van een directory en binnen project de data_files.csv te plaatsen (bv master/metadata/review/testpictures/data_files.csv).  Moet verder opgeschoond.
+	b.	svWritePictures.py – maak een bijbehorende data_pictures.csv, en ook een species.csv die is geüpdatete met de soort info, incl GBIF calls
+	c.	Een aantal processen werken op basis van stappen a. en b.:
+		1.	svWriteBlog – een snelle manier om iets te posten
+		2.	svBuildWebsie  -- een (update) voor de web site.  Er moeten twee versie komen: de hele site, of alleen updates voor dit project
+		3.	svWriteCommit – als “freeze” van de data worden de data uit active en review/project worden samengevoegd,  om t.z.t. te kopiëren in active.
+	d.  Een proces om de frozen data daadwerkelijk over active hee te schrijven.
+
+    OPMERKINGEN:
+	eerst alleen a. enabled
+	dan b. enabled als a werkt
+	als a en b goed zijn, c. (1/2/3) enabled
+		
