@@ -12,3 +12,8 @@ dist
 # source code
 venv
 .envrc
+
+# development
+.idea
+.vscode
+

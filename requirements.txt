@@ -5,6 +5,9 @@ pyexiftool
 configparser
 pygbif
 
+# UI
+flet
+
 # Outgoing REST calls
 requests
 
