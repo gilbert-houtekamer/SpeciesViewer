@@ -18,9 +18,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config",
         type=str,
-        default=os.environ.get("CONFIG", "./svconfig.ini"),
+        default=os.environ.get("CONFIG", os.path.abspath("./svconfig.ini")),
         help="Species Viewer Configuration file",
     )
-    args = parser.parse_args()
 
-    main(args)
+    main(parser.parse_args())

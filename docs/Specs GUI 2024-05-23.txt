@@ -14,6 +14,7 @@ Acties:
 	path
 	Description
 	Plaatje
+
 	
 	bereikbaar via knopje op main pagina, Git voorbeeld
 - HOOFDPAGINA REPOSITORY
