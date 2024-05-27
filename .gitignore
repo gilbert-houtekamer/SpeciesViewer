@@ -17,3 +17,6 @@ venv
 .idea
 .vscode
 
+# app remains
+svconfig.backup.*
+

@@ -8,7 +8,8 @@ import ui
 def main(args):
     config = configparser.ConfigParser()
     config.read(args.config)
-
+    with open('svconfig.backup.1.ini', 'w') as configfile:
+        config.write(configfile);
     ui.frontpage.run(config)
 
 
