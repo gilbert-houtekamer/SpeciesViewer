@@ -1,34 +1,26 @@
-from flet import (
-    Control,
-    Column,
-    Page,
-    Row,
-    Text,
-    IconButton,
-    colors,
-    icons,
-)
-from sidebar import Sidebar
+import flet as ft
+
+from sview.ui.sidebar import Sidebar
 
 
-class AppLayout(Row):
+class AppLayout(ft.Row):
     def __init__(
             self,
             app,
-            page: Page,
+            page: ft.Page,
             *args,
             **kwargs
     ):
         super().__init__(*args, **kwargs)
         self.app = app
         self.page = page
-        self.toggle_nav_rail_button = IconButton(
-            icon=icons.ARROW_CIRCLE_LEFT, icon_color=colors.BLUE_GREY_400, selected=False,
-            selected_icon=icons.ARROW_CIRCLE_RIGHT, on_click=self.toggle_nav_rail)
+        self.toggle_nav_rail_button = ft.IconButton(
+            icon=ft.icons.ARROW_CIRCLE_LEFT, icon_color=ft.colors.BLUE_GREY_400, selected=False,
+            selected_icon=ft.icons.ARROW_CIRCLE_RIGHT, on_click=self.toggle_nav_rail)
         self.sidebar = Sidebar(self, page)
-        self._active_view: Control = Column(controls=[
-            Text("Active View")
-        ], alignment="center", horizontal_alignment="center")
+        self._active_view: ft.Control = ft.Column(controls=[
+            ft.Text("Active View")
+        ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
         self.controls = [self.sidebar,
                          self.toggle_nav_rail_button, self.active_view]
 

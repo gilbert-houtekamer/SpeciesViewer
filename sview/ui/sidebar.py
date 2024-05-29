@@ -1,79 +1,66 @@
-from flet import (
-    UserControl,
-    Column,
-    Container,
-    Row,
-    Text,
-    NavigationRail,
-    NavigationRailDestination,
-    alignment,
-    border_radius,
-    colors,
-    icons,
-    padding,
-    margin,
-)
+import flet as ft
 
 
-class Sidebar(UserControl):
+class Sidebar(ft.UserControl):
 
     def __init__(self, app_layout, page):
         super().__init__()
+        self.view = None
         self.app_layout = app_layout
         self.page = page
         self.top_nav_items = [
-            NavigationRailDestination(
-                label_content=Text("Boards"),
+            ft.NavigationRailDestination(
+                label_content=ft.Text("Boards"),
                 label="Boards",
-                icon=icons.BOOK_OUTLINED,
-                selected_icon=icons.BOOK_OUTLINED
+                icon=ft.icons.BOOK_OUTLINED,
+                selected_icon=ft.icons.BOOK_OUTLINED
             ),
-            NavigationRailDestination(
-                label_content=Text("Members"),
+            ft.NavigationRailDestination(
+                label_content=ft.Text("Members"),
                 label="Members",
-                icon=icons.PERSON,
-                selected_icon=icons.PERSON
+                icon=ft.icons.PERSON,
+                selected_icon=ft.icons.PERSON
             ),
 
         ]
-        self.top_nav_rail = NavigationRail(
+        self.top_nav_rail = ft.NavigationRail(
             selected_index=None,
-            label_type="all",
+            label_type=ft.NavigationRailLabelType.ALL,
             on_change=self.top_nav_change,
             destinations=self.top_nav_items,
-            bgcolor=colors.BLUE_GREY,
+            bgcolor=ft.colors.BLUE_GREY,
             extended=True,
             expand=True
         )
 
     def build(self):
-        self.view = Container(
-            content=Column([
-                Row([
-                    Text("Workspace"),
+        self.view = ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    ft.Text("Workspace"),
                 ]),
                 # divider
-                Container(
-                    bgcolor=colors.BLACK26,
-                    border_radius=border_radius.all(30),
+                ft.Container(
+                    bgcolor=ft.colors.BLACK26,
+                    border_radius=ft.border_radius.all(30),
                     height=1,
-                    alignment=alignment.center_right,
+                    alignment=ft.alignment.center_right,
                     width=220
                 ),
                 self.top_nav_rail,
                 # divider
-                Container(
-                    bgcolor=colors.BLACK26,
-                    border_radius=border_radius.all(30),
+                ft.Container(
+                    bgcolor=ft.colors.BLACK26,
+                    border_radius=ft.border_radius.all(30),
                     height=1,
-                    alignment=alignment.center_right,
+                    alignment=ft.alignment.center_right,
                     width=220
                 ),
             ], tight=True),
-            padding=padding.all(15),
-            margin=margin.all(0),
+            padding=ft.padding.all(15),
+            margin=ft.margin.all(0),
             width=250,
-            bgcolor=colors.BLUE_GREY,
+            bgcolor=ft.colors.BLUE_GREY,
         )
         return self.view
 

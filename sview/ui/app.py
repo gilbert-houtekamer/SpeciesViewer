@@ -1,11 +1,18 @@
 import flet as ft
-
+import sview.ui.app_layout
 
 class SpecViewApp(ft.UserControl):
     
     def __init__(self, page: ft.Page):
         super().__init__()
         self.page = page
+        self.layout = sview.ui.app_layout.AppLayout(
+            self,
+            self.page,
+            tight=True,
+            expand=True,
+            vertical_alignment="start",
+        )
         self.appbar_items = [
             ft.PopupMenuItem(text="Login"),
             ft.PopupMenuItem(),  # divider
@@ -28,4 +35,5 @@ class SpecViewApp(ft.UserControl):
             ],
         )
         self.page.appbar = self.appbar
+        self.page.add(self.layout)
         self.page.update()
