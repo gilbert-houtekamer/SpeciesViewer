@@ -6,6 +6,7 @@ from .repositories_view import RepositoriesView
 class SpecViewApp:
 
     def __init__(self):
+        # testing
         self.svconfig: sview.model.SVConfig
         self.page: ft.Page
         self.repositories_view: ft.View
