@@ -7,8 +7,8 @@ import sview.model
 
 def main(args):
     # read our configuration
-    sview.ui.svconfig = sview.model.SVConfig.from_path(args.config)
-    flet.app(target=sview.ui.run, view=flet.FLET_APP)
+    svconfig = sview.model.SVConfig.from_path(args.config)
+    sview.ui.app.run(svconfig)
 
 
 if __name__ == "__main__":
