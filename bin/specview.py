@@ -1,16 +1,14 @@
 import argparse
-import configparser
 import os
-
-import ui
+import flet
+import sview.ui
+import sview.model
 
 
 def main(args):
-    config = configparser.ConfigParser()
-    config.read(args.config)
-    with open('svconfig.backup.1.ini', 'w') as configfile:
-        config.write(configfile)
-    ui.frontpage.run(config)
+    # read our configuration
+    sview.ui.svconfig = sview.model.SVConfig.from_path(args.config)
+    flet.app(target=sview.ui.run, view=flet.FLET_APP)
 
 
 if __name__ == "__main__":

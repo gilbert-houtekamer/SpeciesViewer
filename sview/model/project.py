@@ -1,4 +1,4 @@
-from specview.model import SVModelException
+from sview.model import SVModelException
 from pathlib import Path
 import configparser
 

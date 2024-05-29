@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 import pytest
-from specview.model import SVConfig
+from sview.model import SVConfig
 
 
 @pytest.fixture(autouse=True)

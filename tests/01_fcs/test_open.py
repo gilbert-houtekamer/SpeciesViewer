@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from specview.model import Repository, SVConfig
+from sview.model import Repository, SVConfig
 
 
 class TestCreateFCS:

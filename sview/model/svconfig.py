@@ -1,6 +1,6 @@
 from pathlib import Path
 import configparser
-from specview.model import Repository, Project
+from sview.model import Repository, Project
 
 
 class SVConfig:
@@ -16,7 +16,7 @@ class SVConfig:
     def from_path(path: Path):
         svcfg = SVConfig()
         cfg = configparser.ConfigParser()
-        cfg.read(path / 'config.ini')
+        cfg.read(path)
         if cfg.has_section('repositories'):
             for repo_name in cfg['repositories']:
                 repo_path = Path(cfg['repositories'][repo_name])
