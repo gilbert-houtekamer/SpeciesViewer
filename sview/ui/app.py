@@ -1,4 +1,5 @@
 import flet as ft
+import sview
 import sview.model
 from .repositories_view import RepositoriesView
 
@@ -7,12 +8,11 @@ class SpecViewApp:
 
     def __init__(self):
         # testing
-        self.svconfig: sview.model.SVConfig
         self.page: ft.Page
         self.repositories_view: ft.View
 
     def run(self, config: sview.model.SVConfig = None):
-        self.svconfig = config
+        sview.svconfig = config
         ft.app(target=self.main, view=ft.FLET_APP)
 
     def main(self, page: ft.Page):
