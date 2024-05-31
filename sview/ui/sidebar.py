@@ -1,15 +1,20 @@
 import flet as ft
 
 
-class SidebarView(ft.Container):
+class Sidebar(ft.Container):
 
     def __init__(self, page: ft.Page, *args, **kwargs):
-        self.page = page
         super().__init__(*args, **kwargs)
-        self.bgcolor=ft.colors.PINK
-        self.content = ft.Column( controls = [
+        self.page = page
+        self.content = ft.Column(controls=[
             ft.ElevatedButton("Sidebar", on_click=self.new_repository)
         ])
+        self.border = ft.border.all(1, ft.colors.BLACK)
+        self.border_radius = ft.border_radius.all(10)
+        self.bgcolor = ft.colors.GREEN_200
+        self.padding = 10
+        self.expand = True
+        self.expand_loose = True
 
     def new_repository(self, e):
         self.page.go("/repositories/new")
