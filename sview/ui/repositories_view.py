@@ -1,14 +1,14 @@
 import flet as ft
-from .sidebar_view import SidebarView
+from .sidebar import SidebarView
 from .repositories_list import RepositoriesList
 
 
 class RepositoriesView(ft.View):
 
-    def __init__(self, page: ft.Page):
+    def __init__(self, page: ft.Page, *args, **kwargs):
         self.page = page
         self.r = "/repositories"
-        super().__init__(self.r)        
+        super().__init__(self.r, *args, **kwargs)
         self.appbar = ft.AppBar(title=ft.Text("Repositories"))
         self.controls.append(ft.Row(spacing=0, controls=[
             SidebarView(page),
@@ -20,6 +20,7 @@ class RepositoriesView(ft.View):
                 RepositoriesList(page),
             ]),
         ]))
+        self.bgcolor=ft.colors.WHITE
 
     def new_repository(self, e):
         self.page.go("/repositories/new")

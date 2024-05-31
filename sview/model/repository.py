@@ -9,7 +9,7 @@ class Repository:
         if not path.exists():
             raise SVModelException(f"repository does not exist: {path}")
         self.path = path
-        self.name = path.stem
+        self.name: str = path.stem
         self.description = ""
         self.picture = None
         
