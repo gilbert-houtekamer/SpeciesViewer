@@ -1,6 +1,6 @@
 import flet as ft
 
-from .repositories_view import RepositoriesView
+from .repositories_list import RepositoriesList
 from .sidebar import Sidebar
 
 
@@ -11,8 +11,9 @@ class AppLayout(ft.Row):
         self.app = app
         self.page = page
         self.sidebar = Sidebar(self, page)
-        self.active_view = RepositoriesView(self, page)
+        self.rlist = RepositoriesList(page)
         self.controls = [
             self.sidebar,
-            self.active_view
+            self.rlist
         ]
+        self.expand = True

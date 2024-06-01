@@ -18,5 +18,11 @@ class SpecViewApp:
         page.title = "Spieces Viewer"
         page.padding = 0
         page.bgcolor = ft.colors.BLUE_GREY_200
+        page.appbar = ft.AppBar(
+            title=ft.Text("Repositories"),
+            actions=[
+                ft.IconButton(ft.icons.WB_SUNNY_OUTLINED)
+            ]
+        )
         page.add(AppLayout(self, page))
         page.update()

@@ -11,6 +11,9 @@ class SVConfig:
         self.proj_paths = []
         self.projects = {}
         
+    def get_repositories(self):
+        return self.repositories
+        
     
     @staticmethod
     def from_path(path: Path):

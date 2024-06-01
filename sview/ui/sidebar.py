@@ -18,8 +18,7 @@ class Sidebar(ft.Container):
         self.border_radius = ft.border_radius.all(10)
         self.bgcolor = ft.colors.RED
         self.padding = 10
-        self.expand = True
-
+        # self.expand = True
 
     def new_repository(self, e):
-        self.page.go("/repositories/new")
+        pass
