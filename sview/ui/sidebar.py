@@ -6,15 +6,19 @@ class Sidebar(ft.Container):
     def __init__(self, page: ft.Page, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.page = page
-        self.content = ft.Column(controls=[
-            ft.ElevatedButton("Sidebar", on_click=self.new_repository)
-        ])
+        c = [
+            ft.ElevatedButton("Sidebar1", on_click=self.new_repository),
+            ft.ElevatedButton("Sidebar2", on_click=self.new_repository),
+            ft.ElevatedButton("Sidebar3", on_click=self.new_repository),
+            ft.ElevatedButton("Sidebar4", on_click=self.new_repository),
+        ]
+        self.content = ft.Column(controls=c)
         self.border = ft.border.all(1, ft.colors.BLACK)
         self.border_radius = ft.border_radius.all(10)
-        self.bgcolor = ft.colors.GREEN_200
+        self.bgcolor = ft.colors.RED
         self.padding = 10
         self.expand = True
-        self.expand_loose = True
+
 
     def new_repository(self, e):
         self.page.go("/repositories/new")

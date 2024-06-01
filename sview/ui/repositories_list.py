@@ -17,7 +17,6 @@ class RepositoriesList(ft.Container):
         self.bgcolor = ft.colors.GREEN_600
         self.padding = 10
         self.expand = True
-        self.expand_loose = True
 
 
     def new_repository(self, e):

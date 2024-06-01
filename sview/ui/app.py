@@ -22,6 +22,7 @@ class SpecViewApp:
 
         page.title = "Spieces Viewer"
         page.on_route_change = self.route_change
+        page.on_resize = self.page_resize
         page.on_view_pop = self.view_pop
         page.go(page.route)
 
@@ -41,3 +42,6 @@ class SpecViewApp:
         self.page.views.pop()
         top_view = self.page.views[-1]
         self.page.go(top_view.route)
+
+    def page_resize(self, e=None):
+        self.active_view.resize(self.page.width, self.page.height)
