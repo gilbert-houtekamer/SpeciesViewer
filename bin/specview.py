@@ -1,6 +1,5 @@
 import argparse
 import os
-import flet
 import sview.ui
 import sview.model
 
@@ -8,6 +7,7 @@ import sview.model
 def main(args):
     # read our configuration
     svconfig = sview.model.SVConfig.from_path(args.config)
+    # sview.ui.app.run(svconfig)
     sview.ui.app.run(svconfig)
 
 

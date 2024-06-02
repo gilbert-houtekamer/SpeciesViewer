@@ -11,7 +11,7 @@ class AppLayout(ft.Row):
         self.app = app
         self.page = page
         self.sidebar = Sidebar(self, page)
-        self.rlist = RepositoriesList(page)
+        self.rlist = RepositoriesList(self,page)
         self.controls = [
             self.sidebar,
             self.rlist

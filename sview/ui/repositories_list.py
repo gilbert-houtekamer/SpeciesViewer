@@ -6,8 +6,9 @@ import sview.model
 
 class RepositoriesList(ft.Container):
 
-    def __init__(self, page: ft.Page, *args, **kwargs):
+    def __init__(self, view, page: ft.Page, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.view = view
         self.page = page
         c = []
         
