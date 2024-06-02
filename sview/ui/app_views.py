@@ -9,12 +9,15 @@ class SpecViewApp:
 
     def __init__(self):
         self.repositories_view: ft.View
+        self.app_items = None
+        self.page = None
 
     def run(self, config: sview.model.SVConfig = None):
         sview.svconfig = config
         ft.app(target=self.main)
 
     def main(self, page: ft.Page):
+        self.page = page
         page.title = "Spieces Viewer"
 
         def route_change(route):
@@ -35,9 +38,4 @@ class SpecViewApp:
 
         page.padding = 0
         page.bgcolor = ft.colors.BLUE_GREY_200
-        page.appbar = ft.AppBar(
-            title=ft.Text("Repositories"),
-            actions=[
-                ft.IconButton(ft.icons.WB_SUNNY_OUTLINED)
-            ]
-        )
+        page.update()
