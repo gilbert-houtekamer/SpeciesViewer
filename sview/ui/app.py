@@ -2,6 +2,8 @@ import flet as ft
 import sview
 import sview.model
 from .repositories_view import RepositoriesView
+from .repository_view import RepositoryView
+from .new_repository_view import NewRepositoryView
 
 
 class SpecViewApp:
@@ -22,8 +24,16 @@ class SpecViewApp:
         def route_change(route):
             page.views.clear()
             page.views.append(
-                RepositoriesView("/", self, page)
+                RepositoryView("/", self, page)
             )
+            if page.route.startswith("/repositories"):
+                page.views.append(
+                    RepositoriesView("/repositories", self, page)
+                )
+            if page.route.startswith("/repositories/new"):
+                page.views.append(
+                    NewRepositoryView("/repositories/new", self, page)
+                )
             page.update()
 
         def view_pop(view):
