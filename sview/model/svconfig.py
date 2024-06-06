@@ -1,52 +1,41 @@
 from pathlib import Path
 import configparser
-from sview.model import Repository, Project
+from sview.model import Repository
 
 
 class SVConfig:
     
     def __init__(self, path: Path):
+        self.path = path
         self.repo_paths = []
         self.repositories = {}
-        self.proj_paths = []
-        self.projects = {}
         cfg = configparser.ConfigParser()
         cfg.read(path / "config.ini")
         if cfg.has_section('repositories'):
             for repo_name in cfg['repositories']:
                 repo_path = Path(cfg['repositories'][repo_name])
                 self.add_repository(repo_path)
-        if cfg.has_section('projects'):
-            for proj_name in cfg['projects']:
-                proj_path = Path(cfg['projects'][proj_name])
-                self.add_project(proj_path)
 
-    def get_repositories(self):
-        return self.repositories
+    def repositories_names(self):
+        return self.repositories.keys()
+
+    def get_repository(self, repo_name):
+        return self.repositories[repo_name]
 
     def add_repository(self, path: Path):
         repo = Repository(path)
         if repo.name not in self.repositories:
             self.repo_paths.append(path)
             self.repositories[path] = repo
-            
-    def add_project(self, path: Path):
-        proj = Project(path)
-        if proj.name not in self.repositories:
-            self.proj_paths.append(path)
-            self.projects[path] = proj
-    
-    def write(self, path):
+
+    def write_config(self):
         config = configparser.ConfigParser()
         config.add_section('repositories')
         for repo_path in self.repo_paths:
             repo = self.repositories[repo_path]
             config['repositories'][repo.name] = str(repo_path.resolve())
-        config.add_section('projects')
-        for proj_path in self.proj_paths:
-            proj = self.projects[proj_path]
-            config['projects'][proj.name] = str(proj_path.resolve())
-        with open(path, 'w') as configfile:
+        config_path = self.path / "config.ini"
+        with open(config_path, 'w') as configfile:
             config.write(configfile)
 
             
