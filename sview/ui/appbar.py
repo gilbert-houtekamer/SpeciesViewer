@@ -3,7 +3,7 @@ import flet as ft
 
 class SpecViewAppBar(ft.AppBar):
 
-    def __init__(self, page, *args, **kwargs):
+    def __init__(self, page, title, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.page = page
         appbar_items = [
@@ -13,7 +13,7 @@ class SpecViewAppBar(ft.AppBar):
         ]
 
         self.leading_width = 100,
-        self.title = ft.Text("Repositories", size=32, text_align=ft.TextAlign.START)
+        self.title = ft.Text(title, size=32, text_align=ft.TextAlign.START)
         self.center_title = False
         self.toolbar_height = 75
         self.bgcolor = ft.colors.LIGHT_BLUE_ACCENT_700

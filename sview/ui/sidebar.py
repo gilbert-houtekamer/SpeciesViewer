@@ -3,9 +3,8 @@ import flet as ft
 
 class Sidebar(ft.Container):
 
-    def __init__(self, app_layout, page: ft.Page, *args, **kwargs):
+    def __init__(self, page: ft.Page, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.app_layout = app_layout
         self.page = page
         c = [
             ft.ElevatedButton("Sidebar1", on_click=self.new_repository),

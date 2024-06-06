@@ -14,8 +14,8 @@ class RepositoryView(ft.View):
         self.app = app
         self.page = page
 
-        self.sidebar = Sidebar(self, page)
-        self.appbar = SpecViewAppBar(app, page)
+        self.sidebar = Sidebar(page)
+        self.appbar = SpecViewAppBar(page, "Repository")
         self.controls = [
             ft.Row(controls=[
                 self.sidebar,
