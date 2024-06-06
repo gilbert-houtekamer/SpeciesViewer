@@ -7,10 +7,10 @@ class Sidebar(ft.Container):
         super().__init__(*args, **kwargs)
         self.page = page
         c = [
-            ft.ElevatedButton("Sidebar1", on_click=self.new_repository),
-            ft.ElevatedButton("Sidebar2", on_click=self.new_repository),
-            ft.ElevatedButton("Sidebar3", on_click=self.new_repository),
-            ft.ElevatedButton("Sidebar4", on_click=self.new_repository),
+            ft.Text("Info 1"),
+            ft.Text("Info 2"),
+            ft.Text("Info 3"),
+            ft.Text("Info 4"),
         ]
         self.content = ft.Column(controls=c)
         self.border = ft.border.all(1, ft.colors.BLACK)
