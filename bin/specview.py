@@ -1,24 +1,23 @@
 import argparse
 import os
-import sview.ui
+from pathlib import Path
+
 import sview.model
+import sview.ui
 
 
 def main(args):
     # read our configuration
-    svconfig = sview.model.SVConfig.from_path(args.config)
-    # sview.ui.app.run(svconfig)
+    svconfig = sview.model.SVConfig(Path(args.root))
     sview.ui.app.run(svconfig)
 
 
 if __name__ == "__main__":
-    # handle commandline archuments
-    parser = argparse.ArgumentParser(description="Species Viewer.")
+    parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config",
+        "--root",
         type=str,
-        default=os.environ.get("CONFIG", os.path.abspath("./svconfig.ini")),
-        help="Species Viewer Configuration file",
+        default=os.environ.get("SVROOT", os.path.abspath(".")),
+        help="Species Viewer distribution root",
     )
-
     main(parser.parse_args())

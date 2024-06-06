@@ -5,30 +5,24 @@ from sview.model import Repository, Project
 
 class SVConfig:
     
-    def __init__(self):
+    def __init__(self, path: Path):
         self.repo_paths = []
         self.repositories = {}
         self.proj_paths = []
         self.projects = {}
-        
-    def get_repositories(self):
-        return self.repositories
-        
-    
-    @staticmethod
-    def from_path(path: Path):
-        svcfg = SVConfig()
         cfg = configparser.ConfigParser()
-        cfg.read(path)
+        cfg.read(path / "config.ini")
         if cfg.has_section('repositories'):
             for repo_name in cfg['repositories']:
                 repo_path = Path(cfg['repositories'][repo_name])
-                svcfg.add_repository(repo_path)
+                self.add_repository(repo_path)
         if cfg.has_section('projects'):
             for proj_name in cfg['projects']:
                 proj_path = Path(cfg['projects'][proj_name])
-                svcfg.add_project(proj_path)
-        return svcfg
+                self.add_project(proj_path)
+
+    def get_repositories(self):
+        return self.repositories
 
     def add_repository(self, path: Path):
         repo = Repository(path)
