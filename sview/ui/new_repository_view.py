@@ -22,8 +22,17 @@ class NewRepositoryView(ft.View):
         self.create_button = ft.ElevatedButton(
             "Create",
             on_click=self.new_repository,
-            disabled=True
+            bgcolor=ft.colors.BLUE,
+            color=ft.colors.WHITE,
+            disabled=True,
         )
+        self.cancel_button = ft.ElevatedButton(
+            "Cancel",
+            on_click=self.cancel,
+            bgcolor=ft.colors.BLUE,
+            color=ft.colors.WHITE,
+        )
+
 
 
         page.overlay.append(self.select_dir_dialog)
@@ -43,22 +52,23 @@ class NewRepositoryView(ft.View):
                                     "Repo",
                                     icon=ft.icons.FILE_OPEN,
                                     on_click=lambda _: self.select_dir_dialog.get_directory_path(),
+                                    bgcolor=ft.colors.BLUE,
+                                    color=ft.colors.WHITE,
                                 ),
                                 self.selected_dir
                             ]
                         ),
-                        ft.ElevatedButton(
-                            "Create",
-                            on_click=self.new_repository,
-                            disabled=True
-                        ),
+                        ft.Row( controls=[
+                            self.cancel_button,
+                            self.create_button
+                        ])
                     ]
                 )
             ], expand=True)
         ]
 
-        self.bgcolor = ft.colors.WHITE
-        self.window_bgcolor = ft.colors.WHITE10
+        self.bgcolor = ft.colors.LIGHT_BLUE
+        self.window_bgcolor = ft.colors.LIGHT_BLUE
         self.expand = True
 
     def name_changed(self, name):
@@ -68,7 +78,9 @@ class NewRepositoryView(ft.View):
         self.selected_dir.value = e.path
         self.selected_dir.update()
 
-
     def new_repository(self):
         print("create repo")
+
+    def cancel(self, e):
+        self.page.go("/repositories")
 

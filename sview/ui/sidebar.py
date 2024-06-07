@@ -15,7 +15,7 @@ class Sidebar(ft.Container):
         self.content = ft.Column(controls=c)
         self.border = ft.border.all(1, ft.colors.BLACK)
         self.border_radius = ft.border_radius.all(10)
-        self.bgcolor = ft.colors.RED
+        self.bgcolor = ft.colors.LIGHT_BLUE
         self.padding = 10
         # self.expand = True
 

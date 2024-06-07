@@ -15,14 +15,17 @@ class RepositoryView(ft.View):
         self.page = page
 
         self.sidebar = Sidebar(page)
-        self.appbar = SpecViewAppBar(page, "Repository")
+        if sview.svconfig.get_current_repository() == None:
+            title = ""
+        else:
+            title = sview.svconfig.get_current_repository().name
+        self.appbar = SpecViewAppBar(page, f"Repository: {title}")
         self.controls = [
             ft.Row(controls=[
                 self.sidebar,
             ], expand=True)
         ]
-
-        self.bgcolor = ft.colors.WHITE
-        self.window_bgcolor = ft.colors.WHITE10
+        self.bgcolor = ft.colors.LIGHT_BLUE
+        self.window_bgcolor = ft.colors.LIGHT_BLUE
         self.expand = True
 

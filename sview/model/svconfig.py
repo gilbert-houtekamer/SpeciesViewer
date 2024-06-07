@@ -7,6 +7,7 @@ class SVConfig:
     
     def __init__(self, path: Path):
         self.path = path
+        self.current_repo = None
         self.repo_paths = []
         self.repositories = {}
         cfg = configparser.ConfigParser()
@@ -21,6 +22,12 @@ class SVConfig:
 
     def get_repository(self, repo_name):
         return self.repositories[repo_name]
+
+    def set_current_repository(self, repo):
+        self.current_repo = repo
+
+    def get_current_repository(self):
+        return self.current_repo
 
     def add_repository(self, path: Path):
         repo = Repository(path)

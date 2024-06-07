@@ -18,15 +18,15 @@ class RepositoriesView(ft.View):
         self.appbar = SpecViewAppBar(page, "Repositories" )
         self.rlist = RepositoriesList(self, page)
         self.controls = [
+            ft.FloatingActionButton(icon=ft.icons.ADD, on_click=self.add_clicked),
             ft.Row(controls=[
                 self.sidebar,
-                ft.FloatingActionButton(icon=ft.icons.ADD, on_click=self.add_clicked),
                 self.rlist
             ], expand=True)
         ]
 
-        self.bgcolor = ft.colors.WHITE
-        self.window_bgcolor = ft.colors.WHITE10
+        self.bgcolor = ft.colors.LIGHT_BLUE
+        self.window_bgcolor = ft.colors.LIGHT_BLUE
         self.expand = True
 
     def add_clicked(self, button):
@@ -42,24 +42,27 @@ class RepositoriesList(ft.Container):
         c = []
 
         for repo_path in sview.svconfig.repo_paths:
-            c.append(RepositoryPane(sview.svconfig.repositories[repo_path]))
+            c.append(RepositoryPane(page, sview.svconfig.repositories[repo_path]))
         # self.controls.append(ft.Column(controls=c))
         self.content = ft.Column(controls=c)
         self.border = ft.border.all(1, ft.colors.BLACK)
         self.border_radius = ft.border_radius.all(10)
-        self.bgcolor = ft.colors.GREEN_600
         self.padding = 10
+        self.bgcolor = ft.colors.LIGHT_BLUE
+        self.window_bgcolor = ft.colors.LIGHT_BLUE
         self.expand = True
 
 
 class RepositoryPane(ft.Container):
 
-    def __init__(self, repo: sview.model.Repository, *args, **kwargs):
+    def __init__(self, page, repo: sview.model.Repository, *args, **kwargs):
+        self.page = page
         self.repo = repo
         super().__init__(*args, **kwargs)
         self.content = ft.Row([
             ft.Container(
-                content=ft.Text(repo.name)
+                content=ft.Text(repo.name, color=ft.colors.BLACK),
+                on_click=lambda e: self.goto_repository(repo)
             )
         ])
         self.border = ft.border.all(1, ft.colors.BLACK38)
@@ -69,3 +72,6 @@ class RepositoryPane(ft.Container):
         self.expand = True
         self.expand_loose = True
 
+    def goto_repository(self, repo_name):
+        sview.svconfig.set_current_repository(repo_name)
+        self.page.go("/")
