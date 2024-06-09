@@ -41,8 +41,8 @@ class RepositoriesList(ft.Container):
         self.page = page
         c = []
 
-        for repo_path in sview.svconfig.repo_paths:
-            c.append(RepositoryPane(page, sview.svconfig.repositories[repo_path]))
+        for repo_name, repo in sview.svconfig.repositories.items():
+            c.append(RepositoryPane(page, repo))
         # self.controls.append(ft.Column(controls=c))
         self.content = ft.Column(controls=c)
         self.border = ft.border.all(1, ft.colors.BLACK)

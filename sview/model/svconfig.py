@@ -15,7 +15,8 @@ class SVConfig:
         if cfg.has_section('repositories'):
             for repo_name in cfg['repositories']:
                 repo_path = Path(cfg['repositories'][repo_name])
-                self.add_repository(repo_path)
+                repo = Repository(repo_path, repo_name)
+                self.add_repository(repo)
 
     def repositories_names(self):
         return self.repositories.keys()
@@ -23,24 +24,25 @@ class SVConfig:
     def get_repository(self, repo_name):
         return self.repositories[repo_name]
 
+    def has_repository(self, path: Path):
+        return path in self.repositories
+
     def set_current_repository(self, repo):
         self.current_repo = repo
 
     def get_current_repository(self):
         return self.current_repo
 
-    def add_repository(self, path: Path):
-        repo = Repository(path)
+    def add_repository(self, repo: Repository):
         if repo.name not in self.repositories:
-            self.repo_paths.append(path)
-            self.repositories[path] = repo
+            self.repo_paths.append(repo.path)
+            self.repositories[repo.name] = repo
 
     def write_config(self):
         config = configparser.ConfigParser()
         config.add_section('repositories')
-        for repo_path in self.repo_paths:
-            repo = self.repositories[repo_path]
-            config['repositories'][repo.name] = str(repo_path.resolve())
+        for repo_name, repo in self.repositories.items():
+            config['repositories'][repo.name] = str(repo.path.resolve())
         config_path = self.path / "config.ini"
         with open(config_path, 'w') as configfile:
             config.write(configfile)

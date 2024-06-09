@@ -5,11 +5,14 @@ import configparser
 
 class Repository:
     
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, name: str = None):
         if not path.exists():
             raise SVModelException(f"repository does not exist: {path}")
         self.path = path
-        self.name: str = path.stem
+        if name is None:
+            self.name: str = path.stem
+        else:
+            self.name = name
         self.description = ""
         self.picture = None
         

@@ -104,13 +104,18 @@ class NewRepositoryView(ft.View):
     def new_repo_valid(self):
         if self.name is None or self.name == "":
             return False
+        if sview.svconfig.has_repository(self.name):
+            return False
         with os.scandir(self.path) as it:
             if any(it):
                 return False
         return True
 
-    def create_repository(self):
-        print("create repo")
+    def create_repository(self, e):
+        repository = sview.model.Repository(self.path, self.name)
+        sview.svconfig.add_repository(repository)
+        sview.svconfig.write_config()
+        self.page.go("/repositories")
 
     def open_repository(self):
         print("open repo")
