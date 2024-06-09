@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 import flet as ft
 from .sidebar import Sidebar
 from .appbar import SpecViewAppBar
@@ -14,6 +16,7 @@ class NewRepositoryView(ft.View):
         self.app = app
         self.page = page
         self.name = ""
+        self.path = None
 
         self.sidebar = Sidebar(page)
         self.appbar = SpecViewAppBar(page, "New Repository")
@@ -21,7 +24,14 @@ class NewRepositoryView(ft.View):
         self.selected_dir = ft.Text()
         self.create_button = ft.ElevatedButton(
             "Create",
-            on_click=self.new_repository,
+            on_click=self.create_repository,
+            bgcolor=ft.colors.BLUE,
+            color=ft.colors.WHITE,
+            disabled=True,
+        )
+        self.open_button = ft.ElevatedButton(
+            "Open",
+            on_click=self.open_repository,
             bgcolor=ft.colors.BLUE,
             color=ft.colors.WHITE,
             disabled=True,
@@ -60,7 +70,8 @@ class NewRepositoryView(ft.View):
                         ),
                         ft.Row( controls=[
                             self.cancel_button,
-                            self.create_button
+                            self.open_button,
+                            self.create_button,
                         ])
                     ]
                 )
@@ -72,14 +83,37 @@ class NewRepositoryView(ft.View):
         self.expand = True
 
     def name_changed(self, name):
-        self.name = name
+        self.name = name.data
+        if self.new_repo_valid():
+            self.create_button.disabled = False
+        else:
+            self.create_button.disabled = True
+        self.create_button.update()
+
 
     def dir_selected(self, e: ft.FilePickerResultEvent):
         self.selected_dir.value = e.path
         self.selected_dir.update()
+        self.path = Path(e.path)
+        if self.new_repo_valid():
+            self.create_button.disabled = False
+        else:
+            self.create_button.disabled = True
+        self.create_button.update()
 
-    def new_repository(self):
+    def new_repo_valid(self):
+        if self.name is None or self.name == "":
+            return False
+        with os.scandir(self.path) as it:
+            if any(it):
+                return False
+        return True
+
+    def create_repository(self):
         print("create repo")
+
+    def open_repository(self):
+        print("open repo")
 
     def cancel(self, e):
         self.page.go("/repositories")
