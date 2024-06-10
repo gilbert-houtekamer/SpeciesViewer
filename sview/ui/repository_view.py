@@ -18,7 +18,11 @@ class RepositoryView(ft.View):
         if sview.svconfig.get_current_repository() == None:
             title = ""
         else:
-            title = sview.svconfig.get_current_repository().name
+            if not sview.svconfig.get_current_repository().validate():
+                sview.svconfig.set_current_repository(None)
+                title = ""
+            else:
+                title = sview.svconfig.get_current_repository().name
         self.appbar = SpecViewAppBar(page, f"Repository: {title}")
         self.controls = [
             ft.Row(controls=[

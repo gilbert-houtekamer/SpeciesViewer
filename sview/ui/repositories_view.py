@@ -61,17 +61,30 @@ class RepositoryPane(ft.Container):
         super().__init__(*args, **kwargs)
         self.content = ft.Row([
             ft.Container(
-                content=ft.Text(repo.name, color=ft.colors.BLACK),
-                on_click=lambda e: self.goto_repository(repo)
-            )
-        ])
+                content=ft.Text(self.repo.name, color=ft.colors.BLACK),
+                # on_click=lambda e: self.goto_repository(repo)
+            ),
+            ft.Container(
+                content=ft.FloatingActionButton(
+                    icon=ft.icons.DELETE_FOREVER,
+                    on_click=lambda button: self.delete_repository(repo)),
+                alignment=ft.alignment.center_right,
+                expand=True
+            ),
+        ], expand=True)
         self.border = ft.border.all(1, ft.colors.BLACK38)
         self.border_radius = ft.border_radius.all(5)
         self.bgcolor = ft.colors.WHITE60
         self.padding = ft.padding.all(10)
-        self.expand = True
-        self.expand_loose = True
+        self.on_click=lambda e: self.goto_repository(repo)
+        # self.expand = True
+        # self.expand_loose = True
 
-    def goto_repository(self, repo_name):
-        sview.svconfig.set_current_repository(repo_name)
+    def goto_repository(self, repo):
+        sview.svconfig.set_current_repository(repo)
         self.page.go("/")
+
+    def delete_repository(self, repo):
+        sview.svconfig.delete_repository(repo)
+        self.update()
+        self.page.go("/repositories")

@@ -90,16 +90,16 @@ class NewRepositoryView(ft.View):
             self.create_button.disabled = True
         self.create_button.update()
 
-
     def dir_selected(self, e: ft.FilePickerResultEvent):
-        self.selected_dir.value = e.path
-        self.selected_dir.update()
-        self.path = Path(e.path)
-        if self.new_repo_valid():
-            self.create_button.disabled = False
-        else:
-            self.create_button.disabled = True
-        self.create_button.update()
+        if e.path is not None:
+            self.selected_dir.value = e.path
+            self.selected_dir.update()
+            self.path = Path(e.path)
+            if self.new_repo_valid():
+                self.create_button.disabled = False
+            else:
+                self.create_button.disabled = True
+            self.create_button.update()
 
     def new_repo_valid(self):
         if self.name is None or self.name == "":

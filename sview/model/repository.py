@@ -27,9 +27,9 @@ class Repository:
             self.biota_webroot_path = self.config.get('repository', 'BiotaWebRoot')
         else:
             self.config.add_section('repository')
-            biota_database_path = self.path / 'db'
-            os.makedirs(biota_database_path, exist_ok=True)
-            self.config.set('repository', 'BiotaDatebase', str(biota_database_path))
+            self.biota_database_path = self.path / 'db'
+            os.makedirs(self. biota_database_path, exist_ok=True)
+            self.config.set('repository', 'BiotaDatebase', str(self.biota_database_path))
             biota_webroot_path = '/web'
             self.config.set('repository', 'BiotaWebRoot', biota_webroot_path)
         # root for data repository with all pictures (will be very big)
@@ -40,7 +40,6 @@ class Repository:
         self.active_path = self.metadata_path / 'active'
         self.review_path = self.metadata_path / 'review'
         self.initspecies_path = self.metadata_path / 'initialize'
-
 
 
     def populate(self):
@@ -82,6 +81,22 @@ class Repository:
             source = os.path.join(initwebfiles_source, filename)
             target = os.path.join(initwebfiles_target, filename)
             shutil.copy(source, target)
+
+    def validate(self):
+        must_exist = [
+            self.path,
+            self.biota_database_path,
+            self.biota_path,
+            self.metadata_path,
+            self.web_path,
+            self.active_path,
+            self.review_path,
+            self.initspecies_path,
+        ]
+        for p in must_exist:
+            if not p.exists():
+                return False
+        return True
 
     def upload(self):
         sftp = ghexif.sftplib.Sftp(

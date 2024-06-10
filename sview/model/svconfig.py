@@ -38,6 +38,11 @@ class SVConfig:
             self.repo_paths.append(repo.path)
             self.repositories[repo.name] = repo
 
+    def delete_repository(self, repo: Repository):
+        if repo.name in self.repositories:
+            del self.repositories[repo.name]
+            self.repo_paths.remove(repo.path)
+
     def write_config(self):
         config = configparser.ConfigParser()
         config.add_section('repositories')
