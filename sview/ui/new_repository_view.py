@@ -113,6 +113,7 @@ class NewRepositoryView(ft.View):
 
     def create_repository(self, e):
         repository = sview.model.Repository(self.path, self.name)
+        repository.populate()
         sview.svconfig.add_repository(repository)
         sview.svconfig.write_config()
         self.page.go("/repositories")
