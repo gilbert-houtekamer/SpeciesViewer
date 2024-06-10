@@ -1,9 +1,9 @@
 import os
-import sys
 import shutil
 from pathlib import Path
 import configparser
 
+import sview
 from sview.model import SVModelException
 import ghexif.sftplib
 
@@ -13,107 +13,92 @@ class Repository:
     def __init__(self, path: Path, name: str = None):
         if not path.exists():
             raise SVModelException(f"repository does not exist: {path}")
-        self.path = path
+        self.path: Path = path
         if name is None:
             self.name: str = path.stem
         else:
             self.name = name
         self.description = ""
         self.picture = None
-        
-    
-    @staticmethod
-    def from_path(path: Path):
-        repo = Repository(path)
-        cfg = configparser.ConfigParser()
-        cfg.read(path / 'config.ini')
-        if cfg.has_section('config') and 'name' in cfg['config']:
-            repo.name = cfg['config']['name']
-        if cfg.has_section('config') and 'description' in cfg['config']:
-            repo.description = cfg['config']['description']
-        if cfg.has_section('config') and 'picture' in cfg['config']:
-            ppath = path / cfg['config']['picture']
-            if ppath.exists():
-                repo.picture = ppath
-        return repo
+        self.config = configparser.ConfigParser()
+        if (self.path / "config.ini").exists():
+            self.config.read(path / 'config.ini')
+            self.biota_database_path = Path(self.config.get('repository', 'BiotaDatebase'))
+            self.biota_webroot_path = self.config.get('repository', 'BiotaWebRoot')
+        else:
+            self.config.add_section('repository')
+            biota_database_path = self.path / 'db'
+            os.makedirs(biota_database_path, exist_ok=True)
+            self.config.set('repository', 'BiotaDatebase', str(biota_database_path))
+            biota_webroot_path = '/web'
+            self.config.set('repository', 'BiotaWebRoot', biota_webroot_path)
+        # root for data repository with all pictures (will be very big)
+        self.biota_path = self.path / 'biota'
+        # the metadata describes the data in the repository, and has review subdirectories as specified below
+        self.metadata_path = self.path / 'metadata'
+        self.web_path = self.metadata_path / 'web'
+        self.active_path = self.metadata_path / 'active'
+        self.review_path = self.metadata_path / 'review'
+        self.initspecies_path = self.metadata_path / 'initialize'
+
+
 
     def populate(self):
-        #
-        MY_GHEXIF_DIR = "d:/code/ghexif/"
-        INI_LOCATION = "svconfig.ini"
-        #
-        scriptpath = os.path.dirname(__file__)
-        modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-        os.chdir(modpath)
-        sys.path.append(modpath)
+        # check we can access the installation files
+        installation_files = sview.svconfig.path / 'installation files'
+        if not installation_files.exists():
+            raise Exception("missing installation files")
+        installation_web_files = sview.svconfig.path / 'includes web'
+        if not installation_files.exists():
+            raise Exception("missing installation web files")
 
-        config = configparser.ConfigParser()
-        config.read(INI_LOCATION)
+        # create the required paths
+        os.makedirs(self.biota_path, exist_ok=True)
+        os.makedirs(self.metadata_path, exist_ok=True)
+        os.makedirs(self.active_path, exist_ok=True)
+        os.makedirs(self.review_path, exist_ok=True)
+        os.makedirs(self.initspecies_path, exist_ok=True)
+        os.makedirs(self.web_path, exist_ok=True)
+        os.makedirs(self.web_path / "biota", exist_ok=True)
+        os.makedirs(self.web_path / "biotablog/", exist_ok=True)    # mostly staging
+        os.makedirs(self.web_path / "admin", exist_ok=True)      # mostly staging
+        os.makedirs(self.web_path / "summaries", exist_ok=True)
+        os.makedirs(self.web_path / "includes web", exist_ok=True)
 
-        NEW_DB_TREE = config.get("repository","BiotaDatebase")    # "e:/test3/SpeciesViewDB/"
-        WEB_TREE = config.get("repository","BiotaWebRoot")
+        # copy the initialization files
+        shutil.copy(installation_files / 'empty_species.csv', self.initspecies_path / 'empty_species.csv')
+        shutil.copy(installation_files / 'empty_species.csv', self.active_path / 'species.csv')
+        shutil.copy(installation_files / 'initial_speciescollection.csv', self.initspecies_path / 'initial_speciescollection.csv')
+        shutil.copy(installation_files / 'initial_speciescollection.csv', self.active_path / 'speciescollection.csv')
+        shutil.copy(installation_files / 'empty_data_files.csv', self.initspecies_path / 'empty_data_files.csv')
+        shutil.copy(installation_files / 'empty_data_files.csv', self.active_path / 'data_files.csv')
+        shutil.copy(installation_files / 'empty_data_pictures.csv', self.initspecies_path / 'empty_data_pictures.csv')
+        shutil.copy(installation_files / 'empty_data_pictures.csv', self.active_path / 'data_pictures.csv')
 
-        os.makedirs(NEW_DB_TREE, exist_ok=True)               # root for data, metadata and web contents
-        #
-        # root for data repository with all pictures (will be very big)
-        # many directories
-        os.makedirs(NEW_DB_TREE+"biota/", exist_ok=True)
-        # the metadata describes the data in the repository, and has review subdirectories as specified below
-        os.makedirs(NEW_DB_TREE+"metadata/", exist_ok=True)
-        # files are expected to use these names:
-        # data_files.csv
-        # data_pictures.csv
-        # species.csv
-        # more 'in review' directories is likely very desirable, sub-directories by day or by last qualifier directory
-        os.makedirs(NEW_DB_TREE+"metadata/active/", exist_ok=True)  # what is in the big just repository
-        os.makedirs(NEW_DB_TREE+"metadata/review/", exist_ok=True)  # the data that is beging reviewed
-
-        initspeciesdir = NEW_DB_TREE+"metadata/initialize/"
-        os.makedirs(initspeciesdir, exist_ok=True)
-        shutil.copy(MY_GHEXIF_DIR+'installation files/empty_species.csv', initspeciesdir+'empty_species.csv')
-        shutil.copy(MY_GHEXIF_DIR+'installation files/empty_species.csv', NEW_DB_TREE+'metadata/active/species.csv')
-        shutil.copy(MY_GHEXIF_DIR+'installation files/initial_speciescollection.csv', initspeciesdir+'initial_speciescollection.csv')
-        shutil.copy(MY_GHEXIF_DIR+'installation files/initial_speciescollection.csv', NEW_DB_TREE+'metadata/active/speciescollection.csv')
-        shutil.copy(MY_GHEXIF_DIR+'installation files/empty_data_files.csv', initspeciesdir+'empty_data_files.csv')
-        shutil.copy(MY_GHEXIF_DIR+'installation files/empty_data_files.csv', NEW_DB_TREE+'metadata/active/data_files.csv')
-        shutil.copy(MY_GHEXIF_DIR+'installation files/empty_data_pictures.csv', initspeciesdir+'empty_data_pictures.csv')
-        shutil.copy(MY_GHEXIF_DIR+'installation files/empty_data_pictures.csv', NEW_DB_TREE+'metadata/active/data_pictures.csv')
-
-        # the web site is first create locally
-        # copy of the web site and directory for new files just frozen
-        os.makedirs(NEW_DB_TREE+"web", exist_ok=True)
-        os.makedirs(NEW_DB_TREE+"web/biota/", exist_ok=True)
-        os.makedirs(NEW_DB_TREE+"web/biotablog/", exist_ok=True)    # mostly staging
-        os.makedirs(NEW_DB_TREE+"web/admin/", exist_ok=True)      # mostly staging
-
-        initwebfiles_source = MY_GHEXIF_DIR+"includes web/"
-        initwebfiles_target = NEW_DB_TREE+"web/includes web/"
-        os.makedirs(NEW_DB_TREE+"web/includes web/", exist_ok=True)
+        # copy the initialization web files
+        initwebfiles_source = installation_web_files
+        initwebfiles_target = self.web_path / "includes web"
         for filename in os.listdir(initwebfiles_source):
             source = os.path.join(initwebfiles_source, filename)
             target = os.path.join(initwebfiles_target, filename)
             shutil.copy(source, target)
 
-        os.makedirs(NEW_DB_TREE+"web/summaries/", exist_ok=True)
+    def upload(self):
+        sftp = ghexif.sftplib.Sftp(
+            hostname='houtfp.ssh.transip.me',
+            username='houtekamercom',
+            password='cWHkf68TM_q^',
+        )
+        # Connect to SFTP
+        sftp.connect()
         #
-        if WEB_TREE != "":
-            sftp = ghexif.sftplib.Sftp(
-                hostname='houtfp.ssh.transip.me',
-                username='houtekamercom',
-                password='cWHkf68TM_q^',
-            )
-            # Connect to SFTP
-            sftp.connect()
-            #
-            sftp.safeMkdir(sftp.remotePrefix() + WEB_TREE)
-            sftp.safeMkdir(sftp.remotePrefix() + WEB_TREE + '/biota')
-            sftp.safeMkdir(sftp.remotePrefix() + WEB_TREE + '/summaries')
-            sftp.safeMkdir(sftp.remotePrefix() + WEB_TREE + '/biotablog')
-            sftp.safeMkdir(sftp.remotePrefix() + WEB_TREE + '/admin')
-            sftp.safeMkdir(sftp.remotePrefix() + WEB_TREE + '/includes web')
-            fromdir = NEW_DB_TREE + "web/includes web/"
-            towebdir = sftp.remotePrefix() + WEB_TREE + '/includes web/'
-            sftp.put_r_portable(fromdir, towebdir, preserve_mtime=True)
-            sftp.disconnect()
-
-
+        sftp.safeMkdir(sftp.remotePrefix() + self.biota_webroot_path)
+        sftp.safeMkdir(sftp.remotePrefix() + self.biota_webroot_path + '/biota')
+        sftp.safeMkdir(sftp.remotePrefix() + self.biota_webroot_path + '/summaries')
+        sftp.safeMkdir(sftp.remotePrefix() + self.biota_webroot_path + '/biotablog')
+        sftp.safeMkdir(sftp.remotePrefix() + self.biota_webroot_path + '/admin')
+        sftp.safeMkdir(sftp.remotePrefix() + self.biota_webroot_path + '/includes web')
+        fromdir = self.web_path /  "includes web"
+        towebdir = sftp.remotePrefix() + self.biota_webroot_path + '/includes web/'
+        sftp.put_r_portable(str(fromdir), towebdir, preserve_mtime=True)
+        sftp.disconnect()

@@ -10,6 +10,7 @@ flet
 
 # Outgoing REST calls
 requests
+pysftp
 
 # testing/tools
 pytest

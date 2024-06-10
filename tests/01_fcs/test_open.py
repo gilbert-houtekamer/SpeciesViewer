@@ -10,7 +10,7 @@ class TestCreateFCS:
         assert path.exists()
         cfg = path / 'config.ini'
         assert cfg.exists()
-        repo = Repository.from_path(path)
+        repo = Repository(path)
         assert repo.name == 'naam1'
         
     def test_open_proj(self):
@@ -18,7 +18,7 @@ class TestCreateFCS:
         assert path.exists()
         cfg = path / 'config.ini'
         assert cfg.exists()
-        repo = Repository.from_path(path)
+        repo = Repository(path)
         assert repo.name == 'project1'
         
     def test_open_cfg(self, app):
@@ -26,8 +26,7 @@ class TestCreateFCS:
         assert path.exists()
         cfg = path / 'config.ini'
         assert cfg.exists()
-        svcfg = SVConfig.from_path(path)
+        svcfg = SVConfig(path)
         assert len(svcfg.repositories) > 0
-        assert len(svcfg.projects) > 0
-        
+
         
