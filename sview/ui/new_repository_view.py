@@ -20,7 +20,9 @@ class NewRepositoryView(ft.View):
 
         self.sidebar = Sidebar(page)
         self.appbar = SpecViewAppBar(page, "New Repository")
-        self.select_dir_dialog = ft.FilePicker(on_result=self.dir_selected)
+        self.select_dir_dialog = ft.FilePicker(
+            on_result=self.dir_selected
+        )
         self.selected_dir = ft.Text()
         self.create_button = ft.ElevatedButton(
             "Create",
@@ -43,9 +45,8 @@ class NewRepositoryView(ft.View):
             color=ft.colors.WHITE,
         )
 
-
-
         page.overlay.append(self.select_dir_dialog)
+
         self.controls = [
             ft.Row(controls=[
                 self.sidebar,

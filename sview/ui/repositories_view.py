@@ -39,23 +39,31 @@ class RepositoriesList(ft.Container):
         super().__init__(*args, **kwargs)
         self.view = view
         self.page = page
-        c = []
-
-        for repo_name, repo in sview.svconfig.repositories.items():
-            c.append(RepositoryPane(page, repo))
+        # c = []
+        # for repo_name, repo in sview.svconfig.repositories.items():
+        #     c.append(RepositoryPane(page, repo))
         # self.controls.append(ft.Column(controls=c))
-        self.content = ft.Column(controls=c)
+        # self.content = ft.Column(controls=c)
         self.border = ft.border.all(1, ft.colors.BLACK)
         self.border_radius = ft.border_radius.all(10)
         self.padding = 10
         self.bgcolor = ft.colors.LIGHT_BLUE
         self.window_bgcolor = ft.colors.LIGHT_BLUE
         self.expand = True
+        self.populate()
+
+    def populate(self):
+        c = []
+        for repo_name, repo in sview.svconfig.repositories.items():
+            c.append(RepositoryPane(self.view, self.page, repo))
+        self.content = ft.Column(controls=c)
+        # self.update()
 
 
 class RepositoryPane(ft.Container):
 
-    def __init__(self, page, repo: sview.model.Repository, *args, **kwargs):
+    def __init__(self, view, page, repo: sview.model.Repository, *args, **kwargs):
+        self.view = view
         self.page = page
         self.repo = repo
         super().__init__(*args, **kwargs)
@@ -86,5 +94,7 @@ class RepositoryPane(ft.Container):
 
     def delete_repository(self, repo):
         sview.svconfig.delete_repository(repo)
-        self.update()
+        sview.svconfig.write_config()
+        self.view.rlist.populate()
         self.page.go("/repositories")
+
