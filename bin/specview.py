@@ -11,16 +11,16 @@ logger = logging.getLogger(__name__)
 
 def main(args):
     # initialise logging
-    logging.basicConfig(filename='svlog.log', level=logging.INFO)
+    logging.basicConfig(level=logging.INFO)
     sview.loghandler = LoggingHandler()
     logging.getLogger().addHandler(sview.loghandler)
-    logging.getLogger().addHandler(logging.StreamHandler())
+    logging.getLogger("flet_runtime").setLevel(logging.WARNING)
     logger.info("specview started")
     # read our configuration
     svconfig = sview.model.SVConfig(Path(args.root))
     sview.ui.app.run(svconfig)
     logger.info("specview finished")
-
+    # loggers = [logging.getLogger(name) for name in logging.root.manager.loggerDict]
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
