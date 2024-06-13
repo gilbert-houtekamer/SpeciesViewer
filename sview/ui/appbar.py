@@ -18,12 +18,12 @@ class SpecViewAppBar(ft.AppBar):
         self.toolbar_height = 75
         self.bgcolor = ft.colors.LIGHT_BLUE_ACCENT_700
         self.actions = [
-            ft.ElevatedButton(
-                "Repositories",
-                on_click=self.goto_repositories,
-                bgcolor=ft.colors.BLUE,
-                color=ft.colors.WHITE
-            ),
+            # ft.ElevatedButton(
+            #     "Repositories",
+            #     on_click=self.goto_repositories,
+            #     bgcolor=ft.colors.BLUE,
+            #     color=ft.colors.WHITE
+            # ),
             ft.Container(
                 content=ft.PopupMenuButton(
                     items=appbar_items

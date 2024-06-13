@@ -5,7 +5,7 @@ import time
 from collections import OrderedDict
 
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SPECIES_FIELDS
-from ghexif import files_dict, dutch_dict, english_dict, species_dict
+from ghexif import files_dict
 import ghexif
 import ghexif.projectlib
 from ghexif.handling import read_file, read_pictures
@@ -198,19 +198,7 @@ class Species:
             UpName = species['Up']
             if UpName != "" and ScientificName not in self.species_dict[UpName]['Leaves']:
                 self.species_dict[UpName]['Leaves'].append(ScientificName)
-            
-            # # add Nederlandse naam index
-            # dutchname = species['DutchName']            
-            # if dutchname != "":
-            #     if dutchname not in dutch_dict:
-            #         dutch_dict[dutchname] = ScientificName
-
-            # # add Nederlandse naam index
-            # englishname = species['EnglishName']            
-            # if englishname != "":
-            #     if englishname not in english_dict:
-            #         english_dict[englishname] = ScientificName
-        
+                
         print(f'Read {len(self.species_dict)} predefined species from {speciesfilename}.')
         
         return
@@ -347,173 +335,9 @@ class Species:
         for leaf in species['Leaves']:
             self.printSpeciesTree(leaf, level + 1, classification)
         return
-    
 
-# A FIRSTRUN will initially fill the biota data repository.  
-# This will clear all counters, collect the data, and COMMIT this as new data
-# to the repository.  The species topolopogy info is kept.
-# the data is read from "species-initial.csv".
-# "Collection" counters are set, the "ThisRun" counters are cleared.  
-# The "species-frozen.csv" file is created.
-#
-# A REVIEW run will collect the data in a new directory, no commitment is done.
-# The "species-frozen.csv" file is used as input.
-# A "species-review.csv" is created, to make eg a website preview before data is 
-# committed to the repository.  It is excepted that new runs will be needed, to
-# make clean data and picture files.
-#
-# A COMMIT run will copy the files with known species information to the 
-# repository, update the "Collection" counters with "ThisRun" counters and clean them.
-# this assumes a "species-review.csv" file as input, and will create an
-# "species-frozen.csv" file.
-#
-# copilot version
-def readSpeciesInfo(config, speciesfilename, reset_all_counters):
-    # Reads a CSV file line by line, splits by delimiter, and creates dictionaries.
-    # Assumes the first row contains column headers.
-
-    with io.open(speciesfilename, mode="r", newline="", encoding='utf-8') as csvfile:
-        # Read the first line (header) to get column names
-        header = csvfile.readline().strip().split(';')
-        # columns that need special treatment
-        numeric_columns = ['currentHighestRating', 'iSpeciesThisRunCount', 'iSpeciesCollectionCount',\
-                            'iPictureThisRunCount', 'iPictureCollectionCount', 'iPicturesWithJPGsThisRun', 'iPicturesWithJPGsCollection']
-        list_columns = ['Leaves', 'JPGmap']
-
-        # read line by line
-        for line in csvfile:
-            # Split the line by semicolon
-            values = line.strip().split(';')
-            # Create a dictionary for this row
-            row_dict = {col: value for col, value in zip(header, values)}
-            # make enums again coded
-            level = row_dict['Level']
-            if level == "Level.BIOTA":
-                row_dict['Level'] = Level.BIOTA
-            elif level == "Level.KINGDOM":
-                row_dict['Level'] = Level.KINGDOM
-            elif level == "Level.PHYLUM":
-                row_dict['Level'] = Level.PHYLUM  
-            elif level == "Level.CLASS":
-                row_dict['Level'] = Level.CLASS  
-            elif level == "Level.ORDER":
-                row_dict['Level'] = Level.ORDER  
-            elif level == "Level.FAMILY":
-                row_dict['Level'] = Level.FAMILY                                 
-            elif level == "Level.SPECIES":
-                row_dict['Level'] = Level.SPECIES
-
-            if reset_all_counters:
-                for col in numeric_columns: row_dict[col] = 0
-                row_dict['BestJPG'] = ''
-                row_dict['BestUPN'] = ''
-                row_dict['BestJPGPathName'] = ''
-                row_dict['TargetPath'] = ''                
-                row_dict['JPGmap'] = []
-                list_columns = ['Leaves']
-            else:
-                list_columns = ['Leaves', 'JPGmap']                
-                # fix numeric, int() for applicable numbers
-                for col in numeric_columns:
-                    try:
-                        row_dict[col] = int(row_dict[col])  # Convert to integer
-                    except ValueError:
-                        pass  # Handle non-numeric values gracefully
-            
-            # fix lists to native [Python list] conventions                
-            for col in list_columns:
-                if row_dict[col] == '[]':           # update in place
-                    row_dict[col] = []
-                else:
-                    try:
-                        # remove additional quoting
-                        liststring = row_dict[col][1:-1].replace("'","")
-                        listvalues = liststring.split(',')
-                        # remove possible leading spaces
-                        row_dict[col] = []                    
-                        for value in listvalues:
-                            if value.lstrip() not in row_dict[col]:
-                                row_dict[col].append(value.lstrip())
-                    except ValueError:
-                        pass  # Handle non-numeric values gracefully
-
-            species_dict[row_dict['ScientificName']] = row_dict
-
-    for speciesname in species_dict:
-        species = species_dict[speciesname]
-        ScientificName = species['ScientificName']
-        UpName = species['Up']
-        if UpName != "" and ScientificName not in species_dict[UpName]['Leaves']:
-            species_dict[UpName]['Leaves'].append(ScientificName)
-        
-        # add Nederlandse naam index
-        dutchname = species['DutchName']            
-        if dutchname != "":
-            if dutchname not in dutch_dict:
-                dutch_dict[dutchname] = ScientificName
-
-        # add Nederlandse naam index
-        englishname = species['EnglishName']            
-        if englishname != "":
-            if englishname not in english_dict:
-                english_dict[englishname] = ScientificName
-    
-    print(f'Read {len(species_dict)} predefined species from {speciesfilename}.')
-    
-    return
-
-def writeSpeciesInfo(config, speciesfilename, commit_counters):
-    # Write Picture CSV file
-    print(f'Write all species data CSV file "{speciesfilename}".')
-    with open(speciesfilename, "w", newline="", encoding='utf-8') as csvfile:
-        # needed to get column in order
-        speciesheaders = OrderedDict((field, None) for field in SPECIES_FIELDS)                 
-        writer = csv.DictWriter(csvfile, fieldnames=speciesheaders, quoting=csv.QUOTE_MINIMAL, delimiter=';')
-        writer.writeheader()
-        for species in species_dict:
-            spec_dict = species_dict[species]
-            row = {}
-            row["Level"] = spec_dict['Level'] 
-            row["ScientificName"] = spec_dict['ScientificName']
-            row["DutchName"] = spec_dict['DutchName']
-            row["EnglishName"] = spec_dict['EnglishName']
-            row["Up"] = spec_dict['Up']
-            row["Leaves"] = spec_dict['Leaves']
-            row["JPGmap"] = spec_dict['JPGmap'] # {}
-            row["currentHighestRating"] = spec_dict["currentHighestRating"]
-            row["BestJPG"] = spec_dict['BestJPG']
-            row["BestUPN"] = spec_dict['BestUPN']  
-            row["BestJPGPathName"] = spec_dict['BestJPGPathName']
-            row["TargetPath"] = spec_dict['TargetPath']
-            
-            if commit_counters:
-                # keep unchanged
-                row["iSpeciesCollectionCount"] = \
-                    int(spec_dict["iSpeciesCollectionCount"]) + int(spec_dict['iSpeciesThisRunCount'])     
-                row["iPictureCollectionCount"] = \
-                    int(spec_dict["iPictureCollectionCount"]) + int(spec_dict["iPictureThisRunCount"])
-                row["iPicturesWithJPGsCollection"] = \
-                    int(spec_dict["iPicturesWithJPGsCollection"]) + int(spec_dict["iPicturesWithJPGsThisRun"])
-            else:    
-                # keep unchanged
-                row["iSpeciesCollectionCount"] = spec_dict["iSpeciesCollectionCount"]        
-                row["iPictureCollectionCount"] = spec_dict["iPictureCollectionCount"]
-                row["iPicturesWithJPGsCollection"] = spec_dict["iPicturesWithJPGsCollection"]
-
-            if commit_counters:
-                row["iSpeciesThisRunCount"] = 0   
-                row["iPictureThisRunCount"] = 0
-                row["iPicturesWithJPGsThisRun"] = 0
-            else:
-                row["iSpeciesThisRunCount"] = spec_dict['iSpeciesThisRunCount']   
-                row["iPictureThisRunCount"] = spec_dict["iPictureThisRunCount"]
-                row["iPicturesWithJPGsThisRun"] = spec_dict["iPicturesWithJPGsThisRun"]
-
-            writer.writerow(row)                    
-    return      
-
-
-# logic from C++ version
+# NEEDS TO GO SOMEWHERE ELSE OR IN THIS PROJECTLIB
+# # logic from C++ version
 def computeRating(upn):
     computation = 0
     DxOUsed = False

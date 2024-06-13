@@ -6,7 +6,7 @@ from datetime import datetime
 global config
 
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS
-from ghexif import files_dict, UniquePictureName_dict, dutch_dict, english_dict, species_dict
+from ghexif import files_dict, UniquePictureName_dict
 import ghexif
 from ghexif.specieslib import computeRatingFile
 from ghexif.handling import UniquePictureName_dict
@@ -208,7 +208,8 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             return getFormattedLocation(picture) if picture else ""
         elif tokenno == 41:
             if picture['Description'] != "":
-                workstr = picture['Description']   # getTranslation(picture['Description'], MyProject.getLanguage()  )
+                language = MyProject.getLanguage()          # intended language
+                workstr = MyProject.ct.getOneLanguage(picture['Description'], language)
             else:
                 workstr =  ""          
             return workstr
@@ -446,50 +447,42 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             workstr = ""
             workstr = addAllSpeciesPage(MyProject, species_param['ScientificName'], workstr)
             return workstr
-        elif tokenno == 121:
-            workstr = '			<table class="w3-table w3-bordered w3-hoverable">\n'
-            workstr += '            <tr class="w3-win8-olive">'
-            workstr += "			    <th>Datum foto's</th>"
-            # workstr += '			    <th>Blog filename</th>'
-            workstr += '			    <th>Titel</th>'
-            workstr += '			    <th>Omschrijving</th>'
-            workstr += '			    <th>Soorten</th>'
-            workstr += '			    <th>Score</th>'                        
-            workstr += '			</tr>'            
+        elif tokenno == 121 or tokenno == 122:
+            language = 'nl' if tokenno == 121 else 'en'
+            workstr = ''
             for logname in MyProject.Blog.getBlogDictSortedKeys():
                 blog = MyProject.Blog.getBlog(logname)
-                workstr += '			<tr>\n'
-                workstr += '                <td>' + blog["blog"][14:24] + '</td>\n'                
-                # workstr += '                <td>' + blog["blog"] + '</td>\n'
-                workstr += f'                <td><a href="{logname}-nl.html">' + blog["title_nl"] + '</td>\n'
-                workstr += '                <td>' + blog["message_nl"] + '</td>\n'
-                workstr += '                <td>' + blog["SelectedGroup"] + '</td>\n'
-                workstr += '                <td>' + str(blog["MinimumScore"]) + '</td>\n'                
-                workstr += '			</tr>'
-            workstr += "            </table\n"            
+                # print(f'Logname {logname} {blog["BestJPGs"][0]}')
+                workstr += '   <div class="w3-row" style="margin: 15px">\n'
+                workstr += '      <div class="w3-col w3-win8-olive" style="width:30%">\n'
+                if blog["BestJPGs"] == []:
+                    workstr += '          <p>(picture not found)</p>\n'
+                else:
+                    workstr += '          <img\n'
+                    workstr += '            src="' + logname + '/' + blog["BestJPGs"][0] + '"\n'
+                    workstr += '            class="w3-border" style="padding:8px;max-width:100%">\n'
+                workstr += '      </div>\n'
+                workstr += '      <div class="w3-col" style="width:70%">\n'
+                workstr += '        <div class="content" style="margin-left:10px">\n'
+                workstr += '          <table class="w3-table w3-hoverable">\n'
+                workstr += '            <tr class="w3-win8-olive">\n'
+                workstr += f'              <th>Titel</th><td><a href="{logname}-nl.html">' + blog["title_" + language] + '</td>\n'
+                workstr += '            </tr>\n'
+                workstr += '            <tr>\n'
+                workstr += '              <th></th><td>' + blog["message_" + language] + '</td>\n'
+                workstr += '            </tr>\n'
+                if blog["SelectedGroup"] != 'biota':
+                    workstr += '            <tr>\n'
+                    workstr += '              <th>Soorten</th><td>' + blog["SelectedGroup"].capitalize() + '</td>\n'
+                    workstr += '            </tr>\n'
+                workstr += '            <tr>\n'
+                workstr += '              <th>Datum:</th><td>' + blog["blog"][14:24] + '</td>\n'
+                workstr += '            </tr>\n'                  
+                workstr += '          </table>\n'
+                workstr += '        </div>\n'
+                workstr += '      </div>\n'
+                workstr += '    </div>\n'
             return workstr
-        elif tokenno == 122:
-            workstr = '			<table class="w3-table w3-bordered w3-hoverable">\n'
-            workstr += '            <tr class="w3-win8-olive">'
-            workstr += "			    <th>Date Photos</th>"
-            # workstr += '			    <th>Blog filename</th>'
-            workstr += '			    <th>Title</th>'
-            workstr += '			    <th>Description</th>'
-            workstr += '			    <th>Species</th>'
-            workstr += '			    <th>Score</th>'                        
-            workstr += '			</tr>'
-            for logname in MyProject.Blog.getBlogDictSortedKeys():
-                blog = MyProject.Blog.getBlog(logname)
-                workstr += '			<tr>\n'
-                workstr += '                <td>' + blog["blog"][14:24] + '</td>\n'                
-                # workstr += '                <td>' + blog["blog"] + '</td>\n'
-                workstr += f'                <td><a href="{logname}-en.html">' + blog["title_en"] + '</td>\n'
-                workstr += '                <td>' + blog["message_en"] + '</td>\n'
-                workstr += '                <td>' + blog["SelectedGroup"] + '</td>\n'
-                workstr += '                <td>' + str(blog["MinimumScore"]) + '</td>\n'
-                workstr += '			</tr>'                
-            workstr += "            </table\n"            
-            return workstr        
         elif tokenno == 125:
             if MyProject.getLanguage() == 'nl': languageName = 'DutchName'
             else: languageName = 'EnglishName'   
@@ -507,6 +500,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
 
 # create overview page for all species, in order of classification
 def addAllSpeciesPage(MyProject, speciesname, textCreated):
+    language = MyProject.getLanguage()
     BiotaWebRoot = MyProject.getBiotaWebRoot()
     species = MyProject.getSpecies(speciesname)
     for leaf in species['Leaves']:
@@ -516,7 +510,7 @@ def addAllSpeciesPage(MyProject, speciesname, textCreated):
                 #textCreated += f"Create page for {species['ScientificName']} - {species['DutchName']} - {species['currentHighestRating']}\n"
                 # picture, need to create links
                 textCreated += '                <div>\n			        <a href="' + \
-                    BiotaWebRoot + species["TargetPath"] + species["ScientificName"] + '.html' + '">\n'
+                    BiotaWebRoot + species["TargetPath"] + species["ScientificName"] +  '-' + language + '.html' + '">\n'
                 if species['BestJPG'] != "" and species['BestJPGPathName'] != "":
                     textCreated += '			            <img src="' + BiotaWebRoot + \
                     species['TargetPath'] + species['BestJPG'] + '" style=\"width:100%\">\n			        </a>'              
@@ -537,22 +531,24 @@ def addSpeciesToSummaryPost(MyProject, speciesname, textCreated, templatehtml):
     species = MyProject.sp.species_dict[speciesname]
     for leaf in species['Leaves']:
         species = MyProject.sp.species_dict[leaf]
-        if int(species['iSpeciesThisRunCount']) > 0:            # brute force scan
+        if int(species['iPictureThisRunCount']) > 0:            # brute force scan
             if species['Level'] == Level.SPECIES:
                 if MyProject.Blog.getSelectedSpeciesGroup() in species['TargetPath'] and \
                    (MyProject.Blog.getOnlyNewSpecies() and int(species['iSpeciesThisRunCount']) > 0) or (not MyProject.Blog.OnlyNewSpecies) and \
                    MyProject.Blog.getMinimumScore() <= species['currentHighestRating']:                 # Last is BUGBUG if high score is from past??
                 #textCreated += f"Create page for {species['ScientificName']} - {species['DutchName']} - {species['currentHighestRating']}\n"
+                    filedata = files_dict[species['BestJPG']]
+                    picturedata = UniquePictureName_dict[species['BestUPN']]
+                    MyProject.Blog.addBestJPG(filedata)
+                    # print(f"Picture {picturedata['NLSoortNaam']} {picturedata['UniquePictureName']} {picturedata['Description']}")
                     for rawline in MyProject.getTemplateLines(templatehtml):
-                        filedata = files_dict[species['BestJPG']]
-                        picturedata = UniquePictureName_dict[species['BestUPN']]
                         textCreated += getTemplateOutputString(MyProject, species, filedata, picturedata, rawline.rstrip('\n')) + "\n"
-                        # copy a picture in subdirectory, named after file
-                        sourcestr = filedata['WindowsFileName']
-                        targetstr = MyProject.getBiotaBlogDir() + MyProject.Blog.getBlogDay() + '/' + filedata['File:FileName']
-                        #print(f'from {sourcestr} to {targetstr}')
-                        if not MyProject.getSkipJPGs():
-                            shutil.copy(sourcestr, targetstr)
+                    # copy a picture in subdirectory, named after file
+                    sourcestr = filedata['WindowsFileName']
+                    targetstr = MyProject.getBiotaBlogDir() + MyProject.Blog.getBlogDay() + '/' + filedata['File:FileName']
+                    #print(f'from {sourcestr} to {targetstr}')
+                    if not MyProject.getSkipJPGs():
+                        shutil.copy(sourcestr, targetstr)
             else:
                 textCreated = addSpeciesToSummaryPost(MyProject, leaf, textCreated, templatehtml)
     return textCreated

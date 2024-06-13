@@ -41,7 +41,7 @@ def read_file(filename):
             if row['File:FileName'] not in files_dict:
                 files_dict[row['File:FileName']] = row
             else:
-                print(f"Unexpected duplicate file {row['File:FileName']} not added.")
+                print(f"Unexpected duplicate file {row['File:FileName']} not added (you ran the same step twice).")
     print(f'Read EXIF data for {len(files_dict)-filecount} files from CSV file {filename}.')
     return
 
@@ -76,3 +76,22 @@ def read_pictures(picturefile):
 
 def read_Files_CSV():
     return
+
+def parseListFromCSV(rawstring):
+    if rawstring == '[]' or rawstring == '':           # update in place
+        cleanListString = [] 
+    else:
+        try:
+            # remove additional quoting
+            liststring = rawstring[1:-1].replace("'","")
+            listvalues = liststring.split(',')
+            # remove possible leading spaces
+            cleanListString = []                    
+            for value in listvalues:
+                if value.lstrip() not in cleanListString:
+                    cleanListString.append(value.lstrip())
+        except ValueError:
+            cleanListString = [] 
+            pass  # Handle non-numeric values gracefully
+
+    return cleanListString

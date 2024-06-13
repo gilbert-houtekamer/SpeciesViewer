@@ -1,3 +1,5 @@
+import logging
+from pathlib import Path
 import flet as ft
 from .sidebar import Sidebar
 from .appbar import SpecViewAppBar
@@ -5,6 +7,7 @@ from .logging_pane import LoggingPane
 
 import sview
 import sview.model
+logger = logging.getLogger(__name__)
 
 
 class RepositoryView(ft.View):
@@ -14,6 +17,7 @@ class RepositoryView(ft.View):
         self.route = route
         self.app = app
         self.page = page
+        self.path = None
 
         self.sidebar = Sidebar(page)
         c = [
@@ -46,11 +50,47 @@ class RepositoryPane(ft.Container):
         self.page = page
         self.repo = repo
 
-        self.content = ft.Row(controls=[
-            ft.Container(
-                content=ft.Text(self.repo.name, color=ft.colors.BLACK),
+        self.select_dir_dialog = ft.FilePicker(
+            on_result=self.dir_selected
+        )
+        self.page.overlay.append(self.select_dir_dialog)
+        self.selected_dir = ft.Text()
+        self.loggingpane = LoggingPane(self.page)
+        sview.loghandler.clear_listeners()
+        sview.loghandler.add_listener(self.loggingpane)
+
+        self.content = ft.Column(controls=[
+            ft.Row(
+                controls=[
+                    ft.ElevatedButton(
+                        "Project",
+                        icon=ft.icons.FILE_OPEN,
+                        on_click=lambda _: self.select_dir_dialog.get_directory_path(),
+                        bgcolor=ft.colors.BLUE,
+                        color=ft.colors.WHITE,
+                    ),
+                    self.selected_dir
+                ]
             ),
-            LoggingPane()
-        ], expand=True)
+            ft.Row(controls=[
+                ft.Column(controls=[
+                    ft.OutlinedButton(text="ReadDirExif"),
+                    ft.OutlinedButton(text="WritePictures"),
+                    ft.OutlinedButton(text="WriteBlog"),
+                    ft.OutlinedButton(text="BuildWebsite"),
+                    ft.OutlinedButton(text="Freeze"),
+                    ft.OutlinedButton(text="WriteCommit"),
+                ]),
+                self.loggingpane
+            ], expand=True)
+        ])
         self.expand = True
-        self.bgcolor = ft.colors.GREEN
+        self.bgcolor = ft.colors.BLUE
+
+    def dir_selected(self, e: ft.FilePickerResultEvent):
+        if e.path is not None:
+            self.selected_dir.value = e.path
+            self.selected_dir.update()
+            self.path = Path(e.path)
+
+

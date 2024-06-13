@@ -18,6 +18,11 @@ def main(args):
     logger.info("specview started")
     # read our configuration
     svconfig = sview.model.SVConfig(Path(args.root))
+    if len(svconfig.repositories_names()) > 0:
+        names = svconfig.repositories_names()
+        name = names[0]
+        repo = svconfig.get_repository(name)
+        svconfig.set_current_repository(repo)
     sview.ui.app.run(svconfig)
     logger.info("specview finished")
     # loggers = [logging.getLogger(name) for name in logging.root.manager.loggerDict]

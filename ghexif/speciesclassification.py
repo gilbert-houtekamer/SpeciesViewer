@@ -5,7 +5,6 @@ import time
 from pygbif import species
 
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SPECIES_FIELDS
-from ghexif import files_dict, dutch_dict, english_dict, species_dict
 import ghexif
 import ghexif.projectlib
 
@@ -338,7 +337,7 @@ class SpeciesClassification:
         scientificname = self.getKnownSpecies(subject, nested, LookUpInGBIF=False)
 
         # not found, see if it is a new species
-        if (scientificname == ""): 
+        if (scientificname == ""):
             scientificname = self.getKnownSpecies(subject, nested,  LookUpInGBIF=True)   
     
         return scientificname

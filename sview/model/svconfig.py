@@ -19,7 +19,7 @@ class SVConfig:
                 self.add_repository(repo)
 
     def repositories_names(self):
-        return self.repositories.keys()
+        return list(self.repositories.keys())
 
     def get_repository(self, repo_name):
         return self.repositories[repo_name]

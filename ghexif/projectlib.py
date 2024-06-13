@@ -8,31 +8,39 @@ from ghexif import files_dict, UniquePictureName_dict
 #import ghexif.websupport
 from ghexif.websupport import getTemplateOutputString
 from ghexif.specieslib import Level
+import ghexif.translatelib
+import requests
 
 # provide easy access to all the locations that are referenced without
 # globals
 class Project:
+    # environment
     scriptpath = os.path.dirname(__file__).replace('"', "").replace("'", "")
     modpath = os.path.abspath(os.path.join(scriptpath, os.pardir)).replace('"', "").replace("'", "")
-    templates_dict = {}
+    online = False
+
     # blog admin
     Blog = None
     blogday = ""
     # web building
+    templates_dict = {}
     all_or_new = "All"
     SkipJPGs = False
     # SpeciesClassification
     sc = None
     sp = None
+    ct = None
 
     def __init__(self, repository, newpictdir, biotawebroot):
         self.Repository = repository.replace('"', "").replace("'", "")
         self.NewPictDir = newpictdir.replace('"', "").replace("'", "")
         self.BiotaWebRoot = biotawebroot.replace('"', "").replace("'", "")
         self.projectName = Path(self.NewPictDir.replace('*','')).stem
-
+    	# global flag
+        self.online = self.internet_connection()
+        if self.online:
+            self.ct = ghexif.translatelib.CachedTranslate(self.Repository)
         # build site
-
         self.addTemplate("vogelordepage-nl.html")    
         self.addTemplate("vogelordepage-en.html")
         self.addTemplate("vogelsoortpage-nl.html")
@@ -49,7 +57,14 @@ class Project:
         self.addTemplate("oneblogphoto-nl.html")
         self.addTemplate("oneblogphoto-en.html")
         self.addTemplate("blogtext-nl.html")                   
-        self.addTemplate("blogtext-en.html")        
+        self.addTemplate("blogtext-en.html")
+
+    def internet_connection(self):
+        try:
+            response = requests.get("https://houtekamer.com", timeout=5)
+            return True
+        except requests.ConnectionError:
+            return False         
 
     def registerBlog(self, Blog):
         self.Blog = Blog
