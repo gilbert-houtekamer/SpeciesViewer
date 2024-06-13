@@ -1,2 +1,3 @@
 
+loghandler = None
 svconfig = None

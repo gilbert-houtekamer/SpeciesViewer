@@ -1,6 +1,7 @@
 import flet as ft
 from .sidebar import Sidebar
 from .appbar import SpecViewAppBar
+from .logging_pane import LoggingPane
 
 import sview
 import sview.model
@@ -45,7 +46,11 @@ class RepositoryPane(ft.Container):
         self.page = page
         self.repo = repo
 
-        self.content = ft.Row( [
+        self.content = ft.Row(controls=[
             ft.Container(
                 content=ft.Text(self.repo.name, color=ft.colors.BLACK),
-            )])
+            ),
+            LoggingPane()
+        ], expand=True)
+        self.expand = True
+        self.bgcolor = ft.colors.GREEN

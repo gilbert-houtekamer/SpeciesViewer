@@ -1,4 +1,5 @@
 import os
+import logging
 import shutil
 from pathlib import Path
 import configparser
@@ -7,6 +8,7 @@ import sview
 from sview.model import SVModelException
 import ghexif.sftplib
 
+logger = logging.getLogger(__name__)
 
 class Repository:
     
@@ -40,6 +42,7 @@ class Repository:
         self.active_path = self.metadata_path / 'active'
         self.review_path = self.metadata_path / 'review'
         self.initspecies_path = self.metadata_path / 'initialize'
+        logger.info(f"xxxxxxxxxxxxxxxxxxxxxRepository {self.name} started")
 
 
     def populate(self):
