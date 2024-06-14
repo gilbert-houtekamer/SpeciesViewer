@@ -20,7 +20,7 @@ import ghexif
 import ghexif.projectlib
 import ghexif.specieslib
 import ghexif.speciesclassification
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS
+from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
 from ghexif.csv_columns import PICTURE_FIELDS
 from ghexif.handling import read_file, read_pictures
 from ghexif.specieslib import Level
@@ -69,8 +69,8 @@ def makeSpeciesDirectory(MyProject, leaf):
                         files_to_delete.append(sourcefile)
                     count += 1
                 except:
-                    print(f"Species: Directory {(MyProject.getRepositoryPath() + species['TargetPath']).lower()} of file {species['BestJPG']} could not be copied.")                    
-        #print(f"Species: Directory {directoryname} created for {species['ScientificName'] + '.html'}.")
+                    raise SVException(f"Species: Directory {(MyProject.getRepositoryPath() + species['TargetPath']).lower()} of file {species['BestJPG']} could not be copied.")
+        #logger.info(f"Species: Directory {directoryname} created for {species['ScientificName'] + '.html'}.")
     return
 
 
@@ -115,7 +115,7 @@ def AppendChangedFileData(MyProject, firstNewFile):
             filespec['WindowsFileName'] = wfn
             filespec['File:Directory'] = fd
     
-    print(f'Data from {len(files_dict)-firstNewFile} files added to {len(files_dict)} and written to {datafilename}')
+    logger.info(f'Data from {len(files_dict)-firstNewFile} files added to {len(files_dict)} and written to {datafilename}')
     return
 
 
@@ -129,14 +129,14 @@ def AppendChangedPictureData(MyProject, firstNewPicture):
         for picture in list(UniquePictureName_dict.values())[firstNewPicture:]:
             writer.writerow(picture)
             
-    print(f'Data from {len(UniquePictureName_dict)-firstNewPicture} pictures added, total {len(UniquePictureName_dict)} now written to {picturename}')
+    logger.info(f'Data from {len(UniquePictureName_dict)-firstNewPicture} pictures added, total {len(UniquePictureName_dict)} now written to {picturename}')
     return
 
 
 def writeDeleteList(deletelistfilename):
     with open(deletelistfilename, 'w', newline='', encoding='utf-8') as deletecsv:
         for fn in files_to_delete:
-            print(f'"{fn}"', file=deletecsv)
+            logger.info(f'"{fn}"', file=deletecsv)
     return
 
 
@@ -157,16 +157,16 @@ def main(args, config):
 
     RepositoryFileCount, RepositoryPictureCount = MyProject.readProject()
   
-    print(f'Now writing consolidated data to a frozen directory for manual review as desired')
+    logger.info(f'Now writing consolidated data to a frozen directory for manual review as desired')
     # change and append
     AppendChangedFileData(MyProject, RepositoryFileCount)
     AppendChangedPictureData(MyProject, RepositoryPictureCount)
 
     # copy all files to big file depository based on classification of data
-    # print(f"Will copy all files to destination.")
+    # logger.info(f"Will copy all files to destination.")
     debugfile = open("Species print.txt", "w")
     count = 0
-    print(f"Debug enabled for Species copy.", file=debugfile)
+    logger.info(f"Debug enabled for Species copy.", file=debugfile)
     # add new directories as needed, right in database
     MyProject.setLanguage('en')
     makeDirectories(MyProject, 'biota', 'New')
@@ -177,14 +177,14 @@ def main(args, config):
 
     # write the list with files to delete
     writeDeleteList(MyProject.ReviewFrozen() + "deletelist.csv")
-    #print(f"{count} files copied to species picture repository in {time.time() - starttime:.1f} seconds.")
+    #logger.info(f"{count} files copied to species picture repository in {time.time() - starttime:.1f} seconds.")
     debugfile.close()   
     # simply append new files and pictures, based on the new files.
     sp.writeSpeciesInfo(MyProject.ReviewFrozen() + "species.csv", commit_counters=True)
     sc.updateSpeciesCollection(MyProject.ReviewFrozen() + "speciescollection.csv")  
 
     totaltime = time.time() - starttime      
-    print(f'Total time for all other work {totaltime:.1f} seconds.')
+    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
 
 
 if __name__ == "__main__":

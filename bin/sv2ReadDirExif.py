@@ -30,23 +30,25 @@ from ghexif.handling import deriveUniquePictureName
 IGNOREEXTENSIONS = ['txt', 'ico', 'html']
 logger = logging.getLogger(__name__)
 
+def test():
+    logger.info("test in sv2ReadDirExif")
+
 def main(args, config):
     starttime = time.time()
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))  
     
-    print(f'Will read files recursively from {MyProject.getProjectPath()}.')    
+    logger.info(f'Will read files recursively from {MyProject.getProjectPath()}.')
     # logging.basicConfig(level=logging.DEBUG)
     # exiftool.ExifTool.__init__(None, common_args=['-G'])
     with exiftool.ExifToolHelper(
-        logger=logging.getLogger(__name__), common_args=["-G"]
+#        logger=logging.getLogger(__name__), common_args=["-G"]
     ) as et:
         if not os.path.isdir(MyProject.getProjectPath()):
-            print(f"Directory {MyProject.getProjectPath()} cannot be found, or refers to a file.")
-            sys.exit
+            raise SVException(f"Directory {MyProject.getProjectPath()} cannot be found, or refers to a file.")
 
-        print(f"Reading directories (takes about 1 minute for every 4000 files)...")
+        logger.info(f"Reading directories (takes about 1 minute for every 4000 files)...")
         file_extension_count = {}        
          
         try:
@@ -54,17 +56,15 @@ def main(args, config):
                 MyProject.getProjectPath(), 
                 params=SELECTED_FIELDS)
         except:
-            print(f"No files found in the directory {MyProject.getProjectPath()}.")
-            sys.exit(12)
+            raise SVException(f"No files found in the directory {MyProject.getProjectPath()}.")
 
- 
         datafilelocation = MyProject.getMetaDirReview()
         os.makedirs(datafilelocation, exist_ok=True) 
         datafilelocation += "data_files.csv"
 
         with open(datafilelocation, "w", newline="") as csvfile:
             metadatareadertime = time.time() - starttime
-            print(
+            logger.info(
                 f"Reading EXIF metadata took {metadatareadertime:.1f} seconds for {len(metadata)} files."
             )
             writer = csv.DictWriter(
@@ -127,11 +127,11 @@ def main(args, config):
                         file_extension_count.get(extension[1:].lower(), 0) + 1
                     )
 
-    print(f"\nThe files counted by filetype are:")
+    logger.info(f"\nThe files counted by filetype are:")
     for extent, count in file_extension_count.items():
-        print(f"   {extent.upper()} files: {count}")
+        logger.info(f"   {extent.upper()} files: {count}")
     totaltime = time.time() - starttime
-    print(
+    logger.info(
         f'\nCSV file written to {datafilelocation}, total time {totaltime:.1f} seconds.'
     )
 
@@ -144,6 +144,8 @@ if __name__ == "__main__":
     INI_LOCATION = "svconfig.ini"
     config = configparser.ConfigParser()
     config.read(INI_LOCATION)
+    # init the logging subsystem
+    logging.basicConfig(level=logging.INFO)
     # call the actual code
     try:
         main(args, config)

@@ -1,4 +1,6 @@
+import configparser
 import logging
+import importlib
 from pathlib import Path
 import flet as ft
 from .sidebar import Sidebar
@@ -7,8 +9,6 @@ from .logging_pane import LoggingPane
 
 import sview
 import sview.model
-
-import sv2ReadDirExif
 
 logger = logging.getLogger(__name__)
 
@@ -77,12 +77,12 @@ class RepositoryPane(ft.Container):
             ),
             ft.Row(controls=[
                 ft.Column(controls=[
-                    ft.OutlinedButton(text="ReadDirExif", on_click=self.do_ReadDirExif),
-                    ft.OutlinedButton(text="WritePictures"),
-                    ft.OutlinedButton(text="WriteBlog"),
-                    ft.OutlinedButton(text="BuildWebsite"),
-                    ft.OutlinedButton(text="Freeze"),
-                    ft.OutlinedButton(text="WriteCommit"),
+                    ft.OutlinedButton(text="ReadDirExif", on_click=lambda e: self.do_module('bin.sv2ReadDirExif')),
+                    ft.OutlinedButton(text="WritePictures", on_click=lambda e: self.do_module('bin.sv3WritePictures')),
+                    ft.OutlinedButton(text="WriteBlog", on_click=lambda e: self.do_module('bin.sv4WriteBlog')),
+                    ft.OutlinedButton(text="BuildWebsite", on_click=lambda e: self.do_module('bin.sv5BuildWebsite')),
+                    ft.OutlinedButton(text="Freeze", on_click=lambda e: self.do_module('bin.sv6Freeze')),
+                    ft.OutlinedButton(text="WriteCommit", on_click=lambda e: self.do_module('bin.sv7WriteCommit')),
                 ]),
                 self.loggingpane
             ], expand=True)
@@ -97,5 +97,26 @@ class RepositoryPane(ft.Container):
             self.path = Path(e.path)
 
 
-    def do_ReadDirExif(self, e):
-        sv2ReadDirExif.test()
+    def do_module(self, module_name):
+        try:
+            config = self.prepare_config()
+            module = importlib.import_module(module_name)
+            main = getattr(module, "main")
+            main(None, config)
+        except Exception as e:
+            logger.warning(f"Error executing module: {e}")
+
+
+    def prepare_config(self):
+        rootpath = sview.svconfig.path
+        svconfig_path = rootpath / 'svconfig.ini'
+        config = configparser.ConfigParser()
+        config.read(svconfig_path)
+        # set the configuration from our UI info (we will integrate that later)
+
+        config.set('repository', 'BiotaDatebase', str(self.repo.biota_database_path.stem))
+        config.set('repository', 'BiotaWebRoot',  str(self.repo.biota_webroot_path.stem))
+        config.set('project', 'PictureDirectory', self.view.path)
+
+        return config
+

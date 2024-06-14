@@ -23,7 +23,7 @@ import ghexif
 import ghexif.projectlib
 import ghexif.specieslib
 import ghexif.speciesclassification
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS
+from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
 from ghexif.csv_columns import PICTURE_FIELDS
 #from ghexif.specieslib import readSpeciesInfo, writeSpeciesInfo, computeRating
 from ghexif.handling import read_file, read_pictures
@@ -185,7 +185,7 @@ def addSpeciesInformation(sp, firstUPNtoProcess):
             if subject_in_jpg != "":
                 scientificname = sp.getSpecies(subject_in_jpg)
                 if scientificname == "":       
-                    print(f"""The species "{subject_in_jpg}" is not found in the GBIF database as a scientific name for "{upn['UniquePictureName']}".""")
+                    logger.info(f"""The species "{subject_in_jpg}" is not found in the GBIF database as a scientific name for "{upn['UniquePictureName']}".""")
                 else:
                     try:           
                         species = MyMagic.getSpecies(scientificname)
@@ -206,7 +206,7 @@ def addSpeciesInformation(sp, firstUPNtoProcess):
                         recognized_species += 1                                   
                         break                        
                     except:
-                        print(f"KEY NOT FOUND {scientificname} for file {filename}")
+                        logger.info(f"KEY NOT FOUND {scientificname} for file {filename}")
                         scientificname = ""
 
         # now compute path when we have a scientific name
@@ -231,10 +231,10 @@ def addSpeciesInformation(sp, firstUPNtoProcess):
                         species['TargetPath'] = upn['TargetPath']
                         species['currentHighestRating'] = int(picture['Rate'])      # so we know if there are better pictures
                         if SpeciesDebug > 0:  
-                            print(f"{picture['WetSoortNaam']:28}: Added file {thisfile['WindowsFileName']} to best {species['BestJPGPathName']}/{species['BestJPG']} {species['JPGmap']}", file=filebug)
+                            logger.info(f"{picture['WetSoortNaam']:28}: Added file {thisfile['WindowsFileName']} to best {species['BestJPGPathName']}/{species['BestJPG']} {species['JPGmap']}", file=filebug)
                     species['JPGmap'].append(thisfile['File:FileName'])        # at some point this was the highest
 
-    print(f"Species information added for {recognized_species} pictures.")
+    logger.info(f"Species information added for {recognized_species} pictures.")
     return 0
 
 # Collect the JPGs, the best file per picture.
@@ -242,12 +242,12 @@ def addSpeciesInformation(sp, firstUPNtoProcess):
 def addPicturesToSpecies(sp, firstUPNtoProcess, SpeciesDebug):
     if SpeciesDebug > 0:  
         debugfile = open("Species print.txt", "w")
-        print(f"Debug enabled for Species analysis at level {SpeciesDebug}.", file=debugfile)
+        logger.info(f"Debug enabled for Species analysis at level {SpeciesDebug}.", file=debugfile)
     else:
         debugfile = ""
     # Analyze the current set of pictures, update the statistics
     for upn in list(UniquePictureName_dict.values())[firstUPNtoProcess:]:
-        #print(f"addPicturesToSpecies: {upn['UniquePictureName']}  {upn['WetSoortNaam']} ")
+        #logger.info(f"addPicturesToSpecies: {upn['UniquePictureName']}  {upn['WetSoortNaam']} ")
         if upn['WetSoortNaam'] != "":               # did we find a species
             species = sp.species_dict[upn['WetSoortNaam']]
             species['iPictureThisRunCount'] = int(species['iPictureThisRunCount']) + 1        # add the pictures from this run, starting from 0
@@ -257,8 +257,7 @@ def addPicturesToSpecies(sp, firstUPNtoProcess, SpeciesDebug):
 
     # at least biota must be present
     if 'biota' not in sp.species_dict:
-        print(f"FATAL ERROR: No species found in the project files.")
-        return 12
+        raise SVException(f"FATAL ERROR: No species found in the project files.")
 
     # Add counters from species to higher levels, tail-recursion works fine
     counters = []
@@ -291,15 +290,13 @@ def main(args, config):
     try:
         pictures_out_csvfile = open(picturefilename + "data_pictures.csv", "w", encoding='utf-8', newline="")
     except:
-        print(f"Picture file ({picturefilename + 'data_pictures.csv'}) is locked by (most likely) Excel, please close it in Excel and re-run.")
-        exit()
+        raise SVException(f"Picture file ({picturefilename + 'data_pictures.csv'}) is locked by (most likely) Excel, please close it in Excel and re-run.")
     try:
         species_out_csvfile = open(picturefilename + "species.csv", "w", encoding='utf-8', newline="")
         species_out_csvfile.close()
     except:
-        print(f"Picture file ({picturefilename + 'species.csv'}) is locked by (most likely) Excel, please close it in Excel and re-run.")
-        exit()
-    #print(f"Species file ({MyProject.getMetaDirReview()+"species.csv"}) is locked by (most likely) Excel, please close it in Excel and re-run.")
+        raise SVException(f"Picture file ({picturefilename + 'species.csv'}) is locked by (most likely) Excel, please close it in Excel and re-run.")
+    #logger.info(f"Species file ({MyProject.getMetaDirReview()+"species.csv"}) is locked by (most likely) Excel, please close it in Excel and re-run.")
 
     # read the list with all pre-defined species
     metadatadir = MyProject.getMetaDir()
@@ -315,7 +312,7 @@ def main(args, config):
 
     # read new files from project to review
     read_file(MyProject.getMetaDirReview() + "data_files.csv")
-    print(f"Read all new data from the in {time.time()-starttime:.1f} seconds.")
+    logger.info(f"Read all new data from the in {time.time()-starttime:.1f} seconds.")
     thissteptime = time.time()   
 
     # Now summarize files to files list per picture ('UniquePictureName')
@@ -341,7 +338,7 @@ def main(args, config):
     # Write Picture CSV file
     picturefilename = MyProject.getMetaDirReview() + "data_pictures.csv"
     with pictures_out_csvfile as csvfile:
-        print(f'Write Picture data CSV file {picturefilename}.')
+        logger.info(f'Write Picture data CSV file {picturefilename}.')
         # needed to get column in order
         ordered_fieldnames = OrderedDict((field, None) for field in PICTURE_FIELDS)                 
         writer = csv.DictWriter(csvfile, fieldnames=ordered_fieldnames, quoting=csv.QUOTE_MINIMAL, delimiter=';')
@@ -350,15 +347,15 @@ def main(args, config):
             writer.writerow(upn_record)
 
     totaltime = time.time() - starttime                
-    print(f'{len(UniquePictureName_dict)} lines written for pictures to {picturefilename}.')
+    logger.info(f'{len(UniquePictureName_dict)} lines written for pictures to {picturefilename}.')
     
     # also create summarizing species, when more counters are added later
     sc.updateSpeciesCollection(metadatadir + "active/speciescollection.csv")  
     sp.writeSpeciesInfo(MyProject.getMetaDirReview()+"species.csv", False)
 
-    # print(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
+    # logger.info(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
     # totaltime = time.time() - starttime      
-    print(f'Total time for all other work {totaltime:.1f} seconds.')
+    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
  
 
 if __name__ == "__main__":

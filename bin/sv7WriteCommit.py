@@ -20,7 +20,7 @@ if __name__ == "__main__":
 from ghexif import files_dict, UniquePictureName_dict
 import ghexif
 import ghexif.projectlib
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS
+from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
 from ghexif.csv_columns import PICTURE_FIELDS
 from ghexif.handling import read_file, read_pictures
 from ghexif.specieslib import Level
@@ -37,9 +37,7 @@ def checkFrozenData(MyProject):
         not os.path.exists(frozendir+"frozen_data_pictures.csv") or \
         not os.path.exists(frozendir+"species.csv") or \
         not os.path.exists(frozendir+"deletelist.csv"):
-        print(f'Make sure the frozen files (data_files.csv, data_pictures.csv and select.csv) are present in {frozendir}. ')
-        exit()
-
+        raise SVException(f'Make sure the frozen files (data_files.csv, data_pictures.csv and select.csv) are present in {frozendir}. ')
     return True
 
 
@@ -50,9 +48,9 @@ def commitProjectFiles(MyProject):
     today = datetime.today().strftime('%Y-%m-%d')
          
     # save old versions 
-    print(f"Keep old files for each day in {activebackupdir}, oldest per day is kept.")
+    logger.info(f"Keep old files for each day in {activebackupdir}, oldest per day is kept.")
     if not os.path.exists(activebackupdir + today + "_data_files.csv"): 
-        print(f'rename active files with prefix "{today}" to directory "{activebackupdir}".')
+        logger.info(f'rename active files with prefix "{today}" to directory "{activebackupdir}".')
         os.makedirs(activebackupdir, exist_ok=True)   
         shutil.copy(activedir+"data_files.csv", activebackupdir+ today + "_data_files.csv")
         shutil.copy(activedir+"data_pictures.csv", activebackupdir+ today + "_data_pictures.csv")
@@ -62,7 +60,7 @@ def commitProjectFiles(MyProject):
     shutil.copy(frozendir+"deletelist.csv", activebackupdir + today + "_"+ MyProject.ProjectName() + "_deletelist.csv")
 
     # now copy the frozen data
-    print(f"Copy frozen files in {frozendir} to {activedir}.")
+    logger.info(f"Copy frozen files in {frozendir} to {activedir}.")
     shutil.copy(frozendir+"frozen_data_files.csv", activedir+"data_files.csv")
     shutil.copy(frozendir+"frozen_data_pictures.csv", activedir+"data_pictures.csv")
     shutil.copy(frozendir+"species.csv", activedir+"species.csv")              
@@ -80,7 +78,7 @@ def deleteCopiedFiles(deletelist):
                 if cleaneddirectory == "":
                     cleaneddirectory = os.path.dirname(filename)
         filesleft = sum(len(files) for _, _, files in os.walk(cleaneddirectory))
-        print(f'{linecount} files deleted from {cleaneddirectory}, {filesleft} left without species information.')
+        logger.info(f'{linecount} files deleted from {cleaneddirectory}, {filesleft} left without species information.')
     return
 
 
@@ -121,9 +119,8 @@ def main(args, config):
                                           config.get("repository","BiotaWebRoot"))
     
     if not MyProject.online:
-        print(f'Internet not online, you cannot commit without an internet connection.')
-        sys.exit(16)
-    
+        raise SVException(f'Internet not online, you cannot commit without an internet connection.')
+
     if checkFrozenData(MyProject):
     # move "approved" files to the active directory
         commitProjectFiles(MyProject)
@@ -138,7 +135,7 @@ def main(args, config):
         deleteCopiedFiles(MyProject.ReviewFrozen()+"deletelist.csv")
 
     totaltime = time.time() - starttime      
-    print(f'Total time for all other work {totaltime:.1f} seconds.')
+    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
 
 
 if __name__ == "__main__":

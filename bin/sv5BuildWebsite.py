@@ -22,7 +22,7 @@ import ghexif.projectlib
 import ghexif.websupport
 import ghexif.specieslib
 import ghexif.speciesclassification
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS
+from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
 from ghexif.csv_columns import PICTURE_FIELDS
 from ghexif.specieslib import computeRating, computeRatingFile
 from ghexif.handling import read_file, read_pictures
@@ -56,7 +56,7 @@ def main(args, config):
     thissteptime = time.time()     
 
     totaltime = time.time() - starttime
-    print(f'Create Website updates for project in {totaltime:.1f} seconds.')
+    logger.info(f'Create Website updates for project in {totaltime:.1f} seconds.')
     MyProject.setLanguage('nl')
     MyProject.makeWebDirectories('biota', 'New')
     # same code, but no JPG files needed
@@ -68,7 +68,7 @@ def main(args, config):
     makeIntroPages(MyProject)
 
     totaltime = time.time() - thissteptime      
-    print(f'Total time for all other work {totaltime:.1f} seconds.')
+    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
 
 if __name__ == "__main__":
     # get commandline parameters

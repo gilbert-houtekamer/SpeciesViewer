@@ -12,7 +12,7 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-from ghexif import files_dict, UniquePictureName_dict
+from ghexif import files_dict, UniquePictureName_dict, SVException
 import ghexif
 import ghexif.projectlib
 import ghexif.specieslib
@@ -59,7 +59,7 @@ def main(args, config):
     MyProject.setSkipJPGs(False)
 
     blog.write_BlogAdmin()
-    print(f"""Created summary blog in "{MyProject.getBiotaBlogWeb() + blog.getBlogDay() + '/'}" in Dutch and English versions.""")
+    logger.info(f"""Created summary blog in "{MyProject.getBiotaBlogWeb() + blog.getBlogDay() + '/'}" in Dutch and English versions.""")
     blog.updateIndexPage()
 
     if MyProject.online:
@@ -72,7 +72,7 @@ def main(args, config):
     blog.mp.ct.writeTranslationCache()
      
     totaltime = time.time() - starttime      
-    print(f'Total time for all other work {totaltime:.1f} seconds.')
+    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
 
 
 if __name__ == "__main__":

@@ -31,9 +31,9 @@ class Repository:
             self.config.add_section('repository')
             self.biota_database_path = self.path / 'db'
             os.makedirs(self. biota_database_path, exist_ok=True)
-            self.config.set('repository', 'BiotaDatebase', str(self.biota_database_path))
-            biota_webroot_path = '/web'
-            self.config.set('repository', 'BiotaWebRoot', biota_webroot_path)
+            self.config.set('repository', 'BiotaDatebase', str(self.biota_database_path.stem))
+            self.biota_webroot_path = self.path / '/web'
+            self.config.set('repository', 'BiotaWebRoot', str(self.biota_webroot_path.stem))
         # root for data repository with all pictures (will be very big)
         self.biota_path = self.path / 'biota'
         # the metadata describes the data in the repository, and has review subdirectories as specified below
