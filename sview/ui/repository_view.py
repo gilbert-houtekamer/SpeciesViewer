@@ -94,7 +94,7 @@ class RepositoryPane(ft.Container):
         if e.path is not None:
             self.selected_dir.value = e.path
             self.selected_dir.update()
-            self.path = Path(e.path)
+            self.view.path = Path(e.path)
 
 
     def do_module(self, module_name):
@@ -114,9 +114,9 @@ class RepositoryPane(ft.Container):
         config.read(svconfig_path)
         # set the configuration from our UI info (we will integrate that later)
 
-        config.set('repository', 'BiotaDatebase', str(self.repo.biota_database_path.stem))
-        config.set('repository', 'BiotaWebRoot',  str(self.repo.biota_webroot_path.stem))
-        config.set('project', 'PictureDirectory', self.view.path)
+        config.set('repository', 'BiotaDatebase', str(self.repo.biota_database_path))
+        config.set('repository', 'BiotaWebRoot',  self.repo.biota_webroot_path)
+        config.set('project', 'PictureDirectory', str(self.view.path) + '/')
 
         return config
 
