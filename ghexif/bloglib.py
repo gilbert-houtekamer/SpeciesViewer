@@ -1,52 +1,19 @@
-import argparse
-import configparser
 import os
 import io
 from pathlib import Path
-import shutil
-import sys
-import time
 import csv
 from datetime import datetime, date
 from collections import OrderedDict
 import ghexif.projectlib
-import pysftp
 
-
-INI_LOCATION = "svconfig.ini"
-
-# pass ini file to module
-parser = argparse.ArgumentParser(description="Web site Demo.")
-parser.add_argument(
-    "--config",
-    type=str,
-    default=os.environ.get("GHCONFIG", "/etc/ghconfig.ini"),
-    help="Gilbert Houtekamer configuration file",
-)
-args = parser.parse_args()
-scriptpath = os.path.dirname(__file__)
-modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-os.chdir(modpath)
-sys.path.append(modpath)
-
-from ghexif import files_dict, UniquePictureName_dict
+from ghexif import files_dict
 import ghexif
 import ghexif.projectlib
 import ghexif.specieslib
 import ghexif.speciesclassification
 import ghexif.sftplib
-
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS
-from ghexif.csv_columns import PICTURE_FIELDS
-
-#from ghexif.specieslib import readSpeciesInfo, writeSpeciesInfo, computeRating
-from ghexif.handling import read_file, read_pictures, parseListFromCSV
-from ghexif.specieslib import Level
-import ghexif.specieslib
 from ghexif.websupport import getTemplateOutputString
 import ghexif.translatelib
-
-global online
 
 class Blog:
     blog_dict = {} 
@@ -78,7 +45,15 @@ class Blog:
         self.mp = MyProject
         # settings that need to be provided (nl/uk should be Googletranslated)
         # handle language versions
+        # TODO allow user to edit proposed translation
         self.TitleNl, self.TitleEn = self.mp.ct.getBothLanguages(title_nl, title_en)
+        if message_nl == "" and message_en == "":
+            message_nl = "Elk rondje met de camera levert je nieuwe foto's. Deze blog post toont een aantal planten en/of dieren " + \
+                "van mijn laatste trip, in de achtertuin, met de fiets of op vakantie. " + \
+                "De bedoeling is dat de mooie foto's in de soorten site terecht komen, die je via de links boven kun vinden."
+            message_en = "Every trip with the camera provides you with new photos. This blog post shows a number of plants and/or animals " \
+                "seen in my last trip, or simply in my backyard or by bike. " \
+                "The intention is that the best photos end up in the my website, organized by species."            
         self.MessageNl, self.MessageEn = self.mp.ct.getBothLanguages(message_nl, message_en)
         self.SelectedSpeciesGroup = selectedgroup
         self.OnlyNewSpecies = onlynewspecies
@@ -154,7 +129,7 @@ class Blog:
             self.new_blog_row['BestJPGs'] = self.BestJPGs
             # add dictionary to dictionary
             self.addBlog(self.new_blog_row)
-            # remember
+            # remember, but likely redundant
             self.write_BlogAdmin()
         else:
             row = self.getBlog(self.getBlogDay())
@@ -334,57 +309,4 @@ class Blog:
         fromfile = self.getBlogAdminFile()
         toweb = sftp.remotePrefix() + MyProject.Blog.getBlogAdminWeb()
         sftp.upload(fromfile, toweb)                
-        return        
-
-def main(args):
-    global starttime, config
-    starttime = time.time()
-    # read ini file
-    config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
-
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
-                                          config.get("project","PictureDirectory"),
-                                          config.get("repository","BiotaWebRoot"))
-    # get repository-wide sc and per project sp.
-    sc = ghexif.speciesclassification.SpeciesClassification(MyProject)
-    MyProject.registerSpeciesClassification(sc)
-    sp = ghexif.specieslib.Species(MyProject)
-    MyProject.registerSpecies(sp)   
-
-    files, pictures = MyProject.readProject()
-
-    thissteptime = time.time()    
-
-    blog = Blog(MyProject, "Foto's", "", "" , "A short story about Spain.", "biota", False, 5)
-    blog.files = files
-    blog.pictures = pictures
-    blog.password = config.get("websettings","Sftppwd").strip("'")
-    sftp = blog.openSFTP(blog.password)
-
-    blog.prepareBlogCreation(sftp)
-
-    # make them
-    blog.makeRunSummaryPost('biota', 'nl')
-    MyProject.setSkipJPGs(True)
-    blog.makeRunSummaryPost('biota', 'en')
-    MyProject.setSkipJPGs(False)
-
-    blog.write_BlogAdmin()
-    print(f"""Created summary blog in "{MyProject.getBiotaBlogWeb() + blog.getBlogDay() + '/'}" in Dutch and English versions.""")
-    blog.updateIndexPage()
-
-    if MyProject.online:
-        blog.uploadBlog(sftp)
-        blog.uploadBlogAdmin(sftp)
-        # Disconnect from SFTP
-        sftp.disconnect()
-
-    # remember translations
-    blog.mp.ct.writeTranslationCache()
-     
-    totaltime = time.time() - starttime      
-    print(f'Total time for all other work {totaltime:.1f} seconds.')
-
-if __name__ == "__main__":
-     main(parser.parse_args())
+        return 

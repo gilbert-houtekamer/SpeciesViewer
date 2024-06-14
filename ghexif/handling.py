@@ -43,7 +43,7 @@ def read_file(filename):
             else:
                 print(f"Unexpected duplicate file {row['File:FileName']} not added (you ran the same step twice).")
     print(f'Read EXIF data for {len(files_dict)-filecount} files from CSV file {filename}.')
-    return
+    return len(files_dict)
 
 # read picture data file, one record for each picture, with links to files (ORF, jpg, XMP, etc)
 # For second call, additional data is appended
@@ -72,7 +72,7 @@ def read_pictures(picturefile):
                         pass  # Handle non-numeric values gracefully
 
     print(f'Read data for {len(UniquePictureName_dict)-picturecount} pictures from CSV file {picturefile}.')
-    return
+    return len(UniquePictureName_dict)
 
 def read_Files_CSV():
     return

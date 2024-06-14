@@ -33,7 +33,7 @@ from ghexif import COLUMN_NAMES, SELECTED_FIELDS
 from ghexif.csv_columns import PICTURE_FIELDS
 
 #from ghexif.specieslib import readSpeciesInfo, writeSpeciesInfo, computeRating
-from ghexif.handling import read_file
+from ghexif.handling import read_file, read_pictures
 from ghexif.specieslib import Level, computeRating, Species
 
 # read parameters, but will be overwritten probably
@@ -167,7 +167,7 @@ def readableCameraModel(rawname):
 
 # addSpeciesInformation for each UniquePictureName
 #
-# - Add information from the indiviodual files (UpdatePicture(upn))
+# - Add information from the individual files (UpdatePicture(upn))
 # - Compute the rating for the picture (computeRating(upn))
 # - Read species data and put in the UniquePictureName (upn)
 #   - this includes finding the species name, possibly using the GBIF (getSpecies)
@@ -241,19 +241,19 @@ def addSpeciesInformation(sp, firstUPNtoProcess):
                             print(f"{picture['WetSoortNaam']:28}: Added file {thisfile['WindowsFileName']} to best {species['BestJPGPathName']}/{species['BestJPG']} {species['JPGmap']}", file=filebug)
                     species['JPGmap'].append(thisfile['File:FileName'])        # at some point this was the highest
 
-    print(f"Species information added to {recognized_species} of {len(UniquePictureName_dict)} species pictures.")
+    print(f"Species information added for {recognized_species} pictures.")
     return 0
 
 # Collect the JPGs, the best file per picture.
 # Also update counters while we are at it, for all pictures, also the ones without JPGs 
-def addPicturesToSpecies(sp, SpeciesDebug):
+def addPicturesToSpecies(sp, firstUPNtoProcess, SpeciesDebug):
     if SpeciesDebug > 0:  
         debugfile = open("Species print.txt", "w")
         print(f"Debug enabled for Species analysis at level {SpeciesDebug}.", file=debugfile)
     else:
         debugfile = ""
     # Analyze the current set of pictures, update the statistics
-    for upn in UniquePictureName_dict.values():
+    for upn in list(UniquePictureName_dict.values())[firstUPNtoProcess:]:
         #print(f"addPicturesToSpecies: {upn['UniquePictureName']}  {upn['WetSoortNaam']} ")
         if upn['WetSoortNaam'] != "":               # did we find a species
             species = sp.species_dict[upn['WetSoortNaam']]
@@ -312,12 +312,14 @@ def main(args):
     # read the list with all pre-defined species
     metadatadir = MyProject.getMetaDir()
     sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)
-    # also read list with all known secies
+    # also read list with all known species
+    # and count the number of data file items we already have
     sp.readSpeciesInfo(metadatadir + "active/species.csv", False)
-    read_file(metadatadir+"active/data_files.csv")
+    RepositoryFileCount = read_file(metadatadir+"active/data_files.csv")
+    RepositoryPictureCount = read_pictures(metadatadir+"active/data_pictures.csv")
     # count number of data file items we already have
-    RepositoryFileCount = len(files_dict)      # used?
-    RepositoryPictureCount = 0
+    # RepositoryFileCount = len(files_dict)      # used?
+    # RepositoryPictureCount = 0
 
     # read new files from project to review
     read_file(MyProject.getMetaDirReview() + "data_files.csv")
@@ -342,7 +344,7 @@ def main(args):
 
     # Collect the JPGs, the best file per picture.
     # Also update counters while we are at it, for all pictures, also the ones without JPGs
-    if addPicturesToSpecies(sp, SpeciesDebug) > 0: return
+    if addPicturesToSpecies(sp, RepositoryPictureCount, SpeciesDebug) > 0: return
 
     # Write Picture CSV file
     picturefilename = MyProject.getMetaDirReview() + "data_pictures.csv"

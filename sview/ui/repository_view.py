@@ -7,6 +7,9 @@ from .logging_pane import LoggingPane
 
 import sview
 import sview.model
+
+import sv2ReadDirExif
+
 logger = logging.getLogger(__name__)
 
 
@@ -74,7 +77,7 @@ class RepositoryPane(ft.Container):
             ),
             ft.Row(controls=[
                 ft.Column(controls=[
-                    ft.OutlinedButton(text="ReadDirExif"),
+                    ft.OutlinedButton(text="ReadDirExif", on_click=self.do_ReadDirExif),
                     ft.OutlinedButton(text="WritePictures"),
                     ft.OutlinedButton(text="WriteBlog"),
                     ft.OutlinedButton(text="BuildWebsite"),
@@ -94,3 +97,5 @@ class RepositoryPane(ft.Container):
             self.path = Path(e.path)
 
 
+    def do_ReadDirExif(self, e):
+        sv2ReadDirExif.test()

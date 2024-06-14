@@ -33,6 +33,10 @@ import ghexif.projectlib
 
 from ghexif.handling import deriveUniquePictureName
 
+
+def test():
+    print("in sv2ReadDirExif")
+
 # read parameters, but will be overwritten probably
 def readConfig():
     config = configparser.ConfigParser()

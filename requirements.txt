@@ -4,6 +4,9 @@ opencv-python
 pyexiftool
 configparser
 pygbif
+pysftp
+googletrans==4.0.0-rc1
+fastcrc
 
 # UI
 flet

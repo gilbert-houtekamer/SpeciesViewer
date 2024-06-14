@@ -68,14 +68,12 @@ def getFormattedLocation(picture):
             return getFormattedCityStateCountry(picture)
         return picture['Location'] + " (" + getFormattedCityStateCountry(picture) + ")"
 
-def makeLinkScienticficName(BiotaWebRoot, classification, workstr):
+def makeLinkScienticficName(MyProject, BiotaWebRoot, classification, workstr):
     if classification['iSpeciesCollectionCount'] == 0:
         workstr +=  classification['ScientificName'].strip('0123456789 ').capitalize()
     else:
-        workstr +=  '<a href="' + BiotaWebRoot + classification["TargetPath"] + classification["ScientificName"] + '.html\"' + '>\n'
-        workstr += '			         <img src="' + \
-                BiotaWebRoot +  classification["BestJPGPathName"] + classification["BestJPG"] + '"' + ' style="width:100%">\n'
-        workstr += "			     </a>"
+        workstr +=  '<a href="' + BiotaWebRoot + classification["TargetPath"] + classification["ScientificName"] + '-' + MyProject.getLanguage() +  '.html\"' + '>\n'
+        workstr += '			         ' + classification['ScientificName'] + '</a>'
     return workstr
 
 def formatToken(tokenno, MyProject, species_param, file, picture):
@@ -187,14 +185,24 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 32:                                 # one level lower (enkelvoud)
             return str(species_param['Level'])[6:].capitalize()
         elif tokenno == 33:                                 # one level lower (enkelvoud)
-            return ClassificationGroupNameNL[species_param['Level'].value-1] + ': ' + species_param['DutchName'].capitalize()
+            if MyProject.getLanguage() == "nl":
+                languageName = 'DutchName'
+                groupname = ClassificationGroupNameNL[species_param['Level'].value-1]
+            else: 
+                languageName = 'EnglishName'
+                groupname = ClassificationGroupName[species_param['Level'].value-1]
+            if species_param[languageName] != "":
+                return groupname + ': ' + species_param[languageName].capitalize()
+            else:
+                return groupname + ': ' + species_param['ScientificName'].capitalize()
         elif tokenno == 34:                                 # meervoud voor de children, dus 1 extra er af daarom -2                   
-            return ClassificationGroupNameNLmeervoud[species_param['Level'].value-2]
-        elif tokenno == 35:          
-            workstr = ClassificationGroupNameNL[species_param['Level'].value-1] + \
-                        species_param['ScientificName'].strip('0123456789 ').capitalize()
-            if species_param['DutchName'] != "":
-                workstr += species_param['DutchName'].capitalize()
+            return ClassificationGroupNameNLmeervoud[species_param['Level'].value-2].lower()
+        elif tokenno == 35:
+            workstr =  ClassificationGroupNameNL[species_param['Level'].value-1] if MyProject.getLanguage() == "nl" else ClassificationGroupNameNL[species_param['Level'].value-1] 
+            workstr +=  ' ' + species_param['ScientificName'].strip('0123456789 ').capitalize()
+            languageName = 'DutchName' if MyProject.getLanguage() == "nl" else 'EnglishName'
+            if species_param[languageName] != "":
+                workstr += ' (' + species_param['DutchName'].capitalize() + ')'
             return workstr            
         elif tokenno == 36:
             return species_param['DutchName'].capitalize()
@@ -292,15 +300,25 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += "			<li><a href= ""\"" + BiotaWebRoot + "biota/biota-en.html" + "\""">Biota: Life</a></li>\n"
                 languageName = 'EnglishName'                
             if len(kingdom_local)>0: 
-                workstr += "			<li><a href= ""\"" + BiotaWebRoot + kingdom_local['TargetPath'] + kingdom_local['ScientificName'] + '-' + language + '.html">Rijk ' + kingdom_local[languageName].capitalize()  + "</a></li>\n";
+                rijk = 'Rijk: ' if language == 'nl' else 'Kingdom: '
+                workstr += "			<li><a href= ""\"" + BiotaWebRoot + kingdom_local['TargetPath'] + kingdom_local['ScientificName'] + '-' + language + '.html">' + rijk + \
+                    kingdom_local[languageName].capitalize() if kingdom_local[languageName] != "" else  kingdom_local['ScientificName'].capitalize() + "</a></li>\n"
             if len(phylum_local)>0:
-                workstr += "			<li><a href= ""\"" + BiotaWebRoot + phylum_local['TargetPath'] + phylum_local['ScientificName']  + '-' + language + '.html">Stam ' + phylum_local[languageName].capitalize() + "</a></li>\n";
+                stam = 'Stam: ' if language == 'nl' else 'Phylum: '
+                workstr += "			<li><a href= ""\"" + BiotaWebRoot + phylum_local['TargetPath'] + phylum_local['ScientificName']  + '-' + language + '.html">' + stam + \
+                    phylum_local[languageName].capitalize() if phylum_local[languageName] != "" else phylum_local['ScientificName'].capitalize() + "</a></li>\n"
             if len(class_local)>0:
-                workstr += "			<li><a href= ""\"" + BiotaWebRoot + class_local['TargetPath'] + class_local['ScientificName'] + '-' + language + '.html">Klasse ' + class_local[languageName].capitalize() + "</a></li>\n";
-            if len(order_local)>0:        
-                workstr += "			<li><a href= ""\"" + BiotaWebRoot + order_local['TargetPath'] + order_local['ScientificName'] + '-' + language + '.html">Orde ' + order_local[languageName].capitalize() + "</a></li>\n";
+                klasse = 'Klasse: ' if language == 'nl' else 'Class: '                
+                workstr += "			<li><a href= ""\"" + BiotaWebRoot + class_local['TargetPath'] + class_local['ScientificName'] + '-' + language + '.html">' + klasse + \
+                    class_local[languageName].capitalize() if class_local[languageName] != "" else class_local['ScientificName'].capitalize() + "</a></li>\n"
+            if len(order_local)>0:
+                orde = 'Orde: ' if language == 'nl' else 'Order: '                       
+                workstr += "			<li><a href= ""\"" + BiotaWebRoot + order_local['TargetPath'] + order_local['ScientificName'] + '-' + language + '.html">' + orde + \
+                    order_local[languageName].capitalize() if order_local[languageName] != "" else order_local['ScientificName'].capitalize() + "</a></li>\n"
             if len(family_local)>0:
-                workstr += "			<li><a href= ""\"" + BiotaWebRoot + family_local['TargetPath'] + family_local['ScientificName'] + '-' + language + '.html">Familie ' + family_local[languageName].capitalize() + "</a></li>\n";
+                fam = 'Familie: ' if language == 'nl' else 'Family: '                
+                workstr += "			<li><a href= ""\"" + BiotaWebRoot + family_local['TargetPath'] + family_local['ScientificName'] + '-' + language + '.html">' + fam + \
+                    family_local[languageName].capitalize() if family_local[languageName] != "" else family_local['ScientificName'].capitalize() + "</a></li>\n"
             workstr += "		</ul>\n	</div>\n"
             return workstr
         elif tokenno == 93:         # Plaatjes en namen, zelfde voor beide talen
@@ -342,13 +360,16 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 rateorder[(rating, JPGname)] = JPGname
             # keep all JPGs sorted, only top 6 pictures are used
             sorted_items = sorted(rateorder.items(), key=lambda item: (item[0][0], item[0][1]), reverse=True)
+            # make sure only use the first occurrance of an UPN, which is the best (ie, with the highest rate)
+            usedUPNs = []
             # print(f'{len(sorted_items)} JPGs for {species_param['DutchName']}/{species_param['ScientificName']} with {len(species_param['JPGmap'])}')            
             for (rating, JPGname) in sorted_items:
                 JPGname_no_path = files_dict[os.path.basename(JPGname)]
-                if JPGname_no_path != "":
+                if (JPGname_no_path != "") and (JPGname_no_path['UniquePictureName'] not in usedUPNs):
                     for line in MyProject.getTemplateLines("vogelfoto.html"):
                         workstr += getTemplateOutputString(MyProject, species_param, JPGname_no_path,
                                                             UniquePictureName_dict[JPGname_no_path['UniquePictureName']], line)
+                    usedUPNs.append(JPGname_no_path['UniquePictureName'])
                     picture = UniquePictureName_dict[JPGname_no_path['UniquePictureName']]
                     targetstr =  BiotaDiskRoot + picture['TargetPath'] + picture['BestJPG']
                     JPGname_no_path = files_dict[os.path.basename(JPGname)]
@@ -384,14 +405,15 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 else:
                     workstr += "plant"
                 workstr += " uit de orde van de <i>"
-                workstr = makeLinkScienticficName(BiotaWebRoot, order_local, workstr)
+                workstr = makeLinkScienticficName(MyProject, BiotaWebRoot, order_local, workstr)
                 workstr += "</i> en de familie <i>"
-                workstr = makeLinkScienticficName(BiotaWebRoot, family_local, workstr)
+                workstr = makeLinkScienticficName(MyProject, BiotaWebRoot, family_local, workstr)
                 workstr +=  "</i>."
                 parsed_date = datetime.strptime(file["EXIF:DateTimeOriginal"][0:10], '%Y:%m:%d') 
                 workstr += " De foto is genomen "
-                if picture != "":
-                    workstr += " bij " + getFormattedLocation(picture) + " om " + file["EXIF:DateTimeOriginal"][11:16] + " op " + parsed_date.strftime('%d %b, %Y').lower()  + "."
+                if getFormattedLocation(picture) != "":
+                    workstr += " bij " + getFormattedLocation(picture) 
+                workstr += " om " + file["EXIF:DateTimeOriginal"][11:16] + " op " + parsed_date.strftime('%d %b, %Y').lower()  + "."
             return workstr        
         elif tokenno == 112:         # Engelse tekst
             if kingdom_local == {}:
@@ -416,13 +438,13 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 else:
                     workstr += "plant"
                 workstr += " in the order <i>"
-                workstr = makeLinkScienticficName(BiotaWebRoot, order_local, workstr)
+                workstr = makeLinkScienticficName(MyProject, BiotaWebRoot, order_local, workstr)
                 workstr += "</i> and the family <i>"
-                workstr = makeLinkScienticficName(BiotaWebRoot, family_local, workstr)
+                workstr = makeLinkScienticficName(MyProject, BiotaWebRoot, family_local, workstr)
                 workstr +=  "</i>."
                 parsed_date = datetime.strptime(file["EXIF:DateTimeOriginal"][0:10], '%Y:%m:%d') 
                 workstr += " The photo was taken "
-                if picture != "":
+                if getFormattedLocation(picture) != "":
                     workstr += " at " + getFormattedLocation(picture)
                 workstr += " at " + file["EXIF:DateTimeOriginal"][11:16] + " on " + parsed_date.strftime('%A %B %d, %Y')  + "."
                  
@@ -434,7 +456,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 114:
             return MyProject.getBiotaBlogLanguageSwitch().lower()
         elif tokenno == 115:
-            return MyProject.Blog.getBlogDay().lower()
+            return MyProject.Blog.getBlogDay()
         elif tokenno == 116:
             return MyProject.Blog.getBlogTitel()
         elif tokenno == 117:
@@ -458,9 +480,9 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 if blog["BestJPGs"] == []:
                     workstr += '          <p>(picture not found)</p>\n'
                 else:
-                    workstr += '          <img\n'
+                    workstr += f'          <a href="{logname}-nl.html"><img\n'
                     workstr += '            src="' + logname + '/' + blog["BestJPGs"][0] + '"\n'
-                    workstr += '            class="w3-border" style="padding:8px;max-width:100%">\n'
+                    workstr += '            class="w3-border" style="padding:8px;max-width:100%"></a>\n'
                 workstr += '      </div>\n'
                 workstr += '      <div class="w3-col" style="width:70%">\n'
                 workstr += '        <div class="content" style="margin-left:10px">\n'

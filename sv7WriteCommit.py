@@ -95,7 +95,7 @@ def deleteCopiedFiles(deletelist):
     return
 
 
-def putRecursiveTree(MyProject):
+def putRecursiveTreeWeb(MyProject):
     password = config.get("websettings","Sftppwd").strip("'")
     sftp = ghexif.sftplib.Sftp(
         hostname='houtfp.ssh.transip.me',
@@ -115,6 +115,12 @@ def putRecursiveTree(MyProject):
     sftp.connection.put(fromintro + 'summaries/all biota species-nl.html', tointro + 'summaries/all biota species-nl.html', preserve_mtime=True)
     sftp.connection.put(fromintro + 'summaries/all biota species-en.html', tointro + 'summaries/all biota species-en.html', preserve_mtime=True)       
     sftp.disconnect()
+    return
+
+def putRecursiveTreeDisk(MyProject):
+    fromlastproject  = MyProject.ReviewFrozen()
+    tomainrepository = MyProject.getRepositoryPath()
+    shutil.copytree(fromlastproject + 'biota/', tomainrepository+ 'biota/', dirs_exist_ok=True)
     return
 
 def main(args):
@@ -137,9 +143,10 @@ def main(args):
         commitProjectFiles(MyProject)
         
         # update the website
-        putRecursiveTree(MyProject)
+        putRecursiveTreeWeb(MyProject)
+        putRecursiveTreeDisk(MyProject)
 
-        # possibly rewrite the Blog with active links to species
+        # TODO rewrite the Blog with active links to species
 
         # remove files that are copied
         deleteCopiedFiles(MyProject.ReviewFrozen()+"deletelist.csv")

@@ -18,7 +18,6 @@ class CachedTranslate:
     def readTranslationache(self):
         cachefile = self.admindir + 'TransCache.csv'
         if os.path.exists(cachefile):
-            print(f'Read all cached translations from CSV file "{cachefile}".')
             with open(cachefile, mode="r", newline="", encoding='utf-8') as csvfile:
                 header = csvfile.readline().strip().split('^') 
                 for line in csvfile:

@@ -61,7 +61,7 @@ class Project:
 
     def internet_connection(self):
         try:
-            response = requests.get("https://houtekamer.com", timeout=5)
+            response = requests.get("https://houtekamer.com", timeout=15)
             return True
         except requests.ConnectionError:
             return False         
