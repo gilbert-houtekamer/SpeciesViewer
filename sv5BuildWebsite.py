@@ -2,43 +2,26 @@ import argparse
 import configparser
 import os
 from pathlib import Path
-
 import sys
 import time
 from datetime import datetime, date
 from collections import OrderedDict
 import csv
+import logging
+
+if __name__ == "__main__":
+    scriptpath = os.path.dirname(__file__)
+    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
+    os.chdir(modpath)
+    sys.path.append(modpath)
+
 import ghexif.projectlib
-
-global config
-
-INI_LOCATION = "svconfig.ini"
-
-# pass ini file to module
-parser = argparse.ArgumentParser(description="Web site Demo.")
-parser.add_argument(
-    "--config",
-    type=str,
-    default=os.environ.get("GHCONFIG", "/etc/ghconfig.ini"),
-    help="Gilbert Houtekamer configuration file",
-)
-args = parser.parse_args()
-scriptpath = os.path.dirname(__file__)
-modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-os.chdir(modpath)
-sys.path.append(modpath)
-
-global starttime  # global
-
-# start garbage lines, should not be here?
-
 from ghexif import files_dict, UniquePictureName_dict
 import ghexif
 import ghexif.projectlib
 import ghexif.websupport
 import ghexif.specieslib
 import ghexif.speciesclassification
-
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS
 from ghexif.csv_columns import PICTURE_FIELDS
 from ghexif.specieslib import computeRating, computeRatingFile
@@ -46,18 +29,17 @@ from ghexif.handling import read_file, read_pictures
 from ghexif.specieslib import Level
 from ghexif.websupport import getTemplateOutputString
 
+logger = logging.getLogger(__name__)
+global starttime  # global
+
 # For both languages
 def makeIntroPages(MyProject):
     MyProject.makeIntro('intro-nl')
     MyProject.makeIntro('intro-en')
     return
 
-def main(args):
-    global starttime, config
-    # read ini file
-    config = configparser.ConfigParser()
-    #config.read(args.config)
-    config.read(INI_LOCATION)    
+def main(args, config):
+    global starttime
     starttime = time.time()
 
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
@@ -89,4 +71,17 @@ def main(args):
     print(f'Total time for all other work {totaltime:.1f} seconds.')
 
 if __name__ == "__main__":
-     main(parser.parse_args())
+    # get commandline parameters
+    parser = argparse.ArgumentParser(description="sv5BuildWebsite.")
+    args = parser.parse_args()
+    # get configuration
+    INI_LOCATION = "svconfig.ini"
+    config = configparser.ConfigParser()
+    config.read(INI_LOCATION)
+    # call the actual code
+    try:
+        main(args, config)
+    except Exception as e:
+        logger.warning(f"sv5BuildWebsite failed: {e}")
+    else:
+        logger.info("sv5BuildWebsite succeeded")

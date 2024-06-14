@@ -9,37 +9,26 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+import logging
 
-INI_LOCATION = "svconfig.ini"
-
-# pass ini file to module
-parser = argparse.ArgumentParser(description="Web site Demo.")
-parser.add_argument(
-    "--config",
-    type=str,
-    default=os.environ.get("GHCONFIG", "/etc/ghconfig.ini"),
-    help="Gilbert Houtekamer configuration file",
-)
-args = parser.parse_args()
-scriptpath = os.path.dirname(__file__)
-modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-os.chdir(modpath)
-sys.path.append(modpath)
-
-# read ini file
-config = configparser.ConfigParser()
-config.read(INI_LOCATION)
+if __name__ == "__main__":
+    scriptpath = os.path.dirname(__file__)
+    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
+    os.chdir(modpath)
+    sys.path.append(modpath)
 
 from ghexif import files_dict, UniquePictureName_dict
 import ghexif
 import ghexif.projectlib
-
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS
 from ghexif.csv_columns import PICTURE_FIELDS
 from ghexif.handling import read_file, read_pictures
 from ghexif.specieslib import Level
 import ghexif.specieslib
 import ghexif.sftplib
+
+logger = logging.getLogger(__name__)
+
 
 def checkFrozenData(MyProject):
     frozendir = MyProject.ReviewFrozen()
@@ -123,12 +112,9 @@ def putRecursiveTreeDisk(MyProject):
     shutil.copytree(fromlastproject + 'biota/', tomainrepository+ 'biota/', dirs_exist_ok=True)
     return
 
-def main(args):
-    global starttime, config
+def main(args, config):
+    global starttime
     starttime = time.time()
-    # read ini file
-    config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
 
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
                                           config.get("project","PictureDirectory"),
@@ -154,5 +140,19 @@ def main(args):
     totaltime = time.time() - starttime      
     print(f'Total time for all other work {totaltime:.1f} seconds.')
 
+
 if __name__ == "__main__":
-     main(parser.parse_args())
+    # get commandline parameters
+    parser = argparse.ArgumentParser(description="sv7WriteCommit.")
+    args = parser.parse_args()
+    # get configuration
+    INI_LOCATION = "svconfig.ini"
+    config = configparser.ConfigParser()
+    config.read(INI_LOCATION)
+    # call the actual code
+    try:
+        main(args, config)
+    except Exception as e:
+        logger.warning(f"sv7WriteCommit failed: {e}")
+    else:
+        logger.info("sv7WriteCommit succeeded")

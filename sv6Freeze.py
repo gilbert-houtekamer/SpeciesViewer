@@ -7,40 +7,28 @@ import time
 from datetime import datetime
 from collections import OrderedDict
 import csv
+import logging
 
-INI_LOCATION = "svconfig.ini"
-
-# pass ini file to module
-parser = argparse.ArgumentParser(description="Web site Demo.")
-parser.add_argument(
-    "--config",
-    type=str,
-    default=os.environ.get("GHCONFIG", "/etc/ghconfig.ini"),
-    help="Gilbert Houtekamer configuration file",
-)
-args = parser.parse_args()
-scriptpath = os.path.dirname(__file__)
-modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-os.chdir(modpath)
-sys.path.append(modpath)
-
-# read ini file
-config = configparser.ConfigParser()
-config.read(INI_LOCATION)
+if __name__ == "__main__":
+    scriptpath = os.path.dirname(__file__)
+    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
+    os.chdir(modpath)
+    sys.path.append(modpath)
 
 from ghexif import files_dict, UniquePictureName_dict
 import ghexif
 import ghexif.projectlib
 import ghexif.specieslib
 import ghexif.speciesclassification
-
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS
 from ghexif.csv_columns import PICTURE_FIELDS
 from ghexif.handling import read_file, read_pictures
 from ghexif.specieslib import Level
 import ghexif.specieslib
 
+logger = logging.getLogger(__name__)
 files_to_delete = []
+
 
 def getTemplateFileAsString():
     global soort_template_lines                     # will be re-read
@@ -49,12 +37,14 @@ def getTemplateFileAsString():
         fileasstring += line
     return fileasstring
 
+
 def getDateFromPictures():
     for filename in files_dict:
         filedata = files_dict[filename]
         parsed_date = datetime.strptime(filedata["EXIF:DateTimeOriginal"][0:10], '%Y:%m:%d') 
         return parsed_date.strftime('Blog Pictures %Y-%m-%d')
     return ""
+
 
 def makeSpeciesDirectory(MyProject, leaf):
     global debugfile, count
@@ -83,6 +73,7 @@ def makeSpeciesDirectory(MyProject, leaf):
         #print(f"Species: Directory {directoryname} created for {species['ScientificName'] + '.html'}.")
     return
 
+
 # create website based on current count setting, now to test iSpeciesThisRunCount
 def makeDirectories(MyProject, speciesname, all_or_new):
     species = MyProject.sp.species_dict[speciesname]
@@ -97,6 +88,7 @@ def makeDirectories(MyProject, speciesname, all_or_new):
             else: # only species store actual data
                 makeSpeciesDirectory(MyProject, leaf)
     return
+
 
 def AppendChangedFileData(MyProject, firstNewFile):
     # Copy existing FileData 
@@ -126,6 +118,7 @@ def AppendChangedFileData(MyProject, firstNewFile):
     print(f'Data from {len(files_dict)-firstNewFile} files added to {len(files_dict)} and written to {datafilename}')
     return
 
+
 def AppendChangedPictureData(MyProject, firstNewPicture):
     existing_picture_data = MyProject.getMetaDir() + 'active/data_pictures.csv'    
     picturename = MyProject.ReviewFrozen() + "frozen_data_pictures.csv"     # the base our data
@@ -139,14 +132,16 @@ def AppendChangedPictureData(MyProject, firstNewPicture):
     print(f'Data from {len(UniquePictureName_dict)-firstNewPicture} pictures added, total {len(UniquePictureName_dict)} now written to {picturename}')
     return
 
+
 def writeDeleteList(deletelistfilename):
     with open(deletelistfilename, 'w', newline='', encoding='utf-8') as deletecsv:
         for fn in files_to_delete:
             print(f'"{fn}"', file=deletecsv)
     return
 
-def main(args):
-    global starttime, config, species_dict, debugfile, count
+
+def main(args, config):
+    global starttime, species_dict, debugfile, count
     starttime = time.time()
 
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
@@ -191,5 +186,19 @@ def main(args):
     totaltime = time.time() - starttime      
     print(f'Total time for all other work {totaltime:.1f} seconds.')
 
+
 if __name__ == "__main__":
-     main(parser.parse_args())
+    # get commandline parameters
+    parser = argparse.ArgumentParser(description="sv6Freeze.")
+    args = parser.parse_args()
+    # get configuration
+    INI_LOCATION = "svconfig.ini"
+    config = configparser.ConfigParser()
+    config.read(INI_LOCATION)
+    # call the actual code
+    try:
+        main(args, config)
+    except Exception as e:
+        logger.warning(f"sv6Freeze failed: {e}")
+    else:
+        logger.info("sv6Freeze succeeded")

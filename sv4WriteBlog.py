@@ -4,23 +4,13 @@ import os
 from pathlib import Path
 import sys
 import time
-import ghexif.projectlib
+import logging
 
-INI_LOCATION = "svconfig.ini"
-
-# pass ini file to module
-parser = argparse.ArgumentParser(description="Web site Demo.")
-parser.add_argument(
-    "--config",
-    type=str,
-    default=os.environ.get("GHCONFIG", "/etc/ghconfig.ini"),
-    help="Gilbert Houtekamer configuration file",
-)
-args = parser.parse_args()
-scriptpath = os.path.dirname(__file__)
-modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-os.chdir(modpath)
-sys.path.append(modpath)
+if __name__ == "__main__":
+    scriptpath = os.path.dirname(__file__)
+    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
+    os.chdir(modpath)
+    sys.path.append(modpath)
 
 from ghexif import files_dict, UniquePictureName_dict
 import ghexif
@@ -32,16 +22,14 @@ import ghexif.specieslib
 import ghexif.translatelib
 import ghexif.bloglib
 
+logger = logging.getLogger(__name__)
+
 global online
 
-       
 
-def main(args):
-    global starttime, config
+def main(args, config):
+    global starttime
     starttime = time.time()
-    # read ini file
-    config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
 
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
                                           config.get("project","PictureDirectory"),
@@ -86,5 +74,19 @@ def main(args):
     totaltime = time.time() - starttime      
     print(f'Total time for all other work {totaltime:.1f} seconds.')
 
+
 if __name__ == "__main__":
-     main(parser.parse_args())
+    # get commandline parameters
+    parser = argparse.ArgumentParser(description="sv4WriteBlog.")
+    args = parser.parse_args()
+    # get configuration
+    INI_LOCATION = "svconfig.ini"
+    config = configparser.ConfigParser()
+    config.read(INI_LOCATION)
+    # call the actual code
+    try:
+        main(args, config)
+    except Exception as e:
+        logger.warning(f"sv4WriteBlog failed: {e}")
+    else:
+        logger.info("sv4WriteBlog succeeded")

@@ -8,39 +8,32 @@ import sys
 import configparser
 import time
 from pygbif import species
-
 from collections import OrderedDict
 from enum import Enum, auto
+import logging
 
-# relative to .py file
-INI_LOCATION = "svconfig.ini"
-
-DUMMYSPECIES = ['vogels', 'vogel', 'bird', 'libel', 'libellen', 
-                'rups', 'panama', 'californie', 'onbekend', 'sprinkhaan', 'turkey']
-
-scriptpath = os.path.dirname(__file__)
-modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-os.chdir(modpath)
-sys.path.append(modpath)
+if __name__ == "__main__":
+    scriptpath = os.path.dirname(__file__)
+    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
+    os.chdir(modpath)
+    sys.path.append(modpath)
 
 from ghexif import files_dict, UniquePictureName_dict 
 import ghexif
 import ghexif.projectlib
 import ghexif.specieslib
 import ghexif.speciesclassification
-
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS
 from ghexif.csv_columns import PICTURE_FIELDS
-
 #from ghexif.specieslib import readSpeciesInfo, writeSpeciesInfo, computeRating
 from ghexif.handling import read_file, read_pictures
 from ghexif.specieslib import Level, computeRating, Species
 
-# read parameters, but will be overwritten probably
-def readConfig():
-    config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
-    return config
+logger = logging.getLogger(__name__)
+
+DUMMYSPECIES = ['vogels', 'vogel', 'bird', 'libel', 'libellen',
+                'rups', 'panama', 'californie', 'onbekend', 'sprinkhaan', 'turkey']
+
 
 def CreatePicture(upn):
     PictureRecord = {
@@ -276,12 +269,11 @@ def addPicturesToSpecies(sp, firstUPNtoProcess, SpeciesDebug):
 
     return 0
 
-def main(args):
+def main(args, config):
     global starttime, SpeciesDebug
     starttime = time.time()
     SpeciesDebug = 0        # default   
 
-    config = readConfig()
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
 
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
@@ -370,9 +362,17 @@ def main(args):
  
 
 if __name__ == "__main__":
-    # get commandline parameters and mix everything
-    parser = argparse.ArgumentParser(description="Handle photos.")
-    parser.add_argument(
-        "--dir", type=str, default=os.path.join(modpath, "data"), help="foto directory"
-    )
-    main(parser.parse_args())
+    # get commandline parameters
+    parser = argparse.ArgumentParser(description="sv3WritePictures.")
+    args = parser.parse_args()
+    # get configuration
+    INI_LOCATION = "svconfig.ini"
+    config = configparser.ConfigParser()
+    config.read(INI_LOCATION)
+    # call the actual code
+    try:
+        main(args, config)
+    except Exception as e:
+        logger.warning(f"sv3WritePictures failed: {e}")
+    else:
+        logger.info("sv3WritePictures succeeded")

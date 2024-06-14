@@ -9,43 +9,28 @@
 import argparse
 import configparser
 import csv
-import logging
 import os
 import sys
 import time
-
 import exiftool
+import logging
 
-# configuration
-# relative to .py file
-INI_LOCATION = "svconfig.ini"
-# files to exclude because they are not related to pictures
-IGNOREEXTENSIONS = ['txt', 'ico', 'html']
+# add directory to python path (only when run as executable)
+if __name__ == "__main__":
+    scriptpath = os.path.dirname(__file__)
+    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
+    os.chdir(modpath)
+    sys.path.append(modpath)
 
-# code init
-scriptpath = os.path.dirname(__file__)
-modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-os.chdir(modpath)
-sys.path.append(modpath)
-
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS
+from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
 import ghexif.projectlib
-
 from ghexif.handling import deriveUniquePictureName
 
+# files to exclude because they are not related to pictures
+IGNOREEXTENSIONS = ['txt', 'ico', 'html']
+logger = logging.getLogger(__name__)
 
-def test():
-    print("in sv2ReadDirExif")
-
-# read parameters, but will be overwritten probably
-def readConfig():
-    config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
-    return config
-
-def main(args):
-    config = readConfig()
-
+def main(args, config):
     starttime = time.time()
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
                                           config.get("project","PictureDirectory"),
@@ -152,9 +137,18 @@ def main(args):
 
 
 if __name__ == "__main__":
-    # get commandline parameters and mix everything
-    parser = argparse.ArgumentParser(description="Handle photos.")
-    parser.add_argument(
-        "--dir", type=str, default=os.path.join(modpath, "data"), help="foto directory"
-    )
-    main(parser.parse_args())
+    # get commandline parameters
+    parser = argparse.ArgumentParser(description="sv2ReadDirExif.")
+    args = parser.parse_args()
+    # get configuration
+    INI_LOCATION = "svconfig.ini"
+    config = configparser.ConfigParser()
+    config.read(INI_LOCATION)
+    # call the actual code
+    try:
+        main(args, config)
+    except Exception as e:
+        logger.warning(f"sv2ReadDirExif failed: {e}")
+    else:
+        logger.info("sv2ReadDirExif succeeded")
+
