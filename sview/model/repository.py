@@ -30,8 +30,8 @@ class Repository:
         else:
             self.config.add_section('repository')
             self.biota_database_path = self.path / 'db'
-            os.makedirs(self. biota_database_path, exist_ok=True)
-            self.config.set('repository', 'BiotaDatebase', str(self.biota_database_path.stem))
+            os.makedirs(self.biota_database_path, exist_ok=True)
+            self.config.set('repository', 'BiotaDatebase', str(self.biota_database_path))
             self.biota_webroot_path = '/web'
             self.config.set('repository', 'BiotaWebRoot', str(self.biota_webroot_path))
         # root for data repository with all pictures (will be very big)
@@ -42,7 +42,7 @@ class Repository:
         self.active_path = self.metadata_path / 'active'
         self.review_path = self.metadata_path / 'review'
         self.initspecies_path = self.metadata_path / 'initialize'
-        logger.info(f"xxxxxxxxxxxxxxxxxxxxxRepository {self.name} started")
+        logger.info(f"Repository {self.name} started")
 
 
     def populate(self):

@@ -58,9 +58,7 @@ class RepositoryPane(ft.Container):
         )
         self.page.overlay.append(self.select_dir_dialog)
         self.selected_dir = ft.Text()
-        self.loggingpane = LoggingPane(self.page)
-        sview.loghandler.clear_listeners()
-        sview.loghandler.add_listener(self.loggingpane)
+        self.loggingpane = LoggingPane(self.page, sview.loghandler)
 
         self.content = ft.Column(controls=[
             ft.Row(
@@ -114,8 +112,8 @@ class RepositoryPane(ft.Container):
         config.read(svconfig_path)
         # set the configuration from our UI info (we will integrate that later)
 
-        config.set('repository', 'BiotaDatebase', str(self.repo.biota_database_path))
-        config.set('repository', 'BiotaWebRoot',  self.repo.biota_webroot_path)
+        config.set('repository', 'BiotaDatebase', str(self.repo.biota_database_path) + '/')
+        config.set('repository', 'BiotaWebRoot',  self.repo.biota_webroot_path + '/')
         config.set('project', 'PictureDirectory', str(self.view.path) + '/')
 
         return config
