@@ -4,12 +4,15 @@ import csv
 import io
 import time
 from collections import OrderedDict
+import logging
 
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SPECIES_FIELDS
 from ghexif import files_dict
 from ghexif.handling import read_file, read_pictures
 
 from enum import Enum, auto
+
+logger = logging.getLogger(__name__)
 
 # Biota, Kingdom, Phylum, Class, Order, Family, Species
 class Level(Enum):
@@ -198,13 +201,13 @@ class Species:
             if UpName != "" and ScientificName not in self.species_dict[UpName]['Leaves']:
                 self.species_dict[UpName]['Leaves'].append(ScientificName)
                 
-        print(f'Read {len(self.species_dict)} predefined species from {speciesfilename}.')
+        logger.info(f'Read {len(self.species_dict)} predefined species from {speciesfilename}.')
         
         return
 
     def writeSpeciesInfo(self, speciesfilename, commit_counters):
         # Write Picture CSV file
-        print(f'Write all used species data CSV file "{speciesfilename}".')
+        logger.info(f'Write all used species data CSV file "{speciesfilename}".')
         with open(speciesfilename, "w", newline="", encoding='utf-8') as csvfile:
             # needed to get column in order
             speciesheaders = OrderedDict((field, None) for field in SPECIES_FIELDS)                 
@@ -260,7 +263,7 @@ class Species:
 
         species = self.species_dict[soort]
         # if SpeciesDebug > 4 and int(species['iPictureCollectionCount']) > 0:
-        #     print(f"summarizeSpeciesCounters: {species['Level']}:  {species['iPictureCollectionCount']:6}  {species['iPicturesWithJPGsCollection']:6} \
+        #     logger.info(f"summarizeSpeciesCounters: {species['Level']}:  {species['iPictureCollectionCount']:6}  {species['iPicturesWithJPGsCollection']:6} \
         #         {species['ScientificName']:32} / {species['DutchName']} / {species['EnglishName']}", file=debugfile)
         
         # if species, return counters
@@ -293,7 +296,7 @@ class Species:
                     i += 1
             # save results for species summary level
             if results == []:
-                print(f'hoe kan dit??')
+                logger.info(f'hoe kan dit??')
             else:
                 species['iPictureCollectionCount'] = results[0]      
                 species['iPictureThisRunCount'] = results[1]       
@@ -318,9 +321,9 @@ class Species:
             #     print(f"{species['Level']:16}: {species['iSpeciesCollectionCount']:6}  {species['iPictureCollectionCount']:6}  {species['iPicturesWithJPGsCollection']:6} \
             #         {species['ScientificName']:32} / {species['currentHighestRating']:3}: {species['BestJPG']:28} ({species['BestJPGPathName']})", file=debugfile)
             if species['BestJPG'] == "":
-                print(f"""{species['Level']} {species['ScientificName']} ({species['EnglishName']}) has no identified JPGs to show from {species['iPicturesWithJPGsCollection']} JPGs.""")
+                logger.warning(f"""{species['Level']} {species['ScientificName']} ({species['EnglishName']}) has no identified JPGs to show from {species['iPicturesWithJPGsCollection']} JPGs.""")
             if species['currentHighestRating'] == '0':
-                print(f"{species['Level']} {species['ScientificName']} ({species['EnglishName']}) has zero as text string.")
+                logger.warning(f"{species['Level']} {species['ScientificName']} ({species['EnglishName']}) has zero as text string.")
         for leave in species['Leaves']:
             self.printDataForSpecies(leave, debugfile)
         return
@@ -330,7 +333,7 @@ class Species:
         if (int(classification) >= 4 and \
             ((species['Level'] != 'Level.SPECIES') or (species['Level'] != Level.SPECIES) \
             or (int(classification) >= 8))):
-            print(f"{species['Level']:15}: {species['DutchName']:32}  {species['EnglishName']:32}  {species['ScientificName']}")
+            logger.warning(f"{species['Level']:15}: {species['DutchName']:32}  {species['EnglishName']:32}  {species['ScientificName']}")
         for leaf in species['Leaves']:
             self.printSpeciesTree(leaf, level + 1, classification)
         return

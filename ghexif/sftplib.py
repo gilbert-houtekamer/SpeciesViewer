@@ -1,6 +1,9 @@
 import pysftp
 from urllib.parse import urlparse
 import os
+import logging
+logger = logging.getLogger(__name__)
+
 
 class Sftp:
     remote_path = "/data/sites/web/houtekamercom/www"
@@ -34,12 +37,12 @@ class Sftp:
         except Exception as err:
             raise Exception(err)
         finally:
-            print(f"Connected to {self.hostname} as {self.username}.")
+            logger.info(f"Connected to {self.hostname} as {self.username}.")
 
     def disconnect(self):
         """Closes the sftp connection"""
         self.connection.close()
-        print(f"Disconnected from host {self.hostname}")
+        logger.info(f"Disconnected from host {self.hostname}")
 
     def listdir(self, remote_path):
         """lists all the files and directories in the specified path and returns them"""
@@ -55,7 +58,7 @@ class Sftp:
     # Also, by default extracts the file to the specified target_local_path
     def download(self, remote_path, target_local_path):
         try:
-            print(
+            logger.info(
                  f"downloading remote path : {remote_path} to local path: {target_local_path}"
             )
 
@@ -69,7 +72,7 @@ class Sftp:
 
             # Download from remote sftp server to local
             self.connection.get(remote_path, target_local_path)
-            print("download completed")
+            logger.info("download completed")
 
         except Exception as err:
             raise Exception(err)
@@ -77,12 +80,12 @@ class Sftp:
     # Uploads the source files from local to the sftp server.
     def upload(self, source_local_path, remote_path, preserve_mtime=True):
         try:
-            # print(
+            # logger.info(
             #     f"uploading to {self.hostname} as {self.username} [(remote path: {remote_path});(source local path: {source_local_path})]"
             # )
             # Download file from SFTP
             self.connection.put(source_local_path, remote_path, preserve_mtime=True)
-            # print("upload completed")
+            # logger.info("upload completed")
 
         except Exception as err:
             raise Exception(err)
@@ -97,10 +100,10 @@ class Sftp:
                 except OSError:     
                     pass
                 self.put_r_portable(localpath, remotepath, preserve_mtime)
-                print(f'Status:  Processing directory {remotepath.replace(self.remote_path, "[WebServer]")}')
+                logger.info(f'Status:  Processing directory {remotepath.replace(self.remote_path, "[WebServer]")}')
             else:
                 self.connection.put(localpath, remotepath, preserve_mtime=preserve_mtime)
-                print(f'Status:  Copied {remotepath.replace(self.remote_path, "[WebServer]")}')
+                logger.info(f'Status:  Copied {remotepath.replace(self.remote_path, "[WebServer]")}')
     
     def safeMkdir(self, remotepath):
         try:

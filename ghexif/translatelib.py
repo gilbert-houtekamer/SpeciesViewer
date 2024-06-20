@@ -3,6 +3,9 @@ import os
 import googletrans
 from googletrans import Translator
 from fastcrc import crc32
+import logging
+logger = logging.getLogger(__name__)
+
 
 #pip install googletrans==4.0.0-rc1
 
@@ -26,15 +29,15 @@ class CachedTranslate:
                         self.translation_cache[int(values[0])] = values[1]
 
             self.cachedtranslations = len(self.translation_cache)
-            # print(f'Read {self.cachedtranslations} cached translations from CSV file "{cachefile}".')
+            # logger.info(f'Read {self.cachedtranslations} cached translations from CSV file "{cachefile}".')
         else:
             self.cachedtranslations = 0
-            # print(f'Translation cache will be created as needed, nothing to read yet.')
+            # logger.info(f'Translation cache will be created as needed, nothing to read yet.')
 
     def writeTranslationCache(self):
         if len(self.translation_cache) > self.cachedtranslations:
             cachefile = self.admindir + 'TransCache.csv'
-            print(f'Writing {len(self.translation_cache)} cached translations ({len(self.translation_cache)-self.cachedtranslations} added) to CSV file "{cachefile}".') 
+            logger.info(f'Writing {len(self.translation_cache)} cached translations ({len(self.translation_cache)-self.cachedtranslations} added) to CSV file "{cachefile}".')
             with open(cachefile, "w", newline="", encoding='utf-8') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=['crctext','translatedtext'], 
                                             quoting=csv.QUOTE_MINIMAL, delimiter='^')
@@ -65,7 +68,7 @@ class CachedTranslate:
         crctext = self.getCRC32(text)
         if crctext in self.translation_cache:
             translatedText = self.translation_cache[crctext]
-            # print(f"In translation cache: {translatedText}")
+            # logger.info(f"In translation cache: {translatedText}")
         else:
             if language == "":
                 detected_language = self.detectLanguage(text)
@@ -79,7 +82,7 @@ class CachedTranslate:
             translated_text_stuct = self.translator.translate(text, src=from_lang, dest=to_lang)
             translatedText = translated_text_stuct.text.replace('.','. ').replace('.  ','. ')
             self.translation_cache[int(crctext)] = translatedText
-            # print(f"Not in translation cache,  from {from_lang} to {to_lang}: {translatedText}")
+            # logger.info(f"Not in translation cache,  from {from_lang} to {to_lang}: {translatedText}")
             
         return translatedText
 

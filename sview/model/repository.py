@@ -23,7 +23,8 @@ class Repository:
         self.description = ""
         self.picture = None
         self.config = configparser.ConfigParser()
-        if (self.path / "config.ini").exists():
+        self.config_path = self.path / "config.ini"
+        if self.config_path.exists():
             self.config.read(path / 'config.ini')
             self.biota_database_path = Path(self.config.get('repository', 'BiotaDatebase'))
             self.biota_webroot_path = self.config.get('repository', 'BiotaWebRoot')
@@ -38,8 +39,7 @@ class Repository:
             self.config.add_section('project')
             self.config.add_section('debug')
             self.config.set('debug', 'SpeciesFound', str(0))
-            config_path = self.path / 'config.ini'
-            with open(config_path, 'w') as configfile:
+            with open(self.config_path, 'w') as configfile:
                 self.config.write(configfile)
 
         # root for data repository with all pictures (will be very big)
@@ -53,6 +53,16 @@ class Repository:
         self.initspecies_path = self.metadata_path / 'initialize'
         logger.info(f"Repository {self.name} started")
 
+    def set_last_project(self, project_path):
+        self.config.set('projects','last', str(project_path))
+
+    def get_last_project(self, project_path):
+        if self.config.has_option('projects','last'):
+            p = self.config.get('projects', 'last')
+            path = Path(p)
+            if path.exists():
+                return path
+        return None
 
     def populate(self):
         # check we can access the installation files

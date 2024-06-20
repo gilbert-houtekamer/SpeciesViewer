@@ -4,8 +4,9 @@ from pathlib import Path
 import csv
 from datetime import datetime, date
 from collections import OrderedDict
-import ghexif.projectlib
+import logging
 
+import ghexif.projectlib
 from ghexif import files_dict
 import ghexif
 import ghexif.projectlib
@@ -15,6 +16,8 @@ import ghexif.sftplib
 from ghexif.websupport import getTemplateOutputString
 import ghexif.translatelib
 from ghexif.handling import parseListFromCSV
+
+logger = logging.getLogger(__name__)
 
 class Blog:
     blog_dict = {} 
@@ -189,7 +192,7 @@ class Blog:
     # write back 
     def write_BlogAdmin(self):
         # Write Picture CSV file
-        print(f'Write all blog data in CSV file "{self.getBlogAdminFile()}".')
+        logger.info(f'Write all blog data in CSV file "{self.getBlogAdminFile()}".')
         with open(self.getBlogAdminFile(), "w", newline="", encoding='utf-8') as csvfile:
             # needed to get column in order          
             writer = csv.DictWriter(csvfile, fieldnames=self.new_blog_row.keys(), quoting=csv.QUOTE_MINIMAL, delimiter=';')
@@ -283,17 +286,17 @@ class Blog:
         biotablog = MyProject.getBiotaBlogDir()
         fromfile = biotablog + self.getBlogDay() + '-nl.html'
         toweb = sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + self.getBlogDay() + '-nl.html'
-        # print(f'{fromfile} to {toweb}')
+        # logger.info(f'{fromfile} to {toweb}')
         sftp.upload(fromfile, toweb)
         sftp.upload(fromfile.replace('-nl','-en'), toweb.replace('-nl','-en'))
         fromfile = biotablog + 'blog index-nl.html'
         toweb = sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + 'blog index-nl.html'
-        # print(f'{fromfile} to {toweb}')
+        # logger.info(f'{fromfile} to {toweb}')
         sftp.upload(fromfile, toweb)
         sftp.upload(fromfile.replace('-nl','-en'), toweb.replace('-nl','-en'))
         fromdir = biotablog + self.getBlogDay()
         towebdir = sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + self.getBlogDay()
-        # print(f'{fromdir} to {towebdir}')
+        # logger.info(f'{fromdir} to {towebdir}')
         sftp.safeMkdir(sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + self.getBlogDay())
         sftp.put_r_portable(fromdir, towebdir, preserve_mtime=True)
         return

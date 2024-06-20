@@ -97,12 +97,14 @@ class RepositoryPane(ft.Container):
 
     def do_module(self, module_name):
         try:
+            logger.info(f"starting module {module_name}")
             config = self.prepare_config()
             module = importlib.import_module(module_name)
             main = getattr(module, "main")
             main(None, config)
+            logger.info(f"success module {module_name}")
         except Exception as e:
-            logger.warning(f"Error executing module: {e}")
+            logger.warning(f"Error executing module {module_name}: {e}")
 
 
     def prepare_config(self):

@@ -2,14 +2,16 @@ import os
 import shutil
 import time
 from datetime import datetime
+import logging
 
-global config
-
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS
+from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
 from ghexif import files_dict, UniquePictureName_dict
 from ghexif.handling import UniquePictureName_dict
 from ghexif.specieslib import Level, computeRatingFile
 import ghexif.projectlib
+
+logger = logging.getLogger(__name__)
+global config
 
 ClassificationGroupName = ["Species","Family", "Order", "Class", "Phylum", "Kingdom", "Biota"]
 ClassificationGroupNameNL = ["Soort", "Familie", "Orde", "Klasse","Stam", "Rijk", "Biota"]
@@ -39,9 +41,9 @@ def getTemplateOutputString(MyProject, species, file, picture, TemplateLine):
                 except:
                     outputLine += '<Failed to handle token ' + token + '>'
                     if species == None:
-                        print(f"Blog index:{'<Failed to handle token ' + token + '>'}")
+                        logger.info(f"Blog index:{'<Failed to handle token ' + token + '>'}")
                     else:
-                        print(f"{species['ScientificName']}:{'<Failed to handle token ' + token + '>'}")
+                        logger.info(f"{species['ScientificName']}:{'<Failed to handle token ' + token + '>'}")
             OddPosition = 1 - OddPosition
         return outputLine
 
@@ -364,7 +366,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             # make sure only use the first occurrance of an UPN, which is the best (ie, with the highest rate)
             usedUPNs = {}
             rejectUPNs = 0
-            # print(f'{len(sorted_items)} JPGs for {species_param['DutchName']}/{species_param['ScientificName']} with {len(species_param['JPGmap'])}')            
+            # logger.info(f'{len(sorted_items)} JPGs for {species_param['DutchName']}/{species_param['ScientificName']} with {len(species_param['JPGmap'])}')
             for (rating, JPGname) in sorted_items:
                 JPGname_no_path = files_dict[os.path.basename(JPGname)]
                 if (JPGname_no_path != "") and (JPGname_no_path['UniquePictureName'] not in usedUPNs.keys()):
@@ -392,9 +394,9 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                         rejectUPNs += 1
 
                 if (filesfound == 4):
-                    #print(f'Quit {species_param['DutchName']} after 4 images, {rejectUPNs} rejected.')
+                    #logger.info(f'Quit {species_param['DutchName']} after 4 images, {rejectUPNs} rejected.')
                     return workstr
-            #print(f'Quit {species_param['DutchName']} after {filesfound} images, {rejectUPNs} rejected.')
+            #logger.info(f'Quit {species_param['DutchName']} after {filesfound} images, {rejectUPNs} rejected.')
             return workstr
         elif tokenno == 110:         # blog achtige samenvatting
             workstr = ""
@@ -491,7 +493,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             workstr = ''
             for logname in MyProject.Blog.getBlogDictSortedKeys():
                 blog = MyProject.Blog.getBlog(logname)
-                # print(f'Logname {logname} {blog["BestJPGs"][0]}')
+                # logger.info(f'Logname {logname} {blog["BestJPGs"][0]}')
                 workstr += '   <div class="w3-row" style="margin: 15px">\n'
                 workstr += '      <div class="w3-col w3-win8-olive" style="width:30%">\n'
                 if blog["BestJPGs"] == []:
@@ -534,8 +536,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         else:
             return '<token ' + tokenno + '>'
     except:
-        print(f"{species_param['ScientificName']}:{'<Failed to handle token ' + tokenno + '>'}")
-        return '<Failed to handle token '  + tokenno + '>'
+        raise SVException(f"{species_param['ScientificName']}:{'<Failed to handle token ' + tokenno + '>'}")
 
 # create overview page for all species, in order of classification
 def addAllSpeciesPage(MyProject, speciesname, textCreated):
@@ -584,13 +585,13 @@ def addSpeciesToSummaryPost(MyProject, speciesname, textCreated, templatehtml):
                     filedata = files_dict[species['BestJPG']]
                     picturedata = UniquePictureName_dict[species['BestUPN']]
                     MyProject.Blog.addBestJPG(filedata)
-                    # print(f"Picture {picturedata['NLSoortNaam']} {picturedata['UniquePictureName']} {picturedata['Description']}")
+                    # logger.info(f"Picture {picturedata['NLSoortNaam']} {picturedata['UniquePictureName']} {picturedata['Description']}")
                     for rawline in MyProject.getTemplateLines(templatehtml):
                         textCreated += getTemplateOutputString(MyProject, species, filedata, picturedata, rawline.rstrip('\n')) + "\n"
                     # copy a picture in subdirectory, named after file
                     sourcestr = filedata['WindowsFileName']
                     targetstr = MyProject.getBiotaBlogDir() + MyProject.Blog.getBlogDay() + '/' + filedata['File:FileName']
-                    #print(f'from {sourcestr} to {targetstr}')
+                    #logger.info(f'from {sourcestr} to {targetstr}')
                     if not MyProject.getSkipJPGs():
                         shutil.copy(sourcestr, targetstr)
             else:

@@ -2,6 +2,9 @@ import os
 import csv
 from ghexif import files_dict, UniquePictureName_dict
 import ghexif
+import logging
+logger = logging.getLogger(__name__)
+
 
 # strip all suffixes for files from Lightroom, DxO PureRaw, DxO Photolab, Capture etc
 def deriveUniquePictureName(windows_filename):
@@ -41,9 +44,9 @@ def read_file(filename):
             if row['File:FileName'] not in files_dict:
                 files_dict[row['File:FileName']] = row
             else:
-                print(f"Unexpected duplicate file {row['WindowsFileName']} not added, ")
-                print(f"File was already found here {files_dict[row['File:FileName']]['WindowsFileName']}.")
-    print(f'Read EXIF data for {len(files_dict)-filecount} files from CSV file {filename}.')
+                logger.info(f"Unexpected duplicate file {row['WindowsFileName']} not added, ")
+                logger.info(f"File was already found here {files_dict[row['File:FileName']]['WindowsFileName']}.")
+    logger.info(f'Read EXIF data for {len(files_dict)-filecount} files from CSV file {filename}.')
     return len(files_dict)
 
 # read picture data file, one record for each picture, with links to files (ORF, jpg, XMP, etc)
@@ -72,7 +75,7 @@ def read_pictures(picturefile):
                     except ValueError:
                         pass  # Handle non-numeric values gracefully
 
-    print(f'Read data for {len(UniquePictureName_dict)-picturecount} pictures from CSV file {picturefile}.')
+    logger.info(f'Read data for {len(UniquePictureName_dict)-picturecount} pictures from CSV file {picturefile}.')
     return len(UniquePictureName_dict)
 
 def read_Files_CSV():

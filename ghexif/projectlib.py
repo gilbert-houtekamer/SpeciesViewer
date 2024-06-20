@@ -9,6 +9,9 @@ from ghexif.websupport import getTemplateOutputString
 from ghexif.specieslib import Level
 import ghexif.translatelib
 import requests
+import logging
+logger = logging.getLogger(__name__)
+
 
 # provide easy access to all the locations that are referenced without
 # globals
@@ -164,7 +167,7 @@ class Project:
         read_pictures(metadatadir+"active/data_pictures.csv")
 
         thissteptime = time.time()
-        print(f"Read all committed data from the main repository in {thissteptime-starttime:.1f} seconds.")
+        logger.info(f"Read all committed data from the main repository in {thissteptime-starttime:.1f} seconds.")
 
         # get all data
         # RepositoryFileCount = len(files_dict)
@@ -175,7 +178,7 @@ class Project:
         read_file(metadatadirreview+'data_files.csv')
         read_pictures(metadatadirreview+'data_pictures.csv')      
 
-        print(f"Read all new data from project in {time.time()-thissteptime:.1f} seconds.")
+        logger.info(f"Read all new data from project in {time.time()-thissteptime:.1f} seconds.")
         return [RepositoryFileCount, RepositoryPictureCount]
     
     def makeSpeciesDirectory(self, leaf):
@@ -199,8 +202,8 @@ class Project:
                         # os.remove(sourcefile)
                         count += 1
                     except:
-                        print(f"Species: Directory {(biotadatabase + species['TargetPath']).lower()} of file {species['BestJPG']} could not be copied.")                    
-            #print(f"Species: Directory {directoryname} created for {species['ScientificName'] + '.html'}.")
+                        logger.info(f"Species: Directory {(biotadatabase + species['TargetPath']).lower()} of file {species['BestJPG']} could not be copied.")
+            #logger.info(f"Species: Directory {directoryname} created for {species['ScientificName'] + '.html'}.")
         return
 
     # create website based on current count setting, now to test iSpeciesThisRunCount
@@ -241,7 +244,7 @@ class Project:
                     print(line, file=SpeciesHTMLfile)
             SpeciesHTMLfile.close()
         except:
-            print(f"Level:   Directory {(biota + species['TargetPath']).lower()} of file {species['BestJPG']} could not be created.")
+            logger.info(f"Level:   Directory {(biota + species['TargetPath']).lower()} of file {species['BestJPG']} could not be created.")
         return
 
     # create website based on current count setting, now to test iSpeciesThisRunCount
@@ -276,9 +279,9 @@ class Project:
                     print(line, file=SpeciesHTMLfile)
             SpeciesHTMLfile.close()
 
-            #print(f"Species: Directory {directoryname} created for {species['ScientificName'] + '.html'}.")
+            #logger.info(f"Species: Directory {directoryname} created for {species['ScientificName'] + '.html'}.")
         except:
-            print(f"Species: Directory {('e:/tempbiota/' + species['TargetPath']).lower()} of file {species['BestJPG']} could not be created.")
+            logger.info(f"Species: Directory {('e:/tempbiota/' + species['TargetPath']).lower()} of file {species['BestJPG']} could not be created.")
         return
 
     def makeAllSpeciesPage(self, speciesname, language):
@@ -295,7 +298,7 @@ class Project:
             
             speciesOverviewFile.close()        
 
-        print(f"""Written all Species data to "{(biota + 'summaries/all ' + speciesname + ' species-' + language + '.html').lower()}".""")
+        logger.info(f"""Written all Species data to "{(biota + 'summaries/all ' + speciesname + ' species-' + language + '.html').lower()}".""")
         return
     
     # Intro pages, can be used generically
@@ -307,5 +310,5 @@ class Project:
                 print(line, file=IntroFile)
         
             IntroFile.close()  
-        print(f"""Written page webpage to "{(self.getBiotaDir() + simplepage + ".html").lower()}".""")
+        logger.info(f"""Written page webpage to "{(self.getBiotaDir() + simplepage + ".html").lower()}".""")
         return
