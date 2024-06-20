@@ -34,6 +34,14 @@ class Repository:
             self.config.set('repository', 'BiotaDatebase', str(self.biota_database_path))
             self.biota_webroot_path = '/web'
             self.config.set('repository', 'BiotaWebRoot', str(self.biota_webroot_path))
+            self.config.add_section('projects')
+            self.config.add_section('project')
+            self.config.add_section('debug')
+            self.config.set('debug', 'SpeciesFound', str(0))
+            config_path = self.path / 'config.ini'
+            with open(config_path, 'w') as configfile:
+                self.config.write(configfile)
+
         # root for data repository with all pictures (will be very big)
         self.biota_path = self.path / 'biota'
         self.admin_path = self.path / 'admin'
@@ -86,6 +94,7 @@ class Repository:
             source = os.path.join(initwebfiles_source, filename)
             target = os.path.join(initwebfiles_target, filename)
             shutil.copy(source, target)
+
 
     def validate(self):
         must_exist = [

@@ -106,12 +106,10 @@ class RepositoryPane(ft.Container):
 
 
     def prepare_config(self):
-        rootpath = sview.svconfig.path
-        svconfig_path = rootpath / 'svconfig.ini'
-        config = configparser.ConfigParser()
-        config.read(svconfig_path)
-        # set the configuration from our UI info (we will integrate that later)
+        #
+        config = self.repo.config
 
+        # set the configuration from our UI info (we will integrate that later)
         config.set('repository', 'BiotaDatebase', str(self.repo.biota_database_path) + '/')
         config.set('repository', 'BiotaWebRoot',  self.repo.biota_webroot_path + '/')
         config.set('project', 'PictureDirectory', str(self.view.path) + '/')

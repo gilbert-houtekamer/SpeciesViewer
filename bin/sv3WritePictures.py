@@ -261,7 +261,6 @@ def addPicturesToSpecies(sp, firstUPNtoProcess, SpeciesDebug):
     # at least biota must be present
     if 'biota' not in sp.species_dict:
         raise SVException(f"FATAL ERROR: No species found in the project files.")
-        return 12
 
     # Add counters from species to higher levels, tail-recursion works fine
     counters = []
