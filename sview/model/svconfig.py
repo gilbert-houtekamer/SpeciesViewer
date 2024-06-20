@@ -11,7 +11,13 @@ class SVConfig:
         self.repo_paths = []
         self.repositories = {}
         cfg = configparser.ConfigParser()
-        cfg.read(path / "config.ini")
+        config_path = path / "config.ini"
+        if config_path.exists():
+            cfg.read(config_path)
+        else:
+            cfg.add_section('repositories')
+            with open(config_path, 'w') as configfile:
+                cfg.write(configfile)
         if cfg.has_section('repositories'):
             for repo_name in cfg['repositories']:
                 repo_path = Path(cfg['repositories'][repo_name])
