@@ -2,15 +2,13 @@ import os
 import shutil
 import time
 from datetime import datetime
-  
+
 global config
 
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS
 from ghexif import files_dict, UniquePictureName_dict
-import ghexif
-from ghexif.specieslib import computeRatingFile
 from ghexif.handling import UniquePictureName_dict
-from ghexif.specieslib import Level
+from ghexif.specieslib import Level, computeRatingFile
 import ghexif.projectlib
 
 ClassificationGroupName = ["Species","Family", "Order", "Class", "Phylum", "Kingdom", "Biota"]
@@ -217,7 +215,10 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 41:
             if picture['Description'] != "":
                 language = MyProject.getLanguage()          # intended language
-                workstr = MyProject.ct.getOneLanguage(picture['Description'], language)
+                try:
+                    workstr = MyProject.ct.getOneLanguage(picture['Description'], language)
+                except:
+                    workstr = picture['Description']
             else:
                 workstr =  ""          
             return workstr
@@ -361,23 +362,39 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             # keep all JPGs sorted, only top 6 pictures are used
             sorted_items = sorted(rateorder.items(), key=lambda item: (item[0][0], item[0][1]), reverse=True)
             # make sure only use the first occurrance of an UPN, which is the best (ie, with the highest rate)
-            usedUPNs = []
+            usedUPNs = {}
+            rejectUPNs = 0
             # print(f'{len(sorted_items)} JPGs for {species_param['DutchName']}/{species_param['ScientificName']} with {len(species_param['JPGmap'])}')            
             for (rating, JPGname) in sorted_items:
                 JPGname_no_path = files_dict[os.path.basename(JPGname)]
-                if (JPGname_no_path != "") and (JPGname_no_path['UniquePictureName'] not in usedUPNs):
-                    for line in MyProject.getTemplateLines("vogelfoto.html"):
-                        workstr += getTemplateOutputString(MyProject, species_param, JPGname_no_path,
-                                                            UniquePictureName_dict[JPGname_no_path['UniquePictureName']], line)
-                    usedUPNs.append(JPGname_no_path['UniquePictureName'])
-                    picture = UniquePictureName_dict[JPGname_no_path['UniquePictureName']]
-                    targetstr =  BiotaDiskRoot + picture['TargetPath'] + picture['BestJPG']
-                    JPGname_no_path = files_dict[os.path.basename(JPGname)]
-                    if not MyProject.getSkipJPGs():
-                        shutil.copy(JPGname_no_path['WindowsFileName'], targetstr)
-    # 				}
-                filesfound += 1
-                if (filesfound > 5): return workstr
+                if (JPGname_no_path != "") and (JPGname_no_path['UniquePictureName'] not in usedUPNs.keys()):
+                    # do we have a picture close to it?
+                    JPGtime = datetime.strptime(JPGname_no_path['EXIF:DateTimeOriginal'], "%Y:%m:%d %H:%M:%S")
+                    dropit = False
+                    for UPNshownsofar in usedUPNs:
+                        showntime = usedUPNs[UPNshownsofar]
+                        deltahours = abs(showntime - JPGtime).total_seconds()/3600
+                        if deltahours < 0.25: dropit = True
+                    # more conditions we can try
+
+                    if not dropit:
+                        usedUPNs[JPGname_no_path['UniquePictureName']] = datetime.strptime(JPGname_no_path['EXIF:DateTimeOriginal'], "%Y:%m:%d %H:%M:%S")
+                        for line in MyProject.getTemplateLines("vogelfoto.html"):
+                            workstr += getTemplateOutputString(MyProject, species_param, JPGname_no_path,
+                                                                UniquePictureName_dict[JPGname_no_path['UniquePictureName']], line)
+                        picture = UniquePictureName_dict[JPGname_no_path['UniquePictureName']]
+                        targetstr =  BiotaDiskRoot + picture['TargetPath'] + picture['BestJPG']
+                        JPGname_no_path = files_dict[os.path.basename(JPGname)]
+                        if not MyProject.getSkipJPGs():
+                            shutil.copy(JPGname_no_path['WindowsFileName'], targetstr)
+                        filesfound += 1                            
+                    else:
+                        rejectUPNs += 1
+
+                if (filesfound == 4):
+                    #print(f'Quit {species_param['DutchName']} after 4 images, {rejectUPNs} rejected.')
+                    return workstr
+            #print(f'Quit {species_param['DutchName']} after {filesfound} images, {rejectUPNs} rejected.')
             return workstr
         elif tokenno == 110:         # blog achtige samenvatting
             workstr = ""
@@ -542,6 +559,11 @@ def addAllSpeciesPage(MyProject, speciesname, textCreated):
                 textCreated += '<p>' + species['DutchName'].capitalize() + '</p>\n'
                 # end
                 textCreated += '                </div>\n'
+                # be sure the JPG is included
+                sourcestr = files_dict[species['BestJPG']]['WindowsFileName']
+                targetstr = MyProject.ReviewFrozen() + species['TargetPath'] + species['BestJPG']
+                if not MyProject.getSkipJPGs():
+                    shutil.copy(sourcestr, targetstr)
             else:
                 textCreated = addAllSpeciesPage(MyProject, leaf, textCreated)
     return textCreated

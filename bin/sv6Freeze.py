@@ -29,7 +29,6 @@ import ghexif.specieslib
 logger = logging.getLogger(__name__)
 files_to_delete = []
 
-
 def getTemplateFileAsString():
     global soort_template_lines                     # will be re-read
     fileasstring = ""
@@ -37,14 +36,12 @@ def getTemplateFileAsString():
         fileasstring += line
     return fileasstring
 
-
 def getDateFromPictures():
     for filename in files_dict:
         filedata = files_dict[filename]
         parsed_date = datetime.strptime(filedata["EXIF:DateTimeOriginal"][0:10], '%Y:%m:%d') 
         return parsed_date.strftime('Blog Pictures %Y-%m-%d')
     return ""
-
 
 def makeSpeciesDirectory(MyProject, leaf):
     global debugfile, count
@@ -57,7 +54,7 @@ def makeSpeciesDirectory(MyProject, leaf):
         if UniquePictureName_dict[picture]['WetSoortNaam'] == leaf:        # we want this
             for filename in UniquePictureName_dict[picture]['Files']:
                 try:
-                    print(f"File {filename:40}: {files_dict[filename]['WindowsFileName']:64} to " + \
+                    logger.info(f"File {filename:40}: {files_dict[filename]['WindowsFileName']:64} to " + \
                           f"{MyProject.getRepositoryPath()+UniquePictureName_dict[picture]['TargetPath']+files_dict[filename]['File:FileName']}",
                           file=debugfile)
                     sourcefile = files_dict[filename]['WindowsFileName']
@@ -69,10 +66,9 @@ def makeSpeciesDirectory(MyProject, leaf):
                         files_to_delete.append(sourcefile)
                     count += 1
                 except:
-                    raise SVException(f"Species: Directory {(MyProject.getRepositoryPath() + species['TargetPath']).lower()} of file {species['BestJPG']} could not be copied.")
+                    logger.info(f"Species: Directory {(MyProject.getRepositoryPath() + species['TargetPath']).lower()} of file {species['BestJPG']} could not be copied.")
         #logger.info(f"Species: Directory {directoryname} created for {species['ScientificName'] + '.html'}.")
     return
-
 
 # create website based on current count setting, now to test iSpeciesThisRunCount
 def makeDirectories(MyProject, speciesname, all_or_new):
@@ -88,7 +84,6 @@ def makeDirectories(MyProject, speciesname, all_or_new):
             else: # only species store actual data
                 makeSpeciesDirectory(MyProject, leaf)
     return
-
 
 def AppendChangedFileData(MyProject, firstNewFile):
     # Copy existing FileData 
@@ -118,7 +113,6 @@ def AppendChangedFileData(MyProject, firstNewFile):
     logger.info(f'Data from {len(files_dict)-firstNewFile} files added to {len(files_dict)} and written to {datafilename}')
     return
 
-
 def AppendChangedPictureData(MyProject, firstNewPicture):
     existing_picture_data = MyProject.getMetaDir() + 'active/data_pictures.csv'    
     picturename = MyProject.ReviewFrozen() + "frozen_data_pictures.csv"     # the base our data
@@ -132,13 +126,11 @@ def AppendChangedPictureData(MyProject, firstNewPicture):
     logger.info(f'Data from {len(UniquePictureName_dict)-firstNewPicture} pictures added, total {len(UniquePictureName_dict)} now written to {picturename}')
     return
 
-
 def writeDeleteList(deletelistfilename):
     with open(deletelistfilename, 'w', newline='', encoding='utf-8') as deletecsv:
         for fn in files_to_delete:
             logger.info(f'"{fn}"', file=deletecsv)
     return
-
 
 def main(args, config):
     global starttime, species_dict, debugfile, count
@@ -185,7 +177,6 @@ def main(args, config):
 
     totaltime = time.time() - starttime      
     logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
-
 
 if __name__ == "__main__":
     # get commandline parameters

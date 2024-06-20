@@ -26,7 +26,7 @@ class SpeciesClassification:
     dutch_dict = {}         # all species we have the Dutch name for, points to scientific name
     english_dict = {}       # all species we have the English name for, points to scientific name
 
-    DUMMYSPECIES = ['vogels', 'vogel', 'bird', 'libel', 'libellen', 
+    DUMMYSPECIES = ['vogel', 'vogels', 'bird', 'libel', 'libellen', 'onbekend', 
                     'rups', 'panama', 'californie', 'onbekend', 'sprinkhaan', 'turkey',
                     'blog', 'goodidpicture']
 

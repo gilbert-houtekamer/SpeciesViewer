@@ -41,7 +41,8 @@ def read_file(filename):
             if row['File:FileName'] not in files_dict:
                 files_dict[row['File:FileName']] = row
             else:
-                print(f"Unexpected duplicate file {row['File:FileName']} not added (you ran the same step twice).")
+                print(f"Unexpected duplicate file {row['WindowsFileName']} not added, ")
+                print(f"File was already found here {files_dict[row['File:FileName']]['WindowsFileName']}.")
     print(f'Read EXIF data for {len(files_dict)-filecount} files from CSV file {filename}.')
     return len(files_dict)
 

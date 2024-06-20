@@ -29,13 +29,14 @@ class Repository:
             self.biota_webroot_path = self.config.get('repository', 'BiotaWebRoot')
         else:
             self.config.add_section('repository')
-            self.biota_database_path = self.path / 'db'
+            self.biota_database_path = self.path
             os.makedirs(self.biota_database_path, exist_ok=True)
             self.config.set('repository', 'BiotaDatebase', str(self.biota_database_path))
             self.biota_webroot_path = '/web'
             self.config.set('repository', 'BiotaWebRoot', str(self.biota_webroot_path))
         # root for data repository with all pictures (will be very big)
         self.biota_path = self.path / 'biota'
+        self.admin_path = self.path / 'admin'
         # the metadata describes the data in the repository, and has review subdirectories as specified below
         self.metadata_path = self.path / 'metadata'
         self.web_path = self.metadata_path / 'web'
@@ -56,6 +57,7 @@ class Repository:
 
         # create the required paths
         os.makedirs(self.biota_path, exist_ok=True)
+        os.makedirs(self.admin_path, exist_ok=True)
         os.makedirs(self.metadata_path, exist_ok=True)
         os.makedirs(self.active_path, exist_ok=True)
         os.makedirs(self.review_path, exist_ok=True)
@@ -90,6 +92,7 @@ class Repository:
             self.path,
             self.biota_database_path,
             self.biota_path,
+            self.admin_path,
             self.metadata_path,
             self.web_path,
             self.active_path,

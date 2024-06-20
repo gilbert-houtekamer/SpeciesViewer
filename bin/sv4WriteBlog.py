@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import sys
 import time
+import ghexif.projectlib
 import logging
 
 if __name__ == "__main__":

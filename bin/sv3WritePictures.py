@@ -10,6 +10,7 @@ import time
 from pygbif import species
 from collections import OrderedDict
 from enum import Enum, auto
+from ghexif import SVException
 import logging
 
 if __name__ == "__main__":
@@ -23,7 +24,7 @@ import ghexif
 import ghexif.projectlib
 import ghexif.specieslib
 import ghexif.speciesclassification
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
+from ghexif import COLUMN_NAMES, SELECTED_FIELDS
 from ghexif.csv_columns import PICTURE_FIELDS
 #from ghexif.specieslib import readSpeciesInfo, writeSpeciesInfo, computeRating
 from ghexif.handling import read_file, read_pictures
@@ -31,9 +32,9 @@ from ghexif.specieslib import Level, computeRating, Species
 
 logger = logging.getLogger(__name__)
 
-DUMMYSPECIES = ['vogels', 'vogel', 'bird', 'libel', 'libellen',
-                'rups', 'panama', 'californie', 'onbekend', 'sprinkhaan', 'turkey']
-
+DUMMYSPECIES = ['vogel', 'vogels', 'bird', 'libel', 'libellen', 'onbekend',
+                'rups', 'panama', 'californie', 'onbekend', 'sprinkhaan', 'turkey',
+                'blog', 'goodidpicture']
 
 def CreatePicture(upn):
     PictureRecord = {
@@ -186,6 +187,8 @@ def addSpeciesInformation(sp, firstUPNtoProcess):
                 scientificname = sp.getSpecies(subject_in_jpg)
                 if scientificname == "":       
                     logger.info(f"""The species "{subject_in_jpg}" is not found in the GBIF database as a scientific name for "{upn['UniquePictureName']}".""")
+                elif scientificname == None:
+                    logger.info(f"""Species "{subject_in_jpg}" may have a typo in "{thisfile['WindowsFileName']}", correct it.""")
                 else:
                     try:           
                         species = MyMagic.getSpecies(scientificname)
@@ -258,6 +261,7 @@ def addPicturesToSpecies(sp, firstUPNtoProcess, SpeciesDebug):
     # at least biota must be present
     if 'biota' not in sp.species_dict:
         raise SVException(f"FATAL ERROR: No species found in the project files.")
+        return 12
 
     # Add counters from species to higher levels, tail-recursion works fine
     counters = []
@@ -356,7 +360,7 @@ def main(args, config):
     # logger.info(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
     # totaltime = time.time() - starttime      
     logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
- 
+
 
 if __name__ == "__main__":
     # get commandline parameters

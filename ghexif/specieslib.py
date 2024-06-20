@@ -1,4 +1,5 @@
 import os
+import re
 import csv
 import io
 import time
@@ -6,8 +7,6 @@ from collections import OrderedDict
 
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SPECIES_FIELDS
 from ghexif import files_dict
-import ghexif
-import ghexif.projectlib
 from ghexif.handling import read_file, read_pictures
 
 from enum import Enum, auto
@@ -383,10 +382,10 @@ def computeRating(upn):
     for filename in upn['Files']:
         file = files_dict[filename]
         if file['WindowsExtension'] in ['jpg', 'jpeg'] and file['ImageSize'] != "":
-            width_jpg, heigth_jpg = map(int, file['ImageSize'].split("x"))
+            width_jpg, heigth_jpg = map(int, re.split('[x ]', file['ImageSize']))
             multiplier = float(min(1500, max(width_jpg, heigth_jpg))) / 1500.0
             if upn['ImageSize'] != "":  # should be true
-                width_camera, heigth_camera = map(int, upn['ImageSize'].split("x"))
+                width_camera, heigth_camera = map(int, re.split('[x ]',upn['ImageSize']))
                 if ((width_camera >= (1.5 * width_jpg)) or (heigth_camera >= (1.5 * heigth_jpg))):				# most likely better crop
                     multiplier = multiplier * 1.5
 
@@ -426,7 +425,7 @@ def computeRatingFile(file):
     saved_multiplier = 0.1
     multiplier = 1
     if file['WindowsExtension'] in ['jpg', 'jpeg'] and file['ImageSize'] != "":
-        width_jpg, heigth_jpg = map(int, file['ImageSize'].split("x"))
+        width_jpg, heigth_jpg = map(int, re.split('[x ]', file['ImageSize']))
         multiplier = float(min(1500, max(width_jpg, heigth_jpg))) / 1500.0
     
     saved_multiplier = max(saved_multiplier, multiplier)

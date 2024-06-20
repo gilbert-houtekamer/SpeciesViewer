@@ -5,7 +5,6 @@ import time
 import shutil
 from ghexif.handling import read_file, read_pictures
 from ghexif import files_dict, UniquePictureName_dict
-#import ghexif.websupport
 from ghexif.websupport import getTemplateOutputString
 from ghexif.specieslib import Level
 import ghexif.translatelib

@@ -26,7 +26,6 @@ from ghexif.handling import read_file, read_pictures
 from ghexif.specieslib import Level
 import ghexif.specieslib
 import ghexif.sftplib
-
 logger = logging.getLogger(__name__)
 
 
@@ -119,8 +118,9 @@ def main(args, config):
                                           config.get("repository","BiotaWebRoot"))
     
     if not MyProject.online:
-        raise SVException(f'Internet not online, you cannot commit without an internet connection.')
-
+        print(f'Internet not online, you cannot commit without an internet connection.')
+        sys.exit(16)
+    
     if checkFrozenData(MyProject):
     # move "approved" files to the active directory
         commitProjectFiles(MyProject)
@@ -132,11 +132,10 @@ def main(args, config):
         # TODO rewrite the Blog with active links to species
 
         # remove files that are copied
-        deleteCopiedFiles(MyProject.ReviewFrozen()+"deletelist.csv")
+        #deleteCopiedFiles(MyProject.ReviewFrozen()+"deletelist.csv")
 
     totaltime = time.time() - starttime      
-    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
-
+    logger.info(f'sv7WriteCommit: Total time for all other work {totaltime:.1f} seconds.')
 
 if __name__ == "__main__":
     # get commandline parameters

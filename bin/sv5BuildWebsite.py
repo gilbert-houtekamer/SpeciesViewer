@@ -7,6 +7,7 @@ import time
 from datetime import datetime, date
 from collections import OrderedDict
 import csv
+import ghexif.projectlib
 import logging
 
 if __name__ == "__main__":
@@ -15,14 +16,13 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import ghexif.projectlib
 from ghexif import files_dict, UniquePictureName_dict
 import ghexif
 import ghexif.projectlib
 import ghexif.websupport
 import ghexif.specieslib
 import ghexif.speciesclassification
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
+from ghexif import COLUMN_NAMES, SELECTED_FIELDS
 from ghexif.csv_columns import PICTURE_FIELDS
 from ghexif.specieslib import computeRating, computeRatingFile
 from ghexif.handling import read_file, read_pictures
@@ -69,6 +69,7 @@ def main(args, config):
 
     totaltime = time.time() - thissteptime      
     logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
+
 
 if __name__ == "__main__":
     # get commandline parameters

@@ -26,10 +26,10 @@ class CachedTranslate:
                         self.translation_cache[int(values[0])] = values[1]
 
             self.cachedtranslations = len(self.translation_cache)
-            print(f'Read {self.cachedtranslations} cached translations from CSV file "{cachefile}".')
+            # print(f'Read {self.cachedtranslations} cached translations from CSV file "{cachefile}".')
         else:
             self.cachedtranslations = 0
-            print(f'Translation cache will be created as needed, nothing to read yet.')
+            # print(f'Translation cache will be created as needed, nothing to read yet.')
 
     def writeTranslationCache(self):
         if len(self.translation_cache) > self.cachedtranslations:
@@ -100,4 +100,7 @@ class CachedTranslate:
         if textlanguage.lang == languagein:
             return text
         else:
-            return self.cachedTranslate(text, language=textlanguage.lang)
+            if textlanguage.lang in ['nl','en']:
+                return self.cachedTranslate(text, language=textlanguage.lang)
+            else:
+                return text

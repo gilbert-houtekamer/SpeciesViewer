@@ -26,12 +26,8 @@ from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
 import ghexif.projectlib
 from ghexif.handling import deriveUniquePictureName
 
-# files to exclude because they are not related to pictures
 IGNOREEXTENSIONS = ['txt', 'ico', 'html']
 logger = logging.getLogger(__name__)
-
-def test():
-    logger.info("test in sv2ReadDirExif")
 
 def main(args, config):
     starttime = time.time()
@@ -43,7 +39,7 @@ def main(args, config):
     # logging.basicConfig(level=logging.DEBUG)
     # exiftool.ExifTool.__init__(None, common_args=['-G'])
     with exiftool.ExifToolHelper(
-#        logger=logging.getLogger(__name__), common_args=["-G"]
+        logger=logging.getLogger(__name__), common_args=["-G"]
     ) as et:
         if not os.path.isdir(MyProject.getProjectPath()):
             raise SVException(f"Directory {MyProject.getProjectPath()} cannot be found, or refers to a file.")
@@ -55,9 +51,10 @@ def main(args, config):
             metadata = et.get_metadata(
                 MyProject.getProjectPath(), 
                 params=SELECTED_FIELDS)
-        except:
+        except Exception:
             raise SVException(f"No files found in the directory {MyProject.getProjectPath()}.")
 
+ 
         datafilelocation = MyProject.getMetaDirReview()
         os.makedirs(datafilelocation, exist_ok=True) 
         datafilelocation += "data_files.csv"
