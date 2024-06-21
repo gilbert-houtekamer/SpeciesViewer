@@ -43,9 +43,9 @@ def read_file(filename):
         for row in reader:
             if row['File:FileName'] not in files_dict:
                 files_dict[row['File:FileName']] = row
-            else:
-                logger.info(f"Unexpected duplicate file {row['WindowsFileName']} not added, ")
-                logger.info(f"File was already found here {files_dict[row['File:FileName']]['WindowsFileName']}.")
+            # else:
+            #     logger.info(f"Unexpected duplicate file {row['WindowsFileName']} not added, ")
+            #     logger.info(f"File was already found here {files_dict[row['File:FileName']]['WindowsFileName']}.")
     logger.info(f'Read EXIF data for {len(files_dict)-filecount} files from CSV file {filename}.')
     return len(files_dict)
 
