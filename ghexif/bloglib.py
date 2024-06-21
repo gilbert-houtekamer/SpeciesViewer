@@ -51,13 +51,13 @@ class Blog:
         # handle language versions
         # TODO allow user to edit proposed translation
         self.TitleNl, self.TitleEn = self.mp.ct.getBothLanguages(title_nl, title_en)
-        if message_nl == "" and message_en == "":
-            message_nl = "Elk rondje met de camera levert je nieuwe foto's. Deze blog post toont een aantal planten en/of dieren " + \
-                "van mijn laatste trip, in de achtertuin, met de fiets of op vakantie. " + \
-                "De bedoeling is dat de mooie foto's in de soorten site terecht komen, die je via de links boven kunt vinden."
-            message_en = "Every trip with the camera provides you with new photos. This blog post shows a number of plants and/or animals " \
-                "seen in my last trip, or simply in my backyard or by bike. " \
-                "The intention is that the best photos end up in the my website, organized by species."            
+        # if message_nl == "" and message_en == "":
+        #     message_nl = "Elk rondje met de camera levert je nieuwe foto's. Deze blog post toont een aantal planten en/of dieren " + \
+        #         "van mijn laatste trip, in de achtertuin, met de fiets of op vakantie. " + \
+        #         "De bedoeling is dat de mooie foto's in de soorten site terecht komen, die je via de links boven kunt vinden."
+        #     message_en = "Every trip with the camera provides you with new photos. This blog post shows a number of plants and/or animals " \
+        #         "seen in my last trip, or simply in my backyard or by bike. " \
+        #         "The intention is that the best photos end up in the my website, organized by species."            
         self.MessageNl, self.MessageEn = self.mp.ct.getBothLanguages(message_nl, message_en)
         self.SelectedSpeciesGroup = selectedgroup
         self.OnlyNewSpecies = onlynewspecies

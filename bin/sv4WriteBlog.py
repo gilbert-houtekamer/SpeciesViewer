@@ -45,7 +45,10 @@ def main(args, config):
 
     thissteptime = time.time()    
 
-    blog = ghexif.bloglib.Blog(MyProject, "Foto's", "", "" , "", "biota", False, 5)
+    blog = ghexif.bloglib.Blog(MyProject, \
+            title_nl="Foto's", title_en = "", \
+            message_nl="", message_en="" , \
+            selectedgroup="biota", onlynewspecies=False, minimumscore=5)
     blog.files = files
     blog.pictures = pictures
     blog.password = config.get("websettings","Sftppwd").strip("'")
