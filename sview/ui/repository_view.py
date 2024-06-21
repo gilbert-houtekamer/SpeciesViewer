@@ -9,6 +9,7 @@ from .logging_pane import LoggingPane
 
 import sview
 import sview.model
+from ..model import Repository
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ class RepositoryView(ft.View):
         c = [
             self.sidebar
         ]
-        if sview.svconfig.get_current_repository() == None:
+        if sview.svconfig.get_current_repository() is None:
             title = ""
         else:
             if not sview.svconfig.get_current_repository().validate():
@@ -46,18 +47,26 @@ class RepositoryView(ft.View):
 
 class RepositoryPane(ft.Container):
 
-    def __init__(self, view, page, repo, *args, **kwargs):
+    def __init__(self, view, page, repo: Repository, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.view = view
         self.page = page
         self.repo = repo
 
+        if self.repo.get_last_project() is not None:
+            self.project_path = self.repo.get_last_project()
+        else:
+            self.project_path = sview.svconfig.path
+
         self.select_dir_dialog = ft.FilePicker(
-            on_result=self.dir_selected
+            on_result=self.dir_selected,
         )
+        self.select_dir_dialog.initial_directory=str(self.project_path)
         self.page.overlay.append(self.select_dir_dialog)
-        self.selected_dir = ft.Text()
+        self.selected_dir = ft.Text(str(self.project_path))
+        self.view.path = self.project_path
+
         self.loggingpane = LoggingPane(self.page, sview.loghandler)
 
         self.content = ft.Column(controls=[
@@ -90,10 +99,11 @@ class RepositoryPane(ft.Container):
 
     def dir_selected(self, e: ft.FilePickerResultEvent):
         if e.path is not None:
+            path = Path(e.path)
+            self.repo.set_last_project(path)
+            self.view.path = path
             self.selected_dir.value = e.path
             self.selected_dir.update()
-            self.view.path = Path(e.path)
-
 
     def do_module(self, module_name):
         try:

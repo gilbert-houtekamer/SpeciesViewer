@@ -3,11 +3,11 @@
 *.dng
 *.NEF
 *.csv
+!dist/installation files/*.csv
 
 # python
 __pycache__
 build
-dist
 
 # source code
 venv

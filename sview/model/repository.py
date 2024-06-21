@@ -1,17 +1,18 @@
-import os
+import configparser
 import logging
+import os
 import shutil
 from pathlib import Path
-import configparser
 
+import ghexif.sftplib
 import sview
 from sview.model import SVModelException
-import ghexif.sftplib
 
 logger = logging.getLogger(__name__)
 
+
 class Repository:
-    
+
     def __init__(self, path: Path, name: str = None):
         if not path.exists():
             raise SVModelException(f"repository does not exist: {path}")
@@ -54,10 +55,12 @@ class Repository:
         logger.info(f"Repository {self.name} started")
 
     def set_last_project(self, project_path):
-        self.config.set('projects','last', str(project_path))
+        self.config.set('projects', 'last', str(project_path))
+        with open(self.config_path, 'w') as configfile:
+            self.config.write(configfile)
 
-    def get_last_project(self, project_path):
-        if self.config.has_option('projects','last'):
+    def get_last_project(self) -> Path | None:
+        if self.config.has_option('projects', 'last'):
             p = self.config.get('projects', 'last')
             path = Path(p)
             if path.exists():
@@ -82,15 +85,16 @@ class Repository:
         os.makedirs(self.initspecies_path, exist_ok=True)
         os.makedirs(self.web_path, exist_ok=True)
         os.makedirs(self.web_path / "biota", exist_ok=True)
-        os.makedirs(self.web_path / "biotablog/", exist_ok=True)    # mostly staging
-        os.makedirs(self.web_path / "admin", exist_ok=True)      # mostly staging
+        os.makedirs(self.web_path / "biotablog/", exist_ok=True)  # mostly staging
+        os.makedirs(self.web_path / "admin", exist_ok=True)  # mostly staging
         os.makedirs(self.web_path / "summaries", exist_ok=True)
         os.makedirs(self.web_path / "includes web", exist_ok=True)
 
         # copy the initialization files
         shutil.copy(installation_files / 'empty_species.csv', self.initspecies_path / 'empty_species.csv')
         shutil.copy(installation_files / 'empty_species.csv', self.active_path / 'species.csv')
-        shutil.copy(installation_files / 'initial_speciescollection.csv', self.initspecies_path / 'initial_speciescollection.csv')
+        shutil.copy(installation_files / 'initial_speciescollection.csv',
+                    self.initspecies_path / 'initial_speciescollection.csv')
         shutil.copy(installation_files / 'initial_speciescollection.csv', self.active_path / 'speciescollection.csv')
         shutil.copy(installation_files / 'empty_data_files.csv', self.initspecies_path / 'empty_data_files.csv')
         shutil.copy(installation_files / 'empty_data_files.csv', self.active_path / 'data_files.csv')
@@ -104,7 +108,6 @@ class Repository:
             source = os.path.join(initwebfiles_source, filename)
             target = os.path.join(initwebfiles_target, filename)
             shutil.copy(source, target)
-
 
     def validate(self):
         must_exist = [
@@ -138,7 +141,7 @@ class Repository:
         sftp.safeMkdir(sftp.remotePrefix() + self.biota_webroot_path + '/biotablog')
         sftp.safeMkdir(sftp.remotePrefix() + self.biota_webroot_path + '/admin')
         sftp.safeMkdir(sftp.remotePrefix() + self.biota_webroot_path + '/includes web')
-        fromdir = self.web_path /  "includes web"
+        fromdir = self.web_path / "includes web"
         towebdir = sftp.remotePrefix() + self.biota_webroot_path + '/includes web/'
         sftp.put_r_portable(str(fromdir), towebdir, preserve_mtime=True)
         sftp.disconnect()

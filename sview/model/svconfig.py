@@ -36,7 +36,7 @@ class SVConfig:
     def set_current_repository(self, repo):
         self.current_repo = repo
 
-    def get_current_repository(self):
+    def get_current_repository(self) -> Repository:
         return self.current_repo
 
     def add_repository(self, repo: Repository):
