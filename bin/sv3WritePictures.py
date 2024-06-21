@@ -84,10 +84,10 @@ def UpdatePicture(upn):
     upn["subject"] =           findXMPItem(files, "XMP:Subject")
     upn["Rating"] =            findXMPItem(files, "XMP:Rating")
     upn["Label"] =             findXMPItem(files, "XMP:Label")
-    upn["ImageSize"] =         findCameraItem(files, "ImageSize")
+    if upn["ImageSize"] == "": upn["ImageSize"] = findCameraOrXMPItem(files, "ImageSize")
     upn["JPGSize"] =           findJPGItem(files, "ImageSize")
-    upn["GPSAltitude"] =       findCameraItem(files, "EXIF:GPSAltitude")
-    upn["GPSPosition"] =       findCameraItem(files, "Composite:GPSPosition")
+    if upn["GPSAltitude"] == "": upn["GPSAltitude"] =       findAnySourceItem(files, "EXIF:GPSAltitude")
+    if upn["GPSPosition"] == "": upn["GPSPosition"] =       findAnySourceItem(files, "Composite:GPSPosition")
     upn["Location"] =          findXMPItem(files, "XMP:Location")
     upn["City"] =              findXMPItem(files, "XMP:City")
     upn["State"] =             findXMPItem(files, "XMP:State") 
@@ -95,16 +95,19 @@ def UpdatePicture(upn):
     upn["CameraCreator"] =     readableCameraModel(findXMPItem(files, "CameraModel"))  + " Microcode " + findCameraItem(files, "EXIF:Software")
     upn["JPGCreator"] =        findJPGItem(files, "XMP:CreatorTool")
     upn["CameraModel"] =       readableCameraModel(findXMPItem(files, "CameraModel"))
-    if upn["CameraModel"] == "": upn["CameraModel"] = findCameraItem(files, "CameraMake")
-    upn["LensShortName"] =     findCameraItem(files, "EXIF:LensModel")
-    upn["LensLongName"] =      findCameraItem(files, "Composite:LensID")
-    upn["Settings"] =          findCameraItem(files, "EXIF:ExposureTime") + " sec at F" + findCameraItem(files, "EXIF:FNumber")  \
-             + ", ISO " + findCameraItem(files, "EXIF:ISO") + ", distance " + findCameraItem(files, "MakerNotes:FocusDistance")
+    if upn["CameraModel"] == "": 
+        upn["CameraModel"] = findRawOrJPGItem(files, "CameraMake")
+        if upn["CameraModel"] == "OM Digital Solutions": upn["CameraModel"] = "OM-1"
+    if upn["LensShortName"] == "": upn["LensShortName"] =     findRawOrJPGItem(files, "EXIF:LensModel")
+    if upn["LensLongName"] == "": upn["LensLongName"] =      findRawOrJPGItem(files, "Composite:LensID")
+    upn["Settings"] = findRawOrJPGItem(files, "EXIF:ExposureTime") + " sec at F" + findRawOrJPGItem(files, "EXIF:FNumber")  \
+             + ", ISO " + findRawOrJPGItem(files, "EXIF:ISO") + ", distance " + findRawOrJPGItem(files, "MakerNotes:FocusDistance")
     upn["Description"] =       findXMPItem(files, "XMP:Description")
-    upn["DateTimeOriginal"] =  findCameraItem(files, "EXIF:DateTimeOriginal")
-    if upn["DateTimeOriginal"] == "": upn["DateTimeOriginal"] = findJPGItem(files, "EXIF:DateTimeOriginal")  
+    if upn["DateTimeOriginal"] == "": upn["DateTimeOriginal"] =  findRawOrJPGItem(files, "EXIF:DateTimeOriginal")
     
     if upn["GPSAltitude"] == "undef": 
+        upn["GPSAltitude"] = ""
+
         upn["GPSAltitude"] = ""
 
     return upn
@@ -152,6 +155,13 @@ def findDNGItem(filelist, column):
 # should look at best JPG first!
 def findJPGItem(filelist, column):
     return findBestItem(filelist, column, ("JPG", "JPEG"))
+# first look for a CameraRaw format ("ORF", "NEF", "NRW", "HEIC")
+def findAnySourceItem(filelist, column):
+    return findBestItem(filelist, column, ("ORF", "NEF", "NRW", "HEIC", "JPG", "JPEG", "XMP"))
+def findRawOrJPGItem(filelist, column):
+    return findBestItem(filelist, column, ("ORF", "NEF", "NRW", "HEIC", "JPG", "JPEG"))
+def findCameraOrXMPItem(filelist, column):
+    return findBestItem(filelist, column, ("ORF", "NEF", "NRW", "HEIC", "XMP"))
 
 # more descriptive names
 def readableCameraModel(rawname):
@@ -271,6 +281,62 @@ def addPicturesToSpecies(sp, firstUPNtoProcess, SpeciesDebug):
 
     return 0
 
+# statistics to review how clean the meta data is
+def addMetricsToLog(sp, firstUPNtoProcess):
+    MyProject = sp.getMP()
+    # Add properties for picture
+    processedUPNs = 0
+    NoGPSPos = 0
+    NoLocation = 0
+    NoSpeciesGiven = 0
+    JPGpresent = 0
+    SpeciesJPGCount = {}
+    # count them
+    for upn in list(UniquePictureName_dict.values())[firstUPNtoProcess:]:
+        processedUPNs += 1
+        if upn['GPSPosition'] in ["", None]:
+            NoGPSPos += 1
+        if upn['Location'] in ["", None]:
+            NoLocation += 1
+        if upn['WetSoortNaam'] in ["", None]:
+            NoSpeciesGiven += 1
+        elif upn['WetSoortNaam'] not in SpeciesJPGCount:
+            SpeciesJPGCount[upn['WetSoortNaam']] = 1
+        else:
+            SpeciesJPGCount[upn['WetSoortNaam']] += 1
+        if upn['BestJPG'] != "":
+            JPGpresent += 1
+
+    # report
+    if processedUPNs:
+        if NoGPSPos:
+            logger.warning(f"No GPS specified for          {NoGPSPos:5}  ({int(float(NoGPSPos)/float(processedUPNs)*100)}%) of all images")
+        else:
+            logger.info(f"GPS specified for all {processedUPNs} images")
+        if NoLocation:
+            logger.info(f"No Location specified for     {NoLocation:5}  ({int(float(NoLocation)/float(processedUPNs)*100)}%) of all images")
+        else:
+            logger.info(f"Location specified for all {processedUPNs} images")            
+        if NoSpeciesGiven:
+            logger.warning(f"No Species name specified for {NoSpeciesGiven:5}  ({int(float(NoSpeciesGiven)/float(processedUPNs)*100)}%) of all images")
+        else:
+            logger.info(f"Species name specified for all {processedUPNs} images")
+        logger.info(f"JPG specified for             {JPGpresent:5}  ({int(float(JPGpresent)/float(processedUPNs)*100)}%) of all images")
+           
+        # verify if JPGs are present for each species
+        headerDone = False
+        for species in SpeciesJPGCount:
+            speciesobj = SpeciesJPGCount[species]
+            if speciesobj == 0:
+                if not headerDone:
+                    logger.info("Species for which there are JPGs at all:")
+                    headerDone = True
+                logger.info(f'No JPG created for any image for {species}.')
+                if upn['iPictureCollectionCount'] == 0:
+                    logger.warning(f'Create at least one JPGs for this new species {species}.')
+
+    return 0
+
 def main(args, config):
     global starttime, SpeciesDebug
     starttime = time.time()
@@ -337,6 +403,8 @@ def main(args, config):
     # Collect the JPGs, the best file per picture.
     # Also update counters while we are at it, for all pictures, also the ones without JPGs
     if addPicturesToSpecies(sp, RepositoryPictureCount, SpeciesDebug) > 0: return
+
+    if addMetricsToLog(sp, RepositoryPictureCount) > 0: return    
 
     # Write Picture CSV file
     picturefilename = MyProject.getMetaDirReview() + "data_pictures.csv"
