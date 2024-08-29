@@ -2,16 +2,14 @@ import os
 import shutil
 import time
 from datetime import datetime
-import logging
 
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
+global config
+
+from ghexif import COLUMN_NAMES, SELECTED_FIELDS
 from ghexif import files_dict, UniquePictureName_dict
 from ghexif.handling import UniquePictureName_dict
-from ghexif.specieslib import Level, computeRatingFile
+from ghexif.specieslib import Level, computeRatingFile, getPictureAgeSexePlumage
 import ghexif.projectlib
-
-logger = logging.getLogger(__name__)
-global config
 
 ClassificationGroupName = ["Species","Family", "Order", "Class", "Phylum", "Kingdom", "Biota"]
 ClassificationGroupNameNL = ["Soort", "Familie", "Orde", "Klasse","Stam", "Rijk", "Biota"]
@@ -41,9 +39,9 @@ def getTemplateOutputString(MyProject, species, file, picture, TemplateLine):
                 except:
                     outputLine += '<Failed to handle token ' + token + '>'
                     if species == None:
-                        logger.info(f"Blog index:{'<Failed to handle token ' + token + '>'}")
+                        print(f"Blog index:{'<Failed to handle token ' + token + '>'}")
                     else:
-                        logger.info(f"{species['ScientificName']}:{'<Failed to handle token ' + token + '>'}")
+                        print(f"{species['ScientificName']}:{'<Failed to handle token ' + token + '>'}")
             OddPosition = 1 - OddPosition
         return outputLine
 
@@ -63,8 +61,10 @@ def getFormattedLocation(picture):
     if picture['Location'] == "":
         return getFormattedCityStateCountry(picture)
     else:
+        if picture['Location'] != "" and len(picture['Location']) > 30:
+            return picture['Location']
         if picture['Country'] == "": return picture['Location'];
-        if picture['Location'] == picture['City'] or picture['Location'] == picture['Country']: 
+        if picture['Location'] == picture['City'] or picture['Location'] == picture['Country'] or picture['Location'] == "Unnamed Road": 
             return getFormattedCityStateCountry(picture)
         return picture['Location'] + " (" + getFormattedCityStateCountry(picture) + ")"
 
@@ -74,6 +74,36 @@ def makeLinkScienticficName(MyProject, BiotaWebRoot, classification, workstr):
     else:
         workstr +=  '<a href="' + BiotaWebRoot + classification["TargetPath"] + classification["ScientificName"] + '-' + MyProject.getLanguage() +  '.html\"' + '>\n'
         workstr += '			         ' + classification['ScientificName'] + '</a>'
+    return workstr
+
+# new csv files will have sexe
+def formatSexe(upn):
+    try:
+        if upn['malefemale'] == 'male' or upn['malefemale'] == 'man':
+            return ' ♂'
+        elif upn['malefemale'] == 'female' or upn['malefemale'] == 'vrouw':
+            return ' ♀'
+        elif upn['malefemale'] == 'couple' or upn['malefemale'] == 'paar' or upn['malefemale'] == 'paartje':
+            return ' ♂♀'
+    except:
+        pass
+    return ''
+
+def formatAgePlumage(upn):
+    workstr = ''
+    try:
+        if upn['ageintext'] != '' or upn['summerwinter'] != '':
+            workstr = ' ('
+            if upn['ageintext'] != '': 
+                workstr += upn['ageintext']
+                if upn['summerwinter'] != '':   # unlikely combination
+                    workstr += ', ' + upn['summerwinter']
+            elif upn['summerwinter'] != '':
+                workstr += upn['summerwinter']
+            workstr += ')'
+    except:
+        pass 
+    
     return workstr
 
 def formatToken(tokenno, MyProject, species_param, file, picture):
@@ -106,16 +136,22 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             kingdom_local = MyProject.getSpecies(phylum_local['Up'])  
         elif species_param['Level'] == Level.FAMILY:
             family_local = species_param
-            order_local = MyProject.getSpecies(family_local['Up'])                          
-            class_local = MyProject.getSpecies(order_local['Up'])                  
+            if MyProject.getSpecies(family_local['Up'])['Level'] == Level.CLASS:
+                class_local = MyProject.getSpecies(family_local['Up'])
+            else:
+                order_local = MyProject.getSpecies(family_local['Up'])                          
+                class_local = MyProject.getSpecies(order_local['Up'])    
             phylum_local = MyProject.getSpecies(class_local['Up'])          
             kingdom_local = MyProject.getSpecies(phylum_local['Up'])  
         elif species_param['Level'] == Level.SPECIES:
             # species_local = species_param                         # Already defaulted
             if species_local['Up'] != "":                           # Linked, assume all levels are ok
-                family_local = MyProject.getSpecies(species_local['Up'])           
-                order_local = MyProject.getSpecies(family_local['Up'])                          
-                class_local = MyProject.getSpecies(order_local['Up'])                  
+                family_local = MyProject.getSpecies(species_local['Up']) 
+                if MyProject.getSpecies(family_local['Up'])['Level'] == Level.CLASS:
+                    class_local = MyProject.getSpecies(family_local['Up'])
+                else:
+                    order_local = MyProject.getSpecies(family_local['Up'])                          
+                    class_local = MyProject.getSpecies(order_local['Up'])                  
                 phylum_local = MyProject.getSpecies(class_local['Up'])          
                 kingdom_local = MyProject.getSpecies(phylum_local['Up'])  
     try:
@@ -217,10 +253,14 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 41:
             if picture['Description'] != "":
                 language = MyProject.getLanguage()          # intended language
+                if picture['Description'][0:1] == "#":
+                    picttext = picture['Description'][1:]
+                else:
+                    picttext = picture['Description']
                 try:
-                    workstr = MyProject.ct.getOneLanguage(picture['Description'], language)
+                    workstr = MyProject.ct.getOneLanguage(picttext, language)
                 except:
-                    workstr = picture['Description']
+                    workstr = picttext
             else:
                 workstr =  ""          
             return workstr
@@ -356,6 +396,9 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             filesfound = 0
             # a smarter selection is useful, especially to avoid very similar pictures
             # sort species_param['JPGmap'] by rating and JPGname
+            # print(f"{species_param['EnglishName']}")
+            # if species_param['EnglishName'] == "three-banded plover":
+            #     filesfound = 0
             rateorder = {}
             for JPGname in list(species_param['JPGmap']):
                 JPGname_no_path = files_dict[os.path.basename(JPGname)]
@@ -366,12 +409,18 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             # make sure only use the first occurrance of an UPN, which is the best (ie, with the highest rate)
             usedUPNs = {}
             rejectUPNs = 0
-            # logger.info(f'{len(sorted_items)} JPGs for {species_param['DutchName']}/{species_param['ScientificName']} with {len(species_param['JPGmap'])}')
+            # print(f'{len(sorted_items)} JPGs for {species_param['DutchName']}/{species_param['ScientificName']} with {len(species_param['JPGmap'])}')            
             for (rating, JPGname) in sorted_items:
                 JPGname_no_path = files_dict[os.path.basename(JPGname)]
                 if (JPGname_no_path != "") and (JPGname_no_path['UniquePictureName'] not in usedUPNs.keys()):
                     # do we have a picture close to it?
-                    JPGtime = datetime.strptime(JPGname_no_path['EXIF:DateTimeOriginal'], "%Y:%m:%d %H:%M:%S")
+                    try:
+                        JPGtime = datetime.strptime(JPGname_no_path['EXIF:DateTimeOriginal'], "%Y:%m:%d %H:%M:%S")
+                    except:
+                        try:
+                            JPGtime = datetime.strptime(UniquePictureName_dict[JPGname_no_path['UniquePictureName']]['DateTimeOriginal'], "%Y:%m:%d %H:%M:%S")
+                        except:
+                            JPGtime = ''
                     dropit = False
                     for UPNshownsofar in usedUPNs:
                         showntime = usedUPNs[UPNshownsofar]
@@ -380,7 +429,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     # more conditions we can try
 
                     if not dropit:
-                        usedUPNs[JPGname_no_path['UniquePictureName']] = datetime.strptime(JPGname_no_path['EXIF:DateTimeOriginal'], "%Y:%m:%d %H:%M:%S")
+                        usedUPNs[JPGname_no_path['UniquePictureName']] = JPGtime
                         for line in MyProject.getTemplateLines("vogelfoto.html"):
                             workstr += getTemplateOutputString(MyProject, species_param, JPGname_no_path,
                                                                 UniquePictureName_dict[JPGname_no_path['UniquePictureName']], line)
@@ -394,84 +443,121 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                         rejectUPNs += 1
 
                 if (filesfound == 4):
-                    #logger.info(f'Quit {species_param['DutchName']} after 4 images, {rejectUPNs} rejected.')
+                    #print(f'Quit {species_param['DutchName']} after 4 images, {rejectUPNs} rejected.')
                     return workstr
-            #logger.info(f'Quit {species_param['DutchName']} after {filesfound} images, {rejectUPNs} rejected.')
+            #print(f'Quit {species_param['DutchName']} after {filesfound} images, {rejectUPNs} rejected.')
             return workstr
-        elif tokenno == 110:         # blog achtige samenvatting
+        elif tokenno == 110 or tokenno == 113:         # blog achtige samenvatting
+            language = 'nl' if tokenno == 113 else 'en'
+            # step 1: collect selected species
+            selected_dict = {}
+            addSpeciesToSummaryPost(MyProject, species_param['ScientificName'], selected_dict, "oneblogphoto-" + language + ".html")
+            # step 2: sort by time taken picture
+            time_sorted_dict = {}
+            for key in sorted(selected_dict, key=selected_dict.get):
+                time_sorted_dict[key] = selected_dict[key]
+            # step 3: generate the webpage
             workstr = ""
-            workstr = addSpeciesToSummaryPost(MyProject, species_param['ScientificName'], workstr, "oneblogphoto-en.html")
+            for upn in time_sorted_dict:
+                workstr = makeWebSummaryPost(MyProject, upn, workstr, "oneblogphoto-" + language + ".html")
+            # return HTML to caller to put in webpage
             return workstr
         elif tokenno == 111:         # Nederlandse tekst
+            # mogelijke tekst
+            suppressnames = False
+            if picture['Description'] != "":
+                if picture['Description'][0:1] == "#":
+                    suppressnames = True
+            workstr =  ""             
             if kingdom_local == {}:
-                workstr = "De foto toont de omgeving." 
+                workstr += "De foto toont de omgeving." 
             else:
-                workstr = "De foto toont een "
-                if species_local['DutchName'] != "":
-                    workstr += species_local['DutchName'].capitalize() + " (<i>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</i>). "
-                else:
-                    workstr += "<i>" + species_local['ScientificName'].capitalize() + "</i>. "
-                workstr += "Het is een "
-                if kingdom_local['ScientificName'] == "animalia":
-                    if class_local['ScientificName'] == "aves":
-                        workstr += "vogel"
-                    elif class_local['ScientificName'] == "insecta":
-                        workstr += "insect" 
-                    else:                
-                        workstr += "dier" 
-                elif kingdom_local['ScientificName'] == "fungi":
-                    workstr += "schimmel"
-                else:
-                    workstr += "plant"
-                workstr += " uit de orde van de <i>"
-                workstr = makeLinkScienticficName(MyProject, BiotaWebRoot, order_local, workstr)
-                workstr += "</i> en de familie <i>"
-                workstr = makeLinkScienticficName(MyProject, BiotaWebRoot, family_local, workstr)
-                workstr +=  "</i>."
-                parsed_date = datetime.strptime(file["EXIF:DateTimeOriginal"][0:10], '%Y:%m:%d') 
-                workstr += " De foto is genomen "
-                if getFormattedLocation(picture) != "":
-                    workstr += " bij " + getFormattedLocation(picture) 
-                workstr += " om " + file["EXIF:DateTimeOriginal"][11:16] + " op " + parsed_date.strftime('%d %b, %Y').lower()  + "."
+                # species and relationship
+                if not (species_local['ScientificName'][0:5] == "homo " or suppressnames):                
+                    workstr += "De foto toont een "
+                    if species_local['DutchName'] != "":
+                        workstr += species_local['DutchName'].capitalize() + " (<i>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</i>). "
+                    else:
+                        workstr += "<i>" + species_local['ScientificName'].capitalize() + "</i>. "
+                    workstr += "Het is een "
+                    if kingdom_local['ScientificName'] == "animalia":
+                        if class_local['ScientificName'] == "aves":
+                            workstr += "vogel"
+                        elif class_local['ScientificName'] == "insecta":
+                            workstr += "insect" 
+                        else:                
+                            workstr += "dier" 
+                    elif kingdom_local['ScientificName'] == "fungi":
+                        workstr += "schimmel"
+                    else:
+                        workstr += "plant"
+                    if order_local == {}:
+                        workstr += " uit de klasse van de <i>"
+                        workstr = makeLinkScienticficName(MyProject, BiotaWebRoot, class_local, workstr)
+                    else:
+                        workstr += " uit de orde van de <i>"
+                        workstr = makeLinkScienticficName(MyProject, BiotaWebRoot, order_local, workstr)
+                    workstr += "</i> en de familie <i>"
+                    workstr = makeLinkScienticficName(MyProject, BiotaWebRoot, family_local, workstr)
+                    workstr +=  "</i>."
+                # location                    
+                try:
+                    parsed_date = datetime.strptime(file["EXIF:DateTimeOriginal"][0:10], '%Y:%m:%d') 
+                    workstr += " De foto is genomen "
+                    if getFormattedLocation(picture) != "":
+                        workstr += " bij " + getFormattedLocation(picture) 
+                    workstr += " om " + file["EXIF:DateTimeOriginal"][11:16] + " op " + parsed_date.strftime('%d %b, %Y').lower()  + "."
+                except:
+                    pass
             return workstr        
         elif tokenno == 112:         # Engelse tekst
+            suppressnames = False
+            if picture['Description'] != "":
+                if picture['Description'][0:1] == "#":
+                    suppressnames = True
+            workstr =  ""   
             if kingdom_local == {}:
                 workstr = "The photo shows the environment." 
             else:
-                workstr = "The photo shows a "
-                if species_local['EnglishName'] != "":
-                    workstr += species_local['EnglishName'].capitalize() + \
-                        " (<i>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</i>). "
-                else:
-                    workstr += "<i>" + species_local['ScientificName'].capitalize() + "</i>. "
-                workstr += "It is a "
-                if kingdom_local['ScientificName'] == "animalia":
-                    if class_local['ScientificName'] == "aves":
-                        workstr += "bird"
-                    elif class_local['ScientificName'] == "insecta":
-                        workstr += "insect" 
-                    else:                
-                        workstr += "animal" 
-                elif kingdom_local['ScientificName'] == "fungi":
-                    workstr += "fungus"
-                else:
-                    workstr += "plant"
-                workstr += " in the order <i>"
-                workstr = makeLinkScienticficName(MyProject, BiotaWebRoot, order_local, workstr)
-                workstr += "</i> and the family <i>"
-                workstr = makeLinkScienticficName(MyProject, BiotaWebRoot, family_local, workstr)
-                workstr +=  "</i>."
-                parsed_date = datetime.strptime(file["EXIF:DateTimeOriginal"][0:10], '%Y:%m:%d') 
-                workstr += " The photo was taken "
-                if getFormattedLocation(picture) != "":
-                    workstr += " at " + getFormattedLocation(picture)
-                workstr += " at " + file["EXIF:DateTimeOriginal"][11:16] + " on " + parsed_date.strftime('%A %B %d, %Y')  + "."
-                 
+                # species and relationship
+                if not (species_local['ScientificName'][0:5] == "homo " or suppressnames):     
+                    workstr = "The photo shows a "
+                    if species_local['EnglishName'] != "":
+                        workstr += species_local['EnglishName'].capitalize() + \
+                            " (<i>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</i>). "
+                    else:
+                        workstr += "<i>" + species_local['ScientificName'].capitalize() + "</i>. "
+                    workstr += "It is a "
+                    if kingdom_local['ScientificName'] == "animalia":
+                        if class_local['ScientificName'] == "aves":
+                            workstr += "bird"
+                        elif class_local['ScientificName'] == "insecta":
+                            workstr += "insect" 
+                        else:                
+                            workstr += "animal" 
+                    elif kingdom_local['ScientificName'] == "fungi":
+                        workstr += "fungus"
+                    else:
+                        workstr += "plant"
+                    if order_local == {}:
+                        workstr += " in the class <i>"
+                        workstr = makeLinkScienticficName(MyProject, BiotaWebRoot, class_local, workstr)
+                    else:
+                        workstr += " in the order <i>"
+                        workstr = makeLinkScienticficName(MyProject, BiotaWebRoot, order_local, workstr)
+                    workstr += "</i> and the family <i>"
+                    workstr = makeLinkScienticficName(MyProject, BiotaWebRoot, family_local, workstr)
+                    workstr +=  "</i>."
+                # location
+                try:
+                    parsed_date = datetime.strptime(file["EXIF:DateTimeOriginal"][0:10], '%Y:%m:%d') 
+                    workstr += " The photo was taken "
+                    if getFormattedLocation(picture) != "":
+                        workstr += " at " + getFormattedLocation(picture)
+                    workstr += " at " + file["EXIF:DateTimeOriginal"][11:16] + " on " + parsed_date.strftime('%A %B %d, %Y')  + "."
+                except:
+                    pass
             return workstr    
-        elif tokenno == 113:         # blog achtige samenvatting
-            workstr = ""
-            workstr = addSpeciesToSummaryPost(MyProject, species_param['ScientificName'], workstr, "oneblogphoto-nl.html")
-            return workstr
         elif tokenno == 114:
             return MyProject.getBiotaBlogLanguageSwitch().lower()
         elif tokenno == 115:
@@ -493,7 +579,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             workstr = ''
             for logname in MyProject.Blog.getBlogDictSortedKeys():
                 blog = MyProject.Blog.getBlog(logname)
-                # logger.info(f'Logname {logname} {blog["BestJPGs"][0]}')
+                # print(f'Logname {logname} {blog["BestJPGs"][0]}')
                 workstr += '   <div class="w3-row" style="margin: 15px">\n'
                 workstr += '      <div class="w3-col w3-win8-olive" style="width:30%">\n'
                 if blog["BestJPGs"] == []:
@@ -501,7 +587,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 else:
                     workstr += f'          <a href="{logname}-nl.html"><img\n'
                     workstr += '            src="' + logname + '/' + blog["BestJPGs"][0] + '"\n'
-                    workstr += '            class="w3-border" style="padding:8px;max-width:100%"></a>\n'
+                    workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to open "' + blog["title_" + language] + '""></a>\n'
                 workstr += '      </div>\n'
                 workstr += '      <div class="w3-col" style="width:70%">\n'
                 workstr += '        <div class="content" style="margin-left:10px">\n'
@@ -517,7 +603,10 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     workstr += '              <th>Soorten</th><td>' + blog["SelectedGroup"].capitalize() + '</td>\n'
                     workstr += '            </tr>\n'
                 workstr += '            <tr>\n'
-                workstr += '              <th>Datum:</th><td>' + blog["blog"][14:24] + '</td>\n'
+                if language == 'nl':
+                    workstr += '              <th>Datum:</th><td>' + blog["blog"][14:24] + '</td>\n'
+                else:
+                    workstr += '              <th>Date:</th><td>' + blog["blog"][14:24] + '</td>\n'
                 workstr += '            </tr>\n'                  
                 workstr += '          </table>\n'
                 workstr += '        </div>\n'
@@ -529,14 +618,19 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             else: languageName = 'EnglishName'   
 
             if species_local[languageName] != "":
-                workstr = species_local[languageName].capitalize() + " <br><i><small>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</small></i></br>"
+                workstr = species_local[languageName].capitalize() + formatSexe(picture) + formatAgePlumage(picture) + \
+                   " <br><i><small>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</small></i></br>"
             else:
                 workstr = "<i>" + species_local['ScientificName'].capitalize() + "</i>"
             return workstr
+        elif tokenno == 126:
+            w =  MyProject.Blog.getColumnWidth()
+            return str(w)
         else:
             return '<token ' + tokenno + '>'
     except:
-        raise SVException(f"{species_param['ScientificName']}:{'<Failed to handle token ' + tokenno + '>'}")
+        print(f"{species_param['ScientificName']}:{'<Failed to handle token ' + tokenno + '>'}")
+        return '<Failed to handle token '  + tokenno + '>'
 
 # create overview page for all species, in order of classification
 def addAllSpeciesPage(MyProject, speciesname, textCreated):
@@ -572,7 +666,7 @@ def addAllSpeciesPage(MyProject, speciesname, textCreated):
 # create summary page, that should become Wordpress
 # also test best picture function.
 # the first def is recursively calling itself, the second is the package
-def addSpeciesToSummaryPost(MyProject, speciesname, textCreated, templatehtml):
+def addSpeciesToSummaryPost(MyProject, speciesname, selected_species, templatehtml):
     species = MyProject.sp.species_dict[speciesname]
     for leaf in species['Leaves']:
         species = MyProject.sp.species_dict[leaf]
@@ -581,19 +675,67 @@ def addSpeciesToSummaryPost(MyProject, speciesname, textCreated, templatehtml):
                 if MyProject.Blog.getSelectedSpeciesGroup() in species['TargetPath'] and \
                    (MyProject.Blog.getOnlyNewSpecies() and int(species['iSpeciesThisRunCount']) > 0) or (not MyProject.Blog.OnlyNewSpecies) and \
                    MyProject.Blog.getMinimumScore() <= species['currentHighestRating']:                 # Last is BUGBUG if high score is from past??
-                #textCreated += f"Create page for {species['ScientificName']} - {species['DutchName']} - {species['currentHighestRating']}\n"
-                    filedata = files_dict[species['BestJPG']]
+                    # save picture species and time 
+                    # BUGBUG we should remember a picture in the right time window
                     picturedata = UniquePictureName_dict[species['BestUPN']]
-                    MyProject.Blog.addBestJPG(filedata)
-                    # logger.info(f"Picture {picturedata['NLSoortNaam']} {picturedata['UniquePictureName']} {picturedata['Description']}")
-                    for rawline in MyProject.getTemplateLines(templatehtml):
-                        textCreated += getTemplateOutputString(MyProject, species, filedata, picturedata, rawline.rstrip('\n')) + "\n"
-                    # copy a picture in subdirectory, named after file
-                    sourcestr = filedata['WindowsFileName']
-                    targetstr = MyProject.getBiotaBlogDir() + MyProject.Blog.getBlogDay() + '/' + filedata['File:FileName']
-                    #logger.info(f'from {sourcestr} to {targetstr}')
-                    if not MyProject.getSkipJPGs():
-                        shutil.copy(sourcestr, targetstr)
+                    selected_species[species['BestUPN']] = picturedata['DateTimeOriginal']
             else:
-                textCreated = addSpeciesToSummaryPost(MyProject, leaf, textCreated, templatehtml)
+                addSpeciesToSummaryPost(MyProject, leaf, selected_species, templatehtml)
+    return
+
+# species['iPictureThisRunCount'] tells me if the picture is seen for this species, but we do not yet
+# know what is best picture for that species, because that use the overall best picture.  Also, that
+# does not include male/female info.
+# so ... we need a more complex algorithm:
+# 1. Inspect the pictures with JPGs within the time window (from blog.from_time/last_time)
+# 2. Add the "getPictureAgeSexePlumage" to the name for uniqueness, 
+#    so one species can generate two pictures (adult/juv, male/female, breeding)
+# 3. sort the best pictures of each type
+# 4.
+def makeWebSummaryPost(MyProject, upn, textCreated, templatehtml):
+    # get the species name that indirectly
+    picturedata = UniquePictureName_dict[upn]
+    species_scientific_name = picturedata['WetSoortNaam']
+    species = MyProject.sp.species_dict[species_scientific_name]
+    
+    candidate_jpgs = {}
+
+    for upn_iter in UniquePictureName_dict:
+        upn_item = UniquePictureName_dict[upn_iter]
+         # select only this species, that have a JPG, and that are within this time range 
+        if upn_item['WetSoortNaam'] == species_scientific_name:
+            if upn_item['BestJPG'] != "":
+                if upn_item['DateTimeOriginal'] >= MyProject.Blog.from_time and upn_item['DateTimeOriginal'] <= MyProject.Blog.last_time:
+                    sortname = species_scientific_name + getPictureAgeSexePlumage(upn_item)
+                    info = [upn_item['BestJPG'], upn_item['Rate']]; 
+                    if sortname in candidate_jpgs:
+                        candidate_jpgs[sortname].append(info)
+                    else:
+                        candidate_jpgs[sortname] = [info]
+    # see if we have different sex / age / plumage, pick the best for each one
+    if len(candidate_jpgs) > 0:
+        for candidate in candidate_jpgs:               # the best JPG for every candidate
+            bestitem = candidate_jpgs[candidate][0]
+            if len(candidate_jpgs[candidate])>1:
+                for item in candidate_jpgs[candidate][1:]:
+                    if bestitem[1] < item[1]:
+                        bestitem = item
+            print(candidate, bestitem[0], bestitem[1])
+
+            filedata = files_dict[bestitem[0]]
+            picturedata = UniquePictureName_dict[filedata['UniquePictureName']]
+            # filedata = files_dict[species['BestJPG']]
+            # picturedata = UniquePictureName_dict[species['BestUPN']]
+            MyProject.Blog.addBestJPG(filedata)
+            # print(f"Picture {picturedata['NLSoortNaam']} {picturedata['UniquePictureName']} {picturedata['Description']}")
+            for rawline in MyProject.getTemplateLines(templatehtml):
+                textCreated += getTemplateOutputString(MyProject, species, filedata, picturedata, rawline.rstrip('\n')) + "\n"
+            # copy a picture in subdirectory, named after file
+            sourcestr = filedata['WindowsFileName']
+            targetstr = MyProject.getBiotaBlogDir() + MyProject.Blog.getBlogDay() + '/' + filedata['File:FileName']
+            #print(f'from {sourcestr} to {targetstr}')
+            if not MyProject.getSkipJPGs():
+                shutil.copy(sourcestr, targetstr)
+            if MyProject.getLanguage() == 'en':
+                print(f"Rated {species['currentHighestRating']:3}  {species['EnglishName']:32}  Species path {species['TargetPath']}")
     return textCreated

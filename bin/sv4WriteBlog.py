@@ -5,15 +5,24 @@ from pathlib import Path
 import sys
 import time
 import ghexif.projectlib
-import logging
 
-if __name__ == "__main__":
-    scriptpath = os.path.dirname(__file__)
-    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-    os.chdir(modpath)
-    sys.path.append(modpath)
+INI_LOCATION = "svconfig.ini"
 
-from ghexif import files_dict, UniquePictureName_dict, SVException
+# pass ini file to module
+parser = argparse.ArgumentParser(description="Web site Demo.")
+parser.add_argument(
+    "--config",
+    type=str,
+    default=os.environ.get("GHCONFIG", "/etc/ghconfig.ini"),
+    help="Gilbert Houtekamer configuration file",
+)
+args = parser.parse_args()
+scriptpath = os.path.dirname(__file__)
+modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
+os.chdir(modpath)
+sys.path.append(modpath)
+
+from ghexif import files_dict, UniquePictureName_dict
 import ghexif
 import ghexif.projectlib
 import ghexif.specieslib
@@ -22,15 +31,23 @@ import ghexif.sftplib
 import ghexif.specieslib
 import ghexif.translatelib
 import ghexif.bloglib
-
-logger = logging.getLogger(__name__)
+from ctypes import *
 
 global online
 
+def getUTF8(blogconfig, ansistring):
+    workstr = blogconfig.get("blog_text", ansistring)
+    workstr = workstr.encode('latin1').decode('utf-8')
+    workstr = workstr.replace("<female>", "♀")
+    workstr = workstr.replace("<male>", "♂")        
+    return workstr
 
-def main(args, config):
-    global starttime
+def main(args):
+    global starttime, config
     starttime = time.time()
+    # read ini file
+    config = configparser.ConfigParser()
+    config.read(INI_LOCATION)
 
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
                                           config.get("project","PictureDirectory"),
@@ -41,16 +58,41 @@ def main(args, config):
     sp = ghexif.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)   
 
-    files, pictures = MyProject.readProject()
+    files, pictures, from_time, last_time = MyProject.readProject()
 
-    thissteptime = time.time()    
+    thissteptime = time.time() 
 
-    blog = ghexif.bloglib.Blog(MyProject, \
-            title_nl="Foto's", title_en = "", \
-            message_nl="", message_en="" , \
-            selectedgroup="biota", onlynewspecies=False, minimumscore=5)
+    bloginifile = MyProject.getProjectPath() + "/blog.ini"
+    if os.path.exists(bloginifile):
+        # create a separete config instance
+        blogconfig = configparser.ConfigParser()
+        blogconfig.read(bloginifile)
+        # set the parameters
+        only_new = blogconfig.getboolean("blog_config","only_new")
+        minimum_score = blogconfig.getint("blog_config","minimum_score")
+        blog_column_width = blogconfig.getint("blog_config","column_width")
+        selectspecies= blogconfig.get("blog_selection","species")
+        titel = getUTF8(blogconfig,"titel_nl")
+        message = getUTF8(blogconfig,"message_nl")
+        titel_en = getUTF8(blogconfig,"titel_en")
+        message_en = getUTF8(blogconfig,"message_en")
+
+    else:
+        only_new = False
+        minimum_score = 25
+        blog_column_width = 300        
+        selectspecies = "biota"
+
+        titel = "Standaard titel"
+        message = "Hier komt het verhaaltje"
+        titel_en = ""
+        message_en = ""
+    blog = ghexif.bloglib.Blog(MyProject, titel, titel_en, message, message_en, selectspecies, only_new, minimum_score)
     blog.files = files
     blog.pictures = pictures
+    blog.from_time = from_time
+    blog.last_time = last_time    
+    blog.setColumnWidth(blog_column_width)
     blog.password = config.get("websettings","Sftppwd").strip("'")
     sftp = blog.openSFTP(blog.password)
 
@@ -63,7 +105,7 @@ def main(args, config):
     MyProject.setSkipJPGs(False)
 
     blog.write_BlogAdmin()
-    logger.info(f"""Created summary blog in "{MyProject.getBiotaBlogWeb() + blog.getBlogDay() + '/'}" in Dutch and English versions.""")
+    print(f"""Created summary blog in "{MyProject.getBiotaBlogWeb() + blog.getBlogDay() + '/'}" in Dutch and English versions.""")
     blog.updateIndexPage()
 
     if MyProject.online:
@@ -76,21 +118,7 @@ def main(args, config):
     blog.mp.ct.writeTranslationCache()
      
     totaltime = time.time() - starttime      
-    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
-
+    print(f'sv4WriteBlog: Total time for all other work {totaltime:.1f} seconds.')
 
 if __name__ == "__main__":
-    # get commandline parameters
-    parser = argparse.ArgumentParser(description="sv4WriteBlog.")
-    args = parser.parse_args()
-    # get configuration
-    INI_LOCATION = "svconfig.ini"
-    config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
-    # call the actual code
-    try:
-        main(args, config)
-    except Exception as e:
-        logger.warning(f"sv4WriteBlog failed: {e}")
-    else:
-        logger.info("sv4WriteBlog succeeded")
+     main(parser.parse_args())

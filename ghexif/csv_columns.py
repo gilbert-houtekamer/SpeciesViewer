@@ -111,5 +111,8 @@ PICTURE_FIELDS = [
     "TargetPath",
     "Description",
     "Files",
-    "DateTimeOriginal"
+    "DateTimeOriginal",
+    "malefemale",
+    "ageintext",
+    "summerwinter",    
 ]

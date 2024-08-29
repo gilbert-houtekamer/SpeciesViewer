@@ -4,9 +4,8 @@ from pathlib import Path
 import csv
 from datetime import datetime, date
 from collections import OrderedDict
-import logging
-
 import ghexif.projectlib
+
 from ghexif import files_dict
 import ghexif
 import ghexif.projectlib
@@ -16,8 +15,7 @@ import ghexif.sftplib
 from ghexif.websupport import getTemplateOutputString
 import ghexif.translatelib
 from ghexif.handling import parseListFromCSV
-
-logger = logging.getLogger(__name__)
+from ghexif.specieslib import Level
 
 class Blog:
     blog_dict = {} 
@@ -27,10 +25,12 @@ class Blog:
     mp = None
     files = 0
     pictures = 0
+    from_time = ""
+    last_time = ""
 
     new_blog_row = {'blog':"", 
-                    'title_nl':"Foto's van ", 
-                    'title_en':'Photos from ', 
+                    'title_nl':"Foto's van de laatste 12 jaar", 
+                    'title_en':'Photos from the last 12 years', 
                     'message_nl':'',
                     'message_en':'',
                     'Project':'',
@@ -50,15 +50,16 @@ class Blog:
         # settings that need to be provided (nl/uk should be Googletranslated)
         # handle language versions
         # TODO allow user to edit proposed translation
-        self.TitleNl, self.TitleEn = self.mp.ct.getBothLanguages(title_nl, title_en)
-        # if message_nl == "" and message_en == "":
-        #     message_nl = "Elk rondje met de camera levert je nieuwe foto's. Deze blog post toont een aantal planten en/of dieren " + \
-        #         "van mijn laatste trip, in de achtertuin, met de fiets of op vakantie. " + \
-        #         "De bedoeling is dat de mooie foto's in de soorten site terecht komen, die je via de links boven kunt vinden."
-        #     message_en = "Every trip with the camera provides you with new photos. This blog post shows a number of plants and/or animals " \
-        #         "seen in my last trip, or simply in my backyard or by bike. " \
-        #         "The intention is that the best photos end up in the my website, organized by species."            
-        self.MessageNl, self.MessageEn = self.mp.ct.getBothLanguages(message_nl, message_en)
+        if self.mp.ct == None:
+            self.TitleNl = title_nl
+            if title_en == "": self.TitleEn = title_nl
+            else: self.TitleEn = title_en
+            self.MessageNl = title_nl
+            if message_en == "": self.MessageEn = message_nl
+            else: self.MessageEn = message_nl
+        else:
+            self.TitleNl, self.TitleEn = self.mp.ct.getBothLanguages(title_nl, title_en)
+            self.MessageNl, self.MessageEn = self.mp.ct.getBothLanguages(message_nl, message_en)
         self.SelectedSpeciesGroup = selectedgroup
         self.OnlyNewSpecies = onlynewspecies
         self.MinimumScore = minimumscore
@@ -87,8 +88,10 @@ class Blog:
         return self.blog_dict[blogname]
     def addBlog(self, row):
         self.blog_dict[row['blog']] = row
+        return
     def setBlogHeader(self, headers):
         self.blog_csv_headers = self.new_blog_row.keys()
+        return
     def getBlogHeader(self):
         return self.blog_csv_headers 
     def getBlogAdminFile(self):
@@ -112,6 +115,11 @@ class Blog:
     def addBestJPG(self, BestJPG):
         if BestJPG['File:FileName'] not in self.BestJPGs:
             self.BestJPGs.append(BestJPG['File:FileName'])
+    def setColumnWidth(self, cw):
+        self.column_width = cw
+        return
+    def getColumnWidth(self):
+        return self.column_width
 
     def prepareBlogCreation(self, sftp):
         # get existing and new name, and store it
@@ -121,8 +129,8 @@ class Blog:
         # does it exist? do we want to update admin?
         if not self.existBlog(self.getBlogDay()):
             self.new_blog_row['blog'] = self.blogday
-            self.new_blog_row['title_nl'] = "Foto's van "+today[14:]
-            self.new_blog_row['title_en'] = "Photos from "+today[14:]
+            self.new_blog_row['title_nl'] = self.TitleNl
+            self.new_blog_row['title_en'] = self.TitleEn
             self.new_blog_row['message_nl'] = self.MessageNl
             self.new_blog_row['message_en'] = self.MessageEn
             self.new_blog_row['Project'] = self.mp.ProjectName()
@@ -156,18 +164,12 @@ class Blog:
         # 1. get the file from disk first
         try:
             with io.open(self.getBlogAdminFile(), mode="r", newline="", encoding='utf-8') as csvfile:
-                # Read the first line (header) to get column names, and store for write
-                header = csvfile.readline().strip().split(';')
-                self.setBlogHeader(header)
-                # columns that need special treatment
-                # read line by line
-                for line in csvfile:
-                    # Split the line by semicolon
-                    values = line.strip().split(';')
-                    row_dict = {col: value for col, value in zip(header, values)}
-                    if row_dict['blog'] != "":
-                        row_dict['BestJPGs'] = parseListFromCSV(row_dict['BestJPGs'])
-                        self.addBlog(row_dict)
+                reader = csv.DictReader(csvfile, quoting=csv.QUOTE_STRINGS, delimiter=';')
+                #fieldnames=self.new_blog_row.keys(), 
+                for row in reader:
+                    if row['blog'] != "":
+                        row['BestJPGs'] = parseListFromCSV(row['BestJPGs'])
+                        self.addBlog(row)
         except:
             pass    # no blogs yet, that's fine
         # 2. next get the file from the FTP server
@@ -192,10 +194,10 @@ class Blog:
     # write back 
     def write_BlogAdmin(self):
         # Write Picture CSV file
-        logger.info(f'Write all blog data in CSV file "{self.getBlogAdminFile()}".')
+        print(f'Write all blog data in CSV file "{self.getBlogAdminFile()}".')
         with open(self.getBlogAdminFile(), "w", newline="", encoding='utf-8') as csvfile:
             # needed to get column in order          
-            writer = csv.DictWriter(csvfile, fieldnames=self.new_blog_row.keys(), quoting=csv.QUOTE_MINIMAL, delimiter=';')
+            writer = csv.DictWriter(csvfile, fieldnames=self.new_blog_row.keys(), quoting=csv.QUOTE_STRINGS, delimiter=';')
             writer.writeheader()
 
             for blogitem in self.blog_dict:
@@ -286,17 +288,17 @@ class Blog:
         biotablog = MyProject.getBiotaBlogDir()
         fromfile = biotablog + self.getBlogDay() + '-nl.html'
         toweb = sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + self.getBlogDay() + '-nl.html'
-        # logger.info(f'{fromfile} to {toweb}')
+        # print(f'{fromfile} to {toweb}')
         sftp.upload(fromfile, toweb)
         sftp.upload(fromfile.replace('-nl','-en'), toweb.replace('-nl','-en'))
         fromfile = biotablog + 'blog index-nl.html'
         toweb = sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + 'blog index-nl.html'
-        # logger.info(f'{fromfile} to {toweb}')
+        # print(f'{fromfile} to {toweb}')
         sftp.upload(fromfile, toweb)
         sftp.upload(fromfile.replace('-nl','-en'), toweb.replace('-nl','-en'))
         fromdir = biotablog + self.getBlogDay()
         towebdir = sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + self.getBlogDay()
-        # logger.info(f'{fromdir} to {towebdir}')
+        # print(f'{fromdir} to {towebdir}')
         sftp.safeMkdir(sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + self.getBlogDay())
         sftp.put_r_portable(fromdir, towebdir, preserve_mtime=True)
         return
@@ -314,3 +316,19 @@ class Blog:
         toweb = sftp.remotePrefix() + MyProject.Blog.getBlogAdminWeb()
         sftp.upload(fromfile, toweb)                
         return 
+    
+    #
+    def countBlogPictures(self, speciesname, minimumrating):
+        count = 1
+        species = self.sp.species_dict['biota']
+        for leaf in species['Leaves']:
+            species = self.sp.species_dict[leaf]
+            if int(species['iPictureThisRunCount']) > 0:            # brute force scan
+                if species['Level'] == Level.SPECIES:
+                    if speciesname in species['TargetPath'] and \
+                    (self.getOnlyNewSpecies() and int(species['iSpeciesThisRunCount']) > 0) or (not self.OnlyNewSpecies) and \
+                    minimumrating <= species['currentHighestRating']:                 # Last is BUGBUG if high score is from past??
+                        count += 1
+                else:
+                    textCreated = self.countBlogPictures(speciesname, minimumrating)
+        return textCreated

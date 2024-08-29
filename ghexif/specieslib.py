@@ -4,15 +4,14 @@ import csv
 import io
 import time
 from collections import OrderedDict
-import logging
 
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SPECIES_FIELDS
 from ghexif import files_dict
+import ghexif
+import ghexif.projectlib
 from ghexif.handling import read_file, read_pictures
 
 from enum import Enum, auto
-
-logger = logging.getLogger(__name__)
 
 # Biota, Kingdom, Phylum, Class, Order, Family, Species
 class Level(Enum):
@@ -33,8 +32,9 @@ class Species:
     mp = None
 
     def __init__(self, MyProject):
-        MyProject.registerSpecies(self)
-        self.mp = MyProject
+        if MyProject != None:
+            MyProject.registerSpecies(self)
+            self.mp = MyProject
         return 
     
     def register_sc_with_sp(self, sc):
@@ -65,6 +65,31 @@ class Species:
             "iPicturesWithJPGsCollection": int(0)        
         }
         return classification_record
+    
+    # we use the species metadata from Lightroom or DxO get properlies like male/female, summer/winter, etc
+    def getBirdInfo(self, speciesname):
+        # print(f"{speciesname}")
+        malefemale = ""
+        ageintext = ""
+        summerwinter = ""
+        splitted = re.split(r"[ \[\],;90]", speciesname.replace("'",""))
+        for token in splitted:
+            if token.lower() in ["male", "man"]:
+                malefemale = "male"
+            elif token.lower() in ["female", "vrouw"]:
+                malefemale = "female"
+            elif token.lower() in ["breeding", "summer", "zomer"]:
+                summerwinter = "br."
+            elif token.lower() in ["non-breeding", "winter"]:
+                summerwinter = "non-br."
+            elif token.lower() in ["juvenile", "jong", "juv."]:                 
+                ageintext = "juv."
+            elif token.lower() in ["immature", "onvolwassen", "imm."]:
+                ageintext = "imm."                   
+            elif token.lower() in ["adult", "volwassen", "ad."]:
+                ageintext = "ad."          
+        # print(f"{speciesname}: {splitted}, {malefemale}, {ageintext}, {summerwinter}")                                                                                                     
+        return malefemale, ageintext, summerwinter
     
     def getSpecies(self, name):
         name = name.lower()
@@ -201,13 +226,13 @@ class Species:
             if UpName != "" and ScientificName not in self.species_dict[UpName]['Leaves']:
                 self.species_dict[UpName]['Leaves'].append(ScientificName)
                 
-        logger.info(f'Read {len(self.species_dict)} predefined species from {speciesfilename}.')
+        print(f'Read {len(self.species_dict)} predefined species from {speciesfilename}.')
         
         return
 
     def writeSpeciesInfo(self, speciesfilename, commit_counters):
         # Write Picture CSV file
-        logger.info(f'Write all used species data CSV file "{speciesfilename}".')
+        print(f'Write all used species data CSV file "{speciesfilename}".')
         with open(speciesfilename, "w", newline="", encoding='utf-8') as csvfile:
             # needed to get column in order
             speciesheaders = OrderedDict((field, None) for field in SPECIES_FIELDS)                 
@@ -263,7 +288,7 @@ class Species:
 
         species = self.species_dict[soort]
         # if SpeciesDebug > 4 and int(species['iPictureCollectionCount']) > 0:
-        #     logger.info(f"summarizeSpeciesCounters: {species['Level']}:  {species['iPictureCollectionCount']:6}  {species['iPicturesWithJPGsCollection']:6} \
+        #     print(f"summarizeSpeciesCounters: {species['Level']}:  {species['iPictureCollectionCount']:6}  {species['iPicturesWithJPGsCollection']:6} \
         #         {species['ScientificName']:32} / {species['DutchName']} / {species['EnglishName']}", file=debugfile)
         
         # if species, return counters
@@ -296,7 +321,7 @@ class Species:
                     i += 1
             # save results for species summary level
             if results == []:
-                logger.info(f'hoe kan dit??')
+                print(f'hoe kan dit??')
             else:
                 species['iPictureCollectionCount'] = results[0]      
                 species['iPictureThisRunCount'] = results[1]       
@@ -321,9 +346,9 @@ class Species:
             #     print(f"{species['Level']:16}: {species['iSpeciesCollectionCount']:6}  {species['iPictureCollectionCount']:6}  {species['iPicturesWithJPGsCollection']:6} \
             #         {species['ScientificName']:32} / {species['currentHighestRating']:3}: {species['BestJPG']:28} ({species['BestJPGPathName']})", file=debugfile)
             if species['BestJPG'] == "":
-                logger.warning(f"""{species['Level']} {species['ScientificName']} ({species['EnglishName']}) has no identified JPGs to show from {species['iPicturesWithJPGsCollection']} JPGs.""")
+                print(f"""{species['Level']} {species['ScientificName']} ({species['EnglishName']}) has no identified JPGs to show from {species['iPicturesWithJPGsCollection']} JPGs.""")
             if species['currentHighestRating'] == '0':
-                logger.warning(f"{species['Level']} {species['ScientificName']} ({species['EnglishName']}) has zero as text string.")
+                print(f"{species['Level']} {species['ScientificName']} ({species['EnglishName']}) has zero as text string.")
         for leave in species['Leaves']:
             self.printDataForSpecies(leave, debugfile)
         return
@@ -333,13 +358,16 @@ class Species:
         if (int(classification) >= 4 and \
             ((species['Level'] != 'Level.SPECIES') or (species['Level'] != Level.SPECIES) \
             or (int(classification) >= 8))):
-            logger.warning(f"{species['Level']:15}: {species['DutchName']:32}  {species['EnglishName']:32}  {species['ScientificName']}")
+            print(f"{species['Level']:15}: {species['DutchName']:32}  {species['EnglishName']:32}  {species['ScientificName']}")
         for leaf in species['Leaves']:
             self.printSpeciesTree(leaf, level + 1, classification)
         return
 
 # NEEDS TO GO SOMEWHERE ELSE OR IN THIS PROJECTLIB
-# # logic from C++ version
+def getPictureAgeSexePlumage(upn):
+    str = upn['malefemale'] + upn['ageintext'] + upn['summerwinter']
+    return str
+
 def computeRating(upn):
     computation = 0
     DxOUsed = False

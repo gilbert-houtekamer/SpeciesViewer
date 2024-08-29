@@ -8,33 +8,40 @@ import sys
 import configparser
 import time
 from pygbif import species
+
 from collections import OrderedDict
 from enum import Enum, auto
-from ghexif import SVException
-import logging
 
-if __name__ == "__main__":
-    scriptpath = os.path.dirname(__file__)
-    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-    os.chdir(modpath)
-    sys.path.append(modpath)
+# relative to .py file
+INI_LOCATION = "svconfig.ini"
+
+# DUMMYSPECIES = ['vogel', 'vogels', 'bird', 'libel', 'libellen', 'onbekend', 
+#                     'rups', 'panama', 'californie', 'onbekend', 'sprinkhaan', 'turkey',
+#                     'blog', 'goodidpicture']
+
+scriptpath = os.path.dirname(__file__)
+modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
+os.chdir(modpath)
+sys.path.append(modpath)
 
 from ghexif import files_dict, UniquePictureName_dict 
 import ghexif
 import ghexif.projectlib
 import ghexif.specieslib
 import ghexif.speciesclassification
+
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS
 from ghexif.csv_columns import PICTURE_FIELDS
+
 #from ghexif.specieslib import readSpeciesInfo, writeSpeciesInfo, computeRating
 from ghexif.handling import read_file, read_pictures
 from ghexif.specieslib import Level, computeRating, Species
 
-logger = logging.getLogger(__name__)
-
-DUMMYSPECIES = ['vogel', 'vogels', 'bird', 'libel', 'libellen', 'onbekend',
-                'rups', 'panama', 'californie', 'onbekend', 'sprinkhaan', 'turkey',
-                'blog', 'goodidpicture']
+# read parameters, but will be overwritten probably
+def readConfig():
+    config = configparser.ConfigParser()
+    config.read(INI_LOCATION)
+    return config
 
 def CreatePicture(upn):
     PictureRecord = {
@@ -73,7 +80,9 @@ def CreatePicture(upn):
         "TargetPath":       "",
         "Description":      "",
         "DateTimeOriginal": "",
-
+        "malefemale":       "",
+        "ageintext":        "",
+        "summerwinter":     "",
     }
     return PictureRecord
 
@@ -108,7 +117,9 @@ def UpdatePicture(upn):
     if upn["GPSAltitude"] == "undef": 
         upn["GPSAltitude"] = ""
 
-        upn["GPSAltitude"] = ""
+    upn["malefemale"] = ""
+    upn["ageintext"] = ""
+    upn["summerwinter"] = ""      
 
     return upn
 
@@ -145,6 +156,12 @@ def findBestItem(filelist, column, preferredtypes):
     return ""
 
 # first look for a CameraRaw format ("ORF", "NEF", "NRW", "HEIC")
+def findAnySourceItem(filelist, column):
+    return findBestItem(filelist, column, ("ORF", "NEF", "NRW", "HEIC", "JPG", "JPEG", "XMP"))
+def findRawOrJPGItem(filelist, column):
+    return findBestItem(filelist, column, ("ORF", "NEF", "NRW", "HEIC", "JPG", "JPEG"))
+def findCameraOrXMPItem(filelist, column):
+    return findBestItem(filelist, column, ("ORF", "NEF", "NRW", "HEIC", "XMP"))
 def findCameraItem(filelist, column):
     return findBestItem(filelist, column, ("ORF", "NEF", "NRW", "HEIC"))
 # check for manual input by PhotoMechanic or Lightroom (mostly)
@@ -155,13 +172,6 @@ def findDNGItem(filelist, column):
 # should look at best JPG first!
 def findJPGItem(filelist, column):
     return findBestItem(filelist, column, ("JPG", "JPEG"))
-# first look for a CameraRaw format ("ORF", "NEF", "NRW", "HEIC")
-def findAnySourceItem(filelist, column):
-    return findBestItem(filelist, column, ("ORF", "NEF", "NRW", "HEIC", "JPG", "JPEG", "XMP"))
-def findRawOrJPGItem(filelist, column):
-    return findBestItem(filelist, column, ("ORF", "NEF", "NRW", "HEIC", "JPG", "JPEG"))
-def findCameraOrXMPItem(filelist, column):
-    return findBestItem(filelist, column, ("ORF", "NEF", "NRW", "HEIC", "XMP"))
 
 # more descriptive names
 def readableCameraModel(rawname):
@@ -196,9 +206,9 @@ def addSpeciesInformation(sp, firstUPNtoProcess):
             if subject_in_jpg != "":
                 scientificname = sp.getSpecies(subject_in_jpg)
                 if scientificname == "":       
-                    logger.info(f"""The species "{subject_in_jpg}" is not found in the GBIF database as a scientific name for "{upn['UniquePictureName']}".""")
+                    print(f"""The species "{subject_in_jpg}" is not found in the GBIF database as a scientific name for "{upn['UniquePictureName']}".""")
                 elif scientificname == None:
-                    logger.info(f"""Species "{subject_in_jpg}" may have a typo in "{thisfile['WindowsFileName']}", correct it.""")
+                    print(f"""Species "{subject_in_jpg}" may have a typo in "{thisfile['WindowsFileName']}", correct it.""")
                 else:
                     try:           
                         species = MyMagic.getSpecies(scientificname)
@@ -211,6 +221,9 @@ def addSpeciesInformation(sp, firstUPNtoProcess):
                         while next['Up']:       # may need to skip levels
                             picture[ClassificationGroupName[next['Level'].value-1]] = next['Up']
                             next = sp.species_dict[next['Up']]
+                        # 
+                        upn["malefemale"], upn["ageintext"], upn["summerwinter"] = sp.getBirdInfo(thisfile['XMP:Subject'])
+
                         # picture['Class'] = next['Up']
                         # next = species_dict[next['Up']]
                         # picture['Phylum'] = next['Up']
@@ -219,7 +232,7 @@ def addSpeciesInformation(sp, firstUPNtoProcess):
                         recognized_species += 1                                   
                         break                        
                     except:
-                        logger.info(f"KEY NOT FOUND {scientificname} for file {filename}")
+                        print(f"KEY NOT FOUND {scientificname} for file {filename}")
                         scientificname = ""
 
         # now compute path when we have a scientific name
@@ -244,10 +257,11 @@ def addSpeciesInformation(sp, firstUPNtoProcess):
                         species['TargetPath'] = upn['TargetPath']
                         species['currentHighestRating'] = int(picture['Rate'])      # so we know if there are better pictures
                         if SpeciesDebug > 0:  
-                            logger.info(f"{picture['WetSoortNaam']:28}: Added file {thisfile['WindowsFileName']} to best {species['BestJPGPathName']}/{species['BestJPG']} {species['JPGmap']}", file=filebug)
+                            print(f"{picture['WetSoortNaam']:28}: Added file {thisfile['WindowsFileName']} to best {species['BestJPGPathName']}/{species['BestJPG']} {species['JPGmap']}", file=filebug)
                     species['JPGmap'].append(thisfile['File:FileName'])        # at some point this was the highest
 
-    logger.info(f"Species information added for {recognized_species} pictures.")
+    print(f"Species information added for {recognized_species} pictures.")
+    
     return 0
 
 # Collect the JPGs, the best file per picture.
@@ -255,12 +269,12 @@ def addSpeciesInformation(sp, firstUPNtoProcess):
 def addPicturesToSpecies(sp, firstUPNtoProcess, SpeciesDebug):
     if SpeciesDebug > 0:  
         debugfile = open("Species print.txt", "w")
-        logger.info(f"Debug enabled for Species analysis at level {SpeciesDebug}.", file=debugfile)
+        print(f"Debug enabled for Species analysis at level {SpeciesDebug}.", file=debugfile)
     else:
         debugfile = ""
     # Analyze the current set of pictures, update the statistics
     for upn in list(UniquePictureName_dict.values())[firstUPNtoProcess:]:
-        #logger.info(f"addPicturesToSpecies: {upn['UniquePictureName']}  {upn['WetSoortNaam']} ")
+        #print(f"addPicturesToSpecies: {upn['UniquePictureName']}  {upn['WetSoortNaam']} ")
         if upn['WetSoortNaam'] != "":               # did we find a species
             species = sp.species_dict[upn['WetSoortNaam']]
             species['iPictureThisRunCount'] = int(species['iPictureThisRunCount']) + 1        # add the pictures from this run, starting from 0
@@ -270,7 +284,8 @@ def addPicturesToSpecies(sp, firstUPNtoProcess, SpeciesDebug):
 
     # at least biota must be present
     if 'biota' not in sp.species_dict:
-        raise SVException(f"FATAL ERROR: No species found in the project files.")
+        print(f"FATAL ERROR: No species found in the project files.")
+        return 12
 
     # Add counters from species to higher levels, tail-recursion works fine
     counters = []
@@ -281,67 +296,95 @@ def addPicturesToSpecies(sp, firstUPNtoProcess, SpeciesDebug):
 
     return 0
 
-# statistics to review how clean the meta data is
-def addMetricsToLog(sp, firstUPNtoProcess):
+# Add statistics file (sf)
+def addMetricsToLog(sp, firstUPNtoProcess, filename):
     MyProject = sp.getMP()
-    # Add properties for picture
-    processedUPNs = 0
-    NoGPSPos = 0
-    NoLocation = 0
-    NoSpeciesGiven = 0
-    JPGpresent = 0
-    SpeciesJPGCount = {}
-    # count them
-    for upn in list(UniquePictureName_dict.values())[firstUPNtoProcess:]:
-        processedUPNs += 1
-        if upn['GPSPosition'] in ["", None]:
-            NoGPSPos += 1
-        if upn['Location'] in ["", None]:
-            NoLocation += 1
-        if upn['WetSoortNaam'] in ["", None]:
-            NoSpeciesGiven += 1
-        elif upn['WetSoortNaam'] not in SpeciesJPGCount:
-            SpeciesJPGCount[upn['WetSoortNaam']] = 1
-        else:
-            SpeciesJPGCount[upn['WetSoortNaam']] += 1
-        if upn['BestJPG'] != "":
-            JPGpresent += 1
+    # open file
+    print(f'Write report to "{filename}"')
+    with open(filename, "w", newline="", encoding='utf-8') as sf:
+        # Add properties for picture
+        processedUPNs = 0
+        NoGPSPos = 0
+        NoLocation = 0
+        NoCity = 0
+        NoSpeciesGiven = 0
+        JPGpresent = 0
+        GoodImage = 0
+        BadOrDuplicate = 0
+        NoColorLabel = 0
+        SpeciesNameSet = 0
+        SpeciesJPGCount = {}
+        # count them
+        for upn in list(UniquePictureName_dict.values())[firstUPNtoProcess:]:
+            processedUPNs += 1
+            if upn['GPSPosition'] in ["", None]:
+                NoGPSPos += 1
+            if upn['Location'] in ["", None]:
+                NoLocation += 1
+            if upn['City'] in ["", None]:
+                NoCity += 1                
+            if upn['BestJPG'] != "":
+                JPGpresent += 1
+            if upn['Label'] in ["Red", "Yellow", "Green"]:
+                GoodImage += 1
+            elif upn['Label'] in ["Blue", "Purple"]:
+                BadOrDuplicate += 1
+            else:
+                NoColorLabel += 1
+            if upn['WetSoortNaam'] in ["", None]:
+                NoSpeciesGiven += 1
+            else:
+                # species given, make sure we add it to dictionary 
+                if upn['WetSoortNaam'] not in SpeciesJPGCount:
+                    SpeciesJPGCount[upn['WetSoortNaam']] = [0,0,0,0]
+                pictures, jpgs, starred, yellow_or_red = SpeciesJPGCount[upn['WetSoortNaam']]
+                if upn['Label'] in ["Red", "Yellow"]: yellow_or_red += 1
+                if upn['BestJPG'] != "": jpgs += 1
+                if upn['Rating'] > starred: starred = upn['Rating'] 
+                SpeciesJPGCount[upn['WetSoortNaam']] = [pictures+1, jpgs, starred, yellow_or_red]
+        # report
+        if processedUPNs:
+            print("")
+            if NoGPSPos:
+                print(f"No GPS specified for          {NoGPSPos:5} ({int(float(NoGPSPos)/float(processedUPNs)*100)}%) of all images", file=sf)
+            else:
+                print(f"GPS specified for all         {processedUPNs:5} images", file=sf)
+            if NoLocation:
+                print(f"No Location specified for     {NoLocation:5} ({int(float(NoLocation)/float(processedUPNs)*100)}%) of all images", file=sf)
+            else:
+                print(f"Location specified for all    {processedUPNs:5} images", file=sf)            
+            if NoCity:
+                print(f"No City specified for         {NoCity:5} ({int(float(NoCity)/float(processedUPNs)*100)}%) of all images", file=sf)
+            else:
+                print(f"City specified for all        {processedUPNs:5} images", file=sf)
+            if NoSpeciesGiven:
+                print(f"No Species name specified for {NoSpeciesGiven:5} ({int(float(NoSpeciesGiven)/float(processedUPNs)*100)}%) of all images", file=sf)
+            else:
+                print(f"Species name specified for all {processedUPNs} images", file=sf)                
+            print(f"JPG specified for             {JPGpresent:5}  ({int(float(JPGpresent)/float(processedUPNs)*100)}%) of all images", file=sf)
+            print(f"Species information added for {processedUPNs-NoSpeciesGiven:5} pictures.", file=sf)
+            print(f"Interesting or Good quality   {GoodImage:5} ({int(float(GoodImage)/float(processedUPNs)*100)}%)", file=sf)
+            print(f"Duplicate or bad quality      {BadOrDuplicate:5} ({int(float(BadOrDuplicate)/float(processedUPNs)*100)}%)", file=sf)
+            print(f"No color label rating set     {NoColorLabel:5} ({int(float(NoColorLabel)/float(processedUPNs)*100)}%)", file=sf)
 
-    # report
-    if processedUPNs:
-        if NoGPSPos:
-            logger.warning(f"No GPS specified for          {NoGPSPos:5}  ({int(float(NoGPSPos)/float(processedUPNs)*100)}%) of all images")
-        else:
-            logger.info(f"GPS specified for all {processedUPNs} images")
-        if NoLocation:
-            logger.info(f"No Location specified for     {NoLocation:5}  ({int(float(NoLocation)/float(processedUPNs)*100)}%) of all images")
-        else:
-            logger.info(f"Location specified for all {processedUPNs} images")            
-        if NoSpeciesGiven:
-            logger.warning(f"No Species name specified for {NoSpeciesGiven:5}  ({int(float(NoSpeciesGiven)/float(processedUPNs)*100)}%) of all images")
-        else:
-            logger.info(f"Species name specified for all {processedUPNs} images")
-        logger.info(f"JPG specified for             {JPGpresent:5}  ({int(float(JPGpresent)/float(processedUPNs)*100)}%) of all images")
-           
-        # verify if JPGs are present for each species
-        headerDone = False
-        for species in SpeciesJPGCount:
-            speciesobj = SpeciesJPGCount[species]
-            if speciesobj == 0:
-                if not headerDone:
-                    logger.info("Species for which there are JPGs at all:")
-                    headerDone = True
-                logger.info(f'No JPG created for any image for {species}.')
-                if upn['iPictureCollectionCount'] == 0:
-                    logger.warning(f'Create at least one JPGs for this new species {species}.')
+            # verify if JPGs are present for each species
+            if len(SpeciesJPGCount) > 0:
+                print("\nSpecies specified in this dir:\n", file=sf)
+                print(f" #Raw  #JPG  Best Color    old Name                             (Engels/Nederlands)", file=sf)
+                for species in SpeciesJPGCount:
+                    pictures, jpgcount, starred, yellow_or_red = SpeciesJPGCount[species]
+                    knownjpg = sp.species_dict[species]['iPicturesWithJPGsCollection']
+                    print(f"{pictures:5} {jpgcount:5} {starred:5} {yellow_or_red:5} {knownjpg:6} {species:32} ({sp.species_dict[species]['EnglishName']} / {sp.species_dict[species]['DutchName']})", file=sf)
 
+            print("")
     return 0
 
-def main(args, config):
+def main(args):
     global starttime, SpeciesDebug
     starttime = time.time()
     SpeciesDebug = 0        # default   
 
+    config = readConfig()
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
 
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
@@ -359,13 +402,15 @@ def main(args, config):
     try:
         pictures_out_csvfile = open(picturefilename + "data_pictures.csv", "w", encoding='utf-8', newline="")
     except:
-        raise SVException(f"Picture file ({picturefilename + 'data_pictures.csv'}) is locked by (most likely) Excel, please close it in Excel and re-run.")
+        print(f"Picture file ({picturefilename + 'data_pictures.csv'}) is locked by (most likely) Excel, please close it in Excel and re-run.")
+        exit()
     try:
         species_out_csvfile = open(picturefilename + "species.csv", "w", encoding='utf-8', newline="")
         species_out_csvfile.close()
     except:
-        raise SVException(f"Picture file ({picturefilename + 'species.csv'}) is locked by (most likely) Excel, please close it in Excel and re-run.")
-    #logger.info(f"Species file ({MyProject.getMetaDirReview()+"species.csv"}) is locked by (most likely) Excel, please close it in Excel and re-run.")
+        print(f"Picture file ({picturefilename + 'species.csv'}) is locked by (most likely) Excel, please close it in Excel and re-run.")
+        exit()
+    #print(f"Species file ({MyProject.getMetaDirReview()+"species.csv"}) is locked by (most likely) Excel, please close it in Excel and re-run.")
 
     # read the list with all pre-defined species
     metadatadir = MyProject.getMetaDir()
@@ -381,7 +426,7 @@ def main(args, config):
 
     # read new files from project to review
     read_file(MyProject.getMetaDirReview() + "data_files.csv")
-    logger.info(f"Read all new data from the in {time.time()-starttime:.1f} seconds.")
+    print(f"Read all new data from the in {time.time()-starttime:.1f} seconds.")
     thissteptime = time.time()   
 
     # Now summarize files to files list per picture ('UniquePictureName')
@@ -404,12 +449,10 @@ def main(args, config):
     # Also update counters while we are at it, for all pictures, also the ones without JPGs
     if addPicturesToSpecies(sp, RepositoryPictureCount, SpeciesDebug) > 0: return
 
-    if addMetricsToLog(sp, RepositoryPictureCount) > 0: return    
-
     # Write Picture CSV file
     picturefilename = MyProject.getMetaDirReview() + "data_pictures.csv"
     with pictures_out_csvfile as csvfile:
-        logger.info(f'Write Picture data CSV file {picturefilename}.')
+        print(f'Write Picture data CSV file {picturefilename}.')
         # needed to get column in order
         ordered_fieldnames = OrderedDict((field, None) for field in PICTURE_FIELDS)                 
         writer = csv.DictWriter(csvfile, fieldnames=ordered_fieldnames, quoting=csv.QUOTE_MINIMAL, delimiter=';')
@@ -418,29 +461,23 @@ def main(args, config):
             writer.writerow(upn_record)
 
     totaltime = time.time() - starttime                
-    logger.info(f'{len(UniquePictureName_dict)} lines written for pictures to {picturefilename}.')
+    print(f'{len(UniquePictureName_dict)} lines written for pictures to {picturefilename}.')
     
     # also create summarizing species, when more counters are added later
     sc.updateSpeciesCollection(metadatadir + "active/speciescollection.csv")  
     sp.writeSpeciesInfo(MyProject.getMetaDirReview()+"species.csv", False)
+    
+    if addMetricsToLog(sp, RepositoryPictureCount, MyProject.getMetaDirReview()+"stats report " + MyProject.ProjectName() + ".txt") > 0: return
 
-    # logger.info(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
+    # print(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
     # totaltime = time.time() - starttime      
-    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
-
+    print(f'Total time for all other work {totaltime:.1f} seconds.')
+ 
 
 if __name__ == "__main__":
-    # get commandline parameters
-    parser = argparse.ArgumentParser(description="sv3WritePictures.")
-    args = parser.parse_args()
-    # get configuration
-    INI_LOCATION = "svconfig.ini"
-    config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
-    # call the actual code
-    try:
-        main(args, config)
-    except Exception as e:
-        logger.warning(f"sv3WritePictures failed: {e}")
-    else:
-        logger.info("sv3WritePictures succeeded")
+    # get commandline parameters and mix everything
+    parser = argparse.ArgumentParser(description="Handle photos.")
+    parser.add_argument(
+        "--dir", type=str, default=os.path.join(modpath, "data"), help="foto directory"
+    )
+    main(parser.parse_args())

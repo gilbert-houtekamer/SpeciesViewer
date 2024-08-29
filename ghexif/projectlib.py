@@ -9,9 +9,6 @@ from ghexif.websupport import getTemplateOutputString
 from ghexif.specieslib import Level
 import ghexif.translatelib
 import requests
-import logging
-logger = logging.getLogger(__name__)
-
 
 # provide easy access to all the locations that are referenced without
 # globals
@@ -50,6 +47,8 @@ class Project:
         self.addTemplate("vogelfoto.html")
         self.addTemplate("intro-nl.html")
         self.addTemplate("intro-en.html")
+        self.addTemplate("intro-link-nl.html")
+        self.addTemplate("intro-link-en.html")        
         self.addTemplate("allspecies-nl.html")
         self.addTemplate("allspecies-en.html")     
 
@@ -63,7 +62,7 @@ class Project:
 
     def internet_connection(self):
         try:
-            response = requests.get("https://houtekamer.com", timeout=15)
+            response = requests.get("https://houtekamer.com", timeout=75)
             return True
         except requests.ConnectionError:
             return False         
@@ -167,7 +166,7 @@ class Project:
         read_pictures(metadatadir+"active/data_pictures.csv")
 
         thissteptime = time.time()
-        logger.info(f"Read all committed data from the main repository in {thissteptime-starttime:.1f} seconds.")
+        print(f"Read all committed data from the main repository in {thissteptime-starttime:.1f} seconds.")
 
         # get all data
         # RepositoryFileCount = len(files_dict)
@@ -175,11 +174,11 @@ class Project:
         # read other files and pictures
         RepositoryFileCount = len(files_dict)
         RepositoryPictureCount = len(UniquePictureName_dict)
-        read_file(metadatadirreview+'data_files.csv')
+        count, from_time, last_time = read_file(metadatadirreview+'data_files.csv')
         read_pictures(metadatadirreview+'data_pictures.csv')      
 
-        logger.info(f"Read all new data from project in {time.time()-thissteptime:.1f} seconds.")
-        return [RepositoryFileCount, RepositoryPictureCount]
+        print(f"Read all new data from project in {time.time()-thissteptime:.1f} seconds.")
+        return [RepositoryFileCount, RepositoryPictureCount, from_time, last_time]
     
     def makeSpeciesDirectory(self, leaf):
         global debugfile, count
@@ -202,8 +201,8 @@ class Project:
                         # os.remove(sourcefile)
                         count += 1
                     except:
-                        logger.info(f"Species: Directory {(biotadatabase + species['TargetPath']).lower()} of file {species['BestJPG']} could not be copied.")
-            #logger.info(f"Species: Directory {directoryname} created for {species['ScientificName'] + '.html'}.")
+                        print(f"Species: Directory {(biotadatabase + species['TargetPath']).lower()} of file {species['BestJPG']} could not be copied.")                    
+            #print(f"Species: Directory {directoryname} created for {species['ScientificName'] + '.html'}.")
         return
 
     # create website based on current count setting, now to test iSpeciesThisRunCount
@@ -244,7 +243,7 @@ class Project:
                     print(line, file=SpeciesHTMLfile)
             SpeciesHTMLfile.close()
         except:
-            logger.info(f"Level:   Directory {(biota + species['TargetPath']).lower()} of file {species['BestJPG']} could not be created.")
+            print(f"Level:   Directory {(biota + species['TargetPath']).lower()} of file {species['BestJPG']} could not be created.")
         return
 
     # create website based on current count setting, now to test iSpeciesThisRunCount
@@ -279,9 +278,9 @@ class Project:
                     print(line, file=SpeciesHTMLfile)
             SpeciesHTMLfile.close()
 
-            #logger.info(f"Species: Directory {directoryname} created for {species['ScientificName'] + '.html'}.")
+            #print(f"Species: Directory {directoryname} created for {species['ScientificName'] + '.html'}.")
         except:
-            logger.info(f"Species: Directory {('e:/tempbiota/' + species['TargetPath']).lower()} of file {species['BestJPG']} could not be created.")
+            print(f"Species: Directory {('e:/tempbiota/' + species['TargetPath']).lower()} of file {species['BestJPG']} could not be created.")
         return
 
     def makeAllSpeciesPage(self, speciesname, language):
@@ -298,7 +297,7 @@ class Project:
             
             speciesOverviewFile.close()        
 
-        logger.info(f"""Written all Species data to "{(biota + 'summaries/all ' + speciesname + ' species-' + language + '.html').lower()}".""")
+        print(f"""Written all Species data to "{(biota + 'summaries/all ' + speciesname + ' species-' + language + '.html').lower()}".""")
         return
     
     # Intro pages, can be used generically
@@ -310,5 +309,5 @@ class Project:
                 print(line, file=IntroFile)
         
             IntroFile.close()  
-        logger.info(f"""Written page webpage to "{(self.getBiotaDir() + simplepage + ".html").lower()}".""")
+        print(f"""Written page webpage to "{(self.getBiotaDir() + simplepage + ".html").lower()}".""")
         return

@@ -4,6 +4,13 @@
 *.NEF
 *.csv
 !dist/installation files/*.csv
+!*_files.csv
+!species.csv
+!species-date.csv
+!installation files/*.csv
+!installation files/*.ini
+
+ghconfig.ini
 
 # python
 __pycache__

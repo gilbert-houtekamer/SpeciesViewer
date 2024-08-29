@@ -2,9 +2,6 @@ import os
 import csv
 from ghexif import files_dict, UniquePictureName_dict
 import ghexif
-import logging
-logger = logging.getLogger(__name__)
-
 
 # strip all suffixes for files from Lightroom, DxO PureRaw, DxO Photolab, Capture etc
 def deriveUniquePictureName(windows_filename):
@@ -37,17 +34,24 @@ def deriveUniquePictureName(windows_filename):
 # For second call, additional data is appended
 # Check if is does not create a duplicaete
 def read_file(filename):
+    from_time = ""
+    last_time = ""
     filecount = len(files_dict)
     with open(filename, "r", newline="", encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile, delimiter=';')
         for row in reader:
             if row['File:FileName'] not in files_dict:
                 files_dict[row['File:FileName']] = row
-            # else:
-            #     logger.info(f"Unexpected duplicate file {row['WindowsFileName']} not added, ")
-            #     logger.info(f"File was already found here {files_dict[row['File:FileName']]['WindowsFileName']}.")
-    logger.info(f'Read EXIF data for {len(files_dict)-filecount} files from CSV file {filename}.')
-    return len(files_dict)
+                if row['EXIF:DateTimeOriginal'] != "":
+                    if from_time == "" or from_time > row['EXIF:DateTimeOriginal']: 
+                        from_time = row['EXIF:DateTimeOriginal']
+                    if last_time < row['EXIF:DateTimeOriginal']:
+                        last_time = row['EXIF:DateTimeOriginal']
+            else:
+                print(f"Unexpected duplicate file {row['WindowsFileName']} not added, ")
+                print(f"File was already found here {files_dict[row['File:FileName']]['WindowsFileName']}.")
+    print(f'Read EXIF data for {len(files_dict)-filecount} files from CSV file {filename}.')
+    return len(files_dict), from_time, last_time
 
 # read picture data file, one record for each picture, with links to files (ORF, jpg, XMP, etc)
 # For second call, additional data is appended
@@ -75,7 +79,7 @@ def read_pictures(picturefile):
                     except ValueError:
                         pass  # Handle non-numeric values gracefully
 
-    logger.info(f'Read data for {len(UniquePictureName_dict)-picturecount} pictures from CSV file {picturefile}.')
+    print(f'Read data for {len(UniquePictureName_dict)-picturecount} pictures from CSV file {picturefile}.')
     return len(UniquePictureName_dict)
 
 def read_Files_CSV():

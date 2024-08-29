@@ -3,13 +3,12 @@ import io
 import csv
 import time
 from pygbif import species
-import logging
+
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SPECIES_FIELDS
 import ghexif
 import ghexif.projectlib
 
 from enum import Enum, auto
-logger = logging.getLogger(__name__)
 
 # Biota, Kingdom, Phylum, Class, Order, Family, Species
 class Level(Enum):
@@ -29,7 +28,10 @@ class SpeciesClassification:
 
     DUMMYSPECIES = ['vogel', 'vogels', 'bird', 'libel', 'libellen', 'onbekend', 
                     'rups', 'panama', 'californie', 'onbekend', 'sprinkhaan', 'turkey',
-                    'blog', 'goodidpicture']
+                    'blog', 'goodidpicture',
+                    'juvenile', 'juv.', 'ímmature', 'imm.', 'onvolwassen',  'adult', 'volwassen', 
+                    'male', 'man', 'female', 'vrouw', 'couple', 'paar', 'paartje', 
+                    'summer', 'zomer', 'winter', 'breeding', 'non-breeding']
 
 
     def __init__(self, MyProject):
@@ -122,14 +124,14 @@ class SpeciesClassification:
                 if englishname not in self.english_dict:
                     self.english_dict[englishname] = ScientificName
         
-        logger.info(f'Read {len(self.sc_dict)} predefined species from {speciesfilename}.')
+        print(f'Read {len(self.sc_dict)} predefined species from {speciesfilename}.')
         
         return
 
     # save last version, always save last version under .csv_old  
     def writeSpeciesCollection(self, speciesfilename):
         # Write Picture CSV file
-        logger.info(f'Write all species data CSV file "{speciesfilename}".')
+        print(f'Write all species data CSV file "{speciesfilename}".')
         with open(speciesfilename, "w", newline="", encoding='utf-8') as csvfile:
             # needed to get column in order
             sc_headers = ['Level', 'ScientificName', 'DutchName', 'EnglishName', 'Up', 'Leaves']                 
@@ -190,7 +192,7 @@ class SpeciesClassification:
         language_totals  = {}
         for l in language_counts:
             language_totals[l] = []
-            #logger.info(f"for {l} we have")
+            #print(f"for {l} we have")
             name_counts = {}
             for name in language_counts[l]:
                 name_counts[name] = name_counts.get(name, 0) + 1
@@ -199,7 +201,7 @@ class SpeciesClassification:
             unique_names = [name for name, _ in sorted_names]
             for name in unique_names:
                 language_totals[l].append(name)
-            # logger.info(f"sorted_names={sorted_names}\n unique_names={unique_names}")
+            # print(f"sorted_names={sorted_names}\n unique_names={unique_names}")
 
         return language_totals
 
@@ -251,7 +253,7 @@ class SpeciesClassification:
         nederlands = ""
         vernacularNames = species.name_usage(key=soort[key], data='vernacularNames')
         for v in vernacularNames['results']:
-    #       logger.info(f'{v["vernacularName"]} in taal {v["language"]}')
+    #       print(f'{v["vernacularName"]} in taal {v["language"]}')
             if v["language"] == "eng" and engels == "":
                 engels = v["vernacularName"]
             if v["language"] == "nld" and nederlands == "":
@@ -275,10 +277,10 @@ class SpeciesClassification:
             self.addSpeciesLevel(Level.FAMILY, gbif['family'].lower(), namen[0], namen[1], gbif['order'].lower())
         except:
             try: 
-                logger.info(f"Will link Family to Class because there is no ORDER known for {gbif['canonicalName']}.")
+                print(f"Will link Family to Class because there is no ORDER known for {gbif['canonicalName']}.")       
                 self.addSpeciesLevel(Level.FAMILY, gbif['family'].lower(), namen[0], namen[1],  gbif['class'].lower())
             except:
-                logger.info(f"No ORDER or FAMILY for {gbif['canonicalName']}, that is weird")
+                print(f"No ORDER or FAMILY for {gbif['canonicalName']}, that is weird")
         namen = self.getNldEngVernacularNames(gbif, 'species') if 'speciesKey' in gbif else ("", "")            
         self.addSpeciesLevel(Level.SPECIES, gbif['canonicalName'].lower(), namen[0], namen[1],  gbif['family'].lower())
 
@@ -298,17 +300,20 @@ class SpeciesClassification:
             return self.dutch_dict[subject]
         elif subject in self.english_dict:
             return self.english_dict[subject]
-        elif LookUpInGBIF and (',' not in subject): 
-            gbif = species.name_backbone(name=subject)
-            if gbif['matchType'] == 'EXACT' and gbif.get('species'):
-                scientificname = self.addSpecies(gbif).lower()
-                timesoort = time.time() - timesoort
-                logger.info(f'The species "{gbif["canonicalName"].lower()}" is found in the GBIF database in {timesoort:.3f} seconds, class {gbif["class"]} in {gbif["kingdom"]}.')
+        elif LookUpInGBIF and (',' not in subject):
+            try: 
+                gbif = species.name_backbone(name=subject)
+                if gbif['matchType'] == 'EXACT' and gbif.get('species'):
+                    scientificname = self.addSpecies(gbif).lower()
+                    timesoort = time.time() - timesoort
+                    print(f'The species "{gbif["canonicalName"].lower()}" is found in the GBIF database in {timesoort:.3f} seconds, class {gbif["class"]} in {gbif["kingdom"]}.')
+            except:
+                print(f'Timeout on internet connection')
         elif not nested:
             # likely a list of variables, decode it
             if len(subject.split(','))>1:
                 subject = subject.strip('[]')
-                #logger.info(f"{subject.split(',')}")
+                #print(f"{subject.split(',')}")
                 for subjects in subject.split(','):
                     if subjects[0] == '"':       # possibly quoted that we do not want
                         subjects = subjects.strip('"')
@@ -320,12 +325,12 @@ class SpeciesClassification:
                         scientificname = self.getKnownSpecies(subjects, True, LookUpInGBIF)
                         if scientificname != "":
                             # if SpeciesDebug > 8:
-                            #     logger.info(f"In {subject.split(',')} - Found {subjects} -> {scientificname}")
+                            #     print(f"In {subject.split(',')} - Found {subjects} -> {scientificname}")
                             return scientificname
             
         if LookUpInGBIF and scientificname == "":
             timesoort = time.time() - timesoort
-            logger.info(f"""The species "{subject}" is not found in the GBIF database as a scientific name, took {timesoort:.3f} seconds.""")
+            print(f"""The species "{subject}" is not found in the GBIF database as a scientific name, took {timesoort:.3f} seconds.""")    
 
         return scientificname
 
