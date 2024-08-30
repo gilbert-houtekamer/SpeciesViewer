@@ -9,64 +9,50 @@
 import argparse
 import configparser
 import csv
-import logging
 import os
 import sys
 import time
-
 import exiftool
+import logging
 
-# configuration
-# relative to .py file
-INI_LOCATION = "svconfig.ini"
-# files to exclude because they are not related to pictures
-IGNOREEXTENSIONS = ['txt', 'ico', 'html']
+# add directory to python path (only when run as executable)
+if __name__ == "__main__":
+    scriptpath = os.path.dirname(__file__)
+    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
+    os.chdir(modpath)
+    sys.path.append(modpath)
 
-# code init
-scriptpath = os.path.dirname(__file__)
-modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-os.chdir(modpath)
-sys.path.append(modpath)
-
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS
+from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
 import ghexif.projectlib
-
 from ghexif.handling import deriveUniquePictureName
 
-# read parameters, but will be overwritten probably
-def readConfig():
-    config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
-    return config
+IGNOREEXTENSIONS = ['txt', 'ico', 'html']
+logger = logging.getLogger(__name__)
 
-def main(args):
-    config = readConfig()
-
+def main(args, config):
     starttime = time.time()
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))  
     
-    print(f'Will read files recursively from {MyProject.getProjectPath()}.')    
+    logger.info(f'Will read files recursively from {MyProject.getProjectPath()}.')
     # logging.basicConfig(level=logging.DEBUG)
     # exiftool.ExifTool.__init__(None, common_args=['-G'])
     with exiftool.ExifToolHelper(
         logger=logging.getLogger(__name__), common_args=["-G"]
     ) as et:
         if not os.path.isdir(MyProject.getProjectPath()):
-            print(f"Directory {MyProject.getProjectPath()} cannot be found, or refers to a file.")
-            sys.exit
+            raise SVException(f"Directory {MyProject.getProjectPath()} cannot be found, or refers to a file.")
 
-        print(f"Reading directories (takes about 1 minute for every 4000 files)...")
+        logger.info(f"Reading directories (takes about 1 minute for every 4000 files)...")
         file_extension_count = {}        
          
         try:
             metadata = et.get_metadata(
                 MyProject.getProjectPath(), 
                 params=SELECTED_FIELDS)
-        except:
-            print(f"No files found in the directory {MyProject.getProjectPath()}, or error processing them.")
-            sys.exit(12)
+        except Exception:
+            raise SVException(f"No files found in the directory {MyProject.getProjectPath()}.")
 
  
         datafilelocation = MyProject.getMetaDirReview()
@@ -75,7 +61,7 @@ def main(args):
 
         with open(datafilelocation, "w", newline="") as csvfile:
             metadatareadertime = time.time() - starttime
-            print(
+            logger.info(
                 f"Reading EXIF metadata took {metadatareadertime:.1f} seconds for {len(metadata)} files."
             )
             writer = csv.DictWriter(
@@ -138,19 +124,30 @@ def main(args):
                         file_extension_count.get(extension[1:].lower(), 0) + 1
                     )
 
-    print(f"\nThe files counted by filetype are:")
+    logger.info(f"\nThe files counted by filetype are:")
     for extent, count in file_extension_count.items():
-        print(f"   {extent.upper()} files: {count}")
+        logger.info(f"   {extent.upper()} files: {count}")
     totaltime = time.time() - starttime
-    print(
+    logger.info(
         f'\nCSV file written to {datafilelocation}, total time {totaltime:.1f} seconds.'
     )
 
 
 if __name__ == "__main__":
-    # get commandline parameters and mix everything
-    parser = argparse.ArgumentParser(description="Handle photos.")
-    parser.add_argument(
-        "--dir", type=str, default=os.path.join(modpath, "data"), help="foto directory"
-    )
-    main(parser.parse_args())
+    # get commandline parameters
+    parser = argparse.ArgumentParser(description="sv2ReadDirExif.")
+    args = parser.parse_args()
+    # get configuration
+    INI_LOCATION = "svconfig.ini"
+    config = configparser.ConfigParser()
+    config.read(INI_LOCATION)
+    # init the logging subsystem
+    logging.basicConfig(level=logging.INFO)
+    # call the actual code
+    try:
+        main(args, config)
+    except Exception as e:
+        logger.warning(f"sv2ReadDirExif failed: {e}")
+    else:
+        logger.info("sv2ReadDirExif succeeded")
+

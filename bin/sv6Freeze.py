@@ -7,39 +7,26 @@ import time
 from datetime import datetime
 from collections import OrderedDict
 import csv
+import logging
 
-INI_LOCATION = "svconfig.ini"
-
-# pass ini file to module
-parser = argparse.ArgumentParser(description="Web site Demo.")
-parser.add_argument(
-    "--config",
-    type=str,
-    default=os.environ.get("GHCONFIG", "/etc/ghconfig.ini"),
-    help="Gilbert Houtekamer configuration file",
-)
-args = parser.parse_args()
-scriptpath = os.path.dirname(__file__)
-modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-os.chdir(modpath)
-sys.path.append(modpath)
-
-# read ini file
-config = configparser.ConfigParser()
-config.read(INI_LOCATION)
+if __name__ == "__main__":
+    scriptpath = os.path.dirname(__file__)
+    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
+    os.chdir(modpath)
+    sys.path.append(modpath)
 
 from ghexif import files_dict, UniquePictureName_dict
 import ghexif
 import ghexif.projectlib
 import ghexif.specieslib
 import ghexif.speciesclassification
-
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS
+from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
 from ghexif.csv_columns import PICTURE_FIELDS
 from ghexif.handling import read_file, read_pictures
 from ghexif.specieslib import Level
 import ghexif.specieslib
 
+logger = logging.getLogger(__name__)
 files_to_delete = []
 
 def getTemplateFileAsString():
@@ -67,7 +54,7 @@ def makeSpeciesDirectory(MyProject, leaf):
         if UniquePictureName_dict[picture]['WetSoortNaam'] == leaf:        # we want this
             for filename in UniquePictureName_dict[picture]['Files']:
                 try:
-                    print(f"File {filename:40}: {files_dict[filename]['WindowsFileName']:64} to " + \
+                    logger.info(f"File {filename:40}: {files_dict[filename]['WindowsFileName']:64} to " + \
                           f"{MyProject.getRepositoryPath()+UniquePictureName_dict[picture]['TargetPath']+files_dict[filename]['File:FileName']}",
                           file=debugfile)
                     sourcefile = files_dict[filename]['WindowsFileName']
@@ -79,8 +66,8 @@ def makeSpeciesDirectory(MyProject, leaf):
                         files_to_delete.append(sourcefile)
                     count += 1
                 except:
-                    print(f"Species: Directory {(MyProject.getRepositoryPath() + species['TargetPath']).lower()} of file {species['BestJPG']} could not be copied.")                    
-        #print(f"Species: Directory {directoryname} created for {species['ScientificName'] + '.html'}.")
+                    logger.info(f"Species: Directory {(MyProject.getRepositoryPath() + species['TargetPath']).lower()} of file {species['BestJPG']} could not be copied.")
+        #logger.info(f"Species: Directory {directoryname} created for {species['ScientificName'] + '.html'}.")
     return
 
 # create website based on current count setting, now to test iSpeciesThisRunCount
@@ -123,7 +110,7 @@ def AppendChangedFileData(MyProject, firstNewFile):
             filespec['WindowsFileName'] = wfn
             filespec['File:Directory'] = fd
     
-    print(f'Data from {len(files_dict)-firstNewFile} files added to {len(files_dict)} and written to {datafilename}')
+    logger.info(f'Data from {len(files_dict)-firstNewFile} files added to {len(files_dict)} and written to {datafilename}')
     return
 
 def AppendChangedPictureData(MyProject, firstNewPicture):
@@ -136,17 +123,17 @@ def AppendChangedPictureData(MyProject, firstNewPicture):
         for picture in list(UniquePictureName_dict.values())[firstNewPicture:]:
             writer.writerow(picture)
             
-    print(f'Data from {len(UniquePictureName_dict)-firstNewPicture} pictures added, total {len(UniquePictureName_dict)} now written to {picturename}')
+    logger.info(f'Data from {len(UniquePictureName_dict)-firstNewPicture} pictures added, total {len(UniquePictureName_dict)} now written to {picturename}')
     return
 
 def writeDeleteList(deletelistfilename):
     with open(deletelistfilename, 'w', newline='', encoding='utf-8') as deletecsv:
         for fn in files_to_delete:
-            print(f'"{fn}"', file=deletecsv)
+            logger.info(f'"{fn}"', file=deletecsv)
     return
 
-def main(args):
-    global starttime, config, species_dict, debugfile, count
+def main(args, config):
+    global starttime, species_dict, debugfile, count
     starttime = time.time()
 
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
@@ -162,16 +149,16 @@ def main(args):
 
     RepositoryFileCount, RepositoryPictureCount, from_time, last_time = MyProject.readProject()
   
-    print(f'Now writing consolidated data to a frozen directory for manual review as desired')
+    logger.info(f'Now writing consolidated data to a frozen directory for manual review as desired')
     # change and append
     AppendChangedFileData(MyProject, RepositoryFileCount)
     AppendChangedPictureData(MyProject, RepositoryPictureCount)
 
     # copy all files to big file depository based on classification of data
-    # print(f"Will copy all files to destination.")
+    # logger.info(f"Will copy all files to destination.")
     debugfile = open("Species print.txt", "w")
     count = 0
-    print(f"Debug enabled for Species copy.", file=debugfile)
+    logger.info(f"Debug enabled for Species copy.", file=debugfile)
     # add new directories as needed, right in database
     MyProject.setLanguage('en')
     makeDirectories(MyProject, 'biota', 'New')
@@ -182,14 +169,27 @@ def main(args):
 
     # write the list with files to delete
     writeDeleteList(MyProject.ReviewFrozen() + "deletelist.csv")
-    #print(f"{count} files copied to species picture repository in {time.time() - starttime:.1f} seconds.")
+    #logger.info(f"{count} files copied to species picture repository in {time.time() - starttime:.1f} seconds.")
     debugfile.close()   
     # simply append new files and pictures, based on the new files.
     sp.writeSpeciesInfo(MyProject.ReviewFrozen() + "species.csv", commit_counters=True)
     sc.updateSpeciesCollection(MyProject.ReviewFrozen() + "speciescollection.csv")  
 
     totaltime = time.time() - starttime      
-    print(f'Total time for all other work {totaltime:.1f} seconds.')
+    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
 
 if __name__ == "__main__":
-     main(parser.parse_args())
+    # get commandline parameters
+    parser = argparse.ArgumentParser(description="sv6Freeze.")
+    args = parser.parse_args()
+    # get configuration
+    INI_LOCATION = "svconfig.ini"
+    config = configparser.ConfigParser()
+    config.read(INI_LOCATION)
+    # call the actual code
+    try:
+        main(args, config)
+    except Exception as e:
+        logger.warning(f"sv6Freeze failed: {e}")
+    else:
+        logger.info("sv6Freeze succeeded")
