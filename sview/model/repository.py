@@ -40,6 +40,8 @@ class Repository:
             self.config.add_section('project')
             self.config.add_section('debug')
             self.config.set('debug', 'SpeciesFound', str(0))
+            self.config.add_section('websettings')
+            self.config.set('websettings', 'Sftppwd', '')
             with open(self.config_path, 'w') as configfile:
                 self.config.write(configfile)
 

@@ -52,9 +52,10 @@ def main(args, config):
 
     files, pictures, from_time, last_time = MyProject.readProject()
 
-    thissteptime = time.time() 
+    thissteptime = time.time()
 
-    bloginifile = MyProject.getProjectPath() + "/blog.ini"
+    # bloginifile = MyProject.getProjectPath() + "/blog.ini"
+    bloginifile = os.path.join(MyProject.getProjectPath(), "blog.ini")
     if os.path.exists(bloginifile):
         # create a separete config instance
         blogconfig = configparser.ConfigParser()
