@@ -103,7 +103,7 @@ def UpdatePicture(upn):
     if upn["LensShortName"] == "": upn["LensShortName"] =     findRawOrJPGItem(files, "EXIF:LensModel")
     if upn["LensLongName"] == "": upn["LensLongName"] =      findRawOrJPGItem(files, "Composite:LensID")
     upn["Settings"] = findRawOrJPGItem(files, "EXIF:ExposureTime") + " sec at F" + findRawOrJPGItem(files, "EXIF:FNumber")  \
-             + ", ISO " + findRawOrJPGItem(files, "EXIF:ISO") + ", distance " + findRawOrJPGItem(files, "MakerNotes:FocusDistance")
+             + ", ISO " + findRawOrJPGItem(files, "EXIF:ISO") + ", distance " + getDistance(files)
     upn["Description"] =       findXMPItem(files, "XMP:Description")
     if upn["DateTimeOriginal"] == "": upn["DateTimeOriginal"] =  findRawOrJPGItem(files, "EXIF:DateTimeOriginal")
     
@@ -165,6 +165,33 @@ def findDNGItem(filelist, column):
 # should look at best JPG first!
 def findJPGItem(filelist, column):
     return findBestItem(filelist, column, ("JPG", "JPEG"))
+
+# not too many decimals, no more than 3 significant digits
+def getDistance(files):
+    textdistance = findRawOrJPGItem(files, "MakerNotes:FocusDistance")
+    if textdistance != '' and textdistance != 'inf':
+        try:
+            numerictext = textdistance.strip(' m')
+            periodposition = numerictext.find('.')
+            if periodposition > 0:
+                meters = textdistance[:periodposition]
+                if int(meters) < 100:
+                    if int(meters) < 10:
+                        if int(meters) < 2:
+                            meters = meters + numerictext[periodposition:]
+                        else:
+                            meters = meters + numerictext[periodposition:periodposition+3]                    
+                    else:
+                        meters = meters + numerictext[periodposition:periodposition+2]
+                meters += ' m'
+            else:
+                return textdistance
+            #print(f"{textdistance} -> {meters}")
+            return meters
+        except:
+            return textdistance
+    return textdistance
+
 
 # more descriptive names
 def readableCameraModel(rawname):
@@ -249,8 +276,8 @@ def addSpeciesInformation(sp, firstUPNtoProcess):
                         species['BestUPN'] = upn['UniquePictureName']
                         species['TargetPath'] = upn['TargetPath']
                         species['currentHighestRating'] = int(picture['Rate'])      # so we know if there are better pictures
-                        if SpeciesDebug > 0:  
-                            logger.info(f"{picture['WetSoortNaam']:28}: Added file {thisfile['WindowsFileName']} to best {species['BestJPGPathName']}/{species['BestJPG']} {species['JPGmap']}", file=filebug)
+                        if SpeciesDebug > 0:
+                                print(f"{picture['WetSoortNaam']:28}: Added file {thisfile['WindowsFileName']} to best {species['BestJPGPathName']}/{species['BestJPG']} {species['JPGmap']}", file=filebug)
                     species['JPGmap'].append(thisfile['File:FileName'])        # at some point this was the highest
 
     logger.info(f"Species information added for {recognized_species} pictures.")
@@ -261,7 +288,7 @@ def addSpeciesInformation(sp, firstUPNtoProcess):
 def addPicturesToSpecies(sp, firstUPNtoProcess, SpeciesDebug):
     if SpeciesDebug > 0:  
         debugfile = open("Species print.txt", "w")
-        logger.info(f"Debug enabled for Species analysis at level {SpeciesDebug}.", file=debugfile)
+        print(f"Debug enabled for Species analysis at level {SpeciesDebug}.", file=debugfile)
     else:
         debugfile = ""
     # Analyze the current set of pictures, update the statistics
@@ -337,37 +364,36 @@ def addMetricsToLog(sp, firstUPNtoProcess, filename):
         if processedUPNs:
             logger.info("")
             if NoGPSPos:
-                logger.info(f"No GPS specified for          {NoGPSPos:5} ({int(float(NoGPSPos)/float(processedUPNs)*100)}%) of all images", file=sf)
+                print(f"No GPS specified for          {NoGPSPos:5} ({int(float(NoGPSPos)/float(processedUPNs)*100)}%) of all images", file=sf)
             else:
-                logger.info(f"GPS specified for all         {processedUPNs:5} images", file=sf)
+                print(f"GPS specified for all         {processedUPNs:5} images", file=sf)
             if NoLocation:
-                logger.info(f"No Location specified for     {NoLocation:5} ({int(float(NoLocation)/float(processedUPNs)*100)}%) of all images", file=sf)
+                print(f"No Location specified for     {NoLocation:5} ({int(float(NoLocation)/float(processedUPNs)*100)}%) of all images", file=sf)
             else:
-                logger.info(f"Location specified for all    {processedUPNs:5} images", file=sf)
+                print(f"Location specified for all    {processedUPNs:5} images", file=sf)
             if NoCity:
-                logger.info(f"No City specified for         {NoCity:5} ({int(float(NoCity)/float(processedUPNs)*100)}%) of all images", file=sf)
+                print(f"No City specified for         {NoCity:5} ({int(float(NoCity)/float(processedUPNs)*100)}%) of all images", file=sf)
             else:
-                logger.info(f"City specified for all        {processedUPNs:5} images", file=sf)
+                print(f"City specified for all        {processedUPNs:5} images", file=sf)
             if NoSpeciesGiven:
-                 logger.info(f"No Species name specified for {NoSpeciesGiven:5} ({int(float(NoSpeciesGiven)/float(processedUPNs)*100)}%) of all images", file=sf)
+                print(f"No Species name specified for {NoSpeciesGiven:5} ({int(float(NoSpeciesGiven)/float(processedUPNs)*100)}%) of all images", file=sf)
             else:
-                logger.info(f"Species name specified for all {processedUPNs} images", file=sf)
-            logger.info(f"JPG specified for             {JPGpresent:5}  ({int(float(JPGpresent)/float(processedUPNs)*100)}%) of all images", file=sf)
-            logger.info(f"Species information added for {processedUPNs-NoSpeciesGiven:5} pictures.", file=sf)
-            logger.info(f"Interesting or Good quality   {GoodImage:5} ({int(float(GoodImage)/float(processedUPNs)*100)}%)", file=sf)
-            logger.info(f"Duplicate or bad quality      {BadOrDuplicate:5} ({int(float(BadOrDuplicate)/float(processedUPNs)*100)}%)", file=sf)
-            logger.info(f"No color label rating set     {NoColorLabel:5} ({int(float(NoColorLabel)/float(processedUPNs)*100)}%)", file=sf)
+                print(f"Species name specified for all {processedUPNs} images", file=sf)
+            print(f"JPG specified for             {JPGpresent:5}  ({int(float(JPGpresent)/float(processedUPNs)*100)}%) of all images", file=sf)
+            print(f"Species information added for {processedUPNs-NoSpeciesGiven:5} pictures.", file=sf)
+            print(f"Interesting or Good quality   {GoodImage:5} ({int(float(GoodImage)/float(processedUPNs)*100)}%)", file=sf)
+            print(f"Duplicate or bad quality      {BadOrDuplicate:5} ({int(float(BadOrDuplicate)/float(processedUPNs)*100)}%)", file=sf)
+            print(f"No color label rating set     {NoColorLabel:5} ({int(float(NoColorLabel)/float(processedUPNs)*100)}%)", file=sf)
 
             # verify if JPGs are present for each species
             if len(SpeciesJPGCount) > 0:
-                logger.info("\nSpecies specified in this dir:\n", file=sf)
-                logger.info(f" #Raw  #JPG  Best Color    old Name                             (Engels/Nederlands)", file=sf)
+                print("\nSpecies specified in this dir:\n", file=sf)
+                print(f" #Raw  #JPG  Best Color    old Name                             (Engels/Nederlands)", file=sf)
                 for species in SpeciesJPGCount:
                     pictures, jpgcount, starred, yellow_or_red = SpeciesJPGCount[species]
                     knownjpg = sp.species_dict[species]['iPicturesWithJPGsCollection']
-                    logger.info(f"{pictures:5} {jpgcount:5} {starred:5} {yellow_or_red:5} {knownjpg:6} {species:32} ({sp.species_dict[species]['EnglishName']} / {sp.species_dict[species]['DutchName']})", file=sf)
+                    print(f"{pictures:5} {jpgcount:5} {starred:5} {yellow_or_red:5} {knownjpg:6} {species:32} ({sp.species_dict[species]['EnglishName']} / {sp.species_dict[species]['DutchName']})", file=sf)
 
-            logger.info("")
     return 0
 
 def main(args, config):
@@ -437,8 +463,6 @@ def main(args, config):
     # Also update counters while we are at it, for all pictures, also the ones without JPGs
     if addPicturesToSpecies(sp, RepositoryPictureCount, SpeciesDebug) > 0: return
 
-    if addMetricsToLog(sp, RepositoryPictureCount) > 0: return
-
     # Write Picture CSV file
     picturefilename = MyProject.getMetaDirReview() + "data_pictures.csv"
     with pictures_out_csvfile as csvfile:
@@ -456,6 +480,8 @@ def main(args, config):
     # also create summarizing species, when more counters are added later
     sc.updateSpeciesCollection(metadatadir + "active/speciescollection.csv")  
     sp.writeSpeciesInfo(MyProject.getMetaDirReview()+"species.csv", False)
+    
+    if addMetricsToLog(sp, RepositoryPictureCount, MyProject.getMetaDirReview()+"stats report " + MyProject.ProjectName() + ".txt") > 0: return
 
     # logger.info(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
     # totaltime = time.time() - starttime      

@@ -29,9 +29,12 @@ global online
 
 def getUTF8(blogconfig, ansistring):
     workstr = blogconfig.get("blog_text", ansistring)
-    workstr = workstr.encode('latin1').decode('utf-8')
-    workstr = workstr.replace("<female>", "♀")
-    workstr = workstr.replace("<male>", "♂")        
+    try:
+        workstr = workstr.encode('latin1').decode('utf-8')          # we should validate this upon input
+        workstr = workstr.replace("<female>", "♀")
+        workstr = workstr.replace("<male>", "♂")
+    except:
+        pass  # too bad, we tried
     return workstr
 
 def main(args, config):
@@ -47,9 +50,9 @@ def main(args, config):
     sp = ghexif.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)   
 
-    files, pictures = MyProject.readProject()
+    files, pictures, from_time, last_time = MyProject.readProject()
 
-    thissteptime = time.time()
+    thissteptime = time.time() 
 
     bloginifile = MyProject.getProjectPath() + "/blog.ini"
     if os.path.exists(bloginifile):
