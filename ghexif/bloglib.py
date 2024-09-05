@@ -164,7 +164,7 @@ class Blog:
         # 1. get the file from disk first
         try:
             with io.open(self.getBlogAdminFile(), mode="r", newline="", encoding='utf-8') as csvfile:
-                reader = csv.DictReader(csvfile, quoting=csv.QUOTE_STRINGS, delimiter=';')
+                reader = csv.DictReader(csvfile, delimiter=';')
                 #fieldnames=self.new_blog_row.keys(), 
                 for row in reader:
                     if row['blog'] != "":
@@ -197,7 +197,7 @@ class Blog:
         print(f'Write all blog data in CSV file "{self.getBlogAdminFile()}".')
         with open(self.getBlogAdminFile(), "w", newline="", encoding='utf-8') as csvfile:
             # needed to get column in order          
-            writer = csv.DictWriter(csvfile, fieldnames=self.new_blog_row.keys(), quoting=csv.QUOTE_STRINGS, delimiter=';')
+            writer = csv.DictWriter(csvfile, fieldnames=self.new_blog_row.keys(), delimiter=';')
             writer.writeheader()
 
             for blogitem in self.blog_dict:
