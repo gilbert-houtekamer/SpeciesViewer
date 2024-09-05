@@ -9,6 +9,7 @@
 !species-date.csv
 !installation files/*.csv
 !installation files/*.ini
+data/repositories/repo*
 
 ghconfig.ini
 

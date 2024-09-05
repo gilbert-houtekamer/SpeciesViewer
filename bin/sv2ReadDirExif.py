@@ -136,9 +136,15 @@ def main(args, config):
 if __name__ == "__main__":
     # get commandline parameters
     parser = argparse.ArgumentParser(description="sv2ReadDirExif.")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=os.environ.get("SVCONFIG", "svconfig.ini"),
+        help="Module Configuration File",
+    )
     args = parser.parse_args()
     # get configuration
-    INI_LOCATION = "svconfig.ini"
+    INI_LOCATION = args.config
     config = configparser.ConfigParser()
     config.read(INI_LOCATION)
     # init the logging subsystem

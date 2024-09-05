@@ -7,31 +7,28 @@ import os
 import sys
 import configparser
 import time
-# relative to .py file
-INI_LOCATION = "svconfig.ini"
+import logging
+import argparse
 
-scriptpath = os.path.dirname(__file__)
-modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-os.chdir(modpath)
-sys.path.append(modpath)
+# add directory to python path (only when run as executable)
+if __name__ == "__main__":
+    scriptpath = os.path.dirname(__file__)
+    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
+    os.chdir(modpath)
+    sys.path.append(modpath)
 
 import ghexif
 import ghexif.projectlib
 import ghexif.specieslib
 import ghexif.speciesclassification
 
-# read parameters, but will be overwritten probably
-def readConfig():
-    config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
-    return config
+logger = logging.getLogger(__name__)
 
-def main(args):
+def main(args, config):
     global starttime, SpeciesDebug
     starttime = time.time()
     SpeciesDebug = 0        # default   
 
-    config = readConfig()
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
 
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
@@ -71,12 +68,31 @@ def main(args):
     # print(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
     totaltime = time.time() - starttime      
     print(f'Total time for all other work {totaltime:.1f} seconds.')
- 
 
 if __name__ == "__main__":
-    # get commandline parameters and mix everything
-    parser = argparse.ArgumentParser(description="Handle photos.")
+    # get commandline parameters
+    parser = argparse.ArgumentParser(description="sv01addspecies")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=os.environ.get("SVCONFIG", "svconfig.ini"),
+        help="Module Configuration File",
+    )
     parser.add_argument(
         "--dir", type=str, default=os.path.join(modpath, "data"), help="foto directory"
     )
-    main(parser.parse_args())
+    args = parser.parse_args()
+    # get configuration
+    INI_LOCATION = args.config
+    config = configparser.ConfigParser()
+    config.read(INI_LOCATION)
+    # init the logging subsystem
+    logging.basicConfig(level=logging.INFO)
+    # call the actual code
+    try:
+        main(args, config)
+    except Exception as e:
+        logger.warning(f"sv01addspecies failed: {e}")
+    else:
+        logger.info("sv01addspecies succeeded")
+
