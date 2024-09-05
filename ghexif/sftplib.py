@@ -2,6 +2,8 @@ import pysftp
 from urllib.parse import urlparse
 import os
 import logging
+import warnings
+warnings.filterwarnings('ignore','.*Failed to load HostKeys.*')
 logger = logging.getLogger(__name__)
 
 
@@ -25,7 +27,7 @@ class Sftp:
 
         try:
             cnopts = pysftp.CnOpts()
-            cnopts.hostkeys = None            
+            cnopts.hostkeys = None
             # Get the sftp connection object
             self.connection = pysftp.Connection(
                 host=self.hostname,

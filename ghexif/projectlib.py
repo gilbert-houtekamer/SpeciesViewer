@@ -82,14 +82,14 @@ class Project:
         return self.projectName
     # make a directory for pictures    
     def getMetaDir(self):
-        return self.Repository + 'metadata/'     
+        return os.path.join(self.Repository, 'metadata/')
     def getMetaDirReview(self):
-        return self.Repository + 'metadata/review/' + self.projectName + "/" 
+        return os.path.join(self.Repository, 'metadata/review/', self.projectName) + os.path.pathsep
     # references to the Web
     def getBiotaDir(self):
-        return self.Repository + 'web/'
+        return os.path.join(self.Repository, 'web/')
     def getBiotaBlogDir(self):                          # points to project on disk
-        return self.Repository + 'web/biotablog/'
+        return os.path.join(self.Repository, 'web/biotablog/')
     def setAllOrNew(self, all_or_new):
         self.all_or_new = all_or_new
     def getBiotaAllorNewDir(self):
@@ -101,12 +101,12 @@ class Project:
     def getBiotaWebRoot(self):
         return self.BiotaWebRoot
     def getBiotaBlogWeb(self):
-        return self.BiotaWebRoot + 'biotablog/' 
+        return os.path.join(self.BiotaWebRoot, 'biotablog/')
     # reference to installed software
     def HTMLDirectory(self):
-        return self.modpath + "/HTMLtemplates/"
+        return os.path.join(self.modpath, "/HTMLtemplates/")
     def ReviewFrozen(self):
-        return self.Repository + 'metadata/review/' + self.projectName + "/frozen/"
+        return os.path.join(self.Repository, 'metadata/review/', self.projectName, "/frozen/")
     # Variables in passable way 
     # species_dict (read-only)
     def getSpeciesCount(self, species):
