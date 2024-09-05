@@ -301,11 +301,13 @@ class Project:
         return
     
     # Intro pages, can be used generically
+    # 
     def makeIntro(self, simplepage):
         speciesOverview = self.getTemplateLines(simplepage + ".html")
         with open((self.getBiotaDir() + simplepage + ".html").lower(), "w", encoding='UTF-8') as IntroFile:
             for templateline in speciesOverview:
-                line = getTemplateOutputString(self, self.sp.species_dict["biota"], '', '', templateline.rstrip('\n'))
+                species = self.sp.species_dict["biota"] if self.sp != None else ""
+                line = getTemplateOutputString(self, species, '', '', templateline.rstrip('\n'))
                 print(line, file=IntroFile)
         
             IntroFile.close()  

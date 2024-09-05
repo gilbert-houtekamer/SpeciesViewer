@@ -75,13 +75,13 @@ def main(args, config):
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     # create master
-    # ToDo: MyProject.makeIntro('intro-link-nl')
-    # ToDo: MyProject.makeIntro('intro-link-en')
+    MyProject.makeIntro('intro-link-nl')
+    MyProject.makeIntro('intro-link-en')
     # now add the files
     def copyMissingLinkPages(directory, exist_ok=True):
         os.makedirs(os.path.join(NEW_DB_TREE,"web",directory), exist_ok=True)
-        # ToDo shutil.copy(os.path.join(NEW_DB_TREE,"web/intro-link-nl.csv"), NEW_DB_TREE+"web" + directory + "/intro-link-nl.csv")
-        # ToDo shutil.copy(os.path.join(NEW_DB_TREE,"web/intro-link-en.csv"), NEW_DB_TREE+"web" + directory + "/intro-link-en.csv")
+        shutil.copy(os.path.join(NEW_DB_TREE,"web/intro-link-nl.html"), NEW_DB_TREE+"web/" + directory + "/intro-link-nl.html")
+        shutil.copy(os.path.join(NEW_DB_TREE,"web/intro-link-en.html"), NEW_DB_TREE+"web/" + directory + "/intro-link-en.html")
         return
     # copy files - directories first
     copyMissingLinkPages("biota/animalia", exist_ok=True)

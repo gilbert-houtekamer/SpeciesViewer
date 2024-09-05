@@ -130,7 +130,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
     kingdom_local = {}
     # default output
     workstr = ""
-    if species_param != None:
+    if species_param != None and species_param != '':
         if species_param['Level'] == Level.KINGDOM:
             kingdom_local = species_param
             species_local = ""
