@@ -392,7 +392,8 @@ def addMetricsToLog(sp, firstUPNtoProcess, filename):
                 for species in SpeciesJPGCount:
                     pictures, jpgcount, starred, yellow_or_red = SpeciesJPGCount[species]
                     knownjpg = sp.species_dict[species]['iPicturesWithJPGsCollection']
-                    print(f"{pictures:5} {jpgcount:5} {starred:5} {yellow_or_red:5} {knownjpg:6} {species:32} ({sp.species_dict[species]['EnglishName']} / {sp.species_dict[species]['DutchName']})", file=sf)
+                    print(f"{pictures:5} {jpgcount:5} {starred:5} {yellow_or_red:5} {knownjpg:6} {species:32} ({sp.species_dict[species]['EnglishName']
+                                                                        } / {sp.species_dict[species]['DutchName']})", file=sf)
 
     return 0
 
@@ -418,14 +419,14 @@ def main(args, config):
     # check if the output can be written, avoid annoying wait
     picturefilename = MyProject.getMetaDirReview()
     try:
-        pictures_out_csvfile = open(picturefilename + "data_pictures.csv", "w", encoding='utf-8', newline="")
+        pictures_out_csvfile = open(os.path.join(picturefilename, "data_pictures.csv"), "w", encoding='utf-8', newline="")
     except:
-        raise SVException(f"Picture file ({picturefilename + 'data_pictures.csv'}) is locked by (most likely) Excel, please close it in Excel and re-run.")
+        raise SVException(f"Picture file ({os.path.join(picturefilename, 'data_pictures.csv')}) is locked by (most likely) Excel, please close it in Excel and re-run.")
     try:
-        species_out_csvfile = open(picturefilename + "species.csv", "w", encoding='utf-8', newline="")
+        species_out_csvfile = open(os.path.join(picturefilename, "species.csv"), "w", encoding='utf-8', newline="")
         species_out_csvfile.close()
     except:
-        raise SVException(f"Picture file ({picturefilename + 'species.csv'}) is locked by (most likely) Excel, please close it in Excel and re-run.")
+        raise SVException(f"Picture file ({os.path.join(picturefilename, 'species.csv')}) is locked by (most likely) Excel, please close it in Excel and re-run.")
     #logger.info(f"Species file ({MyProject.getMetaDirReview()+"species.csv"}) is locked by (most likely) Excel, please close it in Excel and re-run.")
 
     # read the list with all pre-defined species
@@ -441,7 +442,7 @@ def main(args, config):
     # RepositoryPictureCount = 0
 
     # read new files from project to review
-    read_file(MyProject.getMetaDirReview() + "data_files.csv")
+    read_file(os.path.join(MyProject.getMetaDirReview(), "data_files.csv"))
     logger.info(f"Read all new data from the in {time.time()-starttime:.1f} seconds.")
     thissteptime = time.time()   
 
@@ -466,7 +467,7 @@ def main(args, config):
     if addPicturesToSpecies(sp, RepositoryPictureCount, SpeciesDebug) > 0: return
 
     # Write Picture CSV file
-    picturefilename = MyProject.getMetaDirReview() + "data_pictures.csv"
+    picturefilename = os.path.join(MyProject.getMetaDirReview(), "data_pictures.csv")
     with pictures_out_csvfile as csvfile:
         logger.info(f'Write Picture data CSV file {picturefilename}.')
         # needed to get column in order
@@ -481,9 +482,10 @@ def main(args, config):
     
     # also create summarizing species, when more counters are added later
     sc.updateSpeciesCollection(metadatadir + "active/speciescollection.csv")  
-    sp.writeSpeciesInfo(MyProject.getMetaDirReview()+"species.csv", False)
+    sp.writeSpeciesInfo(os.path.join(MyProject.getMetaDirReview(), "species.csv"), False)
     
-    if addMetricsToLog(sp, RepositoryPictureCount, MyProject.getMetaDirReview()+"stats report " + MyProject.ProjectName() + ".txt") > 0: return
+    if addMetricsToLog(sp, RepositoryPictureCount, 
+                       os.path.join(MyProject.getMetaDirReview(), "stats report " + MyProject.ProjectName() + ".txt")) > 0: return
 
     # logger.info(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
     # totaltime = time.time() - starttime      

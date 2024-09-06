@@ -26,6 +26,7 @@ def main(args, config):
     NEW_DB_TREE = config.get("repository","BiotaDatebase")    # "e:/test3/SpeciesViewDB/"
     WEB_TREE = config.get("repository","BiotaWebRoot")
 
+    logger.info("sv1MakeReposity: define repository and disk and Web.")
     os.makedirs(NEW_DB_TREE, exist_ok=True)               # root for data, metadata and web contents
     #
     # root for data repository with all pictures (will be very big)
@@ -44,14 +45,22 @@ def main(args, config):
 
     initspeciesdir = os.path.join(NEW_DB_TREE,"metadata/initialize")
     os.makedirs(initspeciesdir, exist_ok=True)
-    shutil.copy(MY_GHEXIF_DIR+'/installation files/empty_species.csv', initspeciesdir+'empty_species.csv')
-    shutil.copy(MY_GHEXIF_DIR+'/installation files/empty_species.csv', NEW_DB_TREE+'metadata/active/species.csv')
-    shutil.copy(MY_GHEXIF_DIR+'/installation files/initial_speciescollection.csv', initspeciesdir+'initial_speciescollection.csv')
-    shutil.copy(MY_GHEXIF_DIR+'/installation files/initial_speciescollection.csv', NEW_DB_TREE+'metadata/active/speciescollection.csv')
-    shutil.copy(MY_GHEXIF_DIR+'/installation files/empty_data_files.csv', initspeciesdir+'empty_data_files.csv')
-    shutil.copy(MY_GHEXIF_DIR+'/installation files/empty_data_files.csv', NEW_DB_TREE+'metadata/active/data_files.csv')
-    shutil.copy(MY_GHEXIF_DIR+'/installation files/empty_data_pictures.csv', initspeciesdir+'empty_data_pictures.csv')
-    shutil.copy(MY_GHEXIF_DIR+'/installation files/empty_data_pictures.csv', NEW_DB_TREE+'metadata/active/data_pictures.csv')
+    shutil.copy(os.path.join(MY_GHEXIF_DIR, 'installation files/empty_species.csv'), 
+                os.path.join(initspeciesdir, 'empty_species.csv'))
+    shutil.copy(os.path.join(MY_GHEXIF_DIR, 'installation files/empty_species.csv'), 
+                os.path.join(NEW_DB_TREE, 'metadata/active/species.csv'))
+    shutil.copy(os.path.join(MY_GHEXIF_DIR, 'installation files/initial_speciescollection.csv'), 
+                os.path.join(initspeciesdir, 'initial_speciescollection.csv'))
+    shutil.copy(os.path.join(MY_GHEXIF_DIR, 'installation files/initial_speciescollection.csv'), 
+                os.path.join(NEW_DB_TREE, 'metadata/active/speciescollection.csv'))
+    shutil.copy(os.path.join(MY_GHEXIF_DIR, 'installation files/empty_data_files.csv'), 
+                os.path.join(initspeciesdir, 'empty_data_files.csv'))
+    shutil.copy(os.path.join(MY_GHEXIF_DIR, 'installation files/empty_data_files.csv'), 
+                os.path.join(NEW_DB_TREE, 'metadata/active/data_files.csv'))
+    shutil.copy(os.path.join(MY_GHEXIF_DIR, 'installation files/empty_data_pictures.csv'), 
+                os.path.join(initspeciesdir, 'empty_data_pictures.csv'))
+    shutil.copy(os.path.join(MY_GHEXIF_DIR, 'installation files/empty_data_pictures.csv'), 
+                os.path.join(NEW_DB_TREE, 'metadata/active/data_pictures.csv'))
 
     # the web site is first create locally
     # copy of the web site and directory for new files just frozen
@@ -80,8 +89,10 @@ def main(args, config):
     # now add the files
     def copyMissingLinkPages(directory, exist_ok=True):
         os.makedirs(os.path.join(NEW_DB_TREE,"web",directory), exist_ok=True)
-        shutil.copy(os.path.join(NEW_DB_TREE,"web/intro-link-nl.html"), NEW_DB_TREE+"web/" + directory + "/intro-link-nl.html")
-        shutil.copy(os.path.join(NEW_DB_TREE,"web/intro-link-en.html"), NEW_DB_TREE+"web/" + directory + "/intro-link-en.html")
+        shutil.copy(os.path.join(NEW_DB_TREE,"web/intro-link-nl.html"), 
+                    os.path.join(NEW_DB_TREE, "web", directory, "intro-link-nl.html"))
+        shutil.copy(os.path.join(NEW_DB_TREE,"web/intro-link-en.html"), 
+                    os.path.join(NEW_DB_TREE, "web",  directory, "intro-link-en.html"))
         return
     # copy files - directories first
     copyMissingLinkPages("biota/animalia", exist_ok=True)
@@ -109,11 +120,11 @@ def main(args, config):
         sftp.safeMkdir(sftp.remotePrefix() + WEB_TREE + '/biotablog')
         sftp.safeMkdir(sftp.remotePrefix() + WEB_TREE + '/admin')
         sftp.safeMkdir(sftp.remotePrefix() + WEB_TREE + '/includes web')
-        fromdir = NEW_DB_TREE + "web/includes web/"
+        fromdir = os.path.join(NEW_DB_TREE, "web/includes web/")
         towebdir = sftp.remotePrefix() + WEB_TREE + '/includes web/'
         sftp.put_r_portable(fromdir, towebdir, preserve_mtime=True)
         # untested
-        fromdir = NEW_DB_TREE + "web/biota/"
+        fromdir = os.path.join(NEW_DB_TREE, "web/biota/")
         towebdir = sftp.remotePrefix() + WEB_TREE + '/biota/'
         sftp.put_r_portable(fromdir, towebdir, preserve_mtime=True)
         sftp.disconnect()
@@ -140,5 +151,5 @@ if __name__ == "__main__":
     except Exception as e:
         logger.warning(f"sv1MakeReposity failed: {e}")
     else:
-        logger.info("sv1MakeReposity succeeded")
+        logger.info("sv1MakeReposity succeeded.")
 

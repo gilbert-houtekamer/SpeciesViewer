@@ -57,7 +57,7 @@ def main(args, config):
  
         datafilelocation = MyProject.getMetaDirReview()
         os.makedirs(datafilelocation, exist_ok=True) 
-        datafilelocation += "data_files.csv"
+        datafilelocation = os.path.join(datafilelocation, "data_files.csv")
 
         with open(datafilelocation, "w", newline="") as csvfile:
             metadatareadertime = time.time() - starttime

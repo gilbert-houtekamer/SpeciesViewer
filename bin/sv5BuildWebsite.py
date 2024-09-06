@@ -53,7 +53,9 @@ def main(args, config):
     sc = ghexif.speciesclassification.SpeciesClassification(MyProject)
     MyProject.registerSpeciesClassification(sc)
     sp = ghexif.specieslib.Species(MyProject)
-    MyProject.registerSpecies(sp)   
+    MyProject.registerSpecies(sp)
+
+    logger.info(f"sv5BuildWebsite: Add new species for project {MyProject.ProjectName()} on local copy on Windows")
 
     MyProject.readProject()
     thissteptime = time.time()     

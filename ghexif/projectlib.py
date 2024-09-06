@@ -87,7 +87,7 @@ class Project:
     def getMetaDir(self):
         return os.path.join(self.Repository, 'metadata/')
     def getMetaDirReview(self):
-        return os.path.join(self.Repository, 'metadata/review/', self.projectName) + os.path.pathsep
+        return os.path.join(self.Repository, 'metadata/review/', self.projectName)
     # references to the Web
     def getBiotaDir(self):
         return os.path.join(self.Repository, 'web/')
@@ -107,9 +107,9 @@ class Project:
         return os.path.join(self.BiotaWebRoot, 'biotablog/')
     # reference to installed software
     def HTMLDirectory(self):
-        return os.path.join(self.modpath, "/HTMLtemplates/")
+        return os.path.join(self.modpath, "HTMLtemplates/")
     def ReviewFrozen(self):
-        return os.path.join(self.Repository, 'metadata/review/', self.projectName, "/frozen/")
+        return os.path.join(self.Repository, 'metadata' , 'review', self.projectName, 'frozen')
     # Variables in passable way 
     # species_dict (read-only)
     def getSpeciesCount(self, species):
@@ -162,7 +162,7 @@ class Project:
         starttime = time.time()
         metadatadir = self.getMetaDir()
         metadatadirreview = self.getMetaDirReview()
-        self.readSpeciesInfo(metadatadirreview + "species.csv", False)
+        self.readSpeciesInfo(os.path.join(metadatadirreview, "species.csv"), False)
         self.sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)
         
         read_file(metadatadir+"active/data_files.csv")
@@ -177,8 +177,8 @@ class Project:
         # read other files and pictures
         RepositoryFileCount = len(files_dict)
         RepositoryPictureCount = len(UniquePictureName_dict)
-        count, from_time, last_time = read_file(metadatadirreview+'data_files.csv')
-        read_pictures(metadatadirreview+'data_pictures.csv')      
+        count, from_time, last_time = read_file(os.path.join(metadatadirreview, 'data_files.csv'))
+        read_pictures(os.path.join(metadatadirreview, 'data_pictures.csv'))      
 
         logger.info(f"Read all new data from project in {time.time()-thissteptime:.1f} seconds.")
         return [RepositoryFileCount, RepositoryPictureCount, from_time, last_time]
@@ -235,7 +235,7 @@ class Project:
         try:    
             biota = self.getBiotaDir()
             # find or create directory with Windows API
-            directoryname = (self.getBiotaAllorNewDir() + species['TargetPath']).lower()
+            directoryname = os.path.join(self.getBiotaAllorNewDir(), species['TargetPath']).lower()
             os.makedirs(directoryname, exist_ok=True)
             # Dutch version
             language = self.getLanguage()
@@ -271,7 +271,7 @@ class Project:
             species = self.getSpecies(leaf)
             # create file in the species directory
             biota = self.getBiotaDir()
-            directoryname = (self.getBiotaAllorNewDir() + species['TargetPath']).lower()            
+            directoryname = os.path.join(self.getBiotaAllorNewDir(), species['TargetPath']).lower()            
             os.makedirs(directoryname, exist_ok=True)
             language = self.getLanguage()
             vogelsoortpage_lines = self.getTemplateLines("vogelsoortpage-" + language + ".html")

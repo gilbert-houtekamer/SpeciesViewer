@@ -54,7 +54,7 @@ def makeSpeciesDirectory(MyProject, leaf):
         if UniquePictureName_dict[picture]['WetSoortNaam'] == leaf:        # we want this
             for filename in UniquePictureName_dict[picture]['Files']:
                 try:
-                    logger.info(f"File {filename:40}: {files_dict[filename]['WindowsFileName']:64} to " + \
+                    print(f"File {filename:40}: {files_dict[filename]['WindowsFileName']:64} to " + \
                           f"{MyProject.getRepositoryPath()+UniquePictureName_dict[picture]['TargetPath']+files_dict[filename]['File:FileName']}",
                           file=debugfile)
                     sourcefile = files_dict[filename]['WindowsFileName']
@@ -89,7 +89,7 @@ def AppendChangedFileData(MyProject, firstNewFile):
     # Copy existing FileData 
     existing_file_data = MyProject.getMetaDir() + 'active/data_files.csv'
     targetpathbase = MyProject.getRepositoryPath()
-    datafilename = MyProject.ReviewFrozen() + "frozen_data_files.csv"     # the base our data
+    datafilename = os.path.join(MyProject.ReviewFrozen(), "frozen_data_files.csv")     # the base our data
     os.makedirs(MyProject.ReviewFrozen(), exist_ok=True)    
     shutil.copy(existing_file_data, datafilename)
     # Copy existing file data, now add other file records
@@ -115,7 +115,7 @@ def AppendChangedFileData(MyProject, firstNewFile):
 
 def AppendChangedPictureData(MyProject, firstNewPicture):
     existing_picture_data = MyProject.getMetaDir() + 'active/data_pictures.csv'    
-    picturename = MyProject.ReviewFrozen() + "frozen_data_pictures.csv"     # the base our data
+    picturename = os.path.join(MyProject.ReviewFrozen(), "frozen_data_pictures.csv")     # the base our data
     shutil.copy(existing_picture_data, picturename)
     with open(picturename, 'a', newline='', encoding='utf-8') as frozencsv:
         ordered_fieldnames = OrderedDict((field, None) for field in PICTURE_FIELDS)                 
@@ -129,7 +129,7 @@ def AppendChangedPictureData(MyProject, firstNewPicture):
 def writeDeleteList(deletelistfilename):
     with open(deletelistfilename, 'w', newline='', encoding='utf-8') as deletecsv:
         for fn in files_to_delete:
-            logger.info(f'"{fn}"', file=deletecsv)
+            print(f'"{fn}"', file=deletecsv)
     return
 
 def main(args, config):
@@ -146,6 +146,8 @@ def main(args, config):
     MyProject.registerSpeciesClassification(sc)
     sp = ghexif.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)   
+    
+    logger.info(f"sv6Freeze: Freeze data for project {MyProject.ProjectName()} on local copy on Windows")
 
     RepositoryFileCount, RepositoryPictureCount, from_time, last_time = MyProject.readProject()
   
@@ -158,7 +160,7 @@ def main(args, config):
     # logger.info(f"Will copy all files to destination.")
     debugfile = open("Species print.txt", "w")
     count = 0
-    logger.info(f"Debug enabled for Species copy.", file=debugfile)
+    print(f"Debug enabled for Species copy.", file=debugfile)
     # add new directories as needed, right in database
     MyProject.setLanguage('en')
     makeDirectories(MyProject, 'biota', 'New')
@@ -168,12 +170,12 @@ def main(args, config):
     MyProject.makeWebDirectories('biota', 'New')
 
     # write the list with files to delete
-    writeDeleteList(MyProject.ReviewFrozen() + "deletelist.csv")
+    writeDeleteList(os.path.join(MyProject.ReviewFrozen(), "deletelist.csv"))
     #logger.info(f"{count} files copied to species picture repository in {time.time() - starttime:.1f} seconds.")
     debugfile.close()   
     # simply append new files and pictures, based on the new files.
-    sp.writeSpeciesInfo(MyProject.ReviewFrozen() + "species.csv", commit_counters=True)
-    sc.updateSpeciesCollection(MyProject.ReviewFrozen() + "speciescollection.csv")  
+    sp.writeSpeciesInfo(os.path.join(MyProject.ReviewFrozen(), "species.csv"), commit_counters=True)
+    sc.updateSpeciesCollection(os.path.join(MyProject.ReviewFrozen(),"speciescollection.csv")) 
 
     totaltime = time.time() - starttime      
     logger.info(f'Total time for all other work {totaltime:.1f} seconds.')

@@ -443,7 +443,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                             workstr += getTemplateOutputString(MyProject, species_param, JPGname_no_path,
                                                                 UniquePictureName_dict[JPGname_no_path['UniquePictureName']], line)
                         picture = UniquePictureName_dict[JPGname_no_path['UniquePictureName']]
-                        targetstr =  BiotaDiskRoot + picture['TargetPath'] + picture['BestJPG']
+                        targetstr =  os.path.join(BiotaDiskRoot, picture['TargetPath'], picture['BestJPG'])
                         JPGname_no_path = files_dict[os.path.basename(JPGname)]
                         if not MyProject.getSkipJPGs():
                             shutil.copy(JPGname_no_path['WindowsFileName'], targetstr)
@@ -710,7 +710,7 @@ def addAllSpeciesPage(MyProject, speciesname, temptextfile):
                 #print(f"did file {speciesname} - leaf {leaf} level {species['Level']}")
             else:
                 textCreated = addAllSpeciesPage(MyProject, leaf, temptextfile)
-        print(f"Done     {speciesname} - leaf {leaf} level {species['Level']}")          
+        #print(f"Done     {speciesname} - leaf {leaf} level {species['Level']}")          
     return
 
 # create summary page, that should become Wordpress
