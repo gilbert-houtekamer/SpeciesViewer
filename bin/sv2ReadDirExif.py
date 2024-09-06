@@ -124,12 +124,16 @@ def main(args, config):
                         file_extension_count.get(extension[1:].lower(), 0) + 1
                     )
 
-    logger.info(f"\nThe files counted by filetype are:")
+    # give the filetype report ome space
+    logger.info("")
+    logger.info(f"The files counted by filetype are:")
     for extent, count in file_extension_count.items():
         logger.info(f"   {extent.upper()} files: {count}")
+    logger.info("")
+
     totaltime = time.time() - starttime
     logger.info(
-        f'\nCSV file written to {datafilelocation}, total time {totaltime:.1f} seconds.'
+        f'CSV file written to {datafilelocation}, total time {totaltime:.1f} seconds.'
     )
 
 

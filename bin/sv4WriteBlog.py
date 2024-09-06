@@ -48,7 +48,10 @@ def main(args, config):
     sc = ghexif.speciesclassification.SpeciesClassification(MyProject)
     MyProject.registerSpeciesClassification(sc)
     sp = ghexif.specieslib.Species(MyProject)
-    MyProject.registerSpecies(sp)   
+    MyProject.registerSpecies(sp)
+
+    logger.info(f"sv4WriteBlog: Create a blog for project {MyProject.ProjectName()}")
+
 
     files, pictures, from_time, last_time = MyProject.readProject()
 

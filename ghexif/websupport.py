@@ -4,6 +4,7 @@ import time
 import tempfile
 from datetime import datetime
 from operator import itemgetter
+import logging
 
 global config
 
@@ -12,6 +13,8 @@ from ghexif import files_dict, UniquePictureName_dict
 from ghexif.handling import UniquePictureName_dict
 from ghexif.specieslib import Level, computeRatingFile, getPictureAgeSexePlumage
 import ghexif.projectlib
+
+logger = logging.getLogger(__name__)
 
 ClassificationGroupName = ["Species","Family", "Order", "Class", "Phylum", "Kingdom", "Biota"]
 ClassificationGroupNameNL = ["Soort", "Familie", "Orde", "Klasse","Stam", "Rijk", "Biota"]
@@ -633,7 +636,8 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         else:
             return '<token ' + tokenno + '>'
     except:
-        print(f"{species_param['ScientificName']}:{'<Failed to handle token ' + tokenno + '>'}")
+
+        logger.info(f"{species_param['ScientificName']}:{'<Failed to handle token ' + tokenno + '>'}")
         return '<Failed to handle token '  + tokenno + '>'
 
 # logic selected species
@@ -784,5 +788,5 @@ def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
     if not MyProject.getSkipJPGs():
         shutil.copy(sourcestr, targetstr)
     if MyProject.getLanguage() == 'en':
-        print(f"Rated {species['currentHighestRating']:3}  {species['EnglishName']:32}  Species path {species['TargetPath']}")
+        logger.info(f"Rated {species['currentHighestRating']:3}  {species['EnglishName']:32}  Species path {species['TargetPath']}")
     return textCreated

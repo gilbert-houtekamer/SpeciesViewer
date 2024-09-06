@@ -2,6 +2,7 @@ import os
 import io
 import csv
 import time
+import logging
 from pygbif import species
 
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SPECIES_FIELDS
@@ -9,6 +10,8 @@ import ghexif
 import ghexif.projectlib
 
 from enum import Enum, auto
+
+logger = logging.getLogger(__name__)
 
 # Biota, Kingdom, Phylum, Class, Order, Family, Species
 class Level(Enum):
@@ -124,14 +127,14 @@ class SpeciesClassification:
                 if englishname not in self.english_dict:
                     self.english_dict[englishname] = ScientificName
         
-        print(f'Read {len(self.sc_dict)} predefined species from {speciesfilename}.')
+        logger.info(f'Read {len(self.sc_dict)} predefined species from {speciesfilename}.')
         
         return
 
     # save last version, always save last version under .csv_old  
     def writeSpeciesCollection(self, speciesfilename):
         # Write Picture CSV file
-        print(f'Write all species data CSV file "{speciesfilename}".')
+        logger.info(f'Write all species data CSV file "{speciesfilename}".')
         with open(speciesfilename, "w", newline="", encoding='utf-8') as csvfile:
             # needed to get column in order
             sc_headers = ['Level', 'ScientificName', 'DutchName', 'EnglishName', 'Up', 'Leaves']                 
@@ -306,9 +309,9 @@ class SpeciesClassification:
                 if gbif['matchType'] == 'EXACT' and gbif.get('species'):
                     scientificname = self.addSpecies(gbif).lower()
                     timesoort = time.time() - timesoort
-                    print(f'The species "{gbif["canonicalName"].lower()}" is found in the GBIF database in {timesoort:.3f} seconds, class {gbif["class"]} in {gbif["kingdom"]}.')
+                    logger.info(f'The species "{gbif["canonicalName"].lower()}" is found in the GBIF database in {timesoort:.3f} seconds, class {gbif["class"]} in {gbif["kingdom"]}.')
             except:
-                print(f'Timeout on internet connection')
+                logger.warning(f'Timeout on internet connection')
         elif not nested:
             # likely a list of variables, decode it
             if len(subject.split(','))>1:
@@ -330,7 +333,7 @@ class SpeciesClassification:
             
         if LookUpInGBIF and scientificname == "":
             timesoort = time.time() - timesoort
-            print(f"""The species "{subject}" is not found in the GBIF database as a scientific name, took {timesoort:.3f} seconds.""")    
+            logger.info(f"""The species "{subject}" is not found in the GBIF database as a scientific name, took {timesoort:.3f} seconds.""")    
 
         return scientificname
 

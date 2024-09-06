@@ -5,6 +5,7 @@ import csv
 from datetime import datetime, date
 from collections import OrderedDict
 import ghexif.projectlib
+import logging
 
 from ghexif import files_dict
 import ghexif
@@ -16,6 +17,8 @@ from ghexif.websupport import getTemplateOutputString
 import ghexif.translatelib
 from ghexif.handling import parseListFromCSV
 from ghexif.specieslib import Level
+
+logger = logging.getLogger(__name__)
 
 class Blog:
     blog_dict = {} 
@@ -194,7 +197,7 @@ class Blog:
     # write back 
     def write_BlogAdmin(self):
         # Write Picture CSV file
-        print(f'Write all blog data in CSV file "{self.getBlogAdminFile()}".')
+        logger.info(f'Write all blog data in CSV file "{self.getBlogAdminFile()}".')
         with open(self.getBlogAdminFile(), "w", newline="", encoding='utf-8') as csvfile:
             # needed to get column in order          
             writer = csv.DictWriter(csvfile, fieldnames=self.new_blog_row.keys(), delimiter=';')

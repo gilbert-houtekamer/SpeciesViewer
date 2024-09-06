@@ -318,7 +318,7 @@ def addPicturesToSpecies(sp, firstUPNtoProcess, SpeciesDebug):
 def addMetricsToLog(sp, firstUPNtoProcess, filename):
     MyProject = sp.getMP()
     # open file
-    print(f'Write report to "{filename}"')
+    logger.info(f'Write report to "{filename}"')
     with open(filename, "w", newline="", encoding='utf-8') as sf:
         # Add properties for picture
         processedUPNs = 0
@@ -413,7 +413,9 @@ def main(args, config):
     sp = ghexif.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)   
 
-    # check if the output can be written, aavoid annoying wait
+    # start message
+    logger.info(f"v3WritePictures: Read file CSV and create enriched species data for each picture.")
+    # check if the output can be written, avoid annoying wait
     picturefilename = MyProject.getMetaDirReview()
     try:
         pictures_out_csvfile = open(picturefilename + "data_pictures.csv", "w", encoding='utf-8', newline="")
