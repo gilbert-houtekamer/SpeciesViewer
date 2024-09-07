@@ -392,8 +392,7 @@ def addMetricsToLog(sp, firstUPNtoProcess, filename):
                 for species in SpeciesJPGCount:
                     pictures, jpgcount, starred, yellow_or_red = SpeciesJPGCount[species]
                     knownjpg = sp.species_dict[species]['iPicturesWithJPGsCollection']
-                    print(f"{pictures:5} {jpgcount:5} {starred:5} {yellow_or_red:5} {knownjpg:6} {species:32} ({sp.species_dict[species]['EnglishName']
-                                                                        } / {sp.species_dict[species]['DutchName']})", file=sf)
+                    print(f"{pictures:5} {jpgcount:5} {starred:5} {yellow_or_red:5} {knownjpg:6} {species:32} ({sp.species_dict[species]['EnglishName']} / {sp.species_dict[species]['DutchName']})", file=sf)
 
     return 0
 

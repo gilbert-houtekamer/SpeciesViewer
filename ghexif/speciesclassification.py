@@ -28,6 +28,7 @@ class SpeciesClassification:
     sc_dict = {}
     dutch_dict = {}         # all species we have the Dutch name for, points to scientific name
     english_dict = {}       # all species we have the English name for, points to scientific name
+    names_not_found_list = []
 
     DUMMYSPECIES = ['vogel', 'vogels', 'bird', 'libel', 'libellen', 'onbekend', 
                     'rups', 'panama', 'californie', 'onbekend', 'sprinkhaan', 'turkey',
@@ -305,11 +306,17 @@ class SpeciesClassification:
             return self.english_dict[subject]
         elif LookUpInGBIF and (',' not in subject):
             try: 
-                gbif = species.name_backbone(name=subject)
-                if gbif['matchType'] == 'EXACT' and gbif.get('species'):
-                    scientificname = self.addSpecies(gbif).lower()
-                    timesoort = time.time() - timesoort
-                    logger.info(f'The species "{gbif["canonicalName"].lower()}" is found in the GBIF database in {timesoort:.3f} seconds, class {gbif["class"]} in {gbif["kingdom"]}.')
+                # check if we already searched for this species
+                if subject not in self.names_not_found_list:
+                    gbif = species.name_backbone(name=subject)
+                    if gbif['matchType'] == 'EXACT' and gbif.get('species'):
+                        scientificname = self.addSpecies(gbif).lower()
+                        timesoort = time.time() - timesoort
+                        logger.info(f'The species "{gbif["canonicalName"].lower()}" is found in the GBIF database in {timesoort:.3f} seconds, class {gbif["class"]} in {gbif["kingdom"]}.')
+                    else:
+                        timesoort = time.time() - timesoort
+                        logger.info(f"""The species "{subject}" is not found in the GBIF database as a scientific name, took {timesoort:.3f} seconds.""")
+                        self.names_not_found_list.append(subject)
             except:
                 logger.warning(f'Timeout on internet connection')
         elif not nested:
@@ -331,10 +338,6 @@ class SpeciesClassification:
                             #     print(f"In {subject.split(',')} - Found {subjects} -> {scientificname}")
                             return scientificname
             
-        if LookUpInGBIF and scientificname == "":
-            timesoort = time.time() - timesoort
-            logger.info(f"""The species "{subject}" is not found in the GBIF database as a scientific name, took {timesoort:.3f} seconds.""")    
-
         return scientificname
 
     # See if we recognize the species from either languages, if not call GBIF
