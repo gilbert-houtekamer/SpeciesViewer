@@ -152,6 +152,8 @@ if __name__ == "__main__":
     INI_LOCATION = args.config
     config = configparser.ConfigParser()
     config.read(INI_LOCATION)
+    # init the logging subsystem
+    logging.basicConfig(level=logging.INFO)    
     # call the actual code
     try:
         main(args, config)
