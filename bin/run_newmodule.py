@@ -84,6 +84,6 @@ if __name__ == "__main__":
         statemachine.updateState(parser.description, False, e.args[0])
     else:
         logger.info(f"{parser.description} succeeded")
-        statemachine.updataState(parser.description, True, "Succesfully run.")
+        statemachine.updateState(parser.description, True, "Succesfully run.")
     # Store state in statemachine file for this project
     statemachine.writeState()

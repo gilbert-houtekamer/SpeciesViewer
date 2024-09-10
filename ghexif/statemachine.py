@@ -119,7 +119,7 @@ class StateMachine:
             'sv7WriteCommit'  : self.Taskstate["WriteCommit"][0]
         }
         state['lastrunmessages'] = {
-            'sv1MakeRepositoryMessage'  : "sv1MakeReposity succeeded.",
+            'sv1MakeRepositoryMessage'  : "MakeRepository succeeded.",
             'sv2ReadDirExifMessage'  : self.Taskstate["ReadDirExif"][1],
             'sv3WritePicturesMessage'  : self.Taskstate["WritePictures"][1],
             'sv4WriteBlogMessage'  : self.Taskstate["WriteBlog"][1],
@@ -129,7 +129,7 @@ class StateMachine:
         }    
 
         with open(statemachine, 'w') as statefile:
-            statefile.write('# This is an automatically generated file to track state for SpeciesViwer\n')
+            statefile.write('# This is an automatically generated file to track state for SpeciesViewer\n')
             state.write(statefile)
         return
     

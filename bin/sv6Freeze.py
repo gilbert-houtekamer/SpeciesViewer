@@ -24,7 +24,8 @@ from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
 from ghexif.csv_columns import PICTURE_FIELDS
 from ghexif.handling import read_file, read_pictures
 from ghexif.specieslib import Level
-import ghexif.specieslib
+import ghexif.exceptions
+import ghexif.statemachine
 
 logger = logging.getLogger(__name__)
 files_to_delete = []
@@ -182,7 +183,7 @@ def main(args, config):
 
 if __name__ == "__main__":
     # get commandline parameters
-    parser = argparse.ArgumentParser(description="sv6Freeze.")
+    parser = argparse.ArgumentParser(description="Freeze")
     parser.add_argument(
         "--config",
         type=str,
@@ -194,10 +195,16 @@ if __name__ == "__main__":
     INI_LOCATION = args.config
     config = configparser.ConfigParser()
     config.read(INI_LOCATION)
+    # define state machine and see if we can run this step
+    statemachine = ghexif.statemachine.StateMachine(config.get("repository","BiotaDatebase"), config.get("project","PictureDirectory"))
     # call the actual code
     try:
         main(args, config)
     except Exception as e:
-        logger.warning(f"sv6Freeze failed: {e}")
+        logger.warning(f"{parser.description} failed: {e}")
+        statemachine.updateState(parser.description, False, e.args[0])
     else:
-        logger.info("sv6Freeze succeeded")
+        logger.info(f"{parser.description} succeeded")
+        statemachine.updateState(parser.description, True, "Succesfully run.")
+    # Store state in statemachine file for this project
+    statemachine.writeState()
