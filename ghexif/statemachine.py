@@ -4,6 +4,9 @@ import os
 import logging
 import configparser
 import logging
+from pathlib import Path
+
+from ghexif import SVException
 
 logger = logging.getLogger(__name__)
 
@@ -20,14 +23,16 @@ STATE_NAMES = [
 
 class StateMachine:
     Directory = None
+    Projectname = None
     Version = '0.0'
-    taskstate = {}
+    Taskstate = {}    
     
-    def __init__(self, directory):
-        if directory != None:
-            self.Directory = directory
-        return 
-    
+    def __init__(self, pictdir):
+        if pictdir != None and pictdir != '':
+            self.Directory = pictdir.replace('"', "").replace("'", "").replace('*','')
+            self.Project = Path(self.Directory).stem
+        return
+ 
     def getUTF8(self, state, ansistring):
         workstr = state.get("lastrunmessages", ansistring)
         try:
@@ -51,30 +56,30 @@ class StateMachine:
             state.read(statemachine)
             # code state
             # selectspecies = state.get("SpeciesViewer","version")
-            self.taskstate["MakeRepository"] = [state.getboolean("state","sv1MakeRepository"), 
+            self.Taskstate["MakeRepository"] = [state.getboolean("state","sv1MakeRepository"), 
                             self.getUTF8(state, "sv1MakeRepositoryMessage"), 
                             ["ReadDirExif"], []]       
-            self.taskstate["ReadDirExif"] = [state.getboolean("state","sv2ReadDirExif"), 
+            self.Taskstate["ReadDirExif"] = [state.getboolean("state","sv2ReadDirExif"), 
                             self.getUTF8(state, "sv2ReadDirExifMessage"), 
                             ["ReadDirExif", "WritePictures"], ["MakeRepository"]]
-            self.taskstate["WritePictures"] = [state.getboolean("state","sv3WritePictures"), 
+            self.Taskstate["WritePictures"] = [state.getboolean("state","sv3WritePictures"), 
                             self.getUTF8(state,"sv3WritePicturesMessage"), 
                             ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite"], ["ReadDirExif"]]
-            self.taskstate["WriteBlog"] = [state.getboolean("state","sv4WriteBlog"),
+            self.Taskstate["WriteBlog"] = [state.getboolean("state","sv4WriteBlog"),
                             self.getUTF8(state,"sv4WriteBlogMessage"), 
                             ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite"], ["ReadDirExif", "WritePictures"]]
-            self.taskstate["BuildWebsite"] = [state.getboolean("state","sv5BuildWebsite"),
+            self.Taskstate["BuildWebsite"] = [state.getboolean("state","sv5BuildWebsite"),
                             self.getUTF8(state,"sv5BuildWebsiteMessage"), 
                             ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite", "Freeze"], ["ReadDirExif", "WritePictures"]]
-            self.taskstate["Freeze"] = [state.getboolean("state","sv6Freeze"), 
+            self.Taskstate["Freeze"] = [state.getboolean("state","sv6Freeze"), 
                             self.getUTF8(state,"sv6FreezeMessage"), 
                             ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite", "Freeze", "WriteCommit"],
                             ["ReadDirExif", "WritePictures", "BuildWebsite"]]
-            self.taskstate["WriteCommit"] = [state.getboolean("state","sv7WriteCommit"), 
+            self.Taskstate["WriteCommit"] = [state.getboolean("state","sv7WriteCommit"), 
                             self.getUTF8(state,"sv7WriteCommitMessage"), 
                             ["ReadDirExif", "WritePictures"], ["ReadDirExif", "WritePictures", "BuildWebsite", "Freeze"]]
         else:
-            self.taskstate = {"MakeRepository" : [True, "", 
+            self.Taskstate = {"MakeRepository" : [True, "", 
                                                  ["ReadDirExif"], []],
                          "ReadDirExif" : [False, "",  
                                                ["ReadDirExif", "WritePictures"], ["MakeRepository"]],
@@ -93,7 +98,7 @@ class StateMachine:
                                               ["ReadDirExif", "WriteCommit"],
                                               ["ReadDirExif", "WritePictures", "BuildWebsite", "Freeze"]]
             }
-        return self.taskstate
+        return self.Taskstate
 
     def writeState(self):
         # 
@@ -104,21 +109,21 @@ class StateMachine:
         state['SpeciesViewer'] = {'version' : self.Version}
         state['state'] = {
             'sv1MakeRepository'  : True,
-            'sv2ReadDirExif'  : self.taskstate["ReadDirExif"][0],
-            'sv3WritePictures'  : self.taskstate["WritePictures"][0],
-            'sv4WriteBlog'  : self.taskstate["WriteBlog"][0],
-            'sv5BuildWebsite'  : self.taskstate["BuildWebsite"][0],
-            'sv6Freeze'  : self.taskstate["Freeze"][0],
-            'sv7WriteCommit'  : self.taskstate["WriteCommit"][0]
+            'sv2ReadDirExif'  : self.Taskstate["ReadDirExif"][0],
+            'sv3WritePictures'  : self.Taskstate["WritePictures"][0],
+            'sv4WriteBlog'  : self.Taskstate["WriteBlog"][0],
+            'sv5BuildWebsite'  : self.Taskstate["BuildWebsite"][0],
+            'sv6Freeze'  : self.Taskstate["Freeze"][0],
+            'sv7WriteCommit'  : self.Taskstate["WriteCommit"][0]
         }
         state['lastrunmessages'] = {
             'sv1MakeRepositoryMessage'  : "sv1MakeReposity succeeded.",
-            'sv2ReadDirExifMessage'  : self.taskstate["ReadDirExif"][1],
-            'sv3WritePicturesMessage'  : self.taskstate["WritePictures"][1],
-            'sv4WriteBlogMessage'  : self.taskstate["WriteBlog"][1],
-            'sv5BuildWebsiteMessage'  : self.taskstate["BuildWebsite"][1],
-            'sv6FreezeMessage'  : self.taskstate["Freeze"][1],
-            'sv7WriteCommitMessage'  : self.taskstate["WriteCommit"][1]
+            'sv2ReadDirExifMessage'  : self.Taskstate["ReadDirExif"][1],
+            'sv3WritePicturesMessage'  : self.Taskstate["WritePictures"][1],
+            'sv4WriteBlogMessage'  : self.Taskstate["WriteBlog"][1],
+            'sv5BuildWebsiteMessage'  : self.Taskstate["BuildWebsite"][1],
+            'sv6FreezeMessage'  : self.Taskstate["Freeze"][1],
+            'sv7WriteCommitMessage'  : self.Taskstate["WriteCommit"][1]
         }    
 
         with open(statemachine, 'w') as statefile:
@@ -126,16 +131,37 @@ class StateMachine:
             state.write(statefile)
         return
     
+    # see if the state can run
     def stateOKtorun(self, statetotest):
         # all pre-req must be met
-        for states in self.taskstate[statetotest][3]:
-            if not self.taskstate[states][0]: 
+        for states in self.Taskstate[statetotest][3]:
+            if not self.Taskstate[states][0]: 
                 return False
         return True
+    
+    # we know that the step will fail, explain why and abort
+    def explainAbort(self, statetotest):
+        prereq = ""
+        missingcount = 0
+        # run through all pre-reqs
+        for states in self.Taskstate[statetotest][3]:
+            missingcount += 1
+            if not self.Taskstate[states][0]:
+                if prereq == "":
+                    prereq = states
+                else:
+                    prereq += ', ' + states
+        # report results niceline
+        prereq = ' and'.join(prereq.rsplit(',', 1))
+        if missingcount == 1: 
+            steps = 'step' 
+        else:
+            steps = 'steps'
+        raise SVException(f"Task {statetotest} cannot be run, need to run the {steps} {prereq} first.")
 
     
     def updateState(self, statejustdone, ok, lastmessage):
-        self.taskstate[statejustdone][0] = ok
-        self.taskstate[statejustdone][1] = lastmessage
+        self.Taskstate[statejustdone][0] = ok
+        self.Taskstate[statejustdone][1] = lastmessage
         return
     

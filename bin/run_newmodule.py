@@ -1,6 +1,7 @@
 # Process the EXIF metadata and analyze them per picture based on the UniquePictureName
 import argparse
 import csv
+import logging
 import os
 import sys
 import configparser
@@ -17,8 +18,7 @@ if __name__ == "__main__":
 
 import ghexif
 import ghexif.projectlib
-import ghexif.specieslib
-import ghexif.speciesclassification
+import ghexif.exceptions
 import ghexif.statemachine
 
 logger = logging.getLogger(__name__)
@@ -35,15 +35,22 @@ def main(args, config):
                                         config.get("repository","BiotaWebRoot"))
 
 # new test
-    statemachine = ghexif.statemachine.StateMachine(MyProject.getProjectPath())
+    statemachine = ghexif.statemachine.StateMachine(config.get("project","PictureDirectory"))
     taskstate = statemachine.readState()
-    ok = statemachine.stateOKtorun("ReadDirExif")
-    print(f'statemachine.stateOKtorun("ReadDirExif") {ok}')
-    statemachine.updateState("ReadDirExif", ok, "Last words from her wisdom.")
+    if not statemachine.stateOKtorun("ReadDirExif"):
+        statemachine.explainAbort("ReadDirExif")
+
+
+    # normal mainline 
+    print(f'statemachine.stateOKtorun("ReadDirExif") {True}')
+    statemachine.updateState("ReadDirExif", True, "Last words from her wisdom.")
     print(f'statemachine.updateState("ReadDirExif", ok, "Last words from her wisdom.")')
     
     ok = statemachine.stateOKtorun("Freeze")
-    print(f'statemachine.stateOKtorun("Freeze") {ok}')    
+    print(f'statemachine.stateOKtorun("Freeze") {ok}') 
+    if not statemachine.stateOKtorun("Freeze"):
+        statemachine.explainAbort("Freeze")
+       
     if taskstate != {}:
         statemachine.writeState()
 
@@ -70,10 +77,12 @@ if __name__ == "__main__":
     config.read(INI_LOCATION)
     # init the logging subsystem
     logging.basicConfig(level=logging.INFO)
+    # define state machine and see if we run this step
+
     # call the actual code
     try:
         main(args, config)
     except Exception as e:
         logger.warning(f"run_newmodule failed: {e}")
     else:
-        logger.info("sv01addspecies succeeded")
+        logger.info("run_newmodule succeeded")
