@@ -27,10 +27,11 @@ class StateMachine:
     Version = '0.0'
     Taskstate = {}    
     
-    def __init__(self, pictdir, readState=True):
-        if pictdir != None and pictdir != '':
-            self.Directory = pictdir.replace('"', "").replace("'", "").replace('*','')
-            self.Project = Path(self.Directory).stem
+    def __init__(self, biotadb, pictdir, readState=True):
+        if biotadb != None and biotadb != '':
+            # references to the Web
+            self.Project = Path(pictdir.replace('"', "").replace("'", "").replace('*','')).stem
+            self.Directory = os.path.join(biotadb.replace('"', "").replace("'", ""), 'metadata/review/', self.Project)            
             if readState: self.readState()
         return
  
