@@ -32,27 +32,24 @@ def main(args, config):
 
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
                                           config.get("project","PictureDirectory"),
-                                        config.get("repository","BiotaWebRoot"))
+                                          config.get("repository","BiotaWebRoot"))
 
 # new test
-    statemachine = ghexif.statemachine.StateMachine(config.get("project","PictureDirectory"))
-    taskstate = statemachine.readState()
-    if not statemachine.stateOKtorun("ReadDirExif"):
-        statemachine.explainAbort("ReadDirExif")
+    # if not statemachine.stateOKtorun("ReadDirExif"):
+    #     statemachine.explainAbort("ReadDirExif")
 
-
-    # normal mainline 
-    print(f'statemachine.stateOKtorun("ReadDirExif") {True}')
-    statemachine.updateState("ReadDirExif", True, "Last words from her wisdom.")
-    print(f'statemachine.updateState("ReadDirExif", ok, "Last words from her wisdom.")')
+    # # normal mainline 
+    # statemachine.updateState("ReadDirExif", True, "Last words from her wisdom.")
+    # print(f'statemachine.updateState("ReadDirExif", ok, "Last words from her wisdom.")')
     
+    # not so good
     ok = statemachine.stateOKtorun("Freeze")
     print(f'statemachine.stateOKtorun("Freeze") {ok}') 
     if not statemachine.stateOKtorun("Freeze"):
         statemachine.explainAbort("Freeze")
        
-    if taskstate != {}:
-        statemachine.writeState()
+
+
 
 # end new test
     totaltime = time.time() - starttime      
@@ -60,7 +57,7 @@ def main(args, config):
 
 if __name__ == "__main__":
     # get commandline parameters
-    parser = argparse.ArgumentParser(description="sv01addspecies")
+    parser = argparse.ArgumentParser(description="Freeze")
     parser.add_argument(
         "--config",
         type=str,
@@ -77,12 +74,16 @@ if __name__ == "__main__":
     config.read(INI_LOCATION)
     # init the logging subsystem
     logging.basicConfig(level=logging.INFO)
-    # define state machine and see if we run this step
-
+    # define state machine and see if we can run this step
+    statemachine = ghexif.statemachine.StateMachine(config.get("project","PictureDirectory"))
     # call the actual code
     try:
         main(args, config)
     except Exception as e:
-        logger.warning(f"run_newmodule failed: {e}")
+        logger.warning(f"{parser.description} failed: {e}")
+        statemachine.updateState(parser.description, False, e.args[0])
     else:
-        logger.info("run_newmodule succeeded")
+        logger.info(f"{parser.description} succeeded")
+        statemachine.updataState(parser.description, True, "Succesfully run.")
+    # Store state in statemachine file for this project
+    statemachine.writeState()

@@ -27,10 +27,11 @@ class StateMachine:
     Version = '0.0'
     Taskstate = {}    
     
-    def __init__(self, pictdir):
+    def __init__(self, pictdir, readState=True):
         if pictdir != None and pictdir != '':
             self.Directory = pictdir.replace('"', "").replace("'", "").replace('*','')
             self.Project = Path(self.Directory).stem
+            if readState: self.readState()
         return
  
     def getUTF8(self, state, ansistring):
@@ -43,7 +44,7 @@ class StateMachine:
             pass  # too bad, we tried
         return workstr    
 
-    # get status/task information for this task
+    # get status/task information for this task, normally run during init
     def readState(self):
         # first   task number
         # second  last run ok?
@@ -79,22 +80,22 @@ class StateMachine:
                             self.getUTF8(state,"sv7WriteCommitMessage"), 
                             ["ReadDirExif", "WritePictures"], ["ReadDirExif", "WritePictures", "BuildWebsite", "Freeze"]]
         else:
-            self.Taskstate = {"MakeRepository" : [True, "", 
+            self.Taskstate = {"MakeRepository" : [True, "MakeRepository", 
                                                  ["ReadDirExif"], []],
-                         "ReadDirExif" : [False, "",  
+                         "ReadDirExif" : [False, "This step has not yet been run.",  
                                                ["ReadDirExif", "WritePictures"], ["MakeRepository"]],
-                         "WritePictures" : [False, "",  
+                         "WritePictures" : [False, "This step has not yet been run.",    
                                                ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite"], ["ReadDirExif"]],
-                         "WriteBlog" : [False, "",  
+                         "WriteBlog" : [False, "This step has not yet been run.",    
                                             ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite"], 
                                             ["ReadDirExif", "WritePictures"]],
-                         "BuildWebsite" : [False, "",  
+                         "BuildWebsite" : [False, "This step has not yet been run.",    
                                                ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite", "Freeze"], 
                                                ["ReadDirExif", "WritePictures"]],
-                         "Freeze" : [False, "",  
+                         "Freeze" : [False, "This step has not yet been run.",    
                                         ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite", "Freeze", "WriteCommit"],
                                         ["ReadDirExif", "WritePictures", "BuildWebsite"]],
-                         "WriteCommit" : [False, "",  
+                         "WriteCommit" : [False, "This step has not yet been run.",    
                                               ["ReadDirExif", "WriteCommit"],
                                               ["ReadDirExif", "WritePictures", "BuildWebsite", "Freeze"]]
             }
@@ -157,9 +158,9 @@ class StateMachine:
             steps = 'step' 
         else:
             steps = 'steps'
-        raise SVException(f"Task {statetotest} cannot be run, need to run the {steps} {prereq} first.")
+        raise SVException(f"Task {statetotest} cannot be run, the {steps} {prereq} need to run first.")
 
-    
+    # update the state after the job is completed
     def updateState(self, statejustdone, ok, lastmessage):
         self.Taskstate[statejustdone][0] = ok
         self.Taskstate[statejustdone][1] = lastmessage
