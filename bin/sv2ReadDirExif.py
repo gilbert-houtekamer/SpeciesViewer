@@ -159,6 +159,8 @@ if __name__ == "__main__":
     statemachine = ghexif.statemachine.StateMachine(config.get("repository","BiotaDatebase"), config.get("project","PictureDirectory"))
     # call the actual code
     try:
+        if not statemachine.stateOKtorun(parser.description):
+            statemachine.explainAbort(parser.description)        
         main(args, config)
     except Exception as e:
         logger.warning(f"{parser.description} failed: {e}")

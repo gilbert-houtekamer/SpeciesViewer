@@ -32,7 +32,8 @@ class StateMachine:
             # references to the Web
             self.Project = Path(pictdir.replace('"', "").replace("'", "").replace('*','')).stem
             self.Directory = os.path.join(biotadb.replace('"', "").replace("'", ""), 'metadata/review/', self.Project)            
-            if readState: self.readState()
+            if readState: 
+                self.readState()
         return
  
     def getUTF8(self, state, ansistring):
@@ -147,8 +148,8 @@ class StateMachine:
         missingcount = 0
         # run through all pre-reqs
         for states in self.Taskstate[statetotest][3]:
-            missingcount += 1
             if not self.Taskstate[states][0]:
+                missingcount += 1                
                 if prereq == "":
                     prereq = states
                 else:
@@ -156,10 +157,12 @@ class StateMachine:
         # report results niceline
         prereq = ' and'.join(prereq.rsplit(',', 1))
         if missingcount == 1: 
-            steps = 'step' 
+            steps = 'step'
+            need = 'needs'
         else:
             steps = 'steps'
-        raise SVException(f"Task {statetotest} cannot be run, the {steps} {prereq} need to run first.")
+            need = 'need'            
+        raise SVException(f"Task {statetotest} cannot be run, the {steps} {prereq} {need} to run first.")
 
     # update the state after the job is completed
     def updateState(self, statejustdone, ok, lastmessage):
