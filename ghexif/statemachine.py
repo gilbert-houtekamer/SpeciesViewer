@@ -3,9 +3,9 @@ from urllib.parse import urlparse
 import os
 import logging
 import configparser
-import logging
 from pathlib import Path
 
+import ghexif
 from ghexif import SVException
 
 logger = logging.getLogger(__name__)
@@ -48,10 +48,11 @@ class StateMachine:
 
     # get status/task information for this task, normally run during init
     def readState(self):
-        # first   task number
-        # second  last run ok?
-        # third   message from last run if even
-        # forth   list (numbers) that are permitted (empty)
+        # key     task number
+        # list 1: last run ok?
+        # list 2: message from last run if even
+        # list 3: list (numbers) that are permitted
+        # list 4: list of tasks that are committed
         statemachine = os.path.join(self.Directory, "statemachine.ini")
         if os.path.exists(statemachine):
             # create a separete config instance
@@ -170,3 +171,29 @@ class StateMachine:
         self.Taskstate[statejustdone][1] = lastmessage
         return
     
+def getAllProjectStatus(MyProject, directory, silent=False):
+    days_dict = {}
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            if file.endswith('.ini'):
+                file_path = os.path.join(root, file)
+                parseddir = root.split('\\')
+                name = parseddir[1]
+                if name == "": name = parseddir[0]
+                statemachine = ghexif.statemachine.StateMachine(MyProject.getRepositoryPath(), name) #, readState=False)
+                days_dict[name] = statemachine.Taskstate.copy()
+
+    if not silent:
+        # make summary report
+        print(f"Summary of projects and progress for each report")     
+        print(f"{'Project':15}")   
+        for statemachine in days_dict:
+            line = f"{statemachine:15}"
+            for task in days_dict[statemachine]:
+                if task != "MakeRepository":
+                    if days_dict[statemachine][task][0]:
+                        line += f" {task:15}"
+                    else:
+                        line += f" {'':15}"
+            print(line)
+    return days_dict

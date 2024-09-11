@@ -59,7 +59,7 @@ def main(args, config):
 
     logger.info(f"sv5BuildWebsite: Add new species for project {MyProject.ProjectName()} on local copy on Windows")
 
-    MyProject.readProject()
+    MyProject.readProject(getEarlierDays = True)
     thissteptime = time.time()     
 
     totaltime = time.time() - starttime

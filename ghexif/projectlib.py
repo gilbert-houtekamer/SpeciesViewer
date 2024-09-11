@@ -7,6 +7,7 @@ from ghexif.handling import read_file, read_pictures
 from ghexif import files_dict, UniquePictureName_dict
 from ghexif.websupport import getTemplateOutputString
 from ghexif.specieslib import Level
+from ghexif.statemachine import getAllProjectStatus
 import ghexif.translatelib
 import requests
 import logging
@@ -158,16 +159,31 @@ class Project:
     def getBlogDateFromPictures(self):
         return self.Blog.getBlogDay()
     
-    def readProject(self):
+    def readProject(self, getEarlierDays = False):
         starttime = time.time()
         metadatadir = self.getMetaDir()
         metadatadirreview = self.getMetaDirReview()
+
+        # get species an existing committed files and picture
         self.readSpeciesInfo(os.path.join(metadatadirreview, "species.csv"), False)
         self.sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)
-        
         read_file(metadatadir+"active/data_files.csv")
         read_pictures(metadatadir+"active/data_pictures.csv")
 
+        # see what files for non-commtted projected
+        if getEarlierDays:
+            # Collect states
+            directory_to_scan = os.path.join(self.getMetaDir(), 'review') 
+            days_dict = getAllProjectStatus(self, directory_to_scan, silent=True)
+            # read csv for files and pictures that are not yet committed
+            for statemachine in days_dict:                      # projects
+                if statemachine >= self.ProjectName(): 
+                    break
+                if not days_dict[statemachine]['WriteCommit'][0]:  # this project is not committed
+                    logger.info(f"Reading data from project {statemachine} that has not yet been committed.")
+                    read_file(os.path.join(metadatadir, "review", statemachine, "data_files.csv"))
+                    read_pictures(os.path.join(metadatadir, "review", statemachine, "data_pictures.csv"))
+                    
         thissteptime = time.time()
         logger.info(f"Read all committed data from the main repository in {thissteptime-starttime:.1f} seconds.")
 
