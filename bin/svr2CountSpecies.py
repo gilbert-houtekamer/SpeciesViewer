@@ -224,7 +224,7 @@ def main(args, config):
 
 if __name__ == "__main__":
     # get commandline parameters
-    parser = argparse.ArgumentParser(description="sv02countspecies.")
+    parser = argparse.ArgumentParser(description="svr2CountSpecies")
     parser.add_argument(
         "--config",
         type=str,
@@ -245,6 +245,6 @@ if __name__ == "__main__":
     try:
         main(args, config)
     except Exception as e:
-        logger.warning(f"sv02countspecies failed: {e}")
+        logger.warning(f"{parser.description} failed: {e}")
     else:
-        logger.info("sv02countspecies succeeded")
+        logger.info(f"{parser.description} succeeded")
