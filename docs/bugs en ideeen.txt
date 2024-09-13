@@ -1,0 +1,20 @@
+Bugs
+- DONE, BUT WHY? all species moet controleren of file is gekopieerd
+- links vanaf houtekamer.com
+
+Betere functie
+- Of een part kleurtje voor trip report, met een olifant als header bv, 
+  de vakantie gedeeltes anders markeren
+- man/vrouw, jong etc info op soort pagina's
+- blog links nog een keer herberekenen, zodra er altijd een soort link is.
+  Een soort recompute op basis van admin?
+- blog foto's kleiner maken en misschien ook voor All Species
+
+
+Issues met het design nu
+- algemener selectie op basis van datum van een blog, 
+  maar misschien ook voor andere functies. 
+- Blogs ook achter nog kunnen maken op basis tijd ipn New  
+
+Related:
+- houtekamer.com opruimen en pointers fixen vanaf home page
