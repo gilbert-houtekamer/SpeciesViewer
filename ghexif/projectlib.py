@@ -29,6 +29,7 @@ class Project:
     templates_dict = {}
     all_or_new = "All"
     SkipJPGs = False
+    AllSpeciesFiles = {}            # keep source / from for all files used in all species report
     # SpeciesClassification
     sc = None
     sp = None
@@ -158,6 +159,15 @@ class Project:
 
     def getBlogDateFromPictures(self):
         return self.Blog.getBlogDay()
+    # keep track of all species JPGs
+    def resetAllSpeciesFiles(self):
+        self.AllSpeciesFiles = {}
+        return
+    def addAllSpeciesFiles(self, sourcefile, webtarget):
+        self.AllSpeciesFiles[sourcefile] = webtarget
+        return
+    def getAllSpeciesFiles(self):
+        return self.AllSpeciesFiles
     
     def readProject(self, getEarlierDays = False):
         starttime = time.time()

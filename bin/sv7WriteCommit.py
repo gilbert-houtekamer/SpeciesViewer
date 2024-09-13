@@ -7,6 +7,7 @@ import os
 import shutil
 import sys
 import time
+import csv
 from datetime import datetime
 from pathlib import Path
 import logging
@@ -103,7 +104,18 @@ def putRecursiveTreeWeb(MyProject):
     sftp.connection.put(fromintro + 'intro-en.html', tointro + 'intro-en.html', preserve_mtime=True)
     sftp.connection.put(fromintro + 'summaries/all biota species-nl.html', tointro + 'summaries/all biota species-nl.html', preserve_mtime=True)
     sftp.connection.put(fromintro + 'summaries/all biota species-en.html', tointro + 'summaries/all biota species-en.html', preserve_mtime=True)       
+    # might optimize the code below
+    with open(os.path.join(MyProject.ReviewFrozen(), "allspecies.csv"), mode="r", newline="", encoding='utf-8') as csvfile:
+        csvreader = csv.reader(csvfile)
+        for row in csvreader:
+            source = row[0].replace('"', '')
+            ftptarget = row[1].replace('"', '').lstrip()                        
+            sftp.connection.put(source, sftp.remotePrefix() + ftptarget, preserve_mtime=True)
+            logger.info(f"Source copied: {source}")
+        
     sftp.disconnect()
+
+
     return
 
 def putRecursiveTreeDisk(MyProject):
@@ -132,7 +144,6 @@ def main(args, config):
         # update the website
         putRecursiveTreeWeb(MyProject)
         putRecursiveTreeDisk(MyProject)
-
         # TODO rewrite the Blog with active links to species
 
         # remove files that are copied

@@ -69,8 +69,11 @@ def main(args, config):
     # same code, but no JPG files needed
     MyProject.setLanguage('en')
     MyProject.makeWebDirectories('biota', 'New') 
-    # make all species page, sorted by order, no pictures copied
+    # make all species page, sorted by order, no pictures 
+    saveSkipJPGsave = MyProject.getSkipJPGs()
+    MyProject.setSkipJPGs(False)
     MyProject.makeAllSpeciesPage('biota','nl')
+    MyProject.setSkipJPGs(saveSkipJPGsave)    
     MyProject.makeAllSpeciesPage('biota','en')
     makeIntroPages(MyProject)
 

@@ -663,13 +663,14 @@ def writeOneSpecies(MyProject, leaf, temptextfile):
         # be sure the JPG is included, unless we do want it / need it
     if not MyProject.getSkipJPGs():
         sourcestr = files_dict[species['BestJPG']]['WindowsFileName']
-        targetstr = MyProject.ReviewFrozen() + species['TargetPath'] + species['BestJPG']
+        targetstr = os.path.join(MyProject.ReviewFrozen(),species['TargetPath'], species['BestJPG'])
         try:  
             #print(f"start dir   {sourcestr}\n            {targetstr}")                   
-            os.makedirs(MyProject.ReviewFrozen() + species['TargetPath'], exist_ok=True) 
+            os.makedirs(os.path.join(MyProject.ReviewFrozen(), species['TargetPath']), exist_ok=True) 
             #print(f"make file   {sourcestr}\n            {targetstr}")                   
             rc = shutil.copy(sourcestr, targetstr)
             #print(f"copy ok     {sourcestr}\n            {targetstr}")
+            MyProject.addAllSpeciesFiles(sourcestr,os.path.join(MyProject.getBiotaWebRoot(), species['TargetPath'], species['BestJPG']))
         except:
             print(f"failed copy {sourcestr}\n            {targetstr}")
     else:
@@ -688,10 +689,14 @@ def addAllSpeciesWrapper(MyProject, speciesname, textCreated):
             except:
                 pass
             temptextfile.seek(0)
-            #with open('temp.txt', mode="r", newline="", encoding='utf-8') as tempfile:
             textlist = temptextfile.readlines()
             textCreated += '\n'.join(textlist)
             temptextfile.close()
+            # write 
+            with open(os.path.join(MyProject.ReviewFrozen(), 'allspecies.csv'), mode="w", newline="", encoding='utf-8') as allspeclist:
+                for file in MyProject.getAllSpeciesFiles():
+                    ftpfile = MyProject.AllSpeciesFiles[file]
+                    print(f'"{file}", "{ftpfile}"', file=allspeclist)
     except:
         print(f"Unexpected error creating all species webpage.")
     return textCreated
@@ -701,16 +706,12 @@ def addAllSpeciesPage(MyProject, speciesname, temptextfile):
     leaves = sorted(MyProject.getSpecies(speciesname)['Leaves'])
     for leaf in leaves:
         species = MyProject.sp.species_dict[leaf]
-        #species = MyProject.getSpecies(leaf)
-        #print(f"Testing  {speciesname} - leaf {leaf} level {species['Level']}")        
         if (int(species['iPicturesWithJPGsCollection']) + int(species['iPicturesWithJPGsThisRun'])) > 0:
-            #print(f"Selected {speciesname} - leaf {leaf} level {species['Level']}")
             if species['Level'] == Level.SPECIES:
                 writeOneSpecies(MyProject, leaf, temptextfile)
-                #print(f"did file {speciesname} - leaf {leaf} level {species['Level']}")
             else:
                 textCreated = addAllSpeciesPage(MyProject, leaf, temptextfile)
-        #print(f"Done     {speciesname} - leaf {leaf} level {species['Level']}")          
+   
     return
 
 # create summary page, that should become Wordpress
