@@ -169,7 +169,7 @@ class Project:
     def getAllSpeciesFiles(self):
         return self.AllSpeciesFiles
     
-    def readProject(self, getEarlierDays = False):
+    def readProject(self, getEarlierDays = False, silent=False):
         starttime = time.time()
         metadatadir = self.getMetaDir()
         metadatadirreview = self.getMetaDirReview()
@@ -191,7 +191,7 @@ class Project:
                     break
                 if not days_dict[statemachine]['WriteCommit'][0]:  # this project is not committed
                     logger.info(f"Reading data from project {statemachine} that has not yet been committed.")
-                    read_file(os.path.join(metadatadir, "review", statemachine, "data_files.csv"))
+                    read_file(os.path.join(metadatadir, "review", statemachine, "data_files.csv"), silent=True)
                     read_pictures(os.path.join(metadatadir, "review", statemachine, "data_pictures.csv"))
                     
         thissteptime = time.time()
@@ -203,7 +203,7 @@ class Project:
         # read other files and pictures
         RepositoryFileCount = len(files_dict)
         RepositoryPictureCount = len(UniquePictureName_dict)
-        count, from_time, last_time = read_file(os.path.join(metadatadirreview, 'data_files.csv'))
+        count, from_time, last_time = read_file(os.path.join(metadatadirreview, 'data_files.csv'), silent=True)
         read_pictures(os.path.join(metadatadirreview, 'data_pictures.csv'))      
 
         logger.info(f"Read all new data from project in {time.time()-thissteptime:.1f} seconds.")
@@ -241,7 +241,7 @@ class Project:
         biotadatabase = self.getRepositoryPath()
         directoryname = (biotadatabase + species['TargetPath']).lower()
         os.makedirs(directoryname, exist_ok=True)
-        for leaf in species['Leaves']:
+        for leaf in sorted(species['Leaves']):
             species = self.getSpecies(leaf)
             if int(species['iPicturesWithJPGsThisRun']) > 0:
                 if species['Level'] != Level.SPECIES:
@@ -280,7 +280,7 @@ class Project:
         species = self.getSpecies(speciesname)
         self.setAllOrNew(all_or_new)
         self.makeWebLevel(species, all_or_new)
-        for leaf in species['Leaves']:
+        for leaf in sorted(species['Leaves']):
             species = self.sp.species_dict[leaf]
             if (int(species['iPicturesWithJPGsThisRun']) + int(species['iPicturesWithJPGsCollection'])) > 0:
                 if species['Level'] != Level.SPECIES:

@@ -382,7 +382,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 93:         # Plaatjes en namen, zelfde voor beide talen
             language = MyProject.getLanguage()
             workstr = "<div id=""\"grid\""">\n"
-            for speciesname in species_param['Leaves']:
+            for speciesname in sorted(species_param['Leaves']):
                 species = MyProject.getSpecies(speciesname)
                 if (int(species['iPictureThisRunCount']) + int(species['iPictureCollectionCount'])) > 0:   # at least one
                     workstr += "			  <div>\n"

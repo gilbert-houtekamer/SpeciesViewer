@@ -36,7 +36,7 @@ def deriveUniquePictureName(windows_filename):
 # Read EXIF data file, one record for each file (ORF, jpg, XMP, etc)
 # For second call, additional data is appended
 # Check if is does not create a duplicaete
-def read_file(filename):
+def read_file(filename, silent=False):
     from_time = ""
     last_time = ""
     filecount = len(files_dict)
@@ -50,7 +50,7 @@ def read_file(filename):
                         from_time = row['EXIF:DateTimeOriginal']
                     if last_time < row['EXIF:DateTimeOriginal']:
                         last_time = row['EXIF:DateTimeOriginal']
-            else:
+            elif not silent:
                 logger.warning(f"Unexpected duplicate file {row['WindowsFileName']} not added, ")
                 logger.warning(f"File was already found here {files_dict[row['File:FileName']]['WindowsFileName']}.")
     logger.info(f'Read EXIF data for {len(files_dict)-filecount} files from CSV file {filename}.')
