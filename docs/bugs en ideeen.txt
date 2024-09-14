@@ -1,6 +1,9 @@
 Bugs
 - DONE, BUT WHY? all species moet controleren of file is gekopieerd
 - links vanaf houtekamer.com
+- volgorde voor Aves klasse
+- afdwingen dat projecten in dezelfde directory zitten
+
 
 Betere functie
 - Of een part kleurtje voor trip report, met een olifant als header bv, 
@@ -8,13 +11,25 @@ Betere functie
 - man/vrouw, jong etc info op soort pagina's
 - blog links nog een keer herberekenen, zodra er altijd een soort link is.
   Een soort recompute op basis van admin?
-- blog foto's kleiner maken en misschien ook voor All Species
+- blog foto's kleiner maken en  ook voor All Species
+- Nederlandse namen opvragen met Nederlandse gbif versie
+- 
 
 
 Issues met het design nu
 - algemener selectie op basis van datum van een blog, 
   maar misschien ook voor andere functies. 
-- Blogs ook achter nog kunnen maken op basis tijd ipn New  
+- Blogs ook achter nog kunnen maken op basis tijd ipn New
+
+GUI
+- automatisch een batch verwerken van alle dagen en
+  een soort opdrachten
+- optie voor soort biota tree: master of vakantie
+- repository reports:
+  - #soorten (svu2)
+  - status per project
+
+
 
 Related:
 - houtekamer.com opruimen en pointers fixen vanaf home page
