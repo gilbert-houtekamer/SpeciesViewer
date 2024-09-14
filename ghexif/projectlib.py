@@ -26,6 +26,7 @@ class Project:
     Blog = None
     blogday = ""
     # web building
+    RepositoryBanner = ""
     templates_dict = {}
     all_or_new = "All"
     SkipJPGs = False
@@ -71,7 +72,12 @@ class Project:
             return True
         except requests.ConnectionError:
             return False         
-
+        
+    # custimazation for 
+    def getRepositoryBanner(self):
+        return self.RepositoryBanner
+    def setRepositoryBanner(self, name):
+        self.RepositoryBanner = name
     def registerBlog(self, Blog):
         self.Blog = Blog
     def setBlogDay(self, today):

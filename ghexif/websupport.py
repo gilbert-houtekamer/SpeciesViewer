@@ -310,12 +310,15 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 46:
             return getJPGtime(file).strftime('%Y:%m:%d %H:%M:%S')
         elif tokenno == 49: # banner, now by kingdom, but could be more specific
-            if kingdom_local == {}:
+            repository = MyProject.getRepositoryBanner().lower()
+            if repository != "":
+                workstr = BiotaWebRoot + "includes web/" + repository + ".jpg"
+            elif kingdom_local == {}:
                 workstr = BiotaWebRoot + "includes web/keerkringvogel.jpg"
             else:
-                if kingdom_local['ScientificName'] == "Animalia":
+                if kingdom_local['ScientificName'].lower() == "animalia":
                     workstr = BiotaWebRoot + "includes web/keerkringvogel.jpg"
-                elif kingdom_local['ScientificName'] == "Fungi":
+                elif kingdom_local['ScientificName'].lower() == "fungi":
                     workstr = BiotaWebRoot + "includes web/paddenstoelen.jpg"
                 else:
                     workstr = BiotaWebRoot + "includes web/planten.jpg"

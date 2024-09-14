@@ -140,6 +140,8 @@ def main(args, config):
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
+    # potential customization
+    MyProject.setRepositoryBanner(config.get("repository","RepositoryBanner"))
 
     # metafiles
     # get repository-wide sc and per project sp.
