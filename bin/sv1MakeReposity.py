@@ -83,7 +83,12 @@ def main(args, config):
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"),
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
-    # create master
+    # potential customization
+    MyProject.setRepositoryBanner(config.get("repository","RepositoryBanner"))
+    # create intro page, already in good location
+    MyProject.makeIntro('intro-nl')
+    MyProject.makeIntro('intro-en')
+    # create master for missing links
     MyProject.makeIntro('intro-link-nl')
     MyProject.makeIntro('intro-link-en')
     # now add the files
@@ -134,10 +139,14 @@ def main(args, config):
         sftp.safeMkdir(createdpath + '/biotablog')
         sftp.safeMkdir(createdpath + '/admin')
         sftp.safeMkdir(createdpath + '/includes web')
+        # copy intro-nl.html and uk version
+        sftp.upload(os.path.join(NEW_DB_TREE, "web/intro-nl.html"), createdpath + "/intro-nl.html")
+        sftp.upload(os.path.join(NEW_DB_TREE, "web/intro-en.html"), createdpath + "/intro-en.html")                    
+        # install used files
         fromdir = os.path.join(NEW_DB_TREE, "web/includes web/")
         towebdir = createdpath + '/includes web/'
         sftp.put_r_portable(fromdir, towebdir, preserve_mtime=True)
-        # untested
+        # dead links
         fromdir = os.path.join(NEW_DB_TREE, "web/biota/")
         towebdir = createdpath + '/biota/'
         sftp.put_r_portable(fromdir, towebdir, preserve_mtime=True)
