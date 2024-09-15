@@ -88,11 +88,12 @@ def main(args, config):
     MyProject.makeIntro('intro-link-en')
     # now add the files
     def copyMissingLinkPages(directory, exist_ok=True):
+        filename = os.path.basename(directory)
         os.makedirs(os.path.join(NEW_DB_TREE,"web",directory), exist_ok=True)
         shutil.copy(os.path.join(NEW_DB_TREE,"web/intro-link-nl.html"), 
-                    os.path.join(NEW_DB_TREE, "web", directory, "intro-link-nl.html"))
+                    os.path.join(NEW_DB_TREE, "web", directory, filename + "-nl.html"))
         shutil.copy(os.path.join(NEW_DB_TREE,"web/intro-link-en.html"), 
-                    os.path.join(NEW_DB_TREE, "web",  directory, "intro-link-en.html"))
+                    os.path.join(NEW_DB_TREE, "web",  directory, filename + "-en.html"))
         return
     # copy files - directories first
     copyMissingLinkPages("biota/animalia", exist_ok=True)
@@ -113,19 +114,32 @@ def main(args, config):
         )
         # Connect to SFTP
         sftp.connect()
-        #
-        sftp.safeMkdir(sftp.remotePrefix() + WEB_TREE)
-        sftp.safeMkdir(sftp.remotePrefix() + WEB_TREE + '/biota')
-        sftp.safeMkdir(sftp.remotePrefix() + WEB_TREE + '/summaries')
-        sftp.safeMkdir(sftp.remotePrefix() + WEB_TREE + '/biotablog')
-        sftp.safeMkdir(sftp.remotePrefix() + WEB_TREE + '/admin')
-        sftp.safeMkdir(sftp.remotePrefix() + WEB_TREE + '/includes web')
+        # 
+        def createWebTree(path):
+            directories = path.strip('/').split('/')
+            existingpath = sftp.remotePrefix()
+
+            for directory in directories:
+                try:
+                    sftp.safeMkdir(existingpath + '/' + directory)
+                except Exception as e:
+                    print(f"Directory {directory} already exists or cannot be created: {e}")
+                existingpath += '/' + directory
+            return existingpath
+        
+        createdpath = createWebTree(WEB_TREE)
+        
+        sftp.safeMkdir(createdpath + '/biota')
+        sftp.safeMkdir(createdpath + '/summaries')
+        sftp.safeMkdir(createdpath + '/biotablog')
+        sftp.safeMkdir(createdpath + '/admin')
+        sftp.safeMkdir(createdpath + '/includes web')
         fromdir = os.path.join(NEW_DB_TREE, "web/includes web/")
-        towebdir = sftp.remotePrefix() + WEB_TREE + '/includes web/'
+        towebdir = createdpath + '/includes web/'
         sftp.put_r_portable(fromdir, towebdir, preserve_mtime=True)
         # untested
         fromdir = os.path.join(NEW_DB_TREE, "web/biota/")
-        towebdir = sftp.remotePrefix() + WEB_TREE + '/biota/'
+        towebdir = createdpath + '/biota/'
         sftp.put_r_portable(fromdir, towebdir, preserve_mtime=True)
         sftp.disconnect()
 
