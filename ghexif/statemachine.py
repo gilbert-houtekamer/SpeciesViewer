@@ -167,8 +167,11 @@ class StateMachine:
 
     # update the state after the job is completed
     def updateState(self, statejustdone, ok, lastmessage):
-        self.Taskstate[statejustdone][0] = ok
-        self.Taskstate[statejustdone][1] = lastmessage
+        try:
+            self.Taskstate[statejustdone][0] = ok
+            self.Taskstate[statejustdone][1] = lastmessage
+        except:
+            pass  # test modules are not listed
         return
     
 def getAllProjectStatus(MyProject, directory, silent=False):

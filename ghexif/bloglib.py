@@ -159,6 +159,8 @@ class Blog:
             row['MinimumScore'] = self.MinimumScore
             row['BestJPGs'] = self.BestJPGs
 
+        return
+
     # might want to get admin from web server?
     # 1. get the file from disk first
     # 2. next get the file from the FTP server
@@ -285,7 +287,7 @@ class Blog:
             sftp= None
         return sftp
     
-    def uploadBlog(self, sftp):
+    def uploadBlog(self, sftp, sftpPictures = True):
         # blog post and pictures
         MyProject = self.mp     
         biotablog = MyProject.getBiotaBlogDir()
@@ -299,11 +301,12 @@ class Blog:
         # print(f'{fromfile} to {toweb}')
         sftp.upload(fromfile, toweb)
         sftp.upload(fromfile.replace('-nl','-en'), toweb.replace('-nl','-en'))
-        fromdir = biotablog + self.getBlogDay()
-        towebdir = sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + self.getBlogDay()
-        # print(f'{fromdir} to {towebdir}')
-        sftp.safeMkdir(sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + self.getBlogDay())
-        sftp.put_r_portable(fromdir, towebdir, preserve_mtime=True)
+        if sftpPictures:
+            fromdir = biotablog + self.getBlogDay()
+            towebdir = sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + self.getBlogDay()
+            # print(f'{fromdir} to {towebdir}')
+            sftp.safeMkdir(sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + self.getBlogDay())
+            sftp.put_r_portable(fromdir, towebdir, preserve_mtime=True)
         return
     
     def downloadBlogAdminCopy(self, sftp):

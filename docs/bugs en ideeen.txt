@@ -2,14 +2,16 @@ Bugs
 - DONE, BUT WHY? all species moet controleren of file is gekopieerd
 - afdwingen dat projecten in dezelfde directory zitten.  Dat hebben we eigenlijk niet?
 - de deadlink voor in elk geval e fungi is niet goed.  Logic error??
+- https://houtekamer.com/nature/intro-en.html is overwriiten??
 
 Betere functie
-- UNTESTED v0: Of een apart kleurtje voor trip report, met een olifant als header bv, 
+- DONE: Of een apart kleurtje voor trip report, met een olifant als header bv, 
   de vakantie gedeeltes anders markeren
+- uplink to master repository
 - man/vrouw, jong etc info op soort pagina's
-- blog links nog een keer herberekenen, zodra er altijd een soort link is.
+- IN PROGRESS: blog links nog een keer herberekenen, zodra er altijd een soort link is.
   Een soort recompute op basis van admin?
-- blog foto's kleiner maken en  ook voor All Species
+- blog foto's kleiner maken en ook voor All Species
 - Nederlandse namen opvragen met Nederlandse gbif versie
 - optie voor FTP zonder JPGs
 

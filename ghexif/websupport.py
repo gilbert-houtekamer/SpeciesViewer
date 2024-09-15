@@ -461,16 +461,21 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             return workstr
         elif tokenno == 110 or tokenno == 113:         # blog achtige samenvatting
             language = 'nl' if tokenno == 113 else 'en'
-            # step 1: collect selected species
-            selected_dict = {}
-            addSpeciesToSummaryPost(MyProject, species_param['ScientificName'], selected_dict, "oneblogphoto-" + language + ".html")
-            # step 2: sort by time taken picture
-            time_sorted_dict = dict(sorted(selected_dict.items(), key=itemgetter(1)))            
-            # step 3: generate the webpage
-            workstr = ""
-            for file in time_sorted_dict:
-                workstr = addOneSpeciesJPG(MyProject, file, workstr, "oneblogphoto-" + language + ".html")
-            # return HTML to caller to put in webpage
+            BestJPGs = MyProject.Blog.BestJPGs
+            if len(BestJPGs) == 0:
+                # step 1: collect selected species
+                selected_dict = {}
+                addSpeciesToSummaryPost(MyProject, species_param['ScientificName'], selected_dict, "oneblogphoto-" + language + ".html")
+                # step 2: sort by time taken picture
+                time_sorted_dict = dict(sorted(selected_dict.items(), key=itemgetter(1)))            
+                # step 3: generate the webpage
+                workstr = ""
+                for file in time_sorted_dict:
+                    workstr = addOneSpeciesJPG(MyProject, file, workstr, "oneblogphoto-" + language + ".html")
+                # return HTML to caller to put in webpage
+            else:
+                for file in BestJPGs:
+                    workstr = addOneSpeciesJPG(MyProject, file, workstr, "oneblogphoto-" + language + ".html")                
             return workstr
         elif tokenno == 111:         # Nederlandse tekst
             # mogelijke tekst
