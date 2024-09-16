@@ -4,6 +4,7 @@ import time
 import tempfile
 from datetime import datetime
 from operator import itemgetter
+from collections import defaultdict
 import logging
 from PIL import Image
 
@@ -423,57 +424,36 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 95:          # page for species
             workstr = BiotaWebRoot + species_param["TargetPath"] + species_param["ScientificName"]
             return workstr
-        elif tokenno == 100:         # Nederlandse plaatjes en namen
-            BiotaDiskRoot = MyProject.getBiotaAllorNewDir()
-            # if species_param['ScientificName'] in ['anser anser','platalea leucorodia','phalacrocorax carbo','charadrius dubius','numenius phaeopus','riparia riparia']:
-            #     bug = 1
-            filesfound = 0
-            # a smarter selection is useful, especially to avoid very similar pictures
-            # sort species_param['JPGmap'] by rating and JPGname
-            # print(f"{species_param['EnglishName']}")
-            # if species_param['EnglishName'] == "three-banded plover":
-            #     filesfound = 0
-            rateorder = {}
-            for JPGname in list(species_param['JPGmap']):
-                JPGname_no_path = files_dict[os.path.basename(JPGname)]
-                rating = computeRatingFile(JPGname_no_path)
-                rateorder[(rating, JPGname)] = JPGname
-            # keep all JPGs sorted, only top 6 pictures are used
-            sorted_items = sorted(rateorder.items(), key=lambda item: (item[0][0], item[0][1]), reverse=True)
-            # make sure only use the first occurrance of an UPN, which is the best (ie, with the highest rate)
-            usedUPNs = {}
-            rejectUPNs = 0
-            # print(f'{len(sorted_items)} JPGs for {species_param['DutchName']}/{species_param['ScientificName']} with {len(species_param['JPGmap'])}')            
-            for (rating, JPGname) in sorted_items:
-                JPGname_no_path = files_dict[os.path.basename(JPGname)]
-                if (JPGname_no_path != "") and (JPGname_no_path['UniquePictureName'] not in usedUPNs.keys()):
-                    # do we have a picture close to it
-                    JPGtime = getJPGtime(JPGname_no_path)
-                    dropit = False
-                    for UPNshownsofar in usedUPNs:
-                        showntime = usedUPNs[UPNshownsofar]
-                        deltahours = abs(showntime - JPGtime).total_seconds()/3600
-                        if deltahours < 0.25: dropit = True
-                    # more conditions we can try
+        elif tokenno == 100:         # Nederlandse of Engelse plaatjes en namen
+            workstr = addOneSpeciesPage(MyProject, species_param)              
+            return workstr
+        elif tokenno == 101:         # Male/Female etc
+            try:
+                if language == 'nl':
+                    workstr = "De foto toont een "
+                    if picture['malefemale'] == 'male' or picture['malefemale'] == 'man':
+                        workstr += "mannetje. "
+                    elif picture['malefemale'] == 'female' or picture['malefemale'] == 'vrouw':
+                        workstr += "vrouwtje. "
+                    elif picture['malefemale'] == 'couple' or picture['malefemale'] == 'paar' or picture['malefemale'] == 'paartje':
+                        workstr += 'paartje. '
+                    elif picture['ageintext'] != '':
+                        workstr += picture['ageintext']
+                    # if picture['summerwinter'] != '':
+                    #     workstr += 
 
-                    if not dropit:
-                        usedUPNs[JPGname_no_path['UniquePictureName']] = JPGtime
-                        for line in MyProject.getTemplateLines("vogelfoto.html"):
-                            workstr += getTemplateOutputString(MyProject, species_param, JPGname_no_path,
-                                                                UniquePictureName_dict[JPGname_no_path['UniquePictureName']], line)
-                        picture = UniquePictureName_dict[JPGname_no_path['UniquePictureName']]
-                        targetstr =  os.path.join(BiotaDiskRoot, picture['TargetPath'], picture['BestJPG'])
-                        JPGname_no_path = files_dict[os.path.basename(JPGname)]
-                        if not MyProject.getSkipJPGs():
-                            shutil.copy(JPGname_no_path['WindowsFileName'], targetstr)
-                        filesfound += 1                            
-                    else:
-                        rejectUPNs += 1
-
-                if (filesfound == 4):
-                    #print(f'Quit {species_param['DutchName']} after 4 images, {rejectUPNs} rejected.')
-                    return workstr
-            #print(f'Quit {species_param['DutchName']} after {filesfound} images, {rejectUPNs} rejected.')
+                elif language == 'en':
+                    workstr = "The photo shows a "
+                    if picture['malefemale'] == 'male' or picture['malefemale'] == 'man':
+                        workstr += "male. "
+                    elif picture['malefemale'] == 'female' or picture['malefemale'] == 'vrouw':
+                        workstr += "female. "
+                    elif picture['malefemale'] == 'couple' or picture['malefemale'] == 'paar' or picture['malefemale'] == 'paartje':
+                        workstr += "couple."
+                    elif picture['ageintext'] != '':
+                        workstr += picture['ageintext']
+            except:
+                pass                    
             return workstr
         elif tokenno == 110 or tokenno == 113:         # blog achtige samenvatting
             language = 'nl' if tokenno == 113 else 'en'
@@ -617,7 +597,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     workstr += '          <p>(picture not found)</p>\n'
                 else:
                     workstr += f'          <a href="{logname}-nl.html"><img\n'
-                    workstr += '            src="' + logname + '/' + blog["BestJPGs"][0] + '"\n'
+                    workstr += '            src="' + logname + '/' + blog["BestJPGs"][0].replace('.jpg','-small.jpg') + '"\n'
                     workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to open "' + blog["title_" + language] + '""></a>\n'
                 workstr += '      </div>\n'
                 workstr += '      <div class="w3-col" style="width:70%">\n'
@@ -738,6 +718,70 @@ def addAllSpeciesPage(MyProject, speciesname, temptextfile):
                 textCreated = addAllSpeciesPage(MyProject, leaf, temptextfile)
    
     return
+
+def addOneSpeciesPage(MyProject, species_param):
+    BiotaDiskRoot = MyProject.getBiotaAllorNewDir()
+    workstr = ""
+    # a smarter selection is useful, especially to avoid very similar pictures
+    try:
+        rateorder = {}
+        for JPGname in list(species_param['JPGmap']):
+            JPGname_no_path = files_dict[os.path.basename(JPGname)]
+            diversity = getPictureAgeSexePlumage(UniquePictureName_dict[JPGname_no_path['UniquePictureName']])
+            rating = computeRatingFile(JPGname_no_path)
+            rateorder[(diversity, rating, JPGname)] = JPGname
+        # keep all JPGs sorted, not yet by male/female, breeding etc
+        sorted_items = sorted(rateorder.items(), key=lambda item: (item[0][0], item[0][1], item[0][2]), reverse=True)
+
+        # Create a defaultdict to group items by diversity
+        grouped_items = defaultdict(list)
+        for (diversity, rating, JPGname), value in rateorder.items():
+            grouped_items[diversity].append((rating, JPGname, value))
+
+        diversity_groups = len(grouped_items)
+        maxpicturesperAgeSexePlumage = 2
+        if diversity_groups == 1:
+            maxpicturesperAgeSexePlumage = 4
+        elif diversity_groups == 2:
+            maxpicturesperAgeSexePlumage = 4
+
+        # make sure only use the first occurrance of an UPN, which is the best (ie, with the highest rate)
+        usedUPNs = {}
+        rejectUPNs = 0
+        # print(f'{len(sorted_items)} JPGs for {species_param['DutchName']}/{species_param['ScientificName']} with {len(species_param['JPGmap'])}')            
+        for diversity, items in grouped_items.items():
+            filesfound = 0
+            for rating, JPGname, value in items:
+                JPGname_no_path = files_dict[os.path.basename(JPGname)]
+                if (JPGname_no_path != "") and (JPGname_no_path['UniquePictureName'] not in usedUPNs.keys()):
+                    # do we have a picture close to it
+                    JPGtime = getJPGtime(JPGname_no_path)
+                    dropit = False
+                    for UPNshownsofar in usedUPNs:
+                        showntime = usedUPNs[UPNshownsofar]
+                        deltahours = abs(showntime - JPGtime).total_seconds()/3600
+                        if deltahours < 0.25: dropit = True
+                    # more conditions we can try
+
+                    if not dropit:
+                        usedUPNs[JPGname_no_path['UniquePictureName']] = JPGtime
+                        for line in MyProject.getTemplateLines("vogelfoto.html"):
+                            workstr += getTemplateOutputString(MyProject, species_param, JPGname_no_path,
+                                                                UniquePictureName_dict[JPGname_no_path['UniquePictureName']], line)
+                        picture = UniquePictureName_dict[JPGname_no_path['UniquePictureName']]
+                        targetstr =  os.path.join(BiotaDiskRoot, picture['TargetPath'], picture['BestJPG'])
+                        JPGname_no_path = files_dict[os.path.basename(JPGname)]
+                        if not MyProject.getSkipJPGs():
+                            shutil.copy(JPGname_no_path['WindowsFileName'], targetstr)
+                        filesfound += 1                            
+                    else:
+                        rejectUPNs += 1
+
+                if (filesfound == maxpicturesperAgeSexePlumage):
+                    break   # go to next man/female/young/breeding etc
+    except:
+        workstr = ""
+    return workstr
 
 # create summary page, that should become Wordpress
 # also test best picture function.

@@ -366,7 +366,10 @@ class Species:
 
 # NEEDS TO GO SOMEWHERE ELSE OR IN THIS PROJECTLIB
 def getPictureAgeSexePlumage(upn):
-    str = upn['malefemale'] + upn['ageintext'] + upn['summerwinter']
+    try:
+        str = upn['malefemale'] + upn['ageintext'] + upn['summerwinter']
+    except:
+        str = ""
     return str
 
 def computeRating(upn):
