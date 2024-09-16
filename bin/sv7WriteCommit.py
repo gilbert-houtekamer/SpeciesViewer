@@ -25,6 +25,7 @@ from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
 from ghexif.csv_columns import PICTURE_FIELDS
 from ghexif.handling import read_file, read_pictures
 from ghexif.specieslib import Level
+from ghexif.websupport import jpgResizeCopy
 import ghexif.specieslib
 import ghexif.sftplib
 import ghexif.exceptions
@@ -104,15 +105,15 @@ def putRecursiveTreeWeb(MyProject):
     sftp.connection.put(fromintro + 'intro-en.html', tointro + 'intro-en.html', preserve_mtime=True)
     sftp.connection.put(fromintro + 'summaries/all biota species-nl.html', tointro + 'summaries/all biota species-nl.html', preserve_mtime=True)
     sftp.connection.put(fromintro + 'summaries/all biota species-en.html', tointro + 'summaries/all biota species-en.html', preserve_mtime=True)       
-    # Todo: might optimize the code below to only copy JPGs we do not yet have in the website
-    # alternatively find out different "best" pictures are found by all species and one page for species
-    # with open(os.path.join(MyProject.ReviewFrozen(), "allspecies.csv"), mode="r", newline="", encoding='utf-8') as csvfile:
-    #     csvreader = csv.reader(csvfile)
-    #     for row in csvreader:
-    #         source = row[0].replace('"', '')
-    #         ftptarget = row[1].replace('"', '').lstrip()                        
-    #         sftp.connection.put(source, sftp.remotePrefix() + ftptarget, preserve_mtime=True)
-    #         logger.info(f"Source copied: {source}")
+    # send small pictures voor all species
+    with open(os.path.join(MyProject.ReviewFrozen(), "allspecies.csv"), mode="r", newline="", encoding='utf-8') as csvfile:
+        csvreader = csv.reader(csvfile)
+        for row in csvreader:
+            source = row[0].replace('"', '')
+            ftptarget = sftp.remotePrefix() + row[1].replace('"', '').lstrip().replace('.jpg','-small.jpg')
+            jpgResizeCopy(source)
+            sftp.connection.put(source.replace('.jpg','-small.jpg'), ftptarget)
+            logger.info(f"Small image for All Species report: {source.replace('.jpg','-small.jpg')}")
         
     sftp.disconnect()
 

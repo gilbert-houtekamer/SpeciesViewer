@@ -5,6 +5,7 @@ import tempfile
 from datetime import datetime
 from operator import itemgetter
 import logging
+from PIL import Image
 
 global config
 
@@ -78,7 +79,7 @@ def makeLinkScienticficName(MyProject, BiotaWebRoot, classification, workstr):
         workstr +=  classification['ScientificName'].strip('0123456789 ').capitalize()
     else:
         workstr +=  '<a href="' + BiotaWebRoot + classification["TargetPath"] + classification["ScientificName"] + '-' + MyProject.getLanguage() +  '.html\"' + '>\n'
-        workstr += '			         ' + classification['ScientificName'] + '</a>'
+        workstr += '			         ' + classification['ScientificName'].strip('0123456789 ').capitalize() + '</a>'
     return workstr
 
 # new csv files will have sexe
@@ -120,6 +121,19 @@ def getJPGtime(JPGobject):
         except:
             JPGtime = ''
     return JPGtime
+
+def jpgResizeCopy(targetstr, horizontalsize = 600):
+    # resize
+    try:
+        image = Image.open(targetstr)
+        resized_image = image.resize((600, 450))
+        wpercent = (horizontalsize/float(image.size[0]))
+        hsize = int((float(image.size[1])*float(wpercent)))
+        resized_image = image.resize((horizontalsize, hsize))
+        resized_image.save(targetstr.replace('.jpg','-small.jpg'))
+    except Exception as e:
+        logger.info(f"Resizing {targetstr} failed, error: {e}")
+    return
 
 def formatToken(tokenno, MyProject, species_param, file, picture):
     global config
@@ -307,6 +321,8 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             return BiotaWebRoot + picture['TargetPath'] + picture['BestJPG']
         elif tokenno == 45:
             return MyProject.getBlogDateFromPictures() + '/' + file['File:FileName']    #BUGBUG
+        elif tokenno == 47:
+            return MyProject.getBlogDateFromPictures() + '/' + file['File:FileName'].replace('.jpg', '-small.jpg')   #BUGBUG        
         elif tokenno == 46:
             return getJPGtime(file).strftime('%Y:%m:%d %H:%M:%S')
         elif tokenno == 49: # banner, now by kingdom, but could be more specific
@@ -493,7 +509,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     if species_local['DutchName'] != "":
                         workstr += species_local['DutchName'].capitalize() + " (<i>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</i>). "
                     else:
-                        workstr += "<i>" + species_local['ScientificName'].capitalize() + "</i>. "
+                        workstr += "<i>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</i>. "
                     workstr += "Het is een "
                     if kingdom_local['ScientificName'] == "animalia":
                         if class_local['ScientificName'] == "aves":
@@ -541,7 +557,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                         workstr += species_local['EnglishName'].capitalize() + \
                             " (<i>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</i>). "
                     else:
-                        workstr += "<i>" + species_local['ScientificName'].capitalize() + "</i>. "
+                        workstr += "<i>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</i>. "
                     workstr += "It is a "
                     if kingdom_local['ScientificName'] == "animalia":
                         if class_local['ScientificName'] == "aves":
@@ -643,10 +659,9 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             return str(w)
         else:
             return '<token ' + tokenno + '>'
-    except:
-
-        logger.info(f"{species_param['ScientificName']}:{'<Failed to handle token ' + tokenno + '>'}")
-        return '<Failed to handle token '  + tokenno + '>'
+    except Exception as e:
+        logger.info(f"{species_param['ScientificName']}:{'<Failed to handle token ' + tokenno + '>'} Error: {e}")
+        return '<Failed to handle token '  + tokenno + '>' + e.arg[0]
 
 # logic selected species
 def writeOneSpecies(MyProject, leaf, temptextfile):
@@ -659,7 +674,7 @@ def writeOneSpecies(MyProject, leaf, temptextfile):
             BiotaWebRoot + species["TargetPath"] + species["ScientificName"] +  '-' + language + '.html' + '">\n', file=temptextfile)
         if species['BestJPG'] != "" and species['BestJPGPathName'] != "":
             print('			            <img src="' + BiotaWebRoot + \
-            species['TargetPath'] + species['BestJPG'] + '" style=\"width:100%\">\n			        </a>', file=temptextfile)            
+            species['TargetPath'] + species['BestJPG'].replace('.jpg','-small.jpg') + '" style=\"width:100%\">\n			        </a>', file=temptextfile)            
         # texts for 3 languages in 3 lines
         print('<p>' + species['ScientificName'].strip('0123456789 ').capitalize() + '</p>', file=temptextfile)
         print('<p>' + species['EnglishName'].capitalize() + '</p>', file=temptextfile)
@@ -673,12 +688,14 @@ def writeOneSpecies(MyProject, leaf, temptextfile):
         sourcestr = files_dict[species['BestJPG']]['WindowsFileName']
         targetstr = os.path.join(MyProject.ReviewFrozen(),species['TargetPath'], species['BestJPG'])
         try:  
-            #print(f"start dir   {sourcestr}\n            {targetstr}")                   
             os.makedirs(os.path.join(MyProject.ReviewFrozen(), species['TargetPath']), exist_ok=True) 
-            #print(f"make file   {sourcestr}\n            {targetstr}")                   
             rc = shutil.copy(sourcestr, targetstr)
-            #print(f"copy ok     {sourcestr}\n            {targetstr}")
+            # not sure about the logic :-(
+            # upn = UniquePictureName_dict[files_dict[species['BestJPG']]['UniquePictureName']]
+            # species = MyProject.sp.species_dict[upn['WetSoortName']]
+            # if species['iPictureWithJPGsCollection'] == 0:
             MyProject.addAllSpeciesFiles(sourcestr,os.path.join(MyProject.getBiotaWebRoot(), species['TargetPath'], species['BestJPG']))
+            # print(f'New species {species['EnglishName']}')
         except:
             print(f"failed copy {sourcestr}\n            {targetstr}")
     else:
@@ -796,6 +813,7 @@ def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
     #print(f'from {sourcestr} to {targetstr}')
     if not MyProject.getSkipJPGs():
         shutil.copy(sourcestr, targetstr)
+        jpgResizeCopy(targetstr, horizontalsize = 600)
     if MyProject.getLanguage() == 'en':
         logger.info(f"Rated {species['currentHighestRating']:3}  {species['EnglishName']:32}  Species path {species['TargetPath']}")
     return textCreated
