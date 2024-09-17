@@ -462,7 +462,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     if picture['summerwinter'] == 'non-br.' and 'aves' in picture['TargetPath']:
                         workstr += ' The vogel is in winter plumage.'   
             except:
-                pass                    
+                workstr = ""                    
             return workstr
         elif tokenno == 110 or tokenno == 113:         # blog achtige samenvatting
             language = 'nl' if tokenno == 113 else 'en'
@@ -738,7 +738,8 @@ def addOneSpeciesPage(MyProject, species_param):
             JPGname_no_path = files_dict[os.path.basename(JPGname)]
             diversity = getPictureAgeSexePlumage(UniquePictureName_dict[JPGname_no_path['UniquePictureName']])
             rating = computeRatingFile(JPGname_no_path)
-            rateorder[(diversity, rating, JPGname)] = JPGname
+            if '-small' not in JPGname:
+                rateorder[(diversity, rating, JPGname)] = JPGname
         # keep all JPGs sorted, not yet by male/female, breeding etc
         sorted_items = sorted(rateorder.items(), key=lambda item: (item[0][0], item[0][1], item[0][2]), reverse=True)
 
@@ -755,11 +756,12 @@ def addOneSpeciesPage(MyProject, species_param):
             maxpicturesperAgeSexePlumage = 4
 
         # make sure only use the first occurrance of an UPN, which is the best (ie, with the highest rate)
-        usedUPNs = {}
-        rejectUPNs = 0
+
         # print(f'{len(sorted_items)} JPGs for {species_param['DutchName']}/{species_param['ScientificName']} with {len(species_param['JPGmap'])}')            
         for diversity, items in grouped_items.items():
             filesfound = 0
+            usedUPNs = {}
+            rejectUPNs = 0            
             for rating, JPGname, value in items:
                 JPGname_no_path = files_dict[os.path.basename(JPGname)]
                 if (JPGname_no_path != "") and (JPGname_no_path['UniquePictureName'] not in usedUPNs.keys()):

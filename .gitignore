@@ -28,3 +28,4 @@ venv
 # app remains
 svconfig.backup.*
 
+Species print.txt
