@@ -80,6 +80,8 @@ class Species:
                 malefemale = "male"
             elif token.lower() in ["female", "vrouw"]:
                 malefemale = "female"
+            elif token.lower() in ["couple", "paar", "paartje"]:
+                malefemale = "couple"                
             elif token.lower() in ["breeding", "summer", "zomer"]:
                 summerwinter = "br."
             elif token.lower() in ["non-breeding", "winter"]:

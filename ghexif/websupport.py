@@ -431,27 +431,36 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             try:
                 if language == 'nl':
                     workstr = "De foto toont een "
-                    if picture['malefemale'] == 'male' or picture['malefemale'] == 'man':
+                    if picture['malefemale'] == 'male':
                         workstr += "mannetje. "
-                    elif picture['malefemale'] == 'female' or picture['malefemale'] == 'vrouw':
+                    elif picture['malefemale'] == 'female':
                         workstr += "vrouwtje. "
-                    elif picture['malefemale'] == 'couple' or picture['malefemale'] == 'paar' or picture['malefemale'] == 'paartje':
+                    elif picture['malefemale'] == 'couple':
                         workstr += 'paartje. '
-                    elif picture['ageintext'] != '':
-                        workstr += picture['ageintext']
-                    # if picture['summerwinter'] != '':
-                    #     workstr += 
-
+                    elif picture['ageintext'] == 'juv.':
+                        workstr += 'jonge.'
+                    elif picture['ageintext'] == 'imm.':
+                        workstr += 'onvolwassenne.'                        
+                    if picture['summerwinter'] == 'br.' and 'aves' in picture['TargetPath']:
+                        workstr += ' De vogel is in broedkleed (zomerkleed).'                        
+                    if picture['summerwinter'] == 'non-br.' and 'aves' in picture['TargetPath']:
+                        workstr += ' De vogel is in winterkleed.'   
                 elif language == 'en':
                     workstr = "The photo shows a "
-                    if picture['malefemale'] == 'male' or picture['malefemale'] == 'man':
+                    if picture['malefemale'] == 'male':
                         workstr += "male. "
-                    elif picture['malefemale'] == 'female' or picture['malefemale'] == 'vrouw':
+                    elif picture['malefemale'] == 'female':
                         workstr += "female. "
-                    elif picture['malefemale'] == 'couple' or picture['malefemale'] == 'paar' or picture['malefemale'] == 'paartje':
+                    elif picture['malefemale'] == 'couple':
                         workstr += "couple."
-                    elif picture['ageintext'] != '':
-                        workstr += picture['ageintext']
+                    elif picture['ageintext'] == 'juv.':
+                        workstr += 'young.'
+                    elif picture['ageintext'] == 'imm.':
+                        workstr += 'immature.'                        
+                    if picture['summerwinter'] == 'br.' and 'aves' in picture['TargetPath']:
+                        workstr += ' The bird is in breeding (summer) plumage.'                        
+                    if picture['summerwinter'] == 'non-br.' and 'aves' in picture['TargetPath']:
+                        workstr += ' The vogel is in winter plumage.'   
             except:
                 pass                    
             return workstr
