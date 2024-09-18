@@ -404,7 +404,8 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             workstr = "<div id=""\"grid\""">\n"
             for speciesname in sorted(species_param['Leaves']):
                 species = MyProject.getSpecies(speciesname)
-                if (int(species['iPictureThisRunCount']) + int(species['iPictureCollectionCount'])) > 0:   # at least one
+                if (int(species['iPicturesWithJPGsCollection']) + int(species['iPicturesWithJPGsThisRun'])) > 0:
+                #if (int(species['iPictureThisRunCount']) + int(species['iPictureCollectionCount'])) > 0:   # at least one
                     workstr += "			  <div>\n"
                     workstr += '			     <a href="' + BiotaWebRoot + species["TargetPath"] + species["ScientificName"] + '-' + language + '.html\"' + '>\n'
                     if species['BestJPG'] != "" and species['BestJPGPathName'] != "":
@@ -429,34 +430,37 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             return workstr
         elif tokenno == 101:         # Male/Female etc
             try:
+                language = MyProject.getLanguage()
                 if language == 'nl':
-                    workstr = "De foto toont een "
-                    if picture['malefemale'] == 'male':
-                        workstr += "mannetje. "
-                    elif picture['malefemale'] == 'female':
-                        workstr += "vrouwtje. "
-                    elif picture['malefemale'] == 'couple':
-                        workstr += 'paartje. '
-                    elif picture['ageintext'] == 'juv.':
-                        workstr += 'jonge.'
-                    elif picture['ageintext'] == 'imm.':
-                        workstr += 'onvolwassenne.'                        
+                    if picture['malefemale'] != '' or picture['ageintext']:                    
+                        workstr = "De foto toont een "
+                        if picture['malefemale'] == 'male':
+                            workstr += "mannetje. "
+                        elif picture['malefemale'] == 'female':
+                            workstr += "vrouwtje. "
+                        elif picture['malefemale'] == 'couple':
+                            workstr += 'paartje. '
+                        elif picture['ageintext'] == 'juv.':
+                            workstr += 'jonge ' + picture['NLSoortNaam'].lower() + '.'
+                        elif picture['ageintext'] == 'imm.':
+                            workstr += 'onvolwassen ' +  + picture['NLSoortNaam'].lower() + '.'                     
                     if picture['summerwinter'] == 'br.' and 'aves' in picture['TargetPath']:
                         workstr += ' De vogel is in broedkleed (zomerkleed).'                        
                     if picture['summerwinter'] == 'non-br.' and 'aves' in picture['TargetPath']:
                         workstr += ' De vogel is in winterkleed.'   
                 elif language == 'en':
-                    workstr = "The photo shows a "
-                    if picture['malefemale'] == 'male':
-                        workstr += "male. "
-                    elif picture['malefemale'] == 'female':
-                        workstr += "female. "
-                    elif picture['malefemale'] == 'couple':
-                        workstr += "couple."
-                    elif picture['ageintext'] == 'juv.':
-                        workstr += 'young.'
-                    elif picture['ageintext'] == 'imm.':
-                        workstr += 'immature.'                        
+                    if picture['malefemale'] != '' or picture['ageintext']:
+                        workstr = "The photo shows a "
+                        if picture['malefemale'] == 'male':
+                            workstr += "male. "
+                        elif picture['malefemale'] == 'female':
+                            workstr += "female. "
+                        elif picture['malefemale'] == 'couple':
+                            workstr += "couple."
+                        elif picture['ageintext'] == 'juv.':
+                            workstr += 'young '  + picture['EngSoortNaam'].lower() + '.'
+                        elif picture['ageintext'] == 'imm.':
+                            workstr += 'immature ' + picture['EngSoortNaam'].lower() + '.'                 
                     if picture['summerwinter'] == 'br.' and 'aves' in picture['TargetPath']:
                         workstr += ' The bird is in breeding (summer) plumage.'                        
                     if picture['summerwinter'] == 'non-br.' and 'aves' in picture['TargetPath']:
@@ -741,11 +745,13 @@ def addOneSpeciesPage(MyProject, species_param):
             if '-small' not in JPGname:
                 rateorder[(diversity, rating, JPGname)] = JPGname
         # keep all JPGs sorted, not yet by male/female, breeding etc
+        # Sort the dictionary by rating in descending order
+        # Sort the items by diversity, rating, and JPGname in descending order
         sorted_items = sorted(rateorder.items(), key=lambda item: (item[0][0], item[0][1], item[0][2]), reverse=True)
 
         # Create a defaultdict to group items by diversity
         grouped_items = defaultdict(list)
-        for (diversity, rating, JPGname), value in rateorder.items():
+        for (diversity, rating, JPGname), value in sorted_items:
             grouped_items[diversity].append((rating, JPGname, value))
 
         diversity_groups = len(grouped_items)
@@ -753,7 +759,7 @@ def addOneSpeciesPage(MyProject, species_param):
         if diversity_groups == 1:
             maxpicturesperAgeSexePlumage = 4
         elif diversity_groups == 2:
-            maxpicturesperAgeSexePlumage = 4
+            maxpicturesperAgeSexePlumage = 3
 
         # make sure only use the first occurrance of an UPN, which is the best (ie, with the highest rate)
 
