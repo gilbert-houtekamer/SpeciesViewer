@@ -50,17 +50,22 @@ def readTrip(MyProject):
         # tripname = tripconfig.get("trip_config", "tripname")
         tripname = Path(MyProject.getBiotaWebRoot()).name
         tripconfig['trip_config']['tripname'] = tripname        
-        tripconfig['trip_config']['created'] = datetime.today().strftime('%Y-%m-%d %H-%M')
+        tripconfig['trip_config']['created'] = datetime.today().strftime('%Y:%m:%d %H:%M')
         # message = getUTF8(tripconfig, "trip_text", "message_nl")
         # titel_en = getUTF8(tripconfig, "trip_text", "titel_en")
         # message_en = getUTF8(tripconfig, "trip_text", "message_en")
     else:
+        # Ensure the sections exist before setting values
+        if not tripconfig.has_section('trip_config'):
+            tripconfig.add_section('trip_config')
+        if not tripconfig.has_section('trip_text'):
+            tripconfig.add_section('trip_text')        
         # set defaults
         tripconfig['trip_config']['masterrepository'] = ""
         tripconfig['trip_config']['repositorybanner'] = MyProject.getRepositoryBanner()
         tripname = Path(MyProject.getBiotaWebRoot()).name
         tripconfig['trip_config']['tripname'] = tripname
-        tripconfig['trip_config']['created'] = datetime.today().strftime('%Y-%m-%d %H-%M')
+        tripconfig['trip_config']['created'] = datetime.today().strftime('%Y:%m:%d %H:%M')
 
         tripconfig['trip_text']['title_nl'] = tripname
         tripconfig['trip_text']['message_nl'] = "Een omschrijving van de trip " + tripname
