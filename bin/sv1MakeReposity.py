@@ -8,6 +8,9 @@ import shutil
 import configparser
 import logging
 import argparse
+from pathlib import Path
+from datetime import datetime, date
+
 
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
@@ -20,6 +23,54 @@ import ghexif.sftplib
 import ghexif.projectlib
 
 logger = logging.getLogger(__name__)
+
+# reading trip.ini for repositories that are about a trip
+def getUTF8(tripconfig, group, ansistring):
+    workstr = tripconfig.get(group, ansistring)
+    try:
+        workstr = workstr.encode('latin1').decode('utf-8')          # we should validate this upon input
+        workstr = workstr.replace("<female>", "♀")
+        workstr = workstr.replace("<male>", "♂")
+    except:
+        pass  # too bad, we tried
+    return workstr
+
+def readTrip(MyProject):
+    # tripbasedirectory = pathlib.Path(MyProject.getRepositoryPath())
+    # tripinifile = os.path.join(tripbasedirectory.parent, "trip.ini")
+    tripinifile = os.path.join(MyProject.getRepositoryPath(), "trip.ini")
+    tripconfig = configparser.ConfigParser()
+
+    if os.path.exists(tripinifile):
+        # create a separete config instance
+        tripconfig.read(tripinifile)
+        # set the parameters
+        # masterrepository = tripconfig.get("trip_config", "masterrepository")
+        # repositorybanner = tripconfig.get("trip_config", "repositorybanner")
+        # tripname = tripconfig.get("trip_config", "tripname")
+        tripname = Path(MyProject.getBiotaWebRoot()).name
+        tripconfig['trip_config']['tripname'] = tripname        
+        tripconfig['trip_config']['created'] = datetime.today().strftime('%Y-%m-%d %H-%M')
+        # message = getUTF8(tripconfig, "trip_text", "message_nl")
+        # titel_en = getUTF8(tripconfig, "trip_text", "titel_en")
+        # message_en = getUTF8(tripconfig, "trip_text", "message_en")
+    else:
+        # set defaults
+        tripconfig['trip_config']['masterrepository'] = ""
+        tripconfig['trip_config']['repositorybanner'] = MyProject.getRepositoryBanner()
+        tripname = Path(MyProject.getBiotaWebRoot()).name
+        tripconfig['trip_config']['tripname'] = tripname
+        tripconfig['trip_config']['created'] = datetime.today().strftime('%Y-%m-%d %H-%M')
+
+        tripconfig['trip_text']['title_nl'] = tripname
+        tripconfig['trip_text']['message_nl'] = "Een omschrijving van de trip " + tripname
+        tripconfig['trip_text']['title_en'] = tripname
+        tripconfig['trip_text']['message_en'] = "A description of the trip " + tripname
+
+    # now write updated / created version back
+    with open(tripinifile, 'w') as tripfile:
+        tripconfig.write(tripfile)
+    return
 
 def main(args, config):
     MY_GHEXIF_DIR = os.path.join(modpath,"dist")
@@ -85,6 +136,10 @@ def main(args, config):
                                           config.get("repository","BiotaWebRoot"))
     # potential customization
     MyProject.setRepositoryBanner(config.get("repository","RepositoryBanner"))
+    # if this is a sub-repository, read trip.ini
+    if MyProject.getRepositoryBanner() != "":
+        readTrip(MyProject)
+
     # create intro page, already in good location
     MyProject.makeIntro('intro-nl')
     MyProject.makeIntro('intro-en')

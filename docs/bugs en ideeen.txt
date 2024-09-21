@@ -1,18 +1,24 @@
 Bugs
-- https://houtekamer.com/nature/intro-en.html is overwriiten??
-- niet alle UPNs hebben de nieuwe velden male/female etc, why?
 - '-small' files moeten aan file worden toegevoegd, of onderdrukt worden
 
-Betere functie
-- uplink to master repository, .ini voor repository met projects?  - 
+Betere functies:
+- IN PROGRESS .ini voor repository van trips, vooral zodat er een overzicht code gemaakt kan worden,
+  a la wat ik heb voor blog
+  - title, message
+  - plaatje
+  - uplink to master repository
   - afdwingen dat projecten in dezelfde directory zitten.  Dat hebben we eigenlijk niet?
-- Nederlandse namen opvragen met Nederlandse gbif versie
+- JVO: Nederlandse namen opvragen met Nederlandse gbif versie  
+
+Diversen:
 - optie voor FTP zonder JPGs (? weet relevantie niet meer)
+- https://houtekamer.com/nature/intro-en.html is overwriiten??
 
 Issues met het design nu
-- algemener selectie op basis van datum van een blog, 
+- algemener selectie op basis van datum van een blog, buildwebsite
   maar misschien ook voor andere functies. 
-- Blogs ook achteraf nog kunnen maken op basis tijd ipn New
+  - impliceert ook achteraf nog kunnen maken op basis tijd ipn New
+    denk ik
 
 GUI
 - automatisch een batch verwerken van alle dagen en
@@ -26,6 +32,7 @@ Related:
 - houtekamer.com opruimen en pointers fixen vanaf home page
 
 Done:
+- DONE niet alle UPNs hebben de nieuwe velden male/female etc, why?
 - [OK, er in elk geval wat.]  links vanaf houtekamer.com
 - [DONE]. volgorde voor Aves klasse
 - DONE: Of een apart kleurtje voor trip report, met een olifant als header bv, 

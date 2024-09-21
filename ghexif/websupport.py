@@ -405,7 +405,6 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             for speciesname in sorted(species_param['Leaves']):
                 species = MyProject.getSpecies(speciesname)
                 if (int(species['iPicturesWithJPGsCollection']) + int(species['iPicturesWithJPGsThisRun'])) > 0:
-                #if (int(species['iPictureThisRunCount']) + int(species['iPictureCollectionCount'])) > 0:   # at least one
                     workstr += "			  <div>\n"
                     workstr += '			     <a href="' + BiotaWebRoot + species["TargetPath"] + species["ScientificName"] + '-' + language + '.html\"' + '>\n'
                     if species['BestJPG'] != "" and species['BestJPGPathName'] != "":
