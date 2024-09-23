@@ -49,8 +49,8 @@ def readTrip(MyProject):
         # repositorybanner = tripconfig.get("trip_config", "repositorybanner")
         # tripname = tripconfig.get("trip_config", "tripname")
         tripname = Path(MyProject.getBiotaWebRoot()).name
-        tripconfig['trip_config']['tripname'] = tripname        
-        tripconfig['trip_config']['created'] = datetime.today().strftime('%Y:%m:%d %H:%M')
+        tripconfig['trip_config']['trip_name'] = tripname        
+        tripconfig['trip_config']['created'] = datetime.today().strftime('%Y-%m-%d %H:%M')
         # message = getUTF8(tripconfig, "trip_text", "message_nl")
         # titel_en = getUTF8(tripconfig, "trip_text", "titel_en")
         # message_en = getUTF8(tripconfig, "trip_text", "message_en")
@@ -61,11 +61,15 @@ def readTrip(MyProject):
         if not tripconfig.has_section('trip_text'):
             tripconfig.add_section('trip_text')        
         # set defaults
-        tripconfig['trip_config']['masterrepository'] = ""
+        tripconfig['trip_config']['master_repository_disk'] = ""
+        tripconfig['trip_config']['master_repository_web'] = ""        
         tripconfig['trip_config']['repositorybanner'] = MyProject.getRepositoryBanner()
         tripname = Path(MyProject.getBiotaWebRoot()).name
-        tripconfig['trip_config']['tripname'] = tripname
-        tripconfig['trip_config']['created'] = datetime.today().strftime('%Y:%m:%d %H:%M')
+        tripconfig['trip_config']['trip_name'] = tripname
+        tripconfig['trip_config']['trip_banner'] = "includes web/zuidafrika2024.jpg"
+        tripconfig['trip_config']['trip_picture'] = "/biotablog/Blog Pictures 2024-06-26-2024-06-26-biota-0-5/2024 zomer Zuid-Afrika-N6261550-small.jpg"
+
+        tripconfig['trip_config']['created'] = datetime.today().strftime('%Y-%m-%d %H:%M')
 
         tripconfig['trip_text']['title_nl'] = tripname
         tripconfig['trip_text']['message_nl'] = "Een omschrijving van de trip " + tripname

@@ -1,4 +1,5 @@
-# no idea what I do :-(
+
+
 import os
 from pathlib import Path
 import time
@@ -25,6 +26,8 @@ class Project:
     # blog admin
     Blog = None
     blogday = ""
+    # tripadmin
+    Trip = None
     # web building
     RepositoryBanner = ""
     templates_dict = {}
@@ -66,6 +69,10 @@ class Project:
         self.addTemplate("blogtext-nl.html")                   
         self.addTemplate("blogtext-en.html")
 
+        # trip
+        self.addTemplate("tripindex-nl.html")
+        #self.addTemplate("blogindex-en.html")
+
     def internet_connection(self):
         try:
             response = requests.get("https://houtekamer.com", timeout=75)
@@ -84,7 +91,11 @@ class Project:
         self.blogday = today + '-'+ self.ProjectName()
     def getBlogDay(self):
         return self.blogday         
-
+    # trips
+    def registerTrip(self, Trip):
+        self.Trip = Trip
+    def getMasterDir(self):
+        return self.Trip.trip_dict[0]['master_repository_disk']
     def getRepositoryPath(self):
         return self.Repository    
     def getProjectPath(self):

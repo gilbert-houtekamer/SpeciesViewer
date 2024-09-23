@@ -362,9 +362,10 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 82: return kingdom_local['ScientificName'].strip('0123456789 ').capitalize()
         elif tokenno == 83: return kingdom_local['EnglishName'].capitalize()
         elif tokenno == 84: return kingdom_local['iPictureCollectionCount']
-
+        elif tokenno == 89:
+            return MyProject.Trip.trip_dict['safaridb']['master_repository_web']      # path to current main repository, NOT to trip also for subdirectories
         elif tokenno == 90:
-            return BiotaWebRoot
+            return BiotaWebRoot         # path to current main repository or to trip
         elif tokenno == 91:
             language = MyProject.getLanguage()            
             workstr = "	<h4>Links</h4>\n	<div class=""\"content\""">\n		<ul class= ""\"w3-ul w3-hoverable\""">\n"
@@ -609,7 +610,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     workstr += '          <p>(picture not found)</p>\n'
                 else:
                     workstr += f'          <a href="{logname}-nl.html"><img\n'
-                    workstr += '            src="' + logname + '/' + blog["BestJPGs"][0].replace('.jpg','-small.jpg') + '"\n'
+                    workstr += '            src="' + logname + '/' + blog["BestJPGs"][0] + '"\n'
                     workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to open "' + blog["title_" + language] + '""></a>\n'
                 workstr += '      </div>\n'
                 workstr += '      <div class="w3-col" style="width:70%">\n'
@@ -649,10 +650,58 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 126:
             w =  MyProject.Blog.getColumnWidth()
             return str(w)
+        # elif tokenno == 141:
+        #     return MyProject.Blog.getBlogDay()
+        elif tokenno == 142:
+            return MyProject.Trip.getTripTitel()
+        elif tokenno == 143:
+            return MyProject.Trip.getTripTitle()
+        elif tokenno == 144:
+            return MyProject.Trip.getTripBericht()
+        elif tokenno == 145:
+            return MyProject.Trip.getTripMessage()  
+        elif tokenno == 146 or tokenno == 147:
+            language = 'nl' if tokenno == 146 else 'en'
+            workstr = ''
+            for tripname in MyProject.Trip.getTripDictSortedKeys():
+                trip = MyProject.Trip.getTrip(tripname)
+                # print(f'Logname {logname} {blog["BestJPGs"][0]}')
+                workstr += '   <div class="w3-row" style="margin: 15px">\n'
+                workstr += '      <div class="w3-col w3-win8-olive" style="width:25%">\n'
+                if MyProject.Trip.getTripPicture(tripname) == "":
+                    workstr += '          <p>(picture not found)</p>\n'
+                else:
+                    workstr += f'          <a href="/' + trip['tripname'] + '/intro-nl.html"><img\n'
+                    workstr += '            src="' + MyProject.Trip.getTripPicture(tripname) + '"\n'  
+                    workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to open "' + trip["title_" + language] + '""></a>\n'
+                workstr += '      </div>\n'
+                workstr += '      <div class="w3-col" style="width:75%">\n'
+                workstr += '        <div class="content" style="margin-left:10px">\n'
+                workstr += '          <table class="w3-table w3-hoverable">\n'
+                workstr += '            <tr class="w3-win8-olive">\n'
+                workstr += f'              <th>Titel</th><td><a href="/' + trip["tripname"] + '/intro-nl.html">' + trip["title_" + language] + '</td>\n'
+                workstr += '            </tr>\n'
+                workstr += '            <tr>\n'
+                workstr += '              <th></th><td>' + trip["message_" + language] + '</td>\n'
+                workstr += '            </tr>\n'
+                if language == 'nl':
+                    workstr += '              <th>Datum:</th><td>' + trip["created"] + '</td>\n'
+                else:
+                    workstr += '              <th>Date:</th><td>' + trip["created"] + '</td>\n'
+                workstr += '            </tr>\n'                  
+                workstr += '          </table>\n'
+                workstr += '        </div>\n'
+                workstr += '      </div>\n'
+                workstr += '    </div>\n'
+            return workstr
+        elif tokenno == 120:         # all soorten
+            workstr = ""
+            workstr = addAllSpeciesWrapper(MyProject, species_param['ScientificName'], workstr)
+            return workstr        
         else:
             return '<token ' + tokenno + '>'
     except Exception as e:
-        logger.info(f"{species_param['ScientificName']}:{'<Failed to handle token ' + tokenno + '>'} Error: {e}")
+        logger.info(f"{species_param['ScientificName']}:{'<Failed to handle token ' + tokenno + '>'} Error: {e.args}")
         return '<Failed to handle token '  + tokenno + '>' + e.arg[0]
 
 # logic selected species
