@@ -63,15 +63,13 @@ def main(args, config):
     trip.getCollectTrips(directory_to_scan, 'c:/laptop/')
     # generate website
     trip.updateTripIndexPage('nl')
+    trip.updateTripIndexPage('en')
 
-    # # sample code to determine what is needed, up to level 2024-06-29
-    # current_day = '2024-06-29'
-    # for statemachine in days_dict:                      # projects
-    #     if statemachine >= current_day: 
-    #         break
-    #     if not days_dict[statemachine]['WriteCommit'][0]:  # this project is not
-    #         # read this older project
-    #         print(f"Reading data from {statemachine}.") 
+    # sFTP index files, assume all picture are there
+    pwd = config.get("websettings","Sftppwd").strip("'")
+    sftp = trip.openSFTP(pwd)
+    sftp.uploadTrip(sftp)
+    sftp.disconnect()
 
         
     # print(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')

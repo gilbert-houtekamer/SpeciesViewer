@@ -671,15 +671,15 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 if MyProject.Trip.getTripPicture(tripname) == "":
                     workstr += '          <p>(picture not found)</p>\n'
                 else:
-                    workstr += f'          <a href="/' + trip['tripname'] + '/intro-nl.html"><img\n'
-                    workstr += '            src="' + MyProject.Trip.getTripPicture(tripname) + '"\n'  
+                    workstr += f'          <a href="/' + trip['tripname'] + '/biota/animalia/animalia-nl.html"><img\n'
+                    workstr += '            src="/' + trip["tripname"] + '/' + MyProject.Trip.getTripPicture(tripname) + '"\n'  
                     workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to open "' + trip["title_" + language] + '""></a>\n'
                 workstr += '      </div>\n'
                 workstr += '      <div class="w3-col" style="width:75%">\n'
                 workstr += '        <div class="content" style="margin-left:10px">\n'
                 workstr += '          <table class="w3-table w3-hoverable">\n'
                 workstr += '            <tr class="w3-win8-olive">\n'
-                workstr += f'              <th>Titel</th><td><a href="/' + trip["tripname"] + '/intro-nl.html">' + trip["title_" + language] + '</td>\n'
+                workstr += f'              <th>Titel</th><td><a href="/' + trip["tripname"] + '/biota/animalia/animalia-nl.html">' + trip["title_" + language] + '</td>\n'
                 workstr += '            </tr>\n'
                 workstr += '            <tr>\n'
                 workstr += '              <th></th><td>' + trip["message_" + language] + '</td>\n'

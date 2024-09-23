@@ -222,7 +222,7 @@ class Trip:
             sftp= None
         return sftp
     
-    def uploadTrip(self, sftp, sftpPictures = True):
+    def uploadTrip(self, sftp, sftpPictures = False):
         # # trip post and pictures
         # MyProject = self.mp     
         # biotatrip = MyProject.getBiotaTripDir()

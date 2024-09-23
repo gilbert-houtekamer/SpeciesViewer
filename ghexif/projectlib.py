@@ -71,7 +71,7 @@ class Project:
 
         # trip
         self.addTemplate("tripindex-nl.html")
-        #self.addTemplate("blogindex-en.html")
+        self.addTemplate("tripindex-en.html")
 
     def internet_connection(self):
         try:
