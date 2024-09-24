@@ -83,7 +83,7 @@ def readTrip(MyProject):
 
 def main(args, config):
     MY_GHEXIF_DIR = os.path.join(modpath,"dist")
-    NEW_DB_TREE = config.get("repository","BiotaDatebase")    # "e:/test3/SpeciesViewDB/"
+    NEW_DB_TREE = config.get("repository","BiotaDatabase")    # "e:/test3/SpeciesViewDB/"
     WEB_TREE = config.get("repository","BiotaWebRoot")
 
     logger.info("sv1MakeReposity: define repository and disk and Web.")
@@ -140,7 +140,7 @@ def main(args, config):
 
     # create missing link pages relative to intro page
     # first create the "master", but that needs a "real" environemnt with MyProject
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"),
+    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"),
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     # potential customization

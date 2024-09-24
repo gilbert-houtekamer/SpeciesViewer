@@ -12,7 +12,7 @@ Betere functies:
   - wegschrijven naar sFTP
   - logic documentern
   - sv1 slimmer maken om index updaten (evt)
-  - pad voor files nog niet goed?
+  - directory path voor files nog niet goed?
 
 - JVO: Nederlandse namen opvragen met Nederlandse gbif versie  
 

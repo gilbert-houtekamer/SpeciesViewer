@@ -193,7 +193,7 @@ def main(args, config):
     speciesok = Reference_sp.species_dict['biota']
 
 
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
+    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     

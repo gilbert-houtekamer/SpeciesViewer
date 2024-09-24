@@ -27,13 +27,13 @@ class Repository:
         self.config_path = self.path / "config.ini"
         if self.config_path.exists():
             self.config.read(path / 'config.ini')
-            self.biota_database_path = Path(self.config.get('repository', 'BiotaDatebase'))
+            self.biota_database_path = Path(self.config.get('repository', 'BiotaDatabase'))
             self.biota_webroot_path = self.config.get('repository', 'BiotaWebRoot')
         else:
             self.config.add_section('repository')
             self.biota_database_path = self.path
             os.makedirs(self.biota_database_path, exist_ok=True)
-            self.config.set('repository', 'BiotaDatebase', str(self.biota_database_path))
+            self.config.set('repository', 'BiotaDatabase', str(self.biota_database_path))
             self.biota_webroot_path = '/web'
             self.config.set('repository', 'BiotaWebRoot', str(self.biota_webroot_path))
             self.config.add_section('projects')

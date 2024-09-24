@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 def main(args, config):
     starttime = time.time()
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
+    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))  
     
@@ -156,7 +156,7 @@ if __name__ == "__main__":
     # init the logging subsystem
     logging.basicConfig(level=logging.INFO)
     # define state machine and see if we can run this step
-    statemachine = ghexif.statemachine.StateMachine(config.get("repository","BiotaDatebase"), config.get("project","PictureDirectory"))
+    statemachine = ghexif.statemachine.StateMachine(config.get("repository","BiotaDatabase"), config.get("project","PictureDirectory"))
     # call the actual code
     try:
         if not statemachine.stateOKtorun(parser.description):

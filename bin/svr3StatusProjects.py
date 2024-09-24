@@ -39,7 +39,7 @@ def getAllProjectStatus(directory):
                 parseddir = root.split('\\')
                 name = parseddir[1]
                 if name == "": name = parseddir[0]
-                statemachine = ghexif.statemachine.StateMachine(config.get("repository","BiotaDatebase"), name) #, readState=False)
+                statemachine = ghexif.statemachine.StateMachine(config.get("repository","BiotaDatabase"), name) #, readState=False)
                 days_dict[name] = statemachine.Taskstate.copy()
 
     # make summary report
@@ -63,7 +63,7 @@ def main(args, config):
     SpeciesDebug = 0        # default   
 
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
+    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     

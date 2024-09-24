@@ -122,7 +122,7 @@ class RepositoryPane(ft.Container):
         config = self.repo.config
 
         # set the configuration from our UI info (we will integrate that later)
-        config.set('repository', 'BiotaDatebase', str(self.repo.biota_database_path) + '/')
+        config.set('repository', 'BiotaDatabase', str(self.repo.biota_database_path) + '/')
         config.set('repository', 'BiotaWebRoot',  self.repo.biota_webroot_path + '/')
         config.set('project', 'PictureDirectory', str(self.view.path) + '/')
 

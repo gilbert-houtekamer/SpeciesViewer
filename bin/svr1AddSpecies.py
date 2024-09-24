@@ -31,7 +31,7 @@ def main(args, config):
 
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
 
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatebase"), 
+    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     

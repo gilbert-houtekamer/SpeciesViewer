@@ -224,7 +224,7 @@ class Trip:
     
     def uploadTrip(self, sftp, sftpPictures = False):
         # # trip post and pictures
-        # MyProject = self.mp     
+        MyProject = self.mp     
         # biotatrip = MyProject.getBiotaTripDir()
         # fromfile = biotatrip + self.getTripDay() + '-nl.html'
         # toweb = sftp.remotePrefix() + MyProject.getBiotaTripWeb() + self.getTripDay() + '-nl.html'

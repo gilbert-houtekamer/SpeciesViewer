@@ -15,7 +15,7 @@ def deriveUniquePictureName(windows_filename):
         uniquename, extension = os.path.splitext(windows_filename)
     uniquename = uniquename.lower()
     # look for common extensions
-    uniquename = uniquename.split("-small")[0]  # PhotoLab
+    uniquename = uniquename.split("-small")[0]  # SpeciesViewer
     uniquename = uniquename.replace(
         "-nef", ""
     )  # Remove "-NEF" from the uniquename (if present)
