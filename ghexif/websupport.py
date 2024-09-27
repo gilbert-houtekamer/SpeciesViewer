@@ -363,9 +363,9 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 83: return kingdom_local['EnglishName'].capitalize()
         elif tokenno == 84: return kingdom_local['iPictureCollectionCount']
         elif tokenno == 89:
-            return MyProject.Trip.trip_dict['safaridb']['master_repository_web']      # path to current main repository, NOT to trip also for subdirectories
+            return MyProject.trip.getMasterBiotaWebRoot()     # path to current main repository, NOT to trip also for subdirectories
         elif tokenno == 90:
-            return BiotaWebRoot         # path to current main repository or to trip
+            return BiotaWebRoot                     # path to current main repository or to trip
         elif tokenno == 91:
             language = MyProject.getLanguage()            
             workstr = "	<h4>Links</h4>\n	<div class=""\"content\""">\n		<ul class= ""\"w3-ul w3-hoverable\""">\n"

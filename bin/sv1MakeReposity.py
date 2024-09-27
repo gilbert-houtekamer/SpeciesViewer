@@ -21,6 +21,7 @@ if __name__ == "__main__":
 
 import ghexif.sftplib
 import ghexif.projectlib
+import ghexif.triplib
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +148,9 @@ def main(args, config):
     MyProject.setRepositoryBanner(config.get("repository","RepositoryBanner"))
     # if this is a sub-repository, read trip.ini
     if MyProject.getRepositoryBanner() != "":
-        readTrip(MyProject)
+        trip = ghexif.triplib.Trip(MyProject, config)
+        MyProject.registerTrip(trip)           
+        MyProject.Trip.readAndWriteTripAdmin()
 
     # create intro page, already in good location
     MyProject.makeIntro('intro-nl')

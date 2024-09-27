@@ -28,6 +28,7 @@ class Project:
     blogday = ""
     # tripadmin
     Trip = None
+    MasterRepository = ""
     # web building
     RepositoryBanner = ""
     templates_dict = {}
@@ -129,6 +130,13 @@ class Project:
         return os.path.join(self.modpath, "HTMLtemplates/")
     def ReviewFrozen(self):
         return os.path.join(self.Repository, 'metadata' , 'review', self.projectName, 'frozen')
+    def setMasterRepository(self, directory):
+        self.MasterRepository = directory
+    def getMasterRepository(self):
+        if self.MasterRepository == '':
+            return self.getRepositoryPath()
+        else:
+            return self.MasterRepository
     # Variables in passable way 
     # species_dict (read-only)
     def getSpeciesCount(self, species):

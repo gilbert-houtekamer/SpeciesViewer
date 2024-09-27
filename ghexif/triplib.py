@@ -34,9 +34,14 @@ class Trip:
     trip_row = {}
     trip_dict = {}
 
-    def __init__(self, MyProject):
+    def __init__(self, MyProject, config):
         MyProject.registerTrip(self)
         self.mp = MyProject
+        try:
+            master_repository_disk = config.get("master","MasterBiotaDatabase")
+            self.mp.setMasterRepository(master_repository_disk)
+        except:
+            pass
         return 
 
     def setTripLanguageSwitch(self, name):
@@ -46,12 +51,16 @@ class Trip:
     def existTrip(self, newname):
         if newname in self.trip_dict: return True
         return False
-    def getMasterBiotaDir(self, tripname):
-        return self.trip_dict[tripname]['master_repository_disk']
-    def getTripBanner(self, tripname):
-        return os.path.join(self.mp.getBiotaWebRoot() , self.trip_dict[tripname]['trip_banner'])
-    def getTripPicture(self, tripname):
-        return os.path.join(self.mp.getBiotaWebRoot() , self.trip_dict[tripname]['trip_picture'])
+    def getMasterRepository(self):
+        return self.mp.getMasterRepository()
+    def getMasterBiotaWebRoot(self):
+        return self.trip_dict[self.tripname]['master_repository_web']
+    def getTripAdminFile(self):                 # the location when the trips.csv file is stored
+        return os.path.join(self.mp.getMasterRepository(), 'admin', 'trip_admin.csv')
+    def getTripBanner(self, tripname):          # the web address where the file can be found
+        return os.path.join(self.mp.getBiotaWebRoot() , self.trip_dict[tripname]['trip_name'],  self.trip_dict[tripname]['trip_banner'])
+    def getTripPicture(self, tripname):         # the web address where the picture can be found
+        return os.path.join(self.mp.getBiotaWebRoot() , self.trip_dict[tripname]['trip_name'], self.trip_dict[tripname]['trip_picture'])
     def getTripName(self, tripname):
         return self.trip_dict[tripname]['trip_name']
     
@@ -63,15 +72,14 @@ class Trip:
     def getTrip(self, tripname):
         return self.trip_dict[tripname]
     def addTrip(self, row):
-        self.trip_dict[row['trip']] = row
+        self.trip_dict[row['trip_name']] = row
         return
     def setTripHeader(self, headers):
         self.trip_csv_headers = self.new_trip_row.keys()
         return
     def getTripHeader(self):
         return self.trip_csv_headers 
-    def getTripAdminFile(self, tripnamr):
-        return self.mp.getMasterBiotaDir('safaridb') + 'admin/trip_admin.csv'
+
     # def getTripTitel(self):
     #     return self.TitleNl
     # def getTripTitle(self):
@@ -87,7 +95,7 @@ class Trip:
         return self.column_width
     
     # update by scanning the trip directory
-    def getCollectTrips(self, directory, tripinifile):
+    def getCollectTrips(self, directory):
         self.trip_dict = {}
         for root, dirs, files in os.walk(directory):
             for file in files:
@@ -112,7 +120,7 @@ class Trip:
             # trip_banner = tripconfig.get("trip_config", "trip_banner")
             # tripname = tripconfig.get("trip_config", "tripname")
             tripname = Path(self.mp.getBiotaWebRoot()).name
-            tripconfig['trip_config']['tripname'] = tripname        
+            tripconfig['trip_config']['trip_name'] = tripname        
             tripconfig['trip_config']['created'] = datetime.today().strftime('%Y-%m-%d %H:%M')
             # tripconfig['trip_config']['trip_banner'] = "includes web/zuidafrika2024.jpg"
             # message = getUTF8(tripconfig, "trip_text", "message_nl")
@@ -128,10 +136,10 @@ class Trip:
             tripconfig['trip_config']['master_repository_web'] = "/safari/"
             tripconfig['trip_config']['master_repository_disk'] = "c:/laptop/Zuid Afrika"            
             tripconfig['trip_config']['repositorybanner'] = self.mp.getRepositoryBanner()
-            tripconfig['trip_config']['trip_banner'] = "includes web/zuidafrika2024.jpg"
-            tripconfig['trip_config']['trip_picture'] = "C:/laptop/trips/safaridb/web/biotablog/Blog Pictures 2024-06-26-2024-06-26-biota-0-5/2024 zomer Zuid-Afrika-N6261550-small-small.jpg"
+            tripconfig['trip_config']['trip_banner'] = "zuidafrika2024.jpg"
+            tripconfig['trip_config']['trip_picture'] = "2024 zomer Zuid-Afrika-N6261550-small-small.jpg"
             tripname = Path(self.mp.getBiotaWebRoot()).name
-            tripconfig['trip_config']['tripname'] = tripname
+            tripconfig['trip_config']['trip_name'] = tripname
             tripconfig['trip_config']['created'] = datetime.today().strftime('%Y-%m-%d %H:%M')
 
             tripconfig['trip_text']['title_nl'] = tripname
@@ -173,39 +181,54 @@ class Trip:
     def write_TripAdmin(self):
         # Write Picture CSV file
         logger.info(f'Write all trip data in CSV file "{self.getTripAdminFile()}".')
+        for tripitem in self.trip_dict:
+            headers = self.trip_dict[tripitem].keys()
+            break
+
         with open(self.getTripAdminFile(), "w", newline="", encoding='utf-8') as csvfile:
             # needed to get column in order          
-            writer = csv.DictWriter(csvfile, fieldnames=self.new_trip_row.keys(), delimiter=';')
+            writer = csv.DictWriter(csvfile, fieldnames=headers, delimiter=';')
             writer.writeheader()
 
             for tripitem in self.trip_dict:
                 trip_object = self.trip_dict[tripitem]
                 row = {}
-                row['trip'] = trip_object['tripname'] 
-                row['title_nl'] = trip_object['title_nl']
+                row['trip_name'] = trip_object['trip_name'] 
+                row['title_nl'] = trip_object['title_nl'] 
                 row['title_en'] = trip_object['title_en']
                 row['message_nl'] = trip_object['message_nl']
                 row['message_en'] = trip_object['message_en']
-                row['Project'] = self.mp.ProjectName()
-                row['CreatedTime'] = datetime.today().strftime('%Y-%m-%d %H:%M')
-                row['master_repository'] = trip_object['master_repository'] 
-                row['repositorybanner'] = trip_object['repositorybanner']
+                #row['Project'] = self.mp.ProjectName()
+                row['created'] = datetime.today().strftime('%Y-%m-%d %H:%M')
+                row['master_repository_disk'] = trip_object['master_repository_disk'] 
+                row['master_repository_web'] = trip_object['master_repository_web']                 
                 row['trip_banner'] = trip_object['trip_banner']
                 row['trip_picture'] = trip_object['trip_picture']
+                # soon to be obsolete
+                row['repositorybanner'] = trip_object['repositorybanner']
                 writer.writerow(row)  
         return
+
+    def readAndWriteTripAdmin(self):
+        self.read_TripAdmin()                       # read existing trip admin
+        tripinifile = os.path.join(self.mp.getRepositoryPath(), "trip.ini")
+        trip_row = self.readTrip(tripinifile)    # read this new trip.ini file
+        if trip_row != None and trip_row != {}:
+            self.addTrip(trip_row)                  # add (or update) newly read trip.ini
+            self.write_TripAdmin()                  # write updated trip dictionary
+
 
     # create updated index page
     def updateTripIndexPage(self, language):
         MyProject = self.mp
         triptemplate = MyProject.getTemplateLines("tripindex-" + language + ".html")
-        with open((os.path.join(self.getMasterBiotaDir("safaridb" ), "tripindex-" + language + ".html")).lower(), "w", encoding='UTF-8') as fileTripIndex:
+        with open((os.path.join(self.getMasterBiotaDir(), "tripindex-" + language + ".html")).lower(), "w", encoding='UTF-8') as fileTripIndex:
             for templateline in triptemplate:
                 line = getTemplateOutputString(MyProject, None, '', '', templateline.rstrip('\n'))
                 print(line, file=fileTripIndex)
             fileTripIndex.close()
 
-        logger.info(f'Trip index written to {os.path.join(self.getMasterBiotaDir("safaridb" ), "tripindex-" + language + ".html")}.')
+        logger.info(f'Trip index written to {os.path.join(self.getMasterBiotaDir(), "tripindex-" + language + ".html")}.')
         return
 
     def openSFTP(self, pwd):
