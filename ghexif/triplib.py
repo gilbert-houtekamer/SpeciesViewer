@@ -40,6 +40,7 @@ class Trip:
         try:
             master_repository_disk = config.get("master","MasterBiotaDatabase")
             self.mp.setMasterRepository(master_repository_disk)
+            self.tripname = Path(self.mp.getRepositoryPath()).name
         except:
             pass
         return 
@@ -54,14 +55,14 @@ class Trip:
     def getMasterRepository(self):
         return self.mp.getMasterRepository()
     def getMasterBiotaWebRoot(self):
-        return self.trip_dict[self.tripname]['master_repository_web']
+        return self.master_repository_web
     def getTripAdminFile(self):                 # the location when the trips.csv file is stored
         return os.path.join(self.mp.getMasterRepository(), 'admin', 'trip_admin.csv')
-    def getTripBanner(self, tripname):          # the web address where the file can be found
-        return os.path.join(self.mp.getBiotaWebRoot() , self.trip_dict[tripname]['trip_name'],  self.trip_dict[tripname]['trip_banner'])
-    def getTripPicture(self, tripname):         # the web address where the picture can be found
-        return os.path.join(self.mp.getBiotaWebRoot() , self.trip_dict[tripname]['trip_name'], self.trip_dict[tripname]['trip_picture'])
-    def getTripName(self, tripname):
+    # def getTripBanner(self, tripname):          # the web address where the file can be found
+    #     return os.path.join(self.mp.getBiotaWebRoot() , self.trip_dict[tripname]['trip_name'],  self.trip_dict[tripname]['trip_banner'])
+    # def getTripPicture(self, tripname):         # the web address where the picture can be found
+    #     return os.path.join(self.mp.getBiotaWebRoot() , self.trip_dict[tripname]['trip_name'], self.trip_dict[tripname]['trip_picture'])
+    # def getTripName(self, tripname):
         return self.trip_dict[tripname]['trip_name']
     
     def setTripDict(self, dict):
@@ -137,7 +138,7 @@ class Trip:
             tripconfig['trip_config']['master_repository_disk'] = "c:/laptop/Zuid Afrika"            
             tripconfig['trip_config']['repositorybanner'] = self.mp.getRepositoryBanner()
             tripconfig['trip_config']['trip_banner'] = "zuidafrika2024.jpg"
-            tripconfig['trip_config']['trip_picture'] = "2024 zomer Zuid-Afrika-N6261550-small-small.jpg"
+            tripconfig['trip_config']['trip_picture'] = "2024 zomer Zuid-Afrika-N6261550-small.jpg"
             tripname = Path(self.mp.getBiotaWebRoot()).name
             tripconfig['trip_config']['trip_name'] = tripname
             tripconfig['trip_config']['created'] = datetime.today().strftime('%Y-%m-%d %H:%M')
@@ -222,13 +223,13 @@ class Trip:
     def updateTripIndexPage(self, language):
         MyProject = self.mp
         triptemplate = MyProject.getTemplateLines("tripindex-" + language + ".html")
-        with open((os.path.join(self.getMasterBiotaDir(), "tripindex-" + language + ".html")).lower(), "w", encoding='UTF-8') as fileTripIndex:
+        with open((os.path.join(self.getMasterRepository(), "tripindex-" + language + ".html")).lower(), "w", encoding='UTF-8') as fileTripIndex:
             for templateline in triptemplate:
                 line = getTemplateOutputString(MyProject, None, '', '', templateline.rstrip('\n'))
                 print(line, file=fileTripIndex)
             fileTripIndex.close()
 
-        logger.info(f'Trip index written to {os.path.join(self.getMasterBiotaDir(), "tripindex-" + language + ".html")}.')
+        logger.info(f'Trip index written to {os.path.join(self.getMasterRepository(), "tripindex-" + language + ".html")}.')
         return
 
     def openSFTP(self, pwd):
@@ -249,11 +250,12 @@ class Trip:
         # # trip post and pictures
         MyProject = self.mp     
         # biotatrip = MyProject.getBiotaTripDir()
-        # fromfile = biotatrip + self.getTripDay() + '-nl.html'
-        # toweb = sftp.remotePrefix() + MyProject.getBiotaTripWeb() + self.getTripDay() + '-nl.html'
-        # # print(f'{fromfile} to {toweb}')
-        # sftp.upload(fromfile, toweb)
-        # sftp.upload(fromfile.replace('-nl','-en'), toweb.replace('-nl','-en'))
+        fromfile = os.path.join(self.getMasterRepository(), "tripindex-nl.html")
+        toweb = sftp.remotePrefix() + self.getMasterBiotaWebRoot() + "tripindex-nl.html"
+        sftp.upload(fromfile, toweb)
+        sftp.upload(fromfile.replace('-nl','-en'), toweb.replace('-nl','-en'))
+        print(f'Uploaded {fromfile} to {self.getMasterBiotaWebRoot() + "tripindex-nl.html"}')
+        print(f'Uploaded {fromfile.replace("-nl","-en")} to {self.getMasterBiotaWebRoot() + "tripindex-en.html"}')        
         return
 
 # not used sofar 

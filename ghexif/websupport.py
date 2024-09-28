@@ -363,7 +363,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 83: return kingdom_local['EnglishName'].capitalize()
         elif tokenno == 84: return kingdom_local['iPictureCollectionCount']
         elif tokenno == 89:
-            return MyProject.trip.getMasterBiotaWebRoot()     # path to current main repository, NOT to trip also for subdirectories
+            return MyProject.Trip.getMasterBiotaWebRoot()     # path to current main repository, NOT to trip also for subdirectories
         elif tokenno == 90:
             return BiotaWebRoot                     # path to current main repository or to trip
         elif tokenno == 91:
@@ -668,18 +668,18 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 # print(f'Logname {logname} {blog["BestJPGs"][0]}')
                 workstr += '   <div class="w3-row" style="margin: 15px">\n'
                 workstr += '      <div class="w3-col w3-win8-olive" style="width:25%">\n'
-                if MyProject.Trip.getTripPicture(tripname) == "":
+                if trip['trip_name'] == "":
                     workstr += '          <p>(picture not found)</p>\n'
                 else:
-                    workstr += f'          <a href="/' + trip['tripname'] + '/biota/animalia/animalia-nl.html"><img\n'
-                    workstr += '            src="/' + trip["tripname"] + '/' + MyProject.Trip.getTripPicture(tripname) + '"\n'  
+                    workstr += f'          <a href="' + BiotaWebRoot + 'biota/animalia/animalia-nl.html"><img\n'
+                    workstr += '            src="' + BiotaWebRoot + trip["trip_picture"]  + '"\n'  
                     workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to open "' + trip["title_" + language] + '""></a>\n'
                 workstr += '      </div>\n'
                 workstr += '      <div class="w3-col" style="width:75%">\n'
                 workstr += '        <div class="content" style="margin-left:10px">\n'
                 workstr += '          <table class="w3-table w3-hoverable">\n'
                 workstr += '            <tr class="w3-win8-olive">\n'
-                workstr += f'              <th>Titel</th><td><a href="/' + trip["tripname"] + '/biota/animalia/animalia-nl.html">' + trip["title_" + language] + '</td>\n'
+                workstr += f'              <th>Titel</th><td><a href="' + BiotaWebRoot + 'biota/animalia/animalia-nl.html">' + trip["title_" + language] + '</td>\n'
                 workstr += '            </tr>\n'
                 workstr += '            <tr>\n'
                 workstr += '              <th></th><td>' + trip["message_" + language] + '</td>\n'

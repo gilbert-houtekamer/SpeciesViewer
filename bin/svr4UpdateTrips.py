@@ -55,12 +55,12 @@ def main(args, config):
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
-    trip = ghexif.triplib.Trip(MyProject)
+    trip = ghexif.triplib.Trip(MyProject, config)
     MyProject.registerTrip(trip)    
     
     # Collect states
     directory_to_scan = 'C:/laptop/trips'
-    trip.getCollectTrips(directory_to_scan, 'c:/laptop/')
+    trip.getCollectTrips(directory_to_scan)
     # generate website
     trip.updateTripIndexPage('nl')
     trip.updateTripIndexPage('en')
