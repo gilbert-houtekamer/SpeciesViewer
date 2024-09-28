@@ -17,8 +17,11 @@ Betere functies:
 - JVO: Nederlandse namen opvragen met Nederlandse gbif versie  
 
 Diversen:
+- aparte function om de master database te reloaden na opschonen (compress() of nieuwe versie
+- Facebook: https://facebook-sdk.readthedocs.io/en/latest/api.html
 - optie voor FTP zonder JPGs (? weet relevantie niet meer)
 - https://houtekamer.com/nature/intro-en.html is overwriiten??
+- #woorden voor andere eigenschappen dan soorten, bv #wolken(cirrocumulus) of #landschap(droge steppe). met bijbehorende GUI/web reporting.
 
 Issues met het design nu
 - algemener selectie op basis van datum van een blog, buildwebsite
