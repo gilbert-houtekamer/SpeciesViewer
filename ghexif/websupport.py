@@ -377,9 +377,13 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 90:
             return BiotaWebRoot                     # path to current main repository or to trip
         elif tokenno == 91:
-            language = MyProject.getLanguage()            
+            language = MyProject.getLanguage()
+            if MyProject.Trip != None:
+                directory = MyProject.Trip.getMasterBiotaWebRoot()     # path to current main repository, NOT to trip also for subdirectories
             workstr = "	<h4>Links</h4>\n	<div class=""\"content\""">\n		<ul class= ""\"w3-ul w3-hoverable\""">\n"
             workstr += '			<li class=""\"first\"""><a href="'+ BiotaWebRoot +'biotablog/blog index-' + language +'.html">Recent</a></li>\n'
+            if MyProject.Trip != None:
+                workstr += '            <li><a href="' + directory + 'tripindex-' + language + '.html">Trips</a></li>'
             if language == 'nl':
                 workstr += '			<li><a href= "'+ BiotaWebRoot +'summaries/all biota species-nl.html">Alle soorten</a></li>\n'
                 workstr += "			<li><a href= ""\"" + BiotaWebRoot + "biota/biota-nl.html" + "\""">Biota: Leven</a></li>\n"
@@ -705,12 +709,12 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += '    </div>\n'
             return workstr
         elif tokenno == 148 or tokenno == 149:            # banner link
-            language = 'nl' if tokenno == 146 else 'en'
+            language = 'nl' if tokenno == 148 else 'en'
             if MyProject.Trip != None:
                 directory = MyProject.Trip.getMasterBiotaWebRoot()     # path to current main repository, NOT to trip also for subdirectories
-            else:
-                directory =  BiotaWebRoot
-            workstr = '<li><a href="' + directory + 'tripindex-' + language + '.html">Trips</a></li>'
+                workstr = '<li><a href="' + directory + 'tripindex-' + language + '.html">Trips</a></li>'                
+            # else:
+            #     directory = BiotaWebRoot
             return workstr
         elif tokenno == 120:         # all soorten
             workstr = ""

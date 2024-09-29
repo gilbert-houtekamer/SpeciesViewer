@@ -30,6 +30,7 @@ from ghexif.specieslib import Level
 from ghexif.websupport import getTemplateOutputString
 import ghexif.exceptions
 import ghexif.statemachine
+import ghexif.triplib
 
 logger = logging.getLogger(__name__)
 global starttime  # global
@@ -50,8 +51,8 @@ def main(args, config):
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
-    # potential customization
-    MyProject.setRepositoryBanner(config.get("repository","RepositoryBanner"))
+    # if trip, initialze master
+    MyProject.initMasterAndTrip(config, inittrip=True)
 
     # get repository-wide sc and per project sp.
     sc = ghexif.speciesclassification.SpeciesClassification(MyProject)

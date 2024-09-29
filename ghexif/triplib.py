@@ -59,8 +59,7 @@ class Trip:
     def getTripAdminFile(self):                 # the location when the trips.csv file is stored
         return os.path.join(self.mp.getMasterRepository(), 'admin', 'trip_admin.csv')
     def getTripBanner(self):          # the web address where the file can be found
-        # tripname = self.trip_dict[self.tripname]['trip_name']
-        return os.path.join(self.mp.getBiotaWebRoot() , self.tripname,  self.trip_dict[self.tripname]['trip_banner'])
+        return os.path.join(self.mp.getBiotaWebRoot() , self.trip_dict[self.tripname]['trip_banner'])
     # def getTripPicture(self, tripname):         # the web address where the picture can be found
     #     return os.path.join(self.mp.getBiotaWebRoot() , self.trip_dict[tripname]['trip_name'], self.trip_dict[tripname]['trip_picture'])
     # def getTripName(self, tripname):

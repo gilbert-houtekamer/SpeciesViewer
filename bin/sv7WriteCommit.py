@@ -30,6 +30,7 @@ import ghexif.specieslib
 import ghexif.sftplib
 import ghexif.exceptions
 import ghexif.statemachine
+import ghexif.triplib
 
 logger = logging.getLogger(__name__)
 
@@ -133,8 +134,8 @@ def main(args, config):
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
-    # potential customization
-    MyProject.setRepositoryBanner(config.get("repository","RepositoryBanner"))
+    # if trip, initialze master
+    MyProject.initMasterAndTrip(config, inittrip=True)
     
     logger.info(f"sv7WriteCommit: Commit project {MyProject.ProjectName()} on repository.")
     if not MyProject.online:

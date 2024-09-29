@@ -146,8 +146,10 @@ def main(args, config):
                                           config.get("repository","BiotaWebRoot"))
     # if trip, initialze master
     MyProject.initMasterAndTrip(config, inittrip=True)
-    shutil.copy(os.path.join(MyProject.getMasterRepository(), 'metadata/active/speciescollection.csv'), 
-                os.path.join(NEW_DB_TREE, 'metadata/active/speciescollection.csv'))    
+    if not MyProject.isMasterRepository():
+        shutil.copy(os.path.join(MyProject.getMasterRepository(), 'metadata/active/speciescollection.csv'), 
+                os.path.join(NEW_DB_TREE, 'metadata/active/speciescollection.csv'))
+    
     # create intro page, already in good location
     MyProject.makeIntro('intro-nl')
     MyProject.makeIntro('intro-en')
@@ -213,6 +215,12 @@ def main(args, config):
         fromdir = os.path.join(NEW_DB_TREE, "web/biota/")
         towebdir = createdpath + '/biota/'
         sftp.put_r_portable(fromdir, towebdir, preserve_mtime=True)
+        # project info
+        if not MyProject.isMasterRepository():
+            tripname = Path(MyProject.getBiotaWebRoot()).name
+            trip = MyProject.Trip.getTrip(tripname)
+            sftp.upload(os.path.join(NEW_DB_TREE, trip['trip_banner']), createdpath + '/' + trip['trip_banner'])
+            sftp.upload(os.path.join(NEW_DB_TREE, trip['trip_picture']), createdpath + '/' + trip['trip_picture'])            
         sftp.disconnect()
 
 if __name__ == "__main__":

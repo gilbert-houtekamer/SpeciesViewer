@@ -26,6 +26,7 @@ from ghexif.handling import read_file, read_pictures
 from ghexif.specieslib import Level
 import ghexif.exceptions
 import ghexif.statemachine
+import ghexif.triplib
 
 logger = logging.getLogger(__name__)
 files_to_delete = []
@@ -140,8 +141,8 @@ def main(args, config):
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
-    # potential customization
-    MyProject.setRepositoryBanner(config.get("repository","RepositoryBanner"))
+    # if trip, initialze master
+    MyProject.initMasterAndTrip(config, inittrip=True)
 
     # metafiles
     # get repository-wide sc and per project sp.
