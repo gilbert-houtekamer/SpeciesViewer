@@ -123,9 +123,17 @@ def getJPGtime(JPGobject):
             JPGtime = ''
     return JPGtime
 
+# make sure we do not do small twice
+def getSmallJPG(filename):
+    if filename.lower().endswith('-small.jpg'):
+        return filename
+    else:
+        return filename.replace('.jpg','-small.jpg')
+
 def jpgResizeCopy(targetstr, horizontalsize = 600):
     # resize
     try:
+        if targetstr.lower().endswith('-small.jpg'): return                 # only once needed
         image = Image.open(targetstr)
         resized_image = image.resize((600, 450))
         wpercent = (horizontalsize/float(image.size[0]))
@@ -323,14 +331,13 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 45:
             return MyProject.getBlogDateFromPictures() + '/' + file['File:FileName']    #BUGBUG
         elif tokenno == 47:
-            return MyProject.getBlogDateFromPictures() + '/' + file['File:FileName'].replace('.jpg', '-small.jpg')   #BUGBUG        
+            return MyProject.getBlogDateFromPictures() + '/' + getSmallJPG(file['File:FileName'])   #BUGBUG        
         elif tokenno == 46:
             return getJPGtime(file).strftime('%Y:%m:%d %H:%M:%S')
         elif tokenno == 49: # banner, now by kingdom, but could be more specific
-            repository = MyProject.getRepositoryBanner().lower()
-            if repository != "":
-                workstr = BiotaWebRoot + "includes web/" + repository + ".jpg"
-            elif kingdom_local == {}:
+            if not MyProject.isMasterRepository():
+                workstr = MyProject.Trip.getTripBanner()
+            elif kingdom_local == {}: 
                 workstr = BiotaWebRoot + "includes web/keerkringvogel.jpg"
             else:
                 if kingdom_local['ScientificName'].lower() == "animalia":
@@ -363,7 +370,10 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 83: return kingdom_local['EnglishName'].capitalize()
         elif tokenno == 84: return kingdom_local['iPictureCollectionCount']
         elif tokenno == 89:
-            return MyProject.Trip.getMasterBiotaWebRoot()     # path to current main repository, NOT to trip also for subdirectories
+            if MyProject.Trip != None:
+                return MyProject.Trip.getMasterBiotaWebRoot()     # path to current main repository, NOT to trip also for subdirectories
+            else:
+                return BiotaWebRoot
         elif tokenno == 90:
             return BiotaWebRoot                     # path to current main repository or to trip
         elif tokenno == 91:
@@ -694,6 +704,14 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += '      </div>\n'
                 workstr += '    </div>\n'
             return workstr
+        elif tokenno == 148 or tokenno == 149:            # banner link
+            language = 'nl' if tokenno == 146 else 'en'
+            if MyProject.Trip != None:
+                directory = MyProject.Trip.getMasterBiotaWebRoot()     # path to current main repository, NOT to trip also for subdirectories
+            else:
+                directory =  BiotaWebRoot
+            workstr = '<li><a href="' + directory + 'tripindex-' + language + '.html">Trips</a></li>'
+            return workstr
         elif tokenno == 120:         # all soorten
             workstr = ""
             workstr = addAllSpeciesWrapper(MyProject, species_param['ScientificName'], workstr)
@@ -715,7 +733,7 @@ def writeOneSpecies(MyProject, leaf, temptextfile):
             BiotaWebRoot + species["TargetPath"] + species["ScientificName"] +  '-' + language + '.html' + '">\n', file=temptextfile)
         if species['BestJPG'] != "" and species['BestJPGPathName'] != "":
             print('			            <img src="' + BiotaWebRoot + \
-            species['TargetPath'] + species['BestJPG'].replace('.jpg','-small.jpg') + '" style=\"width:100%\">\n			        </a>', file=temptextfile)            
+            species['TargetPath'] + getSmallJPG(species['BestJPG']) + '" style=\"width:100%\">\n			        </a>', file=temptextfile)            
         # texts for 3 languages in 3 lines
         print('<p>' + species['ScientificName'].strip('0123456789 ').capitalize() + '</p>', file=temptextfile)
         print('<p>' + species['EnglishName'].capitalize() + '</p>', file=temptextfile)

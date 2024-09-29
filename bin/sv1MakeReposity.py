@@ -67,8 +67,8 @@ def readTrip(MyProject):
         tripconfig['trip_config']['repositorybanner'] = MyProject.getRepositoryBanner()
         tripname = Path(MyProject.getBiotaWebRoot()).name
         tripconfig['trip_config']['trip_name'] = tripname
-        tripconfig['trip_config']['trip_banner'] = "includes web/zuidafrika2024.jpg"
-        tripconfig['trip_config']['trip_picture'] = "/biotablog/Blog Pictures 2024-06-26-2024-06-26-biota-0-5/2024 zomer Zuid-Afrika-N6261550-small.jpg"
+        tripconfig['trip_config']['trip_banner'] = "zuidafrika2024.jpg"
+        tripconfig['trip_config']['trip_picture'] = "2024 zomer Zuid-Afrika-N6261550-small.jpg"
 
         tripconfig['trip_config']['created'] = datetime.today().strftime('%Y-%m-%d %H:%M')
 
@@ -144,14 +144,10 @@ def main(args, config):
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"),
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
-    # potential customization
-    MyProject.setRepositoryBanner(config.get("repository","RepositoryBanner"))
-    # if this is a sub-repository, read trip.ini
-    if MyProject.getRepositoryBanner() != "":
-        trip = ghexif.triplib.Trip(MyProject, config)
-        MyProject.registerTrip(trip)           
-        MyProject.Trip.readAndWriteTripAdmin()
-
+    # if trip, initialze master
+    MyProject.initMasterAndTrip(config, inittrip=True)
+    shutil.copy(os.path.join(MyProject.getMasterRepository(), 'metadata/active/speciescollection.csv'), 
+                os.path.join(NEW_DB_TREE, 'metadata/active/speciescollection.csv'))    
     # create intro page, already in good location
     MyProject.makeIntro('intro-nl')
     MyProject.makeIntro('intro-en')

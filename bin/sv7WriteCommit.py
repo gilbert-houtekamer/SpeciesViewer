@@ -25,7 +25,7 @@ from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
 from ghexif.csv_columns import PICTURE_FIELDS
 from ghexif.handling import read_file, read_pictures
 from ghexif.specieslib import Level
-from ghexif.websupport import jpgResizeCopy
+from ghexif.websupport import jpgResizeCopy, getSmallJPG
 import ghexif.specieslib
 import ghexif.sftplib
 import ghexif.exceptions
@@ -110,10 +110,10 @@ def putRecursiveTreeWeb(MyProject):
         csvreader = csv.reader(csvfile)
         for row in csvreader:
             source = row[0].replace('"', '')
-            ftptarget = sftp.remotePrefix() + row[1].replace('"', '').lstrip().replace('.jpg','-small.jpg')
+            ftptarget = getSmallJPG(sftp.remotePrefix() + row[1].replace('"', '').lstrip())
             jpgResizeCopy(source)
-            sftp.connection.put(source.replace('.jpg','-small.jpg'), ftptarget)
-            logger.info(f"Small image for All Species report: {source.replace('.jpg','-small.jpg')}")
+            sftp.connection.put(getSmallJPG(source), ftptarget)
+            logger.info(f"Small image for All Species report: {getSmallJPG(source)}")
         
     sftp.disconnect()
 

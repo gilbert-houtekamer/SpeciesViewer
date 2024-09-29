@@ -40,7 +40,7 @@ class Trip:
         try:
             master_repository_disk = config.get("master","MasterBiotaDatabase")
             self.mp.setMasterRepository(master_repository_disk)
-            self.tripname = Path(self.mp.getRepositoryPath()).name
+            self.tripname = Path(self.mp.getBiotaWebRoot()).name
         except:
             pass
         return 
@@ -58,8 +58,9 @@ class Trip:
         return self.master_repository_web
     def getTripAdminFile(self):                 # the location when the trips.csv file is stored
         return os.path.join(self.mp.getMasterRepository(), 'admin', 'trip_admin.csv')
-    # def getTripBanner(self, tripname):          # the web address where the file can be found
-    #     return os.path.join(self.mp.getBiotaWebRoot() , self.trip_dict[tripname]['trip_name'],  self.trip_dict[tripname]['trip_banner'])
+    def getTripBanner(self):          # the web address where the file can be found
+        # tripname = self.trip_dict[self.tripname]['trip_name']
+        return os.path.join(self.mp.getBiotaWebRoot() , self.tripname,  self.trip_dict[self.tripname]['trip_banner'])
     # def getTripPicture(self, tripname):         # the web address where the picture can be found
     #     return os.path.join(self.mp.getBiotaWebRoot() , self.trip_dict[tripname]['trip_name'], self.trip_dict[tripname]['trip_picture'])
     # def getTripName(self, tripname):
@@ -213,7 +214,7 @@ class Trip:
     def readAndWriteTripAdmin(self):
         self.read_TripAdmin()                       # read existing trip admin
         tripinifile = os.path.join(self.mp.getRepositoryPath(), "trip.ini")
-        trip_row = self.readTrip(tripinifile)    # read this new trip.ini file
+        trip_row = self.readTrip(tripinifile)       # read this new trip.ini file
         if trip_row != None and trip_row != {}:
             self.addTrip(trip_row)                  # add (or update) newly read trip.ini
             self.write_TripAdmin()                  # write updated trip dictionary

@@ -137,6 +137,11 @@ class Project:
             return self.getRepositoryPath()
         else:
             return self.MasterRepository
+    def isMasterRepository(self):
+        if self.MasterRepository == '':
+            return True
+        else:
+            return False
     # Variables in passable way 
     # species_dict (read-only)
     def getSpeciesCount(self, species):
@@ -193,6 +198,18 @@ class Project:
         return
     def getAllSpeciesFiles(self):
         return self.AllSpeciesFiles
+    
+    def initMasterAndTrip(self, config, inittrip=True):
+        try:
+            self.MasterRepository = config.get("master","MasterBiotaDatabase")
+        except:
+            self.MasterRepository = ""
+        # if this is a sub-repository, read trip.ini
+        if self.MasterRepository != "":
+            self.Trip = ghexif.triplib.Trip(self, config)
+            if inittrip:
+                self.Trip.readAndWriteTripAdmin()                   # not sure we want this for every step?  maybe only 4 and 9?
+        return
     
     def readProject(self, getEarlierDays = False, silent=False):
         starttime = time.time()

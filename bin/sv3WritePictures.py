@@ -267,6 +267,7 @@ def addSpeciesInformation(sp, firstUPNtoProcess):
             thisfile = files_dict[filename]
             rating = 0
             if thisfile['WindowsExtension'] in ['jpg','jpeg']:
+                if filename.find('-small') != -1: continue                          # do not -small picture for BestJPG etc.
                 if (picture['BestJPG'] == "") or ('dxo' in thisfile['File:FileName'].lower()):
                     picture['BestJPGPathName'] = upn['TargetPath']
                     picture['BestJPG'] = thisfile['File:FileName']

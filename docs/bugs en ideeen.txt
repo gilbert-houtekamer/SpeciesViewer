@@ -1,6 +1,6 @@
 Bugs
-- '-small' files moeten aan file worden toegevoegd, of onderdrukt worden
-- voorkom dat -small 2x wordt gemaakt (of vaker)
+DONE - '-small' files moeten aan file worden toegevoegd, of onderdrukt worden [geen kandidaat voor best etc]
+DONE - voorkom dat -small 2x wordt gemaakt (of vaker)
 
 Betere functies:
 - IN PROGRESS .ini voor repository van trips, vooral zodat er een overzicht code gemaakt kan worden,
@@ -10,6 +10,7 @@ Betere functies:
   - uplink to master repository
   - Trips entry op alle bladzijden
   - logic documentern
+  DONE - nog repositorybanner referenties?
   DONE - wegschrijven naar sFTP
   DONE - sv1 slimmer maken om index updaten (evt)
   OK - directory path voor files nog niet goed?
