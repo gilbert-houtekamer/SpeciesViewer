@@ -45,6 +45,9 @@ class SpeciesClassification:
     def clearDict(self):
         self.sc_dict = {}
 
+    def scCopy(self):
+        return self.sc_dict.copy()
+
     def createSpeciesRecord(self, level, scientificname, dutchname, englishname, upname):
         sc_record = {
             "Level": level, 
@@ -56,7 +59,7 @@ class SpeciesClassification:
         }
         return sc_record    
  
-    def readSpeciesCollection(self, speciesfilename, reset_all_counters):
+    def readSpeciesCollection(self, speciesfilename, donotaddLanguageIndices=False):
         # Reads a CSV file line by line, splits by delimiter, and creates dictionaries.
         # Assumes the first row contains column headers.
 
@@ -116,17 +119,18 @@ class SpeciesClassification:
             if UpName != "" and ScientificName not in self.sc_dict[UpName]['Leaves']:
                 self.sc_dict[UpName]['Leaves'].append(ScientificName)
             
-            # add Nederlandse naam index
-            dutchname = species['DutchName']            
-            if dutchname != "":
-                if dutchname not in self.dutch_dict:
-                    self.dutch_dict[dutchname] = ScientificName
+            if not donotaddLanguageIndices:
+                # add Nederlandse naam index
+                dutchname = species['DutchName']            
+                if dutchname != "":
+                    if dutchname not in self.dutch_dict:
+                        self.dutch_dict[dutchname] = ScientificName
 
-            # add Nederlandse naam index
-            englishname = species['EnglishName']            
-            if englishname != "":
-                if englishname not in self.english_dict:
-                    self.english_dict[englishname] = ScientificName
+                # add Nederlandse naam index
+                englishname = species['EnglishName']            
+                if englishname != "":
+                    if englishname not in self.english_dict:
+                        self.english_dict[englishname] = ScientificName
         
         logger.info(f'Read {len(self.sc_dict)} predefined species from {speciesfilename}.')
         
@@ -135,7 +139,7 @@ class SpeciesClassification:
     # save last version, always save last version under .csv_old  
     def writeSpeciesCollection(self, speciesfilename):
         # Write Picture CSV file
-        logger.info(f'Write all species data CSV file "{speciesfilename}".')
+        logger.info(f'Write {len(self.sc_dict)} updated species data CSV file "{speciesfilename}".')
         with open(speciesfilename, "w", newline="", encoding='utf-8') as csvfile:
             # needed to get column in order
             sc_headers = ['Level', 'ScientificName', 'DutchName', 'EnglishName', 'Up', 'Leaves']                 
@@ -152,8 +156,18 @@ class SpeciesClassification:
                 row["Leaves"] = spec_dict['Leaves']
 
                 writer.writerow(row)                    
-        return     
+        return   
+
+    # merge both SpeciesCollections
+    def mergeSpeciesCollections(self, newSC):
+        for species in newSC:
+            if species in self.sc_dict: continue
+            speciesobject = newSC[species] 
+            self.sc_dict[species] = speciesobject
     
+        return
+
+
     # keep previous version and latest
     def updateSpeciesCollection(self, speciesfilename):
         if os.path.exists(speciesfilename + 'old'):  

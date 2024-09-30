@@ -1,19 +1,21 @@
-Bugs
-DONE - '-small' files moeten aan file worden toegevoegd, of onderdrukt worden [geen kandidaat voor best etc]
-DONE - voorkom dat -small 2x wordt gemaakt (of vaker)
+Bugs:
+  DONE - trip_admin.csv werkt niet, bestaande bug in svr4UpdateTrips, zoeken waar het zat
+  - blog creation is messy, index page does not work any more?  Or testing is messy :-()
+  IN PROGRESS - merge Collections, manual or tool?
 
 Betere functies:
+- Moet er uit: ReferenceSpecies=e:/Dropbox/nature/metadata/active/species.csv
 - IN PROGRESS .ini voor repository van trips, vooral zodat er een overzicht code gemaakt kan worden,
   a la wat ik heb voor blog
   DONE - title, message
   DONE - plaatje
-  - uplink to master repository
-  - Trips entry op alle bladzijden
-  - logic documentern
+  DONE - uplink to master repository
+  DONE - Trips entry op alle bladzijden
   DONE - nog repositorybanner referenties?
   DONE - wegschrijven naar sFTP
   DONE - sv1 slimmer maken om index updaten (evt)
   OK - directory path voor files nog niet goed?
+- logic documenteren  
 - afdwingen dat projecten in dezelfde directory zitten.  Dat hebben we eigenlijk niet?
 - JVO: Nederlandse namen opvragen met Nederlandse gbif versie  
 
@@ -42,6 +44,8 @@ Related:
 - houtekamer.com opruimen en pointers fixen vanaf home page
 
 Done:
+DONE - '-small' files moeten aan file worden toegevoegd, of onderdrukt worden [geen kandidaat voor best etc]
+DONE - voorkom dat -small 2x wordt gemaakt (of vaker)
 - DONE niet alle UPNs hebben de nieuwe velden male/female etc, why?
 - [OK, er in elk geval wat.]  links vanaf houtekamer.com
 - [DONE]. volgorde voor Aves klasse
