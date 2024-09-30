@@ -384,3 +384,15 @@ class Project:
             IntroFile.close()  
         logger.info(f"""Written page webpage to "{(self.getBiotaDir() + simplepage + ".html").lower()}".""")
         return
+    
+    # find the JPGs with highest Rating
+    def getBestJPGinList(self, list):
+        BestJPG = ""
+        BestRating = 0
+        for jpg in list:
+            upn = files_dict[jpg]['UniquePictureName']
+            rate = UniquePictureName_dict[upn]['Rate']
+            if int(rate) > BestRating:
+                BestRating = int(rate)
+                BestJPG = jpg
+        return BestJPG

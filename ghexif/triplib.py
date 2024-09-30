@@ -38,8 +38,8 @@ class Trip:
         MyProject.registerTrip(self)
         self.mp = MyProject
         try:
-            master_repository_disk = config.get("master","MasterBiotaDatabase")
-            self.mp.setMasterRepository(master_repository_disk)
+            self.master_repository_disk = config.get("master","MasterBiotaDatabase")
+            self.mp.setMasterRepository(self.master_repository_disk)
             self.tripname = Path(self.mp.getBiotaWebRoot()).name
         except:
             pass
@@ -52,6 +52,8 @@ class Trip:
     def existTrip(self, newname):
         if newname in self.trip_dict: return True
         return False
+    def getTripName(self):
+        return self.tripname
     def getMasterRepository(self):
         return self.mp.getMasterRepository()
     def getMasterBiotaWebRoot(self):
@@ -258,25 +260,3 @@ class Trip:
         print(f'Uploaded {fromfile.replace("-nl","-en")} to {self.getMasterBiotaWebRoot() + "tripindex-en.html"}')        
         return
 
-# not used sofar 
-    def getDateFromPictures(self, fromrecord):
-        if len(files_dict) == fromrecord:
-            fromrecord = 0
-        for filedata in list(files_dict.values())[fromrecord:]:
-            parsed_date = datetime.strptime(filedata["EXIF:DateTimeOriginal"][0:10], '%Y:%m:%d') 
-            return parsed_date.strftime('Trip Pictures %Y-%m-%d')
-        return ""
-    
-    def downloadTripAdminCopy(self, sftp):
-        MyProject = self.mp     
-        tofile = self.getTripAdminFile() + '.webcopy'
-        fromweb = sftp.remotePrefix() + MyProject.Trip.getTripAdminWeb()
-        sftp.download(fromweb, tofile)                 
-        return
-
-    def uploadTripAdmin(self, sftp):
-        MyProject = self.mp     
-        fromfile = self.getTripAdminFile()
-        toweb = sftp.remotePrefix() + MyProject.Trip.getTripAdminWeb()
-        sftp.upload(fromfile, toweb)                
-        return 

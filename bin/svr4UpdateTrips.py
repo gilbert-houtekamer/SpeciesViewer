@@ -8,6 +8,7 @@ import configparser
 import time
 import logging
 import argparse
+from pathlib import Path
 
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
@@ -29,23 +30,6 @@ def readConfig():
     config.read(INI_LOCATION)
     return config
 
-
-
-    # # make summary report
-    # print(f"Summary of projects and progress for each report")     
-    # print(f"{'Project':15}")   
-    # for statemachine in days_dict:
-    #     line = f"{statemachine:15}"
-    #     for task in days_dict[statemachine]:
-    #         if task != "MakeRepository":
-    #             if days_dict[statemachine][task][0]:
-    #                 line += f" {task:15}"
-    #             else:
-    #                 line += f" {'':15}"
-    #     print(line)
-    return trips_dict
-
-
 def main(args, config):
     global starttime, SpeciesDebug, Reference_sp
     starttime = time.time()
@@ -55,11 +39,12 @@ def main(args, config):
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
-    trip = ghexif.triplib.Trip(MyProject, config)
-    MyProject.registerTrip(trip)    
+    # if trip, initialze master
+    MyProject.initMasterAndTrip(config, inittrip=True)
+    trip = MyProject.Trip
     
     # Collect states
-    directory_to_scan = 'C:/laptop/trips'
+    directory_to_scan = Path(config.get("repository","BiotaDatabase")).parent
     trip.getCollectTrips(directory_to_scan)
     # generate website
     trip.updateTripIndexPage('nl')

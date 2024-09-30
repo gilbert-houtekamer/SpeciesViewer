@@ -330,10 +330,13 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             return BiotaWebRoot + picture['TargetPath'] + picture['BestJPG']
         elif tokenno == 45:
             return MyProject.getBlogDateFromPictures() + '/' + file['File:FileName']    #BUGBUG
+        elif tokenno == 46:
+            return getJPGtime(file).strftime('%Y:%m:%d %H:%M:%S')        
         elif tokenno == 47:
             return MyProject.getBlogDateFromPictures() + '/' + getSmallJPG(file['File:FileName'])   #BUGBUG        
-        elif tokenno == 46:
-            return getJPGtime(file).strftime('%Y:%m:%d %H:%M:%S')
+        elif tokenno == 48:
+            workstr = BiotaWebRoot + "includes web/keerkringvogel.jpg"
+            return workstr      
         elif tokenno == 49: # banner, now by kingdom, but could be more specific
             if not MyProject.isMasterRepository():
                 workstr = MyProject.Trip.getTripBanner()
@@ -623,8 +626,9 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 if blog["BestJPGs"] == []:
                     workstr += '          <p>(picture not found)</p>\n'
                 else:
+                    # pict the best picture from the current pictures in the blog
                     workstr += f'          <a href="{logname}-nl.html"><img\n'
-                    workstr += '            src="' + logname + '/' + blog["BestJPGs"][0] + '"\n'
+                    workstr += '            src="' + logname + '/' + str(MyProject.Blog.getBestJPGinList()) + '"\n'
                     workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to open "' + blog["title_" + language] + '""></a>\n'
                 workstr += '      </div>\n'
                 workstr += '      <div class="w3-col" style="width:70%">\n'
@@ -693,7 +697,8 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += '        <div class="content" style="margin-left:10px">\n'
                 workstr += '          <table class="w3-table w3-hoverable">\n'
                 workstr += '            <tr class="w3-win8-olive">\n'
-                workstr += f'              <th>Titel</th><td><a href="' + BiotaWebRoot + 'biota/animalia/animalia-nl.html">' + trip["title_" + language] + '</td>\n'
+                workstr += f'              <th>Titel</th><td><a href="' + BiotaWebRoot + 'biota/animalia/animalia-' + language + '.html">' + trip["title_" + language] + '</a>'
+                workstr += f'                                <a href="' + BiotaWebRoot + 'biotablog/blog index-' + language + '.html">(blogs)</a></td>\n'
                 workstr += '            </tr>\n'
                 workstr += '            <tr>\n'
                 workstr += '              <th></th><td>' + trip["message_" + language] + '</td>\n'
@@ -715,6 +720,12 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr = '<li><a href="' + directory + 'tripindex-' + language + '.html">Trips</a></li>'                
             # else:
             #     directory = BiotaWebRoot
+            return workstr
+        elif tokenno == 150 or tokenno == 151:
+            language = 'nl' if tokenno == 150 else 'en'
+            if MyProject.Trip != None:
+                tn = MyProject.Trip.getTripName()
+                workstr = MyProject.Trip.getTrip(tn)['title_' + language]
             return workstr
         elif tokenno == 120:         # all soorten
             workstr = ""

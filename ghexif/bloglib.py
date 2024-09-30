@@ -247,6 +247,9 @@ class Blog:
                 print(line, file=fileBlogIndex)
             fileBlogIndex.close()
             
+    def getBestJPGinList(self):
+        BestJPG = self.mp.getBestJPGinList(self.BestJPGs)
+        return BestJPG
 
     def makeRunSummaryPost(self, speciesname, language):
         MyProject = self.mp
