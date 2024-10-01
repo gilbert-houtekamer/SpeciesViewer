@@ -1,29 +1,49 @@
-Bugs:
-- blog creation is messy, index page does not work any more?  Or testing is messy :-()
-
 Betere functies:
-- Moet er uit: ReferenceSpecies=e:/Dropbox/nature/metadata/active/species.csv
-- review svr* with filepath changes
-- logic documenteren  
-- afdwingen dat projecten in dezelfde directory zitten.  Dat hebben we eigenlijk niet?
-- JVO: Nederlandse namen opvragen met Nederlandse gbif versie  
+IN PROGRESS- logic documenteren (zie docs)
+- JvO: automatisch een batch verwerken van alle dagen en een soort opdrachten
+- JvO: Nederlandse namen opvragen met Nederlandse gbif versie, voor Nederlande namen en ook voor het verder 
+  "opleuken" van e pagina's met info over soorten
+- web site build on the FTP server, but not on disk.  want this?
+- svr6DeleteFiles: delete all files in E:\Dropbox\trips\safaridb\metadata\review\2024-06-24\frozen (do not do this now)
 
-Diversen:
-- aparte function om de master database te reloaden na opschonen (compress() of nieuwe versie)
-- Facebook: https://facebook-sdk.readthedocs.io/en/latest/api.html
-- optie voor FTP zonder JPGs (? weet relevantie niet meer)
+Bugs:
+- sv7WriteCommit to copy only new small images to FTP.  Might even do this generically? Too inefficient
+- [DEFER until we can entire project] Re-running projects after commi has been done kills some report.  Nasty, will defer that issue for a while.
+  Probably it causes this one:
+  - this species does not occur in all species page, nut no errors.  weird, manually fixed.:
+      <p>Cinnyris talatala</p>
+			        <a href="/trips/safari/biota/animalia/chordata/aves/040 passeriformes/112 nectariniidae/cinnyris talatala-nl.html">
+			            <img src="/trips/safari/biota/animalia/chordata/aves/040 passeriformes/112 nectariniidae/cinnyris talatala/2024 zomer Zuid-Afrika-N6251047-small.jpg" style="width:100%">
+              </a>
+  - re-run all steps
+- disk version of website is not maintained, maybe want that too.
+- some wrong directories appear, weird, not sure it is bad, not sure what causes it though
+INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/carnivora/herpestidae/helogale parvula/2024 zomer Zuid-Afrika-N7014487-small.jpg
+INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/carnivora/herpestidae/mungos mungo/2024 zomer Zuid-Afrika-N6261417-small.jpg
+INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/carnivora/hyaenidae/crocuta crocuta/2024 zomer Zuid-Afrika-N6292948-small.jpg
+INFO:Small image for All Species report: D:/CurrentPictures/2024/2024 zomer zuid-afrika/2024-07-09/2024 zomer Zuid-Afrika-N7092574-small.jpg
+INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/perissodactyla/equidae/equus quagga/2024 zomer Zuid-Afrika-P6272149-small.jpg
+INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/perissodactyla/rhinocerotidae/ceratotherium simum/2024 zomer Zuid-Afrika-N6261550-small.jpg
 - https://houtekamer.com/nature/intro-en.html is overwriiten??
+
+Volgende versie features:
+- aparte function om de master database te managen en dingen mee te doen
+  - merge van trip: hoe stel ik me dat voor?
+  - reloaden na opschonen (compress() of nieuwe versie)
+  - een nieuwe rebuild van de website te doen na nieuwe versie
+  - wellicht blogs op criteria [later]
+- Facebook: https://facebook-sdk.readthedocs.io/en/latest/api.html
 - #woorden voor andere eigenschappen dan soorten, bv #wolken(cirrocumulus) of #landschap(droge steppe). met bijbehorende GUI/web reporting.
 
 Issues met het design nu
+- afdwingen dat projecten in dezelfde directory zitten.  Dat hebben we eigenlijk niet?
 - algemener selectie op basis van datum van een blog, buildwebsite
   maar misschien ook voor andere functies. 
   - impliceert ook achteraf nog kunnen maken op basis tijd ipn New
     denk ik
 
 GUI
-- automatisch een batch verwerken van alle dagen en
-  een soort opdrachten
+
 - optie voor soort biota tree: master of vakantie
 - repository reports:
   - #soorten (svu2)
@@ -33,6 +53,9 @@ Related:
 - houtekamer.com opruimen en pointers fixen vanaf home page
 
 Done:
+DONE - Moet er uit: ReferenceSpecies=e:/Dropbox/nature/metadata/active/species.csv (in svr2CountSpecies)
+DONR - review svr* with filepath changes
+DONE - blog creation is messy, index page does not work any more?  Or testing is messy :-() Both actually ..
   DONE - trip_admin.csv werkt niet, bestaande bug in svr4UpdateTrips, zoeken waar het zat
 - DONE .ini voor repository van trips, vooral zodat er een overzicht code gemaakt kan worden,
   a la wat ik heb voor blog
