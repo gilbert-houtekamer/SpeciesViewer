@@ -628,7 +628,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 else:
                     # pict the best picture from the current pictures in the blog
                     workstr += f'          <a href="{logname}-nl.html"><img\n'
-                    workstr += '            src="' + logname + '/' + str(MyProject.Blog.getBestJPGinList()) + '"\n'
+                    workstr += '            src="' + logname + '/' + str(MyProject.Blog.getBestJPGinList(logname)) + '"\n'
                     workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to open "' + blog["title_" + language] + '""></a>\n'
                 workstr += '      </div>\n'
                 workstr += '      <div class="w3-col" style="width:70%">\n'
