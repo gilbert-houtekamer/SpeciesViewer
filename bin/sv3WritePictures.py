@@ -486,10 +486,11 @@ def main(args, config):
     sc.updateSpeciesCollection(metadatadir + "active/speciescollection.csv")  
     sp.writeSpeciesInfo(os.path.join(MyProject.getMetaDirReview(), "species.csv"), False)
     
-    if addMetricsToLog(sp, RepositoryPictureCount, 
-                       os.path.join(MyProject.getMetaDirReview(), "stats report " + MyProject.ProjectName() + ".txt")) > 0: return
-
+    addMetricsToLog(sp, RepositoryPictureCount, 
+                       os.path.join(MyProject.getMetaDirReview(), "stats report " + MyProject.ProjectName() + ".txt"))
+    
     # logger.info(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
+
     # totaltime = time.time() - starttime      
     logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
 

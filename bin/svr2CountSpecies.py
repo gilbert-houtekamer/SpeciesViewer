@@ -22,6 +22,7 @@ import ghexif.projectlib
 import ghexif.specieslib
 import ghexif.speciesclassification
 from ghexif.specieslib import Level
+import ghexif.triplib
 
 logger = logging.getLogger(__name__)
 result_dict = {}
@@ -98,6 +99,7 @@ def scan_files(directory, search_string):
 # create website based on current count setting, now to test iSpeciesThisRunCount
 def scanSpecies(sc, speciesname):
     global counter, newcounter, jpgneeded
+    global subheaderdone
     species = sc.sc_dict[speciesname]
     for leaf in species['Leaves']:
         species = sc.sc_dict[leaf]
@@ -105,10 +107,11 @@ def scanSpecies(sc, speciesname):
             # do we have this?
             if species['ScientificName'].lower() in result_dict and species['EnglishName'].lower() != "":
                 best_rating = 0
-                if 'african wild dog' == species['EnglishName'].lower():
+                if sc.sc_dict[sc.sc_dict[species['Up']]['Up']]['Up'] != 'aves' and not subheaderdone:
                     print(f"\nOther animals and plants:\n")
                     counter = 1
                     newcounter = 1
+                    subheaderdone = True
                 data_line = str(counter).rjust(3) + ' ' + species['EnglishName'].ljust(32) + species['DutchName'].ljust(32)
                 try:
                     Reference_sp.species_dict[species['ScientificName'].lower()]
@@ -155,7 +158,6 @@ def scanSpecies(sc, speciesname):
                         Reference_sp.species_dict[species['ScientificName'].lower()]
                     except:
                         data_line += '   Needed     '         
-                
                 print(data_line)                
         else:
             scanSpecies(sc, leaf)
@@ -163,6 +165,7 @@ def scanSpecies(sc, speciesname):
 
 # caller
 def print_headers(sc):
+    global subheaderdone
     print(f'\n\n')
     counter = 0
     header_line = ' '.ljust(36+32) + 'New '
@@ -170,28 +173,16 @@ def print_headers(sc):
         header_line += header[-2:] + ' '
     print(header_line)
 
+    subheaderdone = False
     scanSpecies(sc, 'biota')
 
     return
-
-
-
-
 
 def main(args, config):
     global starttime, SpeciesDebug, Reference_sp
     starttime = time.time()
     SpeciesDebug = 0        # default   
-
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
-
-    # reference project
-    referenceSpecies = config.get("repository","ReferenceSpecies")
-    Reference_sp = ghexif.specieslib.Species(None)
-    Reference_sp.readSpeciesInfo(referenceSpecies, False)
-    # test 
-    speciesok = Reference_sp.species_dict['biota']
-
 
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
@@ -202,6 +193,18 @@ def main(args, config):
     MyProject.registerSpeciesClassification(sc)
     sp = ghexif.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)   
+
+    # reference project
+    # if trip, initialze master
+    MyProject.initMasterAndTrip(config, inittrip=True)
+    if MyProject.Trip:
+        referenceSpecies = os.path.join(MyProject.getMasterRepository(), 'metadata/active/species.csv')
+    else:
+        referenceSpecies = config.get("repository","ReferenceSpecies")
+    Reference_sp = ghexif.specieslib.Species(None)
+    Reference_sp.readSpeciesInfo(referenceSpecies, False)
+    # test 
+    speciesok = Reference_sp.species_dict['biota']
 
     # read the list with all pre-defined species, as updated in each project using it
     metadatadir = MyProject.getMetaDir()
