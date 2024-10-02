@@ -105,7 +105,7 @@ class Trip:
                 if file.endswith('trip.ini'):
                     file_path = os.path.join(root, file)        # fully qualified name
                     parseddir = root.split('\\')
-                    name = parseddir[1]
+                    name = parseddir[-1]
                     if name == "": name = parseddir[0]
                     triprow = self.readTrip(file_path)
                     logger.info(f"Read trip information from {file_path}.")
@@ -118,17 +118,7 @@ class Trip:
         if os.path.exists(tripinifile):
             # create a separete config instance
             tripconfig.read(tripinifile)
-            # set the parameters
-            # masterrepository = tripconfig.get("trip_config", "masterrepository")
-            # trip_banner = tripconfig.get("trip_config", "trip_banner")
-            # tripname = tripconfig.get("trip_config", "tripname")
-            tripname = Path(self.mp.getBiotaWebRoot()).name
-            tripconfig['trip_config']['trip_name'] = tripname        
             tripconfig['trip_config']['created'] = datetime.today().strftime('%Y-%m-%d %H:%M')
-            # tripconfig['trip_config']['trip_banner'] = "includes web/zuidafrika2024.jpg"
-            # message = getUTF8(tripconfig, "trip_text", "message_nl")
-            # titel_en = getUTF8(tripconfig, "trip_text", "titel_en")
-            # message_en = getUTF8(tripconfig, "trip_text", "message_en")
         else:
             # Ensure the sections exist before setting values
             if not tripconfig.has_section('trip_config'):
@@ -138,7 +128,7 @@ class Trip:
             # set defaults
             tripconfig['trip_config']['master_repository_web'] = "/safari/"
             tripconfig['trip_config']['master_repository_disk'] = "c:/laptop/Zuid Afrika"            
-            tripconfig['trip_config']['repositorybanner'] = self.mp.getRepositoryBanner()
+            #tripconfig['trip_config']['repositorybanner'] = self.mp.getRepositoryBanner()
             tripconfig['trip_config']['trip_banner'] = "zuidafrika2024.jpg"
             tripconfig['trip_config']['trip_picture'] = "2024 zomer Zuid-Afrika-N6261550-small.jpg"
             tripname = Path(self.mp.getBiotaWebRoot()).name
@@ -208,7 +198,7 @@ class Trip:
                 row['trip_banner'] = trip_object['trip_banner']
                 row['trip_picture'] = trip_object['trip_picture']
                 # soon to be obsolete
-                row['repositorybanner'] = trip_object['repositorybanner']
+                #row['repositorybanner'] = trip_object['repositorybanner']
                 writer.writerow(row)  
         return
 

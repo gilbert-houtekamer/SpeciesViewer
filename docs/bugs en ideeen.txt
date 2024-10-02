@@ -1,8 +1,8 @@
 Betere functies:
 IN PROGRESS- logic documenteren (zie docs)
 - JvO: automatisch een batch verwerken van alle dagen en een soort opdrachten
-- JvO: Nederlandse namen opvragen met Nederlandse gbif versie, voor Nederlande namen en ook voor het verder 
-  "opleuken" van e pagina's met info over soorten
+- JvO: Nederlandse namen opvragen met Nederlandse gbif versie [voor Nederlande namen en ook voor het verder 
+  "opleuken" van e pagina's met info over soorten]
 - web site build on the FTP server, but not on disk.  want this?
 - svr6DeleteFiles: delete all files in E:\Dropbox\trips\safaridb\metadata\review\2024-06-24\frozen (do not do this now)
 
@@ -53,6 +53,7 @@ Related:
 - houtekamer.com opruimen en pointers fixen vanaf home page
 
 Done:
+DONE - nieuwe trip vergeet de oude!
 DONE - Moet er uit: ReferenceSpecies=e:/Dropbox/nature/metadata/active/species.csv (in svr2CountSpecies)
 DONR - review svr* with filepath changes
 DONE - blog creation is messy, index page does not work any more?  Or testing is messy :-() Both actually ..

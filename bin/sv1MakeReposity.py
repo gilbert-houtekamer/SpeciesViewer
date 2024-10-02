@@ -64,7 +64,7 @@ def readTrip(MyProject):
         # set defaults
         tripconfig['trip_config']['master_repository_disk'] = ""
         tripconfig['trip_config']['master_repository_web'] = ""        
-        tripconfig['trip_config']['repositorybanner'] = MyProject.getRepositoryBanner()
+        #tripconfig['trip_config']['repositorybanner'] = MyProject.getRepositoryBanner()
         tripname = Path(MyProject.getBiotaWebRoot()).name
         tripconfig['trip_config']['trip_name'] = tripname
         tripconfig['trip_config']['trip_banner'] = "zuidafrika2024.jpg"

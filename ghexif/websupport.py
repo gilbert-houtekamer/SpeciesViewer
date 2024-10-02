@@ -6,6 +6,7 @@ from datetime import datetime
 from operator import itemgetter
 from collections import defaultdict
 import logging
+from pathlib import Path
 from PIL import Image
 
 global config
@@ -683,30 +684,31 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             workstr = ''
             for tripname in MyProject.Trip.getTripDictSortedKeys():
                 trip = MyProject.Trip.getTrip(tripname)
+                TripWebRoot = os.path.join(Path(BiotaWebRoot).parent, trip['trip_name'])
                 # print(f'Logname {logname} {blog["BestJPGs"][0]}')
                 workstr += '   <div class="w3-row" style="margin: 15px">\n'
                 workstr += '      <div class="w3-col w3-win8-olive" style="width:25%">\n'
                 if trip['trip_name'] == "":
                     workstr += '          <p>(picture not found)</p>\n'
                 else:
-                    workstr += f'          <a href="' + BiotaWebRoot + 'biota/animalia/animalia-nl.html"><img\n'
-                    workstr += '            src="' + BiotaWebRoot + trip["trip_picture"]  + '"\n'  
+                    workstr += f'          <a href="' + TripWebRoot + '/biota/animalia/animalia-nl.html"><img\n'
+                    workstr += '            src="' + TripWebRoot + '/' + trip["trip_picture"]  + '"\n'  
                     workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to open "' + trip["title_" + language] + '""></a>\n'
                 workstr += '      </div>\n'
                 workstr += '      <div class="w3-col" style="width:75%">\n'
                 workstr += '        <div class="content" style="margin-left:10px">\n'
                 workstr += '          <table class="w3-table w3-hoverable">\n'
                 workstr += '            <tr class="w3-win8-olive">\n'
-                workstr += f'              <th>Titel</th><td><a href="' + BiotaWebRoot + 'biota/animalia/animalia-' + language + '.html">' + trip["title_" + language] + '</a>'
-                workstr += f'                                <a href="' + BiotaWebRoot + 'biotablog/blog index-' + language + '.html">(blogs)</a></td>\n'
+                workstr += f'              <th>Titel</th><td><a href="' + TripWebRoot + '/biota/animalia/animalia-' + language + '.html">' + trip["title_" + language] + '</a> '
+                workstr += f'<a href="' + TripWebRoot + '/biotablog/blog index-' + language + '.html">(blogs)</a></td>\n'
                 workstr += '            </tr>\n'
                 workstr += '            <tr>\n'
                 workstr += '              <th></th><td>' + trip["message_" + language] + '</td>\n'
                 workstr += '            </tr>\n'
-                if language == 'nl':
-                    workstr += '              <th>Datum:</th><td>' + trip["created"] + '</td>\n'
-                else:
-                    workstr += '              <th>Date:</th><td>' + trip["created"] + '</td>\n'
+                # if language == 'nl':
+                #     workstr += '              <th>Datum:</th><td>' + trip["created"] + '</td>\n'
+                # else:
+                #     workstr += '              <th>Date:</th><td>' + trip["created"] + '</td>\n'
                 workstr += '            </tr>\n'                  
                 workstr += '          </table>\n'
                 workstr += '        </div>\n'
