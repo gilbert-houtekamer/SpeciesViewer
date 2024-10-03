@@ -1,12 +1,15 @@
 Betere functies:
 IN PROGRESS- logic documenteren (zie docs)
-- JvO: automatisch een batch verwerken van alle dagen en een soort opdrachten
+- reload project from emptied projects en/of
+  JvO: automatisch een batch verwerken van alle dagen en een soort opdrachten
+- maak class for upn's
 - JvO: Nederlandse namen opvragen met Nederlandse gbif versie [voor Nederlande namen en ook voor het verder 
   "opleuken" van e pagina's met info over soorten]
 - web site build on the FTP server, but not on disk.  want this?
 - svr6DeleteFiles: delete all files in E:\Dropbox\trips\safaridb\metadata\review\2024-06-24\frozen (do not do this now)
 
 Bugs:
+IN PROGRESS - trip index pages should have different links, not inside a trip.  not sure what it must become.
 - sv7WriteCommit to copy only new small images to FTP.  Might even do this generically? Too inefficient
 - [DEFER until we can entire project] Re-running projects after commi has been done kills some report.  Nasty, will defer that issue for a while.
   Probably it causes this one:
