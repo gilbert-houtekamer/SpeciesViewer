@@ -87,7 +87,8 @@ def main(args, config):
         message = "Hier komt het verhaaltje"
         titel_en = ""
         message_en = ""
-    blog = ghexif.bloglib.Blog(MyProject, titel, titel_en, message, message_en, selectspecies, only_new, minimum_score)
+    blog = ghexif.bloglib.Blog(MyProject)
+    blog.initBlog(titel, titel_en, message, message_en, selectspecies, only_new, minimum_score)
     blog.files = files
     blog.pictures = pictures
     blog.from_time = from_time

@@ -626,6 +626,12 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += '      <div class="w3-col w3-win8-olive" style="width:30%">\n'
                 if blog["BestJPGs"] == []:
                     workstr += '          <p>(picture not found)</p>\n'
+                elif blog["SelectedGroup"] == '':
+                    # this is a reference to a blog index, not to a day/project
+                    targetlink = os.path.join(Path(blog['BestJPGs']).parent,'biotablog','blog index-'+language+'.html')
+                    workstr += f'          <a href="' + targetlink + '"><img\n'
+                    workstr += '            src="' + blog['BestJPGs'] + '"\n'
+                    workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to go to "' + blog["title_" + language] + '""></a>\n'                    
                 else:
                     # pict the best picture from the current pictures in the blog
                     workstr += f'          <a href="{logname}-nl.html"><img\n'
@@ -636,20 +642,25 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += '        <div class="content" style="margin-left:10px">\n'
                 workstr += '          <table class="w3-table w3-hoverable">\n'
                 workstr += '            <tr class="w3-win8-olive">\n'
-                workstr += f'              <th>Titel</th><td><a href="{logname}-nl.html">' + blog["title_" + language] + '</td>\n'
+                if blog["SelectedGroup"] == '':
+                    workstr += f'              <th>Titel</th><td><a href="' + targetlink + '">' + blog["title_" + language] + '</td>\n'
+                     
+                else:
+                    workstr += f'              <th>Titel</th><td><a href="{logname}-nl.html">' + blog["title_" + language] + '</td>\n'
                 workstr += '            </tr>\n'
                 workstr += '            <tr>\n'
                 workstr += '              <th></th><td>' + blog["message_" + language] + '</td>\n'
                 workstr += '            </tr>\n'
-                if blog["SelectedGroup"] != 'biota':
+                if blog["SelectedGroup"] != 'biota' and blog["SelectedGroup"] != "":
                     workstr += '            <tr>\n'
                     workstr += '              <th>Soorten</th><td>' + blog["SelectedGroup"].capitalize() + '</td>\n'
                     workstr += '            </tr>\n'
                 workstr += '            <tr>\n'
-                if language == 'nl':
-                    workstr += '              <th>Datum:</th><td>' + blog["blog"][14:24] + '</td>\n'
-                else:
-                    workstr += '              <th>Date:</th><td>' + blog["blog"][14:24] + '</td>\n'
+                if blog["SelectedGroup"] != "":
+                    if language == 'nl':
+                        workstr += '              <th>Datum:</th><td>' + blog["blog"][14:24] + '</td>\n'
+                    else:
+                        workstr += '              <th>Date:</th><td>' + blog["blog"][14:24] + '</td>\n'
                 workstr += '            </tr>\n'                  
                 workstr += '          </table>\n'
                 workstr += '        </div>\n'
@@ -727,7 +738,10 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             language = 'nl' if tokenno == 150 else 'en'
             if MyProject.Trip != None:
                 tn = MyProject.Trip.getTripName()
-                workstr = MyProject.Trip.getTrip(tn)['title_' + language]
+                if tn in MyProject.Trip.trip_dict:
+                    workstr = MyProject.Trip.getTrip(tn)['title_' + language]
+                else:
+                    workstr = tn.capitalize()
             return workstr
         elif tokenno == 120:         # all soorten
             workstr = ""

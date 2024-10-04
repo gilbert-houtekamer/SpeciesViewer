@@ -6,10 +6,10 @@ IN PROGRESS- logic documenteren (zie docs)
 - JvO: Nederlandse namen opvragen met Nederlandse gbif versie [voor Nederlande namen en ook voor het verder 
   "opleuken" van e pagina's met info over soorten]
 - web site build on the FTP server, but not on disk.  want this?
-- svr6DeleteFiles: delete all files in E:\Dropbox\trips\safaridb\metadata\review\2024-06-24\frozen (do not do this now)
+- svr7DeleteFiles: delete all files in E:\Dropbox\trips\safaridb\metadata\review\2024-06-24\frozen (do not do this now)
 
 Bugs:
-IN PROGRESS - trip index pages should have different links, not inside a trip.  not sure what it must become.
+IN PROGRESS - trip index pages should have different links, not inside a trip.  not sure what it must become, took most out
 - sv7WriteCommit to copy only new small images to FTP.  Might even do this generically? Too inefficient
 - [DEFER until we can entire project] Re-running projects after commi has been done kills some report.  Nasty, will defer that issue for a while.
   Probably it causes this one:
@@ -27,7 +27,6 @@ INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animali
 INFO:Small image for All Species report: D:/CurrentPictures/2024/2024 zomer zuid-afrika/2024-07-09/2024 zomer Zuid-Afrika-N7092574-small.jpg
 INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/perissodactyla/equidae/equus quagga/2024 zomer Zuid-Afrika-P6272149-small.jpg
 INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/perissodactyla/rhinocerotidae/ceratotherium simum/2024 zomer Zuid-Afrika-N6261550-small.jpg
-- https://houtekamer.com/nature/intro-en.html is overwriiten??
 
 Volgende versie features:
 - aparte function om de master database te managen en dingen mee te doen
@@ -35,6 +34,7 @@ Volgende versie features:
   - reloaden na opschonen (compress() of nieuwe versie)
   - een nieuwe rebuild van de website te doen na nieuwe versie
   - wellicht blogs op criteria [later]
+- waarneming leeglepelen voor (vooral) insecten
 - Facebook: https://facebook-sdk.readthedocs.io/en/latest/api.html
 - #woorden voor andere eigenschappen dan soorten, bv #wolken(cirrocumulus) of #landschap(droge steppe). met bijbehorende GUI/web reporting.
 
@@ -56,6 +56,7 @@ Related:
 - houtekamer.com opruimen en pointers fixen vanaf home page
 
 Done:
+DONE - nieuwe functie svr6MergeBlogsForMaster voor blog index met trip support
 DONE - nieuwe trip vergeet de oude!
 DONE - Moet er uit: ReferenceSpecies=e:/Dropbox/nature/metadata/active/species.csv (in svr2CountSpecies)
 DONR - review svr* with filepath changes

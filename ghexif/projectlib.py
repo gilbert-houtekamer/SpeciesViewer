@@ -389,10 +389,14 @@ class Project:
     def getBestJPGinList(self, list):
         BestJPG = ""
         BestRating = 0
-        for jpg in list:
-            upn = files_dict[jpg]['UniquePictureName']
-            rate = UniquePictureName_dict[upn]['Rate']
-            if int(rate) > BestRating:
-                BestRating = int(rate)
-                BestJPG = jpg
+        try:
+            for jpg in list:
+                upn = files_dict[jpg]['UniquePictureName']
+                rate = UniquePictureName_dict[upn]['Rate']
+                if int(rate) > BestRating:
+                    BestRating = int(rate)
+                    BestJPG = jpg
+        except:
+            # no proper contaxt, return first entry
+            BestJPG = list[0]
         return BestJPG

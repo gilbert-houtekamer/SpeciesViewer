@@ -45,11 +45,14 @@ class Blog:
                     }
 
 
-    def __init__(self, MyProject, 
-                 title_nl, title_en, message_nl, message_en, 
-                 selectedgroup, onlynewspecies, minimumscore):
+    def __init__(self, MyProject):
         MyProject.registerBlog(self)
         self.mp = MyProject
+        return 
+
+    def initBlog(self, 
+                 title_nl, title_en, message_nl, message_en, 
+                 selectedgroup, onlynewspecies, minimumscore):
         # settings that need to be provided (nl/uk should be Googletranslated)
         # handle language versions
         # TODO allow user to edit proposed translation
@@ -69,7 +72,7 @@ class Blog:
         self.BestJPGs = []
 
         return 
-
+    
     # keep name for blog
     def setBlogDay(self, today):
         if self.OnlyNewSpecies: newspec = "-1-" 
@@ -128,7 +131,7 @@ class Blog:
         # get existing and new name, and store it
         today = self.getDateFromPictures(self.files)
         self.setBlogDay(today)
-        self.read_BlogAdmin(sftp)
+        self.read_BlogAdmin()
         # does it exist? do we want to update admin?
         if not self.existBlog(self.getBlogDay()):
             self.new_blog_row['blog'] = self.blogday
@@ -161,14 +164,12 @@ class Blog:
 
         return
 
-    # might want to get admin from web server?
-    # 1. get the file from disk first
-    # 2. next get the file from the FTP server
-    # 3. add any rows that are not in Blog (blog_dict)
-    def read_BlogAdmin(self, sftp):
+    def read_BlogAdmin(self, filename=""):
         # 1. get the file from disk first
+        if filename == "":
+            filename = self.getBlogAdminFile()
         try:
-            with io.open(self.getBlogAdminFile(), mode="r", newline="", encoding='utf-8') as csvfile:
+            with io.open(filename, mode="r", newline="", encoding='utf-8') as csvfile:
                 reader = csv.DictReader(csvfile, delimiter=';')
                 #fieldnames=self.new_blog_row.keys(), 
                 for row in reader:
@@ -177,23 +178,7 @@ class Blog:
                         self.addBlog(row)
         except:
             pass    # no blogs yet, that's fine
-        # 2. next get the file from the FTP server
-        # 3. add any rows that are not in Blog (blog_dict)
-        # if self.mp.online:        
-        #     try:
-        #         self.downloadBlogAdminCopy(sftp)
-        #         with io.open(self.getBlogAdminFile()+ '.webcopy', mode="r", newline="", encoding='utf-8') as csvfile:
-        #             # Read the first line (header) to get column names, and store for write
-        #             header = csvfile.readline().strip().split(';')
-        #             for line in csvfile:
-        #                 values = line.strip().split(';')
-        #                 row_dict = {col: value for col, value in zip(header, values)}
-        #                 if row_dict['blog'] not in self.blog_dict:
-        #                     # add dictionary to dictionary
-        #                     row_dict['BestJPGs'] = parseListFromCSV(row_dict['BestJPGs'])                            
-        #                     self.addBlog(row_dict)
-        #     except:
-        #         pass    # no web blog admin yet, that's fine                   
+   
         return
 
     # write back 
@@ -290,6 +275,17 @@ class Blog:
             sftp= None
         return sftp
     
+    def uploadBlogIndex(self, sftp):
+        MyProject = self.mp     
+        biotablog = MyProject.getBiotaBlogDir()        
+        fromfile = biotablog + 'blog index-nl.html'
+        toweb = sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + 'blog index-nl.html'
+        # print(f'{fromfile} to {toweb}')
+        sftp.upload(fromfile, toweb)
+        sftp.upload(fromfile.replace('-nl','-en'), toweb.replace('-nl','-en'))
+        return        
+
+
     def uploadBlog(self, sftp, sftpPictures = True):
         # blog post and pictures
         MyProject = self.mp     
