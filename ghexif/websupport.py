@@ -358,7 +358,9 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 52: # planten
             return MyProject.getSpeciesCount('plantae')
         elif tokenno == 53: # fungi
-            return MyProject.getSpeciesCount('fungi')          
+            return MyProject.getSpeciesCount('fungi')     
+        elif tokenno == 54: # fungi
+            return MyProject.getSpeciesCount('mammalia')            
         elif tokenno == 71: return class_local['DutchName'].capitalize() 									 
         elif tokenno == 72: return class_local['ScientificName'].strip('0123456789 ').capitalize()						
         elif tokenno == 73: return class_local['EnglishName'].capitalize()
@@ -729,10 +731,10 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 148 or tokenno == 149:            # banner link
             language = 'nl' if tokenno == 148 else 'en'
             if MyProject.Trip != None:
-                directory = MyProject.Trip.getMasterBiotaWebRoot()     # path to current main repository, NOT to trip also for subdirectories
-                workstr = '<li><a href="' + directory + 'tripindex-' + language + '.html">Trips</a></li>'                
-            # else:
-            #     directory = BiotaWebRoot
+                directory = MyProject.Trip.getMasterBiotaWebRoot()     # path to current main repository, NOT to trip also for subdirectories   
+            else:
+                directory = BiotaWebRoot
+            workstr = '<li><a href="' + directory + 'tripindex-' + language + '.html">Trips</a></li>'         
             return workstr
         elif tokenno == 150 or tokenno == 151:
             language = 'nl' if tokenno == 150 else 'en'

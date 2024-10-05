@@ -10,7 +10,10 @@ IN PROGRESS- logic documenteren (zie docs)
 
 Bugs:
 IN PROGRESS - trip index pages should have different links, not inside a trip.  not sure what it must become, took most out
-- sv7WriteCommit to copy only new small images to FTP.  Might even do this generically? Too inefficient
+IN PROGRESS - sv7WriteCommit to copy only new small images to FTP.  Might even do this generically? Too inefficient
+  (save in d:\code\allspecieswrapper.txt until suitable test set found)
+DONE?? - De layout van de vogel*.html zijn nog niet goed, er staat geen 'trips' label in.  
+  websupport.py moet aangepast, maar echte test nog niet gedaan op de master.
 - [DEFER until we can run an entire project] Re-running projects after commi has been done kills some report.  Nasty, will defer that issue for a while.
   Probably it causes this one:
   - this species does not occur in all species page, nut no errors.  weird, manually fixed.:
@@ -34,7 +37,7 @@ Volgende versie features:
   - reloaden na opschonen (compress() of nieuwe versie)
   - een nieuwe rebuild van de website te doen na nieuwe versie
   - wellicht blogs op criteria [later]
-- waarneming leeglepelen voor (vooral) insecten
+- met JvO: waarneming.nl leeglepelen voor (vooral) insecten
 - Facebook: https://facebook-sdk.readthedocs.io/en/latest/api.html
 - #woorden voor andere eigenschappen dan soorten, bv #wolken(cirrocumulus) of #landschap(droge steppe). met bijbehorende GUI/web reporting.
 
