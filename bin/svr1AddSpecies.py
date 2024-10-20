@@ -48,8 +48,8 @@ def main(args, config):
     # read list with scientific names that we want to add.
     # Reads a CSV file line by line, splits by delimiter, and creates dictionaries.
     # Assumes the first row contains column headers.
-    speclistinfile = MyProject.getRepositoryPath() + "admin/speclist.csv"
-    speclistprinted = MyProject.getRepositoryPath() + "admin/speclist.txt"
+    speclistinfile = os.path.join(MyProject.getRepositoryPath(), "admin/speclist.csv")
+    speclistprinted = os.path.join(MyProject.getRepositoryPath(), "admin/speclist.txt")
     with open(speclistinfile, mode="r", newline="", encoding='utf-8') as csvfile: 
         with open(speclistprinted, mode="w", newline="", encoding='utf-8') as printfile:           
             header = csvfile.readline().strip().split(';')
