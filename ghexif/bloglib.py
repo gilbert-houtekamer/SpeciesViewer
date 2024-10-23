@@ -211,8 +211,11 @@ class Blog:
         if len(files_dict) == fromrecord:
             fromrecord = 0
         for filedata in list(files_dict.values())[fromrecord:]:
-            parsed_date = datetime.strptime(filedata["EXIF:DateTimeOriginal"][0:10], '%Y:%m:%d') 
-            return parsed_date.strftime('Blog Pictures %Y-%m-%d')
+            try:
+                parsed_date = datetime.strptime(filedata["EXIF:DateTimeOriginal"][0:10], '%Y:%m:%d') 
+                return parsed_date.strftime('Blog Pictures %Y-%m-%d')
+            except:
+                pass
         return ""
     
     # create updated index page
