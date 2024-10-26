@@ -87,7 +87,7 @@ def deleteCopiedFiles(deletelist):
     return
 
 
-def putRecursiveTreeWeb(MyProject):
+def putRecursiveTreeWeb(MyProject, config):
     password = config.get("websettings","Sftppwd").strip("'")
     sftp = ghexif.sftplib.Sftp(
         hostname='houtfp.ssh.transip.me',
@@ -147,7 +147,7 @@ def main(args, config):
         commitProjectFiles(MyProject)
         
         # update the website
-        putRecursiveTreeWeb(MyProject)
+        putRecursiveTreeWeb(MyProject, config)
         putRecursiveTreeDisk(MyProject)
         # TODO rewrite the Blog with active links to species
 

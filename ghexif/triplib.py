@@ -129,8 +129,8 @@ class Trip:
             tripconfig['trip_config']['master_repository_web'] = "/safari/"
             tripconfig['trip_config']['master_repository_disk'] = "c:/laptop/Zuid Afrika"            
             #tripconfig['trip_config']['repositorybanner'] = self.mp.getRepositoryBanner()
-            tripconfig['trip_config']['trip_banner'] = "zuidafrika2024.jpg"
-            tripconfig['trip_config']['trip_picture'] = "2024 zomer Zuid-Afrika-N6261550-small.jpg"
+            tripconfig['trip_config']['trip_banner'] = "keerkringvogel.jpg"
+            tripconfig['trip_config']['trip_picture'] = ""
             tripname = Path(self.mp.getBiotaWebRoot()).name
             tripconfig['trip_config']['trip_name'] = tripname
             tripconfig['trip_config']['created'] = datetime.today().strftime('%Y-%m-%d %H:%M')
