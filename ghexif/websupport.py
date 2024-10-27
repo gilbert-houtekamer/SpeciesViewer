@@ -331,7 +331,8 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     else:
                         workstr += picture['Settings'].replace('at ',' bij ').replace('distance','afstand')
                 return workstr
-            else: ""        
+            else: 
+                return ""        
         elif tokenno == 43:# 	case 43: // was 60 = totaal aantal soorten
             return MyProject.getSpeciesCount('biota')
         elif tokenno == 44:
@@ -339,7 +340,10 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 45:
             return MyProject.getBlogDateFromPictures() + '/' + file['File:FileName']    #BUGBUG
         elif tokenno == 46:
-            return getJPGtime(file).strftime('%Y:%m:%d %H:%M:%S')        
+            try:
+                return getJPGtime(file).strftime('%Y:%m:%d %H:%M:%S')
+            except:
+                return ""
         elif tokenno == 47:
             return MyProject.getBlogDateFromPictures() + '/' + getSmallJPG(file['File:FileName'])   #BUGBUG        
         elif tokenno == 48:

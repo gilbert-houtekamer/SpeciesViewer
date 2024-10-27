@@ -9,6 +9,9 @@ IN PROGRESS- logic documenteren (zie docs)
 - svr7DeleteFiles: delete all files in E:\Dropbox\trips\safaridb\metadata\review\2024-06-24\frozen (do not do this now)
 
 Bugs:
+- sv4 should automatcally call svr6 when there is no trip
+- pictures from WhatsApp do not work, why?
+- "afstand inf" is niet zo mooi
 IN PROGRESS - trip index pages should have different links, not inside a trip.  not sure what it must become, took most out
 IN PROGRESS - sv7WriteCommit to copy only new small images to FTP.  Might even do this generically? Too inefficient
   (save in d:\code\allspecieswrapper.txt until suitable test set found)

@@ -234,7 +234,7 @@ class Project:
         read_pictures(self, metadatadir+"active/data_pictures.csv")
 
         # see what files for non-commtted projected
-        if getEarlierDays:
+        if getEarlierDays and self.Trip != None:
             # Collect states
             directory_to_scan = os.path.join(self.getMetaDir(), 'review') 
             days_dict = getAllProjectStatus(self, directory_to_scan, silent=True)
