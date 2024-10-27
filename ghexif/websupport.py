@@ -144,10 +144,12 @@ def jpgResizeCopy(targetstr, horizontalsize = 600):
     return
 
 def getAltTextForJPG(MyProject, jpgname):
-    names = ""
-    jpgobj = MyProject.files_dict[jpgname]
-    upn = MyProject.UniquePictureName_dict[jpgobj['UniquePictureName']]
-    names = upn['WetSoortNaam'] + '/' + upn['EngSoortNaam'] + '/' + upn['NLSoortNaam']
+    try:
+        jpgobj = MyProject.files_dict[jpgname]
+        upn = MyProject.UniquePictureName_dict[jpgobj['UniquePictureName']]
+        names = upn['WetSoortNaam'] + '/' + upn['EngSoortNaam'] + '/' + upn['NLSoortNaam']
+    except:
+        names = ""
     return names
 
 def formatToken(tokenno, MyProject, species_param, file, picture):
