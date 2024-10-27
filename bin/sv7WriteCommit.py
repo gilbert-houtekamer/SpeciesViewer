@@ -18,7 +18,6 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-from ghexif import files_dict, UniquePictureName_dict
 import ghexif
 import ghexif.projectlib
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException

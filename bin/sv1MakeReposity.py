@@ -11,7 +11,6 @@ import argparse
 from pathlib import Path
 from datetime import datetime, date
 
-
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
     scriptpath = os.path.dirname(__file__)
@@ -37,7 +36,7 @@ def getUTF8(tripconfig, group, ansistring):
     return workstr
 
 def main(args, config):
-    MY_GHEXIF_DIR = os.path.join(modpath,"dist")
+    MY_GHEXIF_DIR = os.path.join(os.getcwd(),"dist")
     NEW_DB_TREE = config.get("repository","BiotaDatabase")    # "e:/test3/SpeciesViewDB/"
     WEB_TREE = config.get("repository","BiotaWebRoot")
 

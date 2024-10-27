@@ -13,7 +13,7 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-from ghexif import files_dict, UniquePictureName_dict, SVException
+from ghexif import SVException
 import ghexif
 import ghexif.projectlib
 import ghexif.specieslib

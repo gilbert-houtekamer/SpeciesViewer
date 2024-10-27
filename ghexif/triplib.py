@@ -7,7 +7,6 @@ import ghexif.projectlib
 import logging
 import configparser
 
-from ghexif import files_dict
 import ghexif
 import ghexif.projectlib
 import ghexif.specieslib

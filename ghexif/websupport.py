@@ -12,9 +12,7 @@ from PIL import Image
 global config
 
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS
-from ghexif import files_dict, UniquePictureName_dict
-from ghexif.handling import UniquePictureName_dict
-from ghexif.specieslib import Level, computeRatingFile, getPictureAgeSexePlumage
+from ghexif.specieslib import Level
 import ghexif.projectlib
 
 logger = logging.getLogger(__name__)
@@ -777,13 +775,13 @@ def writeOneSpecies(MyProject, leaf, temptextfile):
         a = 1
         # be sure the JPG is included, unless we do want it / need it
     if not MyProject.getSkipJPGs():
-        sourcestr = files_dict[species['BestJPG']]['WindowsFileName']
+        sourcestr = MyProject.files_dict[species['BestJPG']]['WindowsFileName']
         targetstr = os.path.join(MyProject.ReviewFrozen(),species['TargetPath'], species['BestJPG'])
         try:  
             os.makedirs(os.path.join(MyProject.ReviewFrozen(), species['TargetPath']), exist_ok=True) 
             rc = shutil.copy(sourcestr, targetstr)
             # not sure about the logic :-(
-            # upn = UniquePictureName_dict[files_dict[species['BestJPG']]['UniquePictureName']]
+            # upn = UniquePictureName_dict[MyProject.files_dict[species['BestJPG']]['UniquePictureName']]
             # species = MyProject.sp.species_dict[upn['WetSoortName']]
             # if species['iPictureWithJPGsCollection'] == 0:
             MyProject.addAllSpeciesFiles(sourcestr,os.path.join(MyProject.getBiotaWebRoot(), species['TargetPath'], species['BestJPG']))
@@ -838,9 +836,9 @@ def addOneSpeciesPage(MyProject, species_param):
     try:
         rateorder = {}
         for JPGname in list(species_param['JPGmap']):
-            JPGname_no_path = files_dict[os.path.basename(JPGname)]
-            diversity = getPictureAgeSexePlumage(UniquePictureName_dict[JPGname_no_path['UniquePictureName']])
-            rating = computeRatingFile(JPGname_no_path)
+            JPGname_no_path = MyProject.files_dict[os.path.basename(JPGname)]
+            diversity = getPictureAgeSexePlumage(MyProject.UniquePictureName_dict[JPGname_no_path['UniquePictureName']])
+            rating = MyProject.computeRatingFile(JPGname_no_path)
             if '-small' not in JPGname:
                 rateorder[(diversity, rating, JPGname)] = JPGname
         # keep all JPGs sorted, not yet by male/female, breeding etc
@@ -868,7 +866,7 @@ def addOneSpeciesPage(MyProject, species_param):
             usedUPNs = {}
             rejectUPNs = 0            
             for rating, JPGname, value in items:
-                JPGname_no_path = files_dict[os.path.basename(JPGname)]
+                JPGname_no_path = MyProject.files_dict[os.path.basename(JPGname)]
                 if (JPGname_no_path != "") and (JPGname_no_path['UniquePictureName'] not in usedUPNs.keys()):
                     # do we have a picture close to it
                     JPGtime = getJPGtime(JPGname_no_path)
@@ -883,10 +881,10 @@ def addOneSpeciesPage(MyProject, species_param):
                         usedUPNs[JPGname_no_path['UniquePictureName']] = JPGtime
                         for line in MyProject.getTemplateLines("vogelfoto.html"):
                             workstr += getTemplateOutputString(MyProject, species_param, JPGname_no_path,
-                                                                UniquePictureName_dict[JPGname_no_path['UniquePictureName']], line)
-                        picture = UniquePictureName_dict[JPGname_no_path['UniquePictureName']]
+                                                                MyProject.UniquePictureName_dict[JPGname_no_path['UniquePictureName']], line)
+                        picture = MyProject.UniquePictureName_dict[JPGname_no_path['UniquePictureName']]
                         targetstr =  os.path.join(BiotaDiskRoot, picture['TargetPath'], picture['BestJPG'])
-                        JPGname_no_path = files_dict[os.path.basename(JPGname)]
+                        JPGname_no_path = MyProject.files_dict[os.path.basename(JPGname)]
                         if not MyProject.getSkipJPGs():
                             shutil.copy(JPGname_no_path['WindowsFileName'], targetstr)
                         filesfound += 1                            
@@ -927,19 +925,19 @@ def addSpeciesToSummaryPost(MyProject, speciesname, selected_species, templateht
 # 3. sort the best pictures of each type
 def collectBestJPGs(MyProject, upn, selected_species):
     # get the species name that indirectly
-    picturedata = UniquePictureName_dict[upn]
+    picturedata = MyProject.UniquePictureName_dict[upn]
     species_scientific_name = picturedata['WetSoortNaam']
     #species = MyProject.sp.species_dict[species_scientific_name]
     
     candidate_jpgs = {}
 
-    for upn_iter in UniquePictureName_dict:
-        upn_item = UniquePictureName_dict[upn_iter]
+    for upn_iter in MyProject.UniquePictureName_dict:
+        upn_item = MyProject.UniquePictureName_dict[upn_iter]
          # select only this species, that have a JPG, and that are within this time range 
         if upn_item['WetSoortNaam'] == species_scientific_name:
             if upn_item['BestJPG'] != "":
                 if upn_item['DateTimeOriginal'] >= MyProject.Blog.from_time and upn_item['DateTimeOriginal'] <= MyProject.Blog.last_time:
-                    sortname = species_scientific_name + getPictureAgeSexePlumage(upn_item)
+                    sortname = species_scientific_name + MyProject.getPictureAgeSexePlumage(upn_item)
                     info = [upn_item['BestJPG'], upn_item['Rate']]; 
                     if sortname in candidate_jpgs:
                         candidate_jpgs[sortname].append(info)
@@ -954,15 +952,13 @@ def collectBestJPGs(MyProject, upn, selected_species):
                     if bestitem[1] < item[1]:
                         bestitem = item
             # remember the JPG we want to use
-            selected_species[bestitem[0]] = UniquePictureName_dict[files_dict[bestitem[0]]['UniquePictureName']]['DateTimeOriginal']
+            selected_species[bestitem[0]] = MyProject.UniquePictureName_dict[MyProject.files_dict[bestitem[0]]['UniquePictureName']]['DateTimeOriginal']
     return
 
 def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
-    filedata = files_dict[jpgname]
-    picturedata = UniquePictureName_dict[filedata['UniquePictureName']]
+    filedata = MyProject.files_dict[jpgname]
+    picturedata = MyProject.UniquePictureName_dict[filedata['UniquePictureName']]
     species = MyProject.sp.species_dict[picturedata['WetSoortNaam']]
-    # filedata = files_dict[species['BestJPG']]
-    # picturedata = UniquePictureName_dict[species['BestUPN']]
     MyProject.Blog.addBestJPG(filedata)
     # print(f"Picture {picturedata['NLSoortNaam']} {picturedata['UniquePictureName']} {picturedata['Description']}")
     for rawline in MyProject.getTemplateLines(templatehtml):

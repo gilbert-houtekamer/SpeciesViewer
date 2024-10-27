@@ -16,7 +16,6 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-from ghexif import files_dict, UniquePictureName_dict
 import ghexif
 import ghexif.projectlib
 import ghexif.websupport
@@ -24,7 +23,6 @@ import ghexif.specieslib
 import ghexif.speciesclassification
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS
 from ghexif.csv_columns import PICTURE_FIELDS
-from ghexif.specieslib import computeRating, computeRatingFile
 from ghexif.handling import read_file, read_pictures
 from ghexif.specieslib import Level
 from ghexif.websupport import getTemplateOutputString

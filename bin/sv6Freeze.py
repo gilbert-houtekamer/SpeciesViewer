@@ -15,7 +15,6 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-from ghexif import files_dict, UniquePictureName_dict
 import ghexif
 import ghexif.projectlib
 import ghexif.specieslib
@@ -38,9 +37,9 @@ def getTemplateFileAsString():
         fileasstring += line
     return fileasstring
 
-def getDateFromPictures():
-    for filename in files_dict:
-        filedata = files_dict[filename]
+def getDateFromPictures(MyProject):
+    for filename in MyProject.files_dict:
+        filedata = MyProject.files_dict[filename]
         parsed_date = datetime.strptime(filedata["EXIF:DateTimeOriginal"][0:10], '%Y:%m:%d') 
         return parsed_date.strftime('Blog Pictures %Y-%m-%d')
     return ""
@@ -52,16 +51,16 @@ def makeSpeciesDirectory(MyProject, leaf):
     os.makedirs(directoryname, exist_ok=True)    
 
     # find all files in this directory, this is an expensive scan, let's find out how slow it is
-    for picture in UniquePictureName_dict:
-        if UniquePictureName_dict[picture]['WetSoortNaam'] == leaf:        # we want this
-            for filename in UniquePictureName_dict[picture]['Files']:
+    for picture in MyProject.UniquePictureName_dict:
+        if MyProject.UniquePictureName_dict[picture]['WetSoortNaam'] == leaf:        # we want this
+            for filename in MyProject.UniquePictureName_dict[picture]['Files']:
                 try:
-                    print(f"File {filename:40}: {files_dict[filename]['WindowsFileName']:64} to " + \
-                          f"{MyProject.getRepositoryPath()+UniquePictureName_dict[picture]['TargetPath']+files_dict[filename]['File:FileName']}",
+                    print(f"File {filename:40}: {MyProject.files_dict[filename]['WindowsFileName']:64} to " + \
+                          f"{MyProject.getRepositoryPath()+MyProject.UniquePictureName_dict[picture]['TargetPath']+MyProject.files_dict[filename]['File:FileName']}",
                           file=debugfile)
-                    sourcefile = files_dict[filename]['WindowsFileName']
+                    sourcefile = MyProject.files_dict[filename]['WindowsFileName']
                     targetfile = MyProject.getRepositoryPath() + \
-                            UniquePictureName_dict[picture]['TargetPath']+files_dict[filename]['File:FileName']                                      
+                            MyProject.UniquePictureName_dict[picture]['TargetPath']+MyProject.files_dict[filename]['File:FileName']                                      
                     if sourcefile != targetfile:        # == happens when freeze/commit are run twice
                         shutil.copy(sourcefile, targetfile)
                         #also make delete list
@@ -97,9 +96,9 @@ def AppendChangedFileData(MyProject, firstNewFile):
     # Copy existing file data, now add other file records
     with open(datafilename, 'a', newline='', encoding='utf-8') as frozencsv:
         writer = csv.DictWriter(frozencsv, fieldnames=COLUMN_NAMES.values(), quoting=csv.QUOTE_MINIMAL,  delimiter=';')        
-        for filespec in list(files_dict.values())[firstNewFile:]:
+        for filespec in list(MyProject.files_dict.values())[firstNewFile:]:
             upn = filespec['UniquePictureName']
-            targetpath = UniquePictureName_dict[upn]['TargetPath']
+            targetpath = MyProject.UniquePictureName_dict[upn]['TargetPath']
             # save for future situation (after move)
             wfn = filespec['WindowsFileName'] 
             fd = filespec['File:Directory']
@@ -112,7 +111,7 @@ def AppendChangedFileData(MyProject, firstNewFile):
             filespec['WindowsFileName'] = wfn
             filespec['File:Directory'] = fd
     
-    logger.info(f'Data from {len(files_dict)-firstNewFile} files added to {len(files_dict)} and written to {datafilename}')
+    logger.info(f'Data from {len(MyProject.files_dict)-firstNewFile} files added to {len(MyProject.files_dict)} and written to {datafilename}')
     return
 
 def AppendChangedPictureData(MyProject, firstNewPicture):
@@ -122,10 +121,10 @@ def AppendChangedPictureData(MyProject, firstNewPicture):
     with open(picturename, 'a', newline='', encoding='utf-8') as frozencsv:
         ordered_fieldnames = OrderedDict((field, None) for field in PICTURE_FIELDS)                 
         writer = csv.DictWriter(frozencsv, fieldnames=ordered_fieldnames, quoting=csv.QUOTE_MINIMAL,  delimiter=';')
-        for picture in list(UniquePictureName_dict.values())[firstNewPicture:]:
+        for picture in list(MyProject.UniquePictureName_dict.values())[firstNewPicture:]:
             writer.writerow(picture)
             
-    logger.info(f'Data from {len(UniquePictureName_dict)-firstNewPicture} pictures added, total {len(UniquePictureName_dict)} now written to {picturename}')
+    logger.info(f'Data from {len(MyProject.UniquePictureName_dict)-firstNewPicture} pictures added, total {len(MyProject.UniquePictureName_dict)} now written to {picturename}')
     return
 
 def writeDeleteList(deletelistfilename):

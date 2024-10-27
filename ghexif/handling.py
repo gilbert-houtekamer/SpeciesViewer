@@ -1,6 +1,5 @@
 import os
 import csv
-from ghexif import files_dict, UniquePictureName_dict
 import logging
 import ghexif
 
@@ -37,15 +36,15 @@ def deriveUniquePictureName(windows_filename):
 # Read EXIF data file, one record for each file (ORF, jpg, XMP, etc)
 # For second call, additional data is appended
 # Check if is does not create a duplicaete
-def read_file(filename, silent=False):
+def read_file(MyProject, filename, silent=False):
     from_time = ""
     last_time = ""
-    filecount = len(files_dict)
+    filecount = len(MyProject.files_dict)
     with open(filename, "r", newline="", encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile, delimiter=';')
         for row in reader:
-            if row['File:FileName'] not in files_dict:
-                files_dict[row['File:FileName']] = row
+            if row['File:FileName'] not in MyProject.files_dict:
+                MyProject.files_dict[row['File:FileName']] = row
                 if row['EXIF:DateTimeOriginal'] != "":
                     if from_time == "" or from_time > row['EXIF:DateTimeOriginal']: 
                         from_time = row['EXIF:DateTimeOriginal']
@@ -53,20 +52,20 @@ def read_file(filename, silent=False):
                         last_time = row['EXIF:DateTimeOriginal']
             elif not silent:
                 logger.warning(f"Unexpected duplicate file {row['WindowsFileName']} not added, ")
-                logger.warning(f"File was already found here {files_dict[row['File:FileName']]['WindowsFileName']}.")
-    logger.info(f'Read EXIF data for {len(files_dict)-filecount} files from CSV file {filename}.')
-    return len(files_dict), from_time, last_time
+                logger.warning(f"File was already found here {MyProject.files_dict[row['File:FileName']]['WindowsFileName']}.")
+    logger.info(f'Read EXIF data for {len(MyProject.files_dict)-filecount} files from CSV file {filename}.')
+    return len(MyProject.files_dict), from_time, last_time
 
 # read picture data file, one record for each picture, with links to files (ORF, jpg, XMP, etc)
 # For second call, additional data is appended
 # Check if is does not create a duplicaete
-def read_pictures(picturefile):
-    picturecount = len(UniquePictureName_dict)
+def read_pictures(MyProject, picturefile):
+    picturecount = len(MyProject.UniquePictureName_dict)
     with open(picturefile, "r", newline="", encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile, delimiter=';')
         for row in reader:
-            if row['UniquePictureName'] not in UniquePictureName_dict:
-                UniquePictureName_dict[row['UniquePictureName']] = row
+            if row['UniquePictureName'] not in MyProject.UniquePictureName_dict:
+                MyProject.UniquePictureName_dict[row['UniquePictureName']] = row
                 # restore file list
                 if row["Files"] == '[]':           # update in place
                     row["Files"] = []
@@ -83,8 +82,8 @@ def read_pictures(picturefile):
                     except ValueError:
                         pass  # Handle non-numeric values gracefully
 
-    logger.info(f'Read data for {len(UniquePictureName_dict)-picturecount} pictures from CSV file {picturefile}.')
-    return len(UniquePictureName_dict)
+    logger.info(f'Read data for {len(MyProject.UniquePictureName_dict)-picturecount} pictures from CSV file {picturefile}.')
+    return len(MyProject.UniquePictureName_dict)
 
 def read_Files_CSV():
     return

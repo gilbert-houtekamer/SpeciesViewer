@@ -7,7 +7,6 @@ from collections import OrderedDict
 import ghexif.projectlib
 import logging
 
-from ghexif import files_dict
 import ghexif
 import ghexif.projectlib
 import ghexif.specieslib
@@ -208,9 +207,9 @@ class Blog:
         return
 
     def getDateFromPictures(self, fromrecord):
-        if len(files_dict) == fromrecord:
+        if len(self.mp.files_dict) == fromrecord:
             fromrecord = 0
-        for filedata in list(files_dict.values())[fromrecord:]:
+        for filedata in list(self.mp.files_dict.values())[fromrecord:]:
             try:
                 parsed_date = datetime.strptime(filedata["EXIF:DateTimeOriginal"][0:10], '%Y:%m:%d') 
                 return parsed_date.strftime('Blog Pictures %Y-%m-%d')

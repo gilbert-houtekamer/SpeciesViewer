@@ -348,7 +348,7 @@ class SpeciesClassification:
                     if subjects.lower() not in self.DUMMYSPECIES:
                         scientificname = self.getKnownSpecies(subjects, True, LookUpInGBIF)
                         if scientificname != "":
-                            # if SpeciesDebug > 8:
+                            # if self.SpeciesDebug > 8:
                             #     print(f"In {subject.split(',')} - Found {subjects} -> {scientificname}")
                             return scientificname
             

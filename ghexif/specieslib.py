@@ -6,7 +6,6 @@ import logging
 from collections import OrderedDict
 
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SPECIES_FIELDS
-from ghexif import files_dict
 import ghexif
 import ghexif.projectlib
 from ghexif.handling import read_file, read_pictures
@@ -284,16 +283,8 @@ class Species:
         return      
 
     def summarizeSpeciesCounters(self, soort, results, debugfile):
-        global SpeciesDebug    
-
-        # if soort == 'asphodelus fistulosus':
-        #     x = 1
-
         species = self.species_dict[soort]
-        # if SpeciesDebug > 4 and int(species['iPictureCollectionCount']) > 0:
-        #     print(f"summarizeSpeciesCounters: {species['Level']}:  {species['iPictureCollectionCount']:6}  {species['iPicturesWithJPGsCollection']:6} \
-        #         {species['ScientificName']:32} / {species['DutchName']} / {species['EnglishName']}", file=debugfile)
-        
+
         # if species, return counters
         if (species['Level'] == 'Level.SPECIES') or (species['Level'] == Level.SPECIES):
             results = [int(species['iPictureCollectionCount']), int(species['iPictureThisRunCount']), \
@@ -342,7 +333,6 @@ class Species:
         return [results[0], results[1], results[2], results[3], results[4], results[5], results[6], results[7], results[8], results[9]]
 
     def printDataForSpecies(self, soort, debugfile):
-        global SpeciesDebug
         species = self.species_dict[soort]
         if int(species['iPictureCollectionCount']) > 0:
             # if SpeciesDebug > 0:
@@ -366,109 +356,4 @@ class Species:
             self.printSpeciesTree(leaf, level + 1, classification)
         return
 
-# NEEDS TO GO SOMEWHERE ELSE OR IN THIS PROJECTLIB
-def getPictureAgeSexePlumage(upn):
-    try:
-        str = upn['malefemale'] + upn['ageintext'] + upn['summerwinter']
-    except:
-        str = ""
-    return str
 
-def computeRating(upn):
-    computation = 0
-    DxOUsed = False
-    # file type logic
-    for filename in upn['Files']:
-        file = files_dict[filename]
-        # copy Label to Rating
-        if file['XMP:Rating'] in ['0', ''] and file['XMP:Label'] != '':
-            label = file['XMP:Label']
-            if label == 'Red':
-                file['XMP:Rating'] = 3
-            elif label == 'Yellow':
-                file['XMP:Rating'] = 2                
-            elif label == 'Green':
-                file['XMP:Rating'] = 0
-        #    
-        filetype = file['WindowsExtension']
-        if filetype in ['xmp']:
-            if file['XMP:Rating'] == "":
-                computation = 5
-            else:
-                computation = 15 * (1 + int(file['XMP:Rating']))
-        elif filetype in ['dop', 'dng']:
-            DxOUsed = True
-        elif filetype in ['jpg', 'jpeg']:
-            if len(upn['Files']) != 1:
-                if file['XMP:Rating'] == "":
-                    computation = 5
-                else:
-                    computation = 15 * (1 + int(file['XMP:Rating']))
-
-    # save new Rating for Picture
-    bestresult = 0
-    for filename in upn['Files']:
-        rating = files_dict[filename]['XMP:Rating']
-        if rating != "":
-            bestresult = max(bestresult, int(rating))
-    upn['Rating'] = bestresult
-
-    # Penalties for very small pics
-    saved_multiplier = 0.1
-    multiplier = 1
-    for filename in upn['Files']:
-        file = files_dict[filename]
-        if file['WindowsExtension'] in ['jpg', 'jpeg'] and file['ImageSize'] != "":
-            width_jpg, heigth_jpg = map(int, re.split('[x ]', file['ImageSize']))
-            multiplier = float(min(1500, max(width_jpg, heigth_jpg))) / 1500.0
-            if upn['ImageSize'] != "":  # should be true
-                width_camera, heigth_camera = map(int, re.split('[x ]',upn['ImageSize']))
-                if ((width_camera >= (1.5 * width_jpg)) or (heigth_camera >= (1.5 * heigth_jpg))):				# most likely better crop
-                    multiplier = multiplier * 1.5
-
-        saved_multiplier = max(saved_multiplier, multiplier)
-
-    computation = int(float(computation)*saved_multiplier)             
-    if DxOUsed:
-        computation += 8
-    if upn['Description'] != "":
-        computation += 15        
-    
-    return int(computation)
-
-
-# logic from C++ version
-def computeRatingFile(file):
-    computation = 0
-    DxOUsed = False
-    # copy Label to Rating
-    if file['XMP:Rating'] in ['0', ''] and file['XMP:Label'] != '':
-        label = file['XMP:Label']
-        if label == 'Red':
-            file['XMP:Rating'] = 3
-        elif label == 'Yellow':
-            file['XMP:Rating'] = 2                
-        elif label == 'Green':
-            file['XMP:Rating'] = 0
-    #    
-    filetype = file['WindowsExtension']
-    if filetype in ['xmp','jpg', 'jpeg']:
-        if file['XMP:Rating'] == "":
-            computation = 5
-        else:
-            computation = 15 * (1 + int(file['XMP:Rating']))
-
-    # Penalties for very small pics
-    saved_multiplier = 0.1
-    multiplier = 1
-    if file['WindowsExtension'] in ['jpg', 'jpeg'] and file['ImageSize'] != "":
-        width_jpg, heigth_jpg = map(int, re.split('[x ]', file['ImageSize']))
-        multiplier = float(min(1500, max(width_jpg, heigth_jpg))) / 1500.0
-    
-    saved_multiplier = max(saved_multiplier, multiplier)
-
-    computation = int(float(computation)*saved_multiplier)             
-    if "dxo" in file['File:FileName'].lower():
-        computation += 8
-    
-    return int(computation)
