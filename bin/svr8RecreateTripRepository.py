@@ -47,22 +47,34 @@ def getConfigFileLines(file):
     return soort_template_lines
 
 def RecreateRepository(args, config):
-    print(f"Recreate project {config.get("repository","BiotaDatabase")}")
-    bin.sv1MakeReposity.main(args, config)
+    #logger.info(f"Recreate project {config.get("repository","BiotaDatabase")}")
+    #bin.sv1MakeReposity.main(args, config)
     return
 
 def RecreateProject(args, config, project):
-    print(f"Recreate project {project}")
-    if project == '2024-10-08':
-        try:
-            bin.sv2ReadDirExif.main(args, config)
-            bin.sv3WritePictures.main(args, config)
-            bin.sv4WriteBlog.main(args, config)
-            bin.sv5BuildWebsite.main(args, config)
-            bin.sv6Freeze.main(args, config)
-            bin.sv7WriteCommit.main(args, config) 
-        except Exception as e:
-            logger.warning(f"{parser.description} failed: {e}")
+    logger.info(f"Recreate project {project}")
+    try:
+        step = 'bin.sv2ReadDirExif.main'
+        bin.sv2ReadDirExif.main(args, config)
+        logger.info('=====================================================')
+        step = 'bin.sv3WritePictures.main'
+        bin.sv3WritePictures.main(args, config)
+        logger.info('=====================================================')
+        step = 'bin.sv4WriteBlog.main'
+        bin.sv4WriteBlog.main(args, config)
+        logger.info('=====================================================')
+        step = 'bin.sv5BuildWebsite.main'
+        bin.sv5BuildWebsite.main(args, config)
+        logger.info('=====================================================')
+        step = 'bin.sv6Freeze.main'
+        logger.info('=====================================================')
+        bin.sv6Freeze.main(args, config)
+        step = 'bin.sv7WriteCommit.main'
+        logger.info('=====================================================')
+        bin.sv7WriteCommit.main(args, config) 
+    except Exception as e:
+        logger.warning(f"{parser.description} {step} failed: {e}")
+        exit
     return
 
 def RecreateProjects(args, config, directory):
@@ -93,7 +105,7 @@ def main(args, config):
 
     # print(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
     totaltime = time.time() - starttime      
-    print(f'Total time for all other work {totaltime:.1f} seconds.')
+    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
 
 
 if __name__ == "__main__":

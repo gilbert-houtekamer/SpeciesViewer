@@ -143,6 +143,13 @@ def jpgResizeCopy(targetstr, horizontalsize = 600):
         logger.info(f"Resizing {targetstr} failed, error: {e}")
     return
 
+def getAltTextForJPG(MyProject, jpgname):
+    names = ""
+    jpgobj = MyProject.files_dict[jpgname]
+    upn = MyProject.UniquePictureName_dict[jpgobj['UniquePictureName']]
+    names = upn['WetSoortNaam'] + '/' + upn['EngSoortNaam'] + '/' + upn['NLSoortNaam']
+    return names
+
 def formatToken(tokenno, MyProject, species_param, file, picture):
     global config
     BiotaWebRoot = MyProject.getBiotaWebRoot()
@@ -631,12 +638,14 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     targetlink = os.path.join(Path(blog['BestJPGs']).parent,'biotablog','blog index-'+language+'.html')
                     workstr += f'          <a href="' + targetlink + '"><img\n'
                     workstr += '            src="' + blog['BestJPGs'] + '"\n'
-                    workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to go to "' + blog["title_" + language] + '""></a>\n'                    
+                    workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to go to ' + blog["title_" + language] + '"></a>\n'                    
                 else:
                     # pict the best picture from the current pictures in the blog
+                    bestjpg = str(MyProject.Blog.getBestJPGinList(logname))
+                    altforjpg = getAltTextForJPG(MyProject, bestjpg)
                     workstr += f'          <a href="{logname}-nl.html"><img\n'
-                    workstr += '            src="' + logname + '/' + str(MyProject.Blog.getBestJPGinList(logname)) + '"\n'
-                    workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to open "' + blog["title_" + language] + '""></a>\n'
+                    workstr += '            src="' + logname + '/' +  bestjpg + '" alt="' + altforjpg + '"\n'
+                    workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to open ' + blog["title_" + language] + '"></a>\n'
                 workstr += '      </div>\n'
                 workstr += '      <div class="w3-col" style="width:70%">\n'
                 workstr += '        <div class="content" style="margin-left:10px">\n'
@@ -837,7 +846,7 @@ def addOneSpeciesPage(MyProject, species_param):
         rateorder = {}
         for JPGname in list(species_param['JPGmap']):
             JPGname_no_path = MyProject.files_dict[os.path.basename(JPGname)]
-            diversity = getPictureAgeSexePlumage(MyProject.UniquePictureName_dict[JPGname_no_path['UniquePictureName']])
+            diversity = MyProject.getPictureAgeSexePlumage(MyProject.UniquePictureName_dict[JPGname_no_path['UniquePictureName']])
             rating = MyProject.computeRatingFile(JPGname_no_path)
             if '-small' not in JPGname:
                 rateorder[(diversity, rating, JPGname)] = JPGname

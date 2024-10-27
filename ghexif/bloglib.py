@@ -88,7 +88,7 @@ class Blog:
         if newname in self.blog_dict: return True
         return False
     def getBlogDictSortedKeys(self):
-        return reversed(sorted(self.blog_dict.keys()))
+        return sorted(self.blog_dict.keys())
     def getBlog(self, blogname):
         return self.blog_dict[blogname]
     def addBlog(self, row):

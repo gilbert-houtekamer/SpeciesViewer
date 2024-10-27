@@ -50,7 +50,9 @@ class Project:
         self.BiotaWebRoot = biotawebroot.replace('"', "").replace("'", "")
         self.projectName = Path(self.NewPictDir.replace('*','')).stem
         # global files
-   # all pictures, with references to files_dict and species_dict
+        self.files_dict = {}         # all files
+        self.UniquePictureName_dict = {}      
+        # all pictures, with references to files_dict and species_dict
     	# global flag
         self.online = self.internet_connection()
         if self.online:
