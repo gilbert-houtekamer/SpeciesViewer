@@ -1,18 +1,32 @@
 Betere functies:
-IN PROGRESS- logic documenteren (zie docs)
-- reload project from emptied projects en/of
+IN PROGRESS - logic documenteren (zie docs)
+IN PROGRESS - reload project from emptied projects en/of iets in GUI
+  DONE: - sv8RecreatedTripRepository bouwt een repository opnieuw als de foto's er nog zijn.
   JvO: automatisch een batch verwerken van alle dagen en een soort opdrachten
-- maak class for upn's
+- sliders:
+    De sliders is wel een goede reminder, daar heb ik al mee gewerkt ‘vroeger’.   
+    Ik gebruik graag dingen die ik kan aanpassen, zoiets om mee spelen:  
+    https://www.w3schools.com/howto/tryit.asp?filename=tryhow_js_slideshow_gallery.  
+    Iets voor de winter als ik wil fröbelen 😊, makkelijker dan je andere suggesties.
 - JvO: Nederlandse namen opvragen met Nederlandse gbif versie [voor Nederlande namen en ook voor het verder 
   "opleuken" van e pagina's met info over soorten]
 - web site build on the FTP server, but not on disk.  want this?
 - svr7DeleteFiles: delete all files in E:\Dropbox\trips\safaridb\metadata\review\2024-06-24\frozen (do not do this now)
 
+
 Bugs:
 - sv4 should automatcally call svr6 when there is no trip
+- <p> in de blog gebruik een kleiner font, waarom?
+- 'Alle soorten' vervangen door 'trip soorten' om duidelijker te maken wat het is.
+- blog belanrijker maken, feednack Daan
+    Dat was wel het plan, de tekst link gaat naar de animalia boom, en (blogs) naar de blogs.  
+    Je feedback suggereert dat ik alleen naar de blogs moet linken, en wat uitleg  
+    geven over wat-is-wat van de links in de rechterbalk.  
+    De tekst “Deze pagina toont de blog pagina's. Met de link Recent kom je terug bovenaan deze lijst” 
+    vervangen door uit leg over wat blogs/trips/alle soorten etc doen dus. 
 - pictures from WhatsApp do not work, why?
 - "afstand inf" is niet zo mooi
-IN PROGRESS - trip index pages should have different links, not inside a trip.  not sure what it must become, took most out
+HALFDONE - maak class for upn's ... in project gestopt
 IN PROGRESS - sv7WriteCommit to copy only new small images to FTP.  Might even do this generically? Too inefficient
   (save in d:\code\allspecieswrapper.txt until suitable test set found)
 DONE?? - De layout van de vogel*.html zijn nog niet goed, er staat geen 'trips' label in.  
@@ -62,6 +76,7 @@ Related:
 - houtekamer.com opruimen en pointers fixen vanaf home page
 
 Done:
+DONE - trip index pages should have different links, not inside a trip.  not sure what it must become, took most out
 DONE - nieuwe functie svr6MergeBlogsForMaster voor blog index met trip support
 DONE - nieuwe trip vergeet de oude!
 DONE - Moet er uit: ReferenceSpecies=e:/Dropbox/nature/metadata/active/species.csv (in svr2CountSpecies)

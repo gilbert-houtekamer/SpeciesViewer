@@ -171,9 +171,13 @@ def main(args, config):
         # project info
         if not MyProject.isMasterRepository():
             tripname = Path(MyProject.getBiotaWebRoot()).name
-            trip = MyProject.Trip.getTrip(tripname)
-            sftp.upload(os.path.join(NEW_DB_TREE, trip['trip_banner']), createdpath + '/' + trip['trip_banner'])
-            sftp.upload(os.path.join(NEW_DB_TREE, trip['trip_picture']), createdpath + '/' + trip['trip_picture'])            
+            try:
+                trip = MyProject.Trip.getTrip(tripname)
+                sftp.upload(os.path.join(NEW_DB_TREE, trip['trip_banner']), createdpath + '/' + trip['trip_banner'])
+                sftp.upload(os.path.join(NEW_DB_TREE, trip['trip_picture']), createdpath + '/' + trip['trip_picture'])
+            except:
+                logger.warning(f"sv1MakeReposity: you did not customize trip.ini and/or not added banner (2000x270) or picture (600x450).")
+                logger.warning(f"Be sure to also FTP them to {createdpath} on the web server.")
         sftp.disconnect()
 
 if __name__ == "__main__":
