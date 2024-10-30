@@ -171,7 +171,7 @@ class Project:
     # Templates for HTML pages
     # Add one file per call
     def addTemplate(self, template_file_name):
-        templatefile = open(self.modpath + "/HTMLtemplates/" + template_file_name, "r")
+        templatefile = open(self.modpath + "/HTMLtemplates/" + template_file_name, "r", encoding='UTF-8')
         soort_template_lines = templatefile.readlines()
         templatefile.close()
         self.templates_dict[template_file_name] = soort_template_lines

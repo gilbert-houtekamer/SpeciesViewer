@@ -151,8 +151,9 @@ def getAltTextForJPG(MyProject, jpgname):
     try:
         jpgobj = MyProject.files_dict[jpgname]
         upn = MyProject.UniquePictureName_dict[jpgobj['UniquePictureName']]
-        names = upn['WetSoortNaam'].replace(' ', '&nbsp;').capitalize() + ' / ' +  \
-                upn['EngSoortNaam'].replace(' ', '&nbsp;').capitalize() + ' / ' + upn['NLSoortNaam'].replace(' ', '&nbsp;').capitalize()
+        names = upn['WetSoortNaam'].replace(' ', '&nbsp;').replace('-', '&#8209;').capitalize() + ' / ' +  \
+                upn['EngSoortNaam'].replace(' ', '&nbsp;').replace('-', '&#8209;').capitalize() + ' / ' + \
+                upn['NLSoortNaam'].replace(' ', '&nbsp;').replace('-', '&#8209;').capitalize()
     except:
         names = ""
     return names

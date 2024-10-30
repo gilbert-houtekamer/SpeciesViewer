@@ -309,6 +309,8 @@ class Blog:
         # print(f'{fromfile} to {toweb}')
         sftp.upload(fromfile, toweb)
         sftp.upload(fromfile.replace('-nl','-en'), toweb.replace('-nl','-en'))
+        sftp.upload(fromfile.replace('-nl', '-slider-nl'), toweb.replace('-nl', '-slider-nl'))
+        sftp.upload(fromfile.replace('-nl','-slider-en'), toweb.replace('-nl','-slider-en'))        
         fromfile = biotablog + 'blog index-nl.html'
         toweb = sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + 'blog index-nl.html'
         # print(f'{fromfile} to {toweb}')

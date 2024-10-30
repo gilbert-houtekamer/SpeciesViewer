@@ -3,11 +3,6 @@ IN PROGRESS - logic documenteren (zie docs)
 IN PROGRESS - reload project from emptied projects en/of iets in GUI
   DONE: - sv8RecreatedTripRepository bouwt een repository opnieuw als de foto's er nog zijn.
   JvO: automatisch een batch verwerken van alle dagen en een soort opdrachten
-- sliders:
-    De sliders is wel een goede reminder, daar heb ik al mee gewerkt ‘vroeger’.   
-    Ik gebruik graag dingen die ik kan aanpassen, zoiets om mee spelen:  
-    https://www.w3schools.com/howto/tryit.asp?filename=tryhow_js_slideshow_gallery.  
-    Iets voor de winter als ik wil fröbelen 😊, makkelijker dan je andere suggesties.
 - JvO: Nederlandse namen opvragen met Nederlandse gbif versie [voor Nederlande namen en ook voor het verder 
   "opleuken" van e pagina's met info over soorten]
 - web site build on the FTP server, but not on disk.  want this?
@@ -15,6 +10,7 @@ IN PROGRESS - reload project from emptied projects en/of iets in GUI
 
 
 Bugs:
+- aanmaken nieuwe trip repository werkt niet, kan trip niet vinden.
 - sv4 should automatcally call svr6 when there is no trip
 - <p> in de blog gebruik een kleiner font, waarom?
 - 'Alle soorten' vervangen door 'trip soorten' om duidelijker te maken wat het is.
@@ -76,6 +72,11 @@ Related:
 - houtekamer.com opruimen en pointers fixen vanaf home page
 
 Done:
+DONE: - sliders:
+    De sliders is wel een goede reminder, daar heb ik al mee gewerkt ‘vroeger’.   
+    Ik gebruik graag dingen die ik kan aanpassen, zoiets om mee spelen:  
+    https://www.w3schools.com/howto/tryit.asp?filename=tryhow_js_slideshow_gallery.  
+    Iets voor de winter als ik wil fröbelen 😊, makkelijker dan je andere suggesties.
 DONE - trip index pages should have different links, not inside a trip.  not sure what it must become, took most out
 DONE - nieuwe functie svr6MergeBlogsForMaster voor blog index met trip support
 DONE - nieuwe trip vergeet de oude!
