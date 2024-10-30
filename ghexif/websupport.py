@@ -2,6 +2,7 @@ import os
 import shutil
 import time
 import tempfile
+import math
 from datetime import datetime
 from operator import itemgetter
 from collections import defaultdict
@@ -28,29 +29,32 @@ def getTemplateOutputString(MyProject, species, file, picture, TemplateLine):
 # 	The syntax implies that text and token %% seperators alternate, which we keep track off with TextOrToken 
 # 	probably want nested call for subroutines, ie make this an output string.
 # 	TemplateOutputString = ""
-    outputLine = ""
-    tokens = TemplateLine.split('%%')
-    if len(tokens) == 1:
-        # no tokens, return line as-is
-        return TemplateLine
-    else:
-        # text on even positions (0, 2, 4, ..) tokens on odd position
-        OddPosition = 0
-        for token in tokens:
-            if not OddPosition:         # not a token
-                outputLine += token
-            else:                       # handle token
-                try:
-                    outputLine += formatToken(int(token), MyProject, species, file, picture)       # '<token ' + token + '>'
-                except:
-                    outputLine += '<Failed to handle token ' + token + '>'
-                    if species == None:
-                        print(f"Blog index:{'<Failed to handle token ' + token + '>'}")
-                    else:
-                        print(f"{species['ScientificName']}:{'<Failed to handle token ' + token + '>'}")
-            OddPosition = 1 - OddPosition
-        return outputLine
-
+    try:
+        outputLine = ""
+        tokens = TemplateLine.split('%%')
+        if len(tokens) == 1:
+            # no tokens, return line as-is
+            return TemplateLine
+        else:
+            # text on even positions (0, 2, 4, ..) tokens on odd position
+            OddPosition = 0
+            for token in tokens:
+                if not OddPosition:         # not a token
+                    outputLine += token
+                else:                       # handle token
+                    try:
+                        outputLine += formatToken(int(token), MyProject, species, file, picture)       # '<token ' + token + '>'
+                    except:
+                        outputLine += '<Failed to handle token ' + token + '>'
+                        if species == None:
+                            print(f"Blog index:{'<Failed to handle token ' + token + '>'}")
+                        else:
+                            print(f"{species['ScientificName']}:{'<Failed to handle token ' + token + '>'}")
+                OddPosition = 1 - OddPosition
+            return outputLine
+    except Exception as e:
+        logger.warning(f"{TemplateLine} failed: {e}")
+        outputLine = TemplateLine
     return tokens
 
 def getFormattedCityStateCountry(picture):
@@ -147,10 +151,35 @@ def getAltTextForJPG(MyProject, jpgname):
     try:
         jpgobj = MyProject.files_dict[jpgname]
         upn = MyProject.UniquePictureName_dict[jpgobj['UniquePictureName']]
-        names = upn['WetSoortNaam'] + '/' + upn['EngSoortNaam'] + '/' + upn['NLSoortNaam']
+        names = upn['WetSoortNaam'].replace(' ', '&nbsp;').capitalize() + ' / ' +  \
+                upn['EngSoortNaam'].replace(' ', '&nbsp;').capitalize() + ' / ' + upn['NLSoortNaam'].replace(' ', '&nbsp;').capitalize()
     except:
         names = ""
     return names
+
+def getCameraSettings(MyProject, picture):
+    if picture:
+        language = MyProject.getLanguage()  
+        if language == "en": metorwith = " with "
+        else: metorwith = " met "
+        workstr = ""
+        if picture['CameraModel'] != "":
+            workstr += picture['CameraModel']
+            if picture['LensShortName'] != "":
+                workstr += metorwith + picture['LensShortName']
+            elif picture['LensLongName'] != "":
+                workstr += metorwith + picture['LensLongName']
+        elif picture['JPGSize'] in ['3024x4032','4032x3024']:
+            workstr += 'Apple iPhone'        
+        if picture['Settings'] != ' sec at F, ISO , distance ':
+            if workstr != "": workstr += ", "
+            if language == "en":
+                workstr += picture['Settings']
+            else:
+                workstr += picture['Settings'].replace('at ',' bij ').replace('distance','afstand')
+        return workstr
+    else: 
+        return ""  
 
 def formatToken(tokenno, MyProject, species_param, file, picture):
     global config
@@ -311,28 +340,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr =  ""          
             return workstr
         elif tokenno == 42:
-            if picture:
-                language = MyProject.getLanguage()  
-                if language == "en": metorwith = " with "
-                else: metorwith = " met "
-                workstr = ""
-                if picture['CameraModel'] != "":
-                    workstr += picture['CameraModel']
-                    if picture['LensShortName'] != "":
-                        workstr += metorwith + picture['LensShortName']
-                    elif picture['LensLongName'] != "":
-                        workstr += metorwith + picture['LensLongName']
-                elif picture['JPGSize'] in ['3024x4032','4032x3024']:
-                    workstr += 'Apple iPhone'        
-                if picture['Settings'] != ' sec at F, ISO , distance ':
-                    if workstr != "": workstr += ", "
-                    if language == "en":
-                        workstr += picture['Settings']
-                    else:
-                        workstr += picture['Settings'].replace('at ',' bij ').replace('distance','afstand')
-                return workstr
-            else: 
-                return ""        
+            return getCameraSettings(MyProject, picture)
         elif tokenno == 43:# 	case 43: // was 60 = totaal aantal soorten
             return MyProject.getSpeciesCount('biota')
         elif tokenno == 44:
@@ -351,7 +359,10 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             return workstr      
         elif tokenno == 49: # banner, now by kingdom, but could be more specific
             if not MyProject.isMasterRepository():
-                workstr = MyProject.Trip.getTripBanner()
+                try:
+                    workstr = MyProject.Trip.getTripBanner()
+                except:
+                    workstr = BiotaWebRoot + "includes web/keerkringvogel.jpg"
             elif kingdom_local == {}: 
                 workstr = BiotaWebRoot + "includes web/keerkringvogel.jpg"
             else:
@@ -505,17 +516,19 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             if len(BestJPGs) == 0:
                 # step 1: collect selected species
                 selected_dict = {}
-                addSpeciesToSummaryPost(MyProject, species_param['ScientificName'], selected_dict, "oneblogphoto-" + language + ".html")
+                addSpeciesToSummaryPost(MyProject, species_param['ScientificName'], selected_dict)
                 # step 2: sort by time taken picture
                 time_sorted_dict = dict(sorted(selected_dict.items(), key=itemgetter(1)))            
                 # step 3: generate the webpage
                 workstr = ""
                 for file in time_sorted_dict:
                     workstr = addOneSpeciesJPG(MyProject, file, workstr, "oneblogphoto-" + language + ".html")
+                    MyProject.Blog.CountJPG += 1
                 # return HTML to caller to put in webpage
             else:
                 for file in BestJPGs:
-                    workstr = addOneSpeciesJPG(MyProject, file, workstr, "oneblogphoto-" + language + ".html")                
+                    workstr = addOneSpeciesJPG(MyProject, file, workstr, "oneblogphoto-" + language + ".html")
+                    MyProject.Blog.CountJPG += 1             
             return workstr
         elif tokenno == 111:         # Nederlandse tekst
             # mogelijke tekst
@@ -649,7 +662,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     # pict the best picture from the current pictures in the blog
                     bestjpg = str(MyProject.Blog.getBestJPGinList(logname))
                     altforjpg = getAltTextForJPG(MyProject, bestjpg)
-                    workstr += f'          <a href="{logname}-nl.html"><img\n'
+                    workstr += f'          <a href="{logname}-slider-' + language + '.html"><img\n'
                     workstr += '            src="' + logname + '/' +  bestjpg + '" alt="' + altforjpg + '"\n'
                     workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to open ' + blog["title_" + language] + '"></a>\n'
                 workstr += '      </div>\n'
@@ -659,7 +672,6 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += '            <tr class="w3-win8-olive">\n'
                 if blog["SelectedGroup"] == '':
                     workstr += f'              <th>Titel</th><td><a href="' + targetlink + '">' + blog["title_" + language] + '</td>\n'
-                     
                 else:
                     workstr += f'              <th>Titel</th><td><a href="{logname}-nl.html">' + blog["title_" + language] + '</td>\n'
                 workstr += '            </tr>\n'
@@ -758,6 +770,43 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 else:
                     workstr = tn.capitalize()
             return workstr
+        # 160-162: functions for slider pages
+        elif tokenno == 160:
+            pictures = len(MyProject.Blog.BestJPGs)
+            count = 1
+            workstr = ""
+            for jpgs in MyProject.Blog.BestJPGs:
+                workstr += '        <div class="mySlides w3-win8-olive">\n'
+                workstr += '            <div class="numbertext">' + str(count) + ' / ' + str(pictures) + '</div>\n'
+                workstr += '            <img src="' + MyProject.Blog.blogday + '/' + jpgs  + '" style="padding:8px;width:100%">\n'
+                workstr += '        </div>\n'          
+                count += 1  
+            return workstr
+        elif tokenno == 161:
+            pictures = len(MyProject.Blog.BestJPGs)
+            count = 1
+            workstr = ""            
+            for jpgname in MyProject.Blog.BestJPGs:
+                picture = MyProject.UniquePictureName_dict[MyProject.files_dict[jpgname]['UniquePictureName']]
+                workstr += '        <div class="column">\n'
+                workstr += '            <img class="demo cursor" src="' + MyProject.Blog.blogday + '/' + jpgname.replace('.jpg', '-small.jpg')  + '" style="width:100%"\n'
+                workstr += '                 onclick="currentSlide(' + str(count) + ')" alt="<h3>' + getAltTextForJPG(MyProject, jpgname) +  '</h3>' + getCameraSettings(MyProject, picture) + '">\n'
+                workstr += '        </div>\n'
+                count += 1                  
+            return workstr
+        elif tokenno == 162:
+            pictures = len(MyProject.Blog.BestJPGs)
+            if pictures == 0:
+                return 0
+            else:
+                if pictures < 8:
+                    return str(round((1/pictures)*100, 1))
+                else:
+                    # groups = (pictures + 7) // 8 .. other numbers than 8 give (rounding?) errors
+                    groupsize = 8
+                    return str(round((1/groupsize)*100, 1))
+        elif tokenno == 163:    # link to slider
+            return MyProject.getBlogDateFromPictures() + '-slider-' + MyProject.getLanguage() + '.html?slide=' + str(MyProject.Blog.CountJPG)
         elif tokenno == 120:         # all soorten
             workstr = ""
             workstr = addAllSpeciesWrapper(MyProject, species_param['ScientificName'], workstr)
@@ -915,7 +964,7 @@ def addOneSpeciesPage(MyProject, species_param):
 # create summary page, that should become Wordpress
 # also test best picture function.
 # the first def is recursively calling itself, the second is the package
-def addSpeciesToSummaryPost(MyProject, speciesname, selected_species, templatehtml):
+def addSpeciesToSummaryPost(MyProject, speciesname, selected_species):
     species = MyProject.sp.species_dict[speciesname]
     for leaf in species['Leaves']:
         species = MyProject.sp.species_dict[leaf]
@@ -927,7 +976,7 @@ def addSpeciesToSummaryPost(MyProject, speciesname, selected_species, templateht
                     # picture species and time 
                     collectBestJPGs(MyProject, species['BestUPN'], selected_species)
             else:
-                addSpeciesToSummaryPost(MyProject, leaf, selected_species, templatehtml)
+                addSpeciesToSummaryPost(MyProject, leaf, selected_species)
     return
 
 # species['iPictureThisRunCount'] tells me if the picture is seen for this species, but we do not yet

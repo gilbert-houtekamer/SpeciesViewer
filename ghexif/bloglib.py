@@ -29,6 +29,7 @@ class Blog:
     pictures = 0
     from_time = ""
     last_time = ""
+    CountJPG = 1
 
     new_blog_row = {'blog':"", 
                     'title_nl':"Foto's van de laatste 12 jaar", 
@@ -249,17 +250,28 @@ class Blog:
 
         # read all lines from the HTML template
         if language.lower() == 'nl': 
-            otherlanguage = 'en'
             template = "blogtext-nl.html"
+            slidertemplate = "blogslider-nl.html"
         else: 
-            otherlanguage = 'nl'
-            template = "blogtext-en.html"  
+            template = "blogtext-en.html"
+            slidertemplate = "blogslider-en.html"
+
+        self.CountJPG = 1                
         speciesoftheday = MyProject.getTemplateLines(template)
         with open((biotablog + self.getBlogDay() + '-' + language + '.html'), "w", encoding='UTF-8') as fileSummaryPost:
             for templateline in speciesoftheday:
                 line = getTemplateOutputString(MyProject, MyProject.sp.species_dict[speciesname], '', '', templateline.rstrip('\n'))
                 print(line, file=fileSummaryPost)
             fileSummaryPost.close()
+
+        # also create the sliders
+        sliders = MyProject.getTemplateLines(slidertemplate)
+        with open((biotablog + self.getBlogDay() + '-slider-' + language + '.html'), "w", encoding='UTF-8') as fileSlider:
+            for templateline in sliders:
+                line = getTemplateOutputString(MyProject, MyProject.sp.species_dict[speciesname], '', '', templateline.rstrip('\n'))
+                print(line, file=fileSlider)
+            fileSlider.close()
+
 
         return
     

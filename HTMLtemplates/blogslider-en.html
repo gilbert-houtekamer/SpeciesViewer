@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<meta charset="UTF-8">
+<title>Blog %%117%%</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+<link rel="stylesheet" href="https://www.w3schools.com/lib/w3-colors-win8.css">
+<link rel="stylesheet" href="%%90%%includes web/animals.css">
+<script src="https://www.w3schools.com/lib/w3.js"></script>
+<head>
+    <style>
+        #grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(%%126%%px, 1fr));
+            grid-gap: 5px;
+        }
+        #grid > div {
+            font-size: 14px;
+            padding: 5px;
+            color: #ffffff;
+            background: #6d8764;
+            text-align: center;
+            line-height: 1.2;
+        }
+        img {
+            vertical-align: middle;
+        }
+        /* W3Schools example,  adopted for SpeciesViewer
+        /* Position the image container (needed to position the left and right arrows) */
+        .container {
+            position: relative;
+        }
+
+        /* Hide the images by default */
+        .mySlides {
+            display: none;
+        }
+
+        /* Add a pointer when hovering over the thumbnail images */
+        .cursor {
+            cursor: pointer;
+        }
+
+        /* Next & previous buttons */
+        .prev,
+        .next {
+            cursor: pointer;
+            position: absolute;
+            top: 40%;
+            width: auto;
+            padding: 16px;
+            margin-top: -50px;
+            color: white;
+            font-weight: bold;
+            font-size: 20px;
+            border-radius: 0 3px 3px 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Position the "next button" to the right */
+        .next {
+            right: 0;
+            border-radius: 3px 0 0 3px;
+        }
+
+        /* On hover, add a olive green background color with a little bit see-through */
+        .prev:hover,
+        .next:hover {
+            background-color: rgba(128, 128, 0, 0.8);
+        }
+
+        /* Number text (1/3 etc) */
+        .numbertext {
+            color: #f2f2f2;
+            font-size: 12px;
+            padding: 8px 12px;
+            position: absolute;
+            top: 0;
+            }
+
+        /* Container for image text */
+        .caption-container {
+            text-align: center;
+            background-color: #FFFFFF;
+            padding: 2px 16px;
+            color: black;
+        }
+
+        .row:after {
+            content: "";
+            display: table;
+            clear: both;
+        }
+
+        /* Six (should be %%162%%) columns side by side */
+        .column {
+            float: left;
+            width: %%162%%%;
+        }
+
+        /* Add a transparency effect for thumnbail images */
+        .demo {
+            opacity: 0.7;
+        }
+
+        .active,
+        .demo:hover {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Start Content -->
+<div id="home" class="w3-content" style="max-width:1564px">
+
+<!-- Image in Display Container -->
+<div class="w3-display-container">
+	<img src="%%49%%" alt="banner" style="width:100%">
+	<div class="w3-display-bottomleft w3-padding w3-opacity w3-hide-small w3-text-white">
+		<h2>%%116%%</h2>
+	</div>
+</div>
+
+<!-- Navigation (Stays on Top) -->
+<div class="w3-bar w3-win8-olive">
+	<a href="/" class="w3-bar-item w3-button">Home</a>
+	<a href="%%90%%intro-en.html" class="w3-bar-item w3-button">Biota: what is it?</a>
+	<a href="%%90%%biota/animalia/animalia-en.html" class="w3-bar-item w3-button">Animals</a>
+	<a href="%%90%%biota/plantae/plantae-en.html" class="w3-bar-item w3-button">Plants</a>
+	<a href="%%90%%biota/animalia/chordata/mammalia/mammalia-en.html" class="w3-bar-item w3-button">Mammals</a>
+	<a href="%%90%%biota/animalia/chordata/aves/aves-en.html" class="w3-bar-item w3-button">Birds</a>
+	<a href="%%90%%biota/animalia/arthropoda/insecta/insecta-en.html" class="w3-bar-item w3-button">Insects</a>
+	<a href="%%90%%biotablog/%%115%%-nl.html" class="w3-bar-item w3-button w3-right">NL</a>
+	<a href="%%90%%biotablog/%%115%%-en.html" class="w3-bar-item w3-button w3-right">EN</a>
+</div>
+
+<div class="w3-row">
+    <div class="w3-col" style="width:85%">
+        <div class="w3-container">
+          <div class="content">
+            <p>%%119%%</p>
+          </div>		
+        </div>
+    
+        <div class="container">
+    %%160%%
+          <a class="prev" onclick="plusSlides(-1)">❮</a>
+          <a class="next" onclick="plusSlides(1)">❯</a>
+    
+          <div class="caption-container">
+            <p id="caption"></p>
+          </div>
+    
+          <div class="row  w3-win8-olive">
+    %%161%%
+          </div>
+        </div>
+        <div style="text-align: center;"><p>Click on one of the small photos to view a photo, or browse through the photos using the white buttons on the left and right of the large photo.</p></div>
+      </div>
+    
+  <div class="w3-col" style="width:15%">
+    <h4>Links</h4>
+    <div class="content">
+        <ul class="w3-ul w3-hoverable">
+            <li class="first"><a href="%%90%%biotablog/blog index-en.html">Blogs</a></li>
+            %%149%%
+            <li><a href="%%90%%summaries/all biota species-en.html">All species</a></li>
+            <li><a href="%%90%%intro-en.html">What is Biota</a></li>
+            <li><a href="%%90%%biota\animalia\chordata\aves\aves-en.html">Birds</a></li>
+            <li><a href="%%90%%biota/animalia/arthropoda/insecta/insecta-en.html">Insects</a></li>
+            <li><a href="%%90%%biota/plantae/plantae-en.html">Plants</a></li>
+            <li><a href="%%90%%biota/fungi/fungi-en.html">Fungi</a></li>
+        </ul>
+    </div>  
+  </div>
+<!-- End Content -->
+</div>
+<script>
+    function getQueryParam(param) {
+      let urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get(param);
+    }
+    
+    let slideIndex = parseInt(getQueryParam('slide')) || 1
+    showSlides(slideIndex);
+    
+    function plusSlides(n) {
+      showSlides(slideIndex += n);
+    }
+    
+    function currentSlide(n) {
+      showSlides(slideIndex = n);
+    }
+    
+    function showSlides(n) {
+      let i;
+      let slides = document.getElementsByClassName("mySlides");
+      let dots = document.getElementsByClassName("demo");
+      let captionText = document.getElementById("caption");
+      if (n > slides.length) {slideIndex = 1}
+      if (n < 1) {slideIndex = slides.length}
+      for (i = 0; i < slides.length; i++) {
+        slides[i].style.display = "none";
+      }
+      for (i = 0; i < dots.length; i++) {
+        dots[i].className = dots[i].className.replace(" active", "");
+      }
+      slides[slideIndex-1].style.display = "block";
+      dots[slideIndex-1].className += " active";
+      captionText.innerHTML = dots[slideIndex-1].alt;
+    }
+    
+  </script>
+</body>
+</html> 

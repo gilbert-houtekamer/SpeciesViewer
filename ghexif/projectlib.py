@@ -77,7 +77,8 @@ class Project:
         self.addTemplate("oneblogphoto-en.html")
         self.addTemplate("blogtext-nl.html")                   
         self.addTemplate("blogtext-en.html")
-
+        self.addTemplate("blogslider-nl.html") 
+        self.addTemplate("blogslider-en.html") 
         # trip
         self.addTemplate("tripindex-nl.html")
         self.addTemplate("tripindex-en.html")
