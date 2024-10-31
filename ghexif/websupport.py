@@ -134,14 +134,19 @@ def getSmallJPG(filename):
         return filename.replace('.jpg','-small.jpg')
 
 def jpgResizeCopy(targetstr, horizontalsize = 600):
-    # resize
+    # resize, avoid rounding errors that are case by 499 vs 500
     try:
         if targetstr.lower().endswith('-small.jpg'): return                 # only once needed
         image = Image.open(targetstr)
-        resized_image = image.resize((600, 450))
-        wpercent = (horizontalsize/float(image.size[0]))
-        hsize = int((float(image.size[1])*float(wpercent)))
-        resized_image = image.resize((horizontalsize, hsize))
+        if image.size[0] > image.size[1]:
+            resized_image = image.resize((600, 450))
+        elif image.size[0] == image.size[1]:
+            resized_image = image.resize((600, 600))            
+        else:
+            resized_image = image.resize((450, 600))
+        # wpercent = (horizontalsize/float(image.size[0]))
+        # hsize = int((float(image.size[1])*float(wpercent)))
+        # resized_image = image.resize((horizontalsize, hsize))
         resized_image.save(targetstr.replace('.jpg','-small.jpg'))
     except Exception as e:
         logger.info(f"Resizing {targetstr} failed, error: {e}")
@@ -806,8 +811,23 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     # groups = (pictures + 7) // 8 .. other numbers than 8 give (rounding?) errors
                     groupsize = 8
                     return str(round((1/groupsize)*100, 1))
-        elif tokenno == 163:    # link to slider
+        elif tokenno == 163:    # link to blog slider
             return MyProject.getBlogDateFromPictures() + '-slider-' + MyProject.getLanguage() + '.html?slide=' + str(MyProject.Blog.CountJPG)
+        elif tokenno == 164:    # All / Trip spacies
+            language = MyProject.getLanguage()
+            if MyProject.Trip == None:
+                directory = MyProject.Trip.getMasterBiotaWebRoot()     # path to current main repository, NOT to trip also for subdirectories 
+                if language == 'nl': 
+                    tripormaster = 'Alle Soorten'  
+                else: tripormaster = 'All Species'  
+            else:
+                directory = BiotaWebRoot
+                if language == 'nl': 
+                    tripormaster = 'Trip Soorten'  
+                else: tripormaster = 'Trip Species'                  
+                
+            workstr = '<li><a href="' + directory + 'summaries/all biota species-' + language + '.html">' + tripormaster + '</a></li>'         
+            return workstr        
         elif tokenno == 120:         # all soorten
             workstr = ""
             workstr = addAllSpeciesWrapper(MyProject, species_param['ScientificName'], workstr)

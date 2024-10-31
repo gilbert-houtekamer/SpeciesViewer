@@ -9,17 +9,21 @@ IN PROGRESS - reload project from emptied projects en/of iets in GUI
 - svr7DeleteFiles: delete all files in E:\Dropbox\trips\safaridb\metadata\review\2024-06-24\frozen (do not do this now)
 
 
-Bugs:
+Blog/GUI fixes:
+- andere drill-down voor soorten, blog is default, biota is optie
+- trip bij meer dingen?
 - aanmaken nieuwe trip repository werkt niet, kan trip niet vinden.
 - sv4 should automatcally call svr6 when there is no trip
-- <p> in de blog gebruik een kleiner font, waarom?
-- 'Alle soorten' vervangen door 'trip soorten' om duidelijker te maken wat het is.
 - blog belanrijker maken, feednack Daan
     Dat was wel het plan, de tekst link gaat naar de animalia boom, en (blogs) naar de blogs.  
     Je feedback suggereert dat ik alleen naar de blogs moet linken, en wat uitleg  
     geven over wat-is-wat van de links in de rechterbalk.  
     De tekst “Deze pagina toont de blog pagina's. Met de link Recent kom je terug bovenaan deze lijst” 
     vervangen door uit leg over wat blogs/trips/alle soorten etc doen dus. 
+
+Bugs:
+- <p> in de blog gebruik een kleiner font, waarom?
+- 'Alle soorten' vervangen door 'trip soorten' om duidelijker te maken wat het is.
 - pictures from WhatsApp do not work, why?
 - "afstand inf" is niet zo mooi
 HALFDONE - maak class for upn's ... in project gestopt
@@ -27,22 +31,8 @@ IN PROGRESS - sv7WriteCommit to copy only new small images to FTP.  Might even d
   (save in d:\code\allspecieswrapper.txt until suitable test set found)
 DONE?? - De layout van de vogel*.html zijn nog niet goed, er staat geen 'trips' label in.  
   websupport.py moet aangepast, maar echte test nog niet gedaan op de master.
-- [DEFER until we can run an entire project] Re-running projects after commi has been done kills some report.  Nasty, will defer that issue for a while.
-  Probably it causes this one:
-  - this species does not occur in all species page, nut no errors.  weird, manually fixed.:
-      <p>Cinnyris talatala</p>
-			        <a href="/trips/safari/biota/animalia/chordata/aves/040 passeriformes/112 nectariniidae/cinnyris talatala-nl.html">
-			            <img src="/trips/safari/biota/animalia/chordata/aves/040 passeriformes/112 nectariniidae/cinnyris talatala/2024 zomer Zuid-Afrika-N6251047-small.jpg" style="width:100%">
-              </a>
-  - re-run all steps
+
 - disk version of website is not maintained, maybe want that too.
-- some wrong directories appear, weird, not sure it is bad, not sure what causes it though
-INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/carnivora/herpestidae/helogale parvula/2024 zomer Zuid-Afrika-N7014487-small.jpg
-INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/carnivora/herpestidae/mungos mungo/2024 zomer Zuid-Afrika-N6261417-small.jpg
-INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/carnivora/hyaenidae/crocuta crocuta/2024 zomer Zuid-Afrika-N6292948-small.jpg
-INFO:Small image for All Species report: D:/CurrentPictures/2024/2024 zomer zuid-afrika/2024-07-09/2024 zomer Zuid-Afrika-N7092574-small.jpg
-INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/perissodactyla/equidae/equus quagga/2024 zomer Zuid-Afrika-P6272149-small.jpg
-INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/perissodactyla/rhinocerotidae/ceratotherium simum/2024 zomer Zuid-Afrika-N6261550-small.jpg
 
 Volgende versie features:
 - aparte function om de master database te managen en dingen mee te doen
@@ -72,6 +62,21 @@ Related:
 - houtekamer.com opruimen en pointers fixen vanaf home page
 
 Done:
+NOT a PROBLEM- some wrong directories appear, weird, not sure it is bad, not sure what causes it though
+INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/carnivora/herpestidae/helogale parvula/2024 zomer Zuid-Afrika-N7014487-small.jpg
+INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/carnivora/herpestidae/mungos mungo/2024 zomer Zuid-Afrika-N6261417-small.jpg
+INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/carnivora/hyaenidae/crocuta crocuta/2024 zomer Zuid-Afrika-N6292948-small.jpg
+INFO:Small image for All Species report: D:/CurrentPictures/2024/2024 zomer zuid-afrika/2024-07-09/2024 zomer Zuid-Afrika-N7092574-small.jpg
+INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/perissodactyla/equidae/equus quagga/2024 zomer Zuid-Afrika-P6272149-small.jpg
+INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/perissodactyla/rhinocerotidae/ceratotherium simum/2024 zomer Zuid-Afrika-N6261550-small.jpg
+DONE: - [DEFER until we can run an entire project] Re-running projects after commi has been done kills some report.  Nasty, will defer that issue for a while.
+  Probably it causes this one:
+  - this species does not occur in all species page, nut no errors.  weird, manually fixed.:
+      <p>Cinnyris talatala</p>
+			        <a href="/trips/safari/biota/animalia/chordata/aves/040 passeriformes/112 nectariniidae/cinnyris talatala-nl.html">
+			            <img src="/trips/safari/biota/animalia/chordata/aves/040 passeriformes/112 nectariniidae/cinnyris talatala/2024 zomer Zuid-Afrika-N6251047-small.jpg" style="width:100%">
+              </a>
+  - re-run all steps
 DONE: - sliders:
     De sliders is wel een goede reminder, daar heb ik al mee gewerkt ‘vroeger’.   
     Ik gebruik graag dingen die ik kan aanpassen, zoiets om mee spelen:  
