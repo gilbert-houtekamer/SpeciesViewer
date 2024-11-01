@@ -1,25 +1,14 @@
 Betere functies:
 IN PROGRESS - logic documenteren (zie docs)
-IN PROGRESS - reload project from emptied projects en/of iets in GUI
-  DONE: - sv8RecreatedTripRepository bouwt een repository opnieuw als de foto's er nog zijn.
-  JvO: automatisch een batch verwerken van alle dagen en een soort opdrachten
+- sv8RecreatedTripRepository: van alle dagen en een soort opdrachten
 - JvO: Nederlandse namen opvragen met Nederlandse gbif versie [voor Nederlande namen en ook voor het verder 
   "opleuken" van e pagina's met info over soorten]
-- web site build on the FTP server, but not on disk.  want this?
+- reload project from emptied projects in GUI
+  JvO: sv8RecreatedTripRepository uitbreiden met welke stappen en welke niet.
 - svr7DeleteFiles: delete all files in E:\Dropbox\trips\safaridb\metadata\review\2024-06-24\frozen (do not do this now)
 
-
 Blog/GUI fixes:
-- andere drill-down voor soorten, blog is default, biota is optie
-- trip bij meer dingen?
-- aanmaken nieuwe trip repository werkt niet, kan trip niet vinden.
 - sv4 should automatcally call svr6 when there is no trip
-- blog belanrijker maken, feednack Daan
-    Dat was wel het plan, de tekst link gaat naar de animalia boom, en (blogs) naar de blogs.  
-    Je feedback suggereert dat ik alleen naar de blogs moet linken, en wat uitleg  
-    geven over wat-is-wat van de links in de rechterbalk.  
-    De tekst “Deze pagina toont de blog pagina's. Met de link Recent kom je terug bovenaan deze lijst” 
-    vervangen door uit leg over wat blogs/trips/alle soorten etc doen dus. 
 
 Bugs:
 - <p> in de blog gebruik een kleiner font, waarom?
@@ -35,6 +24,7 @@ DONE?? - De layout van de vogel*.html zijn nog niet goed, er staat geen 'trips' 
 - disk version of website is not maintained, maybe want that too.
 
 Volgende versie features:
+- web site build on the FTP server, but not on disk.  De we want this?
 - aparte function om de master database te managen en dingen mee te doen
   - merge van trip: hoe stel ik me dat voor?
   - reloaden na opschonen (compress() of nieuwe versie)
@@ -62,6 +52,16 @@ Related:
 - houtekamer.com opruimen en pointers fixen vanaf home page
 
 Done:
+DONE: - andere drill-down voor soorten, blog is default, biota is optie
+- trip bij meer dingen?
+- aanmaken nieuwe trip repository werkt niet, kan trip niet vinden.
+- blog belanrijker maken, feednack Daan
+    Dat was wel het plan, de tekst link gaat naar de animalia boom, en (blogs) naar de blogs.  
+    Je feedback suggereert dat ik alleen naar de blogs moet linken, en wat uitleg  
+    geven over wat-is-wat van de links in de rechterbalk.  
+    De tekst “Deze pagina toont de blog pagina's. Met de link Recent kom je terug bovenaan deze lijst” 
+    vervangen door uit leg over wat blogs/trips/alle soorten etc doen dus. 
+DONE: - sv8RecreatedTripRepository bouwt een repository opnieuw als de foto's er nog zijn.
 NOT a PROBLEM- some wrong directories appear, weird, not sure it is bad, not sure what causes it though
 INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/carnivora/herpestidae/helogale parvula/2024 zomer Zuid-Afrika-N7014487-small.jpg
 INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/carnivora/herpestidae/mungos mungo/2024 zomer Zuid-Afrika-N6261417-small.jpg

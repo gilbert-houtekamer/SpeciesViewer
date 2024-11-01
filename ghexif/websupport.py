@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 ClassificationGroupName = ["Species","Family", "Order", "Class", "Phylum", "Kingdom", "Biota"]
 ClassificationGroupNameNL = ["Soort", "Familie", "Orde", "Klasse","Stam", "Rijk", "Biota"]
+ClassificationGroupLidwoord = ["de", "de", "de", "de","de", "het", "de"]
 ClassificationGroupNameNLmeervoud = ["Soorten", "Families", "Orden", "Klassen","Stammen", "Rijken", "Biota"]
 ClassificationGroupNameENmeervoud = ["Species","Families", "Orders", "Classes", "Phyla", "Kingdoms", "Biota"]
 
@@ -320,6 +321,12 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             languageName = 'DutchName' if MyProject.getLanguage() == "nl" else 'EnglishName'
             if species_param[languageName] != "":
                 workstr += ' (' + species_param['DutchName'].capitalize() + ')'
+            if workstr == 'Biota Biota (Biota)':
+                language = MyProject.getLanguage()          # intended language
+                if language == 'nl':
+                    workstr = 'alle leven (biota)'
+                else:
+                    workstr = workstr = 'all life (biota)'
             return workstr            
         elif tokenno == 36:
             return species_param['DutchName'].capitalize()
@@ -389,6 +396,8 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             return MyProject.getSpeciesCount('fungi')     
         elif tokenno == 54: # fungi
             return MyProject.getSpeciesCount('mammalia')            
+        elif tokenno == 60:                                 # one level lower (enkelvoud)
+            return ClassificationGroupLidwoord[species_param['Level'].value-2].lower()
         elif tokenno == 71: return class_local['DutchName'].capitalize() 									 
         elif tokenno == 72: return class_local['ScientificName'].strip('0123456789 ').capitalize()						
         elif tokenno == 73: return class_local['EnglishName'].capitalize()
@@ -418,13 +427,26 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             workstr += '			<li class=""\"first\"""><a href="'+ BiotaWebRoot +'biotablog/blog index-' + language +'.html">Recent</a></li>\n'
             if MyProject.Trip != None:
                 workstr += '            <li><a href="' + directory + 'tripindex-' + language + '.html">Trips</a></li>'
+                if language == 'nl':
+                    soorten = 'Trip soorten'
+                    biota = 'Trip Biota'
+                else:
+                    soorten = 'Trip species'
+                    biota = 'Trip Biota'
+            else:
+                if language == 'nl':
+                    soorten = 'Alle soorten'
+                    biota = 'Biota: Leven'
+                else:
+                    soorten = 'All species'
+                    biota = 'Biota: Life'                    
             if language == 'nl':
-                workstr += '			<li><a href= "'+ BiotaWebRoot +'summaries/all biota species-nl.html">Alle soorten</a></li>\n'
-                workstr += "			<li><a href= ""\"" + BiotaWebRoot + "biota/biota-nl.html" + "\""">Biota: Leven</a></li>\n"
+                workstr += '			<li><a href= "'+ BiotaWebRoot +'summaries/all biota species-nl.html">' + soorten + '</a></li>\n'
+                workstr += "			<li><a href= ""\"" + BiotaWebRoot + "biota/biota-nl.html" + "\""">" + biota + "</a></li>\n"
                 languageName = 'DutchName'
             else:
-                workstr += '			<li><a href= "'+ BiotaWebRoot +'summaries/all biota species-en.html">All species</a></li>\n'
-                workstr += "			<li><a href= ""\"" + BiotaWebRoot + "biota/biota-en.html" + "\""">Biota: Life</a></li>\n"
+                workstr += '			<li><a href= "'+ BiotaWebRoot +'summaries/all biota species-en.html">' + soorten + '</a></li>\n'
+                workstr += "			<li><a href= ""\"" + BiotaWebRoot + "biota/biota-en.html" + "\""">" + biota + "</a></li>\n"
                 languageName = 'EnglishName'                
             if len(kingdom_local)>0: 
                 rijk = 'Rijk: ' if language == 'nl' else 'Kingdom: '
@@ -724,7 +746,12 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 145:
             return MyProject.Trip.getTripMessage()  
         elif tokenno == 146 or tokenno == 147:
-            language = 'nl' if tokenno == 146 else 'en'
+            if tokenno == 146:
+                language = 'nl'
+                soorten = 'Trip soorten'
+            else:
+                language = 'en'
+                soorten = 'Trip species'
             workstr = ''
             for tripname in MyProject.Trip.getTripDictSortedKeys():
                 trip = MyProject.Trip.getTrip(tripname)
@@ -735,7 +762,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 if trip['trip_name'] == "":
                     workstr += '          <p>(picture not found)</p>\n'
                 else:
-                    workstr += f'          <a href="' + TripWebRoot + '/biota/animalia/animalia-nl.html"><img\n'
+                    workstr += f'          <a href="'  + TripWebRoot + '/biotablog/blog index-' + language + '.html"><img\n'
                     workstr += '            src="' + TripWebRoot + '/' + trip["trip_picture"]  + '"\n'  
                     workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to open "' + trip["title_" + language] + '""></a>\n'
                 workstr += '      </div>\n'
@@ -743,8 +770,8 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += '        <div class="content" style="margin-left:10px">\n'
                 workstr += '          <table class="w3-table w3-hoverable">\n'
                 workstr += '            <tr class="w3-win8-olive">\n'
-                workstr += f'              <th>Titel</th><td><a href="' + TripWebRoot + '/biota/animalia/animalia-' + language + '.html">' + trip["title_" + language] + '</a> '
-                workstr += f'<a href="' + TripWebRoot + '/biotablog/blog index-' + language + '.html">(blogs)</a></td>\n'
+                workstr += f'              <th>Titel</th><td><a href="' + TripWebRoot + '/biotablog/blog index-' + language + '.html">' + trip["title_" + language] + '</a> '
+                workstr += f'<a href="' + TripWebRoot + '/biota/biota-' + language + '.html">(' + soorten + ')</a></td>\n'
                 workstr += '            </tr>\n'
                 workstr += '            <tr>\n'
                 workstr += '              <th></th><td>' + trip["message_" + language] + '</td>\n'
