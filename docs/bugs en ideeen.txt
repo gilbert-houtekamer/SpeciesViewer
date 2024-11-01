@@ -8,7 +8,7 @@ IN PROGRESS - logic documenteren (zie docs)
 - svr7DeleteFiles: delete all files in E:\Dropbox\trips\safaridb\metadata\review\2024-06-24\frozen (do not do this now)
 
 Blog/GUI fixes:
-- sv4 should automatcally call svr6 when there is no trip
+
 
 Bugs:
 - <p> in de blog gebruik een kleiner font, waarom?
@@ -43,7 +43,6 @@ Issues met het design nu
 
 GUI
 
-- optie voor soort biota tree: master of vakantie
 - repository reports:
   - #soorten (svu2)
   - status per project
@@ -52,6 +51,8 @@ Related:
 - houtekamer.com opruimen en pointers fixen vanaf home page
 
 Done:
+DONE - optie voor soort biota tree: master of vakantie
+DONE - sv4 should automatcally call svr6 when there is no trip => disable sv4 when called for master
 DONE: - andere drill-down voor soorten, blog is default, biota is optie
 - trip bij meer dingen?
 - aanmaken nieuwe trip repository werkt niet, kan trip niet vinden.

@@ -49,6 +49,11 @@ def main(args, config):
                                           config.get("repository","BiotaWebRoot"))
     # if trip, initialze master
     MyProject.initMasterAndTrip(config, inittrip=True)
+
+    # do not run this on masters
+    if MyProject.MasterRepository == "":         
+        raise SVException(f'Use svr6MergeBlogsForMaster to update the blog page for the master repository.')
+
     # get repository-wide sc and per project sp.
     sc = ghexif.speciesclassification.SpeciesClassification(MyProject)
     MyProject.registerSpeciesClassification(sc)

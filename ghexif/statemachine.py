@@ -163,7 +163,7 @@ class StateMachine:
         else:
             steps = 'steps'
             need = 'need'            
-        raise SVException(f"Task {statetotest} cannot be run, the {steps} {prereq} {need} to run first.")
+        raise SVException(f"Task {statetotest} cannot be run, the {steps} {prereq} {need} to be run first.")
 
     # update the state after the job is completed
     def updateState(self, statejustdone, ok, lastmessage):

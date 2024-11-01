@@ -21,6 +21,7 @@ if __name__ == "__main__":
     sys.path.append(modpath)
 
 import ghexif
+from ghexif import SVException
 import ghexif.projectlib
 import ghexif.exceptions
 import ghexif.statemachine
@@ -40,16 +41,11 @@ def readConfig():
     config.read(INI_LOCATION)
     return config
 
-def getConfigFileLines(file):
-    configfile = open(file, "r")
-    soort_template_lines = configfile.readlines()
-    configfile.close()
-    return soort_template_lines
-
-def RecreateRepository(args, config):
-    #logger.info(f"Recreate project {config.get("repository","BiotaDatabase")}")
-    #bin.sv1MakeReposity.main(args, config)
-    return
+# def getConfigFileLines(file):
+#     configfile = open(file, "r")
+#     soort_template_lines = configfile.readlines()
+#     configfile.close()
+#     return soort_template_lines
 
 def RecreateProject(args, config, project):
     logger.info(f"Recreate project {project}")
@@ -95,17 +91,21 @@ def main(args, config):
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     
-    # get svconfig.ini such new versions can ce created per project (day)
-    svconfig = getConfigFileLines(args.config)
-    RecreateRepository(args, config)
-    
-    # Collect states
-    directory_to_scan = Path(MyProject.getProjectPath()).parent       # 'C:/laptop/validate/metadata/review'
-    RecreateProjects(args, config, directory_to_scan)
+    # make sure that this is a trip, not the master 
+    try:
+        MyProject.MasterRepository = config.get("master","MasterBiotaDatabase")
+    except:
+        MyProject.MasterRepository = ""
+    if MyProject.MasterRepository == "":
+        raise SVException(f'sv8RecreatedTripRepository can only work on trips.')
+    else:
+        # Collect states
+        directory_to_scan = Path(MyProject.getProjectPath()).parent       # 'C:/laptop/validate/metadata/review'
+        RecreateProjects(args, config, directory_to_scan)
 
-    # print(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
-    totaltime = time.time() - starttime      
-    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
+        # print(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
+        totaltime = time.time() - starttime      
+        logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
 
 
 if __name__ == "__main__":
