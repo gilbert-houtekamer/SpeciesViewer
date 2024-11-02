@@ -222,6 +222,7 @@ class Blog:
     def updateIndexPage(self):
         MyProject = self.mp
         speciesoftheday = MyProject.getTemplateLines("blogindex-nl.html")
+        MyProject.setLanguage('nl')
         with open((MyProject.getBiotaBlogDir() + "blog index-nl.html").lower(), "w", encoding='UTF-8') as fileBlogIndex:
             for templateline in speciesoftheday:
                 line = getTemplateOutputString(MyProject, None, '', '', templateline.rstrip('\n'))
@@ -229,6 +230,7 @@ class Blog:
             fileBlogIndex.close()
 
         speciesoftheday = MyProject.getTemplateLines("blogindex-en.html")
+        MyProject.setLanguage('en')        
         with open((MyProject.getBiotaBlogDir() + "blog index-en.html").lower(), "w", encoding='UTF-8') as fileBlogIndex:
             for templateline in speciesoftheday:
                 line = getTemplateOutputString(MyProject, None, '', '', templateline.rstrip('\n'))

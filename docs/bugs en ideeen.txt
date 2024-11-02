@@ -8,8 +8,9 @@ IN PROGRESS - logic documenteren (zie docs)
 - svr7DeleteFiles: delete all files in E:\Dropbox\trips\safaridb\metadata\review\2024-06-24\frozen (do not do this now)
 
 Blog/GUI fixes:
-
-
+- errors that are undetected:
+  - sv1: no trip.ini, banner and .. in trip
+  
 Bugs:
 - <p> in de blog gebruik een kleiner font, waarom?
 - 'Alle soorten' vervangen door 'trip soorten' om duidelijker te maken wat het is.
@@ -51,6 +52,7 @@ Related:
 - houtekamer.com opruimen en pointers fixen vanaf home page
 
 Done:
+DONE - create new project, sv1: initialize blog, so link works
 DONE - optie voor soort biota tree: master of vakantie
 DONE - sv4 should automatcally call svr6 when there is no trip => disable sv4 when called for master
 DONE: - andere drill-down voor soorten, blog is default, biota is optie

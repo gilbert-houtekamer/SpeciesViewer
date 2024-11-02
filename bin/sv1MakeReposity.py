@@ -21,6 +21,7 @@ if __name__ == "__main__":
 import ghexif.sftplib
 import ghexif.projectlib
 import ghexif.triplib
+import ghexif.bloglib
 
 logger = logging.getLogger(__name__)
 
@@ -102,13 +103,17 @@ def main(args, config):
     if not MyProject.isMasterRepository():
         shutil.copy(os.path.join(MyProject.getMasterRepository(), 'metadata/active/speciescollection.csv'), 
                 os.path.join(NEW_DB_TREE, 'metadata/active/speciescollection.csv'))
-    
+        
+    blog = ghexif.bloglib.Blog(MyProject)   
+    blog.updateIndexPage()
     # create intro page, already in good location
+    MyProject.setLanguage('nl')
     MyProject.makeIntro('intro-nl')
-    MyProject.makeIntro('intro-en')
-    # create master for missing links
     MyProject.makeIntro('intro-link-nl')
+    MyProject.setLanguage('en')
+    MyProject.makeIntro('intro-en')
     MyProject.makeIntro('intro-link-en')
+
     # now add the files
     def copyMissingLinkPages(directory, exist_ok=True):
         filename = os.path.basename(directory)
@@ -127,6 +132,7 @@ def main(args, config):
     copyMissingLinkPages("biota/animalia/arthropoda/insecta/022 lepidoptera", exist_ok=True)
     copyMissingLinkPages("biota/plantae", exist_ok=True)
     copyMissingLinkPages("biota/fungi", exist_ok=True)
+    copyMissingLinkPages("summaries/all biota species", exist_ok=True)    
 
     if WEB_TREE != "":
         password = config.get("websettings","Sftppwd").strip("'")
@@ -159,7 +165,10 @@ def main(args, config):
         sftp.safeMkdir(createdpath + '/includes web')
         # copy intro-nl.html and uk version
         sftp.upload(os.path.join(NEW_DB_TREE, "web/intro-nl.html"), createdpath + "/intro-nl.html")
-        sftp.upload(os.path.join(NEW_DB_TREE, "web/intro-en.html"), createdpath + "/intro-en.html")                    
+        sftp.upload(os.path.join(NEW_DB_TREE, "web/intro-en.html"), createdpath + "/intro-en.html") 
+        # summary species
+        sftp.upload(os.path.join(NEW_DB_TREE, "web/intro-link-nl.html"), createdpath + "/summaries/all biota species-nl.html")
+        sftp.upload(os.path.join(NEW_DB_TREE, "web/intro-link-en.html"), createdpath + "/summaries/all biota species-en.html")                    
         # install used files
         fromdir = os.path.join(NEW_DB_TREE, "web/includes web/")
         towebdir = createdpath + '/includes web/'
@@ -171,6 +180,7 @@ def main(args, config):
         # project info
         if not MyProject.isMasterRepository():
             tripname = Path(MyProject.getBiotaWebRoot()).name
+            blog.uploadBlogIndex(sftp)          
             try:
                 trip = MyProject.Trip.getTrip(tripname)
                 sftp.upload(os.path.join(NEW_DB_TREE, trip['trip_banner']), createdpath + '/' + trip['trip_banner'])
