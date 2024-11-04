@@ -1,6 +1,8 @@
 Betere functies:
 IN PROGRESS - logic documenteren (zie docs)
-- sv8RecreatedTripRepository: van alle dagen en een soort opdrachten
+- sv8RecreatedTripRepository: 
+   van alle dagen en een soort opdrachten
+   automatically delete projects for recreate
 - JvO: Nederlandse namen opvragen met Nederlandse gbif versie [voor Nederlande namen en ook voor het verder 
   "opleuken" van e pagina's met info over soorten]
 - reload project from emptied projects in GUI
@@ -13,7 +15,7 @@ Blog/GUI fixes:
   
 Bugs:
 - <p> in de blog gebruik een kleiner font, waarom?
-- 'Alle soorten' vervangen door 'trip soorten' om duidelijker te maken wat het is.
+DONE?: - 'Alle soorten' vervangen door 'trip soorten' om duidelijker te maken wat het is.
 - pictures from WhatsApp do not work, why?
 - "afstand inf" is niet zo mooi
 HALFDONE - maak class for upn's ... in project gestopt
@@ -26,11 +28,13 @@ DONE?? - De layout van de vogel*.html zijn nog niet goed, er staat geen 'trips' 
 
 Volgende versie features:
 - web site build on the FTP server, but not on disk.  De we want this?
-- aparte function om de master database te managen en dingen mee te doen
-  - merge van trip: hoe stel ik me dat voor?
-  - reloaden na opschonen (compress() of nieuwe versie)
-  - een nieuwe rebuild van de website te doen na nieuwe versie
-  - wellicht blogs op criteria [later]
+- blogs op DAG criteria ipv new
+- reloaden na opschonen (compress() of nieuwe versie)
+  - een nieuwe rebuild van de website te doen na nieuwe versie (het zelfde?)
+- wild idee: 
+   - een nieuwe data_files maken als na merge zdd we project kunnen blijven runnen
+   - een UPN inclusief datum en camera time stamp
+   - re-run van sv2 is dan heel anders, extra kolom? of een extra file?
 - met JvO: waarneming.nl leeglepelen voor (vooral) insecten
 - Facebook: https://facebook-sdk.readthedocs.io/en/latest/api.html
 - #woorden voor andere eigenschappen dan soorten, bv #wolken(cirrocumulus) of #landschap(droge steppe). met bijbehorende GUI/web reporting.
@@ -52,6 +56,11 @@ Related:
 - houtekamer.com opruimen en pointers fixen vanaf home page
 
 Done:
+DONE: - aparte function om de master database te managen en dingen mee te doen
+  - merge van trip: 
+    - define a project in the master DB
+    - run all tasks, except sv4 run svr6MergeBlogsForMaster
+    - need to think one to delete
 DONE - create new project, sv1: initialize blog, so link works
 DONE - optie voor soort biota tree: master of vakantie
 DONE - sv4 should automatcally call svr6 when there is no trip => disable sv4 when called for master

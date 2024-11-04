@@ -11,6 +11,7 @@ import logging
 import argparse
 from pathlib import Path
 import pathlib
+import shutil
 global modpath
 
 # add directory to python path (only when run as executable)
@@ -99,6 +100,20 @@ def main(args, config):
     if MyProject.MasterRepository == "":
         raise SVException(f'sv8RecreatedTripRepository can only work on trips.')
     else:
+        # delete metadata 
+        repo = MyProject.getRepositoryPath()
+        reviewdirs = os.path.join(repo, 'metadata/review/')
+        for item in os.listdir(reviewdirs): 
+            item_path = os.path.join(reviewdirs, item) 
+            if os.path.isdir(item_path): shutil.rmtree(item_path)
+       
+        # clear admin for added data/pictures
+        shutil.copy(os.path.join(os.path.join(os.getcwd(),"dist"), 'installation files/empty_data_files.csv'), 
+                os.path.join(repo, 'metadata/active/data_files.csv')) 
+        shutil.copy(os.path.join(os.path.join(os.getcwd(),"dist"), 'installation files/empty_data_pictures.csv'), 
+                os.path.join(repo, 'metadata/active/data_pictures.csv')) 
+        shutil.copy(os.path.join(os.path.join(os.getcwd(),"dist"), 'installation files/empty_species.csv'), 
+                os.path.join(repo, 'metadata/active/species.csv'))           
         # Collect states
         directory_to_scan = Path(MyProject.getProjectPath()).parent       # 'C:/laptop/validate/metadata/review'
         RecreateProjects(args, config, directory_to_scan)
