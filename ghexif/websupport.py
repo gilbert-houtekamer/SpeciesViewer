@@ -749,9 +749,11 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             if tokenno == 146:
                 language = 'nl'
                 soorten = 'Trip soorten'
+                title = 'Titel'
             else:
                 language = 'en'
                 soorten = 'Trip species'
+                title = 'Title'                
             workstr = ''
             for tripname in MyProject.Trip.getTripDictSortedKeys():
                 trip = MyProject.Trip.getTrip(tripname)
@@ -770,7 +772,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += '        <div class="content" style="margin-left:10px">\n'
                 workstr += '          <table class="w3-table w3-hoverable">\n'
                 workstr += '            <tr class="w3-win8-olive">\n'
-                workstr += f'              <th>Titel</th><td><a href="' + TripWebRoot + '/biotablog/blog index-' + language + '.html">' + trip["title_" + language] + '</a> '
+                workstr += f'              <th>' + title + '</th><td><a href="' + TripWebRoot + '/biotablog/blog index-' + language + '.html">' + trip["title_" + language] + '</a> '
                 workstr += f'<a href="' + TripWebRoot + '/biota/biota-' + language + '.html">(' + soorten + ')</a></td>\n'
                 workstr += '            </tr>\n'
                 workstr += '            <tr>\n'
