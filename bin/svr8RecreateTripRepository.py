@@ -103,9 +103,16 @@ def main(args, config):
         # delete metadata 
         repo = MyProject.getRepositoryPath()
         reviewdirs = os.path.join(repo, 'metadata/review/')
-        for item in os.listdir(reviewdirs): 
-            item_path = os.path.join(reviewdirs, item) 
-            if os.path.isdir(item_path): shutil.rmtree(item_path)
+        # file system loops 
+        trycount = 1
+        while trycount < 10:
+            try:
+                for item in os.listdir(reviewdirs): 
+                    item_path = os.path.join(reviewdirs, item) 
+                    if os.path.isdir(item_path): shutil.rmtree(item_path)
+                break
+            except:
+                trycount += 1
        
         # clear admin for added data/pictures
         shutil.copy(os.path.join(os.path.join(os.getcwd(),"dist"), 'installation files/empty_data_files.csv'), 

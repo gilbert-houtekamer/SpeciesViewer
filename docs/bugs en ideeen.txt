@@ -1,5 +1,6 @@
 Betere functies:
 IN PROGRESS - logic documenteren (zie docs)
+- kruimel[pad]
 - sv8RecreatedTripRepository: 
    van alle dagen en een soort opdrachten
    automatically delete projects for recreate
