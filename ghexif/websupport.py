@@ -832,7 +832,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 162:
             pictures = len(MyProject.Blog.BestJPGs)
             if pictures == 0:
-                return 0
+                return ""
             else:
                 if pictures < 8:
                     return str(round((1/pictures)*100, 1))
@@ -870,6 +870,9 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
 # logic selected species
 def writeOneSpecies(MyProject, leaf, temptextfile):
     species = MyProject.sp.species_dict[leaf]
+    if species["TargetPath"] == "":
+        logger.warning(f"{species['ScientificName']} has no TargetPath, review naming for parents.")
+        return
     #print(f"working {species['ScientificName']} {species['EnglishName']}")
     language = MyProject.getLanguage()
     BiotaWebRoot = MyProject.getBiotaWebRoot()
@@ -1015,18 +1018,21 @@ def addOneSpeciesPage(MyProject, species_param):
 # also test best picture function.
 # the first def is recursively calling itself, the second is the package
 def addSpeciesToSummaryPost(MyProject, speciesname, selected_species):
-    species = MyProject.sp.species_dict[speciesname]
-    for leaf in species['Leaves']:
-        species = MyProject.sp.species_dict[leaf]
-        if int(species['iPictureThisRunCount']) > 0:            # brute force scan
-            if species['Level'] == Level.SPECIES:
-                if MyProject.Blog.getSelectedSpeciesGroup() in species['TargetPath'] and \
-                   (MyProject.Blog.getOnlyNewSpecies() and int(species['iSpeciesThisRunCount']) > 0) or (not MyProject.Blog.OnlyNewSpecies) and \
-                   MyProject.Blog.getMinimumScore() <= species['currentHighestRating']:                 # Last is BUGBUG if high score is from past??
-                    # picture species and time 
-                    collectBestJPGs(MyProject, species['BestUPN'], selected_species)
-            else:
-                addSpeciesToSummaryPost(MyProject, leaf, selected_species)
+    try:
+        species = MyProject.sp.species_dict[speciesname]
+        for leaf in species['Leaves']:
+            species = MyProject.sp.species_dict[leaf]
+            if int(species['iPictureThisRunCount']) > 0:            # brute force scan
+                if species['Level'] == Level.SPECIES:
+                    if MyProject.Blog.getSelectedSpeciesGroup() in species['TargetPath'] and \
+                    (MyProject.Blog.getOnlyNewSpecies() and int(species['iSpeciesThisRunCount']) > 0) or (not MyProject.Blog.OnlyNewSpecies) and \
+                    MyProject.Blog.getMinimumScore() <= species['currentHighestRating']:                 # Last is BUGBUG if high score is from past??
+                        # picture species and time 
+                        collectBestJPGs(MyProject, species['BestUPN'], selected_species)
+                else:
+                    addSpeciesToSummaryPost(MyProject, leaf, selected_species)
+    except:
+        print("addSpeciesToSummaryPost")                
     return
 
 # species['iPictureThisRunCount'] tells me if the picture is seen for this species, but we do not yet
@@ -1038,52 +1044,59 @@ def addSpeciesToSummaryPost(MyProject, speciesname, selected_species):
 #    so one species can generate two pictures (adult/juv, male/female, breeding)
 # 3. sort the best pictures of each type
 def collectBestJPGs(MyProject, upn, selected_species):
-    # get the species name that indirectly
-    picturedata = MyProject.UniquePictureName_dict[upn]
-    species_scientific_name = picturedata['WetSoortNaam']
-    #species = MyProject.sp.species_dict[species_scientific_name]
-    
-    candidate_jpgs = {}
+    try:
+        # get the species name that indirectly
+        picturedata = MyProject.UniquePictureName_dict[upn]
+        species_scientific_name = picturedata['WetSoortNaam']
+        #species = MyProject.sp.species_dict[species_scientific_name]
+        
+        candidate_jpgs = {}
 
-    for upn_iter in MyProject.UniquePictureName_dict:
-        upn_item = MyProject.UniquePictureName_dict[upn_iter]
-         # select only this species, that have a JPG, and that are within this time range 
-        if upn_item['WetSoortNaam'] == species_scientific_name:
-            if upn_item['BestJPG'] != "":
-                if upn_item['DateTimeOriginal'] >= MyProject.Blog.from_time and upn_item['DateTimeOriginal'] <= MyProject.Blog.last_time:
-                    sortname = species_scientific_name + MyProject.getPictureAgeSexePlumage(upn_item)
-                    info = [upn_item['BestJPG'], upn_item['Rate']]; 
-                    if sortname in candidate_jpgs:
-                        candidate_jpgs[sortname].append(info)
-                    else:
-                        candidate_jpgs[sortname] = [info]
-    # see if we have different sex / age / plumage, pick the best for each one
-    if len(candidate_jpgs) > 0:
-        for candidate in candidate_jpgs:               # the best JPG for every candidate
-            bestitem = candidate_jpgs[candidate][0]
-            if len(candidate_jpgs[candidate])>1:
-                for item in candidate_jpgs[candidate][1:]:
-                    if bestitem[1] < item[1]:
-                        bestitem = item
-            # remember the JPG we want to use
-            selected_species[bestitem[0]] = MyProject.UniquePictureName_dict[MyProject.files_dict[bestitem[0]]['UniquePictureName']]['DateTimeOriginal']
+        for upn_iter in MyProject.UniquePictureName_dict:
+            upn_item = MyProject.UniquePictureName_dict[upn_iter]
+            # select only this species, that have a JPG, and that are within this time range 
+            if upn_item['WetSoortNaam'] == species_scientific_name:
+                if upn_item['BestJPG'] != "":
+                    if upn_item['DateTimeOriginal'] >= MyProject.Blog.from_time and upn_item['DateTimeOriginal'] <= MyProject.Blog.last_time:
+                        sortname = species_scientific_name + MyProject.getPictureAgeSexePlumage(upn_item)
+                        info = [upn_item['BestJPG'], upn_item['Rate']]; 
+                        if sortname in candidate_jpgs:
+                            candidate_jpgs[sortname].append(info)
+                        else:
+                            candidate_jpgs[sortname] = [info]
+        # see if we have different sex / age / plumage, pick the best for each one
+        if len(candidate_jpgs) > 0:
+            for candidate in candidate_jpgs:               # the best JPG for every candidate
+                bestitem = candidate_jpgs[candidate][0]
+                if len(candidate_jpgs[candidate])>1:
+                    for item in candidate_jpgs[candidate][1:]:
+                        if bestitem[1] < item[1]:
+                            bestitem = item
+                # remember the JPG we want to use
+                selected_species[bestitem[0]] = MyProject.UniquePictureName_dict[MyProject.files_dict[bestitem[0]]['UniquePictureName']]['DateTimeOriginal']
+    except:
+        print("collectBestJPGs")               
     return
 
 def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
-    filedata = MyProject.files_dict[jpgname]
-    picturedata = MyProject.UniquePictureName_dict[filedata['UniquePictureName']]
-    species = MyProject.sp.species_dict[picturedata['WetSoortNaam']]
-    MyProject.Blog.addBestJPG(filedata)
-    # print(f"Picture {picturedata['NLSoortNaam']} {picturedata['UniquePictureName']} {picturedata['Description']}")
-    for rawline in MyProject.getTemplateLines(templatehtml):
-        textCreated += getTemplateOutputString(MyProject, species, filedata, picturedata, rawline.rstrip('\n')) + "\n"
-    # copy a picture in subdirectory, named after file
-    sourcestr = filedata['WindowsFileName']
-    targetstr = MyProject.getBiotaBlogDir() + MyProject.Blog.getBlogDay() + '/' + filedata['File:FileName']
-    #print(f'from {sourcestr} to {targetstr}')
-    if not MyProject.getSkipJPGs():
-        shutil.copy(sourcestr, targetstr)
-        jpgResizeCopy(targetstr, horizontalsize = 600)
-    if MyProject.getLanguage() == 'en':
-        logger.info(f"Rated {species['currentHighestRating']:3}  {species['EnglishName']:32}  Species path {species['TargetPath']}")
+    try:
+        filedata = MyProject.files_dict[jpgname]
+        picturedata = MyProject.UniquePictureName_dict[filedata['UniquePictureName']]
+        species = MyProject.sp.species_dict[picturedata['WetSoortNaam']]
+        MyProject.Blog.addBestJPG(filedata)
+        # print(f"Picture {picturedata['NLSoortNaam']} {picturedata['UniquePictureName']} {picturedata['Description']}")
+        for rawline in MyProject.getTemplateLines(templatehtml):
+            textCreated += getTemplateOutputString(MyProject, species, filedata, picturedata, rawline.rstrip('\n')) + "\n"
+        # copy a picture in subdirectory, named after file
+        sourcestr = filedata['WindowsFileName']
+        targetstr = MyProject.getBiotaBlogDir() + MyProject.Blog.getBlogDay() + '/' + filedata['File:FileName']
+        #print(f'from {sourcestr} to {targetstr}')
+        if not MyProject.getSkipJPGs():
+            shutil.copy(sourcestr, targetstr)
+            jpgResizeCopy(targetstr, horizontalsize = 600)
+        if MyProject.getLanguage() == 'en':
+            logger.info(f"Rated {species['currentHighestRating']:3}  {species['EnglishName']:32}  Species path {species['TargetPath']}")
+    except:
+        print(f"addOneSpeciesJPG failed for {picturedata}")
+        pass
     return textCreated

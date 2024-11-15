@@ -1,5 +1,6 @@
 Betere functies:
 IN PROGRESS - logic documenteren (zie docs)
+- logs bewaren?
 - kruimel[pad]
 - sv8RecreatedTripRepository: 
    van alle dagen en een soort opdrachten
@@ -15,6 +16,15 @@ Blog/GUI fixes:
   - sv1: no trip.ini, banner and .. in trip
   
 Bugs:
+- quoted strings in keywords that have ' give error
+- niet alle images hebben goede up links, just skip the problem
+    # logic selected species
+    def writeOneSpecies(MyProject, leaf, temptextfile):
+        species = MyProject.sp.species_dict[leaf]
+        if species["TargetPath"] == "":
+            logger.warning(f"{species['ScientificName']} has no TargetPath, review naming for parents.")
+            return
+
 - <p> in de blog gebruik een kleiner font, waarom?
 DONE?: - 'Alle soorten' vervangen door 'trip soorten' om duidelijker te maken wat het is.
 - pictures from WhatsApp do not work, why?
