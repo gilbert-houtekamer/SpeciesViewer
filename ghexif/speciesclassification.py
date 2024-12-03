@@ -344,6 +344,8 @@ class SpeciesClassification:
                     subjects = subjects.lstrip().rstrip()
                     if subjects[0] == "'":       # possibly quoted that we do not want
                         subjects = subjects.strip("'")
+                    if subjects[0] == '"':       # remove " in eg "'\'female\', "passerini\'s tanager"'"
+                        subjects = subjects.strip('"')
                     # categories are interpreted as Aves etc, avoid this
                     if subjects.lower() not in self.DUMMYSPECIES:
                         scientificname = self.getKnownSpecies(subjects, True, LookUpInGBIF)
