@@ -77,6 +77,10 @@ def main(args, config):
         minimum_score = blogconfig.getint("blog_config","minimum_score")
         blog_column_width = blogconfig.getint("blog_config","column_width")
         selectspecies= blogconfig.get("blog_selection","species")
+        if "blogjpg" in blogconfig["blog_text"]:
+            blogjpg = blogconfig.get("blog_text","blogjpg")
+        else:
+            blogjpg = ""
         titel = getUTF8(blogconfig,"titel_nl")
         message = getUTF8(blogconfig,"message_nl")
         titel_en = getUTF8(blogconfig,"titel_en")
@@ -87,13 +91,13 @@ def main(args, config):
         minimum_score = 25
         blog_column_width = 300        
         selectspecies = "biota"
-
+        blogjpg = ""
         titel = "Standaard titel"
         message = "Hier komt het verhaaltje"
         titel_en = ""
         message_en = ""
     blog = ghexif.bloglib.Blog(MyProject)
-    blog.initBlog(titel, titel_en, message, message_en, selectspecies, only_new, minimum_score)
+    blog.initBlog(titel, titel_en, message, message_en, blogjpg, selectspecies, only_new, minimum_score)
     blog.files = files
     blog.pictures = pictures
     blog.from_time = from_time
@@ -115,9 +119,12 @@ def main(args, config):
     blog.updateIndexPage()
 
     if MyProject.online:
+        location_cache = os.path.join(MyProject.getRepositoryPath(), 'admin/FTPcache.json')
+        sftp.openFTPCache(location_cache)
         blog.uploadBlog(sftp)
         blog.uploadBlogAdmin(sftp)
         # Disconnect from SFTP
+        sftp.closeFTPCache(location_cache)
         sftp.disconnect()
 
     # remember translations

@@ -688,7 +688,10 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to go to ' + blog["title_" + language] + '"></a>\n'                    
                 else:
                     # pict the best picture from the current pictures in the blog
-                    bestjpg = str(MyProject.Blog.getBestJPGinList(logname))
+                    if blog['blogjpg'] == "":
+                        bestjpg = str(MyProject.Blog.getBestJPGinList(logname))
+                    else:  # override for preferred picture on index
+                        bestjpg = blog['blogjpg']
                     altforjpg = getAltTextForJPG(MyProject, bestjpg)
                     workstr += f'          <a href="{logname}-slider-' + language + '.html"><img\n'
                     workstr += '            src="' + logname + '/' +  bestjpg + '" alt="' + altforjpg + '"\n'

@@ -1,6 +1,7 @@
 import pysftp
 from urllib.parse import urlparse
 import os
+import json
 import logging
 import warnings
 warnings.filterwarnings('ignore','.*Failed to load HostKeys.*')
@@ -9,6 +10,9 @@ logger = logging.getLogger(__name__)
 
 class Sftp:
     remote_path = "/data/sites/web/houtekamercom/www"
+    FTPCache = {}
+    FTPhits = 0
+    FTPmisses = 0
 
     def __init__(self, hostname, username, password, port=22):
         """Constructor Method"""
@@ -104,11 +108,51 @@ class Sftp:
                 self.put_r_portable(localpath, remotepath, preserve_mtime)
                 logger.info(f'Status:  Processing directory {remotepath.replace(self.remote_path, "[WebServer]")}')
             else:
-                self.connection.put(localpath, remotepath, preserve_mtime=preserve_mtime)
-                logger.info(f'Status:  Copied {remotepath.replace(self.remote_path, "[WebServer]")}')
+                rc = self.cachedUpload(localpath, remotepath, preserve_mtime)    
+                action = 'Cached' if rc else 'Copied'       
+                #self.connection.put(localpath, remotepath, preserve_mtime=preserve_mtime)
+                logger.info(f'Status:  {action} {remotepath.replace(self.remote_path, "[WebServer]")}')
     
     def safeMkdir(self, remotepath):
         try:
             self.connection.mkdir(remotepath)
         except OSError:     
             pass
+
+    # cache for JPGs already transmitted
+    def openFTPCache(self, cachefilepath):
+        # Read from the file
+        self.openFTPCache = {}
+        if os.path.exists(cachefilepath):
+            with open(cachefilepath, 'r') as file:
+                self.openFTPCache = json.load(file)
+            # Convert lists back to tuples
+            self.openFTPCache = {key: tuple(value) for key, value in self.openFTPCache.items()}
+        return
+    
+    def closeFTPCache(self, cachefilepath):
+        # Convert tuples to lists to make it JSON serializable
+        data_json = {key: list(value) for key, value in self.openFTPCache.items()}
+        # Write to a file
+        with open(cachefilepath, 'w') as file:
+            json.dump(data_json, file)
+
+        if (self.FTPhits + self.FTPmisses)>0:
+            logger.info(f'{self.FTPhits/(self.FTPhits + self.FTPmisses)*100:2}% of FTP JPG transfers are cached.')
+        return
+    
+    def cachedUpload(self, source_local_path, remote_path, preserve_mtime=True):
+        # search by target name, value is path and length on computer
+        if  remote_path in self.openFTPCache:                   # present
+            cachedObject = self.openFTPCache[remote_path]       # get file name and length
+            if source_local_path == cachedObject[0] and os.path.getsize(source_local_path):
+                self.FTPhits += 1
+                return True
+        # not this one cached or nothing found
+        try:
+            self.connection.put(source_local_path, remote_path, preserve_mtime=True)
+            self.openFTPCache[remote_path]  = (source_local_path, os.path.getsize(source_local_path))
+            self.FTPmisses += 1            
+        except Exception as err:
+            raise Exception(err)
+        return False

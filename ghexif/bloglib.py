@@ -30,12 +30,14 @@ class Blog:
     from_time = ""
     last_time = ""
     CountJPG = 1
+    blogjpg = ""
 
     new_blog_row = {'blog':"", 
                     'title_nl':"Foto's van de laatste 12 jaar", 
                     'title_en':'Photos from the last 12 years', 
                     'message_nl':'',
                     'message_en':'',
+                    'blogjpg':'',
                     'Project':'',
                     'CreatedTime':'',
                     'SelectedGroup':'',
@@ -51,7 +53,7 @@ class Blog:
         return 
 
     def initBlog(self, 
-                 title_nl, title_en, message_nl, message_en, 
+                 title_nl, title_en, message_nl, message_en, blogjpg,
                  selectedgroup, onlynewspecies, minimumscore):
         # settings that need to be provided (nl/uk should be Googletranslated)
         # handle language versions
@@ -69,6 +71,7 @@ class Blog:
         self.SelectedSpeciesGroup = selectedgroup
         self.OnlyNewSpecies = onlynewspecies
         self.MinimumScore = minimumscore
+        self.blogjpg = blogjpg
         self.BestJPGs = []
 
         return 
@@ -139,6 +142,7 @@ class Blog:
             self.new_blog_row['title_en'] = self.TitleEn
             self.new_blog_row['message_nl'] = self.MessageNl
             self.new_blog_row['message_en'] = self.MessageEn
+            self.new_blog_row['blogjpg'] = self.blogjpg
             self.new_blog_row['Project'] = self.mp.ProjectName()
             self.new_blog_row['CreatedTime'] = datetime.today().strftime('%Y-%m-%d %H-%M')
             self.new_blog_row['SelectedGroup'] = self.SelectedSpeciesGroup
@@ -154,7 +158,8 @@ class Blog:
             row['title_nl'] = self.TitleNl 
             row['title_en'] = self.TitleEn 
             row['message_nl'] = self.MessageNl
-            row['message_en'] = self.MessageEn            
+            row['message_en'] = self.MessageEn  
+            row['blogjpg'] = self.blogjpg         
             row['Project'] = self.mp.ProjectName()
             row['CreatedTime'] = datetime.today().strftime('%Y-%m-%d %H-%M')
             row['SelectedGroup'] = self.SelectedSpeciesGroup
@@ -198,6 +203,10 @@ class Blog:
                 row['title_en'] = blog_object['title_en']
                 row['message_nl'] = blog_object['message_nl']
                 row['message_en'] = blog_object['message_en']
+                if 'blogjpg' in blog_object:
+                    row['blogjpg'] = blog_object['blogjpg']
+                else:
+                    row['blogjpg'] = ''
                 row['Project'] = self.mp.ProjectName()
                 row['CreatedTime'] = datetime.today().strftime('%Y-%m-%d %H-%M')
                 row['SelectedGroup'] = blog_object['SelectedGroup'] 
@@ -308,6 +317,7 @@ class Blog:
         biotablog = MyProject.getBiotaBlogDir()
         fromfile = biotablog + self.getBlogDay() + '-nl.html'
         toweb = sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + self.getBlogDay() + '-nl.html'
+        logger.info(f'Create HTML files for blog in slider and text versions.')
         # print(f'{fromfile} to {toweb}')
         sftp.upload(fromfile, toweb)
         sftp.upload(fromfile.replace('-nl','-en'), toweb.replace('-nl','-en'))
