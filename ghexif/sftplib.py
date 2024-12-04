@@ -4,6 +4,8 @@ import os
 import json
 import logging
 import warnings
+import binascii
+
 warnings.filterwarnings('ignore','.*Failed to load HostKeys.*')
 logger = logging.getLogger(__name__)
 
@@ -101,12 +103,15 @@ class Sftp:
             remotepath = remotedir + "/" + entry
             localpath = os.path.join(localdir, entry)
             if not os.path.isfile(localpath):
+                cacheddir = True
                 try:
-                    self.connection.mkdir(remotepath)
+                    if not self.cached_mkdir(remotepath):
+                        cacheddir = True
                 except OSError:     
                     pass
                 self.put_r_portable(localpath, remotepath, preserve_mtime)
-                logger.info(f'Status:  Processing directory {remotepath.replace(self.remote_path, "[WebServer]")}')
+                if not cacheddir:
+                    logger.info(f'Status:  Created directory {remotepath.replace(self.remote_path, "[WebServer]")}')
             else:
                 rc = self.cachedUpload(localpath, remotepath, preserve_mtime)    
                 action = 'Cached' if rc else 'Copied'       
@@ -141,18 +146,43 @@ class Sftp:
             logger.info(f'{self.FTPhits/(self.FTPhits + self.FTPmisses)*100:2}% of FTP JPG transfers are cached.')
         return
     
+    # cache, uniquenes is size for JPG, CRC fo other files
     def cachedUpload(self, source_local_path, remote_path, preserve_mtime=True):
-        # search by target name, value is path and length on computer
+        # search by target name, value is path and length/crc on computer
+        if source_local_path.endswith('.jpg'):
+            sizeOrCRC = os.path.getsize(source_local_path)
+        else:
+            # Read the content of the file
+            with open(source_local_path, 'rb') as file:
+                content = file.read()
+            # Calculate the CRC32 checksum
+            sizeOrCRC = binascii.crc32(content) & 0xFFFFFFFF
+
         if  remote_path in self.openFTPCache:                   # present
             cachedObject = self.openFTPCache[remote_path]       # get file name and length
-            if source_local_path == cachedObject[0] and os.path.getsize(source_local_path):
+            if source_local_path == cachedObject[0] and sizeOrCRC == cachedObject[1]:
                 self.FTPhits += 1
                 return True
         # not this one cached or nothing found
         try:
             self.connection.put(source_local_path, remote_path, preserve_mtime=True)
-            self.openFTPCache[remote_path]  = (source_local_path, os.path.getsize(source_local_path))
+            self.openFTPCache[remote_path]  = (source_local_path, sizeOrCRC)
             self.FTPmisses += 1            
         except Exception as err:
             raise Exception(err)
         return False
+    
+    def cached_mkdir(self, remote_path):
+        if not remote_path in self.openFTPCache:                # directory resent
+            try:
+                self.connection.mkdir(remote_path)
+            except OSError:     
+                pass
+            self.openFTPCache[remote_path] = ('directory', 0)
+            self.FTPmisses += 1 
+            return False
+       
+        # not this one cached or nothing found
+        self.FTPhits += 1            
+        return True
+    

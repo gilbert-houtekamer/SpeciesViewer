@@ -93,6 +93,8 @@ def putRecursiveTreeWeb(MyProject, config):
         username='houtekamercom',
         password=password,
     )
+    location_cache = os.path.join(MyProject.getRepositoryPath(), 'admin/FTPcache.json')
+    sftp.openFTPCache(location_cache)
     # Connect to SFTP
     sftp.connect()
     fromdisk = MyProject.ReviewFrozen()
@@ -101,10 +103,15 @@ def putRecursiveTreeWeb(MyProject, config):
 
     fromintro = MyProject.getBiotaDir()
     tointro = sftp.remotePrefix() + MyProject.getBiotaWebRoot()
-    sftp.connection.put(fromintro + 'intro-nl.html', tointro + 'intro-nl.html', preserve_mtime=True)
-    sftp.connection.put(fromintro + 'intro-en.html', tointro + 'intro-en.html', preserve_mtime=True)
-    sftp.connection.put(fromintro + 'summaries/all biota species-nl.html', tointro + 'summaries/all biota species-nl.html', preserve_mtime=True)
-    sftp.connection.put(fromintro + 'summaries/all biota species-en.html', tointro + 'summaries/all biota species-en.html', preserve_mtime=True)       
+    # sftp.connection.put(fromintro + 'intro-nl.html', tointro + 'intro-nl.html', preserve_mtime=True)
+    # sftp.connection.put(fromintro + 'intro-en.html', tointro + 'intro-en.html', preserve_mtime=True)
+    # sftp.connection.put(fromintro + 'summaries/all biota species-nl.html', tointro + 'summaries/all biota species-nl.html', preserve_mtime=True)
+    # sftp.connection.put(fromintro + 'summaries/all biota species-en.html', tointro + 'summaries/all biota species-en.html', preserve_mtime=True)       
+
+    sftp.cachedUpload(fromintro + 'intro-nl.html', tointro + 'intro-nl.html', preserve_mtime=True)
+    sftp.cachedUpload(fromintro + 'intro-en.html', tointro + 'intro-en.html', preserve_mtime=True)
+    sftp.cachedUpload(fromintro + 'summaries/all biota species-nl.html', tointro + 'summaries/all biota species-nl.html', preserve_mtime=True)
+    sftp.cachedUpload(fromintro + 'summaries/all biota species-en.html', tointro + 'summaries/all biota species-en.html', preserve_mtime=True)       
     # send small pictures voor all species
     with open(os.path.join(MyProject.ReviewFrozen(), "allspecies.csv"), mode="r", newline="", encoding='utf-8') as csvfile:
         csvreader = csv.reader(csvfile)
@@ -112,9 +119,11 @@ def putRecursiveTreeWeb(MyProject, config):
             source = row[0].replace('"', '')
             ftptarget = getSmallJPG(sftp.remotePrefix() + row[1].replace('"', '').lstrip())
             jpgResizeCopy(source)
-            sftp.connection.put(getSmallJPG(source), ftptarget)
-            logger.info(f"Small image for All Species report: {getSmallJPG(source)}")
-        
+#           sftp.connection.put(getSmallJPG(source), ftptarget)
+            if not sftp.cachedUpload(getSmallJPG(source), ftptarget):
+                logger.info(f"Small image for All Species report: {getSmallJPG(source)}")
+
+    sftp.closeFTPCache(location_cache)    
     sftp.disconnect()
 
 
