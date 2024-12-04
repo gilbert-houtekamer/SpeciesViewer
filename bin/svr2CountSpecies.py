@@ -112,7 +112,7 @@ def scanSpecies(sc, speciesname):
                     counter = 1
                     newcounter = 1
                     subheaderdone = True
-                data_line = str(counter).rjust(3) + ' ' + species['EnglishName'].ljust(32) + species['DutchName'].ljust(32)
+                data_line = str(counter).rjust(3) + ' ' + species['EnglishName'].ljust(32) + species['DutchName'].ljust(40)
                 try:
                     Reference_sp.species_dict[species['ScientificName'].lower()]
                     data_line += '     '
@@ -168,7 +168,7 @@ def print_headers(sc):
     global subheaderdone
     print(f'\n\n')
     counter = 0
-    header_line = ' '.ljust(36+32) + 'New '
+    header_line = ' '.ljust(36+40) + 'New '
     for header in headers:
         header_line += header[-2:] + ' '
     print(header_line)
@@ -187,6 +187,7 @@ def main(args, config):
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
+    
     
     # get repository-wide sc and per project sp.
     sc = ghexif.speciesclassification.SpeciesClassification(MyProject)
