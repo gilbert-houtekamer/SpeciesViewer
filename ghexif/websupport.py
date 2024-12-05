@@ -287,11 +287,11 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 25: # Nederlands (Engels) of Nederlands of Engels  of wetenschappelijk
             language = MyProject.getLanguage()
             if species_local['DutchName'] != "" and language == 'nl':
-                return species_local['DutchName'].capitalize() + " (" + species_local['ScientificName'].capitalize() + ")"
+                return species_local['DutchName'].capitalize() + " (" + species_local['ScientificName'].strip('0123456789 ').capitalize() + ")"
             elif species_local['EnglishName'] != "" and language == 'en':
-                return species_local['EnglishName'].capitalize() + " (" + species_local['ScientificName'].capitalize() + ")" 
+                return species_local['EnglishName'].capitalize() + " (" + species_local['ScientificName'].strip('0123456789 ').capitalize() + ")" 
             else:
-                return species_local['ScientificName'].capitalize()
+                return species_local['ScientificName'].strip('0123456789 ').capitalize()
         elif tokenno == 30:
             # Convert time.time() to timestamp to a datetime object
             date = datetime.fromtimestamp(time.time())
@@ -312,7 +312,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             if species_param[languageName] != "":
                 return groupname + ': ' + species_param[languageName].capitalize()
             else:
-                return groupname + ': ' + species_param['ScientificName'].capitalize()
+                return groupname + ': ' + species_param['ScientificName'].strip('0123456789 ').capitalize()
         elif tokenno == 34:                                 # meervoud voor de children, dus 1 extra er af daarom -2                   
             return ClassificationGroupNameNLmeervoud[species_param['Level'].value-2].lower()
         elif tokenno == 35:
@@ -451,23 +451,23 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             if len(kingdom_local)>0: 
                 rijk = 'Rijk: ' if language == 'nl' else 'Kingdom: '
                 workstr += "			<li><a href= ""\"" + BiotaWebRoot + kingdom_local['TargetPath'] + kingdom_local['ScientificName'] + '-' + language + '.html">' + rijk + \
-                    kingdom_local[languageName].capitalize() if kingdom_local[languageName] != "" else  kingdom_local['ScientificName'].capitalize() + "</a></li>\n"
+                    (kingdom_local[languageName].capitalize() if kingdom_local[languageName] != "" else  kingdom_local['ScientificName'].capitalize()) + "</a></li>\n"
             if len(phylum_local)>0:
                 stam = 'Stam: ' if language == 'nl' else 'Phylum: '
                 workstr += "			<li><a href= ""\"" + BiotaWebRoot + phylum_local['TargetPath'] + phylum_local['ScientificName']  + '-' + language + '.html">' + stam + \
-                    phylum_local[languageName].capitalize() if phylum_local[languageName] != "" else phylum_local['ScientificName'].capitalize() + "</a></li>\n"
+                    (phylum_local[languageName].capitalize() if phylum_local[languageName] != "" else phylum_local['ScientificName'].capitalize()) + "</a></li>\n"
             if len(class_local)>0:
                 klasse = 'Klasse: ' if language == 'nl' else 'Class: '                
                 workstr += "			<li><a href= ""\"" + BiotaWebRoot + class_local['TargetPath'] + class_local['ScientificName'] + '-' + language + '.html">' + klasse + \
-                    class_local[languageName].capitalize() if class_local[languageName] != "" else class_local['ScientificName'].capitalize() + "</a></li>\n"
+                    (class_local[languageName].capitalize() if class_local[languageName] != "" else class_local['ScientificName'].capitalize()) + "</a></li>\n"
             if len(order_local)>0:
                 orde = 'Orde: ' if language == 'nl' else 'Order: '                       
                 workstr += "			<li><a href= ""\"" + BiotaWebRoot + order_local['TargetPath'] + order_local['ScientificName'] + '-' + language + '.html">' + orde + \
-                    order_local[languageName].capitalize() if order_local[languageName] != "" else order_local['ScientificName'].capitalize() + "</a></li>\n"
+                    (order_local[languageName].capitalize() if order_local[languageName] != "" else order_local['ScientificName'].capitalize()) + "</a></li>\n"
             if len(family_local)>0:
                 fam = 'Familie: ' if language == 'nl' else 'Family: '                
                 workstr += "			<li><a href= ""\"" + BiotaWebRoot + family_local['TargetPath'] + family_local['ScientificName'] + '-' + language + '.html">' + fam + \
-                    family_local[languageName].capitalize() if family_local[languageName] != "" else family_local['ScientificName'].capitalize() + "</a></li>\n"
+                    (family_local[languageName].capitalize() if family_local[languageName] != "" else family_local['ScientificName'].strip('0123456789 ').capitalize()) + "</a></li>\n"
             workstr += "		</ul>\n	</div>\n"
             return workstr
         elif tokenno == 93:         # Plaatjes en namen, zelfde voor beide talen
