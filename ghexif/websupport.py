@@ -704,7 +704,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 if blog["SelectedGroup"] == '':
                     workstr += f'              <th>Titel</th><td><a href="' + targetlink + '">' + blog["title_" + language] + '</td>\n'
                 else:
-                    workstr += f'              <th>Titel</th><td><a href="{logname}-nl.html">' + blog["title_" + language] + '</td>\n'
+                    workstr += f'              <th>Titel</th><td><a href="{logname}-'+language+'.html">' + blog["title_" + language] + '</td>\n'
                 workstr += '            </tr>\n'
                 workstr += '            <tr>\n'
                 workstr += '              <th></th><td>' + blog["message_" + language] + '</td>\n'
@@ -726,14 +726,17 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += '    </div>\n'
             return workstr
         elif tokenno == 125:
-            if MyProject.getLanguage() == 'nl': languageName = 'DutchName'
-            else: languageName = 'EnglishName'   
-
-            if species_local[languageName] != "":
-                workstr = species_local[languageName].capitalize() + formatSexe(picture) + formatAgePlumage(picture) + \
-                   " <br><i><small>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</small></i></br>"
+            #  languageName = 'DutchName'           else: languageName = 'EnglishName'   
+            if MyProject.getLanguage() == 'nl' and species_local['DutchName'] != "" :
+                workstr = species_local['DutchName'].capitalize() + formatSexe(picture) + formatAgePlumage(picture) + \
+                    " <br><i><small>" + species_local['EnglishName'].capitalize() + "</small></i></br>" + \
+                    "<i><small>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</small></i></br>"
             else:
-                workstr = "<i>" + species_local['ScientificName'].capitalize() + "</i>"
+                if species_local['EnglishName'] != "":
+                    workstr = species_local['EnglishName'].capitalize() + formatSexe(picture) + formatAgePlumage(picture) + \
+                    " <br><i><small>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</small></i></br>"
+                else:
+                    workstr = "<i>" + species_local['ScientificName'].capitalize() + "</i>"
             return workstr
         elif tokenno == 126:
             w =  MyProject.Blog.getColumnWidth()
