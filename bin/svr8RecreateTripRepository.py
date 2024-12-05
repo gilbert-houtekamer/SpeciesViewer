@@ -49,26 +49,27 @@ def readConfig():
 #     return soort_template_lines
 
 def RecreateProject(args, config, project):
-    logger.info(f"Recreate project {project}")
+    logger.info(f"Recreate project {project}")      # project format is 2024-12-20
     try:
         step = 'bin.sv2ReadDirExif.main'
         bin.sv2ReadDirExif.main(args, config)
-        logger.info('=====================================================')
+        logger.info(f'====={project}=====================================================')
         step = 'bin.sv3WritePictures.main'
         bin.sv3WritePictures.main(args, config)
-        logger.info('=====================================================')
+        logger.info(f'====={project}=====================================================')
         step = 'bin.sv4WriteBlog.main'
         bin.sv4WriteBlog.main(args, config)
-        logger.info('=====================================================')
+        logger.info(f'====={project}=====================================================')
         step = 'bin.sv5BuildWebsite.main'
         bin.sv5BuildWebsite.main(args, config)
-        logger.info('=====================================================')
+        logger.info(f'====={project}=====================================================')
         step = 'bin.sv6Freeze.main'
-        logger.info('=====================================================')
+        logger.info(f'====={project}=====================================================')
         bin.sv6Freeze.main(args, config)
         step = 'bin.sv7WriteCommit.main'
-        logger.info('=====================================================')
+        logger.info(f'====={project}=====================================================')
         bin.sv7WriteCommit.main(args, config) 
+        logger.info(f'====={project}=====================================================') 
     except Exception as e:
         logger.warning(f"{parser.description} {step} failed: {e}")
         exit
@@ -124,6 +125,10 @@ def main(args, config):
         # Collect states
         directory_to_scan = Path(MyProject.getProjectPath()).parent       # 'C:/laptop/validate/metadata/review'
         RecreateProjects(args, config, directory_to_scan)
+
+        # create statistics
+        # svr2
+        # svr4
 
         # print(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
         totaltime = time.time() - starttime      

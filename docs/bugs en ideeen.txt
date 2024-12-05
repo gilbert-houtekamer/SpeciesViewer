@@ -1,7 +1,18 @@
 Betere functies:
 IN PROGRESS - logic documenteren (zie docs)
 - logs bewaren?
+- bug bij tweede soort foto?  eerste zegt bv man, 2e niks meer??
+- "Vía Sin Nombre" onderdrukken als locatie
+- WINTERkoning 2 soorten
+- nog issues met special characters in blog
+- andere steepjes automatisch overnemen in bv Red-throated Ant Tanager / Red-throated Ant-Tanager
+  - ook grey/gray beide testen
 - kruimel[pad]
+- nieuw aangemaakt soort werkt pas in volgende run
+- data issues: GPS controleren en rapporteren
+DONE: - cache wat weet wat er op de FTP staat, save in JSON
+- datum 28/11 maar half gedaan.
+- bewaak dat trip info niet verloren gaan (zoals nu)
 - sv8RecreatedTripRepository: 
    van alle dagen en een soort opdrachten
    automatically delete projects for recreate
@@ -16,6 +27,7 @@ Blog/GUI fixes:
   - sv1: no trip.ini, banner and .. in trip
   
 Bugs:
+
 - quoted strings in keywords that have ' give error
 - niet alle images hebben goede up links, just skip the problem
     # logic selected species
