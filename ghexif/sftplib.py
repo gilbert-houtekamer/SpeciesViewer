@@ -160,7 +160,8 @@ class Sftp:
 
         if  remote_path in self.openFTPCache:                   # present
             cachedObject = self.openFTPCache[remote_path]       # get file name and length
-            if source_local_path == cachedObject[0] and sizeOrCRC == cachedObject[1]:
+            if os.path.basename(source_local_path) == os.path.basename(cachedObject[0]) and \
+                sizeOrCRC == cachedObject[1]:
                 self.FTPhits += 1
                 return True
         # not this one cached or nothing found
