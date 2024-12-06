@@ -68,8 +68,13 @@ def getFormattedCityStateCountry(picture):
 		str = str + ", " + picture['Country']
 	return str # "No GPS or location available"
 
+def isUnnamedRoad(locationname):
+    if isUnnamedRoad in ['Vía Sin Nombre', 'Route sans nom', 'Unnamed Road']:   # , 'Onbekende weg' ?
+        return True
+    return False
+
 def getFormattedLocation(picture):
-    if picture['Location'] == "":
+    if picture['Location'] == "" or isUnnamedRoad(picture['Location']):
         return getFormattedCityStateCountry(picture)
     else:
         if picture['Location'] != "" and len(picture['Location']) > 30:

@@ -1,18 +1,15 @@
 Betere functies:
-IN PROGRESS - logic documenteren (zie docs)
-- logs bewaren?
-- bug bij tweede soort foto?  eerste zegt bv man, 2e niks meer??
-- "Vía Sin Nombre" onderdrukken als locatie
-- WINTERkoning 2 soorten
-- nog issues met special characters in blog
-- andere steepjes automatisch overnemen in bv Red-throated Ant Tanager / Red-throated Ant-Tanager
-  - ook grey/gray beide testen
+- datum 28/11 maar half gedaan.
 - kruimel[pad]
 - nieuw aangemaakt soort werkt pas in volgende run
-- data issues: GPS controleren en rapporteren
-DONE: - cache wat weet wat er op de FTP staat, save in JSON
-- datum 28/11 maar half gedaan.
 - bewaak dat trip info niet verloren gaan (zoals nu)
+- WARNING:WriteBlog failed: 'NoneType' object has no attribute 'writeTranslationCache' 
+
+IN PROGRESS - logic documenteren (zie docs)
+- logs bewaren?
+USAGE? - nog issues met special characters in blog
+- andere steepjes automatisch overnemen in bv Red-throated Ant Tanager / Red-throated Ant-Tanager
+  - ook grey/gray beide testen
 - sv8RecreatedTripRepository: 
    van alle dagen en een soort opdrachten
    automatically delete projects for recreate
@@ -27,8 +24,6 @@ Blog/GUI fixes:
   - sv1: no trip.ini, banner and .. in trip
   
 Bugs:
-
-- quoted strings in keywords that have ' give error
 - niet alle images hebben goede up links, just skip the problem
     # logic selected species
     def writeOneSpecies(MyProject, leaf, temptextfile):
@@ -38,12 +33,10 @@ Bugs:
             return
 
 - <p> in de blog gebruik een kleiner font, waarom?
-DONE?: - 'Alle soorten' vervangen door 'trip soorten' om duidelijker te maken wat het is.
 - pictures from WhatsApp do not work, why?
 - "afstand inf" is niet zo mooi
 HALFDONE - maak class for upn's ... in project gestopt
-IN PROGRESS - sv7WriteCommit to copy only new small images to FTP.  Might even do this generically? Too inefficient
-  (save in d:\code\allspecieswrapper.txt until suitable test set found)
+
 DONE?? - De layout van de vogel*.html zijn nog niet goed, er staat geen 'trips' label in.  
   websupport.py moet aangepast, maar echte test nog niet gedaan op de master.
 
@@ -78,7 +71,18 @@ GUI
 Related:
 - houtekamer.com opruimen en pointers fixen vanaf home page
 
-Done:
+Done
+DONE: - cache wat weet wat er op de FTP staat, save in JSON
+IN PROGRESS - sv7WriteCommit to copy only new small images to FTP.  Might even do this generically? Too inefficient
+  (save in d:\code\allspecieswrapper.txt until suitable test set found)
+DONE?: - 'Alle soorten' vervangen door 'trip soorten' om duidelijker te maken wat het is.
+DONE - quoted strings in keywords that have ' give error
+DONE - bug bij tweede soort foto?  eerste zegt bv man, 2e niks meer? (was data issue, code ok)
+DONE - "Vía Sin Nombre" onderdrukken als locatie (bv Vía Sin Nombre op 23 november)
+- CSS vor screen size: 
+   https://www.w3schools.com/html/html_mobile.asp
+   https://www.w3schools.com/html/html_responsive.asp
+NOT YET:- WINTERkoning 2 soorten
 DONE: - aparte function om de master database te managen en dingen mee te doen
   - merge van trip: 
     - define a project in the master DB
