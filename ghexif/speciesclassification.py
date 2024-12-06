@@ -92,7 +92,7 @@ class SpeciesClassification:
                 elif level == "Level.SPECIES":
                     row_dict['Level'] = Level.SPECIES
 
-              
+            
                 # fix lists to native [Python list] conventions                
                 for col in list_columns:
                     if row_dict[col] == '[]':           # update in place
@@ -112,28 +112,33 @@ class SpeciesClassification:
 
                 self.sc_dict[row_dict['ScientificName']] = row_dict
 
-        for speciesname in self.sc_dict:
-            species = self.sc_dict[speciesname]
-            ScientificName = species['ScientificName']
-            UpName = species['Up']
-            if UpName != "" and ScientificName not in self.sc_dict[UpName]['Leaves']:
-                self.sc_dict[UpName]['Leaves'].append(ScientificName)
-            
-            if not donotaddLanguageIndices:
-                # add Nederlandse naam index
-                dutchname = species['DutchName']            
-                if dutchname != "":
-                    if dutchname not in self.dutch_dict:
-                        self.dutch_dict[dutchname] = ScientificName
+        logger.info(f"Read specification file, now create links.")
+        try:
+            for speciesname in self.sc_dict:
+                # if speciesname == 'dasyprocta punctata': 
+                #     singlestep = 1                
+                species = self.sc_dict[speciesname]
+                ScientificName = species['ScientificName']
+                UpName = species['Up']
+                if UpName != "" and ScientificName not in self.sc_dict[UpName]['Leaves']:
+                    self.sc_dict[UpName]['Leaves'].append(ScientificName)
+                
+                if not donotaddLanguageIndices:
+                    # add Nederlandse naam index
+                    dutchname = species['DutchName']            
+                    if dutchname != "":
+                        if dutchname not in self.dutch_dict:
+                            self.dutch_dict[dutchname] = ScientificName
 
-                # add Nederlandse naam index
-                englishname = species['EnglishName']            
-                if englishname != "":
-                    if englishname not in self.english_dict:
-                        self.english_dict[englishname] = ScientificName
-        
-        logger.info(f'Read {len(self.sc_dict)} predefined species from {speciesfilename}.')
-        
+                    # add Nederlandse naam index
+                    englishname = species['EnglishName']            
+                    if englishname != "":
+                        if englishname not in self.english_dict:
+                            self.english_dict[englishname] = ScientificName
+            
+            logger.info(f'Read {len(self.sc_dict)} predefined species from {speciesfilename}.')
+        except Exception as e:
+            logger.error(f'Reading {speciesname} from {speciesfilename} failed, inconsistent reference in file: {e}')
         return
 
     # save last version, always save last version under .csv_old  
