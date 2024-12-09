@@ -25,6 +25,7 @@ import ghexif.bloglib
 import ghexif.exceptions
 import ghexif.statemachine
 import ghexif.triplib
+from ghexif import SVException
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,10 @@ def main(args, config):
     MyProject.registerSpecies(sp)
 
     logger.info(f"sv4WriteBlog: Create a blog for project {MyProject.ProjectName()}")
+
+    if not MyProject.online:
+        raise SVException(f"sv4WriteBlog: blog cannot be created without internet access")
+
 
     files, pictures, from_time, last_time = MyProject.readProject()
 
