@@ -108,11 +108,11 @@ def main(args, config):
     blog.updateIndexPage()
     # create intro page, already in good location
     MyProject.setLanguage('nl')
-    MyProject.makeIntro('intro-nl')
-    MyProject.makeIntro('intro-link-nl')
+    MyProject.makeIntro('intro','nl')
+    MyProject.makeIntro('intro-link','nl')
     MyProject.setLanguage('en')
-    MyProject.makeIntro('intro-en')
-    MyProject.makeIntro('intro-link-en')
+    MyProject.makeIntro('intro','en')
+    MyProject.makeIntro('intro-link','en')
 
     # now add the files
     def copyMissingLinkPages(directory, exist_ok=True):
@@ -143,6 +143,8 @@ def main(args, config):
         )
         # Connect to SFTP
         sftp.connect()
+        location_cache = os.path.join(MyProject.getRepositoryPath(), 'admin/FTPcache.json')
+        sftp.openFTPCache(location_cache)
         # 
         def createWebTree(path):
             directories = path.strip('/').split('/')
@@ -188,6 +190,7 @@ def main(args, config):
             except:
                 logger.warning(f"sv1MakeReposity: you did not customize trip.ini and/or not added banner (2000x270) or picture (600x450).")
                 logger.warning(f"Be sure to also FTP them to {createdpath} on the web server.")
+        sftp.closeFTPCache(location_cache)
         sftp.disconnect()
 
 if __name__ == "__main__":
