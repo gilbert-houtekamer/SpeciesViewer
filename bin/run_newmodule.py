@@ -69,8 +69,15 @@ def main(args, config):
     bc.clearBreadCrumb()
     bc.addBCsimple("Nature", MyProject.getBiotaWebRoot() + "intro-nl.html")
     bc.addBCsimple("Trips", MyProject.getBiotaWebRoot() + "trips-nl.html")      # if trips
-    bc.appendSpeciesBC('numida meleagris', MyProject.getBiotaWebRoot())                                              # assume trip
-    workstr = bc.makeCrumb("numida meleagris")
+    bc.appendSpeciesBC('Geotrygon costaricensis', MyProject.getBiotaWebRoot())                                              # assume trip
+    workstr = bc.makeCrumb("Geotrygon costaricensis")
+
+    bc
+    bc.addBCsimple("Nature", MyProject.getBiotaWebRoot() + "intro-nl.html")
+    bc.addBCsimple("Trips", MyProject.getBiotaWebRoot() + "trips-nl.html")      # if trips
+    bc.appendSpeciesBC('026 columbiformes', MyProject.getBiotaWebRoot())                                              # assume trip
+    workstr = bc.makeCrumb("")
+
 
     print(workstr)
 # new test: statemachine

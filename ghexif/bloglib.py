@@ -232,6 +232,12 @@ class Blog:
         MyProject = self.mp
         speciesoftheday = MyProject.getTemplateLines("blogindex-nl.html")
         MyProject.setLanguage('nl')
+
+        MyProject.breadcrumb.clearBreadCrumb()
+        MyProject.breadcrumb.addBCsimple("/nature/intro-nl.html", "Natuur")
+        MyProject.breadcrumb.addBCsimple("/nature/tripindex-nl.html", "Trips")
+        MyProject.breadcrumb.addBCsimple("/trips/" + MyProject.Trip.tripname + "/biotablog/blog index-nl.html", "Blogs Index")
+
         with open((MyProject.getBiotaBlogDir() + "blog index-nl.html").lower(), "w", encoding='UTF-8') as fileBlogIndex:
             for templateline in speciesoftheday:
                 line = getTemplateOutputString(MyProject, None, '', '', templateline.rstrip('\n'))
@@ -239,7 +245,13 @@ class Blog:
             fileBlogIndex.close()
 
         speciesoftheday = MyProject.getTemplateLines("blogindex-en.html")
-        MyProject.setLanguage('en')        
+        MyProject.setLanguage('en')
+        
+        MyProject.breadcrumb.clearBreadCrumb()
+        MyProject.breadcrumb.addBCsimple("/nature/intro-en.html", "Nature")
+        MyProject.breadcrumb.addBCsimple("/nature/tripindex-en.html", "Trips")
+        MyProject.breadcrumb.addBCsimple("/trips/" + MyProject.Trip.tripname + "/biotablog/blog index-en.html", "Blogs Index") 
+
         with open((MyProject.getBiotaBlogDir() + "blog index-en.html").lower(), "w", encoding='UTF-8') as fileBlogIndex:
             for templateline in speciesoftheday:
                 line = getTemplateOutputString(MyProject, None, '', '', templateline.rstrip('\n'))
@@ -259,14 +271,24 @@ class Blog:
         directorytouse = biotablog + self.getBlogDay() + '/' 
         os.makedirs(directorytouse, exist_ok=True)
 
+        MyProject.breadcrumb.clearBreadCrumb()
+
         # read all lines from the HTML template
         if language.lower() == 'nl': 
             template = "blogtext-nl.html"
             slidertemplate = "blogslider-nl.html"
+            MyProject.breadcrumb.addBCsimple("/nature/intro-nl.html", "Natuur")
+            MyProject.breadcrumb.addBCsimple("/nature/tripindex-nl.html", "Trips")
+            MyProject.breadcrumb.addBCsimple("/trips/" + MyProject.Trip.tripname + "/biotablog/blog index-nl.html", "Blog Index")
+            MyProject.breadcrumb.addBCsimple("/trips/" + MyProject.Trip.tripname + "/biotablog/" +  self.getBlogDay() + "-nl.html",  "Blog " + self.getBlogDay()[25:35] + ' - ' + MyProject.Blog.TitleNl)                   
         else: 
             template = "blogtext-en.html"
             slidertemplate = "blogslider-en.html"
-
+            MyProject.breadcrumb.addBCsimple("/nature/intro-en.html", "Nature")
+            MyProject.breadcrumb.addBCsimple("/nature/tripindex-en.html", "Trips")
+            MyProject.breadcrumb.addBCsimple("/trips/" + MyProject.Trip.tripname + "/biotablog/blog index-en.html", "Blog Index")
+            MyProject.breadcrumb.addBCsimple("/trips/" + MyProject.Trip.tripname + "/biotablog/" +  self.getBlogDay() + "-en.html",  "Blog " + self.getBlogDay()[25:35] + ' - ' + MyProject.Blog.TitleNl)              
+          
         self.CountJPG = 1                
         speciesoftheday = MyProject.getTemplateLines(template)
         with open((biotablog + self.getBlogDay() + '-' + language + '.html'), "w", encoding='UTF-8') as fileSummaryPost:
@@ -275,7 +297,13 @@ class Blog:
                 print(line, file=fileSummaryPost)
             fileSummaryPost.close()
 
-        # also create the sliders
+        
+        # also create the sliders, first breadcruumb
+        if language.lower() == 'nl':
+            titel = MyProject.Blog.TitleNl
+        else:
+            titel = MyProject.Blog.TitleEn            
+        MyProject.breadcrumb.addBCsimple("/trips/" + MyProject.Trip.tripname + "/biotablog/" +  self.getBlogDay() + "-slider-" + language + ".html",  "Slider")         
         sliders = MyProject.getTemplateLines(slidertemplate)
         with open((biotablog + self.getBlogDay() + '-slider-' + language + '.html'), "w", encoding='UTF-8') as fileSlider:
             for templateline in sliders:

@@ -15,6 +15,7 @@ global config
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS
 from ghexif.specieslib import Level
 import ghexif.projectlib
+import ghexif.breadcrumb
 
 logger = logging.getLogger(__name__)
 
@@ -868,10 +869,9 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 
             workstr = '<li><a href="' + directory + 'summaries/all biota species-' + language + '.html">' + tripormaster + '</a></li>'         
             return workstr        
-        elif tokenno == 120:         # all soorten
-            workstr = ""
-            workstr = addAllSpeciesWrapper(MyProject, species_param['ScientificName'], workstr)
-            return workstr        
+        elif tokenno == 170:
+            workstr = MyProject.breadcrumb.makeCrumb('test')
+            return workstr
         else:
             return '<token ' + tokenno + '>'
     except Exception as e:

@@ -48,6 +48,7 @@ p  {font-size: 14px;}
   clear: both;
 }
 
+/* cdreadcrumb based on 3School */
 ul.breadcrumb {
   padding: 0px 16px;
   list-style: none;

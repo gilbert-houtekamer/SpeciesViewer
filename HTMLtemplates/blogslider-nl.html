@@ -8,107 +8,133 @@
 <link rel="stylesheet" href="%%90%%includes web/animals.css">
 <script src="https://www.w3schools.com/lib/w3.js"></script>
 <head>
-    <style>
-        #grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(%%126%%px, 1fr));
-            grid-gap: 5px;
-        }
-        #grid > div {
-            font-size: 14px;
-            padding: 5px;
-            color: #ffffff;
-            background: #6d8764;
-            text-align: center;
-            line-height: 1.2;
-        }
-        img {
-            vertical-align: middle;
-        }
-        /* W3Schools example, slightly adopted for viewer
-        /* Position the image container (needed to position the left and right arrows) */
-        .container {
-            position: relative;
-        }
+  <style>
+      #grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(%%126%%px, 1fr));
+          grid-gap: 5px;
+      }
+      #grid > div {
+          font-size: 14px;
+          padding: 5px;
+          color: #ffffff;
+          background: #6d8764;
+          text-align: center;
+          line-height: 1.2;
+      }
+      /* cdreadcrumb based on 3School */
+      ul.breadcrumb {
+        padding: 0px 16px;
+        list-style: none;
+        background-color: #eee;
+        margin: 0
+      }
+      ul.breadcrumb li {
+        display: inline;
+        font-size: 13px;
+        font-style: italic;
+      }
+      ul.breadcrumb li+li:before {
+        padding: 8px;
+        color: black;
+        content: "/\00a0";
+      }
+      ul.breadcrumb li a {
+        color: #6d8764;
+        text-decoration: none;
+      }
+      ul.breadcrumb li a:hover {
+        color: #01447e;
+        text-decoration: underline;
+      }
 
-        /* Hide the images by default */
-        .mySlides {
-            display: none;
-        }
+      img {
+          vertical-align: middle;
+      }
+      /* W3Schools example, slightly adopted for viewer
+      /* Position the image container (needed to position the left and right arrows) */
+      .container {
+          position: relative;
+      }
 
-        /* Add a pointer when hovering over the thumbnail images */
-        .cursor {
-            cursor: pointer;
-        }
+      /* Hide the images by default */
+      .mySlides {
+          display: none;
+      }
 
-        /* Next & previous buttons */
-        .prev,
-        .next {
-            cursor: pointer;
-            position: absolute;
-            top: 40%;
-            width: auto;
-            padding: 16px;
-            margin-top: -50px;
-            color: white;
-            font-weight: bold;
-            font-size: 20px;
-            border-radius: 0 3px 3px 0;
-            user-select: none;
-            -webkit-user-select: none;
-        }
+      /* Add a pointer when hovering over the thumbnail images */
+      .cursor {
+          cursor: pointer;
+      }
 
-        /* Position the "next button" to the right */
-        .next {
-            right: 0;
-            border-radius: 3px 0 0 3px;
-        }
+      /* Next & previous buttons */
+      .prev,
+      .next {
+          cursor: pointer;
+          position: absolute;
+          top: 40%;
+          width: auto;
+          padding: 16px;
+          margin-top: -50px;
+          color: white;
+          font-weight: bold;
+          font-size: 20px;
+          border-radius: 0 3px 3px 0;
+          user-select: none;
+          -webkit-user-select: none;
+      }
 
-        /* On hover, add a olive green background color with a little bit see-through */
-        .prev:hover,
-        .next:hover {
-            background-color: #6d8764  /* rgba(128, 128, 0, 0.8); */
-        }
+      /* Position the "next button" to the right */
+      .next {
+          right: 0;
+          border-radius: 3px 0 0 3px;
+      }
 
-        /* Number text (1/3 etc) */
-        .numbertext {
-            color: #f2f2f2;
-            font-size: 12px;
-            padding: 8px 12px;
-            position: absolute;
-            top: 0;
-            }
+      /* On hover, add a olive green background color with a little bit see-through */
+      .prev:hover,
+      .next:hover {
+          background-color: #6d8764  /* rgba(128, 128, 0, 0.8); */
+      }
 
-        /* Container for image text */
-        .caption-container {
-            text-align: center;
-            background-color: #FFFFFF;
-            padding: 2px 16px;
-            color: black;
-        }
+      /* Number text (1/3 etc) */
+      .numbertext {
+          color: #f2f2f2;
+          font-size: 12px;
+          padding: 8px 12px;
+          position: absolute;
+          top: 0;
+          }
 
-        .row:after {
-            content: "";
-            display: table;
-            clear: both;
-        }
+      /* Container for image text */
+      .caption-container {
+          text-align: center;
+          background-color: #FFFFFF;
+          padding: 2px 16px;
+          color: black;
+      }
 
-        /* Six (should be %%162%%) columns side by side */
-        .column {
-            float: left;
-            width: %%162%%%;
-        }
+      .row:after {
+          content: "";
+          display: table;
+          clear: both;
+      }
 
-        /* Add a transparency effect for thumnbail images */
-        .demo {
-            opacity: 0.7;
-        }
+      /* Six (should be %%162%%) columns side by side */
+      .column {
+          float: left;
+          width: %%162%%%;
+      }
 
-        .active,
-        .demo:hover {
-            opacity: 1;
+      /* Add a transparency effect for thumnbail images */
+      .demo {
+          opacity: 0.7;
+      }
+
+      .active,
+      .demo:hover {
+          opacity: 1;
         }
-    </style>
+  </style>
 </head>
 
 <body>
@@ -136,6 +162,8 @@
 <a href="%%90%%biotablog/%%115%%-slider-nl.html" class="w3-bar-item w3-button w3-right">NL</a>
 <a href="%%90%%biotablog/%%115%%-slider-en.html" class="w3-bar-item w3-button w3-right">EN</a>
 </div>
+
+%%170%%
 
 <div class="w3-row">
   <div class="w3-col" style="width:85%">

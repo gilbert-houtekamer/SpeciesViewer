@@ -35,11 +35,12 @@ global starttime  # global
 
 # For both languages
 def makeIntroPages(MyProject):
-    MyProject.makeIntro('intro-nl')
-    MyProject.makeIntro('intro-en')
-    # test
-    MyProject.makeIntro('intro-link-nl')
-    MyProject.makeIntro('intro-link-en')    
+    MyProject.setLanguage('nl')
+    MyProject.makeIntro('intro','nl')
+    MyProject.makeIntro('intro-link','nl')
+    MyProject.setLanguage('en')
+    MyProject.makeIntro('intro','en')
+    MyProject.makeIntro('intro-link','en')
     return
 
 def main(args, config):

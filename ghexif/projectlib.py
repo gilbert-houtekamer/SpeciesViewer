@@ -9,6 +9,7 @@ from ghexif.handling import read_file, read_pictures
 from ghexif.websupport import getTemplateOutputString
 from ghexif.specieslib import Level
 from ghexif.statemachine import getAllProjectStatus
+import ghexif.breadcrumb
 import ghexif.translatelib
 import requests
 import logging
@@ -23,6 +24,8 @@ class Project:
     modpath = os.path.abspath(os.path.join(scriptpath, os.pardir)).replace('"', "").replace("'", "")
     online = False
 
+    # breadcrumb
+    breadcrumb = {}
     # blog admin
     Blog = None
     blogday = ""
@@ -82,6 +85,8 @@ class Project:
         # trip
         self.addTemplate("tripindex-nl.html")
         self.addTemplate("tripindex-en.html")
+        # breadcrumb
+        self.breadcrumb = ghexif.breadcrumb.Breadcrumb(self)
 
     def internet_connection(self):
         try:
@@ -316,6 +321,24 @@ class Project:
             os.makedirs(directoryname, exist_ok=True)
             # Dutch version
             language = self.getLanguage()
+            # breadcrumb for the group pages, from kingdom to family
+            self.breadcrumb.clearBreadCrumb()
+            if language == 'nl':
+                self.breadcrumb.addBCsimple("/nature/intro-nl.html", "Natuur")
+                if self.Trip:
+                    self.breadcrumb.addBCsimple("/nature/tripindex-nl.html", "Trips")
+                    self.breadcrumb.addBCsimple("/trips/" + self.Trip.tripname + "/summaries/all biota species-nl.html", "Trip soorten")
+                else:
+                    self.breadcrumb.addBCsimple("/nature/summaries/all biota species-nl.html", "Alle soorten")
+            else:
+                self.breadcrumb.addBCsimple("/nature/intro-en.html", "Nature")
+                if self.Trip:
+                    self.breadcrumb.addBCsimple("/nature/tripindex-en.html", "Trips")
+                    self.breadcrumb.addBCsimple("/trips/" + self.Trip.tripname + "/summaries/all biota species-en.html", "Trip species")
+                else:
+                    self.breadcrumb.addBCsimple("/nature/summaries/all biota species-en.html", "All species")
+            self.breadcrumb.appendLevelBC(species, "/trips/" + self.Trip.tripname + "/")
+
             templatefile = self.getTemplateLines("vogelordepage-" + language + ".html")
             with open((directoryname + species['ScientificName'] + '-' + language + '.html').lower(), "w", encoding='UTF-8') as SpeciesHTMLfile:
                 for rawline in templatefile:
@@ -351,6 +374,25 @@ class Project:
             directoryname = os.path.join(self.getBiotaAllorNewDir(), species['TargetPath']).lower()            
             os.makedirs(directoryname, exist_ok=True)
             language = self.getLanguage()
+            # breadcrumb for the species pages
+            # breadcrumb
+            self.breadcrumb.clearBreadCrumb()
+            if language == 'nl':
+                self.breadcrumb.addBCsimple("/nature/intro-nl.html", "Natuur")
+                if self.Trip:
+                    self.breadcrumb.addBCsimple("/nature/tripindex-nl.html", "Trips")
+                    self.breadcrumb.addBCsimple("/trips/" + self.Trip.tripname + "/summaries/all biota species-nl.html", "Trip soorten")
+                else:
+                    self.breadcrumb.addBCsimple("/nature/summaries/all biota species-nl.html", "Alle soorten")
+            else:
+                self.breadcrumb.addBCsimple("/nature/intro-en.html", "Nature")
+                if self.Trip:
+                    self.breadcrumb.addBCsimple("/nature/tripindex-en.html", "Trips")
+                    self.breadcrumb.addBCsimple("/trips/" + self.Trip.tripname + "/summaries/all biota species-en.html", "Trip species")
+                else:
+                    self.breadcrumb.addBCsimple("/nature/summaries/all biota species-en.html", "All species")
+            self.breadcrumb.appendLevelBC(species, "/trips/" + self.Trip.tripname + "/")
+
             vogelsoortpage_lines = self.getTemplateLines("vogelsoortpage-" + language + ".html")
             with open((directoryname + species['ScientificName'] +'-' + language + '.html').lower(), "w", encoding='UTF-8') as SpeciesHTMLfile:
                 for rawline in vogelsoortpage_lines:
@@ -369,6 +411,25 @@ class Project:
         directorytouse = biota + 'summaries/' 
         os.makedirs(directorytouse, exist_ok=True)
 
+        # breadcrumb
+        self.breadcrumb.clearBreadCrumb()
+        if language == 'nl':
+            self.breadcrumb.addBCsimple("/nature/intro-nl.html", "Natuur")
+            if self.Trip:
+                self.breadcrumb.addBCsimple("/nature/tripindex-nl.html", "Trips")
+                self.breadcrumb.addBCsimple("/trips/" + self.Trip.tripname + "/summaries/all biota species-nl.html", "Trip soorten")
+            else:
+                self.breadcrumb.addBCsimple("/nature/summaries/all biota species-nl.html", "Alle soorten")
+        else:
+            self.breadcrumb.addBCsimple("/nature/intro-en.html", "Nature")
+            if self.Trip:
+                self.breadcrumb.addBCsimple("/nature/tripindex-en.html", "Trips")
+                self.breadcrumb.addBCsimple("/trips/" + self.Trip.tripname + "/summaries/all biota species-en.html", "Trip species")
+            else:
+                self.breadcrumb.addBCsimple("/nature/summaries/all biota species-en.html", "All species")
+        #biota is implied, do not show this
+        #self.breadcrumb.appendLevelBC(self.sp.species_dict[speciesname], "/trips/" + self.Trip.tripname)
+
         speciesOverview = self.getTemplateLines("allspecies-" + language + ".html")
         with open((biota + 'summaries/all ' + speciesname + ' species-' + language + '.html').lower(), "w", encoding='UTF-8') as speciesOverviewFile:
             for templateline in speciesOverview:
@@ -382,7 +443,18 @@ class Project:
     
     # Intro pages, can be used generically
     # 
-    def makeIntro(self, simplepage):
+    def makeIntro(self, simplepage, language):
+        # beadcrumb
+        self.breadcrumb.clearBreadCrumb()        
+        if language == 'nl': natuur = 'natuur' 
+        else:  natuur = 'nature'
+        if simplepage == "intro":
+            self.breadcrumb.addBCsimple("/nature/" + simplepage + '-' + language + ".html", natuur)
+            if self.Trip:
+                self.breadcrumb.addBCsimple("/nature/tripindex-" + language + ".html", "Trips")
+                self.breadcrumb.addBCsimple("/trips/" + self.Trip.tripname + "/" + simplepage + '-' + language + ".html", "Intro")
+
+        simplepage += '-' + language
         speciesOverview = self.getTemplateLines(simplepage + ".html")
         with open((self.getBiotaDir() + simplepage + ".html").lower(), "w", encoding='UTF-8') as IntroFile:
             for templateline in speciesOverview:
@@ -390,7 +462,8 @@ class Project:
                 line = getTemplateOutputString(self, species, '', '', templateline.rstrip('\n'))
                 print(line, file=IntroFile)
         
-            IntroFile.close()  
+            IntroFile.close()
+
         logger.info(f"""Written page webpage to "{(self.getBiotaDir() + simplepage + ".html").lower()}".""")
         return
     

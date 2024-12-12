@@ -8,21 +8,46 @@
 <link rel="stylesheet" href="%%90%%includes web/animals.css">
 <script src="https://www.w3schools.com/lib/w3.js"></script>
 <head>
-    <style>
-      #grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
-        grid-gap: 5px;
-      }
-      #grid > div {
-        font-size: 14px;
-        padding: 5px;
-        color: #ffffff;
-        background: #6d8764;
-        text-align: center;
-		line-height: 1.2;
-      }
-    </style>
+  <style>
+		#grid {
+		  display: grid;
+		  grid-template-columns: repeat(auto-fill, minmax(%%126%%px, 1fr));
+		  grid-gap: 5px;
+		}
+		#grid > div {
+		  font-size: 14px;
+		  padding: 5px;
+		  color: #ffffff;
+		  background: #6d8764;
+		  text-align: center;
+		  line-height: 1.2;
+		}
+		/* breadcrumb based on W3School */
+		ul.breadcrumb {
+			padding: 0px 16px;
+			list-style: none;
+			background-color: #eee;
+			margin: 0
+		}
+		ul.breadcrumb li {
+			display: inline;
+			font-size: 13px;
+			font-style: italic;
+		}
+		ul.breadcrumb li+li:before {
+			padding: 8px;
+			color: black;
+			content: "/\00a0";
+		}
+		ul.breadcrumb li a {
+			color: #6d8764;
+			text-decoration: none;
+		}
+		ul.breadcrumb li a:hover {
+			color: #01447e;
+			text-decoration: underline;
+		}
+	</style>
 </head>
 <body>
 
@@ -49,6 +74,8 @@
 <a href="%%90%%biotablog/blog index-nl.html" class="w3-bar-item w3-button w3-right">NL</a>
 <a href="%%90%%biotablog/blog index-en.html" class="w3-bar-item w3-button w3-right">EN</a>
 </div>
+
+%%170%%
 
 <div class="w3-row">
   <div class="w3-col" style="width:85%">
