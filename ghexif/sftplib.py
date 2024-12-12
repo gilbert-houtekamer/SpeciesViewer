@@ -116,7 +116,8 @@ class Sftp:
                 rc = self.cachedUpload(localpath, remotepath, preserve_mtime)    
                 action = 'Cached' if rc else 'Copied'       
                 #self.connection.put(localpath, remotepath, preserve_mtime=preserve_mtime)
-                logger.info(f'Status:  {action} {remotepath.replace(self.remote_path, "[WebServer]")}')
+                if not rc: 
+                    logger.info(f'Status:  {action} {remotepath.replace(self.remote_path, "[WebServer]")}')
     
     def safeMkdir(self, remotepath):
         try:

@@ -3,7 +3,7 @@ Betere functies:
 - kruimel[pad]
 - nieuw aangemaakt soort werkt pas in volgende run
 - bewaak dat trip info niet verloren gaan (zoals nu)
-- WARNING:WriteBlog failed: 'NoneType' object has no attribute 'writeTranslationCache' 
+- WARNING:WriteBlog failed: 'NoneType' object has no attribute 'writeTranslationCache' (geen internet)
 
 IN PROGRESS - logic documenteren (zie docs)
 - logs bewaren?
