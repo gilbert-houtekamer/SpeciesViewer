@@ -1,8 +1,10 @@
 Betere functies:
 - datum 28/11 maar half gedaan.
-- kruimel[pad]
-- nieuw aangemaakt soort werkt pas in volgende run
+IN PROGRESS- kruimel[pad]  ... still need to do trip improvement
 - bewaak dat trip info niet verloren gaan (zoals nu)
+- BuildWebsite based on timestamp rather than new status, better anyways.
+- nieuw aangemaakt soort werkt pas in volgende run
+- Delete for pictures that not used in website for website, complete collection should go to main repository
 - WARNING:WriteBlog failed: 'NoneType' object has no attribute 'writeTranslationCache' (geen internet)
 
 IN PROGRESS - logic documenteren (zie docs)
@@ -72,6 +74,7 @@ Related:
 - houtekamer.com opruimen en pointers fixen vanaf home page
 
 Done
+DONE - WriteBlog variant voor al verwerkte pagina's op basis van blog_admin.csv (echt andere code) - svr9RedoBlog
 DONE: - cache wat weet wat er op de FTP staat, save in JSON
 IN PROGRESS - sv7WriteCommit to copy only new small images to FTP.  Might even do this generically? Too inefficient
   (save in d:\code\allspecieswrapper.txt until suitable test set found)
