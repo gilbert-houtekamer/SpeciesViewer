@@ -127,6 +127,7 @@ def main(args, config):
         location_cache = os.path.join(MyProject.getRepositoryPath(), 'admin/FTPcache.json')
         sftp.openFTPCache(location_cache)
         blog.uploadBlog(sftp)
+        blog.uploadBlogIndex(sftp)
         blog.uploadBlogAdmin(sftp)
         # Disconnect from SFTP
         sftp.closeFTPCache(location_cache)

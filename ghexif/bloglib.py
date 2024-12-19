@@ -31,6 +31,7 @@ class Blog:
     last_time = ""
     CountJPG = 1
     blogjpg = ""
+    column_width = 300
 
     new_blog_row = {'blog':"", 
                     'title_nl':"Foto's van de laatste 12 jaar", 
@@ -351,11 +352,7 @@ class Blog:
         sftp.upload(fromfile.replace('-nl','-en'), toweb.replace('-nl','-en'))
         sftp.upload(fromfile.replace('-nl', '-slider-nl'), toweb.replace('-nl', '-slider-nl'))
         sftp.upload(fromfile.replace('-nl','-slider-en'), toweb.replace('-nl','-slider-en'))        
-        fromfile = biotablog + 'blog index-nl.html'
-        toweb = sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + 'blog index-nl.html'
-        # print(f'{fromfile} to {toweb}')
-        sftp.upload(fromfile, toweb)
-        sftp.upload(fromfile.replace('-nl','-en'), toweb.replace('-nl','-en'))
+
         if sftpPictures:
             fromdir = biotablog + self.getBlogDay()
             towebdir = sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + self.getBlogDay()
@@ -363,7 +360,7 @@ class Blog:
             sftp.safeMkdir(sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + self.getBlogDay())
             sftp.put_r_portable(fromdir, towebdir, preserve_mtime=True)
         return
-    
+
     def downloadBlogAdminCopy(self, sftp):
         MyProject = self.mp     
         tofile = self.getBlogAdminFile() + '.webcopy'
