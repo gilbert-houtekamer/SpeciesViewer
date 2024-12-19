@@ -8,6 +8,46 @@
 <link rel="stylesheet" href="%%90%%includes web/animals.css">
 <script src="https://www.w3schools.com/lib/w3.js"></script>
 <head>
+    <style>
+		/* cdreadcrumb based on 3School */
+		ul.breadcrumb {
+			padding: 0px 16px;
+			list-style: none;
+			background-color: #eee;
+			margin: 0
+		}
+		ul.breadcrumb li {
+			display: inline;
+			font-size: 13px;
+			font-style: italic;
+		}
+		ul.breadcrumb li+li:before {
+			padding: 8px;
+			color: black;
+			content: "/\00a0";
+		}
+		ul.breadcrumb li a {
+			color: #6d8764;
+			text-decoration: none;
+		}
+		ul.breadcrumb li a:hover {
+			color: #01447e;
+			text-decoration: underline;
+		}
+		/* for phones */
+		.table-wrapper {
+			overflow-x: auto;
+			-webkit-overflow-scrolling: touch; /* For smooth scrolling on iOS */
+		}
+		table {
+			border-collapse: collapse;
+		}
+		th, td {
+			padding: 8px;
+			text-align: left;
+			border: 1px solid #ddd;
+  		}		
+	</style>	
 </head>
 <body>
 
@@ -41,7 +81,7 @@
 	<div class="w3-row">
 		<div class="w3-col" style="width:80%">
 			<!-- Names and family -->
-			<div class="w3-container">
+			<div class="w3-container table-wrapper">
 				<h3>%%25%%</h3>
 		
 				<TABLE class="w3-table-all w3-hoverable">

@@ -307,7 +307,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             #return species_param['DutchName'].capitalize() + ' ' + species_param['ScientificName'].strip('0123456789 ').capitalize()
             return species_param['ScientificName'].strip('0123456789 ').capitalize()
         elif tokenno == 32:                                 # one level lower (enkelvoud)
-            return str(species_param['Level'])[6:].capitalize()
+            return ClassificationGroupName[species_param['Level'].value-2].capitalize()
         elif tokenno == 33:                                 # one level lower (enkelvoud)
             if MyProject.getLanguage() == "nl":
                 languageName = 'DutchName'
