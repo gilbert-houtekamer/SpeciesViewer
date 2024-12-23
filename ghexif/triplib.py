@@ -213,6 +213,16 @@ class Trip:
     # create updated index page
     def updateTripIndexPage(self, language):
         MyProject = self.mp
+        MyProject.breadcrumb.clearBreadCrumb()
+
+        # read all lines from the HTML template
+        if language.lower() == 'nl': 
+            MyProject.breadcrumb.addBCsimple("/nature/intro-nl.html", "Natuur")
+            MyProject.breadcrumb.addBCsimple("/nature/tripindex-nl.html", "Trips")
+        else: 
+            MyProject.breadcrumb.addBCsimple("/nature/intro-en.html", "Nature")
+            MyProject.breadcrumb.addBCsimple("/nature/tripindex-en.html", "Trips")
+
         triptemplate = MyProject.getTemplateLines("tripindex-" + language + ".html")
         with open((os.path.join(self.getMasterRepository(), "tripindex-" + language + ".html")).lower(), "w", encoding='UTF-8') as fileTripIndex:
             for templateline in triptemplate:

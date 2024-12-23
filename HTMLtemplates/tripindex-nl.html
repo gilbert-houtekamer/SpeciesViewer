@@ -20,8 +20,33 @@
         color: #ffffff;
         background: #6d8764;
         text-align: center;
-		line-height: 1.2;
+		    line-height: 1.2;
       }
+	  	/* Breadcrumb based on W3School */
+      ul.breadcrumb {
+        padding: 0px 16px;
+        list-style: none;
+        background-color: #eee;
+        margin: 0
+      }
+      ul.breadcrumb li {
+        display: inline;
+        font-size: 13px;
+        font-style: italic;
+      }
+      ul.breadcrumb li+li:before {
+        padding: 8px;
+        color: black;
+        content: "/\00a0";
+      }
+      ul.breadcrumb li a {
+        color: #6d8764;
+        text-decoration: none;
+      }
+      ul.breadcrumb li a:hover {
+        color: #01447e;
+        text-decoration: underline;
+      }      
     </style>
 </head>
 <body>
@@ -49,7 +74,7 @@
 <a href="%%89%%tripindex-nl.html" class="w3-bar-item w3-button w3-right">NL</a>
 <a href="%%89%%tripindex-en.html" class="w3-bar-item w3-button w3-right">EN</a>
 </div>
-
+%%170%%
 <div class="w3-row">
     <div class="w3-col" style="width:85%">
         <div class="w3-container">
