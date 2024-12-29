@@ -2,12 +2,15 @@
 import argparse
 import csv
 import logging
-import os
+import os, io
 import sys
 import configparser
 import time
 import logging
 import argparse
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
@@ -24,8 +27,79 @@ import ghexif.specieslib
 import ghexif.speciesclassification
 import ghexif.triplib
 import ghexif.breadcrumb
+from ghexif import SVException
 
 logger = logging.getLogger(__name__)
+
+class Waarneming:
+    observations = []
+    mp = None
+
+    def __init__(self, MyProject):
+        self.mp = MyProject
+        return
+
+    def read(self, filename=""):
+        # 1. get the file from disk first
+        if filename == "":
+            filename = "C:\\Users\\gilbe\\OneDrive\\waarneming.csv"
+        try:
+            with io.open(filename, mode="r", newline="", encoding='utf-8') as csvfile:
+                reader = csv.DictReader(csvfile, delimiter=';')
+                for row in reader:
+                    self.observations.append(row)
+        except:
+            pass    # no blogs yet, that's fine
+
+        return
+
+    def download_images(self, url, folder):
+        urlsdone = []
+
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+        
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        metas = soup.find_all('meta')
+        species = soup.title.string
+        images  = soup.find_all('img')
+        # main picture
+        for obj in metas:
+            try:
+                if obj.attrs['property'] == 'og:image':
+                    img_name= obj.attrs['content'].split('?')[0]
+                    print(f"{os.path.split(img_name)}")
+            except:
+                pass
+        # remember path
+        waarnemingpath = os.path.split(img_name)[0]
+        # all pictures (including the main)
+        for obj in images:
+            try:
+                if obj.attrs['alt'] == 'foto bij waarneming':
+                    img_name = obj.attrs['src'].split('?')[0]
+                    filename = os.path.split(img_name)[1]
+                    imgurl = urljoin(waarnemingpath, 'photo/'+filename)
+                    if url not in urlsdone:
+                        urlsdone.append(imgurl)
+                        print(f"{imgurl}")
+                        img_response = requests.get(imgurl)
+                        img_name = os.path.join(folder, imgurl.split('/')[-1])
+                        with open(img_name, 'wb') as f:
+                            f.write(img_response.content)
+                        print(f'Downloaded: {img_name}')
+
+            except:
+                pass            
+        # for img in images:
+        #     img_url = img['src']
+        #     if img_url.startswith('http'):
+        #         img_response = requests.get(img_url)
+        #         img_name = os.path.join(folder, img_url.split('/')[-1])
+        #         with open(img_name, 'wb') as f:
+        #             f.write(img_response.content)
+        #         print(f'Downloaded: {img_name}')
 
 def main(args, config):
     global starttime, SpeciesDebug
@@ -57,26 +131,39 @@ def main(args, config):
     # and count the number of data file items we already have
     sp.readSpeciesInfo("C:/laptop/trips/safaridb/metadata/active/species.csv", False)
 
-    bc = ghexif.breadcrumb.Breadcrumb(MyProject)
-    # sp.getBiotaWebRoot
-    bc.addBCsimple("Nature", MyProject.getBiotaWebRoot() + "/intro-nl.html")
-    bc.addBCsimple("Trips", MyProject.getBiotaWebRoot() + "/trips-nl.html")
-    bc.addBCsimple("Blogs", MyProject.getBiotaWebRoot() + "/biotablog/blogindex-nl.html")
-#    bc.addBCsimple("2024-06-26", "https://houtekamer.com/trips/safari/biotablog/Blog%20Pictures%202024-06-26-2024-06-26-biota-0-5-nl.html")
-    workstr = bc.makeCrumb("2024-06-26")
-    print(workstr)
-    
-    bc.clearBreadCrumb()
-    bc.addBCsimple("Nature", MyProject.getBiotaWebRoot() + "intro-nl.html")
-    bc.addBCsimple("Trips", MyProject.getBiotaWebRoot() + "trips-nl.html")      # if trips
-    bc.appendSpeciesBC('Geotrygon costaricensis', MyProject.getBiotaWebRoot())                                              # assume trip
-    workstr = bc.makeCrumb("Geotrygon costaricensis")
+    waarnemingen = Waarneming(MyProject)
+    waarnemingen.read("C:\\Users\\gilbe\\OneDrive\\waarneming.csv")
 
-    bc
-    bc.addBCsimple("Nature", MyProject.getBiotaWebRoot() + "intro-nl.html")
-    bc.addBCsimple("Trips", MyProject.getBiotaWebRoot() + "trips-nl.html")      # if trips
-    bc.appendSpeciesBC('026 columbiformes', MyProject.getBiotaWebRoot())                                              # assume trip
-    workstr = bc.makeCrumb("")
+
+    for obs in waarnemingen.observations:
+        url = obs['link']
+        folder = 'downloaded_images'
+        if obs['has photos'] == 'TRUE':
+            print(f"{obs['date']} {obs['species name']} {obs['scientific name']} has photo(s).")
+            waarnemingen.download_images(url,folder)
+        else:
+            print(f"{obs['date']} {obs['species name']} {obs['scientific name']} has no photos.")
+
+#     bc = ghexif.breadcrumb.Breadcrumb(MyProject)
+#     # sp.getBiotaWebRoot
+#     bc.addBCsimple("Nature", MyProject.getBiotaWebRoot() + "/intro-nl.html")
+#     bc.addBCsimple("Trips", MyProject.getBiotaWebRoot() + "/trips-nl.html")
+#     bc.addBCsimple("Blogs", MyProject.getBiotaWebRoot() + "/biotablog/blogindex-nl.html")
+# #    bc.addBCsimple("2024-06-26", "https://houtekamer.com/trips/safari/biotablog/Blog%20Pictures%202024-06-26-2024-06-26-biota-0-5-nl.html")
+#     workstr = bc.makeCrumb("2024-06-26")
+#     print(workstr)
+    
+#     bc.clearBreadCrumb()
+#     bc.addBCsimple("Nature", MyProject.getBiotaWebRoot() + "intro-nl.html")
+#     bc.addBCsimple("Trips", MyProject.getBiotaWebRoot() + "trips-nl.html")      # if trips
+#     bc.appendSpeciesBC('Geotrygon costaricensis', MyProject.getBiotaWebRoot())                                              # assume trip
+#     workstr = bc.makeCrumb("Geotrygon costaricensis")
+
+#     bc
+#     bc.addBCsimple("Nature", MyProject.getBiotaWebRoot() + "intro-nl.html")
+#     bc.addBCsimple("Trips", MyProject.getBiotaWebRoot() + "trips-nl.html")      # if trips
+#     bc.appendSpeciesBC('026 columbiformes', MyProject.getBiotaWebRoot())                                              # assume trip
+#     workstr = bc.makeCrumb("")
 
 
     print(workstr)
