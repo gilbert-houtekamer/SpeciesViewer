@@ -9,6 +9,7 @@ import time
 import logging
 import argparse
 import requests
+import exiftool
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
@@ -53,7 +54,7 @@ class Waarneming:
 
         return
 
-    def download_images(self, url, folder):
+    def download_observation_images(self, url, folder):
         urlsdone = []
 
         if not os.path.exists(folder):
@@ -62,7 +63,7 @@ class Waarneming:
         response = requests.get(url)
         soup = BeautifulSoup(response.text, 'html.parser')
         metas = soup.find_all('meta')
-        species = soup.title.string
+        species = soup.title.string.split(' - ')
         images  = soup.find_all('img')
         # main picture
         for obj in metas:
@@ -78,28 +79,40 @@ class Waarneming:
         for obj in images:
             try:
                 if obj.attrs['alt'] == 'foto bij waarneming':
-                    img_name = obj.attrs['src'].split('?')[0]
-                    filename = os.path.split(img_name)[1]
-                    imgurl = urljoin(waarnemingpath, 'photo/'+filename)
-                    if url not in urlsdone:
-                        urlsdone.append(imgurl)
-                        print(f"{imgurl}")
-                        img_response = requests.get(imgurl)
-                        img_name = os.path.join(folder, imgurl.split('/')[-1])
-                        with open(img_name, 'wb') as f:
-                            f.write(img_response.content)
-                        print(f'Downloaded: {img_name}')
-
+                    try:
+                        img_name = obj.attrs['src'].split('?')[0]
+                        filename = os.path.split(img_name)[1]
+                        imgurl = urljoin(waarnemingpath, 'photo/'+filename)
+                        if url not in urlsdone:
+                            urlsdone.append(imgurl)
+                            print(f"{imgurl}")
+                            img_response = requests.get(imgurl)
+                            img_name = os.path.join(folder, imgurl.split('/')[-1])
+                            with open(img_name, 'wb') as f:
+                                f.write(img_response.content)
+                            print(f'Downloaded: {img_name}')
+                            # now add metadata (species first)
+                            metadata = { 'IPTC:Keywords': species[0] + "," + species[1].split('\n')[0],
+                                        'EXIF:GPSLatitude': 52.3650, # Example coordinates for Amsterdam 
+                                        'EXIF:GPSLatitudeRef': 'N', 
+                                        'EXIF:GPSLongitude': 4.8925, 
+                                        'EXIF:GPSLongitudeRef': 'E' }
+                            with exiftool.ExifTool() as et: 
+                                # Write metadata to the file 
+                                exifparm = b''
+                                for tag, value in metadata.items(): 
+                                    exifparm += b'-' + tag.encode() + b'=' + str(value).encode() + b' '
+                                et.execute(exifparm, img_name.encode() )
+                                # Confirm metadata added
+                            with exiftool.ExifToolHelper() as et:
+                                result = et.get_metadata(img_name.encode())
+                                for tag in result[0]:
+                                    print(f'{tag}: {result[0][tag]}')
+                    except Exception as e:
+                        logger.warning(f"{parser.description} failed: {e}")     
             except:
                 pass            
-        # for img in images:
-        #     img_url = img['src']
-        #     if img_url.startswith('http'):
-        #         img_response = requests.get(img_url)
-        #         img_name = os.path.join(folder, img_url.split('/')[-1])
-        #         with open(img_name, 'wb') as f:
-        #             f.write(img_response.content)
-        #         print(f'Downloaded: {img_name}')
+
 
 def main(args, config):
     global starttime, SpeciesDebug
@@ -134,13 +147,13 @@ def main(args, config):
     waarnemingen = Waarneming(MyProject)
     waarnemingen.read("C:\\Users\\gilbe\\OneDrive\\waarneming.csv")
 
-
+    # run through all observations and download pages
     for obs in waarnemingen.observations:
         url = obs['link']
         folder = 'downloaded_images'
         if obs['has photos'] == 'TRUE':
             print(f"{obs['date']} {obs['species name']} {obs['scientific name']} has photo(s).")
-            waarnemingen.download_images(url,folder)
+            waarnemingen.download_observation_images(url,folder)
         else:
             print(f"{obs['date']} {obs['species name']} {obs['scientific name']} has no photos.")
 
