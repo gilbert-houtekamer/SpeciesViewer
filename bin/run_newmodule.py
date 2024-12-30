@@ -54,7 +54,55 @@ class Waarneming:
 
         return
 
-    def download_observation_images(self, url, folder):
+    def decimal_to_dms(self, decimal_degrees, direction):
+        degrees = int(decimal_degrees)
+        minutes = int((decimal_degrees - degrees) * 60)
+        seconds = (decimal_degrees - degrees - minutes / 60) * 3600
+        return f"{degrees}°{minutes}'{seconds:.2f}\" {direction}"
+
+  
+    def makeEXIFMetadata(self, obs):
+# species type (hybrid, aggregate species, species, subspecies, synonym, variety)
+# 	subspecies: like "Viola tricolor subsp. curtisii"
+        # for now we only support species, not subspecies or groups
+        if obs['species type'] != 'Species': return None
+# is certain	
+# is escape
+        # only support certains, not sure about escapes, probably ok
+        if obs['is certain'] != 'TRUE': return None
+# has photos
+        if obs['has photos'] != 'TRUE': return None            
+# date	
+# time
+        metadata = '-EXIF:DateTimeOriginal=' + str(obs['date']).replace('/',':') + ' ' + obs['time'] + '\n'
+# species name	
+# scientific name
+# sex (U/M/F)
+# life stage (adult, adult breeding, caterpillar, empty shell or single valve, flowering, fruit-bearing, gall, imago, larva/nymph, second calendar year, unknown)
+        metadata += '-IPTC:Keywords=' + obs['species name'].lower() + ',' + obs['scientific name'].lower()
+        if obs['sex'] == 'M': metadata += ',male'
+        elif obs['sex'] == 'F': metadata += ',female'
+
+        metadata += '\n'
+# location	
+        if obs['location'] != '': 
+            metadata += '-XMP:Location=' + obs['location'] + '\n'
+# country division (provincie)
+# country
+        if obs['country division'] != '':  metadata += '-XMP:State=' + obs['country division'] + '\n'
+        if obs['country'] != '':  metadata += '-XMP:Country=' + obs['country'] + '\n '
+# lat	
+# lng
+        metadata += '-EXIF:GPSLatitude=' + str(int(obs['lat'])/1e6)+ '\n '
+        metadata += '-EXIF:GPSLongitude=' + str(int(obs['lng'])/1e6)+ '\n '        
+# Example usage
+        # latitude_dms = self.decimal_to_dms(int(obs['lat'])/1e6, 'N')
+        # longitude_dms = self.decimal_to_dms(int(obs['lng'])/1e6, 'E')
+        # metadata += '-Composite:GPSPosition=' + latitude_dms + ',' + longitude_dms + '\n '
+# link            
+        return metadata
+
+    def download_observation_images(self, url, folder, metadataparm):
         urlsdone = []
 
         if not os.path.exists(folder):
@@ -102,6 +150,7 @@ class Waarneming:
                                 exifparm = b''
                                 for tag, value in metadata.items(): 
                                     exifparm += b'-' + tag.encode() + b'=' + str(value).encode() + b' '
+                                exifparm = metadataparm.encode()
                                 et.execute(exifparm, img_name.encode() )
                                 # Confirm metadata added
                             with exiftool.ExifToolHelper() as et:
@@ -153,7 +202,9 @@ def main(args, config):
         folder = 'downloaded_images'
         if obs['has photos'] == 'TRUE':
             print(f"{obs['date']} {obs['species name']} {obs['scientific name']} has photo(s).")
-            waarnemingen.download_observation_images(url,folder)
+            metadata = waarnemingen.makeEXIFMetadata(obs)
+            if metadata != None:
+                waarnemingen.download_observation_images(url,folder,metadata)
         else:
             print(f"{obs['date']} {obs['species name']} {obs['scientific name']} has no photos.")
 
