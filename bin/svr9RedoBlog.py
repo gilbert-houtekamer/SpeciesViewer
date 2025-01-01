@@ -82,6 +82,7 @@ def main(args, config):
             logger.info(blogday)
             # copy the current blogday
             b = blog.blog_dict[blogday]
+            if 'blogjpg'  not in b: b['blogjpg'] = ''
             blog.initBlog(b['title_nl'], b['title_en'], b['message_nl'], b['message_en'], 
                           b['blogjpg'], b['SelectedGroup'], b['OnlyNewSpecies'], b['MinimumScore'])
             # also copy best JPSs to avoid new changes to best JPG
@@ -101,6 +102,12 @@ def main(args, config):
                         blog.uploadBlog(sftp, sftpPictures=False)
                     else:
                         logger.warning(f'Not all data is commmitted to the repository for project "{project}"')
+                else: # no statemachine.ini at all, go for it anyhow
+                    blog.BestJPGs = b['BestJPGs']
+                    MyProject.setSkipJPGs(True)
+                    blog.makeRunSummaryPost('biota', 'nl')
+                    blog.makeRunSummaryPost('biota', 'en')
+                    blog.uploadBlog(sftp, sftpPictures=False)                    
             except:
                 logger.warning(f'None of the steps are executed for "{project}"')
         # all updated, also update index
