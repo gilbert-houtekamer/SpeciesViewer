@@ -678,9 +678,9 @@ class Project:
                 if subject_in_jpg != "":
                     scientificname = sp.getSpecies(subject_in_jpg)
                     if scientificname == "":       
-                        logger.info(f"""The species "{subject_in_jpg}" is not found in the GBIF database as a scientific name for "{upn['UniquePictureName']}".""")
+                        logger.warning(f"""The species "{subject_in_jpg}" is not found in the GBIF database as a scientific name for "{upn['UniquePictureName']}".""")
                     elif scientificname == None:
-                        logger.info(f"""Species "{subject_in_jpg}" may have a typo in "{thisfile['WindowsFileName']}", correct it.""")
+                        logger.warning(f"""Species "{subject_in_jpg}" may have a typo in "{thisfile['WindowsFileName']}", correct it.""")
                     else:
                         try:           
                             species = MyMagic.getSpecies(scientificname)
