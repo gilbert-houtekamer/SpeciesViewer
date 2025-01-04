@@ -4,7 +4,9 @@ import csv
 import logging
 import os, io
 import sys
+import glob
 import configparser
+import shutil
 import time
 import logging
 import argparse
@@ -31,6 +33,10 @@ import ghexif.breadcrumb
 from ghexif import SVException
 
 logger = logging.getLogger(__name__)
+# create file handler which logs even debug messages
+fh = logging.FileHandler('sysprint')
+fh.setLevel(logging.INFO)
+logger.addHandler(fh)
 
 class Waarneming:
     observations = []
@@ -45,10 +51,15 @@ class Waarneming:
         if filename == "":
             filename = "C:\\Users\\gilbe\\OneDrive\\waarneming.csv"
         try:
+            line = 0
             with io.open(filename, mode="r", newline="", encoding='utf-8') as csvfile:
-                reader = csv.DictReader(csvfile, delimiter=';')
+                reader = csv.DictReader(csvfile, delimiter=',')
                 for row in reader:
-                    self.observations.append(row)
+                    line += 1
+                    try:
+                        self.observations.append(row)
+                    except:
+                        logger.warning(f"Line {line} not accepted : {row}")
         except:
             pass    # no blogs yet, that's fine
 
@@ -62,44 +73,45 @@ class Waarneming:
 
   
     def makeEXIFMetadata(self, obs):
-# species type (hybrid, aggregate species, species, subspecies, synonym, variety)
-# 	subspecies: like "Viola tricolor subsp. curtisii"
-        # for now we only support species, not subspecies or groups
-        if obs['species type'] != 'Species': return None
-# is certain	
-# is escape
-        # only support certains, not sure about escapes, probably ok
-        if obs['is certain'] != 'TRUE': return None
-# has photos
-        if obs['has photos'] != 'TRUE': return None            
-# date	
-# time
-        metadata = '-EXIF:DateTimeOriginal=' + str(obs['date']).replace('/',':') + ' ' + obs['time'] + '\n'
-# species name	
-# scientific name
-# sex (U/M/F)
-# life stage (adult, adult breeding, caterpillar, empty shell or single valve, flowering, fruit-bearing, gall, imago, larva/nymph, second calendar year, unknown)
-        metadata += '-IPTC:Keywords=' + obs['species name'].lower() + ',' + obs['scientific name'].lower()
+        # species type (hybrid, aggregate species, species, subspecies, synonym, variety)
+        # 	subspecies: like "Viola tricolor subsp. curtisii"
+        # todo: for now we only support species, not subspecies or groups
+        if str(obs['species type']).lower() not in ('species', 'soort'): return None
+        # is certain, is escape: only support certains, not sure about escapes, probably ok
+        # todo: handle "not certain" with rescan
+        if str(obs['is certain']).upper() != 'TRUE': return None
+        # has photos: do not process observations with pictures
+        if str(obs['has photos']).upper() != 'TRUE': return None            
+        # date and time: typically from the iPhone photos or Camera time stamp
+        metadata = '-EXIF:DateTimeOriginal=' + str(obs['date']).replace('/',':').replace('-',':') + ' ' + obs['time'] + '\n'
+        # species name	
+        # scientific name
+        # sex (U/M/F)
+        # todo: life stage (adult, adult breeding, caterpillar, empty shell or single valve, flowering, fruit-bearing, gall, imago, larva/nymph, second calendar year, unknown)
+        #                  (tweede kalenderjaar)
+        metadata += '-IPTC:Keywords=' + str(obs['species name']).lower() + ',' + str(obs['scientific name']).lower()
         if obs['sex'] == 'M': metadata += ',male'
         elif obs['sex'] == 'F': metadata += ',female'
 
         metadata += '\n'
-# location	
+        # location: this the name that waarneming.nl uses to denote the area
         if obs['location'] != '': 
             metadata += '-XMP:Location=' + obs['location'] + '\n'
-# country division (provincie)
-# country
+        # country division (provincie), country
+        # might consider rename country, or somehow normalize it
         if obs['country division'] != '':  metadata += '-XMP:State=' + obs['country division'] + '\n'
         if obs['country'] != '':  metadata += '-XMP:Country=' + obs['country'] + '\n '
-# lat	
-# lng
-        metadata += '-EXIF:GPSLatitude=' + str(int(obs['lat'])/1e6)+ '\n '
-        metadata += '-EXIF:GPSLongitude=' + str(int(obs['lng'])/1e6)+ '\n '        
-# Example usage
-        # latitude_dms = self.decimal_to_dms(int(obs['lat'])/1e6, 'N')
-        # longitude_dms = self.decimal_to_dms(int(obs['lng'])/1e6, 'E')
-        # metadata += '-Composite:GPSPosition=' + latitude_dms + ',' + longitude_dms + '\n '
-# link            
+        # lat, lng.  Negative numbers means S and W respectivel I think
+        # metadata += '-EXIF:GPSLatitude=' +  str(float(obs['lat'])/1e6) + '\n '
+        # metadata += '-EXIF:GPSLongitude=' + str(float(obs['lng'])/1e6) + '\n '       
+        metadata += '-EXIF:GPSLatitude=' +  obs['lat'] + '\n '
+        metadata += '-EXIF:GPSLongitude=' + obs['lng'] + '\n '              
+     
+        # description
+        metadata += '-XMP:Description=waarneming.nl: ' + obs['validation status'] + '.' 
+        if obs['notes'] != '':
+            metadata += ' ' + (obs['notes'] + ".").replace('..', '.')
+        metadata += '\n'
         return metadata
 
     def download_observation_images(self, url, folder, metadataparm):
@@ -117,8 +129,8 @@ class Waarneming:
         for obj in metas:
             try:
                 if obj.attrs['property'] == 'og:image':
-                    img_name= obj.attrs['content'].split('?')[0]
-                    print(f"{os.path.split(img_name)}")
+                    img_name = obj.attrs['content'].split('?')[0]
+                    # print(f"{os.path.split(img_name)}")
             except:
                 pass
         # remember path
@@ -126,42 +138,46 @@ class Waarneming:
         # all pictures (including the main)
         for obj in images:
             try:
-                if obj.attrs['alt'] == 'foto bij waarneming':
+                if obj.attrs['alt'] in ('foto bij waarneming', 'photo for observation'):
                     try:
                         img_name = obj.attrs['src'].split('?')[0]
                         filename = os.path.split(img_name)[1]
                         imgurl = urljoin(waarnemingpath, 'photo/'+filename)
                         if url not in urlsdone:
                             urlsdone.append(imgurl)
-                            print(f"{imgurl}")
                             img_response = requests.get(imgurl)
                             img_name = os.path.join(folder, imgurl.split('/')[-1])
                             with open(img_name, 'wb') as f:
                                 f.write(img_response.content)
-                            print(f'Downloaded: {img_name}')
-                            # now add metadata (species first)
-                            metadata = { 'IPTC:Keywords': species[0] + "," + species[1].split('\n')[0],
-                                        'EXIF:GPSLatitude': 52.3650, # Example coordinates for Amsterdam 
-                                        'EXIF:GPSLatitudeRef': 'N', 
-                                        'EXIF:GPSLongitude': 4.8925, 
-                                        'EXIF:GPSLongitudeRef': 'E' }
+                            logger.info(f'Downloaded: {img_name} from {imgurl}')
                             with exiftool.ExifTool() as et: 
                                 # Write metadata to the file 
-                                exifparm = b''
-                                for tag, value in metadata.items(): 
-                                    exifparm += b'-' + tag.encode() + b'=' + str(value).encode() + b' '
                                 exifparm = metadataparm.encode()
                                 et.execute(exifparm, img_name.encode() )
-                                # Confirm metadata added
+                            # Confirm metadata added
                             with exiftool.ExifToolHelper() as et:
                                 result = et.get_metadata(img_name.encode())
                                 for tag in result[0]:
-                                    print(f'{tag}: {result[0][tag]}')
+                                    if tag == 'Composite:GPSPosition' or tag == 'Composite:ImageSize' or tag == 'IPTC:Keywords':
+                                        logger.info(f'{tag}: {result[0][tag]}')
                     except Exception as e:
                         logger.warning(f"{parser.description} failed: {e}")     
             except:
                 pass            
 
+    # download images for observations that are approved
+    def download_images(self):
+        # run through all observations and download pages
+        for obs in self.observations:
+            url = obs['link']
+            folder = 'downloaded_images'
+            if str(obs['has photos']).upper() == 'TRUE':
+                logger.info(f"{obs['date']} {obs['species name']} - {obs['scientific name']} has photo(s).")
+                metadata = self.makeEXIFMetadata(obs)
+                if metadata != None:
+                    self.download_observation_images(url,folder,metadata)
+            else:
+                logger.info(f"{obs['date']} {obs['species name']} {obs['scientific name']} has no photos.")
 
 def main(args, config):
     global starttime, SpeciesDebug
@@ -174,8 +190,9 @@ def main(args, config):
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     
-        # if trip, initialze master
+    # if trip, initialze master
     MyProject.initMasterAndTrip(config, inittrip=True)
+    MyProject.addTemplate("blog-waarneming.ini")  
 
     # do not run this on masters
     if MyProject.MasterRepository == "":         
@@ -194,19 +211,64 @@ def main(args, config):
     sp.readSpeciesInfo("C:/laptop/trips/safaridb/metadata/active/species.csv", False)
 
     waarnemingen = Waarneming(MyProject)
-    waarnemingen.read("C:\\Users\\gilbe\\OneDrive\\waarneming.csv")
+    waarnemingen.read("C:/Users/gilbe/OneDrive/foto/observations-gilbert-houtekamer_alles.csv")
+    #waarnemingen.read("C:\\Users\\gilbe\\OneDrive\\waarneming.csv")
+    #waarnemingen.download_images()
+    #return
 
-    # run through all observations and download pages
-    for obs in waarnemingen.observations:
-        url = obs['link']
-        folder = 'downloaded_images'
-        if obs['has photos'] == 'TRUE':
-            print(f"{obs['date']} {obs['species name']} {obs['scientific name']} has photo(s).")
-            metadata = waarnemingen.makeEXIFMetadata(obs)
-            if metadata != None:
-                waarnemingen.download_observation_images(url,folder,metadata)
-        else:
-            print(f"{obs['date']} {obs['species name']} {obs['scientific name']} has no photos.")
+    # run through all observations and and move images to directories per month
+    #  Get a list of all .jpg files in the directory 
+    jpg_files = glob.glob(os.path.join('downloaded_images', '*.jpg'))
+
+    for file_path in jpg_files:
+        try:
+            # read metadata from this JPG file
+            with exiftool.ExifToolHelper() as et:
+                result = et.get_metadata(file_path.encode())
+                if 'EXIF:DateTimeOriginal' in result[0]:
+                    tag = result[0]['EXIF:DateTimeOriginal']
+                    # target directory, make sure it exists
+                    targetdir = os.path.join('C:\\CurrentPictures', 'waarneming.nl', str(tag[0:8]).replace(':','-') + 'xx')
+                    #targetdir = os.path.join('C:\\CurrentPictures', 'waarneming.nl', str(tag[3:10]).replace(':','-') + '-xx')
+                    # Create all directories in the path if they do not exist 
+                    if not os.path.exists(targetdir):
+                        os.makedirs(targetdir)
+                    # make generic blog.ini
+                    if not os.path.exists(os.path.join(targetdir, 'blog.ini')):
+                        blog_lines = MyProject.getTemplateLines("blog-waarneming.ini")
+                        with open(os.path.join(targetdir, 'blog.ini'), "w", encoding='UTF-8') as blog_file:
+                            for line in blog_lines:
+                                line = line.replace('%%200%%', str(tag[0:7])).replace(':','-').replace('\n','')
+                                print(line, file=blog_file)
+                        blog_file.close()
+                    # copy pictures to the proper directory
+                    targetstr =  os.path.join(targetdir, result[0]['File:FileName'])
+                    sourcestr = os.path.join('downloaded_images', result[0]['File:FileName']) 
+                    shutil.copy(sourcestr, targetstr)
+                    logger.info(f"shutil.copy({sourcestr}, {targetstr})")
+        except Exception as e:
+            logger.warning(f"{parser.description} failed: {e}")
+            pass
+
+#     for obs in waarnemingen.observations:
+#         url = obs['link']
+#         folder = 'downloaded_images'
+#         if str(obs['has photos']).upper() == 'TRUE':
+#             logger.info(f"{obs['date']} {obs['species name']} - {obs['scientific name']} has photo(s).")
+#             metadata = waarnemingen.makeEXIFMetadata(obs)
+#             if metadata != None:
+# #                waarnemingen.download_observation_images(url,folder,metadata)
+#                 # create directory YYYY-MM-xx
+#                 directoryname = os.path.join('C:/CurrentPictures', 'waarneming.nl', obs['date'][0:8] + 'xx')
+#                 sourcestr = os.path.join('downloaded_images', obs['filename'])
+# #               shutil.copy(sourcestr, targetstr)
+#         targetstr = MyProject.getBiotaBlogDir() + MyProject.Blog.getBlogDay() + '/' + filedata['File:FileName']
+#         #print(f'from {sourcestr} to {targetstr}')
+#         if not MyProject.getSkipJPGs():
+#             shutil.copy(sourcestr, targetstr)
+#             jpgResizeCopy(targetstr, horizontalsize = 600)
+#         else:
+#             logger.info(f"{obs['date']} {obs['species name']} {obs['scientific name']} has no photos.")
 
 #     bc = ghexif.breadcrumb.Breadcrumb(MyProject)
 #     # sp.getBiotaWebRoot
@@ -229,8 +291,6 @@ def main(args, config):
 #     bc.appendSpeciesBC('026 columbiformes', MyProject.getBiotaWebRoot())                                              # assume trip
 #     workstr = bc.makeCrumb("")
 
-
-    print(workstr)
 # new test: statemachine
     # if not statemachine.stateOKtorun("ReadDirExif"):
     #     statemachine.explainAbort("ReadDirExif")
@@ -246,7 +306,7 @@ def main(args, config):
     #     statemachine.explainAbort("Freeze")
 # end new test
     totaltime = time.time() - starttime      
-    print(f'Total time for all other work {totaltime:.1f} seconds.')
+    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
 
 if __name__ == "__main__":
     # get commandline parameters

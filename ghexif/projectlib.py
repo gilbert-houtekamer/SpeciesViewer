@@ -530,7 +530,7 @@ class Project:
         return self.findBestItem(filelist, column, ("ORF", "NEF", "NRW", "HEIC"))
     # check for manual input by PhotoMechanic or Lightroom (mostly)
     def findXMPItem(self, filelist, column):
-        return self.findBestItem(filelist, column, ("XMP"))
+        return self.findBestItem(filelist, column, ("XMP", "JPG"))
     def findDNGItem(self, filelist, column):
         return self.findBestItem(filelist, column, ("DNG"))
     # should look at best JPG first!
@@ -585,8 +585,12 @@ class Project:
         files = upn['Files']
         # fill stuff from the EXIF from the files       
         upn["subject"] =           self.findXMPItem(files, "XMP:Subject")
+        if upn["subject"] == "":    # for waarneming.nl
+            upn["subject"] =       self.findXMPItem(files, "IPTC:Keywords")
         upn["Rating"] =            self.findXMPItem(files, "XMP:Rating")
         upn["Label"] =             self.findXMPItem(files, "XMP:Label")
+        if upn["Rating"] == "" and upn["Label"] == "":  # for waarneming.nl
+            upn["Label"] = "Green"
         if upn["ImageSize"] == "": upn["ImageSize"] = self.findCameraOrXMPItem(files, "ImageSize")
         upn["JPGSize"] =           self.findJPGItem(files, "ImageSize")
         if upn["GPSAltitude"] == "": upn["GPSAltitude"] =       self.findAnySourceItem(files, "EXIF:GPSAltitude")
@@ -674,7 +678,10 @@ class Project:
             # Read species data and put in the UniquePictureName (upn)
             for filename in picture['Files']:
                 thisfile = self.files_dict[filename]
-                subject_in_jpg = thisfile['XMP:Subject']
+                if thisfile['XMP:Subject'] != "":
+                    subject_in_jpg = thisfile['XMP:Subject']
+                else:
+                    subject_in_jpg = thisfile['IPTC:Keywords']                    
                 if subject_in_jpg != "":
                     scientificname = sp.getSpecies(subject_in_jpg)
                     if scientificname == "":       
@@ -885,6 +892,8 @@ class Project:
                         computation = 5
                     else:
                         computation = 15 * (1 + int(file['XMP:Rating']))
+                elif file['XMP:Rating'] in ['0', ''] and file['XMP:Label'] == "":
+                        computation = 3                    
 
         # save new Rating for Picture
         bestresult = 0

@@ -78,7 +78,7 @@ def getFormattedLocation(picture):
     if picture['Location'] == "" or isUnnamedRoad(picture['Location']):
         return getFormattedCityStateCountry(picture)
     else:
-        if picture['Location'] != "" and len(picture['Location']) > 30:
+        if picture['Location'] != "" and len(picture['Location']) > 15:
             return picture['Location']
         if picture['Country'] == "": return picture['Location'];
         if picture['Location'] == picture['City'] or picture['Location'] == picture['Country'] or picture['Location'] == "Unnamed Road": 
@@ -123,12 +123,12 @@ def formatAgePlumage(upn):
     
     return workstr
 
-def getJPGtime(JPGobject):
+def getJPGtime(JPGobject, MyProject):
     try:
         JPGtime = datetime.strptime(JPGobject['EXIF:DateTimeOriginal'], "%Y:%m:%d %H:%M:%S")
     except:
         try:
-            JPGtime = datetime.strptime(UniquePictureName_dict[JPGobject['UniquePictureName']]['DateTimeOriginal'], "%Y:%m:%d %H:%M:%S")
+            JPGtime = datetime.strptime(MyProject.UniquePictureName_dict[JPGobject['UniquePictureName']]['DateTimeOriginal'], "%Y:%m:%d %H:%M:%S")
         except:
             JPGtime = ''
     return JPGtime
@@ -604,11 +604,14 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     workstr +=  "</i>."
                 # location                    
                 try:
-                    parsed_date = getJPGtime(file)
+                    parsed_date = getJPGtime(file, MyProject)
                     workstr += " De foto is genomen "
                     if getFormattedLocation(picture) != "":
-                        workstr += " bij " + getFormattedLocation(picture) 
-                    workstr += " om " + parsed_date.strftime('%H:%M') + " op " + parsed_date.strftime('%d %b, %Y').lower()  + "."
+                        workstr += " bij " + getFormattedLocation(picture)
+                    if parsed_date.strftime('%H:%M') != "":
+                        workstr += " om " + parsed_date.strftime('%H:%M') 
+                    if parsed_date.strftime('%d %b, %Y').lower() != "":                        
+                        workstr += + " op " + parsed_date.strftime('%d %b, %Y').lower()  + "."
                 except:
                     pass
             return workstr        
@@ -652,11 +655,14 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     workstr +=  "</i>."
                 # location
                 try:
-                    parsed_date = getJPGtime(file) 
+                    parsed_date = getJPGtime(file, MyProject) 
                     workstr += " The photo was taken "
                     if getFormattedLocation(picture) != "":
                         workstr += " at " + getFormattedLocation(picture)
-                    workstr += " at " + parsed_date.strftime('%H:%M') + " on " + parsed_date.strftime('%A %B %d, %Y')  + "."
+                    if parsed_date.strftime('%H:%M') != "":
+                        workstr += " at " + parsed_date.strftime('%H:%M') + " on " + parsed_date.strftime('%A %B %d, %Y')  + "."
+                    if parsed_date.strftime('%A %B %d, %Y') != "":
+                        workstr += " on " + parsed_date.strftime('%A %B %d, %Y')  + "."
                 except:
                     pass
             return workstr    

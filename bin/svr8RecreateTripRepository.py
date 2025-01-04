@@ -35,6 +35,10 @@ import bin.sv6Freeze
 import bin.sv7WriteCommit
 
 logger = logging.getLogger(__name__)
+# create file handler which logs even debug messages
+fh = logging.FileHandler('sysprint-recreatetrip.txt')
+fh.setLevel(logging.INFO)
+logger.addHandler(fh)
 
 # read parameters, but will be overwritten probably
 def readConfig():
