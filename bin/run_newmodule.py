@@ -5,6 +5,7 @@ import logging
 import os, io
 import sys
 import glob
+import math
 import configparser
 import shutil
 import time
@@ -60,16 +61,19 @@ class Waarneming:
                         self.observations.append(row)
                     except:
                         logger.warning(f"Line {line} not accepted : {row}")
+                    # if line > 2000:
+                    #     break
         except:
             pass    # no blogs yet, that's fine
-
+        logger.info(f"{line} read from {filename} with warneming.nl export.")
         return
 
     def decimal_to_dms(self, decimal_degrees, direction):
-        degrees = int(decimal_degrees)
-        minutes = int((decimal_degrees - degrees) * 60)
-        seconds = (decimal_degrees - degrees - minutes / 60) * 3600
-        return f"{degrees}°{minutes}'{seconds:.2f}\" {direction}"
+        fractional_part, degrees = math.modf(float(decimal_degrees))
+        #degrees = int(decimal_degrees)
+        fractional_part, minutes = math.modf(fractional_part*60)
+        seconds = fractional_part * 60
+        return f"{int(degrees)}°{int(minutes)}'{seconds:.2f}\" "  #  {direction}
 
   
     def makeEXIFMetadata(self, obs):
@@ -101,14 +105,19 @@ class Waarneming:
         # might consider rename country, or somehow normalize it
         if obs['country division'] != '':  metadata += '-XMP:State=' + obs['country division'] + '\n'
         if obs['country'] != '':  metadata += '-XMP:Country=' + obs['country'] + '\n '
-        # lat, lng.  Negative numbers means S and W respectivel I think
-        # metadata += '-EXIF:GPSLatitude=' +  str(float(obs['lat'])/1e6) + '\n '
-        # metadata += '-EXIF:GPSLongitude=' + str(float(obs['lng'])/1e6) + '\n '       
-        metadata += '-EXIF:GPSLatitude=' +  obs['lat'] + '\n '
-        metadata += '-EXIF:GPSLongitude=' + obs['lng'] + '\n '              
+        # lat, lng.  Negative numbers means S and W respectivel 
+        NS = 'N' if float(obs['lat']) >= 0 else 'S'
+        EW = 'E' if float(obs['lng']) >= 0 else 'W'        
+        metadata += '-EXIF:GPSLatitude=' +  self.decimal_to_dms(obs['lat'], NS) + '\n '
+        metadata += '-EXIF:GPSLongitude=' + self.decimal_to_dms(obs['lng'], EW) + '\n '
+        metadata += '-EXIF:GPSLatitudeRef=' + NS + '\n '
+        metadata += '-EXIF:GPSLongitudeRef=' + EW + '\n '            
+        # metadata += '-EXIF:GPSLatitude=' +  obs['lat'] + '\n '
+        # metadata += '-EXIF:GPSLongitude=' + obs['lng'] + '\n '              
      
         # description
-        metadata += '-XMP:Description=waarneming.nl: ' + obs['validation status'] + '.' 
+        if obs['validation status'] != 'onbekend' and obs['validation status'] != '':
+            metadata += '-XMP:Description=waarneming.nl: ' + obs['validation status'] + '.' 
         if obs['notes'] != '':
             metadata += ' ' + (obs['notes'] + ".").replace('..', '.')
         metadata += '\n'
@@ -139,6 +148,7 @@ class Waarneming:
         for obj in images:
             try:
                 if obj.attrs['alt'] in ('foto bij waarneming', 'photo for observation'):
+                #if obj.attrs['alt'] in ('photo for observation'):
                     try:
                         img_name = obj.attrs['src'].split('?')[0]
                         filename = os.path.split(img_name)[1]
@@ -213,7 +223,7 @@ def main(args, config):
     waarnemingen = Waarneming(MyProject)
     waarnemingen.read("C:/Users/gilbe/OneDrive/foto/observations-gilbert-houtekamer_alles.csv")
     #waarnemingen.read("C:\\Users\\gilbe\\OneDrive\\waarneming.csv")
-    #waarnemingen.download_images()
+    waarnemingen.download_images()
     #return
 
     # run through all observations and and move images to directories per month

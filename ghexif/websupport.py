@@ -81,7 +81,10 @@ def getFormattedLocation(picture):
         if picture['Location'] != "" and len(picture['Location']) > 15:
             return picture['Location']
         if picture['Country'] == "": return picture['Location'];
-        if picture['Location'] == picture['City'] or picture['Location'] == picture['Country'] or picture['Location'] == "Unnamed Road": 
+        if picture['Location'] == picture['City'] or picture['Location'] == picture['Country'] or isUnnamedRoad(picture['Location']): 
+            return getFormattedCityStateCountry(picture)
+        if picture['City'] == '': 
+            picture['City'] = picture['Location']
             return getFormattedCityStateCountry(picture)
         return picture['Location'] + " (" + getFormattedCityStateCountry(picture) + ")"
 
@@ -123,14 +126,32 @@ def formatAgePlumage(upn):
     
     return workstr
 
-def getJPGtime(JPGobject, MyProject):
+# try different formats
+def tryJPGtime(rawtime, MyProject):
     try:
-        JPGtime = datetime.strptime(JPGobject['EXIF:DateTimeOriginal'], "%Y:%m:%d %H:%M:%S")
-    except:
-        try:
-            JPGtime = datetime.strptime(MyProject.UniquePictureName_dict[JPGobject['UniquePictureName']]['DateTimeOriginal'], "%Y:%m:%d %H:%M:%S")
-        except:
-            JPGtime = ''
+        if rawtime[2:3] == ':':                                      # Likely 12:02:2016 15:00:00
+            if len(rawtime)>12 and rawtime[13:14] == ":":            #        0123456789+123456789  
+                JPGtime = datetime.strptime(rawtime, "%d:%m:%Y %H:%M:%S")
+            else:
+                JPGtime = datetime.strptime(rawtime.strip(), "%d:%m:%Y")
+                JPGtime = JPGtime.date()
+        elif rawtime[4:5] == ':':                                    # Likely 2024:12:25 15:00:00
+            if len(rawtime)>12 and rawtime[13:14] == ":":            #        0123456789+123456789  
+                JPGtime = datetime.strptime(rawtime, "%Y:%m:%d %H:%M:%S")
+            else:
+                JPGtime = datetime.strptime(rawtime.strip(), "%Y:%m:%d")
+                JPGtime = JPGtime.date()                
+    except Exception as e:
+        logger.info(f"Conversion date {rawtime} failed, error: {e}")
+        JPGtime = ''
+        pass
+    return JPGtime
+
+# try different sources
+def getJPGtime(JPGobject, MyProject):
+    JPGtime = tryJPGtime(JPGobject['EXIF:DateTimeOriginal'], MyProject)
+    if JPGtime == "":
+        JPGtime = tryJPGtime(MyProject.UniquePictureName_dict[JPGobject['UniquePictureName']]['DateTimeOriginal'], MyProject)
     return JPGtime
 
 # make sure we do not do small twice
@@ -605,14 +626,15 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 # location                    
                 try:
                     parsed_date = getJPGtime(file, MyProject)
-                    workstr += " De foto is genomen "
+                    workstr += " De foto is genomen"
                     if getFormattedLocation(picture) != "":
                         workstr += " bij " + getFormattedLocation(picture)
                     if parsed_date.strftime('%H:%M') != "":
                         workstr += " om " + parsed_date.strftime('%H:%M') 
-                    if parsed_date.strftime('%d %b, %Y').lower() != "":                        
-                        workstr += + " op " + parsed_date.strftime('%d %b, %Y').lower()  + "."
+                    if parsed_date.strftime('%d %b, %Y') != "":                        
+                        workstr +=  " op " + parsed_date.strftime('%d %b, %Y')  + "."
                 except:
+                    logger.info(f'Location or date error for {file["File:FileName"]}: Location  {file["EXIF:DateTimeOriginal"]} and  {file["IPTC:Keywords"]}')
                     pass
             return workstr        
         elif tokenno == 112:         # Engelse tekst
@@ -656,7 +678,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 # location
                 try:
                     parsed_date = getJPGtime(file, MyProject) 
-                    workstr += " The photo was taken "
+                    workstr += " The photo was taken"
                     if getFormattedLocation(picture) != "":
                         workstr += " at " + getFormattedLocation(picture)
                     if parsed_date.strftime('%H:%M') != "":
