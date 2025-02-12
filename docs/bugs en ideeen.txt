@@ -2,6 +2,7 @@ Betere functies:
 - datum 28/11 maar half gedaan.
 IN PROGRESS- kruimel[pad]  ... still need to do trip improvement
 - bewaak dat trip info niet verloren gaan (zoals nu)
+- trema's in trip naam?  werkt wel in blog (spanje)
 - met JvO: waarneming.nl leeglepelen voor (vooral) insecten
 - rechtstreeks invoeren waarneming in mijn database 
   DONE - uitlezen van de observaties (gedaan, maar let op taal):
