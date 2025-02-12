@@ -10,6 +10,7 @@
 !installation files/*.csv
 !installation files/*.ini
 data/repositories/repo*
+downloaded_images/*
 
 ghconfig.ini
 

@@ -116,8 +116,12 @@ class Waarneming:
         # metadata += '-EXIF:GPSLongitude=' + obs['lng'] + '\n '              
      
         # description
-        if obs['validation status'] != 'onbekend' and obs['validation status'] != '':
-            metadata += '-XMP:Description=waarneming.nl: ' + obs['validation status'] + '.' 
+        if  obs['validation status'] != '':
+            metadata += '-XMP:Description=<a href="https://waarneming.nl/observation/' + obs['id'] + '/">waarneming.nl</a>: '
+            if obs['validation status'] == 'onbekend':
+                metadata +=  'ingevoerd als gedetermineerd.' 
+            else:
+                metadata +=  obs['validation status'] + '.' 
         if obs['notes'] != '':
             metadata += ' ' + (obs['notes'] + ".").replace('..', '.')
         metadata += '\n'

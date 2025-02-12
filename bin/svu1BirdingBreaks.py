@@ -76,12 +76,18 @@ def addSpeciesInfo(sc,sp):
             listspecies['scname'] = sc.english_dict[enname.lower()]
             if listspecies['scname'] in sp.species_dict:
                 listspecies['knownspecies'] = True
-        species = ""
+        elif listspecies['nlname'].lower() in sc.dutch_dict:
+            listspecies['scname'] = sc.dutch_dict[listspecies['nlname'].lower()]
+            if listspecies['scname'] in sp.species_dict:
+                listspecies['knownspecies'] = True            
     return
 
 
 # caller
 def printbb():
+    groep = 0
+    fotos = 0
+    nieuwe = 0
     file_path = "C:/CurrentPictures/2025/oman/checklist Oman 2025.prn"
     with open(file_path, 'w', encoding='utf-8') as f:
         header_line = 'No     Nederlandse naam              '
@@ -93,7 +99,11 @@ def printbb():
         for enname in bb_dict:
             listspecies = bb_dict[enname]
             line = f"{listspecies['number']:6} {listspecies['nlname']:30} {listspecies['enname']:30} {listspecies['scname']:30} "
-            line += f"{listspecies['count']:6}"
+            if listspecies['count'] >0:
+                line += f"{listspecies['count']:6}"
+                groep += 1
+            else:
+                line += "       "
             if listspecies['heard'] == 0:
                 line += "       "
             else:
@@ -104,8 +114,15 @@ def printbb():
                 line += ' Nieuw         '
             else:
                 line += '               '
+            if listspecies['foto']:
+                fotos += 1
+                if not listspecies['knownspecies']:
+                    nieuwe += 1
+
             print(line, file=f)
 
+        print(f"\n\nDe groep zag of hoorde {groep} soorten.",file=f)
+        print(f"Ik fotografeerde {fotos} soorten, waarvan {nieuwe} fotos.",file=f)
     return
 
 def main(args, config):
