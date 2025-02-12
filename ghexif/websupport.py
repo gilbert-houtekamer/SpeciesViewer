@@ -629,7 +629,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     workstr += " De foto is genomen"
                     if getFormattedLocation(picture) != "":
                         workstr += " bij " + getFormattedLocation(picture)
-                    if parsed_date.strftime('%H:%M') != "":
+                    if parsed_date.strftime('%H:%M') not in ["","00:00"]:
                         workstr += " om " + parsed_date.strftime('%H:%M') 
                     if parsed_date.strftime('%d %b, %Y') != "":                        
                         workstr +=  " op " + parsed_date.strftime('%d %b, %Y')  + "."
@@ -681,8 +681,8 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     workstr += " The photo was taken"
                     if getFormattedLocation(picture) != "":
                         workstr += " at " + getFormattedLocation(picture)
-                    if parsed_date.strftime('%H:%M') != "":
-                        workstr += " at " + parsed_date.strftime('%H:%M') + " on " + parsed_date.strftime('%A %B %d, %Y')  + "."
+                    if parsed_date.strftime('%H:%M') not in ["","00:00"]:
+                        workstr += " at " + parsed_date.strftime('%H:%M') 
                     if parsed_date.strftime('%A %B %d, %Y') != "":
                         workstr += " on " + parsed_date.strftime('%A %B %d, %Y')  + "."
                 except:
