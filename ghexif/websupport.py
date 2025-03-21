@@ -70,7 +70,7 @@ def getFormattedCityStateCountry(picture):
 	return str # "No GPS or location available"
 
 def isUnnamedRoad(locationname):
-    if isUnnamedRoad in ['Vía Sin Nombre', 'Route sans nom', 'Unnamed Road']:   # , 'Onbekende weg' ?
+    if locationname in ['Vía Sin Nombre', 'Route sans nom', 'Unnamed Road']:   # , 'Onbekende weg' ?
         return True
     return False
 
@@ -1025,7 +1025,7 @@ def addOneSpeciesPage(MyProject, species_param):
                 JPGname_no_path = MyProject.files_dict[os.path.basename(JPGname)]
                 if (JPGname_no_path != "") and (JPGname_no_path['UniquePictureName'] not in usedUPNs.keys()):
                     # do we have a picture close to it
-                    JPGtime = getJPGtime(JPGname_no_path)
+                    JPGtime = getJPGtime(JPGname_no_path, MyProject)
                     dropit = False
                     for UPNshownsofar in usedUPNs:
                         showntime = usedUPNs[UPNshownsofar]
@@ -1114,7 +1114,7 @@ def collectBestJPGs(MyProject, upn, selected_species):
                 # remember the JPG we want to use
                 selected_species[bestitem[0]] = MyProject.UniquePictureName_dict[MyProject.files_dict[bestitem[0]]['UniquePictureName']]['DateTimeOriginal']
     except:
-        print("collectBestJPGs")               
+        print("collectBestJPGs crashed.")               
     return
 
 def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
