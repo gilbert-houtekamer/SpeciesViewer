@@ -38,6 +38,10 @@ def readConfig():
     config.read(INI_LOCATION)
     return config
 
+# veel selectie mogelijkheden
+# https://avibase.bsc-eoc.org/checklist.jsp?lang=EN
+# voorbeeld brazilie:
+# https://avibase.bsc-eoc.org/checklist.jsp?lang=EN&p2=1&list=ioc&synlang=NL&region=BRms&version=text&lifelist=&highlight=0
 def readAviBase():
     file_path = "C:/Users/gilbe/OneDrive/reizen/gambia/soorten.csv"
     number = 1
@@ -102,7 +106,7 @@ def printbb():
         print(header_line, file=f)
 
         for enname in avibase_dict:
-            listspecies = avibase_dict[enname]
+            listspecies = avibase_dict[enname]          # better to for scientific name
             if listspecies['number'] == -1:
                 line = f"{listspecies['enname']}"
             else:
