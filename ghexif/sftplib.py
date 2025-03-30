@@ -144,7 +144,7 @@ class Sftp:
             json.dump(data_json, file)
 
         if (self.FTPhits + self.FTPmisses)>0:
-            logger.info(f'{self.FTPhits/(self.FTPhits + self.FTPmisses)*100:3}% of FTP JPG transfers are cached.')
+            logger.info(f'{self.FTPhits/(self.FTPhits + self.FTPmisses)*100:.0f}% of FTP JPG transfers are cached.')
         return
     
     # cache, uniquenes is size for JPG, CRC fo other files
