@@ -6,6 +6,7 @@ from datetime import datetime, date
 import ghexif.projectlib
 import logging
 import configparser
+import requests
 
 import ghexif
 import ghexif.projectlib
@@ -59,6 +60,8 @@ class Trip:
         return self.master_repository_web
     def getTripAdminFile(self):                 # the location when the trips.csv file is stored
         return os.path.join(self.mp.getMasterRepository(), 'admin', 'trip_admin.csv')
+    def getTripAdminWeb(self):
+        return self.getMasterBiotaWebRoot() + 'includes web/trip_admin.csv'
     def getTripBanner(self):          # the web address where the file can be found
         return os.path.join(self.mp.getBiotaWebRoot() , self.trip_dict[self.tripname]['trip_banner'])
     # def getTripPicture(self, tripname):         # the web address where the picture can be found
@@ -157,6 +160,26 @@ class Trip:
                 trip_dict[key] = value
         return trip_dict
     
+    def read_TripAdmin_from_web(self, url):
+        try:
+            # Fetch the CSV content from the URL
+            print(f"Reading from {url}")
+            response = requests.get(url)
+            response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
+
+            # Read the content using csv.DictReader
+            csvfile = io.StringIO(response.text)  # Convert response text to a file-like object
+            reader = csv.DictReader(csvfile, delimiter=';')
+
+            for row in reader:
+                if row['trip_name'] != "":
+                    self.addTrip(row)
+        except Exception as e:
+            print(f"An error occurred: {e}")  # Handle errors gracefully
+            pass    # No trips yet, that's fine
+        return
+
+    
     # get info all/existing trips
     def read_TripAdmin(self):
         try:
@@ -184,20 +207,21 @@ class Trip:
 
             for tripitem in self.trip_dict:
                 trip_object = self.trip_dict[tripitem]
-                row = {}
-                row['trip_name'] = trip_object['trip_name'] 
-                row['title_nl'] = trip_object['title_nl'] 
-                row['title_en'] = trip_object['title_en']
-                row['message_nl'] = trip_object['message_nl']
-                row['message_en'] = trip_object['message_en']
-                #row['Project'] = self.mp.ProjectName()
-                row['created'] = datetime.today().strftime('%Y-%m-%d %H:%M')
-                row['master_repository_disk'] = trip_object['master_repository_disk'] 
-                row['master_repository_web'] = trip_object['master_repository_web']                 
-                row['trip_banner'] = trip_object['trip_banner']
-                row['trip_picture'] = trip_object['trip_picture']
-                # soon to be obsolete
-                #row['repositorybanner'] = trip_object['repositorybanner']
+                row = {
+                    'trip_name': trip_object.get('trip_name', ''), 
+                    'title_nl': trip_object.get('title_nl', ''), 
+                    'title_en': trip_object.get('title_en', ''),
+                    'message_nl': trip_object.get('message_nl', ''),
+                    'message_en': trip_object.get('message_en', ''),
+                    'created': datetime.today().strftime('%Y-%m-%d %H:%M'),
+                    'master_repository_disk': trip_object.get('master_repository_disk', ''), 
+                    'master_repository_web': trip_object.get('master_repository_web', ''),                 
+                    'trip_banner': trip_object.get('trip_banner', ''),
+                    'trip_picture': trip_object.get('trip_picture', ''),
+                    'fromdate': trip_object.get('fromdate', ''),
+                    'todate': trip_object.get('todate', ''),
+                    'oneblog': trip_object.get('oneblog', '')
+                }                                             
                 writer.writerow(row)  
         return
 
@@ -259,3 +283,12 @@ class Trip:
         print(f'Uploaded {fromfile.replace("-nl","-en")} to {self.getMasterBiotaWebRoot() + "tripindex-en.html"}')        
         return
 
+    def uploadTripAdmin(self, sftp, path):
+        # # trip post and pictures
+        MyProject = self.mp     
+        # biotatrip = MyProject.getBiotaTripDir()
+        fromfile = self.getTripAdminFile()
+        toweb = sftp.remotePrefix() + path
+        sftp.upload(fromfile, toweb)
+        print(f'Uploaded {fromfile} to {path}')
+        return

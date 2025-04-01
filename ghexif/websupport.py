@@ -389,7 +389,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             return MyProject.getBlogDateFromPictures() + '/' + file['File:FileName']    #BUGBUG
         elif tokenno == 46:
             try:
-                return getJPGtime(file).strftime('%Y:%m:%d %H:%M:%S')
+                return getJPGtime(file, MyProject).strftime('%Y:%m:%d %H:%M:%S')
             except:
                 return ""
         elif tokenno == 47:
@@ -795,8 +795,11 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 soorten = 'Trip species'
                 title = 'Title'                
             workstr = ''
-            for tripname in MyProject.Trip.getTripDictSortedKeys():
-                trip = MyProject.Trip.getTrip(tripname)
+            # create copied versiuon
+            sorted_items = sorted(MyProject.Trip.trip_dict.items(), key=lambda x: datetime.strptime(x[1]['todate'], '%Y-%m-%d'), reverse=True)
+
+            for tripname in sorted_items:  # MyProject.Trip.getTripDictSortedKeys()
+                trip = MyProject.Trip.getTrip(tripname[0])
                 TripWebRoot = os.path.join(Path(BiotaWebRoot).parent, trip['trip_name'])
                 # print(f'Logname {logname} {blog["BestJPGs"][0]}')
                 workstr += '   <div class="w3-row" style="margin: 15px">\n'
@@ -818,10 +821,11 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += '            <tr>\n'
                 workstr += '              <th></th><td>' + trip["message_" + language] + '</td>\n'
                 workstr += '            </tr>\n'
-                # if language == 'nl':
-                #     workstr += '              <th>Datum:</th><td>' + trip["created"] + '</td>\n'
-                # else:
-                #     workstr += '              <th>Date:</th><td>' + trip["created"] + '</td>\n'
+                workstr += '            <tr>\n'                
+                if language == 'nl':
+                    workstr += '          <th>Periode:</th><td>' + trip["fromdate"] + ' tot ' + trip["todate"] + '</td>\n'
+                else:
+                    workstr += '          <th>Period:</th><td>' + trip["fromdate"] + ' to ' + trip["todate"] + '</td>\n'
                 workstr += '            </tr>\n'                  
                 workstr += '          </table>\n'
                 workstr += '        </div>\n'
@@ -903,8 +907,9 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         else:
             return '<token ' + tokenno + '>'
     except Exception as e:
-        logger.info(f"{species_param['ScientificName']}:{'<Failed to handle token ' + tokenno + '>'} Error: {e.args}")
-        return '<Failed to handle token '  + tokenno + '>' + e.arg[0]
+        logger.info(f"{'<Failed to handle token ' + str(tokenno) + '>'} Error: {e.args[0]}")
+        # {species_param['ScientificName']}:
+        return '<Failed to handle token '  + str(tokenno) + '>' + e.arg[0]
 
 # logic selected species
 def writeOneSpecies(MyProject, leaf, temptextfile):
