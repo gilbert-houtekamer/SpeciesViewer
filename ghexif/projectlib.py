@@ -337,7 +337,10 @@ class Project:
                     self.breadcrumb.addBCsimple("/trips/" + self.Trip.tripname + "/summaries/all biota species-en.html", "Trip species")
                 else:
                     self.breadcrumb.addBCsimple("/nature/summaries/all biota species-en.html", "All species")
-            self.breadcrumb.appendLevelBC(species, "/trips/" + self.Trip.tripname + "/")
+            if self.Trip:
+                self.breadcrumb.appendLevelBC(species, "/trips/" + self.Trip.tripname + "/")
+            else:
+                self.breadcrumb.appendLevelBC(species,"/nature/")
 
             templatefile = self.getTemplateLines("vogelordepage-" + language + ".html")
             with open((directoryname + species['ScientificName'] + '-' + language + '.html').lower(), "w", encoding='UTF-8') as SpeciesHTMLfile:
@@ -391,7 +394,10 @@ class Project:
                     self.breadcrumb.addBCsimple("/trips/" + self.Trip.tripname + "/summaries/all biota species-en.html", "Trip species")
                 else:
                     self.breadcrumb.addBCsimple("/nature/summaries/all biota species-en.html", "All species")
-            self.breadcrumb.appendLevelBC(species, "/trips/" + self.Trip.tripname + "/")
+            if self.Trip:
+                self.breadcrumb.appendLevelBC(species, "/trips/" + self.Trip.tripname + "/")
+            else:
+                self.breadcrumb.appendLevelBC(species,"/nature/")
 
             vogelsoortpage_lines = self.getTemplateLines("vogelsoortpage-" + language + ".html")
             with open((directoryname + species['ScientificName'] +'-' + language + '.html').lower(), "w", encoding='UTF-8') as SpeciesHTMLfile:

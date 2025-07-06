@@ -222,7 +222,8 @@ class Trip:
                     'todate': trip_object.get('todate', ''),
                     'oneblog': trip_object.get('oneblog', '')
                 }                                             
-                writer.writerow(row)  
+                writer.writerow(row)
+            
         return
 
     def readAndWriteTripAdmin(self):

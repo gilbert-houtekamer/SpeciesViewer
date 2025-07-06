@@ -197,7 +197,7 @@ def main(args, config):
 
     # reference project
     # if trip, initialze master
-    MyProject.initMasterAndTrip(config, inittrip=True)
+    MyProject.initMasterAndTrip(config, inittrip=False)
     if MyProject.Trip:
         referenceSpecies = os.path.join(MyProject.getMasterRepository(), 'metadata/active/species.csv')
     else:

@@ -889,7 +889,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 164:    # All / Trip spacies
             language = MyProject.getLanguage()
             if MyProject.Trip == None:
-                directory = MyProject.Trip.getMasterBiotaWebRoot()     # path to current main repository, NOT to trip also for subdirectories 
+                directory = MyProject.getBiotaWebRoot()     # path to current main repository, NOT to trip also for subdirectories 
                 if language == 'nl': 
                     tripormaster = 'Alle Soorten'  
                 else: tripormaster = 'All Species'  

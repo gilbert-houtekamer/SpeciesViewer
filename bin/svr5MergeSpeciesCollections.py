@@ -47,7 +47,7 @@ def main(args, config):
 
     # test set up is to use master, and merge collection on hardcoded place
     # read the list with all pre-defined species
-    tomergeSpeciesCollection = 'E:/Dropbox/safaridb/metadata/active/speciescollection.csv'
+    tomergeSpeciesCollection = MyProject.MasterRepository + '/metadata/active/speciescollection.csv'
     sc.readSpeciesCollection(tomergeSpeciesCollection, True)
     newSC = sc.scCopy()     # keep the old version to merge
     sc.clearDict()

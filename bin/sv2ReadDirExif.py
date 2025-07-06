@@ -53,8 +53,8 @@ def main(args, config):
             metadata = et.get_metadata(
                 MyProject.getProjectPath(), 
                 params=SELECTED_FIELDS)
-        except Exception:
-            raise SVException(f"No files found in the directory {MyProject.getProjectPath()}.")
+        except Exception as e:
+            raise SVException(f"No files found in the directory {MyProject.getProjectPath()}, error {e}.")
 
  
         datafilelocation = MyProject.getMetaDirReview()
