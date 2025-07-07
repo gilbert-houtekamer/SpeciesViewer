@@ -140,7 +140,9 @@ def tryJPGtime(rawtime, MyProject):
                 JPGtime = datetime.strptime(rawtime, "%Y:%m:%d %H:%M:%S")
             else:
                 JPGtime = datetime.strptime(rawtime.strip(), "%Y:%m:%d")
-                JPGtime = JPGtime.date()                
+                JPGtime = JPGtime.date()
+        else:
+            JPGtime = ''               
     except Exception as e:
         logger.info(f"Conversion date {rawtime} failed, error: {e}")
         JPGtime = ''
@@ -214,6 +216,13 @@ def getCameraSettings(MyProject, picture):
         return workstr
     else: 
         return ""  
+    
+def getSpeciesNameScientificDefault(MyProject, speciesname, languageName):
+    if MyProject.getSpecies(speciesname)[languageName] != "":
+        return MyProject.getSpecies(speciesname)[languageName].capitalize()
+    else:
+        return MyProject.getSpecies(speciesname)['ScientificName'].capitalize()
+    return
 
 def formatToken(tokenno, MyProject, species_param, file, picture):
     global config
@@ -282,7 +291,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                         workstr += '			<li><a href="' + BiotaWebRoot + \
                             MyProject.getSpecies(leaf)['TargetPath'] + \
                             MyProject.getSpecies(leaf)['ScientificName'] + '-' + language + '.html">' \
-                            + MyProject.getSpecies(leaf)[languageName].capitalize() + "</a></li>\n"
+                            + getSpeciesNameScientificDefault(MyProject, leaf, languageName) + "</a></li>\n"
                 return workstr
             else:
                 return ""
@@ -302,7 +311,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                         workstr += "			<li><a href=""\"" + BiotaWebRoot + \
                             MyProject.getSpecies(leaf)['TargetPath'] + \
                             MyProject.getSpecies(leaf)['ScientificName']  + '-' + language + '.html">' \
-                            + MyProject.getSpecies(leaf)[languageName].capitalize() + "</a></li>\n"
+                            + getSpeciesNameScientificDefault(MyProject, leaf, languageName) + "</a></li>\n"
                 return workstr
             else:
                 return ""
@@ -992,6 +1001,7 @@ def addAllSpeciesPage(MyProject, speciesname, temptextfile):
 
 def addOneSpeciesPage(MyProject, species_param):
     BiotaDiskRoot = MyProject.getBiotaAllorNewDir()
+    #print(species_param['ScientificName'], species_param['DutchName'])
     workstr = ""
     # a smarter selection is useful, especially to avoid very similar pictures
     try:
@@ -1030,14 +1040,18 @@ def addOneSpeciesPage(MyProject, species_param):
                 JPGname_no_path = MyProject.files_dict[os.path.basename(JPGname)]
                 if (JPGname_no_path != "") and (JPGname_no_path['UniquePictureName'] not in usedUPNs.keys()):
                     # do we have a picture close to it
-                    JPGtime = getJPGtime(JPGname_no_path, MyProject)
                     dropit = False
-                    for UPNshownsofar in usedUPNs:
-                        showntime = usedUPNs[UPNshownsofar]
-                        deltahours = abs(showntime - JPGtime).total_seconds()/3600
-                        if deltahours < 0.25: dropit = True
-                    # more conditions we can try
-
+                    try:
+                        JPGtime = getJPGtime(JPGname_no_path, MyProject)
+                        for UPNshownsofar in usedUPNs:
+                            showntime = usedUPNs[UPNshownsofar]
+                            deltahours = abs(showntime - JPGtime).total_seconds()/3600
+                            if deltahours < 0.25: dropit = True
+                    # more conditions we can try                        
+                    except Exception as e:
+                        print(f"""Pass error "{JPGname_no_path['WindowsFileName']}" with "{species_param['ScientificName']}" / "{species_param['DutchName']}": {e}""")
+                        pass
+                    # possibly missing date
                     if not dropit:
                         usedUPNs[JPGname_no_path['UniquePictureName']] = JPGtime
                         for line in MyProject.getTemplateLines("vogelfoto.html"):
@@ -1052,10 +1066,13 @@ def addOneSpeciesPage(MyProject, species_param):
                     else:
                         rejectUPNs += 1
 
+                #print(species_param['ScientificName'], "\n", workstr)
                 if (filesfound == maxpicturesperAgeSexePlumage):
                     break   # go to next man/female/young/breeding etc
-    except:
-        workstr = ""
+    except Exception as e:
+        print(f"""Error in showing "{JPGname_no_path['WindowsFileName']}" with "{species_param['ScientificName']}" / "{species_param['DutchName']}": {e}""")
+        #workstr = ""
+    #print('return for ', species_param['ScientificName']) # , "\n", workstr)
     return workstr
 
 # create summary page, that should become Wordpress
