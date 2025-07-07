@@ -70,22 +70,6 @@ def commitProjectFiles(MyProject):
     shutil.copy(os.path.join(frozendir, "species.csv"), activedir+"species.csv")              
     return
 
-def deleteCopiedFiles(deletelist):
-    with open(deletelist, mode="r", newline="", encoding='utf-8') as csvfile: 
-        linecount = 0
-        cleaneddirectory = ""
-        for filename in csvfile:
-            filename = filename.replace("\n","").replace('"', '')
-            if os.path.exists(filename): 
-                linecount += 1
-                os.remove(filename)
-                if cleaneddirectory == "":
-                    cleaneddirectory = os.path.dirname(filename)
-        filesleft = sum(len(files) for _, _, files in os.walk(cleaneddirectory))
-        logger.info(f'{linecount} files deleted from {cleaneddirectory}, {filesleft} left without species information.')
-    return
-
-
 def putRecursiveTreeWeb(MyProject, config):
     password = config.get("websettings","Sftppwd").strip("'")
     sftp = ghexif.sftplib.Sftp(
