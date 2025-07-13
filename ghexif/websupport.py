@@ -858,6 +858,24 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 else:
                     workstr = tn.capitalize()
             return workstr
+        elif tokenno == 152 or tokenno == 153:
+            language = 'nl' if tokenno == 152 else 'en'
+            if MyProject.Trip != None:
+                if language == 'nl':
+                    workstr = "Alle soorten in "
+                else:
+                    workstr = "All species seen in " 
+                tn = MyProject.Trip.getTripName()
+                if tn in MyProject.Trip.trip_dict:
+                    workstr += MyProject.Trip.getTrip(tn)['title_' + language]
+                else:
+                    workstr += tn.capitalize()
+            else:
+                if language == 'nl':
+                    workstr = "Alle soorten"
+                else:
+                    workstr = "All species"                    
+            return workstr            
         # 160-162: functions for slider pages
         elif tokenno == 160:
             pictures = len(MyProject.Blog.BestJPGs)
@@ -1044,9 +1062,12 @@ def addOneSpeciesPage(MyProject, species_param):
                     try:
                         JPGtime = getJPGtime(JPGname_no_path, MyProject)
                         for UPNshownsofar in usedUPNs:
-                            showntime = usedUPNs[UPNshownsofar]
-                            deltahours = abs(showntime - JPGtime).total_seconds()/3600
-                            if deltahours < 0.25: dropit = True
+                            try:
+                                showntime = usedUPNs[UPNshownsofar]
+                                deltahours = abs(showntime - JPGtime).total_seconds()/3600
+                                if deltahours < 0.25: dropit = True
+                            except:
+                                dropit = True
                     # more conditions we can try                        
                     except Exception as e:
                         print(f"""Pass error "{JPGname_no_path['WindowsFileName']}" with "{species_param['ScientificName']}" / "{species_param['DutchName']}": {e}""")
