@@ -54,7 +54,8 @@ def main(args, config):
                 MyProject.getProjectPath(), 
                 params=SELECTED_FIELDS)
         except Exception as e:
-            raise SVException(f"No files found in the directory {MyProject.getProjectPath()}, error {e}.")
+            raise SVException(f"No files found in the directory {MyProject.getProjectPath()}\nError {e}: {e.stderr}{e.stdout}.")
+#            logger.warning(f"No files found in the directory {MyProject.getProjectPath()}\nError {e}: {e.stderr}{e.stdout}.")
 
  
         datafilelocation = MyProject.getMetaDirReview()
