@@ -76,14 +76,21 @@ def makeDirectories(MyProject, speciesname, all_or_new):
     species = MyProject.sp.species_dict[speciesname]
     # create database to store pictures as needed
     directoryname = (MyProject.getRepositoryPath() + species['TargetPath']).lower()
-    os.makedirs(directoryname, exist_ok=True)
-    for leaf in species['Leaves']:
-        species = MyProject.sp.species_dict[leaf]
-        if int(species['iPicturesWithJPGsThisRun']) > 0:
-            if species['Level'] != Level.SPECIES:
-                makeDirectories(MyProject, leaf, all_or_new)
-            else: # only species store actual data
-                makeSpeciesDirectory(MyProject, leaf)
+    try:
+        os.makedirs(directoryname, exist_ok=True)
+        for leaf in species['Leaves']:
+            species = MyProject.sp.species_dict[leaf]
+            if int(species['iPicturesWithJPGsThisRun']) > 0:
+                if species['Level'] != Level.SPECIES:
+                    try:
+                        makeDirectories(MyProject, leaf, all_or_new)
+                    except Exception as e:
+                        logger.info(f"makeDirectories failed ()  {e.strerror} {e.filename}")
+                else: # only species store actual data
+                    makeSpeciesDirectory(MyProject, leaf)
+    except Exception as e:
+        print(f"makeDirectories failed: {e.strerror} {e.filename}")
+        logger.info(f'Cannot create "{e.filename}": {e.strerror}')
     return
 
 def AppendChangedFileData(MyProject, firstNewFile):

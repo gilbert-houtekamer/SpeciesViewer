@@ -1,4 +1,6 @@
-# need module to delete files that are copied to targetdatabase 
+# module to delete files that are copied to targetdatabase 
+# use this with a project file for the trip, 
+# AFTER you created both the trip but also you did the merge in the master.
 #!/usr/bin/env python3
 import re
 import csv
