@@ -2,48 +2,68 @@ import flet as ft
 import os
 from utils.photo_sorter import process_source_dir, log_and_print
 from utils.config import get_setting, set_setting
+from gui.components import create_dialog, make_integer_field, validate_integer, directory_field, pick_directory
 
-def create_dialog(title: str, content_controls: list, page: ft.Page, dismiss_callback=None):
-    def dismiss(e):
-        page.overlay.remove(dialog_container)
-        page.on_keyboard_event = None
-        page.update()
-        if dismiss_callback:
-            dismiss_callback()
-
-    # ESC key closes dialog
-    def handle_keypress(e: ft.KeyboardEvent):
-        if e.key == "Escape":
-            dismiss(e)
-
-    page.on_keyboard_event = handle_keypress
-
-    title_bar = ft.Container(
-        bgcolor="#808000",
-        padding=10,
-        content=ft.Row([
-            ft.Text(title, size=22, weight="bold", color=ft.colors.ON_PRIMARY),
-            ft.IconButton(icon=ft.icons.CLOSE, tooltip="Close", on_click=dismiss)
-        ], alignment="spaceBetween")
+def show_global_settings_dialog(page, config):
+    splash_field = ft.Switch(label="Enable Splash", value=config.get("Global", "splash_enabled", fallback="yes") == "yes")
+    width_field = ft.TextField(
+        label="Window width",
+        value=config.get("Global", "default_window_width", fallback="1600"),
+        tooltip="Recommended: 1600 (range: 800–3000)",
+        keyboard_type=ft.KeyboardType.NUMBER,
+        on_change=lambda e: validate_integer(e, 800, 3000)
     )
 
-    content_body = ft.Container(
-        content=ft.Column(content_controls, spacing=14),
-        padding=20
+    height_field = ft.TextField(
+        label="Window height",
+        value=config.get("Global", "default_window_height", fallback="1200"),
+        tooltip="Recommended: 1200 (range: 600–2250)",
+        keyboard_type=ft.KeyboardType.NUMBER,
+        on_change=lambda e: validate_integer(e, 600, 2500)
     )
 
-    card = ft.Card(content=ft.Column([title_bar, content_body], spacing=0))
+    def save_settings(e):
+        config.set("Global", "splash_enabled", "yes" if splash_field.value else "no")
+        config.set("Global", "default_window_width", width_field.value)
+        config.set("Global", "default_window_height", height_field.value)
+        config.save()  # Save to disk
+        splash_field.page.show_snack_bar(ft.SnackBar(ft.Text("✅ Global settings saved")))
 
-    dialog_container = ft.Container(
-        content=card,
-        bgcolor=ft.colors.with_opacity("#dbe5cb", 0.95),  # Light olive background
-        alignment=ft.alignment.center,
-        padding=30,
-        expand=True
-    )
+    controls = [
+        splash_field,
+        width_field,
+        height_field,
+        ft.ElevatedButton("Save", on_click=save_settings)
+    ]
 
-    page.overlay.append(dialog_container)
-    page.update()
+    create_dialog("Global Settings", controls, page)
+
+def show_repositories_dialog(page, config):
+    # Use helper to build folder field rows
+    master_field, master_row = directory_field("[master] Database", page=page, config_section="master", config_key="masterbiotadatabase")
+    trip_field, trip_row = directory_field("[trip] Database", page=page, config_section="trip", config_key="tripbiotadatabase")
+
+    master_web = ft.TextField(label="[master] Web root", value=config.get("master", "masterbiotawebroot", fallback=""))
+    trip_web = ft.TextField(label="[trip] Web root", value=config.get("trip", "tripbiotawebroot", fallback=""))
+
+    def save_repos(e):
+        config.set("master", "masterbiotadatabase", master_field.value)
+        config.set("master", "masterbiotawebroot", master_web.value)
+        config.set("trip", "tripbiotadatabase", trip_field.value)
+        config.set("trip", "tripbiotawebroot", trip_web.value)
+        config.save()
+        page.show_snack_bar(ft.SnackBar(ft.Text("✅ Repository settings saved")))
+
+    controls = [
+        master_row,
+        master_web,
+        ft.Divider(),
+        trip_row,
+        trip_web,
+        ft.ElevatedButton("Save", on_click=save_repos)
+    ]
+
+    create_dialog("Repositories", controls, page)
 
 
 def show_about_dialog(page):
@@ -71,38 +91,16 @@ def show_about_dialog(page):
     about_dialog.open = True
     page.update()
 
+
 def show_photo_sorter_overlay(page, update_status_callback, add_to_global_log):
-    def dismiss(e):
-        page.overlay.remove(overlay)
-        page.on_keyboard_event = None  # clean up listener        
-        page.update()
-
-    def handle_keypress(e: ft.KeyboardEvent):
-        if e.key == "Escape":
-            dismiss(e)
-
-
-    close_icon = ft.IconButton(
-        icon=ft.icons.CLOSE,
-        tooltip="Close",
-        on_click=dismiss,
-        icon_color=ft.colors.ON_PRIMARY
-    )    
     FIELD_WIDTH = 900
 
-    source_field = ft.TextField(label="Source folder", width=FIELD_WIDTH)
-    dest_field = ft.TextField(label="Destination folder", width=FIELD_WIDTH)
-    log_box = ft.TextField(value="", multiline=True, read_only=True, width=FIELD_WIDTH, height=400)
-    title_bar = ft.Container(
-        bgcolor="#808000",  # Olive
-        padding=10,
-        content=ft.Row([
-            ft.Text("Photo Sorter", size=22, weight="bold", color=ft.colors.ON_PRIMARY),
-            close_icon
-        ], alignment="spaceBetween")
-    )
+    source_field, source_browse = directory_field("Source folder", page=page, config_section="PhotoSorter", config_key="last_source_folder")
+    dest_field, dest_browse = directory_field("Destination folder", page=page, config_section="PhotoSorter", config_key="last_dest_folder")
 
-    # Load saved defaults from config
+    log_box = ft.TextField(value="", multiline=True, read_only=True, width=FIELD_WIDTH, height=400)
+
+    # Load saved defaults
     source_field.value = get_setting("PhotoSorter", "last_source_folder", "")
     dest_field.value = get_setting("PhotoSorter", "last_dest_folder", "")
 
@@ -117,151 +115,243 @@ def show_photo_sorter_overlay(page, update_status_callback, add_to_global_log):
 
     def browse_source(e):
         def result(ev):
-            if ev.files and len(ev.files) > 0:
+            if ev.files:
                 path = os.path.dirname(ev.files[0].path)
                 source_field.value = path
                 page.update()
         picker_source.on_result = result
-        picker_source.pick_files(file_type=ft.FilePickerFileType.ANY, dialog_title="Pick any file in source folder")
+        picker_source.pick_files(dialog_title="Pick any file in source folder")
 
     def browse_dest(e):
         def result(ev):
-            if ev.files and len(ev.files) > 0:
+            if ev.files:
                 path = os.path.dirname(ev.files[0].path)
                 dest_field.value = path
                 page.update()
         picker_dest.on_result = result
-        picker_dest.pick_files(file_type=ft.FilePickerFileType.ANY, dialog_title="Pick any file in destination folder")
+        picker_dest.pick_files(dialog_title="Pick any file in destination folder")
 
     def run_sorter(e):
         src = source_field.value.strip()
         dst = dest_field.value.strip()
         if not os.path.isdir(src) or not os.path.isdir(dst):
-            log_box.value += "\n⚠ Invalid folder path."
-            add_to_global_log("\n⚠ Invalid folder path.")
+            add_log_entry("⚠ Invalid folder path.")
             update_status_callback("Error: Invalid folders.")
         else:
-            log_box.value += f"\n🔧 Running Photo Sorter for {os.path.basename(src)}..."
-            add_to_global_log(f"\n🔧 Running Photo Sorter for {os.path.basename(src)}...")
-            page.update()
+            add_log_entry(f"🔧 Running Photo Sorter for {os.path.basename(src)}...")
             try:
                 process_source_dir(src, dst, "Oostzee zeilzomer", "Baltic Sea sailing summer", log_callback=add_log_entry)
-                log_box.value += "\n✅ Done!"
-                add_to_global_log("\n✅ Done!")
+                add_log_entry("✅ Done!")
                 update_status_callback("Photo Sorter completed.")
-
-                # Save folder paths to config
                 set_setting("PhotoSorter", "last_source_folder", src)
                 set_setting("PhotoSorter", "last_dest_folder", dst)
             except Exception as err:
-                log_box.value += f"\n❌ Error: {err}"
-                add_to_global_log(f"\n❌ Error: {err}")                           
+                add_log_entry(f"❌ Error: {err}")
                 update_status_callback("Error in Photo Sorter.")
-        page.update()
 
-    field_group = ft.Container(
-        content=ft.Column([
-            source_field,
-            ft.TextButton("📂 Browse source", on_click=browse_source),
-            dest_field,
-            ft.TextButton("📂 Browse destination", on_click=browse_dest),
-            ft.ElevatedButton("Run Photo Sorter", on_click=run_sorter),
-            log_box
-        ], spacing=14),
-        padding=20
-    )        
-
-    dialog_background_color = ft.colors.with_opacity("#808000", 0.4)
-
-    overlay = ft.Container(
-        content=ft.Card(content=ft.Column([
-            title_bar,
-            field_group,
-            ft.Row([ft.TextButton("Close", on_click=dismiss)], alignment="end")
-        ], spacing=0)),
-        bgcolor=dialog_background_color,
-        alignment=ft.alignment.center,
-        padding=30,
-        expand=True
-    )    
-
-    page.overlay.append(overlay)
-    page.on_keyboard_event = handle_keypress    
-    page.update()    
-
-def show_photo_sorter_dialog(page, update_status_callback):
-    FIELD_WIDTH = 1000
-
-    source_field = ft.TextField(label="Source folder", width=FIELD_WIDTH)
-    dest_field = ft.TextField(label="Destination folder", width=FIELD_WIDTH)
-
-    source_field.value = get_setting("PhotoSorter", "last_source_folder", "")
-    dest_field.value = get_setting("PhotoSorter", "last_dest_folder", "")
-    
-    log_box = ft.TextField(value="", multiline=True, read_only=True, width=FIELD_WIDTH, height=400)
-
-    picker_source = ft.FilePicker()
-    picker_dest = ft.FilePicker()
-    page.overlay.extend([picker_source, picker_dest])
-
-    def close_dialog(e):
-        page.dialog.open = False
-        page.update()
-
-    def browse_source(e):
-        def result(ev):
-            if ev.files and len(ev.files) > 0:
-                source_field.value = os.path.dirname(ev.files[0].path)
-                page.update()
-        picker_source.on_result = result
-        picker_source.pick_files(file_type=ft.FilePickerFileType.ANY, dialog_title="Pick any file in source folder")
-
-    def browse_dest(e):
-        def result(ev):
-            if ev.files and len(ev.files) > 0:
-                dest_field.value = os.path.dirname(ev.files[0].path)
-                page.update()
-        picker_dest.on_result = result
-        picker_dest.pick_files(file_type=ft.FilePickerFileType.ANY, dialog_title="Pick any file in destination folder")
-
-    def run_sorter(e):
-        src = source_field.value.strip()
-        dst = dest_field.value.strip()
-        if not os.path.isdir(src) or not os.path.isdir(dst):
-            log_box.value += "\n⚠ Invalid folder path."
-            #add_to_global_log("\n⚠ Invalid folder path.")
-            update_status_callback("Error: Invalid folders.")
-        else:
-            log_box.value += f"\n🔧 Running Photo Sorter for {os.path.basename(src)}..."  
-            page.update()
-            try:
-                process_source_dir(src, dst, "Oostzee zeilzomer", "Baltic Sea sailing summer")
-                log_box.value += "\n✅ Done!"
-                #add_to_global_log("\n✅ Done!")
-                update_status_callback("Photo Sorter completed.")
-            except Exception as err:
-                log_box.value += f"\n❌ Error: {err}"
-                update_status_callback("Error in Photo Sorter.")
-        page.update()
-
-    content = ft.Column([
+    controls = [
         source_field,
-        ft.TextButton("📂 Browse source folder", on_click=browse_source),
+        source_browse,
         dest_field,
-        ft.TextButton("📂 Browse destination folder", on_click=browse_dest),
+        dest_browse,
         ft.ElevatedButton("Run Photo Sorter", on_click=run_sorter),
         log_box
-    ], tight=True)
+    ]
 
-    dialog = ft.AlertDialog(
-        title=ft.Text("Photo Sorter"),
-        content=content,
-        actions=[ft.TextButton("Close", on_click=close_dialog)],
-        modal=True, 
-        width=FIELD_WIDTH+100
-    )
+    create_dialog("Photo Sorter", controls, page)
 
-    page.dialog = dialog
-    dialog.open = True
-    page.update()
+
+# def show_photo_sorter_overlay_okd(page, update_status_callback, add_to_global_log):
+#     def dismiss(e):
+#         page.overlay.remove(overlay)
+#         page.on_keyboard_event = None  # clean up listener        
+#         page.update()
+
+#     def handle_keypress(e: ft.KeyboardEvent):
+#         if e.key == "Escape":
+#             dismiss(e)
+
+
+#     close_icon = ft.IconButton(
+#         icon=ft.icons.CLOSE,
+#         tooltip="Close",
+#         on_click=dismiss,
+#         icon_color=ft.colors.ON_PRIMARY
+#     )    
+#     FIELD_WIDTH = 900
+
+#     source_field = ft.TextField(label="Source folder", width=FIELD_WIDTH)
+#     dest_field = ft.TextField(label="Destination folder", width=FIELD_WIDTH)
+#     log_box = ft.TextField(value="", multiline=True, read_only=True, width=FIELD_WIDTH, height=400)
+#     title_bar = ft.Container(
+#         bgcolor="#808000",  # Olive
+#         padding=10,
+#         content=ft.Row([
+#             ft.Text("Photo Sorter", size=22, weight="bold", color=ft.colors.ON_PRIMARY),
+#             close_icon
+#         ], alignment="spaceBetween")
+#     )
+
+#     # Load saved defaults from config
+#     source_field.value = get_setting("PhotoSorter", "last_source_folder", "")
+#     dest_field.value = get_setting("PhotoSorter", "last_dest_folder", "")
+
+#     picker_source = ft.FilePicker()
+#     picker_dest = ft.FilePicker()
+#     page.overlay.extend([picker_source, picker_dest])
+
+#     def add_log_entry(msg):
+#         log_box.value += "\n" + msg
+#         add_to_global_log(msg)
+#         page.update()
+
+#     def browse_source(e):
+#         def result(ev):
+#             if ev.files and len(ev.files) > 0:
+#                 path = os.path.dirname(ev.files[0].path)
+#                 source_field.value = path
+#                 page.update()
+#         picker_source.on_result = result
+#         picker_source.pick_files(file_type=ft.FilePickerFileType.ANY, dialog_title="Pick any file in source folder")
+
+#     def browse_dest(e):
+#         def result(ev):
+#             if ev.files and len(ev.files) > 0:
+#                 path = os.path.dirname(ev.files[0].path)
+#                 dest_field.value = path
+#                 page.update()
+#         picker_dest.on_result = result
+#         picker_dest.pick_files(file_type=ft.FilePickerFileType.ANY, dialog_title="Pick any file in destination folder")
+
+#     def run_sorter(e):
+#         src = source_field.value.strip()
+#         dst = dest_field.value.strip()
+#         if not os.path.isdir(src) or not os.path.isdir(dst):
+#             log_box.value += "\n⚠ Invalid folder path."
+#             add_to_global_log("\n⚠ Invalid folder path.")
+#             update_status_callback("Error: Invalid folders.")
+#         else:
+#             log_box.value += f"\n🔧 Running Photo Sorter for {os.path.basename(src)}..."
+#             add_to_global_log(f"\n🔧 Running Photo Sorter for {os.path.basename(src)}...")
+#             page.update()
+#             try:
+#                 process_source_dir(src, dst, "Oostzee zeilzomer", "Baltic Sea sailing summer", log_callback=add_log_entry)
+#                 log_box.value += "\n✅ Done!"
+#                 add_to_global_log("\n✅ Done!")
+#                 update_status_callback("Photo Sorter completed.")
+
+#                 # Save folder paths to config
+#                 set_setting("PhotoSorter", "last_source_folder", src)
+#                 set_setting("PhotoSorter", "last_dest_folder", dst)
+#             except Exception as err:
+#                 log_box.value += f"\n❌ Error: {err}"
+#                 add_to_global_log(f"\n❌ Error: {err}")                           
+#                 update_status_callback("Error in Photo Sorter.")
+#         page.update()
+
+#     field_group = ft.Container(
+#         content=ft.Column([
+#             source_field,
+#             ft.TextButton("📂 Browse source", on_click=browse_source),
+#             dest_field,
+#             ft.TextButton("📂 Browse destination", on_click=browse_dest),
+#             ft.ElevatedButton("Run Photo Sorter", on_click=run_sorter),
+#             log_box
+#         ], spacing=14),
+#         padding=20
+#     )        
+
+#     dialog_background_color = ft.colors.with_opacity("#808000", 0.4)
+
+#     overlay = ft.Container(
+#         content=ft.Card(content=ft.Column([
+#             title_bar,
+#             field_group,
+#             ft.Row([ft.TextButton("Close", on_click=dismiss)], alignment="end")
+#         ], spacing=0)),
+#         bgcolor=dialog_background_color,
+#         alignment=ft.alignment.center,
+#         padding=30,
+#         expand=True
+#     )    
+
+#     page.overlay.append(overlay)
+#     page.on_keyboard_event = handle_keypress    
+#     page.update()    
+
+# def show_photo_sorter_dialog(page, update_status_callback):
+#     FIELD_WIDTH = 1000
+
+#     source_field = ft.TextField(label="Source folder", width=FIELD_WIDTH)
+#     dest_field = ft.TextField(label="Destination folder", width=FIELD_WIDTH)
+
+#     source_field.value = get_setting("PhotoSorter", "last_source_folder", "")
+#     dest_field.value = get_setting("PhotoSorter", "last_dest_folder", "")
+    
+#     log_box = ft.TextField(value="", multiline=True, read_only=True, width=FIELD_WIDTH, height=400)
+
+#     picker_source = ft.FilePicker()
+#     picker_dest = ft.FilePicker()
+#     page.overlay.extend([picker_source, picker_dest])
+
+#     def close_dialog(e):
+#         page.dialog.open = False
+#         page.update()
+
+#     def browse_source(e):
+#         def result(ev):
+#             if ev.files and len(ev.files) > 0:
+#                 source_field.value = os.path.dirname(ev.files[0].path)
+#                 page.update()
+#         picker_source.on_result = result
+#         picker_source.pick_files(file_type=ft.FilePickerFileType.ANY, dialog_title="Pick any file in source folder")
+
+#     def browse_dest(e):
+#         def result(ev):
+#             if ev.files and len(ev.files) > 0:
+#                 dest_field.value = os.path.dirname(ev.files[0].path)
+#                 page.update()
+#         picker_dest.on_result = result
+#         picker_dest.pick_files(file_type=ft.FilePickerFileType.ANY, dialog_title="Pick any file in destination folder")
+
+#     def run_sorter(e):
+#         src = source_field.value.strip()
+#         dst = dest_field.value.strip()
+#         if not os.path.isdir(src) or not os.path.isdir(dst):
+#             log_box.value += "\n⚠ Invalid folder path."
+#             #add_to_global_log("\n⚠ Invalid folder path.")
+#             update_status_callback("Error: Invalid folders.")
+#         else:
+#             log_box.value += f"\n🔧 Running Photo Sorter for {os.path.basename(src)}..."  
+#             page.update()
+#             try:
+#                 process_source_dir(src, dst, "Oostzee zeilzomer", "Baltic Sea sailing summer")
+#                 log_box.value += "\n✅ Done!"
+#                 #add_to_global_log("\n✅ Done!")
+#                 update_status_callback("Photo Sorter completed.")
+#             except Exception as err:
+#                 log_box.value += f"\n❌ Error: {err}"
+#                 update_status_callback("Error in Photo Sorter.")
+#         page.update()
+
+#     content = ft.Column([
+#         source_field,
+#         ft.TextButton("📂 Browse source folder", on_click=browse_source),
+#         dest_field,
+#         ft.TextButton("📂 Browse destination folder", on_click=browse_dest),
+#         ft.ElevatedButton("Run Photo Sorter", on_click=run_sorter),
+#         log_box
+#     ], tight=True)
+
+#     dialog = ft.AlertDialog(
+#         title=ft.Text("Photo Sorter"),
+#         content=content,
+#         actions=[ft.TextButton("Close", on_click=close_dialog)],
+#         modal=True, 
+#         width=FIELD_WIDTH+100
+#     )
+
+#     page.dialog = dialog
+#     dialog.open = True
+#     page.update()
 

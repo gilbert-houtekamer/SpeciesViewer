@@ -3,6 +3,8 @@ import os
 import asyncio
 from gui.menu_bar import build_menu
 from utils.config import get_setting, set_setting, get_int_setting
+from utils.config import config         # assuming config is loaded here
+from gui.components import create_dialog, make_integer_field, validate_integer, directory_field
 
 global_log_box = ft.TextField(
     value="Welcome to Species Viewer.\n",
@@ -42,7 +44,7 @@ def launch_main_ui(page):
         page.update()
 
     main_content = ft.Column([
-        build_menu(page, update_status, add_to_global_log),
+        build_menu(page, update_status, add_to_global_log, config),
         ft.Divider(),
         ft.Text("Welcome to Species Viewer", size=24),
         global_log_box, 
