@@ -47,36 +47,6 @@ def create_dialog(title: str, content_controls: list, page: ft.Page, dismiss_cal
     page.overlay.append(dialog_container)
     page.update()
 
-# def folder_field(label, initial_value, page):
-#     field = ft.TextField(label=label, value=initial_value)
-#     picker = ft.FilePicker()
-#     page.overlay.append(picker)
-
-#     def browse(e):
-#         def result(ev):
-#             if ev.files and len(ev.files) > 0:
-#                 path = os.path.dirname(ev.files[0].path)
-#                 field.value = path
-#                 page.update()
-#         picker.on_result = result
-#         #picker.pick_files(dialog_title=f"Pick any file in {label}")
-#         picker.get_directory_path(dialog_title="Choose folder")
-
-#     def test(e):
-#         path = field.value.strip()
-#         exists = os.path.isdir(path)
-#         page.show_snack_bar(ft.SnackBar(ft.Text("✅ Folder exists" if exists else "❌ Folder not found")))
-
-#     # Compact layout: field + icon buttons to right
-#     field_row = ft.Row([
-#         ft.Container(content=field, width=600),
-#         ft.Column([
-#             ft.IconButton(icon=ft.icons.FOLDER, tooltip="Browse", on_click=browse),
-#             ft.IconButton(icon=ft.icons.SCIENCE, tooltip="Test", on_click=test)
-#         ])
-#     ])
-#     return field, field_row
-
 def make_integer_field(label, value, min_val, max_val):
     return ft.TextField(
         label=label,
@@ -97,93 +67,37 @@ def validate_integer(e, min_val, max_val):
         e.control.error_text = "Must be an integer"
     e.page.update()
 
+def directory_field(label: str, page: ft.Page, config_section: str = None, config_key: str = None):
+    import os, tkinter as tk
+    from tkinter import filedialog
+    from utils.config import get_setting, set_setting
+    import flet as ft
 
-def pick_directory(label: str, initial_path: str, page: ft.Page):
-    field = ft.TextField(label=label, value=initial_path, width=900)
+    initial_path = get_setting(config_section, config_key, "") if config_section and config_key else ""
+    field = ft.TextField(label=label, value=initial_path, width=720)
 
-    def browse(e):
-        root = tk.Tk()
-        root.withdraw()  # hide base window
-        folder = filedialog.askdirectory(
-            initialdir=initial_path if os.path.isdir(initial_path) else os.getcwd(),
-            title=f"Choose folder for {label}"
-        )
-        root.destroy()  # cleanup tkinter window
-        if folder:
-            field.value = os.path.abspath(folder)
-            page.show_snack_bar(ft.SnackBar(ft.Text(f"📁 Selected: {field.value}")))
-            page.update()
+    status_icon = ft.Icon(
+        name=ft.icons.CHECK_CIRCLE,
+        color=ft.colors.GREEN,
+        tooltip="Directory exists"
+    )
 
-    browse_button = ft.TextButton("📂 Browse", on_click=browse)
+    def update_status(path):
+        if os.path.isdir(path):
+            status_icon.name = ft.icons.CHECK_CIRCLE
+            status_icon.color = ft.colors.GREEN
+            status_icon.tooltip = "Directory exists"
+        else:
+            status_icon.name = ft.icons.ERROR
+            status_icon.color = ft.colors.RED
+            status_icon.tooltip = "Directory not found, create directory or check for typos"
 
-    return field, browse_button
-
-
-    # def browse(e):
-    #     paths = filechooser.choose_dir(title=f"Select folder for {label}")
-    #     if paths and len(paths) > 0:
-    #         chosen_path = paths[0]
-    #         page.show_snack_bar(ft.SnackBar(ft.Text(f"📁 Selected: {chosen_path}")))
-    #         if on_path_selected:
-    #             on_path_selected(chosen_path)
-
-    # return ft.TextButton("📂 Pick folder", on_click=browse, tooltip=f"Pick folder for {label}")
-
-
-# def directory_field(label: str, initial_path: str, page: ft.Page):
-#     field = ft.TextField(label=label, value=initial_path, width=900)
-#     picker = ft.FilePicker()
-
-#     # Callback: called when user picks a directory
-#     def on_result(e: ft.FilePickerResultEvent):
-#         if e.path:
-#             field.value = os.path.abspath(e.path)
-#             page.update()
-
-#     picker.on_result = on_result
-#     page.overlay.append(picker)
-
-#     browse_btn = ft.TextButton("📂 Browse", on_click=lambda e: picker.get_directory_path(dialog_title=f"Pick folder for {label}"))
-
-#     return field, browse_btn
-
-# def directory_field(label: str, initial_path: str, page: ft.Page):
-#     field = ft.TextField(label=label, value=initial_path, width=900)
-
-#     def browse(e):
-#         root = tk.Tk()
-#         root.withdraw()  # hide root window
-
-#         # Force focus and move to top
-#         root.attributes('-topmost', True)
-#         root.update()
-
-#         folder = filedialog.askdirectory(
-#             initialdir=initial_path if os.path.isdir(initial_path) else os.getcwd(),
-#             title=f"Choose folder for {label}"
-#         )
-#         root.destroy()
-
-#         if folder:
-#             field.value = os.path.abspath(folder)
-#             page.show_snack_bar(ft.SnackBar(ft.Text(f"📁 Selected: {field.value}")))
-#             page.update()
-
-#     browse_button = ft.TextButton("📂 Browse", on_click=browse)
-
-#     return field, browse_button
-
-def directory_field(label: str, initial_path: str = "", page: ft.Page = None, config_section: str = None, config_key: str = None):
-    # Use config fallback if no path provided
-    if initial_path == "" and config_section and config_key:
-        initial_path = get_setting(config_section, config_key, "")
-
-    field = ft.TextField(label=label, value=initial_path, width=900)
+        page.update()
 
     def browse(e):
         root = tk.Tk()
         root.withdraw()
-        root.attributes('-topmost', True)
+        root.attributes("-topmost", True)
         root.update()
 
         folder = filedialog.askdirectory(
@@ -195,12 +109,22 @@ def directory_field(label: str, initial_path: str = "", page: ft.Page = None, co
         if folder:
             chosen = os.path.abspath(folder)
             field.value = chosen
+            update_status(chosen)
             if config_section and config_key:
                 set_setting(config_section, config_key, chosen)
-            if page:
-                page.show_snack_bar(ft.SnackBar(ft.Text(f"📁 Selected: {chosen}")))
-                page.update()
+            page.show_snack_bar(ft.SnackBar(ft.Text(f"📁 {label}: {chosen}")))
+            page.update()
 
-    browse_btn = ft.TextButton("📂 Browse", on_click=browse)
+    browse_btn = ft.IconButton(
+        icon=ft.icons.FOLDER,
+        tooltip="Browse",
+        on_click=browse
+    )
 
-    return field, browse_btn
+    field.on_change = lambda e: update_status(field.value)
+    update_status(initial_path)
+
+    # 👌 Sleek row layout
+    row = ft.Row([field, browse_btn, status_icon], spacing=10, alignment=ft.MainAxisAlignment.START)
+    return field, row
+
