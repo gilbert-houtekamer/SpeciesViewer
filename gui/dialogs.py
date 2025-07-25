@@ -3,6 +3,11 @@ import os
 from utils.photo_sorter import process_source_dir, log_and_print
 from utils.config import get_setting, set_setting
 from gui.components import create_dialog, make_integer_field, validate_integer, directory_field
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("SpeciesViewer")
+
 
 def show_global_settings_dialog(page, config):
     splash_field = ft.Switch(label="Enable Splash", value=config.get("Global", "splash_enabled", fallback="yes") == "yes")
@@ -267,6 +272,7 @@ def generate_svconfig_ini(config, trip_root: str, svconfig_path: str = None):
     trip_web = config.get("trip", "tripbiotawebroot", fallback="")
     master_db = config.get("master", "masterbiotadatabase", fallback="")
     species_csv = os.path.join(master_db, "metadata", "active", "species.csv")
+    project_files = config.get("project", "picturedirectory", fallback="")
     webpassword  = config.get("websettings","Sftppwd", fallback="? still needed" )
 
     cfg = ConfigParser()
@@ -282,9 +288,9 @@ def generate_svconfig_ini(config, trip_root: str, svconfig_path: str = None):
     }
 
     cfg["project"] = {
-        "PictureDirectory": ""  # Reserved for future use
+        "PictureDirectory": project_files
     }
-
+    
     cfg["debug"] = {
         "Classification": "0",
         "SpeciesFound": "0"
@@ -292,20 +298,24 @@ def generate_svconfig_ini(config, trip_root: str, svconfig_path: str = None):
     }
 
     cfg["websettings"] = {
-        "Sftppwd": webpassword  # Can be user-input later
+        "Sftppwd": webpassword  
     }
 
     try:
         with open(svconfig_path, "w", encoding="utf-8") as f:
             cfg.write(f)
-        return f"✅ svconfig.ini written to {svconfig_path}"
+        logger.info(f"✅ svconfig.ini written to {svconfig_path}")
+        return
     except Exception as err:
-        return f"❌ Failed to write svconfig.ini: {err}"
+        logger.info(f"❌ Failed to write svconfig.ini: {err}")
+        return 
     
-def run_batch_processor():
+def call_batch_module(config):
     import configparser
     import bin.sv2ReadDirExif
-
+    #import bin.sv1MakeReposity
+    
+    generate_svconfig_ini(config, "")
     args = None
     module_config = configparser.ConfigParser()
     module_config.read("svconfig.ini")
@@ -357,12 +367,12 @@ message_en = {message_en}
     try:
         with open(ini_path, "w", encoding="utf-8") as f:
             f.write(ini_text)
-        generate_svconfig_ini(config, "")
-        run_batch_processor()
 
-        return f"✅ trip.ini written to {ini_path}"
+        logger.info(f"✅ trip.ini written to {ini_path}")
+        return
     except Exception as err:
-        return f"❌ Failed to write trip.ini: {err}"
+        logger.info(f"❌ Failed to write trip.ini: {err}")
+        return 
 
 def show_create_trip_dialog(page, config):
     root_field, root_row = directory_field("Trip root folder", page=page, config_section="trip", config_key="tripbiotadatabase")
@@ -393,18 +403,22 @@ def show_create_trip_dialog(page, config):
         message_nl,
         title_en,
         message_en,
-        ft.ElevatedButton("Generate trip.ini", on_click=lambda e: generate_trip_ini(
-            trip_root=root_field.value,
-            trip_name=title_en.value,
-            banner_filename=os.path.basename(topbar_field.value),
-            picture_filename=os.path.basename(trip_image_field.value),
-            from_date=from_date.value,
-            to_date=to_date.value,
-            title_nl=title_nl.value,
-            message_nl=message_nl.value,
-            title_en=title_en.value,
-            message_en=message_en.value,
-            config=config  # 👈 Make sure this is actually `ConfigParser`, not `page`
-        ))
+        ft.Row([
+            ft.ElevatedButton("Generate trip.ini", on_click=lambda e: generate_trip_ini(
+                trip_root=root_field.value,
+                trip_name=title_en.value,
+                banner_filename=os.path.basename(topbar_field.value),
+                picture_filename=os.path.basename(trip_image_field.value),
+                from_date=from_date.value,
+                to_date=to_date.value,
+                title_nl=title_nl.value,
+                message_nl=message_nl.value,
+                title_en=title_en.value,
+                message_en=message_en.value,
+                config=config  # 👈 Make sure this is actually `ConfigParser`, not `page`
+            )),
+            ft.TextButton("Create Task", on_click=lambda e: call_batch_module(config))
+        ], alignment='start', spacing=20),     
+
     ], page)
     

@@ -12,7 +12,7 @@ def build_menu(page, update_status_callback, add_to_global_log, config):
             tooltip="File"
         ),
         ft.PopupMenuButton(
-            icon=ft.icons.BUILD,
+            icon=ft.icons.PARK,
             items=[
                 ft.PopupMenuItem(text="Create Trip", on_click=lambda e: show_create_trip_dialog(page, config))
             ],
