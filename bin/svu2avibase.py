@@ -24,7 +24,7 @@ import ghexif.speciesclassification
 from ghexif.specieslib import Level
 import ghexif.triplib
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 avibase_dict = {}
 headers = []
 counter = 1

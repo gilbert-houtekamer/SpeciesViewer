@@ -22,7 +22,7 @@ import ghexif.projectlib
 import ghexif.exceptions
 import ghexif.statemachine
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 # read parameters, but will be overwritten probably
 def readConfig():

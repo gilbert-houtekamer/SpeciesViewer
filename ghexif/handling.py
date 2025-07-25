@@ -3,7 +3,7 @@ import csv
 import logging
 import ghexif
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 # strip all suffixes for files from Lightroom, DxO PureRaw, DxO Photolab, Capture etc
 def deriveUniquePictureName(windows_filename):

@@ -33,7 +33,7 @@ import ghexif.triplib
 import ghexif.breadcrumb
 from ghexif import SVException
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 # create file handler which logs even debug messages
 fh = logging.FileHandler('sysprint')
 fh.setLevel(logging.INFO)

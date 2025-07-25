@@ -31,7 +31,7 @@ from ghexif.specieslib import Level, Species
 import ghexif.exceptions
 import ghexif.statemachine
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 DUMMYSPECIES = ['vogel', 'vogels', 'bird', 'libel', 'libellen', 'onbekend',
                 'rups', 'panama', 'californie', 'onbekend', 'sprinkhaan', 'turkey',

@@ -4,7 +4,7 @@ import googletrans
 from googletrans import Translator
 from fastcrc import crc32
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 
 #pip install googletrans==4.0.0-rc1

@@ -34,7 +34,7 @@ import bin.sv5BuildWebsite
 import bin.sv6Freeze
 import bin.sv7WriteCommit
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 def main(args, config):
     global starttime, SpeciesDebug, Reference_sp

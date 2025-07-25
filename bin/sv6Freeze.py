@@ -27,7 +27,7 @@ import ghexif.exceptions
 import ghexif.statemachine
 import ghexif.triplib
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 files_to_delete = []
 
 def getTemplateFileAsString():

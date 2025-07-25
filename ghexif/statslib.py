@@ -3,7 +3,7 @@ from PIL import Image
 from typing import Tuple, List
 from collections import Counter
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 
 

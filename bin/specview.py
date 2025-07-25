@@ -7,7 +7,7 @@ from sview.util import LoggingHandler
 import sview.model
 import sview.ui
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 def main(args):
     # initialise logging

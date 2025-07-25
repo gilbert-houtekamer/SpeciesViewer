@@ -11,7 +11,7 @@ import ghexif.projectlib
 
 from enum import Enum, auto
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 # Biota, Kingdom, Phylum, Class, Order, Family, Species
 class Level(Enum):

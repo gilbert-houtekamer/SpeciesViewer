@@ -23,7 +23,7 @@ import ghexif.projectlib
 import ghexif.triplib
 import ghexif.bloglib
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 # reading trip.ini for repositories that are about a trip
 def getUTF8(tripconfig, group, ansistring):

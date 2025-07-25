@@ -28,7 +28,7 @@ from ghexif.specieslib import Level
 import ghexif.triplib
 import ghexif.bloglib
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 result_dict = {}
 headers = []
 counter = 1

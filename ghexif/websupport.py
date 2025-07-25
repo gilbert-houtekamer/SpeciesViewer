@@ -17,7 +17,7 @@ from ghexif.specieslib import Level
 import ghexif.projectlib
 import ghexif.breadcrumb
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 ClassificationGroupName = ["Species","Family", "Order", "Class", "Phylum", "Kingdom", "Biota"]
 ClassificationGroupNameNL = ["Soort", "Familie", "Orde", "Klasse","Stam", "Rijk", "Biota"]

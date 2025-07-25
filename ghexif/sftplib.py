@@ -7,7 +7,7 @@ import warnings
 import binascii
 
 warnings.filterwarnings('ignore','.*Failed to load HostKeys.*')
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 
 class Sftp:

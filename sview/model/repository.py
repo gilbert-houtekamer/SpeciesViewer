@@ -8,7 +8,7 @@ import ghexif.sftplib
 import sview
 from sview.model import SVModelException
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 
 class Repository:

@@ -23,7 +23,7 @@ import ghexif
 import ghexif.projectlib
 import ghexif.exceptions
 import ghexif.triplib
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 def deleteCopiedFiles(deletelist):
     with open(deletelist, mode="r", newline="", encoding='utf-8') as csvfile: 

@@ -14,7 +14,7 @@ import ghexif.translatelib
 import requests
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 # provide easy access to all the locations that are referenced without
 # globals

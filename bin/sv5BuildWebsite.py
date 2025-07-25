@@ -30,7 +30,7 @@ import ghexif.exceptions
 import ghexif.statemachine
 import ghexif.triplib
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 global starttime  # global
 
 # For both languages

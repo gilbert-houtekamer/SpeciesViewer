@@ -11,7 +11,7 @@ import sview
 import sview.model
 from ..model import Repository
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 
 class RepositoryView(ft.View):

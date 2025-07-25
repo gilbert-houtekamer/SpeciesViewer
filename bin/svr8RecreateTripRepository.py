@@ -34,7 +34,7 @@ import bin.sv5BuildWebsite
 import bin.sv6Freeze
 import bin.sv7WriteCommit
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 # create file handler which logs even debug messages
 fh = logging.FileHandler('sysprint-recreatetrip.txt')
 fh.setLevel(logging.INFO)
@@ -54,6 +54,7 @@ def readConfig():
 
 def RecreateProject(args, config, project):
     logger.info(f"Recreate project {project}")      # project format is 2024-12-20
+    if project <= '2024-04-xx': return
     try:
         step = 'bin.sv2ReadDirExif.main'
         bin.sv2ReadDirExif.main(args, config)

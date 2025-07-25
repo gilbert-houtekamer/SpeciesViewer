@@ -22,7 +22,7 @@ import ghexif.projectlib
 import ghexif.specieslib
 import ghexif.speciesclassification
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 def main(args, config):
     global starttime, SpeciesDebug

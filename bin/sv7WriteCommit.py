@@ -31,7 +31,7 @@ import ghexif.exceptions
 import ghexif.statemachine
 import ghexif.triplib
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 
 def checkFrozenData(MyProject):

@@ -18,7 +18,7 @@ import ghexif.translatelib
 from ghexif.handling import parseListFromCSV
 from ghexif.specieslib import Level
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 class Trip:
     tripday = ""

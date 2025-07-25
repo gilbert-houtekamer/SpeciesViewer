@@ -29,7 +29,7 @@ import ghexif.exceptions
 import ghexif.statemachine
 
 IGNOREEXTENSIONS = ['txt', 'ico', 'html']
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 def main(args, config):
     starttime = time.time()
@@ -41,7 +41,7 @@ def main(args, config):
     # logging.basicConfig(level=logging.DEBUG)
     # exiftool.ExifTool.__init__(None, common_args=['-G'])
     with exiftool.ExifToolHelper(
-        logger=logging.getLogger(__name__), common_args=["-G"]
+        logger=logging.getLogger("speciesviewer"), common_args=["-G"]
     ) as et:
         if not os.path.isdir(MyProject.getProjectPath()):
             raise SVException(f"Directory {MyProject.getProjectPath()} cannot be found, or refers to a file.")

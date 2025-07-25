@@ -27,7 +27,7 @@ import ghexif.statemachine
 import ghexif.triplib
 from ghexif import SVException
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("speciesviewer")
 
 global online
 
