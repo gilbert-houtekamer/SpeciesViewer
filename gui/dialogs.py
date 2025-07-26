@@ -6,6 +6,13 @@ from utils.config import get_setting, set_setting
 from gui.components import create_dialog, validate_integer, directory_field
 from gui.log_widgets import LogTailWidget
 import logging
+import bin.sv1MakeReposity 
+import bin.sv2ReadDirExif 
+import bin.sv3WritePictures 
+import bin.sv4WriteBlog 
+import bin.sv5BuildWebsite 
+import bin.sv6Freeze 
+import bin.sv7WriteCommit
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("SpeciesViewer")
@@ -324,9 +331,8 @@ def generate_svconfig_ini(config, trip_root: str, svconfig_path: str = None):
 #     bin.sv2ReadDirExif.main(args, module_config)
 #     return
 
-def call_batch_module(config, update_status_callback, page, logger):
+def call_batch_module(config, update_status_callback, page, logger, module_called, before_msg, after_msg):
     import configparser
-    import bin.sv2ReadDirExif
 
     # Get your shared logger
     # logger = logging.getLogger("speciesviewer")
@@ -347,12 +353,12 @@ def call_batch_module(config, update_status_callback, page, logger):
         args = None
         module_config = configparser.ConfigParser()
         module_config.read("svconfig.ini")
-        update_status_callback("Call xxxx.")
-        logger.info("   Calling bin.sv2ReadDirExif\n")
+        update_status_callback(before_msg)
+        logger.info(before_msg)
         page.update()
-        rc = bin.sv2ReadDirExif.main(args, module_config)
-        logger.info("   bin.sv2ReadDirExif completed\n") 
-        update_status_callback("Restore xxxx.")
+        module_called(args, module_config)
+        logger.info(after_msg) 
+        update_status_callback(after_msg)
     finally:
         # 🔁 Restore original terminal handlers after execution
         for h in original_stream_handlers:
@@ -443,9 +449,7 @@ def show_create_trip_dialog(page, config, update_status_callback):
     local_gui_handler = GUIHandler(local_log_box)
 
     logger = logging.getLogger("speciesviewer")    
-    # print("All handlers BEFORE local handler:", logger.handlers)
     attach_gui_handler(logger, "settings_dialog", local_log_box)
-    # print("All handlers AFTER local handler:", logger.handlers)    
 
     create_dialog("Create Trip", [
         ft.Text("blabla — what Trips are about...", width=800),
@@ -472,7 +476,11 @@ def show_create_trip_dialog(page, config, update_status_callback):
                 config=config,  # 👈 Make sure this is actually `ConfigParser`, not `page`,
                 logger=logger
             )),
-            ft.TextButton("Create Trip Directories", on_click=lambda e: call_batch_module(config, update_status_callback, page, logger))
+            ft.TextButton("Create Trip Directories", on_click=lambda e: call_batch_module(
+                config, update_status_callback, page, logger,
+                bin.sv1MakeReposity.main,
+                "Create a new trip database", "Trip created, please review the messages"
+                ))
         ], alignment='start', spacing=20),
         local_log_box
     ], page)
@@ -480,3 +488,72 @@ def show_create_trip_dialog(page, config, update_status_callback):
     #detach_gui_handler(logger, "settings_dialog")
 
     
+def show_read_dir_dialog(page, config, update_status_callback):
+    from gui.logger_logic import GUIHandler, attach_gui_handler
+    import logging
+
+    local_log_box = ft.TextField(
+        label="Log for batch call",
+        multiline=True,
+        read_only=True,
+        min_lines=8,
+        max_lines=40,
+        width=1500,
+        text_style=ft.TextStyle(size=11, font_family="Courier New")
+    )
+    local_gui_handler = GUIHandler(local_log_box)
+    local_log_box._Control__page = page      # not supported, but works
+
+    logger = logging.getLogger("speciesviewer")
+    attach_gui_handler(logger, "settings_dialog", local_log_box)
+
+    create_dialog("Read Picture Directory", [
+        ft.Text("Scan a directory with photo files and extract metadata (Exif tags) for each image.", width=800),
+        ft.Row([
+            ft.TextButton("Read Directory", on_click=lambda e: call_batch_module(
+                config,
+                update_status_callback,
+                page,
+                logger,
+                bin.sv2ReadDirExif.main,
+                "Read directory with picture files",
+                "The directory was read, please review the messages"
+            ))
+        ], alignment='start', spacing=20),
+        local_log_box
+    ], page)
+
+def show_write_pictures_dialog(page, config, update_status_callback):
+    from gui.logger_logic import GUIHandler, attach_gui_handler
+    import logging
+
+    local_log_box = ft.TextField(
+        label="Log for batch call",
+        multiline=True,
+        read_only=True,
+        min_lines=8,
+        max_lines=40,
+        width=1500,
+        text_style=ft.TextStyle(size=11, font_family="Courier New")
+    )
+    local_gui_handler = GUIHandler(local_log_box)
+    local_log_box._Control__page = page      # not supported, but works    
+
+    logger = logging.getLogger("speciesviewer")
+    attach_gui_handler(logger, "settings_dialog", local_log_box)
+
+    create_dialog("Write Picture Entries", [
+        ft.Text("Add species tags and metadata to photo entries based on earlier readings.", width=800),
+        ft.Row([
+            ft.TextButton("Write Picture Data", on_click=lambda e: call_batch_module(
+                config,
+                update_status_callback,
+                page,
+                logger,
+                bin.sv3WritePictures.main,
+                "Write Pictures with Species information",
+                "Please review the messages"
+            ))
+        ], alignment='start', spacing=20),
+        local_log_box
+    ], page)

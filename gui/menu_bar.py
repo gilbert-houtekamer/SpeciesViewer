@@ -1,6 +1,6 @@
 import flet as ft
 from gui.dialogs import show_about_dialog, show_photo_sorter_overlay
-from gui.dialogs import show_create_trip_dialog
+from gui.dialogs import show_create_trip_dialog, show_read_dir_dialog, show_write_pictures_dialog
 from gui.dialogs import show_global_settings_dialog, show_repositories_dialog
 
 
@@ -14,7 +14,9 @@ def build_menu(page, update_status_callback, add_to_global_log, config):
         ft.PopupMenuButton(
             icon=ft.icons.PARK,
             items=[
-                ft.PopupMenuItem(text="Create Trip", on_click=lambda e: show_create_trip_dialog(page, config, update_status_callback))
+                ft.PopupMenuItem(text="Create Trip", on_click=lambda e: show_create_trip_dialog(page, config, update_status_callback)),
+                ft.PopupMenuItem(text="Read Directory", on_click=lambda e: show_read_dir_dialog(page, config, update_status_callback)),
+                ft.PopupMenuItem(text="Write Summary", on_click=lambda e: show_write_pictures_dialog(page, config, update_status_callback))                                
             ],
             tooltip="Trip"
         ),
