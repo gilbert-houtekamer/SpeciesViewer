@@ -3,76 +3,31 @@ import os
 import asyncio
 import logging
 from gui.menu_bar import build_menu
+from gui.logger_logic import pause_toggle, GUIHandler, setup_logger, attach_gui_handler, detach_gui_handler
 from utils.config import get_setting, set_setting, get_int_setting
 from utils.config import config         # assuming config is loaded here
 from gui.components import create_dialog, make_integer_field, validate_integer, directory_field
+from utils.log_utils import make_log_tail_accessor
+from PyQt5.QtWidgets import QApplication
+import sys
 
-global_log_box = ft.Column(
-            scroll=ft.ScrollMode.ALWAYS,
-            expand=True
-        )
-pause_toggle = ft.Switch(label="Pause Log Display", value=False)
+global_log_box = ft.TextField(
+    label="Global batch log",
+    multiline=True,
+    read_only=True,
+    min_lines=40,
+    max_lines=40,
+    width=1500,
+    text_style=ft.TextStyle(size=11, font_family="Courier New")
+)
 
-SEVERITY_COLORS = {
-    "INFO": ft.colors.ON_SURFACE,
-    "WARNING": ft.colors.AMBER,
-    "ERROR": ft.colors.RED,
-    "DEBUG": ft.colors.BLUE_GREY
-}
+get_global_log_lines = make_log_tail_accessor(global_log_box)
 
-MAX_LOGS = 9999
-
-class GUIHandler(logging.Handler):
-    def __init__(self, log_box):
-        super().__init__()
-        self.log_box = log_box
-
-    def emit(self, record):
-        if pause_toggle.value:
-            return  # Skip GUI update if paused        
-      
-        msg = self.format(record)
-        color = SEVERITY_COLORS.get(record.levelname, ft.colors.ON_SURFACE)
-        entry = ft.Text(
-            msg,
-            color=color,
-            size=12,
-            selectable=True,
-            italic=(record.levelno == logging.DEBUG),
-            weight=ft.FontWeight.BOLD if record.levelno >= logging.ERROR else ft.FontWeight.NORMAL
-        )
-
-        # 🧹 Truncate old logs if necessary
-        if len(self.log_box.controls) >= MAX_LOGS:
-            self.log_box.controls = self.log_box.controls[-MAX_LOGS+1:]
-
-        self.log_box.controls.append(entry)
-        self.log_box.update()   
-
-def setup_logger(gui_log_box=None):
-    logger = logging.getLogger("speciesviewer")
-    logger.setLevel(logging.INFO)
-
-    # Remove all existing handlers — this is the critical fix
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-
-    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-
-    file_handler = logging.FileHandler("speciesviewer.log", encoding="utf-8")
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
-    logger.addHandler(stream_handler)
-
-    if gui_log_box:
-        gui_handler = GUIHandler(gui_log_box)
-        gui_handler.setFormatter(formatter)
-        logger.addHandler(gui_handler)
-
-    return logger
+async def auto_refresh(widget, page, interval=0.25):
+    while widget.visible:
+        widget.refresh()
+        await page.update_async()
+        await asyncio.sleep(interval)
 
 def launch_main_ui(page):
     # rest of your UI setup...    
@@ -125,18 +80,18 @@ def launch_main_ui(page):
         status_bar.value = message
         page.update()
 
-    def filter_logs():
-        selected_level = severity_dropdown.value
+    # def filter_logs():
+    #     selected_level = severity_dropdown.value
 
-        # Map levels to numeric values for easy comparison
-        level_map = {"DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40}
-        selected_levelno = level_map.get(selected_level, 10)
+    #     # Map levels to numeric values for easy comparison
+    #     level_map = {"DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40}
+    #     selected_levelno = level_map.get(selected_level, 10)
 
-        global_log_box.controls = [
-            entry for entry in all_log_entries
-            if entry.levelno >= selected_levelno
-        ]
-        global_log_box.update()        
+    #     global_log_box.controls = [
+    #         entry for entry in all_log_entries
+    #         if entry.levelno >= selected_levelno
+    #     ]
+    #     global_log_box.update()        
 
     main_content = ft.Column([
         build_menu(page, update_status, add_to_global_log, config),
@@ -148,12 +103,6 @@ def launch_main_ui(page):
             ft.TextButton("🗑️ Clear Log", on_click=lambda e: clear_log()),
             ft.TextButton("💾 Save Log", on_click=lambda e: save_log()),
         ], alignment='start', spacing=20),              
-        ft.Divider(),
-        ft.Image(
-            src="assets/trip.png",
-            width=32,
-            height=32
-        )
         # You can insert splash or other placeholder sections here
     ], expand=True)
 
@@ -170,8 +119,8 @@ def launch_main_ui(page):
 
     # Setup logger with GUI handler now that control is attached
     logger = setup_logger(global_log_box)
-
     logger.info("Species Viewer loading...")
+    
 
 def splash_screen(page):
 # Enlarged window size for rich visuals
@@ -224,7 +173,7 @@ def splash_screen(page):
     async def proceed():
         splash_image.opacity = 1.0
         page.update()
-        await asyncio.sleep(2.5)  # splash delay
+        await asyncio.sleep(1.5)  # splash delay
         page.controls.clear()
         page.update()
         launch_main_ui(page)
@@ -238,5 +187,8 @@ def main(page: ft.Page):
     page.window_height = 1200
     splash_screen(page)
 
-ft.app(target=main)
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    ft.app(target=main)
+
 

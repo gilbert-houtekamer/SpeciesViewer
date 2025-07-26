@@ -1,13 +1,14 @@
 import flet as ft
 import os
-from utils.photo_sorter import process_source_dir, log_and_print
+import asyncio
+from utils.photo_sorter import process_source_dir
 from utils.config import get_setting, set_setting
-from gui.components import create_dialog, make_integer_field, validate_integer, directory_field
+from gui.components import create_dialog, validate_integer, directory_field
+from gui.log_widgets import LogTailWidget
 import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("SpeciesViewer")
-
 
 def show_global_settings_dialog(page, config):
     splash_field = ft.Switch(label="Enable Splash", value=config.get("Global", "splash_enabled", fallback="yes") == "yes")
@@ -177,7 +178,7 @@ def show_photo_sorter_overlay(page, update_status_callback, add_to_global_log):
 
     create_dialog("Photo Sorter", controls, page)
 
-def image_file_field(label: str, expected_size: tuple, root_field: ft.TextField, page: ft.Page):
+def image_file_field(label: str, expected_size: tuple, root_field: ft.TextField, page: ft.Page, value: str = ""):
     import os
     from PIL import Image
     from tkinter import Tk, filedialog
@@ -310,18 +311,53 @@ def generate_svconfig_ini(config, trip_root: str, svconfig_path: str = None):
         logger.info(f"❌ Failed to write svconfig.ini: {err}")
         return 
     
-def call_batch_module(config):
+# def call_batch_module(config):
+#     import configparser
+#     import bin.sv2ReadDirExif
+#     #import bin.sv1MakeReposity
+    
+#     generate_svconfig_ini(config, "")
+#     args = None
+#     module_config = configparser.ConfigParser()
+#     module_config.read("svconfig.ini")
+ 
+#     bin.sv2ReadDirExif.main(args, module_config)
+#     return
+
+def call_batch_module(config, update_status_callback, page, logger):
     import configparser
     import bin.sv2ReadDirExif
-    #import bin.sv1MakeReposity
-    
-    generate_svconfig_ini(config, "")
-    args = None
-    module_config = configparser.ConfigParser()
-    module_config.read("svconfig.ini")
- 
-    bin.sv2ReadDirExif.main(args, module_config)
-    return
+
+    # Get your shared logger
+    # logger = logging.getLogger("speciesviewer")
+    print("All handlers BEFORE:", logger.handlers)
+
+    # 🛑 Remove StreamHandlers and store them
+    original_stream_handlers = [
+        h for h in logger.handlers if isinstance(h, logging.StreamHandler)
+    ]
+    for h in original_stream_handlers:
+        logger.removeHandler(h)
+
+    print("All handlers AFTER:", logger.handlers)
+
+    try:
+        # ✅ Your call runs quietly now (only GUI gets logs if you added it)
+        generate_svconfig_ini(config, "")
+        args = None
+        module_config = configparser.ConfigParser()
+        module_config.read("svconfig.ini")
+        update_status_callback("Call xxxx.")
+        logger.info("   Calling bin.sv2ReadDirExif\n")
+        page.update()
+        rc = bin.sv2ReadDirExif.main(args, module_config)
+        logger.info("   bin.sv2ReadDirExif completed\n") 
+        update_status_callback("Restore xxxx.")
+    finally:
+        # 🔁 Restore original terminal handlers after execution
+        for h in original_stream_handlers:
+            logger.addHandler(h)
+
 
 def generate_trip_ini(
     trip_root: str,
@@ -334,7 +370,8 @@ def generate_trip_ini(
     message_nl: str,
     title_en: str,
     message_en: str,
-    config
+    config,
+    logger
 ):
     import os
     from datetime import datetime
@@ -367,14 +404,15 @@ message_en = {message_en}
     try:
         with open(ini_path, "w", encoding="utf-8") as f:
             f.write(ini_text)
-
         logger.info(f"✅ trip.ini written to {ini_path}")
         return
     except Exception as err:
         logger.info(f"❌ Failed to write trip.ini: {err}")
         return 
 
-def show_create_trip_dialog(page, config):
+def show_create_trip_dialog(page, config, update_status_callback):
+    from gui.logger_logic import pause_toggle, GUIHandler, setup_logger, attach_gui_handler, detach_gui_handler
+
     root_field, root_row = directory_field("Trip root folder", page=page, config_section="trip", config_key="tripbiotadatabase")
 
     trip_root = config.get("trip", "tripbiotadatabase", fallback="")
@@ -387,11 +425,27 @@ def show_create_trip_dialog(page, config):
     title_en = ft.TextField(label="Trip title (English)", value=trip_data.get("title_en", ""), width=900)
     message_en = ft.TextField(label="Trip description (English)", value=trip_data.get("message_en", ""), multiline=True, min_lines=3, max_lines=6, width=900)
 
-    trip_image_field, trip_image_row = image_file_field("Trip Image (600×450 JPG)", (600, 450), root_field, page)
-    topbar_field, topbar_row = image_file_field("Trip Top Web Bar (2000×270 JPG)", (2000, 270), root_field, page)
+    trip_image_field, trip_image_row = image_file_field("Trip Image (600×450 JPG)", (600, 450), root_field, page, value=trip_data.get("trip_picture", ""))
+    topbar_field, topbar_row = image_file_field("Trip Top Web Bar (2000×270 JPG)", (2000, 270), root_field, page, value=trip_data.get("trip_banner", ""))
 
     from_date = ft.TextField(label="From date (YYYY-MM-DD)", width=300, value=trip_data.get("fromdate", ""))
     to_date = ft.TextField(label="To date (YYYY-MM-DD)", width=300, value=trip_data.get("todate", ""))
+
+    local_log_box = ft.TextField(
+        label="Log for batch call",
+        multiline=True,
+        read_only=True,
+        min_lines=8,
+        max_lines=12,
+        width=900,
+        text_style=ft.TextStyle(size=11, font_family="Courier New")
+    )
+    local_gui_handler = GUIHandler(local_log_box)
+
+    logger = logging.getLogger("speciesviewer")    
+    # print("All handlers BEFORE local handler:", logger.handlers)
+    attach_gui_handler(logger, "settings_dialog", local_log_box)
+    # print("All handlers AFTER local handler:", logger.handlers)    
 
     create_dialog("Create Trip", [
         ft.Text("blabla — what Trips are about...", width=800),
@@ -415,10 +469,14 @@ def show_create_trip_dialog(page, config):
                 message_nl=message_nl.value,
                 title_en=title_en.value,
                 message_en=message_en.value,
-                config=config  # 👈 Make sure this is actually `ConfigParser`, not `page`
+                config=config,  # 👈 Make sure this is actually `ConfigParser`, not `page`,
+                logger=logger
             )),
-            ft.TextButton("Create Task", on_click=lambda e: call_batch_module(config))
-        ], alignment='start', spacing=20),     
-
+            ft.TextButton("Create Trip Directories", on_click=lambda e: call_batch_module(config, update_status_callback, page, logger))
+        ], alignment='start', spacing=20),
+        local_log_box
     ], page)
+    logger.info("Local box initialized\n")
+    #detach_gui_handler(logger, "settings_dialog")
+
     
