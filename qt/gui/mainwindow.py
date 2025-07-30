@@ -1,4 +1,5 @@
 import sys
+import configparser
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter
 from PyQt6.QtWidgets import QPlainTextEdit, QMenuBar, QMenu, QLabel, QSizePolicy
@@ -8,12 +9,13 @@ from PyQt6.QtCore import Qt, QTimer
 
 from qt.gui.layout_colorwidget import Color
 
-from utils.config import config
+from utils.config import config, CONFIG_FILE
 from dialogs.setting import AboutDialog
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
 from gui.menu import AppMenuBar
 from widgets.log_panel import LogPanel
+from gui.trip_process import show_read_dir_dialog
 
 def Color(name):
     label = QLabel(name)
@@ -56,10 +58,21 @@ class MainWindow(QMainWindow):
         self.green_log_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # Splitter for vertical resizing
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        splitter.addWidget(color_row)
-        splitter.addWidget(self.green_log_box)
-        splitter.setSizes([500, 400])  # Initial heights (adjust to taste)
+        # splitter = QSplitter(Qt.Orientation.Vertical)
+        # splitter.addWidget(color_row)
+        # splitter.addWidget(self.green_log_box)
+        # splitter.setSizes([500, 400])  # Initial heights (adjust to taste)
+
+        self.splitter = QSplitter(Qt.Orientation.Vertical)
+        self.splitter.addWidget(color_row)
+        self.splitter.addWidget(self.green_log_box)
+
+        # config = configparser.ConfigParser()
+        # config.read(CONFIG_FILE)
+
+        sizes = config.get("layout", "split_sizes", fallback="500,400")
+        sizes = [int(s) for s in sizes.split(",")]
+        self.splitter.setSizes(sizes)        
 
         #layout1.addWidget(self.green_log_box)
         # widget = QWidget()
@@ -67,7 +80,7 @@ class MainWindow(QMainWindow):
 
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.addWidget(splitter)
+        layout.addWidget(self.splitter)
         widget.setLayout(layout)
         self.setCentralWidget(widget)
 
@@ -76,6 +89,7 @@ class MainWindow(QMainWindow):
             "quit": self.close,
             "global_settings": self.open_global_settings,
             "repo_settings": self.open_repo_settings,
+            "trip_read_dir": self.trip_read_dir, 
             "about": self.show_about
         }
         menu_bar = AppMenuBar(self, callbacks)
@@ -93,8 +107,15 @@ class MainWindow(QMainWindow):
         dlg = RepoSettingsDialog(self, self.config)
         dlg.exec()
 
-    def attach_log_panel(self):
-        # from widgets.log_panel import LogPanel
-        # self.log_panel = LogPanel()
-        # self.layout1.addWidget(self.log_panel)
-        pass       
+    def trip_read_dir(self):
+        dlg = show_read_dir_dialog(self, self.config)
+        dlg.exec()
+
+    def closeEvent(self, event):
+        sizes = self.splitter.sizes()
+        # config = configparser.ConfigParser()
+        # config.read(CONFIG_FILE)
+        config["layout"] = {"split_sizes": ",".join(map(str, sizes))}
+        with open(CONFIG_FILE, "w") as f:
+            config.write(f)
+        super().closeEvent(event)

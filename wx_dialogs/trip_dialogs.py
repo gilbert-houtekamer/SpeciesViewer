@@ -1,77 +1,68 @@
-import wx
-import logging
-from wx_gui.run_batch import call_batch_module
-from bin import sv2ReadDirExif  # adjust path if needed
+import os
+from datetime import datetime
+from configparser import ConfigParser
 
-def add_trip_menu(menu_bar, parent_frame, config):
-    trip_menu = wx.Menu()
+def read_trip_ini(trip_root: str):
+    ini_path = os.path.join(trip_root, "trip.ini")
+    if not os.path.isfile(ini_path):
+        return None
 
-    items = [
-        ("Create Trip", show_create_trip_dialog),
-        ("Read Directory", show_read_dir_dialog),
-        ("Write Summary", show_write_pictures_dialog),
-        ("Create Blog", show_write_blog_dialog),
-        ("Build Website", show_build_website_dialog),
-        ("Freeze Data", show_freeze_dialog),
-        ("Commit Website", show_commit_dialog)
-    ]
+    parser = ConfigParser()
+    parser.read(ini_path, encoding="utf-8")
 
-    for label, handler in items:
-        item = trip_menu.Append(-1, label)
-        parent_frame.Bind(wx.EVT_MENU, lambda evt, h=handler: h(parent_frame, config), item)
+    return {
+        "trip_banner": parser.get("trip_config", "trip_banner", fallback=""),
+        "trip_picture": parser.get("trip_config", "trip_picture", fallback=""),
+        "fromdate": parser.get("trip_config", "fromdate", fallback=""),
+        "todate": parser.get("trip_config", "todate", fallback=""),
+        "title_nl": parser.get("trip_text", "title_nl", fallback=""),
+        "message_nl": parser.get("trip_text", "message_nl", fallback=""),
+        "title_en": parser.get("trip_text", "title_en", fallback=""),
+        "message_en": parser.get("trip_text", "message_en", fallback=""),
+    }
 
-    menu_bar.Append(trip_menu, "Trip")
+def generate_trip_ini(
+    trip_root: str,
+    trip_name: str,
+    banner_filename: str,
+    picture_filename: str,
+    from_date: str,
+    to_date: str,
+    title_nl: str,
+    message_nl: str,
+    title_en: str,
+    message_en: str,
+    config,
+    logger
+):
+    ini_path = os.path.join(trip_root, "trip.ini")
 
-def show_create_trip_dialog(parent, config):
-    return
+    master_web = config.get("master", "masterbiotawebroot", fallback="/nature/")
+    master_disk = config.get("master", "masterbiotadatabase", fallback="E:\\Dropbox\\naturedb")
+    trip_url_name = config.get("trip", "tripbiotawebroot", fallback=trip_name)
 
-def show_read_dir_dialog(parent, config):
-    logger = logging.getLogger("speciesviewer")
+    ini_text = f"""\
+[trip_config]
+master_repository_web = {master_web}
+master_repository_disk = {master_disk}
+trip_banner = {banner_filename}
+trip_picture = {picture_filename}
+created = {datetime.now().strftime('%Y-%m-%d %H:%M')}
+trip_name = {trip_url_name}
+fromdate = {from_date}
+todate = {to_date}
+oneblog = day
 
-    dialog = wx.Dialog(parent, title="Read Picture Directory", size=(250, 250), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
-    panel = wx.Panel(dialog)
+[trip_text]
+title_nl = {title_nl}
+message_nl = {message_nl}
+title_en = {title_en}
+message_en = {message_en}
+"""
 
-    vbox = wx.BoxSizer(wx.VERTICAL)
-
-    info_text = wx.StaticText(panel, label="Scan a directory with photo files and extract metadata (Exif tags) for each image.")
-    info_text.Wrap(600)
-    vbox.Add(info_text, flag=wx.ALL, border=10)
-
-    read_btn = wx.Button(panel, label="Read Directory")
-    vbox.Add(read_btn, flag=wx.ALL | wx.ALIGN_LEFT, border=10)
-
-    def on_read(event):
-        call_batch_module(
-            config,
-            parent,
-            logger,
-            sv2ReadDirExif.main,
-            "Reading picture directory...",
-            "✅ Directory scan complete. Review messages above."
-        )
-
-# call_batch_module(config, callback, page, logger, module_called, before_msg, after_msg):        
-
-    read_btn.Bind(wx.EVT_BUTTON, on_read)
-
-    panel.SetSizer(vbox)
-    dialog.Fit()
-    dialog.SetMinSize((700, 250))
-    dialog.CenterOnParent()    
-    dialog.ShowModal()
-    dialog.Destroy()
-
-def show_write_pictures_dialog(parent, config):
-    return
-
-def show_write_blog_dialog(parent, config):
-    return
-
-def show_build_website_dialog(parent, config):
-    return
-
-def show_freeze_dialog(parent, config):
-    return
-
-def show_commit_dialog(parent, config):
-    return
+    try:
+        with open(ini_path, "w", encoding="utf-8") as f:
+            f.write(ini_text)
+        logger.info(f"✅ trip.ini written to {ini_path}")
+    except Exception as err:
+        logger.info(f"❌ Failed to write trip.ini: {err}")

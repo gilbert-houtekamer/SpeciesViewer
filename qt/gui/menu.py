@@ -22,7 +22,9 @@ class AppMenuBar(QMenuBar):
 
     def _build_trip_menu(self):
         menu = QMenu("Trip", self)
-        # Future trip actions go here
+        trip_read_dir_action = QAction("Read Directory", self)
+        trip_read_dir_action.triggered.connect(self.callbacks.get("trip_read_dir"))
+        menu.addAction(trip_read_dir_action)                                               
         self.addMenu(menu)
 
     def _build_settings_menu(self):
@@ -56,6 +58,8 @@ def create_menubar(parent, about_callback):
 
     # Trip Menu (placeholder)
     trip_menu = QMenu("Trip", parent)
+    trip_read_dir = QAction("Read Directory", parent)
+    trip_menu.addAction(trip_read_dir)
 
     # Settings Menu
     settings_menu = QMenu("Settings", parent)
