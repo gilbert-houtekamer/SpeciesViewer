@@ -3,81 +3,76 @@ from PyQt6.QtGui import QAction, QIcon, QKeySequence
 from PyQt6.QtWidgets import QMenuBar, QMenu
 
 class AppMenuBar(QMenuBar):
-    def __init__(self, parent, callbacks):
+    def __init__(self, parent, callbacks, menu_spec):
         super().__init__(parent)
 
-        self.callbacks = callbacks  # Dictionary of handlers
+        for menu_name, actions in menu_spec.items():
+            menu = self.addMenu(menu_name)
+            for action_name, callback_key in actions.items():
+                callback = callbacks.get(callback_key)
+                if callback:
+                    act = QAction(action_name, self)
+                    act.triggered.connect(callback)
+                    menu.addAction(act)
 
-        self._build_file_menu()
-        self._build_trip_menu()
-        self._build_settings_menu()
-        self._build_help_menu()
-
-    def _build_file_menu(self):
-        menu = QMenu("File", self)
-        quit_action = QAction("Quit", self)
-        quit_action.triggered.connect(self.callbacks.get("quit"))
-        menu.addAction(quit_action)
-        self.addMenu(menu)
-
-    def _build_trip_menu(self):
-        menu = QMenu("Trip", self)
-        trip_read_dir_action = QAction("Read Directory", self)
-        trip_read_dir_action.triggered.connect(self.callbacks.get("trip_read_dir"))
-        menu.addAction(trip_read_dir_action)                                               
-        self.addMenu(menu)
-
-    def _build_settings_menu(self):
-        menu = QMenu("Settings", self)
-        global_action = QAction("Global Settings", self)
-        repo_action = QAction("Repository Settings", self)
-
-        global_action.triggered.connect(self.callbacks.get("global_settings"))
-        repo_action.triggered.connect(self.callbacks.get("repo_settings"))
-
-        menu.addAction(global_action)
-        menu.addAction(repo_action)
-        self.addMenu(menu)
-
-    def _build_help_menu(self):
-        menu = QMenu("Help", self)
-        about_action = QAction("About", self)
-        about_action.triggered.connect(self.callbacks.get("about"))
-        menu.addAction(about_action)
-        self.addMenu(menu)
-
-
-def create_menubar(parent, about_callback):
+def create_menubar(parent, spec):
     menubar = QMenuBar(parent)
 
-    # File Menu
-    file_menu = QMenu("File", parent)
-    quit_action = QAction("Quit", parent)
-    quit_action.triggered.connect(parent.close)
-    file_menu.addAction(quit_action)
+    for menu_name, actions in spec.items():
+        menu = QMenu(menu_name, parent)
+        for label, spec_obj in actions.items():
+            if not spec_obj.is_enabled():
+                continue
 
-    # Trip Menu (placeholder)
-    trip_menu = QMenu("Trip", parent)
-    trip_read_dir = QAction("Read Directory", parent)
-    trip_menu.addAction(trip_read_dir)
+            action = QAction(spec_obj.get_title(label), parent)
+            action.triggered.connect(spec_obj.callback)
 
-    # Settings Menu
-    settings_menu = QMenu("Settings", parent)
-    global_action = QAction("Global Settings", parent)
-    repo_action = QAction("Repository Settings", parent)
-    settings_menu.addAction(global_action)
-    settings_menu.addAction(repo_action)
+            if spec_obj.shortcut:
+                action.setShortcut(spec_obj.shortcut)
 
-    # Help Menu
-    help_menu = QMenu("Help", parent)
-    about_action = QAction("About", parent)
-    about_action.triggered.connect(about_callback)
-    help_menu.addAction(about_action)
+            menu.addAction(action)
 
-    # Add Menus
-    menubar.addMenu(file_menu)
-    menubar.addMenu(trip_menu)
-    menubar.addMenu(settings_menu)
-    menubar.addMenu(help_menu)
+        menubar.addMenu(menu)
 
     return menubar
+
+class MenuSpec:
+    def __init__(
+        self,
+        callback,
+        title=None,
+        shortcut=None,
+        enabled=None,
+        icon=None,
+        tooltip=None
+    ):
+        """
+        Encapsulates metadata and behavior for a single menu action.
+
+        Parameters:
+        - callback: Function to call when triggered.
+        - title: Optional display label override.
+        - shortcut: Optional keyboard shortcut (e.g. "Ctrl+Q").
+        - enabled: Optional function to determine if action is enabled.
+        - icon: Optional icon path (QIcon accepted or string).
+        - tooltip: Optional hover text for the action.
+        """
+        self.callback = callback
+        self.title = title
+        self.shortcut = shortcut
+        self.enabled = enabled or (lambda: True)
+        self.icon = icon
+        self.tooltip = tooltip
+
+    def is_enabled(self):
+        return bool(self.enabled())
+
+    def get_title(self, default):
+        return self.title or default
+
+    def get_icon(self):
+        return self.icon
+
+    def get_tooltip(self):
+        return self.tooltip
+

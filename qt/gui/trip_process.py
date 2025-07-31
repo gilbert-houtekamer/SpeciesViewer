@@ -5,6 +5,7 @@ from gui.batch import call_batch_module  # Assuming batch handler is here
 import bin.sv2ReadDirExif  # Replace with correct module path
 
 def show_read_dir_dialog(parent, config):
+    print("✅ trip_read_dir triggered")
     logger = logging.getLogger("speciesviewer")
 
     dialog = QDialog(parent)

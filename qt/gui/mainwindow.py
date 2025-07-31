@@ -13,9 +13,10 @@ from utils.config import config, CONFIG_FILE
 from dialogs.setting import AboutDialog
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
-from gui.menu import AppMenuBar
+from gui.menu import create_menubar
 from widgets.log_panel import LogPanel
 from gui.trip_process import show_read_dir_dialog
+from gui.menuspec import build_menu_spec
 
 def Color(name):
     label = QLabel(name)
@@ -32,6 +33,7 @@ class MainWindow(QMainWindow):
         self.config = config
         self.setWindowTitle("Species Viewer 0.1")
         self.resize(1200, 900)
+        self.logger = None
         # layout
 
         layout2 = QHBoxLayout()
@@ -85,36 +87,37 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(widget)
 
 
-        callbacks = {
-            "quit": self.close,
-            "global_settings": self.open_global_settings,
-            "repo_settings": self.open_repo_settings,
-            "trip_read_dir": self.trip_read_dir, 
-            "about": self.show_about
-        }
-        menu_bar = AppMenuBar(self, callbacks)
+        # Define all callback methods
+        # callbacks = {
+        #     "quit": self.close,
+        #     "global_settings": self.open_global_settings,
+        #     "repo_settings": self.open_repo_settings,
+        #     "trip_read_dir": self.trip_read_dir,
+        #     "about": self.show_about,
+        # }
+        menu_spec = build_menu_spec(self)
+        menu_bar = create_menubar(self, menu_spec)
         self.setMenuBar(menu_bar)
 
-    def show_about(self):
-        dialog = AboutDialog(self)
-        dialog.exec()
+    # def show_about(self):
+    #     dialog = AboutDialog(self)
+    #     dialog.exec()
 
-    def open_global_settings(self):
-        dlg = GlobalSettingsDialog(self, self.config)
-        dlg.exec()
+    # def open_global_settings(self):
+    #     dlg = GlobalSettingsDialog(self, self.config)
+    #     dlg.exec()
 
-    def open_repo_settings(self):
-        dlg = RepoSettingsDialog(self, self.config)
-        dlg.exec()
+    # def open_repo_settings(self):
+    #     dlg = RepoSettingsDialog(self, self.config)
+    #     dlg.exec()
 
-    def trip_read_dir(self):
-        dlg = show_read_dir_dialog(self, self.config)
-        dlg.exec()
+    # def trip_read_dir(self):
+    #     dlg = show_read_dir_dialog(self, self.config)
+    #     dlg.exec()
 
     def closeEvent(self, event):
         sizes = self.splitter.sizes()
-        # config = configparser.ConfigParser()
-        # config.read(CONFIG_FILE)
+        # logger.info("Close and save screen sizes")
         config["layout"] = {"split_sizes": ",".join(map(str, sizes))}
         with open(CONFIG_FILE, "w") as f:
             config.write(f)
