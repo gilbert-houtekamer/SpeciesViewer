@@ -4,14 +4,10 @@ from PyQt6.QtGui import QPixmap, QFont
 from PyQt6.QtCore import Qt, QTimer
 
 from qt.gui.layout_colorwidget import Color
-from gui.menu import create_menubar
 from gui.mainwindow import MainWindow
 from utils.logger_support import init_logger
-from gui.setup_logpanel import attach_log_panel  # ✅ Safe: won't be called until after QApplication
 
 def start_main():
-    app = QApplication(sys.argv)  # ✅ Must come first
-
     # 🖼️ Splash screen setup
     splash_pix = QPixmap("assets/svsplash.jpg")
     splash = QSplashScreen(splash_pix)
@@ -24,20 +20,28 @@ def start_main():
         Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
         Qt.GlobalColor.white
     )
-
     splash.show()
 
     # 🪄 Launch main app window after splash
     def launch_main_window():
         main_window = MainWindow()
-        #attach_log_panel(main_window)      # ✅ Safe to attach after QApplication
-        init_logger(main_window.green_log_box)           # ✅ Set up logging
+        main_window.logger = init_logger(main_window.green_log_box)           # ✅ Set up logging
+        print(f"✅ Logger assigned: {main_window.logger}")
         splash.finish(main_window)
+        print(f"✅ Logger assigned: {main_window.logger}")
         main_window.show()
+       
+        # main_window.init_panels()  # ✅ Safe moment — QApplication fully live        
 
     QTimer.singleShot(2000, launch_main_window)  # ⏱️ Delay splash by 2 sec
 
-    sys.exit(app.exec())  # 🧠 Start the Qt event loop
+    # sys.exit(app.exec())  # 🧠 Start the Qt event loop
+
+def main():
+    app = QApplication(sys.argv)
+    ex = start_main()
+    # print("QApplication exists in TripCreationDialog?", QApplication.instance()) 
+    sys.exit(app.exec())    
 
 if __name__ == "__main__":
-    start_main()
+    main()

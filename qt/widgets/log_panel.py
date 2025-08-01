@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QPlainTextEdit
+from PyQt6.QtWidgets import QPlainTextEdit
 
 class LogPanel(QPlainTextEdit):
     def __init__(self, parent=None):
