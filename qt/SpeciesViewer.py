@@ -1,9 +1,8 @@
 import sys
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplashScreen
+from PyQt6.QtWidgets import QApplication, QSplashScreen
 from PyQt6.QtGui import QPixmap, QFont
 from PyQt6.QtCore import Qt, QTimer
 
-from qt.gui.layout_colorwidget import Color
 from gui.mainwindow import MainWindow
 from utils.logger_support import init_logger
 

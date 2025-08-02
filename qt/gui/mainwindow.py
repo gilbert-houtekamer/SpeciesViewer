@@ -3,18 +3,12 @@ import configparser
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter
 from PyQt6.QtWidgets import QPlainTextEdit, QMenuBar, QMenu, QLabel, QSizePolicy, QLineEdit, QTabWidget
-from PyQt6.QtGui import QAction, QIcon, QKeySequence
-from PyQt6.QtGui import QPixmap, QFont
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt
 
 from qt.gui.layout_colorwidget import Color
 
 from utils.config import config, CONFIG_FILE
-from dialogs.setting import AboutDialog
-from settings.globalsettings import GlobalSettingsDialog
-from settings.reposettings import RepoSettingsDialog
 from gui.menu import create_menubar
-from widgets.log_panel import LogPanel
 from gui.menuspec import build_menu_spec
 
 def Color(name):

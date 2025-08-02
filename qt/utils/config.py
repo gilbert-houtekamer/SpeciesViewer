@@ -1,7 +1,6 @@
 import configparser
 import os
-import sys
-import os
+
 
 CONFIG_FILE = "wx_config.ini"
 

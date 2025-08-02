@@ -13,8 +13,6 @@ import bin.sv6Freeze
 import bin.sv7WriteCommit
 from utils.trip_config import read_trip_ini
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, ImageFileFieldQt)
-    # create_directory_field,
-    # create_image_file_field)
 
 def generate_trip_ini(
     trip_root: str,

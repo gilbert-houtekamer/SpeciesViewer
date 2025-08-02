@@ -1,6 +1,5 @@
 import logging
-from PyQt5.QtCore import QMetaObject, Qt
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import QTimer
 
 class SuppressExifToolOutput(logging.Filter):
     def filter(self, record):
