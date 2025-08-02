@@ -10,6 +10,7 @@ from qt.gui.layout_colorwidget import Color
 from utils.config import config, CONFIG_FILE
 from gui.menu import create_menubar
 from gui.menuspec import build_menu_spec
+from sharedlib.translatelib import CachedTranslate
 
 def Color(name):
     label = QLabel(name)
@@ -71,6 +72,8 @@ class MainWindow(QMainWindow):
         menu_spec = build_menu_spec(self)
         menu_bar = create_menubar(self, menu_spec)
         self.setMenuBar(menu_bar)
+        # translation just in case we need it
+        self.translator = CachedTranslate(config["master"]["masterbiotadatabase"])
         # self.yellow_builder = YellowPanelBuilder(root_field, self.config)
 
     def closeEvent(self, event):

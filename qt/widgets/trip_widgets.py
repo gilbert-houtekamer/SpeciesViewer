@@ -189,7 +189,7 @@ class LabeledTextFieldQt(QWidget):
         if self.multiline:
             self.field.setPlainText(value)
         else:
-            self.field
+            self.field.setText(value) 
 
 class DateRangeFieldQt(QWidget):
     def __init__(self, from_date=None, to_date=None):

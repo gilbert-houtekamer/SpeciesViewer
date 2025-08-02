@@ -13,6 +13,7 @@ import bin.sv6Freeze
 import bin.sv7WriteCommit
 from utils.trip_config import read_trip_ini
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, ImageFileFieldQt)
+from sharedlib.translatelib import CachedTranslate
 
 def generate_trip_ini(
     trip_root: str,
@@ -119,12 +120,10 @@ class TripCreationDialog(QDialog):
         dutch_layout = QVBoxLayout(dutch_tab)
         self.title_nl_field = LabeledTextFieldQt("Trip title (Dutch)", trip_data.get("title_nl", ""))
         self.message_nl_field = LabeledTextFieldQt("Trip description (Dutch)", trip_data.get("message_nl", ""), multiline=True)
+        translate_btn = QPushButton("Translate to English")
+        translate_btn.clicked.connect(self.translate_dutch_to_english)
 
-        # title_nl = create_labeled_text("Trip title (Dutch)", trip_data.get("title_nl", ""))
-        # message_nl = create_labeled_text("Trip description (Dutch)", trip_data.get("message_nl", ""), multiline=True)
-        # self.title_nl_field = title_nl["field"]
-        # self.message_nl_field = message_nl["field"]
-
+        dutch_layout.addWidget(translate_btn)
         dutch_layout.addWidget(self.title_nl_field)
         dutch_layout.addWidget(self.message_nl_field)        
         sub_tabs.addTab(dutch_tab, "Dutch Text")
@@ -134,25 +133,24 @@ class TripCreationDialog(QDialog):
         english_layout = QVBoxLayout(english_tab)
         self.title_en_field = LabeledTextFieldQt("Trip title (English)", trip_data.get("title_en", ""))
         self.message_en_field = LabeledTextFieldQt("Trip description (English)", trip_data.get("message_en", ""), multiline=True)
+        translate_btn_en = QPushButton("Translate to Dutch")
+        translate_btn_en.clicked.connect(self.translate_english_to_dutch)        
 
-        # title_en = create_labeled_text("Trip title (English)", trip_data.get("title_en", ""))
-        # message_en = create_labeled_text("Trip description (English)", trip_data.get("message_en", ""), multiline=True)
-        # self.title_en_field = title_en["field"]
-        # self.message_en_field = message_en["field"]
-
+        english_layout.addWidget(translate_btn_en)
         english_layout.addWidget(self.title_en_field)
         english_layout.addWidget(self.message_en_field)
         sub_tabs.addTab(english_tab, "English Text")
 
         # Sub-tab: Create
-        create_tab = QWidget()
-        create_layout = QVBoxLayout(create_tab)
-        create_layout.addWidget(QPushButton("Generate trip.ini"))
-        create_layout.addWidget(QPushButton("Create Trip Directories"))
-        sub_tabs.addTab(create_tab, "Create Trip")
+        # create_tab = QWidget()
+        # create_layout = QVBoxLayout(create_tab)
+        # create_layout.addWidget(QPushButton("Generate trip.ini"))
+        # create_layout.addWidget(QPushButton("Create Trip Directories"))
+        # sub_tabs.addTab(create_tab, "Create Trip")
+
 
         layout3.addWidget(sub_tabs)
-        tabs.addTab(tab3, "Trip Text && Actions")
+        tabs.addTab(tab3, "Trip Text")
 
         # Add all tabs to main layout
         main_layout.addWidget(tabs)
@@ -174,7 +172,11 @@ class TripCreationDialog(QDialog):
         # Hook up buttons
         write_tripini_button.clicked.connect(self.on_write_tripini_clicked)        
         create_button.clicked.connect(self.on_create_clicked)
-        cancel_button.clicked.connect(self.reject)         
+        cancel_button.clicked.connect(self.reject)
+
+    def closeEvent(self, event):
+        self.passed_parent.translator.writeTranslationCache()
+        super().closeEvent(event)
 
     def on_write_tripini_clicked(self):
         self.create_trip_ini()        
@@ -191,6 +193,30 @@ class TripCreationDialog(QDialog):
             "✅ Trip creation complete. Please review the log messages."
         )
         self.logger.info("Trip created successfully!")
+
+    def translate_dutch_to_english(self):
+        nl_title = self.title_nl_field.get_text()
+        nl_message = self.message_nl_field.get_text()
+
+        translated_title = self.passed_parent.translator.getOneLanguage(nl_title, languagein='en')
+        translated_message = self.passed_parent.translator.getOneLanguage(nl_message, languagein='en')
+
+        self.title_en_field.set_text(translated_title)
+        self.message_en_field.set_text(translated_message)
+
+        self.logger.info("✅ Translated Dutch to English using Google Translate.")
+
+    def translate_english_to_dutch(self):
+        en_title = self.title_en_field.get_text()
+        en_message = self.message_en_field.get_text()
+
+        translated_title = self.passed_parent.translator.getOneLanguage(en_title, languagein='nl')
+        translated_message = self.passed_parent.translator.getOneLanguage(en_message, languagein='nl')
+
+        self.title_nl_field.set_text(translated_title)
+        self.message_nl_field.set_text(translated_message)
+
+        self.logger.info("✅ Translated English to Dutch using Google Translate.")        
 
     def create_trip_ini(self):
         trip_root = self.root_field.get_path()
