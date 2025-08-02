@@ -1,5 +1,5 @@
 from gui.menu import MenuSpec  # assuming class is defined elsewhere
-from gui.trip_process import show_read_dir_dialog, TripCreationDialog
+from gui.trip_process import ReadDirDialog, TripCreationDialog, show_write_summary_dialog
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
 from dialogs.setting import AboutDialog
@@ -17,15 +17,21 @@ def build_menu_spec(main_window):
         "Trip": {
             "Create Trip": MenuSpec(
                 callback=lambda: TripCreationDialog(config, main_window).exec(),
-                shortcut="Ctrl+N",
+                # shortcut="Ctrl+N",
                 title="Start New Trip"
             ),
             "Read Directory": MenuSpec(
-                callback=lambda: show_read_dir_dialog(main_window, config).exec(),
+                callback=lambda: ReadDirDialog(main_window, config).exec(),
                 title="Read Directory",
                 shortcut="Ctrl+D",
                 # enabled=lambda: config.repo_available,
             ),
+            "Write Summary": MenuSpec(
+                callback=lambda: show_write_summary_dialog(main_window, config).exec(),
+                title="Write Summary",
+                # shortcut="Ctrl+D",
+                # enabled=lambda: config.repo_available,
+            ),            
         },
         "Settings": {
             "Global Settings": MenuSpec(
