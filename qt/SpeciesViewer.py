@@ -26,9 +26,8 @@ def start_main():
     def launch_main_window():
         main_window = MainWindow()
         main_window.logger = init_logger(main_window.green_log_box)           # ✅ Set up logging
-        print(f"✅ Logger assigned: {main_window.logger}")
+        print(f"✅ Logging configured, logger assigned: {main_window.logger}")
         splash.finish(main_window)
-        print(f"✅ Logger assigned: {main_window.logger}")
         main_window.show()
        
         # main_window.init_panels()  # ✅ Safe moment — QApplication fully live        
