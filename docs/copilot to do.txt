@@ -1,0 +1,46 @@
+This evening or later I want 
+
+Let's first do 1 & 2, next 3, and time permitting (no likely) 4.  Can you do 1 and 2 for me?
+
+>>>1. UI Cleanup
+>>>probably remove the create trip and move the trip.ini next to the existing create and cance button are defined but not used,
+>>>Remove the old “Create Trip” logic
+>>>Move trip.ini creation near the existing Create/Cancel buttons
+>>>Actually wire up those buttons (finally!)
+>>>
+>>>2. to actually create an project with the batch module (shoul trivial, like show_read_dir_dialog) 
+>>>Create a real project using the batch module
+>>>Possibly define a batch config or workflow template
+>>>Hook it into your UI for streamlined execution
+>>>
+>>>3 refactor the create_something like we have for images and directories. 
+>>>Generalize create_something() like you did for images and directories
+>>>Make it modular: create_ini(), create_image_set(), etc.
+>>>Add logging or status feedback for each creation step
+>>>
+>>>4 use my googlettranslate module on the english and dutch versions, 
+>>>Auto-translate English ↔ Dutch for title and description
+>>>Add a “Translate” button or auto-trigger on field change?
+>>>Cache translations to avoid redundant API calls
+>>>
+>>>5 remove redundant dialog in createtrip
+
+6 make 3, like 2
+
+7 blog panel, more like 1
+
+8 A be willing to wait for for batch module (batch.py)
+
+9 Very short text summary on the yellow pane
+
+10 statemachine
+
+  (CoPilot) disable the “Create Trip” button until trip.ini is written, o
+  or show a confirmation popup. You're building something cool!
+  - return code via a file
+  
+11 panel 5-7 in one panel.
+
+12 page 2 and 3 together with statemachine logic
+
+13 utilities for trips, separators in dialog
