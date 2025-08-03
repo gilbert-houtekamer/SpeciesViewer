@@ -77,9 +77,6 @@ class TripCreationDialog(QDialog):
         self.passed_parent = parent
         self.setWindowTitle("Create Trip")
         self.resize(800, 600)
-        # print(f"📋 Logger passed to TripCreationDialog: {parent.logger}")    
-        # print(f"📋 Logger in TripCreationDialogspec:    {self.logger}")        
-        # self.logger.info(f"TripCreationDialog {self.logger}")
 
         trip_root = config.get("trip", "tripbiotadatabase", fallback="")
         trip_data = read_trip_ini(trip_root) if os.path.isdir(trip_root) else {}
@@ -107,8 +104,6 @@ class TripCreationDialog(QDialog):
         self.date_field.set_dates(trip_data.get("fromdate", ""), trip_data.get("todate", ""))
         layout2.addWidget(self.date_field)
 
-        # layout, self.from_date_edit, self.to_date_edit = create_date_inputs(trip_data)
-        # layout2.addLayout(layout)
         tabs.addTab(tab2, "Images && Dates")
 
         # Tab 3: Dutch, English, Create
@@ -141,14 +136,6 @@ class TripCreationDialog(QDialog):
         english_layout.addWidget(self.title_en_field)
         english_layout.addWidget(self.message_en_field)
         sub_tabs.addTab(english_tab, "English Text")
-
-        # Sub-tab: Create
-        # create_tab = QWidget()
-        # create_layout = QVBoxLayout(create_tab)
-        # create_layout.addWidget(QPushButton("Generate trip.ini"))
-        # create_layout.addWidget(QPushButton("Create Trip Directories"))
-        # sub_tabs.addTab(create_tab, "Create Trip")
-
 
         layout3.addWidget(sub_tabs)
         tabs.addTab(tab3, "Trip Text")
@@ -185,7 +172,7 @@ class TripCreationDialog(QDialog):
 
     def on_create_clicked(self):
         self.create_trip_ini()
-        call_batch_module(
+        BatchModuleRunner(
             self.config,
             self.passed_parent,
             self.logger,
@@ -251,130 +238,11 @@ class TripCreationDialog(QDialog):
             self.logger
     )
 
-# def show_read_dir_dialog(parent, config):
-#     logger = logging.getLogger("speciesviewer")
-
-#     dialog = QDialog(parent)
-#     dialog.setWindowTitle("Read Picture Directory")
-#     dialog.resize(300, 200)
-    
-#     projectdir = Path(config["project"]["picturedirectory"])
-#     super_directory = projectdir.parent()
-#     project_subdir = projectdir.name()
-#     print(f"super_directory  {super_directory}  project_subdir  {project_subdir}")
-
-#     layout = QVBoxLayout(dialog)
-#     super_directory = DirectoryFieldQt("Project root folder", super_directory)
-#     layout.addWidget(super_directory)
-
-#     layout = QVBoxLayout(dialog)
-#     project_subdir = DirectoryFieldQt("Project subdirectory", project_subdir)
-#     layout.addWidget(super_directory)    
-
-#     info_text = QLabel("Scan a directory with photo files and extract metadata (Exif tags) for each image.")
-#     info_text.setWordWrap(True)
-#     layout.addWidget(info_text)
-
-#     read_btn = QPushButton("Read Directory")
-#     layout.addWidget(read_btn, alignment=Qt.AlignmentFlag.AlignLeft)
-
-#     def on_read():
-#         call_batch_module(
-#             config,
-#             parent,
-#             logger,
-#             bin.sv2ReadDirExif.main,
-#             "Reading picture directory...",
-#             "✅ Directory scan complete. Review messages above."
-#         )
-#         dialog.accept()
-
-#     read_btn.clicked.connect(on_read)
-
-#     return dialog
-
-# def show_read_dir_dialog(parent, config):
-#     logger = logging.getLogger("speciesviewer")
-
-#     dialog = QDialog(parent)
-#     dialog.setWindowTitle("Read Picture Directory")
-#     dialog.resize(400, 200)
-
-#     # Split the configured path
-#     full_path = Path(config["project"]["picturedirectory"])
-#     base_path = full_path.parent
-#     subdir_name = full_path.name
-
-#     layout = QVBoxLayout(dialog)
-
-#     # Base directory field
-#     base_dir_field = DirectoryFieldQt("Project root folder", str(base_path))
-#     layout.addWidget(base_dir_field)
-
-#     # Subdirectory dropdown
-#     subdir_dropdown = QComboBox()
-#     subdir_dropdown.setEditable(False)
-#     layout.addWidget(QLabel("Select subdirectory"))
-#     layout.addWidget(subdir_dropdown)
-
-#     # Info text
-#     info_text = QLabel("Scan a directory with photo files and extract metadata (Exif tags) for each image.")
-#     info_text.setWordWrap(True)
-#     layout.addWidget(info_text)
-
-#     # Read button
-#     read_btn = QPushButton("Read Directory")
-#     layout.addWidget(read_btn, alignment=Qt.AlignmentFlag.AlignLeft)
-
-#     # Populate dropdown based on base directory
-#     def update_subdirs():
-#         base_path = Path(base_dir_field.get_path())
-#         if base_path.is_dir():
-#             subdirs = [f.name for f in base_path.iterdir() if f.is_dir()]
-#             subdir_dropdown.clear()
-#             subdir_dropdown.addItems(subdirs)
-#             if subdir_name in subdirs:
-#                 subdir_dropdown.setCurrentText(subdir_name)
-#         else:
-#             subdir_dropdown.clear()
-
-#     base_dir_field.field.textChanged.connect(update_subdirs)
-#     update_subdirs()  # Initial population
-
-#     # Read button handler
-#     def on_read():
-#         selected_base = Path(base_dir_field.get_path())
-#         selected_subdir = subdir_dropdown.currentText()
-#         full_selected_path = selected_base / selected_subdir
-
-#         if not selected_base.is_dir():
-#             base_dir_field.show_hint("Invalid base directory.")
-#             return
-#         if not (selected_base / selected_subdir).is_dir():
-#             base_dir_field.show_hint("Selected subdirectory does not exist.")
-#             return
-
-#         # Update config
-#         config["project"]["picturedirectory"] = str(full_selected_path)
-#         logger.info(f"📁 Selected picture directory: {full_selected_path}")
-
-#         call_batch_module(
-#             config,
-#             parent,
-#             logger,
-#             bin.sv2ReadDirExif.main,
-#             "Reading picture directory...",
-#             "✅ Directory scan complete. Review messages above."
-#         )
-
-#     read_btn.clicked.connect(on_read)
-
-#     return dialog
 class ReadDirDialog(QDialog):
     def __init__(self, parent, config):
         super().__init__(parent)
         self.setWindowTitle("Read Picture Directory")
-        self.resize(400, 250)
+        self.resize(600, 250)
 
         self.logger = logging.getLogger("speciesviewer")
         self.config = config
@@ -452,33 +320,97 @@ class ReadDirDialog(QDialog):
         batch.run(bin.sv2ReadDirExif.main, "Reading picture directory...", "✅ Directory scan complete.")
         self.status_label.setText("✅ Directory scan complete.")
 
-def show_write_summary_dialog(parent, config):
-    logger = logging.getLogger("speciesviewer")
+class WritePicturesDialog(QDialog):
+    def __init__(self, parent, config):
+        super().__init__(parent)
+        self.setWindowTitle("Write Summary Data")
+        self.resize(600, 250)
 
-    dialog = QDialog(parent)
-    dialog.setWindowTitle("Write summary with species data.")
-    dialog.resize(300, 200)
+        self.logger = logging.getLogger("speciesviewer")
+        self.config = config
 
-    layout = QVBoxLayout(dialog)
+        # Extract trip root and default subdir
+        full_path = Path(config["project"]["picturedirectory"])
+        self.base_path = full_path.parent
+        self.default_subdir = full_path.name   # e.g. 2017-08-09
+        self.trip_root = config["trip"]["tripbiotadatabase"] # E:\Dropbox\trips\2017 oostzeedb
 
-    info_text = QLabel("Interpret the metadata (Exif tags) for each image.")
-    info_text.setWordWrap(True)
-    layout.addWidget(info_text)
+        layout = QVBoxLayout(self)
 
-    write_btn = QPushButton("Write Summary data")
-    layout.addWidget(write_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        # Show root folder (non-editable)
+        layout.addWidget(QLabel("Trip root folder"))
+        self.root_label = QLineEdit(str(self.base_path))
+        self.root_label.setReadOnly(True)
+        layout.addWidget(self.root_label)
 
-    def on_write():
-        call_batch_module(
-            config,
-            parent,
-            logger,
+        # Subdirectory dropdown
+        layout.addWidget(QLabel("Select subdirectory with metadata"))
+        self.subdir_dropdown = QComboBox()
+        self.subdir_dropdown.setEditable(False)
+        layout.addWidget(self.subdir_dropdown)
+
+        # Info text
+        self.info_text = QLabel("Write summary data for a trip based on metadata files.")
+        self.info_text.setWordWrap(True)
+        layout.addWidget(self.info_text)
+
+        # Status label
+        self.status_label = QLabel("")
+        layout.addWidget(self.status_label)
+
+        # Buttons layout
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        self.write_btn = QPushButton("Write Summary")
+        self.close_btn = QPushButton("Close")
+        btn_layout.addWidget(self.write_btn)
+        btn_layout.addWidget(self.close_btn)
+        layout.addLayout(btn_layout)
+
+        # Signals
+        self.write_btn.clicked.connect(self.on_write)
+        self.close_btn.clicked.connect(self.close)
+
+        # Populate dropdown
+        self.update_subdirs()
+
+    def update_subdirs(self):
+        metadata_path = Path(os.path.join(self.trip_root, "metadata" , "review"))
+        valid_subdirs = []
+
+        if metadata_path.is_dir():
+            for sub in metadata_path.iterdir():
+                if sub.is_dir() and (sub / "data_files.csv").is_file():
+                    valid_subdirs.append(sub.name)
+
+        self.subdir_dropdown.clear()
+        self.subdir_dropdown.addItems(valid_subdirs)
+
+        if self.default_subdir in valid_subdirs:
+            self.subdir_dropdown.setCurrentText(self.default_subdir)
+
+    def on_write(self):
+        selected_subdir = self.subdir_dropdown.currentText()
+        metadata_dir = os.path.join(self.trip_root, "metadata" , "review", selected_subdir)
+        data_file = Path(os.path.join(metadata_dir ,  "data_files.csv"))
+
+        if not data_file.is_file():
+            self.status_label.setText("❌ Selected subdirectory has not yet been processed by Read Directory.")
+            return
+
+        # Update config to point to selected metadata folder
+        self.config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
+
+        # Run batch module
+        batch = BatchModuleRunner(
+            self.config,
+            self,
+            self.logger
+        )
+        batch.run(
             bin.sv3WritePictures.main,
             "Reading meta data for all pictures ...",
             "✅ Writing Summary data. Review messages above."
         )
-        dialog.accept()
-
-    write_btn.clicked.connect(on_write)
-
-    return dialog
+        self.status_label.setText("✅ Summary written successfully.")
