@@ -1,7 +1,7 @@
 import sys
 import configparser
 
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter
+from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStatusBar
 from PyQt6.QtWidgets import QPlainTextEdit, QMenuBar, QMenu, QLabel, QSizePolicy, QLineEdit, QTabWidget
 from PyQt6.QtCore import Qt
 
@@ -11,6 +11,7 @@ from utils.config import config, CONFIG_FILE
 from gui.menu import create_menubar
 from gui.menuspec import build_menu_spec
 from sharedlib.translatelib import CachedTranslate
+from widgets.TripInfoPanel import TripInfoPanel
 
 def Color(name):
     label = QLabel(name)
@@ -26,6 +27,9 @@ class MainWindow(QMainWindow):
 
         self.config = config
         self.setWindowTitle("Species Viewer 0.1")
+        # Create and attach status bar
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)        
         self.resize(1200, 900)
         self.logger = None
 
@@ -34,7 +38,7 @@ class MainWindow(QMainWindow):
         # layout
 
         layout2 = QHBoxLayout()
-        layout2.addWidget(Color("red"))
+        layout2.addWidget(TripInfoPanel(config))
         # layout2.addWidget(Color("yellow"))
         # self.yellow_tabs = YellowPanel(root_field, config)
         # layout2.addWidget(self.yellow_tabs)        
@@ -75,6 +79,9 @@ class MainWindow(QMainWindow):
         # translation just in case we need it
         self.translator = CachedTranslate(config["master"]["masterbiotadatabase"])
         # self.yellow_builder = YellowPanelBuilder(root_field, self.config)
+        trip_label = QLabel("Trip: 2017 Oostzeedb")
+        self.status_bar.addPermanentWidget(trip_label)
+        self.status_bar.showMessage("Ready")
 
     def closeEvent(self, event):
         sizes = self.splitter.sizes()

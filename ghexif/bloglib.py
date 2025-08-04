@@ -105,7 +105,7 @@ class Blog:
     def getBlogHeader(self):
         return self.blog_csv_headers 
     def getBlogAdminFile(self):
-        return self.mp.getRepositoryPath() + 'admin/blog_admin.csv'
+        return os.path.join(self.mp.getRepositoryPath(),'admin/blog_admin.csv')
     def getBlogAdminWeb(self):
         return self.mp.getBiotaWebRoot() + 'admin/blog_admin.csv'
     def getBlogTitel(self):

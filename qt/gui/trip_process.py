@@ -169,6 +169,7 @@ class TripCreationDialog(QDialog):
     def on_write_tripini_clicked(self):
         self.create_trip_ini()        
         self.logger.info("Trip.ini created or updated successfully!")        
+        self.passed_parent.status_bar.showMessage("Trip.ini created or updated successfully!")
 
     def on_create_clicked(self):
         self.create_trip_ini()
@@ -246,6 +247,7 @@ class ReadDirDialog(QDialog):
 
         self.logger = logging.getLogger("speciesviewer")
         self.config = config
+        self.main_window = parent
 
         full_path = Path(config["project"]["picturedirectory"])
         self.base_path = full_path.parent
@@ -319,6 +321,7 @@ class ReadDirDialog(QDialog):
         batch = BatchModuleRunner(self.config, self, self.logger)
         batch.run(bin.sv2ReadDirExif.main, "Reading picture directory...", "✅ Directory scan complete.")
         self.status_label.setText("✅ Directory scan complete.")
+        self.main_window.status_bar.showMessage("Directory scan complete.")
 
 class WritePicturesDialog(QDialog):
     def __init__(self, parent, config):
@@ -328,6 +331,7 @@ class WritePicturesDialog(QDialog):
 
         self.logger = logging.getLogger("speciesviewer")
         self.config = config
+        self.main_window = parent        
 
         # Extract trip root and default subdir
         full_path = Path(config["project"]["picturedirectory"])
@@ -414,3 +418,4 @@ class WritePicturesDialog(QDialog):
             "✅ Writing Summary data. Review messages above."
         )
         self.status_label.setText("✅ Summary written successfully.")
+        self.main_window.status_bar.showMessage("Summary written successfully.")
