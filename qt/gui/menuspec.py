@@ -1,5 +1,5 @@
 from gui.menu import MenuSpec  # assuming class is defined elsewhere
-from gui.trip_process import ReadDirDialog, TripCreationDialog, WritePicturesDialog
+from gui.trip_process import ReadDirDialog, TripCreationDialog, WritePicturesDialog, CreateBlogDialog
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
 from dialogs.setting import AboutDialog
@@ -31,7 +31,13 @@ def build_menu_spec(main_window):
                 title="Write Summary",
                 # shortcut="Ctrl+D",
                 # enabled=lambda: config.repo_available,
-            ),            
+            ),
+            "Write Blog": MenuSpec(
+                callback=lambda: CreateBlogDialog(main_window, config).exec(),
+                title="Write Blog",
+                # shortcut="Ctrl+D",
+                # enabled=lambda: config.repo_available,
+            ),                                   
         },
         "Settings": {
             "Global Settings": MenuSpec(

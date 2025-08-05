@@ -38,7 +38,15 @@ class MainWindow(QMainWindow):
         # layout
 
         layout2 = QHBoxLayout()
-        layout2.addWidget(TripInfoPanel(config))
+
+        red_panel = QWidget()
+        red_panel.setStyleSheet("background-color: #f9f9f9;")
+        red_layout = QVBoxLayout(red_panel)
+        red_layout.setContentsMargins(0, 0, 0, 0)
+        red_layout.addWidget(TripInfoPanel(config))
+        layout2.addWidget(red_panel)
+
+        # layout2.addWidget(TripInfoPanel(config))
         # layout2.addWidget(Color("yellow"))
         # self.yellow_tabs = YellowPanel(root_field, config)
         # layout2.addWidget(self.yellow_tabs)        

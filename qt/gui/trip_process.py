@@ -1,9 +1,10 @@
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,QCheckBox,
     QTabWidget, QWidget, QVBoxLayout, QComboBox, QLineEdit, QFormLayout, QGridLayout, QDateEdit, QTextEdit)
 from PyQt6.QtCore import Qt
 import logging
 import sys, os
 from pathlib import Path
+import webbrowser
 from gui.batch import BatchModuleRunner  # Assuming batch handler is here
 import bin.sv1MakeReposity
 import bin.sv2ReadDirExif
@@ -247,7 +248,7 @@ class ReadDirDialog(QDialog):
 
         self.logger = logging.getLogger("speciesviewer")
         self.config = config
-        self.main_window = parent
+        self.passed_parent = parent
 
         full_path = Path(config["project"]["picturedirectory"])
         self.base_path = full_path.parent
@@ -321,7 +322,7 @@ class ReadDirDialog(QDialog):
         batch = BatchModuleRunner(self.config, self, self.logger)
         batch.run(bin.sv2ReadDirExif.main, "Reading picture directory...", "✅ Directory scan complete.")
         self.status_label.setText("✅ Directory scan complete.")
-        self.main_window.status_bar.showMessage("Directory scan complete.")
+        self.passed_parent.status_bar.showMessage("Directory scan complete.")
 
 class WritePicturesDialog(QDialog):
     def __init__(self, parent, config):
@@ -331,7 +332,7 @@ class WritePicturesDialog(QDialog):
 
         self.logger = logging.getLogger("speciesviewer")
         self.config = config
-        self.main_window = parent        
+        self.passed_parent = parent        
 
         # Extract trip root and default subdir
         full_path = Path(config["project"]["picturedirectory"])
@@ -418,4 +419,211 @@ class WritePicturesDialog(QDialog):
             "✅ Writing Summary data. Review messages above."
         )
         self.status_label.setText("✅ Summary written successfully.")
-        self.main_window.status_bar.showMessage("Summary written successfully.")
+        self.passed_parent.status_bar.showMessage("Summary written successfully.")
+
+from PyQt6.QtWidgets import (
+    QDialog, QVBoxLayout, QTabWidget, QWidget, QLabel, QLineEdit,
+    QTextEdit, QFormLayout, QPushButton, QHBoxLayout, QSpinBox
+)
+from configparser import ConfigParser
+from pathlib import Path
+
+class CreateBlogDialog(QDialog):
+    def __init__(self, parent=None, config=None):
+        super().__init__(parent)
+        self.setWindowTitle("Configure Blog Post")
+        self.resize(600, 400)
+
+        self.config = config
+        self.ini_path = Path(config["project"]["picturedirectory"]) / "blog.ini"
+        self.parser = ConfigParser()
+        self.passed_parent = parent 
+        self.logger = parent.logger
+
+        self.title_nl_field = ""
+        self.message_nl_field  = ""
+        self.title_en_field  = ""
+        self.message_en_field   = ""      
+
+        # Load or create default ini
+        if self.ini_path.exists():
+            self.parser.read(self.ini_path)
+        else:
+            self._create_default_ini()
+            with open(self.ini_path, "w") as f:
+                self.parser.write(f)
+
+        # Main layout
+        layout = QVBoxLayout(self)
+
+        # Tabs
+        self.tabs = QTabWidget()
+        layout.addWidget(self.tabs)
+
+        self._create_dutch_tab()
+        self._create_english_tab()
+        self._create_config_tab()
+        #
+        self.status_label = QLabel("")
+        layout.addWidget(self.status_label)
+        # checkbox
+        self.open_after_checkbox = QCheckBox("Open blog in browser after creation")
+        self.open_after_checkbox.setChecked(True)  # Default to checked
+        layout.addWidget(self.open_after_checkbox)
+        # Buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        save_btn = QPushButton("Save blog.ini")
+        create_btn = QPushButton("Create Blog")
+        close_btn = QPushButton("Close")
+
+        btn_layout.addWidget(save_btn)
+        btn_layout.addWidget(create_btn)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+        save_btn.clicked.connect(self.save_ini)
+        create_btn.clicked.connect(self.on_create_blog)
+        close_btn.clicked.connect(self.close)
+
+    def get_blog_url(self):
+        base_url = self.config.get("websettings", "base_url", fallback="https://houtekamer.com/")
+        trip_name = self.config.get("trip", "name", fallback="2017Oostzee")
+        return f"{base_url}trips/{trip_name}/biotablog/blog%20index-nl.html"
+
+
+    def _create_default_ini(self):
+        self.parser["blog_config"] = {
+            "only_new": "False",
+            "minimum_score": "25",
+            "column_width": "300"
+        }
+        self.parser["blog_selection"] = {
+            "species": "biota"
+        }
+        self.parser["blog_text"] = {
+            "titel_nl": "Dag 2: Nederlandse Titel",
+            "message_nl": "Nederlandse omschrijving van de post",
+            "titel_en": "Day 2: English title",
+            "message_en": "English description for the post"
+        }
+
+    def translate_dutch_to_english(self):
+        try:
+            nl_title = self.title_nl.text().strip()
+            nl_message = self.message_nl.toPlainText().strip()
+
+            translated_title = self.passed_parent.translator.getOneLanguage(nl_title, languagein='en')
+            translated_message = self.passed_parent.translator.getOneLanguage(nl_message, languagein='en')
+
+            self.title_en.setText(translated_title)
+            self.message_en.setPlainText(translated_message)
+
+            self.logger.info("✅ Translated Dutch to English using Google Translate.")
+        except Exception as e:
+            self.logger.error(f"❌ Translation failed: {e}")
+
+    def translate_english_to_dutch(self):
+        try:
+            en_title = self.title_en.text().strip()
+            en_message = self.message_en.toPlainText().strip()
+
+            translated_title = self.passed_parent.translator.getOneLanguage(en_title, languagein='nl')
+            translated_message = self.passed_parent.translator.getOneLanguage(en_message, languagein='nl')
+
+            self.title_nl.setText(translated_title)
+            self.message_nl.setPlainText(translated_message)
+
+            self.logger.info("✅ Translated English to Dutch using Google Translate.")
+        except Exception as e:
+            self.logger.error(f"❌ Translation failed: {e}")
+
+
+    def _create_dutch_tab(self):
+        tab = QWidget()
+        form = QFormLayout(tab)
+    
+        self.translate_button = QPushButton("Translate to English")  # "Translate to English"
+        self.translate_button.clicked.connect(self.translate_dutch_to_english)
+        self.title_nl = QLineEdit(self.parser.get("blog_text", "titel_nl", fallback=""))
+        self.message_nl = QTextEdit(self.parser.get("blog_text", "message_nl", fallback=""))
+
+        form.addRow("", self.translate_button)
+        form.addRow("Titel (NL):", self.title_nl)
+        form.addRow("Beschrijving (NL):", self.message_nl)
+
+
+        self.tabs.addTab(tab, "Dutch Text")
+
+    def _create_english_tab(self):
+        tab = QWidget()
+        form = QFormLayout(tab)
+
+        self.translate_button = QPushButton("Translate to Dutch")  # "Translate to Dutch"
+        self.translate_button.clicked.connect(self.translate_dutch_to_english)        
+        self.title_en = QLineEdit(self.parser.get("blog_text", "titel_en", fallback=""))
+        self.message_en = QTextEdit(self.parser.get("blog_text", "message_en", fallback=""))
+
+        form.addRow("", self.translate_button)
+        form.addRow("Title (EN):", self.title_en)
+        form.addRow("Description (EN):", self.message_en)
+
+        self.tabs.addTab(tab, "English Text")
+
+    def _create_config_tab(self):
+        tab = QWidget()
+        form = QFormLayout(tab)
+
+        self.minimum_score = QSpinBox()
+        self.minimum_score.setRange(1, 200)
+        self.minimum_score.setValue(self.parser.getint("blog_config", "minimum_score", fallback=25))
+
+        self.column_width = QSpinBox()
+        self.column_width.setRange(200, 500)
+        self.column_width.setValue(self.parser.getint("blog_config", "column_width", fallback=300))
+
+        form.addRow("Minimum picture rating (1–200):", self.minimum_score)
+        form.addRow("Minimum picture width (px):", self.column_width)
+
+        self.tabs.addTab(tab, "Configuration")
+
+    def save_ini(self):
+        self.parser["blog_text"]["titel_nl"] = self.title_nl.text()
+        self.parser["blog_text"]["message_nl"] = self.message_nl.toPlainText()
+        self.parser["blog_text"]["titel_en"] = self.title_en.text()
+        self.parser["blog_text"]["message_en"] = self.message_en.toPlainText()
+
+        self.parser["blog_config"]["minimum_score"] = str(self.minimum_score.value())
+        self.parser["blog_config"]["column_width"] = str(self.column_width.value())
+
+        with open(self.ini_path, "w") as f:
+            self.parser.write(f)
+
+        self.logger.info("✅ blog.ini written successfully.")
+        self.passed_parent.status_bar.showMessage("blog.ini written successfully.")
+
+    def on_create_blog(self):
+        try:
+            self.save_ini()  # Ensure latest edits are saved
+
+            batch = BatchModuleRunner(
+                self.config,
+                self,
+                self.logger
+            )
+            batch.run(
+                bin.sv4WriteBlog.main,
+                "Create a blog entry ...",
+                "✅ Blog successfully created. Review messages above."
+            )
+
+            self.status_label.setText("✅ Blog successfully created.")
+            self.passed_parent.status_bar.showMessage("Blog successfully created.")
+
+            if self.open_after_checkbox.isChecked():
+                webbrowser.open(self.get_blog_url())
+        except Exception as e:
+            self.logger.error(f"❌ Blog creation failed: {e}")
+            self.status_label.setText("❌ Blog creation failed.")
+            self.passed_parent.status_bar.showMessage("Blog creation failed.")        
