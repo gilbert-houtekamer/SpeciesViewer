@@ -18,25 +18,29 @@ def build_menu_spec(main_window):
             "Create Trip": MenuSpec(
                 callback=lambda: TripCreationDialog(config, main_window).exec(),
                 # shortcut="Ctrl+N",
-                title="Start New Trip"
+                title="Start New Trip",
+                statusname="MakeRepository"
             ),
             "Read Directory": MenuSpec(
                 callback=lambda: ReadDirDialog(main_window, config).exec(),
                 title="Read Directory",
                 shortcut="Ctrl+D",
                 # enabled=lambda: config.repo_available,
+                statusname="ReadDirExif"                
             ),
             "Write Summary": MenuSpec(
                 callback=lambda: WritePicturesDialog(main_window, config).exec(),
                 title="Write Summary",
                 # shortcut="Ctrl+D",
                 # enabled=lambda: config.repo_available,
+                statusname="WritePictures"
             ),
             "Write Blog": MenuSpec(
                 callback=lambda: CreateBlogDialog(main_window, config).exec(),
                 title="Write Blog",
                 # shortcut="Ctrl+D",
                 # enabled=lambda: config.repo_available,
+                statusname="WriteBlog"
             ),                                   
         },
         "Settings": {

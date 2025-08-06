@@ -43,7 +43,8 @@ class MenuSpec:
         shortcut=None,
         enabled=None,
         icon=None,
-        tooltip=None
+        tooltip=None,
+        statusname=""
     ):
         """
         Encapsulates metadata and behavior for a single menu action.
@@ -55,6 +56,7 @@ class MenuSpec:
         - enabled: Optional function to determine if action is enabled.
         - icon: Optional icon path (QIcon accepted or string).
         - tooltip: Optional hover text for the action.
+        - statusname: Optional name for statemachine
         """
         self.callback = callback
         self.title = title
@@ -62,6 +64,7 @@ class MenuSpec:
         self.enabled = enabled or (lambda: True)
         self.icon = icon
         self.tooltip = tooltip
+        self.statusname = statusname
 
     def is_enabled(self):
         return bool(self.enabled())
@@ -74,4 +77,7 @@ class MenuSpec:
 
     def get_tooltip(self):
         return self.tooltip
+    
+    def get_statusname(self):
+        return self.statusname
 
