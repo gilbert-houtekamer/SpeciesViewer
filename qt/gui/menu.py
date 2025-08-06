@@ -36,6 +36,8 @@ def create_menubar(parent, spec):
     return menubar
 
 class MenuSpec:
+    REQUIRED_BATCH_KEYS = {"statusname", "module_called", "before_msg", "after_msg"}
+
     def __init__(
         self,
         callback,
@@ -44,19 +46,25 @@ class MenuSpec:
         enabled=None,
         icon=None,
         tooltip=None,
-        statusname=""
+        batch_parms=None
     ):
         """
         Encapsulates metadata and behavior for a single menu action.
 
         Parameters:
-        - callback: Function to call when triggered.
-        - title: Optional display label override.
+        - callback: Function to execute when triggered.
+        - title: Optional display label.
         - shortcut: Optional keyboard shortcut (e.g. "Ctrl+Q").
-        - enabled: Optional function to determine if action is enabled.
-        - icon: Optional icon path (QIcon accepted or string).
-        - tooltip: Optional hover text for the action.
-        - statusname: Optional name for statemachine
+        - enabled: Optional function to determine if action is active.
+        - icon: Optional icon path (QIcon or string).
+        - tooltip: Optional hover message.
+        - batch_parms: Optional dictionary:
+            {
+                'statusname': str,
+                'module_called': callable,
+                'before_msg': str,
+                'after_msg': str
+            }
         """
         self.callback = callback
         self.title = title
@@ -64,7 +72,12 @@ class MenuSpec:
         self.enabled = enabled or (lambda: True)
         self.icon = icon
         self.tooltip = tooltip
-        self.statusname = statusname
+        self.batch_parms = batch_parms or {}
+
+        if self.batch_parms:
+            missing = self.REQUIRED_BATCH_KEYS - self.batch_parms.keys()
+            if missing:
+                raise ValueError(f"Missing batch_parms keys: {', '.join(missing)}")
 
     def is_enabled(self):
         return bool(self.enabled())
@@ -77,7 +90,10 @@ class MenuSpec:
 
     def get_tooltip(self):
         return self.tooltip
+
+    def get_batch_parms(self):
+        return self.batch_parms
     
     def get_statusname(self):
-        return self.statusname
+        return self.batch_parms.get("statusname", "")
 

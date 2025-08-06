@@ -5,14 +5,8 @@ import logging
 import sys, os
 from pathlib import Path
 import webbrowser
-from gui.batch import BatchModuleRunner  # Assuming batch handler is here
-import bin.sv1MakeReposity
-import bin.sv2ReadDirExif
-import bin.sv3WritePictures
-import bin.sv4WriteBlog
-import bin.sv5BuildWebsite
-import bin.sv6Freeze
-import bin.sv7WriteCommit
+from gui.batch import BatchModuleRunner, run_batch_and_report  # Assuming batch handler is here
+
 from utils.trip_config import read_trip_ini
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, ImageFileFieldQt)
 from sharedlib.translatelib import CachedTranslate
@@ -71,9 +65,10 @@ message_en = {message_en}
         return 
 
 class TripCreationDialog(QDialog):
-    def __init__(self, config, parent):
+    def __init__(self, parent, config, menu_spec):
         super().__init__(parent)
         self.config = config
+        self.menu_spec = menu_spec        
         self.logger = parent.logger
         self.passed_parent = parent
         self.setWindowTitle("Create Trip")
@@ -174,17 +169,18 @@ class TripCreationDialog(QDialog):
 
     def on_create_clicked(self):
         self.create_trip_ini()
-        errorstring = BatchModuleRunner(
-            self.config,
-            self.passed_parent,
-            self.logger,
-            bin.sv1MakeReposity.main,
-            "Creating trip data structures...",
-            "✅ Trip creation complete. Please review the log messages.",
-            "MakeRepository"
-        )
-        if errorstring == "":
-            self.logger.info("Trip created successfully!")
+        run_batch_and_report(self, self.menu_spec)        
+        # errorstring = BatchModuleRunner(
+        #     self.config,
+        #     self.passed_parent,
+        #     self.logger,
+        #     bin.sv1MakeReposity.main,
+        #     "Creating trip data structures...",
+        #     "✅ Trip creation complete. Please review the log messages.",
+        #     "MakeRepository"
+        # )
+        # if errorstring == "":
+        #     self.logger.info("Trip created successfully!")
 
     def translate_dutch_to_english(self):
         nl_title = self.title_nl_field.get_text()
@@ -243,13 +239,14 @@ class TripCreationDialog(QDialog):
     )
 
 class ReadDirDialog(QDialog):
-    def __init__(self, parent, config):
+    def __init__(self, parent, config, menu_spec):
         super().__init__(parent)
         self.setWindowTitle("Read Picture Directory")
         self.resize(600, 250)
 
         self.logger = logging.getLogger("speciesviewer")
         self.config = config
+        self.menu_spec = menu_spec               
         self.passed_parent = parent
 
         full_path = Path(config["project"]["picturedirectory"])
@@ -320,24 +317,27 @@ class ReadDirDialog(QDialog):
         self.config["project"]["picturedirectory"] = str(full_selected_path)
         self.logger.info(f"📁 Selected picture directory: {full_selected_path}")
 
-        # Call batch with spinner
-        batch = BatchModuleRunner(self.config, self, self.logger)
-        errorstring = batch.run(bin.sv2ReadDirExif.main, "Reading picture directory...", "✅ Directory scan complete.", "ReadDirExif")
-        if errorstring == "":
-            self.status_label.setText("✅ Directory scan complete.")
-            self.passed_parent.status_bar.showMessage("Directory scan complete.")
-        else:
-            self.status_label.setText(f"❌   {errorstring}");
+        run_batch_and_report(self, self.menu_spec)
+
+        # # Call batch with spinner
+        # batch = BatchModuleRunner(self.config, self, self.logger)
+        # errorstring = batch.run(bin.sv2ReadDirExif.main, "Reading picture directory...", "✅ Directory scan complete.", "ReadDirExif")
+        # if errorstring == "":
+        #     self.status_label.setText("✅ Directory scan complete.")
+        #     self.passed_parent.status_bar.showMessage("Directory scan complete.")
+        # else:
+        #     self.status_label.setText(f"❌   {errorstring}");
 
 class WritePicturesDialog(QDialog):
-    def __init__(self, parent, config):
+    def __init__(self, parent, config, menu_spec):
         super().__init__(parent)
         self.setWindowTitle("Write Summary Data")
         self.resize(600, 250)
 
         self.logger = logging.getLogger("speciesviewer")
         self.config = config
-        self.passed_parent = parent        
+        self.passed_parent = parent    
+        self.menu_spec = menu_spec                   
 
         # Extract trip root and default subdir
         full_path = Path(config["project"]["picturedirectory"])
@@ -412,23 +412,25 @@ class WritePicturesDialog(QDialog):
         # Update config to point to selected metadata folder
         self.config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
 
-        # Run batch module
-        batch = BatchModuleRunner(
-            self.config,
-            self,
-            self.logger
-        )
-        errorstring = batch.run(
-            bin.sv3WritePictures.main,
-            "Reading meta data for all pictures ...",
-            "✅ Writing Summary data. Review messages above.",
-            "WritePictures"
-        )
-        if errorstring == "":
-            self.status_label.setText("✅ Summary written successfully.")
-            self.passed_parent.status_bar.showMessage("Summary written successfully.")
-        else:
-            self.status_label.setText(f"❌   {errorstring}");
+        run_batch_and_report(self, self.menu_spec)        
+
+        # # Run batch module
+        # batch = BatchModuleRunner(
+        #     self.config,
+        #     self,
+        #     self.logger
+        # )
+        # errorstring = batch.run(
+        #     bin.sv3WritePictures.main,
+        #     "Reading meta data for all pictures ...",
+        #     "✅ Writing Summary data. Review messages above.",
+        #     "WritePictures"
+        # )
+        # if errorstring == "":
+        #     self.status_label.setText("✅ Summary written successfully.")
+        #     self.passed_parent.status_bar.showMessage("Summary written successfully.")
+        # else:
+        #     self.status_label.setText(f"❌   {errorstring}");
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QLabel, QLineEdit,
@@ -438,12 +440,13 @@ from configparser import ConfigParser
 from pathlib import Path
 
 class CreateBlogDialog(QDialog):
-    def __init__(self, parent=None, config=None):
+    def __init__(self, parent, config, menu_spec):
         super().__init__(parent)
         self.setWindowTitle("Configure Blog Post")
         self.resize(600, 400)
 
         self.config = config
+        self.menu_spec = menu_spec
         self.ini_path = Path(config["project"]["picturedirectory"]) / "blog.ini"
         self.parser = ConfigParser()
         self.passed_parent = parent 
@@ -616,22 +619,24 @@ class CreateBlogDialog(QDialog):
         try:
             self.save_ini()  # Ensure latest edits are saved
 
-            batch = BatchModuleRunner(
-                self.config,
-                self,
-                self.logger
-            )
-            errorstring = batch.run(
-                bin.sv4WriteBlog.main,
-                "Create a blog entry ...",
-                "✅ Blog successfully created. Review messages above.",
-                "WriteBlog",
-            )
-            if errorstring == "":
-                self.status_label.setText("✅ Blog successfully created.")
-                self.passed_parent.status_bar.showMessage("Blog successfully created.")
-            else:
-                self.status_label.setText(f"❌   {errorstring}");
+            run_batch_and_report(self, self.menu_spec)
+
+            # batch = BatchModuleRunner(
+            #     self.config,
+            #     self,
+            #     self.logger
+            # )
+            # errorstring = batch.run(
+            #     bin.sv4WriteBlog.main,
+            #     "Create a blog entry ...",
+            #     "✅ Blog successfully created. Review messages above.",
+            #     "WriteBlog",
+            # )
+            # if errorstring == "":
+            #     self.status_label.setText("✅ Blog successfully created.")
+            #     self.passed_parent.status_bar.showMessage("Blog successfully created.")
+            # else:
+            #     self.status_label.setText(f"❌   {errorstring}");
 
             if self.open_after_checkbox.isChecked():
                 webbrowser.open(self.get_blog_url())

@@ -6,6 +6,27 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QMovie
 
+def run_batch_and_report(self, menu_spec):
+    batch_parms = menu_spec.get_batch_parms()
+    if not batch_parms:
+        self.status_label.setText("❌ Missing batch parameters.")
+        return
+
+    batch = BatchModuleRunner(self.config, self, self.logger)
+    errorstring = batch.run(
+        batch_parms["module_called"],
+        batch_parms["before_msg"],
+        batch_parms["after_msg"],
+        batch_parms["statusname"],
+    )
+
+    if errorstring == "":
+        self.status_label.setText(batch_parms["after_msg"])
+        self.passed_parent.status_bar.showMessage(batch_parms["after_msg"])
+    else:
+        self.status_label.setText(f"❌ {errorstring}")
+        self.passed_parent.status_bar.showMessage(f"❌ {errorstring}")
+
 class BatchModuleRunner:
     def __init__(self, config, parent_widget, logger):
         self.config = config
