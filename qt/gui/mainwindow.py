@@ -12,6 +12,7 @@ from gui.menu import create_menubar
 from gui.menuspec import build_menu_spec
 from sharedlib.translatelib import CachedTranslate
 from widgets.TripInfoPanel import TripInfoPanel
+from gui.trip_overview import populate_trip_overview
 
 def Color(name):
     label = QLabel(name)
@@ -87,6 +88,7 @@ class MainWindow(QMainWindow):
         # translation just in case we need it
         self.translator = CachedTranslate(config["master"]["masterbiotadatabase"])
         # self.yellow_builder = YellowPanelBuilder(root_field, self.config)
+        populate_trip_overview(self)
         trip_label = QLabel("Trip: 2017 Oostzeedb")
         self.status_bar.addPermanentWidget(trip_label)
         self.status_bar.showMessage("Ready")
