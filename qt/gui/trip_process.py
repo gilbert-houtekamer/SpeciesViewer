@@ -5,7 +5,7 @@ import logging
 import sys, os
 from pathlib import Path
 import webbrowser
-from gui.batch import BatchModuleRunner, run_batch_and_report  # Assuming batch handler is here
+from gui.batch import BatchModuleRunner  # Assuming batch handler is here
 
 from utils.trip_config import read_trip_ini
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, ImageFileFieldQt)
@@ -139,6 +139,10 @@ class TripCreationDialog(QDialog):
         # Add all tabs to main layout
         main_layout.addWidget(tabs)
 
+        # Status label
+        self.status_label = QLabel("")
+        main_layout.addWidget(self.status_label)
+
         # Action buttons
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
@@ -169,18 +173,8 @@ class TripCreationDialog(QDialog):
 
     def on_create_clicked(self):
         self.create_trip_ini()
-        run_batch_and_report(self, self.menu_spec)        
-        # errorstring = BatchModuleRunner(
-        #     self.config,
-        #     self.passed_parent,
-        #     self.logger,
-        #     bin.sv1MakeReposity.main,
-        #     "Creating trip data structures...",
-        #     "✅ Trip creation complete. Please review the log messages.",
-        #     "MakeRepository"
-        # )
-        # if errorstring == "":
-        #     self.logger.info("Trip created successfully!")
+        runner = BatchModuleRunner(self)
+        runner.run(self.menu_spec)        
 
     def translate_dutch_to_english(self):
         nl_title = self.title_nl_field.get_text()
@@ -317,16 +311,8 @@ class ReadDirDialog(QDialog):
         self.config["project"]["picturedirectory"] = str(full_selected_path)
         self.logger.info(f"📁 Selected picture directory: {full_selected_path}")
 
-        run_batch_and_report(self, self.menu_spec)
-
-        # # Call batch with spinner
-        # batch = BatchModuleRunner(self.config, self, self.logger)
-        # errorstring = batch.run(bin.sv2ReadDirExif.main, "Reading picture directory...", "✅ Directory scan complete.", "ReadDirExif")
-        # if errorstring == "":
-        #     self.status_label.setText("✅ Directory scan complete.")
-        #     self.passed_parent.status_bar.showMessage("Directory scan complete.")
-        # else:
-        #     self.status_label.setText(f"❌   {errorstring}");
+        runner = BatchModuleRunner(self)
+        runner.run(self.menu_spec)
 
 class WritePicturesDialog(QDialog):
     def __init__(self, parent, config, menu_spec):
@@ -403,34 +389,17 @@ class WritePicturesDialog(QDialog):
     def on_write(self):
         selected_subdir = self.subdir_dropdown.currentText()
         metadata_dir = os.path.join(self.trip_root, "metadata" , "review", selected_subdir)
-        data_file = Path(os.path.join(metadata_dir ,  "data_files.csv"))
+        # data_file = Path(os.path.join(metadata_dir ,  "data_files.csv"))
 
-        if not data_file.is_file():
-            self.status_label.setText("❌ Selected subdirectory has not yet been processed by Read Directory.")
-            return
+        # if not data_file.is_file():
+        #     self.status_label.setText("❌ Selected subdirectory has not yet been processed by Read Directory.")
+        #     return
 
         # Update config to point to selected metadata folder
         self.config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
 
-        run_batch_and_report(self, self.menu_spec)        
-
-        # # Run batch module
-        # batch = BatchModuleRunner(
-        #     self.config,
-        #     self,
-        #     self.logger
-        # )
-        # errorstring = batch.run(
-        #     bin.sv3WritePictures.main,
-        #     "Reading meta data for all pictures ...",
-        #     "✅ Writing Summary data. Review messages above.",
-        #     "WritePictures"
-        # )
-        # if errorstring == "":
-        #     self.status_label.setText("✅ Summary written successfully.")
-        #     self.passed_parent.status_bar.showMessage("Summary written successfully.")
-        # else:
-        #     self.status_label.setText(f"❌   {errorstring}");
+        runner = BatchModuleRunner(self)
+        runner.run(self.menu_spec)        
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QLabel, QLineEdit,
@@ -619,26 +588,10 @@ class CreateBlogDialog(QDialog):
         try:
             self.save_ini()  # Ensure latest edits are saved
 
-            run_batch_and_report(self, self.menu_spec)
+            runner = BatchModuleRunner(self)
+            errorstring = runner.run(self.menu_spec)
 
-            # batch = BatchModuleRunner(
-            #     self.config,
-            #     self,
-            #     self.logger
-            # )
-            # errorstring = batch.run(
-            #     bin.sv4WriteBlog.main,
-            #     "Create a blog entry ...",
-            #     "✅ Blog successfully created. Review messages above.",
-            #     "WriteBlog",
-            # )
-            # if errorstring == "":
-            #     self.status_label.setText("✅ Blog successfully created.")
-            #     self.passed_parent.status_bar.showMessage("Blog successfully created.")
-            # else:
-            #     self.status_label.setText(f"❌   {errorstring}");
-
-            if self.open_after_checkbox.isChecked():
+            if errorstring == "" and self.open_after_checkbox.isChecked():
                 webbrowser.open(self.get_blog_url())
         except Exception as e:
             self.logger.error(f"❌ Blog creation failed: {e}")

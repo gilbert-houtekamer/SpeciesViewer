@@ -1,41 +1,32 @@
 import logging
 import configparser
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton,
-    QTabWidget, QWidget, QVBoxLayout, QComboBox, QLineEdit, QFormLayout, QGridLayout, QDateEdit, QTextEdit)
+from PyQt6.QtWidgets import (
+    QDialog, QVBoxLayout, QLabel, QApplication
+)
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QMovie
 
-def run_batch_and_report(self, menu_spec):
-    batch_parms = menu_spec.get_batch_parms()
-    if not batch_parms:
-        self.status_label.setText("❌ Missing batch parameters.")
-        return
-
-    batch = BatchModuleRunner(self.config, self, self.logger)
-    errorstring = batch.run(
-        batch_parms["module_called"],
-        batch_parms["before_msg"],
-        batch_parms["after_msg"],
-        batch_parms["statusname"],
-    )
-
-    if errorstring == "":
-        self.status_label.setText(batch_parms["after_msg"])
-        self.passed_parent.status_bar.showMessage(batch_parms["after_msg"])
-    else:
-        self.status_label.setText(f"❌ {errorstring}")
-        self.passed_parent.status_bar.showMessage(f"❌ {errorstring}")
+from utils.batch_config import generate_svconfig_ini
+from sharedlib.statemachine import StateMachine
 
 class BatchModuleRunner:
-    def __init__(self, config, parent_widget, logger):
-        self.config = config
-        self.parent = parent_widget
-        self.logger = logger
+    def __init__(self, gui):
+        self.config = gui.config
+        self.parent = gui
+        self.logger = gui.logger
+        self.status_label = gui.status_label
+        self.status_bar = gui.passed_parent.status_bar
 
-    def run(self, module_called, before_msg, after_msg, statusname):
-        from utils.batch_config import generate_svconfig_ini
-        from sharedlib.statemachine import StateMachine
+    def run(self, menu_spec):
+        batch_parms = menu_spec.get_batch_parms()
+        if not batch_parms:
+            self.status_label.setText("❌ Missing batch parameters.")
+            return
+
+        module_called = batch_parms["module_called"]
+        before_msg = batch_parms["before_msg"]
+        after_msg = batch_parms["after_msg"]
+        statusname = batch_parms["statusname"]
 
         # Spinner setup
         spinner = QDialog(self.parent)
@@ -72,26 +63,42 @@ class BatchModuleRunner:
             readState=True
         )
 
-        # Status check — prerequisites missing
-        if not sm.stateOKtorun(statusname):
-            msg = sm.explainAbort(statusname, raiseSV=False)
-            self.logger.warning(f"{statusname} cannot run: {msg}")
-            message_label.setText(f"<b>Task cannot run:</b><br>{msg}")
-            QApplication.processEvents()
-        else:
-            # Run module — catch execution errors
-            self.logger.info(before_msg)
-            module_called(args, module_config)
-            rc, latest_state = sm.getState(statusname)
-            if not rc:
-                msg = f"<b>Task failed:</b><br>{latest_state}"
-                message_label.setText(msg)
-                self.logger.warning(msg)
-                QApplication.processEvents()
-            else:
-                self.logger.info(after_msg)
-                msg = ""
-        
-        spinner.close()
-        return msg
+        errorstring = ""
 
+        try:
+            if not sm.stateOKtorun(statusname):
+                msg = sm.explainAbort(statusname, raiseSV=False)
+                self.logger.warning(f"❌ {statusname} cannot run: {msg}")
+                message_label.setText(f"<b>Task cannot run:</b><br>{msg}")
+                errorstring = msg
+                spinner.close()
+
+                # Update UI
+                self.status_label.setText(f"❌ {errorstring}")
+                self.status_bar.showMessage(f"❌ {errorstring}")
+                return  # ✅ Prevent further execution
+
+            else:
+                self.logger.info(before_msg)
+                module_called(args, module_config)
+        except Exception as e:
+            errorstring = str(e)
+            self.logger.warning(f"❌ {statusname} failed: {errorstring}")
+            sm.updateState(statusname, False, errorstring)
+            message_label.setText(f"<b>Task failed:</b><br>{errorstring}")
+        else:
+            self.logger.info(after_msg)
+            sm.updateState(statusname, True, "Successfully run.")
+        finally:
+            sm.writeState()
+            spinner.close()
+
+        # Update UI
+        if errorstring:
+            self.status_label.setText(f"❌ {errorstring}")
+            self.status_bar.showMessage(f"❌ {errorstring}")
+        else:
+            self.status_label.setText(after_msg)
+            self.status_bar.showMessage(after_msg)
+
+        return errorstring

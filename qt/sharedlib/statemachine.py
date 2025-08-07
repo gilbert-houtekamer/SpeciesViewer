@@ -178,13 +178,17 @@ class StateMachine:
             pass  # test modules are not listed
         return
     
+    # return the return string from task that was (just or last) created
+    # return True for "MakeRepository", since it passes no return code (yet?)
     def getState(self, statejustdone):
         try:
+            if self.Taskstate[statejustdone] == "MakeRepository":
+                return True, ""
             if not self.Taskstate[statejustdone][0]:
                 return False, self.Taskstate[statejustdone][1]
         except: 
             pass
-        return True, "" # test modules are not listed return
+        return True, "" # test modules are not listed, return True
 
 
     
