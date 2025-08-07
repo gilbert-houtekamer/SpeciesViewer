@@ -1,8 +1,12 @@
+import configparser
+
 from gui.menu import MenuSpec  # assuming class is defined elsewhere
 from gui.trip_process import ReadDirDialog, TripCreationDialog, WritePicturesDialog, CreateBlogDialog
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
 from dialogs.setting import AboutDialog
+from utils.batch_config import generate_svconfig_ini
+from sharedlib.statemachine import StateMachine
 
 import bin.sv1MakeReposity
 import bin.sv2ReadDirExif
@@ -14,6 +18,26 @@ import bin.sv7WriteCommit
 
 def build_menu_spec(main_window):
     config = main_window.config
+
+    # Load config and statemachine
+    generate_svconfig_ini(config)
+    module_config = configparser.ConfigParser()
+    module_config.read("svconfig.ini")
+
+    sm = StateMachine(
+        module_config.get("repository", "BiotaDatabase"),
+        module_config.get("project", "PictureDirectory"),
+        readState=True
+    )
+
+    def make_enabled_checker(statusname):
+        return lambda: sm.stateOKtorun(statusname)
+
+    def make_tooltip(statusname):
+        try:
+            return sm.explainAbort(statusname, raiseSV=False)
+        except:
+            return None    
 
     trip_create = MenuSpec(
         callback=None,
@@ -31,6 +55,8 @@ def build_menu_spec(main_window):
         callback=None,
         title="Read Directory",
         shortcut="Ctrl+D",
+        enabled=make_enabled_checker("ReadDirExif"),
+        tooltip=make_tooltip("ReadDirExif"),                
         batch_parms={
             'statusname': "ReadDirExif",
             'module_called': bin.sv2ReadDirExif.main,
@@ -43,6 +69,8 @@ def build_menu_spec(main_window):
     write_summary = MenuSpec(
         callback=None,
         title="Write Summary",
+        enabled=make_enabled_checker("WritePictures"),
+        tooltip=make_tooltip("WritePictures"),             
         batch_parms={
             'statusname': "WritePictures",
             'module_called': bin.sv3WritePictures.main,
@@ -55,6 +83,8 @@ def build_menu_spec(main_window):
     write_blog = MenuSpec(
         callback=None,
         title="Write Blog",
+        enabled=make_enabled_checker("WriteBlog"),
+        tooltip=make_tooltip("WriteBlog"),        
         batch_parms={
             'statusname': "WriteBlog",
             'module_called': bin.sv4WriteBlog.main,

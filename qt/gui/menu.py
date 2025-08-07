@@ -20,11 +20,14 @@ def create_menubar(parent, spec):
     for menu_name, actions in spec.items():
         menu = QMenu(menu_name, parent)
         for label, spec_obj in actions.items():
-            if not spec_obj.is_enabled():
-                continue
-
             action = QAction(spec_obj.get_title(label), parent)
             action.triggered.connect(spec_obj.callback)
+
+            # 🔹 Step 3: Dynamic enablement and tooltip
+            action.setEnabled(spec_obj.is_enabled())
+            tooltip = spec_obj.get_tooltip()
+            if tooltip:
+                action.setToolTip(tooltip)
 
             if spec_obj.shortcut:
                 action.setShortcut(spec_obj.shortcut)
