@@ -1,7 +1,8 @@
 import configparser
 
 from gui.menu import MenuSpec  # assuming class is defined elsewhere
-from gui.trip_process import ReadDirDialog, TripCreationDialog, WritePicturesDialog, CreateBlogDialog
+from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDialog, 
+        CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog)
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
 from dialogs.setting import AboutDialog
@@ -75,7 +76,7 @@ def build_menu_spec(main_window):
             'statusname': "WritePictures",
             'module_called': bin.sv3WritePictures.main,
             'before_msg': "Reading meta data for all pictures ...",
-            'after_msg': "✅ Writing Summary data. Review messages above."
+            'after_msg': "✅ Writing Summary data. Please review the messagelog."
         }
     )
     write_summary.callback = lambda: WritePicturesDialog(main_window, config, write_summary).exec()
@@ -89,10 +90,52 @@ def build_menu_spec(main_window):
             'statusname': "WriteBlog",
             'module_called': bin.sv4WriteBlog.main,
             'before_msg': "Create a blog entry ...",
-            'after_msg': "✅ Blog successfully created. Review messages above."
+            'after_msg': "✅ Blog successfully created. Please review the messagelog."
         }
     )
     write_blog.callback = lambda: CreateBlogDialog(main_window, config, write_blog).exec()
+
+    build_website = MenuSpec(
+        callback=None,
+        title="Build Website",
+        enabled=make_enabled_checker("BuildWebsite"),
+        tooltip=make_tooltip("BuildWebsite"),        
+        batch_parms={
+            'statusname': "BuildWebsite",
+            'module_called': bin.sv5BuildWebsite.main,
+            'before_msg': "Build updates for later publication ...",
+            'after_msg': "✅ Website updates prepared. Please review the messagelog."
+        }
+    )
+    build_website.callback = lambda: BuildWebsiteDialog(main_window, config, build_website).exec()    
+    
+    freeze_data = MenuSpec(
+        callback=None,
+        title="Freeze Data",
+        enabled=make_enabled_checker("Freeze"),
+        tooltip=make_tooltip("Freeze"),        
+        batch_parms={
+            'statusname': "Freeze",
+            'module_called': bin.sv6Freeze.main,
+            'before_msg': "Freeze all collected data ...",
+            'after_msg': "✅ Data frozen. Please review the messagelog."
+        }
+    )
+    freeze_data.callback = lambda: FreezeDialog(main_window, config, freeze_data).exec()    
+
+    commit_website = MenuSpec(
+        callback=None,
+        title="Write Website Commit",
+        enabled=make_enabled_checker("WriteCommit"),
+        tooltip=make_tooltip("WriteCommit"),        
+        batch_parms={
+            'statusname': "WriteCommit",
+            'module_called': bin.sv7WriteCommit.main,
+            'before_msg': "Update the trip website ...",
+            'after_msg': "✅ Website updated. Please review the messagelog and the website."
+        }
+    )
+    commit_website.callback = lambda: WriteCommitDialog(main_window, config, commit_website).exec()    
 
     return {
         "File": {
@@ -105,7 +148,11 @@ def build_menu_spec(main_window):
             "Create Trip": trip_create,
             "Read Directory": read_dir,
             "Write Summary": write_summary,
-            "Write Blog": write_blog
+            "Write Blog": write_blog,
+            "Build Website": build_website,
+            "Freeze Data": freeze_data,
+            "Commit Website": commit_website
+
         },        
         "Settings": {
             "Global Settings": MenuSpec(
@@ -123,78 +170,3 @@ def build_menu_spec(main_window):
         }
     }        
     
-
-# def build_menu_spec(main_window):
-#     config = main_window.config
- 
-#     return {
-#         "File": {
-#             "Quit": MenuSpec(
-#                 callback=main_window.close,
-#                 shortcut="Ctrl+Q"
-#             ),
-#         },
-#         "Trip": {
-#             "Create Trip": MenuSpec(
-#                 callback=lambda: TripCreationDialog(config, main_window).exec(),
-#                 # shortcut="Ctrl+N",
-#                 title="Start New Trip",
-#                 batch_parms = {
-#                 'statusname': "MakeRepository",
-#                 'module_called': bin.sv1MakeReposity.main,
-#                 'before_msg': "Creating trip data structures...",
-#                 'after_msg': "✅ Trip creation complete. Please review the log messages."
-#                 }
-#             ),
-#             "Read Directory": MenuSpec(
-#                 callback=lambda: ReadDirDialog(main_window, config).exec(),
-#                 title="Read Directory",
-#                 shortcut="Ctrl+D",
-#                 # enabled=lambda: config.repo_available,
-#                 batch_parms = {
-#                 'statusname': "ReadDirExif",
-#                 'module_called': bin.sv2ReadDirExif.main, 
-#                 'before_msg': "Reading picture directory...",
-#                 'after_msg': "✅ Directory scan complete."
-#                 }                          
-#             ),
-#             "Write Summary": MenuSpec(
-#                 callback=lambda: WritePicturesDialog(main_window, config).exec(),
-#                 title="Write Summary",
-#                 # shortcut="Ctrl+D",
-#                 # enabled=lambda: config.repo_available,
-#                 batch_parms = {
-#                 'statusname': "WritePictures",
-#                 'module_called': bin.sv3WritePictures.main,
-#                 'before_msg': "Reading meta data for all pictures ...",
-#                 'after_msg': "✅ Writing Summary data. Review messages above."
-#                 }                
-#             ),
-#             "Write Blog": MenuSpec(
-#                 callback=lambda: CreateBlogDialog(main_window, config).exec(),
-#                 title="Write Blog",
-#                 # shortcut="Ctrl+D",
-#                 # enabled=lambda: config.repo_available,
-#                 batch_parms = {
-#                 'statusname': "WriteBlog",
-#                 'module_called': bin.sv4WriteBlog.main,             
-#                 'before_msg':  "Create a blog entry ...",
-#                 'after_msg': "✅ Blog successfully created. Review messages above.",
-#                 }                
-#             ),                                   
-#         },
-#         "Settings": {
-#             "Global Settings": MenuSpec(
-#                 callback=lambda: GlobalSettingsDialog(main_window, config).exec(),
-#                 shortcut="Ctrl+G",
-#             ),
-#             "Repository Settings": MenuSpec(
-#                 callback=lambda: RepoSettingsDialog(main_window, config).exec(),
-#             ),
-#         },
-#         "Help": {
-#             "About": MenuSpec(
-#                 callback=lambda: AboutDialog(main_window).exec(),
-#             ),
-#         }
-#     }

@@ -388,13 +388,6 @@ class WritePicturesDialog(QDialog):
 
     def on_write(self):
         selected_subdir = self.subdir_dropdown.currentText()
-        metadata_dir = os.path.join(self.trip_root, "metadata" , "review", selected_subdir)
-        # data_file = Path(os.path.join(metadata_dir ,  "data_files.csv"))
-
-        # if not data_file.is_file():
-        #     self.status_label.setText("❌ Selected subdirectory has not yet been processed by Read Directory.")
-        #     return
-
         # Update config to point to selected metadata folder
         self.config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
 
@@ -597,3 +590,110 @@ class CreateBlogDialog(QDialog):
             self.logger.error(f"❌ Blog creation failed: {e}")
             self.status_label.setText("❌ Blog creation failed.")
             self.passed_parent.status_bar.showMessage("Blog creation failed.")        
+
+
+class BaseTripModuleDialog(QDialog):
+    def __init__(self, parent, config, menu_spec, title, info_text):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.resize(600, 250)
+
+        self.logger = logging.getLogger("speciesviewer")
+        self.config = config
+        self.passed_parent = parent    
+        self.menu_spec = menu_spec                   
+
+        full_path = Path(config["project"]["picturedirectory"])
+        self.base_path = full_path.parent
+        self.default_subdir = full_path.name
+        self.trip_root = config["trip"]["tripbiotadatabase"]
+
+        layout = QVBoxLayout(self)
+
+        layout.addWidget(QLabel("Trip root folder"))
+        self.root_label = QLineEdit(str(self.base_path))
+        self.root_label.setReadOnly(True)
+        layout.addWidget(self.root_label)
+
+        layout.addWidget(QLabel("Select subdirectory with metadata"))
+        self.subdir_dropdown = QComboBox()
+        self.subdir_dropdown.setEditable(False)
+        layout.addWidget(self.subdir_dropdown)
+
+        self.info_text = QLabel(info_text)
+        self.info_text.setWordWrap(True)
+        layout.addWidget(self.info_text)
+
+        self.status_label = QLabel("")
+        layout.addWidget(self.status_label)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        self.write_btn = QPushButton("Run Step")
+        self.close_btn = QPushButton("Close")
+        btn_layout.addWidget(self.write_btn)
+        btn_layout.addWidget(self.close_btn)
+        layout.addLayout(btn_layout)
+
+        self.write_btn.clicked.connect(self.on_write)
+        self.close_btn.clicked.connect(self.close)
+
+        self.update_subdirs()
+
+    def update_subdirs(self):
+        metadata_path = Path(self.trip_root) / "metadata" / "review"
+        valid_subdirs = []
+
+        if metadata_path.is_dir():
+            for sub in metadata_path.iterdir():
+                if sub.is_dir() and (sub / "data_files.csv").is_file():
+                    valid_subdirs.append(sub.name)
+
+        self.subdir_dropdown.clear()
+        self.subdir_dropdown.addItems(valid_subdirs)
+
+        if self.default_subdir in valid_subdirs:
+            self.subdir_dropdown.setCurrentText(self.default_subdir)
+
+    def on_write(self):
+        selected_subdir = self.subdir_dropdown.currentText()
+        self.config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
+
+        runner = BatchModuleRunner(self, self.passed_parent)
+        runner.run(self.menu_spec)
+
+class BuildWebsiteDialog(BaseTripModuleDialog):
+    def __init__(self, parent, config, menu_spec):
+        super().__init__(
+            parent,
+            config,
+            menu_spec,
+            title="Build Website",
+            info_text="Prepare all web files and site structure for publication."
+        )
+        # self.dialog.exec()
+
+
+class FreezeDialog(BaseTripModuleDialog):
+    def __init__(self, parent, config, menu_spec):
+        super().__init__(
+            parent,
+            config,
+            menu_spec,
+            title="Freeze Data",
+            info_text="Finalize and lock down all collected information for archival or publishing."
+        )
+        # self.dialog.exec()
+
+
+class WriteCommitDialog(BaseTripModuleDialog):
+    def __init__(self, parent, config, menu_spec):
+        super().__init__(
+            parent,
+            config,
+            menu_spec,
+            title="Write Website Commit",
+            info_text="Finalize and lock down all collected information for archival or publishing."
+        )
+        # self.dialog.exec()
