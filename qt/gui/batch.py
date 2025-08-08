@@ -10,12 +10,13 @@ from utils.batch_config import generate_svconfig_ini
 from sharedlib.statemachine import StateMachine
 
 class BatchModuleRunner:
-    def __init__(self, gui):
+    def __init__(self, gui, main_window):
         self.config = gui.config
         self.parent = gui
         self.logger = gui.logger
         self.status_label = gui.status_label
         self.status_bar = gui.passed_parent.status_bar
+        self.main_window = main_window  # ✅ Save reference
 
     def run(self, menu_spec):
         batch_parms = menu_spec.get_batch_parms()
@@ -89,6 +90,7 @@ class BatchModuleRunner:
         else:
             self.logger.info(after_msg)
             sm.updateState(statusname, True, "Successfully run.")
+            self.main_window.rebuild_menu()
         finally:
             if statusname != "MakeRepository": sm.writeState()
             spinner.close()

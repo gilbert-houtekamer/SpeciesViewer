@@ -173,7 +173,7 @@ class TripCreationDialog(QDialog):
 
     def on_create_clicked(self):
         self.create_trip_ini()
-        runner = BatchModuleRunner(self)
+        runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec)        
 
     def translate_dutch_to_english(self):
@@ -311,7 +311,7 @@ class ReadDirDialog(QDialog):
         self.config["project"]["picturedirectory"] = str(full_selected_path)
         self.logger.info(f"📁 Selected picture directory: {full_selected_path}")
 
-        runner = BatchModuleRunner(self)
+        runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec)
 
 class WritePicturesDialog(QDialog):
@@ -398,7 +398,7 @@ class WritePicturesDialog(QDialog):
         # Update config to point to selected metadata folder
         self.config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
 
-        runner = BatchModuleRunner(self)
+        runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec)        
 
 from PyQt6.QtWidgets import (
@@ -588,7 +588,7 @@ class CreateBlogDialog(QDialog):
         try:
             self.save_ini()  # Ensure latest edits are saved
 
-            runner = BatchModuleRunner(self)
+            runner = BatchModuleRunner(self, self.passed_parent)
             errorstring = runner.run(self.menu_spec)
 
             if errorstring == "" and self.open_after_checkbox.isChecked():

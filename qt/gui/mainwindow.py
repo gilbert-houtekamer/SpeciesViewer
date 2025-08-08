@@ -111,3 +111,9 @@ class MainWindow(QMainWindow):
 
         self.yellow_builder.populate_tabs(self.yellow_tabs)
         self.yellow_tabs_built = True         
+
+    def rebuild_menu(self):
+        self.menuBar().clear()
+        self.menu_spec = build_menu_spec(self)  # Rebuild spec with updated state
+        new_menu_bar = create_menubar(self, self.menu_spec)
+        self.setMenuBar(new_menu_bar)
