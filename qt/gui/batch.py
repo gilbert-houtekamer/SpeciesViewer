@@ -90,7 +90,7 @@ class BatchModuleRunner:
             self.logger.info(after_msg)
             sm.updateState(statusname, True, "Successfully run.")
         finally:
-            sm.writeState()
+            if statusname != "MakeRepository": sm.writeState()
             spinner.close()
 
         # Update UI
