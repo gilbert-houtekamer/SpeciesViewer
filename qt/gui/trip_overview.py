@@ -29,8 +29,17 @@ def populate_trip_overview(self):
         all_files = list(path.glob("*"))
         jpg_files = [f for f in all_files if f.suffix.lower() == ".jpg"]
         return len(all_files), len(jpg_files)
+    
+    self.state_labels = [
+        "Read\nDir",
+        "Write\nPicture",
+        "Write\nBlog",
+        "Build\nWebsite",
+        "Freeze",
+        "Write\nCommit"
+    ]    
 
-    state_keys = [
+    self.state_keys = [
         "sv2readdirexif",
         "sv3writepictures",
         "sv4writeblog",
@@ -49,21 +58,21 @@ def populate_trip_overview(self):
         "sv7writecommit": "Successfully run."
     }
 
-    table = QTableWidget()
-    table.setColumnCount(3 + len(state_keys))
-    table.setRowCount(len(image_days))
-    table.setHorizontalHeaderLabels(["Day", "Total Files", "JPEG Files"] + state_keys)
-    table.setSortingEnabled(True)
+    self.trip_table = QTableWidget()
+    self.trip_table.setColumnCount(3 + len(self.state_labels))
+    self.trip_table.setRowCount(len(image_days))
+    self.trip_table.setHorizontalHeaderLabels(["Day", "Total\nFiles", "JPEG\nFiles"] + self.state_labels)
+    self.trip_table.setSortingEnabled(True)
 
     # Make columns resizable
-    header = table.horizontalHeader()
+    header = self.trip_table.horizontalHeader()
     header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
     for i, day in enumerate(image_days):
         total, jpgs = count_files(day)
-        table.setItem(i, 0, QTableWidgetItem(day.name))
-        table.setItem(i, 1, QTableWidgetItem(str(total)))
-        table.setItem(i, 2, QTableWidgetItem(str(jpgs)))
+        self.trip_table.setItem(i, 0, QTableWidgetItem(day.name))
+        self.trip_table.setItem(i, 1, QTableWidgetItem(str(total)))
+        self.trip_table.setItem(i, 2, QTableWidgetItem(str(jpgs)))
 
         # Match statemachine folder
         review_day = review_root / day.name
@@ -72,7 +81,7 @@ def populate_trip_overview(self):
 
         if ini_path.exists():
             config.read(ini_path)
-            for j, key in enumerate(state_keys):
+            for j, key in enumerate(self.state_keys):
                 value = config.getboolean("state", key, fallback=False)
                 msg_key = f"{key}message"
                 message = config.get("lastrunmessages", msg_key, fallback="")
@@ -91,13 +100,13 @@ def populate_trip_overview(self):
                 item = QTableWidgetItem(symbol)
                 item.setToolTip(tooltip)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                table.setItem(i, 3 + j, item)
+                self.trip_table.setItem(i, 3 + j, item)
         else:
-            for j in range(len(state_keys)):
+            for j in range(len(self.state_keys)):
                 item = QTableWidgetItem("⚪")
                 item.setToolTip("Not yet processed.")
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                table.setItem(i, 3 + j, item)
+                self.trip_table.setItem(i, 3 + j, item)
 
     # Layout
     overview_widget = QWidget()
@@ -105,7 +114,8 @@ def populate_trip_overview(self):
     header_label = QLabel(f"Trip Overview: {trip_name_en}")
     header_label.setStyleSheet("font-weight: bold; font-size: 16px;")
     layout.addWidget(header_label)
-    layout.addWidget(table)
+    layout.addWidget(self.trip_table)
     overview_widget.setLayout(layout)
+ 
 
     self.yellow_tabs.addTab(overview_widget, "Overview")

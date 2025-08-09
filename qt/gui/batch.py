@@ -1,5 +1,6 @@
 import logging
 import configparser
+from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QApplication
 )
@@ -65,6 +66,16 @@ class BatchModuleRunner:
         )
 
         errorstring = ""
+        # support for cell update
+        directory_name = Path(module_config.get("project", "PictureDirectory")).name
+        expected_messages = {
+            "ReadDirExif" : 'Read\nDir',
+            "WritePictures" : 'Write\nPicture',
+            "WriteBlog"  : 'Write\nBlog',
+            "BuildWebsite" : 'Build\nWebsite',
+            "Freeze" : 'Freeze',
+            "WriteCommit" : 'Write\nCommit'
+        }
 
         try:
             if not sm.stateOKtorun(statusname):
@@ -87,9 +98,11 @@ class BatchModuleRunner:
             self.logger.warning(f"❌ {statusname} failed: {errorstring}")
             sm.updateState(statusname, False, errorstring)
             message_label.setText(f"<b>Task failed:</b><br>{errorstring}")
+            self.main_window.update_trip_cell(directory_name, expected_messages[statusname], "❌", f"{statusname} failed: {errorstring}")            
         else:
             self.logger.info(after_msg)
-            sm.updateState(statusname, True, "Successfully run.")
+            sm.updateState(statusname, True, "Successfully run.")        
+            self.main_window.update_trip_cell(directory_name, expected_messages[statusname], "✅", "Successfully run.")
         finally:
             if statusname != "MakeRepository": 
                 print(f'sm.updateState({statusname} , True, "Successfully run.")')
@@ -104,5 +117,9 @@ class BatchModuleRunner:
         else:
             self.status_label.setText(after_msg)
             self.status_bar.showMessage(after_msg)
+
+        self.main_window.green_log_box.verticalScrollBar().setValue(
+            self.main_window.green_log_box.verticalScrollBar().maximum()
+        )
 
         return errorstring

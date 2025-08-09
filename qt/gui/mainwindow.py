@@ -1,15 +1,12 @@
-import sys
-import configparser
-
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStatusBar
-from PyQt6.QtWidgets import QPlainTextEdit, QMenuBar, QMenu, QLabel, QSizePolicy, QLineEdit, QTabWidget
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStatusBar
+from PyQt6.QtWidgets import QPlainTextEdit, QLabel, QSizePolicy, QLineEdit, QTabWidget, QTableWidgetItem
 from PyQt6.QtCore import Qt
 
 from qt.gui.layout_colorwidget import Color
-
 from utils.config import config, CONFIG_FILE
 from gui.menu import create_menubar
 from gui.menuspec import build_menu_spec
+from gui.trip_overview import populate_trip_overview
 from sharedlib.translatelib import CachedTranslate
 from widgets.TripInfoPanel import TripInfoPanel
 from gui.trip_overview import populate_trip_overview
@@ -27,6 +24,9 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.config = config
+        self.trip_table = None
+        self.state_keys = None       
+        self.state_labels = None 
         self.setWindowTitle("Species Viewer 0.1")
         # Create and attach status bar
         self.status_bar = QStatusBar()
@@ -117,3 +117,13 @@ class MainWindow(QMainWindow):
         self.menu_spec = build_menu_spec(self)  # Rebuild spec with updated state
         new_menu_bar = create_menubar(self, self.menu_spec)
         self.setMenuBar(new_menu_bar)
+
+    def update_trip_cell(self, day_name, step_key, symbol, tooltip):
+        for row in range(self.trip_table.rowCount()):
+            if self.trip_table.item(row, 0).text() == day_name:
+                col_index = self.state_labels.index(step_key) + 3
+                item = QTableWidgetItem(symbol)
+                item.setToolTip(tooltip)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.trip_table.setItem(row, col_index, item)
+                break
