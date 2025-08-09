@@ -2,7 +2,7 @@ from configparser import ConfigParser
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem,
-    QHeaderView
+    QHeaderView, QAbstractItemView, QAbstractItemView
 )
 from pathlib import Path
 
@@ -63,6 +63,8 @@ def populate_trip_overview(self):
     self.trip_table.setRowCount(len(image_days))
     self.trip_table.setHorizontalHeaderLabels(["Day", "Total\nFiles", "JPEG\nFiles"] + self.state_labels)
     self.trip_table.setSortingEnabled(True)
+    self.trip_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+
 
     # Make columns resizable
     header = self.trip_table.horizontalHeader()
@@ -117,5 +119,6 @@ def populate_trip_overview(self):
     layout.addWidget(self.trip_table)
     overview_widget.setLayout(layout)
  
-
     self.yellow_tabs.addTab(overview_widget, "Overview")
+
+    self.trip_table.cellDoubleClicked.connect(self.handle_trip_table_double_click)

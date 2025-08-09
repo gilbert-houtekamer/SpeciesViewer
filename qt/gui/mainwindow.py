@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStatusBar
 from PyQt6.QtWidgets import QPlainTextEdit, QLabel, QSizePolicy, QLineEdit, QTabWidget, QTableWidgetItem
 from PyQt6.QtCore import Qt
@@ -82,9 +84,9 @@ class MainWindow(QMainWindow):
         widget.setLayout(layout)
         self.setCentralWidget(widget)
 
-        menu_spec = build_menu_spec(self)
-        menu_bar = create_menubar(self, menu_spec)
-        self.setMenuBar(menu_bar)
+        self.menu_spec = build_menu_spec(self)
+        self.menu_bar = create_menubar(self, self.menu_spec)
+        self.setMenuBar(self.menu_bar)
         # translation just in case we need it
         self.translator = CachedTranslate(config["master"]["masterbiotadatabase"])
         # self.yellow_builder = YellowPanelBuilder(root_field, self.config)
@@ -127,3 +129,30 @@ class MainWindow(QMainWindow):
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.trip_table.setItem(row, col_index, item)
                 break
+
+    def handle_trip_table_double_click(self, row, column):
+        day_item = self.trip_table.item(row, 0)
+        action_item = self.trip_table.horizontalHeaderItem( column)
+
+        if not day_item or not action_item:
+            self.logger.warning("Invalid cell selection.")
+            return
+
+        day_str = day_item.text()
+        action_label = action_item.text().replace("\n", " ")  # e.g., "Write Blog"
+
+        # Update PictureDirectory
+        trip_root = Path(self.config.get("trip", "tripbiotadatabase"))
+        new_dir = trip_root / "metadata" / "review" / day_str
+        self.config.set("project", "picturedirectory", str(new_dir))
+        self.logger.info(f"Updated PictureDirectory to: {new_dir}")
+
+        # Look up the MenuSpec in the "Trip" section
+        trip_menu = self.menu_spec.get("Trip", {})
+        spec_obj = trip_menu.get(action_label)
+
+        if spec_obj and spec_obj.callback:
+            # self.logger.info(f"Invoking menu action: {action_label}")
+            spec_obj.callback()
+        else:
+            self.logger.warning(f"No menu action found for: {action_label}")

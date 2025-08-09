@@ -150,8 +150,8 @@ def build_menu_spec(main_window):
             "Write Summary": write_summary,
             "Write Blog": write_blog,
             "Build Website": build_website,
-            "Freeze Data": freeze_data,
-            "Commit Website": commit_website
+            "Freeze": freeze_data,
+            "Write Commit": commit_website
 
         },        
         "Settings": {
