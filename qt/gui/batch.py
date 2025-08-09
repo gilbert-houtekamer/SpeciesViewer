@@ -69,8 +69,8 @@ class BatchModuleRunner:
         # support for cell update
         directory_name = Path(module_config.get("project", "PictureDirectory")).name
         expected_messages = {
-            "ReadDirExif" : 'Read\nDir',
-            "WritePictures" : 'Write\nPicture',
+            "ReadDirExif" : 'Read\nDirectory',
+            "WritePictures" : 'Write\nSummary',
             "WriteBlog"  : 'Write\nBlog',
             "BuildWebsite" : 'Build\nWebsite',
             "Freeze" : 'Freeze',

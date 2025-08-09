@@ -12,6 +12,7 @@ from gui.trip_overview import populate_trip_overview
 from sharedlib.translatelib import CachedTranslate
 from widgets.TripInfoPanel import TripInfoPanel
 from gui.trip_overview import populate_trip_overview
+from sharedlib.statemachine import StateMachine
 
 def Color(name):
     label = QLabel(name)
@@ -130,7 +131,36 @@ class MainWindow(QMainWindow):
                 self.trip_table.setItem(row, col_index, item)
                 break
 
+    def get_progress_summary_item(self, sm, ini_path):
+        item = QTableWidgetItem()
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        if not ini_path.exists():
+            item.setText("🔘")
+            item.setToolTip("No steps processed yet.")
+            # item.setBackground(QtGui.QBrush(QtGui.QColor("whitesmoke")))
+        elif sm.Taskstate.get("WriteCommit", [False])[0]:
+            if sm.Taskstate.get("WriteBlog", [False])[0]:
+                item.setText("✅")
+                item.setToolTip("All steps successfully run.")
+                # item.setBackground(QtGui.QBrush(QtGui.QColor("lightgreen")))
+            else:
+                item.setText("🟢")
+                item.setToolTip("Website frozen, consider to add blog entry.")
+                # item.setBackground(QtGui.QBrush(QtGui.QColor("lightblue")))
+        else:
+            item.setText("⚙️")
+            item.setToolTip("Work in progress for this day.")
+            # item.setBackground(QtGui.QBrush(QtGui.QColor("lightyellow")))
+
+        return item
+
+
     def handle_trip_table_double_click(self, row, column):
+        # Ignore clicks on the "Progress" column, and headers
+        if column == self.trip_table.columnCount() - 1 or column < 3:
+            return
+
         day_item = self.trip_table.item(row, 0)
         action_item = self.trip_table.horizontalHeaderItem( column)
 
@@ -142,8 +172,8 @@ class MainWindow(QMainWindow):
         action_label = action_item.text().replace("\n", " ")  # e.g., "Write Blog"
 
         # Update PictureDirectory
-        trip_root = Path(self.config.get("trip", "tripbiotadatabase"))
-        new_dir = trip_root / "metadata" / "review" / day_str
+        trip_root = Path(self.config.get("project", "picturedirectory")).parent
+        new_dir = trip_root / day_str
         self.config.set("project", "picturedirectory", str(new_dir))
         self.logger.info(f"Updated PictureDirectory to: {new_dir}")
 
@@ -156,3 +186,13 @@ class MainWindow(QMainWindow):
             spec_obj.callback()
         else:
             self.logger.warning(f"No menu action found for: {action_label}")
+
+        if column == (3 + len(self.state_labels) - 1):
+            directory = self.trip_table.item(row,0).text()
+            trip_root = Path(self.config.get("trip", "tripbiotadatabase"))
+            new_dir = trip_root / directory
+            sm = StateMachine(str(trip_root), str(new_dir), readState=True)
+            ini_path = Path(directory) / "statemachine.ini"
+            summary_item = self.get_progress_summary_item(sm, ini_path)
+
+            self.trip_table.setItem(row, 3 + len(self.state_labels), summary_item)

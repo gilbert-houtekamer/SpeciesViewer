@@ -136,11 +136,23 @@ class StateMachine:
             state.write(statefile)
         return
     
-    # see if the state can run
     def stateOKtorun(self, statetotest):
-        # all pre-req must be met
-        for states in self.Taskstate[statetotest][3]:
-            if not self.Taskstate[states][0]: 
+        # If WriteCommit is done, allow WriteBlog unconditionally
+        if statetotest == "WriteBlog":
+            if self.Taskstate.get("WriteCommit", [False])[0]:
+                return True
+            # Otherwise, check prerequisites
+            for prereq in self.Taskstate.get("WriteBlog", [None, None, None, []])[3]:
+                if not self.Taskstate.get(prereq, [False])[0]:
+                    return False
+            return True
+
+        # Standard logic for all other steps
+        if self.Taskstate.get("WriteCommit", [False])[0]:
+            return False  # No other steps allowed after WriteCommit
+
+        for prereq in self.Taskstate.get(statetotest, [None, None, None, []])[3]:
+            if not self.Taskstate.get(prereq, [False])[0]:
                 return False
         return True
     

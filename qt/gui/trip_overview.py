@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
     QHeaderView, QAbstractItemView, QAbstractItemView
 )
 from pathlib import Path
+from sharedlib.statemachine import StateMachine
 
 def populate_trip_overview(self):
     # Get image and statemachine directories
@@ -31,8 +32,8 @@ def populate_trip_overview(self):
         return len(all_files), len(jpg_files)
     
     self.state_labels = [
-        "Read\nDir",
-        "Write\nPicture",
+        "Read\nDirectory",
+        "Write\nSummary",
         "Write\nBlog",
         "Build\nWebsite",
         "Freeze",
@@ -59,9 +60,11 @@ def populate_trip_overview(self):
     }
 
     self.trip_table = QTableWidget()
-    self.trip_table.setColumnCount(3 + len(self.state_labels))
+    self.trip_table.setColumnCount(3 + len(self.state_labels) + 1)
     self.trip_table.setRowCount(len(image_days))
-    self.trip_table.setHorizontalHeaderLabels(["Day", "Total\nFiles", "JPEG\nFiles"] + self.state_labels)
+    self.trip_table.setHorizontalHeaderLabels(
+        ["Day", "Total\nFiles", "JPEG\nFiles"] + self.state_labels + ["Progress"]
+    )
     self.trip_table.setSortingEnabled(True)
     self.trip_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
 
@@ -78,37 +81,46 @@ def populate_trip_overview(self):
 
         # Match statemachine folder
         review_day = review_root / day.name
-        ini_path = review_day / "statemachine.ini"
-        config = ConfigParser()
+        # Create a StateMachine instance for this day
+        sm = StateMachine(str(trip_root), str(review_day), readState=True)
 
-        if ini_path.exists():
-            config.read(ini_path)
-            for j, key in enumerate(self.state_keys):
-                value = config.getboolean("state", key, fallback=False)
-                msg_key = f"{key}message"
-                message = config.get("lastrunmessages", msg_key, fallback="")
-                expected = expected_messages.get(key, "")
+        # Loop through each step
+        for j, step_name in enumerate([
+                    "ReadDirExif", "WritePictures", "WriteBlog", 
+                    "BuildWebsite", "Freeze", "WriteCommit"]):
+            if step_name not in sm.Taskstate:
+                symbol = "⚪"
+                tooltip = "Unknown step."
+            else:
+                completed, message, _, _ = sm.Taskstate[step_name]
+                expected = "Successfully run."
 
-                if value and message == expected:
-                    symbol = "✅"
-                    tooltip = message
-                elif not value and message == "This step has not yet been run.":
-                    symbol = "⚪"
-                    tooltip = "Not yet processed."
-                else:
+                if completed and message == expected:
+                    if completed and sm.Taskstate.get("WriteCommit", [False])[0]:
+                        symbol = "⬜"
+                        tooltip = "Step completed. Workflow is frozen after WriteCommit."
+                    else:
+                        symbol = "✅"
+                        tooltip = message
+                elif not completed and "failed" in message.lower():
                     symbol = "❌"
-                    tooltip = message or "Unknown error"
+                    tooltip = message
+                elif sm.stateOKtorun(step_name):
+                    symbol = "🔘"
+                    tooltip = "Click on the sphere to run this step."
+                else:
+                    symbol = "⚪"
+                    tooltip = sm.explainAbort(step_name, raiseSV=False)
 
-                item = QTableWidgetItem(symbol)
-                item.setToolTip(tooltip)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.trip_table.setItem(i, 3 + j, item)
-        else:
-            for j in range(len(self.state_keys)):
-                item = QTableWidgetItem("⚪")
-                item.setToolTip("Not yet processed.")
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.trip_table.setItem(i, 3 + j, item)
+            item = QTableWidgetItem(symbol)
+            item.setToolTip(tooltip)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            self.trip_table.setItem(i, 3 + j, item)
+
+        # Determine progress summary
+        summary_item = self.get_progress_summary_item(sm,  review_root / day.name)
+        self.trip_table.setItem(i, 3 + len(self.state_labels), summary_item)
 
     # Layout
     overview_widget = QWidget()
