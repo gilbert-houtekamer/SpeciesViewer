@@ -1,5 +1,6 @@
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,QCheckBox,
-    QTabWidget, QWidget, QVBoxLayout, QComboBox, QLineEdit, QFormLayout, QGridLayout, QDateEdit, QTextEdit)
+    QTabWidget, QWidget, QVBoxLayout, QComboBox, QLineEdit, QFormLayout, QSizePolicy, QFileDialog, QDateEdit, QTextEdit)
+from PyQt6.QtGui import QFont, QGuiApplication
 from PyQt6.QtCore import Qt
 import logging
 import sys, os
@@ -697,3 +698,69 @@ class WriteCommitDialog(BaseTripModuleDialog):
             info_text="Finalize and lock down all collected information for archival or publishing."
         )
         # self.dialog.exec()
+
+class CountSpeciesDialog(BaseTripModuleDialog):
+    def __init__(self, parent, config, menu_spec):
+        super().__init__(
+            parent,
+            config,
+            menu_spec,
+            title="Count Species",
+            info_text="Count the different number of species picture in the trip."
+        )
+
+        # Report viewer setup
+        self.report_viewer = QTextEdit()
+        self.report_viewer.setReadOnly(True)
+        font = QFont("Courier New")
+        font.setStyleHint(QFont.StyleHint.Monospace)
+        self.report_viewer.setFont(font)
+        self.report_viewer.setMinimumHeight(500)
+        self.report_viewer.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+
+        # Add widgets to layout
+        self.layout().addWidget(QLabel("Species Overview Report"))
+        self.layout().addWidget(self.report_viewer)
+
+        # Add buttons
+        button_layout = QHBoxLayout()
+        save_button = QPushButton("Save As")
+        copy_button = QPushButton("Copy to Clipboard")
+        save_button.clicked.connect(self.save_report)
+        copy_button.clicked.connect(self.copy_to_clipboard)
+        button_layout.addWidget(save_button)
+        button_layout.addWidget(copy_button)
+        self.layout().addLayout(button_layout)
+
+    def on_write(self):
+        selected_subdir = self.subdir_dropdown.currentText()
+        self.config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
+
+        runner = BatchModuleRunner(self, self.passed_parent)
+        runner.run(self.menu_spec)
+
+        try:
+            reports_dir = Path(self.config.get("trip", "tripbiotadatabase")) / "metadata" / "reports"
+            report_path = reports_dir / "Species overview.txt"
+            if report_path.exists():
+                with open(report_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                    self.report_viewer.setPlainText(content)
+            else:
+                self.report_viewer.setPlainText("⚠️ Report file not found.")
+        except Exception as e:
+            self.report_viewer.setPlainText(f"❌ Error loading report: {e}")
+
+    def save_report(self):
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Save Report As", "", "Text Files (*.txt);;All Files (*)"
+        )
+        if filename:
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(self.report_viewer.toPlainText())
+
+    def copy_to_clipboard(self):
+        clipboard = QGuiApplication.clipboard()
+        clipboard.setText(self.report_viewer.toPlainText())

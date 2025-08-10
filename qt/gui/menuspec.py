@@ -2,7 +2,7 @@ import configparser
 
 from gui.menu import MenuSpec  # assuming class is defined elsewhere
 from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDialog, 
-        CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog)
+        CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog, CountSpeciesDialog)
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
 from dialogs.setting import AboutDialog
@@ -16,6 +16,7 @@ import bin.sv4WriteBlog
 import bin.sv5BuildWebsite
 import bin.sv6Freeze
 import bin.sv7WriteCommit
+import bin.svr2CountSpecies
 
 def build_menu_spec(main_window):
     config = main_window.config
@@ -137,6 +138,20 @@ def build_menu_spec(main_window):
     )
     commit_website.callback = lambda: WriteCommitDialog(main_window, config, commit_website).exec()    
 
+    count_species = MenuSpec(
+        callback=None,
+        title="Count Species",
+        enabled=make_enabled_checker("CountSpecies"),
+        tooltip=make_tooltip("CountSpecies"),        
+        batch_parms={
+            'statusname': "",
+            'module_called': bin.svr2CountSpecies.main,
+            'before_msg': "Analyzing species information ...",
+            'after_msg': "✅ Species report will be shown."
+        }
+    )
+    count_species.callback = lambda: CountSpeciesDialog(main_window, config, count_species).exec()    
+
     return {
         "File": {
             "Quit": MenuSpec(
@@ -151,8 +166,8 @@ def build_menu_spec(main_window):
             "Write Blog": write_blog,
             "Build Website": build_website,
             "Freeze": freeze_data,
-            "Write Commit": commit_website
-
+            "Write Commit": commit_website,
+            "Count Species": count_species
         },        
         "Settings": {
             "Global Settings": MenuSpec(

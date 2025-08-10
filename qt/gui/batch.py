@@ -96,18 +96,21 @@ class BatchModuleRunner:
         except Exception as e:
             errorstring = str(e)
             self.logger.warning(f"❌ {statusname} failed: {errorstring}")
-            sm.updateState(statusname, False, errorstring)
-            message_label.setText(f"<b>Task failed:</b><br>{errorstring}")
-            self.main_window.update_trip_cell(directory_name, expected_messages[statusname], "❌", f"{statusname} failed: {errorstring}")            
+            message_label.setText(f"<b>Task failed:</b><br>{errorstring}") 
+            if statusname != "":           
+                sm.updateState(statusname, False, errorstring)
+                self.main_window.update_trip_cell(directory_name, expected_messages[statusname], "❌", f"{statusname} failed: {errorstring}")            
         else:
             self.logger.info(after_msg)
-            sm.updateState(statusname, True, "Successfully run.")        
-            self.main_window.update_trip_cell(directory_name, expected_messages[statusname], "✅", "Successfully run.")
+            if statusname != "":      
+                sm.updateState(statusname, True, "Successfully run.")        
+                self.main_window.update_trip_cell(directory_name, expected_messages[statusname], "✅", "Successfully run.")
         finally:
-            if statusname != "MakeRepository": 
-                print(f'sm.updateState({statusname} , True, "Successfully run.")')
-                sm.writeState()
-            self.main_window.rebuild_menu()                
+            if statusname != "":      
+                if statusname != "MakeRepository": 
+                    print(f'sm.updateState({statusname} , True, "Successfully run.")')
+                    sm.writeState()
+                self.main_window.rebuild_menu()                
             spinner.close()
 
         # Update UI

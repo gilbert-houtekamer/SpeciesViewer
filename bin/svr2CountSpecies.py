@@ -9,6 +9,7 @@ import configparser
 import time
 import logging
 import argparse
+from pathlib import Path
 
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
@@ -38,8 +39,8 @@ def readConfig():
     config.read(INI_LOCATION)
     return config
 
-def scan_files(directory, search_string):
-    print(f"\nFile stats GPS and location data:\n\nFile           Count  NoGPS   Noloc  NoCity  NoSpec    Good     Bad  NoColor")    
+def scan_files(directory, search_string, report):
+    print(f"\nFile stats GPS and location data:\n\nFile           Count  NoGPS   Noloc  NoCity  NoSpec    Good     Bad  NoColor", file=report)    
     for root, dirs, files in os.walk(directory):
         for file in files:
             if file.endswith('.txt'):
@@ -78,7 +79,7 @@ def scan_files(directory, search_string):
                                 NoColor = int(line[32:35])                                                                                                                                                                                                
                             if search_string in line:
                                 # print summary 
-                                print(f"{name:12}  {Good+NotGood+NoColor:6} {NoGPS:6}  {NoLocation:6}  {NoCity:6}  {NoSpecies:6}  {Good:6}  {NotGood:6}  {NoColor:6}")
+                                print(f"{name:12}  {Good+NotGood+NoColor:6} {NoGPS:6}  {NoLocation:6}  {NoCity:6}  {NoSpecies:6}  {Good:6}  {NotGood:6}  {NoColor:6}", file=report)
                                 # get species info
                                 for subsequent_line in lines[i+3:]:
                                     if subsequent_line.strip():  # Check if the line is non-empty
@@ -97,7 +98,7 @@ def scan_files(directory, search_string):
     return
 
 # create website based on current count setting, now to test iSpeciesThisRunCount
-def scanSpecies(sc, speciesname):
+def scanSpecies(sc, speciesname, report):
     global counter, newcounter, jpgneeded
     global subheaderdone
     species = sc.sc_dict[speciesname]
@@ -108,7 +109,7 @@ def scanSpecies(sc, speciesname):
             if species['ScientificName'].lower() in result_dict and species['EnglishName'].lower() != "":
                 best_rating = 0
                 if sc.sc_dict[sc.sc_dict[species['Up']]['Up']]['Up'] != 'aves' and not subheaderdone:
-                    print(f"\nOther animals and plants:\n")
+                    print(f"\nOther animals and plants:\n", file=report)
                     counter = 1
                     newcounter = 1
                     subheaderdone = True
@@ -158,23 +159,23 @@ def scanSpecies(sc, speciesname):
                         Reference_sp.species_dict[species['ScientificName'].lower()]
                     except:
                         data_line += '   Needed     '         
-                print(data_line)                
+                print(data_line, file=report)                
         else:
-            scanSpecies(sc, leaf)
+            scanSpecies(sc, leaf, report)
     return
 
 # caller
-def print_headers(sc):
+def print_headers(sc, report):
     global subheaderdone
-    print(f'\n\n')
+    print(f'\n\n', file=report)
     counter = 0
     header_line = ' '.ljust(36+40) + 'New '
     for header in headers:
         header_line += header[-2:] + ' '
-    print(header_line)
+    print(header_line, file=report)
 
     subheaderdone = False
-    scanSpecies(sc, 'biota')
+    scanSpecies(sc, 'biota', report)
 
     return
 
@@ -211,19 +212,26 @@ def main(args, config):
     metadatadir = MyProject.getMetaDir()
     sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)
 
-    # Collect species
-    directory_to_scan = MyProject.getMetaDir() + 'review' # 'C:/laptop/validate/metadata/review'
-    search_string = 'Species specified in this dir:'
-    scan_files(directory_to_scan, search_string)
+    # make output file
+    reports_dir = Path(config.get("repository","BiotaDatabase")) / "metadata" / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    report_path = reports_dir / "Species overview.txt"
+    with open(report_path, "w", encoding="utf-8") as report:
+        report.write("Your species summary goes here.\n")
 
-    # print in order classification
-    print_headers(sc)
-    if jpgneeded:
-        print(f"There are {jpgneeded} species that have no JPGs on the first occurrence of that species.")
+        # Collect species
+        directory_to_scan = MyProject.getMetaDir() + 'review' # 'C:/laptop/validate/metadata/review'
+        search_string = 'Species specified in this dir:'
+        scan_files(directory_to_scan, search_string, report)
+
+        # print in order classification
+        print_headers(sc, report)
+        if jpgneeded:
+            print(f"There are {jpgneeded} species that have no JPGs on the first occurrence of that species.", file=report)
 
     # print(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
     totaltime = time.time() - starttime      
-    print(f'Total time for all other work {totaltime:.1f} seconds.')
+    logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
 
 
 if __name__ == "__main__":
