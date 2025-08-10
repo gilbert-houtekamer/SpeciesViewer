@@ -31,32 +31,76 @@ better spinner would be nice
 >7 make 3, like 2.  Different filtering. directory must exist and have 
 >E:\Dropbox\trips\2017 oostzeedb\metadata\review\2017-08-09
 
-8 blog panel, more like 1
+>9 status bar at the bottom of the main window
 
-9 status bar at the bottom of the main window
-
-10 statemachine, including display on yellow pane
-
-  (CoPilot) disable the “Create Trip” button until trip.ini is written, o
-  or show a confirmation popup. You're building something cool!
-  - return code via a file
-  one line for each date (directory) with states that we have done, 
-  and some stats
-  explicit refresh or after any batch module
+>13 Directory tree with trips defined, and projects under it
+> 
+>   Master Repository:
+>   {config["master"]["masterbiotadatabase"]
+>   Master URL:
+>   www.houtekaer.com/nature
+>   
+>   Trips
+>   [dir list from config["trip"]["tripbiotadatabase"].parent]
+>   
+>   to do: 
+>   - some color or at least some "markering"
+>   - read the trip.ini for hints, pick English texts
+   - update button?  or listen to changes to directories in trip?  
+   later:
+   - projects could do a lot from data_pictures.csv if we want
+>  
+>
+>8 blog panel, more like 1   
+>
+>10 statemachine, 
+>   including display on yellow pane
+> - return code via a file
+>  - one line for each date (directory) with states that we have done, and some stats
+> - explicit refresh or after any batch module
+  - more statistics tonen, bv sysprint summary 
   
-11 panel 5-7 in one panel.
+>11 panel 5-7 in their own panel, but sharing code
 
-12 page 2 and 3 together with statemachine logic
+15 rechter muisklik menu en drivers voor menu met rechtermuis menu
+  => ga naar andere trip
+  => ga naar andere dag
+  =>
 
-13 Directory tree with trips defined, and projects under it
- 
-14 s
-
-
-13 utilities for trips, separators in dialog
-    svr2CountSpecies
+13 utilities for trips, 
+>   separators in dialog
+ ?  svr2CountSpecies (call goed, module (parameters passed) niet)
 	svr4UpdateTrips?
 	svr8RecreateTripRepository
 	
+>>14 resizable vertical bars
+
+
+  
+12 page 2 and 3 together with statemachine logic
+	
 14 Maintenance (on Master)
-	 
+	
+	
+- GUI plan
+
+done - sv1MakeReposity.py
+done - sv2ReadDirExif.py
+done - sv3WritePictures.py
+done - sv4WriteBlog.py
+done - sv5BuildWebsite.py
+done - sv6Freeze.py
+done - sv7WriteCommit.py
+svr1AddSpecies.py
+work - svr2CountSpecies.py
+svr3StatusProjects.py
+svr41AddTrip.py
+svr4UpdateTrips.py
+svr5MergeSpeciesCollections.py
+svr6MergeBlogsForMaster.py
+svr7DeleteFiles.py
+svr8RecreateTripRepository.py
+svr9RedoBlog.py
+svu1BirdingBreaks.py
+svu2avibase.py
+svu3CopySelectedPics.py
