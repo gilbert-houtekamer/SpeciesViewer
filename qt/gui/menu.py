@@ -16,23 +16,24 @@ class AppMenuBar(QMenuBar):
 
 def create_menubar(parent, spec):
     menubar = QMenuBar(parent)
+    separator_marker = MenuSpec.separator()    
 
     for menu_name, actions in spec.items():
         menu = QMenu(menu_name, parent)
         for label, spec_obj in actions.items():
-            action = QAction(spec_obj.get_title(label), parent)
-            action.triggered.connect(spec_obj.callback)
+            if label.startswith(separator_marker):
+                menu.addSeparator()
+            else:
+                action = QAction(spec_obj.get_title(label), parent)
+                action.triggered.connect(spec_obj.callback)
+                action.setEnabled(spec_obj.is_enabled())
+                tooltip = spec_obj.get_tooltip()
+                if tooltip:
+                    action.setToolTip(tooltip)
+                if spec_obj.shortcut:
+                    action.setShortcut(spec_obj.shortcut)
 
-            # 🔹 Step 3: Dynamic enablement and tooltip
-            action.setEnabled(spec_obj.is_enabled())
-            tooltip = spec_obj.get_tooltip()
-            if tooltip:
-                action.setToolTip(tooltip)
-
-            if spec_obj.shortcut:
-                action.setShortcut(spec_obj.shortcut)
-
-            menu.addAction(action)
+                menu.addAction(action)
 
         menubar.addMenu(menu)
 
@@ -99,4 +100,7 @@ class MenuSpec:
     
     def get_statusname(self):
         return self.batch_parms.get("statusname", "")
-
+          
+    @staticmethod
+    def separator():
+        return "__SEPARATOR__"

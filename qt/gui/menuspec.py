@@ -161,13 +161,15 @@ def build_menu_spec(main_window):
         },
         "Trip": {
             "Create Trip": trip_create,
+            f"{MenuSpec.separator()}_1": None,
             "Read Directory": read_dir,
             "Write Summary": write_summary,
             "Write Blog": write_blog,
             "Build Website": build_website,
             "Freeze": freeze_data,
             "Write Commit": commit_website,
-            "Count Species": count_species
+            f"{MenuSpec.separator()}_2": None,
+            "Count Species": count_species,
         },        
         "Settings": {
             "Global Settings": MenuSpec(
