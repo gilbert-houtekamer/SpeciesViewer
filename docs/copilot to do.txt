@@ -62,6 +62,23 @@ better spinner would be nice
   
 >11 panel 5-7 in their own panel, but sharing code
 
+-- 10 aug 2025
+
+   work - svr2CountSpecies.py doe not work in this context
+   
+   better scroller, simple a spinner and in directory in title
+   
+   also subtree directories also scanned
+   
+   less space for names
+   
+   read data_pictures, data_files and species.csv, also from master?
+   
+   multi-select
+   
+   
+   
+
 15 rechter muisklik menu en drivers voor menu met rechtermuis menu
   => ga naar andere trip
   => ga naar andere dag
