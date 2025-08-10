@@ -72,6 +72,7 @@ def populate_trip_overview(self):
     # Make columns resizable
     header = self.trip_table.horizontalHeader()
     header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+    header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
 
     for i, day in enumerate(image_days):
         total, jpgs = count_files(day)
@@ -105,6 +106,10 @@ def populate_trip_overview(self):
                 elif not completed and "failed" in message.lower():
                     symbol = "❌"
                     tooltip = message
+                elif jpgs == 0 and step_name == "WriteBlog":
+                    symbol = "🚫"
+                    tooltip = "No JPGs available — blog step suppressed."
+                    item.setFlags(Qt.ItemFlag.NoItemFlags)
                 elif sm.stateOKtorun(step_name):
                     symbol = "🔘"
                     tooltip = "Click on the sphere to run this step."

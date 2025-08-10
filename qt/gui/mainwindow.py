@@ -41,29 +41,41 @@ class MainWindow(QMainWindow):
         root_field.setText(config["trip"]["tripbiotadatabase"])        
         # layout
 
-        layout2 = QHBoxLayout()
+        # Create the splitter
+        self.hsplitter = QSplitter(Qt.Orientation.Horizontal)
 
+        # Red panel
         red_panel = QWidget()
         red_panel.setStyleSheet("background-color: #f9f9f9;")
         red_layout = QVBoxLayout(red_panel)
         red_layout.setContentsMargins(0, 0, 0, 0)
         red_layout.addWidget(TripInfoPanel(config))
-        layout2.addWidget(red_panel)
+        self.hsplitter.addWidget(red_panel)
 
-        # layout2.addWidget(TripInfoPanel(config))
-        # layout2.addWidget(Color("yellow"))
-        # self.yellow_tabs = YellowPanel(root_field, config)
-        # layout2.addWidget(self.yellow_tabs)        
+        # Yellow panel
         self.yellow_tabs = QTabWidget()
         self.yellow_tabs.setStyleSheet("background-color: #fff8d2;")
-        layout2.addWidget(self.yellow_tabs)
-        layout2.addWidget(Color("purple"))
-        layout2.setStretch(0, 1)  # red
-        layout2.setStretch(1, 3)  # yellow
-        layout2.setStretch(2, 1)  # purple    
+        self.hsplitter.addWidget(self.yellow_tabs)
+
+        # Purple panel
+        purple_panel = Color("purple")  # Assuming this is a QWidget subclass
+        self.hsplitter.addWidget(purple_panel)
+
+        # Optional: set initial sizes
+        self.hsplitter.setSizes([200, 600, 200])  # Adjust as needed
+
+        # Optional: make panels expand
+        self.hsplitter.setStretchFactor(0, 1)
+        self.hsplitter.setStretchFactor(1, 3)
+        self.hsplitter.setStretchFactor(2, 1)
+
+        # Wrap in a container widget
         color_row = QWidget()
-        color_row.setLayout(layout2)
-        color_row.setMinimumHeight(100)    
+        layout = QVBoxLayout(color_row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.hsplitter)
+        color_row.setMinimumHeight(100)
+ 
 
         self.green_log_box = QPlainTextEdit()
         self.green_log_box.setReadOnly(True)
@@ -71,20 +83,21 @@ class MainWindow(QMainWindow):
         self.green_log_box.setMinimumHeight(100)
         self.green_log_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-        self.splitter = QSplitter(Qt.Orientation.Vertical)
-        self.splitter.addWidget(color_row)
-        self.splitter.addWidget(self.green_log_box)
+        self.vsplitter = QSplitter(Qt.Orientation.Vertical)
+        self.vsplitter.addWidget(color_row)
+        self.vsplitter.addWidget(self.green_log_box)
 
         sizes = config.get("layout", "split_sizes", fallback="500,400")
         sizes = [int(s) for s in sizes.split(",")]
-        self.splitter.setSizes(sizes)        
+        self.vsplitter.setSizes(sizes)        
 
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.addWidget(self.splitter)
+        layout.addWidget(self.vsplitter)
         widget.setLayout(layout)
         self.setCentralWidget(widget)
 
+        # define menu structures
         self.menu_spec = build_menu_spec(self)
         self.menu_bar = create_menubar(self, self.menu_spec)
         self.setMenuBar(self.menu_bar)
@@ -92,14 +105,31 @@ class MainWindow(QMainWindow):
         self.translator = CachedTranslate(config["master"]["masterbiotadatabase"])
         # self.yellow_builder = YellowPanelBuilder(root_field, self.config)
         populate_trip_overview(self)
+        # Horizontal splitter
+        if config.has_option("layout", "split_sizes_horizontal"):
+            h_sizes = config.get("layout", "split_sizes_horizontal")
+            try:
+                self.hsplitter.setSizes([int(s) for s in h_sizes.split(",")])
+            except ValueError:
+                pass
+
+        # Vertical splitter
+        if config.has_option("layout", "split_sizes_vertical"):
+            v_sizes = config.get("layout", "split_sizes_vertical")
+            try:
+                self.vsplitter.setSizes([int(s) for s in v_sizes.split(",")])
+            except ValueError:
+                pass
+
+        
         trip_label = QLabel("Trip: 2017 Oostzeedb")
         self.status_bar.addPermanentWidget(trip_label)
         self.status_bar.showMessage("Ready")
 
     def closeEvent(self, event):
-        sizes = self.splitter.sizes()
         # logger.info("Close and save screen sizes")
-        config["layout"] = {"split_sizes": ",".join(map(str, sizes))}
+        config["layout"]["split_sizes_vertical"] = ",".join(str(s) for s in self.vsplitter.sizes())
+        config["layout"]["split_sizes_horizontal"] = ",".join(str(s) for s in self.hsplitter.sizes())        
         with open(CONFIG_FILE, "w") as f:
             config.write(f)
         super().closeEvent(event)
