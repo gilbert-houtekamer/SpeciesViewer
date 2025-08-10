@@ -189,7 +189,7 @@ class MainWindow(QMainWindow):
 
     def handle_trip_table_double_click(self, row, column):
         # Ignore clicks on the "Progress" column, and headers
-        if column == self.trip_table.columnCount() - 1 or column < 2:
+        if column == self.trip_table.columnCount() - 1 or column < 1:
             return
 
         day_item = self.trip_table.item(row, 0)
@@ -208,8 +208,11 @@ class MainWindow(QMainWindow):
         self.config.set("project", "picturedirectory", str(new_dir))
         self.logger.info(f"Updated PictureDirectory to: {new_dir}")
 
-        if column == 2:
-            dlg = ImagePreviewDialog(image_dir=str(new_dir))
+        if column == 1:  # RAW column
+            dlg = ImagePreviewDialog(self, image_dir=str(new_dir), mode="raw")
+            dlg.show()
+        elif column == 2:  # JPG column
+            dlg = ImagePreviewDialog(self, image_dir=str(new_dir), mode="jpg")
             dlg.show()
         else:
             # Look up the MenuSpec in the "Trip" section

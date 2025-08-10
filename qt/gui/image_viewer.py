@@ -4,15 +4,16 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout,
     QLabel, QMessageBox, QSlider, QHBoxLayout
 )
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtCore import Qt
 from widgets.trip_widgets import DirectoryFieldQt
 
 class ImagePreviewDialog(QDialog):
-    def __init__(self, parent=None, image_dir=""):
+    def __init__(self, parent=None, image_dir="", mode="jpg"):
         super().__init__(parent)
         # self.setWindowTitle("Species Image Preview")
         self.resize(800, 600)
+        self.mode = mode
 
         self.columns = 3
         self.image_dir = image_dir
@@ -103,7 +104,26 @@ class ImagePreviewDialog(QDialog):
             tip = "10 = small images"
         else:
             tip = f"{value} images per row"
-        self.zoom_slider.setToolTip(tip)                    
+        self.zoom_slider.setToolTip(tip)          
+
+    def get_pixmap_for_path(self, path):
+        if self.mode == "jpg":
+            return QPixmap(str(path))
+        elif self.mode == "raw":
+            try:
+                import rawpy
+                import numpy as np
+                import imageio.v3 as iio
+                with rawpy.imread(str(path)) as raw:
+                    rgb = raw.postprocess()
+                # Convert numpy array to QImage
+                height, width, channels = rgb.shape
+                bytes_per_line = channels * width
+                image = QImage(rgb.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+                return QPixmap.fromImage(image)
+            except Exception as e:
+                print(f"Failed to load RAW file {path.name}: {e}")
+                return None                  
 
     def load_images(self, image_dir):
 # Clear existing widgets from the grid layout
@@ -117,11 +137,19 @@ class ImagePreviewDialog(QDialog):
         self.image_widgets.clear()
 
         path = Path(image_dir)
-        image_paths = sorted(
-            f for f in path.glob("*.jpg")
-            if not f.name.lower().endswith("-small.jpg")
-        )
-
+        if self.mode == "jpg":
+            image_paths = sorted(
+                f for f in path.glob("*.jpg")
+                if not f.name.lower().endswith("-small.jpg")
+            )
+        elif self.mode == "raw":
+            raw_exts = [".nef", ".orf", ".cr2", ".arw", ".rw2"]
+            image_paths = sorted(
+                f for f in path.iterdir()
+                if f.suffix.lower() in raw_exts
+            )
+        else:
+            image_paths = []
         if not image_paths:
             QMessageBox.warning(self, "No Images", "No JPG files found in this directory.")
             return
@@ -129,7 +157,9 @@ class ImagePreviewDialog(QDialog):
 
         for i, img_path in enumerate(image_paths):
             image_label = QLabel()
-            pixmap = QPixmap(str(img_path))
+            pixmap = self.get_pixmap_for_path(img_path)
+            if pixmap is None:
+                continue
             image_label.setPixmap(pixmap)
 
             container = QWidget()
