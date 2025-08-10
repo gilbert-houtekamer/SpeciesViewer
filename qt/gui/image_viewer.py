@@ -22,6 +22,7 @@ class ImagePreviewDialog(QDialog):
 
         self.dir_field = DirectoryFieldQt("Image Directory", initial_path=image_dir)
         layout.addWidget(self.dir_field)
+        self.dir_field.field.textChanged.connect(self.on_directory_changed)        
 
         self.zoom_slider = QSlider(Qt.Orientation.Horizontal)
         self.zoom_slider.setMinimum(1)
@@ -64,6 +65,18 @@ class ImagePreviewDialog(QDialog):
         self.load_images(image_dir)
         self.setWindowTitle(f"Species Image Preview ({self.zoom_slider.value()} images per row)")
 
+    def on_directory_changed(self):
+        new_path = self.dir_field.get_path()
+        if os.path.isdir(new_path):
+            self.load_images(new_path)
+            self.setWindowTitle(f"Species Image Preview ({self.columns} images per row)")
+
+
+    def truncate_filename(self, filename, max_chars):
+        if len(filename) <= max_chars:
+            return filename
+        return "..." + filename[-(max_chars - 3):]        
+
     def rebuild_grid(self):
         while self.grid_layout.count():
             item = self.grid_layout.takeAt(0)
@@ -93,6 +106,16 @@ class ImagePreviewDialog(QDialog):
         self.zoom_slider.setToolTip(tip)                    
 
     def load_images(self, image_dir):
+# Clear existing widgets from the grid layout
+        while self.grid_layout.count():
+            item = self.grid_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.setParent(None)
+
+
+        self.image_widgets.clear()
+
         path = Path(image_dir)
         image_paths = sorted(
             f for f in path.glob("*.jpg")
@@ -103,20 +126,22 @@ class ImagePreviewDialog(QDialog):
             QMessageBox.warning(self, "No Images", "No JPG files found in this directory.")
             return
 
-        self.image_widgets.clear()
 
         for i, img_path in enumerate(image_paths):
             image_label = QLabel()
             pixmap = QPixmap(str(img_path))
             image_label.setPixmap(pixmap)
 
-            filename_label = QLabel(img_path.name)
-            filename_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
             container = QWidget()
             layout = QVBoxLayout(container)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.addWidget(image_label)
+
+            max_chars = 30  # You can tune this based on image width or font metrics
+            truncated_name = self.truncate_filename(img_path.name, max_chars)
+            filename_label = QLabel(truncated_name)
+            filename_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            filename_label.setToolTip(img_path.name)  # Show full name on hover
             layout.addWidget(filename_label)
 
             row, col = divmod(i, self.columns)
