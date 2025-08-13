@@ -1,12 +1,12 @@
 import os
 from pathlib import Path
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton,
-    QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog
-)
+    QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy,
+    QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog)
 from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtCore import Qt, QTimer
 from widgets.trip_widgets import DirectoryFieldQt
+from engine.filepicture import FilePicture
 
 class ImagePreviewDialog(QDialog):
     def __init__(self, parent=None, image_dir="", mode="jpg"):
@@ -25,6 +25,8 @@ class ImagePreviewDialog(QDialog):
         self.wait_dialog.setCancelButton(None)
         self.wait_dialog.setMinimumDuration(0)
         self.wait_dialog.show()        
+
+        self.dialog_active = True        
  
         self.columns = 3
         self.image_dir = image_dir
@@ -59,11 +61,26 @@ class ImagePreviewDialog(QDialog):
         self.grid_widget = QWidget()
         self.grid_layout = QGridLayout(self.grid_widget)
         self.scroll_area.setWidget(self.grid_widget)
+        # read metadata, if present
+        if os.path.exists(os.path.join("E:/Dropbox/trips/2017 oostzeedb/metadata/review/2017-08-09", "data_pictures.csv")):
+            # files for edit
+            self.fpr = FilePicture(None)
+            tripname = "E:/Dropbox/trips/2017 oostzeedb/"
+            projectname = "2017-08-09"
+            rc = self.fpr.readTripDay(tripname, projectname)
+        else:
+            self.fpr = None
+
         QTimer.singleShot(0, lambda: self.load_images(image_dir))
 
     def cancel_scan(self):
         self.cancelled = True
         self.cancel_button.setEnabled(False)        
+
+    def closeEvent(self, event):
+        self.dialog_active = False
+        self.cancelled = True
+        event.accept()
 
     def on_directory_changed(self):
         new_path = self.dir_field.get_path()
@@ -127,7 +144,7 @@ class ImagePreviewDialog(QDialog):
             return None                  
         
     def load_next_image(self):
-        if self.current_index >= len(self.image_paths):
+        if not self.dialog_active or self.cancelled or self.current_index >= len(self.image_paths):
             self.cancel_button.setEnabled(False)
             self.wait_dialog.close()
             return
@@ -143,10 +160,25 @@ class ImagePreviewDialog(QDialog):
                 pixmap = QPixmap("qt/assets/spinner.gif")
 
         image_label.setPixmap(pixmap)
+        image_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        # image_label.setFixedHeight(140)  # Or whatever height fits your layout        
 
         container = QWidget()
+        container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(4)
+
+        # Apply color border to container
+        if self.fpr:
+            color = self.fpr.getColor(img_path)
+            if color:
+                container.setStyleSheet(f"""
+                    border: 3px solid {color};
+                    border-radius: 6px;
+                    background-color: transparent;
+                """)  
         layout.addWidget(image_label)
 
         max_chars = 30
@@ -154,11 +186,19 @@ class ImagePreviewDialog(QDialog):
         filename_label = QLabel(truncated_name)
         filename_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         filename_label.setToolTip(img_path.name)
+        # filename_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        filename_label.setFixedHeight(20)
         layout.addWidget(filename_label)
+
+        image_label.setStyleSheet("border: none; background-color: transparent;")
+        filename_label.setStyleSheet("border: none; background-color: transparent;")
+
 
         row, col = divmod(self.current_index, self.columns)
         self.grid_layout.addWidget(container, row, col)
         self.image_widgets.append((image_label, container, img_path))
+
+        print(f"Loaded image {self.current_index + 1} of {len(self.image_paths)}: {img_path.name}")
 
         self.current_index += 1
         QTimer.singleShot(50, self.load_next_image)  # Simulate async loading
@@ -167,8 +207,7 @@ class ImagePreviewDialog(QDialog):
             self.cancel_button.setEnabled(False)
             self.on_column_changed(self.columns)
             self.wait_dialog.close()            
-            return
-
+            return        
 
     def load_images(self, image_dir):
         # Clear existing widgets
@@ -223,6 +262,11 @@ class ImagePreviewDialog(QDialog):
                 image_width,
                 Qt.TransformationMode.SmoothTransformation
             )
-            image_label.setPixmap(pixmap)
+            # image_label.setPixmap(pixmap)
+            available_width = self.scroll_area.viewport().width()
+            image_width = available_width // self.columns - 20
+
+            pixmap = pixmap.scaledToWidth(image_width, Qt.TransformationMode.SmoothTransformation)
+            image_label.setPixmap(pixmap)            
 
  

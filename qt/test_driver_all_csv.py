@@ -25,17 +25,37 @@ class FilePicture:
         self.rs = {}
         self.sc = {}
         self.fi = {}
-        self.upn = {}
+        self.upn = {}   
 
         if MyProject != None:
             MyProject.registerSpecies(self)
             self.mp = MyProject
         return 
     
+    def clearCSVs(self):
+        self.sp = {}
+        self.rs = {}
+        self.sc = {}
+        self.fi = {}
+        self.upn = {}        
+        return
+    
+    def readTripDay(self, trippath, projectdirectory):
+        metadatadir = os.path.join(trippath,  "metadata", "review", projectdirectory)
+        self.fi = Files(None)
+        filecount = self.fi.read_file(os.path.join(metadatadir, "data_files.csv"))
+
+        # Read data for 42 pictures from CSV file E:\Dropbox\trips\2017 oostzeedb\metadata/active/data_pictures.csv.
+        self.upn = Pictures(None)
+        picturecount = self.upn.read_pictures(os.path.join(metadatadir, "data_pictures.csv"))
+        
+        return (filecount[0] > 0) and (picturecount > 0)
+
+    
     # Read EXIF data file, one record for each file (ORF, jpg, XMP, etc)
     # For second call, additional data is appended
     # Check if is does not create a duplicaete
-    def readProject(self, trippath, projectdirecotory, getEarlierDays = False, silent=False):
+    def readProject(self, trippath, projectdirectory, getEarlierDays = False, silent=False):
         # dlg = ImagePreviewDialog(image_dir="D:/CurrentPictures/2017/Oostzee zeilzomer/2017-08-16")
         metadatadir = os.path.join(trippath,  "metadata")
         starttime = time.time()
@@ -88,7 +108,7 @@ class FilePicture:
         self.upn.read_pictures(os.path.join(metadatadirreview, '2017-08-09', 'data_pictures.csv'))      
 
         logger.info(f"Read all new data from project in {time.time()-thissteptime:.1f} seconds.")
-        return [RepositoryFileCount, RepositoryPictureCount, from_time, last_time]
+        return [RepositoryFileCount[0], RepositoryPictureCount, RepositoryFileCount[1], RepositoryFileCount[2]]
 
 
 
@@ -104,10 +124,14 @@ if __name__ == "__main__":
     fpr = FilePicture(None)
     tripname = "E:/Dropbox/trips/2017 oostzeedb"
     projectname = "2017-08-09"
-    files, pictures, from_time, last_time = fpr.readProject(tripname, projectname)
+    rc = fpr.readTripDay(tripname, projectname)
 
-    # call logic in browser:
-    # search NEF file -> find UPN -> Color (with filtering)
-    #                             -> Names with option to fix it
+    # fpr.clearCSVs()
 
-    print(f"{files}, {pictures}, {from_time}, {last_time}")
+    # files, pictures, from_time, last_time = fpr.readProject(tripname, projectname)
+
+    # # call logic in browser:
+    # # search NEF file -> find UPN -> Color (with filtering)
+    # #                             -> Names with option to fix it
+
+    # print(f"{files}, {pictures}, {from_time}, {last_time}")
