@@ -1,12 +1,63 @@
 import os
 from pathlib import Path
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy,
+    QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy, 
     QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog)
-from PyQt6.QtGui import QPixmap, QImage
+from PyQt6.QtGui import QPixmap, QImage, QFontMetrics
 from PyQt6.QtCore import Qt, QTimer
 from widgets.trip_widgets import DirectoryFieldQt
 from engine.filepicture import FilePicture
+
+class ColorFilterBar(QWidget):
+    def __init__(self, on_filter_changed):
+        super().__init__()
+        self.selected_colors = set()
+        self.on_filter_changed = on_filter_changed
+
+        layout = QHBoxLayout()
+        layout.setSpacing(10)
+        self.setLayout(layout)
+
+        self.colors = {
+            "Red": "#FF4C4C",
+            "Yellow": "#FFD700",
+            "Green": "#32CD32",
+            "Blue": "#1E90FF",
+            "Purple": "#9370DB",
+            "Grey": "#A9A9A9"  # Represents unlabeled
+        }
+
+        self.buttons = {}
+        for name, hex_color in self.colors.items():
+            btn = QPushButton()
+            btn.setFixedSize(30, 30)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {hex_color};
+                    border-radius: 15px;
+                    border: 2px solid transparent;
+                }}
+                QPushButton:checked {{
+                    border: 2px solid white;
+                }}
+            """)
+            btn.setCheckable(True)
+            btn.setToolTip(f"Filter by {name}")
+            btn.clicked.connect(lambda _, n=name: self.toggle_color(n))
+            layout.addWidget(btn)
+            self.buttons[name] = btn
+
+    def toggle_color(self, color_name):
+        btn = self.buttons[color_name]
+        if btn.isChecked():
+            self.selected_colors.add(color_name)
+        else:
+            self.selected_colors.discard(color_name)
+
+        # If no colors selected, treat as "show all"
+        active_colors = self.selected_colors if self.selected_colors else None
+        self.on_filter_changed(active_colors)
+
 
 class ImagePreviewDialog(QDialog):
     def __init__(self, parent=None, image_dir="", mode="jpg"):
@@ -47,13 +98,25 @@ class ImagePreviewDialog(QDialog):
 
         self.dir_field.field.textChanged.connect(self.on_directory_changed)        
 
+        # Create a horizontal layout for the spinner and the color filter bar
+        controls_layout = QHBoxLayout()
+
+        # ColorFilterBar instance (assuming you have one)
+        self.color_filter_bar = ColorFilterBar(on_filter_changed=self.on_filter_changed)
+        controls_layout.addWidget(self.color_filter_bar)
+
+        # Column spinner setup
         self.column_spinner = QSpinBox()
         self.column_spinner.setRange(1, 10)
         self.column_spinner.setValue(self.columns)
         self.column_spinner.setPrefix("Images per row: ")
-        layout.addWidget(self.column_spinner)
+        controls_layout.addWidget(self.column_spinner)
+
         self.column_spinner.valueChanged.connect(self.on_column_changed)
-        
+
+        # Add the combined controls layout to the main layout
+        layout.addLayout(controls_layout)
+
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         layout.addWidget(self.scroll_area)
@@ -72,6 +135,11 @@ class ImagePreviewDialog(QDialog):
             self.fpr = None
 
         QTimer.singleShot(0, lambda: self.load_images(image_dir))
+
+    def compute_max_chars(self, label: QLabel, max_width: int) -> int:
+        font_metrics = QFontMetrics(label.font())
+        avg_char_width = font_metrics.averageCharWidth()
+        return max_width // avg_char_width        
 
     def cancel_scan(self):
         self.cancelled = True
@@ -161,8 +229,7 @@ class ImagePreviewDialog(QDialog):
 
         image_label.setPixmap(pixmap)
         image_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        # image_label.setFixedHeight(140)  # Or whatever height fits your layout        
-
+    
         container = QWidget()
         container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
 
@@ -181,9 +248,13 @@ class ImagePreviewDialog(QDialog):
                 """)  
         layout.addWidget(image_label)
 
-        max_chars = 30
+        # smart length
+        filename_label = QLabel()
+        max_width = container.width() - 12  # Account for padding
+        max_chars = self.compute_max_chars(filename_label, max_width)
         truncated_name = self.truncate_filename(img_path.name, max_chars)
-        filename_label = QLabel(truncated_name)
+        filename_label.setText(truncated_name)
+
         filename_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         filename_label.setToolTip(img_path.name)
         # filename_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
@@ -267,6 +338,19 @@ class ImagePreviewDialog(QDialog):
             image_width = available_width // self.columns - 20
 
             pixmap = pixmap.scaledToWidth(image_width, Qt.TransformationMode.SmoothTransformation)
-            image_label.setPixmap(pixmap)            
+            image_label.setPixmap(pixmap)
+
+    def filter_images_by_color(selected_colors):
+        if selected_colors is None:
+            show_all_images()
+        else:
+            filtered = []
+            for img in all_images:
+                color = img.getColor() or "Grey"
+                if color in selected_colors:
+                    filtered.append(img)
+            show_images(filtered)   
 
  
+    def on_filter_changed(self, selected_color):
+        print(f"Color filter changed to: {selected_color}")
