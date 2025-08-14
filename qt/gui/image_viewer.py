@@ -15,8 +15,10 @@ class ColorFilterBar(QWidget):
         self.on_filter_changed = on_filter_changed
 
         layout = QHBoxLayout()
-        layout.setSpacing(10)
+        layout.setSpacing(4)  # Controls space *between* buttons
+        layout.setContentsMargins(0, 0, 0, 0)  # Removes extra padding around the layout
         self.setLayout(layout)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed) 
 
         self.colors = {
             "Red": "#FF4C4C",
@@ -24,25 +26,27 @@ class ColorFilterBar(QWidget):
             "Green": "#32CD32",
             "Blue": "#1E90FF",
             "Purple": "#9370DB",
-            "Grey": "#A9A9A9"  # Represents unlabeled
+            "Grey": "#A9A9A9"
         }
 
         self.buttons = {}
         for name, hex_color in self.colors.items():
             btn = QPushButton()
-            btn.setFixedSize(30, 30)
+            btn.setFixedSize(16, 16)  # Slightly smaller for tighter layout
+            btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            btn.setCheckable(True)
+            btn.setToolTip(f"Filter by {name}")
             btn.setStyleSheet(f"""
                 QPushButton {{
-                    background-color: {hex_color};
-                    border-radius: 15px;
-                    border: 2px solid transparent;
+                    background-color: transparent;
+                    border: 2px solid {hex_color};
+                    border-radius: 12px;
                 }}
                 QPushButton:checked {{
+                    background-color: {hex_color};
                     border: 2px solid white;
                 }}
             """)
-            btn.setCheckable(True)
-            btn.setToolTip(f"Filter by {name}")
             btn.clicked.connect(lambda _, n=name: self.toggle_color(n))
             layout.addWidget(btn)
             self.buttons[name] = btn
@@ -54,7 +58,6 @@ class ColorFilterBar(QWidget):
         else:
             self.selected_colors.discard(color_name)
 
-        # If no colors selected, treat as "show all"
         active_colors = self.selected_colors if self.selected_colors else None
         self.on_filter_changed(active_colors)
 
