@@ -63,11 +63,12 @@ class ColorFilterBar(QWidget):
 
 
 class ImagePreviewDialog(QDialog):
-    def __init__(self, parent=None, image_dir="", mode="jpg"):
+    def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg"):
         super().__init__(parent)
         # self.setWindowTitle("Species Image Preview")
         self.resize(800, 600)
         self.mode = mode
+        self.trip_root_dir = trip_root_dir
         self.setWindowTitle(f"Species Image Preview ({Path(image_dir).name})")
 
         layout = QVBoxLayout(self)
@@ -128,12 +129,11 @@ class ImagePreviewDialog(QDialog):
         self.grid_layout = QGridLayout(self.grid_widget)
         self.scroll_area.setWidget(self.grid_widget)
         # read metadata, if present
-        if os.path.exists(os.path.join("E:/Dropbox/trips/2017 oostzeedb/metadata/review/2017-08-09", "data_pictures.csv")):
+        projectname = Path(self.image_dir).name        
+        if os.path.exists(os.path.join(self.trip_root_dir,"metadata", "review", projectname)):
             # files for edit
             self.fpr = FilePicture(None)
-            tripname = "E:/Dropbox/trips/2017 oostzeedb/"
-            projectname = "2017-08-09"
-            rc = self.fpr.readTripDay(tripname, projectname)
+            rc = self.fpr.readTripDay(self.trip_root_dir, projectname)
         else:
             self.fpr = None
 
@@ -301,6 +301,8 @@ class ImagePreviewDialog(QDialog):
             image_paths = sorted(
                 f for f in path.glob("*.jpg")
                 if not f.name.lower().endswith("-small.jpg")
+                # if self.fpr:
+                #     if not self.fpr.filteredFile(f.name, allowed_colors = None)
             )
         elif self.mode == "raw":
             raw_exts = [".nef", ".orf", ".cr2", ".arw", ".rw2", ".heic"]
@@ -343,17 +345,21 @@ class ImagePreviewDialog(QDialog):
             pixmap = pixmap.scaledToWidth(image_width, Qt.TransformationMode.SmoothTransformation)
             image_label.setPixmap(pixmap)
 
-    def filter_images_by_color(selected_colors):
-        if selected_colors is None:
-            show_all_images()
+    def filter_images_by_color(self, selected_colors):
+        if (selected_colors is None) or (self.fpr is None):
+            self.show_all_images()
         else:
             filtered = []
-            for img in all_images:
-                color = img.getColor() or "Grey"
-                if color in selected_colors:
+            selected_colors_lower = {color.lower() for color in selected_colors}
+            for img in self.image_paths:
+                filename = img.name
+                color = self.fpr.getColor(filename) or "grey"
+                if color in selected_colors_lower:
                     filtered.append(img)
-            show_images(filtered)   
+            if filtered != []:
+                self.show_images(filtered)   
 
  
     def on_filter_changed(self, selected_color):
+        self.filter_images_by_color(selected_color)
         print(f"Color filter changed to: {selected_color}")

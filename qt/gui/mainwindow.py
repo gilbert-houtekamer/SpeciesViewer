@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStatusBar
 from PyQt6.QtWidgets import QPlainTextEdit, QLabel, QSizePolicy, QLineEdit, QTabWidget, QTableWidgetItem
@@ -203,16 +204,20 @@ class MainWindow(QMainWindow):
         action_label = action_item.text().replace("\n", " ")  # e.g., "Write Blog"
 
         # Update PictureDirectory
-        trip_root = Path(self.config.get("project", "picturedirectory")).parent
-        new_dir = trip_root / day_str
+        project_root = Path(self.config.get("project", "picturedirectory")).parent
+        new_dir = project_root / day_str
         self.config.set("project", "picturedirectory", str(new_dir))
         self.logger.info(f"Updated PictureDirectory to: {new_dir}")
+        # trip if available
+        trip_root = Path(self.config.get("trip", "tripbiotadatabase"))
+        trip_dir = os.path.join(str(trip_root), 'metadata' , 'review' , day_str)
+        if not os.path.exists(trip_dir): trip_root = ""
 
         if column == 1:  # RAW column
-            dlg = ImagePreviewDialog(self, image_dir=str(new_dir), mode="raw")
+            dlg = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root),  mode="raw")
             dlg.show()
         elif column == 2:  # JPG column
-            dlg = ImagePreviewDialog(self, image_dir=str(new_dir), mode="jpg")
+            dlg = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root),  mode="jpg")
             dlg.show()
         else:
             # Look up the MenuSpec in the "Trip" section
