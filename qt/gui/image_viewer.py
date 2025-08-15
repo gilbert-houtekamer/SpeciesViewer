@@ -8,6 +8,9 @@ from PyQt6.QtCore import Qt, QTimer
 from widgets.trip_widgets import DirectoryFieldQt
 from engine.filepicture import FilePicture
 
+def ensure_path(obj):
+    return Path(obj) if isinstance(obj, str) else obj
+
 class ColorFilterBar(QWidget):
     def __init__(self, on_filter_changed):
         super().__init__()
@@ -136,8 +139,25 @@ class ImagePreviewDialog(QDialog):
             rc = self.fpr.readTripDay(self.trip_root_dir, projectname)
         else:
             self.fpr = None
+        # make a list of all images based on file type (not yet filtered)
+        self.all_image_paths = self.discover_images(image_dir)
 
-        QTimer.singleShot(0, lambda: self.load_images(image_dir))
+        QTimer.singleShot(0, lambda: self.load_images(self.all_image_paths))
+
+    def discover_images(self, image_dir):
+        path = Path(image_dir)
+        if self.mode == "jpg":
+            return sorted(
+                f for f in path.glob("*.jpg")
+                if not f.name.lower().endswith("-small.jpg")
+            )
+        elif self.mode == "raw":
+            raw_exts = [".nef", ".orf", ".cr2", ".arw", ".rw2", ".heic"]
+            return sorted(
+                f for f in path.iterdir()
+                if f.suffix.lower() in raw_exts
+            )
+        return []
 
     def compute_max_chars(self, label: QLabel, max_width: int) -> int:
         font_metrics = QFontMetrics(label.font())
@@ -156,9 +176,11 @@ class ImagePreviewDialog(QDialog):
     def on_directory_changed(self):
         new_path = self.dir_field.get_path()
         if os.path.isdir(new_path):
-            self.load_images(new_path)
-            self.setWindowTitle(f"Species Image Preview ({self.columns} images per row)")
-            self.setWindowTitle(f"Species Image Preview ({new_path})")
+            self.image_dir = new_path
+            self.all_image_paths = self.discover_images(new_path)
+            self.show_all_images()
+            self.setWindowTitle(f"Species Image Preview ({Path(new_path).name})")
+
 
     def truncate_filename(self, filename, max_chars):
         if len(filename) <= max_chars:
@@ -220,7 +242,7 @@ class ImagePreviewDialog(QDialog):
             self.wait_dialog.close()
             return
 
-        img_path = self.image_paths[self.current_index]
+        img_path = Path(self.image_paths[self.current_index])
         image_label = QLabel()
 
         if self.cancelled:
@@ -283,7 +305,9 @@ class ImagePreviewDialog(QDialog):
             self.wait_dialog.close()            
             return        
 
-    def load_images(self, image_dir):
+    def load_images(self, image_paths):
+        self.image_paths = [Path(p) if isinstance(p, str) else p for p in image_paths]
+
         # Clear existing widgets
         while self.grid_layout.count():
             item = self.grid_layout.takeAt(0)
@@ -294,33 +318,14 @@ class ImagePreviewDialog(QDialog):
         self.image_widgets.clear()
         self.cancelled = False
         self.cancel_button.setEnabled(True)
-        self.image_dir = image_dir
-
-        path = Path(image_dir)
-        if self.mode == "jpg":
-            image_paths = sorted(
-                f for f in path.glob("*.jpg")
-                if not f.name.lower().endswith("-small.jpg")
-                # if self.fpr:
-                #     if not self.fpr.filteredFile(f.name, allowed_colors = None)
-            )
-        elif self.mode == "raw":
-            raw_exts = [".nef", ".orf", ".cr2", ".arw", ".rw2", ".heic"]
-            image_paths = sorted(
-                f for f in path.iterdir()
-                if f.suffix.lower() in raw_exts
-            )
-        else:
-            image_paths = []
 
         if not image_paths:
-            QMessageBox.warning(self, "No Images", "No image files found in this directory.")
+            QMessageBox.warning(self, "No Images", "No image files found, or none selected, in this directory.")
             return
 
         self.image_paths = image_paths
         self.current_index = 0
         self.load_next_image()
-
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -331,19 +336,21 @@ class ImagePreviewDialog(QDialog):
             return
 
         available_width = self.scroll_area.viewport().width()
-        image_width = available_width // self.columns - 20
+        actual_columns = min(self.columns, len(self.image_widgets))
+        image_width = available_width // actual_columns - 20
 
         for image_label, _, img_path in self.image_widgets:
             pixmap = QPixmap(str(img_path)).scaledToWidth(
                 image_width,
                 Qt.TransformationMode.SmoothTransformation
             )
-            # image_label.setPixmap(pixmap)
-            available_width = self.scroll_area.viewport().width()
-            image_width = available_width // self.columns - 20
+            image_label.setPixmap(pixmap)    
 
-            pixmap = pixmap.scaledToWidth(image_width, Qt.TransformationMode.SmoothTransformation)
-            image_label.setPixmap(pixmap)
+    def show_all_images(self):
+        self.load_images(self.all_image_paths)
+
+    def show_images(self, filtered):
+        self.load_images(filtered)            
 
     def filter_images_by_color(self, selected_colors):
         if (selected_colors is None) or (self.fpr is None):
@@ -351,13 +358,14 @@ class ImagePreviewDialog(QDialog):
         else:
             filtered = []
             selected_colors_lower = {color.lower() for color in selected_colors}
-            for img in self.image_paths:
+            for img in self.discover_images(self.image_dir):  
+                # for img in self.image_paths:
                 filename = img.name
                 color = self.fpr.getColor(filename) or "grey"
                 if color in selected_colors_lower:
                     filtered.append(img)
-            if filtered != []:
-                self.show_images(filtered)   
+            # if filtered != []:
+            self.show_images(filtered)   
 
  
     def on_filter_changed(self, selected_color):

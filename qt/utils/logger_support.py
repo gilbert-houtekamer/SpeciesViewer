@@ -3,7 +3,11 @@ from PyQt6.QtCore import QTimer
 
 class SuppressExifToolOutput(logging.Filter):
     def filter(self, record):
-        return not record.getMessage().startswith("ExifToolHelper.execute: OUT stdout =")
+        # first does not work, but leave it as a sample
+        return not (
+            record.name.startswith("qt.imageformats.tiff") or
+            record.getMessage().startswith("ExifToolHelper.execute: OUT stdout =")
+        )
 
 class LogHandler(logging.Handler):
     def __init__(self, log_widget):
