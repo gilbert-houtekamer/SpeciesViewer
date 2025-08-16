@@ -7,6 +7,8 @@ import time
 import os
 from pathlib import Path  
 
+logger = logging.getLogger("speciesviewer")
+
 # Write all trip data in CSV file "E:\Dropbox\naturedb\admin\trip_admin.csv".
 # sv4WriteBlog: Create a blog for project 2017-08-09
 # Read 15 predefined species from E:\Dropbox\trips\2017 oostzeedb\metadata/review/2017-08-09\species.csv.
@@ -49,6 +51,61 @@ class FilePicture:
             return color.lower()
         except Exception:
             return ""
+        
+    # returns a string
+    def getErrorMsg(self, filename):
+        try:
+            upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
+            errormsg = self.upn.UniquePictureName_dict[upn_name]["errormessage"]
+            logger.info(f"getErrorMsg: {errormsg}")
+            return errormsg
+        except Exception:
+            return ""
+        
+    # returns a list, eg ['bombylius venosus', 'zwartborstelwolzwever']
+    # may need to handle  or simply knobbelzwaan
+    def getSubject(self, filename):
+        try:
+            upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
+            subject = self.upn.UniquePictureName_dict[upn_name]["subject"]
+            return subject
+        except Exception:
+            return ""
+        
+    def getSpeciesName(self, filename):
+        try:
+            upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
+            upn  = self.upn.UniquePictureName_dict[upn_name]
+            if upn["NLSoortNaam"] != "":
+                logger.info(f"get: {upn["NLSoortNaam"]}")
+                return upn["NLSoortNaam"]
+            elif upn["EngSoortNaam"] != "":
+                return upn["EngSoortNaam"]
+            else:
+                return upn["WetSoortNaam"]
+        except Exception:
+            return ""        
+        
+    def getUPN(self, filename):
+        try:
+            upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
+            upn = self.upn.UniquePictureName_dict[upn_name]
+            return upn
+        except Exception:
+            return None                
+        
+    def filteredFile(self, filename, allowed_colors = None):
+        try:
+            upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
+            color = self.upn.UniquePictureName_dict[upn_name]["Label"]            
+            if allowed_colors != None:
+                if color.lower() in allowed_colors:
+                    return True
+            return False
+        except Exception as e:
+            logger.warning("Error in filteredFile for {filename} error {e}")
+            return True
+
     
     # read just file and pictures for better experience
     def readTripDay(self, trippath, projectdirectory):

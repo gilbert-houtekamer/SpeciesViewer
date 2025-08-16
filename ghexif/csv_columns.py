@@ -114,5 +114,6 @@ PICTURE_FIELDS = [
     "DateTimeOriginal",
     "malefemale",
     "ageintext",
-    "summerwinter",    
+    "summerwinter",
+    "errormessage"
 ]

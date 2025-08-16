@@ -3,10 +3,10 @@ import logging
 # import sip
 from pathlib import Path
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy, 
+    QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy,
     QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog)
-from PyQt6.QtGui import QPixmap, QImage, QFontMetrics
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QPixmap, QImage, QFontMetrics, QIcon
+from PyQt6.QtCore import Qt, QTimer, QSize
 from widgets.trip_widgets import DirectoryFieldQt
 from engine.filepicture import FilePicture
 
@@ -281,22 +281,55 @@ class ImagePreviewDialog(QDialog):
                 """)  
         layout.addWidget(image_label)
 
-        # smart length
-        filename_label = QLabel()
-        max_width = container.width() - 12  # Account for padding
-        max_chars = self.compute_max_chars(filename_label, max_width)
-        truncated_name = self.truncate_filename(img_path.name, max_chars)
-        filename_label.setText(truncated_name)
+        # Species info row
+        info_row = QWidget()
+        info_layout = QHBoxLayout(info_row)
+        info_layout.setContentsMargins(0, 0, 0, 0)
+        info_layout.setSpacing(0)
 
-        filename_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        filename_label.setToolTip(img_path.name)
-        # filename_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        filename_label.setFixedHeight(20)
-        layout.addWidget(filename_label)
+        # (1) Status icon
+        status_icon = QPushButton()
+        status_icon.setIconSize(QSize(16, 16))
+        status_icon.setFixedSize(20, 20)
+        status_icon.setFlat(True)
+        status_icon.setStyleSheet("border: none; background-color: transparent;")
 
+        error_msg = self.fpr.getErrorMsg(img_path.name) if self.fpr else ""
+        species_name = self.fpr.getSpeciesName(img_path.name) if self.fpr else ""
+
+        if error_msg:
+            icon = QIcon(QPixmap("qt/assets/warning_icon.png").scaled(16, 16))
+            status_icon.setIcon(icon)
+            status_icon.setToolTip(error_msg)
+        elif species_name:
+            icon = QIcon(QPixmap("qt/assets/ok_icon.png").scaled(16, 16))
+            status_icon.setIcon(icon)
+            status_icon.setToolTip("OK")
+        else:
+            status_icon.setIcon(QIcon())  # Blank
+
+        info_layout.addWidget(status_icon)
+
+        # (2) Species name or filename
+        text_label = QLabel()
+        max_width = container.width() - 40  # Account for icon and padding
+        max_chars = self.compute_max_chars(text_label, max_width)
+
+        if species_name:
+            display_text = species_name
+            text_label.setToolTip(img_path.name)
+        else:
+            display_text = self.truncate_filename(img_path.name, max_chars)
+            text_label.setToolTip(img_path.name)
+
+        text_label.setText(display_text)
+        text_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        text_label.setFixedHeight(20)
+        text_label.setStyleSheet("border: none; background-color: transparent;")
+
+        info_layout.addWidget(text_label)
+        layout.addWidget(info_row)
         image_label.setStyleSheet("border: none; background-color: transparent;")
-        filename_label.setStyleSheet("border: none; background-color: transparent;")
-
 
         row, col = divmod(self.current_index, self.columns)
 

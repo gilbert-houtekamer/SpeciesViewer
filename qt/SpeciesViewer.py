@@ -1,5 +1,5 @@
 import sys
-from PyQt6.QtWidgets import QApplication, QSplashScreen
+from PyQt6.QtWidgets import QApplication, QSplashScreen, QToolTip
 from PyQt6.QtGui import QPixmap, QFont
 from PyQt6.QtCore import Qt, QTimer
 
@@ -37,6 +37,15 @@ def start_main():
 
 def main():
     app = QApplication(sys.argv)
+    QToolTip.setFont(QFont("SansSerif", 12))
+    app.setStyleSheet("""
+        QToolTip {
+            background-color: #f5f5f5;
+            color: #333;
+            border: 1px solid #ccc;
+            padding: 4px;
+        }
+    """)    
     ex = start_main()
     # print("QApplication exists in TripCreationDialog?", QApplication.instance()) 
     sys.exit(app.exec())    

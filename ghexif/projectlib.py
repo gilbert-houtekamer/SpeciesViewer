@@ -583,6 +583,7 @@ class Project:
             "malefemale":       "",
             "ageintext":        "",
             "summerwinter":     "",
+            "errormessage":     "",
         }
         return PictureRecord
 
@@ -623,7 +624,8 @@ class Project:
 
         upn["malefemale"] = ""
         upn["ageintext"] = ""
-        upn["summerwinter"] = ""      
+        upn["summerwinter"] = ""    
+        upn["errormessage"] = ""
 
         return upn
 
