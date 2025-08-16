@@ -1,4 +1,6 @@
 import os
+import logging
+# import sip
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy, 
@@ -7,6 +9,8 @@ from PyQt6.QtGui import QPixmap, QImage, QFontMetrics
 from PyQt6.QtCore import Qt, QTimer
 from widgets.trip_widgets import DirectoryFieldQt
 from engine.filepicture import FilePicture
+
+logger = logging.getLogger("speciesviewer")
 
 def ensure_path(obj):
     return Path(obj) if isinstance(obj, str) else obj
@@ -94,6 +98,8 @@ class ImagePreviewDialog(QDialog):
 
         dir_layout = QHBoxLayout()
         self.dir_field = DirectoryFieldQt("Image Directory", initial_path=image_dir)
+        self.dir_field.field.setReadOnly(True)
+
         dir_layout.addWidget(self.dir_field)
         self.cancelled = False
         self.cancel_button = QPushButton("Cancel")
@@ -103,7 +109,7 @@ class ImagePreviewDialog(QDialog):
 
         layout.addLayout(dir_layout)           
 
-        self.dir_field.field.textChanged.connect(self.on_directory_changed)        
+        # self.dir_field.field.textChanged.connect(self.on_directory_changed)        
 
         # Create a horizontal layout for the spinner and the color filter bar
         controls_layout = QHBoxLayout()
@@ -173,13 +179,15 @@ class ImagePreviewDialog(QDialog):
         self.cancelled = True
         event.accept()
 
-    def on_directory_changed(self):
-        new_path = self.dir_field.get_path()
-        if os.path.isdir(new_path):
-            self.image_dir = new_path
-            self.all_image_paths = self.discover_images(new_path)
-            self.show_all_images()
-            self.setWindowTitle(f"Species Image Preview ({Path(new_path).name})")
+    # too hard to get working
+    # def on_directory_changed(self):
+    #     new_path = self.dir_field.get_path()
+    #     if os.path.isdir(new_path):
+        
+    #         self.image_dir = new_path
+    #         self.all_image_paths = self.discover_images(new_path)
+    #         self.show_all_images()
+    #         self.setWindowTitle(f"Species Image Preview ({Path(new_path).name})")
 
 
     def truncate_filename(self, filename, max_chars):
@@ -291,7 +299,12 @@ class ImagePreviewDialog(QDialog):
 
 
         row, col = divmod(self.current_index, self.columns)
-        self.grid_layout.addWidget(container, row, col)
+
+        # if self.grid_layout is None or sip.isdeleted(self.grid_layout):
+        #     logger.warning("Grid layout was deleted — skipping image load.")
+        #     return        
+        # if self.grid_layout is not None and self.grid_layout.parent():
+        self.grid_layout.addWidget(container, row, col)        
         self.image_widgets.append((image_label, container, img_path))
 
         print(f"Loaded image {self.current_index + 1} of {len(self.image_paths)}: {img_path.name}")
