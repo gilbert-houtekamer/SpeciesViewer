@@ -66,6 +66,8 @@ better spinner would be nice
 
    work - svr2CountSpecies.py doe not work in this context
    
+   progress niet herberekend bij WriteBlog
+   
    better scroller, simple a spinner and in directory in title
    
    also subtree directories also scanned
@@ -76,7 +78,13 @@ better spinner would be nice
    
    multi-select
    
+   Give acces to metadata
    
+   ColorFilterBar: kleiner, beter laten zien wat geselecteerd is, implementatie filteren
+   
+	Let me know if you'd like to add a thumbnail grid preview or a “Load More” button for very large directories — we can make this viewer feel snappy and scalable.
+
+	IMAGE CACHE) Later: use QThread or QRunnable for non-blocking image loading
    
 
 15 rechter muisklik menu en drivers voor menu met rechtermuis menu

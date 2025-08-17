@@ -9,6 +9,7 @@ from PyQt6.QtGui import QPixmap, QImage, QFontMetrics, QIcon
 from PyQt6.QtCore import Qt, QTimer, QSize
 from widgets.trip_widgets import DirectoryFieldQt
 from engine.filepicture import FilePicture
+from gui.species_editor import SpeciesInfoDialog
 
 logger = logging.getLogger("speciesviewer")
 
@@ -251,7 +252,7 @@ class ImagePreviewDialog(QDialog):
             return
 
         img_path = Path(self.image_paths[self.current_index])
-        image_label = QLabel()
+        
 
         if self.cancelled:
             pixmap = QPixmap("qt/assets/spinner.gif")  # Your frozen placeholder
@@ -260,9 +261,7 @@ class ImagePreviewDialog(QDialog):
             if pixmap is None:
                 pixmap = QPixmap("qt/assets/spinner.gif")
 
-        image_label.setPixmap(pixmap)
-        image_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-    
+        # Create container and layout first
         container = QWidget()
         container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
 
@@ -270,17 +269,30 @@ class ImagePreviewDialog(QDialog):
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(4)
 
-        # Apply color border to container
+        # Inner label with image
+        image_label = QLabel()
+        image_label.setPixmap(pixmap)
+        image_label.setStyleSheet("background-color: transparent;")
+        image_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+
+        # Outer frame with border
+        border_wrapper = QWidget()
+        border_layout = QVBoxLayout(border_wrapper)
+        border_layout.setContentsMargins(3, 3, 3, 3)  # 1px gap between image and border
+        border_layout.addWidget(image_label)
+        image_label.setStyleSheet("border: none; background-color: transparent;")
+
         if self.fpr:
             color = self.fpr.getColor(img_path)
             if color:
-                container.setStyleSheet(f"""
+                border_wrapper.setStyleSheet(f"""
                     border: 3px solid {color};
                     border-radius: 6px;
                     background-color: transparent;
-                """)  
-        layout.addWidget(image_label)
+                """)
 
+        # ✅ Now it's safe to add the border_wrapper to the layout
+        layout.addWidget(border_wrapper)
         # Species info row
         info_row = QWidget()
         info_layout = QHBoxLayout(info_row)
@@ -293,6 +305,11 @@ class ImagePreviewDialog(QDialog):
         status_icon.setFixedSize(20, 20)
         status_icon.setFlat(True)
         status_icon.setStyleSheet("border: none; background-color: transparent;")
+
+        def show_species_info():
+            dialog = SpeciesInfoDialog(img_path.name, species_name, error_msg, self)
+            dialog.exec()        
+        status_icon.clicked.connect(show_species_info)            
 
         error_msg = self.fpr.getErrorMsg(img_path.name) if self.fpr else ""
         species_name = self.fpr.getSpeciesName(img_path.name) if self.fpr else ""
@@ -325,11 +342,9 @@ class ImagePreviewDialog(QDialog):
         text_label.setText(display_text)
         text_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         text_label.setFixedHeight(20)
-        text_label.setStyleSheet("border: none; background-color: transparent;")
 
         info_layout.addWidget(text_label)
         layout.addWidget(info_row)
-        image_label.setStyleSheet("border: none; background-color: transparent;")
 
         row, col = divmod(self.current_index, self.columns)
 
