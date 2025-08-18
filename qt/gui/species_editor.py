@@ -1,6 +1,8 @@
 import os
 import logging
 import difflib
+import ast
+
 # import sip
 from pathlib import Path
 from PyQt6.QtWidgets import (
@@ -11,6 +13,19 @@ from PyQt6.QtCore import Qt, QTimer, QSize
 
 from widgets.trip_widgets import LabeledTextFieldQt
 from engine.filepicture import FilePicture
+
+def get_best_species_suggestions(input_name, parent, max_suggestions=5):
+    all_types = ["Scientific", "English", "Dutch"]
+    best_match = []
+    best_score = 0
+
+    for name_type in all_types:
+        suggestions = get_species_suggestions(input_name, name_type, parent, max_suggestions)
+        if suggestions and suggestions[0][1] > best_score:
+            best_match = suggestions
+            best_score = suggestions[0][1]
+
+    return best_match
 
 
 def get_species_suggestions(input_name, name_type, parent, max_suggestions=5):
@@ -59,10 +74,14 @@ class SpeciesInfoDialog(QDialog):
         # Subject field (editable)
         subject_value = self.main_window.fpr.getSubject(filename) if self.main_window and self.main_window.fpr else ""
         self.subject_field = LabeledTextFieldQt("Species name as specified in keyword values:", value=subject_value)
+        self.subject_part_selector = QComboBox()
+        layout.addWidget(QLabel("Select part to match"))
+        layout.addWidget(self.subject_part_selector)
+        self.subject_part_selector.hide()  # Hide until populated
         layout.addWidget(self.subject_field)
 
         self.name_type_selector = QComboBox()
-        self.name_type_selector.addItems(["Dutch", "English", "Scientific"])
+        self.name_type_selector.addItems(["Auto", "Dutch", "English", "Scientific"])
         layout.addWidget(QLabel("Name Type"))
         layout.addWidget(self.name_type_selector)
 
@@ -76,17 +95,53 @@ class SpeciesInfoDialog(QDialog):
         self.suggestion_dropdown.hide()  # Hide until needed
         self.suggestion_dropdown.currentIndexChanged.connect(self.on_suggestion_selected)
 
+        button_row = QHBoxLayout()
 
-        # Close button
-        close_button = QPushButton("Close")
-        close_button.clicked.connect(self.accept)
-        layout.addWidget(close_button)
-        close_button.clicked.connect(self.on_close)
+        commit_button = QPushButton("Commit")
+        commit_button.clicked.connect(self.on_commit)
+        button_row.addWidget(commit_button)
+
+        cancel_button = QPushButton("Cancel")
+        cancel_button.clicked.connect(self.reject)
+        button_row.addWidget(cancel_button)
+
+        layout.addLayout(button_row)
 
     def on_suggest_species(self):
-        input_name = self.subject_field.get_text()
+        raw_subject = self.subject_field.get_text()
+
+        try:
+            parsed = ast.literal_eval(raw_subject)
+            if isinstance(parsed, list):
+                parts = parsed
+            elif isinstance(parsed, str):
+                parts = [parsed]
+            else:
+                raise ValueError
+        except Exception:
+            # Fallback: treat raw string as a single part
+            parts = [raw_subject.strip()]
+
+        # ✅ Normalize and update subject field for consistency
+        normalized_subject = "[" + ", ".join(f"'{p}'" for p in parts) + "]"
+        self.subject_field.set_text(normalized_subject)
+
+        # Populate dropdown
+        self.subject_part_selector.clear()
+        for part in parts:
+            self.subject_part_selector.addItem(part)
+        self.subject_part_selector.show()
+
+        # Default to longest part
+        input_name = max(parts, key=len)
+        selected_index = self.subject_part_selector.findText(input_name)
+        self.subject_part_selector.setCurrentIndex(selected_index)
+
         name_type = self.name_type_selector.currentText()
-        suggestions = get_species_suggestions(input_name, name_type, self.main_window)
+        if name_type == "Auto":
+            suggestions = get_best_species_suggestions(input_name, self.main_window)
+        else:
+            suggestions = get_species_suggestions(input_name, name_type, self.main_window)
 
         if suggestions:
             self.suggestion_dropdown.clear()
@@ -97,15 +152,30 @@ class SpeciesInfoDialog(QDialog):
             QMessageBox.warning(self, "No Suggestion", "No close match found.")
             self.suggestion_dropdown.hide()
 
+
     def on_suggestion_selected(self, index):
         selected_name = self.suggestion_dropdown.itemData(index)
-        self.subject_field.set_text(selected_name)
+        raw_subject = self.subject_field.get_text()
 
-    def on_close(self):
-        print("Edited subject:", self.subject_field.get_text())
+        try:
+            parts = ast.literal_eval(raw_subject)
+            if not isinstance(parts, list):
+                raise ValueError
+        except Exception:
+            # Fallback: treat raw string as a single part
+            parts = [raw_subject.strip()]
+
+        selected_part = self.subject_part_selector.currentText()
+        updated_parts = [selected_name if part == selected_part else part for part in parts]
+
+        # Rebuild as a proper quoted list
+        updated_subject = "[" + ", ".join(f"'{p}'" for p in updated_parts) + "]"
+        self.subject_field.set_text(updated_subject)
+
+    def on_commit(self):
+        edited_subject = self.subject_field.get_text()
+        print("Committed subject:", edited_subject)
         self.accept()
-
-        import difflib
 
 
 
