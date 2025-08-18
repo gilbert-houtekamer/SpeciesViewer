@@ -119,6 +119,54 @@ class FilePicture:
         
         return (filecount[0] > 0) and (picturecount > 0)  
     
+    def readMaster(self, trippath, projectdirectory, getEarlierDays = False, silent=False):
+        # dlg = ImagePreviewDialog(image_dir="D:/CurrentPictures/2017/Oostzee zeilzomer/2017-08-16")
+        metadatadir = os.path.join(trippath,  "metadata")
+        starttime = time.time()
+        # read species
+        # speciesfilename = "E:/Dropbox/trips/2017 oostzeedb/metadata/review/2017-08-09/species.csv"
+        self.sp = Species(None)    
+        # from log: E:\Dropbox\trips\2017 oostzeedb\metadata/review/2017-08-09\species.csv.
+        speciesfilename = os.path.join(metadatadir, "review", "2017-08-09", "species.csv")
+        self.rs = self.sp.readSpeciesInfo(speciesfilename, False)    
+
+        # read all knowlegde about species, including species we do not yet have.  
+        # Maintain English and Dutch species list
+        self.sc = SpeciesClassification(None)
+        # E:\Dropbox\trips\2017 oostzeedb\metadata/active/speciescollection.csv.        
+        self.sc.readSpeciesCollection(os.path.join(metadatadir, "active", "speciescollection.csv"), False)
+        # Read EXIF data file, one record for each file (ORF, jpg, XMP, etc)        
+        # Read EXIF data for 94 files from CSV file E:\Dropbox\trips\2017 oostzeedb\metadata/active/data_files.csv.
+        self.fi = Files(None)
+        filecount = self.fi.read_file(os.path.join(metadatadir, "active", "data_files.csv"))
+
+        # Read data for 42 pictures from CSV file E:\Dropbox\trips\2017 oostzeedb\metadata/active/data_pictures.csv.
+        self.upn = Pictures(None)
+        picturecount = self.upn.read_pictures(os.path.join(metadatadir, "active", "data_pictures.csv"))
+
+         # # see what files for non-commtted projected
+        # if getEarlierDays and self.Trip != None:
+        #     # Collect states
+        #     directory_to_scan = os.path.join(self.getMetaDir(), 'review') 
+        #     days_dict = getAllProjectStatus(self, directory_to_scan, silent=True)
+        #     # read csv for files and pictures that are not yet committed
+        #     for statemachine in days_dict:                      # projects
+        #         if statemachine >= self.ProjectName(): 
+        #             break
+        #         if not days_dict[statemachine]['WriteCommit'][0]:  # this project is not committed
+        #             logger.info(f"Reading data from project {statemachine} that has not yet been committed.")
+        #             read_file(self, os.path.join(metadatadir, "review", statemachine, "data_files.csv"), silent=True)
+        #             read_pictures(self, os.path.join(metadatadir, "review", statemachine, "data_pictures.csv"))
+
+        thissteptime = time.time()
+        logger.info(f"Read all committed data from the main repository in {thissteptime-starttime:.1f} seconds.")    
+    
+        # read other files and pictures
+        RepositoryFileCount = filecount
+        RepositoryPictureCount = picturecount
+        
+        return [RepositoryFileCount[0], RepositoryPictureCount, RepositoryFileCount[1], RepositoryFileCount[2]]
+    
     def readProject(self, trippath, projectdirectory, getEarlierDays = False, silent=False):
         # dlg = ImagePreviewDialog(image_dir="D:/CurrentPictures/2017/Oostzee zeilzomer/2017-08-16")
         metadatadir = os.path.join(trippath,  "metadata")

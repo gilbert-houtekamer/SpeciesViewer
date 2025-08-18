@@ -88,7 +88,6 @@ class ImagePreviewDialog(QDialog):
         self.wait_dialog.setCancelButton(None)
         self.wait_dialog.setMinimumDuration(0)
         self.wait_dialog.show()        
-
         self.dialog_active = True        
  
         self.columns = 3
@@ -143,6 +142,9 @@ class ImagePreviewDialog(QDialog):
         if os.path.exists(os.path.join(self.trip_root_dir,"metadata", "review", projectname)):
             # files for edit
             self.fpr = FilePicture(None)
+            
+            self.fpr.readMaster(self.trip_root_dir, projectname)
+
             rc = self.fpr.readTripDay(self.trip_root_dir, projectname)
         else:
             self.fpr = None
