@@ -57,7 +57,7 @@ class FilePicture:
         try:
             upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
             errormsg = self.upn.UniquePictureName_dict[upn_name]["errormessage"]
-            logger.info(f"getErrorMsg: {errormsg}")
+            # logger.info(f"getErrorMsg: {errormsg}")
             return errormsg
         except Exception:
             return ""
@@ -77,7 +77,7 @@ class FilePicture:
             upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
             upn  = self.upn.UniquePictureName_dict[upn_name]
             if upn["NLSoortNaam"] != "":
-                logger.info(f"get: {upn["NLSoortNaam"]}")
+                # logger.info(f"get: {upn["NLSoortNaam"]}")
                 return upn["NLSoortNaam"]
             elif upn["EngSoortNaam"] != "":
                 return upn["EngSoortNaam"]
