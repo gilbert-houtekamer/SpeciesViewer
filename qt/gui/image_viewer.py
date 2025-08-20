@@ -309,8 +309,9 @@ class ImagePreviewDialog(QDialog):
         status_icon.setStyleSheet("border: none; background-color: transparent;")
 
         def show_species_info():
-            dialog = SpeciesInfoDialog(img_path.name, species_name, error_msg, self)
-            dialog.exec()        
+            self.species_dialog = SpeciesInfoDialog(img_path, species_name, error_msg, self)
+            self.species_dialog.exec()
+ 
         status_icon.clicked.connect(show_species_info)            
 
         error_msg = self.fpr.getErrorMsg(img_path.name) if self.fpr else ""

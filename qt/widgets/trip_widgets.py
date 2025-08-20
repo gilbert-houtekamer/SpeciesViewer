@@ -168,14 +168,14 @@ class DirectoryFieldQt(QWidget):
 class LabeledTextFieldQt(QWidget):
     def __init__(self, label, value="", multiline=False):
         super().__init__()
-        self.label = QLabel(label)
+        self.label = QLabel(label, self)
         self.multiline = multiline
 
         if multiline:
-            self.field = QTextEdit()
+            self.field = QTextEdit(self)
             self.field.setPlainText(value)
         else:
-            self.field = QLineEdit()
+            self.field = QLineEdit(self)
             self.field.setText(value)
 
         layout = QVBoxLayout(self)
@@ -183,7 +183,19 @@ class LabeledTextFieldQt(QWidget):
         layout.addWidget(self.field)
 
     def get_text(self):
-        return self.field.toPlainText().strip() if self.multiline else self.field.text().strip()
+        if not self.field:
+            return ""
+        try:
+            return self.field.toPlainText().strip() if self.multiline else self.field.text().strip()
+        except RuntimeError:
+            print("⚠️ Field widget was deleted.")
+            return ""
+       
+    # def get_text(self):
+    #    if self.multiline:
+    #         return self.field.toPlainText().strip() 
+    #    else:
+    #         return self.field.text().strip()
 
     def set_text(self, value):
         if self.multiline:

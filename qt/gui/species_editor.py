@@ -6,13 +6,14 @@ import ast
 # import sip
 from pathlib import Path
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy, QTextEdit, QComboBox, 
+    QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy, QTextEdit, QComboBox, QDialogButtonBox, 
     QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog)
 from PyQt6.QtGui import QPixmap, QImage, QFontMetrics, QIcon
 from PyQt6.QtCore import Qt, QTimer, QSize
 
 from widgets.trip_widgets import LabeledTextFieldQt
 from engine.filepicture import FilePicture
+from engine.speciesclassification import Level
 
 def get_best_species_suggestions(input_name, parent, max_suggestions=5):
     all_types = ["Scientific", "English", "Dutch"]
@@ -27,15 +28,27 @@ def get_best_species_suggestions(input_name, parent, max_suggestions=5):
 
     return best_match
 
+def get_species_candidates(name_type, parent):
+    sc_dict = parent.fpr.sc.sc_dict
+
+    if name_type == "Dutch":
+        return [name for name in parent.fpr.sc.dutch_dict.keys()
+                if sc_dict.get(parent.fpr.sc.dutch_dict[name], {}).get("Level") == Level.SPECIES]
+    elif name_type == "English":
+        return [name for name in parent.fpr.sc.english_dict.keys()
+                if sc_dict.get(parent.fpr.sc.english_dict[name], {}).get("Level") == Level.SPECIES]
+    else:
+        return [name for name, props in sc_dict.items()
+                if props.get("Level") == Level.SPECIES]
 
 def get_species_suggestions(input_name, name_type, parent, max_suggestions=5):
-    if name_type == "Dutch":
-        candidates = list(parent.fpr.sc.dutch_dict.keys())
-    elif name_type == "English":
-        candidates = list(parent.fpr.sc.english_dict.keys())
-    else:
-        candidates = list(parent.fpr.sc.sc_dict.keys())
-
+    # if name_type == "Dutch":
+    #     candidates = list(parent.fpr.sc.dutch_dict.keys())
+    # elif name_type == "English":
+    #     candidates = list(parent.fpr.sc.english_dict.keys())
+    # else:
+    #     candidates = list(parent.fpr.sc.sc_dict.keys())
+    candidates = get_species_candidates(name_type, parent)
     matches = difflib.get_close_matches(input_name.lower(), candidates, n=max_suggestions, cutoff=0.6)
 
     scored_matches = []
@@ -45,12 +58,83 @@ def get_species_suggestions(input_name, name_type, parent, max_suggestions=5):
 
     return scored_matches
 
+class ConfirmSubjectUpdateDialog(QDialog):
+    def __init__(self, original_subject, corrected_subject, file_path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Update Subject from '{original_subject}' to '{corrected_subject}'")
+        self.setMinimumSize(600, 400)
+        self.parent = parent
+        if not self.parent:
+            print("⚠️ ConfirmSubjectUpdateDialog received no parent!")        
+        self.original_subject = original_subject
+        self.corrected_subject = corrected_subject
+        self.file_path = Path(file_path)
+
+        layout = QVBoxLayout(self)
+
+        # Scope selector
+        self.scope_selector = QComboBox()
+        layout.addWidget(QLabel("Apply to:"))
+        layout.addWidget(self.scope_selector)
+
+        # File preview table
+        self.file_table = QTextEdit()
+        self.file_table.setReadOnly(True)
+        layout.addWidget(self.file_table)
+
+        # Buttons
+        button_row = QHBoxLayout()
+        commit_button = QPushButton("Commit")
+        commit_button.clicked.connect(self.on_commit)
+        cancel_button = QPushButton("Cancel")
+        cancel_button.clicked.connect(self.reject)
+        button_row.addWidget(commit_button)
+        button_row.addWidget(cancel_button)
+        layout.addLayout(button_row)
+
+        self.populate_scope_options()
+        self.scope_selector.currentIndexChanged.connect(self.update_file_preview)
+        self.update_file_preview()
+
+    def populate_scope_options(self):
+        folder = self.file_path.parent
+        trip_root = folder.parent
+
+        self.scope_options = {
+            "Just this file": [self.file_path],
+            "All files in this folder": list(folder.glob("*.NEF")),
+            "All files in this trip": list(trip_root.rglob("*.NEF")),
+        }
+
+        for label, files in self.scope_options.items():
+            count = len(files)
+            self.scope_selector.addItem(f"{label} ({count} files)", label)
+
+    def update_file_preview(self):
+        label = self.scope_selector.currentData()
+        files = self.scope_options.get(label, [])
+        matching_files = [f for f in files if self.parent.fpr.getSubject(f.name) == self.original_subject]
+
+        preview_text = "\n".join(str(f.name) for f in matching_files)
+        self.file_table.setPlainText(preview_text)
+        self.selected_files = matching_files
+
+    def on_commit(self):
+        for f in self.selected_files:
+            # self.parent.fpr.updateSubject(f.name, self.corrected_subject)
+            print(f"self.parent.fpr.updateSubject({f.name}, {self.corrected_subject})")
+        
+        self.accept()        
+
+
 class SpeciesInfoDialog(QDialog):
-    def __init__(self, filename, species_name, error_msg, parent=None):
+    def __init__(self, full_path, species_name, error_msg, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Species Info")
         self.setMinimumWidth(400)
         self.main_window = parent
+        self.full_path = full_path
+        filename = full_path.name
 
         layout = QVBoxLayout(self)
 
@@ -144,10 +228,14 @@ class SpeciesInfoDialog(QDialog):
             suggestions = get_species_suggestions(input_name, name_type, self.main_window)
 
         if suggestions:
-            self.suggestion_dropdown.clear()
-            for name, score in suggestions:
-                self.suggestion_dropdown.addItem(f"{name} ({score}%)", name)
-            self.suggestion_dropdown.show()
+            try:
+                self.suggestion_dropdown.clear()
+                for name, score in suggestions:
+                    self.suggestion_dropdown.addItem(f"{name} ({score}%)", name)
+                self.suggestion_dropdown.show()
+            except RuntimeError:
+                print("Suggestion dropdown was deleted.")
+                return                
         else:
             QMessageBox.warning(self, "No Suggestion", "No close match found.")
             self.suggestion_dropdown.hide()
@@ -155,6 +243,9 @@ class SpeciesInfoDialog(QDialog):
 
     def on_suggestion_selected(self, index):
         selected_name = self.suggestion_dropdown.itemData(index)
+        if not selected_name or selected_name.lower() == "none":
+            return  # Don't overwrite with invalid suggestion
+
         raw_subject = self.subject_field.get_text()
 
         try:
@@ -166,6 +257,7 @@ class SpeciesInfoDialog(QDialog):
             parts = [raw_subject.strip()]
 
         selected_part = self.subject_part_selector.currentText()
+        selected_name = selected_name.lower()
         updated_parts = [selected_name if part == selected_part else part for part in parts]
 
         # Rebuild as a proper quoted list
@@ -173,9 +265,30 @@ class SpeciesInfoDialog(QDialog):
         self.subject_field.set_text(updated_subject)
 
     def on_commit(self):
-        edited_subject = self.subject_field.get_text()
-        print("Committed subject:", edited_subject)
-        self.accept()
+        print(f"img full path: { self.full_path}")
+        print("Passing parent:", self.main_window)        
+        print("Subject field exists:", hasattr(self, "subject_field"))
+        print("Field widget:", self.subject_field.field)        
+        try:
+            edited_subject = self.subject_field.get_text()
+        except RuntimeError:
+            print("Subject field was deleted before commit.")
+            return
+
+        original_subject_value = self.main_window.fpr.getSubject(self.full_path) if self.main_window and self.main_window.fpr else ""
+        dialog = ConfirmSubjectUpdateDialog(original_subject_value, edited_subject, self.full_path, parent=self.main_window)
+        result = dialog.exec()
+
+        if result == QDialog.DialogCode.Accepted:
+            print("Committed subject:", edited_subject)
+            self.accept()
+
+    def closeEvent(self, event):
+        try:
+            self.suggestion_dropdown.currentIndexChanged.disconnect()
+        except Exception:
+            pass
+        event.accept()
 
 
 
