@@ -150,6 +150,7 @@ class ImagePreviewDialog(QDialog):
             self.fpr = None
         # make a list of all images based on file type (not yet filtered)
         self.all_image_paths = self.discover_images(image_dir)
+        print(f"ImagePreviewDialog __init__: parent {self.parent()}")
 
         QTimer.singleShot(0, lambda: self.load_images(self.all_image_paths))
 
@@ -178,6 +179,8 @@ class ImagePreviewDialog(QDialog):
         self.cancel_button.setEnabled(False)        
 
     def closeEvent(self, event):
+        print(f"🧨 ImagePreviewDialog is being closed! parent {self.parent()}")
+        super().closeEvent(event)        
         self.dialog_active = False
         self.cancelled = True
         event.accept()
@@ -359,6 +362,7 @@ class ImagePreviewDialog(QDialog):
         self.image_widgets.append((image_label, container, img_path))
 
         print(f"Loaded image {self.current_index + 1} of {len(self.image_paths)}: {img_path.name}")
+        print(f"ImagePreviewDialog load_next_image: parent {self.parent()}")        
 
         self.current_index += 1
         QTimer.singleShot(50, self.load_next_image)  # Simulate async loading

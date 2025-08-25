@@ -214,11 +214,11 @@ class MainWindow(QMainWindow):
         if not os.path.exists(trip_dir): trip_root = ""
 
         if column == 1:  # RAW column
-            dlg = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root),  mode="raw")
-            dlg.show()
+            self.dlgImagePreviewDialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root),  mode="raw")
+            self.dlgImagePreviewDialog.show()
         elif column == 2:  # JPG column
-            dlg = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root),  mode="jpg")
-            dlg.show()
+            self.dlgImagePreviewDialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root),  mode="jpg")
+            self.dlgImagePreviewDialog.show()
         else:
             # Look up the MenuSpec in the "Trip" section
             trip_menu = self.menu_spec.get("Trip", {})

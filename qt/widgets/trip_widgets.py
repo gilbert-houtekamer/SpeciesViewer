@@ -186,16 +186,16 @@ class LabeledTextFieldQt(QWidget):
         if not self.field:
             return ""
         try:
-            return self.field.toPlainText().strip() if self.multiline else self.field.text().strip()
+            if self.multiline:
+                    return self.field.toPlainText().strip() 
+            else:
+                    return self.field.text().strip()
         except RuntimeError:
-            print("⚠️ Field widget was deleted.")
+            print("⚠️ Field widget was deleted (get_text).")
             return ""
        
     # def get_text(self):
-    #    if self.multiline:
-    #         return self.field.toPlainText().strip() 
-    #    else:
-    #         return self.field.text().strip()
+
 
     def set_text(self, value):
         if self.multiline:

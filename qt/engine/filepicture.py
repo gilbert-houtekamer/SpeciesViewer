@@ -6,6 +6,9 @@ import logging
 import time
 import os
 from pathlib import Path  
+import subprocess
+import json
+import pdb  # For debugging
 
 logger = logging.getLogger("speciesviewer")
 
@@ -119,6 +122,68 @@ class FilePicture:
         
         return (filecount[0] > 0) and (picturecount > 0)  
     
+    # change actual file with EXIF
+    # def replaceFileSubject(self, filename, original_subject, correct_subject):
+    #     file = self.fi.files_dict[Path(filename).name]
+    #     return
+
+    def replaceFileSubject(self, filename, original_subject, correct_subject):
+        filepath = Path(self.fi.files_dict[filename])  
+
+        # Step 1: Read current XMP:Subject using exiftool
+        try:
+            result = subprocess.run(
+                ['exiftool', '-j', '-XMP:Subject', str(filepath)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+                text=True
+            )
+            metadata = json.loads(result.stdout)[0]
+            current_subjects = metadata.get('XMP:Subject', [])
+
+            # Step 2: Debugging breakpoint
+            pdb.set_trace()
+
+            # Step 3: Replace subject if original_subject is found
+            if original_subject in current_subjects:
+                updated_subjects = [correct_subject if s == original_subject else s for s in current_subjects]
+                subprocess.run(
+                    ['exiftool', f'-XMP:Subject={";".join(updated_subjects)}', '-overwrite_original', str(filepath)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=True,
+                    text=True
+                )
+                print(f"Updated subject in {filepath.name} to: {updated_subjects}")
+            else:
+                print(f"Original subject '{original_subject}' not found in {filepath.name}")
+
+        except subprocess.CalledProcessError as e:
+            print(f"ExifTool error: {e.stderr}")
+
+    
+    def replaceUPNSubject(self, filename, original_subject, correct_subject):
+        upn = self.upn.UniquePictureName_dict[Path(filename).name]
+        return
+
+    # function to determine which files must be updated
+    def updateSubject(self, filename, original_subject, corrected_subject):
+        print(f"Entered updateSubject self.fpr.updateSubject({filename}, {corrected_subject})")
+
+        upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
+        for f in self.fi.files_dict:
+            if self.fi.files_dict[f]["UniquePictureName"] == upn_name:
+                print(f"File {f} has upn name {upn_name}")
+                if self.fi.files_dict[f]["XMP:Subject"] == original_subject:
+                    print(f"File {f} has original subject {original_subject}")
+                    self.replaceFileSubject(f, original_subject, corrected_subject)
+
+        self.replaceUPNSubject(upn_name, original_subject, corrected_subject)        
+
+        return        
+
+    # read all species    
     def readMaster(self, trippath, projectdirectory, getEarlierDays = False, silent=False):
         # dlg = ImagePreviewDialog(image_dir="D:/CurrentPictures/2017/Oostzee zeilzomer/2017-08-16")
         metadatadir = os.path.join(trippath,  "metadata")

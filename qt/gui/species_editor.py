@@ -3,17 +3,23 @@ import logging
 import difflib
 import ast
 
+
 # import sip
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy, QTextEdit, QComboBox, QDialogButtonBox, 
     QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog)
+from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QPixmap, QImage, QFontMetrics, QIcon
 from PyQt6.QtCore import Qt, QTimer, QSize
 
 from widgets.trip_widgets import LabeledTextFieldQt
 from engine.filepicture import FilePicture
 from engine.speciesclassification import Level
+
+class DialogContext:
+    def __init__(self, fpr):
+        self.fpr = fpr
 
 def get_best_species_suggestions(input_name, parent, max_suggestions=5):
     all_types = ["Scientific", "English", "Dutch"]
@@ -58,12 +64,23 @@ def get_species_suggestions(input_name, name_type, parent, max_suggestions=5):
 
     return scored_matches
 
+def format_subject_for_xmp(subject_text):
+    try:
+        parts = ast.literal_eval(subject_text)
+        if isinstance(parts, list):
+            return ", ".join(p.strip("'\"") for p in parts)
+    except Exception:
+        pass
+    return subject_text.strip("'\"")
+
+
 class ConfirmSubjectUpdateDialog(QDialog):
-    def __init__(self, original_subject, corrected_subject, file_path, parent=None):
+    def __init__(self, original_subject, corrected_subject, file_path, fpr, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"Update Subject from '{original_subject}' to '{corrected_subject}'")
         self.setMinimumSize(600, 400)
         self.parent = parent
+        self.fpr = fpr
         if not self.parent:
             print("⚠️ ConfirmSubjectUpdateDialog received no parent!")        
         self.original_subject = original_subject
@@ -113,7 +130,7 @@ class ConfirmSubjectUpdateDialog(QDialog):
     def update_file_preview(self):
         label = self.scope_selector.currentData()
         files = self.scope_options.get(label, [])
-        matching_files = [f for f in files if self.parent.fpr.getSubject(f.name) == self.original_subject]
+        matching_files = [f for f in files if self.fpr.getSubject(f.name) == self.original_subject]
 
         preview_text = "\n".join(str(f.name) for f in matching_files)
         self.file_table.setPlainText(preview_text)
@@ -121,8 +138,8 @@ class ConfirmSubjectUpdateDialog(QDialog):
 
     def on_commit(self):
         for f in self.selected_files:
-            # self.parent.fpr.updateSubject(f.name, self.corrected_subject)
-            print(f"self.parent.fpr.updateSubject({f.name}, {self.corrected_subject})")
+            self.fpr.updateSubject(f.name, self.original_subject,  self.corrected_subject)
+            print(f"""self.fpr.updateSubject({f.name}, "{self.original_subject}", "{self.corrected_subject}")""")
         
         self.accept()        
 
@@ -133,6 +150,7 @@ class SpeciesInfoDialog(QDialog):
         self.setWindowTitle("Species Info")
         self.setMinimumWidth(400)
         self.main_window = parent
+        self.image_viewer = parent
         self.full_path = full_path
         filename = full_path.name
 
@@ -185,6 +203,10 @@ class SpeciesInfoDialog(QDialog):
         commit_button.clicked.connect(self.on_commit)
         button_row.addWidget(commit_button)
 
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(self.on_close)
+        button_row.addWidget(close_button)
+
         cancel_button = QPushButton("Cancel")
         cancel_button.clicked.connect(self.reject)
         button_row.addWidget(cancel_button)
@@ -192,6 +214,10 @@ class SpeciesInfoDialog(QDialog):
         layout.addLayout(button_row)
 
     def on_suggest_species(self):
+        if not hasattr(self, "subject_field") or not self.subject_field:
+            print("⚠️ subject_field is missing or deleted.")
+            return        
+        
         raw_subject = self.subject_field.get_text()
 
         try:
@@ -242,6 +268,10 @@ class SpeciesInfoDialog(QDialog):
 
 
     def on_suggestion_selected(self, index):
+        if not hasattr(self, "subject_field") or not self.subject_field:
+            print("⚠️ subject_field is missing or deleted.")
+            return
+
         selected_name = self.suggestion_dropdown.itemData(index)
         if not selected_name or selected_name.lower() == "none":
             return  # Don't overwrite with invalid suggestion
@@ -274,9 +304,40 @@ class SpeciesInfoDialog(QDialog):
         except RuntimeError:
             print("Subject field was deleted before commit.")
             return
+        
+        if self.image_viewer and self.image_viewer.isVisible():
+            parent = self.image_viewer
+        else:
+            print("⚠️ image_viewer is not visible. Forcing visibility.")
+            self.image_viewer.show()
+            parent = self.image_viewer
+
 
         original_subject_value = self.main_window.fpr.getSubject(self.full_path) if self.main_window and self.main_window.fpr else ""
-        dialog = ConfirmSubjectUpdateDialog(original_subject_value, edited_subject, self.full_path, parent=self.main_window)
+        formatted_original_subject = format_subject_for_xmp(original_subject_value)
+        formatted_edited_subject = format_subject_for_xmp(edited_subject)
+
+        # if isinstance(self.main_window, QWidget):
+        #     parent = self.main_window
+        # else:
+        #     print("⚠️ No valid QWidget parent.")
+        #     parent = None
+
+        print("Parent deleted?", isinstance(self.main_window, QWidget))
+        try:
+            print("Parent name:", self.main_window.objectName())
+        except RuntimeError:
+            print("❌ main_window is already deleted.")  
+            print("⚠️ main_window was deleted, falling back to active window.")
+            parent = QApplication.activeWindow()
+                
+        dialog = ConfirmSubjectUpdateDialog(
+            formatted_original_subject, 
+            formatted_edited_subject, 
+            self.full_path, 
+            fpr=self.main_window.fpr if self.main_window else None,
+            parent=parent)
+        
         result = dialog.exec()
 
         if result == QDialog.DialogCode.Accepted:
@@ -290,5 +351,7 @@ class SpeciesInfoDialog(QDialog):
             pass
         event.accept()
 
-
+    def on_close(self):
+        print("Edited subject:", self.subject_field.get_text())        
+        self.accept()
 
