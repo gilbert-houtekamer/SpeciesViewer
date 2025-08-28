@@ -2,7 +2,7 @@ import configparser
 import os
 
 
-CONFIG_FILE = "wx_config.ini"
+CONFIG_FILE = "sv_config.ini"
 
 config = configparser.ConfigParser()
 

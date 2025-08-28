@@ -151,6 +151,7 @@ class ImagePreviewDialog(QDialog):
         # make a list of all images based on file type (not yet filtered)
         self.all_image_paths = self.discover_images(image_dir)
         print(f"ImagePreviewDialog __init__: parent {self.parent()}")
+        # self.destroyed.connect(lambda: print("⚠️ image_viewer destroyed from self.destroyed.connect in ImagePreviewDialog"))
 
         QTimer.singleShot(0, lambda: self.load_images(self.all_image_paths))
 
@@ -172,7 +173,8 @@ class ImagePreviewDialog(QDialog):
     def compute_max_chars(self, label: QLabel, max_width: int) -> int:
         font_metrics = QFontMetrics(label.font())
         avg_char_width = font_metrics.averageCharWidth()
-        return max_width // avg_char_width        
+        return max_width // avg_char_width    
+
 
     def cancel_scan(self):
         self.cancelled = True
@@ -181,10 +183,12 @@ class ImagePreviewDialog(QDialog):
     def closeEvent(self, event):
         print(f"🧨 ImagePreviewDialog is being closed! parent {self.parent()}")
         super().closeEvent(event)        
-        self.dialog_active = False
-        self.cancelled = True
-        event.accept()
+        # self.dialog_active = False
+        # self.cancelled = True
+        # event.accept()
 
+    def __del__(self):
+        print("🧹 ImagePreviewDialog was garbage collected")    
     # too hard to get working
     # def on_directory_changed(self):
     #     new_path = self.dir_field.get_path()
@@ -250,72 +254,46 @@ class ImagePreviewDialog(QDialog):
             print(f"Failed to load RAW file {path.name}: {e}")
             return None                  
         
-    def load_next_image(self):
-        if not self.dialog_active or self.cancelled or self.current_index >= len(self.image_paths):
-            self.cancel_button.setEnabled(False)
-            self.wait_dialog.close()
-            return
 
-        img_path = Path(self.image_paths[self.current_index])
-        
-
-        if self.cancelled:
-            pixmap = QPixmap("qt/assets/spinner.gif")  # Your frozen placeholder
-        else:
-            pixmap = self.get_pixmap_for_path(img_path)
-            if pixmap is None:
-                pixmap = QPixmap("qt/assets/spinner.gif")
-
-        # Create container and layout first
+    def create_image_widget(self, img_path):
         container = QWidget()
         container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-
         layout = QVBoxLayout(container)
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(4)
 
-        # Inner label with image
+        # Image preview
+        pixmap = self.get_pixmap_for_path(img_path) or QPixmap("qt/assets/spinner.gif")
         image_label = QLabel()
         image_label.setPixmap(pixmap)
         image_label.setStyleSheet("background-color: transparent;")
         image_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
 
-        # Outer frame with border
+        # Border wrapper
         border_wrapper = QWidget()
         border_layout = QVBoxLayout(border_wrapper)
-        border_layout.setContentsMargins(3, 3, 3, 3)  # 1px gap between image and border
+        border_layout.setContentsMargins(3, 3, 3, 3)
         border_layout.addWidget(image_label)
-        image_label.setStyleSheet("border: none; background-color: transparent;")
 
         if self.fpr:
             color = self.fpr.getColor(img_path)
             if color:
-                border_wrapper.setStyleSheet(f"""
-                    border: 3px solid {color};
-                    border-radius: 6px;
-                    background-color: transparent;
-                """)
+                border_wrapper.setStyleSheet(f"border: 3px solid {color}; border-radius: 6px; background-color: transparent;")
 
-        # ✅ Now it's safe to add the border_wrapper to the layout
         layout.addWidget(border_wrapper)
-        # Species info row
+
+        # Info row
         info_row = QWidget()
         info_layout = QHBoxLayout(info_row)
         info_layout.setContentsMargins(0, 0, 0, 0)
         info_layout.setSpacing(0)
 
-        # (1) Status icon
+        # Status icon
         status_icon = QPushButton()
         status_icon.setIconSize(QSize(16, 16))
         status_icon.setFixedSize(20, 20)
         status_icon.setFlat(True)
         status_icon.setStyleSheet("border: none; background-color: transparent;")
-
-        def show_species_info():
-            self.species_dialog = SpeciesInfoDialog(img_path, species_name, error_msg, self)
-            self.species_dialog.exec()
- 
-        status_icon.clicked.connect(show_species_info)            
 
         error_msg = self.fpr.getErrorMsg(img_path.name) if self.fpr else ""
         species_name = self.fpr.getSpeciesName(img_path.name) if self.fpr else ""
@@ -328,50 +306,189 @@ class ImagePreviewDialog(QDialog):
             icon = QIcon(QPixmap("qt/assets/ok_icon.png").scaled(16, 16))
             status_icon.setIcon(icon)
             status_icon.setToolTip("OK")
-        else:
-            status_icon.setIcon(QIcon())  # Blank
 
+        def show_species_info():
+            self.species_dialog = SpeciesInfoDialog(img_path, species_name, error_msg, self)
+            self.species_dialog.accepted.connect(self.load_next_image)
+            self.species_dialog.rejected.connect(lambda: print("Species info dialog canceled"))
+            self.species_dialog.show()
+
+        status_icon.clicked.connect(show_species_info)
         info_layout.addWidget(status_icon)
 
-        # (2) Species name or filename
+        # Text label
         text_label = QLabel()
-        max_width = container.width() - 40  # Account for icon and padding
+        max_width = container.width() - 40
         max_chars = self.compute_max_chars(text_label, max_width)
-
-        if species_name:
-            display_text = species_name
-            text_label.setToolTip(img_path.name)
-        else:
-            display_text = self.truncate_filename(img_path.name, max_chars)
-            text_label.setToolTip(img_path.name)
-
+        display_text = species_name or self.truncate_filename(img_path.name, max_chars)
         text_label.setText(display_text)
+        text_label.setToolTip(img_path.name)
         text_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         text_label.setFixedHeight(20)
 
         info_layout.addWidget(text_label)
         layout.addWidget(info_row)
 
-        row, col = divmod(self.current_index, self.columns)
-
-        # if self.grid_layout is None or sip.isdeleted(self.grid_layout):
-        #     logger.warning("Grid layout was deleted — skipping image load.")
-        #     return        
-        # if self.grid_layout is not None and self.grid_layout.parent():
-        self.grid_layout.addWidget(container, row, col)        
+        return container, image_label, img_path
+    
+    def add_image_to_grid(self, container, image_label, img_path, row, col):
+        self.grid_layout.addWidget(container, row, col)
         self.image_widgets.append((image_label, container, img_path))
-
         print(f"Loaded image {self.current_index + 1} of {len(self.image_paths)}: {img_path.name}")
-        print(f"ImagePreviewDialog load_next_image: parent {self.parent()}")        
+
+
+    def load_next_image(self):
+        if not self.dialog_active or self.cancelled or self.current_index >= len(self.image_paths):
+            self.cancel_button.setEnabled(False)
+            self.wait_dialog.close()
+            print("load_next_image: stopping condition met")
+            return
+
+        img_path = Path(self.image_paths[self.current_index])
+        container, image_label, img_path = self.create_image_widget(img_path)
+        row, col = divmod(self.current_index, self.columns)
+        self.add_image_to_grid(container, image_label, img_path, row, col)
 
         self.current_index += 1
-        QTimer.singleShot(50, self.load_next_image)  # Simulate async loading
-
-        if self.current_index >= len(self.image_paths):
+        if self.current_index < len(self.image_paths):
+            QTimer.singleShot(50, self.load_next_image)
+        else:
             self.cancel_button.setEnabled(False)
             self.on_column_changed(self.columns)
-            self.wait_dialog.close()            
-            return        
+            self.wait_dialog.close()
+            print("load_next_image: finished loading all images")
+
+
+    # def load_next_image(self):
+    #     if not self.dialog_active or self.cancelled or self.current_index >= len(self.image_paths):
+    #         self.cancel_button.setEnabled(False)
+    #         self.wait_dialog.close()
+    #         print(f"load_next_image: not self.dialog_active or self.cancelled or self.current_index >= len(self.image_paths)")
+    #         return
+
+    #     img_path = Path(self.image_paths[self.current_index])
+        
+
+    #     if self.cancelled:
+    #         pixmap = QPixmap("qt/assets/spinner.gif")  # Your frozen placeholder
+    #     else:
+    #         pixmap = self.get_pixmap_for_path(img_path)
+    #         if pixmap is None:
+    #             pixmap = QPixmap("qt/assets/spinner.gif")
+
+    #     # Create container and layout first
+    #     container = QWidget()
+    #     container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+
+    #     layout = QVBoxLayout(container)
+    #     layout.setContentsMargins(6, 6, 6, 6)
+    #     layout.setSpacing(4)
+
+    #     # Inner label with image
+    #     image_label = QLabel()
+    #     image_label.setPixmap(pixmap)
+    #     image_label.setStyleSheet("background-color: transparent;")
+    #     image_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+
+    #     # Outer frame with border
+    #     border_wrapper = QWidget()
+    #     border_layout = QVBoxLayout(border_wrapper)
+    #     border_layout.setContentsMargins(3, 3, 3, 3)  # 1px gap between image and border
+    #     border_layout.addWidget(image_label)
+    #     image_label.setStyleSheet("border: none; background-color: transparent;")
+
+    #     if self.fpr:
+    #         color = self.fpr.getColor(img_path)
+    #         if color:
+    #             border_wrapper.setStyleSheet(f"""
+    #                 border: 3px solid {color};
+    #                 border-radius: 6px;
+    #                 background-color: transparent;
+    #             """)
+
+    #     # ✅ Now it's safe to add the border_wrapper to the layout
+    #     layout.addWidget(border_wrapper)
+    #     # Species info row
+    #     info_row = QWidget()
+    #     info_layout = QHBoxLayout(info_row)
+    #     info_layout.setContentsMargins(0, 0, 0, 0)
+    #     info_layout.setSpacing(0)
+
+    #     # (1) Status icon
+    #     status_icon = QPushButton()
+    #     status_icon.setIconSize(QSize(16, 16))
+    #     status_icon.setFixedSize(20, 20)
+    #     status_icon.setFlat(True)
+    #     status_icon.setStyleSheet("border: none; background-color: transparent;")
+
+    #     def show_species_info():
+    #         self.species_dialog = SpeciesInfoDialog(img_path, species_name, error_msg, self)
+    #         # Connect signals to handle dialog results
+    #         self.species_dialog.accepted.connect(self.load_next_image)
+    #         self.species_dialog.rejected.connect(lambda: print("Species info dialog canceled"))
+    #         self.species_dialog.show()
+    #     # def show_species_info():
+    #     #     self.species_dialog = SpeciesInfoDialog(img_path, species_name, error_msg, self)
+    #     #     self.species_dialog.exec()
+ 
+    #     status_icon.clicked.connect(show_species_info)            
+
+    #     error_msg = self.fpr.getErrorMsg(img_path.name) if self.fpr else ""
+    #     species_name = self.fpr.getSpeciesName(img_path.name) if self.fpr else ""
+
+    #     if error_msg:
+    #         icon = QIcon(QPixmap("qt/assets/warning_icon.png").scaled(16, 16))
+    #         status_icon.setIcon(icon)
+    #         status_icon.setToolTip(error_msg)
+    #     elif species_name:
+    #         icon = QIcon(QPixmap("qt/assets/ok_icon.png").scaled(16, 16))
+    #         status_icon.setIcon(icon)
+    #         status_icon.setToolTip("OK")
+    #     else:
+    #         status_icon.setIcon(QIcon())  # Blank
+
+    #     info_layout.addWidget(status_icon)
+
+    #     # (2) Species name or filename
+    #     text_label = QLabel()
+    #     max_width = container.width() - 40  # Account for icon and padding
+    #     max_chars = self.compute_max_chars(text_label, max_width)
+
+    #     if species_name:
+    #         display_text = species_name
+    #         text_label.setToolTip(img_path.name)
+    #     else:
+    #         display_text = self.truncate_filename(img_path.name, max_chars)
+    #         text_label.setToolTip(img_path.name)
+
+    #     text_label.setText(display_text)
+    #     text_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+    #     text_label.setFixedHeight(20)
+
+    #     info_layout.addWidget(text_label)
+    #     layout.addWidget(info_row)
+
+    #     row, col = divmod(self.current_index, self.columns)
+
+    #     # if self.grid_layout is None or sip.isdeleted(self.grid_layout):
+    #     #     logger.warning("Grid layout was deleted — skipping image load.")
+    #     #     return        
+    #     # if self.grid_layout is not None and self.grid_layout.parent():
+    #     self.grid_layout.addWidget(container, row, col)        
+    #     self.image_widgets.append((image_label, container, img_path))
+
+    #     print(f"Loaded image {self.current_index + 1} of {len(self.image_paths)}: {img_path.name}")
+    #     print(f"ImagePreviewDialog load_next_image: parent {self.parent()}")        
+
+    #     self.current_index += 1
+    #     QTimer.singleShot(50, self.load_next_image)  # Simulate async loading
+
+    #     if self.current_index >= len(self.image_paths):
+    #         self.cancel_button.setEnabled(False)
+    #         self.on_column_changed(self.columns)
+    #         self.wait_dialog.close()    
+    #         print(f"load_next_image: close on self.current_index >= len(self.image_paths)")                    
+    #         return        
 
     def load_images(self, image_paths):
         self.image_paths = [Path(p) if isinstance(p, str) else p for p in image_paths]
@@ -435,7 +552,9 @@ class ImagePreviewDialog(QDialog):
             # if filtered != []:
             self.show_images(filtered)   
 
- 
+    def __del__(self):
+        print("🧹 ImagePreviewDialog was garbage collected")
+
     def on_filter_changed(self, selected_color):
         self.filter_images_by_color(selected_color)
         print(f"Color filter changed to: {selected_color}")

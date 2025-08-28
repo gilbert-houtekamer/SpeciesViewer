@@ -128,7 +128,7 @@ class FilePicture:
     #     return
 
     def replaceFileSubject(self, filename, original_subject, correct_subject):
-        filepath = Path(self.fi.files_dict[filename])  
+        filepath = Path(self.fi.files_dict[filename]['WindowsFileName'])
 
         # Step 1: Read current XMP:Subject using exiftool
         try:
@@ -140,22 +140,22 @@ class FilePicture:
                 text=True
             )
             metadata = json.loads(result.stdout)[0]
-            current_subjects = metadata.get('XMP:Subject', [])
-
-            # Step 2: Debugging breakpoint
-            pdb.set_trace()
+            current_subjects = metadata.get('Subject', [])
+            print(f"current_subjects in {str(filepath)} to: {current_subjects}")
 
             # Step 3: Replace subject if original_subject is found
             if original_subject in current_subjects:
-                updated_subjects = [correct_subject if s == original_subject else s for s in current_subjects]
+                cmd = ['exiftool', f'-XMP:Subject={correct_subject}', '-overwrite_original', str(filepath)]
+                print("Running command:", " ".join(cmd))
+
                 subprocess.run(
-                    ['exiftool', f'-XMP:Subject={";".join(updated_subjects)}', '-overwrite_original', str(filepath)],
+                    ['exiftool', f'-XMP:Subject={correct_subject}', '-overwrite_original', str(filepath)],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     check=True,
                     text=True
                 )
-                print(f"Updated subject in {filepath.name} to: {updated_subjects}")
+                print(f"Updated subject in {filepath.name} to: {correct_subject}")
             else:
                 print(f"Original subject '{original_subject}' not found in {filepath.name}")
 

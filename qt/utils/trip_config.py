@@ -2,7 +2,7 @@
 
 import configparser
 
-CONFIG_FILE = "wx_config.ini"
+CONFIG_FILE = "sv_config.ini"
 
 def get_trips():
     config = configparser.ConfigParser()

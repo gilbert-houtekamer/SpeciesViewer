@@ -214,8 +214,14 @@ class MainWindow(QMainWindow):
         if not os.path.exists(trip_dir): trip_root = ""
 
         if column == 1:  # RAW column
-            self.dlgImagePreviewDialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root),  mode="raw")
-            self.dlgImagePreviewDialog.show()
+            self.image_viewer_dialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root),  mode="raw")
+            self.image_viewer_dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+            self.image_viewer_dialog.show()
+            # if not hasattr(self, "dlgImagePreviewDialog") or self.dlgImagePreviewDialog is None:
+            #     self.dlgImagePreviewDialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root),  mode="raw")
+            # self.dlgImagePreviewDialog.show()
+            # self.dlgImagePreviewDialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root),  mode="raw")
+            # self.dlgImagePreviewDialog.show()
         elif column == 2:  # JPG column
             self.dlgImagePreviewDialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root),  mode="jpg")
             self.dlgImagePreviewDialog.show()
