@@ -77,6 +77,7 @@ class ImagePreviewDialog(QDialog):
         self.resize(800, 600)
         self.mode = mode
         self.trip_root_dir = trip_root_dir
+        self.main_window = parent
         self.setWindowTitle(f"Species Image Preview ({Path(image_dir).name})")
 
         layout = QVBoxLayout(self)
@@ -308,7 +309,7 @@ class ImagePreviewDialog(QDialog):
             status_icon.setToolTip("OK")
 
         def show_species_info():
-            self.species_dialog = SpeciesInfoDialog(img_path, species_name, error_msg, self)
+            self.species_dialog = SpeciesInfoDialog(img_path, species_name, error_msg, self.main_window)
             self.species_dialog.accepted.connect(self.load_next_image)
             self.species_dialog.rejected.connect(lambda: print("Species info dialog canceled"))
             self.species_dialog.show()

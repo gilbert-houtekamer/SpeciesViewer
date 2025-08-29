@@ -9,10 +9,11 @@ class SpeciesSettingsDialog(QDialog):
         super().__init__(parent)
         self.config = config
         self.setWindowTitle("Species Settings")
-        self.setFixedSize(400, 200)
+        self.setFixedSize(400, 250)
 
         layout = QVBoxLayout(self)
 
+        # Scope selector
         layout.addWidget(QLabel("The scope of species name corrections is:"))
 
         self.scope_selector = QComboBox()
@@ -21,22 +22,34 @@ class SpeciesSettingsDialog(QDialog):
             "All files with same name error in day folder",
             "All files with same name error in all trip day folders"
         ])
-
-        # Load saved value from config
         saved_scope = config.get("Species", "correction_scope", fallback="All files with same name error in day folder")
         index = self.scope_selector.findText(saved_scope)
         if index >= 0:
             self.scope_selector.setCurrentIndex(index)
-
         layout.addWidget(self.scope_selector)
 
+        # Name type selector
+        layout.addWidget(QLabel("Preferred species name type:"))
+
+        self.name_type_selector = QComboBox()
+        self.name_type_selector.addItems(["Auto", "Dutch", "English", "Scientific"])
+        saved_type = config.get("Species", "name_type", fallback="Auto")
+        index = self.name_type_selector.findText(saved_type)
+        if index >= 0:
+            self.name_type_selector.setCurrentIndex(index)
+        layout.addWidget(self.name_type_selector)
+
+        # Save button
         save_button = QPushButton("Save")
         save_button.clicked.connect(self.save_settings)
         layout.addWidget(save_button)
 
     def save_settings(self):
         selected_scope = self.scope_selector.currentText()
+        selected_type = self.name_type_selector.currentText()
+
         self.config.set("Species", "correction_scope", selected_scope)
+        self.config.set("Species", "name_type", selected_type)
 
         with open("sv_config.ini", "w", encoding="utf-8") as f:
             self.config.write(f)
@@ -45,4 +58,4 @@ class SpeciesSettingsDialog(QDialog):
         self.close()
 
         logger = logging.getLogger("speciesviewer")
-        logger.info(f"Species correction scope set to: {selected_scope}")
+        logger.info(f"Species settings updated: scope='{selected_scope}', name_type='{selected_type}'")

@@ -2,9 +2,8 @@ import os
 import logging
 import difflib
 import ast
+import logging
 
-
-# import sip
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy, QTextEdit, QComboBox, QDialogButtonBox, 
@@ -17,6 +16,8 @@ from widgets.trip_widgets import LabeledTextFieldQt
 from engine.filepicture import FilePicture
 from engine.speciesclassification import Level
 
+logger = logging.getLogger("speciesviewer")
+
 class DialogContext:
     def __init__(self, fpr):
         self.fpr = fpr
@@ -27,6 +28,22 @@ def is_widget_alive(widget):
         return True
     except RuntimeError:
         return False
+
+raw_exts = [".nef", ".orf", ".cr2", ".arw", ".rw2", ".heic"]
+
+def getCorrectionScopeOptions(file_path: Path) -> dict[str, list[Path]]:
+    folder = file_path.parent
+    trip_root = folder.parent
+
+    def is_raw(p: Path) -> bool:
+        return p.suffix.lower() in raw_exts
+
+    return {
+        "Only the selected file": [file_path],
+        "All files with same name error in day folder": [p for p in folder.iterdir() if is_raw(p)],
+        "All files with same name error in all trip day folders": [p for p in trip_root.rglob("*") if is_raw(p)],
+    }
+
 
 
 def get_best_species_suggestions(input_name, parent, max_suggestions=5):
@@ -160,6 +177,13 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QTimer
 from functools import partial
 
+import weakref
+from PyQt6.QtWidgets import (
+    QDialog, QVBoxLayout, QLabel, QTextEdit, QPushButton,
+    QHBoxLayout, QMessageBox
+)
+
+
 class SpeciesInfoDialog(QDialog):
     def __init__(self, full_path, species_name, error_msg, parent=None):
         super().__init__(parent)
@@ -180,41 +204,32 @@ class SpeciesInfoDialog(QDialog):
         error_text.setPlainText(error_msg or "No error.")
         layout.addWidget(error_text)
 
+        # Subject field
         main_window = self.main_window_ref() if self.main_window_ref else None
-        subject_value = main_window.fpr.getSubject(filename) if main_window and hasattr(main_window, "fpr") else ""
-        self.subject_field = LabeledTextFieldQt("Species name as specified in keyword values:", value=subject_value)
+        image_viewer = getattr(main_window, "image_viewer_dialog", None)
+        fpr = getattr(image_viewer, "fpr", None)
 
-        self.subject_part_selector = QComboBox()
-        layout.addWidget(QLabel("Select part to match"))
-        layout.addWidget(self.subject_part_selector)
-        self.subject_part_selector.hide()
+        subject_value = fpr.getSubject(filename) if fpr else ""
+        self.subject_field = LabeledTextFieldQt("Suggested species name:", value=subject_value)
         layout.addWidget(self.subject_field)
 
-        self.name_type_selector = QComboBox()
-        self.name_type_selector.addItems(["Auto", "Dutch", "English", "Scientific"])
-        layout.addWidget(QLabel("Name Type"))
-        layout.addWidget(self.name_type_selector)
+        # Status label for validation feedback
+        self.status_label = QLabel("")
+        layout.addWidget(self.status_label)
 
-        suggest_button = QPushButton("Suggest Species")
-        suggest_button.clicked.connect(lambda: self.on_suggest_species() if self.isVisible() else None)
-        layout.addWidget(suggest_button)
+        # Suggest species immediately
+        self.suggest_species()
 
-        self.suggestion_dropdown = QComboBox()
-        layout.addWidget(QLabel("Suggestions"))
-        layout.addWidget(self.suggestion_dropdown)
-        self.suggestion_dropdown.hide()
-        self.suggestion_dropdown.currentIndexChanged.connect(
-            lambda index: self.on_suggestion_selected(index) if self.isVisible() else None
-        )
-
+        # Button row
         button_row = QHBoxLayout()
-        commit_button = QPushButton("Commit")
-        commit_button.clicked.connect(self.on_commit)
-        button_row.addWidget(commit_button)
 
-        close_button = QPushButton("Close")
-        close_button.clicked.connect(self.on_close)
-        button_row.addWidget(close_button)
+        validate_button = QPushButton("Validate")
+        validate_button.clicked.connect(self.on_validate_clicked)
+        button_row.addWidget(validate_button)
+
+        commit_button = QPushButton("Commit")
+        commit_button.clicked.connect(self.on_commit_clicked)
+        button_row.addWidget(commit_button)
 
         cancel_button = QPushButton("Cancel")
         cancel_button.clicked.connect(self.reject)
@@ -222,153 +237,90 @@ class SpeciesInfoDialog(QDialog):
 
         layout.addLayout(button_row)
 
-        self.confirm_dialog = None
-
-    def on_suggest_species(self):
-        if not hasattr(self, "subject_field") or not self.subject_field:
-            print("⚠️ subject_field is missing or deleted.")
+    def suggest_species(self):
+        input_name = self.subject_field.get_text().strip()
+        if not input_name:
+            self.status_label.setText("⚠️ No input for suggestion.")
             return
 
-        raw_subject = self.subject_field.get_text()
-        try:
-            parsed = ast.literal_eval(raw_subject)
-            parts = parsed if isinstance(parsed, list) else [parsed]
-        except Exception:
-            parts = [raw_subject.strip()]
-
-        normalized_subject = "[" + ", ".join(f"'{p}'" for p in parts) + "]"
-        self.subject_field.set_text(normalized_subject)
-
-        self.subject_part_selector.clear()
-        for part in parts:
-            self.subject_part_selector.addItem(part)
-        self.subject_part_selector.show()
-
-        input_name = max(parts, key=len)
-        selected_index = self.subject_part_selector.findText(input_name)
-        self.subject_part_selector.setCurrentIndex(selected_index)
-
-        name_type = self.name_type_selector.currentText()
         main_window = self.main_window_ref() if self.main_window_ref else None
+        image_viewer = getattr(main_window, "image_viewer_dialog", None)
+        config = getattr(main_window, "config", None)
+
+        name_type = config.get("Species", "name_type", fallback="Auto") if config else "Auto"
+
         if name_type == "Auto":
-            suggestions = get_best_species_suggestions(input_name, main_window)
+            suggestions = get_best_species_suggestions(input_name, image_viewer)
         else:
-            suggestions = get_species_suggestions(input_name, name_type, main_window)
+            suggestions = get_species_suggestions(input_name, name_type, image_viewer)
 
         if suggestions:
-            try:
-                self.suggestion_dropdown.clear()
-                for name, score in suggestions:
-                    self.suggestion_dropdown.addItem(f"{name} ({score}%)", name)
-                self.suggestion_dropdown.show()
-            except RuntimeError:
-                print("Suggestion dropdown was deleted.")
+            best_name, _ = suggestions[0]
+            self.subject_field.set_text(best_name)
+            self.status_label.setText(f"🔍 Suggested: {best_name}")
         else:
-            QMessageBox.warning(self, "No Suggestion", "No close match found.")
-            self.suggestion_dropdown.hide()
+            self.status_label.setText("❌ No suggestions found.")
 
-    def on_suggestion_selected(self, index):
-        if not hasattr(self, "subject_field") or not self.subject_field:
-            print("⚠️ subject_field is missing or deleted.")
-            return
+    def on_validate_clicked(self):
+        name = self.subject_field.get_text().strip()
+        main_window = self.main_window_ref() if self.main_window_ref else None
+        image_viewer = getattr(main_window, "image_viewer_dialog", None)
+        fpr = getattr(image_viewer, "fpr", None)
 
-        selected_name = self.suggestion_dropdown.itemData(index)
-        if not selected_name or selected_name.lower() == "none":
-            return
-
-        raw_subject = self.subject_field.get_text()
-        try:
-            parts = ast.literal_eval(raw_subject)
-            if not isinstance(parts, list):
-                raise ValueError
-        except Exception:
-            parts = [raw_subject.strip()]
-
-        selected_part = self.subject_part_selector.currentText()
-        selected_name = selected_name.lower()
-        updated_parts = [selected_name if part == selected_part else part for part in parts]
-        updated_subject = "[" + ", ".join(f"'{p}'" for p in updated_parts) + "]"
-        self.subject_field.set_text(updated_subject)
-
-    def on_commit(self):
-        print(f"📷 Image full path: {self.full_path}")
-        if not hasattr(self, "subject_field") or not self.subject_field.field:
-            print("❌ Subject field missing or invalid.")
+        if not name:
+            self.status_label.setText("⚠️ Please enter a species name.")
             return
 
         try:
-            edited_subject = self.subject_field.get_text()
-        except RuntimeError:
-            print("❌ Subject field was deleted before commit.")
+            validated = fpr.sc.getSpecies(name) if fpr else ""
+            if validated:
+                self.status_label.setText(f"✅ Validated species name: {name} ({validated})")
+                logger.info(f"Validated species name: {name} → {validated}")
+            else:
+                self.status_label.setText(f"❌ Unknown species: {name}")
+                logger.info(f"❌ Unknown species: {name}")  
+        except Exception as e:
+            self.status_label.setText(f"⚠️ Validation error: {str(e)}")
+            logger.info(f"⚠️ Validation error: {str(e)}")
+
+    def on_commit_clicked(self):
+        corrected_subject = self.subject_field.get_text().strip()
+        if not corrected_subject:
+            self.status_label.setText("⚠️ No species name to commit.")
             return
 
         main_window = self.main_window_ref() if self.main_window_ref else None
-        if not main_window or not isinstance(main_window, QWidget) or not main_window.isVisible():
-            print("⚠️ main_window is deleted or not usable. Falling back to active window.")
-            parent = QApplication.activeWindow()
-        else:
-            parent = main_window
+        image_viewer = getattr(main_window, "image_viewer_dialog", None)
+        fpr = getattr(image_viewer, "fpr", None)
+        config = getattr(main_window, "config", None)
 
-        original_subject_value = ""
-        if main_window and hasattr(main_window, "fpr"):
-            original_subject_value = main_window.fpr.getSubject(self.full_path) or ""
+        if not fpr:
+            self.status_label.setText("❌ Cannot access FPR for update.")
+            return
 
-        formatted_original_subject = format_subject_for_xmp(original_subject_value)
-        formatted_edited_subject = format_subject_for_xmp(edited_subject)
+        original_subject = fpr.getSubject(self.full_path.name)
+        saved_scope = config.get("Species", "correction_scope", fallback="All files with same name error in day folder") if config else "Only the selected file"
 
-        folder = Path(self.full_path).parent
-        trip_root = folder.parent
-        scope_options = {
-            "Just this file": [self.full_path],
-            "All files in this folder": list(folder.glob("*.NEF")),
-            "All files in this trip": list(trip_root.rglob("*.NEF")),
-        }
+        # Determine scope
+        scope_options = getCorrectionScopeOptions(self.full_path)  # Assumes this method returns a dict like {label: [Path, Path, ...]}
+        selected_files = scope_options.get(saved_scope, [])
 
-        self.confirm_dialog = ConfirmSubjectUpdateDialog(
-            formatted_original_subject,
-            formatted_edited_subject,
-            self.full_path,
-            scope_options,
-            fpr=main_window.fpr if main_window else None,
-            parent=parent
-        )
-        result = self.confirm_dialog.exec()
-        self.confirm_dialog.deleteLater()
-        self.confirm_dialog = None
+        # Filter files that match the original subject
+        matching_files = [f for f in selected_files if fpr.getSubject(f.name) == original_subject]
 
-        if result == QDialog.DialogCode.Accepted:
-            self._on_confirm_accepted_safe(edited_subject)
-        else:
-            self._on_confirm_rejected()
+        # Apply updates
+        self.status_label.setText(f"📦 Committing species name: {corrected_subject} to {len(matching_files)} files")
+        logger.info(f"📦 Committing species name: {corrected_subject} to {len(matching_files)} files")
+        for f in matching_files:
+            # fpr.updateSubject(f.name, original_subject, corrected_subject)
+            logger.info(f"""✅ fpr.updateSubject({f.name}, "{original_subject}", "{corrected_subject}")""")
 
-    def _on_confirm_accepted_safe(self, edited_subject):
-        print("Committed subject:", edited_subject)
-        try:
-            self.accept()
-        except RuntimeError:
-            print("❌ ConfirmSubjectUpdateDialog was deleted before accept()")
-
-    def _on_confirm_rejected(self):
-        print("Subject commit canceled")
-
-    def on_close(self):
-        print("on_close: edited subject:", self.subject_field.get_text())
         self.accept()
 
+
     def closeEvent(self, event):
-        try:
-            self.suggestion_dropdown.currentIndexChanged.disconnect()
-        except Exception:
-            pass
-
-        if self.confirm_dialog:
-            self.confirm_dialog.deleteLater()
-            self.confirm_dialog = None
-
         print("🧨 SpeciesInfoDialog is being closed!")
         event.accept()
 
     def __del__(self):
         print("🧹 SpeciesInfoDialog was garbage collected")
-
-
