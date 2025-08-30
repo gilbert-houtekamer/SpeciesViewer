@@ -122,11 +122,10 @@ class FilePicture:
         
         return (filecount[0] > 0) and (picturecount > 0)  
     
-    # change actual file with EXIF
-    # def replaceFileSubject(self, filename, original_subject, correct_subject):
-    #     file = self.fi.files_dict[Path(filename).name]
-    #     return
-
+    # replaceFileSubject.
+    # 1. change actual file with EXIFtool
+    # 2. Change the .csv file reflected in the internal structures
+    # 3. Review Photolab and Lightroom
     def replaceFileSubject(self, filename, original_subject, correct_subject):
         filepath = Path(self.fi.files_dict[filename]['WindowsFileName'])
 
@@ -141,7 +140,7 @@ class FilePicture:
             )
             metadata = json.loads(result.stdout)[0]
             current_subjects = metadata.get('Subject', [])
-            print(f"current_subjects in {str(filepath)} to: {current_subjects}")
+            print(f"current_subjects in {str(filepath)} from {current_subjects} to {correct_subject}")
 
             # Step 3: Replace subject if original_subject is found
             if original_subject in current_subjects:
@@ -162,14 +161,38 @@ class FilePicture:
         except subprocess.CalledProcessError as e:
             print(f"ExifTool error: {e.stderr}")
 
-    
-    def replaceUPNSubject(self, filename, original_subject, correct_subject):
-        upn = self.upn.UniquePictureName_dict[Path(filename).name]
+        # Step 2: update the internal data structure
+        self.fi.files_dict[filename]['XMP:Subject'] = correct_subject
+
+    # the UPN update is only reflected in the data_pictures file and the internal structures 
+    def replaceUPNSubject(self, filename, original_subject, correct_subject, sc_object):
+        upn_object = self.upn.UniquePictureName_dict[Path(filename).name]
+        if upn_object != None and upn_object['subject'] == original_subject:
+            upn_object['subject'] = correct_subject
+            if sc_object != None:
+                upn_object['errormessage'] = ''   # missing species issue fixed, clear error message
+                upn_object['NLSoortNaam'] = sc_object['DutchName']
+                upn_object['EngSoortNaam'] = sc_object['EnglishName']
+                upn_object['WetSoortNaam']= sc_object['ScientificName']
+            else:
+                upn_object['errormessage'] = "Subject keyword(s) changed, but still no species found in SpeciesViewer tables.  Possiby the species need to be added."
+            # write updated data_pictures file 
+            self.upn.write_project_summary()
         return
 
     # function to determine which files must be updated
     def updateSubject(self, filename, original_subject, corrected_subject):
+        if original_subject == corrected_subject:
+            logger.info(f"There are no changes for {filename}, no updates doen.")
+
         print(f"Entered updateSubject self.fpr.updateSubject({filename}, {corrected_subject})")
+
+        scientific_name = self.sc.getSpecies(corrected_subject)
+        if scientific_name == "":  # still no name found
+            logger.warning(f"The species name is not recognized, but the updated keywords are stored in the files.")
+            sc_object = None
+        else:
+            sc_object = self.sc.sc_dict[scientific_name]
 
         upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
         for f in self.fi.files_dict:
@@ -179,7 +202,10 @@ class FilePicture:
                     print(f"File {f} has original subject {original_subject}")
                     self.replaceFileSubject(f, original_subject, corrected_subject)
 
-        self.replaceUPNSubject(upn_name, original_subject, corrected_subject)        
+        # update external CSV file (internal done on a per file basis)
+        self.fi.write_project_files()
+        # update internal and external data_pictures (just one per definition)
+        self.replaceUPNSubject(upn_name, original_subject, corrected_subject, sc_object)        
 
         return        
 

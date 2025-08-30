@@ -3,13 +3,12 @@ import logging
 import difflib
 import ast
 import logging
+import weakref
 
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy, QTextEdit, QComboBox, QDialogButtonBox, 
     QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog)
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QPixmap, QImage, QFontMetrics, QIcon
 from PyQt6.QtCore import Qt, QTimer, QSize
 
 from widgets.trip_widgets import LabeledTextFieldQt
@@ -43,8 +42,6 @@ def getCorrectionScopeOptions(file_path: Path) -> dict[str, list[Path]]:
         "All files with same name error in day folder": [p for p in folder.iterdir() if is_raw(p)],
         "All files with same name error in all trip day folders": [p for p in trip_root.rglob("*") if is_raw(p)],
     }
-
-
 
 def get_best_species_suggestions(input_name, parent, max_suggestions=5):
     all_types = ["Scientific", "English", "Dutch"]
@@ -99,96 +96,78 @@ def format_subject_for_xmp(subject_text):
     return subject_text.strip("'\"")
 
 
-class ConfirmSubjectUpdateDialog(QDialog):
-    def __init__(self, original_subject, corrected_subject, file_path, scope_options, fpr, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle(f"Update Subject from '{original_subject}' to '{corrected_subject}'")
-        self.setMinimumSize(600, 400)
+# class ConfirmSubjectUpdateDialog(QDialog):
+#     def __init__(self, original_subject, corrected_subject, file_path, scope_options, fpr, parent=None):
+#         super().__init__(parent)
+#         self.setWindowTitle(f"Update Subject from '{original_subject}' to '{corrected_subject}'")
+#         self.setMinimumSize(600, 400)
 
-        self.original_subject = original_subject
-        self.corrected_subject = corrected_subject
-        self.file_path = Path(file_path)
-        self.scope_options = scope_options
-        self.fpr = fpr
+#         self.original_subject = original_subject
+#         self.corrected_subject = corrected_subject
+#         self.file_path = Path(file_path)
+#         self.scope_options = scope_options
+#         self.fpr = fpr
 
-        layout = QVBoxLayout(self)
+#         layout = QVBoxLayout(self)
 
-        # Scope selector
-        self.scope_selector = QComboBox()
-        for label, files in self.scope_options.items():
-            count = len(files)
-            self.scope_selector.addItem(f"{label} ({count} files)", label)
-        layout.addWidget(QLabel("Apply to:"))
-        layout.addWidget(self.scope_selector)
+#         # Scope selector
+#         self.scope_selector = QComboBox()
+#         for label, files in self.scope_options.items():
+#             count = len(files)
+#             self.scope_selector.addItem(f"{label} ({count} files)", label)
+#         layout.addWidget(QLabel("Apply to:"))
+#         layout.addWidget(self.scope_selector)
 
-        # File preview
-        self.file_table = QTextEdit()
-        self.file_table.setReadOnly(True)
-        layout.addWidget(self.file_table)
+#         # File preview
+#         self.file_table = QTextEdit()
+#         self.file_table.setReadOnly(True)
+#         layout.addWidget(self.file_table)
 
-        # Buttons
-        button_row = QHBoxLayout()
-        commit_button = QPushButton("Commit")
-        commit_button.clicked.connect(self.on_commit_code)
-        cancel_button = QPushButton("Cancel")
-        cancel_button.clicked.connect(self.reject)
-        button_row.addWidget(commit_button)
-        button_row.addWidget(cancel_button)
-        layout.addLayout(button_row)
+#         # Buttons
+#         button_row = QHBoxLayout()
+#         commit_button = QPushButton("Commit")
+#         commit_button.clicked.connect(self.on_commit_code)
+#         cancel_button = QPushButton("Cancel")
+#         cancel_button.clicked.connect(self.reject)
+#         button_row.addWidget(commit_button)
+#         button_row.addWidget(cancel_button)
+#         layout.addLayout(button_row)
 
-        self.scope_selector.currentIndexChanged.connect(self.update_file_preview)
-        self.update_file_preview()
+#         self.scope_selector.currentIndexChanged.connect(self.update_file_preview)
+#         self.update_file_preview()
 
-    def update_file_preview(self):
-        label = self.scope_selector.currentData()
-        files = self.scope_options.get(label, [])
-        matching_files = [f for f in files if self.fpr.getSubject(f.name) == self.original_subject]
-        preview_text = "\n".join(str(f.name) for f in matching_files)
-        self.file_table.setPlainText(preview_text)
-        self.selected_files = matching_files
+#     def update_file_preview(self):
+#         label = self.scope_selector.currentData()
+#         files = self.scope_options.get(label, [])
+#         matching_files = [f for f in files if self.fpr.getSubject(f.name) == self.original_subject]
+#         preview_text = "\n".join(str(f.name) for f in matching_files)
+#         self.file_table.setPlainText(preview_text)
+#         self.selected_files = matching_files
 
-    def on_commit_code(self):
-        print("ConfirmSubjectUpdateDialog on_commit entered")
-        for f in self.selected_files:
-            self.fpr.updateSubject(f.name, self.original_subject, self.corrected_subject)
-            print(f"""self.fpr.updateSubject({f.name}, "{self.original_subject}", "{self.corrected_subject}")""")
-        QTimer.singleShot(0, self.accept)
-
-
-    def closeEvent(self, event):
-        print(f"closeEvent: self.commit_button.clicked.disconnect() and .accept")
-        try:
-            self.commit_button.clicked.disconnect()
-        except Exception:
-            pass
-        event.accept()
-
-    def __del__(self):
-        print("🧹 ConfirmSubjectUpdateDialog was garbage collected")        
+#     def on_commit_code(self):
+#         print("ConfirmSubjectUpdateDialog on_commit entered")
+#         for f in self.selected_files:
+#             self.fpr.updateSubject(f.name, self.original_subject, self.corrected_subject)
+#             print(f"""self.fpr.updateSubject({f.name}, "{self.original_subject}", "{self.corrected_subject}")""")
+#         QTimer.singleShot(0, self.accept)
 
 
-import ast
-import weakref
-from pathlib import Path
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QTextEdit, QComboBox,
-    QPushButton, QHBoxLayout, QMessageBox, QApplication, QWidget
-)
-from PyQt6.QtCore import QTimer
-from functools import partial
+#     def closeEvent(self, event):
+#         print(f"closeEvent: self.commit_button.clicked.disconnect() and .accept")
+#         try:
+#             self.commit_button.clicked.disconnect()
+#         except Exception:
+#             pass
+#         event.accept()
 
-import weakref
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QTextEdit, QPushButton,
-    QHBoxLayout, QMessageBox
-)
-
+#     def __del__(self):
+#         print("🧹 ConfirmSubjectUpdateDialog was garbage collected")        
 
 class SpeciesInfoDialog(QDialog):
     def __init__(self, full_path, species_name, error_msg, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Species Info")
-        self.setMinimumWidth(400)
+        self.setMinimumWidth(600)
         self.main_window_ref = weakref.ref(parent) if parent else None
         self.full_path = full_path
         filename = full_path.name
@@ -309,11 +288,11 @@ class SpeciesInfoDialog(QDialog):
         matching_files = [f for f in selected_files if fpr.getSubject(f.name) == original_subject]
 
         # Apply updates
-        self.status_label.setText(f"📦 Committing species name: {corrected_subject} to {len(matching_files)} files")
-        logger.info(f"📦 Committing species name: {corrected_subject} to {len(matching_files)} files")
+        self.status_label.setText(f"📦 Committing species name: {corrected_subject} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")
+        logger.info(f"📦 Committing species name: {corrected_subject} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")
         for f in matching_files:
-            # fpr.updateSubject(f.name, original_subject, corrected_subject)
-            logger.info(f"""✅ fpr.updateSubject({f.name}, "{original_subject}", "{corrected_subject}")""")
+            fpr.updateSubject(f.name, original_subject, corrected_subject)
+            logger.info(f"""✅ Updated {f.name} with corrected subject from "{original_subject}" to "{corrected_subject}".""")
 
         self.accept()
 

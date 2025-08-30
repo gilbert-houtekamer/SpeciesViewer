@@ -2,6 +2,7 @@
 import os
 import csv
 import logging
+from engine.csv_columns import COLUMN_NAMES
 
 logger = logging.getLogger("speciesviewer")
 
@@ -39,6 +40,7 @@ class Files:
     def __init__(self, MyProject):
         self.files_dict = {}      
         self.filecount = 0
+        self.filename = ""
 
         if MyProject != None:
             MyProject.registerSpecies(self)
@@ -51,6 +53,7 @@ class Files:
     def read_file(self, filename, silent=False):
         from_time = ""
         last_time = ""
+        self.filename = filename
         runningcounter = len(self.files_dict)
         with open(filename, "r", newline="", encoding='utf-8') as csvfile:
             reader = csv.DictReader(csvfile, delimiter=';')
@@ -67,3 +70,14 @@ class Files:
                     logger.warning(f"File was already found here {self.files_dict[row['File:FileName']]['WindowsFileName']}.")
         logger.info(f'Read EXIF data for {len(self.files_dict)-runningcounter} files from CSV file {filename}.')
         return len(self.files_dict), from_time, last_time
+    
+    def write_project_files(self):
+        print(f"Update file CSV {self.filename}")        
+        with open(self.filename, "w", newline="") as csvfile:
+            writer = csv.DictWriter(
+                csvfile, fieldnames=COLUMN_NAMES.values(), quoting=csv.QUOTE_MINIMAL, delimiter=';'
+            )
+            writer.writeheader()
+            for file in self.files_dict:
+                row = self.files_dict[file]
+                writer.writerow(row)              
