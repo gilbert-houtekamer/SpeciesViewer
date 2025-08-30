@@ -294,6 +294,15 @@ class SpeciesInfoDialog(QDialog):
             fpr.updateSubject(f.name, original_subject, corrected_subject)
             logger.info(f"""✅ Updated {f.name} with corrected subject from "{original_subject}" to "{corrected_subject}".""")
 
+            # Update image viewer
+            for image_label, container, img_path in image_viewer.image_widgets:
+                if img_path.name == f.name:
+                    image_viewer.refresh_image_status(container, img_path)
+
+        # for f in matching_files:
+        #     fpr.updateSubject(f.name, original_subject, corrected_subject)
+        #     logger.info(f"""✅ Updated {f.name} with corrected subject from "{original_subject}" to "{corrected_subject}".""")
+
         self.accept()
 
 
