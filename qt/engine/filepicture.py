@@ -140,21 +140,21 @@ class FilePicture:
             )
             metadata = json.loads(result.stdout)[0]
             current_subjects = metadata.get('Subject', [])
-            print(f"current_subjects in {str(filepath)} from {current_subjects} to {correct_subject}")
+            # print(f"current_subjects in {str(filepath)} from {current_subjects} to {correct_subject}")
 
             # Step 3: Replace subject if original_subject is found
             if original_subject in current_subjects:
                 cmd = ['exiftool', f'-XMP:Subject={correct_subject}', '-overwrite_original', str(filepath)]
-                print("Running command:", " ".join(cmd))
+                # print("Running command:", " ".join(cmd))
 
                 subprocess.run(
-                    ['exiftool', f'-XMP:Subject={correct_subject}', '-overwrite_original', str(filepath)],
+                    cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     check=True,
                     text=True
                 )
-                print(f"Updated subject in {filepath.name} to: {correct_subject}")
+                # print(f"Updated subject in {filepath.name} to: {correct_subject}")
             else:
                 print(f"Original subject '{original_subject}' not found in {filepath.name}")
 
@@ -178,14 +178,14 @@ class FilePicture:
                 upn_object['errormessage'] = "Subject keyword(s) changed, but still no species found in SpeciesViewer tables.  Possiby the species need to be added."
             # write updated data_pictures file 
             self.upn.write_project_summary()
-        return
+        return upn_object
 
     # function to determine which files must be updated
     def updateSubject(self, filename, original_subject, corrected_subject):
         if original_subject == corrected_subject:
             logger.info(f"There are no changes for {filename}, no updates doen.")
 
-        print(f"Entered updateSubject self.fpr.updateSubject({filename}, {corrected_subject})")
+        # print(f"Entered updateSubject self.fpr.updateSubject({filename}, {corrected_subject})")
 
         scientific_name = self.sc.getSpecies(corrected_subject)
         if scientific_name == "":  # still no name found
@@ -197,17 +197,16 @@ class FilePicture:
         upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
         for f in self.fi.files_dict:
             if self.fi.files_dict[f]["UniquePictureName"] == upn_name:
-                print(f"File {f} has upn name {upn_name}")
+                # print(f"File {f} has upn name {upn_name}")
                 if self.fi.files_dict[f]["XMP:Subject"] == original_subject:
-                    print(f"File {f} has original subject {original_subject}")
+                    # print(f"File {f} has original subject {original_subject}")
                     self.replaceFileSubject(f, original_subject, corrected_subject)
 
         # update external CSV file (internal done on a per file basis)
         self.fi.write_project_files()
         # update internal and external data_pictures (just one per definition)
-        self.replaceUPNSubject(upn_name, original_subject, corrected_subject, sc_object)        
-
-        return        
+        return self.replaceUPNSubject(upn_name, original_subject, corrected_subject, sc_object)        
+   
 
     # read all species    
     def readMaster(self, trippath, projectdirectory, getEarlierDays = False, silent=False):

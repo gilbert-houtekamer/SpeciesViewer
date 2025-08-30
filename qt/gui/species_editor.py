@@ -70,12 +70,6 @@ def get_species_candidates(name_type, parent):
                 if props.get("Level") == Level.SPECIES]
 
 def get_species_suggestions(input_name, name_type, parent, max_suggestions=5):
-    # if name_type == "Dutch":
-    #     candidates = list(parent.fpr.sc.dutch_dict.keys())
-    # elif name_type == "English":
-    #     candidates = list(parent.fpr.sc.english_dict.keys())
-    # else:
-    #     candidates = list(parent.fpr.sc.sc_dict.keys())
     candidates = get_species_candidates(name_type, parent)
     matches = difflib.get_close_matches(input_name.lower(), candidates, n=max_suggestions, cutoff=0.6)
 
@@ -94,74 +88,6 @@ def format_subject_for_xmp(subject_text):
     except Exception:
         pass
     return subject_text.strip("'\"")
-
-
-# class ConfirmSubjectUpdateDialog(QDialog):
-#     def __init__(self, original_subject, corrected_subject, file_path, scope_options, fpr, parent=None):
-#         super().__init__(parent)
-#         self.setWindowTitle(f"Update Subject from '{original_subject}' to '{corrected_subject}'")
-#         self.setMinimumSize(600, 400)
-
-#         self.original_subject = original_subject
-#         self.corrected_subject = corrected_subject
-#         self.file_path = Path(file_path)
-#         self.scope_options = scope_options
-#         self.fpr = fpr
-
-#         layout = QVBoxLayout(self)
-
-#         # Scope selector
-#         self.scope_selector = QComboBox()
-#         for label, files in self.scope_options.items():
-#             count = len(files)
-#             self.scope_selector.addItem(f"{label} ({count} files)", label)
-#         layout.addWidget(QLabel("Apply to:"))
-#         layout.addWidget(self.scope_selector)
-
-#         # File preview
-#         self.file_table = QTextEdit()
-#         self.file_table.setReadOnly(True)
-#         layout.addWidget(self.file_table)
-
-#         # Buttons
-#         button_row = QHBoxLayout()
-#         commit_button = QPushButton("Commit")
-#         commit_button.clicked.connect(self.on_commit_code)
-#         cancel_button = QPushButton("Cancel")
-#         cancel_button.clicked.connect(self.reject)
-#         button_row.addWidget(commit_button)
-#         button_row.addWidget(cancel_button)
-#         layout.addLayout(button_row)
-
-#         self.scope_selector.currentIndexChanged.connect(self.update_file_preview)
-#         self.update_file_preview()
-
-#     def update_file_preview(self):
-#         label = self.scope_selector.currentData()
-#         files = self.scope_options.get(label, [])
-#         matching_files = [f for f in files if self.fpr.getSubject(f.name) == self.original_subject]
-#         preview_text = "\n".join(str(f.name) for f in matching_files)
-#         self.file_table.setPlainText(preview_text)
-#         self.selected_files = matching_files
-
-#     def on_commit_code(self):
-#         print("ConfirmSubjectUpdateDialog on_commit entered")
-#         for f in self.selected_files:
-#             self.fpr.updateSubject(f.name, self.original_subject, self.corrected_subject)
-#             print(f"""self.fpr.updateSubject({f.name}, "{self.original_subject}", "{self.corrected_subject}")""")
-#         QTimer.singleShot(0, self.accept)
-
-
-#     def closeEvent(self, event):
-#         print(f"closeEvent: self.commit_button.clicked.disconnect() and .accept")
-#         try:
-#             self.commit_button.clicked.disconnect()
-#         except Exception:
-#             pass
-#         event.accept()
-
-#     def __del__(self):
-#         print("🧹 ConfirmSubjectUpdateDialog was garbage collected")        
 
 class SpeciesInfoDialog(QDialog):
     def __init__(self, full_path, species_name, error_msg, parent=None):
@@ -216,9 +142,11 @@ class SpeciesInfoDialog(QDialog):
 
         layout.addLayout(button_row)
 
+    import ast
+
     def suggest_species(self):
-        input_name = self.subject_field.get_text().strip()
-        if not input_name:
+        raw_input = self.subject_field.get_text().strip()
+        if not raw_input:
             self.status_label.setText("⚠️ No input for suggestion.")
             return
 
@@ -228,6 +156,18 @@ class SpeciesInfoDialog(QDialog):
 
         name_type = config.get("Species", "name_type", fallback="Auto") if config else "Auto"
 
+        # Try to parse input as a list
+        try:
+            parts = ast.literal_eval(raw_input)
+            if not isinstance(parts, list):
+                raise ValueError
+        except Exception:
+            parts = [raw_input]
+
+        # Identify the longest part (likely species name)
+        input_name = max(parts, key=len)
+
+        # Get suggestions
         if name_type == "Auto":
             suggestions = get_best_species_suggestions(input_name, image_viewer)
         else:
@@ -235,32 +175,47 @@ class SpeciesInfoDialog(QDialog):
 
         if suggestions:
             best_name, _ = suggestions[0]
-            self.subject_field.set_text(best_name)
+            # Replace only the longest part with the best match
+            updated_parts = [best_name if part == input_name else part for part in parts]
+            updated_subject = "[" + ", ".join(f"'{p}'" for p in updated_parts) + "]"
+            self.subject_field.set_text(updated_subject)
             self.status_label.setText(f"🔍 Suggested: {best_name}")
         else:
             self.status_label.setText("❌ No suggestions found.")
 
     def on_validate_clicked(self):
-        name = self.subject_field.get_text().strip()
+        raw_input = self.subject_field.get_text().strip()
         main_window = self.main_window_ref() if self.main_window_ref else None
         image_viewer = getattr(main_window, "image_viewer_dialog", None)
         fpr = getattr(image_viewer, "fpr", None)
 
-        if not name:
+        if not raw_input:
             self.status_label.setText("⚠️ Please enter a species name.")
             return
 
         try:
-            validated = fpr.sc.getSpecies(name) if fpr else ""
+            # Try to parse as list
+            try:
+                parts = ast.literal_eval(raw_input)
+                if not isinstance(parts, list):
+                    raise ValueError
+            except Exception:
+                parts = [raw_input]
+
+            # Validate longest part
+            input_name = max(parts, key=len)
+            validated = fpr.sc.getSpecies(input_name) if fpr else ""
+
             if validated:
-                self.status_label.setText(f"✅ Validated species name: {name} ({validated})")
-                logger.info(f"Validated species name: {name} → {validated}")
+                self.status_label.setText(f"✅ Validated species name: {input_name} ({validated})")
+                logger.info(f"Validated species name: {input_name} → {validated}")
             else:
-                self.status_label.setText(f"❌ Unknown species: {name}")
-                logger.info(f"❌ Unknown species: {name}")  
+                self.status_label.setText(f"❌ Unknown species: {input_name}")
+                logger.info(f"❌ Unknown species: {input_name}")
         except Exception as e:
             self.status_label.setText(f"⚠️ Validation error: {str(e)}")
             logger.info(f"⚠️ Validation error: {str(e)}")
+
 
     def on_commit_clicked(self):
         corrected_subject = self.subject_field.get_text().strip()
@@ -291,17 +246,14 @@ class SpeciesInfoDialog(QDialog):
         self.status_label.setText(f"📦 Committing species name: {corrected_subject} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")
         logger.info(f"📦 Committing species name: {corrected_subject} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")
         for f in matching_files:
-            fpr.updateSubject(f.name, original_subject, corrected_subject)
+            upn_object = fpr.updateSubject(f.name, original_subject, corrected_subject)
             logger.info(f"""✅ Updated {f.name} with corrected subject from "{original_subject}" to "{corrected_subject}".""")
 
             # Update image viewer
-            for image_label, container, img_path in image_viewer.image_widgets:
-                if img_path.name == f.name:
-                    image_viewer.refresh_image_status(container, img_path)
-
-        # for f in matching_files:
-        #     fpr.updateSubject(f.name, original_subject, corrected_subject)
-        #     logger.info(f"""✅ Updated {f.name} with corrected subject from "{original_subject}" to "{corrected_subject}".""")
+            if upn_object != None and upn_object['errormessage'] == "":
+                for image_label, container, img_path in image_viewer.image_widgets:
+                    if img_path.name == f.name:
+                        image_viewer.refresh_image_status(container, img_path)
 
         self.accept()
 

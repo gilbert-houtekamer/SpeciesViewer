@@ -376,7 +376,7 @@ class ImagePreviewDialog(QDialog):
         if not self.dialog_active or self.cancelled or self.current_index >= len(self.image_paths):
             self.cancel_button.setEnabled(False)
             self.wait_dialog.close()
-            print("load_next_image: stopping condition met")
+            # print("load_next_image: stopping condition met")
             return
 
         img_path = Path(self.image_paths[self.current_index])
@@ -391,7 +391,7 @@ class ImagePreviewDialog(QDialog):
             self.cancel_button.setEnabled(False)
             self.on_column_changed(self.columns)
             self.wait_dialog.close()
-            print("load_next_image: finished loading all images")
+            # print("load_next_image: finished loading all images")
 
     def load_images(self, image_paths):
         self.image_paths = [Path(p) if isinstance(p, str) else p for p in image_paths]
