@@ -4,6 +4,7 @@ import difflib
 import ast
 import logging
 import weakref
+from pygbif import species
 
 from pathlib import Path
 from PyQt6.QtWidgets import (
@@ -115,10 +116,22 @@ class SpeciesInfoDialog(QDialog):
         fpr = getattr(image_viewer, "fpr", None)
 
         subject_value = fpr.getSubject(filename) if fpr else ""
+
+        # Subject field
         self.subject_field = LabeledTextFieldQt("Suggested species name:", value=subject_value)
         layout.addWidget(self.subject_field)
 
-        # Status label for validation feedback
+        # Suggestion dropdown
+        self.suggestion_dropdown = QComboBox()
+        self.suggestion_dropdown.setEditable(False)
+        self.suggestion_dropdown.setVisible(False)
+        self.suggestion_dropdown.setToolTip("Select a species name to apply manually")
+        self.suggestion_dropdown.setObjectName("suggestion_dropdown")
+        self.suggestion_dropdown.currentIndexChanged.connect(self.on_suggestion_selected)
+        layout.addWidget(QLabel("Suggestions"))
+        layout.addWidget(self.suggestion_dropdown)
+
+        # Status label
         self.status_label = QLabel("")
         layout.addWidget(self.status_label)
 
@@ -148,15 +161,16 @@ class SpeciesInfoDialog(QDialog):
         raw_input = self.subject_field.get_text().strip()
         if not raw_input:
             self.status_label.setText("⚠️ No input for suggestion.")
+            self.suggestion_dropdown.setVisible(False)
             return
 
         main_window = self.main_window_ref() if self.main_window_ref else None
         image_viewer = getattr(main_window, "image_viewer_dialog", None)
         config = getattr(main_window, "config", None)
+        fpr = getattr(image_viewer, "fpr", None)
 
         name_type = config.get("Species", "name_type", fallback="Auto") if config else "Auto"
 
-        # Try to parse input as a list
         try:
             parts = ast.literal_eval(raw_input)
             if not isinstance(parts, list):
@@ -164,10 +178,8 @@ class SpeciesInfoDialog(QDialog):
         except Exception:
             parts = [raw_input]
 
-        # Identify the longest part (likely species name)
         input_name = max(parts, key=len)
 
-        # Get suggestions
         if name_type == "Auto":
             suggestions = get_best_species_suggestions(input_name, image_viewer)
         else:
@@ -175,13 +187,47 @@ class SpeciesInfoDialog(QDialog):
 
         if suggestions:
             best_name, _ = suggestions[0]
-            # Replace only the longest part with the best match
             updated_parts = [best_name if part == input_name else part for part in parts]
             updated_subject = "[" + ", ".join(f"'{p}'" for p in updated_parts) + "]"
             self.subject_field.set_text(updated_subject)
             self.status_label.setText(f"🔍 Suggested: {best_name}")
+
+            # Populate dropdown
+            self.suggestion_dropdown.clear()
+            for name, score in suggestions:
+                self.suggestion_dropdown.addItem(f"{name} ({score}%)", name)
+            self.suggestion_dropdown.setVisible(True)
         else:
-            self.status_label.setText("❌ No suggestions found.")
+            validated = fpr.sc.getSpecies(input_name, fuzzy=True) if fpr else ""
+            if validated:
+                updated_parts = [validated if part == input_name else part for part in parts]
+                updated_subject = "[" + ", ".join(f"'{p}'" for p in updated_parts) + "]"
+                self.subject_field.set_text(updated_subject)
+                self.status_label.setText(f"✅ Suggested scientific species name: {validated}")
+                logger.info(f"Validated scientific species name {input_name} → {validated}")
+            else:
+                self.status_label.setText(f"❌ No suggestions found for {input_name}.")
+                self.suggestion_dropdown.setVisible(False)
+                logger.info(f"❌ No suggestions found for {input_name}.")
+
+    def on_suggestion_selected(self, index):
+        selected_name = self.suggestion_dropdown.itemData(index)
+        if not selected_name:
+            return
+
+        raw_input = self.subject_field.get_text().strip()
+        try:
+            parts = ast.literal_eval(raw_input)
+            if not isinstance(parts, list):
+                raise ValueError
+        except Exception:
+            parts = [raw_input]
+
+        input_name = max(parts, key=len)
+        updated_parts = [selected_name if part == input_name else part for part in parts]
+        updated_subject = "[" + ", ".join(f"'{p}'" for p in updated_parts) + "]"
+        self.subject_field.set_text(updated_subject)
+        self.status_label.setText(f"🔄 Replaced with: {selected_name}")
 
     def on_validate_clicked(self):
         raw_input = self.subject_field.get_text().strip()
@@ -204,7 +250,7 @@ class SpeciesInfoDialog(QDialog):
 
             # Validate longest part
             input_name = max(parts, key=len)
-            validated = fpr.sc.getSpecies(input_name) if fpr else ""
+            validated = fpr.sc.getSpecies(input_name, fuzzy=True) if fpr else ""
 
             if validated:
                 self.status_label.setText(f"✅ Validated species name: {input_name} ({validated})")
@@ -243,11 +289,11 @@ class SpeciesInfoDialog(QDialog):
         matching_files = [f for f in selected_files if fpr.getSubject(f.name) == original_subject]
 
         # Apply updates
-        self.status_label.setText(f"📦 Committing species name: {corrected_subject} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")
-        logger.info(f"📦 Committing species name: {corrected_subject} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")
+        self.status_label.setText(f"📦 Committing species name: {format_subject_for_xmp(corrected_subject)} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")
+        logger.info(f"📦 Committing species name: {format_subject_for_xmp(corrected_subject)} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")
         for f in matching_files:
-            upn_object = fpr.updateSubject(f.name, original_subject, corrected_subject)
-            logger.info(f"""✅ Updated {f.name} with corrected subject from "{original_subject}" to "{corrected_subject}".""")
+            upn_object = fpr.updateSubject(f.name, format_subject_for_xmp(original_subject), format_subject_for_xmp(corrected_subject))
+            logger.info(f"""✅ Updated {f.name} with corrected subject from "{format_subject_for_xmp(original_subject)}" to "{format_subject_for_xmp(corrected_subject)}".""")
 
             # Update image viewer
             if upn_object != None and upn_object['errormessage'] == "":

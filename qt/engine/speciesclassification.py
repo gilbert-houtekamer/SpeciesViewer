@@ -312,7 +312,7 @@ class SpeciesClassification:
 
     # look for names in all three tables
     # add some logic to massage species
-    def getKnownSpecies(self, subject, nested, LookUpInGBIF=False):
+    def getKnownSpecies(self, subject, nested, LookUpInGBIF=False, fuzzy=False):
         scientificname = ''
         if LookUpInGBIF: 
             timesoort = time.time()
@@ -329,14 +329,24 @@ class SpeciesClassification:
                 # check if we already searched for this species
                 if subject not in self.names_not_found_list:
                     gbif = species.name_backbone(name=subject)
-                    if gbif['matchType'] == 'EXACT' and gbif.get('species'):
-                        scientificname = self.addSpecies(gbif).lower()
-                        timesoort = time.time() - timesoort
-                        logger.info(f'The species "{gbif["canonicalName"].lower()}" is found in the GBIF database in {timesoort:.3f} seconds, class {gbif["class"]} in {gbif["kingdom"]}.')
-                    else:
-                        timesoort = time.time() - timesoort
-                        logger.info(f"""The species "{subject}" is not found in the GBIF database as a scientific name, took {timesoort:.3f} seconds.""")
-                        self.names_not_found_list.append(subject)
+                    if not fuzzy: # batch  mode
+                        if gbif['matchType'] == 'EXACT' and gbif.get('species'):
+                            scientificname = self.addSpecies(gbif).lower()
+                            timesoort = time.time() - timesoort
+                            logger.info(f'The species "{gbif["canonicalName"].lower()}" is found in the GBIF database in {timesoort:.3f} seconds, class {gbif["class"]} in {gbif["kingdom"]}.')
+                        else:
+                            timesoort = time.time() - timesoort
+                            logger.info(f"""The species "{subject}" is not found in the GBIF database as a scientific name, took {timesoort:.3f} seconds.""")
+                            self.names_not_found_list.append(subject)
+                    else: # GUI 
+                        if gbif['matchType'] in ['EXACT', 'FUZZY'] and gbif.get('species'):
+                            if gbif['confidence'] >= 90:
+                                scientificname = self.addSpecies(gbif).lower()
+                                logger.info(f"✅ '{subject}' matched GBIF as '{gbif['canonicalName']}' with confidence {gbif['confidence']} ({gbif['matchType']}) in {timesoort:.3f} seconds")
+                            else:
+                                logger.info(f"⚠️ '{subject}' matched GBIF fuzzily but with low confidence ({gbif['confidence']}) in {timesoort:.3f} seconds")
+                        else:
+                            logger.info(f"❌ '{subject}' not found in GBIF with FUZZY or EXACT matching.")
             except:
                 logger.warning(f'Timeout on internet connection')
         elif not nested:
@@ -363,7 +373,7 @@ class SpeciesClassification:
         return scientificname
 
     # See if we recognize the species from either languages, if not call GBIF
-    def getSpecies(self, rawsubject):       
+    def getSpecies(self, rawsubject, fuzzy=False):       
         # lower case
         subject = rawsubject.lower().lstrip().rstrip()
         nested = False
@@ -372,7 +382,7 @@ class SpeciesClassification:
 
         # not found, see if it is a new species
         if (scientificname == ""):
-            scientificname = self.getKnownSpecies(subject, nested,  LookUpInGBIF=True)   
+            scientificname = self.getKnownSpecies(subject, nested,  LookUpInGBIF=True, fuzzy=fuzzy)   
     
         return scientificname
 

@@ -51,7 +51,7 @@ class Pictures:
     
     # intended to only write project sumary, not all pictures
     def write_project_summary(self):
-        print(f"Update project CSV {self.picturefile}")
+        # print(f"Update project CSV {self.picturefile}")
         # Write Picture CSV file
         # check if the output can be written, avoid annoying wait
         try:
@@ -61,7 +61,7 @@ class Pictures:
             return
 
         with pictures_out_csvfile as csvfile:
-            logger.info(f'Write Picture data CSV file {self.picturefile}.')
+            # logger.info(f'Write Picture data CSV file {self.picturefile}.')
             # needed to get column in order
             ordered_fieldnames = OrderedDict((field, None) for field in PICTURE_FIELDS)                 
             writer = csv.DictWriter(csvfile, fieldnames=ordered_fieldnames, quoting=csv.QUOTE_MINIMAL, delimiter=';')
