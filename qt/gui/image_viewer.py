@@ -4,8 +4,8 @@ import logging
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy,
-    QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog)
-from PyQt6.QtGui import QPixmap, QImage, QFontMetrics, QIcon
+    QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog, QToolTip)
+from PyQt6.QtGui import QPixmap, QImage, QFontMetrics, QIcon, QPalette
 from PyQt6.QtCore import Qt, QTimer, QSize
 from widgets.trip_widgets import DirectoryFieldQt
 from engine.filepicture import FilePicture
@@ -287,7 +287,12 @@ class ImagePreviewDialog(QDialog):
         status_icon.setIconSize(QSize(16, 16))
         status_icon.setFixedSize(20, 20)
         status_icon.setFlat(True)
-        status_icon.setStyleSheet("border: none; background-color: transparent;")
+        status_icon.setStyleSheet("""
+                background-color: white;
+                color: #333;
+                border: 1px solid #ccc;
+                padding: 4px;
+            """)      
 
         error_msg = self.fpr.getErrorMsg(img_path.name) if self.fpr else ""
         species_name = self.fpr.getSpeciesName(img_path.name) if self.fpr else ""
@@ -300,6 +305,7 @@ class ImagePreviewDialog(QDialog):
             icon = QIcon(QPixmap("qt/assets/ok_icon.png").scaled(16, 16))
             status_icon.setIcon(icon)
             status_icon.setToolTip("OK")
+    
 
         def show_species_info():
             self.species_dialog = SpeciesInfoDialog(img_path, species_name, error_msg, self.main_window)
