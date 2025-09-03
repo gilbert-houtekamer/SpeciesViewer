@@ -182,12 +182,28 @@ class StateMachine:
             return f"Task {statetotest} cannot be run, the {steps} {prereq} {need} to be run first."
 
     # update the state after the job is completed
+    # also disable steps that must be run again as previous step is now (potentially) invalid
     def updateState(self, statejustdone, ok, lastmessage):
         try:
             self.Taskstate[statejustdone][0] = ok
             self.Taskstate[statejustdone][1] = lastmessage
         except:
             pass  # test modules are not listed
+
+        # Invalidate downstream steps if needed
+        invalidation_map = {
+            "ReadDirExif": ["WritePictures", "WriteBlog", "BuildWebsite", "Freeze"],
+            "WritePictures": ["WriteBlog", "BuildWebsite", "Freeze"],
+            "BuildWebsite": ["Freeze"]
+        }
+
+        if statejustdone in invalidation_map:
+            for step in invalidation_map[statejustdone]:
+                if step in self.Taskstate:
+                    self.Taskstate[step][0] = False
+                    self.Taskstate[step][1] = "Invalidated due to rerun of " + statejustdone
+
+        self.writeState()
         return
     
     # return the return string from task that was (just or last) created

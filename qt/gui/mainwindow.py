@@ -16,6 +16,7 @@ from gui.trip_overview import populate_trip_overview
 from sharedlib.statemachine import StateMachine
 from gui.image_viewer import ImagePreviewDialog
 
+
 def Color(name):
     label = QLabel(name)
     label.setStyleSheet(f"background-color: {name};")
@@ -23,6 +24,8 @@ def Color(name):
     label.setMinimumHeight(100)
     # label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
     return label
+
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -186,6 +189,69 @@ class MainWindow(QMainWindow):
             # item.setBackground(QtGui.QBrush(QtGui.QColor("lightyellow")))
 
         return item
+    
+    def refresh_trip_row(self, sm, day_name):
+        state_label_dict = {
+            "Read\nDirectory" : "ReadDirExif",
+            "Write\nSummary" : "WritePictures",
+            "Write\nBlog" : "WriteBlog",
+            "Build\nWebsite": "BuildWebsite",
+            "Freeze" : "Freeze",
+            "Write\nCommit" : "WriteCommit"
+        }        
+        
+        trip_root = Path(self.config.get("trip", "tripbiotadatabase"))
+        review_day = trip_root / "metadata" / "review" / day_name
+        # sm = StateMachine(str(trip_root), str(review_day), readState=True)
+
+        for step_key in self.state_labels:
+            step_name = state_label_dict[step_key]  # e.g. "Write\nBlog" → "WriteBlog"
+            if step_name not in sm.Taskstate:
+                symbol = "⚪"
+                tooltip = "Unknown step."
+            else:
+                completed, message, _, _ = sm.Taskstate[step_name]
+                if completed and message == "Successfully run.":
+                    if sm.Taskstate.get("WriteCommit", [False])[0]:
+                        symbol = "⬜"
+                        tooltip = "Step completed. Workflow is frozen after WriteCommit."
+                    else:
+                        symbol = "✅"
+                        tooltip = message
+                elif not completed and "failed" in message.lower():
+                    symbol = "❌"
+                    tooltip = message
+                elif step_name == "WriteBlog":
+                    if not sm.stateOKtorun(step_name):
+                        symbol = "⚪"
+                        tooltip = sm.explainAbort(step_name, raiseSV=False)
+                    else:
+                        row = next((r for r in range(self.trip_table.rowCount()) if self.trip_table.item(r, 0).text() == day_name), None)
+                        if row is not None:
+                            jpgs = int(self.trip_table.item(row, 2).text())
+                            if jpgs == 0:
+                                symbol = "🚫"
+                                tooltip = "No JPGs available — blog step suppressed."
+                            else: 
+                                symbol = "🔘"
+                                tooltip = "Click on the sphere to run this step."                     
+                elif sm.stateOKtorun(step_name):
+                    symbol = "🔘"
+                    tooltip = "Click on the sphere to run this step."
+                else:
+                    symbol = "⚪"
+                    tooltip = sm.explainAbort(step_name, raiseSV=False)
+
+            self.update_trip_cell(day_name, step_key, symbol, tooltip)
+
+        # Update progress column
+        ini_path = review_day / "statemachine.ini"
+        summary_item = self.get_progress_summary_item(sm, ini_path)
+        for row in range(self.trip_table.rowCount()):
+            if self.trip_table.item(row, 0).text() == day_name:
+                self.trip_table.setItem(row, 3 + len(self.state_labels), summary_item)
+                break
+
 
 
     def handle_trip_table_double_click(self, row, column):
@@ -194,7 +260,7 @@ class MainWindow(QMainWindow):
             return
 
         day_item = self.trip_table.item(row, 0)
-        action_item = self.trip_table.horizontalHeaderItem( column)
+        action_item = self.trip_table.horizontalHeaderItem(column)
 
         if not day_item or not action_item:
             self.logger.warning("Invalid cell selection.")
@@ -207,41 +273,58 @@ class MainWindow(QMainWindow):
         project_root = Path(self.config.get("project", "picturedirectory")).parent
         new_dir = project_root / day_str
         self.config.set("project", "picturedirectory", str(new_dir))
-        self.logger.info(f"Updated PictureDirectory to: {new_dir}")
-        # trip if available
-        trip_root = Path(self.config.get("trip", "tripbiotadatabase"))
-        trip_dir = os.path.join(str(trip_root), 'metadata' , 'review' , day_str)
-        if not os.path.exists(trip_dir): trip_root = ""
+        # self.logger.info(f"Updated PictureDirectory to: {new_dir}")
 
-        if column == 1:  # RAW column
-            self.image_viewer_dialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root),  mode="raw")
+        trip_root = Path(self.config.get("trip", "tripbiotadatabase"))
+        review_day = trip_root / "metadata" / "review" / day_str
+        sm = StateMachine(str(trip_root), str(review_day), readState=True)
+
+        # DISABLE logic: check if this step should be blocked
+        step_index = column - 3
+        if 0 <= step_index < len(self.state_labels):
+            step_name = ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite", "Freeze", "WriteCommit"][step_index]
+            jpgs = int(self.trip_table.item(row, 2).text())
+
+            # Case 1: frozen after WriteCommit
+            if sm.Taskstate.get("WriteCommit", [False])[0]:
+                self.logger.warning(f"Step '{action_label}' is disabled: workflow frozen after WriteCommit.")
+                return
+
+            # Case 2: WriteBlog with no JPGs
+            if step_name == "WriteBlog" and jpgs == 0:
+                self.logger.warning(f"Step '{action_label}' is disabled: no JPGs available.")
+                return
+
+            # Case 3: state not OK to run
+            if not sm.stateOKtorun(step_name):
+                reason = sm.explainAbort(step_name, raiseSV=False)
+                self.logger.warning(f"Step '{action_label}' is disabled: {reason}")
+                return
+
+        # RAW column
+        if column == 1:
+            self.image_viewer_dialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root), mode="raw")
             self.image_viewer_dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
             self.image_viewer_dialog.show()
-            # if not hasattr(self, "dlgImagePreviewDialog") or self.dlgImagePreviewDialog is None:
-            #     self.dlgImagePreviewDialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root),  mode="raw")
-            # self.dlgImagePreviewDialog.show()
-            # self.dlgImagePreviewDialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root),  mode="raw")
-            # self.dlgImagePreviewDialog.show()
-        elif column == 2:  # JPG column
-            self.dlgImagePreviewDialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root),  mode="jpg")
+
+        # JPG column
+        elif column == 2:
+            self.dlgImagePreviewDialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root), mode="jpg")
             self.dlgImagePreviewDialog.show()
+
+        # Batch action
         else:
-            # Look up the MenuSpec in the "Trip" section
             trip_menu = self.menu_spec.get("Trip", {})
             spec_obj = trip_menu.get(action_label)
 
             if spec_obj and spec_obj.callback:
-                # self.logger.info(f"Invoking menu action: {action_label}")
                 spec_obj.callback()
+                self.refresh_trip_row(sm, day_str)
             else:
                 self.logger.warning(f"No menu action found for: {action_label}")
 
+            # Update progress summary if needed
             if column == (3 + len(self.state_labels) - 1):
-                directory = self.trip_table.item(row,0).text()
-                trip_root = Path(self.config.get("trip", "tripbiotadatabase"))
-                new_dir = trip_root / directory
-                sm = StateMachine(str(trip_root), str(new_dir), readState=True)
-                ini_path = Path(directory) / "statemachine.ini"
+                ini_path = Path(day_str) / "statemachine.ini"
                 summary_item = self.get_progress_summary_item(sm, ini_path)
-
                 self.trip_table.setItem(row, 3 + len(self.state_labels), summary_item)

@@ -40,7 +40,7 @@ def main():
     QToolTip.setFont(QFont("SansSerif", 12))
     app.setStyleSheet("""
         QToolTip {
-            background-color: #f5f5f5;
+            background-color: white;
             color: #333;
             border: 1px solid #ccc;
             padding: 4px;
