@@ -104,12 +104,26 @@ def main(args, config):
                         logger.warning(f'Not all data is commmitted to the repository for project "{project}"')
                 else: # no statemachine.ini at all, go for it anyhow
                     blog.BestJPGs = b['BestJPGs']
-                    MyProject.setSkipJPGs(True)
-                    blog.makeRunSummaryPost('biota', 'nl')
-                    blog.makeRunSummaryPost('biota', 'en')
-                    blog.uploadBlog(sftp, sftpPictures=False)                    
+                    if blog.BestJPGs != []:
+                        MyProject.setSkipJPGs(True)
+                        blog.makeRunSummaryPost('biota', 'nl')
+                        blog.makeRunSummaryPost('biota', 'en')
+                        blog.uploadBlog(sftp, sftpPictures=False)
             except:
                 logger.warning(f'None of the steps are executed for "{project}"')
+        # remove blogs without JPGs
+        # Create a new dictionary to hold valid entries
+        cleaned_dict = {}
+
+        for blogday, entry in blog.blog_dict.items():
+            if entry["BestJPGs"] == []:
+                logger.info(f"Removed blog entry for {blogday} without JPG pictures.")
+            else:
+                cleaned_dict[blogday] = entry
+
+        # Replace the original dictionary with the cleaned one
+        blog.blog_dict = cleaned_dict
+
         # all updated, also update index
         blog.updateIndexPage()
         blog.uploadBlogIndex(sftp)
