@@ -40,13 +40,13 @@ def readConfig():
     return config
 
 def scan_files(directory, search_string, report):
-    print(f"\nFile stats GPS and location data:\n\nFile           Count  NoGPS   Noloc  NoCity  NoSpec    Good     Bad  NoColor", file=report)    
+    print(f"File stats GPS and location data:\n\nFile           Count  NoGPS   Noloc  NoCity  NoSpec    Good     Bad  NoColor", file=report)    
     for root, dirs, files in os.walk(directory):
         for file in files:
             if file.endswith('.txt'):
                 file_path = os.path.join(root, file)
                 parseddir = root.split('\\')
-                name = parseddir[1]
+                name = parseddir[len(parseddir)-1]
                 if name == "": name = parseddir[0]
                 headers.append(name)
                 with open(file_path, 'r', encoding='utf-8') as f:
@@ -217,17 +217,16 @@ def main(args, config):
     reports_dir.mkdir(parents=True, exist_ok=True)
     report_path = reports_dir / "Species overview.txt"
     with open(report_path, "w", encoding="utf-8") as report:
-        report.write("Your species summary goes here.\n")
-
-        # Collect species
+         # Collect species
         directory_to_scan = MyProject.getMetaDir() + 'review' # 'C:/laptop/validate/metadata/review'
         search_string = 'Species specified in this dir:'
         scan_files(directory_to_scan, search_string, report)
 
         # print in order classification
+        report.write("\nThe species found below, showing birds first.")
         print_headers(sc, report)
         if jpgneeded:
-            print(f"There are {jpgneeded} species that have no JPGs on the first occurrence of that species.", file=report)
+            print(f"\nThere are {jpgneeded} species that have no JPGs on the first occurrence of that species.", file=report)
 
     # print(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
     totaltime = time.time() - starttime      

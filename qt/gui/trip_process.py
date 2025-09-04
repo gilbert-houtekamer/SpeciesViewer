@@ -709,6 +709,7 @@ class CountSpeciesDialog(BaseTripModuleDialog):
             info_text="Count the different number of species picture in the trip."
         )
 
+        self.resize(1100, 750)
         # Report viewer setup
         self.report_viewer = QTextEdit()
         self.report_viewer.setReadOnly(True)
