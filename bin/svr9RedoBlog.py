@@ -101,7 +101,7 @@ def main(args, config):
                         blog.makeRunSummaryPost('biota', 'en')
                         blog.uploadBlog(sftp, sftpPictures=False)
                     else:
-                        logger.warning(f'Not all data is commmitted to the repository for project "{project}"')
+                        logger.warning(f'Not all data is commmitted to the repository for "{project}", blog will be deleted')
                 else: # no statemachine.ini at all, go for it anyhow
                     blog.BestJPGs = b['BestJPGs']
                     if blog.BestJPGs != []:
@@ -117,7 +117,7 @@ def main(args, config):
 
         for blogday, entry in blog.blog_dict.items():
             if entry["BestJPGs"] == []:
-                logger.info(f"Removed blog entry for {blogday} without JPG pictures.")
+                logger.warning(f"Removed blog entry for {blogday} without JPG pictures.")
             else:
                 cleaned_dict[blogday] = entry
 

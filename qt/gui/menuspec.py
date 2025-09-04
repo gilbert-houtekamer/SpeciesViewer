@@ -2,7 +2,7 @@ import configparser
 
 from gui.menu import MenuSpec  # assuming class is defined elsewhere
 from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDialog, 
-        CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog, CountSpeciesDialog)
+        CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog, CountSpeciesDialog, RedoTripBlogsDialog)
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
 from settings.speciessettings import SpeciesSettingsDialog
@@ -18,6 +18,7 @@ import bin.sv5BuildWebsite
 import bin.sv6Freeze
 import bin.sv7WriteCommit
 import bin.svr2CountSpecies
+import bin.svr9RedoBlog
 
 def build_menu_spec(main_window):
     config = main_window.config
@@ -153,6 +154,20 @@ def build_menu_spec(main_window):
     )
     count_species.callback = lambda: CountSpeciesDialog(main_window, config, count_species).exec()    
 
+    redo_trip_blogs = MenuSpec(
+        callback=None,
+        title="Recreate Trip Blogs",
+        enabled=make_enabled_checker("RedoTripBlogs"),
+        tooltip=make_tooltip("RedoTripBlogs"),        
+        batch_parms={
+            'statusname': "",
+            'module_called': bin.svr9RedoBlog.main,
+            'before_msg': "Recreating blogs that have JPG pictures ...",
+            'after_msg': "✅ Valid Blogs recreated, review the message log."
+        }
+    )
+    redo_trip_blogs.callback = lambda: RedoTripBlogsDialog(main_window, config, redo_trip_blogs).exec()        
+
     return {
         "File": {
             "Quit": MenuSpec(
@@ -171,6 +186,7 @@ def build_menu_spec(main_window):
             "Write Commit": commit_website,
             f"{MenuSpec.separator()}_2": None,
             "Count Species": count_species,
+            "Redo Blogs": redo_trip_blogs,            
         },        
         "Settings": {
             "Global Settings": MenuSpec(

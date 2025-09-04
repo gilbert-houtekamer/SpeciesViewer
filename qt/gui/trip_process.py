@@ -765,3 +765,14 @@ class CountSpeciesDialog(BaseTripModuleDialog):
     def copy_to_clipboard(self):
         clipboard = QGuiApplication.clipboard()
         clipboard.setText(self.report_viewer.toPlainText())
+
+class RedoTripBlogsDialog(BaseTripModuleDialog):
+    def __init__(self, parent, config, menu_spec):
+        super().__init__(
+            parent,
+            config,
+            menu_spec,
+            title="Recreate Blogs for trip",
+            info_text="Recreate Blogs for trip for all committed days."
+        )
+
