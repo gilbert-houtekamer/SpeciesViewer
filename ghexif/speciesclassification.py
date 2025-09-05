@@ -169,7 +169,13 @@ class SpeciesClassification:
             if species in self.sc_dict: continue
             speciesobject = newSC[species] 
             self.sc_dict[species] = speciesobject
-    
+            if speciesobject["Level"].value == 1:
+                outstr = ""
+                if speciesobject['EnglishName'] != "":
+                    outstr += f""""{speciesobject['EnglishName']}" (English) / """
+                if speciesobject['DutchName'] != "":
+                    outstr += f""""{speciesobject['DutchName']}" (Dutch) / """
+                logger.info(f"""Merge {outstr}"{speciesobject['ScientificName']}" (Scientific) to Master species repository.""")
         return
 
 

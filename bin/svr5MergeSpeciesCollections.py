@@ -47,13 +47,13 @@ def main(args, config):
 
     # test set up is to use master, and merge collection on hardcoded place
     # read the list with all pre-defined species
-    tomergeSpeciesCollection = MyProject.MasterRepository + '/metadata/active/speciescollection.csv'
-    sc.readSpeciesCollection(tomergeSpeciesCollection, True)
+    metadatadir = MyProject.getMetaDir()
+    sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)    
     newSC = sc.scCopy()     # keep the old version to merge
     sc.clearDict()
     # now read the master we want to merge more in 
-    metadatadir = MyProject.getMetaDir()
-    sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)
+    tomergeSpeciesCollection = MyProject.MasterRepository + '/metadata/active/speciescollection.csv'
+    sc.readSpeciesCollection(tomergeSpeciesCollection, True)
     # merge (brute force is not too bad)
     sc.mergeSpeciesCollections(newSC)
     # write to new location
