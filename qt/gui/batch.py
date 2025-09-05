@@ -77,6 +77,7 @@ class BatchModuleRunner:
             "WriteCommit" : 'Write\nCommit'
         }
 
+        new_warnings = 0        # make it is initialized
         try:
             if not sm.stateOKtorun(statusname):
                 msg = sm.explainAbort(statusname, raiseSV=False)
@@ -91,8 +92,15 @@ class BatchModuleRunner:
                 return  # ✅ Prevent further execution
 
             else:
+                # track warning count
+                logger = logging.getLogger("speciesviewer")
+                before = logger.warning_counter.count
+                # call batch module 
                 self.logger.info(before_msg)
                 module_called(args, module_config)
+                # get update counter
+                after = logger.warning_counter.count
+                new_warnings = after - before                
         except Exception as e:
             errorstring = str(e)
             self.logger.warning(f"❌ {statusname} failed: {errorstring}")
@@ -101,10 +109,17 @@ class BatchModuleRunner:
                 sm.updateState(statusname, False, errorstring)
                 self.main_window.update_trip_cell(directory_name, expected_messages[statusname], "❌", f"{statusname} failed: {errorstring}")            
         else:
-            self.logger.info(after_msg)
+            if new_warnings > 0:
+                self.logger.info(f"{after_msg} Please review the {new_warnings if new_warnings>1 else ''} warning{'s' if new_warnings>1 else ''}.")
+            else:
+                self.logger.info(after_msg)
             if statusname != "":      
-                sm.updateState(statusname, True, "Successfully run.")        
-                self.main_window.update_trip_cell(directory_name, expected_messages[statusname], "✅", "Successfully run.")
+                sm.updateState(statusname, True, "Successfully run.")
+                if new_warnings > 0:
+                    self.main_window.update_trip_cell(directory_name, expected_messages[statusname], "✅", 
+                              f"Successfully run, but review {new_warnings if new_warnings>1 else ''} warning{'s' if new_warnings>1 else ''}.")
+                else:
+                    self.main_window.update_trip_cell(directory_name, expected_messages[statusname], "✅", "Successfully run.")
         finally:
             if statusname != "":      
                 if statusname != "MakeRepository": 
@@ -118,8 +133,12 @@ class BatchModuleRunner:
             self.status_label.setText(f"❌ {errorstring}")
             self.status_bar.showMessage(f"❌ {errorstring}")
         else:
-            self.status_label.setText(after_msg)
-            self.status_bar.showMessage(after_msg)
+            if new_warnings > 0:
+                self.status_label.setText(f"{after_msg} Please review the {new_warnings if new_warnings>1 else ''} warning{'s' if new_warnings>1 else ''}.")
+                self.status_bar.showMessage(f"{after_msg} Please review the {new_warnings if new_warnings>1 else ''} warning{'s' if new_warnings>1 else ''}.")                
+            else:
+                self.status_label.setText(after_msg)
+                self.status_bar.showMessage(after_msg)
 
         self.main_window.green_log_box.verticalScrollBar().setValue(
             self.main_window.green_log_box.verticalScrollBar().maximum()

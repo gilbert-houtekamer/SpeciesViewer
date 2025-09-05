@@ -79,7 +79,7 @@ def build_menu_spec(main_window):
             'statusname': "WritePictures",
             'module_called': bin.sv3WritePictures.main,
             'before_msg': "Reading meta data for all pictures ...",
-            'after_msg': "✅ Writing Summary data. Please review the messagelog."
+            'after_msg': "✅ Writing Summary data."
         }
     )
     write_summary.callback = lambda: WritePicturesDialog(main_window, config, write_summary).exec()
@@ -93,7 +93,7 @@ def build_menu_spec(main_window):
             'statusname': "WriteBlog",
             'module_called': bin.sv4WriteBlog.main,
             'before_msg': "Create a blog entry ...",
-            'after_msg': "✅ Blog successfully created. Please review the messagelog."
+            'after_msg': "✅ Blog successfully created."
         }
     )
     write_blog.callback = lambda: CreateBlogDialog(main_window, config, write_blog).exec()
@@ -107,7 +107,7 @@ def build_menu_spec(main_window):
             'statusname': "BuildWebsite",
             'module_called': bin.sv5BuildWebsite.main,
             'before_msg': "Build updates for later publication ...",
-            'after_msg': "✅ Website updates prepared. Please review the messagelog."
+            'after_msg': "✅ Website updates prepared."
         }
     )
     build_website.callback = lambda: BuildWebsiteDialog(main_window, config, build_website).exec()    
@@ -121,7 +121,7 @@ def build_menu_spec(main_window):
             'statusname': "Freeze",
             'module_called': bin.sv6Freeze.main,
             'before_msg': "Freeze all collected data ...",
-            'after_msg': "✅ Data frozen. Please review the messagelog."
+            'after_msg': "✅ Data frozen."
         }
     )
     freeze_data.callback = lambda: FreezeDialog(main_window, config, freeze_data).exec()    
@@ -135,7 +135,7 @@ def build_menu_spec(main_window):
             'statusname': "WriteCommit",
             'module_called': bin.sv7WriteCommit.main,
             'before_msg': "Update the trip website ...",
-            'after_msg': "✅ Website updated. Please review the messagelog and the website."
+            'after_msg': "✅ Please review updated Website."
         }
     )
     commit_website.callback = lambda: WriteCommitDialog(main_window, config, commit_website).exec()    
@@ -163,7 +163,7 @@ def build_menu_spec(main_window):
             'statusname': "",
             'module_called': bin.svr9RedoBlog.main,
             'before_msg': "Recreating blogs that have JPG pictures ...",
-            'after_msg': "✅ Valid Blogs recreated, review the message log."
+            'after_msg': "✅ Valid Blogs recreated."
         }
     )
     redo_trip_blogs.callback = lambda: RedoTripBlogsDialog(main_window, config, redo_trip_blogs).exec()        

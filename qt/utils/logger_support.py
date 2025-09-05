@@ -42,6 +42,17 @@ class ConsoleFormatter(logging.Formatter):
         elif record.levelno == logging.WARNING:
             return f"\033[94m{msg}\033[0m"  # Blue
         return msg
+    
+class WarningCounter(logging.Filter):
+    def __init__(self):
+        super().__init__()
+        self.count = 0
+
+    def filter(self, record):
+        if record.levelno == logging.WARNING:
+            self.count += 1
+        return True  # Always allow the record through
+
 
 # Logger initializer
 def init_logger(log_widget):
@@ -49,7 +60,12 @@ def init_logger(log_widget):
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
     logger.handlers.clear()
+    # access to global counter
+    warning_counter = WarningCounter()
+    logger.addFilter(warning_counter)
+    logger.warning_counter = warning_counter  # Attach for easy access    
 
+    # output handler
     # File output
     fh = logging.FileHandler("studio.log", mode="w", encoding="utf-8")
     fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s]: %(message)s"))
