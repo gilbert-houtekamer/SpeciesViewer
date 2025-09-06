@@ -9,6 +9,11 @@ import configparser
 import time
 import logging
 import argparse
+from datetime import datetime, timedelta
+from openpyxl import Workbook
+from openpyxl.styles import PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+
 
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
@@ -43,18 +48,25 @@ def readConfig():
 # voorbeeld brazilie:
 # https://avibase.bsc-eoc.org/checklist.jsp?lang=EN&p2=1&list=ioc&synlang=NL&region=BRms&version=text&lifelist=&highlight=0
 def readAviBase():
-    file_path = "C:/Users/gilbe/OneDrive/reizen/gambia/soorten.csv"
+    #file_path = "C:/Users/gilbe/OneDrive/reizen/gambia/soorten.csv"
+    file_path = "C:/Users/gilbe/OneDrive/reizen/madagascar/avibase.csv"
     number = 1
     with open(file_path, 'r', encoding='utf-8') as f:
         content = f.read().split("\n")
         for lines in content:
             tokens = lines.split(";")
             try:
-                if tokens[1] not in ['Wet','']:
+                if tokens[0] == '\ufeffColumn1':
+                    continue
+                    # header line, ignore it
+                elif tokens[0] == '' or tokens[0] == ' ':
+                    continue
+                elif tokens[1] not in ['Wet','']:
                     listspecies = {}
                     listspecies['nlname'] = tokens[2]
                     listspecies['enname'] = tokens[0]
                     listspecies['scname'] = tokens[1]
+                    listspecies['status'] = tokens[3]
                     if tokens[1] not in ["Wet", ""]:
                         listspecies['number'] = number
                         number += 1 
@@ -71,6 +83,7 @@ def readAviBase():
                     listspecies['number'] = -1
                     listspecies['enname'] = tokens[0]
                     listspecies['scname'] = ""
+                    listspecies['status'] = ""                
                     avibase_dict[listspecies['enname']] = listspecies            
             except:
                pass
@@ -97,12 +110,13 @@ def printbb():
     groep = 0
     fotos = 0
     nieuwe = 0
-    file_path = "C:/Users/gilbe/OneDrive/reizen/gambia/soorten.prn"
+    file_path = "C:/Users/gilbe/OneDrive/reizen/madagascar/soorten.prn"
     with open(file_path, 'w', encoding='utf-8') as f:
         header_line = 'No     Nederlandse naam              '
         header_line += ' Engelse naam                  '
         header_line += ' Wetenschappelijke naam        '
         header_line += '   seen?  New? Bekende Foto'
+        header_line += ' Notes'
         print(header_line, file=f)
 
         for enname in avibase_dict:
@@ -122,6 +136,7 @@ def printbb():
                     line += '   New         '
                 else:
                     line += '               '
+                line += listspecies['status'] 
 
             print(line, file=f)
 
@@ -129,9 +144,9 @@ def printbb():
         print(f"Ik fotografeerde {fotos} soorten, waarvan {nieuwe} fotos.",file=f)
         f.close()
 
-    file_path = "C:/Users/gilbe/OneDrive/reizen/gambia/soorten-out.csv"
+    file_path = "C:/Users/gilbe/OneDrive/reizen/madagascar/soorten-out.csv"
     with open(file_path, 'w', encoding='utf-8') as f:
-        print("No;Engels;NL;Wet;seen?;New?;Known;Photo", file=f)
+        print("No;Engels;NL;Wet;seen?;New?;Known;Photo;Notes", file=f)
         for enname in avibase_dict:
             listspecies = avibase_dict[enname]
             if listspecies['number'] == -1:
@@ -149,10 +164,106 @@ def printbb():
                     line += 'New;;'
                 else:
                     line += ';;'
+                line += f";{listspecies['status']};"                     
             print(line, file=f)
 
         f.close()
     return
+
+def create_excel_checklist(csv_path, xlsx_path, start_date, num_days):
+    # Load CSV
+    with open(csv_path, 'r', encoding='utf-8') as f:
+        reader = csv.reader(f, delimiter=';')
+        rows = list(reader)
+
+    header = rows[0]
+    data = rows[1:]
+
+    # Create workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Checklist"
+
+    # Define fills
+    weekend_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+    light_grey_row_fill = PatternFill(start_color="F0F0F0", end_color="F0F0F0", fill_type="solid")
+
+    # Extend header with date columns
+    date_headers = []
+    weekend_columns = []
+    for i in range(num_days):
+        date = start_date + timedelta(days=i)
+        date_str = date.strftime("%d/%m/%Y")
+        date_headers.append(date_str)
+        if date.weekday() >= 5:  # Saturday=5, Sunday=6
+            weekend_columns.append(len(header) + i + 1)
+
+    full_header = header + date_headers
+
+    # Write header
+    for col_idx, value in enumerate(full_header, 1):
+        cell = ws.cell(row=1, column=col_idx, value=value)
+        if col_idx > len(header):  # Date columns
+            cell.alignment = Alignment(horizontal="left", vertical="center")
+            if col_idx in weekend_columns:
+                cell.fill = weekend_fill
+        else:
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    # Write data rows
+    for row_idx, row in enumerate(data, start=2):
+        # Fill in original columns
+        for col_idx, value in enumerate(row, 1):
+            cell = ws.cell(row=row_idx, column=col_idx)
+
+            if col_idx == 1:  # Column A: numeric
+                try:
+                    cell.value = int(value)
+                except ValueError:
+                    cell.value = value
+            else:
+                cell.value = value
+
+        # Fill in date columns (empty but formatted)
+        for i in range(num_days):
+            col_idx = len(header) + i + 1
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.number_format = "DD/MM/YYYY"
+            if col_idx in weekend_columns:
+                cell.fill = weekend_fill
+
+        # Shade row if Column B is empty
+        if not ws.cell(row=row_idx, column=2).value:
+            for col in range(1, len(full_header) + 1):
+                ws.cell(row=row_idx, column=col).fill = light_grey_row_fill
+
+    # Adjust column widths
+    ws.column_dimensions['A'].width = 5  # Enough for 999
+    ws.column_dimensions['E'].width = 5
+    ws.column_dimensions['F'].width = 5
+    ws.column_dimensions['G'].width = 8
+    ws.column_dimensions['H'].width = 6
+    for col in range(2, len(header) + 1):
+        if col not in [5, 6, 7, 8]:  # E=5, F=6, G=7, H=8
+            ws.column_dimensions[get_column_letter(col)].width = 24
+    for col in range(len(header) + 1, len(full_header) + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 3  # Narrow for 2-digit day
+
+    # Define thin border style
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+
+    # Apply borders to all cells in A1:AH385
+    for row in ws.iter_rows(min_row=1, max_row=385, min_col=1, max_col=34):  # AH = column 34
+        for cell in row:
+            cell.border = thin_border        
+
+    # Save file
+    wb.save(xlsx_path)
 
 def main(args, config):
     global starttime, SpeciesDebug, Reference_sp
@@ -191,6 +302,12 @@ def main(args, config):
     readAviBase()
     addSpeciesInfo(sc, Reference_sp)
     printbb()
+    csv_path = "C:/Users/gilbe/OneDrive/reizen/madagascar/soorten-out.csv"
+    xlsx_path = "C:/Users/gilbe/OneDrive/reizen/madagascar/soorten-checklist.xlsx"
+    start_date = datetime(2025, 11, 2)  # Adjust to your trip start
+    num_days = 25                       # Adjust to your trip length
+
+    create_excel_checklist(csv_path, xlsx_path, start_date, num_days)
 
     totaltime = time.time() - starttime      
     print(f'Total time for all other work {totaltime:.1f} seconds.')
