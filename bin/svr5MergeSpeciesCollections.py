@@ -65,7 +65,7 @@ def main(args, config):
 
 if __name__ == "__main__":
     # get commandline parameters
-    parser = argparse.ArgumentParser(description="sv5MergeSpeciesCollection")
+    parser = argparse.ArgumentParser(description="svr5MergeSpeciesCollection")
     parser.add_argument(
         "--config",
         type=str,

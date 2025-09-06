@@ -776,3 +776,22 @@ class RedoTripBlogsDialog(BaseTripModuleDialog):
             info_text="Recreate Blogs for trip for all committed days."
         )
 
+class RedoTripRepoDialog(BaseTripModuleDialog):
+    def __init__(self, parent, config, menu_spec):
+        super().__init__(
+            parent,
+            config,
+            menu_spec,
+            title="Recreate Repository for trip",
+            info_text="Recreate Repository for trip for all days."
+        )
+
+class MergeTripDialog(BaseTripModuleDialog):
+    def __init__(self, parent, config, menu_spec):
+        super().__init__(
+            parent,
+            config,
+            menu_spec,
+            title="Merge Trip Species with master",
+            info_text="List and merge species lists from master and trip."
+        )        

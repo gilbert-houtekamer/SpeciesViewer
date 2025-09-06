@@ -2,7 +2,8 @@ import configparser
 
 from gui.menu import MenuSpec  # assuming class is defined elsewhere
 from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDialog, 
-        CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog, CountSpeciesDialog, RedoTripBlogsDialog)
+        CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog, 
+        CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog)
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
 from settings.speciessettings import SpeciesSettingsDialog
@@ -18,7 +19,10 @@ import bin.sv5BuildWebsite
 import bin.sv6Freeze
 import bin.sv7WriteCommit
 import bin.svr2CountSpecies
+import bin.svr5MergeSpeciesCollections
+import bin.svr8RecreateTripRepository
 import bin.svr9RedoBlog
+
 
 def build_menu_spec(main_window):
     config = main_window.config
@@ -166,7 +170,36 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Valid Blogs recreated."
         }
     )
-    redo_trip_blogs.callback = lambda: RedoTripBlogsDialog(main_window, config, redo_trip_blogs).exec()        
+    redo_trip_blogs.callback = lambda: RedoTripBlogsDialog(main_window, config, redo_trip_blogs).exec()
+
+    recreate_trip = MenuSpec(
+        callback=None,
+        title="Recreate Trip Repository",
+        enabled=make_enabled_checker("RedoTripRepository"),
+        tooltip=make_tooltip("RedoTripRepository"),        
+        batch_parms={
+            'statusname': "",
+            'module_called': bin.svr8RecreateTripRepository.main,
+            'before_msg': "Delete existing repository and rebuild it ...",
+            'after_msg': "✅ Trip recreated."
+        }
+    )
+    recreate_trip.callback = lambda: RedoTripRepoDialog(main_window, config, recreate_trip).exec()    
+
+    # Master updates
+    merge_trip_species = MenuSpec(
+        callback=None,
+        title="Merge new species to master",
+        enabled=make_enabled_checker("MergeTripSpecies"),
+        tooltip=make_tooltip("MergeTripSpecies"),        
+        batch_parms={
+            'statusname': "",
+            'module_called': bin.svr5MergeSpeciesCollections.main,
+            'before_msg': "List and merge species lists from master and trip ...",
+            'after_msg': "✅ Review merge results, and decide to copy to master."
+        }
+    )
+    merge_trip_species.callback = lambda: MergeTripDialog(main_window, config, merge_trip_species).exec() 
 
     return {
         "File": {
@@ -186,8 +219,18 @@ def build_menu_spec(main_window):
             "Write Commit": commit_website,
             f"{MenuSpec.separator()}_2": None,
             "Count Species": count_species,
-            "Redo Blogs": redo_trip_blogs,            
-        },        
+            "Redo Blogs": redo_trip_blogs,
+            f"{MenuSpec.separator()}_3": None,    
+            "Recreate Trip": recreate_trip,     
+        },
+        "Master": {
+            "Merge Species": merge_trip_species,
+            # "Add trip": None, # add_trip
+        },
+        # "Utilities": {
+        #     "BirdingBreaks": None, # PROCESS BIRDING BREAK FILES
+        #     "AviBase": None
+        # },
         "Settings": {
             "Global Settings": MenuSpec(
                 callback=lambda: GlobalSettingsDialog(main_window, config).exec(),
