@@ -107,7 +107,7 @@ def addSpeciesInfo(sc,sp):
 
 
 # caller
-def createRawCSV(triproot,outfilename):
+def createRawCSV(temp_csv_file):
     groep = 0
     fotos = 0
     nieuwe = 0
@@ -144,9 +144,7 @@ def createRawCSV(triproot,outfilename):
     #     print(f"\n\nDe groep zag of hoorde {groep} soorten.",file=f)
     #     print(f"Ik fotografeerde {fotos} soorten, waarvan {nieuwe} fotos.",file=f)
     #     f.close()
-
-    file_path = os.path.join(triproot, outfilename)
-    with open(file_path, 'w', encoding='utf-8') as f:
+    with open(temp_csv_file, 'w', encoding='utf-8') as f:
         print("No;Engels;NL;Wet;seen?;New?;Known;Photo;Notes", file=f)
         for enname in avibase_dict:
             listspecies = avibase_dict[enname]
@@ -327,17 +325,30 @@ def main(args, config):
     metadatadir = MyProject.getMetaDir()
     sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)
 
-    # read BirdingBreaksList
-    readAviBase(MyProject.Repository, "avibase.csv")
-    addSpeciesInfo(sc, Reference_sp)
-    createRawCSV(MyProject.Repository,"soorten-temp.csv")
-    csv_path =os.path.join(MyProject.Repository, "soorten-temp.csv")
-    xlsx_path = os.path.join(MyProject.Repository, "avibase-checklist.xlsx")
-    start_date = datetime(2025, 11, 2)  # Adjust to your trip start
-    num_days = 25                       # Adjust to your trip length
 
-    create_excel_checklist(csv_path, xlsx_path, start_date, num_days)
-    os.remove(csv_path)
+
+    # get date from trip file
+    if MyProject.Trip:
+        # read aviBase
+        readAviBase(MyProject.Repository, "avibase.csv")
+        addSpeciesInfo(sc, Reference_sp)
+        temp_csv_file = os.path.join(MyProject.Repository, "soorten-temp.csv")
+        createRawCSV(temp_csv_file)
+        xlsx_path = os.path.join(MyProject.Repository, "avibase-checklist.xlsx")
+
+        fromdate_str = MyProject.Trip.trip_dict[MyProject.Trip.tripname]['fromdate']
+        todate_str = MyProject.Trip.trip_dict[MyProject.Trip.tripname]['todate']        
+        # Convert to datetime objects
+        start_date = datetime.strptime(fromdate_str, "%Y-%m-%d")
+        end_date = datetime.strptime(todate_str, "%Y-%m-%d")
+
+        # Calculate number of days (inclusive)
+        num_days = (end_date - start_date).days + 1
+
+        create_excel_checklist(temp_csv_file, xlsx_path, start_date, num_days)
+    else:
+        logger.warning(f"This project does not refer to a trip, no checklist is created.")
+    os.remove(temp_csv_file)
 
     totaltime = time.time() - starttime      
     print(f'Total time for all other work {totaltime:.1f} seconds.')
