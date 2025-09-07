@@ -46,6 +46,7 @@ class MenuSpec:
         self,
         callback,
         title=None,
+        showsubdirectory=True,
         shortcut=None,
         enabled=None,
         icon=None,
@@ -72,6 +73,7 @@ class MenuSpec:
         """
         self.callback = callback
         self.title = title
+        self.showsubdirectory = showsubdirectory,
         self.shortcut = shortcut
         self.enabled = enabled or (lambda: True)
         self.icon = icon
@@ -100,6 +102,9 @@ class MenuSpec:
     
     def get_statusname(self):
         return self.batch_parms.get("statusname", "")
+    
+    def get_showsubdirectory(self):
+        return self.showsubdirectory
           
     @staticmethod
     def separator():

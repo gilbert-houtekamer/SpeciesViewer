@@ -594,7 +594,7 @@ class CreateBlogDialog(QDialog):
 
 
 class BaseTripModuleDialog(QDialog):
-    def __init__(self, parent, config, menu_spec, title, info_text):
+    def __init__(self, parent, config, menu_spec, title, info_text, subdirectory=True):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.resize(600, 250)
@@ -602,7 +602,8 @@ class BaseTripModuleDialog(QDialog):
         self.logger = logging.getLogger("speciesviewer")
         self.config = config
         self.passed_parent = parent    
-        self.menu_spec = menu_spec                   
+        self.menu_spec = menu_spec      
+        self.subdirectory = subdirectory             
 
         full_path = Path(config["project"]["picturedirectory"])
         self.base_path = full_path.parent
@@ -616,10 +617,11 @@ class BaseTripModuleDialog(QDialog):
         self.root_label.setReadOnly(True)
         layout.addWidget(self.root_label)
 
-        layout.addWidget(QLabel("Select subdirectory with metadata"))
-        self.subdir_dropdown = QComboBox()
-        self.subdir_dropdown.setEditable(False)
-        layout.addWidget(self.subdir_dropdown)
+        if subdirectory:
+            layout.addWidget(QLabel("Select subdirectory with metadata"))
+            self.subdir_dropdown = QComboBox()
+            self.subdir_dropdown.setEditable(False)
+            layout.addWidget(self.subdir_dropdown)
 
         self.info_text = QLabel(info_text)
         self.info_text.setWordWrap(True)
@@ -640,7 +642,8 @@ class BaseTripModuleDialog(QDialog):
         self.write_btn.clicked.connect(self.on_write)
         self.close_btn.clicked.connect(self.close)
 
-        self.update_subdirs()
+        if self.subdirectory:
+            self.update_subdirs()
 
     def update_subdirs(self):
         metadata_path = Path(self.trip_root) / "metadata" / "review"
@@ -658,8 +661,9 @@ class BaseTripModuleDialog(QDialog):
             self.subdir_dropdown.setCurrentText(self.default_subdir)
 
     def on_write(self):
-        selected_subdir = self.subdir_dropdown.currentText()
-        self.config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
+        if self.subdirectory:        
+            selected_subdir = self.subdir_dropdown.currentText()
+            self.config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
 
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec)
@@ -706,7 +710,8 @@ class CountSpeciesDialog(BaseTripModuleDialog):
             config,
             menu_spec,
             title="Count Species",
-            info_text="Count the different number of species picture in the trip."
+            info_text="Count the different number of species picture in the trip.",
+            subdirectory=False
         )
 
         self.resize(1100, 750)
@@ -736,8 +741,9 @@ class CountSpeciesDialog(BaseTripModuleDialog):
         self.layout().addLayout(button_layout)
 
     def on_write(self):
-        selected_subdir = self.subdir_dropdown.currentText()
-        self.config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
+        if self.subdirectory:
+            selected_subdir = self.subdir_dropdown.currentText()
+            self.config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
 
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec)
@@ -773,7 +779,8 @@ class RedoTripBlogsDialog(BaseTripModuleDialog):
             config,
             menu_spec,
             title="Recreate Blogs for trip",
-            info_text="Recreate Blogs for trip for all committed days."
+            info_text="Recreate Blogs for trip for all committed days.",
+            subdirectory=False            
         )
 
 class RedoTripRepoDialog(BaseTripModuleDialog):
@@ -783,7 +790,8 @@ class RedoTripRepoDialog(BaseTripModuleDialog):
             config,
             menu_spec,
             title="Recreate Repository for trip",
-            info_text="Recreate Repository for trip for all days."
+            info_text="Recreate Repository for trip for all days.",
+            subdirectory=False            
         )
 
 class MergeTripDialog(BaseTripModuleDialog):
@@ -793,5 +801,6 @@ class MergeTripDialog(BaseTripModuleDialog):
             config,
             menu_spec,
             title="Merge Trip Species with master",
-            info_text="List and merge species lists from master and trip."
+            info_text="List and merge species lists from master and trip.",
+            subdirectory=False
         )        

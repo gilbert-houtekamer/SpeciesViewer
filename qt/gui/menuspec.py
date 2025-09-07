@@ -147,6 +147,7 @@ def build_menu_spec(main_window):
     count_species = MenuSpec(
         callback=None,
         title="Count Species",
+        showsubdirectory=False,        
         enabled=make_enabled_checker("CountSpecies"),
         tooltip=make_tooltip("CountSpecies"),        
         batch_parms={
@@ -161,6 +162,7 @@ def build_menu_spec(main_window):
     redo_trip_blogs = MenuSpec(
         callback=None,
         title="Recreate Trip Blogs",
+        showsubdirectory=False,        
         enabled=make_enabled_checker("RedoTripBlogs"),
         tooltip=make_tooltip("RedoTripBlogs"),        
         batch_parms={
@@ -175,6 +177,7 @@ def build_menu_spec(main_window):
     recreate_trip = MenuSpec(
         callback=None,
         title="Recreate Trip Repository",
+        showsubdirectory=False,        
         enabled=make_enabled_checker("RedoTripRepository"),
         tooltip=make_tooltip("RedoTripRepository"),        
         batch_parms={
@@ -190,6 +193,7 @@ def build_menu_spec(main_window):
     merge_trip_species = MenuSpec(
         callback=None,
         title="Merge new species to master",
+        showsubdirectory=False,
         enabled=make_enabled_checker("MergeTripSpecies"),
         tooltip=make_tooltip("MergeTripSpecies"),        
         batch_parms={
