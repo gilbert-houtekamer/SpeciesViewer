@@ -804,3 +804,14 @@ class MergeTripDialog(BaseTripModuleDialog):
             info_text="List and merge species lists from master and trip.",
             subdirectory=False
         )        
+
+class ConvertAvibaseDialog(BaseTripModuleDialog):
+    def __init__(self, parent, config, menu_spec):
+        super().__init__(
+            parent,
+            config,
+            menu_spec,
+            title="Create an Excel to keep track of birds seen.",
+            info_text="Create an Excel to keep track of birds seen.",
+            subdirectory=False
+        ) 

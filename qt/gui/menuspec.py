@@ -3,7 +3,8 @@ import configparser
 from gui.menu import MenuSpec  # assuming class is defined elsewhere
 from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDialog, 
         CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog, 
-        CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog)
+        CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
+        ConvertAvibaseDialog)
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
 from settings.speciessettings import SpeciesSettingsDialog
@@ -22,6 +23,7 @@ import bin.svr2CountSpecies
 import bin.svr5MergeSpeciesCollections
 import bin.svr8RecreateTripRepository
 import bin.svr9RedoBlog
+import bin.svu2avibase
 
 
 def build_menu_spec(main_window):
@@ -205,6 +207,26 @@ def build_menu_spec(main_window):
     )
     merge_trip_species.callback = lambda: MergeTripDialog(main_window, config, merge_trip_species).exec() 
 
+    # utilities
+        # Master updates
+    convert_avibase = MenuSpec(
+        callback=None,
+        title="Create an Excel to keep track of birds seen.",
+        showsubdirectory=False,
+        enabled=make_enabled_checker("ConvertAvibase"),
+        tooltip=make_tooltip("ConvertAvibase"),        
+        batch_parms={
+            'statusname': "",
+            'module_called': bin.svu2avibase.main,
+            'before_msg': "Reading a XLS CSV file read from a copy.",
+            'after_msg': "✅ XLSX checklist created."
+        }
+    )
+    convert_avibase.callback = lambda: ConvertAvibaseDialog(main_window, config, convert_avibase).exec() 
+
+
+
+
     return {
         "File": {
             "Quit": MenuSpec(
@@ -231,10 +253,10 @@ def build_menu_spec(main_window):
             "Merge Species": merge_trip_species,
             # "Add trip": None, # add_trip
         },
-        # "Utilities": {
+        "Utilities": {
         #     "BirdingBreaks": None, # PROCESS BIRDING BREAK FILES
-        #     "AviBase": None
-        # },
+             "AviBase": convert_avibase,
+        },
         "Settings": {
             "Global Settings": MenuSpec(
                 callback=lambda: GlobalSettingsDialog(main_window, config).exec(),

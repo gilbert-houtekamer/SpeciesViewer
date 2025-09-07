@@ -325,8 +325,6 @@ def main(args, config):
     metadatadir = MyProject.getMetaDir()
     sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)
 
-
-
     # get date from trip file
     if MyProject.Trip:
         # read aviBase
@@ -346,6 +344,8 @@ def main(args, config):
         num_days = (end_date - start_date).days + 1
 
         create_excel_checklist(temp_csv_file, xlsx_path, start_date, num_days)
+        logger.info(f"Checklist created for {MyProject.Trip.tripname} trip in {xlsx_path}.")
+        os.startfile(xlsx_path)
     else:
         logger.warning(f"This project does not refer to a trip, no checklist is created.")
     os.remove(temp_csv_file)
