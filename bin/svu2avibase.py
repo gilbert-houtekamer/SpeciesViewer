@@ -47,9 +47,10 @@ def readConfig():
 # https://avibase.bsc-eoc.org/checklist.jsp?lang=EN
 # voorbeeld brazilie:
 # https://avibase.bsc-eoc.org/checklist.jsp?lang=EN&p2=1&list=ioc&synlang=NL&region=BRms&version=text&lifelist=&highlight=0
-def readAviBase():
+def readAviBase(triproot, filename):
     #file_path = "C:/Users/gilbe/OneDrive/reizen/gambia/soorten.csv"
-    file_path = "C:/Users/gilbe/OneDrive/reizen/madagascar/avibase.csv"
+    #file_path = "C:/Users/gilbe/OneDrive/reizen/madagascar/avibase.csv"
+    file_path  = os.path.join(triproot, filename)
     number = 1
     with open(file_path, 'r', encoding='utf-8') as f:
         content = f.read().split("\n")
@@ -106,45 +107,45 @@ def addSpeciesInfo(sc,sp):
 
 
 # caller
-def printbb():
+def createRawCSV(triproot,outfilename):
     groep = 0
     fotos = 0
     nieuwe = 0
-    file_path = "C:/Users/gilbe/OneDrive/reizen/madagascar/soorten.prn"
-    with open(file_path, 'w', encoding='utf-8') as f:
-        header_line = 'No     Nederlandse naam              '
-        header_line += ' Engelse naam                  '
-        header_line += ' Wetenschappelijke naam        '
-        header_line += '   seen?  New? Bekende Foto'
-        header_line += ' Notes'
-        print(header_line, file=f)
+    #file_path = "C:/Users/gilbe/OneDrive/reizen/madagascar/soorten.prn"
+    # with open(file_path, 'w', encoding='utf-8') as f:
+    #     header_line = 'No     Nederlandse naam              '
+    #     header_line += ' Engelse naam                  '
+    #     header_line += ' Wetenschappelijke naam        '
+    #     header_line += '   seen?  New? Bekende Foto'
+    #     header_line += ' Notes'
+    #     print(header_line, file=f)
 
-        for enname in avibase_dict:
-            listspecies = avibase_dict[enname]          # better to for scientific name
-            if listspecies['number'] == -1:
-                line = f"{listspecies['enname']}"
-            else:
-                line = f"{listspecies['number']:6} {listspecies['nlname']:30} {listspecies['enname']:30} {listspecies['scname']:30} "
-                if listspecies['gezien'] != 0:
-                    line += f"   Yes"
-                    groep += 1
-                else:
-                    line += "       "
-                if listspecies['knownspecies']:
-                    line += '        Known '
-                elif not listspecies['knownspecies'] and listspecies['gezien'] != 0:
-                    line += '   New         '
-                else:
-                    line += '               '
-                line += listspecies['status'] 
+    #     for enname in avibase_dict:
+    #         listspecies = avibase_dict[enname]          # better to for scientific name
+    #         if listspecies['number'] == -1:
+    #             line = f"{listspecies['enname']}"
+    #         else:
+    #             line = f"{listspecies['number']:6} {listspecies['nlname']:30} {listspecies['enname']:30} {listspecies['scname']:30} "
+    #             if listspecies['gezien'] != 0:
+    #                 line += f"   Yes"
+    #                 groep += 1
+    #             else:
+    #                 line += "       "
+    #             if listspecies['knownspecies']:
+    #                 line += '        Known '
+    #             elif not listspecies['knownspecies'] and listspecies['gezien'] != 0:
+    #                 line += '   New         '
+    #             else:
+    #                 line += '               '
+    #             line += listspecies['status'] 
 
-            print(line, file=f)
+    #         print(line, file=f)
 
-        print(f"\n\nDe groep zag of hoorde {groep} soorten.",file=f)
-        print(f"Ik fotografeerde {fotos} soorten, waarvan {nieuwe} fotos.",file=f)
-        f.close()
+    #     print(f"\n\nDe groep zag of hoorde {groep} soorten.",file=f)
+    #     print(f"Ik fotografeerde {fotos} soorten, waarvan {nieuwe} fotos.",file=f)
+    #     f.close()
 
-    file_path = "C:/Users/gilbe/OneDrive/reizen/madagascar/soorten-out.csv"
+    file_path = os.path.join(triproot, outfilename)
     with open(file_path, 'w', encoding='utf-8') as f:
         print("No;Engels;NL;Wet;seen?;New?;Known;Photo;Notes", file=f)
         for enname in avibase_dict:
@@ -327,15 +328,16 @@ def main(args, config):
     sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)
 
     # read BirdingBreaksList
-    readAviBase()
+    readAviBase(MyProject.Repository, "avibase.csv")
     addSpeciesInfo(sc, Reference_sp)
-    printbb()
-    csv_path = "C:/Users/gilbe/OneDrive/reizen/madagascar/soorten-out.csv"
-    xlsx_path = "C:/Users/gilbe/OneDrive/reizen/madagascar/soorten-checklist.xlsx"
+    createRawCSV(MyProject.Repository,"soorten-temp.csv")
+    csv_path =os.path.join(MyProject.Repository, "soorten-temp.csv")
+    xlsx_path = os.path.join(MyProject.Repository, "avibase-checklist.xlsx")
     start_date = datetime(2025, 11, 2)  # Adjust to your trip start
     num_days = 25                       # Adjust to your trip length
 
     create_excel_checklist(csv_path, xlsx_path, start_date, num_days)
+    os.remove(csv_path)
 
     totaltime = time.time() - starttime      
     print(f'Total time for all other work {totaltime:.1f} seconds.')
