@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-
+from openpyxl.formula.translate import Translator
 
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
@@ -228,7 +228,10 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days):
         for i in range(num_days):
             col_idx = len(header) + i + 1
             cell = ws.cell(row=row_idx, column=col_idx)
-            cell.number_format = "DD/MM/YYYY"
+            if row_idx == 1:
+                cell.number_format = "DD/MM/YYYY"
+            else:
+                cell.number_format = "0"  # Format as number
             if col_idx in weekend_columns:
                 cell.fill = weekend_fill
 
@@ -247,7 +250,32 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days):
         if col not in [5, 6, 7, 8]:  # E=5, F=6, G=7, H=8
             ws.column_dimensions[get_column_letter(col)].width = 24
     for col in range(len(header) + 1, len(full_header) + 1):
-        ws.column_dimensions[get_column_letter(col)].width = 3  # Narrow for 2-digit day
+        ws.column_dimensions[get_column_letter(col)].width = 5  # Narrow for 2-digit day
+
+    # Add formulas to columns E and F
+    for row_idx in range(3, len(data) + 2):  # Rows start at 2, data starts at index 0
+        b_val = ws.cell(row=row_idx, column=2).value
+        if b_val:  # Only if column B has a value
+            # Column E formula
+            formula_e = f'=COUNT(J{row_idx}:AH{row_idx})'
+            ws.cell(row=row_idx, column=5, value=formula_e)
+
+            # Column F formula
+            formula_f = f'=IF(AND(G{row_idx}<>"Known", E{row_idx}>0), "New", "")'
+            ws.cell(row=row_idx, column=6, value=formula_f)
+
+    # Add summary formulas to row 2
+    summary_targets = [5, 6, 8]  # Columns E, F, H
+    for col in summary_targets:
+        col_letter = get_column_letter(col)
+        formula = f'=COUNTIF({col_letter}3:{col_letter}{len(data)+2}, ">0")'
+        ws.cell(row=2, column=col, value=formula)
+
+    # Add summary formulas for all date columns (J to AH)
+    for col in range(len(header) + 1, len(header) + num_days + 1):
+        col_letter = get_column_letter(col)
+        formula = f'=COUNT({col_letter}3:{col_letter}{len(data)+2})'
+        ws.cell(row=2, column=col, value=formula)    
 
     # Define thin border style
     thin_border = Border(
