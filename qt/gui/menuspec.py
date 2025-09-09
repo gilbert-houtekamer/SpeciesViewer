@@ -224,9 +224,6 @@ def build_menu_spec(main_window):
     )
     convert_avibase.callback = lambda: ConvertAvibaseDialog(main_window, config, convert_avibase).exec() 
 
-
-
-
     return {
         "File": {
             "Quit": MenuSpec(
@@ -251,7 +248,8 @@ def build_menu_spec(main_window):
         },
         "Master": {
             "Merge Species": merge_trip_species,
-            # "Add trip": None, # add_trip
+            # "Add trip": None, # Add pointer to trip from main website
+            # add trip data to masterdatabase and website
         },
         "Utilities": {
         #     "BirdingBreaks": None, # PROCESS BIRDING BREAK FILES

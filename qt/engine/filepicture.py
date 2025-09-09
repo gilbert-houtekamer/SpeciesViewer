@@ -8,7 +8,9 @@ import os
 from pathlib import Path  
 import subprocess
 import json
+import ast
 import pdb  # For debugging
+
 
 logger = logging.getLogger("speciesviewer")
 
@@ -23,6 +25,24 @@ logger = logging.getLogger("speciesviewer")
 # Read EXIF data for 3 files from CSV file E:\Dropbox\trips\2017 oostzeedb\metadata/review/2017-08-09\data_files.csv.
 # Read data for 0 pictures from CSV file E:\Dropbox\trips\2017 oostzeedb\metadata/review/2017-08-09\data_pictures.csv.
 # Read all new data from project in 0.0 seconds.
+
+def ensure_list(subject):
+    if isinstance(subject, list):
+        return subject
+    elif isinstance(subject, str):
+        return [token.strip() for token in subject.split(",")]
+    else:
+        raise TypeError(f"Unexpected subject type: {type(subject)}")
+    
+
+def format_subject_for_xmp(subject_text):
+    try:
+        parts = ast.literal_eval(subject_text)
+        if isinstance(parts, list):
+            return ", ".join(p.strip("'\"") for p in parts)
+    except Exception:
+        pass
+    return subject_text.strip("'\"")    
 
 # read files without MyProject
 class FilePicture:
@@ -60,7 +80,8 @@ class FilePicture:
         try:
             upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
             errormsg = self.upn.UniquePictureName_dict[upn_name]["errormessage"]
-            # logger.info(f"getErrorMsg: {errormsg}")
+            if errormsg != '':
+                logger.info(f"getErrorMsg: {errormsg}")
             return errormsg
         except Exception:
             return ""
@@ -128,7 +149,8 @@ class FilePicture:
     # 3. Review Photolab and Lightroom
     def replaceFileSubject(self, filename, original_subject, correct_subject):
         filepath = Path(self.fi.files_dict[filename]['WindowsFileName'])
-
+        original_subject_for_xmp = format_subject_for_xmp(original_subject)
+        correct_subject_for_xmp = format_subject_for_xmp(correct_subject)        
         # Step 1: Read current XMP:Subject using exiftool
         try:
             result = subprocess.run(
@@ -143,8 +165,9 @@ class FilePicture:
             # print(f"current_subjects in {str(filepath)} from {current_subjects} to {correct_subject}")
 
             # Step 3: Replace subject if original_subject is found
-            if original_subject in current_subjects:
-                cmd = ['exiftool', f'-XMP:Subject={correct_subject}', '-overwrite_original', str(filepath)]
+            original_subject_list = ast.literal_eval(original_subject)
+            if original_subject_list == current_subjects:
+                cmd = ['exiftool', f'-XMP:Subject={correct_subject_for_xmp}', '-overwrite_original', str(filepath)]
                 # print("Running command:", " ".join(cmd))
 
                 subprocess.run(
@@ -156,7 +179,7 @@ class FilePicture:
                 )
                 # print(f"Updated subject in {filepath.name} to: {correct_subject}")
             else:
-                print(f"Original subject '{original_subject}' not found in {filepath.name}")
+                print(f"Original subject '{original_subject_for_xmp}' not found in {filepath.name}")
 
         except subprocess.CalledProcessError as e:
             print(f"ExifTool error: {e.stderr}")
@@ -164,18 +187,17 @@ class FilePicture:
         # Step 2: update the internal data structure
         self.fi.files_dict[filename]['XMP:Subject'] = correct_subject
 
+
+
     # the UPN update is only reflected in the data_pictures file and the internal structures 
     def replaceUPNSubject(self, filename, original_subject, correct_subject, sc_object):
         upn_object = self.upn.UniquePictureName_dict[Path(filename).name]
-        if upn_object != None and upn_object['subject'] == original_subject:
+        if upn_object != None:
             upn_object['subject'] = correct_subject
-            if sc_object != None:
-                upn_object['errormessage'] = ''   # missing species issue fixed, clear error message
-                upn_object['NLSoortNaam'] = sc_object['DutchName']
-                upn_object['EngSoortNaam'] = sc_object['EnglishName']
-                upn_object['WetSoortNaam']= sc_object['ScientificName']
-            else:
-                upn_object['errormessage'] = "Subject keyword(s) changed, but still no species found in SpeciesViewer tables.  Possiby the species need to be added."
+            upn_object['errormessage'] = ''   # missing species issue fixed, clear error message
+            upn_object['NLSoortNaam'] = sc_object['DutchName']
+            upn_object['EngSoortNaam'] = sc_object['EnglishName']
+            upn_object['WetSoortNaam']= sc_object['ScientificName']
             # write updated data_pictures file 
             self.upn.write_project_summary()
         return upn_object

@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, QSize
 
 from widgets.trip_widgets import LabeledTextFieldQt
-from engine.filepicture import FilePicture
+from engine.filepicture import FilePicture, format_subject_for_xmp
 from engine.speciesclassification import Level
 
 logger = logging.getLogger("speciesviewer")
@@ -81,14 +81,6 @@ def get_species_suggestions(input_name, name_type, parent, max_suggestions=5):
 
     return scored_matches
 
-def format_subject_for_xmp(subject_text):
-    try:
-        parts = ast.literal_eval(subject_text)
-        if isinstance(parts, list):
-            return ", ".join(p.strip("'\"") for p in parts)
-    except Exception:
-        pass
-    return subject_text.strip("'\"")
 
 class SpeciesInfoDialog(QDialog):
     def __init__(self, full_path, species_name, error_msg, parent=None):
@@ -292,7 +284,7 @@ class SpeciesInfoDialog(QDialog):
         self.status_label.setText(f"📦 Committing species name: {format_subject_for_xmp(corrected_subject)} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")
         logger.info(f"📦 Committing species name: {format_subject_for_xmp(corrected_subject)} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")
         for f in matching_files:
-            upn_object = fpr.updateSubject(f.name, format_subject_for_xmp(original_subject), format_subject_for_xmp(corrected_subject))
+            upn_object = fpr.updateSubject(f.name, original_subject, corrected_subject)
             logger.info(f"""✅ Updated {f.name} with corrected subject from "{format_subject_for_xmp(original_subject)}" to "{format_subject_for_xmp(corrected_subject)}".""")
 
             # Update image viewer
