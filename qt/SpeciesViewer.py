@@ -14,10 +14,18 @@ def start_main():
 
     font_title = QFont("Arial", 20, QFont.Weight.Bold)
     splash.setFont(font_title)
+
+    # Use HTML to style each line separately
+    splash_text = (
+        '<div style="text-align:center;">'
+        '<span style="font-size:24pt; font-weight:bold;color:white;">Welcome to Species Viewer</span><br>'
+        '<span style="font-size:16pt;color:white;">Organize species. Explore collections. Bring biodiversity to life.</span>'
+        '</div>'
+    )
+
     splash.showMessage(
-        "Welcome to Species Viewer\nOrganize species. Explore collections. Bring biodiversity to life.",
+        splash_text,
         Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
-        Qt.GlobalColor.white
     )
     splash.show()
 
