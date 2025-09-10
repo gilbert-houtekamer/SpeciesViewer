@@ -9,6 +9,7 @@ import webbrowser
 from gui.batch import BatchModuleRunner  # Assuming batch handler is here
 
 from utils.trip_config import read_trip_ini
+from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, ImageFileFieldQt)
 from sharedlib.translatelib import CachedTranslate
 
@@ -84,6 +85,13 @@ class TripCreationDialog(QDialog):
         # Tab 1: Trip Folder
         tab1 = QWidget()
         layout1 = QVBoxLayout(tab1)
+        info_label = HTMLLabel(
+            "<p><b>To create a new trip:</b><br>"
+            "Provide basic information such as pictures, text, and a date range.<br>"
+            "Once this information is available, the directory tree will be created automatically.<br>"
+            "For more information about birds, visit <a href='https://avibase.bsc-eoc.org/avibase.jsp?lang=EN'>Avibase World Bird Database</a>.</p>"
+        )
+        layout1.addWidget(info_label)
         self.root_field = DirectoryFieldQt("Trip root folder", trip_root)
         layout1.addWidget(self.root_field)
         tabs.addTab(tab1, "Select Trip Folder")
@@ -91,12 +99,29 @@ class TripCreationDialog(QDialog):
         # Tab 2: Images & Dates
         tab2 = QWidget()
         layout2 = QVBoxLayout(tab2)
+        info_label21 = HTMLLabel(
+            "<p>The trip image is shown in trip lists.  It should be a picture from this trip.<br>"
+            "This picture can be changed later when better pictures are available.<br>"
+            "The picture size must be exactly 600x450 pixels."
+        )
+        layout2.addWidget(info_label21)        
         self.trip_img_field = ImageFileFieldQt("Trip Image", (600, 450), self.root_field.field)
-        self.trip_img_field.field.setText(trip_data.get("trip_picture", ""))        
+        self.trip_img_field.field.setText(trip_data.get("trip_picture", "")) 
+        layout2.addWidget(self.trip_img_field)
+
+        info_label22 = HTMLLabel(
+            "<p>The top web bar is an image that is used on all blog and species web pages for this trip.<br>"
+            "The picture size must be exactly 2000x270 pixels."
+        )
+        layout2.addWidget(info_label22)                  
         self.topbar_img_field = ImageFileFieldQt("Top Web Bar", (2000, 270), self.root_field.field)
         self.topbar_img_field.field.setText(trip_data.get("trip_banner", ""))
-        layout2.addWidget(self.trip_img_field)
         layout2.addWidget(self.topbar_img_field)
+
+        info_label23 = HTMLLabel(
+            "<p>The date range is used to decide what days are expected, and to (re)create lists used by the web code generator.<br>"
+        )
+        layout2.addWidget(info_label23)           
         self.date_field = DateRangeFieldQt()
         self.date_field.set_dates(trip_data.get("fromdate", ""), trip_data.get("todate", ""))
         layout2.addWidget(self.date_field)
@@ -117,6 +142,12 @@ class TripCreationDialog(QDialog):
         translate_btn.clicked.connect(self.translate_dutch_to_english)
 
         dutch_layout.addWidget(translate_btn)
+        info_label31 = HTMLLabel(
+            "<p>The trip title is used through the interface and this website, and the description is in the website.<br>"
+            "There is a Dutch and English version of the website.  This page is Dutch, with a Translate button to English.<br>"
+            "Automatic translation can be overridden, simple insert your text.  Species names are often not, or weird, translated."
+        )
+        dutch_layout.addWidget(info_label31)           
         dutch_layout.addWidget(self.title_nl_field)
         dutch_layout.addWidget(self.message_nl_field)        
         sub_tabs.addTab(dutch_tab, "Dutch Text")
@@ -130,6 +161,12 @@ class TripCreationDialog(QDialog):
         translate_btn_en.clicked.connect(self.translate_english_to_dutch)        
 
         english_layout.addWidget(translate_btn_en)
+        info_label32 = HTMLLabel(
+            "<p>The trip title is used through the interface and this website, and the description is in the website.<br>"
+            "There is a Dutch and English version of the website.  This page is English, with a Translate button to Dutch.<br>"
+            "Automatic translation can be overridden, simple insert your text.  Species names are often not, or weird, translated."
+        )
+        english_layout.addWidget(info_label32)         
         english_layout.addWidget(self.title_en_field)
         english_layout.addWidget(self.message_en_field)
         sub_tabs.addTab(english_tab, "English Text")
@@ -335,7 +372,7 @@ class WritePicturesDialog(QDialog):
         layout = QVBoxLayout(self)
 
         # Show root folder (non-editable)
-        layout.addWidget(QLabel("Trip root folder"))
+        
         self.root_label = QLineEdit(str(self.base_path))
         self.root_label.setReadOnly(True)
         layout.addWidget(self.root_label)
