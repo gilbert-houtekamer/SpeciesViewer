@@ -115,11 +115,14 @@ class BatchModuleRunner:
                 self.logger.info(after_msg)
             if statusname != "":      
                 sm.updateState(statusname, True, "Successfully run.")
-                if new_warnings > 0:
-                    self.main_window.update_trip_cell(directory_name, expected_messages[statusname], "✅", 
-                              f"Successfully run, but review {new_warnings if new_warnings>1 else ''} warning{'s' if new_warnings>1 else ''}.")
-                else:
-                    self.main_window.update_trip_cell(directory_name, expected_messages[statusname], "✅", "Successfully run.")
+                try:
+                    if new_warnings > 0:
+                        self.main_window.update_trip_cell(directory_name, expected_messages[statusname], "✅", 
+                                f"Successfully run, but review {new_warnings if new_warnings>1 else ''} warning{'s' if new_warnings>1 else ''}.")
+                    else:
+                        self.main_window.update_trip_cell(directory_name, expected_messages[statusname], "✅", "Successfully run.")
+                except:
+                    pass
         finally:
             if statusname != "":      
                 if statusname != "MakeRepository": 

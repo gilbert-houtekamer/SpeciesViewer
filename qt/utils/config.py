@@ -42,3 +42,10 @@ def set_setting(section, key, value):
     config.set(section, key, str(value))
     with open(CONFIG_FILE, "w") as f:
         config.write(f)
+
+def set_trip_settings(trip_root, trip_web_root):
+    config.set("trip", "tripbiotadatabase", trip_root)
+    config.set("trip", "tripbiotawebroot", trip_web_root)
+
+    with open(CONFIG_FILE, "w") as f:
+        config.write(f)

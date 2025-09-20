@@ -8,6 +8,7 @@ from pathlib import Path
 import webbrowser
 from gui.batch import BatchModuleRunner  # Assuming batch handler is here
 
+from utils.config import set_trip_settings
 from utils.trip_config import read_trip_ini
 from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, ImageFileFieldQt)
@@ -34,7 +35,7 @@ def generate_trip_ini(
 
     master_web = config.get("master", "masterbiotawebroot", fallback="/nature/")
     master_disk = config.get("master", "masterbiotadatabase", fallback="E:\\Dropbox\\naturedb")
-    trip_url_name = config.get("trip", "tripbiotawebroot", fallback=trip_name)
+    # trip_url_name = config.get("trip", "tripbiotawebroot", fallback=trip_name)
 
     ini_text = f"""\
 [trip_config]
@@ -43,11 +44,11 @@ master_repository_disk = {master_disk}
 ; the banner size is 2000x270 jpg, and the picture is 600x450 jpg
 trip_banner = {banner_filename}             
 trip_picture = {picture_filename}        
-created = {datetime.now().strftime('%Y-%m-%d %H:%M')}           ; time this file is created/updated
-trip_name = {trip_url_name}                 ; config: trip / tripbiotawebroot
+created = {datetime.now().strftime('%Y-%m-%d %H:%M')}
+trip_name = {trip_name}
 fromdate = {from_date}
 todate = {to_date}
-oneblog = day                               ; hardcoded for now
+oneblog = day                      
 
 [trip_text]
 title_nl = {title_nl}
@@ -86,41 +87,58 @@ class TripCreationDialog(QDialog):
         tab1 = QWidget()
         layout1 = QVBoxLayout(tab1)
         info_label = HTMLLabel(
-            "<p><b>To create a new trip:</b><br>"
-            "Provide basic information such as pictures, text, and a date range.<br>"
-            "Once this information is available, the directory tree will be created automatically.<br>"
-            "For more information about birds, visit <a href='https://avibase.bsc-eoc.org/avibase.jsp?lang=EN'>Avibase World Bird Database</a>.</p>"
+            "<p><b>What is a trip?</b><br>"
+            "A <b>trip</b> represents a collection of pictures from a vacation, field activity, or any event. "
+            "Typically, a trip consists of multiple <b>days</b>, each stored in its own directory. "
+            "SpeciesViewer helps validate this data and organizes it into a structured trip database — which is simply a well-organized directory tree.</p>"
+            "<p><b>Creating a new trip</b><br>"
+            "To begin, gather some basic information: images, descriptive text, and a date range. The main trip folder must be created manually, along with two visual assets:"
+            " a <i>trip picture</i> (600×450) and a <i>banner</i> (2000×270). These should be prepared outside of SpeciesViewer.</p>"
+            "<p>Once this information is ready, SpeciesViewer will generate the trip directory structure automatically.</p>"
+            "<p><b>This tab:</b> Select the root folder for your trip to begin the setup process.</p>"
+            # "For more information about birds, visit <a href='https://avibase.bsc-eoc.org/avibase.jsp?lang=EN'>Avibase World Bird Database</a>.</p>"
         )
         layout1.addWidget(info_label)
         self.root_field = DirectoryFieldQt("Trip root folder", trip_root)
+        self.root_field.textChanged(self.on_trip_root_changed)
         layout1.addWidget(self.root_field)
+        self.trip_web = LabeledTextFieldQt("[trip] Web root", config.get("trip", "tripbiotawebroot", fallback=""), multiline=False, inline=True)
+        layout1.addWidget(self.trip_web)        
         tabs.addTab(tab1, "Select Trip Folder")
 
         # Tab 2: Images & Dates
         tab2 = QWidget()
         layout2 = QVBoxLayout(tab2)
         info_label21 = HTMLLabel(
-            "<p>The trip image is shown in trip lists.  It should be a picture from this trip.<br>"
-            "This picture can be changed later when better pictures are available.<br>"
-            "The picture size must be exactly 600x450 pixels."
+            "<p><b>Trip image</b><br>"
+            "This image appears in trip listings and should visually represent the trip.<br>"
+            "You can update it later if a better photo becomes available.<br>"
+            "Required dimensions: <b>600×450 pixels</b>.</p>"
         )
+
         layout2.addWidget(info_label21)        
         self.trip_img_field = ImageFileFieldQt("Trip Image", (600, 450), self.root_field.field)
         self.trip_img_field.field.setText(trip_data.get("trip_picture", "")) 
         layout2.addWidget(self.trip_img_field)
 
         info_label22 = HTMLLabel(
-            "<p>The top web bar is an image that is used on all blog and species web pages for this trip.<br>"
-            "The picture size must be exactly 2000x270 pixels."
+            "<p><b>Web banner</b><br>"
+            "This banner is displayed at the top of all blog and species pages for this trip.<br>"
+            "It sets the visual tone for the trip’s web presence.<br>"
+            "Required dimensions: <b>2000×270 pixels</b>.</p>"
         )
+
         layout2.addWidget(info_label22)                  
         self.topbar_img_field = ImageFileFieldQt("Top Web Bar", (2000, 270), self.root_field.field)
         self.topbar_img_field.field.setText(trip_data.get("trip_banner", ""))
         layout2.addWidget(self.topbar_img_field)
 
         info_label23 = HTMLLabel(
-            "<p>The date range is used to decide what days are expected, and to (re)create lists used by the web code generator.<br>"
+            "<p><b>Date range</b><br>"
+            "Defines the expected days of the trip and helps generate accurate lists for the website.<br>"
+            "You can adjust this range later to include additional days or refine the trip timeline.</p>"
         )
+
         layout2.addWidget(info_label23)           
         self.date_field = DateRangeFieldQt()
         self.date_field.set_dates(trip_data.get("fromdate", ""), trip_data.get("todate", ""))
@@ -143,10 +161,12 @@ class TripCreationDialog(QDialog):
 
         dutch_layout.addWidget(translate_btn)
         info_label31 = HTMLLabel(
-            "<p>The trip title is used through the interface and this website, and the description is in the website.<br>"
-            "There is a Dutch and English version of the website.  This page is Dutch, with a Translate button to English.<br>"
-            "Automatic translation can be overridden, simple insert your text.  Species names are often not, or weird, translated."
+            "<p><b>Trip title and description (Dutch)</b><br>"
+            "The trip title is used throughout the interface and on the website. This page contains the Dutch version of the trip description.<br>"
+            "You can use the <i>Translate</i> button to generate an English version automatically.<br>"
+            "Feel free to override the translation by entering your own text. Note: species names are often mistranslated or not translated at all.</p>"
         )
+
         dutch_layout.addWidget(info_label31)           
         dutch_layout.addWidget(self.title_nl_field)
         dutch_layout.addWidget(self.message_nl_field)        
@@ -162,10 +182,12 @@ class TripCreationDialog(QDialog):
 
         english_layout.addWidget(translate_btn_en)
         info_label32 = HTMLLabel(
-            "<p>The trip title is used through the interface and this website, and the description is in the website.<br>"
-            "There is a Dutch and English version of the website.  This page is English, with a Translate button to Dutch.<br>"
-            "Automatic translation can be overridden, simple insert your text.  Species names are often not, or weird, translated."
+            "<p><b>Trip title and description (English)</b><br>"
+            "The trip title appears throughout the interface and on the website. This page contains the English version of the trip description.<br>"
+            "You can use the <i>Translate</i> button to generate a Dutch version automatically.<br>"
+            "Manual edits are welcome — especially for species names, which are often translated incorrectly or not at all.</p>"
         )
+
         english_layout.addWidget(info_label32)         
         english_layout.addWidget(self.title_en_field)
         english_layout.addWidget(self.message_en_field)
@@ -204,6 +226,22 @@ class TripCreationDialog(QDialog):
         self.passed_parent.translator.writeTranslationCache()
         super().closeEvent(event)
 
+    def on_trip_root_changed(self, new_path):
+        trip_data = read_trip_ini(new_path)
+        if trip_data:
+            print("✅ trip.ini loaded:", new_path)
+            # You can now update fields like:
+            self.trip_web.set_text(trip_data['trip_name'])
+            self.trip_img_field.field.setText(trip_data['trip_picture'])
+            self.topbar_img_field.field.setText(trip_data['trip_banner'])
+            self.date_field.set_dates(trip_data["fromdate"],trip_data["todate"])
+            self.title_nl_field.field.setText(trip_data['title_nl'])
+            self.message_nl_field.field.setText(trip_data['message_nl'])
+            self.title_en_field.field.setText(trip_data['title_en'])
+            self.message_en_field.field.setText(trip_data['message_en'])            
+        else:
+            print("⚠️ No trip.ini found at", new_path, ", be sure to complete all tabs.")
+
     def on_write_tripini_clicked(self):
         self.create_trip_ini()        
         self.logger.info("Trip.ini created or updated successfully!")        
@@ -212,7 +250,11 @@ class TripCreationDialog(QDialog):
     def on_create_clicked(self):
         self.create_trip_ini()
         runner = BatchModuleRunner(self, self.passed_parent)
-        runner.run(self.menu_spec)        
+        errorstr = runner.run(self.menu_spec)    
+        if errorstr == '':
+            self.config['trip']['tripbiotadatabase'] = self.root_field.field.text()
+            self.config['trip']['tripbiotawebroot'] = self.trip_web.field.text()
+            set_trip_settings(self.root_field.field.text(), self.trip_web.field.text())
 
     def translate_dutch_to_english(self):
         nl_title = self.title_nl_field.get_text()
@@ -240,6 +282,7 @@ class TripCreationDialog(QDialog):
 
     def create_trip_ini(self):
         trip_root = self.root_field.get_path()
+        trip_name = self.trip_web.get_text()
         banner_filename = self.topbar_img_field.get_filename()
         picture_filename = self.trip_img_field.get_filename()
         from_date, to_date = self.date_field.get_dates()
@@ -257,7 +300,7 @@ class TripCreationDialog(QDialog):
 
         generate_trip_ini(
             trip_root,
-            "tripname",  # You may want to make this dynamic later
+            trip_name,
             banner_filename,
             picture_filename,
             from_date,

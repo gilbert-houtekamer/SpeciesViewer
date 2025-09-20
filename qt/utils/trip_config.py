@@ -43,6 +43,7 @@ def read_trip_ini(trip_root: str):
     result = {
         "trip_banner": parser.get("trip_config", "trip_banner", fallback=""),
         "trip_picture": parser.get("trip_config", "trip_picture", fallback=""),
+        "trip_name": parser.get("trip_config", "trip_name", fallback=""),
         "fromdate": parser.get("trip_config", "fromdate", fallback=""),
         "todate": parser.get("trip_config", "todate", fallback=""),
         "title_nl": parser.get("trip_text", "title_nl", fallback=""),

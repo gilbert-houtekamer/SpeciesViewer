@@ -135,6 +135,9 @@ class DirectoryFieldQt(QWidget):
         self.browse_btn.clicked.connect(lambda: self.browse(label))
         self.update_status()
 
+    def textChanged(self, callback):
+        self.field.textChanged.connect(callback)
+
     def get_icon(self, valid):
         icon_file = "circle-check.png" if valid else "circle-x.png"
         return QPixmap(os.path.join(self.icon_path, icon_file)) # .scaled(24, 24, Qt.AspectRatioMode.KeepAspectRatio)
@@ -166,10 +169,11 @@ class DirectoryFieldQt(QWidget):
         self.hint_label.setVisible(False)        
 
 class LabeledTextFieldQt(QWidget):
-    def __init__(self, label, value="", multiline=False):
+    def __init__(self, label, value="", multiline=False, inline=False):
         super().__init__()
-        self.label = QLabel(label, self)
         self.multiline = multiline
+
+        self.label = QLabel(label, self)
 
         if multiline:
             self.field = QTextEdit(self)
@@ -178,30 +182,27 @@ class LabeledTextFieldQt(QWidget):
             self.field = QLineEdit(self)
             self.field.setText(value)
 
-        layout = QVBoxLayout(self)
-        layout.addWidget(self.label)
-        layout.addWidget(self.field)
+        if inline and not multiline:
+            layout = QHBoxLayout(self)
+            layout.addWidget(self.label)
+            layout.addWidget(self.field)
+        else:
+            layout = QVBoxLayout(self)
+            layout.addWidget(self.label)
+            layout.addWidget(self.field)
 
     def get_text(self):
-        if not self.field:
-            return ""
         try:
-            if self.multiline:
-                    return self.field.toPlainText().strip() 
-            else:
-                    return self.field.text().strip()
+            return self.field.toPlainText().strip() if self.multiline else self.field.text().strip()
         except RuntimeError:
             print("⚠️ Field widget was deleted (get_text).")
             return ""
-       
-    # def get_text(self):
-
 
     def set_text(self, value):
         if self.multiline:
             self.field.setPlainText(value)
         else:
-            self.field.setText(value) 
+            self.field.setText(value)
 
 class DateRangeFieldQt(QWidget):
     def __init__(self, from_date=None, to_date=None):
