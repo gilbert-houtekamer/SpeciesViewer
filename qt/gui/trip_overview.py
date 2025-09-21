@@ -17,11 +17,11 @@ def populate_trip_overview(self):
         self.logger.warning("Invalid directory paths.")
         return
 
-    trip_name_nl = image_root.name
-    trip_translations = {
-        "Oostzee zeilzomer": "Oostzee sailing summer"
-    }
-    trip_name_en = trip_translations.get(trip_name_nl, trip_name_nl)
+    trip_name = image_root.name
+    # trip_translations = {
+    #     "Oostzee zeilzomer": "Oostzee sailing summer"
+    # }
+    # trip_name_en = trip_translations.get(trip_name_nl, trip_name_nl)
 
     # Get all image day folders
     image_days = sorted([d for d in image_root.iterdir() if d.is_dir()], key=lambda p: p.name)
@@ -130,7 +130,7 @@ def populate_trip_overview(self):
     # Layout
     overview_widget = QWidget()
     layout = QVBoxLayout()
-    header_label = QLabel(f"Trip Overview: {trip_name_en}")
+    header_label = QLabel(f"Trip Overview: {trip_name}")
     header_label.setStyleSheet("font-weight: bold; font-size: 16px;")
     layout.addWidget(header_label)
     layout.addWidget(self.trip_table)

@@ -16,7 +16,7 @@ from sharedlib.translatelib import CachedTranslate
 
 def generate_trip_ini(
     trip_root: str,
-    trip_name: str,
+    trip_name_path: str,
     banner_filename: str,
     picture_filename: str,
     from_date: str,
@@ -35,7 +35,7 @@ def generate_trip_ini(
 
     master_web = config.get("master", "masterbiotawebroot", fallback="/nature/")
     master_disk = config.get("master", "masterbiotadatabase", fallback="E:\\Dropbox\\naturedb")
-    # trip_url_name = config.get("trip", "tripbiotawebroot", fallback=trip_name)
+    trip_name = Path(trip_name_path).name
 
     ini_text = f"""\
 [trip_config]
@@ -99,11 +99,13 @@ class TripCreationDialog(QDialog):
             # "For more information about birds, visit <a href='https://avibase.bsc-eoc.org/avibase.jsp?lang=EN'>Avibase World Bird Database</a>.</p>"
         )
         layout1.addWidget(info_label)
-        self.root_field = DirectoryFieldQt("Trip root folder", trip_root)
+        self.root_field = DirectoryFieldQt("Trip Root folder", trip_root)
         self.root_field.textChanged(self.on_trip_root_changed)
         layout1.addWidget(self.root_field)
-        self.trip_web = LabeledTextFieldQt("[trip] Web root", config.get("trip", "tripbiotawebroot", fallback=""), multiline=False, inline=True)
-        layout1.addWidget(self.trip_web)        
+        self.trip_web = LabeledTextFieldQt("Trip Web root", config.get("trip", "tripbiotawebroot", fallback=""), multiline=False, inline=True)
+        layout1.addWidget(self.trip_web) 
+        self.project_path = DirectoryFieldQt("Project pictures", config.get("project", "picturedirectory", fallback=""))    
+        layout1.addWidget(self.project_path)            
         tabs.addTab(tab1, "Select Trip Folder")
 
         # Tab 2: Images & Dates
@@ -231,14 +233,16 @@ class TripCreationDialog(QDialog):
         if trip_data:
             print("✅ trip.ini loaded:", new_path)
             # You can now update fields like:
-            self.trip_web.set_text(trip_data['trip_name'])
+            trip_name = trip_data['trip_name']
+            if "trips" not in trip_name: trip_name = "/trips/" + trip_name 
+            self.trip_web.set_text(trip_name)
             self.trip_img_field.field.setText(trip_data['trip_picture'])
             self.topbar_img_field.field.setText(trip_data['trip_banner'])
             self.date_field.set_dates(trip_data["fromdate"],trip_data["todate"])
             self.title_nl_field.field.setText(trip_data['title_nl'])
             self.message_nl_field.field.setText(trip_data['message_nl'])
             self.title_en_field.field.setText(trip_data['title_en'])
-            self.message_en_field.field.setText(trip_data['message_en'])            
+            self.message_en_field.field.setText(trip_data['message_en'])     
         else:
             print("⚠️ No trip.ini found at", new_path, ", be sure to complete all tabs.")
 
@@ -249,12 +253,13 @@ class TripCreationDialog(QDialog):
 
     def on_create_clicked(self):
         self.create_trip_ini()
+        # make sure new structure is created
+        self.config['trip']['tripbiotadatabase'] = self.root_field.field.text()
+        self.config['trip']['tripbiotawebroot'] = self.trip_web.field.text()
+        self.config["project"]["picturedirectory"] = self.project_path.field.text()
+        set_trip_settings(self.root_field.field.text(), self.trip_web.field.text(), self.project_path.field.text())
         runner = BatchModuleRunner(self, self.passed_parent)
-        errorstr = runner.run(self.menu_spec)    
-        if errorstr == '':
-            self.config['trip']['tripbiotadatabase'] = self.root_field.field.text()
-            self.config['trip']['tripbiotawebroot'] = self.trip_web.field.text()
-            set_trip_settings(self.root_field.field.text(), self.trip_web.field.text())
+        errorstr = runner.run(self.menu_spec)             
 
     def translate_dutch_to_english(self):
         nl_title = self.title_nl_field.get_text()
