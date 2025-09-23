@@ -11,8 +11,9 @@ from gui.batch import BatchModuleRunner  # Assuming batch handler is here
 from utils.config import set_trip_settings
 from utils.trip_config import read_trip_ini
 from widgets.small_widgets import HTMLLabel
-from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, ImageFileFieldQt)
+from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, RecentDirectoryFieldQt, ImageFileFieldQt)
 from sharedlib.translatelib import CachedTranslate
+from utils.gui_config import update_cache_gui_section, get_cache_gui_section
 
 def generate_trip_ini(
     trip_root: str,
@@ -99,7 +100,7 @@ class TripCreationDialog(QDialog):
             # "For more information about birds, visit <a href='https://avibase.bsc-eoc.org/avibase.jsp?lang=EN'>Avibase World Bird Database</a>.</p>"
         )
         layout1.addWidget(info_label)
-        self.root_field = DirectoryFieldQt("Trip Root folder", trip_root)
+        self.root_field = RecentDirectoryFieldQt("Trip Root folder", trip_root)
         self.root_field.textChanged(self.on_trip_root_changed)
         layout1.addWidget(self.root_field)
         self.trip_web = LabeledTextFieldQt("Trip Web root", config.get("trip", "tripbiotawebroot", fallback=""), multiline=False, inline=True)
@@ -119,7 +120,7 @@ class TripCreationDialog(QDialog):
         )
 
         layout2.addWidget(info_label21)        
-        self.trip_img_field = ImageFileFieldQt("Trip Image", (600, 450), self.root_field.field)
+        self.trip_img_field = ImageFileFieldQt("Trip Image", (600, 450), self.root_field)
         self.trip_img_field.field.setText(trip_data.get("trip_picture", "")) 
         layout2.addWidget(self.trip_img_field)
 
@@ -131,7 +132,7 @@ class TripCreationDialog(QDialog):
         )
 
         layout2.addWidget(info_label22)                  
-        self.topbar_img_field = ImageFileFieldQt("Top Web Bar", (2000, 270), self.root_field.field)
+        self.topbar_img_field = ImageFileFieldQt("Top Web Bar", (2000, 270), self.root_field)
         self.topbar_img_field.field.setText(trip_data.get("trip_banner", ""))
         layout2.addWidget(self.topbar_img_field)
 
@@ -242,7 +243,12 @@ class TripCreationDialog(QDialog):
             self.title_nl_field.field.setText(trip_data['title_nl'])
             self.message_nl_field.field.setText(trip_data['message_nl'])
             self.title_en_field.field.setText(trip_data['title_en'])
-            self.message_en_field.field.setText(trip_data['message_en'])     
+            self.message_en_field.field.setText(trip_data['message_en'])
+            # do we have the corresponding projects
+            pictdir = get_cache_gui_section("trip_project_map", trip_name)
+            if pictdir != "":
+                self.config["project"]["picturedirectory"] = pictdir
+                self.project_path.field.setText(pictdir)
         else:
             print("⚠️ No trip.ini found at", new_path, ", be sure to complete all tabs.")
 
@@ -258,6 +264,9 @@ class TripCreationDialog(QDialog):
         self.config['trip']['tripbiotawebroot'] = self.trip_web.field.text()
         self.config["project"]["picturedirectory"] = self.project_path.field.text()
         set_trip_settings(self.root_field.field.text(), self.trip_web.field.text(), self.project_path.field.text())
+        # Also save trip/project pair
+        update_cache_gui_section("trip_project_map", self.trip_web.field.text(), self.project_path.field.text() )   
+        # now do the actual work     
         runner = BatchModuleRunner(self, self.passed_parent)
         errorstr = runner.run(self.menu_spec)             
 

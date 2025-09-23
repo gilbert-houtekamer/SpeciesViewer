@@ -1,11 +1,12 @@
 from PyQt6.QtWidgets import (
-    QWidget, QHBoxLayout, QLabel, QLineEdit, QTextEdit, QPushButton,
+    QWidget, QHBoxLayout, QLabel, QLineEdit, QTextEdit, QPushButton, QComboBox,
     QFileDialog, QVBoxLayout, QDateEdit
 )
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QPixmap
 from PIL import Image
 import os
+from utils.gui_config import load_gui_cache, add_recent_gui_project
 
 class ImageFileFieldQt(QWidget):
     def __init__(self, label, expected_size, root_field, icon_path="qt/assets"):
@@ -51,7 +52,7 @@ class ImageFileFieldQt(QWidget):
 
     def validate(self) -> bool:
         relative_path = self.field.text().strip()
-        root_path = self.root_field.text().strip()
+        root_path = self.root_field.get_text()
 
         if not relative_path or not root_path:
             return self._invalidate("Missing path input.")
@@ -166,7 +167,82 @@ class DirectoryFieldQt(QWidget):
         self.hint_label.setVisible(True)
 
     def clear_hint(self):
-        self.hint_label.setVisible(False)        
+        self.hint_label.setVisible(False)
+
+
+class RecentDirectoryFieldQt(QWidget):
+    def __init__(self, label, initial_path="", section="recent_projects", icon_path="qt/assets"):
+        super().__init__()
+        self.icon_path = icon_path
+        self.section = section
+
+        self.label_widget = QLabel(label)
+        self.combo = QComboBox()
+        self.browse_btn = QPushButton("Browse")
+        self.status_icon = QLabel()
+        self.status_icon.setPixmap(self.get_icon(False))
+
+        # Load recent paths from cache
+        recent = load_gui_cache().get(section, [])
+        self.combo.addItems(recent)
+        if initial_path:
+            self.set_text(initial_path)
+
+        layout = QHBoxLayout(self)
+        layout.addWidget(self.label_widget)
+        layout.addWidget(self.combo)
+        layout.addWidget(self.browse_btn)
+        layout.addWidget(self.status_icon)
+
+        self.hint_label = QLabel("")
+        self.hint_label.setStyleSheet("color: red; font-size: 9pt;")
+        self.hint_label.setVisible(False)
+        layout.addWidget(self.hint_label)
+
+        self.combo.currentTextChanged.connect(self.clear_hint)
+        self.combo.currentTextChanged.connect(self.update_status)
+        self.browse_btn.clicked.connect(lambda: self.browse(label))
+        self.update_status()
+
+    def textChanged(self, callback):
+        self.combo.currentTextChanged.connect(callback)
+
+    def get_icon(self, valid):
+        icon_file = "circle-check.png" if valid else "circle-x.png"
+        return QPixmap(os.path.join(self.icon_path, icon_file))
+
+    def update_status(self):
+        path = self.get_text()
+        valid = os.path.isdir(path)
+        self.status_icon.setPixmap(self.get_icon(valid))
+        tip = "Directory exists" if valid else "Directory not found or invalid"
+        self.status_icon.setToolTip(tip)
+        if valid:
+            self.clear_hint()
+        else:
+            self.show_hint(tip)
+
+    def browse(self, label):
+        path = QFileDialog.getExistingDirectory(self, f"Choose folder for {label}", self.get_text())
+        if path:
+            self.set_text(path)
+            add_recent_gui_project(path)
+
+    def get_text(self):
+        return self.combo.currentText().strip()
+
+    def set_text(self, value):
+        if value and value not in [self.combo.itemText(i) for i in range(self.combo.count())]:
+            self.combo.insertItem(0, value)
+        self.combo.setCurrentText(value)
+
+    def show_hint(self, message):
+        self.hint_label.setText(message)
+        self.hint_label.setVisible(True)
+
+    def clear_hint(self):
+        self.hint_label.setVisible(False)
+
 
 class LabeledTextFieldQt(QWidget):
     def __init__(self, label, value="", multiline=False, inline=False):
