@@ -182,6 +182,9 @@ class RecentDirectoryFieldQt(QWidget):
         self.status_icon = QLabel()
         self.status_icon.setPixmap(self.get_icon(False))
 
+        self.combo.setMinimumWidth(500)
+        self.browse_btn.setFixedWidth(80)
+
         # Load recent paths from cache
         recent = load_gui_cache().get(section, [])
         self.combo.addItems(recent)

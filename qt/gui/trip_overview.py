@@ -7,7 +7,10 @@ from PyQt6.QtWidgets import (
 from pathlib import Path
 from sharedlib.statemachine import StateMachine
 
+
+
 def populate_trip_overview(self):
+    self.remove_existing_overview_tab()
     # Get image and statemachine directories
     image_root = Path(self.config.get("project", "picturedirectory")).parent
     trip_root = Path(self.config.get("trip", "tripbiotadatabase"))
@@ -18,10 +21,6 @@ def populate_trip_overview(self):
         return
 
     trip_name = image_root.name
-    # trip_translations = {
-    #     "Oostzee zeilzomer": "Oostzee sailing summer"
-    # }
-    # trip_name_en = trip_translations.get(trip_name_nl, trip_name_nl)
 
     # Get all image day folders
     image_days = sorted([d for d in image_root.iterdir() if d.is_dir()], key=lambda p: p.name)

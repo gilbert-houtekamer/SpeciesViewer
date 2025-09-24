@@ -14,6 +14,7 @@ from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, RecentDirectoryFieldQt, ImageFileFieldQt)
 from sharedlib.translatelib import CachedTranslate
 from utils.gui_config import update_cache_gui_section, get_cache_gui_section
+from gui.trip_overview import populate_trip_overview
 
 def generate_trip_ini(
     trip_root: str,
@@ -211,19 +212,19 @@ class TripCreationDialog(QDialog):
         btn_layout.addStretch()
         write_tripini_button = QPushButton("Write trip.ini")
         create_button = QPushButton("Create Trip")
-        cancel_button = QPushButton("Cancel")
+        select_button = QPushButton("Select")
 
         # ✅ Add buttons to layout
         btn_layout.addWidget(write_tripini_button)
         btn_layout.addWidget(create_button)
-        btn_layout.addWidget(cancel_button)
+        btn_layout.addWidget(select_button)
 
         main_layout.addLayout(btn_layout)
 
         # Hook up buttons
         write_tripini_button.clicked.connect(self.on_write_tripini_clicked)        
         create_button.clicked.connect(self.on_create_clicked)
-        cancel_button.clicked.connect(self.reject)
+        select_button.clicked.connect(self.on_select)
 
     def closeEvent(self, event):
         self.passed_parent.translator.writeTranslationCache()
@@ -260,15 +261,22 @@ class TripCreationDialog(QDialog):
     def on_create_clicked(self):
         self.create_trip_ini()
         # make sure new structure is created
-        self.config['trip']['tripbiotadatabase'] = self.root_field.field.text()
-        self.config['trip']['tripbiotawebroot'] = self.trip_web.field.text()
-        self.config["project"]["picturedirectory"] = self.project_path.field.text()
-        set_trip_settings(self.root_field.field.text(), self.trip_web.field.text(), self.project_path.field.text())
+        # self.config['trip']['tripbiotadatabase'] = self.root_field.field.text()
+        # self.config['trip']['tripbiotawebroot'] = self.trip_web.field.text()
+        # self.config["project"]["picturedirectory"] = self.project_path.field.text()
+        set_trip_settings(self.root_field.get_text(), self.trip_web.field.text(), self.project_path.field.text())
         # Also save trip/project pair
         update_cache_gui_section("trip_project_map", self.trip_web.field.text(), self.project_path.field.text() )   
         # now do the actual work     
         runner = BatchModuleRunner(self, self.passed_parent)
         errorstr = runner.run(self.menu_spec)             
+
+    def on_select(self):
+        # save settings
+        set_trip_settings(self.root_field.get_text(), self.trip_web.field.text(), self.project_path.field.text())
+        update_cache_gui_section("trip_project_map", self.trip_web.field.text(), self.project_path.field.text() )   
+        populate_trip_overview(self.passed_parent)        
+        self.accept()  # ✅ Actually closes the dialog
 
     def translate_dutch_to_english(self):
         nl_title = self.title_nl_field.get_text()

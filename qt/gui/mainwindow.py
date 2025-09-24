@@ -125,7 +125,6 @@ class MainWindow(QMainWindow):
                 self.vsplitter.setSizes([int(s) for s in v_sizes.split(",")])
             except ValueError:
                 pass
-
         
         trip_label = QLabel("Trip: 2017 Oostzeedb")
         self.status_bar.addPermanentWidget(trip_label)
@@ -328,3 +327,9 @@ class MainWindow(QMainWindow):
                 ini_path = Path(day_str) / "statemachine.ini"
                 summary_item = self.get_progress_summary_item(sm, ini_path)
                 self.trip_table.setItem(row, 3 + len(self.state_labels), summary_item)
+
+    def remove_existing_overview_tab(self):
+        for i in range(self.yellow_tabs.count()):
+            if self.yellow_tabs.tabText(i) == "Overview":
+                self.yellow_tabs.removeTab(i)
+                break
