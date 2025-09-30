@@ -7,9 +7,10 @@ from pathlib import Path
 import os
 import subprocess
 from utils.trip_config import read_trip_ini
+from utils.config import _config, persist_config
 
 class TripInfoPanel(QWidget):
-    def __init__(self, config, trip_project_map, on_trip_selected):
+    def __init__(self, trip_project_map, on_trip_selected):
         super().__init__()
         self.trip_project_map = trip_project_map
         self.on_trip_selected = on_trip_selected
@@ -23,9 +24,9 @@ class TripInfoPanel(QWidget):
 
         # Master info
         layout.addWidget(QLabel("Master Repository:"))
-        layout.addWidget(QLabel(str(config["master"]["masterbiotadatabase"])))
+        layout.addWidget(QLabel(str(_config["master"]["masterbiotadatabase"])))
         layout.addWidget(QLabel("Master URL:"))
-        layout.addWidget(QLabel(f"www.houtekamer.com/{config['master']['masterbiotawebroot']}"))
+        layout.addWidget(QLabel(f"www.houtekamer.com/{_config['master']['masterbiotawebroot']}"))
 
         for i in range(layout.count()):
             widget = layout.itemAt(i).widget()
@@ -44,7 +45,7 @@ class TripInfoPanel(QWidget):
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.show_context_menu)
 
-        trip_root = Path(config["trip"]["tripbiotadatabase"]).parent
+        trip_root = Path(_config["trip"]["tripbiotadatabase"]).parent
         if trip_root.is_dir():
             for trip_dir in sorted(trip_root.iterdir()):
                 if trip_dir.is_dir():

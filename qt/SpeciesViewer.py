@@ -1,10 +1,12 @@
 import sys
+
 from PyQt6.QtWidgets import QApplication, QSplashScreen, QToolTip
 from PyQt6.QtGui import QPixmap, QFont
 from PyQt6.QtCore import Qt, QTimer
 
 from gui.mainwindow import MainWindow
 from utils.logger_support import init_logger
+from gui.trip_overview import populate_trip_overview
 
 def start_main():
     # 🖼️ Splash screen setup
@@ -34,6 +36,8 @@ def start_main():
         main_window = MainWindow()
         main_window.logger = init_logger(main_window.green_log_box)           # ✅ Set up logging
         print(f"✅ Logging configured, logger assigned: {main_window.logger}")
+        
+        populate_trip_overview(main_window)  # ✅ Now logger is ready
         splash.finish(main_window)
         main_window.show()
        

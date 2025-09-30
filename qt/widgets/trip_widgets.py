@@ -4,8 +4,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QPixmap
-from PIL import Image
 import os
+from PIL import Image
 from utils.gui_config import load_gui_cache, add_recent_gui_project
 
 class ImageFileFieldQt(QWidget):
@@ -84,7 +84,7 @@ class ImageFileFieldQt(QWidget):
         return False
 
     def pick_file(self):
-        root_path = self.root_field.text().strip()
+        root_path = self.root_field.get_text()
         if not os.path.isdir(root_path):
             self.status_icon.setToolTip("❌ Select valid Trip root first")
             return
@@ -96,7 +96,7 @@ class ImageFileFieldQt(QWidget):
             self.field.setText(path)
 
     def get_filename(self):
-        return os.path.basename(self.field.text().strip())                
+        return os.path.basename(self.field.get_text())                
 
     def show_hint(self, message: str):
         self.hint_label.setText(message)

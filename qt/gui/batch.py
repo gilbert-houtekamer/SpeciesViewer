@@ -12,7 +12,6 @@ from sharedlib.statemachine import StateMachine
 
 class BatchModuleRunner:
     def __init__(self, gui, main_window):
-        self.config = gui.config
         self.parent = gui
         self.logger = gui.logger
         self.status_label = gui.status_label
@@ -54,7 +53,7 @@ class BatchModuleRunner:
         QApplication.processEvents()
 
         # Config prep
-        generate_svconfig_ini(self.config)
+        generate_svconfig_ini()
         args = None
         module_config = configparser.ConfigParser()
         module_config.read("svconfig.ini")
@@ -105,9 +104,10 @@ class BatchModuleRunner:
             errorstring = str(e)
             self.logger.warning(f"❌ {statusname} failed: {errorstring}")
             message_label.setText(f"<b>Task failed:</b><br>{errorstring}") 
-            if statusname != "":           
-                sm.updateState(statusname, False, errorstring)
-                self.main_window.update_trip_cell(directory_name, expected_messages[statusname], "❌", f"{statusname} failed: {errorstring}")            
+            if statusname != "":  
+                if statusname != "MakeRepository":          
+                    sm.updateState(statusname, False, errorstring)
+                    self.main_window.update_trip_cell(directory_name, expected_messages[statusname], "❌", f"{statusname} failed: {errorstring}")            
         else:
             if new_warnings > 0:
                 self.logger.info(f"{after_msg} Please review the {new_warnings if new_warnings>1 else ''} warning{'s' if new_warnings>1 else ''}.")

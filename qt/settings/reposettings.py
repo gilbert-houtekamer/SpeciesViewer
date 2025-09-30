@@ -3,11 +3,11 @@ from PyQt6.QtWidgets import (
     QFileDialog, QMessageBox, QFrame
 )
 import logging
+from utils.config import _config, persist_config
 
 class RepoSettingsDialog(QDialog):
-    def __init__(self, parent, config):
+    def __init__(self, parent):
         super().__init__(parent)
-        self.config = config
         self.setWindowTitle("Repositories")
         self.setFixedSize(600, 450)
 
@@ -57,13 +57,12 @@ class RepoSettingsDialog(QDialog):
             self.trip_field.setText(path)
 
     def save_settings(self):
-        self.config.set("master", "masterbiotadatabase", self.master_field.text())
-        self.config.set("master", "masterbiotawebroot", self.master_web.text())
-        self.config.set("trip", "tripbiotadatabase", self.trip_field.text())
-        self.config.set("trip", "tripbiotawebroot", self.trip_web.text())
+        _config.set("master", "masterbiotadatabase", self.master_field.text())
+        _config.set("master", "masterbiotawebroot", self.master_web.text())
+        _config.set("trip", "tripbiotadatabase", self.trip_field.text())
+        _config.set("trip", "tripbiotawebroot", self.trip_web.text())
 
-        with open("sv_config.ini", "w", encoding="utf-8") as f:
-            self.config.write(f)
+        persist_config()
 
         QMessageBox.information(self, "Success", "Repository settings saved")
         self.close()
