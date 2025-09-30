@@ -298,7 +298,7 @@ class TripCreationDialog(QDialog):
         self.logger.info("✅ Translated English to Dutch using Google Translate.")        
 
     def create_trip_ini(self):
-        trip_root = self.root_field.get_path()
+        trip_root = self.root_field.get_text()
         trip_name = self.trip_web.get_text()
         banner_filename = self.topbar_img_field.get_filename()
         picture_filename = self.trip_img_field.get_filename()
