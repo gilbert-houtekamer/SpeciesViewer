@@ -1,4 +1,3 @@
-from configparser import ConfigParser
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem,
@@ -6,14 +5,13 @@ from PyQt6.QtWidgets import (
 )
 from pathlib import Path
 from sharedlib.statemachine import StateMachine
-
-
+from utils.config import _config
 
 def populate_trip_overview(self):
     self.remove_existing_overview_tab()
     # Get image and statemachine directories
-    image_root = Path(self.config.get("project", "picturedirectory")).parent
-    trip_root = Path(self.config.get("trip", "tripbiotadatabase"))
+    image_root = Path(_config.get("project", "picturedirectory")).parent
+    trip_root = Path(_config.get("trip", "tripbiotadatabase"))
     review_root = trip_root / "metadata" / "review"
 
     if not image_root.exists() or not review_root.exists():

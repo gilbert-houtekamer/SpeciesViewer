@@ -1,3 +1,5 @@
+
+
 # picture handling
 exif
 opencv-python
@@ -7,9 +9,12 @@ pygbif
 pysftp
 googletrans==4.0.0-rc1
 fastcrc
+openpyxl
 
 # UI
 flet
+PyQt6
+
 
 # Outgoing REST calls
 requests

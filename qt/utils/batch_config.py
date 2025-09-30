@@ -1,12 +1,13 @@
 import os
 from configparser import ConfigParser
 import logging
+from utils.config import _config, persist_config
 
-def generate_svconfig_ini(config, svconfig_path="svconfig.ini"):
+def generate_svconfig_ini(svconfig_path="svconfig.ini"):
     logger = logging.getLogger("speciesviewer")
     cfg = ConfigParser()
 
-    master_db = config.get("master", "masterbiotadatabase", fallback="")
+    master_db = _config.get("master", "masterbiotadatabase", fallback="")
     if not master_db:
         logger.warning("Missing 'masterbiotadatabase' path in config; cannot build svconfig.ini.")
         return
@@ -14,14 +15,14 @@ def generate_svconfig_ini(config, svconfig_path="svconfig.ini"):
     species_csv = os.path.join(master_db, "metadata", "active", "species.csv")
 
     cfg["repository"] = {
-        "BiotaDatabase": config.get("trip", "tripbiotadatabase", fallback=""),
-        "BiotaWebRoot": config.get("trip", "tripbiotawebroot", fallback=""),
+        "BiotaDatabase": _config.get("trip", "tripbiotadatabase", fallback=""),
+        "BiotaWebRoot": _config.get("trip", "tripbiotawebroot", fallback=""),
         "ReferenceSpecies": species_csv
     }
     cfg["master"] = {"MasterBiotaDatabase": master_db}
-    cfg["project"] = {"PictureDirectory": config.get("project", "picturedirectory", fallback="")}
+    cfg["project"] = {"PictureDirectory": _config.get("project", "picturedirectory", fallback="")}
     cfg["debug"] = {"Classification": "0", "SpeciesFound": "0"}
-    cfg["websettings"] = {"Sftppwd": config.get("websettings", "Sftppwd", fallback="? still needed")}
+    cfg["websettings"] = {"Sftppwd": _config.get("websettings", "Sftppwd", fallback="? still needed")}
 
     try:
         with open(svconfig_path, "w", encoding="utf-8") as f:

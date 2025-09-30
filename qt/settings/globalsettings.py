@@ -2,19 +2,19 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QLineEdit, QCheckBox,
     QPushButton, QMessageBox
 )
+from utils.config import _config, persist_config
 import logging
 
 class GlobalSettingsDialog(QDialog):
-    def __init__(self, parent, config):
+    def __init__(self, parent):
         super().__init__(parent)
-        self.config = config
         self.setWindowTitle("Global Settings")
         self.setFixedSize(400, 300)
 
         layout = QVBoxLayout(self)
 
         self.splash_switch = QCheckBox("Enable Splash")
-        splash_enabled = config.get("Global", "splash_enabled", fallback="yes") == "yes"
+        splash_enabled = _config.get("Global", "splash_enabled", fallback="yes") == "yes"
         self.splash_switch.setChecked(splash_enabled)
         layout.addWidget(self.splash_switch)
 
@@ -36,14 +36,13 @@ class GlobalSettingsDialog(QDialog):
         return field
 
     def save_settings(self):
-        self.config.set("Global", "splash_enabled", "yes" if self.splash_switch.isChecked() else "no")
-        self.config.set("Global", "default_window_width", self.width_field.text())
-        self.config.set("Global", "default_window_height", self.height_field.text())
-        self.config.set("websettings", "sftppwd", self.webpassword_field.text())
-        self.config.set("websettings", "base_url", self.base_url_field.text())        
+        _config.set("Global", "splash_enabled", "yes" if self.splash_switch.isChecked() else "no")
+        _config.set("Global", "default_window_width", self.width_field.text())
+        _config.set("Global", "default_window_height", self.height_field.text())
+        _config.set("websettings", "sftppwd", self.webpassword_field.text())
+        _config.set("websettings", "base_url", self.base_url_field.text())        
 
-        with open("sv_config.ini", "w", encoding="utf-8") as f:
-            self.config.write(f)
+        persist_config()
 
         QMessageBox.information(self, "Success", "✅ Global settings updated")
         self.close()

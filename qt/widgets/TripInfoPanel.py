@@ -1,9 +1,10 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QTreeWidget, QTreeWidgetItem
 from pathlib import Path
 from utils.trip_config import read_trip_ini
+from utils.config import _config, persist_config
 
 class TripInfoPanel(QWidget):
-    def __init__(self, config):
+    def __init__(self):
         super().__init__()
 
         layout = QVBoxLayout(self)
@@ -15,9 +16,9 @@ class TripInfoPanel(QWidget):
 
         # Master info
         layout.addWidget(QLabel("Master Repository:"))
-        layout.addWidget(QLabel(str(config["master"]["masterbiotadatabase"])))
+        layout.addWidget(QLabel(str(_config["master"]["masterbiotadatabase"])))
         layout.addWidget(QLabel("Master URL:"))
-        layout.addWidget(QLabel(f"www.houtekamer.com/{config['master']['masterbiotawebroot']}"))
+        layout.addWidget(QLabel(f"www.houtekamer.com/{_config['master']['masterbiotawebroot']}"))
 
         # Apply font style to all labels
         for i in range(layout.count()):
@@ -34,7 +35,7 @@ class TripInfoPanel(QWidget):
         tree.setStyleSheet(font_style)
         layout.addWidget(tree)
 
-        trip_root = Path(config["trip"]["tripbiotadatabase"]).parent
+        trip_root = Path(_config["trip"]["tripbiotadatabase"]).parent
         if trip_root.is_dir():
             for trip_dir in sorted(trip_root.iterdir()):
                 if trip_dir.is_dir():

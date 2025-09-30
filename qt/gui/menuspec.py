@@ -27,10 +27,8 @@ import bin.svu2avibase
 
 
 def build_menu_spec(main_window):
-    config = main_window.config
-
     # Load config and statemachine
-    generate_svconfig_ini(config)
+    generate_svconfig_ini()
     module_config = configparser.ConfigParser()
     module_config.read("svconfig.ini")
 
@@ -59,7 +57,7 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Trip creation complete. Please review the log messages."
         }
     )
-    trip_create.callback = lambda: TripCreationDialog(main_window, config, trip_create).exec()
+    trip_create.callback = lambda: TripCreationDialog(main_window, trip_create).exec()
 
     read_dir = MenuSpec(
         callback=None,
@@ -74,7 +72,7 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Directory scan complete."
         }
     )
-    read_dir.callback = lambda: ReadDirDialog(main_window, config, read_dir).exec()
+    read_dir.callback = lambda: ReadDirDialog(main_window, read_dir).exec()
 
     write_summary = MenuSpec(
         callback=None,
@@ -88,7 +86,7 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Writing Summary data."
         }
     )
-    write_summary.callback = lambda: WritePicturesDialog(main_window, config, write_summary).exec()
+    write_summary.callback = lambda: WritePicturesDialog(main_window, write_summary).exec()
 
     write_blog = MenuSpec(
         callback=None,
@@ -102,7 +100,7 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Blog successfully created."
         }
     )
-    write_blog.callback = lambda: CreateBlogDialog(main_window, config, write_blog).exec()
+    write_blog.callback = lambda: CreateBlogDialog(main_window, write_blog).exec()
 
     build_website = MenuSpec(
         callback=None,
@@ -116,7 +114,7 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Website updates prepared."
         }
     )
-    build_website.callback = lambda: BuildWebsiteDialog(main_window, config, build_website).exec()    
+    build_website.callback = lambda: BuildWebsiteDialog(main_window, build_website).exec()    
     
     freeze_data = MenuSpec(
         callback=None,
@@ -130,7 +128,7 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Data frozen."
         }
     )
-    freeze_data.callback = lambda: FreezeDialog(main_window, config, freeze_data).exec()    
+    freeze_data.callback = lambda: FreezeDialog(main_window, freeze_data).exec()    
 
     commit_website = MenuSpec(
         callback=None,
@@ -144,7 +142,7 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Please review updated Website."
         }
     )
-    commit_website.callback = lambda: WriteCommitDialog(main_window, config, commit_website).exec()    
+    commit_website.callback = lambda: WriteCommitDialog(main_window, commit_website).exec()    
 
     count_species = MenuSpec(
         callback=None,
@@ -159,7 +157,7 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Species report will be shown."
         }
     )
-    count_species.callback = lambda: CountSpeciesDialog(main_window, config, count_species).exec()    
+    count_species.callback = lambda: CountSpeciesDialog(main_window, count_species).exec()    
 
     redo_trip_blogs = MenuSpec(
         callback=None,
@@ -174,7 +172,7 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Valid Blogs recreated."
         }
     )
-    redo_trip_blogs.callback = lambda: RedoTripBlogsDialog(main_window, config, redo_trip_blogs).exec()
+    redo_trip_blogs.callback = lambda: RedoTripBlogsDialog(main_window, redo_trip_blogs).exec()
 
     recreate_trip = MenuSpec(
         callback=None,
@@ -189,7 +187,7 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Trip recreated."
         }
     )
-    recreate_trip.callback = lambda: RedoTripRepoDialog(main_window, config, recreate_trip).exec()    
+    recreate_trip.callback = lambda: RedoTripRepoDialog(main_window, recreate_trip).exec()    
 
     # Master updates
     merge_trip_species = MenuSpec(
@@ -205,7 +203,7 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Review merge results, and decide to copy to master."
         }
     )
-    merge_trip_species.callback = lambda: MergeTripDialog(main_window, config, merge_trip_species).exec() 
+    merge_trip_species.callback = lambda: MergeTripDialog(main_window, merge_trip_species).exec() 
 
     # utilities
         # Master updates
@@ -222,7 +220,7 @@ def build_menu_spec(main_window):
             'after_msg': "✅ XLSX checklist created."
         }
     )
-    convert_avibase.callback = lambda: ConvertAvibaseDialog(main_window, config, convert_avibase).exec() 
+    convert_avibase.callback = lambda: ConvertAvibaseDialog(main_window, convert_avibase).exec() 
 
     return {
         "File": {

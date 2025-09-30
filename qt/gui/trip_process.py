@@ -8,7 +8,7 @@ from pathlib import Path
 import webbrowser
 from gui.batch import BatchModuleRunner  # Assuming batch handler is here
 
-from utils.config import set_trip_settings
+from utils.config import set_trip_settings, _config
 from utils.trip_config import read_trip_ini
 from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, RecentDirectoryFieldQt, ImageFileFieldQt)
@@ -27,7 +27,6 @@ def generate_trip_ini(
     message_nl: str,
     title_en: str,
     message_en: str,
-    config,
     logger
 ):
     import os
@@ -35,8 +34,8 @@ def generate_trip_ini(
 
     ini_path = os.path.join(trip_root, "trip.ini")
 
-    master_web = config.get("master", "masterbiotawebroot", fallback="/nature/")
-    master_disk = config.get("master", "masterbiotadatabase", fallback="E:\\Dropbox\\naturedb")
+    master_web = _config.get("master", "masterbiotawebroot", fallback="/nature/")
+    master_disk = _config.get("master", "masterbiotadatabase", fallback="E:\\Dropbox\\naturedb")
     trip_name = Path(trip_name_path).name
 
     ini_text = f"""\
@@ -70,16 +69,15 @@ message_en = {message_en}
         return 
 
 class TripCreationDialog(QDialog):
-    def __init__(self, parent, config, menu_spec):
+    def __init__(self, parent, menu_spec):
         super().__init__(parent)
-        self.config = config
         self.menu_spec = menu_spec        
         self.logger = parent.logger
         self.passed_parent = parent
         self.setWindowTitle("Create Trip")
         self.resize(800, 600)
 
-        trip_root = config.get("trip", "tripbiotadatabase", fallback="")
+        trip_root = _config.get("trip", "tripbiotadatabase", fallback="")
         trip_data = read_trip_ini(trip_root) if os.path.isdir(trip_root) else {}
   
         main_layout = QVBoxLayout(self)
@@ -104,9 +102,9 @@ class TripCreationDialog(QDialog):
         self.root_field = RecentDirectoryFieldQt("Trip Root folder", trip_root)
         self.root_field.textChanged(self.on_trip_root_changed)
         layout1.addWidget(self.root_field)
-        self.trip_web = LabeledTextFieldQt("Trip Web root", config.get("trip", "tripbiotawebroot", fallback=""), multiline=False, inline=True)
+        self.trip_web = LabeledTextFieldQt("Trip Web root", _config.get("trip", "tripbiotawebroot", fallback=""), multiline=False, inline=True)
         layout1.addWidget(self.trip_web) 
-        self.project_path = DirectoryFieldQt("Project pictures", config.get("project", "picturedirectory", fallback=""))    
+        self.project_path = DirectoryFieldQt("Project pictures", _config.get("project", "picturedirectory", fallback=""))    
         layout1.addWidget(self.project_path)            
         tabs.addTab(tab1, "Select Trip Folder")
 
@@ -248,7 +246,7 @@ class TripCreationDialog(QDialog):
             # do we have the corresponding projects
             pictdir = get_cache_gui_section("trip_project_map", trip_name)
             if pictdir != "":
-                self.config["project"]["picturedirectory"] = pictdir
+                _config["project"]["picturedirectory"] = pictdir
                 self.project_path.field.setText(pictdir)
         else:
             print("⚠️ No trip.ini found at", new_path, ", be sure to complete all tabs.")
@@ -261,9 +259,6 @@ class TripCreationDialog(QDialog):
     def on_create_clicked(self):
         self.create_trip_ini()
         # make sure new structure is created
-        # self.config['trip']['tripbiotadatabase'] = self.root_field.field.text()
-        # self.config['trip']['tripbiotawebroot'] = self.trip_web.field.text()
-        # self.config["project"]["picturedirectory"] = self.project_path.field.text()
         set_trip_settings(self.root_field.get_text(), self.trip_web.field.text(), self.project_path.field.text())
         # Also save trip/project pair
         update_cache_gui_section("trip_project_map", self.trip_web.field.text(), self.project_path.field.text() )   
@@ -331,22 +326,20 @@ class TripCreationDialog(QDialog):
             message_nl,
             title_en,
             message_en,
-            self.config,
             self.logger
     )
 
 class ReadDirDialog(QDialog):
-    def __init__(self, parent, config, menu_spec):
+    def __init__(self, parent, menu_spec):
         super().__init__(parent)
         self.setWindowTitle("Read Picture Directory")
         self.resize(600, 250)
 
         self.logger = logging.getLogger("speciesviewer")
-        self.config = config
         self.menu_spec = menu_spec               
         self.passed_parent = parent
 
-        full_path = Path(config["project"]["picturedirectory"])
+        full_path = Path(_config["project"]["picturedirectory"])
         self.base_path = full_path.parent
         self.subdir_name = full_path.name
 
@@ -411,28 +404,27 @@ class ReadDirDialog(QDialog):
             self.base_dir_field.show_hint("Selected subdirectory does not exist.")
             return
 
-        self.config["project"]["picturedirectory"] = str(full_selected_path)
+        _config["project"]["picturedirectory"] = str(full_selected_path)
         self.logger.info(f"📁 Selected picture directory: {full_selected_path}")
 
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec)
 
 class WritePicturesDialog(QDialog):
-    def __init__(self, parent, config, menu_spec):
+    def __init__(self, parent, menu_spec):
         super().__init__(parent)
         self.setWindowTitle("Write Summary Data")
         self.resize(600, 250)
 
         self.logger = logging.getLogger("speciesviewer")
-        self.config = config
         self.passed_parent = parent    
         self.menu_spec = menu_spec                   
 
         # Extract trip root and default subdir
-        full_path = Path(config["project"]["picturedirectory"])
+        full_path = Path(_config["project"]["picturedirectory"])
         self.base_path = full_path.parent
         self.default_subdir = full_path.name   # e.g. 2017-08-09
-        self.trip_root = config["trip"]["tripbiotadatabase"] # E:\Dropbox\trips\2017 oostzeedb
+        self.trip_root = _config["trip"]["tripbiotadatabase"] # E:\Dropbox\trips\2017 oostzeedb
 
         layout = QVBoxLayout(self)
 
@@ -492,7 +484,7 @@ class WritePicturesDialog(QDialog):
     def on_write(self):
         selected_subdir = self.subdir_dropdown.currentText()
         # Update config to point to selected metadata folder
-        self.config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
+        _config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
 
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec)        
@@ -505,14 +497,13 @@ from configparser import ConfigParser
 from pathlib import Path
 
 class CreateBlogDialog(QDialog):
-    def __init__(self, parent, config, menu_spec):
+    def __init__(self, parent, menu_spec):
         super().__init__(parent)
         self.setWindowTitle("Configure Blog Post")
         self.resize(600, 400)
 
-        self.config = config
         self.menu_spec = menu_spec
-        self.ini_path = Path(config["project"]["picturedirectory"]) / "blog.ini"
+        self.ini_path = Path(_config["project"]["picturedirectory"]) / "blog.ini"
         self.parser = ConfigParser()
         self.passed_parent = parent 
         self.logger = parent.logger
@@ -565,8 +556,8 @@ class CreateBlogDialog(QDialog):
         close_btn.clicked.connect(self.close)
 
     def get_blog_url(self):
-        base_url = self.config.get("websettings", "base_url", fallback="https://houtekamer.com/")
-        trip_name = self.config.get("trip", "name", fallback="2017Oostzee")
+        base_url = _config.get("websettings", "base_url", fallback="https://houtekamer.com/")
+        trip_name = _config.get("trip", "name", fallback="2017Oostzee")
         return f"{base_url}trips/{trip_name}/biotablog/blog%20index-nl.html"
 
 
@@ -696,21 +687,20 @@ class CreateBlogDialog(QDialog):
 
 
 class BaseTripModuleDialog(QDialog):
-    def __init__(self, parent, config, menu_spec, title, info_text, subdirectory=True):
+    def __init__(self, parent, menu_spec, title, info_text, subdirectory=True):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.resize(600, 250)
 
         self.logger = logging.getLogger("speciesviewer")
-        self.config = config
         self.passed_parent = parent    
         self.menu_spec = menu_spec      
         self.subdirectory = subdirectory             
 
-        full_path = Path(config["project"]["picturedirectory"])
+        full_path = Path(_config["project"]["picturedirectory"])
         self.base_path = full_path.parent
         self.default_subdir = full_path.name
-        self.trip_root = config["trip"]["tripbiotadatabase"]
+        self.trip_root = _config["trip"]["tripbiotadatabase"]
 
         layout = QVBoxLayout(self)
 
@@ -765,16 +755,15 @@ class BaseTripModuleDialog(QDialog):
     def on_write(self):
         if self.subdirectory:        
             selected_subdir = self.subdir_dropdown.currentText()
-            self.config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
+            _config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
 
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec)
 
 class BuildWebsiteDialog(BaseTripModuleDialog):
-    def __init__(self, parent, config, menu_spec):
+    def __init__(self, parent, menu_spec):
         super().__init__(
             parent,
-            config,
             menu_spec,
             title="Build Website",
             info_text="Prepare all web files and site structure for publication."
@@ -783,10 +772,9 @@ class BuildWebsiteDialog(BaseTripModuleDialog):
 
 
 class FreezeDialog(BaseTripModuleDialog):
-    def __init__(self, parent, config, menu_spec):
+    def __init__(self, parent, menu_spec):
         super().__init__(
             parent,
-            config,
             menu_spec,
             title="Freeze Data",
             info_text="Finalize and lock down all collected information for archival or publishing."
@@ -795,10 +783,9 @@ class FreezeDialog(BaseTripModuleDialog):
 
 
 class WriteCommitDialog(BaseTripModuleDialog):
-    def __init__(self, parent, config, menu_spec):
+    def __init__(self, parent, menu_spec):
         super().__init__(
             parent,
-            config,
             menu_spec,
             title="Write Website Commit",
             info_text="Finalize and lock down all collected information for archival or publishing."
@@ -806,10 +793,9 @@ class WriteCommitDialog(BaseTripModuleDialog):
         # self.dialog.exec()
 
 class CountSpeciesDialog(BaseTripModuleDialog):
-    def __init__(self, parent, config, menu_spec):
+    def __init__(self, parent, menu_spec):
         super().__init__(
             parent,
-            config,
             menu_spec,
             title="Count Species",
             info_text="Count the different number of species picture in the trip.",
@@ -845,13 +831,13 @@ class CountSpeciesDialog(BaseTripModuleDialog):
     def on_write(self):
         if self.subdirectory:
             selected_subdir = self.subdir_dropdown.currentText()
-            self.config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
+            _config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
 
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec)
 
         try:
-            reports_dir = Path(self.config.get("trip", "tripbiotadatabase")) / "metadata" / "reports"
+            reports_dir = Path(_config.get("trip", "tripbiotadatabase")) / "metadata" / "reports"
             report_path = reports_dir / "Species overview.txt"
             if report_path.exists():
                 with open(report_path, "r", encoding="utf-8") as f:
@@ -875,10 +861,9 @@ class CountSpeciesDialog(BaseTripModuleDialog):
         clipboard.setText(self.report_viewer.toPlainText())
 
 class RedoTripBlogsDialog(BaseTripModuleDialog):
-    def __init__(self, parent, config, menu_spec):
+    def __init__(self, parent, menu_spec):
         super().__init__(
             parent,
-            config,
             menu_spec,
             title="Recreate Blogs for trip",
             info_text="Recreate Blogs for trip for all committed days.",
@@ -886,10 +871,9 @@ class RedoTripBlogsDialog(BaseTripModuleDialog):
         )
 
 class RedoTripRepoDialog(BaseTripModuleDialog):
-    def __init__(self, parent, config, menu_spec):
+    def __init__(self, parent, menu_spec):
         super().__init__(
             parent,
-            config,
             menu_spec,
             title="Recreate Repository for trip",
             info_text="Recreate Repository for trip for all days.",
@@ -897,10 +881,9 @@ class RedoTripRepoDialog(BaseTripModuleDialog):
         )
 
 class MergeTripDialog(BaseTripModuleDialog):
-    def __init__(self, parent, config, menu_spec):
+    def __init__(self, parent, menu_spec):
         super().__init__(
             parent,
-            config,
             menu_spec,
             title="Merge Trip Species with master",
             info_text="List and merge species lists from master and trip.",
@@ -908,10 +891,9 @@ class MergeTripDialog(BaseTripModuleDialog):
         )        
 
 class ConvertAvibaseDialog(BaseTripModuleDialog):
-    def __init__(self, parent, config, menu_spec):
+    def __init__(self, parent, menu_spec):
         super().__init__(
             parent,
-            config,
             menu_spec,
             title="Create an Excel to keep track of birds seen.",
             info_text="Create an Excel to keep track of birds seen.",

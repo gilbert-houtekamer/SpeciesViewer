@@ -12,7 +12,6 @@ from sharedlib.statemachine import StateMachine
 
 class BatchModuleRunner:
     def __init__(self, gui, main_window):
-        self.config = gui.config
         self.parent = gui
         self.logger = gui.logger
         self.status_label = gui.status_label
@@ -54,7 +53,7 @@ class BatchModuleRunner:
         QApplication.processEvents()
 
         # Config prep
-        generate_svconfig_ini(self.config)
+        generate_svconfig_ini()
         args = None
         module_config = configparser.ConfigParser()
         module_config.read("svconfig.ini")

@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import QPlainTextEdit, QLabel, QSizePolicy, QLineEdit, QTab
 from PyQt6.QtCore import Qt
 
 from qt.gui.layout_colorwidget import Color
-from utils.config import config, CONFIG_FILE
+from utils.config import _config, persist_config
 from gui.menu import create_menubar
 from gui.menuspec import build_menu_spec
 from gui.trip_overview import populate_trip_overview
@@ -31,7 +31,6 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.config = config
         self.trip_table = None
         self.state_keys = None       
         self.state_labels = None 
@@ -43,7 +42,7 @@ class MainWindow(QMainWindow):
         self.logger = None
 
         root_field = QLineEdit()  # Shared reference across tabs
-        root_field.setText(config["trip"]["tripbiotadatabase"])        
+        root_field.setText(_config["trip"]["tripbiotadatabase"])        
         # layout
 
         # Create the splitter
@@ -54,7 +53,7 @@ class MainWindow(QMainWindow):
         red_panel.setStyleSheet("background-color: #f9f9f9;")
         red_layout = QVBoxLayout(red_panel)
         red_layout.setContentsMargins(0, 0, 0, 0)
-        red_layout.addWidget(TripInfoPanel(config))
+        red_layout.addWidget(TripInfoPanel())
         self.hsplitter.addWidget(red_panel)
 
         # Yellow panel
@@ -92,7 +91,7 @@ class MainWindow(QMainWindow):
         self.vsplitter.addWidget(color_row)
         self.vsplitter.addWidget(self.green_log_box)
 
-        sizes = config.get("layout", "split_sizes", fallback="500,400")
+        sizes = _config.get("layout", "split_sizes", fallback="500,400")
         sizes = [int(s) for s in sizes.split(",")]
         self.vsplitter.setSizes(sizes)        
 
@@ -107,20 +106,20 @@ class MainWindow(QMainWindow):
         self.menu_bar = create_menubar(self, self.menu_spec)
         self.setMenuBar(self.menu_bar)
         # translation just in case we need it
-        self.translator = CachedTranslate(config["master"]["masterbiotadatabase"])
+        self.translator = CachedTranslate(_config["master"]["masterbiotadatabase"])
         # self.yellow_builder = YellowPanelBuilder(root_field, self.config)
-        populate_trip_overview(self)
+        # populate_trip_overview(self)
         # Horizontal splitter
-        if config.has_option("layout", "split_sizes_horizontal"):
-            h_sizes = config.get("layout", "split_sizes_horizontal")
+        if _config.has_option("layout", "split_sizes_horizontal"):
+            h_sizes = _config.get("layout", "split_sizes_horizontal")
             try:
                 self.hsplitter.setSizes([int(s) for s in h_sizes.split(",")])
             except ValueError:
                 pass
 
         # Vertical splitter
-        if config.has_option("layout", "split_sizes_vertical"):
-            v_sizes = config.get("layout", "split_sizes_vertical")
+        if _config.has_option("layout", "split_sizes_vertical"):
+            v_sizes = _config.get("layout", "split_sizes_vertical")
             try:
                 self.vsplitter.setSizes([int(s) for s in v_sizes.split(",")])
             except ValueError:
@@ -132,10 +131,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         # logger.info("Close and save screen sizes")
-        config["layout"]["split_sizes_vertical"] = ",".join(str(s) for s in self.vsplitter.sizes())
-        config["layout"]["split_sizes_horizontal"] = ",".join(str(s) for s in self.hsplitter.sizes())        
-        with open(CONFIG_FILE, "w") as f:
-            config.write(f)
+        _config["layout"]["split_sizes_vertical"] = ",".join(str(s) for s in self.vsplitter.sizes())
+        _config["layout"]["split_sizes_horizontal"] = ",".join(str(s) for s in self.hsplitter.sizes())        
+        persist_config()
         super().closeEvent(event)
     
     def init_panels(self):
@@ -199,7 +197,7 @@ class MainWindow(QMainWindow):
             "Write\nCommit" : "WriteCommit"
         }        
         
-        trip_root = Path(self.config.get("trip", "tripbiotadatabase"))
+        trip_root = Path(_config.get("trip", "tripbiotadatabase"))
         review_day = trip_root / "metadata" / "review" / day_name
         # sm = StateMachine(str(trip_root), str(review_day), readState=True)
 
@@ -269,12 +267,12 @@ class MainWindow(QMainWindow):
         action_label = action_item.text().replace("\n", " ")  # e.g., "Write Blog"
 
         # Update PictureDirectory
-        project_root = Path(self.config.get("project", "picturedirectory")).parent
+        project_root = Path(_config.get("project", "picturedirectory")).parent
         new_dir = project_root / day_str
-        self.config.set("project", "picturedirectory", str(new_dir))
+        _config.set("project", "picturedirectory", str(new_dir))
         # self.logger.info(f"Updated PictureDirectory to: {new_dir}")
 
-        trip_root = Path(self.config.get("trip", "tripbiotadatabase"))
+        trip_root = Path(_config.get("trip", "tripbiotadatabase"))
         review_day = trip_root / "metadata" / "review" / day_str
         sm = StateMachine(str(trip_root), str(review_day), readState=True)
 

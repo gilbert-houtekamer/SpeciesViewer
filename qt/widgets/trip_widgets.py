@@ -4,7 +4,6 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QPixmap
-from PIL import Image
 import os
 from utils.gui_config import load_gui_cache, add_recent_gui_project
 
