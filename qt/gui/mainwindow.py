@@ -54,7 +54,7 @@ class MainWindow(QMainWindow):
         red_panel.setStyleSheet("background-color: #f9f9f9;")
         red_layout = QVBoxLayout(red_panel)
         red_layout.setContentsMargins(0, 0, 0, 0)
-        red_layout.addWidget(TripInfoPanel(config))
+        red_layout.addWidget(TripInfoPanel("trip_project_map", populate_trip_overview))
         self.hsplitter.addWidget(red_panel)
 
         # Yellow panel

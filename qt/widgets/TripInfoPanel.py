@@ -1,10 +1,18 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QTreeWidget, QTreeWidgetItem
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QLabel, QTreeWidget, QTreeWidgetItem, QMenu
+)
+from PyQt6.QtGui import QFont, QCursor
+from PyQt6.QtCore import Qt
 from pathlib import Path
+import os
+import subprocess
 from utils.trip_config import read_trip_ini
 
 class TripInfoPanel(QWidget):
-    def __init__(self, config):
+    def __init__(self, config, trip_project_map, on_trip_selected):
         super().__init__()
+        self.trip_project_map = trip_project_map
+        self.on_trip_selected = on_trip_selected
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -19,7 +27,6 @@ class TripInfoPanel(QWidget):
         layout.addWidget(QLabel("Master URL:"))
         layout.addWidget(QLabel(f"www.houtekamer.com/{config['master']['masterbiotawebroot']}"))
 
-        # Apply font style to all labels
         for i in range(layout.count()):
             widget = layout.itemAt(i).widget()
             if isinstance(widget, QLabel):
@@ -28,47 +35,50 @@ class TripInfoPanel(QWidget):
         layout.addSpacing(10)
         layout.addWidget(QLabel("Trips:"))
 
-        # Tree widget for trips and days
-        tree = QTreeWidget()
-        tree.setHeaderHidden(True)
-        tree.setStyleSheet(font_style)
-        layout.addWidget(tree)
+        self.tree = QTreeWidget()
+        self.tree.setHeaderHidden(True)
+        self.tree.setStyleSheet(font_style)
+        layout.addWidget(self.tree)
+
+        self.tree.itemClicked.connect(self.handle_trip_click)
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self.show_context_menu)
 
         trip_root = Path(config["trip"]["tripbiotadatabase"]).parent
         if trip_root.is_dir():
             for trip_dir in sorted(trip_root.iterdir()):
                 if trip_dir.is_dir():
                     trip_item = QTreeWidgetItem([trip_dir.name])
+                    trip_item.setData(0, Qt.ItemDataRole.UserRole, None)  # default
 
-                    # 🔍 Add tooltip from read_trip_ini
                     try:
                         trip_data = read_trip_ini(trip_dir)
+                        trip_name = trip_data.get("trip_banner", "").strip()
                         title = trip_data.get("title_nl", "(geen titel)")
                         message = trip_data.get("message_nl", "")
                         title_en = trip_data.get("title_en", "(geen titel)")
-                        message_en = trip_data.get("message_en", "")                        
-                        # tooltip_text = f"📌 {title}\n📝 {message}\n\n📌 {title_en}\n📝 {message_en}"
+                        message_en = trip_data.get("message_en", "")
 
                         tooltip_html = f"""
-                            <html>
-                                <head></head>
-                                <body>
-                                    <p><b>{title}</b></p>
-                                    <p>{message}</p><p></p>
-                                    <p><b>{title_en}</b></p>
-                                    <p>{message_en}</p>                                    
-                                </body>
-                            </html>
-                            """
+                            <html><body>
+                                <p><b>{title}</b></p><p>{message}</p><p></p>
+                                <p><b>{title_en}</b></p><p>{message_en}</p>
+                            </body></html>
+                        """
                         trip_item.setToolTip(0, tooltip_html)
-                        
-                        # trip_item.setToolTip(0, tooltip_text)
+
+                        trip_key = f"/trips/{trip_name}"
+                        if trip_key in trip_project_map:
+                            trip_item.setText(0, f"🔗 {trip_dir.name}")
+                            trip_item.setFont(0, QFont("Consolas", 10, QFont.Weight.Bold))
+                            trip_item.setForeground(0, Qt.GlobalColor.darkGreen)
+                            trip_item.setData(0, Qt.ItemDataRole.UserRole, trip_key)
+
                     except Exception as e:
                         trip_item.setToolTip(0, f"Error reading trip.ini: {e}")
 
-                    tree.addTopLevelItem(trip_item)
+                    self.tree.addTopLevelItem(trip_item)
 
-                    # Look for days under metadata/review
                     review_path = trip_dir / "metadata" / "review"
                     if review_path.is_dir():
                         for day_dir in sorted(review_path.iterdir()):
@@ -76,4 +86,24 @@ class TripInfoPanel(QWidget):
                                 day_item = QTreeWidgetItem([f"    {day_dir.name}"])
                                 trip_item.addChild(day_item)
         else:
-            tree.addTopLevelItem(QTreeWidgetItem(["(No trips found)"]))
+            self.tree.addTopLevelItem(QTreeWidgetItem(["(No trips found)"]))
+
+    def handle_trip_click(self, item, column):
+        trip_key = item.data(0, Qt.ItemDataRole.UserRole)
+        if trip_key:
+            self.on_trip_selected(trip_key)
+
+    def show_context_menu(self, position):
+        item = self.tree.itemAt(position)
+        if not item:
+            return
+
+        trip_key = item.data(0, Qt.ItemDataRole.UserRole)
+        if trip_key and trip_key in self.trip_project_map:
+            menu = QMenu()
+            open_action = menu.addAction("Open Trip Folder")
+            action = menu.exec(QCursor.pos())
+            if action == open_action:
+                folder = self.trip_project_map[trip_key]
+                if os.path.isdir(folder):
+                    subprocess.Popen(f'explorer "{folder}"')
