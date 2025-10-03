@@ -3,6 +3,7 @@
 import os
 import re
 from pathlib import Path
+from urllib.parse import urljoin
 import time
 import shutil
 from ghexif.handling import read_file, read_pictures
@@ -138,7 +139,7 @@ class Project:
     def getBiotaWebRoot(self):
         return self.BiotaWebRoot
     def getBiotaBlogWeb(self):
-        return os.path.join(self.BiotaWebRoot, 'biotablog/')
+        return self.BiotaWebRoot + '/biotablog/'
     # reference to installed software
     def HTMLDirectory(self):
         return os.path.join(self.modpath, "HTMLtemplates/")
@@ -694,8 +695,10 @@ class Project:
                     scientificname = sp.getSpecies(subject_in_jpg)
                     if scientificname == "":       
                         logger.warning(f"""The species "{subject_in_jpg}" is not found in the GBIF database as a scientific name for "{upn['UniquePictureName']}".""")
+                        picture['errormessage'] = f"""The species "{subject_in_jpg}" is not found in the GBIF database as a scientific name for "{upn['UniquePictureName']}"."""
                     elif scientificname == None:
                         logger.warning(f"""Species "{subject_in_jpg}" may have a typo in "{thisfile['WindowsFileName']}", correct it.""")
+                        picture['errormessage'] = f"""Species "{subject_in_jpg}" may have a typo in "{thisfile['WindowsFileName']}", correct it."""
                     else:
                         try:           
                             species = MyMagic.getSpecies(scientificname)

@@ -107,7 +107,7 @@ class Blog:
     def getBlogAdminFile(self):
         return os.path.join(self.mp.getRepositoryPath(),'admin/blog_admin.csv')
     def getBlogAdminWeb(self):
-        return self.mp.getBiotaWebRoot() + 'admin/blog_admin.csv'
+        return self.mp.getBiotaWebRoot() + '/admin/blog_admin.csv'
     def getBlogTitel(self):
         return self.TitleNl
     def getBlogTitle(self):
@@ -331,7 +331,7 @@ class Blog:
     
     def uploadBlogIndex(self, sftp):
         MyProject = self.mp     
-        biotablog = MyProject.getBiotaBlogDir()        
+        biotablog = MyProject.getBiotaBlogDir()  
         fromfile = biotablog + 'blog index-nl.html'
         toweb = sftp.remotePrefix() + MyProject.getBiotaBlogWeb() + 'blog index-nl.html'
         # print(f'{fromfile} to {toweb}')

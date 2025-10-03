@@ -96,7 +96,7 @@ class ImageFileFieldQt(QWidget):
             self.field.setText(path)
 
     def get_filename(self):
-        return os.path.basename(self.field.get_text())                
+        return os.path.basename(self.field.text().strip())                
 
     def show_hint(self, message: str):
         self.hint_label.setText(message)

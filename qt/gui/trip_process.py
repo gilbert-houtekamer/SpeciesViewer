@@ -557,7 +557,7 @@ class CreateBlogDialog(QDialog):
 
     def get_blog_url(self):
         base_url = _config.get("websettings", "base_url", fallback="https://houtekamer.com/")
-        trip_name = _config.get("trip", "name", fallback="2017Oostzee")
+        trip_name = Path(_config.get("trip", "tripbiotawebroot", fallback="")).name
         return f"{base_url}trips/{trip_name}/biotablog/blog%20index-nl.html"
 
 
