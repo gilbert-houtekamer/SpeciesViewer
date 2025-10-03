@@ -1,5 +1,5 @@
 import flet as ft
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QTextEdit
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QTextEdit
 from PyQt5.QtCore import QTimer
 
 def make_log_tail_accessor(log_box):

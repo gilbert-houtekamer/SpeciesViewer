@@ -3,7 +3,7 @@ import os
 import asyncio
 from utils.photo_sorter import process_source_dir
 from utils.config import get_setting, set_setting
-from gui.components import create_dialog, validate_integer, directory_field
+from gui.components import create_dialog, validate_integer, directory_field, DialogManager
 from gui.log_widgets import LogTailWidget
 import logging
 import bin.sv1MakeReposity 
@@ -17,7 +17,52 @@ import bin.sv7WriteCommit
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("SpeciesViewer")
 
-def show_global_settings_dialog(page, config):
+# def show_global_settings_dialog(page, config):
+#     splash_field = ft.Switch(label="Enable Splash", value=config.get("Global", "splash_enabled", fallback="yes") == "yes")
+#     width_field = ft.TextField(
+#         label="Window width",
+#         value=config.get("Global", "default_window_width", fallback="1600"),
+#         tooltip="Recommended: 1600 (range: 800–3000)",
+#         keyboard_type=ft.KeyboardType.NUMBER,
+#         on_change=lambda e: validate_integer(e, 800, 3000)
+#     )
+
+#     height_field = ft.TextField(
+#         label="Window height",
+#         value=config.get("Global", "default_window_height", fallback="1200"),
+#         tooltip="Recommended: 1200 (range: 600–2250)",
+#         keyboard_type=ft.KeyboardType.NUMBER,
+#         on_change=lambda e: validate_integer(e, 600, 2500)
+#     )
+
+#     webpassword_field = ft.TextField(
+#         label="Website password",
+#         value=config.get("websettings", "sftppwd", fallback="? still needed"),
+#         tooltip="Check with Web provider what password you need to use for sFTP"
+#     )    
+
+#     def save_settings(e):
+#         config.set("Global", "splash_enabled", "yes" if splash_field.value else "no")
+#         config.set("Global", "default_window_width", width_field.value)
+#         config.set("Global", "default_window_height", height_field.value)
+#         config.set("websettings", "sftppwd", webpassword_field.value)        
+#         with open("sv_config.ini", "w", encoding="utf-8") as f:
+#             config.write(f)
+#         splash_field.page.show_snack_bar(ft.SnackBar(ft.Text("✅ Global settings saved")))
+
+#     controls = [
+#         width_field,
+#         height_field,
+#         ft.Divider(),        
+#         splash_field,
+#         ft.Divider(),
+#         webpassword_field,
+#         ft.ElevatedButton("Save", on_click=save_settings)
+#     ]
+
+#     create_dialog("Global Settings", controls, page)
+
+def show_global_settings_dialog(page, config, dialog_manager):
     splash_field = ft.Switch(label="Enable Splash", value=config.get("Global", "splash_enabled", fallback="yes") == "yes")
     width_field = ft.TextField(
         label="Window width",
@@ -26,15 +71,13 @@ def show_global_settings_dialog(page, config):
         keyboard_type=ft.KeyboardType.NUMBER,
         on_change=lambda e: validate_integer(e, 800, 3000)
     )
-
     height_field = ft.TextField(
         label="Window height",
         value=config.get("Global", "default_window_height", fallback="1200"),
-        tooltip="Recommended: 1200 (range: 600–2250)",
+        tooltip="Recommended: 1200 (range: 600–2500)",
         keyboard_type=ft.KeyboardType.NUMBER,
         on_change=lambda e: validate_integer(e, 600, 2500)
     )
-
     webpassword_field = ft.TextField(
         label="Website password",
         value=config.get("websettings", "sftppwd", fallback="? still needed"),
@@ -48,21 +91,50 @@ def show_global_settings_dialog(page, config):
         config.set("websettings", "sftppwd", webpassword_field.value)        
         with open("sv_config.ini", "w", encoding="utf-8") as f:
             config.write(f)
-        splash_field.page.show_snack_bar(ft.SnackBar(ft.Text("✅ Global settings saved")))
+        page.show_snack_bar(ft.SnackBar(ft.Text("✅ Global settings saved")))
 
     controls = [
         width_field,
         height_field,
-        ft.Divider(),        
+        ft.Divider(),
         splash_field,
         ft.Divider(),
         webpassword_field,
         ft.ElevatedButton("Save", on_click=save_settings)
     ]
 
-    create_dialog("Global Settings", controls, page)
+    dialog_manager.show_dialog("Global Settings", controls, dialog_id="global_settings")
 
-def show_repositories_dialog(page, config):
+
+# def show_repositories_dialog(page, config):
+#     master_field, master_browse = directory_field("[master] Database", page=page, config_section="master", config_key="masterbiotadatabase")
+#     trip_field, trip_browse = directory_field("[trip] Database", page=page, config_section="trip", config_key="tripbiotadatabase")
+
+#     master_web = ft.TextField(label="[master] Web root", value=config.get("master", "masterbiotawebroot", fallback=""))
+#     trip_web = ft.TextField(label="[trip] Web root", value=config.get("trip", "tripbiotawebroot", fallback=""))
+
+#     def save_repos(e):
+#         config.set("master", "masterbiotadatabase", master_field.value)
+#         config.set("master", "masterbiotawebroot", master_web.value)
+#         config.set("trip", "tripbiotadatabase", trip_field.value)
+#         config.set("trip", "tripbiotawebroot", trip_web.value)
+#         with open("sv_config.ini", "w", encoding="utf-8") as f:
+#             config.write(f)
+
+#         page.show_snack_bar(ft.SnackBar(ft.Text("✅ Repository settings saved")))
+
+#     controls = [
+#         master_browse, # ft.Column([master_field, master_browse], spacing=4),
+#         master_web,
+#         ft.Divider(),
+#         trip_browse, # ft.Column([trip_field, trip_browse], spacing=4),
+#         trip_web,
+#         ft.ElevatedButton("Save", on_click=save_repos)
+#     ]
+
+#     create_dialog("Repositories", controls, page)
+
+def show_repositories_dialog(page, config, dialog_manager):
     master_field, master_browse = directory_field("[master] Database", page=page, config_section="master", config_key="masterbiotadatabase")
     trip_field, trip_browse = directory_field("[trip] Database", page=page, config_section="trip", config_key="tripbiotadatabase")
 
@@ -76,26 +148,37 @@ def show_repositories_dialog(page, config):
         config.set("trip", "tripbiotawebroot", trip_web.value)
         with open("sv_config.ini", "w", encoding="utf-8") as f:
             config.write(f)
-
         page.show_snack_bar(ft.SnackBar(ft.Text("✅ Repository settings saved")))
 
     controls = [
-        master_browse, # ft.Column([master_field, master_browse], spacing=4),
+        master_browse,
         master_web,
         ft.Divider(),
-        trip_browse, # ft.Column([trip_field, trip_browse], spacing=4),
+        trip_browse,
         trip_web,
         ft.ElevatedButton("Save", on_click=save_repos)
     ]
 
-    create_dialog("Repositories", controls, page)
+    dialog_manager.show_dialog("Repositories", controls, dialog_id="repositories_settings")
 
 
-def show_about_dialog(page):
+def show_my_dialog(page, config, dialog_manager):
+    text_field = ft.TextField(label="This is a dialog to test a GUI mechanism")
+
+    dialog_manager.show_dialog(
+        title="My Custom Dialog",
+        content_controls=[text_field],
+        dialog_id="my_custom_dialog",
+        on_close=lambda: print("Dialog closed. Cleanups go here.")
+    )
+
+
+
+def show_about_dialog(page,  config, dialog_manager):
     def dismiss(e):
         page.dialog.open = False
         page.update()
-
+   
     about_text = (
         "📷 Photo Sorter\n\n"
         "Photo Sorter is a utility to organize and label photos by metadata.\n"
@@ -106,16 +189,12 @@ def show_about_dialog(page):
         "Built with ❤️ using Flet."
     )
 
-    about_dialog = ft.AlertDialog(
-        title=ft.Text("About Photo Sorter"),
+    dialog_manager.show_dialog = ft.AlertDialog(
+        title=ft.Text("About SpeciesViewer"),
         content=ft.Text(about_text),
         actions=[ft.TextButton("OK", on_click=dismiss)],
         modal=True
     )
-    page.dialog = about_dialog
-    about_dialog.open = True
-    page.update()
-
 
 def show_photo_sorter_overlay(page, update_status_callback, add_to_global_log):
     FIELD_WIDTH = 900
@@ -318,25 +397,12 @@ def generate_svconfig_ini(config, trip_root: str, svconfig_path: str = None):
         logger.info(f"❌ Failed to write svconfig.ini: {err}")
         return 
     
-# def call_batch_module(config):
-#     import configparser
-#     import bin.sv2ReadDirExif
-#     #import bin.sv1MakeReposity
-    
-#     generate_svconfig_ini(config, "")
-#     args = None
-#     module_config = configparser.ConfigParser()
-#     module_config.read("svconfig.ini")
- 
-#     bin.sv2ReadDirExif.main(args, module_config)
-#     return
-
 def call_batch_module(config, update_status_callback, page, logger, module_called, before_msg, after_msg):
     import configparser
 
     # Get your shared logger
     # logger = logging.getLogger("speciesviewer")
-    print("All handlers BEFORE:", logger.handlers)
+    print("All handlers BEFORE remove:", logger.handlers)
 
     # 🛑 Remove StreamHandlers and store them
     original_stream_handlers = [
@@ -345,7 +411,7 @@ def call_batch_module(config, update_status_callback, page, logger, module_calle
     for h in original_stream_handlers:
         logger.removeHandler(h)
 
-    print("All handlers AFTER:", logger.handlers)
+    print("All handlers AFTER remove:", logger.handlers)
 
     try:
         # ✅ Your call runs quietly now (only GUI gets logs if you added it)
@@ -363,6 +429,8 @@ def call_batch_module(config, update_status_callback, page, logger, module_calle
         # 🔁 Restore original terminal handlers after execution
         for h in original_stream_handlers:
             logger.addHandler(h)
+    
+    print("All handlers AFTER restored:", logger.handlers)
 
 
 def generate_trip_ini(
@@ -419,6 +487,9 @@ message_en = {message_en}
 def show_create_trip_dialog(page, config, update_status_callback):
     from gui.logger_logic import pause_toggle, GUIHandler, setup_logger, attach_gui_handler, detach_gui_handler
 
+    def cleanup(e):
+        detach_gui_handler(logger, "createtrip")       
+
     root_field, root_row = directory_field("Trip root folder", page=page, config_section="trip", config_key="tripbiotadatabase")
 
     trip_root = config.get("trip", "tripbiotadatabase", fallback="")
@@ -449,7 +520,7 @@ def show_create_trip_dialog(page, config, update_status_callback):
     local_gui_handler = GUIHandler(local_log_box)
 
     logger = logging.getLogger("speciesviewer")    
-    attach_gui_handler(logger, "settings_dialog", local_log_box)
+    attach_gui_handler(logger, "createtrip", local_log_box)
 
     create_dialog("Create Trip", [
         ft.Text("blabla — what Trips are about...", width=800),
@@ -485,12 +556,15 @@ def show_create_trip_dialog(page, config, update_status_callback):
         local_log_box
     ], page)
     logger.info("Local box initialized\n")
-    #detach_gui_handler(logger, "settings_dialog")
+
 
     
 def show_read_dir_dialog(page, config, update_status_callback):
-    from gui.logger_logic import GUIHandler, attach_gui_handler
+    from gui.logger_logic import GUIHandler, attach_gui_handler, detach_gui_handler
     import logging
+
+    def cleanup(e):
+        detach_gui_handler(logger, "readdir_dialog")       
 
     local_log_box = ft.TextField(
         label="Log for batch call",
@@ -505,9 +579,9 @@ def show_read_dir_dialog(page, config, update_status_callback):
     local_log_box._Control__page = page      # not supported, but works
 
     logger = logging.getLogger("speciesviewer")
-    attach_gui_handler(logger, "settings_dialog", local_log_box)
+    attach_gui_handler(logger, "readdir_dialog", local_log_box)
 
-    create_dialog("Read Picture Directory", [
+    dialog = create_dialog("Read Picture Directory", [
         ft.Text("Scan a directory with photo files and extract metadata (Exif tags) for each image.", width=800),
         ft.Row([
             ft.TextButton("Read Directory", on_click=lambda e: call_batch_module(
@@ -521,11 +595,15 @@ def show_read_dir_dialog(page, config, update_status_callback):
             ))
         ], alignment='start', spacing=20),
         local_log_box
-    ], page)
+    ], page, on_close=cleanup)
+
 
 def show_write_pictures_dialog(page, config, update_status_callback):
-    from gui.logger_logic import GUIHandler, attach_gui_handler
+    from gui.logger_logic import GUIHandler, attach_gui_handler, detach_gui_handler
     import logging
+
+    def cleanup(e):
+        detach_gui_handler(logger, "writepict_dialog")           
 
     local_log_box = ft.TextField(
         label="Log for batch call",
@@ -540,7 +618,7 @@ def show_write_pictures_dialog(page, config, update_status_callback):
     local_log_box._Control__page = page      # not supported, but works    
 
     logger = logging.getLogger("speciesviewer")
-    attach_gui_handler(logger, "settings_dialog", local_log_box)
+    attach_gui_handler(logger, "writepict_dialog", local_log_box)
 
     create_dialog("Write Picture Entries", [
         ft.Text("Add species tags and metadata to photo entries based on earlier readings.", width=800),
@@ -556,4 +634,271 @@ def show_write_pictures_dialog(page, config, update_status_callback):
             ))
         ], alignment='start', spacing=20),
         local_log_box
-    ], page)
+    ], page, on_close=cleanup)
+
+def show_write_blog_dialog(page, config, update_status_callback):
+    import os
+    import configparser
+    from pathlib import Path
+    from gui.logger_logic import GUIHandler, attach_gui_handler, detach_gui_handler
+    import logging
+
+    def cleanup(e):
+        detach_gui_handler(logger, "blog_dialog")           
+
+    logger = logging.getLogger("speciesviewer")
+
+    # Extract picture directory and trip.ini info
+    tripdir = config.get("trip", "tripbiotadatabase")
+    trip_ini_path = os.path.join(tripdir, "trip.ini")
+    picturedir = config.get("project", "picturedirectory")
+    blog_ini_path = os.path.join(picturedir, "blog.ini")
+
+    trip_config = configparser.ConfigParser()
+    trip_config.read(trip_ini_path)
+
+    blog_config = configparser.ConfigParser()
+    if os.path.exists(blog_ini_path):
+        blog_config.read(blog_ini_path)
+        created_blog_ini = False                        # cannot message here, remember
+    else:
+        created_blog_ini = True
+        blog_config["blog_config"] = {
+            "only_new": "False",
+            "minimum_score": "25",
+            "column_width": "300"
+        }
+        blog_config["blog_selection"] = {
+            "species": "biota"
+        }
+        blog_config["blog_text"] = {
+            "titel_nl": f"{trip_config.get("trip_text", "title_nl")} foto's van {Path(picturedir).stem}",
+            "message_nl": f"Deze post is gemaakt op basis van oudere foto's tijdens de {trip_config.get("trip_text", "title_nl")}",
+            "titel_en": f"{trip_config.get("trip_text", "title_en")} photos from {Path(picturedir).stem}",
+            "message_en": f"This post is based on older photos taken during the {trip_config.get("trip_text", "title_en")}",
+        }
+
+     
+
+    # GUI fields for editable blog.ini values
+    titel_nl = ft.TextField(label="Titel NL", value=blog_config["blog_text"]["titel_nl"])
+    message_nl = ft.TextField(label="Message NL", value=blog_config["blog_text"]["message_nl"])
+    titel_en = ft.TextField(label="Titel EN", value=blog_config["blog_text"]["titel_en"])
+    message_en = ft.TextField(label="Message EN", value=blog_config["blog_text"]["message_en"])
+    only_new = ft.Checkbox(label="Only New", value=blog_config["blog_config"].getboolean("only_new"))
+    species = ft.TextField(label="Species", value=blog_config["blog_selection"]["species"])
+
+    minimum_score = ft.TextField(
+        label="Minimum Score (0–200)",
+        value=blog_config["blog_config"]["minimum_score"],
+        on_change=lambda e: validate_inputs()
+    )
+    column_width = ft.TextField(
+        label="Column Width (150–600)",
+        value=blog_config["blog_config"]["column_width"],
+        on_change=lambda e: validate_inputs()
+    )
+
+    def save_blog_ini(e):
+        # your logic to save blog.ini
+        pass
+
+    save_button = ft.TextButton("Save blog.ini", on_click=save_blog_ini)    
+
+    # Validation logic
+    def validate_inputs():
+        try:
+            score = int(minimum_score.value)
+            width = int(column_width.value)
+            score_valid = 0 <= score <= 200
+            width_valid = 150 <= width <= 600
+
+            if not score_valid:
+                minimum_score.error_text = "Score must be between 0 and 200"
+            else:
+                minimum_score.error_text = None
+
+            if not width_valid:
+                column_width.error_text = "Width must be between 150 and 600"
+            else:
+                column_width.error_text = None
+
+            save_button.disabled = not (score_valid and width_valid)
+        except ValueError:
+            minimum_score.error_text = "Must be a number"
+            column_width.error_text = "Must be a number"
+            save_button.disabled = True
+
+        page.update()    
+
+    def save_blog_ini(e):
+        blog_config["blog_config"]["only_new"] = str(only_new.value)
+        blog_config["blog_config"]["minimum_score"] = minimum_score.value
+        blog_config["blog_config"]["column_width"] = column_width.value
+        blog_config["blog_selection"]["species"] = species.value
+        blog_config["blog_text"]["titel_nl"] = titel_nl.value
+        blog_config["blog_text"]["message_nl"] = message_nl.value
+        blog_config["blog_text"]["titel_en"] = titel_en.value
+        blog_config["blog_text"]["message_en"] = message_en.value
+
+        with open(blog_ini_path, "w") as configfile:
+            blog_config.write(configfile)
+        validate_inputs()
+
+        update_status_callback("Saved blog.ini configuration.")
+        logger.info("Saved blog.ini configuration.")
+
+    local_log_box = ft.TextField(
+        label="Log for blog creation",
+        multiline=True,
+        read_only=True,
+        min_lines=8,
+        max_lines=12,
+        width=900,
+        text_style=ft.TextStyle(size=11, font_family="Courier New")
+    )
+    attach_gui_handler(logger, "blog_dialog", local_log_box)
+    local_log_box._Control__page = page      # not supported, but works        
+
+    create_dialog("Configure & Generate Blog", [
+        ft.Text("Blog Configuration Inputs", width=800),
+        titel_nl, message_nl,
+        titel_en, message_en,
+        minimum_score, column_width,
+        # only_new, species,
+        ft.Row([
+            ft.TextButton("Save blog.ini", on_click=save_blog_ini),
+            ft.TextButton("Generate Blog", on_click=lambda e: call_batch_module(
+                config,
+                update_status_callback,
+                page,
+                logger,
+                bin.sv4WriteBlog.main,
+                "Create a Web blog with pictures",
+                "Please review the messages"
+            ), disabled=not os.path.exists(blog_ini_path)),
+        ], alignment="start", spacing=20 ),
+        local_log_box
+    ], page, on_close=cleanup)
+
+    if created_blog_ini:
+        logger.info("Initialize blog.ini configuration.")
+    if not save_button.disabled:
+        logger.info("blog.ini has valid, but possible default, contents.")
+    else:
+        logger.info("blog.ini has not valid, correct this first.")
+
+
+def show_build_website_dialog(page, config, update_status_callback):
+    from gui.logger_logic import GUIHandler, attach_gui_handler, detach_gui_handler
+    import logging
+    
+    def cleanup(e):
+        detach_gui_handler(logger, "website_dialog") 
+
+    local_log_box = ft.TextField(
+        label="Log for batch call",
+        multiline=True,
+        read_only=True,
+        min_lines=8,
+        max_lines=40,
+        width=1200,
+        text_style=ft.TextStyle(size=11, font_family="Courier New")
+    )
+    local_gui_handler = GUIHandler(local_log_box)
+    local_log_box._Control__page = page      # not supported, but works    
+
+    logger = logging.getLogger("speciesviewer")
+    attach_gui_handler(logger, "website_dialog", local_log_box)
+
+    create_dialog("Build Website", [
+        ft.Text("Prepare all web files and site structure for publication.", width=800),
+        ft.Row([
+            ft.TextButton("Build Website", on_click=lambda e: call_batch_module(
+                config,
+                update_status_callback,
+                page,
+                logger,
+                bin.sv5BuildWebsite.main,
+                "Build updates for later publication",
+                "Please review the messages"
+            ))
+        ], alignment='start', spacing=20),
+        local_log_box
+    ], page, on_close=cleanup)
+
+def show_freeze_dialog(page, config, update_status_callback):
+    from gui.logger_logic import GUIHandler, attach_gui_handler, detach_gui_handler
+    import logging
+    
+    def cleanup(e):
+        detach_gui_handler(logger, "freeze_dialog") 
+
+    local_log_box = ft.TextField(
+        label="Log for batch call",
+        multiline=True,
+        read_only=True,
+        min_lines=8,
+        max_lines=40,
+        width=1200,
+        text_style=ft.TextStyle(size=11, font_family="Courier New")
+    )
+    local_gui_handler = GUIHandler(local_log_box)
+    local_log_box._Control__page = page      # not supported, but works        
+
+    logger = logging.getLogger("speciesviewer")
+    attach_gui_handler(logger, "freeze_dialog", local_log_box)
+
+    create_dialog("Freeze Trip Data", [
+        ft.Text("Finalize and lock down all collected information for archival or publishing.", width=800),
+        ft.Row([
+            ft.TextButton("Freeze Data", on_click=lambda e: call_batch_module(
+                config,
+                update_status_callback,
+                page,
+                logger,
+                bin.sv6Freeze.main,
+                "Freeze all collected data",
+                "Please review the messages"
+            ))
+        ], alignment='start', spacing=20),
+        local_log_box
+    ], page, on_close=cleanup)
+
+def show_commit_dialog(page, config, update_status_callback):
+    from gui.logger_logic import GUIHandler, attach_gui_handler, detach_gui_handler
+    import logging
+
+    def cleanup(e):
+        detach_gui_handler(logger, "commit_dialog") 
+
+    local_log_box = ft.TextField(
+        label="Log for batch call",
+        multiline=True,
+        read_only=True,
+        min_lines=8,
+        max_lines=40,
+        width=1200,
+        text_style=ft.TextStyle(size=11, font_family="Courier New")
+    )
+    local_gui_handler = GUIHandler(local_log_box)
+    local_log_box._Control__page = page      # not supported, but works        
+
+    logger = logging.getLogger("speciesviewer")
+    attach_gui_handler(logger, "commit_dialog", local_log_box)
+
+    create_dialog("Write Website Commit", [
+        ft.Text("Push final updates to the live trip website.", width=800),
+        ft.Row([
+            ft.TextButton("Commit Trip Website", on_click=lambda e: call_batch_module(
+                config,
+                update_status_callback,
+                page,
+                logger,
+                bin.sv7WriteCommit.main,
+                "Update the trip website",
+                "Please review the messages"
+            ))
+        ], alignment='start', spacing=20),
+        local_log_box
+    ], page, on_close=cleanup)

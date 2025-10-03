@@ -2,13 +2,14 @@ import flet as ft
 import os
 import asyncio
 import logging
+from gui.components import DialogManager
 from gui.menu_bar import build_menu
 from gui.logger_logic import pause_toggle, GUIHandler, setup_logger, attach_gui_handler, detach_gui_handler
 from utils.config import get_setting, set_setting, get_int_setting
 from utils.config import config         # assuming config is loaded here
 from gui.components import create_dialog, make_integer_field, validate_integer, directory_field
 from utils.log_utils import make_log_tail_accessor
-from PyQt5.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication
 import sys
 
 global_log_box = ft.TextField(
@@ -30,6 +31,7 @@ async def auto_refresh(widget, page, interval=0.25):
         await asyncio.sleep(interval)
 
 def launch_main_ui(page):
+    dialog_manager = DialogManager(page)
     # rest of your UI setup...    
     window_width = get_int_setting("Global", "default_window_width", 1200)
     window_height = get_int_setting("Global", "default_window_height", 900)
@@ -94,7 +96,7 @@ def launch_main_ui(page):
     #     global_log_box.update()        
 
     main_content = ft.Column([
-        build_menu(page, update_status, add_to_global_log, config),
+        build_menu(page, dialog_manager, update_status, add_to_global_log, config),
         ft.Divider(),
         ft.Text("Welcome to Species Viewer", size=24),
         global_log_box,
