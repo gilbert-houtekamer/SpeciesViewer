@@ -89,15 +89,33 @@ class Sftp:
     def upload(self, source_local_path, remote_path, preserve_mtime=True):
         try:
             # logger.info(
-            #     f"uploading to {self.hostname} as {self.username} [(remote path: {remote_path});(source local path: {source_local_path})]"
+            #      f"uploading to {self.hostname} as {self.username} [(remote path: {remote_path});(source local path: {source_local_path})]"
             # )
             # Download file from SFTP
             self.connection.put(source_local_path, remote_path, preserve_mtime=True)
             # logger.info("upload completed")
-
         except Exception as err:
-            raise Exception(err)
-        
+            # raise Exception(err)
+            logger.warning(f"FTP uploading '{source_local_path}' to '{remote_path}' failed, {err}")
+            
+    def ensure_remote_dir(self, remote_path):
+        import posixpath
+
+        remote_dir = posixpath.dirname(remote_path)
+        try:
+            self.connection.chdir(remote_dir)
+        except IOError:
+            # Directory doesn't exist, so create it recursively
+            parts = remote_dir.strip("/").split("/")
+            current = ""
+            for part in parts:
+                current = posixpath.join(current, part)
+                try:
+                    self.connection.chdir(current)
+                except IOError:
+                    self.connection.mkdir(current)
+                    self.connection.chdir(current)
+
     def put_r_portable(self, localdir, remotedir, preserve_mtime=True):
         for entry in os.listdir(localdir):
             remotepath = remotedir + "/" + entry
