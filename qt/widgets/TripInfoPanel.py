@@ -8,10 +8,12 @@ import os
 import subprocess
 from utils.trip_config import read_trip_ini
 from utils.config import _config, persist_config
+from utils.gui_config import load_gui_cache
 
 class TripInfoPanel(QWidget):
-    def __init__(self, trip_project_map, on_trip_selected):
+    def __init__(self, parent, trip_project_map, on_trip_selected):
         super().__init__()
+        self.main_window = parent
         self.trip_project_map = trip_project_map
         self.on_trip_selected = on_trip_selected
 
@@ -54,7 +56,7 @@ class TripInfoPanel(QWidget):
 
                     try:
                         trip_data = read_trip_ini(trip_dir)
-                        trip_name = trip_data.get("trip_banner", "").strip()
+                        trip_name = trip_data.get("trip_name", "").strip()
                         title = trip_data.get("title_nl", "(geen titel)")
                         message = trip_data.get("message_nl", "")
                         title_en = trip_data.get("title_en", "(geen titel)")
@@ -73,13 +75,12 @@ class TripInfoPanel(QWidget):
                             trip_item.setText(0, f"🔗 {trip_dir.name}")
                             trip_item.setFont(0, QFont("Consolas", 10, QFont.Weight.Bold))
                             trip_item.setForeground(0, Qt.GlobalColor.darkGreen)
-                            trip_item.setData(0, Qt.ItemDataRole.UserRole, trip_key)
+                            trip_item.setData(0, Qt.ItemDataRole.UserRole, trip_dir)
 
                     except Exception as e:
                         trip_item.setToolTip(0, f"Error reading trip.ini: {e}")
 
                     self.tree.addTopLevelItem(trip_item)
-
                     review_path = trip_dir / "metadata" / "review"
                     if review_path.is_dir():
                         for day_dir in sorted(review_path.iterdir()):
@@ -90,9 +91,16 @@ class TripInfoPanel(QWidget):
             self.tree.addTopLevelItem(QTreeWidgetItem(["(No trips found)"]))
 
     def handle_trip_click(self, item, column):
-        trip_key = item.data(0, Qt.ItemDataRole.UserRole)
-        if trip_key:
-            self.on_trip_selected(trip_key)
+        trip_dir = item.data(0, Qt.ItemDataRole.UserRole)
+        if trip_dir and (trip_dir !=  Path(_config["trip"]["tripbiotadatabase"])):
+            trip_data = read_trip_ini(trip_dir)
+            trip_name = trip_data.get("trip_name", "").strip()
+            _config["trip"]["tripbiotadatabase"] = str(trip_dir)
+            _config["trip"]["tripbiotawebroot"] = "/trips/" + trip_name
+            # load corresponding project
+            _config["project"]["picturedirectory"] = self.trip_project_map["/trips/" + trip_name]     
+            persist_config()
+            self.on_trip_selected(self.main_window)
 
     def show_context_menu(self, position):
         item = self.tree.itemAt(position)

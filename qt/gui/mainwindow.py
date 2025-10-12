@@ -15,6 +15,7 @@ from widgets.TripInfoPanel import TripInfoPanel
 from gui.trip_overview import populate_trip_overview
 from sharedlib.statemachine import StateMachine
 from gui.image_viewer import ImagePreviewDialog
+from utils.gui_config import load_gui_cache  # or wherever your cache functions live
 
 
 def Color(name):
@@ -53,7 +54,9 @@ class MainWindow(QMainWindow):
         red_panel.setStyleSheet("background-color: #f9f9f9;")
         red_layout = QVBoxLayout(red_panel)
         red_layout.setContentsMargins(0, 0, 0, 0)
-        red_layout.addWidget(TripInfoPanel("trip_project_map", populate_trip_overview))
+        cache = load_gui_cache()
+        trip_project_map = cache.get("trip_project_map", {})  # ✅ actual dict
+        red_layout.addWidget(TripInfoPanel(self, trip_project_map, populate_trip_overview))
         self.hsplitter.addWidget(red_panel)
 
         # Yellow panel
