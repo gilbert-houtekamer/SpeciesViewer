@@ -630,10 +630,19 @@ class CreateBlogDialog(QDialog):
     
         self.translate_button = QPushButton("Translate to English")  # "Translate to English"
         self.translate_button.clicked.connect(self.translate_dutch_to_english)
+        self.info_html = HTMLLabel(
+            "<p><b>Text for blog entry</b><br>"
+            "A blog entry is a presentation of the different species seen on a day on a web page. " 
+            "The text entered here is shown on the Dutch version of web site.<br>"
+            "The text can be translated to English, and verified on the English tab.  Especially species names and titles need to reviewed.<br> "
+            "Once entered for a blog, it is saved in the picture directory and uses on later usage.<br>"
+            "</p>"
+        )
         self.title_nl = QLineEdit(self.parser.get("blog_text", "titel_nl", fallback=""))
         self.message_nl = QTextEdit(self.parser.get("blog_text", "message_nl", fallback=""))
 
         form.addRow("", self.translate_button)
+        form.addRow("", self.info_html)
         form.addRow("Titel (NL):", self.title_nl)
         form.addRow("Beschrijving (NL):", self.message_nl)
 

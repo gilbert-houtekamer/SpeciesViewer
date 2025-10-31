@@ -99,10 +99,14 @@ def addSpeciesInfo(sc,sp):
                 listspecies['scname'] = sc.english_dict[enname.lower()]
                 if listspecies['scname'] in sp.species_dict:
                     listspecies['knownspecies'] = True
-            elif listspecies['nlname'].lower() in sc.dutch_dict:
-                listspecies['scname'] = sc.dutch_dict[listspecies['nlname'].lower()]
-                if listspecies['scname'] in sp.species_dict:
-                    listspecies['knownspecies'] = True            
+            else:
+                if listspecies['nlname'].lower() == "":
+                    if listspecies['scname'].lower() in sc.sc_dict:
+                        listspecies['nlname'] = sc.sc_dict[listspecies['scname'].lower()]['DutchName']
+                if listspecies['nlname'].lower() in sc.dutch_dict:
+                    listspecies['scname'] = sc.dutch_dict[listspecies['nlname'].lower()]
+                    if listspecies['scname'] in sp.species_dict:
+                        listspecies['knownspecies'] = True            
     return
 
 
@@ -111,41 +115,10 @@ def createRawCSV(temp_csv_file):
     groep = 0
     fotos = 0
     nieuwe = 0
-    #file_path = "C:/Users/gilbe/OneDrive/reizen/madagascar/soorten.prn"
-    # with open(file_path, 'w', encoding='utf-8') as f:
-    #     header_line = 'No     Nederlandse naam              '
-    #     header_line += ' Engelse naam                  '
-    #     header_line += ' Wetenschappelijke naam        '
-    #     header_line += '   seen?  New? Bekende Foto'
-    #     header_line += ' Notes'
-    #     print(header_line, file=f)
 
-    #     for enname in avibase_dict:
-    #         listspecies = avibase_dict[enname]          # better to for scientific name
-    #         if listspecies['number'] == -1:
-    #             line = f"{listspecies['enname']}"
-    #         else:
-    #             line = f"{listspecies['number']:6} {listspecies['nlname']:30} {listspecies['enname']:30} {listspecies['scname']:30} "
-    #             if listspecies['gezien'] != 0:
-    #                 line += f"   Yes"
-    #                 groep += 1
-    #             else:
-    #                 line += "       "
-    #             if listspecies['knownspecies']:
-    #                 line += '        Known '
-    #             elif not listspecies['knownspecies'] and listspecies['gezien'] != 0:
-    #                 line += '   New         '
-    #             else:
-    #                 line += '               '
-    #             line += listspecies['status'] 
-
-    #         print(line, file=f)
-
-    #     print(f"\n\nDe groep zag of hoorde {groep} soorten.",file=f)
-    #     print(f"Ik fotografeerde {fotos} soorten, waarvan {nieuwe} fotos.",file=f)
-    #     f.close()
     with open(temp_csv_file, 'w', encoding='utf-8') as f:
         print("No;Engels;NL;Wet;seen?;New?;Known;Photo;Notes", file=f)
+
         for enname in avibase_dict:
             listspecies = avibase_dict[enname]
             if listspecies['number'] == -1:
@@ -260,7 +233,7 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days):
             ws.cell(row=row_idx, column=5, value=formula_e)
 
             # Column F formula
-            formula_f = f'=IF(AND(G{row_idx}<>"Known", E{row_idx}>0), "New", "")'
+            formula_f = f'=IF(AND(G{row_idx}<>"Known", E{row_idx}>''), "New", "")'
             ws.cell(row=row_idx, column=6, value=formula_f)
 
     # Add summary formulas to row 2
