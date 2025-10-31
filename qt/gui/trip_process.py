@@ -333,7 +333,7 @@ class ReadDirDialog(QDialog):
     def __init__(self, parent, menu_spec):
         super().__init__(parent)
         self.setWindowTitle("Read Picture Directory")
-        self.resize(600, 250)
+        self.resize(600, 300)
 
         self.logger = logging.getLogger("speciesviewer")
         self.menu_spec = menu_spec               
@@ -345,6 +345,17 @@ class ReadDirDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
+        # Info text
+        info_html = HTMLLabel(
+            "<p><b>Scan a folder with pictures</b><br>"
+            "This first step scans a directory containing photo files and extracts metadata (Exif tags) for each image.<br>"
+            "It uses <b>ExifTool</b> to process raw files, HTML metadata, and auxiliary data. "
+            "Errors may occur if files contain unknown characters or unsupported formats, which can cause ExifTool to crash.<br>"
+            "If the trip is already defined or selected in the GUI, you typically do <b>not</b> need to change the project folder or subdirectory."
+            "</p>"
+        )
+        layout.addWidget(info_html)        
+
         # Base directory field
         self.base_dir_field = DirectoryFieldQt("Project root folder", str(self.base_path))
         layout.addWidget(self.base_dir_field)
@@ -354,11 +365,6 @@ class ReadDirDialog(QDialog):
         self.subdir_dropdown.setEditable(False)
         layout.addWidget(QLabel("Select subdirectory"))
         layout.addWidget(self.subdir_dropdown)
-
-        # Info text
-        self.info_text = QLabel("Scan a directory with photo files and extract metadata (Exif tags) for each image.")
-        self.info_text.setWordWrap(True)
-        layout.addWidget(self.info_text)
 
         # Status label
         self.status_label = QLabel("")
@@ -414,7 +420,7 @@ class WritePicturesDialog(QDialog):
     def __init__(self, parent, menu_spec):
         super().__init__(parent)
         self.setWindowTitle("Write Summary Data")
-        self.resize(600, 250)
+        self.resize(600, 400)
 
         self.logger = logging.getLogger("speciesviewer")
         self.passed_parent = parent    
@@ -428,6 +434,21 @@ class WritePicturesDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
+        # Info text
+        info_html = HTMLLabel(
+            "<p><b>Write summary data for a project day</b></p>"
+            "<p>This step analyzes metadata extracted during the 'Read Directory' phase and enriches it with species information.<br>"
+            "It checks whether each species name is found in the internal species table, which includes almost all known birds.<br>"
+            "If a species is not found, it may be a new discovery or a mistyped name. "
+            "Unknown species are automatically searched in the <b>GBIF</b> online database. If found, they are added to the internal table. "
+            "If not, a warning is generated.</p>"
+            "<p>You can correct species names in tools like <b>Lightroom</b> or <b>DxO PhotoLab</b>. "
+            "After corrections, both the 'Read Directory' and 'Write Summary' steps should be re-run.<br>"
+            "Alternatively, use the Trip Overview GUI: double-click the 'Total Files' column to edit directly.</p>"
+            "<p>Normally, the project folder and subdirectory do not need to be changed.</p>"
+        )
+
+        layout.addWidget(info_html)  
         # Show root folder (non-editable)
         
         self.root_label = QLineEdit(str(self.base_path))
@@ -439,11 +460,6 @@ class WritePicturesDialog(QDialog):
         self.subdir_dropdown = QComboBox()
         self.subdir_dropdown.setEditable(False)
         layout.addWidget(self.subdir_dropdown)
-
-        # Info text
-        self.info_text = QLabel("Write summary data for a trip based on metadata files.")
-        self.info_text.setWordWrap(True)
-        layout.addWidget(self.info_text)
 
         # Status label
         self.status_label = QLabel("")
