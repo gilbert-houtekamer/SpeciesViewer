@@ -1,4 +1,12 @@
 import sys
+from pathlib import Path
+
+# Ensure both the project root and qt/ are on sys.path regardless of CWD
+_qt_dir = Path(__file__).resolve().parent
+_project_root = _qt_dir.parent
+for _p in [str(_qt_dir), str(_project_root)]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from PyQt6.QtWidgets import QApplication, QSplashScreen, QToolTip
 from PyQt6.QtGui import QPixmap, QFont

@@ -5,7 +5,6 @@ from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSpl
 from PyQt6.QtWidgets import QPlainTextEdit, QLabel, QSizePolicy, QLineEdit, QTabWidget, QTableWidgetItem
 from PyQt6.QtCore import Qt
 
-from qt.gui.layout_colorwidget import Color
 from utils.config import _config, persist_config
 from gui.menu import create_menubar
 from gui.menuspec import build_menu_spec

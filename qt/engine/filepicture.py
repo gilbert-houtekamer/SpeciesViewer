@@ -230,17 +230,13 @@ class FilePicture:
         return self.replaceUPNSubject(upn_name, original_subject, corrected_subject, sc_object)        
    
 
-    # read all species    
+    # read all species
     def readMaster(self, trippath, projectdirectory, getEarlierDays = False, silent=False):
-        # dlg = ImagePreviewDialog(image_dir="D:/CurrentPictures/2017/Oostzee zeilzomer/2017-08-16")
         metadatadir = os.path.join(trippath,  "metadata")
         starttime = time.time()
-        # read species
-        # speciesfilename = "E:/Dropbox/trips/2017 oostzeedb/metadata/review/2017-08-09/species.csv"
-        self.sp = Species(None)    
-        # from log: E:\Dropbox\trips\2017 oostzeedb\metadata/review/2017-08-09\species.csv.
-        speciesfilename = os.path.join(metadatadir, "review", "2017-08-09", "species.csv")
-        self.rs = self.sp.readSpeciesInfo(speciesfilename, False)    
+        self.sp = Species(None)
+        speciesfilename = os.path.join(metadatadir, "active", "species.csv")
+        self.rs = self.sp.readSpeciesInfo(speciesfilename, False)
 
         # read all knowlegde about species, including species we do not yet have.  
         # Maintain English and Dutch species list
@@ -280,15 +276,11 @@ class FilePicture:
         return [RepositoryFileCount[0], RepositoryPictureCount, RepositoryFileCount[1], RepositoryFileCount[2]]
     
     def readProject(self, trippath, projectdirectory, getEarlierDays = False, silent=False):
-        # dlg = ImagePreviewDialog(image_dir="D:/CurrentPictures/2017/Oostzee zeilzomer/2017-08-16")
         metadatadir = os.path.join(trippath,  "metadata")
         starttime = time.time()
-        # read species
-        # speciesfilename = "E:/Dropbox/trips/2017 oostzeedb/metadata/review/2017-08-09/species.csv"
-        self.sp = Species(None)    
-        # from log: E:\Dropbox\trips\2017 oostzeedb\metadata/review/2017-08-09\species.csv.
-        speciesfilename = os.path.join(metadatadir, "review", "2017-08-09", "species.csv")
-        self.rs = self.sp.readSpeciesInfo(speciesfilename, False)    
+        self.sp = Species(None)
+        speciesfilename = os.path.join(metadatadir, "review", projectdirectory, "species.csv")
+        self.rs = self.sp.readSpeciesInfo(speciesfilename, False)
 
         # read all knowlegde about species, including species we do not yet have.  
         # Maintain English and Dutch species list
