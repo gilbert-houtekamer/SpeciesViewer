@@ -1133,6 +1133,7 @@ def collectBestJPGs(MyProject, upn, selected_species):
         #species = MyProject.sp.species_dict[species_scientific_name]
         
         candidate_jpgs = {}
+        #print(f"collectBestJPGs ok: upn {upn}->{species_scientific_name}  selected species {selected_species}")
 
         for upn_iter in MyProject.UniquePictureName_dict:
             upn_item = MyProject.UniquePictureName_dict[upn_iter]
@@ -1157,7 +1158,7 @@ def collectBestJPGs(MyProject, upn, selected_species):
                 # remember the JPG we want to use
                 selected_species[bestitem[0]] = MyProject.UniquePictureName_dict[MyProject.files_dict[bestitem[0]]['UniquePictureName']]['DateTimeOriginal']
     except:
-        print("collectBestJPGs crashed.")               
+        print(f"collectBestJPGs crashed: upn {upn} selected species {selected_species}")               
     return
 
 def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
