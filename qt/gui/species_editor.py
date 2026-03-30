@@ -15,6 +15,7 @@ from PyQt6.QtCore import Qt, QTimer, QSize
 from widgets.trip_widgets import LabeledTextFieldQt
 from engine.filepicture import FilePicture, format_subject_for_xmp
 from engine.speciesclassification import Level
+from utils.config import _config
 
 logger = logging.getLogger("speciesviewer")
 
@@ -266,14 +267,12 @@ class SpeciesInfoDialog(QDialog):
         main_window = self.main_window_ref() if self.main_window_ref else None
         image_viewer = getattr(main_window, "image_viewer_dialog", None)
         fpr = getattr(image_viewer, "fpr", None)
-        config = getattr(main_window, "config", None)
-
         if not fpr:
             self.status_label.setText("❌ Cannot access FPR for update.")
             return
 
         original_subject = fpr.getSubject(self.full_path.name)
-        saved_scope = config.get("Species", "correction_scope", fallback="All files with same name error in day folder") if config else "Only the selected file"
+        saved_scope = _config.get("Species", "correction_scope", fallback="All files with same name error in day folder")
 
         # Determine scope
         scope_options = getCorrectionScopeOptions(self.full_path)  # Assumes this method returns a dict like {label: [Path, Path, ...]}

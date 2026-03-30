@@ -165,7 +165,12 @@ class FilePicture:
             # print(f"current_subjects in {str(filepath)} from {current_subjects} to {correct_subject}")
 
             # Step 3: Replace subject if original_subject is found
-            original_subject_list = ast.literal_eval(original_subject)
+            try:
+                original_subject_list = ast.literal_eval(original_subject)
+                if not isinstance(original_subject_list, list):
+                    raise ValueError
+            except Exception:
+                original_subject_list = [original_subject]
             if original_subject_list == current_subjects:
                 cmd = ['exiftool', f'-XMP:Subject={correct_subject_for_xmp}', '-overwrite_original', str(filepath)]
                 # print("Running command:", " ".join(cmd))
@@ -195,9 +200,10 @@ class FilePicture:
         if upn_object != None:
             upn_object['subject'] = correct_subject
             upn_object['errormessage'] = ''   # missing species issue fixed, clear error message
-            upn_object['NLSoortNaam'] = sc_object['DutchName']
-            upn_object['EngSoortNaam'] = sc_object['EnglishName']
-            upn_object['WetSoortNaam']= sc_object['ScientificName']
+            if sc_object is not None:
+                upn_object['NLSoortNaam'] = sc_object['DutchName']
+                upn_object['EngSoortNaam'] = sc_object['EnglishName']
+                upn_object['WetSoortNaam'] = sc_object['ScientificName']
             # write updated data_pictures file 
             self.upn.write_project_summary()
         return upn_object
@@ -209,7 +215,12 @@ class FilePicture:
 
         # print(f"Entered updateSubject self.fpr.updateSubject({filename}, {corrected_subject})")
 
-        scientific_name = self.sc.getSpecies(corrected_subject)
+        try:
+            parts = ast.literal_eval(corrected_subject)
+            lookup_name = max(parts, key=len) if isinstance(parts, list) and parts else corrected_subject
+        except Exception:
+            lookup_name = corrected_subject
+        scientific_name = self.sc.getSpecies(lookup_name)
         if scientific_name == "":  # still no name found
             logger.warning(f"The species name is not recognized, but the updated keywords are stored in the files.")
             sc_object = None

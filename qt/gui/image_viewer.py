@@ -525,7 +525,12 @@ class ImagePreviewDialog(QDialog):
         self.cancel_button.setEnabled(True)
 
         if not image_paths:
-            QMessageBox.warning(self, "No Images", "No image files found, or none selected, in this directory.")
+            self.cancel_button.setEnabled(False)
+            self.wait_dialog.close()
+            if self.warnings_only:
+                QMessageBox.information(self, "No Warnings", "All provided species information is correct.")
+            else:
+                QMessageBox.warning(self, "No Images", "No image files found, or none selected, in this directory.")
             return
 
         self.image_paths = image_paths
