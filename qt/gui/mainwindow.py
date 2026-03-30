@@ -318,15 +318,11 @@ class MainWindow(QMainWindow):
 
             if spec_obj and spec_obj.callback:
                 spec_obj.callback()
+                # Re-read state after the batch run so refresh sees the updated results
+                sm = StateMachine(str(trip_root), str(review_day), readState=True)
                 self.refresh_trip_row(sm, day_str)
             else:
                 self.logger.warning(f"No menu action found for: {action_label}")
-
-            # Update progress summary if needed
-            if column == (3 + len(self.state_labels) - 1):
-                ini_path = Path(day_str) / "statemachine.ini"
-                summary_item = self.get_progress_summary_item(sm, ini_path)
-                self.trip_table.setItem(row, 3 + len(self.state_labels), summary_item)
 
     def remove_existing_overview_tab(self):
         for i in range(self.yellow_tabs.count()):

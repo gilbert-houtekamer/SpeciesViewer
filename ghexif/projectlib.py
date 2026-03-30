@@ -6,6 +6,7 @@ from pathlib import Path
 from urllib.parse import urljoin
 import time
 import shutil
+from ghexif.exceptions import SVException
 from ghexif.handling import read_file, read_pictures
 from ghexif.websupport import getTemplateOutputString
 from ghexif.specieslib import Level
@@ -774,7 +775,7 @@ class Project:
 
         # at least biota must be present
         if 'biota' not in sp.species_dict:
-            raise self.SVException(f"FATAL ERROR: No species found in the project files.")
+            raise SVException(f"None of the files have the names of the animals or plants in the keywords, so no pictures can be processed.")
 
         # Add counters from species to higher levels, tail-recursion works fine
         counters = []
