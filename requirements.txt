@@ -4,6 +4,7 @@
 exif
 opencv-python
 pyexiftool
+pillow-heif
 configparser
 pygbif
 pysftp

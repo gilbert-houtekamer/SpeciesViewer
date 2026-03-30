@@ -127,8 +127,9 @@ class MainWindow(QMainWindow):
             except ValueError:
                 pass
         
-        trip_label = QLabel("Trip: 2017 Oostzeedb")
-        self.status_bar.addPermanentWidget(trip_label)
+        self.trip_label = QLabel("")
+        self.status_bar.addPermanentWidget(self.trip_label)
+        self.update_trip_label()
         self.status_bar.showMessage("Ready")
 
     def closeEvent(self, event):
@@ -300,9 +301,9 @@ class MainWindow(QMainWindow):
                 self.logger.warning(f"Step '{action_label}' is disabled: {reason}")
                 return
 
-        # RAW column
+        # Total Files column — show all file types
         if column == 1:
-            self.image_viewer_dialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root), mode="raw")
+            self.image_viewer_dialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root), mode="all")
             self.image_viewer_dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
             self.image_viewer_dialog.show()
 
@@ -323,6 +324,11 @@ class MainWindow(QMainWindow):
                 self.refresh_trip_row(sm, day_str)
             else:
                 self.logger.warning(f"No menu action found for: {action_label}")
+
+    def update_trip_label(self):
+        trip_path = _config.get("trip", "tripbiotadatabase", fallback="")
+        trip_name = Path(trip_path).name if trip_path else "None"
+        self.trip_label.setText(f"Trip: {trip_name}")
 
     def remove_existing_overview_tab(self):
         for i in range(self.yellow_tabs.count()):

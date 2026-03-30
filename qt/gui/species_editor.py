@@ -127,11 +127,13 @@ class SpeciesInfoDialog(QDialog):
         self.status_label = QLabel("")
         layout.addWidget(self.status_label)
 
-        # Suggest species immediately
-        self.suggest_species()
-
         # Button row
         button_row = QHBoxLayout()
+
+        suggest_button = QPushButton("Suggest")
+        suggest_button.setToolTip("Find closest matching species names")
+        suggest_button.clicked.connect(self.suggest_species)
+        button_row.addWidget(suggest_button)
 
         validate_button = QPushButton("Validate")
         validate_button.clicked.connect(self.on_validate_clicked)

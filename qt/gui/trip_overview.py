@@ -8,6 +8,7 @@ from sharedlib.statemachine import StateMachine
 from utils.config import _config
 
 def populate_trip_overview(self):
+    self.update_trip_label()
     self.remove_existing_overview_tab()
     # Get image and statemachine directories
     image_root = Path(_config.get("project", "picturedirectory")).parent

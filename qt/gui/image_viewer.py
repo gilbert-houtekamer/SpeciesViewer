@@ -1,6 +1,6 @@
 import os
 import logging
-# import sip
+import subprocess
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy,
@@ -115,6 +115,19 @@ class ImagePreviewDialog(QDialog):
         # Create a horizontal layout for the spinner and the color filter bar
         controls_layout = QHBoxLayout()
 
+        # Warnings-only toggle (default on when metadata is available)
+        self.warnings_only = False
+        self.warnings_btn = QPushButton("⚠️")
+        self.warnings_btn.setFixedSize(24, 24)
+        self.warnings_btn.setCheckable(True)
+        self.warnings_btn.setToolTip("Show only files with warnings")
+        self.warnings_btn.setStyleSheet("""
+            QPushButton { border: 2px solid #FFA500; border-radius: 4px; background: transparent; }
+            QPushButton:checked { background: #FFA500; }
+        """)
+        self.warnings_btn.clicked.connect(self.on_warnings_toggled)
+        controls_layout.addWidget(self.warnings_btn)
+
         # ColorFilterBar instance (assuming you have one)
         self.color_filter_bar = ColorFilterBar(on_filter_changed=self.on_filter_changed)
         controls_layout.addWidget(self.color_filter_bar)
@@ -151,25 +164,46 @@ class ImagePreviewDialog(QDialog):
             self.fpr = None
         # make a list of all images based on file type (not yet filtered)
         self.all_image_paths = self.discover_images(image_dir)
-        print(f"ImagePreviewDialog __init__: parent {self.parent()}")
-        # self.destroyed.connect(lambda: print("⚠️ image_viewer destroyed from self.destroyed.connect in ImagePreviewDialog"))
 
-        QTimer.singleShot(0, lambda: self.load_images(self.all_image_paths))
+        # Default to warnings-only when metadata is available
+        if self.fpr:
+            self.warnings_only = True
+            self.warnings_btn.setChecked(True)
+            initial_paths = self.get_warnings_paths()
+        else:
+            initial_paths = self.all_image_paths
+
+        QTimer.singleShot(0, lambda: self.load_images(initial_paths))
 
     def discover_images(self, image_dir):
         path = Path(image_dir)
+        raw_exts = {".nef", ".orf", ".cr2", ".arw", ".rw2", ".heic"}
         if self.mode == "jpg":
             return sorted(
                 f for f in path.glob("*.jpg")
                 if not f.name.lower().endswith("-small.jpg")
             )
         elif self.mode == "raw":
-            raw_exts = [".nef", ".orf", ".cr2", ".arw", ".rw2", ".heic"]
+            return sorted(f for f in path.iterdir() if f.suffix.lower() in raw_exts)
+        elif self.mode == "all":
             return sorted(
                 f for f in path.iterdir()
                 if f.suffix.lower() in raw_exts
+                or (f.suffix.lower() == ".jpg" and not f.name.lower().endswith("-small.jpg"))
             )
         return []
+
+    def get_warnings_paths(self):
+        if not self.fpr:
+            return self.all_image_paths
+        return [p for p in self.all_image_paths if self.fpr.getErrorMsg(p.name)]
+
+    def on_warnings_toggled(self):
+        self.warnings_only = self.warnings_btn.isChecked()
+        if self.warnings_only:
+            self.load_images(self.get_warnings_paths())
+        else:
+            self.load_images(self.all_image_paths)
 
     def compute_max_chars(self, label: QLabel, max_width: int) -> int:
         font_metrics = QFontMetrics(label.font())
@@ -225,25 +259,47 @@ class ImagePreviewDialog(QDialog):
         self.zoom_slider.setToolTip(tip)          
 
     def get_pixmap_for_path(self, path):
-        if self.mode == "jpg":
+        if path.suffix.lower() == ".jpg":
             return QPixmap(str(path))
 
-        # RAW or HEIC
+        # RAW or HEIC — extract embedded thumbnail via ExifTool
         cached_path = self.cache_dir / (path.stem + ".jpg")
         if cached_path.exists():
-            return QPixmap(str(cached_path))
+            px = QPixmap(str(cached_path))
+            if not px.isNull():
+                return px
+            # Cache file is corrupt/empty — delete and re-extract
+            cached_path.unlink(missing_ok=True)
 
-        try:
-            import rawpy
-            # import numpy as np
-            import imageio.v3 as iio
-            with rawpy.imread(str(path)) as raw:
-                rgb = raw.postprocess()
-            iio.imwrite(str(cached_path), rgb)  # Save to cache
-            return QPixmap(str(cached_path))            
-        except Exception as e:
-            print(f"Failed to load RAW file {path.name}: {e}")
-            return None                  
+        # HEIC: no embedded JPEG thumbnail — decode via pillow-heif
+        if path.suffix.lower() == ".heic":
+            try:
+                import pillow_heif
+                pillow_heif.register_heif_opener()
+                from PIL import Image
+                img = Image.open(str(path))
+                img.thumbnail((800, 800))
+                img.save(str(cached_path), "JPEG")
+                return QPixmap(str(cached_path))
+            except Exception as e:
+                print(f"Failed to decode HEIC {path.name}: {e}")
+            return None
+
+        # Other RAW (ORF, NEF, CR2, etc.) — extract embedded preview via ExifTool
+        for tag in ["-PreviewImage", "-ThumbnailImage"]:
+            try:
+                result = subprocess.run(
+                    ["exiftool", "-b", tag, str(path)],
+                    capture_output=True, timeout=10
+                )
+                if result.returncode == 0 and result.stdout:
+                    cached_path.write_bytes(result.stdout)
+                    px = QPixmap(str(cached_path))
+                    if not px.isNull():
+                        return px
+            except Exception as e:
+                print(f"Failed to extract {tag} for {path.name}: {e}")
+        return None
         
 
     def create_image_widget(self, img_path):
@@ -434,11 +490,12 @@ class ImagePreviewDialog(QDialog):
         image_width = available_width // actual_columns - 20
 
         for image_label, _, img_path in self.image_widgets:
-            pixmap = QPixmap(str(img_path)).scaledToWidth(
-                image_width,
-                Qt.TransformationMode.SmoothTransformation
-            )
-            image_label.setPixmap(pixmap)    
+            pixmap = self.get_pixmap_for_path(img_path)
+            if pixmap and not pixmap.isNull():
+                image_label.setPixmap(pixmap.scaledToWidth(
+                    image_width,
+                    Qt.TransformationMode.SmoothTransformation
+                ))
 
     def show_all_images(self):
         self.load_images(self.all_image_paths)
