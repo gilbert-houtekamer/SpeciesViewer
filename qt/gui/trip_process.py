@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
 from PyQt6.QtGui import QFont, QGuiApplication
 from PyQt6.QtCore import Qt
 import logging
-import sys, os
+import sys, os, shutil
 from pathlib import Path
 import webbrowser
 from gui.batch import BatchModuleRunner  # Assuming batch handler is here
@@ -92,9 +92,9 @@ class TripCreationDialog(QDialog):
             "Typically, a trip consists of multiple <b>days</b>, each stored in its own directory. "
             "SpeciesViewer helps validate this data and organizes it into a structured trip database — which is simply a well-organized directory tree.</p>"
             "<p><b>Creating a new trip</b><br>"
-            "To begin, gather some basic information: images, descriptive text, and a date range. The main trip folder must be created manually, along with two visual assets:"
-            " a <i>trip picture</i> (600×450) and a <i>banner</i> (2000×270). These should be prepared outside of SpeciesViewer.</p>"
-            "<p>Once this information is ready, SpeciesViewer will generate the trip directory structure automatically.</p>"
+            "To begin, enter a folder name (e.g. <i>kretadb</i>) and click <b>Create Folder</b> — this creates the directory and copies placeholder images. "
+            "You can later replace the placeholder <i>trip picture</i> (600×450) and <i>banner</i> (2000×270) with real photos.</p>"
+            "<p>Once the folder is created, fill in the dates and trip description, then click <b>Create Trip</b> to generate the full directory structure.</p>"
             "<p><b>This tab:</b> Select the root folder for your trip to begin the setup process.</p>"
             # "For more information about birds, visit <a href='https://avibase.bsc-eoc.org/avibase.jsp?lang=EN'>Avibase World Bird Database</a>.</p>"
         )
@@ -102,10 +102,33 @@ class TripCreationDialog(QDialog):
         self.root_field = RecentDirectoryFieldQt("Trip Root folder", trip_root)
         self.root_field.textChanged(self.on_trip_root_changed)
         layout1.addWidget(self.root_field)
+
+        # New folder creation row — wrapped in QWidget so margins match other field widgets
+        new_folder_widget = QWidget()
+        new_folder_row = QHBoxLayout(new_folder_widget)
+        new_folder_row.setContentsMargins(0, 0, 0, 0)
+        new_folder_row.addWidget(QLabel("New trip folder"))
+        self.new_folder_name = QLineEdit()
+        self.new_folder_name.setPlaceholderText("e.g. kretadb")
+        self.new_folder_name.setMaximumWidth(300)
+        new_folder_row.addWidget(self.new_folder_name)
+        create_folder_btn = QPushButton("Create Folder")
+        create_folder_btn.setFixedWidth(110)
+        create_folder_btn.clicked.connect(self.create_new_trip_folder)
+        new_folder_row.addWidget(create_folder_btn)
+        new_folder_row.addStretch()
+        layout1.addWidget(new_folder_widget)
+
         self.trip_web = LabeledTextFieldQt("Trip Web root", _config.get("trip", "tripbiotawebroot", fallback=""), multiline=False, inline=True)
-        layout1.addWidget(self.trip_web) 
-        self.project_path = DirectoryFieldQt("Project pictures", _config.get("project", "picturedirectory", fallback=""))    
-        layout1.addWidget(self.project_path)            
+        self.trip_web.field.setMaximumWidth(300)
+        trip_web_row = QWidget()
+        trip_web_layout = QHBoxLayout(trip_web_row)
+        trip_web_layout.setContentsMargins(0, 0, 0, 0)
+        trip_web_layout.addWidget(self.trip_web)
+        trip_web_layout.addStretch()
+        layout1.addWidget(trip_web_row)
+        self.project_path = DirectoryFieldQt("Project pictures", _config.get("project", "picturedirectory", fallback=""))
+        layout1.addWidget(self.project_path)
         tabs.addTab(tab1, "Select Trip Folder")
 
         # Tab 2: Images & Dates
@@ -227,6 +250,40 @@ class TripCreationDialog(QDialog):
     def closeEvent(self, event):
         self.passed_parent.translator.writeTranslationCache()
         super().closeEvent(event)
+
+    def create_new_trip_folder(self):
+        folder_name = self.new_folder_name.text().strip()
+        if not folder_name:
+            self.status_label.setText("❌ Enter a folder name first.")
+            return
+
+        trips_parent = Path(_config.get("trip", "tripbiotadatabase", fallback="")).parent
+        if not trips_parent.is_dir():
+            self.status_label.setText(f"❌ Cannot find trips parent directory: {trips_parent}")
+            return
+
+        new_trip_path = trips_parent / folder_name
+        try:
+            new_trip_path.mkdir(exist_ok=True)
+        except Exception as e:
+            self.status_label.setText(f"❌ Could not create folder: {e}")
+            return
+
+        # Copy default images from dist/includes web/
+        dist_dir = Path(__file__).resolve().parent.parent.parent / "dist" / "includes web"
+        for src_name, dest_name in [("tripbanner.jpg", "tripbanner.jpg"), ("tripimage.jpg", "tripimage.jpg")]:
+            src = dist_dir / src_name
+            dest = new_trip_path / dest_name
+            if src.exists() and not dest.exists():
+                shutil.copy(src, dest)
+
+        # Update the trip root field and pre-fill image fields
+        self.root_field.set_text(str(new_trip_path))
+        self.topbar_img_field.field.setText("tripbanner.jpg")
+        self.trip_img_field.field.setText("tripimage.jpg")
+        self.trip_web.set_text(f"/trips/{folder_name}")
+        self.status_label.setText(f"✅ Created: {new_trip_path}")
+        self.logger.info(f"Created new trip folder: {new_trip_path}")
 
     def on_trip_root_changed(self, new_path):
         trip_data = read_trip_ini(new_path)
