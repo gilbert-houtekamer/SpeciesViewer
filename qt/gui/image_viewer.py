@@ -71,6 +71,10 @@ class ColorFilterBar(QWidget):
 
 
 class ImagePreviewDialog(QDialog):
+    # Persistent in-memory pixmap cache shared across all dialog instances
+    # key: Path, value: (QPixmap, source_mtime_or_None)
+    _pixmap_cache: dict = {}
+
     def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg"):
         super().__init__(parent)
         # self.setWindowTitle("Species Image Preview")
@@ -165,6 +169,9 @@ class ImagePreviewDialog(QDialog):
         # make a list of all images based on file type (not yet filtered)
         self.all_image_paths = self.discover_images(image_dir)
 
+        # Pre-extract thumbnails for all non-cached RAW files in one batch call
+        self.batch_extract_raw_thumbnails(self.all_image_paths)
+
         # Default to warnings-only when metadata is available
         if self.fpr:
             self.warnings_only = True
@@ -192,6 +199,35 @@ class ImagePreviewDialog(QDialog):
                 or (f.suffix.lower() == ".jpg" and not f.name.lower().endswith("-small.jpg"))
             )
         return []
+
+    def batch_extract_raw_thumbnails(self, paths):
+        """Extract embedded JPEG previews for all non-cached RAW files in two ExifTool calls."""
+        raw_exts = {".nef", ".orf", ".cr2", ".arw", ".rw2"}
+        to_extract = [
+            p for p in paths
+            if p.suffix.lower() in raw_exts
+            and not (self.cache_dir / (p.stem + ".jpg")).exists()
+        ]
+        if not to_extract:
+            return
+
+        # First pass: PreviewImage (larger, preferred for ORF)
+        # -w writes each result as <stem>.jpg into the cache dir
+        for tag in ["-PreviewImage", "-ThumbnailImage"]:
+            still_needed = [
+                p for p in to_extract
+                if not (self.cache_dir / (p.stem + ".jpg")).exists()
+            ]
+            if not still_needed:
+                break
+            try:
+                subprocess.run(
+                    ["exiftool", "-b", tag, "-w!", str(self.cache_dir / "%f.jpg")]
+                    + [str(p) for p in still_needed],
+                    capture_output=True, timeout=120
+                )
+            except Exception as e:
+                print(f"Batch ExifTool ({tag}) failed: {e}")
 
     def get_warnings_paths(self):
         if not self.fpr:
@@ -259,19 +295,30 @@ class ImagePreviewDialog(QDialog):
         self.zoom_slider.setToolTip(tip)          
 
     def get_pixmap_for_path(self, path):
-        if path.suffix.lower() == ".jpg":
-            return QPixmap(str(path))
+        mtime = path.stat().st_mtime if path.exists() else None
 
-        # RAW or HEIC — extract embedded thumbnail via ExifTool
+        # Check persistent in-memory cache (mtime-validated for JPG, unconditional for RAW)
+        if path in ImagePreviewDialog._pixmap_cache:
+            cached_px, cached_mtime = ImagePreviewDialog._pixmap_cache[path]
+            if cached_mtime is None or cached_mtime == mtime:
+                return cached_px
+            # JPG has changed — fall through to reload
+
+        if path.suffix.lower() == ".jpg":
+            px = QPixmap(str(path))
+            ImagePreviewDialog._pixmap_cache[path] = (px, mtime)
+            return px
+
+        # RAW or HEIC — disk cache in .preview_cache/
         cached_path = self.cache_dir / (path.stem + ".jpg")
         if cached_path.exists():
             px = QPixmap(str(cached_path))
             if not px.isNull():
+                ImagePreviewDialog._pixmap_cache[path] = (px, None)  # RAW never expires
                 return px
-            # Cache file is corrupt/empty — delete and re-extract
             cached_path.unlink(missing_ok=True)
 
-        # HEIC: no embedded JPEG thumbnail — decode via pillow-heif
+        # HEIC: decode via pillow-heif
         if path.suffix.lower() == ".heic":
             try:
                 import pillow_heif
@@ -280,12 +327,14 @@ class ImagePreviewDialog(QDialog):
                 img = Image.open(str(path))
                 img.thumbnail((800, 800))
                 img.save(str(cached_path), "JPEG")
-                return QPixmap(str(cached_path))
+                px = QPixmap(str(cached_path))
+                ImagePreviewDialog._pixmap_cache[path] = (px, None)
+                return px
             except Exception as e:
                 print(f"Failed to decode HEIC {path.name}: {e}")
             return None
 
-        # Other RAW (ORF, NEF, CR2, etc.) — extract embedded preview via ExifTool
+        # Other RAW (ORF, NEF, CR2, etc.) — per-file ExifTool fallback if batch missed it
         for tag in ["-PreviewImage", "-ThumbnailImage"]:
             try:
                 result = subprocess.run(
@@ -296,6 +345,7 @@ class ImagePreviewDialog(QDialog):
                     cached_path.write_bytes(result.stdout)
                     px = QPixmap(str(cached_path))
                     if not px.isNull():
+                        ImagePreviewDialog._pixmap_cache[path] = (px, None)
                         return px
             except Exception as e:
                 print(f"Failed to extract {tag} for {path.name}: {e}")
@@ -309,8 +359,13 @@ class ImagePreviewDialog(QDialog):
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(4)
 
-        # Image preview
+        # Image preview — scale immediately to avoid full-size flash
         pixmap = self.get_pixmap_for_path(img_path) or QPixmap("qt/assets/spinner.gif")
+        if pixmap and not pixmap.isNull():
+            available = self.scroll_area.viewport().width()
+            if available > 0:
+                image_width = available // max(self.columns, 1) - 20
+                pixmap = pixmap.scaledToWidth(image_width, Qt.TransformationMode.SmoothTransformation)
         image_label = QLabel()
         image_label.setPixmap(pixmap)
         image_label.setStyleSheet("background-color: transparent;")
@@ -435,25 +490,25 @@ class ImagePreviewDialog(QDialog):
 
 
     def load_next_image(self):
-        if not self.dialog_active or self.cancelled or self.current_index >= len(self.image_paths):
-            self.cancel_button.setEnabled(False)
-            self.wait_dialog.close()
-            # print("load_next_image: stopping condition met")
-            return
+        BATCH = 10  # images per timer tick — keeps UI responsive without 50ms per image
+        for _ in range(BATCH):
+            if not self.dialog_active or self.cancelled or self.current_index >= len(self.image_paths):
+                self.cancel_button.setEnabled(False)
+                self.wait_dialog.close()
+                return
 
-        img_path = Path(self.image_paths[self.current_index])
-        container, image_label, img_path = self.create_image_widget(img_path)
-        row, col = divmod(self.current_index, self.columns)
-        self.add_image_to_grid(container, image_label, img_path, row, col)
+            img_path = Path(self.image_paths[self.current_index])
+            container, image_label, img_path = self.create_image_widget(img_path)
+            row, col = divmod(self.current_index, self.columns)
+            self.add_image_to_grid(container, image_label, img_path, row, col)
+            self.current_index += 1
 
-        self.current_index += 1
         if self.current_index < len(self.image_paths):
             QTimer.singleShot(50, self.load_next_image)
         else:
             self.cancel_button.setEnabled(False)
-            self.on_column_changed(self.columns)
             self.wait_dialog.close()
-            # print("load_next_image: finished loading all images")
+            QTimer.singleShot(0, self.update_image_sizes)
 
     def load_images(self, image_paths):
         self.image_paths = [Path(p) if isinstance(p, str) else p for p in image_paths]
