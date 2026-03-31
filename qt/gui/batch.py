@@ -10,6 +10,15 @@ from PyQt6.QtGui import QMovie
 from utils.batch_config import generate_svconfig_ini
 from sharedlib.statemachine import StateMachine
 
+_EXPECTED_CELLS = {
+    "ReadDirExif":   'Read\nDirectory',
+    "WritePictures": 'Write\nSummary',
+    "WriteBlog":     'Write\nBlog',
+    "BuildWebsite":  'Build\nWebsite',
+    "Freeze":        'Freeze',
+    "WriteCommit":   'Write\nCommit',
+}
+
 
 class _BatchWorker(QObject):
     finished = pyqtSignal(str)  # errorstring — empty means success
@@ -60,14 +69,7 @@ class BatchModuleRunner:
         )
 
         directory_name = Path(module_config.get("project", "PictureDirectory")).name
-        expected_messages = {
-            "ReadDirExif":   'Read\nDirectory',
-            "WritePictures": 'Write\nSummary',
-            "WriteBlog":     'Write\nBlog',
-            "BuildWebsite":  'Build\nWebsite',
-            "Freeze":        'Freeze',
-            "WriteCommit":   'Write\nCommit'
-        }
+        expected_messages = _EXPECTED_CELLS
 
         if statusname and not sm.stateOKtorun(statusname):
             msg = sm.explainAbort(statusname, raiseSV=False)
@@ -149,3 +151,98 @@ class BatchModuleRunner:
 
         self._worker.finished.connect(on_finished)
         self._thread.start()
+
+
+class ChainedBatchRunner:
+    """Runs a sequence of batch steps one after another, sharing a single spinner.
+
+    steps: list of (module_called, statusname, before_msg, after_msg)
+    """
+
+    def __init__(self, parent, main_window, steps, module_config, sm, directory_name, on_complete):
+        self._parent = parent
+        self._main_window = main_window
+        self._steps = steps
+        self._module_config = module_config
+        self._sm = sm
+        self._directory_name = directory_name
+        self._on_complete = on_complete
+        self._logger = logging.getLogger("speciesviewer")
+        self._before_count = self._logger.warning_counter.count
+
+        # Build shared spinner
+        self._spinner = QDialog(parent)
+        self._spinner.setWindowTitle("Even geduld...")
+        self._spinner.setModal(True)
+        self._spinner.setFixedSize(420, 170)
+
+        layout = QVBoxLayout(self._spinner)
+        self._step_label = QLabel("")
+        self._step_label.setWordWrap(True)
+        layout.addWidget(self._step_label, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        self._progress_label = QLabel("")
+        layout.addWidget(self._progress_label, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        movie = QMovie("spinner.gif")
+        spinner_icon = QLabel()
+        spinner_icon.setMovie(movie)
+        layout.addWidget(spinner_icon, alignment=Qt.AlignmentFlag.AlignCenter)
+        movie.start()
+
+    def start(self):
+        self._spinner.show()
+        self._run_step(0)
+
+    def _run_step(self, index):
+        if index >= len(self._steps):
+            self._all_done()
+            return
+
+        module_called, statusname, before_msg, after_msg = self._steps[index]
+        total = len(self._steps)
+        self._step_label.setText(f"Step {index + 1} of {total}: {before_msg}")
+        self._progress_label.setText(", ".join(s for _, s, _, _ in self._steps[index:]))
+        self._logger.info(before_msg)
+
+        self._thread = QThread()
+        self._worker = _BatchWorker(module_called, None, self._module_config)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+
+        def on_done(errorstring, idx=index, sname=statusname, amsg=after_msg):
+            self._thread.quit()
+            self._thread.wait()
+            cell_key = _EXPECTED_CELLS.get(sname)
+            if errorstring:
+                self._logger.warning(f"❌ {sname} failed: {errorstring}")
+                self._sm.updateState(sname, False, errorstring)
+                if cell_key:
+                    self._main_window.update_trip_cell(self._directory_name, cell_key, "❌", f"{sname} failed: {errorstring}")
+                self._sm.writeState()
+                self._spinner.close()
+                self._on_complete()
+            else:
+                self._logger.info(amsg)
+                self._sm.updateState(sname, True, "Successfully run.")
+                if cell_key:
+                    self._main_window.update_trip_cell(self._directory_name, cell_key, "✅", "Successfully run.")
+                self._run_step(idx + 1)
+
+        self._worker.finished.connect(on_done)
+        self._thread.start()
+
+    def _all_done(self):
+        after_count = self._logger.warning_counter.count
+        new_warnings = after_count - self._before_count
+        self._sm.writeState()
+        self._spinner.close()
+        if new_warnings > 0:
+            self._logger.info(f"All steps complete. Please review the {new_warnings} warning{'s' if new_warnings > 1 else ''}.")
+        else:
+            self._logger.info("All steps complete.")
+        self._main_window.rebuild_menu()
+        self._main_window.green_log_box.verticalScrollBar().setValue(
+            self._main_window.green_log_box.verticalScrollBar().maximum()
+        )
+        self._on_complete()

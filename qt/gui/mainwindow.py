@@ -2,7 +2,7 @@ from pathlib import Path
 import os
 
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStatusBar
-from PyQt6.QtWidgets import QPlainTextEdit, QLabel, QSizePolicy, QLineEdit, QTabWidget, QTableWidgetItem
+from PyQt6.QtWidgets import QPlainTextEdit, QLabel, QSizePolicy, QLineEdit, QTabWidget, QTableWidgetItem, QMessageBox
 from PyQt6.QtCore import Qt
 
 from utils.config import _config, persist_config
@@ -324,6 +324,87 @@ class MainWindow(QMainWindow):
                 self.refresh_trip_row(sm, day_str)
             else:
                 self.logger.warning(f"No menu action found for: {action_label}")
+
+    def handle_row_rerun(self, row):
+        """Double-click on the vertical row header: rerun all ✅ steps for that day."""
+        import configparser
+        from gui.batch import ChainedBatchRunner
+        from utils.batch_config import generate_svconfig_ini
+
+        day_item = self.trip_table.item(row, 0)
+        if not day_item:
+            return
+        day_str = day_item.text()
+
+        # Point config at this day's directory
+        project_root = Path(_config.get("project", "picturedirectory")).parent
+        new_dir = project_root / day_str
+        _config.set("project", "picturedirectory", str(new_dir))
+
+        trip_root = Path(_config.get("trip", "tripbiotadatabase"))
+        review_day = trip_root / "metadata" / "review" / day_str
+        sm = StateMachine(str(trip_root), str(review_day), readState=True)
+
+        # All steps in pipeline order with their menu labels and messages
+        pipeline = [
+            ("ReadDirExif",   "Read Directory", "Reading picture directory...",          "✅ Directory scan complete."),
+            ("WritePictures", "Write Summary",  "Reading meta data for all pictures ...", "✅ Writing Summary data."),
+            ("WriteBlog",     "Write Blog",     "Create a blog entry ...",               "✅ Blog successfully created."),
+            ("BuildWebsite",  "Build Website",  "Build updates for later publication ...", "✅ Website updates prepared."),
+            ("Freeze",        "Freeze",         "Freeze all collected data ...",          "✅ Data frozen."),
+            ("WriteCommit",   "Write Commit",   "Update the trip website ...",            "✅ Please review updated Website."),
+        ]
+
+        completed = [
+            (sname, label, bmsg, amsg)
+            for sname, label, bmsg, amsg in pipeline
+            if sm.Taskstate.get(sname, [False])[0] and sm.Taskstate[sname][1] == "Successfully run."
+        ]
+
+        if not completed:
+            QMessageBox.information(self, "Nothing to rerun", f"No completed steps found for {day_str}.")
+            return
+
+        step_list = "\n".join(f"  • {label}" for _, label, _, _ in completed)
+        reply = QMessageBox.question(
+            self, "Rerun Steps",
+            f"The following steps will be re-run for {day_str}:\n\n{step_list}\n\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Reset completed steps so they can run again
+        for sname, _, _, _ in completed:
+            sm.Taskstate[sname][0] = False
+            sm.Taskstate[sname][1] = ""
+        sm.writeState()
+
+        # Build (module_called, statusname, before_msg, after_msg) list from menu specs
+        generate_svconfig_ini()
+        module_config = configparser.ConfigParser()
+        module_config.read("svconfig.ini")
+
+        trip_menu = self.menu_spec.get("Trip", {})
+        steps_to_run = []
+        for sname, label, bmsg, amsg in completed:
+            spec = trip_menu.get(label)
+            if spec:
+                bp = spec.get_batch_parms()
+                if bp:
+                    steps_to_run.append((bp["module_called"], sname, bmsg, amsg))
+
+        if not steps_to_run:
+            return
+
+        directory_name = new_dir.name
+
+        def on_complete():
+            sm2 = StateMachine(str(trip_root), str(review_day), readState=True)
+            self.refresh_trip_row(sm2, day_str)
+
+        runner = ChainedBatchRunner(self, self, steps_to_run, module_config, sm, directory_name, on_complete)
+        runner.start()
 
     def update_trip_label(self):
         trip_path = _config.get("trip", "tripbiotadatabase", fallback="")
