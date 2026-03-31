@@ -1,5 +1,5 @@
 import logging
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QObject, pyqtSignal
 
 # Filter to suppress noisy ExifTool output
 class SuppressExifToolOutput(logging.Filter):
@@ -10,10 +10,16 @@ class SuppressExifToolOutput(logging.Filter):
         )
 
 # GUI handler for QTextEdit/QTextBrowser
-class LogHandler(logging.Handler):
+# Inherits QObject so the signal/slot mechanism handles cross-thread delivery:
+# when emit() is called from a worker thread, the queued connection automatically
+# posts the message to the main thread's event loop — appearing in real-time.
+class LogHandler(logging.Handler, QObject):
+    _log_signal = pyqtSignal(str)
+
     def __init__(self, log_widget):
-        super().__init__()
-        self.log_widget = log_widget
+        logging.Handler.__init__(self)
+        QObject.__init__(self)
+        self._log_signal.connect(log_widget.appendHtml)
 
     def emit(self, record):
         msg = self.format(record)
@@ -24,13 +30,7 @@ class LogHandler(logging.Handler):
         elif record.levelno == logging.WARNING:
             msg = f'<span style="color:blue;"><b>{msg}</b></span>'
 
-        def append():
-            try:
-                self.log_widget.appendHtml(msg)
-            except AttributeError:
-                self.log_widget.append(msg)
-
-        QTimer.singleShot(0, append)
+        self._log_signal.emit(msg)
 
 # Console formatter with ANSI coloring
 class ConsoleFormatter(logging.Formatter):
