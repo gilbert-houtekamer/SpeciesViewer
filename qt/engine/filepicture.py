@@ -162,6 +162,8 @@ class FilePicture:
             )
             metadata = json.loads(result.stdout)[0]
             current_subjects = metadata.get('Subject', [])
+            if isinstance(current_subjects, str):
+                current_subjects = [current_subjects]
             # print(f"current_subjects in {str(filepath)} from {current_subjects} to {correct_subject}")
 
             # Step 3: Replace subject if original_subject is found

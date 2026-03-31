@@ -278,21 +278,28 @@ class SpeciesInfoDialog(QDialog):
         scope_options = getCorrectionScopeOptions(self.full_path)  # Assumes this method returns a dict like {label: [Path, Path, ...]}
         selected_files = scope_options.get(saved_scope, [])
 
-        # Filter files that match the original subject
+        # Filter files that match the original subject; always include the clicked file itself
         matching_files = [f for f in selected_files if fpr.getSubject(f.name) == original_subject]
+        if self.full_path not in matching_files:
+            matching_files = [self.full_path] + matching_files
 
         # Apply updates
         self.status_label.setText(f"📦 Committing species name: {format_subject_for_xmp(corrected_subject)} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")
         logger.info(f"📦 Committing species name: {format_subject_for_xmp(corrected_subject)} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")
+        updated_upns = set()
         for f in matching_files:
             upn_object = fpr.updateSubject(f.name, original_subject, corrected_subject)
             logger.info(f"""✅ Updated {f.name} with corrected subject from "{format_subject_for_xmp(original_subject)}" to "{format_subject_for_xmp(corrected_subject)}".""")
+            upn_name = fpr.fi.files_dict.get(f.name, {}).get("UniquePictureName")
+            if upn_name:
+                updated_upns.add(upn_name)
 
-            # Update image viewer
-            if upn_object != None and upn_object['errormessage'] == "":
-                for image_label, container, img_path in image_viewer.image_widgets:
-                    if img_path.name == f.name:
-                        image_viewer.refresh_image_status(container, img_path)
+        # Refresh all visible images that share a UPN with any updated file (catches DxO JPGs etc.)
+        if updated_upns:
+            for image_label, container, img_path in image_viewer.image_widgets:
+                file_upn = fpr.fi.files_dict.get(img_path.name, {}).get("UniquePictureName")
+                if file_upn in updated_upns:
+                    image_viewer.refresh_image_status(container, img_path)
 
         self.accept()
 
