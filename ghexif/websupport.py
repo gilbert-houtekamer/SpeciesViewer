@@ -1199,7 +1199,7 @@ def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
                 result = subprocess.run(['exiftool', '-GPS:all=', '-overwrite_original', targetstr],
                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 if '1 image files updated' in result.stdout:
-                    logger.info(f"🔒 GPS stripped from obscure species: {os.path.basename(targetstr)}")
+                    logger.info(f"🔒 GPS stripped from species for which the location must be hidden (obscured): {os.path.basename(targetstr)}")
                 else:
                     logger.warning(f"GPS strip failed for {targetstr}: {result.stdout.strip()} {result.stderr.strip()}")
             jpgResizeCopy(targetstr, horizontalsize = 600)
