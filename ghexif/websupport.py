@@ -1,5 +1,6 @@
 import os
 import shutil
+import subprocess
 import time
 import tempfile
 import math
@@ -74,16 +75,33 @@ def isUnnamedRoad(locationname):
         return True
     return False
 
-def getFormattedLocation(picture):
+OBSCURE_FAMILIES = {"orchidaceae"}
+
+def getFamilyForSpecies(MyProject, species):
+    """Walk Up from a SPECIES-level entry to its family dict. Returns {} if not found."""
+    if not species or species.get('Level') != Level.SPECIES:
+        return {}
+    up = MyProject.getSpecies(species.get('Up', ''))
+    if up and up.get('Level') == Level.FAMILY:
+        return up
+    return {}
+
+def isObscure(MyProject, species):
+    family = getFamilyForSpecies(MyProject, species)
+    return family.get('ScientificName', '').lower() in OBSCURE_FAMILIES
+
+def getFormattedLocation(picture, obscure=False):
+    if obscure:
+        return getFormattedCityStateCountry(picture)
     if picture['Location'] == "" or isUnnamedRoad(picture['Location']):
         return getFormattedCityStateCountry(picture)
     else:
         if picture['Location'] != "" and len(picture['Location']) > 15:
             return picture['Location']
         if picture['Country'] == "": return picture['Location'];
-        if picture['Location'] == picture['City'] or picture['Location'] == picture['Country'] or isUnnamedRoad(picture['Location']): 
+        if picture['Location'] == picture['City'] or picture['Location'] == picture['Country'] or isUnnamedRoad(picture['Location']):
             return getFormattedCityStateCountry(picture)
-        if picture['City'] == '': 
+        if picture['City'] == '':
             picture['City'] = picture['Location']
             return getFormattedCityStateCountry(picture)
         return picture['Location'] + " (" + getFormattedCityStateCountry(picture) + ")"
@@ -270,8 +288,9 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 else:
                     order_local = MyProject.getSpecies(family_local['Up'])                          
                     class_local = MyProject.getSpecies(order_local['Up'])                  
-                phylum_local = MyProject.getSpecies(class_local['Up'])          
-                kingdom_local = MyProject.getSpecies(phylum_local['Up'])  
+                phylum_local = MyProject.getSpecies(class_local['Up'])
+                kingdom_local = MyProject.getSpecies(phylum_local['Up'])
+    _obscure = family_local.get('ScientificName', '').lower() in OBSCURE_FAMILIES
     try:
         # orders
         if tokenno == 1:   
@@ -373,7 +392,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 39:                                 # one level lower (enkelvoud)
             return ClassificationGroupNameNL[species_param['Level'].value-2].lower()
         elif tokenno == 40:
-            return getFormattedLocation(picture) if picture else ""
+            return getFormattedLocation(picture, _obscure) if picture else ""
         elif tokenno == 41:
             if picture['Description'] != "":
                 language = MyProject.getLanguage()          # intended language
@@ -636,8 +655,8 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 try:
                     parsed_date = getJPGtime(file, MyProject)
                     workstr += " De foto is genomen"
-                    if getFormattedLocation(picture) != "":
-                        workstr += " bij " + getFormattedLocation(picture)
+                    if getFormattedLocation(picture, _obscure) != "":
+                        workstr += " bij " + getFormattedLocation(picture, _obscure)
                     if parsed_date.strftime('%H:%M') not in ["","00:00"]:
                         workstr += " om " + parsed_date.strftime('%H:%M') 
                     if parsed_date.strftime('%d %b, %Y') != "":                        
@@ -688,8 +707,8 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 try:
                     parsed_date = getJPGtime(file, MyProject) 
                     workstr += " The photo was taken"
-                    if getFormattedLocation(picture) != "":
-                        workstr += " at " + getFormattedLocation(picture)
+                    if getFormattedLocation(picture, _obscure) != "":
+                        workstr += " at " + getFormattedLocation(picture, _obscure)
                     if parsed_date.strftime('%H:%M') not in ["","00:00"]:
                         workstr += " at " + parsed_date.strftime('%H:%M') 
                     if parsed_date.strftime('%A %B %d, %Y') != "":
@@ -1176,6 +1195,13 @@ def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
         #print(f'from {sourcestr} to {targetstr}')
         if not MyProject.getSkipJPGs():
             shutil.copy(sourcestr, targetstr)
+            if isObscure(MyProject, species):
+                result = subprocess.run(['exiftool', '-GPS:all=', '-overwrite_original', targetstr],
+                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                if '1 image files updated' in result.stdout:
+                    logger.info(f"🔒 GPS stripped from obscure species: {os.path.basename(targetstr)}")
+                else:
+                    logger.warning(f"GPS strip failed for {targetstr}: {result.stdout.strip()} {result.stderr.strip()}")
             jpgResizeCopy(targetstr, horizontalsize = 600)
         if MyProject.getLanguage() == 'en':
             logger.info(f"Rated {species['currentHighestRating']:3}  {species['EnglishName']:32}  Species path {species['TargetPath']}")
