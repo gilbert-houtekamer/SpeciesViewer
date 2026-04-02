@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,QCheckBox,
     QTabWidget, QWidget, QVBoxLayout, QComboBox, QLineEdit, QFormLayout, QSizePolicy, QFileDialog, QDateEdit, QTextEdit,
     QTableWidget, QTableWidgetItem, QAbstractItemView, QStyledItemDelegate, QMessageBox)
-from PyQt6.QtGui import QFont, QGuiApplication
+from PyQt6.QtGui import QFont, QGuiApplication, QColor
 from PyQt6.QtCore import Qt
 import logging
 import sys, os, shutil
@@ -574,12 +574,23 @@ class WritePicturesDialog(QDialog):
 
 
 class LowerCaseDelegate(QStyledItemDelegate):
-    """Forces text to lowercase on commit."""
+    """Forces text to lowercase on commit; paints cell background from a color map."""
+
+    def __init__(self, parent, cell_colors):
+        super().__init__(parent)
+        self.cell_colors = cell_colors          # dict[(row, col)] -> QColor
+
     def setModelData(self, editor, model, index):
         if isinstance(editor, QLineEdit):
             model.setData(index, editor.text().lower(), Qt.ItemDataRole.EditRole)
         else:
             super().setModelData(editor, model, index)
+
+    def paint(self, painter, option, index):
+        color = self.cell_colors.get((index.row(), index.column()))
+        if color:
+            painter.fillRect(option.rect, color)
+        super().paint(painter, option, index)
 
 
 class SpeciesCollectionDialog(QDialog):
@@ -592,6 +603,8 @@ class SpeciesCollectionDialog(QDialog):
     ]
     EDITABLE_KEYS = {"DutchName", "EnglishName"}
     COPY_COL = 1   # ScientificName column index
+    COLOR_MANUAL = QColor(204, 229, 255)   # light blue
+    COLOR_NBA    = QColor(204, 255, 204)   # light green
 
     def __init__(self, parent, csv_path):
         super().__init__(parent)
@@ -600,6 +613,7 @@ class SpeciesCollectionDialog(QDialog):
         self.csv_path = csv_path
         self.all_rows = []
         self.dirty = False
+        self.cell_colors = {}   # (row, visual_col) -> QColor
 
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(f"Last 50 entries from: {csv_path}"))
@@ -619,8 +633,8 @@ class SpeciesCollectionDialog(QDialog):
         self.table.setColumnWidth(self.COPY_VISUAL_COL, 30)
         layout.addWidget(self.table)
 
-        # Lowercase delegate for editable name columns
-        self._lc_delegate = LowerCaseDelegate(self.table)
+        # Lowercase delegate for editable name columns (also handles cell coloring)
+        self._lc_delegate = LowerCaseDelegate(self.table, self.cell_colors)
         for j, (key, _) in enumerate(self.COLUMN_MAP):
             visual = j if j < self.COPY_VISUAL_COL else j + 1
             if key in self.EDITABLE_KEYS:
@@ -713,24 +727,28 @@ class SpeciesCollectionDialog(QDialog):
 
     def _on_nba_result(self, display_row, csv_idx, eng, nld):
         csv_row = self.all_rows[csv_idx]
-        changed = False
-        if eng and not csv_row.get("EnglishName", "").strip():
+        fill_eng = eng and not csv_row.get("EnglishName", "").strip()
+        fill_nld = nld and not csv_row.get("DutchName", "").strip()
+        if not fill_eng and not fill_nld:
+            return
+        self.table.blockSignals(True)
+        if fill_eng:
             csv_row["EnglishName"] = eng
-            changed = True
-        if nld and not csv_row.get("DutchName", "").strip():
-            csv_row["DutchName"] = nld
-            changed = True
-        if changed:
-            self.dirty = True
-            self.save_btn.setEnabled(True)
-            # Update the visible table cells
-            self.table.blockSignals(True)
             for j, (key, _) in enumerate(self.COLUMN_MAP):
                 if key == "EnglishName":
-                    self.table.item(display_row, self._visual_col(j)).setText(eng)
-                elif key == "DutchName":
-                    self.table.item(display_row, self._visual_col(j)).setText(nld)
-            self.table.blockSignals(False)
+                    vcol = self._visual_col(j)
+                    self.table.item(display_row, vcol).setText(eng)
+                    self.cell_colors[(display_row, vcol)] = self.COLOR_NBA
+        if fill_nld:
+            csv_row["DutchName"] = nld
+            for j, (key, _) in enumerate(self.COLUMN_MAP):
+                if key == "DutchName":
+                    vcol = self._visual_col(j)
+                    self.table.item(display_row, vcol).setText(nld)
+                    self.cell_colors[(display_row, vcol)] = self.COLOR_NBA
+        self.table.blockSignals(False)
+        self.dirty = True
+        self.save_btn.setEnabled(True)
 
     def _on_nba_finished(self, looked_up, filled):
         self.lookup_btn.setEnabled(True)
@@ -795,10 +813,10 @@ class SpeciesCollectionDialog(QDialog):
         new_value = self.table.item(row, col).text()
         csv_index = self.display_indices[row]
         csv_row = self.all_rows[csv_index]
-        if csv_row.get(key, "") != new_value:
-            csv_row[key] = new_value
-            self.dirty = True
-            self.save_btn.setEnabled(True)
+        csv_row[key] = new_value
+        self.dirty = True
+        self.save_btn.setEnabled(True)
+        self.cell_colors[(row, col)] = self.COLOR_MANUAL
 
     def on_save(self):
         import csv
