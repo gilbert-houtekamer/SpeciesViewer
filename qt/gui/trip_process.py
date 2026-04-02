@@ -614,9 +614,24 @@ class SpeciesCollectionDialog(QDialog):
         self.all_rows = []
         self.dirty = False
         self.cell_colors = {}   # (row, visual_col) -> QColor
+        self.PAGE_SIZE = 50
 
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(f"Last 50 entries from: {csv_path}"))
+
+        # Navigation bar
+        nav_layout = QHBoxLayout()
+        self.prev_btn = QPushButton("<")
+        self.prev_btn.setFixedWidth(30)
+        self.prev_btn.clicked.connect(self.on_prev_page)
+        nav_layout.addWidget(self.prev_btn)
+        self.range_label = QLabel("")
+        self.range_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        nav_layout.addWidget(self.range_label)
+        self.next_btn = QPushButton(">")
+        self.next_btn.setFixedWidth(30)
+        self.next_btn.clicked.connect(self.on_next_page)
+        nav_layout.addWidget(self.next_btn)
+        layout.addLayout(nav_layout)
 
         # Columns: Level, ScientificName, [copy btn], EnglishName, DutchName
         self.COPY_VISUAL_COL = 2  # copy button inserted after ScientificName
@@ -769,11 +784,28 @@ class SpeciesCollectionDialog(QDialog):
             reader = csv.DictReader(f, delimiter=";")
             self.all_rows = list(reader)
 
-        display_rows = self.all_rows[-50:]
+        # Start on the last page (most recent entries)
+        total = len(self.all_rows)
+        self.page_start = max(0, total - self.PAGE_SIZE)
+        self._show_page()
+
+    def _show_page(self):
+        """Display current page of rows in the table."""
+        self.table.blockSignals(True)
+        self.cell_colors.clear()
+
+        total = len(self.all_rows)
+        page_end = min(self.page_start + self.PAGE_SIZE, total)
         # indices into all_rows for the displayed slice (reversed for display)
-        self.display_indices = list(range(len(self.all_rows) - len(display_rows), len(self.all_rows)))
+        self.display_indices = list(range(self.page_start, page_end))
         self.display_indices.reverse()
         self.table.setRowCount(len(self.display_indices))
+
+        # Update navigation
+        self.range_label.setText(
+            f"{self.page_start + 1}\u2013{page_end} of {total}  ({self.csv_path})")
+        self.prev_btn.setEnabled(self.page_start > 0)
+        self.next_btn.setEnabled(page_end < total)
 
         # Set vertical headers to actual CSV line numbers (1-based, +1 for header row)
         v_headers = [str(idx + 2) for idx in self.display_indices]
@@ -798,8 +830,24 @@ class SpeciesCollectionDialog(QDialog):
             copy_btn.clicked.connect(lambda checked, r=i: self._copy_scientific_name(r))
             self.table.setCellWidget(i, self.COPY_VISUAL_COL, copy_btn)
 
+        self.table.blockSignals(False)
         self.table.resizeColumnsToContents()
         self.table.setColumnWidth(self.COPY_VISUAL_COL, 30)
+
+    def _save_before_navigate(self):
+        """Auto-save if there are unsaved changes before switching page."""
+        if self.dirty:
+            self.on_save()
+
+    def on_prev_page(self):
+        self._save_before_navigate()
+        self.page_start = max(0, self.page_start - self.PAGE_SIZE)
+        self._show_page()
+
+    def on_next_page(self):
+        self._save_before_navigate()
+        self.page_start = min(len(self.all_rows) - 1, self.page_start + self.PAGE_SIZE)
+        self._show_page()
 
     def _on_cell_changed(self, row, col):
         if col == self.COPY_VISUAL_COL:
