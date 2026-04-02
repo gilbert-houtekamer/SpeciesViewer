@@ -631,7 +631,18 @@ class SpeciesCollectionDialog(QDialog):
         self.save_btn.setEnabled(False)
         self.save_btn.clicked.connect(self.on_save)
         btn_layout.addWidget(self.save_btn)
+
+        self.lookup_btn = QPushButton("Lookup NBA")
+        self.lookup_btn.setToolTip("Fill missing English/Dutch names from the Netherlands Biodiversity API")
+        self.lookup_btn.clicked.connect(self.on_lookup_nba)
+        btn_layout.addWidget(self.lookup_btn)
+
         btn_layout.addStretch()
+
+        self.status_label = QLabel("")
+        btn_layout.addWidget(self.status_label)
+        btn_layout.addStretch()
+
         quit_btn = QPushButton("Quit")
         quit_btn.clicked.connect(self.close)
         btn_layout.addWidget(quit_btn)
@@ -652,6 +663,78 @@ class SpeciesCollectionDialog(QDialog):
         item = self.table.item(row, 1)
         if item:
             QGuiApplication.clipboard().setText(item.text())
+
+    def on_lookup_nba(self):
+        """Look up missing English/Dutch names via the NBA API."""
+        from ghexif.nabortalib import NBASpecies
+        from PyQt6.QtCore import QThread, pyqtSignal
+
+        # Find rows with missing names among displayed rows
+        rows_to_lookup = []
+        for i, csv_idx in enumerate(self.display_indices):
+            csv_row = self.all_rows[csv_idx]
+            eng = csv_row.get("EnglishName", "").strip()
+            nld = csv_row.get("DutchName", "").strip()
+            sci = csv_row.get("ScientificName", "").strip()
+            if sci and (not eng or not nld):
+                rows_to_lookup.append((i, csv_idx, sci, eng, nld))
+
+        if not rows_to_lookup:
+            self.status_label.setText("No missing names to look up.")
+            return
+
+        self.lookup_btn.setEnabled(False)
+        self.status_label.setText(f"Looking up {len(rows_to_lookup)} species...")
+
+        class NBAWorker(QThread):
+            result_ready = pyqtSignal(int, int, str, str)  # display_row, csv_idx, eng, nld
+            finished_all = pyqtSignal(int, int)             # looked_up, filled
+
+            def __init__(self, rows):
+                super().__init__()
+                self.rows = rows
+
+            def run(self):
+                nba = NBASpecies()
+                filled = 0
+                for display_row, csv_idx, sci, existing_eng, existing_nld in self.rows:
+                    eng, nld = nba.get_vernacular_names(sci)
+                    new_eng = eng if (eng and not existing_eng) else existing_eng
+                    new_nld = nld if (nld and not existing_nld) else existing_nld
+                    if new_eng != existing_eng or new_nld != existing_nld:
+                        filled += 1
+                    self.result_ready.emit(display_row, csv_idx, new_eng, new_nld)
+                self.finished_all.emit(len(self.rows), filled)
+
+        self._nba_worker = NBAWorker(rows_to_lookup)
+        self._nba_worker.result_ready.connect(self._on_nba_result)
+        self._nba_worker.finished_all.connect(self._on_nba_finished)
+        self._nba_worker.start()
+
+    def _on_nba_result(self, display_row, csv_idx, eng, nld):
+        csv_row = self.all_rows[csv_idx]
+        changed = False
+        if eng and not csv_row.get("EnglishName", "").strip():
+            csv_row["EnglishName"] = eng
+            changed = True
+        if nld and not csv_row.get("DutchName", "").strip():
+            csv_row["DutchName"] = nld
+            changed = True
+        if changed:
+            self.dirty = True
+            self.save_btn.setEnabled(True)
+            # Update the visible table cells
+            self.table.blockSignals(True)
+            for j, (key, _) in enumerate(self.COLUMN_MAP):
+                if key == "EnglishName":
+                    self.table.item(display_row, self._visual_col(j)).setText(eng)
+                elif key == "DutchName":
+                    self.table.item(display_row, self._visual_col(j)).setText(nld)
+            self.table.blockSignals(False)
+
+    def _on_nba_finished(self, looked_up, filled):
+        self.lookup_btn.setEnabled(True)
+        self.status_label.setText(f"Netherlands Biodiversity API (NBA): {filled} of {looked_up} species updated.")
 
     def _visual_col(self, data_col):
         """Map data column index to visual column, accounting for copy button."""
