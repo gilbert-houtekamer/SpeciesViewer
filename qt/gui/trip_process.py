@@ -1,5 +1,6 @@
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,QCheckBox,
-    QTabWidget, QWidget, QVBoxLayout, QComboBox, QLineEdit, QFormLayout, QSizePolicy, QFileDialog, QDateEdit, QTextEdit)
+    QTabWidget, QWidget, QVBoxLayout, QComboBox, QLineEdit, QFormLayout, QSizePolicy, QFileDialog, QDateEdit, QTextEdit,
+    QTableWidget, QTableWidgetItem, QAbstractItemView, QStyledItemDelegate, QMessageBox)
 from PyQt6.QtGui import QFont, QGuiApplication
 from PyQt6.QtCore import Qt
 import logging
@@ -526,13 +527,17 @@ class WritePicturesDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
+        self.species_btn = QPushButton("Edit/Add Species Names")
         self.write_btn = QPushButton("Write Summary")
         self.close_btn = QPushButton("Close")
+        btn_layout.addWidget(self.species_btn)
+        btn_layout.addStretch()
         btn_layout.addWidget(self.write_btn)
         btn_layout.addWidget(self.close_btn)
         layout.addLayout(btn_layout)
 
         # Signals
+        self.species_btn.clicked.connect(self.on_species_collection)
         self.write_btn.clicked.connect(self.on_write)
         self.close_btn.clicked.connect(self.close)
 
@@ -554,13 +559,191 @@ class WritePicturesDialog(QDialog):
         if self.default_subdir in valid_subdirs:
             self.subdir_dropdown.setCurrentText(self.default_subdir)
 
+    def on_species_collection(self):
+        csv_path = os.path.join(self.trip_root, "metadata", "active", "speciescollection.csv")
+        dlg = SpeciesCollectionDialog(self, csv_path)
+        dlg.exec()
+
     def on_write(self):
         selected_subdir = self.subdir_dropdown.currentText()
         # Update config to point to selected metadata folder
         _config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
 
         runner = BatchModuleRunner(self, self.passed_parent)
-        runner.run(self.menu_spec)        
+        runner.run(self.menu_spec)
+
+
+class LowerCaseDelegate(QStyledItemDelegate):
+    """Forces text to lowercase on commit."""
+    def setModelData(self, editor, model, index):
+        if isinstance(editor, QLineEdit):
+            model.setData(index, editor.text().lower(), Qt.ItemDataRole.EditRole)
+        else:
+            super().setModelData(editor, model, index)
+
+
+class SpeciesCollectionDialog(QDialog):
+    # CSV key -> display header; order defines column order
+    COLUMN_MAP = [
+        ("Level",          "Level"),
+        ("ScientificName", "Scientific Name"),
+        ("EnglishName",    "English Name"),
+        ("DutchName",      "Dutch Name"),
+    ]
+    EDITABLE_KEYS = {"DutchName", "EnglishName"}
+    COPY_COL = 1   # ScientificName column index
+
+    def __init__(self, parent, csv_path):
+        super().__init__(parent)
+        self.setWindowTitle("Provide English and/or Dutch species names")
+        self.resize(750, 500)
+        self.csv_path = csv_path
+        self.all_rows = []
+        self.dirty = False
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel(f"Last 50 entries from: {csv_path}"))
+
+        # Columns: Level, ScientificName, [copy btn], EnglishName, DutchName
+        self.COPY_VISUAL_COL = 2  # copy button inserted after ScientificName
+        col_count = len(self.COLUMN_MAP) + 1
+        self.table = QTableWidget()
+        self.table.setColumnCount(col_count)
+        headers = [h for _, h in self.COLUMN_MAP]
+        headers.insert(self.COPY_VISUAL_COL, "")
+        self.table.setHorizontalHeaderLabels(headers)
+        self.table.horizontalHeader().setDefaultAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setColumnWidth(self.COPY_VISUAL_COL, 30)
+        layout.addWidget(self.table)
+
+        # Lowercase delegate for editable name columns
+        self._lc_delegate = LowerCaseDelegate(self.table)
+        for j, (key, _) in enumerate(self.COLUMN_MAP):
+            visual = j if j < self.COPY_VISUAL_COL else j + 1
+            if key in self.EDITABLE_KEYS:
+                self.table.setItemDelegateForColumn(visual, self._lc_delegate)
+
+        btn_layout = QHBoxLayout()
+        self.save_btn = QPushButton("Save")
+        self.save_btn.setEnabled(False)
+        self.save_btn.clicked.connect(self.on_save)
+        btn_layout.addWidget(self.save_btn)
+        btn_layout.addStretch()
+        quit_btn = QPushButton("Quit")
+        quit_btn.clicked.connect(self.close)
+        btn_layout.addWidget(quit_btn)
+        layout.addLayout(btn_layout)
+
+        self._load_csv(csv_path)
+        self.table.cellChanged.connect(self._on_cell_changed)
+
+    @staticmethod
+    def _format_level(raw):
+        """Convert 'Level.SPECIES' to 'Species'."""
+        if raw.startswith("Level."):
+            raw = raw[len("Level."):]
+        return raw.capitalize()
+
+    def _copy_scientific_name(self, row):
+        # ScientificName is visual column 1
+        item = self.table.item(row, 1)
+        if item:
+            QGuiApplication.clipboard().setText(item.text())
+
+    def _visual_col(self, data_col):
+        """Map data column index to visual column, accounting for copy button."""
+        return data_col if data_col < self.COPY_VISUAL_COL else data_col + 1
+
+    def _load_csv(self, csv_path):
+        if not os.path.isfile(csv_path):
+            self.table.setRowCount(1)
+            self.table.setItem(0, 0, QTableWidgetItem(f"File not found: {csv_path}"))
+            return
+
+        import csv
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f, delimiter=";")
+            self.all_rows = list(reader)
+
+        display_rows = self.all_rows[-50:]
+        # indices into all_rows for the displayed slice (reversed for display)
+        self.display_indices = list(range(len(self.all_rows) - len(display_rows), len(self.all_rows)))
+        self.display_indices.reverse()
+        self.table.setRowCount(len(self.display_indices))
+
+        # Set vertical headers to actual CSV line numbers (1-based, +1 for header row)
+        v_headers = [str(idx + 2) for idx in self.display_indices]
+        self.table.setVerticalHeaderLabels(v_headers)
+
+        for i, csv_idx in enumerate(self.display_indices):
+            row = self.all_rows[csv_idx]
+            for j, (key, _) in enumerate(self.COLUMN_MAP):
+                value = row.get(key, "")
+                if key == "Level":
+                    value = self._format_level(value)
+                item = QTableWidgetItem(value)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                if key not in self.EDITABLE_KEYS:
+                    item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.table.setItem(i, self._visual_col(j), item)
+
+            # Copy button right after Scientific Name
+            copy_btn = QPushButton("\u2398")  # ⎘ copy icon
+            copy_btn.setFixedSize(24, 24)
+            copy_btn.setToolTip("Copy scientific name")
+            copy_btn.clicked.connect(lambda checked, r=i: self._copy_scientific_name(r))
+            self.table.setCellWidget(i, self.COPY_VISUAL_COL, copy_btn)
+
+        self.table.resizeColumnsToContents()
+        self.table.setColumnWidth(self.COPY_VISUAL_COL, 30)
+
+    def _on_cell_changed(self, row, col):
+        if col == self.COPY_VISUAL_COL:
+            return
+        data_col = col if col < self.COPY_VISUAL_COL else col - 1
+        if data_col >= len(self.COLUMN_MAP):
+            return
+        key = self.COLUMN_MAP[data_col][0]
+        if key not in self.EDITABLE_KEYS:
+            return
+        new_value = self.table.item(row, col).text()
+        csv_index = self.display_indices[row]
+        csv_row = self.all_rows[csv_index]
+        if csv_row.get(key, "") != new_value:
+            csv_row[key] = new_value
+            self.dirty = True
+            self.save_btn.setEnabled(True)
+
+    def on_save(self):
+        import csv
+        headers = ['Level', 'ScientificName', 'DutchName', 'EnglishName', 'Up', 'Leaves']
+        with open(self.csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=headers, quoting=csv.QUOTE_MINIMAL, delimiter=";")
+            writer.writeheader()
+            writer.writerows(self.all_rows)
+        self.dirty = False
+        self.save_btn.setEnabled(False)
+
+    def closeEvent(self, event):
+        if self.dirty:
+            reply = QMessageBox.warning(
+                self, "Unsaved changes",
+                "You have unsaved changes. Do you want to save before closing?",
+                QMessageBox.StandardButton.Save
+                | QMessageBox.StandardButton.Discard
+                | QMessageBox.StandardButton.Cancel)
+            if reply == QMessageBox.StandardButton.Save:
+                self.on_save()
+                event.accept()
+            elif reply == QMessageBox.StandardButton.Discard:
+                event.accept()
+            else:
+                event.ignore()
+        else:
+            event.accept()
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QLabel, QLineEdit,
