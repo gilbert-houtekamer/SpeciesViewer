@@ -22,7 +22,7 @@ def read_dop_overrides(dop_path):
     with open(dop_path, "r", encoding="utf-8") as f:
         text = f.read()
 
-    result = {"exposure": None, "crop": None, "mtime": os.path.getmtime(dop_path)}
+    result = {"exposure": None, "crop": None, "angle": None, "mtime": os.path.getmtime(dop_path)}
 
     # Find Overrides block — find opening brace, then match balanced braces
     start = text.find('Overrides')
@@ -38,9 +38,6 @@ def read_dop_overrides(dop_path):
             brace_end = i
             break
     block = text[brace_start+1:brace_end]
-    m = True  # just to enter the block below
-    if not m:
-        return result
 
     # Exposure
     em = re.search(r'ExposureBias\s*=\s*(-?[\d.]+)', block)
@@ -55,12 +52,18 @@ def read_dop_overrides(dop_path):
         left, top, width, height = [float(cm.group(i)) for i in range(1, 5)]
         result["crop"] = {"left": left, "top": top, "width": width, "height": height}
 
+    # Horizon angle (DxO uses positive = clockwise correction)
+    ha = re.search(r'KeystoningHorizonActive\s*=\s*(true|false)', block)
+    hv = re.search(r'KeystoningHorizon\s*=\s*(-?[\d.]+)', block)
+    if ha and ha.group(1) == "true" and hv:
+        result["angle"] = float(hv.group(1))
+
     return result
 
 
 def read_xmp_edits(xmp_path):
     """Read crop and exposure from XMP crs: attributes."""
-    result = {"exposure": None, "crop": None, "mtime": os.path.getmtime(xmp_path)}
+    result = {"exposure": None, "crop": None, "angle": None, "mtime": os.path.getmtime(xmp_path)}
 
     tree = ET.parse(xmp_path)
     desc = tree.find('.//rdf:Description', NS)
@@ -96,6 +99,10 @@ def read_xmp_edits(xmp_path):
         right = _crs_val('CropRight', 1)
         result["crop"] = {"left": left, "top": top, "width": right - left, "height": bottom - top}
 
+        angle_val = _crs_val('CropAngle', None)
+        if angle_val is not None and angle_val != 0.0:
+            result["angle"] = angle_val
+
     return result
 
 
@@ -119,8 +126,8 @@ def xmp_crop_to_dop(crop):
     }
 
 
-def write_xmp_edits(xmp_path, exposure=None, crop=None):
-    """Surgically update exposure and/or crop in an XMP file."""
+def write_xmp_edits(xmp_path, exposure=None, crop=None, angle=None):
+    """Surgically update exposure, crop, and/or angle in an XMP file."""
     tree = ET.parse(xmp_path)
     desc = tree.find('.//rdf:Description', NS)
     if desc is None:
@@ -140,7 +147,8 @@ def write_xmp_edits(xmp_path, exposure=None, crop=None):
         desc.set(f'{crs}CropLeft', str(xc["left"]))
         desc.set(f'{crs}CropBottom', str(xc["bottom"]))
         desc.set(f'{crs}CropRight', str(xc["right"]))
-        desc.set(f'{crs}CropAngle', '0')
+        # DxO angle is positive clockwise, LR angle is negative clockwise
+        desc.set(f'{crs}CropAngle', str(-angle if angle else 0))
         desc.set(f'{crs}CropConstrainToWarp', '0')
         desc.set(f'{crs}CropConstrainToUnitSquare', '1')
         desc.set(f'{crs}HasCrop', 'True')
@@ -152,8 +160,8 @@ def write_xmp_edits(xmp_path, exposure=None, crop=None):
     return changed
 
 
-def write_dop_edits(dop_path, exposure=None, crop=None):
-    """Surgically update exposure and/or crop in a DOP file's Overrides section."""
+def write_dop_edits(dop_path, exposure=None, crop=None, angle=None):
+    """Surgically update exposure, crop, and/or angle in a DOP file's Overrides section."""
     with open(dop_path, "r", encoding="utf-8") as f:
         text = f.read()
 
@@ -174,6 +182,13 @@ def write_dop_edits(dop_path, exposure=None, crop=None):
         new_entries.append('CropActive = true,')
         new_entries.append(f'CropRect = {{\n{crop["left"]},\n{crop["top"]},\n{crop["width"]},\n{crop["height"]},\n}}\n,')
 
+    if angle is not None:
+        # LR angle is negative clockwise, DxO is positive clockwise
+        dop_angle = -angle
+        new_entries.append(f'KeystoningHorizon = {dop_angle},')
+        new_entries.append('KeystoningHorizonActive = true,')
+        new_entries.append('KeystoningHorizonAuto = false,')
+
     if not new_entries:
         return False
 
@@ -187,10 +202,12 @@ def write_dop_edits(dop_path, exposure=None, crop=None):
 
 
 def _has_edits(data):
-    """True if the sidecar has any non-default crop or exposure."""
+    """True if the sidecar has any non-default crop, exposure, or angle."""
     if data["exposure"] is not None and data["exposure"] != 0.0:
         return True
     if data["crop"] is not None:
+        return True
+    if data["angle"] is not None:
         return True
     return False
 
@@ -236,15 +253,18 @@ def sync_sidecars(raw_path):
     if direction == "DOP->XMP":
         exposure = dop["exposure"]
         crop = dop["crop"]
-        write_xmp_edits(xmp_path, exposure=exposure, crop=crop)
+        angle = dop["angle"]
+        write_xmp_edits(xmp_path, exposure=exposure, crop=crop, angle=angle)
     else:
         exposure = xmp["exposure"]
         crop = xmp_crop_to_dop(xmp["crop"]) if xmp["crop"] else None
-        write_dop_edits(dop_path, exposure=exposure, crop=crop)
+        angle = xmp["angle"]
+        write_dop_edits(dop_path, exposure=exposure, crop=crop, angle=angle)
 
     parts = []
     if exposure is not None: parts.append(f"exposure={exposure}")
     if crop is not None: parts.append("crop")
+    if angle is not None: parts.append(f"angle={angle}")
     return f"{direction}: {', '.join(parts)}"
 
 
@@ -259,17 +279,28 @@ if __name__ == "__main__":
         raw = "D:/CurrentPictures/2026/2026 Kreta/2026-03-16/2026 Kreta-N3160346.ORF"
 
     print(f"RAW: {raw}")
-    dop = read_dop_overrides(raw + ".dop")
-    print(f"DOP: exposure={dop['exposure']}, crop={dop['crop']}")
-
+    dop_path = raw + ".dop"
     base = os.path.splitext(raw)[0]
     xmp_path = base + ".XMP" if os.path.exists(base + ".XMP") else base + ".xmp"
-    xmp = read_xmp_edits(xmp_path)
-    print(f"XMP: exposure={xmp['exposure']}, crop={xmp['crop']}")
 
-    print(f"DOP mtime: {dop['mtime']:.0f}, XMP mtime: {xmp['mtime']:.0f}")
-    newer = "DOP" if dop["mtime"] > xmp["mtime"] else "XMP"
-    print(f"Newer: {newer}")
+    if os.path.exists(dop_path):
+        dop = read_dop_overrides(dop_path)
+        print(f"DOP: exposure={dop['exposure']}, crop={dop['crop']}, angle={dop['angle']}")
+    else:
+        dop = None
+        print(f"DOP: not found")
+
+    if os.path.exists(xmp_path):
+        xmp = read_xmp_edits(xmp_path)
+        print(f"XMP: exposure={xmp['exposure']}, crop={xmp['crop']}, angle={xmp['angle']}")
+    else:
+        xmp = None
+        print(f"XMP: not found")
+
+    if dop and xmp:
+        print(f"DOP mtime: {dop['mtime']:.0f}, XMP mtime: {xmp['mtime']:.0f}")
+        newer = "DOP" if dop["mtime"] > xmp["mtime"] else "XMP"
+        print(f"Newer: {newer}")
 
     if "--sync" in sys.argv:
         result = sync_sidecars(raw)
