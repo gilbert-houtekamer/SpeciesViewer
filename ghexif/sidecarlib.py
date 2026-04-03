@@ -186,13 +186,26 @@ def write_dop_edits(dop_path, exposure=None, crop=None):
     return True
 
 
+def _has_edits(data):
+    """True if the sidecar has any non-default crop or exposure."""
+    if data["exposure"] is not None and data["exposure"] != 0.0:
+        return True
+    if data["crop"] is not None:
+        return True
+    return False
+
+
 def sync_sidecars(raw_path):
-    """Sync crop/exposure from the most recently edited sidecar to the other.
+    """Sync crop/exposure between DOP and XMP sidecars.
+
+    Logic (crop and exposure only — keywords/GPS are handled by DxO):
+      - Only one has edits  -> sync from that one to the other
+      - Both have edits     -> sync from the newer file (timestamp)
+      - Neither has edits   -> nothing to do
 
     Returns a string describing what was done, or None if nothing changed.
     """
     dop_path = raw_path + ".dop"
-    # XMP can be .XMP or .xmp, same name as RAW but different extension
     base = os.path.splitext(raw_path)[0]
     xmp_path = base + ".XMP"
     if not os.path.exists(xmp_path):
@@ -204,28 +217,35 @@ def sync_sidecars(raw_path):
     dop = read_dop_overrides(dop_path)
     xmp = read_xmp_edits(xmp_path)
 
-    if dop["mtime"] > xmp["mtime"]:
-        # DOP is newer -> update XMP
+    dop_has = _has_edits(dop)
+    xmp_has = _has_edits(xmp)
+
+    if not dop_has and not xmp_has:
+        return None
+
+    # Decide direction: who is the source?
+    if dop_has and not xmp_has:
+        direction = "DOP->XMP"
+    elif xmp_has and not dop_has:
+        direction = "XMP->DOP"
+    elif dop["mtime"] > xmp["mtime"]:
+        direction = "DOP->XMP"
+    else:
+        direction = "XMP->DOP"
+
+    if direction == "DOP->XMP":
         exposure = dop["exposure"]
         crop = dop["crop"]
-        if exposure is None and crop is None:
-            return None
         write_xmp_edits(xmp_path, exposure=exposure, crop=crop)
-        parts = []
-        if exposure is not None: parts.append(f"exposure={exposure}")
-        if crop is not None: parts.append("crop")
-        return f"DOP->XMP: {', '.join(parts)}"
     else:
-        # XMP is newer -> update DOP
         exposure = xmp["exposure"]
         crop = xmp_crop_to_dop(xmp["crop"]) if xmp["crop"] else None
-        if exposure is None and crop is None:
-            return None
         write_dop_edits(dop_path, exposure=exposure, crop=crop)
-        parts = []
-        if exposure is not None: parts.append(f"exposure={exposure}")
-        if crop is not None: parts.append("crop")
-        return f"XMP->DOP: {', '.join(parts)}"
+
+    parts = []
+    if exposure is not None: parts.append(f"exposure={exposure}")
+    if crop is not None: parts.append("crop")
+    return f"{direction}: {', '.join(parts)}"
 
 
 # ---- standalone test ----
