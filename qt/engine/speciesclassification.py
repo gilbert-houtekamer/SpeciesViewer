@@ -312,20 +312,31 @@ class SpeciesClassification:
 
     # look for names in all three tables
     # add some logic to massage species
+    @staticmethod
+    def _normalize_subspecies(name):
+        """Strip taxonomic qualifiers (ssp, subsp., var.) from species names."""
+        parts = name.split()
+        cleaned = [p for p in parts if p not in ('ssp', 'ssp.', 'subsp', 'subsp.', 'var', 'var.')]
+        return ' '.join(cleaned)
+
     def getKnownSpecies(self, subject, nested, LookUpInGBIF=False, fuzzy=False):
         scientificname = ''
-        if LookUpInGBIF: 
+        if LookUpInGBIF:
             timesoort = time.time()
         if subject == "" or subject in self.DUMMYSPECIES:
             return ""
         elif subject in self.sc_dict:
-            return subject        
+            return subject
         elif subject in self.dutch_dict:
             return self.dutch_dict[subject]
         elif subject in self.english_dict:
             return self.english_dict[subject]
         elif LookUpInGBIF and (',' not in subject):
-            try: 
+            # Normalize subspecies qualifiers before lookup
+            normalized = self._normalize_subspecies(subject)
+            if normalized != subject and normalized in self.sc_dict:
+                return normalized
+            try:
                 # check if we already searched for this species
                 if subject not in self.names_not_found_list:
                     gbif = species.name_backbone(name=subject)
@@ -338,15 +349,18 @@ class SpeciesClassification:
                             timesoort = time.time() - timesoort
                             logger.info(f"""The species "{subject}" is not found in the GBIF database as a scientific name, took {timesoort:.3f} seconds.""")
                             self.names_not_found_list.append(subject)
-                    else: # GUI 
+                    else: # GUI
                         if gbif['matchType'] in ['EXACT', 'FUZZY'] and gbif.get('species'):
                             if gbif['confidence'] >= 90:
                                 scientificname = self.addSpecies(gbif).lower()
-                                logger.info(f"✅ '{subject}' matched GBIF as '{gbif['canonicalName']}' with confidence {gbif['confidence']} ({gbif['matchType']}) in {timesoort:.3f} seconds")
+                                logger.info(f"'{subject}' matched GBIF as '{gbif['canonicalName']}' with confidence {gbif['confidence']} ({gbif['matchType']}) in {timesoort:.3f} seconds")
                             else:
-                                logger.info(f"⚠️ '{subject}' matched GBIF fuzzily but with low confidence ({gbif['confidence']}) in {timesoort:.3f} seconds")
+                                logger.info(f"'{subject}' matched GBIF fuzzily but with low confidence ({gbif['confidence']}) in {timesoort:.3f} seconds")
                         else:
-                            logger.info(f"❌ '{subject}' not found in GBIF with FUZZY or EXACT matching.")
+                            logger.info(f"'{subject}' not found in GBIF with FUZZY or EXACT matching.")
+                    # Cache the original input so repeated lookups don't hit GBIF again
+                    if scientificname and subject != scientificname and subject not in self.sc_dict:
+                        self.sc_dict[subject] = self.sc_dict[scientificname]
             except:
                 logger.warning(f'Timeout on internet connection')
         elif not nested:
@@ -355,13 +369,9 @@ class SpeciesClassification:
                 subject = subject.strip('[]')
                 #print(f"{subject.split(',')}")
                 for subjects in subject.split(','):
-                    if subjects[0] == '"':       # possibly quoted that we do not want
-                        subjects = subjects.strip('"')
-                    subjects = subjects.lstrip().rstrip()
-                    if subjects[0] == "'":       # possibly quoted that we do not want
-                        subjects = subjects.strip("'")
-                    if subjects[0] == '"':       # remove " in eg "'\'female\', "passerini\'s tanager"'"
-                        subjects = subjects.strip('"')
+                    subjects = subjects.strip().strip("'\"")
+                    if not subjects:
+                        continue
                     # categories are interpreted as Aves etc, avoid this
                     if subjects.lower() not in self.DUMMYSPECIES:
                         scientificname = self.getKnownSpecies(subjects, True, LookUpInGBIF)
