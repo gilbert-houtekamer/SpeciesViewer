@@ -12,6 +12,7 @@ import csv
 import os
 import sys
 import time
+from datetime import datetime, timedelta
 import exiftool
 import logging
 
@@ -62,70 +63,126 @@ def main(args, config):
         os.makedirs(datafilelocation, exist_ok=True) 
         datafilelocation = os.path.join(datafilelocation, "data_files.csv")
 
-        with open(datafilelocation, "w", newline="") as csvfile:
-            metadatareadertime = time.time() - starttime
-            logger.info(
-                f"Reading EXIF metadata took {metadatareadertime:.1f} seconds for {len(metadata)} files."
+        metadatareadertime = time.time() - starttime
+        logger.info(
+            f"Reading EXIF metadata took {metadatareadertime:.1f} seconds for {len(metadata)} files."
+        )
+
+        # Build all rows first (needed for GPS backfill)
+        all_rows = []
+        for d in metadata:
+            row = {}
+            for selected_field in SELECTED_FIELDS:
+                if (
+                    selected_field in COLUMN_NAMES
+                    and COLUMN_NAMES[selected_field] in d
+                ):
+                    row[COLUMN_NAMES[selected_field]] = d[
+                        COLUMN_NAMES[selected_field]
+                    ]
+                # some fields are merged
+                elif selected_field == "-IFD0:Model" and "EXIF:Model" in d:
+                    row["CameraModel"] = d["EXIF:Model"]
+                    if row["CameraModel"] == "OM-1MarkII":
+                        row["CameraModel"] = "OM-1 Mark II"
+                elif selected_field == "-XMP-tiff:Model" and "XMP:Model" in d:
+                    row["CameraModel"] = d["XMP:Model"]
+                elif selected_field == "-IFD0:Make" and "EXIF:Make" in d:
+                    row["CameraMake"] = d["EXIF:Make"]
+                elif selected_field == "-XMP-tiff:Make" and "XMP:Make" in d:
+                    row["CameraMake"] = d["XMP:Make"]
+                elif (
+                    selected_field == "-lensserialnumber"
+                    and "MakerNotes:LensSerialNumber" in d
+                ):
+                    row["LensSerialNumber"] = d["MakerNotes:LensSerialNumber"]
+                elif (
+                    selected_field == "-exifIFD:lensserialnumber"
+                    and "EXIF:LensSerialNumber" in d
+                ):
+                    row["LensSerialNumber"] = d["EXIF:LensSerialNumber"]
+                elif selected_field == "-ImageSize" and "Composite:ImageSize" in d:
+                    row["ImageSize"] = d["Composite:ImageSize"]
+                elif (
+                    selected_field == "-imagesize" and "Composite:ImageSize_1" in d
+                ):
+                    row["ImageSize"] = d["Composite:ImageSize_1"]
+
+            # find unique identifier for all files based on a file click
+            row["UniquePictureName"] = deriveUniquePictureName(
+                row[COLUMN_NAMES["-filename"]]
             )
+            # derived values for easy of use
+            name, extension = os.path.splitext(row["File:FileName"])
+            row["WindowsExtension"] = extension[1:].lower()
+            row["WindowsFileName"] = (
+                row["File:Directory"] + "/" + row["File:FileName"]
+            )
+            # do not introduce noise
+            if row["WindowsExtension"] not in IGNOREEXTENSIONS:
+                all_rows.append(row)
+                # maintain counters per type
+                file_extension_count[extension[1:].lower()] = (
+                    file_extension_count.get(extension[1:].lower(), 0) + 1
+                )
+
+        # GPS backfill: fill missing GPS from the first later picture that has GPS,
+        # within a 30-second window. This compensates for Bluetooth GPS connection
+        # delay at the start of a shooting session.
+        GPS_BACKFILL_SECONDS = 30
+        GPS_FIELDS = ["EXIF:GPSLatitude", "EXIF:GPSLongitude", "Composite:GPSPosition", "EXIF:GPSAltitude"]
+
+        def _parse_dt(row):
+            dt_str = row.get("EXIF:DateTimeOriginal", "")
+            if not dt_str:
+                return None
+            try:
+                return datetime.strptime(dt_str, "%Y:%m:%d %H:%M:%S")
+            except ValueError:
+                return None
+
+        def _has_gps(row):
+            return bool(row.get("EXIF:GPSLatitude") or row.get("Composite:GPSPosition"))
+
+        # Sort by DateTimeOriginal for chronological processing
+        all_rows.sort(key=lambda r: r.get("EXIF:DateTimeOriginal", ""))
+
+        gps_backfill_count = 0
+        for i, row in enumerate(all_rows):
+            if _has_gps(row) or _parse_dt(row) is None:
+                continue
+            row_dt = _parse_dt(row)
+            # Look forward for the first picture with GPS within the window
+            for j in range(i + 1, len(all_rows)):
+                candidate = all_rows[j]
+                cand_dt = _parse_dt(candidate)
+                if cand_dt is None:
+                    continue
+                if (cand_dt - row_dt) > timedelta(seconds=GPS_BACKFILL_SECONDS):
+                    break
+                if _has_gps(candidate):
+                    for field in GPS_FIELDS:
+                        if field in candidate:
+                            row[field] = candidate[field]
+                    gps_backfill_count += 1
+                    logger.info(
+                        f"GPS backfill: {row.get('File:FileName', '?')} "
+                        f"<- {candidate.get('File:FileName', '?')} "
+                        f"({(cand_dt - row_dt).seconds}s later)"
+                    )
+                    break
+
+        if gps_backfill_count:
+            logger.info(f"GPS backfill: filled {gps_backfill_count} file(s) from later pictures.")
+
+        # Write all rows to CSV
+        with open(datafilelocation, "w", newline="") as csvfile:
             writer = csv.DictWriter(
                 csvfile, fieldnames=COLUMN_NAMES.values(), quoting=csv.QUOTE_MINIMAL, delimiter=';'
             )
             writer.writeheader()
-            for d in metadata:
-                row = {}
-                for selected_field in SELECTED_FIELDS:
-                    if (
-                        selected_field in COLUMN_NAMES
-                        and COLUMN_NAMES[selected_field] in d
-                    ):
-                        row[COLUMN_NAMES[selected_field]] = d[
-                            COLUMN_NAMES[selected_field]
-                        ]
-                    # some fields are merged
-                    elif selected_field == "-IFD0:Model" and "EXIF:Model" in d:
-                        row["CameraModel"] = d["EXIF:Model"]
-                        if row["CameraModel"] == "OM-1MarkII":
-                            row["CameraModel"] = "OM-1 Mark II"
-                    elif selected_field == "-XMP-tiff:Model" and "XMP:Model" in d:
-                        row["CameraModel"] = d["XMP:Model"]
-                    elif selected_field == "-IFD0:Make" and "EXIF:Make" in d:
-                        row["CameraMake"] = d["EXIF:Make"]
-                    elif selected_field == "-XMP-tiff:Make" and "XMP:Make" in d:
-                        row["CameraMake"] = d["XMP:Make"]
-                    elif (
-                        selected_field == "-lensserialnumber"
-                        and "MakerNotes:LensSerialNumber" in d
-                    ):
-                        row["LensSerialNumber"] = d["MakerNotes:LensSerialNumber"]
-                    elif (
-                        selected_field == "-exifIFD:lensserialnumber"
-                        and "EXIF:LensSerialNumber" in d
-                    ):
-                        row["LensSerialNumber"] = d["EXIF:LensSerialNumber"]
-                    elif selected_field == "-ImageSize" and "Composite:ImageSize" in d:
-                        row["ImageSize"] = d["Composite:ImageSize"]
-                    elif (
-                        selected_field == "-imagesize" and "Composite:ImageSize_1" in d
-                    ):
-                        row["ImageSize"] = d["Composite:ImageSize_1"]
-
-                # find unique identifier for all files based on a file click
-                row["UniquePictureName"] = deriveUniquePictureName(
-                    row[COLUMN_NAMES["-filename"]]
-                )
-                # derived values for easy of use
-                name, extension = os.path.splitext(row["File:FileName"])
-                row["WindowsExtension"] = extension[1:].lower()
-                row["WindowsFileName"] = (
-                    row["File:Directory"] + "/" + row["File:FileName"]
-                )
-                # do not introduce noise
-                if row["WindowsExtension"] not in IGNOREEXTENSIONS:
-                    writer.writerow(row)
-                    # maintain counters per type
-                    file_extension_count[extension[1:].lower()] = (
-                        file_extension_count.get(extension[1:].lower(), 0) + 1
-                    )
+            for row in all_rows:
+                writer.writerow(row)
 
     # give the filetype report ome space
     logger.info("")
