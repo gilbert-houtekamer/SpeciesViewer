@@ -144,6 +144,8 @@ class BatchModuleRunner:
 
             if statusname and statusname != "MakeRepository":
                 sm.writeState()
+                # Refresh the entire trip row so subsequent steps become eligible
+                self.main_window.refresh_trip_row(sm, directory_name)
             self.main_window.rebuild_menu()
             self.main_window.green_log_box.verticalScrollBar().setValue(
                 self.main_window.green_log_box.verticalScrollBar().maximum()
@@ -236,6 +238,7 @@ class ChainedBatchRunner:
         after_count = self._logger.warning_counter.count
         new_warnings = after_count - self._before_count
         self._sm.writeState()
+        self._main_window.refresh_trip_row(self._sm, self._directory_name)
         self._spinner.close()
         if new_warnings > 0:
             self._logger.info(f"All steps complete. Please review the {new_warnings} warning{'s' if new_warnings > 1 else ''}.")
