@@ -144,6 +144,13 @@ def formatAgePlumage(upn):
     
     return workstr
 
+def formatSubspecies(name):
+    """Format a 3-word scientific name with 'ssp.' before the subspecific epithet."""
+    parts = name.split()
+    if len(parts) == 3:
+        return f"{parts[0]} {parts[1]} ssp. {parts[2]}"
+    return name
+
 # try different formats
 def tryJPGtime(rawtime, MyProject):
     try:
@@ -336,17 +343,18 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 return ""
         # species
         elif tokenno == 21: return species_local['DutchName'].capitalize() if species_local else ""
-        elif tokenno == 22: return species_local['ScientificName'].strip('0123456789 ').capitalize() if species_local else ""
+        elif tokenno == 22: return formatSubspecies(species_local['ScientificName'].strip('0123456789 ')).capitalize() if species_local else ""
         elif tokenno == 23: return species_local['EnglishName'].capitalize() if species_local else ""
         elif tokenno == 24: return species_local['iPictureCollectionCount'] if species_local else ""
         elif tokenno == 25: # Nederlands (Engels) of Nederlands of Engels  of wetenschappelijk
             language = MyProject.getLanguage()
+            sci_25 = formatSubspecies(species_local['ScientificName'].strip('0123456789 ')).capitalize()
             if species_local['DutchName'] != "" and language == 'nl':
-                return species_local['DutchName'].capitalize() + " (" + species_local['ScientificName'].strip('0123456789 ').capitalize() + ")"
+                return species_local['DutchName'].capitalize() + " (" + sci_25 + ")"
             elif species_local['EnglishName'] != "" and language == 'en':
-                return species_local['EnglishName'].capitalize() + " (" + species_local['ScientificName'].strip('0123456789 ').capitalize() + ")" 
+                return species_local['EnglishName'].capitalize() + " (" + sci_25 + ")"
             else:
-                return species_local['ScientificName'].strip('0123456789 ').capitalize()
+                return sci_25
         elif tokenno == 30:
             # Convert time.time() to timestamp to a datetime object
             date = datetime.fromtimestamp(time.time())
@@ -354,7 +362,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             return date.strftime("a %b %d, %Y")   
         elif tokenno == 31:
             #return species_param['DutchName'].capitalize() + ' ' + species_param['ScientificName'].strip('0123456789 ').capitalize()
-            return species_param['ScientificName'].strip('0123456789 ').capitalize()
+            return formatSubspecies(species_param['ScientificName'].strip('0123456789 ')).capitalize()
         elif tokenno == 32:                                 # one level lower (enkelvoud)
             return ClassificationGroupName[species_param['Level'].value-2].capitalize()
         elif tokenno == 33:                                 # one level lower (enkelvoud)
@@ -367,12 +375,12 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             if species_param[languageName] != "":
                 return groupname + ': ' + species_param[languageName].capitalize()
             else:
-                return groupname + ': ' + species_param['ScientificName'].strip('0123456789 ').capitalize()
+                return groupname + ': ' + formatSubspecies(species_param['ScientificName'].strip('0123456789 ')).capitalize()
         elif tokenno == 34:                                 # meervoud voor de children, dus 1 extra er af daarom -2                   
             return ClassificationGroupNameNLmeervoud[species_param['Level'].value-2].lower()
         elif tokenno == 35:
             workstr =  ClassificationGroupNameNL[species_param['Level'].value-1] if MyProject.getLanguage() == "nl" else ClassificationGroupNameNL[species_param['Level'].value-1] 
-            workstr +=  ' ' + species_param['ScientificName'].strip('0123456789 ').capitalize()
+            workstr +=  ' ' + formatSubspecies(species_param['ScientificName'].strip('0123456789 ')).capitalize()
             languageName = 'DutchName' if MyProject.getLanguage() == "nl" else 'EnglishName'
             if species_param[languageName] != "":
                 workstr += ' (' + species_param['DutchName'].capitalize() + ')'
@@ -626,10 +634,11 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 # species and relationship
                 if not (species_local['ScientificName'][0:5] == "homo " or suppressnames):                
                     workstr += "De foto toont een "
+                    sci_nl = formatSubspecies(species_local['ScientificName'].strip('0123456789 ')).capitalize()
                     if species_local['DutchName'] != "":
-                        workstr += species_local['DutchName'].capitalize() + " (<i>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</i>). "
+                        workstr += species_local['DutchName'].capitalize() + " (<i>" + sci_nl + "</i>). "
                     else:
-                        workstr += "<i>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</i>. "
+                        workstr += "<i>" + sci_nl + "</i>. "
                     workstr += "Het is een "
                     if kingdom_local['ScientificName'] == "animalia":
                         if class_local['ScientificName'] == "aves":
@@ -677,11 +686,12 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 # species and relationship
                 if not (species_local['ScientificName'][0:5] == "homo " or suppressnames):     
                     workstr = "The photo shows a "
+                    sci_en = formatSubspecies(species_local['ScientificName'].strip('0123456789 ')).capitalize()
                     if species_local['EnglishName'] != "":
                         workstr += species_local['EnglishName'].capitalize() + \
-                            " (<i>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</i>). "
+                            " (<i>" + sci_en + "</i>). "
                     else:
-                        workstr += "<i>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</i>. "
+                        workstr += "<i>" + sci_en + "</i>. "
                     workstr += "It is a "
                     if kingdom_local['ScientificName'] == "animalia":
                         if class_local['ScientificName'] == "aves":
@@ -788,17 +798,18 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += '    </div>\n'
             return workstr
         elif tokenno == 125:
-            #  languageName = 'DutchName'           else: languageName = 'EnglishName'   
+            #  languageName = 'DutchName'           else: languageName = 'EnglishName'
+            sci_display = formatSubspecies(species_local['ScientificName'].strip('0123456789 ')).capitalize()
             if MyProject.getLanguage() == 'nl' and species_local['DutchName'] != "" :
                 workstr = species_local['DutchName'].capitalize() + formatSexe(picture) + formatAgePlumage(picture) + \
                     " <br><i><small>" + species_local['EnglishName'].capitalize() + "</small></i></br>" + \
-                    "<i><small>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</small></i></br>"
+                    "<i><small>" + sci_display + "</small></i></br>"
             else:
                 if species_local['EnglishName'] != "":
                     workstr = species_local['EnglishName'].capitalize() + formatSexe(picture) + formatAgePlumage(picture) + \
-                    " <br><i><small>" + species_local['ScientificName'].strip('0123456789 ').capitalize() + "</small></i></br>"
+                    " <br><i><small>" + sci_display + "</small></i></br>"
                 else:
-                    workstr = "<i>" + species_local['ScientificName'].capitalize() + "</i>"
+                    workstr = "<i>" + sci_display + "</i>" + formatSexe(picture) + formatAgePlumage(picture)
             return workstr
         elif tokenno == 126:
             w =  MyProject.Blog.getColumnWidth()
