@@ -74,8 +74,18 @@ class Blog:
         self.MinimumScore = minimumscore
         self.blogjpg = blogjpg
         self.BestJPGs = []
+        self.excluded_species = {"no_jpg": [], "below_score": []}
 
-        return 
+        return
+
+    def logExcludedSpecies(self):
+        if self.excluded_species["below_score"]:
+            logger.warning(f"{len(self.excluded_species['below_score'])} species excluded from blog "
+                           f"(score below {self.MinimumScore}): "
+                           + ", ".join(f"{name} ({score})" for name, score in self.excluded_species["below_score"]))
+        if self.excluded_species["no_jpg"]:
+            logger.info(f"{len(self.excluded_species['no_jpg'])} species have no corresponding JPGs "
+                        f"and will therefore not be shown.")
     
     # keep name for blog
     def setBlogDay(self, today):

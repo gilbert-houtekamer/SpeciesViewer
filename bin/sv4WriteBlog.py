@@ -136,8 +136,9 @@ def main(args, config):
     # remember translations
     blog.mp.ct.writeTranslationCache()
      
-    totaltime = time.time() - starttime      
+    totaltime = time.time() - starttime
     logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
+    blog.logExcludedSpecies()
 
 
 if __name__ == "__main__":
