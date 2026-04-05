@@ -326,7 +326,7 @@ class SpeciesClassification:
         if subject == "" or subject in self.DUMMYSPECIES:
             return ""
         elif subject in self.sc_dict:
-            return subject
+            return self.sc_dict[subject]['ScientificName']
         elif subject in self.dutch_dict:
             return self.dutch_dict[subject]
         elif subject in self.english_dict:

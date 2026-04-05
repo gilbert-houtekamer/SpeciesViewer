@@ -79,9 +79,9 @@ class Blog:
     
     # keep name for blog
     def setBlogDay(self, today):
-        if self.OnlyNewSpecies: newspec = "-1-" 
-        else: newspec = "-0-"
-        self.blogday = (today + '-'+ self.mp.ProjectName() + '-' + self.SelectedSpeciesGroup + newspec + str(self.MinimumScore))
+        if self.OnlyNewSpecies: newspec = "-1"
+        else: newspec = "-0"
+        self.blogday = (today + '-'+ self.mp.ProjectName() + '-' + self.SelectedSpeciesGroup + newspec)
         self.mp.setBlogDay(self.blogday)
     def getBlogDay(self):
         return self.blogday 

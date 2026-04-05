@@ -607,7 +607,10 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             if len(BestJPGs) == 0:
                 # step 1: collect selected species
                 selected_dict = {}
-                addSpeciesToSummaryPost(MyProject, species_param['ScientificName'], selected_dict)
+                excluded = addSpeciesToSummaryPost(MyProject, species_param['ScientificName'], selected_dict)
+                if excluded:
+                    logger.warning(f"{len(excluded)} species excluded from blog (score below {MyProject.Blog.getMinimumScore()}): "
+                                   + ", ".join(f"{name} ({score})" for name, score in excluded))
                 # step 2: sort by time taken picture
                 time_sorted_dict = dict(sorted(selected_dict.items(), key=itemgetter(1)))            
                 # step 3: generate the webpage
@@ -1129,7 +1132,9 @@ def addOneSpeciesPage(MyProject, species_param):
 # create summary page, that should become Wordpress
 # also test best picture function.
 # the first def is recursively calling itself, the second is the package
-def addSpeciesToSummaryPost(MyProject, speciesname, selected_species):
+def addSpeciesToSummaryPost(MyProject, speciesname, selected_species, excluded_by_score=None):
+    if excluded_by_score is None:
+        excluded_by_score = []
     try:
         species = MyProject.sp.species_dict[speciesname]
         for leaf in species['Leaves']:
@@ -1137,15 +1142,17 @@ def addSpeciesToSummaryPost(MyProject, speciesname, selected_species):
             if int(species['iPictureThisRunCount']) > 0:            # brute force scan
                 if species['Level'] == Level.SPECIES:
                     if MyProject.Blog.getSelectedSpeciesGroup() in species['TargetPath'] and \
-                    (MyProject.Blog.getOnlyNewSpecies() and int(species['iSpeciesThisRunCount']) > 0) or (not MyProject.Blog.OnlyNewSpecies) and \
-                    MyProject.Blog.getMinimumScore() <= species['currentHighestRating']:                 # Last is BUGBUG if high score is from past??
-                        # picture species and time 
-                        collectBestJPGs(MyProject, species['BestUPN'], selected_species)
+                    (MyProject.Blog.getOnlyNewSpecies() and int(species['iSpeciesThisRunCount']) > 0) or (not MyProject.Blog.OnlyNewSpecies):
+                        if MyProject.Blog.getMinimumScore() <= species['currentHighestRating']:                 # Last is BUGBUG if high score is from past??
+                            # picture species and time
+                            collectBestJPGs(MyProject, species['BestUPN'], selected_species)
+                        else:
+                            excluded_by_score.append((leaf, species['currentHighestRating']))
                 else:
-                    addSpeciesToSummaryPost(MyProject, leaf, selected_species)
+                    addSpeciesToSummaryPost(MyProject, leaf, selected_species, excluded_by_score)
     except:
-        print("addSpeciesToSummaryPost")                
-    return
+        print("addSpeciesToSummaryPost")
+    return excluded_by_score
 
 # species['iPictureThisRunCount'] tells me if the picture is seen for this species, but we do not yet
 # know what is best picture for that species, because that use the overall best picture.  Also, that
