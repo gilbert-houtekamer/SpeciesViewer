@@ -106,14 +106,20 @@ def scanSpecies(sc, speciesname, report):
         species = sc.sc_dict[leaf]
         if str(species['Level']) == str(Level.SPECIES):
             # do we have this?
-            if species['ScientificName'].lower() in result_dict and species['EnglishName'].lower() != "":
+            if species['ScientificName'].lower() in result_dict:
                 best_rating = 0
                 if sc.sc_dict[sc.sc_dict[species['Up']]['Up']]['Up'] != 'aves' and not subheaderdone:
                     print(f"\nOther animals and plants:\n", file=report)
                     counter = 1
                     newcounter = 1
                     subheaderdone = True
-                data_line = str(counter).rjust(3) + ' ' + species['EnglishName'].ljust(32) + species['DutchName'].ljust(40)
+                sci = species['ScientificName']
+                if len(sci.split()) == 3:
+                    parts = sci.split()
+                    sci = f"{parts[0]} {parts[1]} ssp. {parts[2]}"
+                english = species['EnglishName'] if species['EnglishName'] else f"*{sci}*"
+                dutch = species['DutchName'] if species['DutchName'] else f"*{sci}*"
+                data_line = str(counter).rjust(3) + ' ' + english.ljust(32) + dutch.ljust(40)
                 try:
                     Reference_sp.species_dict[species['ScientificName'].lower()]
                     data_line += '     '
@@ -168,6 +174,9 @@ def scanSpecies(sc, speciesname, report):
 def print_headers(sc, report):
     global subheaderdone
     print(f'\n\n', file=report)
+    print(f'Legend per day:  F = first day, RAW only (no JPG yet)  x = RAW only (JPG exists on earlier day)', file=report)
+    print(f'                 j = JPG exists but unrated            2..5 = best star rating that day', file=report)
+    print(f'Summary:         first number = days seen  second number = overall best rating  Needed = new species, no rated JPG yet\n', file=report)
     counter = 0
     header_line = ' '.ljust(36+40) + 'New '
     for header in headers:
