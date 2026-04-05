@@ -45,7 +45,7 @@ class BatchModuleRunner:
         self.status_bar = gui.passed_parent.status_bar
         self.main_window = main_window
 
-    def run(self, menu_spec):
+    def run(self, menu_spec, on_success=None):
         batch_parms = menu_spec.get_batch_parms()
         if not batch_parms:
             self.status_label.setText("❌ Missing batch parameters.")
@@ -141,6 +141,8 @@ class BatchModuleRunner:
                             pass
                 self.status_label.setText(f"{after_msg}{warn_suffix}")
                 self.status_bar.showMessage(f"{after_msg}{warn_suffix}")
+                if on_success:
+                    on_success()
 
             if statusname and statusname != "MakeRepository":
                 sm.writeState()

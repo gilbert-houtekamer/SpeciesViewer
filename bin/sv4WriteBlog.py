@@ -140,6 +140,11 @@ def main(args, config):
     logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
     blog.logExcludedSpecies()
 
+    # Write the blog post URL so the GUI can open it after completion
+    blog_url = MyProject.getBiotaBlogWeb() + blog.getBlogDay() + '-nl.html'
+    with open("last_blog_url.txt", "w") as f:
+        f.write(blog_url)
+
 
 if __name__ == "__main__":
     # get commandline parameters

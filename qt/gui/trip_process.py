@@ -962,8 +962,14 @@ class CreateBlogDialog(QDialog):
 
     def get_blog_url(self):
         base_url = _config.get("websettings", "base_url", fallback="https://houtekamer.com/")
-        trip_name = Path(_config.get("trip", "tripbiotawebroot", fallback="")).name
-        return f"{base_url}trips/{trip_name}/biotablog/blog%20index-nl.html"
+        try:
+            with open("last_blog_url.txt", "r") as f:
+                relative_url = f.read().strip()
+            # relative_url is e.g. "/trips/kreta/biotablog/Blog Pictures ...-nl.html"
+            return base_url.rstrip("/") + relative_url
+        except FileNotFoundError:
+            trip_name = Path(_config.get("trip", "tripbiotawebroot", fallback="")).name
+            return f"{base_url}trips/{trip_name}/biotablog/blog%20index-nl.html"
 
 
     def _create_default_ini(self):
@@ -1089,11 +1095,12 @@ class CreateBlogDialog(QDialog):
         try:
             self.save_ini()  # Ensure latest edits are saved
 
-            runner = BatchModuleRunner(self, self.passed_parent)
-            errorstring = runner.run(self.menu_spec)
+            def open_blog_in_browser():
+                if self.open_after_checkbox.isChecked():
+                    webbrowser.open(self.get_blog_url())
 
-            if errorstring == "" and self.open_after_checkbox.isChecked():
-                webbrowser.open(self.get_blog_url())
+            runner = BatchModuleRunner(self, self.passed_parent)
+            runner.run(self.menu_spec, on_success=open_blog_in_browser)
         except Exception as e:
             self.logger.error(f"❌ Blog creation failed: {e}")
             self.status_label.setText("❌ Blog creation failed.")
