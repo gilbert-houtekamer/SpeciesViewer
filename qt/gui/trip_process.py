@@ -1254,20 +1254,21 @@ class CountSpeciesDialog(BaseTripModuleDialog):
             selected_subdir = self.subdir_dropdown.currentText()
             _config["project"]["picturedirectory"] = os.path.join(self.base_path, selected_subdir)
 
-        runner = BatchModuleRunner(self, self.passed_parent)
-        runner.run(self.menu_spec)
+        def load_report():
+            try:
+                reports_dir = Path(_config.get("trip", "tripbiotadatabase")) / "metadata" / "reports"
+                report_path = reports_dir / "Species overview.txt"
+                if report_path.exists():
+                    with open(report_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                        self.report_viewer.setPlainText(content)
+                else:
+                    self.report_viewer.setPlainText("⚠️ Report file not found.")
+            except Exception as e:
+                self.report_viewer.setPlainText(f"❌ Error loading report: {e}")
 
-        try:
-            reports_dir = Path(_config.get("trip", "tripbiotadatabase")) / "metadata" / "reports"
-            report_path = reports_dir / "Species overview.txt"
-            if report_path.exists():
-                with open(report_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                    self.report_viewer.setPlainText(content)
-            else:
-                self.report_viewer.setPlainText("⚠️ Report file not found.")
-        except Exception as e:
-            self.report_viewer.setPlainText(f"❌ Error loading report: {e}")
+        runner = BatchModuleRunner(self, self.passed_parent)
+        runner.run(self.menu_spec, on_success=load_report)
 
     def save_report(self):
         filename, _ = QFileDialog.getSaveFileName(

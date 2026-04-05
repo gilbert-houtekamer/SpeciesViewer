@@ -176,7 +176,7 @@ def print_headers(sc, report):
     print(f'\n\n', file=report)
     print(f'Legend per day:  F = first day, RAW only (no JPG yet)  x = RAW only (JPG exists on earlier day)', file=report)
     print(f'                 j = JPG exists but unrated            2..5 = best star rating that day', file=report)
-    print(f'Summary:         first number = days seen  second number = overall best rating  Needed = new species, no rated JPG yet\n', file=report)
+    print(f'Summary:         first number = days seen,  second number = overall best rating,  Needed = new species, no rated JPG yet\n', file=report)
     counter = 0
     header_line = ' '.ljust(36+40) + 'New '
     for header in headers:
