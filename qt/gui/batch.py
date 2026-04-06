@@ -251,3 +251,146 @@ class ChainedBatchRunner:
             self._main_window.green_log_box.verticalScrollBar().maximum()
         )
         self._on_complete()
+
+
+class ColumnBatchRunner:
+    """Runs one batch step across multiple days sequentially, continuing on errors.
+
+    day_steps: list of dicts with keys:
+        day_str        - folder name for this day
+        project_root   - Path to image root (parent of day folders)
+        trip_root      - Path to trip biota database
+        module_called  - callable for the batch module
+        statusname     - StateMachine key (e.g. 'ReadDirExif')
+        before_msg     - spinner label shown before running
+        after_msg      - log message on success
+        needs_reset    - bool: True if step is already ✅ and must be reset first
+    """
+
+    def __init__(self, parent, main_window, action_label, day_steps, on_complete):
+        self._parent = parent
+        self._main_window = main_window
+        self._action_label = action_label
+        self._day_steps = day_steps
+        self._on_complete = on_complete
+        self._logger = logging.getLogger("speciesviewer")
+        self._before_count = self._logger.warning_counter.count
+        self._errors = 0
+        self._successes = 0
+
+        total = len(day_steps)
+        self._spinner = QDialog(parent)
+        self._spinner.setWindowTitle("Even geduld...")
+        self._spinner.setModal(True)
+        self._spinner.setFixedSize(460, 220)
+
+        layout = QVBoxLayout(self._spinner)
+        layout.setContentsMargins(20, 16, 20, 16)
+
+        self._action_label_widget = QLabel(f"Running '{action_label}' for all days...")
+        self._action_label_widget.setWordWrap(True)
+        self._action_label_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._action_label_widget)
+
+        self._step_label = QLabel("")
+        self._step_label.setWordWrap(True)
+        self._step_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._step_label)
+
+        self._progress_label = QLabel(f"0 / {total}")
+        self._progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._progress_label)
+
+        movie = QMovie("spinner.gif")
+        spinner_icon = QLabel()
+        spinner_icon.setMovie(movie)
+        layout.addWidget(spinner_icon, alignment=Qt.AlignmentFlag.AlignCenter)
+        movie.start()
+
+    def start(self):
+        self._spinner.show()
+        self._run_step(0)
+
+    def _run_step(self, index):
+        if index >= len(self._day_steps):
+            self._all_done()
+            return
+
+        step = self._day_steps[index]
+        day_str = step["day_str"]
+        project_root = step["project_root"]
+        trip_root = step["trip_root"]
+        module_called = step["module_called"]
+        statusname = step["statusname"]
+        before_msg = step["before_msg"]
+        after_msg = step["after_msg"]
+        needs_reset = step["needs_reset"]
+
+        total = len(self._day_steps)
+        self._step_label.setText(f"{before_msg} ({day_str})")
+        self._progress_label.setText(f"{index + 1} / {total}")
+        self._logger.info(f"{before_msg} — {day_str}")
+
+        # Point config at this day and regenerate svconfig.ini
+        from utils.config import _config
+        new_dir = project_root / day_str
+        _config.set("project", "picturedirectory", str(new_dir))
+        generate_svconfig_ini()
+
+        module_config = configparser.ConfigParser()
+        module_config.read("svconfig.ini")
+
+        review_day = trip_root / "metadata" / "review" / day_str
+        sm = StateMachine(str(trip_root), str(review_day), readState=True)
+
+        if needs_reset:
+            sm.Taskstate[statusname][0] = False
+            sm.Taskstate[statusname][1] = ""
+            sm.writeState()
+
+        self._thread = QThread()
+        self._worker = _BatchWorker(module_called, None, module_config)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+
+        def on_done(errorstring, idx=index, sname=statusname, amsg=after_msg,
+                    d_str=day_str, sm_ref=sm, trip=trip_root, review=review_day):
+            self._thread.quit()
+            self._thread.wait()
+            cell_key = _EXPECTED_CELLS.get(sname)
+            if errorstring:
+                self._errors += 1
+                self._logger.warning(f"❌ {d_str} — {sname} failed: {errorstring}")
+                sm_ref.updateState(sname, False, errorstring)
+                sm_ref.writeState()
+                if cell_key:
+                    self._main_window.update_trip_cell(d_str, cell_key, "❌", f"{sname} failed: {errorstring}")
+            else:
+                self._successes += 1
+                self._logger.info(f"{amsg} — {d_str}")
+                sm_ref.updateState(sname, True, "Successfully run.")
+                sm_ref.writeState()
+                if cell_key:
+                    self._main_window.update_trip_cell(d_str, cell_key, "✅", "Successfully run.")
+            # Refresh the full row so downstream steps update eligibility
+            sm_ref2 = StateMachine(str(trip), str(review), readState=True)
+            self._main_window.refresh_trip_row(sm_ref2, d_str)
+            # Continue with next day regardless of error
+            self._run_step(idx + 1)
+
+        self._worker.finished.connect(on_done)
+        self._thread.start()
+
+    def _all_done(self):
+        self._spinner.close()
+        after_count = self._logger.warning_counter.count
+        new_warnings = after_count - self._before_count
+        summary = f"'{self._action_label}' complete: {self._successes} succeeded, {self._errors} failed."
+        if new_warnings > 0:
+            summary += f" Please review the {new_warnings} warning{'s' if new_warnings > 1 else ''}."
+        self._logger.info(summary)
+        self._main_window.rebuild_menu()
+        self._main_window.green_log_box.verticalScrollBar().setValue(
+            self._main_window.green_log_box.verticalScrollBar().maximum()
+        )
+        self._on_complete()

@@ -163,6 +163,8 @@ class MainWindow(QMainWindow):
                 item = QTableWidgetItem(symbol)
                 item.setToolTip(tooltip)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                if symbol == "🚫":
+                    item.setFlags(Qt.ItemFlag.NoItemFlags)
                 self.trip_table.setItem(row, col_index, item)
                 break
 
@@ -222,19 +224,17 @@ class MainWindow(QMainWindow):
                     symbol = "❌"
                     tooltip = message
                 elif step_name == "WriteBlog":
-                    if not sm.stateOKtorun(step_name):
+                    row = next((r for r in range(self.trip_table.rowCount()) if self.trip_table.item(r, 0).text() == day_name), None)
+                    jpgs = int(self.trip_table.item(row, 2).text()) if row is not None else 0
+                    if jpgs == 0:
+                        symbol = "🚫"
+                        tooltip = "No JPGs available — blog step suppressed."
+                    elif not sm.stateOKtorun(step_name):
                         symbol = "⚪"
                         tooltip = sm.explainAbort(step_name, raiseSV=False)
                     else:
-                        row = next((r for r in range(self.trip_table.rowCount()) if self.trip_table.item(r, 0).text() == day_name), None)
-                        if row is not None:
-                            jpgs = int(self.trip_table.item(row, 2).text())
-                            if jpgs == 0:
-                                symbol = "🚫"
-                                tooltip = "No JPGs available — blog step suppressed."
-                            else: 
-                                symbol = "🔘"
-                                tooltip = "Click on the sphere to run this step."                     
+                        symbol = "🔘"
+                        tooltip = "Click on the sphere to run this step."
                 elif sm.stateOKtorun(step_name):
                     symbol = "🔘"
                     tooltip = "Click on the sphere to run this step."
@@ -404,6 +404,102 @@ class MainWindow(QMainWindow):
             self.refresh_trip_row(sm2, day_str)
 
         runner = ChainedBatchRunner(self, self, steps_to_run, module_config, sm, directory_name, on_complete)
+        runner.start()
+
+    def handle_column_run_all(self, column):
+        """Double-click on a column header: run that step for all eligible rows."""
+        from gui.batch import ColumnBatchRunner
+        from utils.batch_config import generate_svconfig_ini
+
+        # Only respond to state columns (3–8)
+        state_col_start = 3
+        state_col_end = 3 + len(self.state_labels) - 1
+        if column < state_col_start or column > state_col_end:
+            return
+
+        step_index = column - state_col_start
+        step_names = ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite", "Freeze", "WriteCommit"]
+        step_name = step_names[step_index]
+
+        action_label = self.trip_table.horizontalHeaderItem(column).text().replace("\n", " ")
+
+        project_root = Path(_config.get("project", "picturedirectory")).parent
+        trip_root = Path(_config.get("trip", "tripbiotadatabase"))
+
+        pipeline_msgs = {
+            "ReadDirExif":   ("Reading picture directory...",            "✅ Directory scan complete."),
+            "WritePictures": ("Reading meta data for all pictures ...",  "✅ Writing Summary data."),
+            "WriteBlog":     ("Create a blog entry ...",                 "✅ Blog successfully created."),
+            "BuildWebsite":  ("Build updates for later publication ...", "✅ Website updates prepared."),
+            "Freeze":        ("Freeze all collected data ...",           "✅ Data frozen."),
+            "WriteCommit":   ("Update the trip website ...",             "✅ Please review updated Website."),
+        }
+        before_msg, after_msg = pipeline_msgs[step_name]
+
+        # Collect eligible rows
+        day_steps = []
+        for row in range(self.trip_table.rowCount()):
+            day_item = self.trip_table.item(row, 0)
+            cell_item = self.trip_table.item(row, column)
+            if not day_item or not cell_item:
+                continue
+            symbol = cell_item.text()
+            if symbol not in ("🔘", "✅"):
+                continue
+
+            day_str = day_item.text()
+            review_day = trip_root / "metadata" / "review" / day_str
+            sm = StateMachine(str(trip_root), str(review_day), readState=True)
+
+            # Additional guards (same as cell double-click)
+            if sm.Taskstate.get("WriteCommit", [False])[0]:
+                continue
+            jpgs = int(self.trip_table.item(row, 2).text())
+            if step_name == "WriteBlog" and jpgs == 0:
+                continue
+
+            needs_reset = (symbol == "✅")
+            # For ready rows, verify state machine agrees
+            if not needs_reset and not sm.stateOKtorun(step_name):
+                continue
+
+            trip_menu = self.menu_spec.get("Trip", {})
+            spec_obj = trip_menu.get(action_label)
+            if not spec_obj:
+                continue
+            bp = spec_obj.get_batch_parms()
+            if not bp:
+                continue
+
+            day_steps.append({
+                "day_str":      day_str,
+                "project_root": project_root,
+                "trip_root":    trip_root,
+                "module_called": bp["module_called"],
+                "statusname":   step_name,
+                "before_msg":   before_msg,
+                "after_msg":    after_msg,
+                "needs_reset":  needs_reset,
+            })
+
+        if not day_steps:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(self, "Nothing to run", f"No eligible rows for '{action_label}'.")
+            return
+
+        step_list = "\n".join(f"  • {s['day_str']}" for s in day_steps)
+        from PyQt6.QtWidgets import QMessageBox
+        reply = QMessageBox.question(
+            self, f"Run '{action_label}' for all days",
+            f"The following days will run '{action_label}':\n\n{step_list}\n\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        generate_svconfig_ini()
+
+        runner = ColumnBatchRunner(self, self, action_label, day_steps, lambda: None)
         runner.start()
 
     def update_trip_label(self):

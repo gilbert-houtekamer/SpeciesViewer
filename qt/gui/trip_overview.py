@@ -63,7 +63,7 @@ def populate_trip_overview(self):
     self.trip_table.setHorizontalHeaderLabels(
         ["Day", "Total\nFiles", "JPEG\nFiles"] + self.state_labels + ["Progress"]
     )
-    self.trip_table.setSortingEnabled(True)
+    self.trip_table.setSortingEnabled(False)
     self.trip_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
 
 
@@ -107,7 +107,6 @@ def populate_trip_overview(self):
                 elif jpgs == 0 and step_name == "WriteBlog":
                     symbol = "🚫"
                     tooltip = "No JPGs available — blog step suppressed."
-                    item.setFlags(Qt.ItemFlag.NoItemFlags)
                 elif sm.stateOKtorun(step_name):
                     symbol = "🔘"
                     tooltip = "Click on the sphere to run this step."
@@ -118,6 +117,8 @@ def populate_trip_overview(self):
             item = QTableWidgetItem(symbol)
             item.setToolTip(tooltip)
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            if symbol == "🚫":
+                item.setFlags(Qt.ItemFlag.NoItemFlags)
 
             self.trip_table.setItem(i, 3 + j, item)
 
@@ -138,3 +139,4 @@ def populate_trip_overview(self):
 
     self.trip_table.cellDoubleClicked.connect(self.handle_trip_table_double_click)
     self.trip_table.verticalHeader().sectionDoubleClicked.connect(self.handle_row_rerun)
+    self.trip_table.horizontalHeader().sectionDoubleClicked.connect(self.handle_column_run_all)
