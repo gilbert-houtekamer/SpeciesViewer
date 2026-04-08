@@ -50,8 +50,12 @@ class CachedTranslate:
                     writer.writerow(row)
                       
     def detectLanguage(self, text):
-        detected_language = self.translator.detect(text)
-        return detected_language
+        try:
+            detected_language = self.translator.detect(text)
+            return detected_language
+        except Exception as e:
+            logger.warning(f"Translation service unavailable: {e}")
+            return None
 
     # convert text to crc32
     def getCRC32(self, text):
@@ -72,6 +76,8 @@ class CachedTranslate:
         else:
             if language == "":
                 detected_language = self.detectLanguage(text)
+                if detected_language is None:
+                    return text
                 language = detected_language.lang
             if language == 'nl':
                 from_lang = 'nl'
@@ -79,8 +85,12 @@ class CachedTranslate:
             else:
                 from_lang = 'en'
                 to_lang = 'nl'
-            translated_text_stuct = self.translator.translate(text, src=from_lang, dest=to_lang)
-            translatedText = translated_text_stuct.text.replace('.','. ').replace('.  ','. ')
+            try:
+                translated_text_stuct = self.translator.translate(text, src=from_lang, dest=to_lang)
+                translatedText = translated_text_stuct.text.replace('.','. ').replace('.  ','. ')
+            except Exception as e:
+                logger.warning(f"Translation failed, returning original text: {e}")
+                return text
             self.translation_cache[int(crctext)] = translatedText
             # logger.info(f"Not in translation cache,  from {from_lang} to {to_lang}: {translatedText}")
             
@@ -98,8 +108,10 @@ class CachedTranslate:
     
     def getOneLanguage(self, text, languagein):
         # languagein:   the language I need to print
-        # textlanguage: the lauguage that is detected in the actual sample 
+        # textlanguage: the lauguage that is detected in the actual sample
         textlanguage = self.detectLanguage(text)
+        if textlanguage is None:
+            return text
         if textlanguage.lang == languagein:
             return text
         else:
