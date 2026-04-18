@@ -190,6 +190,12 @@ def print_headers(sc, report):
 
 def main(args, config):
     global starttime, SpeciesDebug, Reference_sp
+    global result_dict, headers, counter, newcounter, jpgneeded
+    result_dict = {}
+    headers = []
+    counter = 1
+    newcounter = 1
+    jpgneeded = 0
     starttime = time.time()
     SpeciesDebug = 0        # default   
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
@@ -227,7 +233,7 @@ def main(args, config):
     report_path = reports_dir / "Species overview.txt"
     with open(report_path, "w", encoding="utf-8") as report:
          # Collect species
-        directory_to_scan = MyProject.getMetaDir() + 'review' # 'C:/laptop/validate/metadata/review'
+        directory_to_scan = MyProject.getMetaDir() + 'review'
         search_string = 'Species specified in this dir:'
         scan_files(directory_to_scan, search_string, report)
 
