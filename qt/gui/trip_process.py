@@ -319,10 +319,10 @@ class TripCreationDialog(QDialog):
         # make sure new structure is created
         set_trip_settings(self.root_field.get_text(), self.trip_web.field.text(), self.project_path.field.text())
         # Also save trip/project pair
-        update_cache_gui_section("trip_project_map", self.trip_web.field.text(), self.project_path.field.text() )   
-        # now do the actual work     
+        update_cache_gui_section("trip_project_map", self.trip_web.field.text(), self.project_path.field.text() )
+        # now do the actual work
         runner = BatchModuleRunner(self, self.passed_parent)
-        errorstr = runner.run(self.menu_spec)             
+        runner.run(self.menu_spec, on_success=lambda: populate_trip_overview(self.passed_parent))
 
     def on_select(self):
         # save settings
