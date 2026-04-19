@@ -195,6 +195,7 @@ def main(args, config):
             donor_xmp = upn_index.get(donor_upn, {}).get("xmp")
             if target_xmp and donor_xmp:
                 has_location = any(donor_xmp.get(f) for f in LOCATION_FIELDS)
+                target_already_has_location = any(target_xmp.get(f) for f in LOCATION_FIELDS)
                 if has_location:
                     exif_args = []
                     for field in LOCATION_FIELDS + GPS_FIELDS:
@@ -202,15 +203,16 @@ def main(args, config):
                             target_xmp[field] = donor_xmp[field]
                             exif_args.append(f"-{field}={donor_xmp[field]}")
                     xmp_backfill_count += 1
-                    # Write back to the XMP file on disk
-                    xmp_filepath = target_xmp.get("WindowsFileName", "")
-                    if xmp_filepath and exif_args:
-                        cmd = ['exiftool'] + exif_args + ['-overwrite_original', xmp_filepath]
-                        try:
-                            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
-                            logger.info(f"GPS backfill: wrote location to {target_xmp.get('File:FileName', '?')}")
-                        except subprocess.CalledProcessError as e:
-                            logger.warning(f"GPS backfill: failed to write {target_xmp.get('File:FileName', '?')}: {e.stderr}")
+                    # Only write to disk if the XMP didn't already have location data
+                    if not target_already_has_location:
+                        xmp_filepath = target_xmp.get("WindowsFileName", "")
+                        if xmp_filepath and exif_args:
+                            cmd = ['exiftool'] + exif_args + ['-overwrite_original', xmp_filepath]
+                            try:
+                                subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                                logger.info(f"GPS backfill: wrote location to {target_xmp.get('File:FileName', '?')}")
+                            except subprocess.CalledProcessError as e:
+                                logger.warning(f"GPS backfill: failed to write {target_xmp.get('File:FileName', '?')}: {e.stderr}")
 
         if gps_backfill_count:
             logger.info(f"GPS backfill: filled {gps_backfill_count} RAW file(s) from later pictures.")
