@@ -131,6 +131,7 @@ def main(args, config):
         # delay at the start of a shooting session.
         GPS_BACKFILL_SECONDS = 30
         GPS_FIELDS = ["EXIF:GPSLatitude", "EXIF:GPSLongitude", "Composite:GPSPosition", "EXIF:GPSAltitude"]
+        LOCATION_FIELDS = ["XMP:Location", "XMP:City", "XMP:State", "XMP:Country"]
 
         def _parse_dt(row):
             dt_str = row.get("EXIF:DateTimeOriginal", "")
@@ -144,10 +145,19 @@ def main(args, config):
         def _has_gps(row):
             return bool(row.get("EXIF:GPSLatitude") or row.get("Composite:GPSPosition"))
 
+        # Build a lookup from UniquePictureName to rows by extension
+        upn_index = {}
+        for row in all_rows:
+            upn = row.get("UniquePictureName", "")
+            ext = row.get("WindowsExtension", "")
+            if upn:
+                upn_index.setdefault(upn, {})[ext] = row
+
         # Sort by DateTimeOriginal for chronological processing
         all_rows.sort(key=lambda r: r.get("EXIF:DateTimeOriginal", ""))
 
         gps_backfill_count = 0
+        backfilled_pairs = []  # (target_upn, donor_upn)
         for i, row in enumerate(all_rows):
             if _has_gps(row) or _parse_dt(row) is None:
                 continue
@@ -165,6 +175,10 @@ def main(args, config):
                         if field in candidate:
                             row[field] = candidate[field]
                     gps_backfill_count += 1
+                    backfilled_pairs.append((
+                        row.get("UniquePictureName", ""),
+                        candidate.get("UniquePictureName", "")
+                    ))
                     logger.info(
                         f"GPS backfill: {row.get('File:FileName', '?')} "
                         f"<- {candidate.get('File:FileName', '?')} "
@@ -172,8 +186,23 @@ def main(args, config):
                     )
                     break
 
+        # Second pass: backfill XMP location fields from donor's XMP sibling
+        xmp_backfill_count = 0
+        for target_upn, donor_upn in backfilled_pairs:
+            target_xmp = upn_index.get(target_upn, {}).get("xmp")
+            donor_xmp = upn_index.get(donor_upn, {}).get("xmp")
+            if target_xmp and donor_xmp:
+                has_location = any(donor_xmp.get(f) for f in LOCATION_FIELDS)
+                if has_location:
+                    for field in LOCATION_FIELDS + GPS_FIELDS:
+                        if donor_xmp.get(field):
+                            target_xmp[field] = donor_xmp[field]
+                    xmp_backfill_count += 1
+
         if gps_backfill_count:
-            logger.info(f"GPS backfill: filled {gps_backfill_count} file(s) from later pictures.")
+            logger.info(f"GPS backfill: filled {gps_backfill_count} RAW file(s) from later pictures.")
+        if xmp_backfill_count:
+            logger.info(f"GPS backfill: filled {xmp_backfill_count} XMP file(s) with location data.")
 
         # Write all rows to CSV
         with open(datafilelocation, "w", newline="") as csvfile:
