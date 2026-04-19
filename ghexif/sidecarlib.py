@@ -221,6 +221,7 @@ def sync_sidecars(raw_path):
       - Neither has edits   -> nothing to do
 
     Returns a string describing what was done, or None if nothing changed.
+    Returns "NO_DOP" if XMP has edits but no DOP file exists.
     """
     dop_path = raw_path + ".dop"
     base = os.path.splitext(raw_path)[0]
@@ -228,7 +229,16 @@ def sync_sidecars(raw_path):
     if not os.path.exists(xmp_path):
         xmp_path = base + ".xmp"
 
-    if not os.path.exists(dop_path) or not os.path.exists(xmp_path):
+    has_dop = os.path.exists(dop_path)
+    has_xmp = os.path.exists(xmp_path)
+
+    if not has_xmp:
+        return None
+
+    if not has_dop:
+        xmp = read_xmp_edits(xmp_path)
+        if _has_edits(xmp):
+            return "NO_DOP"
         return None
 
     dop = read_dop_overrides(dop_path)

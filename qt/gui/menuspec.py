@@ -1,10 +1,10 @@
 import configparser
 
 from gui.menu import MenuSpec  # assuming class is defined elsewhere
-from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDialog, 
-        CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog, 
+from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDialog,
+        CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog,
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
-        ConvertAvibaseDialog)
+        ConvertAvibaseDialog, SyncSidecarsDialog)
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
 from settings.speciessettings import SpeciesSettingsDialog
@@ -24,6 +24,7 @@ import bin.svr5MergeSpeciesCollections
 import bin.svr8RecreateTripRepository
 import bin.svr9RedoBlog
 import bin.svu2avibase
+import bin.svu5SyncSidecars
 
 
 def build_menu_spec(main_window):
@@ -58,6 +59,18 @@ def build_menu_spec(main_window):
         }
     )
     trip_create.callback = lambda: TripCreationDialog(main_window, trip_create).exec()
+
+    sync_sidecars = MenuSpec(
+        callback=None,
+        title="Sync Sidecars",
+        batch_parms={
+            'statusname': "",
+            'module_called': bin.svu5SyncSidecars.main,
+            'before_msg': "Synchronizing DOP and XMP sidecars...",
+            'after_msg': "✅ Sidecar sync complete."
+        }
+    )
+    sync_sidecars.callback = lambda: SyncSidecarsDialog(main_window, sync_sidecars).exec()
 
     read_dir = MenuSpec(
         callback=None,
@@ -232,6 +245,7 @@ def build_menu_spec(main_window):
         "Trip": {
             "Create Trip": trip_create,
             f"{MenuSpec.separator()}_1": None,
+            "Sync Sidecars": sync_sidecars,
             "Read Directory": read_dir,
             "Write Summary": write_summary,
             "Write Blog": write_blog,

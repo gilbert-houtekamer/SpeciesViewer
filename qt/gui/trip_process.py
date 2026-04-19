@@ -1203,6 +1203,16 @@ class FreezeDialog(BaseTripModuleDialog):
         # self.dialog.exec()
 
 
+class SyncSidecarsDialog(BaseTripModuleDialog):
+    def __init__(self, parent, menu_spec):
+        super().__init__(
+            parent,
+            menu_spec,
+            title="Sync Sidecars",
+            info_text="Synchronize crop and exposure edits between DxO PhotoLab (.dop) and Lightroom (.xmp) sidecar files."
+        )
+
+
 class WriteCommitDialog(BaseTripModuleDialog):
     def __init__(self, parent, menu_spec):
         super().__init__(
