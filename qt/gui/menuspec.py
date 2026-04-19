@@ -64,7 +64,7 @@ def build_menu_spec(main_window):
         callback=None,
         title="Sync Sidecars",
         batch_parms={
-            'statusname': "",
+            'statusname': "SyncSidecars",
             'module_called': bin.svu5SyncSidecars.main,
             'before_msg': "Synchronizing DOP and XMP sidecars...",
             'after_msg': "✅ Sidecar sync complete."

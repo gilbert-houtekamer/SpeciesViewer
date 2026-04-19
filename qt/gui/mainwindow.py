@@ -157,9 +157,13 @@ class MainWindow(QMainWindow):
         self.setMenuBar(new_menu_bar)
 
     def update_trip_cell(self, day_name, step_key, symbol, tooltip):
+        from gui.trip_overview import SYNC_COL, STATE_COL_START
         for row in range(self.trip_table.rowCount()):
             if self.trip_table.item(row, 0).text() == day_name:
-                col_index = self.state_labels.index(step_key) + 3
+                if step_key == "Sync\nSidecars":
+                    col_index = SYNC_COL
+                else:
+                    col_index = self.state_labels.index(step_key) + STATE_COL_START
                 item = QTableWidgetItem(symbol)
                 item.setToolTip(tooltip)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -193,6 +197,7 @@ class MainWindow(QMainWindow):
         return item
     
     def refresh_trip_row(self, sm, day_name):
+        from gui.trip_overview import STATE_COL_START
         state_label_dict = {
             "Read\nDirectory" : "ReadDirExif",
             "Write\nSummary" : "WritePictures",
@@ -200,14 +205,15 @@ class MainWindow(QMainWindow):
             "Build\nWebsite": "BuildWebsite",
             "Freeze" : "Freeze",
             "Write\nCommit" : "WriteCommit"
-        }        
-        
+        }
+
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
         review_day = trip_root / "metadata" / "review" / day_name
-        # sm = StateMachine(str(trip_root), str(review_day), readState=True)
 
+        # Note: Sync Sidecars column is intentionally NOT refreshed here
+        # (it is not tracked in the statemachine)
         for step_key in self.state_labels:
-            step_name = state_label_dict[step_key]  # e.g. "Write\nBlog" → "WriteBlog"
+            step_name = state_label_dict[step_key]
             if step_name not in sm.Taskstate:
                 symbol = "⚪"
                 tooltip = "Unknown step."
@@ -249,12 +255,13 @@ class MainWindow(QMainWindow):
         summary_item = self.get_progress_summary_item(sm, ini_path)
         for row in range(self.trip_table.rowCount()):
             if self.trip_table.item(row, 0).text() == day_name:
-                self.trip_table.setItem(row, 3 + len(self.state_labels), summary_item)
+                self.trip_table.setItem(row, STATE_COL_START + len(self.state_labels), summary_item)
                 break
 
 
 
     def handle_trip_table_double_click(self, row, column):
+        from gui.trip_overview import SYNC_COL, STATE_COL_START
         # Ignore clicks on the "Progress" column, and headers
         if column == self.trip_table.columnCount() - 1 or column < 1:
             return
@@ -273,14 +280,13 @@ class MainWindow(QMainWindow):
         project_root = Path(_config.get("project", "picturedirectory")).parent
         new_dir = project_root / day_str
         _config.set("project", "picturedirectory", str(new_dir))
-        # self.logger.info(f"Updated PictureDirectory to: {new_dir}")
 
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
         review_day = trip_root / "metadata" / "review" / day_str
         sm = StateMachine(str(trip_root), str(review_day), readState=True)
 
-        # DISABLE logic: check if this step should be blocked
-        step_index = column - 3
+        # DISABLE logic: check if this step should be blocked (pipeline columns only)
+        step_index = column - STATE_COL_START
         if 0 <= step_index < len(self.state_labels):
             step_name = ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite", "Freeze", "WriteCommit"][step_index]
             jpgs = int(self.trip_table.item(row, 2).text())
@@ -408,16 +414,21 @@ class MainWindow(QMainWindow):
 
     def handle_column_run_all(self, column):
         """Double-click on a column header: run that step for all eligible rows."""
+        from gui.trip_overview import SYNC_COL, STATE_COL_START
         from gui.batch import ColumnBatchRunner
         from utils.batch_config import generate_svconfig_ini
 
-        # Only respond to state columns (3–8)
-        state_col_start = 3
-        state_col_end = 3 + len(self.state_labels) - 1
-        if column < state_col_start or column > state_col_end:
+        # Sync Sidecars column — all rows are eligible, no statemachine gating
+        if column == SYNC_COL:
+            self._run_sync_all_days()
             return
 
-        step_index = column - state_col_start
+        # Only respond to state columns
+        state_col_end = STATE_COL_START + len(self.state_labels) - 1
+        if column < STATE_COL_START or column > state_col_end:
+            return
+
+        step_index = column - STATE_COL_START
         step_names = ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite", "Freeze", "WriteCommit"]
         step_name = step_names[step_index]
 
@@ -500,6 +511,56 @@ class MainWindow(QMainWindow):
         generate_svconfig_ini()
 
         runner = ColumnBatchRunner(self, self, action_label, day_steps, lambda: None)
+        runner.start()
+
+    def _run_sync_all_days(self):
+        """Run Sync Sidecars for all days in the trip."""
+        from gui.batch import ColumnBatchRunner
+        from utils.batch_config import generate_svconfig_ini
+
+        project_root = Path(_config.get("project", "picturedirectory")).parent
+        trip_root = Path(_config.get("trip", "tripbiotadatabase"))
+
+        trip_menu = self.menu_spec.get("Trip", {})
+        spec_obj = trip_menu.get("Sync Sidecars")
+        if not spec_obj:
+            return
+        bp = spec_obj.get_batch_parms()
+        if not bp:
+            return
+
+        day_steps = []
+        for row in range(self.trip_table.rowCount()):
+            day_item = self.trip_table.item(row, 0)
+            if not day_item:
+                continue
+            day_str = day_item.text()
+            day_steps.append({
+                "day_str":       day_str,
+                "project_root":  project_root,
+                "trip_root":     trip_root,
+                "module_called": bp["module_called"],
+                "statusname":    "SyncSidecars",
+                "before_msg":    bp["before_msg"],
+                "after_msg":     bp["after_msg"],
+                "needs_reset":   False,
+            })
+
+        if not day_steps:
+            return
+
+        step_list = "\n".join(f"  • {s['day_str']}" for s in day_steps)
+        reply = QMessageBox.question(
+            self, "Run 'Sync Sidecars' for all days",
+            f"The following days will run 'Sync Sidecars':\n\n{step_list}\n\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        generate_svconfig_ini()
+
+        runner = ColumnBatchRunner(self, self, "Sync Sidecars", day_steps, lambda: None)
         runner.start()
 
     def update_trip_label(self):

@@ -11,6 +11,7 @@ from utils.batch_config import generate_svconfig_ini
 from sharedlib.statemachine import StateMachine
 
 _EXPECTED_CELLS = {
+    "SyncSidecars":  'Sync\nSidecars',
     "ReadDirExif":   'Read\nDirectory',
     "WritePictures": 'Write\nSummary',
     "WriteBlog":     'Write\nBlog',
@@ -343,7 +344,7 @@ class ColumnBatchRunner:
         review_day = trip_root / "metadata" / "review" / day_str
         sm = StateMachine(str(trip_root), str(review_day), readState=True)
 
-        if needs_reset:
+        if needs_reset and statusname in sm.Taskstate:
             sm.Taskstate[statusname][0] = False
             sm.Taskstate[statusname][1] = ""
             sm.writeState()

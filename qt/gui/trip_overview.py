@@ -7,6 +7,9 @@ from pathlib import Path
 from sharedlib.statemachine import StateMachine
 from utils.config import _config
 
+SYNC_COL = 3
+STATE_COL_START = 4
+
 def populate_trip_overview(self):
     self.update_trip_label()
     self.remove_existing_overview_tab()
@@ -28,7 +31,7 @@ def populate_trip_overview(self):
         all_files = list(path.glob("*"))
         jpg_files = [f for f in all_files if f.suffix.lower() == ".jpg"]
         return len(all_files), len(jpg_files)
-    
+
     self.state_labels = [
         "Read\nDirectory",
         "Write\nSummary",
@@ -36,7 +39,7 @@ def populate_trip_overview(self):
         "Build\nWebsite",
         "Freeze",
         "Write\nCommit"
-    ]    
+    ]
 
     self.state_keys = [
         "sv2readdirexif",
@@ -58,10 +61,10 @@ def populate_trip_overview(self):
     }
 
     self.trip_table = QTableWidget()
-    self.trip_table.setColumnCount(3 + len(self.state_labels) + 1)
+    self.trip_table.setColumnCount(STATE_COL_START + len(self.state_labels) + 1)
     self.trip_table.setRowCount(len(image_days))
     self.trip_table.setHorizontalHeaderLabels(
-        ["Day", "Total\nFiles", "JPEG\nFiles"] + self.state_labels + ["Progress"]
+        ["Day", "Total\nFiles", "JPEG\nFiles", "Sync\nSidecars"] + self.state_labels + ["Progress"]
     )
     self.trip_table.setSortingEnabled(False)
     self.trip_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -78,6 +81,12 @@ def populate_trip_overview(self):
         self.trip_table.setItem(i, 1, QTableWidgetItem(str(total)))
         self.trip_table.setItem(i, 2, QTableWidgetItem(str(jpgs)))
 
+        # Sync Sidecars column — not persisted, starts as ⚪
+        sync_item = QTableWidgetItem("⚪")
+        sync_item.setToolTip("Not yet run.")
+        sync_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.trip_table.setItem(i, SYNC_COL, sync_item)
+
         # Match statemachine folder
         review_day = review_root / day.name
         # Create a StateMachine instance for this day
@@ -85,7 +94,7 @@ def populate_trip_overview(self):
 
         # Loop through each step
         for j, step_name in enumerate([
-                    "ReadDirExif", "WritePictures", "WriteBlog", 
+                    "ReadDirExif", "WritePictures", "WriteBlog",
                     "BuildWebsite", "Freeze", "WriteCommit"]):
             if step_name not in sm.Taskstate:
                 symbol = "⚪"
@@ -120,11 +129,11 @@ def populate_trip_overview(self):
             if symbol == "🚫":
                 item.setFlags(Qt.ItemFlag.NoItemFlags)
 
-            self.trip_table.setItem(i, 3 + j, item)
+            self.trip_table.setItem(i, STATE_COL_START + j, item)
 
         # Determine progress summary
         summary_item = self.get_progress_summary_item(sm,  review_root / day.name)
-        self.trip_table.setItem(i, 3 + len(self.state_labels), summary_item)
+        self.trip_table.setItem(i, STATE_COL_START + len(self.state_labels), summary_item)
 
     # Layout
     overview_widget = QWidget()
@@ -134,7 +143,7 @@ def populate_trip_overview(self):
     layout.addWidget(header_label)
     layout.addWidget(self.trip_table)
     overview_widget.setLayout(layout)
- 
+
     self.yellow_tabs.addTab(overview_widget, "Overview")
 
     self.trip_table.cellDoubleClicked.connect(self.handle_trip_table_double_click)
