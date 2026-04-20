@@ -62,14 +62,18 @@ def main(args, config):
 
     total_synced = dop_to_xmp + xmp_to_dop
     totaltime = time.time() - starttime
-    if total_synced:
-        logger.info(f"Synced {total_synced} file(s): {dop_to_xmp} DOP->XMP, {xmp_to_dop} XMP->DOP. "
-                     f"({skipped} unchanged, {totaltime:.1f}s)")
-    else:
+
+    if dop_to_xmp:
+        logger.info(f"Synced DOP\u2192XMP: {dop_to_xmp} file(s)  \u2192 reload metadata in Lightroom.")
+    if xmp_to_dop:
+        logger.info(f"Synced XMP\u2192DOP: {xmp_to_dop} file(s)  \u2192 read sidecars in PhotoLab.")
+    if not total_synced:
         logger.info(f"No sidecar changes detected ({skipped} file(s) checked, {totaltime:.1f}s).")
     if no_dop:
-        logger.warning(f"{len(no_dop)} file(s) have XMP edits but no DOP file: "
-                       + ", ".join(no_dop))
+        logger.warning(f"No DOP found for {len(no_dop)} file(s) with XMP edits"
+                       f" \u2192 add to PhotoLab first, then re-run sync:")
+        for filename in no_dop:
+            logger.warning(f"    {filename}")
 
 
 if __name__ == "__main__":
