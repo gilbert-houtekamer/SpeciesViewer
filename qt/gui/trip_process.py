@@ -1141,6 +1141,7 @@ class BaseTripModuleDialog(QDialog):
         layout.addWidget(self.info_text)
 
         self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
         btn_layout = QHBoxLayout()

@@ -22,7 +22,7 @@ _EXPECTED_CELLS = {
 
 
 class _BatchWorker(QObject):
-    finished = pyqtSignal(str)  # errorstring — empty means success
+    finished = pyqtSignal(str, str)  # (errorstring, result_msg) — both empty means clean success
 
     def __init__(self, module_called, args, module_config):
         super().__init__()
@@ -32,10 +32,10 @@ class _BatchWorker(QObject):
 
     def run(self):
         try:
-            self._module_called(self._args, self._module_config)
-            self.finished.emit("")
+            result = self._module_called(self._args, self._module_config)
+            self.finished.emit("", result or "")
         except Exception as e:
-            self.finished.emit(str(e))
+            self.finished.emit(str(e), "")
 
 
 class BatchModuleRunner:
@@ -111,7 +111,7 @@ class BatchModuleRunner:
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
 
-        def on_finished(errorstring):
+        def on_finished(errorstring, result_msg):
             self._thread.quit()
             self._thread.wait()
             spinner.close()
@@ -130,7 +130,8 @@ class BatchModuleRunner:
                 self.status_bar.showMessage(f"❌ {errorstring}")
             else:
                 warn_suffix = f" Please review the {new_warnings if new_warnings > 1 else ''} warning{'s' if new_warnings > 1 else ''}." if new_warnings > 0 else ""
-                self.logger.info(f"{after_msg}{warn_suffix}")
+                display_msg = result_msg if result_msg else after_msg
+                self.logger.info(f"{display_msg}{warn_suffix}")
                 if statusname and statusname != "MakeRepository":
                     sm.updateState(statusname, True, "Successfully run.")
                     cell_key = expected_messages.get(statusname)
@@ -140,8 +141,8 @@ class BatchModuleRunner:
                             self.main_window.update_trip_cell(directory_name, cell_key, "✅", cell_msg)
                         except Exception:
                             pass
-                self.status_label.setText(f"{after_msg}{warn_suffix}")
-                self.status_bar.showMessage(f"{after_msg}{warn_suffix}")
+                self.status_label.setText(f"{display_msg}{warn_suffix}")
+                self.status_bar.showMessage(f"{display_msg}{warn_suffix}")
                 if on_success:
                     on_success()
 
@@ -215,7 +216,7 @@ class ChainedBatchRunner:
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
 
-        def on_done(errorstring, idx=index, sname=statusname, amsg=after_msg):
+        def on_done(errorstring, _result_msg, idx=index, sname=statusname, amsg=after_msg):
             self._thread.quit()
             self._thread.wait()
             cell_key = _EXPECTED_CELLS.get(sname)
@@ -354,7 +355,7 @@ class ColumnBatchRunner:
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
 
-        def on_done(errorstring, idx=index, sname=statusname, amsg=after_msg,
+        def on_done(errorstring, result_msg, idx=index, sname=statusname, amsg=after_msg,
                     d_str=day_str, sm_ref=sm, trip=trip_root, review=review_day):
             self._thread.quit()
             self._thread.wait()
