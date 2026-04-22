@@ -799,19 +799,28 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += '    </div>\n'
             return workstr
         elif tokenno == 125:
-            #  languageName = 'DutchName'           else: languageName = 'EnglishName'
+            # Always output 3 lines (local name, English/Dutch, scientific) for consistent card height
             sci_display = formatSubspecies(species_local['ScientificName'].strip('0123456789 ')).capitalize()
-            if MyProject.getLanguage() == 'nl' and species_local['DutchName'] != "" :
-                workstr = species_local['DutchName'].capitalize() + formatSexe(picture) + formatAgePlumage(picture) + \
-                    " <br><i><small>" + species_local['EnglishName'].capitalize() + "</small></i></br>" + \
-                    "<i><small>" + sci_display + "</small></i></br>"
+            sexe_age = formatSexe(picture) + formatAgePlumage(picture)
+            dutch = species_local['DutchName']
+            english = species_local['EnglishName']
+            is_nl = MyProject.getLanguage() == 'nl'
+            # Determine primary and secondary common names
+            primary = dutch if is_nl else english
+            secondary = english if is_nl else dutch
+            if primary:
+                line1 = primary.capitalize() + sexe_age
+                line2 = "<i><small>" + secondary.capitalize() + "</small></i>" if secondary else "&nbsp;"
+                line3 = "<i><small>" + sci_display + "</small></i>"
+            elif secondary:
+                line1 = secondary.capitalize() + sexe_age
+                line2 = "&nbsp;"
+                line3 = "<i><small>" + sci_display + "</small></i>"
             else:
-                if species_local['EnglishName'] != "":
-                    workstr = species_local['EnglishName'].capitalize() + formatSexe(picture) + formatAgePlumage(picture) + \
-                    " <br><i><small>" + sci_display + "</small></i></br>"
-                else:
-                    workstr = "<i>" + sci_display + "</i>" + formatSexe(picture) + formatAgePlumage(picture)
-            return workstr
+                line1 = "<i>" + sci_display + "</i>" + sexe_age
+                line2 = "&nbsp;"
+                line3 = "&nbsp;"
+            return line1 + "<br>" + line2 + "<br>" + line3
         elif tokenno == 126:
             w =  MyProject.Blog.getColumnWidth()
             return str(w)
