@@ -76,7 +76,7 @@ def main(args, config):
     if os.path.exists(bloginifile):
         # create a separete config instance
         blogconfig = configparser.ConfigParser()
-        blogconfig.read(bloginifile)
+        blogconfig.read(bloginifile, encoding="utf-8")
         # set the parameters
         only_new = blogconfig.getboolean("blog_config","only_new")
         minimum_score = blogconfig.getint("blog_config","minimum_score")

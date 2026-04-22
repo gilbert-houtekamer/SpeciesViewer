@@ -920,10 +920,10 @@ class CreateBlogDialog(QDialog):
 
         # Load or create default ini
         if self.ini_path.exists():
-            self.parser.read(self.ini_path)
+            self.parser.read(self.ini_path, encoding="utf-8")
         else:
             self._create_default_ini()
-            with open(self.ini_path, "w") as f:
+            with open(self.ini_path, "w", encoding="utf-8") as f:
                 self.parser.write(f)
 
         # Main layout
@@ -1085,7 +1085,7 @@ class CreateBlogDialog(QDialog):
         self.parser["blog_config"]["minimum_score"] = str(self.minimum_score.value())
         self.parser["blog_config"]["column_width"] = str(self.column_width.value())
 
-        with open(self.ini_path, "w") as f:
+        with open(self.ini_path, "w", encoding="utf-8") as f:
             self.parser.write(f)
 
         self.logger.info("✅ blog.ini written successfully.")
