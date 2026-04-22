@@ -974,9 +974,9 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         else:
             return '<token ' + tokenno + '>'
     except Exception as e:
-        logger.info(f"{'<Failed to handle token ' + str(tokenno) + '>'} Error: {e.args[0]}")
+        logger.info(f"{'<Failed to handle token ' + str(tokenno) + '>'} Error: {e}")
         # {species_param['ScientificName']}:
-        return '<Failed to handle token '  + str(tokenno) + '>' + e.arg[0]
+        return '<Failed to handle token '  + str(tokenno) + '>'
 
 # logic selected species
 def writeOneSpecies(MyProject, leaf, temptextfile):
@@ -1065,7 +1065,10 @@ def addOneSpeciesPage(MyProject, species_param):
     try:
         rateorder = {}
         for JPGname in list(species_param['JPGmap']):
-            JPGname_no_path = MyProject.files_dict[os.path.basename(JPGname)]
+            basename = os.path.basename(JPGname)
+            if basename not in MyProject.files_dict:
+                continue
+            JPGname_no_path = MyProject.files_dict[basename]
             diversity = MyProject.getPictureAgeSexePlumage(MyProject.UniquePictureName_dict[JPGname_no_path['UniquePictureName']])
             rating = MyProject.computeRatingFile(JPGname_no_path)
             if '-small' not in JPGname:
@@ -1095,7 +1098,10 @@ def addOneSpeciesPage(MyProject, species_param):
             usedUPNs = {}
             rejectUPNs = 0            
             for rating, JPGname, value in items:
-                JPGname_no_path = MyProject.files_dict[os.path.basename(JPGname)]
+                basename = os.path.basename(JPGname)
+                if basename not in MyProject.files_dict:
+                    continue
+                JPGname_no_path = MyProject.files_dict[basename]
                 if (JPGname_no_path != "") and (JPGname_no_path['UniquePictureName'] not in usedUPNs.keys()):
                     # do we have a picture close to it
                     dropit = False
@@ -1131,7 +1137,7 @@ def addOneSpeciesPage(MyProject, species_param):
                 if (filesfound == maxpicturesperAgeSexePlumage):
                     break   # go to next man/female/young/breeding etc
     except Exception as e:
-        print(f"""Error in showing "{JPGname_no_path['WindowsFileName']}" with "{species_param['ScientificName']}" / "{species_param['DutchName']}": {e}""")
+        print(f"""Error in showing "{species_param['ScientificName']}" / "{species_param['DutchName']}": {e}""")
         #workstr = ""
     #print('return for ', species_param['ScientificName']) # , "\n", workstr)
     return workstr
