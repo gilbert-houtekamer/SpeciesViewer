@@ -1152,7 +1152,7 @@ def addSpeciesToSummaryPost(MyProject, speciesname, selected_species, excluded=N
                     (MyProject.Blog.getOnlyNewSpecies() and int(species['iSpeciesThisRunCount']) > 0) or (not MyProject.Blog.OnlyNewSpecies):
                         if MyProject.Blog.getMinimumScore() <= species['currentHighestRating']:                 # Last is BUGBUG if high score is from past??
                             # picture species and time
-                            collectBestJPGs(MyProject, species['BestUPN'], selected_species)
+                            collectBestJPGs(MyProject, leaf, selected_species)
                         elif species['currentHighestRating'] == 0:
                             excluded["no_jpg"].append(leaf)
                         else:
@@ -1171,15 +1171,10 @@ def addSpeciesToSummaryPost(MyProject, speciesname, selected_species, excluded=N
 # 2. Add the "getPictureAgeSexePlumage" to the name for uniqueness, 
 #    so one species can generate two pictures (adult/juv, male/female, breeding)
 # 3. sort the best pictures of each type
-def collectBestJPGs(MyProject, upn, selected_species):
+def collectBestJPGs(MyProject, species_scientific_name, selected_species):
     try:
-        # get the species name that indirectly
-        picturedata = MyProject.UniquePictureName_dict[upn]
-        species_scientific_name = picturedata['WetSoortNaam']
-        #species = MyProject.sp.species_dict[species_scientific_name]
-        
         candidate_jpgs = {}
-        #print(f"collectBestJPGs ok: upn {upn}->{species_scientific_name}  selected species {selected_species}")
+        #print(f"collectBestJPGs ok: {species_scientific_name}  selected species {selected_species}")
 
         for upn_iter in MyProject.UniquePictureName_dict:
             upn_item = MyProject.UniquePictureName_dict[upn_iter]
@@ -1204,7 +1199,7 @@ def collectBestJPGs(MyProject, upn, selected_species):
                 # remember the JPG we want to use
                 selected_species[bestitem[0]] = MyProject.UniquePictureName_dict[MyProject.files_dict[bestitem[0]]['UniquePictureName']]['DateTimeOriginal']
     except:
-        print(f"collectBestJPGs crashed: upn {upn} selected species {selected_species}")               
+        print(f"collectBestJPGs crashed: species {species_scientific_name} selected species {selected_species}")               
     return
 
 def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
