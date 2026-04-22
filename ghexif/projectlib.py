@@ -52,7 +52,7 @@ class Project:
     def __init__(self, repository, newpictdir, biotawebroot):
         self.Repository = repository.replace('"', "").replace("'", "")
         self.NewPictDir = newpictdir.replace('"', "").replace("'", "")
-        self.BiotaWebRoot = biotawebroot.replace('"', "").replace("'", "")
+        self.BiotaWebRoot = biotawebroot.replace('"', "").replace("'", "").rstrip('/') + '/'
         self.projectName = Path(self.NewPictDir.replace('*','')).stem
         # global files
         self.files_dict = {}         # all files
@@ -140,7 +140,7 @@ class Project:
     def getBiotaWebRoot(self):
         return self.BiotaWebRoot
     def getBiotaBlogWeb(self):
-        return self.BiotaWebRoot + '/biotablog/'
+        return self.BiotaWebRoot + 'biotablog/'
     # reference to installed software
     def HTMLDirectory(self):
         return os.path.join(self.modpath, "HTMLtemplates/")
