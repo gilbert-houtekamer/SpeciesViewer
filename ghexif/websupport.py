@@ -1004,7 +1004,7 @@ def writeOneSpecies(MyProject, leaf, temptextfile):
     except:
         a = 1
         # be sure the JPG is included, unless we do want it / need it
-    if not MyProject.getSkipJPGs():
+    if not MyProject.getSkipJPGs() and species['BestJPG'] in MyProject.files_dict:
         sourcestr = MyProject.files_dict[species['BestJPG']]['WindowsFileName']
         targetstr = os.path.join(MyProject.ReviewFrozen(),species['TargetPath'], species['BestJPG'])
         try:  
