@@ -356,7 +356,10 @@ class Project:
 
     # create website based on current count setting, now to test iSpeciesThisRunCount
     def makeWebDirectories(self, speciesname, all_or_new):
-        species = self.getSpecies(speciesname)
+        if speciesname not in self.sp.species_dict:
+            logger.warning(f"makeWebDirectories: '{speciesname}' not found in species data, skipping.")
+            return
+        species = self.sp.species_dict[speciesname]
         self.setAllOrNew(all_or_new)
         self.makeWebLevel(species, all_or_new)
         for leaf in sorted(species['Leaves']):

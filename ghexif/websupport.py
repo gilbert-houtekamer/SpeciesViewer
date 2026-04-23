@@ -537,7 +537,9 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             language = MyProject.getLanguage()
             workstr = "<div id=""\"grid\""">\n"
             for speciesname in sorted(species_param['Leaves']):
-                species = MyProject.getSpecies(speciesname)
+                if speciesname not in MyProject.sp.species_dict:
+                    continue
+                species = MyProject.sp.species_dict[speciesname]
                 if (int(species['iPicturesWithJPGsCollection']) + int(species['iPicturesWithJPGsThisRun'])) > 0:
                     workstr += "			  <div>\n"
                     workstr += '			     <a href="' + BiotaWebRoot + species["TargetPath"] + species["ScientificName"] + '-' + language + '.html\"' + '>\n'
