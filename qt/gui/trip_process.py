@@ -920,7 +920,10 @@ class CreateBlogDialog(QDialog):
 
         # Load or create default ini
         if self.ini_path.exists():
-            self.parser.read(self.ini_path, encoding="utf-8")
+            try:
+                self.parser.read(self.ini_path, encoding="utf-8")
+            except UnicodeDecodeError:
+                self.parser.read(self.ini_path, encoding="latin-1")
         else:
             self._create_default_ini()
             with open(self.ini_path, "w", encoding="utf-8") as f:
