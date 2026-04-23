@@ -376,7 +376,7 @@ class Project:
 
     def makeSpeciesWebDirectory(self, leaf, all_or_new):
         try:
-            species = self.getSpecies(leaf)
+            species = self.sp.species_dict[leaf]
             # create file in the species directory
             biota = self.getBiotaDir()
             directoryname = os.path.join(self.getBiotaAllorNewDir(), species['TargetPath']).lower()            
@@ -412,8 +412,8 @@ class Project:
             SpeciesHTMLfile.close()
 
             #print(f"Species: Directory {directoryname} created for {species['ScientificName'] + '.html'}.")
-        except:
-            logger.info(f"Species: Directory {('e:/tempbiota/' + species['TargetPath']).lower()} of file {species['BestJPG']} could not be created.")
+        except Exception as e:
+            logger.warning(f"makeSpeciesWebDirectory: '{leaf}' failed: {e}")
         return
 
     def makeAllSpeciesPage(self, speciesname, language):

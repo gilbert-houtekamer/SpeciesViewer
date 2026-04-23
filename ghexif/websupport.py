@@ -1061,20 +1061,29 @@ def addAllSpeciesPage(MyProject, speciesname, temptextfile):
 
 def addOneSpeciesPage(MyProject, species_param):
     BiotaDiskRoot = MyProject.getBiotaAllorNewDir()
-    #print(species_param['ScientificName'], species_param['DutchName'])
     workstr = ""
     # a smarter selection is useful, especially to avoid very similar pictures
     try:
         rateorder = {}
+        skipped_files = 0
+        skipped_upn = 0
         for JPGname in list(species_param['JPGmap']):
             basename = os.path.basename(JPGname)
             if basename not in MyProject.files_dict:
+                skipped_files += 1
                 continue
             JPGname_no_path = MyProject.files_dict[basename]
-            diversity = MyProject.getPictureAgeSexePlumage(MyProject.UniquePictureName_dict[JPGname_no_path['UniquePictureName']])
+            upn_key = JPGname_no_path['UniquePictureName']
+            if upn_key not in MyProject.UniquePictureName_dict:
+                skipped_upn += 1
+                continue
+            diversity = MyProject.getPictureAgeSexePlumage(MyProject.UniquePictureName_dict[upn_key])
             rating = MyProject.computeRatingFile(JPGname_no_path)
             if '-small' not in JPGname:
                 rateorder[(diversity, rating, JPGname)] = JPGname
+        if skipped_files > 0 or skipped_upn > 0:
+            logger.info(f"addOneSpeciesPage '{species_param['ScientificName']}': JPGmap={len(species_param['JPGmap'])}, "
+                        f"matched={len(rateorder)}, skipped_files={skipped_files}, skipped_upn={skipped_upn}")
         # keep all JPGs sorted, not yet by male/female, breeding etc
         # Sort the dictionary by rating in descending order
         # Sort the items by diversity, rating, and JPGname in descending order
@@ -1118,8 +1127,7 @@ def addOneSpeciesPage(MyProject, species_param):
                                 dropit = True
                     # more conditions we can try                        
                     except Exception as e:
-                        print(f"""Pass error "{JPGname_no_path['WindowsFileName']}" with "{species_param['ScientificName']}" / "{species_param['DutchName']}": {e}""")
-                        pass
+                        logger.info(f"""Pass error "{JPGname_no_path['WindowsFileName']}" with "{species_param['ScientificName']}" / "{species_param['DutchName']}": {e}""")
                     # possibly missing date
                     if not dropit:
                         usedUPNs[JPGname_no_path['UniquePictureName']] = JPGtime
@@ -1139,9 +1147,9 @@ def addOneSpeciesPage(MyProject, species_param):
                 if (filesfound == maxpicturesperAgeSexePlumage):
                     break   # go to next man/female/young/breeding etc
     except Exception as e:
-        print(f"""Error in showing "{species_param['ScientificName']}" / "{species_param['DutchName']}": {e}""")
-        #workstr = ""
-    #print('return for ', species_param['ScientificName']) # , "\n", workstr)
+        logger.warning(f"""Error in species page "{species_param['ScientificName']}" / "{species_param['DutchName']}": {e}""")
+    if not workstr:
+        logger.info(f"addOneSpeciesPage: no images for '{species_param['ScientificName']}', JPGmap has {len(species_param['JPGmap'])} entries")
     return workstr
 
 # create summary page, that should become Wordpress
