@@ -4,7 +4,7 @@ from gui.menu import MenuSpec  # assuming class is defined elsewhere
 from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDialog,
         CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog,
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
-        ConvertAvibaseDialog, SyncSidecarsDialog)
+        ConvertAvibaseDialog, SyncSidecarsDialog, EmptyTripDataDialog)
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
 from settings.speciessettings import SpeciesSettingsDialog
@@ -25,6 +25,7 @@ import bin.svr8RecreateTripRepository
 import bin.svr9RedoBlog
 import bin.svu2avibase
 import bin.svu5SyncSidecars
+import bin.svu6EmptyTripData
 
 
 def build_menu_spec(main_window):
@@ -187,6 +188,19 @@ def build_menu_spec(main_window):
     )
     redo_trip_blogs.callback = lambda: RedoTripBlogsDialog(main_window, redo_trip_blogs).exec()
 
+    empty_trip_data = MenuSpec(
+        callback=None,
+        title="Empty Trip Data",
+        showsubdirectory=False,
+        batch_parms={
+            'statusname': "",
+            'module_called': bin.svu6EmptyTripData.main,
+            'before_msg': "Clearing trip data ...",
+            'after_msg': "✅ Trip data cleared."
+        }
+    )
+    empty_trip_data.callback = lambda: EmptyTripDataDialog(main_window, empty_trip_data).exec()
+
     recreate_trip = MenuSpec(
         callback=None,
         title="Recreate Trip Repository",
@@ -255,7 +269,8 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_2": None,
             "Count Species": count_species,
             "Redo Blogs": redo_trip_blogs,
-            f"{MenuSpec.separator()}_3": None,    
+            f"{MenuSpec.separator()}_3": None,
+            "Empty Trip Data": empty_trip_data,
             "Recreate Trip": recreate_trip,     
         },
         "Master": {

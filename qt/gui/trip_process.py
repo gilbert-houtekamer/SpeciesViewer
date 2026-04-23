@@ -1214,6 +1214,21 @@ class SyncSidecarsDialog(BaseTripModuleDialog):
         )
 
 
+class EmptyTripDataDialog(BaseTripModuleDialog):
+    def __init__(self, parent, menu_spec):
+        super().__init__(
+            parent,
+            menu_spec,
+            title="Empty Trip Data",
+            info_text="Delete all day directories and reset active data CSVs to empty templates. Use this to get a clean slate before re-running the pipeline.",
+            subdirectory=False
+        )
+
+    def on_write(self):
+        runner = BatchModuleRunner(self, self.passed_parent)
+        runner.run(self.menu_spec, on_success=lambda: populate_trip_overview(self.passed_parent))
+
+
 class WriteCommitDialog(BaseTripModuleDialog):
     def __init__(self, parent, menu_spec):
         super().__init__(

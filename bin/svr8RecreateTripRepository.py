@@ -26,6 +26,7 @@ from ghexif import SVException
 import ghexif.projectlib
 import ghexif.exceptions
 import ghexif.statemachine
+from ghexif.tripresetlib import clear_review_directories, reset_active_data
 import bin.sv1MakeReposity
 import bin.sv2ReadDirExif
 import bin.sv3WritePictures
@@ -106,27 +107,10 @@ def main(args, config):
     if MyProject.MasterRepository == "":
         raise SVException(f'sv8RecreatedTripRepository can only work on trips.')
     else:
-        # delete metadata 
+        # delete metadata and reset active data
         repo = MyProject.getRepositoryPath()
-        reviewdirs = os.path.join(repo, 'metadata/review/')
-        # file system loops 
-        trycount = 1
-        while trycount < 10:
-            try:
-                for item in os.listdir(reviewdirs): 
-                    item_path = os.path.join(reviewdirs, item) 
-                    if os.path.isdir(item_path): shutil.rmtree(item_path)
-                break
-            except:
-                trycount += 1
-       
-        # clear admin for added data/pictures
-        shutil.copy(os.path.join(os.path.join(os.getcwd(),"dist"), 'installation files/empty_data_files.csv'), 
-                os.path.join(repo, 'metadata/active/data_files.csv')) 
-        shutil.copy(os.path.join(os.path.join(os.getcwd(),"dist"), 'installation files/empty_data_pictures.csv'), 
-                os.path.join(repo, 'metadata/active/data_pictures.csv')) 
-        shutil.copy(os.path.join(os.path.join(os.getcwd(),"dist"), 'installation files/empty_species.csv'), 
-                os.path.join(repo, 'metadata/active/species.csv'))           
+        clear_review_directories(repo)
+        reset_active_data(repo)           
         # Collect states
         directory_to_scan = Path(MyProject.getProjectPath()).parent       # 'C:/laptop/validate/metadata/review'
         RecreateProjects(args, config, directory_to_scan)
