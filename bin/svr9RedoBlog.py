@@ -26,6 +26,10 @@ from ghexif import SVException
 import ghexif.projectlib
 import ghexif.exceptions
 import ghexif.statemachine
+import ghexif.speciesclassification
+import ghexif.specieslib
+import ghexif.bloglib
+from ghexif.handling import read_file, read_pictures
 import bin.sv1MakeReposity
 import bin.sv2ReadDirExif
 import bin.sv3WritePictures
@@ -64,8 +68,18 @@ def main(args, config):
         MyProject.registerSpeciesClassification(sc)
         sp = ghexif.specieslib.Species(MyProject)
         MyProject.registerSpecies(sp)
-        # read picture meta data
-        files, pictures, from_time, last_time = MyProject.readProject()
+
+        # RedoBlog operates on committed trip-wide data. Unlike WriteBlog (which
+        # reads the current day's review CSVs), we load only the active/committed
+        # baseline so this works regardless of which day is currently selected
+        # in the GUI.
+        metadatadir = MyProject.getMetaDir()
+        species_active = os.path.join(metadatadir, "active", "species.csv")
+        if os.path.exists(species_active):
+            sp.readSpeciesInfo(species_active, False)
+        sc.readSpeciesCollection(os.path.join(metadatadir, "active", "speciescollection.csv"), False)
+        read_file(MyProject, os.path.join(metadatadir, "active", "data_files.csv"))
+        read_pictures(MyProject, os.path.join(metadatadir, "active", "data_pictures.csv"))
 
         # read blog_index.csv
         blog = ghexif.bloglib.Blog(MyProject)
@@ -77,40 +91,40 @@ def main(args, config):
         location_cache = os.path.join(MyProject.getRepositoryPath(), 'admin/FTPcache.json')
         sftp.openFTPCache(location_cache)
 
-        # run through the blogs
+        # Recreate a blog when BOTH conditions hold:
+        #   1) the day is fully committed (WriteCommit done in its statemachine)
+        #   2) blog_admin.csv has saved details for that day (iterating blog.blog_dict)
         for blogday in blog.blog_dict:
-            logger.info(blogday)
-            # copy the current blogday
             b = blog.blog_dict[blogday]
-            if 'blogjpg'  not in b: b['blogjpg'] = ''
-            blog.initBlog(b['title_nl'], b['title_en'], b['message_nl'], b['message_en'], 
-                          b['blogjpg'], b['SelectedGroup'], b['OnlyNewSpecies'], b['MinimumScore'])
-            # also copy best JPSs to avoid new changes to best JPG
             project = blogday[25:35]
-            blog.blogday = blogday
             metadir = os.path.join(MyProject.getMetaDir(), 'review', project)
+            sm_ini = os.path.join(metadir, 'statemachine.ini')
+            if not os.path.exists(sm_ini):
+                continue
             try:
-                if os.path.exists(os.path.join(metadir, 'statemachine.ini')):
-                    statemachine = ghexif.statemachine.StateMachine(config.get("repository","BiotaDatabase"), 
-                                                                MyProject.NewPictDir[:-10] + project)
-                # make sure all steps are made such that all jpg's files are committed
-                    if statemachine.Taskstate["WriteCommit"][0]:
-                        blog.BestJPGs = b['BestJPGs']
-                        MyProject.setSkipJPGs(True)
-                        blog.makeRunSummaryPost('biota', 'nl')
-                        blog.makeRunSummaryPost('biota', 'en')
-                        blog.uploadBlog(sftp, sftpPictures=False)
-                    else:
-                        logger.warning(f'Not all data is commmitted to the repository for "{project}", blog will be deleted')
-                else: # no statemachine.ini at all, go for it anyhow
-                    blog.BestJPGs = b['BestJPGs']
-                    if blog.BestJPGs != []:
-                        MyProject.setSkipJPGs(True)
-                        blog.makeRunSummaryPost('biota', 'nl')
-                        blog.makeRunSummaryPost('biota', 'en')
-                        blog.uploadBlog(sftp, sftpPictures=False)
-            except:
-                logger.warning(f'None of the steps are executed for "{project}"')
+                statemachine = ghexif.statemachine.StateMachine(
+                    config.get("repository", "BiotaDatabase"),
+                    MyProject.NewPictDir[:-10] + project)
+                if not statemachine.Taskstate.get("WriteCommit", [False])[0]:
+                    continue
+            except Exception as e:
+                logger.info(f'Cannot read state for "{project}", skipping: {e}')
+                continue
+
+            logger.info(blogday)
+            if 'blogjpg' not in b:
+                b['blogjpg'] = ''
+            blog.initBlog(b['title_nl'], b['title_en'], b['message_nl'], b['message_en'],
+                          b['blogjpg'], b['SelectedGroup'], b['OnlyNewSpecies'], b['MinimumScore'])
+            blog.blogday = blogday
+            blog.BestJPGs = b['BestJPGs']
+            MyProject.setSkipJPGs(True)
+            try:
+                blog.makeRunSummaryPost('biota', 'nl')
+                blog.makeRunSummaryPost('biota', 'en')
+                blog.uploadBlog(sftp, sftpPictures=False)
+            except Exception as e:
+                logger.warning(f'Blog recreation failed for "{project}": {e}')
         # remove blogs without JPGs
         # Create a new dictionary to hold valid entries
         cleaned_dict = {}
