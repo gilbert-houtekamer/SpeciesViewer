@@ -1075,8 +1075,8 @@ def addOneSpeciesPage(MyProject, species_param):
             if '-small' not in JPGname:
                 rateorder[(diversity, rating, JPGname)] = JPGname
         if skipped_files > 0 or skipped_upn > 0:
-            logger.info(f"addOneSpeciesPage '{species_param['ScientificName']}': JPGmap={len(species_param['JPGmap'])}, "
-                        f"matched={len(rateorder)}, skipped_files={skipped_files}, skipped_upn={skipped_upn}")
+            logger.debug(f"addOneSpeciesPage '{species_param['ScientificName']}': JPGmap={len(species_param['JPGmap'])}, "
+                         f"matched={len(rateorder)}, skipped_files={skipped_files}, skipped_upn={skipped_upn}")
         # keep all JPGs sorted, not yet by male/female, breeding etc
         # Sort the dictionary by rating in descending order
         # Sort the items by diversity, rating, and JPGname in descending order
@@ -1142,7 +1142,7 @@ def addOneSpeciesPage(MyProject, species_param):
     except Exception as e:
         logger.warning(f"""Error in species page "{species_param['ScientificName']}" / "{species_param['DutchName']}": {e}""")
     if not workstr:
-        logger.info(f"addOneSpeciesPage: no images for '{species_param['ScientificName']}', JPGmap has {len(species_param['JPGmap'])} entries")
+        logger.debug(f"addOneSpeciesPage: no images for '{species_param['ScientificName']}', JPGmap has {len(species_param['JPGmap'])} entries")
     return workstr
 
 # create summary page, that should become Wordpress
