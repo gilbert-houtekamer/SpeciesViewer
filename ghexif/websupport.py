@@ -120,6 +120,93 @@ def makeLinkSpeciesDisplay(MyProject, BiotaWebRoot, species, display_html):
     url = BiotaWebRoot + species["TargetPath"] + species["ScientificName"] + '-' + MyProject.getLanguage() + '.html'
     return '<a href="' + url + '">' + display_html + '</a>'
 
+
+def getBlogNeighbours(MyProject):
+    """Return (prev_blogday, next_blogday) for the currently-rendered blog.
+    Honours Blog.committed_blogdays when it is set (e.g. by RedoBlog) so only
+    committed days are considered. During the initial blog write the current
+    blogday is not yet in blog_dict — treat it as the newest and use the
+    latest known blog as Previous."""
+    current = MyProject.Blog.blogday
+    committed = getattr(MyProject.Blog, 'committed_blogdays', None)
+    if committed:
+        ordered = sorted(bd for bd in MyProject.Blog.blog_dict if bd in committed)
+    else:
+        ordered = sorted(MyProject.Blog.blog_dict.keys())
+    if current in ordered:
+        idx = ordered.index(current)
+        prev_blog = ordered[idx - 1] if idx > 0 else None
+        next_blog = ordered[idx + 1] if idx < len(ordered) - 1 else None
+    elif ordered:
+        prev_blog = ordered[-1]
+        next_blog = None
+    else:
+        prev_blog = None
+        next_blog = None
+    return prev_blog, next_blog
+
+
+def buildBlogNavSentence(MyProject):
+    """Closing sentence of a blog page with links to Top, Previous Blog and
+    Next Blog."""
+    language = MyProject.getLanguage()
+    biotablog_url = MyProject.getBiotaWebRoot() + 'biotablog/'
+    index_link = '<a href="' + biotablog_url + 'blog index-' + language + '.html">Top</a>'
+    prev_blog, next_blog = getBlogNeighbours(MyProject)
+
+    def nav_link(blogday, label):
+        return '<a href="' + blogday + '-' + language + '.html">' + label + '</a>'
+
+    if language == 'en':
+        parts = ['The link ' + index_link + ' will take you back to the top of this blog list']
+        if prev_blog:
+            parts.append(nav_link(prev_blog, 'Previous Blog') + ' to the previous day')
+        if next_blog:
+            parts.append(nav_link(next_blog, 'Next Blog') + ' to the next blog')
+        if len(parts) == 1:
+            return parts[0] + '.'
+        if len(parts) == 2:
+            return parts[0] + ' and ' + parts[1] + '.'
+        return parts[0] + ', ' + parts[1] + ' and ' + parts[2] + '.'
+    else:
+        parts = ['Met de link ' + index_link + ' kom je terug bovenaan de blog lijst']
+        if prev_blog:
+            parts.append(nav_link(prev_blog, 'Vorige Blog') + ' voor de vorige dag')
+        if next_blog:
+            parts.append(nav_link(next_blog, 'Volgende Blog') + ' voor de volgende')
+        if len(parts) == 1:
+            return parts[0] + '.'
+        if len(parts) == 2:
+            return parts[0] + ' en ' + parts[1] + '.'
+        return parts[0] + ', ' + parts[1] + ' en ' + parts[2] + '.'
+
+
+def buildSliderNavSentence(MyProject):
+    """Centered navigation line for slider pages: Previous / Next only,
+    linking to the corresponding slider pages of committed neighbour days."""
+    language = MyProject.getLanguage()
+    prev_blog, next_blog = getBlogNeighbours(MyProject)
+
+    def nav_link(blogday, label):
+        return '<a href="' + blogday + '-slider-' + language + '.html">' + label + '</a>'
+
+    if language == 'en':
+        if prev_blog and next_blog:
+            return nav_link(prev_blog, 'Previous Blog') + ' &nbsp;|&nbsp; ' + nav_link(next_blog, 'Next Blog')
+        if prev_blog:
+            return nav_link(prev_blog, 'Previous Blog')
+        if next_blog:
+            return nav_link(next_blog, 'Next Blog')
+        return ''
+    else:
+        if prev_blog and next_blog:
+            return nav_link(prev_blog, 'Vorige Blog') + ' &nbsp;|&nbsp; ' + nav_link(next_blog, 'Volgende Blog')
+        if prev_blog:
+            return nav_link(prev_blog, 'Vorige Blog')
+        if next_blog:
+            return nav_link(next_blog, 'Volgende Blog')
+        return ''
+
 # new csv files will have sexe
 def formatSexe(upn):
     try:
@@ -217,7 +304,16 @@ def getAltTextForJPG(MyProject, jpgname):
     try:
         jpgobj = MyProject.files_dict[jpgname]
         upn = MyProject.UniquePictureName_dict[jpgobj['UniquePictureName']]
-        names = upn['WetSoortNaam'].replace(' ', '&nbsp;').replace('-', '&#8209;').capitalize() + ' / ' +  \
+        sci_display = upn['WetSoortNaam'].replace(' ', '&nbsp;').replace('-', '&#8209;').capitalize()
+        # Link the scientific name to the species page when it exists in the
+        # trip. The alt attribute is double-quoted in the enclosing HTML, so
+        # use &quot; for the href's delimiters.
+        sci_html = sci_display
+        species = MyProject.sp.species_dict.get(upn['WetSoortNaam'])
+        if species and int(species.get('iSpeciesCollectionCount', 0)) > 0:
+            url = MyProject.getBiotaWebRoot() + species["TargetPath"] + species["ScientificName"] + '-' + MyProject.getLanguage() + '.html'
+            sci_html = '<a href=&quot;' + url + '&quot;>' + sci_display + '</a>'
+        names = sci_html + ' / ' + \
                 upn['EngSoortNaam'].replace(' ', '&nbsp;').replace('-', '&#8209;').capitalize() + ' / ' + \
                 upn['NLSoortNaam'].replace(' ', '&nbsp;').replace('-', '&#8209;').capitalize()
     except:
@@ -980,6 +1076,10 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 170:
             workstr = MyProject.breadcrumb.makeCrumb('test')
             return workstr
+        elif tokenno == 171:         # closing navigation sentence (Top / Previous / Next)
+            return buildBlogNavSentence(MyProject)
+        elif tokenno == 172:         # slider navigation (Previous / Next slider pages)
+            return buildSliderNavSentence(MyProject)
         else:
             return '<token ' + tokenno + '>'
     except Exception as e:

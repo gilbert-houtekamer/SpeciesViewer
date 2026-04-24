@@ -94,23 +94,28 @@ def main(args, config):
         # Recreate a blog when BOTH conditions hold:
         #   1) the day is fully committed (WriteCommit done in its statemachine)
         #   2) blog_admin.csv has saved details for that day (iterating blog.blog_dict)
-        for blogday in blog.blog_dict:
-            b = blog.blog_dict[blogday]
+        def is_committed(blogday):
             project = blogday[25:35]
-            metadir = os.path.join(MyProject.getMetaDir(), 'review', project)
-            sm_ini = os.path.join(metadir, 'statemachine.ini')
+            sm_ini = os.path.join(MyProject.getMetaDir(), 'review', project, 'statemachine.ini')
             if not os.path.exists(sm_ini):
-                continue
+                return False
             try:
-                statemachine = ghexif.statemachine.StateMachine(
+                sm = ghexif.statemachine.StateMachine(
                     config.get("repository", "BiotaDatabase"),
                     MyProject.NewPictDir[:-10] + project)
-                if not statemachine.Taskstate.get("WriteCommit", [False])[0]:
-                    continue
+                return bool(sm.Taskstate.get("WriteCommit", [False])[0])
             except Exception as e:
                 logger.info(f'Cannot read state for "{project}", skipping: {e}')
-                continue
+                return False
 
+        # Precompute committed blog days so the nav-sentence token can filter
+        # Previous/Next links to committed days only.
+        blog.committed_blogdays = {bd for bd in blog.blog_dict if is_committed(bd)}
+
+        for blogday in blog.blog_dict:
+            if blogday not in blog.committed_blogdays:
+                continue
+            b = blog.blog_dict[blogday]
             logger.info(blogday)
             if 'blogjpg' not in b:
                 b['blogjpg'] = ''
@@ -124,6 +129,7 @@ def main(args, config):
                 blog.makeRunSummaryPost('biota', 'en')
                 blog.uploadBlog(sftp, sftpPictures=False)
             except Exception as e:
+                project = blogday[25:35]
                 logger.warning(f'Blog recreation failed for "{project}": {e}')
         # remove blogs without JPGs
         # Create a new dictionary to hold valid entries
