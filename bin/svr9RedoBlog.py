@@ -112,6 +112,21 @@ def main(args, config):
         # Previous/Next links to committed days only.
         blog.committed_blogdays = {bd for bd in blog.blog_dict if is_committed(bd)}
 
+        # Merge each committed day's per-day file/picture CSVs into files_dict
+        # and UniquePictureName_dict. active/data_files.csv is sometimes
+        # missing rows (Freeze/WriteCommit accumulation issue), but each day's
+        # review/<day>/data_files.csv is written once and untouched, so it is
+        # the authoritative source of file metadata we need for BestJPGs
+        # lookups. read_file/read_pictures dedupe by key so this is safe.
+        committed_days = {bd[25:35] for bd in blog.committed_blogdays}
+        for day in sorted(committed_days):
+            day_files = os.path.join(metadatadir, "review", day, "data_files.csv")
+            day_pictures = os.path.join(metadatadir, "review", day, "data_pictures.csv")
+            if os.path.exists(day_files):
+                read_file(MyProject, day_files, silent=True)
+            if os.path.exists(day_pictures):
+                read_pictures(MyProject, day_pictures)
+
         for blogday in blog.blog_dict:
             if blogday not in blog.committed_blogdays:
                 continue
