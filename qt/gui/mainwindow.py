@@ -260,6 +260,22 @@ class MainWindow(QMainWindow):
 
 
 
+    def handle_trip_table_current_changed(self, row, column, prev_row, prev_column):
+        """When the active row changes, sync picturedirectory to that day and
+        rebuild the Trip menu so enabled/disabled reflects the new row's state."""
+        if row < 0:
+            return
+        day_item = self.trip_table.item(row, 0)
+        if not day_item:
+            return
+        day_str = day_item.text()
+        current_pd = _config.get("project", "picturedirectory", fallback="")
+        project_root = Path(current_pd).parent if current_pd else Path()
+        new_dir = project_root / day_str
+        if str(new_dir) != current_pd:
+            _config.set("project", "picturedirectory", str(new_dir))
+            self.rebuild_menu()
+
     def handle_trip_table_double_click(self, row, column):
         from gui.trip_overview import SYNC_COL, STATE_COL_START
         # Ignore clicks on the "Progress" column, and headers

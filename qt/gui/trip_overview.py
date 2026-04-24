@@ -149,3 +149,5 @@ def populate_trip_overview(self):
     self.trip_table.cellDoubleClicked.connect(self.handle_trip_table_double_click)
     self.trip_table.verticalHeader().sectionDoubleClicked.connect(self.handle_row_rerun)
     self.trip_table.horizontalHeader().sectionDoubleClicked.connect(self.handle_column_run_all)
+    # Keep Trip menu in sync with the selected row
+    self.trip_table.currentCellChanged.connect(self.handle_trip_table_current_changed)
