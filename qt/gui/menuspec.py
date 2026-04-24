@@ -161,9 +161,7 @@ def build_menu_spec(main_window):
     count_species = MenuSpec(
         callback=None,
         title="Count Species",
-        showsubdirectory=False,        
-        enabled=make_enabled_checker("CountSpecies"),
-        tooltip=make_tooltip("CountSpecies"),        
+        showsubdirectory=False,
         batch_parms={
             'statusname': "",
             'module_called': bin.svr2CountSpecies.main,
@@ -204,9 +202,7 @@ def build_menu_spec(main_window):
     recreate_trip = MenuSpec(
         callback=None,
         title="Recreate Trip Repository",
-        showsubdirectory=False,        
-        enabled=make_enabled_checker("RedoTripRepository"),
-        tooltip=make_tooltip("RedoTripRepository"),        
+        showsubdirectory=False,
         batch_parms={
             'statusname': "",
             'module_called': bin.svr8RecreateTripRepository.main,
