@@ -174,9 +174,7 @@ def build_menu_spec(main_window):
     redo_trip_blogs = MenuSpec(
         callback=None,
         title="Recreate Trip Blogs",
-        showsubdirectory=False,        
-        enabled=make_enabled_checker("RedoTripBlogs"),
-        tooltip=make_tooltip("RedoTripBlogs"),        
+        showsubdirectory=False,
         batch_parms={
             'statusname': "",
             'module_called': bin.svr9RedoBlog.main,
