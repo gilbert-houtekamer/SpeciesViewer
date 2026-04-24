@@ -278,15 +278,15 @@ def build_menu_spec(main_window):
         },
         "Settings": {
             "Global Settings": MenuSpec(
-                callback=lambda: GlobalSettingsDialog(main_window, config).exec(),
+                callback=lambda: GlobalSettingsDialog(main_window).exec(),
                 shortcut="Ctrl+G",
             ),
             "Repository Settings": MenuSpec(
-                callback=lambda: RepoSettingsDialog(main_window, config).exec(),
+                callback=lambda: RepoSettingsDialog(main_window).exec(),
             ),
             "Species Settings": MenuSpec(
-                callback=lambda: SpeciesSettingsDialog(main_window, config).exec(),
-            ),            
+                callback=lambda: SpeciesSettingsDialog(main_window).exec(),
+            ),
         },
         "Help": {
             "About": MenuSpec(
