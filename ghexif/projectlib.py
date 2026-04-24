@@ -371,7 +371,10 @@ class Project:
                         self.makeWebDirectories(leaf, all_or_new)
                 # species page updated just in case it is needed
                 elif all_or_new == 'All' or (int(species['iPicturesWithJPGsThisRun']) > 0):
-                    self.makeSpeciesWebDirectory(leaf, all_or_new)
+                    # Skip species whose JPGmap has no JPG currently in files_dict;
+                    # these are forward references from stale state and would render empty pages.
+                    if any(os.path.basename(jpg) in self.files_dict for jpg in species['JPGmap']):
+                        self.makeSpeciesWebDirectory(leaf, all_or_new)
         return
 
     def makeSpeciesWebDirectory(self, leaf, all_or_new):
