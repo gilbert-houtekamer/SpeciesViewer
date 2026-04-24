@@ -47,12 +47,10 @@ def getTemplateOutputString(MyProject, species, file, picture, TemplateLine):
                 else:                       # handle token
                     try:
                         outputLine += formatToken(int(token), MyProject, species, file, picture)       # '<token ' + token + '>'
-                    except:
+                    except Exception as e:
                         outputLine += '<Failed to handle token ' + token + '>'
-                        if species == None:
-                            print(f"Blog index:{'<Failed to handle token ' + token + '>'}")
-                        else:
-                            print(f"{species['ScientificName']}:{'<Failed to handle token ' + token + '>'}")
+                        who = "Blog index" if species is None else species['ScientificName']
+                        logger.info(f"{who}: failed token {token}: {e}")
                 OddPosition = 1 - OddPosition
             return outputLine
     except Exception as e:
@@ -1001,23 +999,18 @@ def writeOneSpecies(MyProject, leaf, temptextfile):
         print( '<p>' + species['DutchName'].capitalize() + '</p>', file=temptextfile)
         # end
         print( '                </div>\n', file=temptextfile)
-    except:
-        a = 1
+    except Exception as e:
+        logger.info(f"writeOneSpecies '{leaf}' render failed: {e}")
         # be sure the JPG is included, unless we do want it / need it
     if not MyProject.getSkipJPGs() and species['BestJPG'] in MyProject.files_dict:
         sourcestr = MyProject.files_dict[species['BestJPG']]['WindowsFileName']
         targetstr = os.path.join(MyProject.ReviewFrozen(),species['TargetPath'], species['BestJPG'])
-        try:  
-            os.makedirs(os.path.join(MyProject.ReviewFrozen(), species['TargetPath']), exist_ok=True) 
+        try:
+            os.makedirs(os.path.join(MyProject.ReviewFrozen(), species['TargetPath']), exist_ok=True)
             rc = shutil.copy(sourcestr, targetstr)
-            # not sure about the logic :-(
-            # upn = UniquePictureName_dict[MyProject.files_dict[species['BestJPG']]['UniquePictureName']]
-            # species = MyProject.sp.species_dict[upn['WetSoortName']]
-            # if species['iPictureWithJPGsCollection'] == 0:
             MyProject.addAllSpeciesFiles(sourcestr,os.path.join(MyProject.getBiotaWebRoot(), species['TargetPath'], species['BestJPG']))
-            # print(f'New species {species['EnglishName']}')
-        except:
-            print(f"failed copy {sourcestr}\n            {targetstr}")
+        except Exception as e:
+            logger.info(f"writeOneSpecies copy failed {sourcestr} -> {targetstr}: {e}")
     else:
         pass
         #print(f"Done with text")
@@ -1031,19 +1024,19 @@ def addAllSpeciesWrapper(MyProject, speciesname, textCreated):
         with tempfile.SpooledTemporaryFile(mode='w+t', encoding='utf-8') as temptextfile:
             try:
                 addAllSpeciesPage(MyProject, speciesname, temptextfile)
-            except:
-                pass
+            except Exception as e:
+                logger.info(f"addAllSpeciesPage('{speciesname}') failed: {e}")
             temptextfile.seek(0)
             textlist = temptextfile.readlines()
             textCreated += '\n'.join(textlist)
             temptextfile.close()
-            # write 
+            # write
             with open(os.path.join(MyProject.ReviewFrozen(), 'allspecies.csv'), mode="w", newline="", encoding='utf-8') as allspeclist:
                 for file in MyProject.getAllSpeciesFiles():
                     ftpfile = MyProject.AllSpeciesFiles[file]
                     print(f'"{file}", "{ftpfile}"', file=allspeclist)
-    except:
-        print(f"Unexpected error creating all species webpage.")
+    except Exception as e:
+        logger.warning(f"addAllSpeciesWrapper('{speciesname}') failed: {e}")
     return textCreated
 
 # create overview page for all species, in order of classification
@@ -1175,8 +1168,8 @@ def addSpeciesToSummaryPost(MyProject, speciesname, selected_species, excluded=N
                             excluded["below_score"].append((leaf, species['currentHighestRating']))
                 else:
                     addSpeciesToSummaryPost(MyProject, leaf, selected_species, excluded)
-    except:
-        print("addSpeciesToSummaryPost")
+    except Exception as e:
+        logger.warning(f"addSpeciesToSummaryPost('{speciesname}') failed: {e}")
     return excluded
 
 # species['iPictureThisRunCount'] tells me if the picture is seen for this species, but we do not yet
@@ -1214,8 +1207,8 @@ def collectBestJPGs(MyProject, species_scientific_name, selected_species):
                             bestitem = item
                 # remember the JPG we want to use
                 selected_species[bestitem[0]] = MyProject.UniquePictureName_dict[MyProject.files_dict[bestitem[0]]['UniquePictureName']]['DateTimeOriginal']
-    except:
-        print(f"collectBestJPGs crashed: species {species_scientific_name} selected species {selected_species}")               
+    except Exception as e:
+        logger.warning(f"collectBestJPGs('{species_scientific_name}') failed: {e}")
     return
 
 def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
@@ -1243,7 +1236,6 @@ def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
             jpgResizeCopy(targetstr, horizontalsize = 600)
         if MyProject.getLanguage() == 'en':
             logger.info(f"Rated {species['currentHighestRating']:3}  {species['EnglishName']:32}  Species path {species['TargetPath']}")
-    except:
-        print(f"addOneSpeciesJPG failed for {picturedata}")
-        pass
+    except Exception as e:
+        logger.warning(f"addOneSpeciesJPG failed for '{jpgname}': {e}")
     return textCreated

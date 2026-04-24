@@ -52,6 +52,6 @@ class Breadcrumb:
         try:
             speciesobj = self.mp.sp.species_dict[species]
             self.appendLevelBC(speciesobj, prefix)
-        except:
-            pass
+        except Exception as e:
+            logger.info(f"appendSpeciesBC '{species}' failed: {e}")
         return

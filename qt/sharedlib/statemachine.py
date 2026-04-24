@@ -222,15 +222,21 @@ class StateMachine:
     
 def getAllProjectStatus(MyProject, directory, silent=False):
     days_dict = {}
+    directory = os.path.normpath(directory)
     for root, dirs, files in os.walk(directory):
         for file in files:
             if file.endswith('.ini'):
-                file_path = os.path.join(root, file)
-                parseddir = root.split('\\')
-                name = parseddir[1]
-                if name == "": name = parseddir[0]
-                statemachine = StateMachine(MyProject.getRepositoryPath(), name) #, readState=False)
+                # Day name is the first subdirectory under `directory`
+                rel = os.path.relpath(root, directory)
+                if rel == '.':
+                    continue
+                name = rel.split(os.sep)[0]
+                if name in days_dict:
+                    continue
+                statemachine = StateMachine(MyProject.getRepositoryPath(), name)
                 days_dict[name] = statemachine.Taskstate.copy()
+    # Sort by day name so iteration is chronological
+    days_dict = dict(sorted(days_dict.items()))
 
     if not silent:
         # make summary report

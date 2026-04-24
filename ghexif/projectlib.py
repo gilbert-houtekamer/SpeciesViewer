@@ -350,8 +350,8 @@ class Project:
                     line = getTemplateOutputString(self, species, '', '', rawline.rstrip('\n'))
                     print(line, file=SpeciesHTMLfile)
             SpeciesHTMLfile.close()
-        except:
-            logger.warning(f"Level:   Directory {(biota + species['TargetPath']).lower()} of file {species['BestJPG']} could not be created.")
+        except Exception as e:
+            logger.warning(f"makeWebLevel '{species.get('ScientificName', '?')}' failed: {e}")
         return
 
     # create website based on current count setting, now to test iSpeciesThisRunCount
