@@ -112,6 +112,14 @@ def makeLinkScienticficName(MyProject, BiotaWebRoot, classification, workstr):
         workstr += '			         ' + classification['ScientificName'].strip('0123456789 ').capitalize() + '</a>'
     return workstr
 
+def makeLinkSpeciesDisplay(MyProject, BiotaWebRoot, species, display_html):
+    """Wrap an already-formatted HTML fragment (e.g. '<i>Saxicola rubicola</i>')
+    in a link to the species page within the current trip, if that page exists."""
+    if int(species.get('iSpeciesCollectionCount', 0)) == 0:
+        return display_html
+    url = BiotaWebRoot + species["TargetPath"] + species["ScientificName"] + '-' + MyProject.getLanguage() + '.html'
+    return '<a href="' + url + '">' + display_html + '</a>'
+
 # new csv files will have sexe
 def formatSexe(upn):
     try:
@@ -633,13 +641,14 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += "De foto toont de omgeving." 
             else:
                 # species and relationship
-                if not (species_local['ScientificName'][0:5] == "homo " or suppressnames):                
+                if not (species_local['ScientificName'][0:5] == "homo " or suppressnames):
                     workstr += "De foto toont een "
                     sci_nl = formatSubspecies(species_local['ScientificName'].strip('0123456789 ')).capitalize()
+                    sci_html = makeLinkSpeciesDisplay(MyProject, BiotaWebRoot, species_local, "<i>" + sci_nl + "</i>")
                     if species_local['DutchName'] != "":
-                        workstr += species_local['DutchName'].capitalize() + " (<i>" + sci_nl + "</i>). "
+                        workstr += species_local['DutchName'].capitalize() + " (" + sci_html + "). "
                     else:
-                        workstr += "<i>" + sci_nl + "</i>. "
+                        workstr += sci_html + ". "
                     workstr += "Het is een "
                     if kingdom_local['ScientificName'] == "animalia":
                         if class_local['ScientificName'] == "aves":
@@ -685,14 +694,14 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr = "The photo shows the environment." 
             else:
                 # species and relationship
-                if not (species_local['ScientificName'][0:5] == "homo " or suppressnames):     
+                if not (species_local['ScientificName'][0:5] == "homo " or suppressnames):
                     workstr = "The photo shows a "
                     sci_en = formatSubspecies(species_local['ScientificName'].strip('0123456789 ')).capitalize()
+                    sci_html = makeLinkSpeciesDisplay(MyProject, BiotaWebRoot, species_local, "<i>" + sci_en + "</i>")
                     if species_local['EnglishName'] != "":
-                        workstr += species_local['EnglishName'].capitalize() + \
-                            " (<i>" + sci_en + "</i>). "
+                        workstr += species_local['EnglishName'].capitalize() + " (" + sci_html + "). "
                     else:
-                        workstr += "<i>" + sci_en + "</i>. "
+                        workstr += sci_html + ". "
                     workstr += "It is a "
                     if kingdom_local['ScientificName'] == "animalia":
                         if class_local['ScientificName'] == "aves":
