@@ -215,8 +215,6 @@ def build_menu_spec(main_window):
         callback=None,
         title="Merge new species to master",
         showsubdirectory=False,
-        enabled=make_enabled_checker("MergeTripSpecies"),
-        tooltip=make_tooltip("MergeTripSpecies"),        
         batch_parms={
             'statusname': "",
             'module_called': bin.svr5MergeSpeciesCollections.main,
@@ -232,8 +230,6 @@ def build_menu_spec(main_window):
         callback=None,
         title="Create an Excel to keep track of birds seen.",
         showsubdirectory=False,
-        enabled=make_enabled_checker("ConvertAvibase"),
-        tooltip=make_tooltip("ConvertAvibase"),        
         batch_parms={
             'statusname': "",
             'module_called': bin.svu2avibase.main,
