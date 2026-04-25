@@ -1342,6 +1342,11 @@ class MergeTripDialog(BaseTripModuleDialog):
         )        
 
 class ConvertAvibaseDialog(BaseTripModuleDialog):
+    READER_OPTIONS = [
+        ("avibase",       "AviBase  (English in column 0)"),
+        ("birdingbreaks", "Birding Breaks  (sequence number in column 0)"),
+    ]
+
     def __init__(self, parent, menu_spec):
         super().__init__(
             parent,
@@ -1349,4 +1354,22 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
             title="Create an Excel to keep track of birds seen.",
             info_text="Create an Excel to keep track of birds seen.",
             subdirectory=False
-        ) 
+        )
+        # Insert a reader-format dropdown above the info text.
+        self.reader_dropdown = QComboBox()
+        for _, label in self.READER_OPTIONS:
+            self.reader_dropdown.addItem(label)
+        saved = _config.get("avibase", "source_format", fallback="avibase")
+        for idx, (key, _) in enumerate(self.READER_OPTIONS):
+            if key == saved:
+                self.reader_dropdown.setCurrentIndex(idx)
+                break
+        layout = self.layout()
+        layout.insertWidget(layout.indexOf(self.info_text), QLabel("Source list format"))
+        layout.insertWidget(layout.indexOf(self.info_text), self.reader_dropdown)
+
+    def on_write(self):
+        if not _config.has_section("avibase"):
+            _config.add_section("avibase")
+        _config["avibase"]["source_format"] = self.READER_OPTIONS[self.reader_dropdown.currentIndex()][0]
+        super().on_write()

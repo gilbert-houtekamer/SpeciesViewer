@@ -23,6 +23,7 @@ def generate_svconfig_ini(svconfig_path="svconfig.ini"):
     cfg["project"] = {"PictureDirectory": _config.get("project", "picturedirectory", fallback="")}
     cfg["debug"] = {"Classification": "0", "SpeciesFound": "0"}
     cfg["websettings"] = {"Sftppwd": _config.get("websettings", "Sftppwd", fallback="? still needed")}
+    cfg["avibase"] = {"source_format": _config.get("avibase", "source_format", fallback="avibase")}
 
     try:
         with open(svconfig_path, "w", encoding="utf-8") as f:

@@ -94,6 +94,7 @@ def readAviBase(triproot, filename):
 def addSpeciesInfo(sc,sp):
     for enname in avibase_dict:
         listspecies = avibase_dict[enname]
+        original_scname = listspecies.get('scname', '')
 
         if listspecies['scname'] != "":     # exclude headers
             if enname.lower() in sc.english_dict:
@@ -116,6 +117,14 @@ def addSpeciesInfo(sc,sp):
             sc_entry = sc.sc_dict.get(listspecies['scname'].lower())
             if sc_entry and sc_entry.get('EnglishName'):
                 listspecies['english'] = sc_entry['EnglishName']
+        # Source lists often carry outdated scientific names. When the
+        # English/Dutch lookup produced a different canonical scientific name,
+        # log it so the user can correct the source list.
+        if original_scname and listspecies.get('scname') and \
+           listspecies['scname'].lower() != original_scname.lower():
+            label = listspecies.get('nlname') or listspecies.get('english') or enname
+            logger.info(f"Scientific name updated for '{label}': "
+                        f"'{original_scname}' → '{listspecies['scname']}'")
     return
 
 
@@ -192,8 +201,10 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days):
         else:
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
-    # Write data rows
-    for row_idx, row in enumerate(data, start=2):
+    # Write data rows — start at row 3 so row 2 is reserved for the column
+    # summary formulas added below (otherwise the first species' E/F/H cells
+    # are overwritten by the summary).
+    for row_idx, row in enumerate(data, start=3):
         # Fill in original columns
         for col_idx, value in enumerate(row, 1):
             cell = ws.cell(row=row_idx, column=col_idx)
@@ -234,8 +245,8 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days):
     for col in range(len(header) + 1, len(full_header) + 1):
         ws.column_dimensions[get_column_letter(col)].width = 5  # Narrow for 2-digit day
 
-    # Add formulas to columns E and F
-    for row_idx in range(3, len(data) + 2):  # Rows start at 2, data starts at index 0
+    # Add formulas to columns E and F (data now occupies rows 3..len(data)+2)
+    for row_idx in range(3, len(data) + 3):
         b_val = ws.cell(row=row_idx, column=2).value
         if b_val:  # Only if column B has a value
             # Column E formula
@@ -311,7 +322,13 @@ def main(args, config):
 
     # get date from trip file
     if MyProject.Trip:
-        # read aviBase
+        # Source list format: 'avibase' (English in column 0) or
+        # 'birdingbreaks' (sequence number in column 0). Both currently parse
+        # the same way — column 0 is the dict key, column 1 scientific,
+        # column 2 Dutch — but the choice is logged so source-format quirks
+        # can be diagnosed and the dispatch is in place for future readers.
+        source_format = config.get("avibase", "source_format", fallback="avibase")
+        logger.info(f"Reading AviBase source list using '{source_format}' format.")
         readAviBase(MyProject.Repository, "avibase.csv")
         addSpeciesInfo(sc, Reference_sp)
         temp_csv_file = os.path.join(MyProject.Repository, "soorten-temp.csv")
