@@ -65,7 +65,8 @@ def readAviBase(triproot, filename):
                 elif tokens[1] not in ['Wet','']:
                     listspecies = {}
                     listspecies['nlname'] = tokens[2]
-                    listspecies['enname'] = tokens[0]
+                    listspecies['enname'] = tokens[0]      # column 0 is the dict key (e.g. species number)
+                    listspecies['english'] = ''             # actual English name, filled by addSpeciesInfo
                     listspecies['scname'] = tokens[1]
                     listspecies['status'] = tokens[3]
                     if tokens[1] not in ["Wet", ""]:
@@ -106,7 +107,15 @@ def addSpeciesInfo(sc,sp):
                 if listspecies['nlname'].lower() in sc.dutch_dict:
                     listspecies['scname'] = sc.dutch_dict[listspecies['nlname'].lower()]
                     if listspecies['scname'] in sp.species_dict:
-                        listspecies['knownspecies'] = True            
+                        listspecies['knownspecies'] = True
+        # Fill the actual English name from the master classification when we
+        # have a scientific name (the source list often only carries Dutch +
+        # Scientific). Keeps the dict key (enname) free for things like a
+        # species number that the user reads off in the field.
+        if listspecies.get('scname') and not listspecies.get('english'):
+            sc_entry = sc.sc_dict.get(listspecies['scname'].lower())
+            if sc_entry and sc_entry.get('EnglishName'):
+                listspecies['english'] = sc_entry['EnglishName']
     return
 
 
@@ -123,8 +132,9 @@ def createRawCSV(temp_csv_file):
             listspecies = avibase_dict[enname]
             if listspecies['number'] == -1:
                 line = f"{listspecies['enname']}"
-            else:            
-                line = f"{listspecies['number']};{listspecies['enname']};{listspecies['nlname']};{listspecies['scname']};"
+            else:
+                english_display = listspecies.get('english') or listspecies['enname']
+                line = f"{listspecies['number']};{english_display};{listspecies['nlname']};{listspecies['scname']};"
                 if listspecies['gezien'] != 0:
                     line += "Yes;"
                     groep += 1
@@ -232,8 +242,9 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days):
             formula_e = f'=COUNT(J{row_idx}:AH{row_idx})'
             ws.cell(row=row_idx, column=5, value=formula_e)
 
-            # Column F formula
-            formula_f = f'=IF(AND(G{row_idx}<>"Known", E{row_idx}>''), "New", "")'
+            # Column F formula — flag as "New" when species has not been
+            # marked Known yet but at least one day-tick is present
+            formula_f = f'=IF(AND(G{row_idx}<>"Known", E{row_idx}>0), "New", "")'
             ws.cell(row=row_idx, column=6, value=formula_f)
 
     # Add summary formulas to row 2
