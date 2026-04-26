@@ -8,7 +8,6 @@ import configparser
 import time
 import logging
 import argparse
-from pathlib import Path
 
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
@@ -43,17 +42,21 @@ def main(args, config):
     MyProject.initMasterAndTrip(config, inittrip=True)
     trip = MyProject.Trip
     
-    # Collect states
-    directory_to_scan = Path(config.get("repository","BiotaDatabase")).parent
-    trip.getCollectTrips(directory_to_scan)
-    # generate website
+    # Update the master trip admin CSV with a fresh row for the *active*
+    # trip (only). All other historic trips already in the CSV are kept
+    # untouched, so siblings still in draft on disk do not get published.
+    trip.readAndWriteTripAdmin()
+    # Regenerate the master tripindex pages from the now-current CSV.
     trip.updateTripIndexPage('nl')
     trip.updateTripIndexPage('en')
 
-    # sFTP index files, assume all picture are there
+    # Upload index pages and the trip admin CSV to the website. The CSV
+    # mirror lets a different machine pick up the latest published state
+    # even without Dropbox sync of the master.
     pwd = config.get("websettings","Sftppwd").strip("'")
     sftp = trip.openSFTP(pwd)
     trip.uploadTrip(sftp)
+    trip.uploadTripAdmin(sftp, trip.getTripAdminWeb())
     sftp.disconnect()
 
         

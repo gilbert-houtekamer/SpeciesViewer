@@ -1350,7 +1350,21 @@ class RedoTripRepoDialog(BaseTripModuleDialog):
             menu_spec,
             title="Recreate Repository for trip",
             info_text="Recreate Repository for trip for all days.",
-            subdirectory=False            
+            subdirectory=False
+        )
+
+class AddTripToMasterDialog(BaseTripModuleDialog):
+    def __init__(self, parent, menu_spec):
+        super().__init__(
+            parent,
+            menu_spec,
+            title="Add trip website to master",
+            info_text=("Add (or refresh) the active trip's row in the master "
+                       "trip admin CSV, regenerate the master tripindex pages, "
+                       "and upload them — together with the trip admin CSV — "
+                       "to the website. Other trips still in draft on disk "
+                       "are not touched."),
+            subdirectory=False
         )
 
 class MergeTripDialog(BaseTripModuleDialog):

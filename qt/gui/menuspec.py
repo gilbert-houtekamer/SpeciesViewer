@@ -4,7 +4,8 @@ from gui.menu import MenuSpec  # assuming class is defined elsewhere
 from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDialog,
         CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog,
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
-        ConvertAvibaseDialog, SyncSidecarsDialog, EmptyTripDataDialog)
+        AddTripToMasterDialog, ConvertAvibaseDialog, SyncSidecarsDialog,
+        EmptyTripDataDialog)
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
 from settings.speciessettings import SpeciesSettingsDialog
@@ -20,6 +21,7 @@ import bin.sv5BuildWebsite
 import bin.sv6Freeze
 import bin.sv7WriteCommit
 import bin.svr2CountSpecies
+import bin.svr4UpdateTrips
 import bin.svr5MergeSpeciesCollections
 import bin.svr8RecreateTripRepository
 import bin.svr9RedoBlog
@@ -213,7 +215,7 @@ def build_menu_spec(main_window):
     # Master updates
     merge_trip_species = MenuSpec(
         callback=None,
-        title="Merge new species to master",
+        title="Merge trip species to master",
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
@@ -222,7 +224,20 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Review merge results, and decide to copy to master."
         }
     )
-    merge_trip_species.callback = lambda: MergeTripDialog(main_window, merge_trip_species).exec() 
+    merge_trip_species.callback = lambda: MergeTripDialog(main_window, merge_trip_species).exec()
+
+    add_trip_to_master = MenuSpec(
+        callback=None,
+        title="Add trip website to master",
+        showsubdirectory=False,
+        batch_parms={
+            'statusname': "",
+            'module_called': bin.svr4UpdateTrips.main,
+            'before_msg': "Updating master trip admin and tripindex pages, then uploading ...",
+            'after_msg': "✅ Master trip admin updated and uploaded."
+        }
+    )
+    add_trip_to_master.callback = lambda: AddTripToMasterDialog(main_window, add_trip_to_master).exec()
 
     # utilities
         # Master updates
@@ -265,8 +280,7 @@ def build_menu_spec(main_window):
         },
         "Master": {
             "Merge Species": merge_trip_species,
-            # "Add trip": None, # Add pointer to trip from main website
-            # add trip data to masterdatabase and website
+            "Add trip website to master": add_trip_to_master,
         },
         "Utilities": {
         #     "BirdingBreaks": None, # PROCESS BIRDING BREAK FILES
