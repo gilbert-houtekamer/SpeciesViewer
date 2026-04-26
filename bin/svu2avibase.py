@@ -11,7 +11,7 @@ import logging
 import argparse
 from datetime import datetime, timedelta
 from openpyxl import Workbook
-from openpyxl.styles import PatternFill, Alignment, Border, Side
+from openpyxl.styles import PatternFill, Alignment, Border, Side, Font
 from openpyxl.utils import get_column_letter
 from openpyxl.formula.translate import Translator
 
@@ -161,130 +161,306 @@ def createRawCSV(temp_csv_file):
         f.close()
     return
 
-def create_excel_checklist(csv_path, xlsx_path, start_date, num_days):
+# CSV column indices (0-based) emitted by createRawCSV
+CSV_NO, CSV_EN, CSV_NL, CSV_WET = 0, 1, 2, 3
+CSV_SEEN, CSV_NEW, CSV_KNOWN, CSV_PHOTO, CSV_NOTES = 4, 5, 6, 7, 8
+
+
+def _build_column_layout(csv_header, start_date, num_days,
+                         phone_layout, first_column_lang):
+    """Return the ordered list of Excel columns. Each column dict carries:
+       header, kind, csv_idx (when sourced from CSV), width, and for date
+       columns also weekend/date_obj/day_index. The renderer walks this list.
+       kind: 'csv' | 'csv_int' | 'count_dates' | 'new_flag' | 'date' |
+             'is_new_helper' | 'cum_helper' (the helpers are hidden)."""
+    no_col    = {'header': csv_header[CSV_NO],    'kind': 'csv_int',     'csv_idx': CSV_NO,    'width': 5}
+    en_col    = {'header': csv_header[CSV_EN],    'kind': 'csv',         'csv_idx': CSV_EN,    'width': 24}
+    nl_col    = {'header': csv_header[CSV_NL],    'kind': 'csv',         'csv_idx': CSV_NL,    'width': 24}
+    wet_col   = {'header': csv_header[CSV_WET],   'kind': 'csv',         'csv_idx': CSV_WET,   'width': 24}
+    seen_col  = {'header': csv_header[CSV_SEEN],  'kind': 'count_dates', 'csv_idx': CSV_SEEN,  'width': 5}
+    new_col   = {'header': csv_header[CSV_NEW],   'kind': 'new_flag',    'csv_idx': CSV_NEW,   'width': 5}
+    known_col = {'header': csv_header[CSV_KNOWN], 'kind': 'csv',         'csv_idx': CSV_KNOWN, 'width': 8}
+    photo_col = {'header': csv_header[CSV_PHOTO], 'kind': 'csv',         'csv_idx': CSV_PHOTO, 'width': 6}
+    notes_col = {'header': csv_header[CSV_NOTES], 'kind': 'csv',         'csv_idx': CSV_NOTES, 'width': 12}
+
+    date_cols = []
+    for i in range(num_days):
+        d = start_date + timedelta(days=i)
+        date_cols.append({
+            'header':    d.strftime("%d/%m/%Y"),
+            'kind':      'date',
+            'width':     5,
+            'weekend':   d.weekday() >= 5,
+            'date_obj':  d,
+            'day_index': i,
+        })
+
+    # Hidden helper columns. is_new = 1 when species is not yet "Known";
+    # cum_k counts ticks across day_1..day_k for that species. The totals
+    # rows reference these helpers to compute Day New and the trip-wide
+    # cumulative species/new counts without needing array formulas.
+    helpers = [{'header': '_is_new', 'kind': 'is_new_helper', 'width': 5}]
+    for i in range(num_days):
+        helpers.append({
+            'header':    f'_cum_{i+1}',
+            'kind':      'cum_helper',
+            'day_index': i,
+            'width':     5,
+        })
+
+    if phone_layout:
+        # Phone-friendly: seq# + chosen-language name pinned at the very
+        # left (both freeze with the row), then the day ticks, then the
+        # remaining language columns and the rest of the metadata.
+        lang_lookup = {'nl': nl_col, 'en': en_col}
+        primary = lang_lookup.get(first_column_lang, nl_col)
+        other_langs = [c for c in (en_col, nl_col, wet_col) if c is not primary]
+        return ([no_col, primary]
+                + date_cols
+                + other_langs
+                + [seen_col, new_col, known_col, photo_col, notes_col]
+                + helpers)
+
+    # Standard desktop layout — original ordering, dates last.
+    return ([no_col, en_col, nl_col, wet_col,
+             seen_col, new_col, known_col, photo_col, notes_col]
+            + date_cols
+            + helpers)
+
+
+def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
+                           phone_layout=False, first_column_lang="nl",
+                           trip_name=""):
     # Load CSV
     with open(csv_path, 'r', encoding='utf-8') as f:
         reader = csv.reader(f, delimiter=';')
         rows = list(reader)
 
-    header = rows[0]
+    csv_header = rows[0]
     data = rows[1:]
 
-    # Create workbook
+    columns = _build_column_layout(csv_header, start_date, num_days,
+                                   phone_layout, first_column_lang)
+
+    # Resolve the Excel column index for each csv_idx we'll reference from
+    # formulas / fills. Returned indices are 1-based (Excel convention).
+    def excel_col_for_csv(csv_idx):
+        for i, col in enumerate(columns, 1):
+            if col.get('csv_idx') == csv_idx:
+                return i
+        return None
+
+    seen_col_idx      = excel_col_for_csv(CSV_SEEN)
+    new_col_idx       = excel_col_for_csv(CSV_NEW)
+    known_col_idx     = excel_col_for_csv(CSV_KNOWN)
+    photo_col_idx     = excel_col_for_csv(CSV_PHOTO)
+    date_col_idxs     = [i for i, c in enumerate(columns, 1) if c['kind'] == 'date']
+    is_new_helper_idx = next((i for i, c in enumerate(columns, 1)
+                              if c['kind'] == 'is_new_helper'), None)
+    cum_helper_idxs   = [None] * num_days
+    for i, c in enumerate(columns, 1):
+        if c['kind'] == 'cum_helper':
+            cum_helper_idxs[c['day_index']] = i
+    # First helper column = end of the visible block (used for autofilter
+    # range and border painting so we don't drag the hidden columns in).
+    first_helper_col  = next((i for i, c in enumerate(columns, 1)
+                              if c['kind'] in ('is_new_helper', 'cum_helper')),
+                             len(columns) + 1)
+    visible_last_col  = first_helper_col - 1
+
+    # Layout —
+    #   row 1 : trip-banner title
+    #   rows 2..5 : Day Totals / Day New / Trip Totals / Trip New
+    #   row 6 : blank separator
+    #   row 7 : column headers (bold)
+    #   row 8+ : data
+    # Keeping totals above a blank gap means Excel's autofilter on the
+    # header row leaves the banner + totals untouched.
+    TITLE_ROW           = 1
+    DAY_TOTALS_ROW      = 2
+    DAY_NEW_ROW         = 3
+    TRIP_TOTALS_ROW     = 4
+    TRIP_NEW_ROW        = 5
+    HEADER_ROW          = 7
+    DATA_START_ROW      = 8
+    last_data_row       = DATA_START_ROW + len(data) - 1
+
     wb = Workbook()
     ws = wb.active
     ws.title = "Checklist"
 
-    # Define fills
-    weekend_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
-    light_grey_row_fill = PatternFill(start_color="F0F0F0", end_color="F0F0F0", fill_type="solid")
+    weekend_fill  = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+    grey_row_fill = PatternFill(start_color="F0F0F0", end_color="F0F0F0", fill_type="solid")
+    unseen_fill   = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
 
-    # Extend header with date columns
-    date_headers = []
-    weekend_columns = []
-    for i in range(num_days):
-        date = start_date + timedelta(days=i)
-        date_str = date.strftime("%d/%m/%Y")
-        date_headers.append(date_str)
-        if date.weekday() >= 5:  # Saturday=5, Sunday=6
-            weekend_columns.append(len(header) + i + 1)
-
-    full_header = header + date_headers
-
-    # Write header
-    for col_idx, value in enumerate(full_header, 1):
-        cell = ws.cell(row=1, column=col_idx, value=value)
-        if col_idx > len(header):  # Date columns
+    # Header row
+    header_font = Font(bold=True)
+    for col_idx, col in enumerate(columns, 1):
+        cell = ws.cell(row=HEADER_ROW, column=col_idx, value=col['header'])
+        cell.font = header_font
+        if col['kind'] == 'date':
             cell.alignment = Alignment(horizontal="left", vertical="center")
-            if col_idx in weekend_columns:
+            if col.get('weekend'):
                 cell.fill = weekend_fill
         else:
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
-    # Write data rows — start at row 3 so row 2 is reserved for the column
-    # summary formulas added below (otherwise the first species' E/F/H cells
-    # are overwritten by the summary).
-    for row_idx, row in enumerate(data, start=3):
-        # Fill in original columns
-        for col_idx, value in enumerate(row, 1):
-            cell = ws.cell(row=row_idx, column=col_idx)
+    # Data rows
+    for offset, row in enumerate(data):
+        excel_row = DATA_START_ROW + offset
+        # A row coming from the CSV with only one field is a section /
+        # group header (createRawCSV emits just the enname with no ';').
+        is_section_row = len(row) < 2 or not row[CSV_EN].strip()
 
-            if col_idx == 1:  # Column A: numeric
+        if is_section_row:
+            title = row[0] if row else ''
+            ws.cell(row=excel_row, column=1, value=title)
+            for col_idx in range(1, len(columns) + 1):
+                ws.cell(row=excel_row, column=col_idx).fill = grey_row_fill
+            continue
+
+        for col_idx, col in enumerate(columns, 1):
+            cell = ws.cell(row=excel_row, column=col_idx)
+            if col['kind'] == 'date':
+                cell.number_format = "0"
+                if col.get('weekend'):
+                    cell.fill = weekend_fill
+            elif col['kind'] == 'csv_int':
+                v = row[col['csv_idx']] if col['csv_idx'] < len(row) else ''
                 try:
-                    cell.value = int(value)
-                except ValueError:
-                    cell.value = value
-            else:
-                cell.value = value
+                    cell.value = int(v) if v else v
+                except (ValueError, TypeError):
+                    cell.value = v
+            elif col['kind'] == 'csv':
+                v = row[col['csv_idx']] if col['csv_idx'] < len(row) else ''
+                cell.value = v
+            # 'count_dates' / 'new_flag' filled in as formulas below.
 
-        # Fill in date columns (empty but formatted)
-        for i in range(num_days):
-            col_idx = len(header) + i + 1
-            cell = ws.cell(row=row_idx, column=col_idx)
-            if row_idx == 1:
-                cell.number_format = "DD/MM/YYYY"
-            else:
-                cell.number_format = "0"  # Format as number
-            if col_idx in weekend_columns:
-                cell.fill = weekend_fill
+        # Light-green tint for species the user has not yet seen — matches
+        # the Extramadura sheet style (column A intentionally left clean).
+        known_value = row[CSV_KNOWN].strip() if len(row) > CSV_KNOWN else ''
+        if known_value != 'Known':
+            for col_idx in range(2, visible_last_col + 1):
+                col = columns[col_idx - 1]
+                if col['kind'] == 'date' and col.get('weekend'):
+                    continue  # keep weekend grey readable
+                ws.cell(row=excel_row, column=col_idx).fill = unseen_fill
 
-        # Shade row if Column B is empty
-        if not ws.cell(row=row_idx, column=2).value:
-            for col in range(1, len(full_header) + 1):
-                ws.cell(row=row_idx, column=col).fill = light_grey_row_fill
+    # Per-row formulas: visible "seen?" / "New?" plus the hidden helpers
+    # used by the totals rows.
+    if date_col_idxs and seen_col_idx and known_col_idx and new_col_idx:
+        first_date_letter = get_column_letter(date_col_idxs[0])
+        last_date_letter  = get_column_letter(date_col_idxs[-1])
+        seen_letter       = get_column_letter(seen_col_idx)
+        known_letter      = get_column_letter(known_col_idx)
+        for excel_row in range(DATA_START_ROW, last_data_row + 1):
+            row = data[excel_row - DATA_START_ROW]
+            if len(row) < 2 or not row[CSV_EN].strip():
+                continue  # section header
+            ws.cell(row=excel_row, column=seen_col_idx,
+                    value=f'=COUNT({first_date_letter}{excel_row}:{last_date_letter}{excel_row})')
+            ws.cell(row=excel_row, column=new_col_idx,
+                    value=f'=IF(AND({known_letter}{excel_row}<>"Known", {seen_letter}{excel_row}>0), "New", "")')
+            if is_new_helper_idx:
+                ws.cell(row=excel_row, column=is_new_helper_idx,
+                        value=f'=IF({known_letter}{excel_row}<>"Known", 1, 0)')
+            for k, cum_idx in enumerate(cum_helper_idxs):
+                if not cum_idx:
+                    continue
+                day_k_letter = get_column_letter(date_col_idxs[k])
+                ws.cell(row=excel_row, column=cum_idx,
+                        value=f'=COUNT({first_date_letter}{excel_row}:{day_k_letter}{excel_row})')
 
-    # Adjust column widths
-    ws.column_dimensions['A'].width = 5  # Enough for 999
-    ws.column_dimensions['E'].width = 5
-    ws.column_dimensions['F'].width = 5
-    ws.column_dimensions['G'].width = 8
-    ws.column_dimensions['H'].width = 6
-    for col in range(2, len(header) + 1):
-        if col not in [5, 6, 7, 8]:  # E=5, F=6, G=7, H=8
-            ws.column_dimensions[get_column_letter(col)].width = 24
-    for col in range(len(header) + 1, len(full_header) + 1):
-        ws.column_dimensions[get_column_letter(col)].width = 5  # Narrow for 2-digit day
+    # ── Title banner (row 1) and totals area (rows 2..5) ────────────────
+    title_text = (f"Total counters for {trip_name}" if trip_name
+                  else "Total counters")
+    title_cell = ws.cell(row=TITLE_ROW, column=1, value=title_text)
+    title_cell.font = Font(bold=True)
+    ws.cell(row=DAY_TOTALS_ROW,  column=1, value="Day Totals")
+    ws.cell(row=DAY_NEW_ROW,     column=1, value="Day New")
+    ws.cell(row=TRIP_TOTALS_ROW, column=1, value="Trip Totals")
+    ws.cell(row=TRIP_NEW_ROW,    column=1, value="Trip New")
 
-    # Add formulas to columns E and F (data now occupies rows 3..len(data)+2)
-    for row_idx in range(3, len(data) + 3):
-        b_val = ws.cell(row=row_idx, column=2).value
-        if b_val:  # Only if column B has a value
-            # Column E formula
-            formula_e = f'=COUNT(J{row_idx}:AH{row_idx})'
-            ws.cell(row=row_idx, column=5, value=formula_e)
+    is_new_letter = get_column_letter(is_new_helper_idx) if is_new_helper_idx else None
+    is_new_range  = (f'{is_new_letter}{DATA_START_ROW}:{is_new_letter}{last_data_row}'
+                     if is_new_letter else None)
 
-            # Column F formula — flag as "New" when species has not been
-            # marked Known yet but at least one day-tick is present
-            formula_f = f'=IF(AND(G{row_idx}<>"Known", E{row_idx}>0), "New", "")'
-            ws.cell(row=row_idx, column=6, value=formula_f)
+    for k, day_col_idx in enumerate(date_col_idxs):
+        day_letter = get_column_letter(day_col_idx)
+        day_range  = f'{day_letter}{DATA_START_ROW}:{day_letter}{last_data_row}'
+        # Day Totals — number of species ticked on day k.
+        ws.cell(row=DAY_TOTALS_ROW, column=day_col_idx,
+                value=f'=COUNT({day_range})')
+        # Day New — of the species ticked on day k, how many are "new"
+        # (not yet marked Known) — i.e. how many greens.
+        if is_new_range:
+            ws.cell(row=DAY_NEW_ROW, column=day_col_idx,
+                    value=f'=COUNTIFS({is_new_range}, 1, {day_range}, ">0")')
+        # Trip cumulative — uses the per-day cum_k helper.
+        cum_idx = cum_helper_idxs[k] if k < len(cum_helper_idxs) else None
+        if cum_idx:
+            cum_letter = get_column_letter(cum_idx)
+            cum_range  = f'{cum_letter}{DATA_START_ROW}:{cum_letter}{last_data_row}'
+            ws.cell(row=TRIP_TOTALS_ROW, column=day_col_idx,
+                    value=f'=COUNTIF({cum_range}, ">0")')
+            if is_new_range:
+                ws.cell(row=TRIP_NEW_ROW, column=day_col_idx,
+                        value=f'=COUNTIFS({is_new_range}, 1, {cum_range}, ">0")')
 
-    # Add summary formulas to row 2
-    summary_targets = [5, 6, 8]  # Columns E, F, H
-    for col in summary_targets:
-        col_letter = get_column_letter(col)
-        formula = f'=COUNTIF({col_letter}3:{col_letter}{len(data)+2}, ">0")'
-        ws.cell(row=2, column=col, value=formula)
+    # Trip-wide aggregates in the seen?/New?/Photo columns. The seen? and
+    # New? Excel cells hold strings ("New"/"") and a formula result, so
+    # COUNTIF(..., ">0") doesn't match them — instead just point to the
+    # last-day cumulative cell (which already equals the trip-wide count).
+    # Photo is user-filled with numeric markers so COUNTIF still applies.
+    if date_col_idxs:
+        last_day_letter = get_column_letter(date_col_idxs[-1])
+        if seen_col_idx:
+            ws.cell(row=TRIP_TOTALS_ROW, column=seen_col_idx,
+                    value=f'={last_day_letter}{TRIP_TOTALS_ROW}')
+        if new_col_idx:
+            ws.cell(row=TRIP_NEW_ROW, column=new_col_idx,
+                    value=f'={last_day_letter}{TRIP_NEW_ROW}')
+    if photo_col_idx:
+        photo_letter = get_column_letter(photo_col_idx)
+        ws.cell(row=TRIP_TOTALS_ROW, column=photo_col_idx,
+                value=f'=COUNTIF({photo_letter}{DATA_START_ROW}:'
+                      f'{photo_letter}{last_data_row}, ">0")')
 
-    # Add summary formulas for all date columns (J to AH)
-    for col in range(len(header) + 1, len(header) + num_days + 1):
-        col_letter = get_column_letter(col)
-        formula = f'=COUNT({col_letter}3:{col_letter}{len(data)+2})'
-        ws.cell(row=2, column=col, value=formula)    
+    # Column widths + hide helper columns.
+    for col_idx, col in enumerate(columns, 1):
+        letter = get_column_letter(col_idx)
+        ws.column_dimensions[letter].width = col['width']
+        if col['kind'] in ('is_new_helper', 'cum_helper'):
+            ws.column_dimensions[letter].hidden = True
 
-    # Define thin border style
+    # Borders — keep the original ~385-row printable grid so the user's
+    # print template is not surprised by a shorter species list. Skip the
+    # hidden helper columns (no need for borders no one will see).
+    last_row = max(last_data_row, 385)
     thin_border = Border(
         left=Side(style='thin'),
         right=Side(style='thin'),
         top=Side(style='thin'),
-        bottom=Side(style='thin')
+        bottom=Side(style='thin'),
+    )
+    for row in ws.iter_rows(min_row=1, max_row=last_row,
+                            min_col=1, max_col=visible_last_col):
+        for cell in row:
+            cell.border = thin_border
+
+    # Activate Excel autofilter on the header row over the visible block.
+    # The four totals rows sit above the filter range so they stay
+    # visible (and unaffected) regardless of filtering.
+    ws.auto_filter.ref = (
+        f"A{HEADER_ROW}:{get_column_letter(visible_last_col)}{last_data_row}"
     )
 
-    # Apply borders to all cells in A1:AH385
-    for row in ws.iter_rows(min_row=1, max_row=385, min_col=1, max_col=34):  # AH = column 34
-        for cell in row:
-            cell.border = thin_border        
+    # Freeze the totals + header rows. In phone layout pin both the
+    # sequence number and the chosen-language name (guides refer to
+    # species by number); in standard layout pin all 4 leading info cols.
+    freeze_col = 3 if phone_layout else 5
+    ws.freeze_panes = ws.cell(row=DATA_START_ROW, column=freeze_col)
 
-    # Save file
     wb.save(xlsx_path)
 
 def main(args, config):
@@ -329,14 +505,24 @@ def main(args, config):
         # can be diagnosed and the dispatch is in place for future readers.
         source_format = config.get("avibase", "source_format", fallback="avibase")
         logger.info(f"Reading AviBase source list using '{source_format}' format.")
+        phone_layout = config.getboolean("avibase", "phone_layout", fallback=False)
+        first_column_lang = config.get("avibase", "first_column_lang", fallback="nl").strip().lower()
+        if first_column_lang not in ("nl", "en"):
+            first_column_lang = "nl"
         readAviBase(MyProject.Repository, "avibase.csv")
         addSpeciesInfo(sc, Reference_sp)
         temp_csv_file = os.path.join(MyProject.Repository, "soorten-temp.csv")
         createRawCSV(temp_csv_file)
-        xlsx_path = os.path.join(MyProject.Repository, "avibase-checklist.xlsx")
+        trip_name = MyProject.Trip.tripname
+        # Filesystem-safe trip name for the output file
+        safe_trip_name = re.sub(r'[<>:"/\\|?*]+', '-', trip_name).strip(' .-')
+        if not safe_trip_name:
+            safe_trip_name = "avibase"
+        xlsx_path = os.path.join(MyProject.Repository,
+                                 f"{safe_trip_name}-checklist.xlsx")
 
-        fromdate_str = MyProject.Trip.trip_dict[MyProject.Trip.tripname]['fromdate']
-        todate_str = MyProject.Trip.trip_dict[MyProject.Trip.tripname]['todate']        
+        fromdate_str = MyProject.Trip.trip_dict[trip_name]['fromdate']
+        todate_str = MyProject.Trip.trip_dict[trip_name]['todate']
         # Convert to datetime objects
         start_date = datetime.strptime(fromdate_str, "%Y-%m-%d")
         end_date = datetime.strptime(todate_str, "%Y-%m-%d")
@@ -344,7 +530,10 @@ def main(args, config):
         # Calculate number of days (inclusive)
         num_days = (end_date - start_date).days + 1
 
-        create_excel_checklist(temp_csv_file, xlsx_path, start_date, num_days)
+        create_excel_checklist(temp_csv_file, xlsx_path, start_date, num_days,
+                               phone_layout=phone_layout,
+                               first_column_lang=first_column_lang,
+                               trip_name=trip_name)
         logger.info(f"Checklist created for {MyProject.Trip.tripname} trip in {xlsx_path}.")
         os.startfile(xlsx_path)
     else:

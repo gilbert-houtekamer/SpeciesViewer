@@ -1346,6 +1346,10 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
         ("avibase",       "AviBase  (English in column 0)"),
         ("birdingbreaks", "Birding Breaks  (sequence number in column 0)"),
     ]
+    LANG_OPTIONS = [
+        ("nl", "Dutch"),
+        ("en", "English"),
+    ]
 
     def __init__(self, parent, menu_spec):
         super().__init__(
@@ -1355,21 +1359,55 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
             info_text="Create an Excel to keep track of birds seen.",
             subdirectory=False
         )
-        # Insert a reader-format dropdown above the info text.
+        # Source-list format dropdown.
         self.reader_dropdown = QComboBox()
         for _, label in self.READER_OPTIONS:
             self.reader_dropdown.addItem(label)
-        saved = _config.get("avibase", "source_format", fallback="avibase")
+        saved_reader = _config.get("avibase", "source_format", fallback="avibase")
         for idx, (key, _) in enumerate(self.READER_OPTIONS):
-            if key == saved:
+            if key == saved_reader:
                 self.reader_dropdown.setCurrentIndex(idx)
                 break
+
+        # Phone-friendly layout toggle.
+        self.phone_layout_checkbox = QCheckBox(
+            "Phone-friendly layout (single name column, dates next, the rest at the end)"
+        )
+        self.phone_layout_checkbox.setChecked(
+            _config.getboolean("avibase", "phone_layout", fallback=False)
+        )
+
+        # First-column language dropdown — only meaningful for the phone layout.
+        self.first_lang_dropdown = QComboBox()
+        for _, label in self.LANG_OPTIONS:
+            self.first_lang_dropdown.addItem(label)
+        saved_lang = _config.get("avibase", "first_column_lang", fallback="nl").strip().lower()
+        for idx, (key, _) in enumerate(self.LANG_OPTIONS):
+            if key == saved_lang:
+                self.first_lang_dropdown.setCurrentIndex(idx)
+                break
+
+        self.first_lang_label = QLabel("First column language (phone layout)")
+        self._sync_first_lang_enabled()
+        self.phone_layout_checkbox.toggled.connect(lambda _checked: self._sync_first_lang_enabled())
+
         layout = self.layout()
-        layout.insertWidget(layout.indexOf(self.info_text), QLabel("Source list format"))
-        layout.insertWidget(layout.indexOf(self.info_text), self.reader_dropdown)
+        anchor = layout.indexOf(self.info_text)
+        layout.insertWidget(anchor, QLabel("Source list format"))
+        layout.insertWidget(anchor + 1, self.reader_dropdown)
+        layout.insertWidget(anchor + 2, self.phone_layout_checkbox)
+        layout.insertWidget(anchor + 3, self.first_lang_label)
+        layout.insertWidget(anchor + 4, self.first_lang_dropdown)
+
+    def _sync_first_lang_enabled(self):
+        enabled = self.phone_layout_checkbox.isChecked()
+        self.first_lang_dropdown.setEnabled(enabled)
+        self.first_lang_label.setEnabled(enabled)
 
     def on_write(self):
         if not _config.has_section("avibase"):
             _config.add_section("avibase")
         _config["avibase"]["source_format"] = self.READER_OPTIONS[self.reader_dropdown.currentIndex()][0]
+        _config["avibase"]["phone_layout"] = "true" if self.phone_layout_checkbox.isChecked() else "false"
+        _config["avibase"]["first_column_lang"] = self.LANG_OPTIONS[self.first_lang_dropdown.currentIndex()][0]
         super().on_write()
