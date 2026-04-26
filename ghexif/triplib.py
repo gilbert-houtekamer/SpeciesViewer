@@ -1,5 +1,6 @@
 import os
 import io
+import re
 from pathlib import Path
 import csv
 from datetime import datetime, date
@@ -19,6 +20,30 @@ from ghexif.handling import parseListFromCSV
 from ghexif.specieslib import Level
 
 logger = logging.getLogger("speciesviewer")
+
+_INI_SECTION_RE = re.compile(r'^\s*\[.+\]\s*$')
+_INI_KEYVAL_RE  = re.compile(r'^[^\s\[;#][^=:]*[=:]')
+
+
+def _coerce_orphan_continuations(text: str) -> str:
+    """Indent any unindented continuation line inside a multi-line value
+    so configparser can re-read trip.ini files that contain hand-added
+    paragraph breaks. Mirrors the helper in qt/utils/trip_config.py."""
+    out = []
+    in_value = False
+    for line in text.splitlines():
+        if _INI_SECTION_RE.match(line):
+            in_value = False
+            out.append(line)
+        elif _INI_KEYVAL_RE.match(line):
+            in_value = True
+            out.append(line)
+        elif in_value and line.strip() and not line.startswith((' ', '\t')):
+            out.append('    ' + line)
+        else:
+            out.append(line)
+    return '\n'.join(out) + '\n'
+
 
 class Trip:
     tripday = ""
@@ -119,7 +144,8 @@ class Trip:
 
         if os.path.exists(tripinifile):
             # create a separete config instance
-            tripconfig.read(tripinifile)
+            with open(tripinifile, 'r', encoding='utf-8') as _tf:
+                tripconfig.read_string(_coerce_orphan_continuations(_tf.read()))
             tripconfig['trip_config']['created'] = datetime.today().strftime('%Y-%m-%d %H:%M')
         else:
             # Ensure the sections exist before setting values

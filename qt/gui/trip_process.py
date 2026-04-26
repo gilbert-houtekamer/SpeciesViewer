@@ -39,24 +39,35 @@ def generate_trip_ini(
     master_disk = _config.get("master", "masterbiotadatabase", fallback="E:\\Dropbox\\naturedb")
     trip_name = Path(trip_name_path).name
 
+    # Configparser only treats subsequent lines as part of a multi-line
+    # value when they are indented. Without this escape, paragraph breaks
+    # the user types into a description produce a file that re-reads as
+    # a ParsingError (orphan unindented line after a blank line).
+    def _ini_escape(text):
+        if "\n" not in text:
+            return text
+        head, *rest = text.split("\n")
+        return head + "\n" + "\n".join(("    " + l) if l.strip() else l
+                                        for l in rest)
+
     ini_text = f"""\
 [trip_config]
-master_repository_web = {master_web}       
-master_repository_disk = {master_disk}     
+master_repository_web = {master_web}
+master_repository_disk = {master_disk}
 ; the banner size is 2000x270 jpg, and the picture is 600x450 jpg
-trip_banner = {banner_filename}             
-trip_picture = {picture_filename}        
+trip_banner = {banner_filename}
+trip_picture = {picture_filename}
 created = {datetime.now().strftime('%Y-%m-%d %H:%M')}
 trip_name = {trip_name}
 fromdate = {from_date}
 todate = {to_date}
-oneblog = day                      
+oneblog = day
 
 [trip_text]
-title_nl = {title_nl}
-message_nl = {message_nl}
-title_en = {title_en}
-message_en = {message_en}
+title_nl = {_ini_escape(title_nl)}
+message_nl = {_ini_escape(message_nl)}
+title_en = {_ini_escape(title_en)}
+message_en = {_ini_escape(message_en)}
 """
 
     try:

@@ -1,8 +1,37 @@
 # util/trip_config.py
 
 import configparser
+import re
 
 CONFIG_FILE = "sv_config.ini"
+
+_SECTION_RE = re.compile(r'^\s*\[.+\]\s*$')
+# 'key = value' or 'key : value' starting at column 0; excludes comments.
+_KEYVAL_RE  = re.compile(r'^[^\s\[;#][^=:]*[=:]')
+
+
+def coerce_orphan_continuations(text: str) -> str:
+    """Make multi-line ini values resilient to unindented continuation
+    lines, which would otherwise raise configparser.ParsingError. Any
+    line that is neither a [section] header nor a 'key = value'
+    assignment — when encountered while inside a value — gets indented
+    so configparser treats it as continuation. Blank lines inside a
+    value stay blank and survive as paragraph breaks (the default
+    empty_lines_in_values=True keeps them in the parsed string)."""
+    out = []
+    in_value = False
+    for line in text.splitlines():
+        if _SECTION_RE.match(line):
+            in_value = False
+            out.append(line)
+        elif _KEYVAL_RE.match(line):
+            in_value = True
+            out.append(line)
+        elif in_value and line.strip() and not line.startswith((' ', '\t')):
+            out.append('    ' + line)
+        else:
+            out.append(line)
+    return '\n'.join(out) + '\n'
 
 def get_trips():
     config = configparser.ConfigParser()
@@ -37,8 +66,10 @@ def read_trip_ini(trip_root: str):
     if not os.path.isfile(ini_path):
         return None  # No ini file yet
 
+    with open(ini_path, "r", encoding="utf-8") as f:
+        content = f.read()
     parser = ConfigParser()
-    parser.read(ini_path, encoding="utf-8")
+    parser.read_string(coerce_orphan_continuations(content))
 
     result = {
         "trip_banner": parser.get("trip_config", "trip_banner", fallback=""),
