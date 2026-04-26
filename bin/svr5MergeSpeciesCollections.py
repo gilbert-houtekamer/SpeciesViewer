@@ -45,19 +45,20 @@ def main(args, config):
     MyProject.initMasterAndTrip(config, inittrip=True)
     trip = MyProject.Trip
 
-    # test set up is to use master, and merge collection on hardcoded place
-    # read the list with all pre-defined species
+    # Read the trip's species collection first (this is the source of new
+    # entries to fold into master).
     metadatadir = MyProject.getMetaDir()
-    sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)    
-    newSC = sc.scCopy()     # keep the old version to merge
+    sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)
+    newSC = sc.scCopy()
     sc.clearDict()
-    # now read the master we want to merge more in 
-    tomergeSpeciesCollection = MyProject.MasterRepository + '/metadata/active/speciescollection.csv'
-    sc.readSpeciesCollection(tomergeSpeciesCollection, True)
-    # merge (brute force is not too bad)
+    # Read master, merge trip entries in, and write the result back over
+    # master. updateSpeciesCollection renames the existing master file to
+    # speciescollection.csvold first, giving the GUI a transient backup it
+    # can use to drive the Keep / Restore review flow.
+    masterSpeciesCollection = MyProject.MasterRepository + '/metadata/active/speciescollection.csv'
+    sc.readSpeciesCollection(masterSpeciesCollection, True)
     sc.mergeSpeciesCollections(newSC)
-    # write to new location
-    sc.updateSpeciesCollection(metadatadir + "active/speciescollection-merged.csv")  
+    sc.updateSpeciesCollection(masterSpeciesCollection)
         
     totaltime = time.time() - starttime      
     print(f'Total time for all other work {totaltime:.1f} seconds.')

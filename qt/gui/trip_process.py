@@ -603,14 +603,20 @@ class SpeciesCollectionDialog(QDialog):
     ]
     EDITABLE_KEYS = {"DutchName", "EnglishName"}
     COPY_COL = 1   # ScientificName column index
-    COLOR_MANUAL = QColor(204, 229, 255)   # light blue
-    COLOR_NBA    = QColor(204, 255, 204)   # light green
+    COLOR_MANUAL = QColor(204, 229, 255)   # light blue   — user-edited
+    COLOR_NBA    = QColor(204, 255, 204)   # light green  — NBA-filled
+    COLOR_NEW    = QColor(255, 242, 204)   # light yellow — newly merged
 
-    def __init__(self, parent, csv_path):
+    def __init__(self, parent, csv_path,
+                 highlight_rows_from=None, title=None):
         super().__init__(parent)
-        self.setWindowTitle("Provide English and/or Dutch species names")
+        self.setWindowTitle(title or "Provide English and/or Dutch species names")
         self.resize(750, 500)
         self.csv_path = csv_path
+        # When set, every all_rows row whose csv index is >= this threshold
+        # is painted yellow — used by the trip→master merge review flow to
+        # call out newly-merged species (always appended to the file end).
+        self.highlight_rows_from = highlight_rows_from
         self.all_rows = []
         self.dirty = False
         self.cell_colors = {}   # (row, visual_col) -> QColor
@@ -648,12 +654,17 @@ class SpeciesCollectionDialog(QDialog):
         self.table.setColumnWidth(self.COPY_VISUAL_COL, 30)
         layout.addWidget(self.table)
 
-        # Lowercase delegate for editable name columns (also handles cell coloring)
+        # Lowercase delegate handles both per-cell colour painting and
+        # forcing lowercase on edit-commit. Attach it to every data column
+        # (not just editable ones) so cell_colors paints uniformly across
+        # the whole row — needed for the merge-review yellow highlight.
+        # The lowercase effect is harmless on non-editable columns since
+        # their items have ItemIsEditable cleared.
         self._lc_delegate = LowerCaseDelegate(self.table, self.cell_colors)
-        for j, (key, _) in enumerate(self.COLUMN_MAP):
-            visual = j if j < self.COPY_VISUAL_COL else j + 1
-            if key in self.EDITABLE_KEYS:
-                self.table.setItemDelegateForColumn(visual, self._lc_delegate)
+        for vcol in range(self.table.columnCount()):
+            if vcol == self.COPY_VISUAL_COL:
+                continue  # copy-button widget column
+            self.table.setItemDelegateForColumn(vcol, self._lc_delegate)
 
         btn_layout = QHBoxLayout()
         self.save_btn = QPushButton("Save")
@@ -800,6 +811,17 @@ class SpeciesCollectionDialog(QDialog):
         self.display_indices = list(range(self.page_start, page_end))
         self.display_indices.reverse()
         self.table.setRowCount(len(self.display_indices))
+
+        # Pre-seed yellow highlight for any newly-merged rows on this page,
+        # before per-cell styling overwrites them. The colour delegate
+        # paints background from cell_colors; this gives every cell of an
+        # affected visual row the COLOR_NEW background.
+        if self.highlight_rows_from is not None:
+            cols_total = self.table.columnCount()
+            for visual_row, csv_idx in enumerate(self.display_indices):
+                if csv_idx >= self.highlight_rows_from:
+                    for vcol in range(cols_total):
+                        self.cell_colors[(visual_row, vcol)] = self.COLOR_NEW
 
         # Update navigation
         self.range_label.setText(
@@ -1337,9 +1359,104 @@ class MergeTripDialog(BaseTripModuleDialog):
             parent,
             menu_spec,
             title="Merge Trip Species with master",
-            info_text="List and merge species lists from master and trip.",
+            info_text=("Merge the trip's species into the master collection, "
+                       "then review the result in place. Newly-merged rows "
+                       "are highlighted yellow. You can keep the merged "
+                       "master, continue reviewing, or restore the previous "
+                       "master from the transient backup."),
             subdirectory=False
-        )        
+        )
+
+    def on_write(self):
+        runner = BatchModuleRunner(self, self.passed_parent)
+        runner.run(self.menu_spec, on_success=self._review_merged_master)
+
+    def _review_merged_master(self):
+        master_dir = _config.get("master", "masterbiotadatabase", fallback="")
+        if not master_dir:
+            QMessageBox.warning(self, "Merge Species",
+                                "Master database location is not configured.")
+            return
+        master_csv = os.path.join(master_dir, "metadata", "active",
+                                  "speciescollection.csv")
+        backup_csv = master_csv + "old"  # updateSpeciesCollection's convention
+        if not os.path.isfile(master_csv):
+            QMessageBox.warning(self, "Merge Species",
+                                f"Merged master file not found:\n{master_csv}")
+            return
+
+        # Row count of master *before* the merge — anything in the merged
+        # file with a csv index >= this is newly added and should be
+        # highlighted in the review viewer.
+        pre_merge_count = (self._count_csv_data_rows(backup_csv)
+                           if os.path.isfile(backup_csv) else None)
+
+        while True:
+            dlg = SpeciesCollectionDialog(
+                self, master_csv,
+                highlight_rows_from=pre_merge_count,
+                title="Review merged master species collection",
+            )
+            dlg.exec()
+
+            choice = self._prompt_keep_restore_continue()
+            if choice == "continue":
+                continue
+            if choice == "keep":
+                if os.path.isfile(backup_csv):
+                    try:
+                        os.remove(backup_csv)
+                    except OSError as exc:
+                        self.logger.warning(
+                            f"Could not delete merge backup {backup_csv}: {exc}")
+                break
+            if choice == "restore":
+                if os.path.isfile(backup_csv):
+                    try:
+                        os.replace(backup_csv, master_csv)
+                    except OSError as exc:
+                        QMessageBox.warning(
+                            self, "Merge Species",
+                            f"Could not restore previous master:\n{exc}")
+                break
+
+    @staticmethod
+    def _count_csv_data_rows(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                # Subtract one for the header row; clamp at 0 for empty files.
+                return max(sum(1 for _ in f) - 1, 0)
+        except OSError:
+            return None
+
+    def _prompt_keep_restore_continue(self):
+        box = QMessageBox(self)
+        box.setWindowTitle("Merge Species")
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setText("How do you want to finalize the merge?")
+        box.setInformativeText(
+            "Keep merged master — accept the merge and discard the backup.\n"
+            "Continue reviewing — reopen the species collection viewer.\n"
+            "Restore previous master — discard the merge (and any name "
+            "edits you made during this review)."
+        )
+        keep_btn    = box.addButton("Keep merged master",
+                                    QMessageBox.ButtonRole.AcceptRole)
+        cont_btn    = box.addButton("Continue reviewing",
+                                    QMessageBox.ButtonRole.ActionRole)
+        restore_btn = box.addButton("Restore previous master",
+                                    QMessageBox.ButtonRole.DestructiveRole)
+        box.setDefaultButton(keep_btn)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is keep_btn:
+            return "keep"
+        if clicked is restore_btn:
+            return "restore"
+        # Continue reviewing — also covers closing the prompt via X, which
+        # forces the user back to the viewer instead of accidentally
+        # accepting or discarding.
+        return "continue"
 
 class ConvertAvibaseDialog(BaseTripModuleDialog):
     READER_OPTIONS = [
