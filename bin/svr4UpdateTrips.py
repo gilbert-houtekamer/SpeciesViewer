@@ -35,13 +35,16 @@ def main(args, config):
     SpeciesDebug = 0        # default   
 
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
+    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"),
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
-    # if trip, initialze master
-    MyProject.initMasterAndTrip(config, inittrip=True)
+    # if trip, initialze master — pass inittrip=False so init does not
+    # auto-call readAndWriteTripAdmin; we run it explicitly below to keep
+    # this script self-contained (and to avoid the duplicate CSV write
+    # that the auto-call produces in combination with our own).
+    MyProject.initMasterAndTrip(config, inittrip=False)
     trip = MyProject.Trip
-    
+
     # Update the master trip admin CSV with a fresh row for the *active*
     # trip (only). All other historic trips already in the CSV are kept
     # untouched, so siblings still in draft on disk do not get published.
