@@ -5,6 +5,7 @@ from PyQt6.QtGui import QFont, QGuiApplication, QColor
 from PyQt6.QtCore import Qt
 import logging
 import sys, os, shutil
+from datetime import datetime
 from pathlib import Path
 import webbrowser
 from gui.batch import BatchModuleRunner  # Assuming batch handler is here
@@ -1469,6 +1470,211 @@ class AddTripToMasterDialog(BaseTripModuleDialog):
                        "are not touched."),
             subdirectory=False
         )
+
+
+class MasterPipelineDialog(QDialog):
+    """Drive the master-side database merge — three progressive steps
+    (ingest → build+freeze → commit) inside one dialog. Each step's
+    button enables only after the previous turns green; failures keep
+    the current step enabled for retry. Step 3 confirms re-commit if
+    the picture directory is already in the master commit marker."""
+
+    PIP = {
+        'pending': '⚪',
+        'running': '⏳',
+        'done':    '✅',
+        'failed':  '❌',
+    }
+
+    def __init__(self, parent, step_specs):
+        super().__init__(parent)
+        self.setWindowTitle("Add Trip Pictures to Master")
+        self.resize(740, 380)
+
+        self.logger = logging.getLogger("speciesviewer")
+        self.passed_parent = parent
+        self.step_specs = step_specs  # list of (label, MenuSpec)
+
+        layout = QVBoxLayout(self)
+
+        # The trip root = parent of the configured day directory. Master
+        # ingest reads every day-subdir under it (sv2 walks recursively).
+        configured_pic = _config.get('project', 'picturedirectory', fallback='')
+        trip_root = str(Path(configured_pic).parent) if configured_pic else '?'
+        info = HTMLLabel(
+            "<p><b>Add the active trip's pictures to the master database.</b></p>"
+            "<p>Run the three steps in order. Each step enables the next on "
+            "success; failures stay open for retry. Step&nbsp;1 reads photo "
+            "metadata and identifies species. Step&nbsp;2 builds the master "
+            "species pages (so existing pages pick up the new pictures) and "
+            "freezes the result. Step&nbsp;3 commits the frozen artifact to "
+            "master's active CSVs and copies pictures into master's biota tree.</p>"
+            f"<p>Trip root (reads all day subdirectories): "
+            f"<code>{trip_root}</code></p>"
+        )
+        layout.addWidget(info)
+
+        self.rows = []
+        for idx, (label, _spec) in enumerate(step_specs):
+            row = self._make_step_row(layout, label)
+            row['button'].clicked.connect(
+                lambda _checked=False, i=idx: self._run_step(i))
+            self.rows.append(row)
+        for r in self.rows[1:]:
+            r['button'].setEnabled(False)
+
+        self.warning_label = QLabel("")
+        self.warning_label.setStyleSheet("color: #B45309;")
+        self.warning_label.setWordWrap(True)
+        layout.addWidget(self.warning_label)
+
+        # BatchModuleRunner expects gui.status_label / gui.logger /
+        # gui.passed_parent.status_bar. Keep the surface compatible.
+        # Cap the height so a future runaway error string (huge stdout
+        # dumps in CalledProcessError, etc.) can't blow up the layout.
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        self.status_label.setMaximumHeight(80)
+        layout.addWidget(self.status_label)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.close)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+        self._refresh_warning()
+
+    def _make_step_row(self, parent_layout, label):
+        row = QHBoxLayout()
+        pip = QLabel(self.PIP['pending'])
+        font = pip.font()
+        font.setPointSize(font.pointSize() + 4)
+        pip.setFont(font)
+        pip.setFixedWidth(36)
+        pip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        row.addWidget(pip)
+        row.addWidget(QLabel(label))
+        row.addStretch()
+        button = QPushButton("Run")
+        row.addWidget(button)
+        parent_layout.addLayout(row)
+        return {'pip': pip, 'button': button}
+
+    def _set_pip(self, idx, status):
+        self.rows[idx]['pip'].setText(self.PIP[status])
+
+    # ── Marker-file plumbing ────────────────────────────────────────────
+    def _master_commits_path(self):
+        master = _config.get("master", "masterbiotadatabase", fallback="")
+        if not master:
+            return None
+        return os.path.join(master, "admin", "master_commits.csv")
+
+    def _picture_dir(self):
+        # Use the trip root for marker keying — same scope sv2 actually
+        # ingests in master mode. Keeps the warning meaningful even if
+        # picturedirectory points at a different day on the next open.
+        configured = _config.get("project", "picturedirectory", fallback="").strip()
+        if not configured:
+            return ""
+        return str(Path(configured).parent)
+
+    def _read_commit_records(self):
+        import csv as _csv
+        path = self._master_commits_path()
+        if not path or not os.path.isfile(path):
+            return []
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return list(_csv.DictReader(f, delimiter=";"))
+        except OSError:
+            return []
+
+    def _committed_at(self):
+        target = self._picture_dir().lower()
+        if not target:
+            return None
+        for r in self._read_commit_records():
+            if (r.get("picture_directory") or "").strip().lower() == target:
+                return r.get("committed_at", "")
+        return None
+
+    def _refresh_warning(self):
+        when = self._committed_at()
+        if when:
+            self.warning_label.setText(
+                "⚠️  These pictures were already committed to master "
+                f"on {when}. Step 3 will warn before re-committing."
+            )
+        else:
+            self.warning_label.setText("")
+
+    def _record_commit(self):
+        import csv as _csv
+        path = self._master_commits_path()
+        pic_dir = self._picture_dir()
+        if not (path and pic_dir):
+            return
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        records = [r for r in self._read_commit_records()
+                   if (r.get("picture_directory") or "").strip().lower()
+                   != pic_dir.lower()]
+        records.append({
+            "picture_directory": pic_dir,
+            "committed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        })
+        try:
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                writer = _csv.DictWriter(
+                    f, fieldnames=["picture_directory", "committed_at"],
+                    delimiter=";")
+                writer.writeheader()
+                writer.writerows(records)
+        except OSError as exc:
+            self.logger.warning(f"Could not write master commit marker: {exc}")
+
+    # ── Step execution ──────────────────────────────────────────────────
+    def _run_step(self, idx):
+        # Step 3 (last) — confirm re-commit on a previously-committed
+        # picture directory before letting sv7 append duplicates.
+        if idx == len(self.rows) - 1 and self._committed_at():
+            ans = QMessageBox.question(
+                self, "Re-commit?",
+                "These pictures were already committed to master.\n"
+                "Running this step again will append duplicate rows to "
+                "master's data_files.csv / data_pictures.csv.\n\nContinue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if ans != QMessageBox.StandardButton.Yes:
+                return
+
+        self._set_pip(idx, 'running')
+        for r in self.rows:
+            r['button'].setEnabled(False)
+
+        spec = self.step_specs[idx][1]
+        is_last_step = idx == len(self.rows) - 1
+
+        def on_success():
+            self._set_pip(idx, 'done')
+            self.rows[idx]['button'].setEnabled(True)
+            if idx + 1 < len(self.rows):
+                self.rows[idx + 1]['button'].setEnabled(True)
+            if is_last_step:
+                self._record_commit()
+                self._refresh_warning()
+
+        def on_failure(_err):
+            self._set_pip(idx, 'failed')
+            self.rows[idx]['button'].setEnabled(True)
+            # Downstream stays disabled — fix-and-retry first.
+
+        runner = BatchModuleRunner(self, self.passed_parent)
+        runner.run(spec, on_success=on_success, on_failure=on_failure)
+
 
 class MergeTripDialog(BaseTripModuleDialog):
     def __init__(self, parent, menu_spec):

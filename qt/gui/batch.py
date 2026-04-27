@@ -46,7 +46,7 @@ class BatchModuleRunner:
         self.status_bar = gui.passed_parent.status_bar
         self.main_window = main_window
 
-    def run(self, menu_spec, on_success=None):
+    def run(self, menu_spec, on_success=None, on_failure=None):
         batch_parms = menu_spec.get_batch_parms()
         if not batch_parms:
             self.status_label.setText("❌ Missing batch parameters.")
@@ -56,9 +56,12 @@ class BatchModuleRunner:
         before_msg = batch_parms["before_msg"]
         after_msg = batch_parms["after_msg"]
         statusname = batch_parms["statusname"]
+        master_mode = batch_parms.get("master_mode", False)
 
-        # Config prep
-        generate_svconfig_ini()
+        # Config prep — master_mode flips BiotaDatabase to point at
+        # master so steps like sv2/sv3/sv5/sv6/sv7 can run against
+        # master directly without a trip context.
+        generate_svconfig_ini(master_mode=master_mode)
         args = None
         module_config = configparser.ConfigParser()
         module_config.read("svconfig.ini")
@@ -121,13 +124,22 @@ class BatchModuleRunner:
 
             if errorstring:
                 self.logger.warning(f"❌ {statusname} failed: {errorstring}")
+                # Cap what we shove into the wordwrap labels — pyexiftool
+                # and friends sometimes embed multi-MB stdout dumps in
+                # CalledProcessError messages, which a wordwrap QLabel
+                # would try to render as a single 2.5-million-pixel cell.
+                short_err = errorstring if len(errorstring) <= 500 else (
+                    errorstring[:500] + " […truncated; full error in log]"
+                )
                 if statusname and statusname != "MakeRepository":
                     sm.updateState(statusname, False, errorstring)
                     cell_key = expected_messages.get(statusname)
                     if cell_key:
-                        self.main_window.update_trip_cell(directory_name, cell_key, "❌", f"{statusname} failed: {errorstring}")
-                self.status_label.setText(f"❌ {errorstring}")
-                self.status_bar.showMessage(f"❌ {errorstring}")
+                        self.main_window.update_trip_cell(directory_name, cell_key, "❌", f"{statusname} failed: {short_err}")
+                self.status_label.setText(f"❌ {short_err}")
+                self.status_bar.showMessage(f"❌ {short_err}")
+                if on_failure:
+                    on_failure(errorstring)
             else:
                 warn_suffix = f" Please review the {new_warnings if new_warnings > 1 else ''} warning{'s' if new_warnings > 1 else ''}." if new_warnings > 0 else ""
                 display_msg = result_msg if result_msg else after_msg

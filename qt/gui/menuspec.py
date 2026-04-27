@@ -4,8 +4,8 @@ from gui.menu import MenuSpec  # assuming class is defined elsewhere
 from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDialog,
         CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog,
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
-        AddTripToMasterDialog, ConvertAvibaseDialog, SyncSidecarsDialog,
-        EmptyTripDataDialog)
+        AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
+        SyncSidecarsDialog, EmptyTripDataDialog)
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
 from settings.speciessettings import SpeciesSettingsDialog
@@ -239,6 +239,69 @@ def build_menu_spec(main_window):
     )
     add_trip_to_master.callback = lambda: AddTripToMasterDialog(main_window, add_trip_to_master).exec()
 
+    # ── Master pipeline: ingest a trip's pictures into master itself ──
+    # Three sequential steps wrapped in MasterPipelineDialog. Each
+    # step's MenuSpec sets master_mode=True so generate_svconfig_ini
+    # writes BiotaDatabase = master path (and MasterBiotaDatabase
+    # blank) — the same "no trip" config the scripts have always
+    # accepted from the CLI.
+    def _master_ingest(args, _config):
+        bin.sv2ReadDirExif.main(args, _config)
+        bin.sv3WritePictures.main(args, _config)
+
+    def _master_build(args, _config):
+        bin.sv5BuildWebsite.main(args, _config)
+        bin.sv6Freeze.main(args, _config)
+
+    master_ingest_spec = MenuSpec(
+        callback=None,
+        title="Read & Summarize (master)",
+        showsubdirectory=False,
+        batch_parms={
+            'statusname':     "",
+            'module_called':  _master_ingest,
+            'before_msg':     "Reading picture directory and writing summary into master...",
+            'after_msg':      "✅ Master ingest complete.",
+            'master_mode':    True,
+        },
+    )
+    master_build_spec = MenuSpec(
+        callback=None,
+        title="Build & Freeze (master)",
+        showsubdirectory=False,
+        batch_parms={
+            'statusname':     "",
+            'module_called':  _master_build,
+            'before_msg':     "Building master species pages and freezing...",
+            'after_msg':      "✅ Master pages built and frozen.",
+            'master_mode':    True,
+        },
+    )
+    master_commit_spec = MenuSpec(
+        callback=None,
+        title="Commit to Master",
+        showsubdirectory=False,
+        batch_parms={
+            'statusname':     "",
+            'module_called':  bin.sv7WriteCommit.main,
+            'before_msg':     "Committing frozen artifact to master active CSVs...",
+            'after_msg':      "✅ Master commit complete.",
+            'master_mode':    True,
+        },
+    )
+    master_pipeline_steps = [
+        ("1. Read & Summarize",                master_ingest_spec),
+        ("2. Build Master Website & Freeze",   master_build_spec),
+        ("3. Commit to Master",                master_commit_spec),
+    ]
+    add_trip_pictures = MenuSpec(
+        callback=None,
+        title="Add Trip Pictures to Master",
+        showsubdirectory=False,
+    )
+    add_trip_pictures.callback = lambda: MasterPipelineDialog(
+        main_window, master_pipeline_steps).exec()
+
     # utilities
         # Master updates
     convert_avibase = MenuSpec(
@@ -281,6 +344,8 @@ def build_menu_spec(main_window):
         "Master": {
             "Merge Species": merge_trip_species,
             "Add trip website to master": add_trip_to_master,
+            f"{MenuSpec.separator()}_master_1": None,
+            "Add Trip Pictures to Master": add_trip_pictures,
         },
         "Utilities": {
         #     "BirdingBreaks": None, # PROCESS BIRDING BREAK FILES

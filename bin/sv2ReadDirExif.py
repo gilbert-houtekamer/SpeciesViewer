@@ -42,8 +42,16 @@ def main(args, config):
     logger.info(f'Will read files recursively from {MyProject.getProjectPath()}.')
     # logging.basicConfig(level=logging.DEBUG)
     # exiftool.ExifTool.__init__(None, common_args=['-G'])
+    # ExifToolHelper(check_execute=True) raises on any non-zero exit
+    # status — including the routine status=1 that exiftool emits when
+    # there are non-fatal warnings (very common at large file counts:
+    # unreadable thumbnails, ignorable extensions, etc.). The JSON
+    # payload is still on stdout in that case, so we'd rather see the
+    # data than discard it.
     with exiftool.ExifToolHelper(
-        logger=logging.getLogger("speciesviewer"), common_args=["-G"]
+        logger=logging.getLogger("speciesviewer"),
+        common_args=["-G"],
+        check_execute=False,
     ) as et:
         if not os.path.isdir(MyProject.getProjectPath()):
             raise SVException(f"Directory {MyProject.getProjectPath()} cannot be found, or refers to a file.")
