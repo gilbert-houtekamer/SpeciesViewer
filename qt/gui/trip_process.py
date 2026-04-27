@@ -614,12 +614,15 @@ class SpeciesCollectionDialog(QDialog):
     ]
     EDITABLE_KEYS = {"DutchName", "EnglishName"}
     COPY_COL = 1   # ScientificName column index
-    COLOR_MANUAL = QColor(204, 229, 255)   # light blue   — user-edited
-    COLOR_NBA    = QColor(204, 255, 204)   # light green  — NBA-filled
-    COLOR_NEW    = QColor(255, 242, 204)   # light yellow — newly merged
+    COLOR_MANUAL     = QColor(204, 229, 255)   # light blue   — user-edited
+    COLOR_NBA        = QColor(204, 255, 204)   # light green  — NBA-filled
+    COLOR_NEW        = QColor(255, 242, 204)   # light yellow — newly merged
+    COLOR_BACKFILLED = QColor(252, 228, 214)   # pale orange  — name backfilled
 
     def __init__(self, parent, csv_path,
-                 highlight_rows_from=None, title=None):
+                 highlight_rows_from=None,
+                 highlight_changed_from_path=None,
+                 title=None):
         super().__init__(parent)
         self.setWindowTitle(title or "Provide English and/or Dutch species names")
         self.resize(750, 500)
@@ -628,6 +631,20 @@ class SpeciesCollectionDialog(QDialog):
         # is painted yellow — used by the trip→master merge review flow to
         # call out newly-merged species (always appended to the file end).
         self.highlight_rows_from = highlight_rows_from
+        # When set, rows whose DutchName/EnglishName differ from the
+        # snapshot at this path are painted orange — the merge-review
+        # flow uses this to call out existing master rows whose blank
+        # vernacular names were just backfilled from the trip.
+        self.highlight_changed_from_path = highlight_changed_from_path
+        self._backfilled_csv_idxs = set()
+        # Review mode is auto-detected: when a pre-merge snapshot path
+        # was supplied, the dialog is wrapping a merge review and
+        # exposes explicit Keep/Restore buttons. The orchestrator reads
+        # `self.verdict` after exec() — None means the user closed via
+        # X without picking, and the orchestrator falls back to a small
+        # confirm prompt.
+        self.review_mode = highlight_changed_from_path is not None
+        self.verdict = None
         self.all_rows = []
         self.dirty = False
         self.cell_colors = {}   # (row, visual_col) -> QColor
@@ -694,13 +711,35 @@ class SpeciesCollectionDialog(QDialog):
         btn_layout.addWidget(self.status_label)
         btn_layout.addStretch()
 
-        quit_btn = QPushButton("Quit")
-        quit_btn.clicked.connect(self.close)
-        btn_layout.addWidget(quit_btn)
+        if self.review_mode:
+            # Explicit terminal actions for the merge-review flow. Keep
+            # is the default so Enter accepts the merge.
+            restore_btn = QPushButton("Restore previous master")
+            restore_btn.setToolTip("Discard the merge — and any name edits made during this review.")
+            restore_btn.clicked.connect(lambda: self._end_review("restore"))
+            btn_layout.addWidget(restore_btn)
+            keep_btn = QPushButton("Keep merged master")
+            keep_btn.setToolTip("Accept the merged master and discard the .csvold backup.")
+            keep_btn.setDefault(True)
+            keep_btn.clicked.connect(lambda: self._end_review("keep"))
+            btn_layout.addWidget(keep_btn)
+        else:
+            quit_btn = QPushButton("Quit")
+            quit_btn.clicked.connect(self.close)
+            btn_layout.addWidget(quit_btn)
         layout.addLayout(btn_layout)
 
         self._load_csv(csv_path)
         self.table.cellChanged.connect(self._on_cell_changed)
+
+    def _end_review(self, verdict):
+        """Set the merge-review verdict and close the dialog. Pending
+        edits are flushed first so a Keep doesn't lose them; a Restore
+        will be undone by the orchestrator's file swap regardless."""
+        if self.dirty:
+            self.on_save()
+        self.verdict = verdict
+        self.accept()
 
     @staticmethod
     def _format_level(raw):
@@ -806,10 +845,48 @@ class SpeciesCollectionDialog(QDialog):
             reader = csv.DictReader(f, delimiter=";")
             self.all_rows = list(reader)
 
-        # Start on the last page (most recent entries)
+        # Diff against the pre-merge snapshot so backfilled vernacular
+        # names can be highlighted in the table. Only relevant for the
+        # merge-review flow; otherwise leaves the set empty.
+        self._compute_backfilled_idxs()
+
         total = len(self.all_rows)
+        # Default lands on the last page (where merge-newly-added rows
+        # sit). If the merge also backfilled names on existing rows,
+        # those are scattered earlier in the file and easy to miss —
+        # so jump to the page containing the first backfilled row.
         self.page_start = max(0, total - self.PAGE_SIZE)
+        if self._backfilled_csv_idxs:
+            first = min(self._backfilled_csv_idxs)
+            self.page_start = (first // self.PAGE_SIZE) * self.PAGE_SIZE
         self._show_page()
+
+    def _compute_backfilled_idxs(self):
+        """Build the set of csv indices in self.all_rows whose vernacular
+        names differ from the pre-merge snapshot at
+        highlight_changed_from_path. Newly-added rows (not present in
+        the snapshot at all) are excluded — those are covered by the
+        yellow highlight via highlight_rows_from."""
+        self._backfilled_csv_idxs = set()
+        path = self.highlight_changed_from_path
+        if not path or not os.path.isfile(path):
+            return
+        import csv as _csv
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                reader = _csv.DictReader(f, delimiter=";")
+                old_by_sci = {(r.get("ScientificName") or "").strip(): r
+                              for r in reader}
+        except OSError:
+            return
+        for idx, row in enumerate(self.all_rows):
+            sci = (row.get("ScientificName") or "").strip()
+            old = old_by_sci.get(sci)
+            if old is None:
+                continue  # new row — handled by yellow highlight
+            if (row.get("DutchName", "") != old.get("DutchName", "")
+                    or row.get("EnglishName", "") != old.get("EnglishName", "")):
+                self._backfilled_csv_idxs.add(idx)
 
     def _show_page(self):
         """Display current page of rows in the table."""
@@ -823,20 +900,35 @@ class SpeciesCollectionDialog(QDialog):
         self.display_indices.reverse()
         self.table.setRowCount(len(self.display_indices))
 
-        # Pre-seed yellow highlight for any newly-merged rows on this page,
-        # before per-cell styling overwrites them. The colour delegate
-        # paints background from cell_colors; this gives every cell of an
-        # affected visual row the COLOR_NEW background.
-        if self.highlight_rows_from is not None:
-            cols_total = self.table.columnCount()
-            for visual_row, csv_idx in enumerate(self.display_indices):
-                if csv_idx >= self.highlight_rows_from:
-                    for vcol in range(cols_total):
-                        self.cell_colors[(visual_row, vcol)] = self.COLOR_NEW
+        # Pre-seed merge-review highlights before per-cell styling can
+        # overwrite them. New (added) rows are painted yellow; rows
+        # whose vernacular names were backfilled by the merge are
+        # painted orange. The two sets are disjoint by construction
+        # (added rows live at csv_idx >= threshold; backfills only
+        # apply to rows that existed in the pre-merge snapshot).
+        cols_total = self.table.columnCount()
+        for visual_row, csv_idx in enumerate(self.display_indices):
+            if (self.highlight_rows_from is not None
+                    and csv_idx >= self.highlight_rows_from):
+                colour = self.COLOR_NEW
+            elif csv_idx in self._backfilled_csv_idxs:
+                colour = self.COLOR_BACKFILLED
+            else:
+                continue
+            for vcol in range(cols_total):
+                self.cell_colors[(visual_row, vcol)] = colour
 
-        # Update navigation
+        # Update navigation. In the merge-review flow also surface the
+        # counts of new + backfilled rows so the user knows up-front how
+        # much the merge actually did.
+        merge_note = ""
+        if self.highlight_rows_from is not None:
+            added = max(0, total - self.highlight_rows_from)
+            backfilled = len(self._backfilled_csv_idxs)
+            merge_note = f"  [merge: +{added} new, {backfilled} names filled]"
         self.range_label.setText(
-            f"{self.page_start + 1}\u2013{page_end} of {total}  ({self.csv_path})")
+            f"{self.page_start + 1}\u2013{page_end} of {total}{merge_note}"
+            f"  ({self.csv_path})")
         self.prev_btn.setEnabled(self.page_start > 0)
         self.next_btn.setEnabled(page_end < total)
 
@@ -1420,11 +1512,18 @@ class MergeTripDialog(BaseTripModuleDialog):
             dlg = SpeciesCollectionDialog(
                 self, master_csv,
                 highlight_rows_from=pre_merge_count,
+                highlight_changed_from_path=(backup_csv
+                                             if os.path.isfile(backup_csv)
+                                             else None),
                 title="Review merged master species collection",
             )
             dlg.exec()
 
-            choice = self._prompt_keep_restore_continue()
+            # The dialog exposes Keep / Restore buttons in review mode
+            # and sets self.verdict accordingly. None means the user
+            # closed via X without picking — fall back to the safety
+            # prompt so a stray Esc/X never silently finalizes anything.
+            choice = dlg.verdict or self._prompt_keep_restore_continue()
             if choice == "continue":
                 continue
             if choice == "keep":

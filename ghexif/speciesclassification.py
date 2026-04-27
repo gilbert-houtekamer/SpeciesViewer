@@ -165,17 +165,38 @@ class SpeciesClassification:
 
     # merge both SpeciesCollections
     def mergeSpeciesCollections(self, newSC):
+        """Fold trip-side species into master.
+
+        - Species not yet in master are added outright.
+        - Species already in master have any blank vernacular name
+          (DutchName, EnglishName) backfilled from the trip. Names
+          master already has are never overwritten — master is the
+          canonical source; the trip only contributes where master is
+          silent. The merge-review dialog gives the user a final pass.
+        """
         for species in newSC:
-            if species in self.sc_dict: continue
-            speciesobject = newSC[species] 
-            self.sc_dict[species] = speciesobject
-            if speciesobject["Level"].value == 1:
+            trip_obj = newSC[species]
+            if species in self.sc_dict:
+                master_obj = self.sc_dict[species]
+                for field in ('DutchName', 'EnglishName'):
+                    trip_val = (trip_obj.get(field, '') or '').strip()
+                    master_val = (master_obj.get(field, '') or '').strip()
+                    if not master_val and trip_val:
+                        master_obj[field] = trip_val
+                        logger.info(
+                            f'Filled missing {field} for "{species}" from '
+                            f'trip: "{trip_val}".')
+                continue
+            self.sc_dict[species] = trip_obj
+            if trip_obj["Level"].value == 1:
                 outstr = ""
-                if speciesobject['EnglishName'] != "":
-                    outstr += f""""{speciesobject['EnglishName']}" (English) / """
-                if speciesobject['DutchName'] != "":
-                    outstr += f""""{speciesobject['DutchName']}" (Dutch) / """
-                logger.info(f"""Merge {outstr}"{speciesobject['ScientificName']}" (Scientific) to Master species repository.""")
+                if trip_obj['EnglishName'] != "":
+                    outstr += f'"{trip_obj["EnglishName"]}" (English) / '
+                if trip_obj['DutchName'] != "":
+                    outstr += f'"{trip_obj["DutchName"]}" (Dutch) / '
+                logger.info(
+                    f'Merge {outstr}"{trip_obj["ScientificName"]}" (Scientific) '
+                    f'to Master species repository.')
         return
 
 
