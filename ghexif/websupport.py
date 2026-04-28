@@ -1212,6 +1212,7 @@ def addOneSpeciesPage(MyProject, species_param):
         rateorder = {}
         skipped_files = 0
         skipped_upn = 0
+        skipped_wrong_species = 0
         for JPGname in list(species_param['JPGmap']):
             basename = os.path.basename(JPGname)
             if basename not in MyProject.files_dict:
@@ -1222,13 +1223,22 @@ def addOneSpeciesPage(MyProject, species_param):
             if upn_key not in MyProject.UniquePictureName_dict:
                 skipped_upn += 1
                 continue
-            diversity = MyProject.getPictureAgeSexePlumage(MyProject.UniquePictureName_dict[upn_key])
+            # Drop ghost JPGmap entries: the UPN's species was reassigned (e.g. via
+            # the Commit dialog) but JPGmap kept the old reference. Trying to
+            # render those produces a path under the wrong species and a copy
+            # error. Only show JPGs whose UPN currently belongs to this species.
+            picture = MyProject.UniquePictureName_dict[upn_key]
+            if picture.get('WetSoortNaam', '') != species_param['ScientificName']:
+                skipped_wrong_species += 1
+                continue
+            diversity = MyProject.getPictureAgeSexePlumage(picture)
             rating = MyProject.computeRatingFile(JPGname_no_path)
             if '-small' not in JPGname:
                 rateorder[(diversity, rating, JPGname)] = JPGname
-        if skipped_files > 0 or skipped_upn > 0:
+        if skipped_files > 0 or skipped_upn > 0 or skipped_wrong_species > 0:
             logger.debug(f"addOneSpeciesPage '{species_param['ScientificName']}': JPGmap={len(species_param['JPGmap'])}, "
-                         f"matched={len(rateorder)}, skipped_files={skipped_files}, skipped_upn={skipped_upn}")
+                         f"matched={len(rateorder)}, skipped_files={skipped_files}, skipped_upn={skipped_upn}, "
+                         f"skipped_wrong_species={skipped_wrong_species}")
         # keep all JPGs sorted, not yet by male/female, breeding etc
         # Sort the dictionary by rating in descending order
         # Sort the items by diversity, rating, and JPGname in descending order

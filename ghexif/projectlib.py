@@ -725,6 +725,7 @@ class Project:
             picture = self.UpdatePicture(upn)
             picture['Rate'] = self.computeRating(upn)
             scientificname = ""
+            species = None  # reset; otherwise the second JPG loop can pour this UPN's data into the previous UPN's species record
             # Read species data and put in the UniquePictureName (upn)
             for filename in picture['Files']:
                 thisfile = self.files_dict[filename]
@@ -780,7 +781,11 @@ class Project:
                     if (picture['BestJPG'] == "") or ('dxo' in thisfile['File:FileName'].lower()):
                         picture['BestJPGPathName'] = upn['TargetPath']
                         picture['BestJPG'] = thisfile['File:FileName']
-                    if (scientificname != ""):
+                    # Only update the per-species record when this UPN is actually attributed
+                    # to a species in this run. Bare `scientificname != ""` is not enough:
+                    # the typo branch above sets it to None, and `species` may be stale from
+                    # a prior UPN iteration. Require all three to agree.
+                    if scientificname and species is not None and picture['WetSoortNaam']:
                         if (species['BestJPG'] == "") or \
                             (int(species['currentHighestRating']) < int(picture['Rate'])):
                             species['BestJPGPathName'] = upn['TargetPath']
@@ -790,7 +795,8 @@ class Project:
                             species['currentHighestRating'] = int(picture['Rate'])      # so we know if there are better pictures
                             if self.SpeciesDebug > 0:
                                     print(f"{picture['WetSoortNaam']:28}: Added file {thisfile['WindowsFileName']} to best {species['BestJPGPathName']}/{species['BestJPG']} {species['JPGmap']}", file=filebug)
-                        species['JPGmap'].append(thisfile['File:FileName'])        # at some point this was the highest
+                        if thisfile['File:FileName'] not in species['JPGmap']:
+                            species['JPGmap'].append(thisfile['File:FileName'])
 
         logger.info(f"Species information added for {recognized_species} pictures.")
         return 0
