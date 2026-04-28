@@ -18,6 +18,22 @@ import logging
 
 logger = logging.getLogger("speciesviewer")
 
+
+def _same_file_on_disk(src, dst):
+    """True when src and dst refer to the same on-disk file even if
+    the path strings differ (Windows is case-insensitive, mixes
+    forward and back slashes, etc.). Falls back to a normalised
+    string compare when one path doesn't yet exist — so the
+    skip-guard still fires before the copy on a clean target."""
+    try:
+        if os.path.exists(src) and os.path.exists(dst):
+            return os.path.samefile(src, dst)
+    except OSError:
+        pass
+    return (os.path.normcase(os.path.normpath(src))
+            == os.path.normcase(os.path.normpath(dst)))
+
+
 # provide easy access to all the locations that are referenced without
 # globals
 class Project:
@@ -271,24 +287,42 @@ class Project:
         global debugfile, count
         species = self.getSpecies(leaf)
         biotadatabase = self.getRepositoryPath()
-        directoryname = (biotadatabase + species['TargetPath']).lower()
-        os.makedirs(directoryname, exist_ok=True)    
+        # os.path.join handles a missing trailing separator on the
+        # repository path; the previous '+' concat produced
+        # 'naturedbbiota/...' when biotadatabase had no trailing slash,
+        # which created a bogus directory tree alongside master.
+        directoryname = os.path.join(biotadatabase,
+                                      species['TargetPath']).lower()
+        os.makedirs(directoryname, exist_ok=True)
 
         # find all files in this directory, this is an expensive scan, let's find out how slow it is
         for picture in self.UniquePictureName_dict:
             if self.UniquePictureName_dict[picture]['WetSoortNaam'] == leaf:        # we want this
                 for filename in self.UniquePictureName_dict[picture]['Files']:
+                    sourcefile = ""
+                    targetfile = ""
                     try:
-                        print(f"File {filename:40}: {self.files_dict[filename]['WindowsFileName']:64} to {biotadatabase+self.UniquePictureName_dict[picture]['TargetPath']+self.files_dict[filename]['File:FileName']}",
-                            file=debugfile)
                         sourcefile = self.files_dict[filename]['WindowsFileName']
-                        targetfile = biotadatabase+self.UniquePictureName_dict[picture]['TargetPath']+self.files_dict[filename]['File:FileName']                                      
-                        shutil.copy(sourcefile, targetfile)
+                        targetfile = os.path.join(
+                            biotadatabase,
+                            self.UniquePictureName_dict[picture]['TargetPath'],
+                            self.files_dict[filename]['File:FileName'])
+                        print(f"File {filename:40}: {sourcefile:64} to {targetfile}",
+                            file=debugfile)
+                        # Use samefile() rather than string == — the
+                        # source path may use forward slashes / a
+                        # different case from os.path.join's output
+                        # while still being the same file on Windows.
+                        if not _same_file_on_disk(sourcefile, targetfile):
+                            shutil.copy(sourcefile, targetfile)
                         #also delete
                         # os.remove(sourcefile)
                         count += 1
-                    except:
-                        logger.info(f"Species: Directory {(biotadatabase + species['TargetPath']).lower()} of file {species['BestJPG']} could not be copied.")                    
+                    except Exception as exc:
+                        logger.info(
+                            f"Species copy failed {sourcefile} -> {targetfile}: "
+                            f"{type(exc).__name__}: {exc}"
+                        )
             #print(f"Species: Directory {directoryname} created for {species['ScientificName'] + '.html'}.")
         return
 

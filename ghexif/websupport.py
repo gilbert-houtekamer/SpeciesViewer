@@ -26,7 +26,22 @@ ClassificationGroupLidwoord = ["de", "de", "de", "de","de", "het", "de"]
 ClassificationGroupNameNLmeervoud = ["Soorten", "Families", "Orden", "Klassen","Stammen", "Rijken", "Biota"]
 ClassificationGroupNameENmeervoud = ["Species","Families", "Orders", "Classes", "Phyla", "Kingdoms", "Biota"]
 
-# web support 
+def _src_already_at_final(MyProject, src, target_path, basename):
+    """True when `src` is the same file as the spot sv7 would copy it
+    to in the repository's biota tree. Used to skip the redundant
+    pass through frozen for files that are already at home (typical
+    for historical pictures in master-mode runs)."""
+    try:
+        final_dst = os.path.join(MyProject.getRepositoryPath(),
+                                  target_path, basename)
+        if not (os.path.exists(src) and os.path.exists(final_dst)):
+            return False
+        return os.path.samefile(src, final_dst)
+    except OSError:
+        return False
+
+
+# web support
 def getTemplateOutputString(MyProject, species, file, picture, TemplateLine):
 # 	Parse line in pieces between tokens (%%n%%) with n an integer that refers to a species-related blurp.
 # 	The syntax implies that text and token %% seperators alternate, which we keep track off with TextOrToken 
@@ -1134,8 +1149,18 @@ def writeOneSpecies(MyProject, leaf, temptextfile):
         targetstr = os.path.join(MyProject.ReviewFrozen(),species['TargetPath'], species['BestJPG'])
         try:
             os.makedirs(os.path.join(MyProject.ReviewFrozen(), species['TargetPath']), exist_ok=True)
-            rc = shutil.copy(sourcestr, targetstr)
-            MyProject.addAllSpeciesFiles(sourcestr,os.path.join(MyProject.getBiotaWebRoot(), species['TargetPath'], species['BestJPG']))
+            # Skip the copy when the source is already at its final
+            # destination in the repository's biota tree (i.e. previously
+            # committed historical files in master mode). sv7's
+            # copytree(dirs_exist_ok=True) only adds/updates from frozen,
+            # so omitting these from frozen leaves master/biota intact.
+            if _src_already_at_final(MyProject, sourcestr,
+                                     species['TargetPath'], species['BestJPG']):
+                MyProject.addAllSpeciesFiles(sourcestr, os.path.join(
+                    MyProject.getBiotaWebRoot(), species['TargetPath'], species['BestJPG']))
+            else:
+                rc = shutil.copy(sourcestr, targetstr)
+                MyProject.addAllSpeciesFiles(sourcestr,os.path.join(MyProject.getBiotaWebRoot(), species['TargetPath'], species['BestJPG']))
         except Exception as e:
             logger.info(f"writeOneSpecies copy failed {sourcestr} -> {targetstr}: {e}")
     else:
@@ -1258,8 +1283,15 @@ def addOneSpeciesPage(MyProject, species_param):
                         targetstr =  os.path.join(BiotaDiskRoot, picture['TargetPath'], picture['BestJPG'])
                         JPGname_no_path = MyProject.files_dict[os.path.basename(JPGname)]
                         if not MyProject.getSkipJPGs():
-                            shutil.copy(JPGname_no_path['WindowsFileName'], targetstr)
-                        filesfound += 1                            
+                            # Skip the redundant frozen-staging copy when
+                            # the source is already at its final spot in
+                            # master/biota (typical for historical files
+                            # in master mode).
+                            if not _src_already_at_final(MyProject,
+                                    JPGname_no_path['WindowsFileName'],
+                                    picture['TargetPath'], picture['BestJPG']):
+                                shutil.copy(JPGname_no_path['WindowsFileName'], targetstr)
+                        filesfound += 1
                     else:
                         rejectUPNs += 1
 

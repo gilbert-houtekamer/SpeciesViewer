@@ -44,30 +44,61 @@ def getDateFromPictures(MyProject):
         return parsed_date.strftime('Blog Pictures %Y-%m-%d')
     return ""
 
+def _same_file_on_disk(src, dst):
+    """True when src and dst refer to the same on-disk file even if
+    the path strings differ (Windows is case-insensitive, mixes
+    forward and back slashes, etc.). Falls back to a normalised
+    string compare when one of the paths doesn't yet exist — so the
+    skip-guard still fires before the copy on a clean target."""
+    try:
+        if os.path.exists(src) and os.path.exists(dst):
+            return os.path.samefile(src, dst)
+    except OSError:
+        pass
+    return (os.path.normcase(os.path.normpath(src))
+            == os.path.normcase(os.path.normpath(dst)))
+
+
 def makeSpeciesDirectory(MyProject, leaf):
     global debugfile, count
     species = MyProject.sp.species_dict[leaf]
-    directoryname = (MyProject.getRepositoryPath() + species['TargetPath']).lower()
-    os.makedirs(directoryname, exist_ok=True)    
+    # os.path.join handles a missing trailing separator on the repository
+    # path; raw '+' concat produced 'naturedbbiota/...' for repositories
+    # configured without a trailing slash, which broke both the file
+    # copies and the != skip-guard a few lines below.
+    directoryname = os.path.join(MyProject.getRepositoryPath(),
+                                  species['TargetPath']).lower()
+    os.makedirs(directoryname, exist_ok=True)
 
     # find all files in this directory, this is an expensive scan, let's find out how slow it is
     for picture in MyProject.UniquePictureName_dict:
         if MyProject.UniquePictureName_dict[picture]['WetSoortNaam'] == leaf:        # we want this
             for filename in MyProject.UniquePictureName_dict[picture]['Files']:
+                sourcefile = ""
+                targetfile = ""
                 try:
-                    print(f"File {filename:40}: {MyProject.files_dict[filename]['WindowsFileName']:64} to " + \
-                          f"{MyProject.getRepositoryPath()+MyProject.UniquePictureName_dict[picture]['TargetPath']+MyProject.files_dict[filename]['File:FileName']}",
-                          file=debugfile)
                     sourcefile = MyProject.files_dict[filename]['WindowsFileName']
-                    targetfile = MyProject.getRepositoryPath() + \
-                            MyProject.UniquePictureName_dict[picture]['TargetPath']+MyProject.files_dict[filename]['File:FileName']                                      
-                    if sourcefile != targetfile:        # == happens when freeze/commit are run twice
+                    targetfile = os.path.join(
+                        MyProject.getRepositoryPath(),
+                        MyProject.UniquePictureName_dict[picture]['TargetPath'],
+                        MyProject.files_dict[filename]['File:FileName'])
+                    print(f"File {filename:40}: {sourcefile:64} to {targetfile}",
+                          file=debugfile)
+                    # samefile() catches the cases plain != misses on
+                    # Windows: forward vs back slashes, case differences,
+                    # symlinks. Falls back to a normalised string compare
+                    # when the destination doesn't exist yet so a clean
+                    # first run still skips no-op copies.
+                    if not _same_file_on_disk(sourcefile, targetfile):
                         shutil.copy(sourcefile, targetfile)
                         #also make delete list
                         files_to_delete.append(sourcefile)
                     count += 1
-                except:
-                    logger.info(f"Species: Directory {(MyProject.getRepositoryPath() + species['TargetPath']).lower()} of file {species['BestJPG']} could not be copied.")
+                except Exception as exc:
+                    logger.info(
+                        f"Species copy failed {sourcefile} -> {targetfile}: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
         #logger.info(f"Species: Directory {directoryname} created for {species['ScientificName'] + '.html'}.")
     return
 
@@ -75,7 +106,8 @@ def makeSpeciesDirectory(MyProject, leaf):
 def makeDirectories(MyProject, speciesname, all_or_new):
     species = MyProject.sp.species_dict[speciesname]
     # create database to store pictures as needed
-    directoryname = (MyProject.getRepositoryPath() + species['TargetPath']).lower()
+    directoryname = os.path.join(MyProject.getRepositoryPath(),
+                                  species['TargetPath']).lower()
     try:
         os.makedirs(directoryname, exist_ok=True)
         for leaf in species['Leaves']:

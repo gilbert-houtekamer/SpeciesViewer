@@ -1480,7 +1480,7 @@ class MasterPipelineDialog(QDialog):
     the picture directory is already in the master commit marker."""
 
     PIP = {
-        'pending': '⚪',
+        'pending': '⬜',
         'running': '⏳',
         'done':    '✅',
         'failed':  '❌',
@@ -1520,8 +1520,6 @@ class MasterPipelineDialog(QDialog):
             row['button'].clicked.connect(
                 lambda _checked=False, i=idx: self._run_step(i))
             self.rows.append(row)
-        for r in self.rows[1:]:
-            r['button'].setEnabled(False)
 
         self.warning_label = QLabel("")
         self.warning_label.setStyleSheet("color: #B45309;")
@@ -1544,6 +1542,10 @@ class MasterPipelineDialog(QDialog):
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)
 
+        # Probe artifacts on disk and seed pip + timestamp + button
+        # enablement from whatever survives from prior runs. After this
+        # the dialog is in a "ready to either resume or restart" state.
+        self._initial_probe()
         self._refresh_warning()
 
     def _make_step_row(self, parent_layout, label):
@@ -1555,15 +1557,89 @@ class MasterPipelineDialog(QDialog):
         pip.setFixedWidth(36)
         pip.setAlignment(Qt.AlignmentFlag.AlignCenter)
         row.addWidget(pip)
-        row.addWidget(QLabel(label))
+
+        text_box = QVBoxLayout()
+        text_box.setSpacing(0)
+        text_box.addWidget(QLabel(label))
+        timestamp = QLabel("")
+        ts_font = timestamp.font()
+        ts_font.setPointSize(max(ts_font.pointSize() - 1, 8))
+        timestamp.setFont(ts_font)
+        timestamp.setStyleSheet("color: #666;")
+        text_box.addWidget(timestamp)
+        row.addLayout(text_box)
+
         row.addStretch()
         button = QPushButton("Run")
         row.addWidget(button)
         parent_layout.addLayout(row)
-        return {'pip': pip, 'button': button}
+        return {'pip': pip, 'button': button, 'timestamp': timestamp,
+                'state': 'pending'}
 
     def _set_pip(self, idx, status):
+        self.rows[idx]['state'] = status
         self.rows[idx]['pip'].setText(self.PIP[status])
+
+    # ── Artifact probing & step state ───────────────────────────────────
+    def _trip_review_dir(self):
+        """<master>/metadata/review/<trip-name>/ — where sv2/sv6 write
+        their per-trip artifacts in master mode."""
+        master = _config.get("master", "masterbiotadatabase", fallback="")
+        pic_dir = self._picture_dir()
+        if not (master and pic_dir):
+            return None
+        return os.path.join(master, "metadata", "review", Path(pic_dir).name)
+
+    def _artifact_mtime(self, idx):
+        """Return the datetime that proves step idx ran for this trip,
+        or None if there's no evidence on disk."""
+        if idx == 2:
+            # Step 3's "artifact" is the marker entry we write after sv7.
+            when = self._committed_at()
+            if not when:
+                return None
+            try:
+                return datetime.strptime(when, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                return None
+        review = self._trip_review_dir()
+        if not review:
+            return None
+        path = (os.path.join(review, "data_files.csv") if idx == 0
+                else os.path.join(review, "frozen", "frozen_data_files.csv"))
+        if not os.path.isfile(path):
+            return None
+        try:
+            return datetime.fromtimestamp(os.path.getmtime(path))
+        except OSError:
+            return None
+
+    def _set_timestamp(self, idx, mtime):
+        if mtime is None:
+            self.rows[idx]['timestamp'].setText("")
+        else:
+            self.rows[idx]['timestamp'].setText(
+                f"as of {mtime.strftime('%Y-%m-%d %H:%M')}"
+            )
+
+    def _initial_probe(self):
+        for idx in range(len(self.rows)):
+            mtime = self._artifact_mtime(idx)
+            self._set_pip(idx, 'done' if mtime else 'pending')
+            self._set_timestamp(idx, mtime)
+        self._refresh_buttons()
+
+    def _refresh_buttons(self):
+        """Step 0's Run is always enabled. Step N>0 is enabled when the
+        previous step is currently green (either from this session or
+        from a prior-run artifact found on disk)."""
+        for idx, row in enumerate(self.rows):
+            if idx == 0:
+                row['button'].setEnabled(True)
+            else:
+                row['button'].setEnabled(
+                    self.rows[idx - 1]['state'] == 'done'
+                )
 
     # ── Marker-file plumbing ────────────────────────────────────────────
     def _master_commits_path(self):
@@ -1659,18 +1735,31 @@ class MasterPipelineDialog(QDialog):
         is_last_step = idx == len(self.rows) - 1
 
         def on_success():
+            now = datetime.now()
             self._set_pip(idx, 'done')
-            self.rows[idx]['button'].setEnabled(True)
-            if idx + 1 < len(self.rows):
-                self.rows[idx + 1]['button'].setEnabled(True)
+            self._set_timestamp(idx, now)
+            # A fresh run of step N invalidates anything downstream:
+            # the artifacts for steps N+1..end are now stale w.r.t.
+            # the new step N output, so reset their pip + timestamp.
+            for m in range(idx + 1, len(self.rows)):
+                self._set_pip(m, 'pending')
+                self._set_timestamp(m, None)
             if is_last_step:
                 self._record_commit()
                 self._refresh_warning()
+            self._refresh_buttons()
 
         def on_failure(_err):
-            self._set_pip(idx, 'failed')
+            # Failure didn't touch downstream artifacts — leave their
+            # state alone. Just flip this row to red and let the user
+            # retry. Re-probe in case the script wrote partial output
+            # (so the timestamp reflects truth either way).
+            mtime = self._artifact_mtime(idx)
+            self._set_pip(idx, 'done' if mtime else 'failed')
+            self._set_timestamp(idx, mtime)
+            self._refresh_buttons()
+            # On failure, keep current row's button enabled regardless.
             self.rows[idx]['button'].setEnabled(True)
-            # Downstream stays disabled — fix-and-retry first.
 
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(spec, on_success=on_success, on_failure=on_failure)
