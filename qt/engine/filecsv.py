@@ -72,12 +72,11 @@ class Files:
         return len(self.files_dict), from_time, last_time
     
     def write_project_files(self):
-        # print(f"Update file CSV {self.filename}")        
-        with open(self.filename, "w", newline="") as csvfile:
+        with open(self.filename, "w", newline="", encoding='utf-8') as csvfile:
             writer = csv.DictWriter(
                 csvfile, fieldnames=COLUMN_NAMES.values(), quoting=csv.QUOTE_MINIMAL, delimiter=';'
             )
             writer.writeheader()
             for file in self.files_dict:
                 row = self.files_dict[file]
-                writer.writerow(row)              
+                writer.writerow(row)

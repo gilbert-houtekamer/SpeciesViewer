@@ -27,6 +27,7 @@ if __name__ == "__main__":
 from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
 import ghexif.projectlib
 from ghexif.handling import deriveUniquePictureName
+from ghexif.exif_writer import exiftool_write
 import ghexif.exceptions
 import ghexif.statemachine
 
@@ -48,9 +49,15 @@ def main(args, config):
     # unreadable thumbnails, ignorable extensions, etc.). The JSON
     # payload is still on stdout in that case, so we'd rather see the
     # data than discard it.
+    # -charset utf8 / filename=utf8 makes exiftool interpret file contents and
+    # filenames as UTF-8 (instead of the Windows local code page). encoding="utf-8"
+    # is also required: without it, pyexiftool decodes the subprocess pipe via
+    # locale.getpreferredencoding() (cp1252 on Windows), so even when exiftool
+    # outputs UTF-8 we'd see mojibake (e.g. ü → Ã¼). Both are needed.
     with exiftool.ExifToolHelper(
         logger=logging.getLogger("speciesviewer"),
-        common_args=["-G"],
+        common_args=["-G", "-charset", "utf8", "-charset", "filename=utf8"],
+        encoding="utf-8",
         check_execute=False,
     ) as et:
         if not os.path.isdir(MyProject.getProjectPath()):
@@ -215,9 +222,8 @@ def main(args, config):
                     if not target_already_has_location:
                         xmp_filepath = target_xmp.get("WindowsFileName", "")
                         if xmp_filepath and exif_args:
-                            cmd = ['exiftool'] + exif_args + ['-overwrite_original', xmp_filepath]
                             try:
-                                subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+                                exiftool_write(xmp_filepath, exif_args)
                                 logger.info(f"GPS backfill: wrote location to {target_xmp.get('File:FileName', '?')}")
                             except subprocess.CalledProcessError as e:
                                 logger.warning(f"GPS backfill: failed to write {target_xmp.get('File:FileName', '?')}: {e.stderr}")
@@ -228,7 +234,7 @@ def main(args, config):
             logger.info(f"GPS backfill: wrote location data to {xmp_backfill_count} XMP file(s) on disk.")
 
         # Write all rows to CSV
-        with open(datafilelocation, "w", newline="") as csvfile:
+        with open(datafilelocation, "w", newline="", encoding='utf-8') as csvfile:
             writer = csv.DictWriter(
                 csvfile, fieldnames=COLUMN_NAMES.values(), quoting=csv.QUOTE_MINIMAL, delimiter=';'
             )

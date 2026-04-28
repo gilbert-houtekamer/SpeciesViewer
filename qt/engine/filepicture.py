@@ -2,10 +2,11 @@ from engine.specieslib import Species
 from engine.speciesclassification import SpeciesClassification
 from engine.filecsv import Files
 from engine.picturecsv import Pictures
+from ghexif.exif_writer import exiftool_write
 import logging
 import time
 import os
-from pathlib import Path  
+from pathlib import Path
 import subprocess
 import json
 import ast
@@ -147,24 +148,29 @@ class FilePicture:
     # 1. change actual file with EXIFtool
     # 2. Change the .csv file reflected in the internal structures
     # 3. Review Photolab and Lightroom
+    # Returns True if the on-disk XMP:Subject was actually rewritten.
     def replaceFileSubject(self, filename, original_subject, correct_subject):
         filepath = Path(self.fi.files_dict[filename]['WindowsFileName'])
         original_subject_for_xmp = format_subject_for_xmp(original_subject)
-        correct_subject_for_xmp = format_subject_for_xmp(correct_subject)        
-        # Step 1: Read current XMP:Subject using exiftool
+        correct_subject_for_xmp = format_subject_for_xmp(correct_subject)
+        wrote = False
+        # Step 1: Read current XMP:Subject using exiftool. -charset utf8 makes
+        # exiftool interpret args/output as UTF-8; encoding='utf-8' makes Python
+        # decode stdout as UTF-8 instead of the Windows local code page.
         try:
             result = subprocess.run(
-                ['exiftool', '-j', '-XMP:Subject', str(filepath)],
+                ['exiftool', '-charset', 'filename=utf8', '-charset', 'utf8',
+                 '-j', '-XMP:Subject', str(filepath)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 check=True,
-                text=True
+                text=True,
+                encoding='utf-8'
             )
             metadata = json.loads(result.stdout)[0]
             current_subjects = metadata.get('Subject', [])
             if isinstance(current_subjects, str):
                 current_subjects = [current_subjects]
-            # print(f"current_subjects in {str(filepath)} from {current_subjects} to {correct_subject}")
 
             # Step 3: Replace subject if original_subject is found
             try:
@@ -174,25 +180,20 @@ class FilePicture:
             except Exception:
                 original_subject_list = [original_subject]
             if original_subject_list == current_subjects:
-                cmd = ['exiftool', f'-XMP:Subject={correct_subject_for_xmp}', '-overwrite_original', str(filepath)]
-                # print("Running command:", " ".join(cmd))
-
-                subprocess.run(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    check=True,
-                    text=True
-                )
-                # print(f"Updated subject in {filepath.name} to: {correct_subject}")
+                exiftool_write(filepath, [f'-XMP:Subject={correct_subject_for_xmp}'])
+                wrote = True
             else:
-                print(f"Original subject '{original_subject_for_xmp}' not found in {filepath.name}")
+                logger.warning(
+                    f"Original subject '{original_subject_for_xmp}' not found in {filepath.name}; "
+                    f"on-disk value is {current_subjects}."
+                )
 
         except subprocess.CalledProcessError as e:
-            print(f"ExifTool error: {e.stderr}")
+            logger.error(f"ExifTool error on {filepath.name}: {e.stderr}")
 
         # Step 2: update the internal data structure
         self.fi.files_dict[filename]['XMP:Subject'] = correct_subject
+        return wrote
 
 
 
@@ -211,11 +212,11 @@ class FilePicture:
         return upn_object
 
     # function to determine which files must be updated
+    # Returns (upn_object, files_written_count). The caller should report success
+    # only when files_written_count > 0; the CSV is always updated either way.
     def updateSubject(self, filename, original_subject, corrected_subject):
         if original_subject == corrected_subject:
-            logger.info(f"There are no changes for {filename}, no updates doen.")
-
-        # print(f"Entered updateSubject self.fpr.updateSubject({filename}, {corrected_subject})")
+            logger.info(f"There are no changes for {filename}, no updates done.")
 
         try:
             parts = ast.literal_eval(corrected_subject)
@@ -230,17 +231,18 @@ class FilePicture:
             sc_object = self.sc.sc_dict[scientific_name]
 
         upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
+        files_written = 0
         for f in self.fi.files_dict:
             if self.fi.files_dict[f]["UniquePictureName"] == upn_name:
-                # print(f"File {f} has upn name {upn_name}")
                 if self.fi.files_dict[f]["XMP:Subject"] == original_subject:
-                    # print(f"File {f} has original subject {original_subject}")
-                    self.replaceFileSubject(f, original_subject, corrected_subject)
+                    if self.replaceFileSubject(f, original_subject, corrected_subject):
+                        files_written += 1
 
         # update external CSV file (internal done on a per file basis)
         self.fi.write_project_files()
         # update internal and external data_pictures (just one per definition)
-        return self.replaceUPNSubject(upn_name, original_subject, corrected_subject, sc_object)        
+        upn_object = self.replaceUPNSubject(upn_name, original_subject, corrected_subject, sc_object)
+        return upn_object, files_written
    
 
     # read all species

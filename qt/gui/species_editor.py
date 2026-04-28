@@ -288,8 +288,16 @@ class SpeciesInfoDialog(QDialog):
         logger.info(f"📦 Committing species name: {format_subject_for_xmp(corrected_subject)} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")
         updated_upns = set()
         for f in matching_files:
-            upn_object = fpr.updateSubject(f.name, original_subject, corrected_subject)
-            logger.info(f"""✅ Updated {f.name} with corrected subject from "{format_subject_for_xmp(original_subject)}" to "{format_subject_for_xmp(corrected_subject)}".""")
+            upn_object, files_written = fpr.updateSubject(f.name, original_subject, corrected_subject)
+            if files_written:
+                logger.info(
+                    f"""✅ Updated {f.name}: rewrote {files_written} file{'s' if files_written != 1 else ''} on disk, """
+                    f'''subject "{format_subject_for_xmp(original_subject)}" → "{format_subject_for_xmp(corrected_subject)}".'''
+                )
+            else:
+                logger.warning(
+                    f"""⚠️ {f.name}: no XMP files rewritten (on-disk subject did not match CSV); CSV cache updated to "{format_subject_for_xmp(corrected_subject)}"."""
+                )
             upn_name = fpr.fi.files_dict.get(f.name, {}).get("UniquePictureName")
             if upn_name:
                 updated_upns.add(upn_name)
