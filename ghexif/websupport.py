@@ -661,8 +661,13 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     workstr += "			  <div>\n"
                     workstr += '			     <a href="' + BiotaWebRoot + species["TargetPath"] + species["ScientificName"] + '-' + language + '.html\"' + '>\n'
                     if species['BestJPG'] != "" and species['BestJPGPathName'] != "":
+                        # loading="lazy" defers off-screen image fetches so the all-species
+                        # grid (~2k entries) doesn't trigger a 2k-request fetch storm at
+                        # page load and time out the browser. decoding="async" keeps
+                        # decode work off the main thread.
                         workstr += '			         <img src="' + \
-                            BiotaWebRoot + species['BestJPGPathName'].replace("E:/Dropbox/my birds","/biota/animalia/chordata/aves") + species['BestJPG'] + '"' + " style=""\"width:100%\""">\n"
+                            BiotaWebRoot + species['BestJPGPathName'].replace("E:/Dropbox/my birds","/biota/animalia/chordata/aves") + species['BestJPG'] + \
+                            '" loading="lazy" decoding="async"' + " style=""\"width:100%\""">\n"
                     workstr += "			     </a>" 
                     workstr += '<p>' + species['ScientificName'].strip('0123456789 ').capitalize() + '</p>'
                     workstr += '<p>' + species['EnglishName'].capitalize() + '</p>'
