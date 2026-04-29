@@ -509,9 +509,20 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     workstr = workstr = 'all life (biota)'
             return workstr            
         elif tokenno == 36:
-            return species_param['DutchName'].capitalize()
+            # Dutch → English → scientific, so the blog photo title= never
+            # collapses to a blank when the Dutch name is missing.
+            return (
+                species_param['DutchName'].capitalize()
+                or species_param['EnglishName'].capitalize()
+                or formatSubspecies(species_param['ScientificName'].strip('0123456789 ')).capitalize()
+            )
         elif tokenno == 37:
-            return species_param['EnglishName'].capitalize() 
+            # English → Dutch → scientific.
+            return (
+                species_param['EnglishName'].capitalize()
+                or species_param['DutchName'].capitalize()
+                or formatSubspecies(species_param['ScientificName'].strip('0123456789 ')).capitalize()
+            )
         elif tokenno == 38:                                 # meervoud voor de children, dus 1 extra er af daarom -2                   
             return ClassificationGroupNameENmeervoud[species_param['Level'].value-2]   
         elif tokenno == 39:                                 # one level lower (enkelvoud)
