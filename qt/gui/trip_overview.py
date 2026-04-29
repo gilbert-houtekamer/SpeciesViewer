@@ -68,6 +68,17 @@ def populate_trip_overview(self):
     )
     self.trip_table.setSortingEnabled(False)
     self.trip_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+    self.trip_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+    self.trip_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
+    self.trip_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+    # Strong selection colour — the default translucent highlight is invisible
+    # against the yellow tab background.
+    self.trip_table.setStyleSheet("""
+        QTableWidget::item:selected {
+            background-color: #3478d4;
+            color: white;
+        }
+    """)
 
 
     # Make columns resizable
@@ -149,5 +160,6 @@ def populate_trip_overview(self):
     self.trip_table.cellDoubleClicked.connect(self.handle_trip_table_double_click)
     self.trip_table.verticalHeader().sectionDoubleClicked.connect(self.handle_row_rerun)
     self.trip_table.horizontalHeader().sectionDoubleClicked.connect(self.handle_column_run_all)
+    self.trip_table.customContextMenuRequested.connect(self.handle_trip_table_context_menu)
     # Keep Trip menu in sync with the selected row
     self.trip_table.currentCellChanged.connect(self.handle_trip_table_current_changed)

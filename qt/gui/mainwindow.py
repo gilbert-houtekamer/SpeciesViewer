@@ -579,6 +579,123 @@ class MainWindow(QMainWindow):
         runner = ColumnBatchRunner(self, self, "Sync Sidecars", day_steps, lambda: None)
         runner.start()
 
+    def handle_trip_table_context_menu(self, pos):
+        """Right-click on the Trip Overview: offer to run the user's selected pipeline cells."""
+        from PyQt6.QtWidgets import QMenu
+        from gui.trip_overview import STATE_COL_START
+        from gui.batch import ColumnBatchRunner
+        from utils.batch_config import generate_svconfig_ini
+
+        state_col_end = STATE_COL_START + len(self.state_labels) - 1
+        step_names = ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite", "Freeze", "WriteCommit"]
+        pipeline_msgs = {
+            "ReadDirExif":   ("Reading picture directory...",            "✅ Directory scan complete."),
+            "WritePictures": ("Reading meta data for all pictures ...",  "✅ Writing Summary data."),
+            "WriteBlog":     ("Create a blog entry ...",                 "✅ Blog successfully created."),
+            "BuildWebsite":  ("Build updates for later publication ...", "✅ Website updates prepared."),
+            "Freeze":        ("Freeze all collected data ...",           "✅ Data frozen."),
+            "WriteCommit":   ("Update the trip website ...",             "✅ Please review updated Website."),
+        }
+
+        selected = [
+            idx for idx in self.trip_table.selectedIndexes()
+            if STATE_COL_START <= idx.column() <= state_col_end
+        ]
+        if not selected:
+            return
+
+        # Day-major, pipeline-step-minor: each day finishes its selected steps
+        # in dependency order before moving to the next day.
+        selected.sort(key=lambda idx: (idx.row(), idx.column()))
+
+        project_root = Path(_config.get("project", "picturedirectory")).parent
+        trip_root = Path(_config.get("trip", "tripbiotadatabase"))
+        trip_menu = self.menu_spec.get("Trip", {})
+
+        day_steps = []
+        skipped = 0
+        for idx in selected:
+            row, col = idx.row(), idx.column()
+            step_name = step_names[col - STATE_COL_START]
+
+            day_item = self.trip_table.item(row, 0)
+            cell_item = self.trip_table.item(row, col)
+            if not day_item or not cell_item:
+                skipped += 1
+                continue
+            symbol = cell_item.text()
+            if symbol not in ("🔘", "✅"):
+                skipped += 1
+                continue
+
+            day_str = day_item.text()
+            review_day = trip_root / "metadata" / "review" / day_str
+            sm = StateMachine(str(trip_root), str(review_day), readState=True)
+
+            if sm.Taskstate.get("WriteCommit", [False])[0]:
+                skipped += 1
+                continue
+            jpgs = int(self.trip_table.item(row, 2).text())
+            if step_name == "WriteBlog" and jpgs == 0:
+                skipped += 1
+                continue
+
+            needs_reset = (symbol == "✅")
+            if not needs_reset and not sm.stateOKtorun(step_name):
+                skipped += 1
+                continue
+
+            action_label = self.trip_table.horizontalHeaderItem(col).text().replace("\n", " ")
+            spec_obj = trip_menu.get(action_label)
+            if not spec_obj:
+                skipped += 1
+                continue
+            bp = spec_obj.get_batch_parms()
+            if not bp:
+                skipped += 1
+                continue
+
+            before_msg, after_msg = pipeline_msgs[step_name]
+            day_steps.append({
+                "day_str":      day_str,
+                "project_root": project_root,
+                "trip_root":    trip_root,
+                "module_called": bp["module_called"],
+                "statusname":   step_name,
+                "before_msg":   before_msg,
+                "after_msg":    after_msg,
+                "needs_reset":  needs_reset,
+            })
+
+        # Parent the menu to the main window so it doesn't inherit the yellow
+        # background from yellow_tabs (which made hovered text unreadable).
+        menu = QMenu(self)
+        menu.setStyleSheet("QMenu { background-color: white; color: black; }")
+        if not day_steps:
+            disabled = menu.addAction("No eligible steps in selection")
+            disabled.setEnabled(False)
+            menu.exec(self.trip_table.viewport().mapToGlobal(pos))
+            return
+
+        n_cells = len(day_steps)
+        n_days = len({s["day_str"] for s in day_steps})
+        n_steps = len({s["statusname"] for s in day_steps})
+        label = (
+            f"Run {n_cells} selected cell{'s' if n_cells != 1 else ''} "
+            f"({n_steps} step{'s' if n_steps != 1 else ''}, "
+            f"{n_days} day{'s' if n_days != 1 else ''})"
+        )
+        if skipped:
+            label += f"  — {skipped} ineligible skipped"
+        run_action = menu.addAction(label)
+        chosen = menu.exec(self.trip_table.viewport().mapToGlobal(pos))
+        if chosen != run_action:
+            return
+
+        generate_svconfig_ini()
+        runner = ColumnBatchRunner(self, self, "Selected steps", day_steps, lambda: None)
+        runner.start()
+
     def update_trip_label(self):
         trip_path = _config.get("trip", "tripbiotadatabase", fallback="")
         trip_name = Path(trip_path).name if trip_path else "None"
