@@ -5,7 +5,9 @@ from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDi
         CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog,
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
         AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
-        SyncSidecarsDialog, EmptyTripDataDialog)
+        SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog)
+from utils.config import _config
+import os
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
 from settings.speciessettings import SpeciesSettingsDialog
@@ -302,6 +304,21 @@ def build_menu_spec(main_window):
     add_trip_pictures.callback = lambda: MasterPipelineDialog(
         main_window, master_pipeline_steps).exec()
 
+    # Edit the master speciescollection.csv directly — same dialog the
+    # Write Summary trip flow exposes, just pointed at the master path.
+    def _edit_master_species():
+        master_db = _config.get("master", "masterbiotadatabase", fallback="")
+        if not master_db:
+            return
+        csv_path = os.path.join(master_db, "metadata", "active", "speciescollection.csv")
+        SpeciesCollectionDialog(main_window, csv_path).exec()
+
+    edit_master_species = MenuSpec(
+        callback=_edit_master_species,
+        title="Edit Species List",
+        showsubdirectory=False,
+    )
+
     # utilities
         # Master updates
     convert_avibase = MenuSpec(
@@ -342,6 +359,8 @@ def build_menu_spec(main_window):
             "Recreate Trip": recreate_trip,     
         },
         "Master": {
+            "Edit Species List": edit_master_species,
+            f"{MenuSpec.separator()}_master_0": None,
             "Merge Species": merge_trip_species,
             "Add trip website to master": add_trip_to_master,
             f"{MenuSpec.separator()}_master_1": None,
