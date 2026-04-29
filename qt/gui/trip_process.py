@@ -647,6 +647,9 @@ class SpeciesCollectionDialog(QDialog):
         self.review_mode = highlight_changed_from_path is not None
         self.verdict = None
         self.all_rows = []
+        self.filtered_indices = []  # csv indices to page through; equals all rows when no filter
+        self.filter_text = ""
+        self.FILTER_MIN_CHARS = 3
         self.dirty = False
         self.cell_colors = {}   # (row, visual_col) -> QColor
         self.PAGE_SIZE = 50
@@ -666,6 +669,12 @@ class SpeciesCollectionDialog(QDialog):
         self.next_btn.setFixedWidth(30)
         self.next_btn.clicked.connect(self.on_next_page)
         nav_layout.addWidget(self.next_btn)
+        self.filter_edit = QLineEdit()
+        self.filter_edit.setPlaceholderText(
+            f"Filter: scientific name starts with… (≥{self.FILTER_MIN_CHARS} chars)")
+        self.filter_edit.setFixedWidth(280)
+        self.filter_edit.textChanged.connect(self._on_filter_changed)
+        nav_layout.addWidget(self.filter_edit)
         layout.addLayout(nav_layout)
 
         # Columns: Level, ScientificName, [copy btn], EnglishName, DutchName
@@ -852,6 +861,7 @@ class SpeciesCollectionDialog(QDialog):
         self._compute_backfilled_idxs()
 
         total = len(self.all_rows)
+        self.filtered_indices = list(range(total))
         # Default lands on the last page (where merge-newly-added rows
         # sit). If the merge also backfilled names on existing rows,
         # those are scattered earlier in the file and easy to miss —
@@ -894,11 +904,11 @@ class SpeciesCollectionDialog(QDialog):
         self.table.blockSignals(True)
         self.cell_colors.clear()
 
-        total = len(self.all_rows)
+        total = len(self.filtered_indices)
         page_end = min(self.page_start + self.PAGE_SIZE, total)
-        # indices into all_rows for the displayed slice (reversed for display)
-        self.display_indices = list(range(self.page_start, page_end))
-        self.display_indices.reverse()
+        # csv indices for the displayed slice (reversed for display)
+        page_slice = self.filtered_indices[self.page_start:page_end]
+        self.display_indices = list(reversed(page_slice))
         self.table.setRowCount(len(self.display_indices))
 
         # Pre-seed merge-review highlights before per-cell styling can
@@ -924,11 +934,16 @@ class SpeciesCollectionDialog(QDialog):
         # much the merge actually did.
         merge_note = ""
         if self.highlight_rows_from is not None:
-            added = max(0, total - self.highlight_rows_from)
+            added = max(0, len(self.all_rows) - self.highlight_rows_from)
             backfilled = len(self._backfilled_csv_idxs)
             merge_note = f"  [merge: +{added} new, {backfilled} names filled]"
+        filter_note = ""
+        if self.filter_text:
+            filter_note = f"  [filter \"{self.filter_text}\": {total} of {len(self.all_rows)}]"
+        # Empty filtered set still needs sensible "0 of 0" rather than "1\u20130 of 0"
+        start_display = self.page_start + 1 if total else 0
         self.range_label.setText(
-            f"{self.page_start + 1}\u2013{page_end} of {total}{merge_note}"
+            f"{start_display}\u2013{page_end} of {total}{filter_note}{merge_note}"
             f"  ({self.csv_path})")
         self.prev_btn.setEnabled(self.page_start > 0)
         self.next_btn.setEnabled(page_end < total)
@@ -972,7 +987,27 @@ class SpeciesCollectionDialog(QDialog):
 
     def on_next_page(self):
         self._save_before_navigate()
-        self.page_start = min(len(self.all_rows) - 1, self.page_start + self.PAGE_SIZE)
+        total = len(self.filtered_indices)
+        if total:
+            self.page_start = min(total - 1, self.page_start + self.PAGE_SIZE)
+        self._show_page()
+
+    def _on_filter_changed(self, text):
+        """Rebuild filtered_indices on filter input. Below FILTER_MIN_CHARS the
+        filter is treated as inactive — typing 'p' shouldn't match every
+        passerine in the master collection on the way to 'papio'."""
+        self._save_before_navigate()
+        text = text.strip().lower()
+        if len(text) < self.FILTER_MIN_CHARS:
+            self.filter_text = ""
+            self.filtered_indices = list(range(len(self.all_rows)))
+        else:
+            self.filter_text = text
+            self.filtered_indices = [
+                i for i, r in enumerate(self.all_rows)
+                if (r.get("ScientificName") or "").lower().startswith(text)
+            ]
+        self.page_start = 0
         self._show_page()
 
     def _on_cell_changed(self, row, col):
