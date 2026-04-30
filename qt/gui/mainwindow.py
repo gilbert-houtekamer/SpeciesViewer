@@ -604,68 +604,92 @@ class MainWindow(QMainWindow):
         if not selected:
             return
 
-        # Day-major, pipeline-step-minor: each day finishes its selected steps
-        # in dependency order before moving to the next day.
-        selected.sort(key=lambda idx: (idx.row(), idx.column()))
-
         project_root = Path(_config.get("project", "picturedirectory")).parent
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
         trip_menu = self.menu_spec.get("Trip", {})
 
-        day_steps = []
+        # Group the selection by day so each day can be evaluated as its own
+        # mini-pipeline. A ⚪ cell on its own is "not runnable now" — but
+        # within a multi-step selection, ⚪ becomes runnable once a preceding
+        # step in the same day's selection completes. Without this grouping
+        # the per-cell stateOKtorun check rejects every ⚪ even when its
+        # prerequisite is being run in the very same right-click action.
+        from collections import defaultdict
+        day_cells = defaultdict(list)
         skipped = 0
         for idx in selected:
             row, col = idx.row(), idx.column()
-            step_name = step_names[col - STATE_COL_START]
-
             day_item = self.trip_table.item(row, 0)
             cell_item = self.trip_table.item(row, col)
             if not day_item or not cell_item:
                 skipped += 1
                 continue
-            symbol = cell_item.text()
-            if symbol not in ("🔘", "✅"):
-                skipped += 1
-                continue
+            day_cells[day_item.text()].append({
+                "row":        row,
+                "col":        col,
+                "step_index": col - STATE_COL_START,
+                "step_name":  step_names[col - STATE_COL_START],
+                "symbol":     cell_item.text(),
+            })
 
-            day_str = day_item.text()
+        day_steps = []
+        for day_str, cells in day_cells.items():
+            cells.sort(key=lambda c: c["step_index"])
+
             review_day = trip_root / "metadata" / "review" / day_str
             sm = StateMachine(str(trip_root), str(review_day), readState=True)
 
+            # Frozen workflow — entire day is dead.
             if sm.Taskstate.get("WriteCommit", [False])[0]:
-                skipped += 1
-                continue
-            jpgs = int(self.trip_table.item(row, 2).text())
-            if step_name == "WriteBlog" and jpgs == 0:
-                skipped += 1
+                skipped += len(cells)
                 continue
 
-            needs_reset = (symbol == "✅")
-            if not needs_reset and not sm.stateOKtorun(step_name):
-                skipped += 1
-                continue
+            jpgs = int(self.trip_table.item(cells[0]["row"], 2).text())
 
-            action_label = self.trip_table.horizontalHeaderItem(col).text().replace("\n", " ")
-            spec_obj = trip_menu.get(action_label)
-            if not spec_obj:
-                skipped += 1
-                continue
-            bp = spec_obj.get_batch_parms()
-            if not bp:
-                skipped += 1
-                continue
+            # Walk the day's selection in pipeline order. Once we see a cell
+            # that's eligible *now* (🔘 / ✅), the chain is considered
+            # active — subsequent ⚪ cells in this day's selection will
+            # become eligible as preceding steps complete, so we queue them
+            # too. ⚪ cells before the chain activates have no upstream
+            # selection to unblock them and stay skipped.
+            chain_active = False
+            for c in cells:
+                symbol = c["symbol"]
+                step_name = c["step_name"]
+                col = c["col"]
 
-            before_msg, after_msg = pipeline_msgs[step_name]
-            day_steps.append({
-                "day_str":      day_str,
-                "project_root": project_root,
-                "trip_root":    trip_root,
-                "module_called": bp["module_called"],
-                "statusname":   step_name,
-                "before_msg":   before_msg,
-                "after_msg":    after_msg,
-                "needs_reset":  needs_reset,
-            })
+                if step_name == "WriteBlog" and jpgs == 0:
+                    skipped += 1
+                    continue
+
+                action_label = self.trip_table.horizontalHeaderItem(col).text().replace("\n", " ")
+                spec_obj = trip_menu.get(action_label)
+                if not spec_obj:
+                    skipped += 1
+                    continue
+                bp = spec_obj.get_batch_parms()
+                if not bp:
+                    skipped += 1
+                    continue
+
+                if symbol in ("🔘", "✅"):
+                    chain_active = True
+                elif not (symbol == "⚪" and chain_active):
+                    skipped += 1
+                    continue
+
+                needs_reset = (symbol == "✅")
+                before_msg, after_msg = pipeline_msgs[step_name]
+                day_steps.append({
+                    "day_str":      day_str,
+                    "project_root": project_root,
+                    "trip_root":    trip_root,
+                    "module_called": bp["module_called"],
+                    "statusname":   step_name,
+                    "before_msg":   before_msg,
+                    "after_msg":    after_msg,
+                    "needs_reset":  needs_reset,
+                })
 
         # Parent the menu to the main window so it doesn't inherit the yellow
         # background from yellow_tabs (which made hovered text unreadable).
