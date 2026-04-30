@@ -209,27 +209,35 @@ def main(args, config):
     sp = ghexif.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)
 
-    # Build the "already known" reference set from master's
-    # speciescollection.csv. Earlier this used master's species.csv, but
-    # that file is rebuilt by every master ingest — once a trip's
-    # pictures land in master, every species the trip discovered is
-    # already there and nothing shows as "new" anymore. The collection
-    # file only changes via explicit svr5MergeSpeciesCollections, so it
-    # is the right baseline for "species this trip introduced".
+    # Build the "already known" reference set from master, using BOTH:
+    #   - speciescollection.csv (taxonomy: pre-loaded birds + species the
+    #     user has explicitly merged in from prior trips)
+    #   - species.csv          (what master actually has photos of —
+    #     covers e.g. animals/plants whose taxonomy entry was added by
+    #     the trip but never made it into the master collection yet)
+    # A species is considered "new" only when missing from BOTH. Using
+    # speciescollection.csv alone misses cases where a taxon already
+    # exists in the master taxonomy but only the trip has produced a
+    # picture of it; using species.csv alone gets refilled by every
+    # master ingest. Together they form a stable baseline.
     MyProject.initMasterAndTrip(config, inittrip=False)
-    if MyProject.Trip:
-        ref_csv = os.path.join(MyProject.getMasterRepository(),
-                               "metadata", "active", "speciescollection.csv")
-    else:
-        ref_csv = config.get("repository", "ReferenceSpecies")
-    if os.path.exists(ref_csv):
-        with open(ref_csv, "r", encoding="utf-8") as f:
+
+    def _load_names(path):
+        if not os.path.exists(path):
+            logger.warning(f"svr2CountSpecies: reference file not found: {path}")
+            return
+        with open(path, "r", encoding="utf-8") as f:
             for row in csv.DictReader(f, delimiter=";"):
                 name = (row.get("ScientificName") or "").lower().strip()
                 if name:
                     reference_names.add(name)
+
+    if MyProject.Trip:
+        master_meta = os.path.join(MyProject.getMasterRepository(), "metadata", "active")
+        _load_names(os.path.join(master_meta, "speciescollection.csv"))
+        _load_names(os.path.join(master_meta, "species.csv"))
     else:
-        logger.warning(f"svr2CountSpecies: reference file not found: {ref_csv}")
+        _load_names(config.get("repository", "ReferenceSpecies"))
 
     # read the list with all pre-defined species, as updated in each project using it
     metadatadir = MyProject.getMetaDir()
