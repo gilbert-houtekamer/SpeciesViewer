@@ -162,6 +162,21 @@ def build_menu_spec(main_window):
     )
     commit_website.callback = lambda: WriteCommitDialog(main_window, commit_website).exec()    
 
+    # Same SpeciesCollectionDialog the Write Summary flow exposes,
+    # pointed at <tripbiotadatabase>/metadata/active/speciescollection.csv.
+    def _edit_trip_species():
+        trip_db = _config.get("trip", "tripbiotadatabase", fallback="")
+        if not trip_db:
+            return
+        csv_path = os.path.join(trip_db, "metadata", "active", "speciescollection.csv")
+        SpeciesCollectionDialog(main_window, csv_path).exec()
+
+    edit_trip_species = MenuSpec(
+        callback=_edit_trip_species,
+        title="Edit Trip Species List",
+        showsubdirectory=False,
+    )
+
     count_species = MenuSpec(
         callback=None,
         title="Count Species",
@@ -173,7 +188,7 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Species report will be shown."
         }
     )
-    count_species.callback = lambda: CountSpeciesDialog(main_window, count_species).exec()    
+    count_species.callback = lambda: CountSpeciesDialog(main_window, count_species).exec()
 
     redo_trip_blogs = MenuSpec(
         callback=None,
@@ -352,6 +367,7 @@ def build_menu_spec(main_window):
             "Freeze": freeze_data,
             "Write Commit": commit_website,
             f"{MenuSpec.separator()}_2": None,
+            "Edit Trip Species List": edit_trip_species,
             "Count Species": count_species,
             "Redo Blogs": redo_trip_blogs,
             f"{MenuSpec.separator()}_3": None,
