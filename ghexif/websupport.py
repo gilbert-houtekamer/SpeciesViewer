@@ -74,14 +74,11 @@ def getTemplateOutputString(MyProject, species, file, picture, TemplateLine):
     return tokens
 
 def getFormattedCityStateCountry(picture):
-	str = picture['City']
-	if picture['City'] and picture['State'] == "" and picture['Country'] == "":
-		return str
-	if picture['State'] != "" or picture['Country'] != "":
-		str = str + ", " + picture['State']
-	if picture['State'] != "" and picture['Country'] != "":
-		str = str + ", " + picture['Country']
-	return str # "No GPS or location available"
+	# Join only the non-empty fields so missing components don't leave
+	# stray separators — e.g. ('', 'Arusha', 'Tanzania') used to render
+	# as ", Arusha, Tanzania" with a leading comma.
+	parts = [p for p in (picture['City'], picture['State'], picture['Country']) if p]
+	return ", ".join(parts)
 
 def isUnnamedRoad(locationname):
     if locationname in ['Vía Sin Nombre', 'Route sans nom', 'Unnamed Road']:   # , 'Onbekende weg' ?
