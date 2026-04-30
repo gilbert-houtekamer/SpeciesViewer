@@ -1378,6 +1378,20 @@ class SyncSidecarsDialog(BaseTripModuleDialog):
         )
 
 
+class TestbedDialog(BaseTripModuleDialog):
+    def __init__(self, parent, menu_spec):
+        super().__init__(
+            parent,
+            menu_spec,
+            title="Call Testbed for trip day",
+            info_text=(
+                "Run bin/svu7Testbed.py against the active trip and selected day. "
+                "Edit the script's testbed block to exercise whatever check you need — "
+                "e.g. inspecting the species tree behind the all-biota summaries page."
+            )
+        )
+
+
 class EmptyTripDataDialog(BaseTripModuleDialog):
     def __init__(self, parent, menu_spec):
         super().__init__(

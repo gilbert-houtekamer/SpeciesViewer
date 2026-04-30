@@ -5,7 +5,8 @@ from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDi
         CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog,
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
         AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
-        SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog)
+        SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
+        TestbedDialog)
 from utils.config import _config
 import os
 from settings.globalsettings import GlobalSettingsDialog
@@ -30,6 +31,7 @@ import bin.svr9RedoBlog
 import bin.svu2avibase
 import bin.svu5SyncSidecars
 import bin.svu6EmptyTripData
+import bin.svu7Testbed
 
 
 def build_menu_spec(main_window):
@@ -347,7 +349,19 @@ def build_menu_spec(main_window):
             'after_msg': "✅ XLSX checklist created."
         }
     )
-    convert_avibase.callback = lambda: ConvertAvibaseDialog(main_window, convert_avibase).exec() 
+    convert_avibase.callback = lambda: ConvertAvibaseDialog(main_window, convert_avibase).exec()
+
+    testbed = MenuSpec(
+        callback=None,
+        title="Call Testbed for trip day",
+        batch_parms={
+            'statusname': "",
+            'module_called': bin.svu7Testbed.main,
+            'before_msg': "Running testbed for trip day...",
+            'after_msg': "✅ Testbed run complete.",
+        }
+    )
+    testbed.callback = lambda: TestbedDialog(main_window, testbed).exec()
 
     return {
         "File": {
@@ -385,6 +399,7 @@ def build_menu_spec(main_window):
         "Utilities": {
         #     "BirdingBreaks": None, # PROCESS BIRDING BREAK FILES
              "AviBase": convert_avibase,
+             "Call Testbed for trip day": testbed,
         },
         "Settings": {
             "Global Settings": MenuSpec(
