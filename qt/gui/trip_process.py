@@ -1486,6 +1486,179 @@ class CountSpeciesDialog(BaseTripModuleDialog):
         clipboard = QGuiApplication.clipboard()
         clipboard.setText(self.report_viewer.toPlainText())
 
+class BlogAdminDialog(QDialog):
+    """Manage the trip's blog_admin.csv: review and delete blog entries.
+
+    Each row in admin/blog_admin.csv corresponds to a blog whose rendered
+    artifacts live under web/biotablog/<key>{,-en,-nl,-slider-en,-slider-nl}.
+    Deleting a row also removes those four HTML files and the picture
+    folder so the local web tree is clean. The user is expected to re-run
+    BuildWebsite/Freeze/WriteCommit after pruning to regenerate the index.
+    """
+
+    COLUMNS = [
+        ("blog",        "Blog"),
+        ("title_nl",    "Title (NL)"),
+        ("CreatedTime", "Created"),
+        ("_pic_count",  "Pictures"),
+    ]
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setWindowTitle("Manage Blogs")
+        self.resize(900, 500)
+        self.logger = logging.getLogger("speciesviewer")
+        self.passed_parent = parent
+
+        trip_root = _config["trip"]["tripbiotadatabase"]
+        self.csv_path = os.path.join(trip_root, "admin", "blog_admin.csv")
+        self.biotablog_dir = os.path.join(trip_root, "web", "biotablog")
+        self.rows = []   # list of dict, original CSV order
+        self.fieldnames = []
+
+        layout = QVBoxLayout(self)
+
+        info = QLabel(
+            "Blogs registered in <code>admin/blog_admin.csv</code> for this trip. "
+            "Select rows to remove — both the CSV entry and the rendered HTML "
+            "files / picture folder under <code>web/biotablog/</code> are deleted. "
+            "Re-run Build Website / Freeze / Write Commit afterwards."
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        self.path_label = QLabel(self.csv_path)
+        self.path_label.setStyleSheet("color: #666;")
+        layout.addWidget(self.path_label)
+
+        self.table = QTableWidget()
+        self.table.setColumnCount(len(self.COLUMNS))
+        self.table.setHorizontalHeaderLabels([h for _, h in self.COLUMNS])
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.horizontalHeader().setStretchLastSection(False)
+        layout.addWidget(self.table)
+
+        self.status_label = QLabel("")
+        layout.addWidget(self.status_label)
+
+        btn_layout = QHBoxLayout()
+        self.delete_btn = QPushButton("Delete Selected")
+        self.delete_btn.clicked.connect(self.on_delete)
+        btn_layout.addWidget(self.delete_btn)
+        btn_layout.addStretch()
+        self.close_btn = QPushButton("Close")
+        self.close_btn.clicked.connect(self.close)
+        btn_layout.addWidget(self.close_btn)
+        layout.addLayout(btn_layout)
+
+        self._load()
+
+    def _load(self):
+        import csv, ast
+        if not os.path.isfile(self.csv_path):
+            self.status_label.setText(f"blog_admin.csv not found: {self.csv_path}")
+            self.delete_btn.setEnabled(False)
+            return
+        with open(self.csv_path, "r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f, delimiter=";")
+            self.fieldnames = reader.fieldnames or []
+            self.rows = list(reader)
+
+        # Augment each row with a derived picture count for display.
+        for row in self.rows:
+            try:
+                pics = ast.literal_eval(row.get("BestJPGs", "") or "[]")
+                row["_pic_count"] = str(len(pics)) if isinstance(pics, list) else "?"
+            except (ValueError, SyntaxError):
+                row["_pic_count"] = "?"
+
+        self._render_table()
+
+    def _render_table(self):
+        self.table.setRowCount(len(self.rows))
+        for i, row in enumerate(self.rows):
+            for j, (key, _) in enumerate(self.COLUMNS):
+                item = QTableWidgetItem(row.get(key, ""))
+                item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                self.table.setItem(i, j, item)
+        self.table.resizeColumnsToContents()
+        self.status_label.setText(f"{len(self.rows)} blog entries.")
+
+    def on_delete(self):
+        sel_rows = sorted({idx.row() for idx in self.table.selectedIndexes()})
+        if not sel_rows:
+            self.status_label.setText("Nothing selected.")
+            return
+
+        keys = [self.rows[r]["blog"] for r in sel_rows]
+        preview = "\n".join(f"  • {k}" for k in keys[:10])
+        if len(keys) > 10:
+            preview += f"\n  … and {len(keys) - 10} more"
+        reply = QMessageBox.question(
+            self, "Delete blog entries",
+            f"Delete {len(keys)} blog entr{'ies' if len(keys) != 1 else 'y'}?\n\n"
+            f"{preview}\n\n"
+            f"This removes the row from blog_admin.csv and the rendered "
+            f"HTML files + picture folder under web/biotablog/. The action "
+            f"is not reversible from this dialog.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        deleted_files = 0
+        for key in keys:
+            deleted_files += self._delete_web_artifacts(key)
+
+        # Rewrite CSV without the selected rows. Drop derived columns from
+        # the output — fieldnames is the original on-disk header.
+        keep = [r for i, r in enumerate(self.rows) if i not in set(sel_rows)]
+        self._write_csv(keep)
+        self.rows = keep
+        self._render_table()
+
+        self.logger.info(
+            f"Manage Blogs: removed {len(keys)} entr"
+            f"{'ies' if len(keys) != 1 else 'y'} from blog_admin.csv "
+            f"and {deleted_files} web artifacts."
+        )
+        self.status_label.setText(
+            f"Deleted {len(keys)} entries, {deleted_files} web file/folder removals."
+        )
+
+    def _delete_web_artifacts(self, blog_key):
+        """Remove the four HTML files and the picture folder for one blog
+        key. Returns the count of successful filesystem removals."""
+        count = 0
+        suffixes = ["-nl.html", "-en.html", "-slider-nl.html", "-slider-en.html"]
+        for suffix in suffixes:
+            target = os.path.join(self.biotablog_dir, blog_key + suffix)
+            if os.path.isfile(target):
+                try:
+                    os.remove(target)
+                    count += 1
+                except OSError as e:
+                    self.logger.warning(f"Could not remove {target}: {e}")
+        folder = os.path.join(self.biotablog_dir, blog_key)
+        if os.path.isdir(folder):
+            try:
+                shutil.rmtree(folder)
+                count += 1
+            except OSError as e:
+                self.logger.warning(f"Could not remove folder {folder}: {e}")
+        return count
+
+    def _write_csv(self, rows):
+        import csv
+        with open(self.csv_path, "w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=self.fieldnames, delimiter=";",
+                                    extrasaction="ignore", quoting=csv.QUOTE_MINIMAL)
+            writer.writeheader()
+            writer.writerows(rows)
+
+
 class RedoTripBlogsDialog(BaseTripModuleDialog):
     def __init__(self, parent, menu_spec):
         super().__init__(
@@ -1493,7 +1666,7 @@ class RedoTripBlogsDialog(BaseTripModuleDialog):
             menu_spec,
             title="Recreate Blogs for trip",
             info_text="Recreate Blogs for trip for all committed days.",
-            subdirectory=False            
+            subdirectory=False
         )
 
 class RedoTripRepoDialog(BaseTripModuleDialog):

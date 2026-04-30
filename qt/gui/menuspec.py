@@ -6,7 +6,7 @@ from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDi
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
         AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
-        TestbedDialog)
+        TestbedDialog, BlogAdminDialog)
 from utils.config import _config
 import os
 from settings.globalsettings import GlobalSettingsDialog
@@ -191,6 +191,12 @@ def build_menu_spec(main_window):
         }
     )
     count_species.callback = lambda: CountSpeciesDialog(main_window, count_species).exec()
+
+    manage_blogs = MenuSpec(
+        callback=lambda: BlogAdminDialog(main_window).exec(),
+        title="Manage Blogs",
+        showsubdirectory=False,
+    )
 
     redo_trip_blogs = MenuSpec(
         callback=None,
@@ -383,6 +389,7 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_2": None,
             "Edit Trip Species List": edit_trip_species,
             "Count Species": count_species,
+            "Manage Blogs": manage_blogs,
             "Redo Blogs": redo_trip_blogs,
             f"{MenuSpec.separator()}_3": None,
             "Empty Trip Data": empty_trip_data,
