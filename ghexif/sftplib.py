@@ -1,4 +1,5 @@
 import pysftp
+import stat
 from urllib.parse import urlparse
 import os
 import json
@@ -61,6 +62,40 @@ class Sftp:
         """lists all the files and directories (with their attributes) in the specified path and returns them"""
         for attr in self.connection.listdir_attr(remote_path):
             yield attr
+
+    def remove(self, remote_path):
+        """Delete a single remote file. Missing files are logged as warnings,
+        not raised — callers (cleanup flows) generally don't care if the
+        target was already gone."""
+        try:
+            self.connection.remove(remote_path)
+            logger.info(f"removed remote file: {remote_path}")
+        except IOError as e:
+            logger.warning(f"could not remove remote file {remote_path}: {e}")
+
+    def rmtree(self, remote_path):
+        """Recursively delete a remote directory. Walks depth-first, logs
+        but doesn't raise on individual failures. No-op if the path is
+        already absent on the server."""
+        try:
+            entries = list(self.connection.listdir_attr(remote_path))
+        except IOError:
+            logger.info(f"rmtree no-op (no remote dir): {remote_path}")
+            return
+        for entry in entries:
+            full = remote_path.rstrip('/') + '/' + entry.filename
+            if stat.S_ISDIR(entry.st_mode):
+                self.rmtree(full)
+            else:
+                try:
+                    self.connection.remove(full)
+                except IOError as e:
+                    logger.warning(f"could not remove remote file {full}: {e}")
+        try:
+            self.connection.rmdir(remote_path)
+            logger.info(f"removed remote dir: {remote_path}")
+        except IOError as e:
+            logger.warning(f"could not rmdir remote {remote_path}: {e}")
 
     # Downloads the file from remote sftp server to local.
     # Also, by default extracts the file to the specified target_local_path

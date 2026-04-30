@@ -379,11 +379,23 @@ class Blog:
         return
 
     def uploadBlogAdmin(self, sftp):
-        MyProject = self.mp     
+        MyProject = self.mp
         fromfile = self.getBlogAdminFile()
         toweb = sftp.remotePrefix() + MyProject.Blog.getBlogAdminWeb()
-        sftp.upload(fromfile, toweb)                
-        return 
+        sftp.upload(fromfile, toweb)
+        return
+
+    def removeBlogArtifacts(self, sftp, blog_key):
+        """Server-side cleanup for one blog: removes the four rendered HTML
+        files and the picture folder. Used when pruning blog_admin.csv via
+        the Manage Blogs dialog so the published site no longer references
+        a blog that the user just removed locally."""
+        MyProject = self.mp
+        web_root = sftp.remotePrefix() + MyProject.getBiotaBlogWeb()
+        for suffix in ("-nl.html", "-en.html", "-slider-nl.html", "-slider-en.html"):
+            sftp.remove(web_root + blog_key + suffix)
+        sftp.rmtree(web_root + blog_key)
+        return
     
     #
     def countBlogPictures(self, speciesname, minimumrating):

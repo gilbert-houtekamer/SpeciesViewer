@@ -1628,6 +1628,125 @@ class BlogAdminDialog(QDialog):
             f"Deleted {len(keys)} entries, {deleted_files} web file/folder removals."
         )
 
+        # Locked days won't go through Write Blog again, so the published
+        # site still references the deleted blogs. Offer to clean the
+        # server now: remove each pruned key's remote artifacts, then
+        # regenerate and upload the index + admin CSV.
+        prompt = QMessageBox.question(
+            self, "Update online site?",
+            f"Local files updated. The published site at "
+            f"{_config.get('repository', 'BiotaWebRoot', fallback='(unknown)')} "
+            f"still has the {len(keys)} pruned blog{'s' if len(keys) != 1 else ''} "
+            f"and an index referencing them.\n\n"
+            f"Delete the remote artifacts and rebuild the online index now?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if prompt == QMessageBox.StandardButton.Yes:
+            self._start_server_cleanup(keys)
+
+    def _start_server_cleanup(self, pruned_keys):
+        """Run server-side cleanup + index rebuild on a worker thread."""
+        from PyQt6.QtWidgets import QDialog
+        from PyQt6.QtGui import QMovie
+        from PyQt6.QtCore import QThread, pyqtSignal, QObject
+
+        # Spinner dialog — same look as the batch runner.
+        spinner = QDialog(self)
+        spinner.setWindowTitle("Updating online site...")
+        spinner.setModal(True)
+        spinner.setFixedSize(420, 170)
+        sl = QVBoxLayout(spinner)
+        msg = QLabel("Connecting to server, removing pruned blogs, rebuilding index...")
+        msg.setWordWrap(True)
+        sl.addWidget(msg, alignment=Qt.AlignmentFlag.AlignCenter)
+        movie = QMovie("spinner.gif")
+        spinner_icon = QLabel()
+        spinner_icon.setMovie(movie)
+        sl.addWidget(spinner_icon, alignment=Qt.AlignmentFlag.AlignCenter)
+        movie.start()
+
+        # Make sure svconfig.ini reflects the current trip — the worker
+        # reads from it just like every other batch step.
+        from utils.batch_config import generate_svconfig_ini
+        generate_svconfig_ini()
+
+        class _CleanupWorker(QObject):
+            finished = pyqtSignal(str)  # error string, empty on success
+
+            def __init__(self, keys):
+                super().__init__()
+                self._keys = keys
+
+            def run(self):
+                try:
+                    self._do_work()
+                    self.finished.emit("")
+                except Exception as e:
+                    self.finished.emit(str(e))
+
+            def _do_work(self):
+                import configparser as _cp
+                import ghexif.projectlib
+                import ghexif.speciesclassification
+                import ghexif.specieslib
+                import ghexif.bloglib
+
+                cfg = _cp.ConfigParser()
+                cfg.read("svconfig.ini")
+
+                project = ghexif.projectlib.Project(
+                    cfg.get("repository", "BiotaDatabase"),
+                    cfg.get("project", "PictureDirectory"),
+                    cfg.get("repository", "BiotaWebRoot"))
+                project.initMasterAndTrip(cfg, inittrip=True)
+                # Index template renders need species/classification objects
+                # registered (token resolution touches them even when no
+                # species data is loaded).
+                sc = ghexif.speciesclassification.SpeciesClassification(project)
+                project.registerSpeciesClassification(sc)
+                sp = ghexif.specieslib.Species(project)
+                project.registerSpecies(sp)
+
+                blog = ghexif.bloglib.Blog(project)
+                blog.read_BlogAdmin()
+                blog.password = cfg.get("websettings", "Sftppwd").strip("'")
+                sftp = blog.openSFTP(blog.password)
+                cache = os.path.join(project.getRepositoryPath(), "admin/FTPcache.json")
+                sftp.openFTPCache(cache)
+
+                for key in self._keys:
+                    blog.removeBlogArtifacts(sftp, key)
+
+                blog.updateIndexPage()
+                blog.uploadBlogIndex(sftp)
+                blog.uploadBlogAdmin(sftp)
+
+                sftp.closeFTPCache(cache)
+                sftp.disconnect()
+
+        self._cleanup_thread = QThread()
+        self._cleanup_worker = _CleanupWorker(pruned_keys)
+        self._cleanup_worker.moveToThread(self._cleanup_thread)
+        self._cleanup_thread.started.connect(self._cleanup_worker.run)
+
+        def on_done(err):
+            self._cleanup_thread.quit()
+            self._cleanup_thread.wait()
+            spinner.close()
+            if err:
+                self.logger.warning(f"Manage Blogs: server cleanup failed: {err}")
+                self.status_label.setText(f"Server cleanup failed: {err}")
+            else:
+                self.logger.info(
+                    f"Manage Blogs: server cleanup succeeded — "
+                    f"{len(pruned_keys)} blog(s) removed remotely, index updated."
+                )
+                self.status_label.setText("Server cleanup succeeded.")
+
+        self._cleanup_worker.finished.connect(on_done)
+        self._cleanup_thread.start()
+        spinner.show()
+
     def _delete_web_artifacts(self, blog_key):
         """Remove the four HTML files and the picture folder for one blog
         key. Returns the count of successful filesystem removals."""
