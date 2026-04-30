@@ -31,7 +31,7 @@ headers = []
 counter = 1
 newcounter = 1
 jpgneeded = 0
-Reference_sp = None
+reference_names = set()  # lowercase ScientificNames that are already in the master collection
 
 # read parameters, but will be overwritten probably
 def readConfig():
@@ -120,10 +120,9 @@ def scanSpecies(sc, speciesname, report):
                 english = species['EnglishName'] if species['EnglishName'] else f"*{sci}*"
                 dutch = species['DutchName'] if species['DutchName'] else f"*{sci}*"
                 data_line = str(counter).rjust(3) + ' ' + english.ljust(32) + dutch.ljust(40)
-                try:
-                    Reference_sp.species_dict[species['ScientificName'].lower()]
+                if species['ScientificName'].lower() in reference_names:
                     data_line += '     '
-                except:
+                else:
                     data_line += str(newcounter).rjust(3) + '  '
                     newcounter += 1
                 counter += 1
@@ -158,14 +157,11 @@ def scanSpecies(sc, speciesname, report):
                         days_line += '.  '
 
                 data_line += f"{days_line} {seen:3} "               
-                if best_rating > 0: 
+                if best_rating > 0:
                     data_line += f" {best_rating:3}"
-                else:
-                    try:
-                        Reference_sp.species_dict[species['ScientificName'].lower()]
-                    except:
-                        data_line += '   Needed     '         
-                print(data_line, file=report)                
+                elif species['ScientificName'].lower() not in reference_names:
+                    data_line += '   Needed     '
+                print(data_line, file=report)
         else:
             scanSpecies(sc, leaf, report)
     return
@@ -190,39 +186,50 @@ def print_headers(sc, report):
     return
 
 def main(args, config):
-    global starttime, SpeciesDebug, Reference_sp
+    global starttime, SpeciesDebug, reference_names
     global result_dict, headers, counter, newcounter, jpgneeded
     result_dict = {}
     headers = []
     counter = 1
     newcounter = 1
     jpgneeded = 0
+    reference_names = set()
     starttime = time.time()
-    SpeciesDebug = 0        # default   
+    SpeciesDebug = 0        # default
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
 
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
+    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"),
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
-    
-    
+
+
     # get repository-wide sc and per project sp.
     sc = ghexif.speciesclassification.SpeciesClassification(MyProject)
     MyProject.registerSpeciesClassification(sc)
     sp = ghexif.specieslib.Species(MyProject)
-    MyProject.registerSpecies(sp)   
+    MyProject.registerSpecies(sp)
 
-    # reference project
-    # if trip, initialze master
+    # Build the "already known" reference set from master's
+    # speciescollection.csv. Earlier this used master's species.csv, but
+    # that file is rebuilt by every master ingest — once a trip's
+    # pictures land in master, every species the trip discovered is
+    # already there and nothing shows as "new" anymore. The collection
+    # file only changes via explicit svr5MergeSpeciesCollections, so it
+    # is the right baseline for "species this trip introduced".
     MyProject.initMasterAndTrip(config, inittrip=False)
     if MyProject.Trip:
-        referenceSpecies = os.path.join(MyProject.getMasterRepository(), 'metadata/active/species.csv')
+        ref_csv = os.path.join(MyProject.getMasterRepository(),
+                               "metadata", "active", "speciescollection.csv")
     else:
-        referenceSpecies = config.get("repository","ReferenceSpecies")
-    Reference_sp = ghexif.specieslib.Species(None)
-    Reference_sp.readSpeciesInfo(referenceSpecies, False)
-    # test 
-    speciesok = Reference_sp.species_dict['biota']
+        ref_csv = config.get("repository", "ReferenceSpecies")
+    if os.path.exists(ref_csv):
+        with open(ref_csv, "r", encoding="utf-8") as f:
+            for row in csv.DictReader(f, delimiter=";"):
+                name = (row.get("ScientificName") or "").lower().strip()
+                if name:
+                    reference_names.add(name)
+    else:
+        logger.warning(f"svr2CountSpecies: reference file not found: {ref_csv}")
 
     # read the list with all pre-defined species, as updated in each project using it
     metadatadir = MyProject.getMetaDir()
