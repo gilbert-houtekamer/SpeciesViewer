@@ -1214,10 +1214,21 @@ def addAllSpeciesPage(MyProject, speciesname, temptextfile):
         species = MyProject.sp.species_dict[leaf]
         if (int(species['iPicturesWithJPGsCollection']) + int(species['iPicturesWithJPGsThisRun'])) > 0:
             if species['Level'] == Level.SPECIES:
+                # Suppress orphan species cards: when a picture is renamed
+                # off a species the iPicturesWithJPGs* counters can stay >0
+                # while BestJPG/BestJPGPathName drop to "". writeOneSpecies
+                # would then emit an unclosed <a> wrapping empty <p>s —
+                # visible as the blank/broken cells in the all-biota grid.
+                if not species['BestJPG'] or not species['BestJPGPathName']:
+                    logger.warning(
+                        f"all-species grid: suppressed '{species['ScientificName']}' "
+                        f"(stale counters {species['iPicturesWithJPGsCollection']}+"
+                        f"{species['iPicturesWithJPGsThisRun']} but BestJPG empty)")
+                    continue
                 writeOneSpecies(MyProject, leaf, temptextfile)
             else:
                 textCreated = addAllSpeciesPage(MyProject, leaf, temptextfile)
-   
+
     return
 
 def addOneSpeciesPage(MyProject, species_param):
