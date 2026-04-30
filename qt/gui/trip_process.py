@@ -1574,6 +1574,11 @@ class BlogAdminDialog(QDialog):
             except (ValueError, SyntaxError):
                 row["_pic_count"] = "?"
 
+        # Match the website's index ordering (Blog.getBlogDictSortedKeys
+        # returns sorted(keys), which is chronological because the YYYY-MM-DD
+        # date prefix dominates the sort).
+        self.rows.sort(key=lambda r: r.get("blog", ""))
+
         self._render_table()
 
     def _render_table(self):
@@ -1690,10 +1695,12 @@ class BlogAdminDialog(QDialog):
                 import ghexif.speciesclassification
                 import ghexif.specieslib
                 import ghexif.bloglib
+                worker_logger = logging.getLogger("speciesviewer")
 
                 cfg = _cp.ConfigParser()
                 cfg.read("svconfig.ini")
 
+                worker_logger.info("Manage Blogs: initializing project for index rebuild...")
                 project = ghexif.projectlib.Project(
                     cfg.get("repository", "BiotaDatabase"),
                     cfg.get("project", "PictureDirectory"),
@@ -1709,20 +1716,30 @@ class BlogAdminDialog(QDialog):
 
                 blog = ghexif.bloglib.Blog(project)
                 blog.read_BlogAdmin()
+                worker_logger.info(
+                    f"Manage Blogs: blog_admin.csv has {len(blog.blog_dict)} entries after prune."
+                )
                 blog.password = cfg.get("websettings", "Sftppwd").strip("'")
                 sftp = blog.openSFTP(blog.password)
                 cache = os.path.join(project.getRepositoryPath(), "admin/FTPcache.json")
                 sftp.openFTPCache(cache)
 
+                worker_logger.info(
+                    f"Manage Blogs: removing remote artifacts for {len(self._keys)} pruned blog(s)..."
+                )
                 for key in self._keys:
                     blog.removeBlogArtifacts(sftp, key)
 
+                worker_logger.info("Manage Blogs: regenerating local blog index...")
                 blog.updateIndexPage()
+                worker_logger.info("Manage Blogs: uploading blog index-nl/en.html...")
                 blog.uploadBlogIndex(sftp)
+                worker_logger.info("Manage Blogs: uploading blog_admin.csv...")
                 blog.uploadBlogAdmin(sftp)
 
                 sftp.closeFTPCache(cache)
                 sftp.disconnect()
+                worker_logger.info("Manage Blogs: done.")
 
         self._cleanup_thread = QThread()
         self._cleanup_worker = _CleanupWorker(pruned_keys)
