@@ -977,25 +977,17 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 soorten = 'Trip species'
                 title = 'Title'                
             workstr = ''
-            # Build the list of publishable trips: anything with both
-            # fromdate and todate set. Trips without dates are drafts
-            # (still in preparation) and stay off the public index.
-            # The sort key tolerates a malformed todate by sending it
-            # to the bottom — one bad row must not kill the whole page.
+            # The sort key tolerates a missing or malformed todate by
+            # sending that row to the bottom — one bad row must not kill
+            # the whole page.
             def _todate_key(trip_obj):
                 val = (trip_obj.get('todate') or '').strip()
                 try:
                     return datetime.strptime(val, '%Y-%m-%d')
                 except ValueError:
                     return datetime.min
-            publishable = [item for item in MyProject.Trip.trip_dict.items()
-                           if (item[1].get('todate') or '').strip()
-                           and (item[1].get('fromdate') or '').strip()]
-            skipped = len(MyProject.Trip.trip_dict) - len(publishable)
-            if skipped:
-                logger.info(f"Trip index ({language}): skipping {skipped} draft "
-                            f"trip(s) without fromdate/todate.")
-            sorted_items = sorted(publishable, key=lambda x: _todate_key(x[1]),
+            sorted_items = sorted(MyProject.Trip.trip_dict.items(),
+                                  key=lambda x: _todate_key(x[1]),
                                   reverse=True)
 
             for tripname in sorted_items:  # MyProject.Trip.getTripDictSortedKeys()
