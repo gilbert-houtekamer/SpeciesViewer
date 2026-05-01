@@ -192,6 +192,10 @@ class Trip:
             print(f"Reading from {url}")
             response = requests.get(url)
             response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
+            # The server doesn't set a charset for .csv, so requests falls
+            # back to ISO-8859-1 and turns UTF-8 bytes (e.g. ë → 0xC3 0xAB)
+            # into mojibake. Force UTF-8 to match how the file was written.
+            response.encoding = 'utf-8'
 
             # Read the content using csv.DictReader
             csvfile = io.StringIO(response.text)  # Convert response text to a file-like object
