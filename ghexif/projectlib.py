@@ -331,7 +331,7 @@ class Project:
         species = self.getSpecies(speciesname)
         # create database to store pictures as needed
         biotadatabase = self.getRepositoryPath()
-        directoryname = (biotadatabase + species['TargetPath']).lower()
+        directoryname = os.path.join(biotadatabase, species['TargetPath']).lower()
         os.makedirs(directoryname, exist_ok=True)
         for leaf in sorted(species['Leaves']):
             species = self.getSpecies(leaf)

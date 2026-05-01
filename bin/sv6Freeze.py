@@ -141,9 +141,9 @@ def AppendChangedFileData(MyProject, firstNewFile):
             # save for future situation (after move)
             wfn = filespec['WindowsFileName'] 
             fd = filespec['File:Directory']
-            filespec['WindowsFileName'] = \
-                filespec['WindowsFileName'].replace(filespec['File:Directory'], targetpathbase + targetpath).replace('//','/')
-            filespec['File:Directory'] = (targetpathbase + targetpath).replace('//','/')
+            new_dir = os.path.join(targetpathbase, targetpath)
+            filespec['WindowsFileName'] = filespec['WindowsFileName'].replace(filespec['File:Directory'], new_dir)
+            filespec['File:Directory'] = new_dir
 
             writer.writerow(filespec)
             # restore actual situation for move
