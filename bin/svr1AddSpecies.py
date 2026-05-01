@@ -43,7 +43,7 @@ def main(args, config):
 
     # read the list with all pre-defined species
     metadatadir = MyProject.getMetaDir()
-    sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)
+    sc.readSpeciesCollection(os.path.join(metadatadir, "active", "speciescollection.csv"), False)
 
     # read list with scientific names that we want to add.
     # Reads a CSV file line by line, splits by delimiter, and creates dictionaries.
@@ -63,7 +63,7 @@ def main(args, config):
                           file=printfile)
 
     # also create summarizing species, when more counters are added later
-    sc.updateSpeciesCollection(metadatadir + "active/speciescollection.csv")  
+    sc.updateSpeciesCollection(os.path.join(metadatadir, "active", "speciescollection.csv"))
 
     # print(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
     totaltime = time.time() - starttime      

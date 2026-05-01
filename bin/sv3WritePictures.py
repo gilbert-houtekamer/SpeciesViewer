@@ -73,12 +73,12 @@ def main(args, config):
 
     # read the list with all pre-defined species
     metadatadir = MyProject.getMetaDir()
-    sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)
+    sc.readSpeciesCollection(os.path.join(metadatadir, "active", "speciescollection.csv"), False)
     # also read list with all known species
     # and count the number of data file items we already have
-    sp.readSpeciesInfo(metadatadir + "active/species.csv", False)
-    RepositoryFileCount = read_file(MyProject, metadatadir+"active/data_files.csv")
-    RepositoryPictureCount = read_pictures(MyProject, metadatadir+"active/data_pictures.csv")
+    sp.readSpeciesInfo(os.path.join(metadatadir, "active", "species.csv"), False)
+    RepositoryFileCount = read_file(MyProject, os.path.join(metadatadir, "active", "data_files.csv"))
+    RepositoryPictureCount = read_pictures(MyProject, os.path.join(metadatadir, "active", "data_pictures.csv"))
 
     # read new files from project to review
     read_file(MyProject, os.path.join(MyProject.getMetaDirReview(), "data_files.csv"))
@@ -120,7 +120,7 @@ def main(args, config):
     logger.info(f'{len(MyProject.UniquePictureName_dict)} lines written for pictures to {picturefilename}.')
     
     # also create summarizing species, when more counters are added later
-    sc.updateSpeciesCollection(metadatadir + "active/speciescollection.csv")  
+    sc.updateSpeciesCollection(os.path.join(metadatadir, "active", "speciescollection.csv"))
     sp.writeSpeciesInfo(os.path.join(MyProject.getMetaDirReview(), "species.csv"), False)
     
     MyProject.addMetricsToLog(sp, RepositoryPictureCount, 

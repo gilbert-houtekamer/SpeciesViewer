@@ -127,7 +127,7 @@ def makeDirectories(MyProject, speciesname, all_or_new):
 
 def AppendChangedFileData(MyProject, firstNewFile):
     # Copy existing FileData 
-    existing_file_data = MyProject.getMetaDir() + 'active/data_files.csv'
+    existing_file_data = os.path.join(MyProject.getMetaDir(), 'active', 'data_files.csv')
     targetpathbase = MyProject.getRepositoryPath()
     datafilename = os.path.join(MyProject.ReviewFrozen(), "frozen_data_files.csv")     # the base our data
     os.makedirs(MyProject.ReviewFrozen(), exist_ok=True)    
@@ -154,7 +154,7 @@ def AppendChangedFileData(MyProject, firstNewFile):
     return
 
 def AppendChangedPictureData(MyProject, firstNewPicture):
-    existing_picture_data = MyProject.getMetaDir() + 'active/data_pictures.csv'    
+    existing_picture_data = os.path.join(MyProject.getMetaDir(), 'active', 'data_pictures.csv')
     picturename = os.path.join(MyProject.ReviewFrozen(), "frozen_data_pictures.csv")     # the base our data
     shutil.copy(existing_picture_data, picturename)
     with open(picturename, 'a', newline='', encoding='utf-8') as frozencsv:

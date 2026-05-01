@@ -68,7 +68,7 @@ def main(args, config):
                                           config.get("repository","BiotaWebRoot"))
     
     # Collect states
-    directory_to_scan = MyProject.getMetaDir() + 'review' # 'C:/laptop/validate/metadata/review'
+    directory_to_scan = os.path.join(MyProject.getMetaDir(), 'review') # 'C:/laptop/validate/metadata/review'
     days_dict = getAllProjectStatus(directory_to_scan)
 
     # # sample code to determine what is needed, up to level 2024-06-29

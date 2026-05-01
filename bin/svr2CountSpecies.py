@@ -233,7 +233,7 @@ def main(args, config):
 
     # read the list with all pre-defined species, as updated in each project using it
     metadatadir = MyProject.getMetaDir()
-    sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)
+    sc.readSpeciesCollection(os.path.join(metadatadir, "active", "speciescollection.csv"), False)
 
     # make output file
     reports_dir = Path(config.get("repository","BiotaDatabase")) / "metadata" / "reports"
@@ -241,7 +241,7 @@ def main(args, config):
     report_path = reports_dir / "Species overview.txt"
     with open(report_path, "w", encoding="utf-8") as report:
          # Collect species
-        directory_to_scan = MyProject.getMetaDir() + 'review'
+        directory_to_scan = os.path.join(MyProject.getMetaDir(), 'review')
         search_string = 'Species specified in this dir:'
         scan_files(directory_to_scan, search_string, report)
 

@@ -55,7 +55,7 @@ def main(args, config):
 
     # get species from master repository
     MyProject.readSpeciesInfo(os.path.join(MyProject.MasterRepository, "metadata", "active", "species.csv"), False)
-    MyProject.sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)
+    MyProject.sc.readSpeciesCollection(os.path.join(metadatadir, "active", "speciescollection.csv"), False)
     # INPUT AND OUTPUT
     in_csv = "D:/CurrentPictures/2026/2026 Extramadura/soorten.csv"
     out_csv = "D:/CurrentPictures/2026/2026 Extramadura/soorten_out.csv"

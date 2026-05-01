@@ -15,11 +15,11 @@ class CachedTranslate:
 
     def __init__(self, treedir):
         self.translator = googletrans.Translator()
-        self.admindir = treedir + 'admin/'
+        self.admindir = os.path.join(treedir, 'admin')
         self.readTranslationache()
 
     def readTranslationache(self):
-        cachefile = self.admindir + 'TransCache.csv'
+        cachefile = os.path.join(self.admindir, 'TransCache.csv')
         if os.path.exists(cachefile):
             with open(cachefile, mode="r", newline="", encoding='utf-8') as csvfile:
                 header = csvfile.readline().strip().split('^') 
@@ -36,7 +36,7 @@ class CachedTranslate:
 
     def writeTranslationCache(self):
         if len(self.translation_cache) > self.cachedtranslations:
-            cachefile = self.admindir + 'TransCache.csv'
+            cachefile = os.path.join(self.admindir, 'TransCache.csv')
             logger.info(f'Writing {len(self.translation_cache)} cached translations ({len(self.translation_cache)-self.cachedtranslations} added) to CSV file "{cachefile}".')
             with open(cachefile, "w", newline="", encoding='utf-8') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=['crctext','translatedtext'], 

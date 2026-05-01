@@ -46,28 +46,29 @@ def checkFrozenData(MyProject):
 
 
 def commitProjectFiles(MyProject):
-    activedir = MyProject.getMetaDir() + "active/"
-    activebackupdir = MyProject.getMetaDir() + "active/backup/"    
+    activedir = os.path.join(MyProject.getMetaDir(), "active")
+    activebackupdir = os.path.join(activedir, "backup")
     frozendir = MyProject.ReviewFrozen()
     today = datetime.today().strftime('%Y-%m-%d')
-         
-    # save old versions 
+
+    # save old versions
     logger.info(f"Keep old files for each day in {activebackupdir}, oldest per day is kept.")
-    if not os.path.exists(activebackupdir + today + "_data_files.csv"): 
+    if not os.path.exists(os.path.join(activebackupdir, today + "_data_files.csv")):
         logger.info(f'rename active files with prefix "{today}" to directory "{activebackupdir}".')
-        os.makedirs(activebackupdir, exist_ok=True)   
-        shutil.copy(activedir+"data_files.csv", activebackupdir+ today + "_data_files.csv")
-        shutil.copy(activedir+"data_pictures.csv", activebackupdir+ today + "_data_pictures.csv")
-        shutil.copy(activedir+"species.csv", activebackupdir + today + "_species.csv")
-        shutil.copy(activedir+"speciescollection.csv", activebackupdir + today + "_speciescollection.csv")        
+        os.makedirs(activebackupdir, exist_ok=True)
+        shutil.copy(os.path.join(activedir, "data_files.csv"),        os.path.join(activebackupdir, today + "_data_files.csv"))
+        shutil.copy(os.path.join(activedir, "data_pictures.csv"),     os.path.join(activebackupdir, today + "_data_pictures.csv"))
+        shutil.copy(os.path.join(activedir, "species.csv"),           os.path.join(activebackupdir, today + "_species.csv"))
+        shutil.copy(os.path.join(activedir, "speciescollection.csv"), os.path.join(activebackupdir, today + "_speciescollection.csv"))
     # Always keep last one per project
-    shutil.copy(os.path.join(frozendir, "deletelist.csv"), activebackupdir + today + "_"+ MyProject.ProjectName() + "_deletelist.csv")
+    shutil.copy(os.path.join(frozendir, "deletelist.csv"),
+                os.path.join(activebackupdir, today + "_" + MyProject.ProjectName() + "_deletelist.csv"))
 
     # now copy the frozen data
     logger.info(f"Copy frozen files in {frozendir} to {activedir}.")
-    shutil.copy(os.path.join(frozendir, "frozen_data_files.csv"), activedir+"data_files.csv")
-    shutil.copy(os.path.join(frozendir, "frozen_data_pictures.csv"), activedir+"data_pictures.csv")
-    shutil.copy(os.path.join(frozendir, "species.csv"), activedir+"species.csv")              
+    shutil.copy(os.path.join(frozendir, "frozen_data_files.csv"),    os.path.join(activedir, "data_files.csv"))
+    shutil.copy(os.path.join(frozendir, "frozen_data_pictures.csv"), os.path.join(activedir, "data_pictures.csv"))
+    shutil.copy(os.path.join(frozendir, "species.csv"),              os.path.join(activedir, "species.csv"))
     return
 
 def putRecursiveTreeWeb(MyProject, config):
@@ -92,10 +93,10 @@ def putRecursiveTreeWeb(MyProject, config):
     # sftp.connection.put(fromintro + 'summaries/all biota species-nl.html', tointro + 'summaries/all biota species-nl.html', preserve_mtime=True)
     # sftp.connection.put(fromintro + 'summaries/all biota species-en.html', tointro + 'summaries/all biota species-en.html', preserve_mtime=True)       
 
-    sftp.cachedUpload(fromintro + 'intro-nl.html', tointro + 'intro-nl.html', preserve_mtime=True)
-    sftp.cachedUpload(fromintro + 'intro-en.html', tointro + 'intro-en.html', preserve_mtime=True)
-    sftp.cachedUpload(fromintro + 'summaries/all biota species-nl.html', tointro + 'summaries/all biota species-nl.html', preserve_mtime=True)
-    sftp.cachedUpload(fromintro + 'summaries/all biota species-en.html', tointro + 'summaries/all biota species-en.html', preserve_mtime=True)       
+    sftp.cachedUpload(os.path.join(fromintro, 'intro-nl.html'),                          tointro + 'intro-nl.html', preserve_mtime=True)
+    sftp.cachedUpload(os.path.join(fromintro, 'intro-en.html'),                          tointro + 'intro-en.html', preserve_mtime=True)
+    sftp.cachedUpload(os.path.join(fromintro, 'summaries', 'all biota species-nl.html'), tointro + 'summaries/all biota species-nl.html', preserve_mtime=True)
+    sftp.cachedUpload(os.path.join(fromintro, 'summaries', 'all biota species-en.html'), tointro + 'summaries/all biota species-en.html', preserve_mtime=True)
     # send small pictures voor all species
     with open(os.path.join(MyProject.ReviewFrozen(), "allspecies.csv"), mode="r", newline="", encoding='utf-8') as csvfile:
         csvreader = csv.reader(csvfile)
@@ -116,7 +117,7 @@ def putRecursiveTreeWeb(MyProject, config):
 def putRecursiveTreeDisk(MyProject):
     fromlastproject  = MyProject.ReviewFrozen()
     tomainrepository = MyProject.getRepositoryPath()
-    shutil.copytree(os.path.join(fromlastproject, 'biota/'), tomainrepository+ 'biota/', dirs_exist_ok=True)
+    shutil.copytree(os.path.join(fromlastproject, 'biota/'), os.path.join(tomainrepository, 'biota'), dirs_exist_ok=True)
     return
 
 def main(args, config):

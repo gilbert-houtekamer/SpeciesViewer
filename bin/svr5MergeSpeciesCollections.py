@@ -48,14 +48,14 @@ def main(args, config):
     # Read the trip's species collection first (this is the source of new
     # entries to fold into master).
     metadatadir = MyProject.getMetaDir()
-    sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)
+    sc.readSpeciesCollection(os.path.join(metadatadir, "active", "speciescollection.csv"), False)
     newSC = sc.scCopy()
     sc.clearDict()
     # Read master, merge trip entries in, and write the result back over
     # master. updateSpeciesCollection renames the existing master file to
     # speciescollection.csvold first, giving the GUI a transient backup it
     # can use to drive the Keep / Restore review flow.
-    masterSpeciesCollection = MyProject.MasterRepository + '/metadata/active/speciescollection.csv'
+    masterSpeciesCollection = os.path.join(MyProject.MasterRepository, 'metadata', 'active', 'speciescollection.csv')
     sc.readSpeciesCollection(masterSpeciesCollection, True)
     sc.mergeSpeciesCollections(newSC)
     sc.updateSpeciesCollection(masterSpeciesCollection)

@@ -156,7 +156,7 @@ def main(args, config):
 
     # read the list with all pre-defined species, as updated in each project using it
     metadatadir = MyProject.getMetaDir()
-    sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)
+    sc.readSpeciesCollection(os.path.join(metadatadir, "active", "speciescollection.csv"), False)
 
     # read BirdingBreaksList
     readBirdingBreaksList()

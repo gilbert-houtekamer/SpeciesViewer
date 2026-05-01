@@ -253,9 +253,9 @@ class Project:
 
         # get species an existing committed files and picture
         self.readSpeciesInfo(os.path.join(metadatadirreview, "species.csv"), False)
-        self.sc.readSpeciesCollection(metadatadir + "active/speciescollection.csv", False)
-        read_file(self, metadatadir+"active/data_files.csv")
-        read_pictures(self, metadatadir+"active/data_pictures.csv")
+        self.sc.readSpeciesCollection(os.path.join(metadatadir, "active", "speciescollection.csv"), False)
+        read_file(self, os.path.join(metadatadir, "active", "data_files.csv"))
+        read_pictures(self, os.path.join(metadatadir, "active", "data_pictures.csv"))
 
         # see what files for non-commtted projected
         if getEarlierDays and self.Trip != None:
@@ -456,7 +456,7 @@ class Project:
     def makeAllSpeciesPage(self, speciesname, language):
         biota = self.getBiotaDir()
         self.setLanguage(language)
-        directorytouse = biota + 'summaries/' 
+        directorytouse = os.path.join(biota, 'summaries')
         os.makedirs(directorytouse, exist_ok=True)
 
         # breadcrumb
@@ -479,14 +479,15 @@ class Project:
         #self.breadcrumb.appendLevelBC(self.sp.species_dict[speciesname], "/trips/" + self.Trip.tripname)
 
         speciesOverview = self.getTemplateLines("allspecies-" + language + ".html")
-        with open((biota + 'summaries/all ' + speciesname + ' species-' + language + '.html').lower(), "w", encoding='UTF-8') as speciesOverviewFile:
+        outpath = os.path.join(biota, 'summaries', f'all {speciesname} species-{language}.html').lower()
+        with open(outpath, "w", encoding='UTF-8') as speciesOverviewFile:
             for templateline in speciesOverview:
                 line = getTemplateOutputString(self, self.sp.species_dict[speciesname], '', '', templateline.rstrip('\n'))
                 print(line, file=speciesOverviewFile)
-            
-            speciesOverviewFile.close()        
 
-        logger.info(f"""Written all Species data to "{(biota + 'summaries/all ' + speciesname + ' species-' + language + '.html').lower()}".""")
+            speciesOverviewFile.close()
+
+        logger.info(f'Written all Species data to "{outpath}".')
         return
     
     # Intro pages, can be used generically

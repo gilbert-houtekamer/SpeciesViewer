@@ -56,7 +56,7 @@ def main(args, config):
                                           config.get("repository","BiotaWebRoot"))
  
     # Search through all metadate directories
-    directory_to_scan = MyProject.getMetaDir() + 'review' # 'C:/laptop/validate/metadata/review'
+    directory_to_scan = os.path.join(MyProject.getMetaDir(), 'review') # 'C:/laptop/validate/metadata/review'
     delete_files(directory_to_scan, 'deletelist.csv')
     return
 
