@@ -6,7 +6,7 @@ from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDi
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
         AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
-        TestbedDialog, BlogAdminDialog)
+        TestbedDialog, BlogAdminDialog, PhotoMechanicDialog)
 from utils.config import _config
 import os
 from settings.globalsettings import GlobalSettingsDialog
@@ -30,6 +30,7 @@ import bin.svr8RecreateTripRepository
 import bin.svr9RedoBlog
 import bin.svu2avibase
 import bin.svu5SyncSidecars
+import bin.svu8PhotoMechanic
 import bin.svu6EmptyTripData
 import bin.svu7Testbed
 
@@ -357,6 +358,19 @@ def build_menu_spec(main_window):
     )
     convert_avibase.callback = lambda: ConvertAvibaseDialog(main_window, convert_avibase).exec()
 
+    photo_mechanic = MenuSpec(
+        callback=None,
+        title="Create PhotoMechanic keyword files for next trip.",
+        showsubdirectory=False,
+        batch_parms={
+            'statusname': "",
+            'module_called': bin.svu8PhotoMechanic.main,
+            'before_msg': "Generating PhotoMechanic keyword snap files...",
+            'after_msg': "✅ PhotoMechanic snap files created."
+        }
+    )
+    photo_mechanic.callback = lambda: PhotoMechanicDialog(main_window, photo_mechanic).exec()
+
     testbed = MenuSpec(
         callback=None,
         title="Call Testbed for trip day",
@@ -406,6 +420,7 @@ def build_menu_spec(main_window):
         "Utilities": {
         #     "BirdingBreaks": None, # PROCESS BIRDING BREAK FILES
              "AviBase": convert_avibase,
+             "PhotoMechanic": photo_mechanic,
              "Call Testbed for trip day": testbed,
         },
         "Settings": {

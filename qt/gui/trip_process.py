@@ -2305,3 +2305,18 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
         _config["avibase"]["phone_layout"] = "true" if self.phone_layout_checkbox.isChecked() else "false"
         _config["avibase"]["first_column_lang"] = self.LANG_OPTIONS[self.first_lang_dropdown.currentIndex()][0]
         super().on_write()
+
+
+class PhotoMechanicDialog(BaseTripModuleDialog):
+    def __init__(self, parent, menu_spec):
+        super().__init__(
+            parent,
+            menu_spec,
+            title="Create PhotoMechanic keyword files for next trip.",
+            info_text=(
+                "Generates two PhotoMechanic .snap keyword files from the AviBase species list: "
+                "one with Dutch names and one with English names. "
+                "Files are written to the PhotoMechanic IPTCKeywordsSettings folder."
+            ),
+            subdirectory=False
+        )
