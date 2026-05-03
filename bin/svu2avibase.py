@@ -28,13 +28,10 @@ import ghexif.specieslib
 import ghexif.speciesclassification
 from ghexif.specieslib import Level
 import ghexif.triplib
+from ghexif.avibaselib import read_avibase, add_species_info
 
 logger = logging.getLogger("speciesviewer")
 avibase_dict = {}
-headers = []
-counter = 1
-newcounter = 1
-jpgneeded = 0
 Reference_sp = None
 
 # read parameters, but will be overwritten probably
@@ -43,89 +40,7 @@ def readConfig():
     config.read(INI_LOCATION)
     return config
 
-# veel selectie mogelijkheden
-# https://avibase.bsc-eoc.org/checklist.jsp?lang=EN
-# voorbeeld brazilie:
-# https://avibase.bsc-eoc.org/checklist.jsp?lang=EN&p2=1&list=ioc&synlang=NL&region=BRms&version=text&lifelist=&highlight=0
-def readAviBase(triproot, filename):
-    #file_path = "C:/Users/gilbe/OneDrive/reizen/gambia/soorten.csv"
-    #file_path = "C:/Users/gilbe/OneDrive/reizen/madagascar/avibase.csv"
-    file_path  = os.path.join(triproot, filename)
-    number = 1
-    with open(file_path, 'r', encoding='utf-8') as f:
-        content = f.read().split("\n")
-        for lines in content:
-            tokens = lines.split(";")
-            try:
-                if tokens[0] == '\ufeffColumn1':
-                    continue
-                    # header line, ignore it
-                elif tokens[0] == '' or tokens[0] == ' ':
-                    continue
-                elif tokens[1] not in ['Wet','']:
-                    listspecies = {}
-                    listspecies['nlname'] = tokens[2]
-                    listspecies['enname'] = tokens[0]      # column 0 is the dict key (e.g. species number)
-                    listspecies['english'] = ''             # actual English name, filled by addSpeciesInfo
-                    listspecies['scname'] = tokens[1]
-                    listspecies['status'] = tokens[3]
-                    if tokens[1] not in ["Wet", ""]:
-                        listspecies['number'] = number
-                        number += 1 
-                    elif tokens[1] == "Wet":
-                        listspecies['number'] = "Wet"                   
-                    else:
-                        listspecies['number'] = ""
-                    listspecies['gezien'] = 0
-                    listspecies['foto'] = 0
-                    listspecies['knownspecies'] = False
-                    avibase_dict[listspecies['enname']] = listspecies
-                elif tokens[0] not in ['\ufeffEngels']:
-                    listspecies = {}
-                    listspecies['number'] = -1
-                    listspecies['enname'] = tokens[0]
-                    listspecies['scname'] = ""
-                    listspecies['status'] = ""                
-                    avibase_dict[listspecies['enname']] = listspecies            
-            except:
-               pass
-    return
 
-def addSpeciesInfo(sc,sp):
-    for enname in avibase_dict:
-        listspecies = avibase_dict[enname]
-        original_scname = listspecies.get('scname', '')
-
-        if listspecies['scname'] != "":     # exclude headers
-            if enname.lower() in sc.english_dict:
-                listspecies['scname'] = sc.english_dict[enname.lower()]
-                if listspecies['scname'] in sp.species_dict:
-                    listspecies['knownspecies'] = True
-            else:
-                if listspecies['nlname'].lower() == "":
-                    if listspecies['scname'].lower() in sc.sc_dict:
-                        listspecies['nlname'] = sc.sc_dict[listspecies['scname'].lower()]['DutchName']
-                if listspecies['nlname'].lower() in sc.dutch_dict:
-                    listspecies['scname'] = sc.dutch_dict[listspecies['nlname'].lower()]
-                    if listspecies['scname'] in sp.species_dict:
-                        listspecies['knownspecies'] = True
-        # Fill the actual English name from the master classification when we
-        # have a scientific name (the source list often only carries Dutch +
-        # Scientific). Keeps the dict key (enname) free for things like a
-        # species number that the user reads off in the field.
-        if listspecies.get('scname') and not listspecies.get('english'):
-            sc_entry = sc.sc_dict.get(listspecies['scname'].lower())
-            if sc_entry and sc_entry.get('EnglishName'):
-                listspecies['english'] = sc_entry['EnglishName']
-        # Source lists often carry outdated scientific names. When the
-        # English/Dutch lookup produced a different canonical scientific name,
-        # log it so the user can correct the source list.
-        if original_scname and listspecies.get('scname') and \
-           listspecies['scname'].lower() != original_scname.lower():
-            label = listspecies.get('nlname') or listspecies.get('english') or enname
-            logger.info(f"Scientific name updated for '{label}': "
-                        f"'{original_scname}' → '{listspecies['scname']}'")
-    return
 
 
 # caller
@@ -509,8 +424,8 @@ def main(args, config):
         first_column_lang = config.get("avibase", "first_column_lang", fallback="nl").strip().lower()
         if first_column_lang not in ("nl", "en"):
             first_column_lang = "nl"
-        readAviBase(MyProject.Repository, "avibase.csv")
-        addSpeciesInfo(sc, Reference_sp)
+        avibase_dict.update(read_avibase(MyProject.Repository, "avibase.csv"))
+        add_species_info(avibase_dict, sc, Reference_sp)
         temp_csv_file = os.path.join(MyProject.Repository, "soorten-temp.csv")
         createRawCSV(temp_csv_file)
         trip_name = MyProject.Trip.tripname
