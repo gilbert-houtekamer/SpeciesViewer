@@ -206,6 +206,8 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
     HEADER_ROW          = 13
     DATA_START_ROW      = 14
     last_data_row       = DATA_START_ROW + len(data) - 1
+    EXTRA_ROWS          = 20
+    extended_last_row   = last_data_row + EXTRA_ROWS
 
     wb = Workbook()
     ws = wb.active
@@ -303,6 +305,52 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
                     ws.cell(row=excel_row, column=heard_idx,
                             value=f'=COUNTIF({_r},"H")+COUNTIF({_r},"h")')
 
+        # Extra blank rows for unanticipated species.
+        no_col_idx  = excel_col_for_csv(CSV_NO)
+        last_number = max(
+            (int(row[CSV_NO]) for row in data
+             if len(row) > CSV_NO and row[CSV_NO].strip().isdigit()),
+            default=0)
+        for i in range(EXTRA_ROWS):
+            excel_row    = last_data_row + 1 + i
+            extra_number = last_number + 1 + i
+            if no_col_idx:
+                ws.cell(row=excel_row, column=no_col_idx, value=extra_number)
+            for col_idx, col in enumerate(columns, 1):
+                if col['kind'] == 'date':
+                    ws.cell(row=excel_row, column=col_idx).number_format = "0"
+                    if col.get('weekend'):
+                        ws.cell(row=excel_row, column=col_idx).fill = weekend_fill
+            for col_idx in range(2, visible_last_col + 1):
+                col = columns[col_idx - 1]
+                if col['kind'] == 'date' and col.get('weekend'):
+                    continue
+                ws.cell(row=excel_row, column=col_idx).fill = unseen_fill
+            _sr = f'{first_date_letter}{excel_row}:{last_date_letter}{excel_row}'
+            ws.cell(row=excel_row, column=seen_col_idx,
+                    value=f'=COUNTIF({_sr},1)+COUNTIF({_sr},"P")+COUNTIF({_sr},"p")')
+            ws.cell(row=excel_row, column=new_col_idx,
+                    value=f'=IF(AND({known_letter}{excel_row}<>"Known",'
+                          f' {seen_letter}{excel_row}>0), "New", "")')
+            if is_new_helper_idx:
+                ws.cell(row=excel_row, column=is_new_helper_idx,
+                        value=f'=IF({known_letter}{excel_row}<>"Known", 1, 0)')
+            for k, cum_idx in enumerate(cum_helper_idxs):
+                if not cum_idx:
+                    continue
+                day_k_letter = get_column_letter(date_col_idxs[k])
+                _r = f'{first_date_letter}{excel_row}:{day_k_letter}{excel_row}'
+                ws.cell(row=excel_row, column=cum_idx,
+                        value=f'=COUNTIF({_r},1)+COUNTIF({_r},"P")+COUNTIF({_r},"p")')
+                photo_idx = cum_photo_helper_idxs[k]
+                if photo_idx:
+                    ws.cell(row=excel_row, column=photo_idx,
+                            value=f'=COUNTIF({_r},"P")+COUNTIF({_r},"p")')
+                heard_idx = cum_heard_helper_idxs[k]
+                if heard_idx:
+                    ws.cell(row=excel_row, column=heard_idx,
+                            value=f'=COUNTIF({_r},"H")+COUNTIF({_r},"h")')
+
     # ── Title banner (row 1) and totals area (rows 2..5) ────────────────
     title_text = (f"Total counters for {trip_name}" if trip_name
                   else "Total counters")
@@ -320,12 +368,12 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
     ws.cell(row=TRIP_HEARD_NEW_ROW, column=1, value="Trip Heard New")
 
     is_new_letter = get_column_letter(is_new_helper_idx) if is_new_helper_idx else None
-    is_new_range  = (f'{is_new_letter}{DATA_START_ROW}:{is_new_letter}{last_data_row}'
+    is_new_range  = (f'{is_new_letter}{DATA_START_ROW}:{is_new_letter}{extended_last_row}'
                      if is_new_letter else None)
 
     for k, day_col_idx in enumerate(date_col_idxs):
         day_letter = get_column_letter(day_col_idx)
-        day_range  = f'{day_letter}{DATA_START_ROW}:{day_letter}{last_data_row}'
+        day_range  = f'{day_letter}{DATA_START_ROW}:{day_letter}{extended_last_row}'
 
         # Day Photo
         ws.cell(row=DAY_PHOTO_ROW, column=day_col_idx,
@@ -353,12 +401,12 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
         cum_heard_idx = cum_heard_helper_idxs[k] if k < len(cum_heard_helper_idxs) else None
         if cum_photo_idx:
             cum_photo_letter = get_column_letter(cum_photo_idx)
-            cum_photo_range  = f'{cum_photo_letter}{DATA_START_ROW}:{cum_photo_letter}{last_data_row}'
+            cum_photo_range  = f'{cum_photo_letter}{DATA_START_ROW}:{cum_photo_letter}{extended_last_row}'
             ws.cell(row=TRIP_PHOTO_ROW, column=day_col_idx,
                     value=f'=COUNTIF({cum_photo_range},">0")')
         if cum_idx:
             cum_letter = get_column_letter(cum_idx)
-            cum_range  = f'{cum_letter}{DATA_START_ROW}:{cum_letter}{last_data_row}'
+            cum_range  = f'{cum_letter}{DATA_START_ROW}:{cum_letter}{extended_last_row}'
             ws.cell(row=TRIP_TOTALS_ROW, column=day_col_idx,
                     value=f'=COUNTIF({cum_range},">0")')
             if is_new_range:
@@ -366,7 +414,7 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
                         value=f'=COUNTIFS({is_new_range},1,{cum_range},">0")')
         if cum_heard_idx:
             cum_heard_letter = get_column_letter(cum_heard_idx)
-            cum_heard_range  = f'{cum_heard_letter}{DATA_START_ROW}:{cum_heard_letter}{last_data_row}'
+            cum_heard_range  = f'{cum_heard_letter}{DATA_START_ROW}:{cum_heard_letter}{extended_last_row}'
             ws.cell(row=TRIP_HEARD_ROW, column=day_col_idx,
                     value=f'=COUNTIF({cum_heard_range},">0")')
             if is_new_range:
@@ -390,7 +438,7 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
         photo_letter = get_column_letter(photo_col_idx)
         ws.cell(row=TRIP_TOTALS_ROW, column=photo_col_idx,
                 value=f'=COUNTIF({photo_letter}{DATA_START_ROW}:'
-                      f'{photo_letter}{last_data_row}, ">0")')
+                      f'{photo_letter}{extended_last_row}, ">0")')
 
     # Column widths + hide helper columns.
     for col_idx, col in enumerate(columns, 1):
@@ -402,7 +450,7 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
     # Borders — keep the original ~385-row printable grid so the user's
     # print template is not surprised by a shorter species list. Skip the
     # hidden helper columns (no need for borders no one will see).
-    last_row = max(last_data_row, 385)
+    last_row = max(extended_last_row, 385)
     thin_border = Border(
         left=Side(style='thin'),
         right=Side(style='thin'),
@@ -418,7 +466,7 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
     # The four totals rows sit above the filter range so they stay
     # visible (and unaffected) regardless of filtering.
     ws.auto_filter.ref = (
-        f"A{HEADER_ROW}:{get_column_letter(visible_last_col)}{last_data_row}"
+        f"A{HEADER_ROW}:{get_column_letter(visible_last_col)}{extended_last_row}"
     )
 
     # Freeze the totals + header rows. In phone layout pin both the
