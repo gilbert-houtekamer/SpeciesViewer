@@ -283,9 +283,13 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
                 continue  # section header
             _sr = f'{first_date_letter}{excel_row}:{last_date_letter}{excel_row}'
             ws.cell(row=excel_row, column=seen_col_idx,
-                    value=f'=COUNTIF({_sr},1)+COUNTIF({_sr},"P")+COUNTIF({_sr},"p")')
+                    value=f'=COUNTIF({_sr},1)+COUNTIF({_sr},"P")')
             ws.cell(row=excel_row, column=new_col_idx,
                     value=f'=IF(AND({known_letter}{excel_row}<>"Known", {seen_letter}{excel_row}>0), "New", "")')
+            if photo_col_idx and date_col_idxs:
+                _dr = f'{first_date_letter}{excel_row}:{last_date_letter}{excel_row}'
+                ws.cell(row=excel_row, column=photo_col_idx,
+                        value=f'=IF(COUNTIF({_dr},"P")>0,"yes","")')
             if is_new_helper_idx:
                 ws.cell(row=excel_row, column=is_new_helper_idx,
                         value=f'=IF({known_letter}{excel_row}<>"Known", 1, 0)')
@@ -295,15 +299,15 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
                 day_k_letter = get_column_letter(date_col_idxs[k])
                 _r = f'{first_date_letter}{excel_row}:{day_k_letter}{excel_row}'
                 ws.cell(row=excel_row, column=cum_idx,
-                        value=f'=COUNTIF({_r},1)+COUNTIF({_r},"P")+COUNTIF({_r},"p")')
+                        value=f'=COUNTIF({_r},1)+COUNTIF({_r},"P")')
                 photo_idx = cum_photo_helper_idxs[k]
                 if photo_idx:
                     ws.cell(row=excel_row, column=photo_idx,
-                            value=f'=COUNTIF({_r},"P")+COUNTIF({_r},"p")')
+                            value=f'=COUNTIF({_r},"P")')
                 heard_idx = cum_heard_helper_idxs[k]
                 if heard_idx:
                     ws.cell(row=excel_row, column=heard_idx,
-                            value=f'=COUNTIF({_r},"H")+COUNTIF({_r},"h")')
+                            value=f'=COUNTIF({_r},"H")')
 
         # Extra blank rows for unanticipated species.
         no_col_idx  = excel_col_for_csv(CSV_NO)
@@ -328,10 +332,13 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
                 ws.cell(row=excel_row, column=col_idx).fill = unseen_fill
             _sr = f'{first_date_letter}{excel_row}:{last_date_letter}{excel_row}'
             ws.cell(row=excel_row, column=seen_col_idx,
-                    value=f'=COUNTIF({_sr},1)+COUNTIF({_sr},"P")+COUNTIF({_sr},"p")')
+                    value=f'=COUNTIF({_sr},1)+COUNTIF({_sr},"P")')
             ws.cell(row=excel_row, column=new_col_idx,
                     value=f'=IF(AND({known_letter}{excel_row}<>"Known",'
                           f' {seen_letter}{excel_row}>0), "New", "")')
+            if photo_col_idx and date_col_idxs:
+                ws.cell(row=excel_row, column=photo_col_idx,
+                        value=f'=IF(COUNTIF({_sr},"P")>0,"yes","")')
             if is_new_helper_idx:
                 ws.cell(row=excel_row, column=is_new_helper_idx,
                         value=f'=IF({known_letter}{excel_row}<>"Known", 1, 0)')
@@ -341,15 +348,15 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
                 day_k_letter = get_column_letter(date_col_idxs[k])
                 _r = f'{first_date_letter}{excel_row}:{day_k_letter}{excel_row}'
                 ws.cell(row=excel_row, column=cum_idx,
-                        value=f'=COUNTIF({_r},1)+COUNTIF({_r},"P")+COUNTIF({_r},"p")')
+                        value=f'=COUNTIF({_r},1)+COUNTIF({_r},"P")')
                 photo_idx = cum_photo_helper_idxs[k]
                 if photo_idx:
                     ws.cell(row=excel_row, column=photo_idx,
-                            value=f'=COUNTIF({_r},"P")+COUNTIF({_r},"p")')
+                            value=f'=COUNTIF({_r},"P")')
                 heard_idx = cum_heard_helper_idxs[k]
                 if heard_idx:
                     ws.cell(row=excel_row, column=heard_idx,
-                            value=f'=COUNTIF({_r},"H")+COUNTIF({_r},"h")')
+                            value=f'=COUNTIF({_r},"H")')
 
     # ── Title banner (row 1) and totals area (rows 2..5) ────────────────
     title_text = (f"Total counters for {trip_name}" if trip_name
@@ -377,23 +384,22 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
 
         # Day Photo
         ws.cell(row=DAY_PHOTO_ROW, column=day_col_idx,
-                value=f'=COUNTIF({day_range},"P")+COUNTIF({day_range},"p")')
-        # Day Seen (1, P, p all count as "seen")
+                value=f'=COUNTIF({day_range},"P")')
+        # Day Seen (1, P, p all count as "seen"; COUNTIF is case-insensitive so "P" covers p)
         ws.cell(row=DAY_TOTALS_ROW, column=day_col_idx,
-                value=f'=COUNTIF({day_range},1)+COUNTIF({day_range},"P")+COUNTIF({day_range},"p")')
+                value=f'=COUNTIF({day_range},1)+COUNTIF({day_range},"P")')
         # Day Seen New
         if is_new_range:
             ws.cell(row=DAY_NEW_ROW, column=day_col_idx,
                     value=f'=SUMPRODUCT(({is_new_range}=1)*'
-                          f'(({day_range}=1)+({day_range}="P")+({day_range}="p")))')
+                          f'(({day_range}=1)+({day_range}="P")))')
         # Day Heard
         ws.cell(row=DAY_HEARD_ROW, column=day_col_idx,
-                value=f'=COUNTIF({day_range},"H")+COUNTIF({day_range},"h")')
+                value=f'=COUNTIF({day_range},"H")')
         # Day Heard New
         if is_new_range:
             ws.cell(row=DAY_HEARD_NEW_ROW, column=day_col_idx,
-                    value=f'=SUMPRODUCT(({is_new_range}=1)*'
-                          f'(({day_range}="H")+({day_range}="h")))')
+                    value=f'=SUMPRODUCT(({is_new_range}=1)*({day_range}="H"))')
 
         # Trip cumulative helpers
         cum_idx       = cum_helper_idxs[k]       if k < len(cum_helper_idxs)       else None
