@@ -7,6 +7,7 @@ from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDi
         AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
         TestbedDialog, BlogAdminDialog, PhotoMechanicDialog)
+from gui.virttrip_process import VirtualTripCreationDialog
 from utils.config import _config
 import os
 from settings.globalsettings import GlobalSettingsDialog
@@ -33,6 +34,7 @@ import bin.svu5SyncSidecars
 import bin.svu8PhotoMechanic
 import bin.svu6EmptyTripData
 import bin.svu7Testbed
+import bin.svv1MakeVirtualRepository
 
 
 def build_menu_spec(main_window):
@@ -383,6 +385,18 @@ def build_menu_spec(main_window):
     )
     testbed.callback = lambda: TestbedDialog(main_window, testbed).exec()
 
+    virttrip_create = MenuSpec(
+        callback=None,
+        title="Create Virtual Trip",
+        batch_parms={
+            'statusname': "",
+            'module_called': bin.svv1MakeVirtualRepository.main,
+            'before_msg': "Creating virtual trip directory structure...",
+            'after_msg': "✅ Virtual trip created. Fill in virttrip.ini details and select a date range."
+        }
+    )
+    virttrip_create.callback = lambda: VirtualTripCreationDialog(main_window, virttrip_create).exec()
+
     return {
         "File": {
             "Quit": MenuSpec(
@@ -422,6 +436,9 @@ def build_menu_spec(main_window):
              "AviBase": convert_avibase,
              "PhotoMechanic": photo_mechanic,
              "Call Testbed for trip day": testbed,
+        },
+        "Virtual Trips": {
+            "Create Virtual Trip": virttrip_create,
         },
         "Settings": {
             "Global Settings": MenuSpec(
