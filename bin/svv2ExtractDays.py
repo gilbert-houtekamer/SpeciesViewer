@@ -116,9 +116,6 @@ def main(args, config):
             logger.info(f"  {day_label}: {len(day_files):4d} files, "
                         f"{len(day_pictures):4d} pictures")
             days_written += 1
-        else:
-            logger.info(f"  {day_label}: no pictures in master — skipped")
-
         current += timedelta(days=1)
 
     logger.info(f"✅ ExtractDays complete: {days_written} day(s) written to {review_root}")
@@ -128,7 +125,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="svv2ExtractDays.")
     parser.add_argument("--config", type=str,
                         default=os.environ.get("SVCONFIG", "svconfig.ini"),
-                        help="Module Configuration File")
+                        help="Extract days from the master database based on the virttrip.ini date range. ")
     args = parser.parse_args()
     config = configparser.ConfigParser()
     config.read(args.config)
