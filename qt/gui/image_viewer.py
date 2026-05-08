@@ -76,7 +76,7 @@ class ImagePreviewDialog(QDialog):
     _pixmap_cache: dict = {}
 
     def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg",
-                 file_list=None, cache_root=None):
+                 file_list=None, cache_root=None, source_label=None):
         super().__init__(parent)
         self.resize(800, 600)
         self.mode = mode
@@ -107,17 +107,22 @@ class ImagePreviewDialog(QDialog):
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         dir_layout = QHBoxLayout()
-        self.dir_field = DirectoryFieldQt("Image Directory", initial_path=image_dir)
-        self.dir_field.field.setReadOnly(True)
-
-        dir_layout.addWidget(self.dir_field)
+        self.dir_field = None
+        if file_list is not None:
+            path_label = QLabel(source_label or "Virtual trip — files from master database")
+            path_label.setStyleSheet("color: #444; font-style: italic;")
+            dir_layout.addWidget(path_label)
+        else:
+            self.dir_field = DirectoryFieldQt("Image Directory", initial_path=image_dir)
+            self.dir_field.field.setReadOnly(True)
+            dir_layout.addWidget(self.dir_field)
         self.cancelled = False
         self.cancel_button = QPushButton("Cancel")
-        self.cancel_button.setEnabled(False)        
+        self.cancel_button.setEnabled(False)
         dir_layout.addWidget(self.cancel_button)
-        self.cancel_button.clicked.connect(self.cancel_scan)               
+        self.cancel_button.clicked.connect(self.cancel_scan)
 
-        layout.addLayout(dir_layout)           
+        layout.addLayout(dir_layout)
 
         # self.dir_field.field.textChanged.connect(self.on_directory_changed)        
 
@@ -425,7 +430,7 @@ class ImagePreviewDialog(QDialog):
     
 
         def show_species_info():
-            self.species_dialog = SpeciesInfoDialog(img_path, species_name, error_msg, self.main_window)
+            self.species_dialog = SpeciesInfoDialog(img_path, species_name, error_msg, self)
             self.species_dialog.accepted.connect(self.load_next_image)
             self.species_dialog.rejected.connect(lambda: print("Species info dialog canceled"))
             self.species_dialog.show()

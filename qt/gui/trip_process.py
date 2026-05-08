@@ -91,7 +91,7 @@ class TripCreationDialog(QDialog):
         self.resize(800, 600)
 
         trip_root = _config.get("trip", "tripbiotadatabase", fallback="")
-        trip_data = read_trip_ini(trip_root) if os.path.isdir(trip_root) else {}
+        trip_data = read_trip_ini(trip_root) or {}
   
         main_layout = QVBoxLayout(self)
         tabs = QTabWidget()
