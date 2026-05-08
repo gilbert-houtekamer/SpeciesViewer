@@ -3,12 +3,14 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
 import logging
 import os
 import shutil
+from datetime import datetime, timedelta
 from datetime import datetime
 from pathlib import Path
 
 from gui.batch import BatchModuleRunner
 from utils.config import set_setting, _config
 from utils.virttrip_config import read_virttrip_ini
+import bin.svv2ExtractDays
 from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt,
                                    RecentDirectoryFieldQt, ImageFileFieldQt)
@@ -328,3 +330,60 @@ class VirtualTripCreationDialog(QDialog):
             self.message_en_field.get_text(),
             self.logger,
         )
+
+
+class ExtractDaysDialog(QDialog):
+    def __init__(self, parent, menu_spec):
+        super().__init__(parent)
+        self.menu_spec = menu_spec
+        self.logger = parent.logger
+        self.passed_parent = parent
+        self.setWindowTitle("Extract Days from Master")
+        self.resize(600, 280)
+
+        layout = QVBoxLayout(self)
+
+        virttrip_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
+        trip_data = read_virttrip_ini(virttrip_root) if virttrip_root else {}
+
+        fromdate = trip_data.get("fromdate", "?") if trip_data else "?"
+        todate   = trip_data.get("todate",   "?") if trip_data else "?"
+
+        # Count days in range for the info label
+        day_count = ""
+        try:
+            n = (datetime.strptime(todate, "%Y-%m-%d") -
+                 datetime.strptime(fromdate, "%Y-%m-%d")).days + 1
+            day_count = f" ({n} day{'s' if n != 1 else ''})"
+        except ValueError:
+            pass
+
+        layout.addWidget(HTMLLabel(
+            "<p><b>Extract daily picture data from the master</b><br>"
+            "Reads the master's <i>data_files.csv</i> and <i>data_pictures.csv</i> and writes "
+            "one sub-directory per day that has pictures:</p>"
+            "<pre>  &lt;virttrip&gt;/metadata/review/YYYY-MM-DD/data_files.csv\n"
+            "  &lt;virttrip&gt;/metadata/review/YYYY-MM-DD/data_pictures.csv</pre>"
+            "<p>Days with no pictures in the master are skipped.</p>"
+        ))
+
+        layout.addWidget(QLabel(f"Virtual trip:  {virttrip_root or '(not set)'}"))
+        layout.addWidget(QLabel(f"Date range:    {fromdate}  →  {todate}{day_count}"))
+
+        self.status_label = QLabel("")
+        layout.addWidget(self.status_label)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        run_btn   = QPushButton("Extract Days")
+        close_btn = QPushButton("Close")
+        btn_layout.addWidget(run_btn)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+        run_btn.clicked.connect(self.on_run)
+        close_btn.clicked.connect(self.close)
+
+    def on_run(self):
+        runner = BatchModuleRunner(self, self.passed_parent)
+        runner.run(self.menu_spec)

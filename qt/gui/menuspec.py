@@ -7,7 +7,7 @@ from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDi
         AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
         TestbedDialog, BlogAdminDialog, PhotoMechanicDialog)
-from gui.virttrip_process import VirtualTripCreationDialog
+from gui.virttrip_process import VirtualTripCreationDialog, ExtractDaysDialog
 from utils.config import _config
 import os
 from settings.globalsettings import GlobalSettingsDialog
@@ -35,6 +35,7 @@ import bin.svu8PhotoMechanic
 import bin.svu6EmptyTripData
 import bin.svu7Testbed
 import bin.svv1MakeVirtualRepository
+import bin.svv2ExtractDays
 
 
 def build_menu_spec(main_window):
@@ -397,6 +398,18 @@ def build_menu_spec(main_window):
     )
     virttrip_create.callback = lambda: VirtualTripCreationDialog(main_window, virttrip_create).exec()
 
+    extract_days = MenuSpec(
+        callback=None,
+        title="Extract Days from Master",
+        batch_parms={
+            'statusname': "",
+            'module_called': bin.svv2ExtractDays.main,
+            'before_msg': "Extracting per-day CSVs from master...",
+            'after_msg': "✅ Day extraction complete. Check metadata/review/ for results."
+        }
+    )
+    extract_days.callback = lambda: ExtractDaysDialog(main_window, extract_days).exec()
+
     return {
         "File": {
             "Quit": MenuSpec(
@@ -439,6 +452,8 @@ def build_menu_spec(main_window):
         },
         "Virtual Trips": {
             "Create Virtual Trip": virttrip_create,
+            f"{MenuSpec.separator()}_vt1": None,
+            "Extract Days from Master": extract_days,
         },
         "Settings": {
             "Global Settings": MenuSpec(
