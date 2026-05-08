@@ -10,6 +10,7 @@ from pathlib import Path
 from gui.batch import BatchModuleRunner
 from utils.config import set_setting, _config
 from utils.virttrip_config import read_virttrip_ini
+from gui.virttrip_overview import populate_virttrip_overview
 import bin.svv2ExtractDays
 from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt,
@@ -296,6 +297,7 @@ class VirtualTripCreationDialog(QDialog):
     def on_select(self):
         set_setting("virttrip", "virttripbiotadatabase", self.root_field.get_text())
         set_setting("virttrip", "virttripbiotawebroot",  self.trip_web.field.text())
+        populate_virttrip_overview(self.passed_parent)
         self.accept()
 
     def translate_dutch_to_english(self):
@@ -386,4 +388,5 @@ class ExtractDaysDialog(QDialog):
 
     def on_run(self):
         runner = BatchModuleRunner(self, self.passed_parent)
-        runner.run(self.menu_spec)
+        runner.run(self.menu_spec,
+                   on_success=lambda: populate_virttrip_overview(self.passed_parent))

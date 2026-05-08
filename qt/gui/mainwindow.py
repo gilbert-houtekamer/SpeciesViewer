@@ -9,6 +9,7 @@ from utils.config import _config, persist_config
 from gui.menu import create_menubar
 from gui.menuspec import build_menu_spec
 from gui.trip_overview import populate_trip_overview
+from gui.virttrip_overview import populate_virttrip_overview, TAB_TITLE as VIRTTRIP_TAB_TITLE
 from sharedlib.translatelib import CachedTranslate
 from widgets.TripInfoPanel import TripInfoPanel
 from gui.trip_overview import populate_trip_overview
@@ -32,8 +33,9 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.trip_table = None
-        self.state_keys = None       
-        self.state_labels = None 
+        self.virttrip_table = None
+        self.state_keys = None
+        self.state_labels = None
         self.setWindowTitle("Species Viewer 0.1")
         # Create and attach status bar
         self.status_bar = QStatusBar()
@@ -728,5 +730,11 @@ class MainWindow(QMainWindow):
     def remove_existing_overview_tab(self):
         for i in range(self.yellow_tabs.count()):
             if self.yellow_tabs.tabText(i) == "Overview":
+                self.yellow_tabs.removeTab(i)
+                break
+
+    def remove_existing_virttrip_tab(self):
+        for i in range(self.yellow_tabs.count()):
+            if self.yellow_tabs.tabText(i) == VIRTTRIP_TAB_TITLE:
                 self.yellow_tabs.removeTab(i)
                 break
