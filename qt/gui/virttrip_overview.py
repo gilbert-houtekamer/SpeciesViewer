@@ -10,6 +10,8 @@ from PyQt6.QtWidgets import (
 from utils.config import _config
 from utils.virttrip_config import read_virttrip_ini
 
+JPEG_EXTS = {"jpg", "jpeg"}
+
 DATE_COL  = 0
 FILES_COL = 1
 JPGS_COL  = 2
@@ -17,6 +19,44 @@ BLOG_COL  = 3
 WEB_COL   = 4
 
 TAB_TITLE = "Virtual Trip"
+
+
+def _build_file_list(csv_path: Path, jpeg_only: bool) -> list:
+    """Read data_files.csv and return full Path objects for each file.
+
+    Files live in the master database at their original location — no
+    copies are made. When jpeg_only is True only .jpg / .jpeg rows are
+    returned.
+    """
+    paths = []
+    try:
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f, delimiter=";")
+            for row in reader:
+                ext = row.get("WindowsExtension", "").lower()
+                if jpeg_only and ext not in JPEG_EXTS:
+                    continue
+                directory = row.get("File:Directory", "")
+                filename  = row.get("File:FileName",  "")
+                if directory and filename:
+                    paths.append(Path(directory) / filename)
+    except (FileNotFoundError, OSError):
+        pass
+    return paths
+
+
+def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path):
+    from gui.image_viewer import ImagePreviewDialog
+    file_list = _build_file_list(day_dir / "data_files.csv", jpeg_only)
+    if not file_list:
+        return
+    cache_root = virttrip_root / "admin" / ".preview_cache"
+    dlg = ImagePreviewDialog(
+        parent=parent,
+        file_list=file_list,
+        cache_root=str(cache_root),
+    )
+    dlg.exec()
 
 
 def _count_files_from_csv(csv_path: Path):
@@ -100,3 +140,11 @@ def populate_virttrip_overview(self):
 
     self.yellow_tabs.addTab(overview_widget, TAB_TITLE)
     self.yellow_tabs.setCurrentWidget(overview_widget)
+
+    def _on_cell_double_clicked(row, col):
+        if col > JPGS_COL or row < 0 or row >= len(day_dirs):
+            return
+        jpeg_only = (col == JPGS_COL)
+        _open_day_viewer(self, day_dirs[row], jpeg_only, virttrip_path)
+
+    self.virttrip_table.cellDoubleClicked.connect(_on_cell_double_clicked)

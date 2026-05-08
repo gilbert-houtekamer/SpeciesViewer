@@ -75,14 +75,19 @@ class ImagePreviewDialog(QDialog):
     # key: Path, value: (QPixmap, source_mtime_or_None)
     _pixmap_cache: dict = {}
 
-    def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg"):
+    def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg",
+                 file_list=None, cache_root=None):
         super().__init__(parent)
-        # self.setWindowTitle("Species Image Preview")
         self.resize(800, 600)
         self.mode = mode
         self.trip_root_dir = trip_root_dir
         self.main_window = parent
-        self.setWindowTitle(f"Species Image Preview ({Path(image_dir).name})")
+        self._file_list = [Path(p) if isinstance(p, str) else p for p in file_list] \
+                          if file_list is not None else None
+        self._viewer_label = (f"{len(self._file_list)} files"
+                              if self._file_list is not None
+                              else Path(image_dir).name)
+        self.setWindowTitle(f"Species Image Preview ({self._viewer_label})")
 
         layout = QVBoxLayout(self)
 
@@ -98,8 +103,8 @@ class ImagePreviewDialog(QDialog):
         self.columns = 3
         self.image_dir = image_dir
         self.image_widgets = []
-        self.cache_dir = Path(image_dir) / ".preview_cache"
-        self.cache_dir.mkdir(exist_ok=True)
+        self.cache_dir = Path(cache_root) if cache_root else Path(image_dir) / ".preview_cache"
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         dir_layout = QHBoxLayout()
         self.dir_field = DirectoryFieldQt("Image Directory", initial_path=image_dir)
@@ -167,7 +172,8 @@ class ImagePreviewDialog(QDialog):
         else:
             self.fpr = None
         # make a list of all images based on file type (not yet filtered)
-        self.all_image_paths = self.discover_images(image_dir)
+        self.all_image_paths = self._file_list if self._file_list is not None \
+                               else self.discover_images(image_dir)
 
         # Pre-extract thumbnails for all non-cached RAW files in one batch call
         self.batch_extract_raw_thumbnails(self.all_image_paths)
@@ -280,7 +286,7 @@ class ImagePreviewDialog(QDialog):
 
     def on_column_changed(self, value):
         self.columns = value
-        self.setWindowTitle(f"Species Image Preview ({self.image_dir})")
+        self.setWindowTitle(f"Species Image Preview ({self._viewer_label})")
         self.rebuild_grid()
         self.update_image_sizes()
 
