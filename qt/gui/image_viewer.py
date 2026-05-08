@@ -16,6 +16,53 @@ logger = logging.getLogger("speciesviewer")
 def ensure_path(obj):
     return Path(obj) if isinstance(obj, str) else obj
 
+
+class SingleImageViewer(QDialog):
+    """Full-screen-like viewer for a single image, opened by clicking a thumbnail."""
+
+    def __init__(self, parent, img_path: Path, pixmap: QPixmap, species_name: str = ""):
+        super().__init__(parent)
+        self.setWindowTitle(img_path.name)
+        self._pixmap = pixmap
+
+        screen = QGuiApplication.primaryScreen().availableGeometry()
+        self.resize(int(screen.width() * 0.92), int(screen.height() * 0.92))
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 4)
+        layout.setSpacing(4)
+
+        self._image_label = QLabel()
+        self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout.addWidget(self._image_label, stretch=1)
+
+        info_parts = [str(img_path)]
+        if species_name:
+            info_parts.append(species_name)
+        info_label = QLabel("   ".join(info_parts))
+        info_label.setStyleSheet("font-size: 10px; color: #333;")
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+    def _fit_pixmap(self):
+        if not self._pixmap or self._pixmap.isNull():
+            return
+        size = self._image_label.size()
+        if size.width() <= 1 or size.height() <= 1:
+            return
+        scaled = self._pixmap.scaled(size, Qt.AspectRatioMode.KeepAspectRatio,
+                                     Qt.TransformationMode.SmoothTransformation)
+        self._image_label.setPixmap(scaled)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self._fit_pixmap)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit_pixmap()
+
 class ColorFilterBar(QWidget):
     def __init__(self, on_filter_changed):
         super().__init__()
@@ -392,6 +439,15 @@ class ImagePreviewDialog(QDialog):
             color = self.fpr.getColor(img_path)
             if color:
                 border_wrapper.setStyleSheet(f"border: 3px solid {color}; border-radius: 6px; background-color: transparent;")
+
+        def _open_fullscreen(_event, p=img_path):
+            px = self.get_pixmap_for_path(p)
+            if px and not px.isNull():
+                sp = self.fpr.getSpeciesName(p.name) if self.fpr else ""
+                SingleImageViewer(self, p, px, sp).exec()
+
+        border_wrapper.mousePressEvent = _open_fullscreen
+        border_wrapper.setCursor(Qt.CursorShape.PointingHandCursor)
 
         layout.addWidget(border_wrapper)
 
