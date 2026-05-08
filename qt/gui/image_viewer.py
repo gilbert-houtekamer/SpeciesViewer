@@ -5,7 +5,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy,
     QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog, QToolTip)
-from PyQt6.QtGui import QPixmap, QImage, QFontMetrics, QIcon, QPalette
+from PyQt6.QtGui import QPixmap, QImage, QFontMetrics, QIcon, QPalette, QGuiApplication
 from PyQt6.QtCore import Qt, QTimer, QSize
 from widgets.trip_widgets import DirectoryFieldQt
 from engine.filepicture import FilePicture
