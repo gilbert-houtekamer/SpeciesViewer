@@ -444,16 +444,16 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_master_1": None,
             "Add Trip Pictures to Master": add_trip_pictures,
         },
+        "Virtual Trips": {
+            "Create Virtual Trip": virttrip_create,
+            f"{MenuSpec.separator()}_vt1": None,
+            "Extract Days from Master": extract_days,
+        },
         "Utilities": {
         #     "BirdingBreaks": None, # PROCESS BIRDING BREAK FILES
              "AviBase": convert_avibase,
              "PhotoMechanic": photo_mechanic,
              "Call Testbed for trip day": testbed,
-        },
-        "Virtual Trips": {
-            "Create Virtual Trip": virttrip_create,
-            f"{MenuSpec.separator()}_vt1": None,
-            "Extract Days from Master": extract_days,
         },
         "Settings": {
             "Global Settings": MenuSpec(

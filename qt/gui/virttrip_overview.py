@@ -18,7 +18,7 @@ JPGS_COL  = 2
 BLOG_COL  = 3
 WEB_COL   = 4
 
-TAB_TITLE = "Virtual Trip"
+TAB_TITLE = "Active Virtual Trip"
 
 
 def _build_file_list(csv_path: Path, jpeg_only: bool) -> list:

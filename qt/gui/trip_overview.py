@@ -155,7 +155,7 @@ def populate_trip_overview(self):
     layout.addWidget(self.trip_table)
     overview_widget.setLayout(layout)
 
-    self.yellow_tabs.addTab(overview_widget, "Overview")
+    self.yellow_tabs.addTab(overview_widget, "Active Trip")
 
     self.trip_table.cellDoubleClicked.connect(self.handle_trip_table_double_click)
     self.trip_table.verticalHeader().sectionDoubleClicked.connect(self.handle_row_rerun)

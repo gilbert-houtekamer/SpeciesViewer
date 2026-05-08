@@ -134,6 +134,11 @@ class MainWindow(QMainWindow):
         self.update_trip_label()
         self.status_bar.showMessage("Ready")
 
+        # Restore virtual trip overview if one was active at last close
+        virt_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
+        if virt_root and os.path.isdir(virt_root):
+            populate_virttrip_overview(self)
+
     def closeEvent(self, event):
         # logger.info("Close and save screen sizes")
         _config["layout"]["split_sizes_vertical"] = ",".join(str(s) for s in self.vsplitter.sizes())
@@ -729,7 +734,7 @@ class MainWindow(QMainWindow):
 
     def remove_existing_overview_tab(self):
         for i in range(self.yellow_tabs.count()):
-            if self.yellow_tabs.tabText(i) == "Overview":
+            if self.yellow_tabs.tabText(i) == "Active Trip":
                 self.yellow_tabs.removeTab(i)
                 break
 
