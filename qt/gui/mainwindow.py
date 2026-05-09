@@ -12,19 +12,12 @@ from gui.trip_overview import populate_trip_overview
 from gui.virttrip_overview import populate_virttrip_overview, TAB_TITLE as VIRTTRIP_TAB_TITLE
 from sharedlib.translatelib import CachedTranslate
 from widgets.TripInfoPanel import TripInfoPanel
+from widgets.VirtTripInfoPanel import VirtTripInfoPanel
 from gui.trip_overview import populate_trip_overview
 from sharedlib.statemachine import StateMachine
 from gui.image_viewer import ImagePreviewDialog
 from utils.gui_config import load_gui_cache  # or wherever your cache functions live
 
-
-def Color(name):
-    label = QLabel(name)
-    label.setStyleSheet(f"background-color: {name};")
-    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    label.setMinimumHeight(100)
-    # label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-    return label
 
 
 
@@ -65,12 +58,12 @@ class MainWindow(QMainWindow):
         self.yellow_tabs.setStyleSheet("background-color: #fff8d2;")
         self.hsplitter.addWidget(self.yellow_tabs)
 
-        # Purple panel
-        purple_panel = Color("purple")  # Assuming this is a QWidget subclass
-        self.hsplitter.addWidget(purple_panel)
+        # Virtual trip navigator panel
+        self.virttrip_panel = VirtTripInfoPanel(self, populate_virttrip_overview)
+        self.hsplitter.addWidget(self.virttrip_panel)
 
         # Optional: set initial sizes
-        self.hsplitter.setSizes([200, 600, 200])  # Adjust as needed
+        self.hsplitter.setSizes([220, 720, 220])
 
         # Optional: make panels expand
         self.hsplitter.setStretchFactor(0, 1)
