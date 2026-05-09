@@ -18,10 +18,10 @@ class GlobalSettingsDialog(QDialog):
         self.splash_switch.setChecked(splash_enabled)
         layout.addWidget(self.splash_switch)
 
-        self.width_field = self._labeled_field(layout, "Window width", config.get("Global", "default_window_width", fallback="1600"))
-        self.height_field = self._labeled_field(layout, "Window height", config.get("Global", "default_window_height", fallback="1200"))
-        self.webpassword_field = self._labeled_field(layout, "Website password", config.get("websettings", "sftppwd", fallback="? still needed"), password=True)
-        self.base_url_field = self._labeled_field(layout, "Base URL for web address", config.get("websettings", "base_url", fallback="https://houtekamer.com"))
+        self.width_field = self._labeled_field(layout, "Window width", _config.get("Global", "default_window_width", fallback="1600"))
+        self.height_field = self._labeled_field(layout, "Window height", _config.get("Global", "default_window_height", fallback="1200"))
+        self.webpassword_field = self._labeled_field(layout, "Website password", _config.get("websettings", "sftppwd", fallback="? still needed"), password=True)
+        self.base_url_field = self._labeled_field(layout, "Base URL for web address", _config.get("websettings", "base_url", fallback="https://houtekamer.com"))
 
         save_button = QPushButton("Save")
         save_button.clicked.connect(self.save_settings)

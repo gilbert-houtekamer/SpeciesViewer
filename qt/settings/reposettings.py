@@ -9,30 +9,44 @@ class RepoSettingsDialog(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
         self.setWindowTitle("Repositories")
-        self.setFixedSize(600, 450)
+        self.setFixedSize(600, 600)
 
         layout = QVBoxLayout(self)
 
-        # Master section
-        self.master_field = self._labeled_field(layout, "[master] Database", config.get("master", "masterbiotadatabase", fallback=""))
-        browse_master_btn = QPushButton("Browse [master] Database")
+        # Master section (shared by trips and virtual trips)
+        layout.addWidget(self._section_label("Master (shared)"))
+        self.master_field = self._labeled_field(layout, "Database", _config.get("master", "masterbiotadatabase", fallback=""))
+        browse_master_btn = QPushButton("Browse Master Database")
         browse_master_btn.clicked.connect(self.browse_master)
         layout.addWidget(browse_master_btn)
-
-        self.master_web = self._labeled_field(layout, "[master] Web root", config.get("master", "masterbiotawebroot", fallback=""))
+        self.master_web = self._labeled_field(layout, "Web root", _config.get("master", "masterbiotawebroot", fallback=""))
         layout.addWidget(self._divider())
 
-        # Trip section
-        self.trip_field = self._labeled_field(layout, "[trip] Database", config.get("trip", "tripbiotadatabase", fallback=""))
-        browse_trip_btn = QPushButton("Browse [trip] Database")
+        # Active Trip section
+        layout.addWidget(self._section_label("Active Trip"))
+        self.trip_field = self._labeled_field(layout, "Database", _config.get("trip", "tripbiotadatabase", fallback=""))
+        browse_trip_btn = QPushButton("Browse Trip Database")
         browse_trip_btn.clicked.connect(self.browse_trip)
         layout.addWidget(browse_trip_btn)
+        self.trip_web = self._labeled_field(layout, "Web root", _config.get("trip", "tripbiotawebroot", fallback=""))
+        layout.addWidget(self._divider())
 
-        self.trip_web = self._labeled_field(layout, "[trip] Web root", config.get("trip", "tripbiotawebroot", fallback=""))
+        # Active Virtual Trip section
+        layout.addWidget(self._section_label("Active Virtual Trip"))
+        self.virttrip_field = self._labeled_field(layout, "Database", _config.get("virttrip", "virttripbiotadatabase", fallback=""))
+        browse_virttrip_btn = QPushButton("Browse Virtual Trip Database")
+        browse_virttrip_btn.clicked.connect(self.browse_virttrip)
+        layout.addWidget(browse_virttrip_btn)
+        self.virttrip_web = self._labeled_field(layout, "Web root", _config.get("virttrip", "virttripbiotawebroot", fallback=""))
 
         save_btn = QPushButton("Save")
         save_btn.clicked.connect(self.save_settings)
         layout.addWidget(save_btn)
+
+    def _section_label(self, text):
+        lbl = QLabel(text)
+        lbl.setStyleSheet("font-weight: bold; margin-top: 4px;")
+        return lbl
 
     def _labeled_field(self, layout, label, value=""):
         layout.addWidget(QLabel(label))
@@ -47,20 +61,29 @@ class RepoSettingsDialog(QDialog):
         return line
 
     def browse_master(self):
-        path = QFileDialog.getExistingDirectory(self, "Select [master] Database Directory")
+        path = QFileDialog.getExistingDirectory(self, "Select Master Database Directory")
         if path:
             self.master_field.setText(path)
 
     def browse_trip(self):
-        path = QFileDialog.getExistingDirectory(self, "Select [trip] Database Directory")
+        path = QFileDialog.getExistingDirectory(self, "Select Trip Database Directory")
         if path:
             self.trip_field.setText(path)
+
+    def browse_virttrip(self):
+        path = QFileDialog.getExistingDirectory(self, "Select Virtual Trip Database Directory")
+        if path:
+            self.virttrip_field.setText(path)
 
     def save_settings(self):
         _config.set("master", "masterbiotadatabase", self.master_field.text())
         _config.set("master", "masterbiotawebroot", self.master_web.text())
         _config.set("trip", "tripbiotadatabase", self.trip_field.text())
         _config.set("trip", "tripbiotawebroot", self.trip_web.text())
+        if not _config.has_section("virttrip"):
+            _config.add_section("virttrip")
+        _config.set("virttrip", "virttripbiotadatabase", self.virttrip_field.text())
+        _config.set("virttrip", "virttripbiotawebroot", self.virttrip_web.text())
 
         persist_config()
 
