@@ -112,12 +112,14 @@ def _build_column_layout(csv_header, start_date, num_days,
 
     # Hidden helper columns. is_new = 1 when species is not yet "Known";
     # cum_k counts seen (1/P/p) ticks across day_1..day_k per species;
-    # cum_photo_k counts P/p ticks; cum_heard_k counts H/h ticks.
+    # cum_photo_k counts P/p ticks; cum_heard_k counts H/h ticks;
+    # cum_contact_k counts any contact (1/P/H) — used for Seen+Heard totals.
     helpers = [{'header': '_is_new', 'kind': 'is_new_helper', 'width': 5}]
     for i in range(num_days):
-        helpers.append({'header': f'_cum_{i+1}',       'kind': 'cum_helper',       'day_index': i, 'width': 5})
-        helpers.append({'header': f'_cum_photo_{i+1}', 'kind': 'cum_photo_helper', 'day_index': i, 'width': 5})
-        helpers.append({'header': f'_cum_heard_{i+1}', 'kind': 'cum_heard_helper', 'day_index': i, 'width': 5})
+        helpers.append({'header': f'_cum_{i+1}',         'kind': 'cum_helper',         'day_index': i, 'width': 5})
+        helpers.append({'header': f'_cum_photo_{i+1}',   'kind': 'cum_photo_helper',   'day_index': i, 'width': 5})
+        helpers.append({'header': f'_cum_heard_{i+1}',   'kind': 'cum_heard_helper',   'day_index': i, 'width': 5})
+        helpers.append({'header': f'_cum_contact_{i+1}', 'kind': 'cum_contact_helper', 'day_index': i, 'width': 5})
 
     if phone_layout:
         # Phone-friendly: seq# + chosen-language name pinned at the very
@@ -170,7 +172,8 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
                               if c['kind'] == 'is_new_helper'), None)
     cum_helper_idxs       = [None] * num_days
     cum_photo_helper_idxs = [None] * num_days
-    cum_heard_helper_idxs = [None] * num_days
+    cum_heard_helper_idxs   = [None] * num_days
+    cum_contact_helper_idxs = [None] * num_days
     for i, c in enumerate(columns, 1):
         if c['kind'] == 'cum_helper':
             cum_helper_idxs[c['day_index']] = i
@@ -178,9 +181,11 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
             cum_photo_helper_idxs[c['day_index']] = i
         elif c['kind'] == 'cum_heard_helper':
             cum_heard_helper_idxs[c['day_index']] = i
+        elif c['kind'] == 'cum_contact_helper':
+            cum_contact_helper_idxs[c['day_index']] = i
     # First helper column = end of the visible block (used for autofilter
     # range and border painting so we don't drag the hidden columns in).
-    _helper_kinds = ('is_new_helper', 'cum_helper', 'cum_photo_helper', 'cum_heard_helper')
+    _helper_kinds = ('is_new_helper', 'cum_helper', 'cum_photo_helper', 'cum_heard_helper', 'cum_contact_helper')
     first_helper_col  = next((i for i, c in enumerate(columns, 1)
                               if c['kind'] in _helper_kinds),
                              len(columns) + 1)
@@ -308,6 +313,10 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
                 if heard_idx:
                     ws.cell(row=excel_row, column=heard_idx,
                             value=f'=COUNTIF({_r},"H")')
+                contact_idx = cum_contact_helper_idxs[k]
+                if contact_idx:
+                    ws.cell(row=excel_row, column=contact_idx,
+                            value=f'=COUNTIF({_r},1)+COUNTIF({_r},"P")+COUNTIF({_r},"H")')
 
         # Extra blank rows for unanticipated species.
         no_col_idx  = excel_col_for_csv(CSV_NO)
@@ -357,6 +366,10 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
                 if heard_idx:
                     ws.cell(row=excel_row, column=heard_idx,
                             value=f'=COUNTIF({_r},"H")')
+                contact_idx = cum_contact_helper_idxs[k]
+                if contact_idx:
+                    ws.cell(row=excel_row, column=contact_idx,
+                            value=f'=COUNTIF({_r},1)+COUNTIF({_r},"P")+COUNTIF({_r},"H")')
 
     # ── Title banner (row 1) and totals area (rows 2..5) ────────────────
     title_text = (f"Total counters for {trip_name}" if trip_name
@@ -369,10 +382,10 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
     ws.cell(row=DAY_NEW_ROW,        column=1, value="Day Seen New")
     ws.cell(row=TRIP_TOTALS_ROW,    column=1, value="Trip Seen")
     ws.cell(row=TRIP_NEW_ROW,       column=1, value="Trip Seen New")
-    ws.cell(row=DAY_HEARD_ROW,      column=1, value="Day Heard")
-    ws.cell(row=DAY_HEARD_NEW_ROW,  column=1, value="Day Heard New")
-    ws.cell(row=TRIP_HEARD_ROW,     column=1, value="Trip Heard")
-    ws.cell(row=TRIP_HEARD_NEW_ROW, column=1, value="Trip Heard New")
+    ws.cell(row=DAY_HEARD_ROW,      column=1, value="Day Seen+Heard")
+    ws.cell(row=DAY_HEARD_NEW_ROW,  column=1, value="Day Seen+Heard New")
+    ws.cell(row=TRIP_HEARD_ROW,     column=1, value="Trip Seen+Heard")
+    ws.cell(row=TRIP_HEARD_NEW_ROW, column=1, value="Trip Seen+Heard New")
 
     is_new_letter = get_column_letter(is_new_helper_idx) if is_new_helper_idx else None
     is_new_range  = (f'{is_new_letter}{DATA_START_ROW}:{is_new_letter}{extended_last_row}'
@@ -393,18 +406,19 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
             ws.cell(row=DAY_NEW_ROW, column=day_col_idx,
                     value=f'=SUMPRODUCT(({is_new_range}=1)*'
                           f'(({day_range}=1)+({day_range}="P")))')
-        # Day Heard
+        # Day Seen+Heard: species contacted (1, P, or H) on this specific day
         ws.cell(row=DAY_HEARD_ROW, column=day_col_idx,
-                value=f'=COUNTIF({day_range},"H")')
-        # Day Heard New
+                value=f'=COUNTIF({day_range},1)+COUNTIF({day_range},"P")+COUNTIF({day_range},"H")')
+        # Day Seen+Heard New
         if is_new_range:
             ws.cell(row=DAY_HEARD_NEW_ROW, column=day_col_idx,
-                    value=f'=SUMPRODUCT(({is_new_range}=1)*({day_range}="H"))')
+                    value=f'=SUMPRODUCT(({is_new_range}=1)*'
+                          f'(({day_range}=1)+({day_range}="P")+({day_range}="H")))')
 
         # Trip cumulative helpers
-        cum_idx       = cum_helper_idxs[k]       if k < len(cum_helper_idxs)       else None
-        cum_photo_idx = cum_photo_helper_idxs[k] if k < len(cum_photo_helper_idxs) else None
-        cum_heard_idx = cum_heard_helper_idxs[k] if k < len(cum_heard_helper_idxs) else None
+        cum_idx         = cum_helper_idxs[k]         if k < len(cum_helper_idxs)         else None
+        cum_photo_idx   = cum_photo_helper_idxs[k]   if k < len(cum_photo_helper_idxs)   else None
+        cum_contact_idx = cum_contact_helper_idxs[k] if k < len(cum_contact_helper_idxs) else None
         if cum_photo_idx:
             cum_photo_letter = get_column_letter(cum_photo_idx)
             cum_photo_range  = f'{cum_photo_letter}{DATA_START_ROW}:{cum_photo_letter}{extended_last_row}'
@@ -418,14 +432,15 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
             if is_new_range:
                 ws.cell(row=TRIP_NEW_ROW, column=day_col_idx,
                         value=f'=COUNTIFS({is_new_range},1,{cum_range},">0")')
-        if cum_heard_idx:
-            cum_heard_letter = get_column_letter(cum_heard_idx)
-            cum_heard_range  = f'{cum_heard_letter}{DATA_START_ROW}:{cum_heard_letter}{extended_last_row}'
+        # Trip Seen+Heard: no double-counting via cum_contact helper
+        if cum_contact_idx:
+            cum_contact_letter = get_column_letter(cum_contact_idx)
+            cum_contact_range  = f'{cum_contact_letter}{DATA_START_ROW}:{cum_contact_letter}{extended_last_row}'
             ws.cell(row=TRIP_HEARD_ROW, column=day_col_idx,
-                    value=f'=COUNTIF({cum_heard_range},">0")')
+                    value=f'=COUNTIF({cum_contact_range},">0")')
             if is_new_range:
                 ws.cell(row=TRIP_HEARD_NEW_ROW, column=day_col_idx,
-                        value=f'=COUNTIFS({is_new_range},1,{cum_heard_range},">0")')
+                        value=f'=COUNTIFS({is_new_range},1,{cum_contact_range},">0")')
 
     # Trip-wide aggregates in the seen?/New?/Photo columns. The seen? and
     # New? Excel cells hold strings ("New"/"") and a formula result, so
