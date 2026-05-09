@@ -64,13 +64,19 @@ def main(args, config):
     MyProject.registerSpecies(sp)
 
     MyProject.initMasterAndTrip(config, inittrip=True)
-
+    referenceSpecies = None
     if MyProject.Trip:
-        referenceSpecies = os.path.join(
-            MyProject.getMasterRepository(), "metadata/active/species.csv"
+        trip_name = MyProject.Trip.tripname
+        trip_master = MyProject.Trip.trip_dict.get(trip_name, {}).get('master_repository_disk', '')
+        if trip_master and os.path.isdir(trip_master):
+            candidate = os.path.join(trip_master, 'metadata', 'active', 'species.csv')
+            if os.path.isfile(candidate):
+                referenceSpecies = candidate
+    if not referenceSpecies:
+        referenceSpecies = config.get(
+            "repository", "ReferenceSpecies",
+            fallback=os.path.join(MyProject.getMasterRepository(), 'metadata/active/species.csv')
         )
-    else:
-        referenceSpecies = config.get("repository", "ReferenceSpecies")
 
     Reference_sp = ghexif.specieslib.Species(None)
     Reference_sp.readSpeciesInfo(referenceSpecies, False)

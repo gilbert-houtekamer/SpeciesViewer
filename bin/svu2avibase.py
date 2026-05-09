@@ -503,10 +503,24 @@ def main(args, config):
     # reference project
     # if trip, initialze master
     MyProject.initMasterAndTrip(config, inittrip=True)
+    # Determine reference species file. Priority:
+    #   1. trip.ini master_repository_disk  — the trip's own declared master (comprehensive)
+    #   2. config referencespecies key
+    #   3. svconfig masterbiotadatabase/metadata/active/species.csv (may be sparse)
+    referenceSpecies = None
     if MyProject.Trip:
-        referenceSpecies = os.path.join(MyProject.getMasterRepository(), 'metadata/active/species.csv')
-    else:
-        referenceSpecies = config.get("repository","ReferenceSpecies")
+        trip_name = MyProject.Trip.tripname
+        trip_master = MyProject.Trip.trip_dict.get(trip_name, {}).get('master_repository_disk', '')
+        if trip_master and os.path.isdir(trip_master):
+            candidate = os.path.join(trip_master, 'metadata', 'active', 'species.csv')
+            if os.path.isfile(candidate):
+                referenceSpecies = candidate
+                logger.info(f"Reference species from trip.ini master: {referenceSpecies}")
+    if not referenceSpecies:
+        referenceSpecies = config.get(
+            "repository", "ReferenceSpecies",
+            fallback=os.path.join(MyProject.getMasterRepository(), 'metadata/active/species.csv')
+        )
     Reference_sp = ghexif.specieslib.Species(None)
     Reference_sp.readSpeciesInfo(referenceSpecies, False)
     # test 
