@@ -198,7 +198,8 @@ class PictureCard(QFrame):
 
     card_changed = pyqtSignal(str)  # upn_key
 
-    def __init__(self, upn_key: str, upn_row: dict, jpg_path, card_width: int, parent=None):
+    def __init__(self, upn_key: str, upn_row: dict, jpg_path, card_width: int,
+                 display_name: str = None, parent=None):
         super().__init__(parent)
         self.upn_key = upn_key
         self._upn_row = upn_row
@@ -219,7 +220,7 @@ class PictureCard(QFrame):
         vbox.addWidget(self._thumb)
 
         # Species name
-        species = (upn_row.get("NLSoortNaam") or upn_row.get("EngSoortNaam")
+        species = display_name or (upn_row.get("NLSoortNaam") or upn_row.get("EngSoortNaam")
                    or upn_row.get("WetSoortNaam") or upn_key)
         lbl_name = QLabel(species)
         lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -227,13 +228,19 @@ class PictureCard(QFrame):
         lbl_name.setWordWrap(True)
         vbox.addWidget(lbl_name)
 
-        # Stars row + rate
+        # Stars row + date + rate
         row_stars = QHBoxLayout()
         row_stars.setContentsMargins(0, 0, 0, 0)
         initial_stars = _safe_int(upn_row.get("Rating", "0"))
         self._stars = StarWidget(initial_stars)
         self._stars.rating_changed.connect(self._on_rating_changed)
         row_stars.addWidget(self._stars)
+        dto = upn_row.get("DateTimeOriginal", "")
+        if dto:
+            date_str = dto[:10].replace(":", "-")
+            lbl_date = QLabel(date_str)
+            lbl_date.setStyleSheet("font-size: 9px; color: #777;")
+            row_stars.addWidget(lbl_date)
         row_stars.addStretch()
         self._rate_lbl = QLabel(f"Rate: {upn_row.get('Rate', '?')}")
         self._rate_lbl.setStyleSheet("font-size: 10px; color: #555;")
@@ -313,6 +320,8 @@ class RatingEditorDialog(QDialog):
         self.columns = 3
         self._cards: list[PictureCard] = []
         self._jpg_only = True
+        self._species_lang = "NL"
+        self._grid_stretch_row = -1
         # Trip-scope per-day tracking; None in Day scope
         self._day_objects: dict | None = None   # day_str → (Files, Pictures)
         self._upn_day_map: dict[str, str] = {}  # upn_key → day_str
@@ -349,6 +358,12 @@ class RatingEditorDialog(QDialog):
         self._species_combo.setMinimumWidth(200)
         self._species_combo.currentIndexChanged.connect(self._on_species_changed)
         top.addWidget(self._species_combo)
+        self._lang_combo = QComboBox()
+        self._lang_combo.addItems(["NL", "EN", "Sci"])
+        self._lang_combo.setFixedWidth(55)
+        self._lang_combo.setToolTip("Species name language")
+        self._lang_combo.currentIndexChanged.connect(self._on_lang_changed)
+        top.addWidget(self._lang_combo)
         top.addStretch()
 
         self._jpg_btn = QPushButton("JPG only")
@@ -495,6 +510,17 @@ class RatingEditorDialog(QDialog):
         n_pics = len(self.fpr.upn.UniquePictureName_dict)
         self._status.setText(f"Trip — {n_days} day{'s' if n_days != 1 else ''}, {n_pics} pictures total")
 
+    def _species_name(self, upn_row: dict) -> str:
+        lang = self._species_lang
+        if lang == "EN":
+            return (upn_row.get("EngSoortNaam") or upn_row.get("NLSoortNaam")
+                    or upn_row.get("WetSoortNaam") or "").strip()
+        if lang == "Sci":
+            return (upn_row.get("WetSoortNaam") or upn_row.get("NLSoortNaam")
+                    or upn_row.get("EngSoortNaam") or "").strip()
+        return (upn_row.get("NLSoortNaam") or upn_row.get("EngSoortNaam")
+                or upn_row.get("WetSoortNaam") or "").strip()
+
     def _populate_species_combo(self):
         self._species_combo.blockSignals(True)
         self._species_combo.clear()
@@ -502,8 +528,7 @@ class RatingEditorDialog(QDialog):
 
         names: set[str] = set()
         for upn_row in self.fpr.upn.UniquePictureName_dict.values():
-            name = (upn_row.get("NLSoortNaam") or upn_row.get("EngSoortNaam")
-                    or upn_row.get("WetSoortNaam") or "").strip()
+            name = self._species_name(upn_row)
             if name:
                 names.add(name)
         for name in sorted(names, key=str.casefold):
@@ -517,11 +542,8 @@ class RatingEditorDialog(QDialog):
     def _sorted_upns(self, filter_name=None) -> list[tuple[int, str, dict]]:
         rows = []
         for key, upn_row in self.fpr.upn.UniquePictureName_dict.items():
-            if filter_name:
-                name = (upn_row.get("NLSoortNaam") or upn_row.get("EngSoortNaam")
-                        or upn_row.get("WetSoortNaam") or "").strip()
-                if name != filter_name:
-                    continue
+            if filter_name and self._species_name(upn_row) != filter_name:
+                continue
             if self._jpg_only and self._get_jpg_path(upn_row) is None:
                 continue
             rows.append((_safe_int(upn_row.get("Rate", 0) or 0), key, upn_row))
@@ -639,6 +661,9 @@ class RatingEditorDialog(QDialog):
         return max(120, avail // max(self.columns, 1) - 12)
 
     def _clear_grid(self):
+        if self._grid_stretch_row >= 0:
+            self._grid.setRowStretch(self._grid_stretch_row, 0)
+            self._grid_stretch_row = -1
         while self._grid.count():
             item = self._grid.takeAt(0)
             w = item.widget()
@@ -656,11 +681,17 @@ class RatingEditorDialog(QDialog):
 
         for idx, (_, upn_key, upn_row) in enumerate(sorted_rows):
             img = self._get_display_path(upn_row)
-            card = PictureCard(upn_key, upn_row, img, cw)
+            dname = self._species_name(upn_row) or upn_key
+            card = PictureCard(upn_key, upn_row, img, cw, display_name=dname)
             card.card_changed.connect(self._on_card_changed)
             row, col = divmod(idx, self.columns)
             self._grid.addWidget(card, row, col)
             self._cards.append(card)
+
+        if sorted_rows:
+            last_row = (len(sorted_rows) - 1) // self.columns
+            self._grid_stretch_row = last_row + 1
+            self._grid.setRowStretch(self._grid_stretch_row, 1)
 
         n = len(sorted_rows)
         suffix = f" for {filter_name}" if filter_name else ""
@@ -679,6 +710,28 @@ class RatingEditorDialog(QDialog):
 
     def _on_species_changed(self):
         self._rebuild_cards()
+
+    def _on_lang_changed(self, _idx: int):
+        old_selection = self._species_combo.currentData()  # name in old language, or None
+        self._species_lang = self._lang_combo.currentText()
+        self._populate_species_combo()  # rebuilds cards showing All species
+
+        if old_selection is None or not self.fpr:
+            return
+
+        # Find the same species in the new language by matching any name field
+        new_selection = None
+        for upn_row in self.fpr.upn.UniquePictureName_dict.values():
+            if (upn_row.get("NLSoortNaam") == old_selection
+                    or upn_row.get("EngSoortNaam") == old_selection
+                    or upn_row.get("WetSoortNaam") == old_selection):
+                new_selection = self._species_name(upn_row)
+                break
+
+        if new_selection:
+            idx = self._species_combo.findData(new_selection)
+            if idx >= 0:
+                self._species_combo.setCurrentIndex(idx)
 
     def _on_columns_changed(self, value: int):
         self.columns = value
