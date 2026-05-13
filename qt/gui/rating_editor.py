@@ -245,8 +245,12 @@ class PictureCard(QFrame):
         self._color_sel.color_changed.connect(self._on_color_changed)
         vbox.addWidget(self._color_sel)
 
-        # UPN key (small)
-        lbl_key = QLabel(upn_key)
+        # UPN key + file types (small)
+        files = upn_row.get("Files", [])
+        exts = sorted({Path(f).suffix.lstrip(".").upper()
+                       for f in (files if isinstance(files, list) else []) if f})
+        key_line = upn_key if not exts else f"{upn_key}  {' · '.join(exts)}"
+        lbl_key = QLabel(key_line)
         lbl_key.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_key.setStyleSheet("font-size: 9px; color: #aaa;")
         lbl_key.setToolTip(upn_key)
@@ -639,7 +643,7 @@ class RatingEditorDialog(QDialog):
             item = self._grid.takeAt(0)
             w = item.widget()
             if w:
-                w.setParent(None)
+                w.deleteLater()  # deferred deletion; avoids GC-triggered C++ cascade
         self._cards.clear()
 
     def _rebuild_cards(self):
@@ -805,12 +809,10 @@ class RatingEditorDialog(QDialog):
 
         cards_by_key = {c.upn_key: c for c in self._cards}
 
-        # Detach all widgets from grid without destroying them
+        # Remove items from layout positions only; widgets remain children of
+        # _grid_widget so no GC is triggered and no Qt object is deleted.
         while self._grid.count():
-            item = self._grid.takeAt(0)
-            w = item.widget()
-            if w:
-                w.setParent(None)
+            self._grid.takeAt(0)
 
         self._cards.clear()
         for idx, key in enumerate(new_order):
