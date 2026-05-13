@@ -309,6 +309,9 @@ class RatingEditorDialog(QDialog):
         self.columns = 3
         self._cards: list[PictureCard] = []
         self._jpg_only = True
+        # Trip-scope per-day tracking; None in Day scope
+        self._day_objects: dict | None = None   # day_str → (Files, Pictures)
+        self._upn_day_map: dict[str, str] = {}  # upn_key → day_str
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(6, 6, 6, 4)
@@ -412,6 +415,8 @@ class RatingEditorDialog(QDialog):
     def _load_data(self):
         self._status.setText("Loading…")
         self.fpr = FilePicture(None)
+        self._day_objects = None
+        self._upn_day_map = {}
         scope_day = self._day_radio.isChecked()
         try:
             if scope_day:
@@ -425,19 +430,66 @@ class RatingEditorDialog(QDialog):
                     return
                 self._status.setText(f"Day: {day}")
             else:
-                # Trip scope: read active CSVs directly (no species lookup needed)
-                meta_active = self._trip_root / "metadata" / "active"
-                self.fpr.fi = Files(None)
-                self.fpr.fi.read_file(str(meta_active / "data_files.csv"))
-                self.fpr.upn = Pictures(None)
-                self.fpr.upn.read_pictures(str(meta_active / "data_pictures.csv"))
-                self._status.setText("Trip (active repository)")
+                self._load_trip_scope()
         except Exception as e:
             self._status.setText(f"Load error: {e}")
             logger.error(f"RatingEditorDialog load error: {e}", exc_info=True)
             return
 
         self._populate_species_combo()
+
+    def _load_trip_scope(self):
+        """Load all review-day CSVs into fpr, keeping per-day objects for write-back."""
+        review_root = self._trip_root / "metadata" / "review"
+        days: list[str] = []
+        if review_root.exists():
+            days = sorted(
+                d.name for d in review_root.iterdir()
+                if d.is_dir() and re.match(r"\d{4}-\d{2}-\d{2}", d.name)
+            )
+
+        self._day_objects = {}
+        self.fpr.fi = Files(None)
+        self.fpr.upn = Pictures(None)
+
+        for day in days:
+            files_csv = review_root / day / "data_files.csv"
+            pics_csv  = review_root / day / "data_pictures.csv"
+            if not files_csv.exists() or not pics_csv.exists():
+                continue
+            fi_day = Files(None)
+            fi_day.read_file(str(files_csv), silent=True)
+            upn_day = Pictures(None)
+            upn_day.read_pictures(str(pics_csv))
+            self._day_objects[day] = (fi_day, upn_day)
+
+            # Merge into fpr — dict values are shared references, so in-place
+            # edits to fpr.fi.files_dict[k] automatically update fi_day too.
+            self.fpr.fi.files_dict.update(fi_day.files_dict)
+            for upn_key, upn_row in upn_day.UniquePictureName_dict.items():
+                if upn_key not in self.fpr.upn.UniquePictureName_dict:
+                    self.fpr.upn.UniquePictureName_dict[upn_key] = upn_row
+                    self._upn_day_map[upn_key] = day
+
+        # Fall back to active if no review days found (fully committed trip)
+        if not self._day_objects:
+            meta_active = self._trip_root / "metadata" / "active"
+            fi_a = Files(None)
+            upn_a = Pictures(None)
+            if (meta_active / "data_files.csv").exists():
+                fi_a.read_file(str(meta_active / "data_files.csv"))
+            if (meta_active / "data_pictures.csv").exists():
+                upn_a.read_pictures(str(meta_active / "data_pictures.csv"))
+            self._day_objects["active"] = (fi_a, upn_a)
+            self.fpr.fi.files_dict.update(fi_a.files_dict)
+            for upn_key, upn_row in upn_a.UniquePictureName_dict.items():
+                if upn_key not in self.fpr.upn.UniquePictureName_dict:
+                    self.fpr.upn.UniquePictureName_dict[upn_key] = upn_row
+                    self._upn_day_map[upn_key] = "active"
+
+        n_days = len(self._day_objects)
+        n_pics = len(self.fpr.upn.UniquePictureName_dict)
+        self._status.setText(f"Trip — {n_days} day{'s' if n_days != 1 else ''}, {n_pics} pictures total")
 
     def _populate_species_combo(self):
         self._species_combo.blockSignals(True)
@@ -696,15 +748,7 @@ class RatingEditorDialog(QDialog):
         card.update_rate_display(new_rate)
 
         # Persist CSVs
-        try:
-            self.fpr.upn.write_project_summary()
-        except Exception as e:
-            logger.error(f"Failed to write data_pictures.csv: {e}")
-        if wrote_file:
-            try:
-                self.fpr.fi.write_project_files()
-            except Exception as e:
-                logger.error(f"Failed to write data_files.csv: {e}")
+        self._write_csvs_for_upn(upn_key, wrote_file)
 
         # Re-sort grid if this card's position changed
         self._resort_if_needed()
@@ -717,6 +761,39 @@ class RatingEditorDialog(QDialog):
             parts.append(f"label={new_color or '(cleared)'}")
         parts.append(f"Rate={new_rate}")
         self._status.setText("  ".join(parts))
+
+    def _write_csvs_for_upn(self, upn_key: str, wrote_file: bool):
+        """Write the CSV file(s) that contain upn_key, scoped to the right day."""
+        if self._day_objects is None:
+            # Day scope: fpr.fi / fpr.upn point at the single day's files
+            try:
+                self.fpr.upn.write_project_summary()
+            except Exception as e:
+                logger.error(f"Failed to write data_pictures.csv: {e}")
+            if wrote_file:
+                try:
+                    self.fpr.fi.write_project_files()
+                except Exception as e:
+                    logger.error(f"Failed to write data_files.csv: {e}")
+            return
+
+        # Trip scope: write only the specific day's objects
+        day = self._upn_day_map.get(upn_key)
+        if not day or day not in self._day_objects:
+            return
+        fi_day, upn_day = self._day_objects[day]
+        # upn_day.UniquePictureName_dict[upn_key] is the same object reference
+        # as fpr.upn.UniquePictureName_dict[upn_key], so it already has the
+        # updated Rating/Label/Rate values.
+        try:
+            upn_day.write_project_summary()
+        except Exception as e:
+            logger.error(f"Failed to write data_pictures.csv for {day}: {e}")
+        if wrote_file:
+            try:
+                fi_day.write_project_files()
+            except Exception as e:
+                logger.error(f"Failed to write data_files.csv for {day}: {e}")
 
     def _resort_if_needed(self):
         """Re-insert cards into the grid according to the current sort order."""
