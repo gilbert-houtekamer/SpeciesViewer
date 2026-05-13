@@ -8,6 +8,7 @@ immediately to the XMP/JPG sidecar files via exiftool and to the CSV files.
 import os
 import re
 import logging
+import subprocess
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
@@ -307,6 +308,7 @@ class RatingEditorDialog(QDialog):
         self.fpr: FilePicture | None = None
         self.columns = 3
         self._cards: list[PictureCard] = []
+        self._jpg_only = True
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(6, 6, 6, 4)
@@ -341,6 +343,18 @@ class RatingEditorDialog(QDialog):
         self._species_combo.currentIndexChanged.connect(self._on_species_changed)
         top.addWidget(self._species_combo)
         top.addStretch()
+
+        self._jpg_btn = QPushButton("JPG only")
+        self._jpg_btn.setCheckable(True)
+        self._jpg_btn.setChecked(True)
+        self._jpg_btn.setToolTip("Show only pictures that have a JPG file")
+        self._jpg_btn.setStyleSheet("""
+            QPushButton { border: 1px solid #aaa; border-radius: 3px; padding: 2px 6px; }
+            QPushButton:checked { background-color: #c8e6c9; border-color: #4caf50; }
+        """)
+        self._jpg_btn.toggled.connect(self._on_jpg_only_toggled)
+        top.addWidget(self._jpg_btn)
+        top.addSpacing(8)
 
         top.addWidget(QLabel("Columns:"))
         self._col_spinner = QSpinBox()
@@ -452,19 +466,19 @@ class RatingEditorDialog(QDialog):
                         or upn_row.get("WetSoortNaam") or "").strip()
                 if name != filter_name:
                     continue
+            if self._jpg_only and self._get_jpg_path(upn_row) is None:
+                continue
             rows.append((_safe_int(upn_row.get("Rate", 0) or 0), key, upn_row))
         rows.sort(key=lambda x: x[0], reverse=True)
         return rows
 
     def _get_jpg_path(self, upn_row: dict) -> Path | None:
         """Return the best available JPG path for a UPN, or None."""
-        # BestJPGPathName may point to the website; try it first
         best = upn_row.get("BestJPGPathName", "")
         if best:
             p = Path(best)
             if p.exists() and p.suffix.lower() in (".jpg", ".jpeg"):
                 return p
-        # Fall back to Files list
         files = upn_row.get("Files", [])
         if not isinstance(files, list):
             return None
@@ -477,6 +491,88 @@ class RatingEditorDialog(QDialog):
                 if p.exists():
                     return p
         return None
+
+    def _get_display_path(self, upn_row: dict) -> Path | None:
+        """Return a JPG path for display; falls back to cached RAW thumbnail when not JPG-only."""
+        jpg = self._get_jpg_path(upn_row)
+        if jpg:
+            return jpg
+        if self._jpg_only:
+            return None
+        return self._get_raw_thumb(upn_row)
+
+    _RAW_EXTS = {".nef", ".orf", ".cr2", ".arw", ".rw2"}
+
+    def _get_raw_thumb(self, upn_row: dict) -> Path | None:
+        """Return a cached JPEG thumbnail for the first RAW file in the UPN, extracting it if needed."""
+        files = upn_row.get("Files", [])
+        if not isinstance(files, list):
+            return None
+        for fname in files:
+            if fname not in self.fpr.fi.files_dict:
+                continue
+            frow = self.fpr.fi.files_dict[fname]
+            if ("." + frow.get("WindowsExtension", "").lower()) not in self._RAW_EXTS:
+                continue
+            raw_path = Path(frow.get("WindowsFileName", ""))
+            if not raw_path.exists():
+                continue
+            cache_dir = raw_path.parent / ".preview_cache"
+            cache_dir.mkdir(exist_ok=True)
+            cache_path = cache_dir / (raw_path.stem + ".jpg")
+            if cache_path.exists():
+                return cache_path
+            for tag in ["-PreviewImage", "-ThumbnailImage"]:
+                try:
+                    result = subprocess.run(
+                        ["exiftool", "-b", tag, str(raw_path)],
+                        capture_output=True, timeout=15,
+                    )
+                    if result.returncode == 0 and result.stdout:
+                        cache_path.write_bytes(result.stdout)
+                        return cache_path
+                except Exception as e:
+                    logger.warning(f"RAW thumb extraction failed for {raw_path.name}: {e}")
+        return None
+
+    def _batch_extract_raw_thumbs(self):
+        """Batch-extract RAW thumbnails for all UPNs that have no JPG (pre-fills the cache)."""
+        by_dir: dict[Path, list[Path]] = {}
+        for upn_row in self.fpr.upn.UniquePictureName_dict.values():
+            if self._get_jpg_path(upn_row):
+                continue
+            files = upn_row.get("Files", [])
+            if not isinstance(files, list):
+                continue
+            for fname in files:
+                if fname not in self.fpr.fi.files_dict:
+                    continue
+                frow = self.fpr.fi.files_dict[fname]
+                if ("." + frow.get("WindowsExtension", "").lower()) not in self._RAW_EXTS:
+                    continue
+                raw_path = Path(frow.get("WindowsFileName", ""))
+                if not raw_path.exists():
+                    continue
+                cache_dir = raw_path.parent / ".preview_cache"
+                cache_dir.mkdir(exist_ok=True)
+                if not (cache_dir / (raw_path.stem + ".jpg")).exists():
+                    by_dir.setdefault(cache_dir, []).append(raw_path)
+                break  # one RAW per UPN is enough
+
+        for cache_dir, raw_files in by_dir.items():
+            for tag in ["-PreviewImage", "-ThumbnailImage"]:
+                still_needed = [p for p in raw_files
+                                if not (cache_dir / (p.stem + ".jpg")).exists()]
+                if not still_needed:
+                    break
+                try:
+                    subprocess.run(
+                        ["exiftool", "-b", tag, "-w!", str(cache_dir / "%f.jpg")]
+                        + [str(p) for p in still_needed],
+                        capture_output=True, timeout=120,
+                    )
+                except Exception as e:
+                    logger.warning(f"Batch RAW thumb extraction failed: {e}")
 
     # ── Grid management ───────────────────────────────────────────────────────
 
@@ -503,8 +599,8 @@ class RatingEditorDialog(QDialog):
         cw = self._card_width()
 
         for idx, (_, upn_key, upn_row) in enumerate(sorted_rows):
-            jpg = self._get_jpg_path(upn_row)
-            card = PictureCard(upn_key, upn_row, jpg, cw)
+            img = self._get_display_path(upn_row)
+            card = PictureCard(upn_key, upn_row, img, cw)
             card.card_changed.connect(self._on_card_changed)
             row, col = divmod(idx, self.columns)
             self._grid.addWidget(card, row, col)
@@ -513,6 +609,7 @@ class RatingEditorDialog(QDialog):
         n = len(sorted_rows)
         suffix = f" for {filter_name}" if filter_name else ""
         self._status.setText(f"{n} picture{'s' if n != 1 else ''}{suffix}")
+        QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
 
     # ── Event handlers ────────────────────────────────────────────────────────
 
@@ -529,6 +626,13 @@ class RatingEditorDialog(QDialog):
 
     def _on_columns_changed(self, value: int):
         self.columns = value
+        self._rebuild_cards()
+
+    def _on_jpg_only_toggled(self, checked: bool):
+        self._jpg_only = checked
+        if not checked and self.fpr:
+            self._status.setText("Extracting RAW thumbnails…")
+            self._batch_extract_raw_thumbs()
         self._rebuild_cards()
 
     def _on_card_changed(self, upn_key: str):
@@ -639,3 +743,5 @@ class RatingEditorDialog(QDialog):
             row, col = divmod(idx, self.columns)
             self._grid.addWidget(c, row, col)
             self._cards.append(c)
+
+        QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
