@@ -410,6 +410,12 @@ def build_menu_spec(main_window):
     )
     extract_days.callback = lambda: ExtractDaysDialog(main_window, extract_days).exec()
 
+    rating_editor = MenuSpec(
+        callback=lambda: main_window.open_rating_editor(),
+        title="Rating Editor",
+        showsubdirectory=False,
+    )
+
     return {
         "File": {
             "Quit": MenuSpec(
@@ -434,7 +440,9 @@ def build_menu_spec(main_window):
             "Redo Blogs": redo_trip_blogs,
             f"{MenuSpec.separator()}_3": None,
             "Empty Trip Data": empty_trip_data,
-            "Recreate Trip": recreate_trip,     
+            "Recreate Trip": recreate_trip,
+            f"{MenuSpec.separator()}_4": None,
+            "Rating Editor": rating_editor,
         },
         "Master": {
             "Edit Species List": edit_master_species,

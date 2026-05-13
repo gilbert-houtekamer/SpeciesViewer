@@ -720,6 +720,22 @@ class MainWindow(QMainWindow):
         runner = ColumnBatchRunner(self, self, "Selected steps", day_steps, lambda: None)
         runner.start()
 
+    def open_rating_editor(self):
+        from gui.rating_editor import RatingEditorDialog
+        trip_root = _config.get("trip", "tripbiotadatabase", fallback="")
+        if not trip_root:
+            QMessageBox.warning(self, "Rating Editor", "No trip is configured.")
+            return
+        day_str = None
+        if self.trip_table:
+            row = self.trip_table.currentRow()
+            if row >= 0:
+                item = self.trip_table.item(row, 0)
+                if item:
+                    day_str = item.text()
+        dlg = RatingEditorDialog(self, trip_root, day_str)
+        dlg.show()
+
     def update_trip_label(self):
         trip_path = _config.get("trip", "tripbiotadatabase", fallback="")
         trip_name = Path(trip_path).name if trip_path else "None"
