@@ -208,7 +208,6 @@ class PictureCard(QFrame):
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setFrameShadow(QFrame.Shadow.Raised)
-        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         vbox = QVBoxLayout(self)
         vbox.setContentsMargins(5, 5, 5, 5)
         vbox.setSpacing(3)
@@ -322,7 +321,6 @@ class RatingEditorDialog(QDialog):
         self._cards: list[PictureCard] = []
         self._jpg_only = True
         self._species_lang = "NL"
-        self._grid_stretch_row = -1
         # Trip-scope per-day tracking; None in Day scope
         self._day_objects: dict | None = None   # day_str → (Files, Pictures)
         self._upn_day_map: dict[str, str] = {}  # upn_key → day_str
@@ -396,10 +394,19 @@ class RatingEditorDialog(QDialog):
         # ── Scroll area ───────────────────────────────────────────────────────
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
+        # Wrap grid in a VBox so the stretch below it absorbs extra viewport
+        # height; otherwise setWidgetResizable forces the grid to fill the
+        # viewport and rows expand to fill the allocated space.
+        _scroll_content = QWidget()
+        _scroll_vbox = QVBoxLayout(_scroll_content)
+        _scroll_vbox.setContentsMargins(0, 0, 0, 0)
+        _scroll_vbox.setSpacing(0)
         self._grid_widget = QWidget()
         self._grid = QGridLayout(self._grid_widget)
         self._grid.setSpacing(6)
-        self._scroll.setWidget(self._grid_widget)
+        _scroll_vbox.addWidget(self._grid_widget)
+        _scroll_vbox.addStretch(1)
+        self._scroll.setWidget(_scroll_content)
         main_layout.addWidget(self._scroll)
 
         # Populate day combo then load data after show
@@ -662,9 +669,6 @@ class RatingEditorDialog(QDialog):
         return max(120, avail // max(self.columns, 1) - 12)
 
     def _clear_grid(self):
-        if self._grid_stretch_row >= 0:
-            self._grid.setRowStretch(self._grid_stretch_row, 0)
-            self._grid_stretch_row = -1
         while self._grid.count():
             item = self._grid.takeAt(0)
             w = item.widget()
@@ -692,11 +696,6 @@ class RatingEditorDialog(QDialog):
             row, col = divmod(idx, self.columns)
             self._grid.addWidget(card, row, col)
             self._cards.append(card)
-
-        if sorted_rows:
-            last_row = (len(sorted_rows) - 1) // self.columns
-            self._grid_stretch_row = last_row + 1
-            self._grid.setRowStretch(self._grid_stretch_row, 1)
 
         n = len(sorted_rows)
         suffix = f" for {filter_name}" if filter_name else ""
