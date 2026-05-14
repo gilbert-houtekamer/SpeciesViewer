@@ -208,6 +208,7 @@ class PictureCard(QFrame):
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setFrameShadow(QFrame.Shadow.Raised)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         vbox = QVBoxLayout(self)
         vbox.setContentsMargins(5, 5, 5, 5)
         vbox.setSpacing(3)
@@ -524,7 +525,7 @@ class RatingEditorDialog(QDialog):
     def _populate_species_combo(self):
         self._species_combo.blockSignals(True)
         self._species_combo.clear()
-        self._species_combo.addItem("— All species —", None)
+        self._species_combo.addItem("— Select a species —", None)
 
         names: set[str] = set()
         for upn_row in self.fpr.upn.UniquePictureName_dict.values():
@@ -676,6 +677,10 @@ class RatingEditorDialog(QDialog):
             return
         self._clear_grid()
         filter_name = self._species_combo.currentData()
+        if filter_name is None:
+            n_species = self._species_combo.count() - 1  # subtract placeholder
+            self._status.setText(f"{n_species} species loaded — select one to view pictures.")
+            return
         sorted_rows = self._sorted_upns(filter_name)
         cw = self._card_width()
 
