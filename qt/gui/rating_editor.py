@@ -663,39 +663,17 @@ class RatingEditorDialog(QDialog):
     # ── Grid management ───────────────────────────────────────────────────────
 
     def _grid_placement(self, total: int) -> list[tuple[int, int, int, int]]:
-        """Return (row, col, span, card_w) for each of `total` card positions.
+        """Return (row, col, span=1, card_w) for each of `total` card positions.
 
-        The last incomplete row is spread across all columns so it fills the
-        available width instead of leaving empty columns on the right.
+        All cards are the same width regardless of row completeness.
         """
         ncols = self.columns
         avail = self._scroll.viewport().width()
         if avail < 100:
             avail = 960
         spacing = self._grid.spacing()
-        single_w = max(120, (avail - spacing * (ncols - 1)) // ncols)
-
-        last_row_start = ((total - 1) // ncols) * ncols if total > 0 else 0
-        last_count = total - last_row_start  # always >= 1 when total > 0
-
-        result = []
-        for idx in range(total):
-            r, base_col = divmod(idx, ncols)
-            if idx >= last_row_start and last_count < ncols:
-                # Distribute remaining columns evenly; earlier positions get
-                # one extra column when they don't divide evenly.
-                base_span = ncols // last_count
-                extra = ncols % last_count
-                pos = idx - last_row_start
-                span = base_span + (1 if pos < extra else 0)
-                col = sum(base_span + (1 if i < extra else 0) for i in range(pos))
-                card_w = span * single_w + (span - 1) * spacing
-            else:
-                span = 1
-                col = base_col
-                card_w = single_w
-            result.append((r, col, span, card_w))
-        return result
+        card_w = max(120, (avail - spacing * (ncols - 1)) // ncols)
+        return [(idx // ncols, idx % ncols, 1, card_w) for idx in range(total)]
 
     def _clear_grid(self):
         while self._grid.count():
