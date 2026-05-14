@@ -662,11 +662,40 @@ class RatingEditorDialog(QDialog):
 
     # ── Grid management ───────────────────────────────────────────────────────
 
-    def _card_width(self) -> int:
+    def _grid_placement(self, total: int) -> list[tuple[int, int, int, int]]:
+        """Return (row, col, span, card_w) for each of `total` card positions.
+
+        The last incomplete row is spread across all columns so it fills the
+        available width instead of leaving empty columns on the right.
+        """
+        ncols = self.columns
         avail = self._scroll.viewport().width()
         if avail < 100:
             avail = 960
-        return max(120, avail // max(self.columns, 1) - 12)
+        spacing = self._grid.spacing()
+        single_w = max(120, (avail - spacing * (ncols - 1)) // ncols)
+
+        last_row_start = ((total - 1) // ncols) * ncols if total > 0 else 0
+        last_count = total - last_row_start  # always >= 1 when total > 0
+
+        result = []
+        for idx in range(total):
+            r, base_col = divmod(idx, ncols)
+            if idx >= last_row_start and last_count < ncols:
+                # Distribute remaining columns evenly; earlier positions get
+                # one extra column when they don't divide evenly.
+                base_span = ncols // last_count
+                extra = ncols % last_count
+                pos = idx - last_row_start
+                span = base_span + (1 if pos < extra else 0)
+                col = sum(base_span + (1 if i < extra else 0) for i in range(pos))
+                card_w = span * single_w + (span - 1) * spacing
+            else:
+                span = 1
+                col = base_col
+                card_w = single_w
+            result.append((r, col, span, card_w))
+        return result
 
     def _clear_grid(self):
         while self._grid.count():
@@ -686,15 +715,15 @@ class RatingEditorDialog(QDialog):
             self._status.setText(f"{n_species} species loaded — select one to view pictures.")
             return
         sorted_rows = self._sorted_upns(filter_name)
-        cw = self._card_width()
+        placement = self._grid_placement(len(sorted_rows))
 
         for idx, (_, upn_key, upn_row) in enumerate(sorted_rows):
+            r, col, span, card_w = placement[idx]
             img = self._get_display_path(upn_row)
             dname = self._species_name(upn_row) or upn_key
-            card = PictureCard(upn_key, upn_row, img, cw, display_name=dname)
+            card = PictureCard(upn_key, upn_row, img, card_w, display_name=dname)
             card.card_changed.connect(self._on_card_changed)
-            row, col = divmod(idx, self.columns)
-            self._grid.addWidget(card, row, col)
+            self._grid.addWidget(card, r, col, 1, span)
             self._cards.append(card)
 
         n = len(sorted_rows)
@@ -871,13 +900,14 @@ class RatingEditorDialog(QDialog):
         while self._grid.count():
             self._grid.takeAt(0)
 
+        placement = self._grid_placement(len(new_order))
         self._cards.clear()
         for idx, key in enumerate(new_order):
             if key not in cards_by_key:
                 continue
             c = cards_by_key[key]
-            row, col = divmod(idx, self.columns)
-            self._grid.addWidget(c, row, col)
+            r, col, span, _ = placement[idx]  # card_w unchanged; thumbnail stays as-is
+            self._grid.addWidget(c, r, col, 1, span)
             self._cards.append(c)
 
         QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
