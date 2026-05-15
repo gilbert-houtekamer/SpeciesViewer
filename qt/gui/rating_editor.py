@@ -541,6 +541,7 @@ class RatingEditorDialog(QDialog):
     # ── Data loading ──────────────────────────────────────────────────────────
 
     def _load_data(self):
+        saved_species = self._species_combo.currentData()  # preserve across reload
         self._status.setText("Loading…")
         self.fpr = FilePicture(None)
         self._day_objects = None
@@ -564,7 +565,7 @@ class RatingEditorDialog(QDialog):
             logger.error(f"RatingEditorDialog load error: {e}", exc_info=True)
             return
 
-        self._populate_species_combo()
+        self._populate_species_combo(restore_selection=saved_species)
 
     def _load_trip_scope(self):
         """Load all review-day CSVs into fpr, keeping per-day objects for write-back."""
@@ -630,7 +631,7 @@ class RatingEditorDialog(QDialog):
         return (upn_row.get("NLSoortNaam") or upn_row.get("EngSoortNaam")
                 or upn_row.get("WetSoortNaam") or "").strip()
 
-    def _populate_species_combo(self):
+    def _populate_species_combo(self, restore_selection=None):
         self._species_combo.blockSignals(True)
         self._species_combo.clear()
         self._species_combo.addItem("— Select a species —", None)
@@ -644,6 +645,11 @@ class RatingEditorDialog(QDialog):
             self._species_combo.addItem(name, name)
 
         self._species_combo.blockSignals(False)
+        if restore_selection:
+            idx = self._species_combo.findData(restore_selection)
+            if idx >= 0:
+                self._species_combo.setCurrentIndex(idx)  # triggers _rebuild_cards via signal
+                return
         self._rebuild_cards()
 
     # ── Sorted picture list ───────────────────────────────────────────────────
