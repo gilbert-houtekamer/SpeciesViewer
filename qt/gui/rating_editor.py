@@ -665,7 +665,9 @@ class RatingEditorDialog(QDialog):
     def _grid_placement(self, total: int) -> list[tuple[int, int, int, int]]:
         """Return (row, col, span=1, card_w) for each of `total` card positions.
 
-        All cards are the same width regardless of row completeness.
+        Card width is always viewport_width / columns regardless of how many
+        pictures are shown. One picture in a 3-column layout gets the same
+        small card as the last picture of a full grid.
         """
         ncols = self.columns
         avail = self._scroll.viewport().width()
@@ -676,6 +678,8 @@ class RatingEditorDialog(QDialog):
         return [(idx // ncols, idx % ncols, 1, card_w) for idx in range(total)]
 
     def _clear_grid(self):
+        for c in range(8):  # reset all possible column stretch values (spinner max = 8)
+            self._grid.setColumnStretch(c, 0)
         while self._grid.count():
             item = self._grid.takeAt(0)
             w = item.widget()
@@ -694,6 +698,8 @@ class RatingEditorDialog(QDialog):
             return
         sorted_rows = self._sorted_upns(filter_name)
         placement = self._grid_placement(len(sorted_rows))
+        for c in range(self.columns):
+            self._grid.setColumnStretch(c, 1)
 
         for idx, (_, upn_key, upn_row) in enumerate(sorted_rows):
             r, col, span, card_w = placement[idx]
