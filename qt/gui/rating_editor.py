@@ -16,8 +16,8 @@ from PyQt6.QtWidgets import (
     QLabel, QFrame, QPushButton, QSpinBox, QComboBox, QSizePolicy,
     QRadioButton, QButtonGroup, QMessageBox,
 )
-from PyQt6.QtGui import QPixmap, QGuiApplication
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QPixmap, QImage, QGuiApplication
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QRunnable, QThreadPool
 
 from engine.filepicture import FilePicture
 from engine.filecsv import Files
@@ -111,6 +111,32 @@ def _compute_rate(upn_row: dict, files_dict: dict) -> int:
     return computation
 
 
+# ── Background thumbnail loader ───────────────────────────────────────────────
+
+class _ThumbSignals(QObject):
+    ready = pyqtSignal(str, object, int)  # upn_key, QImage, generation
+
+
+class _ThumbLoader(QRunnable):
+    """Loads and scales a thumbnail image in a worker thread."""
+
+    def __init__(self, upn_key: str, path, target_w: int, gen: int, signals: _ThumbSignals):
+        super().__init__()
+        self._upn_key = upn_key
+        self._path = str(path) if path else None
+        self._target_w = target_w
+        self._gen = gen
+        self._signals = signals
+
+    def run(self):
+        img = QImage()
+        if self._path and Path(self._path).exists():
+            img = QImage(self._path)
+            if not img.isNull() and self._target_w > 0:
+                img = img.scaledToWidth(self._target_w, Qt.TransformationMode.SmoothTransformation)
+        self._signals.ready.emit(self._upn_key, img, self._gen)
+
+
 # ── Sub-widgets ────────────────────────────────────────────────────────────────
 
 class StarWidget(QWidget):
@@ -143,7 +169,10 @@ class StarWidget(QWidget):
             btn.setText("★" if i < self._rating else "☆")
 
     def set_rating(self, n: int):
-        self._rating = max(0, min(5, n))
+        n = max(0, min(5, n))
+        if self._rating == n:
+            return
+        self._rating = n
         self._refresh()
 
 
@@ -189,6 +218,8 @@ class ColorSelector(QWidget):
             btn.setChecked(name == self._color)
 
     def set_color(self, color: str):
+        if self._color == color:
+            return
         self._color = color
         self._refresh()
 
@@ -219,7 +250,10 @@ class PictureCard(QFrame):
         self._thumb.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self._thumb.setCursor(Qt.CursorShape.PointingHandCursor)
         self._thumb.mousePressEvent = lambda _: self.card_clicked.emit(self.upn_key)
-        self._load_thumb(jpg_path, card_width)
+        # Placeholder height (3:2 landscape ratio) until background load completes
+        self._thumb_target_w = max(80, card_width - 18)
+        self._thumb.setFixedHeight(max(60, self._thumb_target_w * 2 // 3))
+        self._thumb.setStyleSheet("background-color: #2a2a2a;")
         vbox.addWidget(self._thumb)
 
         # Species name
@@ -266,17 +300,6 @@ class PictureCard(QFrame):
         lbl_key.setToolTip(upn_key)
         vbox.addWidget(lbl_key)
 
-    def _load_thumb(self, jpg_path, card_width: int):
-        if jpg_path and Path(jpg_path).exists():
-            px = QPixmap(str(jpg_path))
-            if not px.isNull():
-                target_w = max(80, card_width - 18)
-                px = px.scaledToWidth(target_w, Qt.TransformationMode.SmoothTransformation)
-                self._thumb.setPixmap(px)
-                return
-        self._thumb.setText("(no image)")
-        self._thumb.setStyleSheet("color: #ccc; font-size: 10px;")
-
     def _on_rating_changed(self, n: int):
         self._pending_rating = n
         self.card_changed.emit(self.upn_key)
@@ -293,6 +316,15 @@ class PictureCard(QFrame):
 
     def update_color_display(self, color: str):
         self._color_sel.set_color(color)
+
+    def set_thumbnail(self, px: QPixmap):
+        if px.isNull():
+            self._thumb.setStyleSheet("color: #ccc; font-size: 10px;")
+            self._thumb.setText("(no image)")
+        else:
+            self._thumb.setStyleSheet("")
+            self._thumb.setFixedHeight(px.height())
+            self._thumb.setPixmap(px)
 
     def take_pending(self):
         """Return (pending_rating, pending_color) and clear them."""
@@ -420,8 +452,12 @@ class RatingEditorDialog(QDialog):
         self.fpr: FilePicture | None = None
         self.columns = 3
         self._cards: list[PictureCard] = []
+        self._cards_by_key: dict[str, PictureCard] = {}
         self._jpg_only = True
         self._species_lang = "NL"
+        self._thumb_gen = 0
+        self._thumb_signals = _ThumbSignals()
+        self._thumb_signals.ready.connect(self._on_thumb_ready)
         # Trip-scope per-day tracking; None in Day scope
         self._day_objects: dict | None = None   # day_str → (Files, Pictures)
         self._upn_day_map: dict[str, str] = {}  # upn_key → day_str
@@ -785,6 +821,8 @@ class RatingEditorDialog(QDialog):
         return [(idx // ncols, idx % ncols, 1, card_w) for idx in range(total)]
 
     def _clear_grid(self):
+        self._thumb_gen += 1  # invalidate any in-flight thumbnail loads
+        self._cards_by_key.clear()
         for c in range(8):  # reset all possible column stretch values (spinner max = 8)
             self._grid.setColumnStretch(c, 0)
         while self._grid.count():
@@ -808,6 +846,8 @@ class RatingEditorDialog(QDialog):
         for c in range(self.columns):
             self._grid.setColumnStretch(c, 1)
 
+        pool = QThreadPool.globalInstance()
+        gen = self._thumb_gen
         for idx, (_, upn_key, upn_row) in enumerate(sorted_rows):
             r, col, span, card_w = placement[idx]
             img = self._get_display_path(upn_row)
@@ -817,11 +857,23 @@ class RatingEditorDialog(QDialog):
             card.card_clicked.connect(self._on_card_clicked)
             self._grid.addWidget(card, r, col, 1, span)
             self._cards.append(card)
+            self._cards_by_key[upn_key] = card
+            loader = _ThumbLoader(upn_key, img, card._thumb_target_w, gen, self._thumb_signals)
+            pool.start(loader)
 
         n = len(sorted_rows)
         suffix = f" for {filter_name}" if filter_name else ""
         self._status.setText(f"{n} picture{'s' if n != 1 else ''}{suffix}")
         QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
+
+    def _on_thumb_ready(self, upn_key: str, qimage: QImage, gen: int):
+        if gen != self._thumb_gen:
+            return  # stale result from a previous grid build
+        card = self._cards_by_key.get(upn_key)
+        if card is None:
+            return
+        px = QPixmap.fromImage(qimage) if not qimage.isNull() else QPixmap()
+        card.set_thumbnail(px)
 
     # ── Event handlers ────────────────────────────────────────────────────────
 
