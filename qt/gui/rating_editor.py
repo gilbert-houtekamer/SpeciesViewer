@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QLabel, QFrame, QPushButton, QSpinBox, QComboBox, QSizePolicy,
     QRadioButton, QButtonGroup, QMessageBox,
 )
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QPixmap, QGuiApplication
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 
 from engine.filepicture import FilePicture
@@ -197,6 +197,7 @@ class PictureCard(QFrame):
     """Thumbnail + star rating + color selector + rate label for one UPN."""
 
     card_changed = pyqtSignal(str)  # upn_key
+    card_clicked = pyqtSignal(str)  # upn_key — thumbnail clicked → open large view
 
     def __init__(self, upn_key: str, upn_row: dict, jpg_path, card_width: int,
                  display_name: str = None, parent=None):
@@ -212,10 +213,12 @@ class PictureCard(QFrame):
         vbox.setContentsMargins(5, 5, 5, 5)
         vbox.setSpacing(3)
 
-        # Thumbnail
+        # Thumbnail — clicking opens the large-view detail dialog
         self._thumb = QLabel()
         self._thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumb.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self._thumb.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._thumb.mousePressEvent = lambda _: self.card_clicked.emit(self.upn_key)
         self._load_thumb(jpg_path, card_width)
         vbox.addWidget(self._thumb)
 
@@ -285,6 +288,12 @@ class PictureCard(QFrame):
     def update_rate_display(self, new_rate: int):
         self._rate_lbl.setText(f"Rate: {new_rate}")
 
+    def update_rating_display(self, stars: int):
+        self._stars.set_rating(stars)
+
+    def update_color_display(self, color: str):
+        self._color_sel.set_color(color)
+
     def take_pending(self):
         """Return (pending_rating, pending_color) and clear them."""
         r, c = self._pending_rating, self._pending_color
@@ -298,6 +307,98 @@ def _safe_int(s, default: int = 0) -> int:
         return int(s)
     except (ValueError, TypeError):
         return default
+
+
+# ── Large-image detail dialog ─────────────────────────────────────────────────
+
+class RatingCardDetailDialog(QDialog):
+    """Full-size view of a single picture card with live-editable stars and color."""
+
+    def __init__(self, parent, upn_key: str, upn_row: dict, jpg_path,
+                 display_name: str, on_change):
+        super().__init__(parent)
+        self._upn_row = upn_row
+        self._on_change = on_change  # callable(upn_key, new_stars_or_None, new_color_or_None)
+
+        self.setWindowTitle(display_name or upn_key)
+        screen = QGuiApplication.primaryScreen().availableGeometry()
+        self.resize(int(screen.width() * 0.85), int(screen.height() * 0.85))
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+
+        # Large image — setMinimumSize(1,1) prevents the pixmap size from
+        # becoming the window's minimum size, which would block vertical resize.
+        self._image_label = QLabel()
+        self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._image_label.setMinimumSize(1, 1)
+        self._pixmap = QPixmap(str(jpg_path)) if jpg_path and Path(jpg_path).exists() else QPixmap()
+        layout.addWidget(self._image_label, stretch=1)
+
+        # Controls strip — centred and limited to 1/3 of window width via
+        # equal stretches on each side (stretch 1 : widget 1 : stretch 1).
+        controls_widget = QWidget()
+        controls_layout = QVBoxLayout(controls_widget)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.setSpacing(4)
+
+        lbl_name = QLabel(display_name or upn_key)
+        lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_name.setStyleSheet("font-weight: bold; font-size: 13px;")
+        controls_layout.addWidget(lbl_name)
+
+        row_stars = QHBoxLayout()
+        self._stars = StarWidget(_safe_int(upn_row.get("Rating", "0")))
+        self._stars.rating_changed.connect(lambda n: on_change(upn_key, n, None))
+        row_stars.addWidget(self._stars)
+        dto = upn_row.get("DateTimeOriginal", "")
+        if dto:
+            lbl_date = QLabel(dto[:10].replace(":", "-"))
+            lbl_date.setStyleSheet("font-size: 11px; color: #777;")
+            row_stars.addWidget(lbl_date)
+        row_stars.addStretch()
+        self._rate_lbl = QLabel(f"Rate: {upn_row.get('Rate', '?')}")
+        self._rate_lbl.setStyleSheet("font-size: 11px; color: #555;")
+        row_stars.addWidget(self._rate_lbl)
+        controls_layout.addLayout(row_stars)
+
+        self._color_sel = ColorSelector(upn_row.get("Label", ""))
+        self._color_sel.color_changed.connect(lambda c: on_change(upn_key, None, c))
+        controls_layout.addWidget(self._color_sel)
+
+        lbl_path = QLabel(upn_key)
+        lbl_path.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_path.setStyleSheet("font-size: 9px; color: #aaa;")
+        controls_layout.addWidget(lbl_path)
+
+        ctrl_row = QHBoxLayout()
+        ctrl_row.addStretch(1)
+        ctrl_row.addWidget(controls_widget, 1)
+        ctrl_row.addStretch(1)
+        layout.addLayout(ctrl_row)
+
+    def refresh_rate(self):
+        self._rate_lbl.setText(f"Rate: {self._upn_row.get('Rate', '?')}")
+
+    def _fit_pixmap(self):
+        if self._pixmap.isNull():
+            return
+        size = self._image_label.size()
+        if size.width() <= 1 or size.height() <= 1:
+            return
+        scaled = self._pixmap.scaled(size, Qt.AspectRatioMode.KeepAspectRatio,
+                                     Qt.TransformationMode.SmoothTransformation)
+        self._image_label.setPixmap(scaled)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self._fit_pixmap)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit_pixmap()
 
 
 # ── Main dialog ────────────────────────────────────────────────────────────────
@@ -707,6 +808,7 @@ class RatingEditorDialog(QDialog):
             dname = self._species_name(upn_row) or upn_key
             card = PictureCard(upn_key, upn_row, img, card_w, display_name=dname)
             card.card_changed.connect(self._on_card_changed)
+            card.card_clicked.connect(self._on_card_clicked)
             self._grid.addWidget(card, r, col, 1, span)
             self._cards.append(card)
 
@@ -768,6 +870,28 @@ class RatingEditorDialog(QDialog):
         new_stars, new_color = card.take_pending()
         self._apply_change(upn_key, new_stars, new_color, card)
 
+    def _on_card_clicked(self, upn_key: str):
+        if not self.fpr:
+            return
+        upn_row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
+        if not upn_row:
+            return
+        jpg_path = self._get_display_path(upn_row)
+        dname = self._species_name(upn_row) or upn_key
+
+        dlg_ref: list = [None]
+
+        def on_detail_change(key, new_stars, new_color):
+            card = next((c for c in self._cards if c.upn_key == key), None)
+            if card:
+                self._apply_change(key, new_stars, new_color, card)
+            if dlg_ref[0]:
+                dlg_ref[0].refresh_rate()
+
+        dlg = RatingCardDetailDialog(self, upn_key, upn_row, jpg_path, dname, on_detail_change)
+        dlg_ref[0] = dlg
+        dlg.show()
+
     # ── Write-back ────────────────────────────────────────────────────────────
 
     def _apply_change(self, upn_key: str, new_stars, new_color, card: PictureCard):
@@ -819,6 +943,10 @@ class RatingEditorDialog(QDialog):
         # Recompute Rate and refresh the card's label
         new_rate = _compute_rate(upn_row, self.fpr.fi.files_dict)
         upn_row["Rate"] = str(new_rate)
+        if new_stars is not None:
+            card.update_rating_display(new_stars)
+        if new_color is not None:
+            card.update_color_display(new_color)
         card.update_rate_display(new_rate)
 
         # Persist CSVs
