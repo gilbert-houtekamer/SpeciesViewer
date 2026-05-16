@@ -1,0 +1,172 @@
+Betere functies:
+- datum 28/11 maar half gedaan.
+IN PROGRESS- kruimel[pad]  ... still need to do trip improvement
+- bewaak dat trip info niet verloren gaan (zoals nu)
+- trema's in trip naam?  werkt wel in blog (spanje)
+- met JvO: waarneming.nl leeglepelen voor (vooral) insecten
+- rechtstreeks invoeren waarneming in mijn database 
+  DONE - uitlezen van de observaties (gedaan, maar let op taal):
+  - invoeren van de onbekende soorten in huidige herkenning:
+    https://multi-source.docs.biodiversityanalysis.eu/required-form-parameter/image/
+  DONE - speciale groepering, maanden ipv dagen denk ik.  Maken tree met Python?
+  - links naar waarneming toevoegen
+  - meer levensfasen: ei/larve/pop/volwassen
+- BuildWebsite based on timestamp rather than new status, better anyways.
+- nieuw aangemaakte soort werkt pas in volgende run
+- Delete for pictures that not used in website for website, complete collection should go to main repository
+- WARNING:WriteBlog failed: 'NoneType' object has no attribute 'writeTranslationCache' (geen internet)
+
+IN PROGRESS - logic documenteren (zie docs)
+- logs bewaren?
+USAGE? - nog issues met special characters in blog
+- andere steepjes automatisch overnemen in bv Red-throated Ant Tanager / Red-throated Ant-Tanager
+  - ook grey/gray beide testen
+- sv8RecreatedTripRepository: 
+   van alle dagen en een soort opdrachten
+   automatically delete projects for recreate
+- JvO: Nederlandse namen opvragen met Nederlandse gbif versie [voor Nederlande namen en ook voor het verder 
+  "opleuken" van e pagina's met info over soorten]
+- reload project from emptied projects in GUI
+  JvO: sv8RecreatedTripRepository uitbreiden met welke stappen en welke niet.
+- svr7DeleteFiles: delete all files in E:\Dropbox\trips\safaridb\metadata\review\2024-06-24\frozen (do not do this now)
+
+Blog/GUI fixes:
+- errors that are undetected:
+  - sv1: no trip.ini, banner and .. in trip
+  
+Bugs:
+- niet alle images hebben goede up links, just skip the problem
+    # logic selected species
+    def writeOneSpecies(MyProject, leaf, temptextfile):
+        species = MyProject.sp.species_dict[leaf]
+        if species["TargetPath"] == "":
+            logger.warning(f"{species['ScientificName']} has no TargetPath, review naming for parents.")
+            return
+
+- <p> in de blog gebruik een kleiner font, waarom?
+- pictures from WhatsApp do not work, why?
+- "afstand inf" is niet zo mooi
+HALFDONE - maak class for upn's ... in project gestopt
+
+DONE?? - De layout van de vogel*.html zijn nog niet goed, er staat geen 'trips' label in.  
+  websupport.py moet aangepast, maar echte test nog niet gedaan op de master.
+
+- disk version of website is not maintained, maybe want that too.
+
+Volgende versie features:
+- web site build on the FTP server, but not on disk.  De we want this?
+- blogs op DAG criteria ipv new
+- reloaden na opschonen (compress() of nieuwe versie)
+  - een nieuwe rebuild van de website te doen na nieuwe versie (het zelfde?)
+- wild idee: 
+   - een nieuwe data_files maken als na merge zdd we project kunnen blijven runnen
+   - een UPN inclusief datum en camera time stamp
+   - re-run van sv2 is dan heel anders, extra kolom? of een extra file?
+
+- Facebook: https://facebook-sdk.readthedocs.io/en/latest/api.html
+- #woorden voor andere eigenschappen dan soorten, bv #wolken(cirrocumulus) of #landschap(droge steppe). met bijbehorende GUI/web reporting.
+
+Issues met het design nu
+- afdwingen dat projecten in dezelfde directory zitten.  Dat hebben we eigenlijk niet?
+- algemener selectie op basis van datum van een blog, buildwebsite
+  maar misschien ook voor andere functies. 
+  - impliceert ook achteraf nog kunnen maken op basis tijd ipn New
+    denk ik
+
+GUI
+
+- repository reports:
+  - #soorten (svu2)
+  - status per project
+
+Related:
+- houtekamer.com opruimen en pointers fixen vanaf home page
+
+Done
+DONE - WriteBlog variant voor al verwerkte pagina's op basis van blog_admin.csv (echt andere code) - svr9RedoBlog
+DONE: - cache wat weet wat er op de FTP staat, save in JSON
+IN PROGRESS - sv7WriteCommit to copy only new small images to FTP.  Might even do this generically? Too inefficient
+  (save in d:\code\allspecieswrapper.txt until suitable test set found)
+DONE?: - 'Alle soorten' vervangen door 'trip soorten' om duidelijker te maken wat het is.
+DONE - quoted strings in keywords that have ' give error
+DONE - bug bij tweede soort foto?  eerste zegt bv man, 2e niks meer? (was data issue, code ok)
+DONE - "Vía Sin Nombre" onderdrukken als locatie (bv Vía Sin Nombre op 23 november)
+- CSS vor screen size: 
+   https://www.w3schools.com/html/html_mobile.asp
+   https://www.w3schools.com/html/html_responsive.asp
+NOT YET:- WINTERkoning 2 soorten
+DONE: - aparte function om de master database te managen en dingen mee te doen
+  - merge van trip: 
+    - define a project in the master DB
+    - run all tasks, except sv4 run svr6MergeBlogsForMaster
+    - need to think one to delete
+DONE - create new project, sv1: initialize blog, so link works
+DONE - optie voor soort biota tree: master of vakantie
+DONE - sv4 should automatcally call svr6 when there is no trip => disable sv4 when called for master
+DONE: - andere drill-down voor soorten, blog is default, biota is optie
+- trip bij meer dingen?
+- aanmaken nieuwe trip repository werkt niet, kan trip niet vinden.
+- blog belanrijker maken, feednack Daan
+    Dat was wel het plan, de tekst link gaat naar de animalia boom, en (blogs) naar de blogs.  
+    Je feedback suggereert dat ik alleen naar de blogs moet linken, en wat uitleg  
+    geven over wat-is-wat van de links in de rechterbalk.  
+    De tekst “Deze pagina toont de blog pagina's. Met de link Recent kom je terug bovenaan deze lijst” 
+    vervangen door uit leg over wat blogs/trips/alle soorten etc doen dus. 
+DONE: - sv8RecreatedTripRepository bouwt een repository opnieuw als de foto's er nog zijn.
+NOT a PROBLEM- some wrong directories appear, weird, not sure it is bad, not sure what causes it though
+INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/carnivora/herpestidae/helogale parvula/2024 zomer Zuid-Afrika-N7014487-small.jpg
+INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/carnivora/herpestidae/mungos mungo/2024 zomer Zuid-Afrika-N6261417-small.jpg
+INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/carnivora/hyaenidae/crocuta crocuta/2024 zomer Zuid-Afrika-N6292948-small.jpg
+INFO:Small image for All Species report: D:/CurrentPictures/2024/2024 zomer zuid-afrika/2024-07-09/2024 zomer Zuid-Afrika-N7092574-small.jpg
+INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/perissodactyla/equidae/equus quagga/2024 zomer Zuid-Afrika-P6272149-small.jpg
+INFO:Small image for All Species report: E:/Dropbox/trips/safaridb/biota/animalia/chordata/mammalia/perissodactyla/rhinocerotidae/ceratotherium simum/2024 zomer Zuid-Afrika-N6261550-small.jpg
+DONE: - [DEFER until we can run an entire project] Re-running projects after commi has been done kills some report.  Nasty, will defer that issue for a while.
+  Probably it causes this one:
+  - this species does not occur in all species page, nut no errors.  weird, manually fixed.:
+      <p>Cinnyris talatala</p>
+			        <a href="/trips/safari/biota/animalia/chordata/aves/040 passeriformes/112 nectariniidae/cinnyris talatala-nl.html">
+			            <img src="/trips/safari/biota/animalia/chordata/aves/040 passeriformes/112 nectariniidae/cinnyris talatala/2024 zomer Zuid-Afrika-N6251047-small.jpg" style="width:100%">
+              </a>
+  - re-run all steps
+DONE: - sliders:
+    De sliders is wel een goede reminder, daar heb ik al mee gewerkt ‘vroeger’.   
+    Ik gebruik graag dingen die ik kan aanpassen, zoiets om mee spelen:  
+    https://www.w3schools.com/howto/tryit.asp?filename=tryhow_js_slideshow_gallery.  
+    Iets voor de winter als ik wil fröbelen 😊, makkelijker dan je andere suggesties.
+DONE - trip index pages should have different links, not inside a trip.  not sure what it must become, took most out
+DONE - nieuwe functie svr6MergeBlogsForMaster voor blog index met trip support
+DONE - nieuwe trip vergeet de oude!
+DONE - Moet er uit: ReferenceSpecies=e:/Dropbox/nature/metadata/active/species.csv (in svr2CountSpecies)
+DONR - review svr* with filepath changes
+DONE - blog creation is messy, index page does not work any more?  Or testing is messy :-() Both actually ..
+  DONE - trip_admin.csv werkt niet, bestaande bug in svr4UpdateTrips, zoeken waar het zat
+- DONE .ini voor repository van trips, vooral zodat er een overzicht code gemaakt kan worden,
+  a la wat ik heb voor blog
+  DONE - title, message
+  DONE - plaatje
+  DONE - uplink to master repository
+  DONE - Trips entry op alle bladzijden
+  DONE - nog repositorybanner referenties?
+  DONE - wegschrijven naar sFTP
+  DONE - sv1 slimmer maken om index updaten (evt)
+  OK - directory path voor files nog niet goed?  
+DONE - merge Collections, tool with manual code change (path)
+DONE - '-small' files moeten aan file worden toegevoegd, of onderdrukt worden [geen kandidaat voor best etc]
+DONE - voorkom dat -small 2x wordt gemaakt (of vaker)
+- DONE niet alle UPNs hebben de nieuwe velden male/female etc, why?
+- [OK, er in elk geval wat.]  links vanaf houtekamer.com
+- [DONE]. volgorde voor Aves klasse
+- DONE: Of een apart kleurtje voor trip report, met een olifant als header bv, 
+  de vakantie gedeeltes anders markeren
+- DONE: blog links nog een keer herberekenen, zodra er altijd een soort link is.
+  Een soort recompute op basis van admin?
+  - ook hyperlink voor soort
+  - blog foto's kleiner maken en ook voor All Species
+- DONE: "-small" strippen van .jpgs
+- DONE, BUT WHY? all species moet controleren of file is gekopieerd
+- DONE  de deadlink voor in elk geval e fungi is niet goed.  Logic error
+- DONE: man/vrouw, jong etc info op soort pagina's, zorgen dat er van elke permutaties eentje is
+  - elke diversiteit van een soort komt voor.  
+  - De voetnoot ontbreekt nog op de soort pagine
+  - websupport 100: is de klassieke sort, websupport collectBestJPGs() is the new sort by type
+DONE: - familie namen verschijnen als er wel raw zijn, maar geen RAWs.  Best dom.

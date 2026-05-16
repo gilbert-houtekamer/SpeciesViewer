@@ -1,0 +1,102 @@
+<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Adobe XMP Core 7.0-c000 1.000000, 0000/00/00-00:00:00        ">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmlns:tiff="http://ns.adobe.com/tiff/1.0/"
+    xmlns:exif="http://ns.adobe.com/exif/1.0/"
+    xmlns:aux="http://ns.adobe.com/exif/1.0/aux/"
+    xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/"
+    xmlns:xmpMM="http://ns.adobe.com/xap/1.0/mm/"
+    xmlns:stEvt="http://ns.adobe.com/xap/1.0/sType/ResourceEvent#"
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:crd="http://ns.adobe.com/camera-raw-defaults/1.0/"
+    xmlns:xmpDM="http://ns.adobe.com/xmp/1.0/DynamicMedia/"
+    xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/"
+   xmp:CreatorTool="NIKON D500 Ver.1.20     "
+   xmp:CreateDate="2021-08-04T14:56:35.15"
+   xmp:ModifyDate="2021-08-04T14:56:35.15"
+   xmp:MetadataDate="2024-06-14T17:42:49+02:00"
+   tiff:Make="NIKON CORPORATION"
+   tiff:Model="NIKON D500"
+   tiff:Orientation="1"
+   tiff:ImageWidth="5568"
+   tiff:ImageLength="3712"
+   exif:ExifVersion="0231"
+   exif:ExposureTime="1/640"
+   exif:ShutterSpeedValue="9321928/1000000"
+   exif:FNumber="5/1"
+   exif:ApertureValue="4643856/1000000"
+   exif:ExposureProgram="3"
+   exif:SensitivityType="2"
+   exif:ExposureBiasValue="0/6"
+   exif:MaxApertureValue="34/10"
+   exif:MeteringMode="5"
+   exif:LightSource="0"
+   exif:FocalLength="1050/10"
+   exif:SensingMethod="2"
+   exif:FileSource="3"
+   exif:SceneType="1"
+   exif:FocalLengthIn35mmFilm="157"
+   exif:CustomRendered="0"
+   exif:ExposureMode="0"
+   exif:WhiteBalance="0"
+   exif:SceneCaptureType="0"
+   exif:GainControl="0"
+   exif:Contrast="0"
+   exif:Saturation="0"
+   exif:Sharpness="0"
+   exif:SubjectDistanceRange="0"
+   exif:FocalPlaneXResolution="77360658/32768"
+   exif:FocalPlaneYResolution="77360658/32768"
+   exif:FocalPlaneResolutionUnit="3"
+   exif:DateTimeOriginal="2021-08-04T14:56:35.15"
+   exif:PixelXDimension="5568"
+   exif:PixelYDimension="3712"
+   aux:SerialNumber="6002689"
+   aux:LensInfo="1050/10 1050/10 28/10 28/10"
+   aux:Lens="105.0 mm f/2.8"
+   aux:LensID="138"
+   aux:ImageNumber="72224"
+   aux:ApproximateFocusDistance="53/100"
+   photoshop:DateCreated="2021-08-04T14:56:35.15"
+   photoshop:SidecarForExtension="NEF"
+   photoshop:EmbeddedXMPDigest="5EC4409823558A9473CE9E4661B75BD5"
+   xmpMM:DocumentID="6CA7F7E0BB06DBF6D0402FA8EED565FF"
+   xmpMM:PreservedFileName="DS5_1079.NEF"
+   xmpMM:OriginalDocumentID="6CA7F7E0BB06DBF6D0402FA8EED565FF"
+   xmpMM:InstanceID="xmp.iid:a661970b-aba4-734d-8918-85e4dd113461"
+   dc:format="image/x-nikon-nef"
+   crd:CameraProfile="Camera STANDARD"
+   crd:LookName=""
+   xmpDM:pick="0"
+   crs:CropTop="0"
+   crs:CropLeft="0"
+   crs:CropBottom="1"
+   crs:CropRight="1"
+   crs:CropAngle="0"
+   crs:CropConstrainToWarp="0"
+   crs:RawFileName="2021 augustus nl-DS5_1079.NEF">
+   <exif:ISOSpeedRatings>
+    <rdf:Seq>
+     <rdf:li>320</rdf:li>
+    </rdf:Seq>
+   </exif:ISOSpeedRatings>
+   <exif:Flash
+    exif:Fired="False"
+    exif:Return="0"
+    exif:Mode="0"
+    exif:Function="False"
+    exif:RedEyeMode="False"/>
+   <xmpMM:History>
+    <rdf:Seq>
+     <rdf:li
+      stEvt:action="saved"
+      stEvt:instanceID="xmp.iid:a661970b-aba4-734d-8918-85e4dd113461"
+      stEvt:when="2024-06-14T17:42:49+02:00"
+      stEvt:softwareAgent="Adobe Photoshop Lightroom Classic 13.3.1 (Windows)"
+      stEvt:changed="/metadata"/>
+    </rdf:Seq>
+   </xmpMM:History>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>

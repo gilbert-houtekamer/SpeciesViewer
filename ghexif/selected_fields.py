@@ -1,17 +1,3 @@
-#!/usr/bin/env python3
-
-import argparse
-import logging
-import os
-import sys
-
-import exiftool
-
-scriptpath = os.path.dirname(__file__)
-modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-os.chdir(modpath)
-sys.path.append(modpath)
-
 SELECTED_FIELDS = [
     "-r",
     "-filename",
@@ -139,24 +125,5 @@ COLUMN_NAMES = {
     "-subject": "XMP:Subject",
     "-keywords": "IPTC:Keywords",
     "-DateTimeOriginal": "EXIF:DateTimeOriginal",
+    "-description": "XMP:Description",    
 }
-
-
-
-def main(args):
-    logging.basicConfig(level=logging.DEBUG)
-    with exiftool.ExifToolHelper(logger=logging.getLogger(__name__)) as et:
-        metadata = et.get_metadata(args.dir, params=SELECTED_FIELDS)
-        for d in metadata:
-            print(f"--------------------{d['SourceFile']}------------------------")
-            for key, value in d.items():
-                print(f"{key}->{value}")
-
-
-if __name__ == "__main__":
-    # get commandline parameters and mix everything
-    parser = argparse.ArgumentParser(description="Handle photos.")
-    parser.add_argument(
-        "--dir", type=str, default=os.path.join(modpath, "data"), help="foto directory"
-    )
-    main(parser.parse_args())

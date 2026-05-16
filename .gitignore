@@ -3,6 +3,30 @@
 *.dng
 *.NEF
 *.csv
+!dist/installation files/*.csv
+!*_files.csv
+!species.csv
+!species-date.csv
+!installation files/*.csv
+!installation files/*.ini
+data/repositories/repo*
+downloaded_images/*
 
+ghconfig.ini
 
+# python
+__pycache__
+build
 
+# source code
+venv
+.envrc
+
+# development
+.idea
+.vscode
+
+# app remains
+svconfig.backup.*
+
+Species print.txt

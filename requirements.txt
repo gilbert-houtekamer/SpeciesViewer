@@ -1,11 +1,30 @@
+
+
 # picture handling
 exif
 opencv-python
 pyexiftool
+pillow-heif
 configparser
 pygbif
+pysftp
+googletrans==4.0.0-rc1
+fastcrc
+openpyxl
+
+# UI
+flet
+PyQt6
+
+
+# Outgoing REST calls
+requests
+pysftp
 
 # testing/tools
 pytest
 black
+ruff
 
+# create executable
+pyinstaller

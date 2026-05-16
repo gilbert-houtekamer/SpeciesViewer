@@ -1,0 +1,3 @@
+
+class SVException(Exception):
+    pass

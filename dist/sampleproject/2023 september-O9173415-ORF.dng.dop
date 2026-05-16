@@ -1,0 +1,522 @@
+Sidecar = {
+Date = "2024-06-20T13:32:15.3761883Z",
+Software = "DxO PhotoLab 7.6",
+Source = {
+Items = {
+{
+Albums = "",
+CreationDate = "2024-06-14T15:52:29.2894521Z",
+IPTC = {
+}
+,
+Keywords = {
+{
+"Gekielde loofslak",
+}
+,
+{
+"Hygromia cinctella",
+}
+,
+{
+"slak",
+}
+,
+}
+,
+ColorLabel = "Red",
+ModificationDate = "2024-06-20T13:32:15.3747794Z",
+Name = "2023 september-O9173415-ORF.dng",
+Orientation = 1,
+OutputItems = {
+{
+CreationDate = "2024-06-20T13:32:14.9627159Z",
+Name = "2023 september-O9173415-ORF.jpg",
+OutputFormat = {
+}
+,
+Uuid = "7858FD52-1695-4DB0-9BDF-2931F86C265B",
+}
+,
+}
+,
+ProcessingStatus = 3,
+Rating = 0,
+Settings = {
+AppliedPresetDisplayName = "6 - No correction",
+AppliedPresetUniqueName = "6 - No correction",
+Base = {
+VignettingClippingAuto = true,
+WatermarkTextOpacity = 1,
+ColorRenderingType = "Original",
+LightingPriorityRegions = {
+}
+,
+WatermarkImageTopMargin = 0,
+ChromaticAberrationLateralActive = false,
+HighlightToningCustomHue = 0,
+ColorLookupIntensity = 100,
+ToneCurveGreenGamma = 1,
+EdgeTextureID = "fuitelum1",
+VignettedBlurRoundness = 50,
+DistortionAnamorphosisKeepEntireImage = false,
+ContrastEnhancementHighlightIntensity = 0,
+WatermarkImageLeftMargin = 0,
+EdgeTexturingPosition = "Random",
+ContrastEnhancementLowlightIntensity = 0,
+OutputSaturatedColorsProtection = 50,
+UnsharpMaskActiveAuto = false,
+ContrastControlGroupActive = false,
+EdgeTexturingSeed = 0,
+KeystoningUpDown = 0,
+NoiseLuminanceContrast = 0,
+FramingApplyToning = false,
+ColorLookupActive = false,
+RedEyeEllipses = {
+}
+,
+ContrastEnhancementActive = false,
+WhiteBalanceRGBColor = {
+}
+,
+NoiseRemoveMoireIntensity = 0,
+WatermarkTextColor = {
+1,
+1,
+1,
+}
+,
+WhiteBalanceRGBTemperature = 5200,
+WhiteBalanceRGBActive = false,
+ChromaticAberrationIntensityAuto = true,
+WatermarkImageBottomMargin = 0,
+WhiteBalanceRawTint = 0,
+WhiteBalanceRawInputImageColor = {
+}
+,
+EdgeTexturingApplyToning = false,
+LocalParameters = {
+}
+,
+KeystoningLeftRight = 0,
+LightingMode = "V3Slight",
+FramingScaleFactor = 0.25,
+LocalParametersActive = false,
+NoiseChrominanceAuto = false,
+WhiteBalanceRawActive = false,
+VignettedBlurTransition = 50,
+WatermarkTextBlendMode = "Normal",
+VignettingMidFieldIntensity = 0,
+WatermarkTextRightMargin = 0,
+CropRect = {
+0,
+0,
+1,
+1,
+}
+,
+MicroContrastAuto = true,
+EdgeTexturingActive = false,
+WatermarkTextLeftMargin = 0,
+WatermarkTextSize = 0.05,
+WatermarkTextRotation = 0,
+WatermarkTextPosition = "Bottom",
+WatermarkTextFont = "ArialMT",
+GrainIntensity = 100,
+AnamorphosisType = "Spherical",
+KeystoningActive = false,
+CropAuto = false,
+WatermarkText = "",
+ChromaticAberrationPurpleActive = false,
+KeystoningHorizon = 0,
+HSLHueSlices = {
+{
+FadeOutStart = 15.623,
+FadeOutEnd = 31.137,
+FadeInStart = 325.07,
+Saturation = 0,
+Label = "Red",
+Luminance = 0,
+Uniformity = 0,
+FadeInEnd = 343.759,
+Hue = 0,
+}
+,
+{
+FadeOutStart = 41.144,
+FadeOutEnd = 50.114,
+FadeInStart = 15.623,
+Saturation = 0,
+Label = "Orange",
+Luminance = 0,
+Uniformity = 0,
+FadeInEnd = 31.137,
+Hue = 0,
+}
+,
+{
+FadeOutStart = 54.533,
+FadeOutEnd = 63.109,
+FadeInStart = 41.144,
+Saturation = 0,
+Label = "Yellow",
+Luminance = 0,
+Uniformity = 0,
+FadeInEnd = 50.114,
+Hue = 0,
+}
+,
+{
+FadeOutStart = 145.702,
+FadeOutEnd = 171.415,
+FadeInStart = 54.533,
+Saturation = 0,
+Label = "Green",
+Luminance = 0,
+Uniformity = 0,
+FadeInEnd = 63.109,
+Hue = 0,
+}
+,
+{
+FadeOutStart = 201.099,
+FadeOutEnd = 216.152,
+FadeInStart = 145.702,
+Saturation = 0,
+Label = "Cyan",
+Luminance = 0,
+Uniformity = 0,
+FadeInEnd = 171.415,
+Hue = 0,
+}
+,
+{
+FadeOutStart = 246.546,
+FadeOutEnd = 264.986,
+FadeInStart = 201.099,
+Saturation = 0,
+Label = "Blue",
+Luminance = 0,
+Uniformity = 0,
+FadeInEnd = 216.152,
+Hue = 0,
+}
+,
+{
+FadeOutStart = 275.526,
+FadeOutEnd = 294.798,
+FadeInStart = 246.546,
+Saturation = 0,
+Label = "Purple",
+Luminance = 0,
+Uniformity = 0,
+FadeInEnd = 264.986,
+Hue = 0,
+}
+,
+{
+FadeOutStart = 325.07,
+FadeOutEnd = 343.759,
+FadeInStart = 275.526,
+Saturation = 0,
+Label = "Magenta",
+Luminance = 0,
+Uniformity = 0,
+FadeInEnd = 294.798,
+Hue = 0,
+}
+,
+}
+,
+WatermarkImageBlendMode = "Normal",
+WatermarkImageRightMargin = 0,
+NoiseDeadPixelIntensity = 0,
+NoiseRemoveMoireActive = false,
+TiltShiftActive = false,
+KeystoningAutoMode = "Full",
+WatermarkImageRotation = 0,
+ColorRenderingIntent = 0,
+UnsharpMaskThreshold = 4,
+ExposureAutoMode = "Manual",
+UnsharpMaskIntensityOffset = 0,
+WatermarkImageOpacity = 1,
+WatermarkImagePath = "",
+LowlightToningCustomSaturation = 50,
+ColorModeContrast = 0,
+GridWarpingActive = false,
+LightingV3WhitePoint = 0,
+LightingV3RegionPriorityMode = "None",
+NoiseChrominance = 0,
+AnamorphosisRadial = 150,
+AnamorphosisActive = false,
+NoiseDeadPixelAuto = false,
+WatermarkTextBottomMargin = 0,
+LowlightToningStyle = "Gold",
+VignettingIntensityAuto = false,
+ChromaticAberrationIntensity = 100,
+OutputRenderingIntent = "Perceptual",
+RedEyeLocateMode = "DetectedEyes",
+VignettingTypeAuto = false,
+KeystoningBlendingIntensity = 100,
+VignettingActive = false,
+ColorModeFilter = "CoolTone",
+NoiseRemovalMethod = "standard",
+FramingSeed = 0,
+WatermarkImagePosition = "BottomRight",
+UnsharpMaskRadius = 0.5,
+ToneCurveBluePoints = {
+0,
+0,
+1,
+1,
+}
+,
+ColorRenderingDCPProfile = "",
+UnsharpMaskIntensity = 100,
+ToneCurveRedGamma = 1,
+LightingActive = false,
+CropRatio = 0,
+KeystoningKeepOriginalSize = false,
+ColorRenderingICCProfile = "",
+DistortionFocus = 128,
+ArtisticVignettingCornerAttenuation = 0,
+VignettedBlurRadius = 0,
+ChannelMixerRed = 0,
+LightingV3BlackPoint = 0,
+ArtisticVignettingMidFieldAttenuation = 50,
+NoiseCrossTalkAuto = false,
+HighlightToningCustomSaturation = 50,
+HighlightToningStyle = "Sepia",
+TextureID = "grain4b",
+KeystoningHorizonAuto = true,
+HighlightToningDisableDesaturation = true,
+TexturingSeed = 0,
+LowlightToningIntensity = 100,
+LowlightToningCustomHue = 0,
+WatermarkActive = false,
+VignettingClipping = 50,
+ColorModeStyleIntensity = 100,
+WatermarkTextTopMargin = 0,
+HighlighsLowlightsSeparation = 0.5,
+ColorRenderingDCPMode = "Adobe",
+ChromaticAberrationActive = false,
+DistortionTypeAuto = false,
+TexturingApplyToning = false,
+OutputICCProfile = "sRGB",
+GrainActive = false,
+HSLMaster = {
+Hue = 0,
+Saturation = 0,
+}
+,
+HazeRemovalActive = false,
+ToneCurveBlueGamma = 1,
+ChannelMixerGreen = 0,
+DistortionKeepRatio = false,
+ToningActive = false,
+ToneCurveGreenPoints = {
+0,
+0,
+1,
+1,
+}
+,
+ToneCurveRedPoints = {
+0,
+0,
+1,
+1,
+}
+,
+ContrastEnhancementMidlightIntensity = 0,
+ChannelMixerBlue = 0,
+InpaintingMask = {
+}
+,
+RedEyeCorrectionActive = false,
+VignettedBlurBlendFactor = 100,
+NoiseCrossTalkIntensity = 0,
+LightingV3MidTones = 0,
+BlurActive = false,
+ColorPipeline = "WideGamut",
+DistortionActive = false,
+ToneCurveActive = false,
+OPTiltShiftShouldSynchronizeLines = true,
+GridWarpingGrids = {
+OutputGrid = {
+}
+,
+InputGrid = {
+}
+,
+PointsPerColumn = 0,
+PointsPerRow = 0,
+}
+,
+TiltShiftBlurShapeID = "Circular_medium",
+CropActive = false,
+VignettedBlurActive = false,
+ChannelMixerMagenta = 0,
+ToneCurveMasterPoints = {
+0,
+0,
+1,
+1,
+}
+,
+BlurDetails = 50,
+LightingV2LocalContrastAmount = 0,
+ColorIntentAutoActive = true,
+ColorRenderingIntensity = 100,
+TiltShiftGradient1 = {
+NoCorrectionPoint = {
+0.5,
+0.7,
+}
+,
+FullCorrectionPoint = {
+0.5,
+0.8,
+}
+,
+BlurRadius = 40,
+}
+,
+ChannelMixerCyan = 0,
+ChromaticAberrationSize = 4,
+LightingV3Intensity = 25,
+NoiseLuminanceAuto = false,
+TexturingOpacity = 0.5,
+TexturingActive = false,
+SoftProofingPaperAndInk = false,
+ContrastEnhancementGlobalIntensity = 0,
+OutputICCProfilePath = "",
+SoftProofingActive = false,
+NoiseLuminance = 0,
+AnamorphosisVertical = 0,
+HighlightToningIntensity = 100,
+KeystoningMode = "Auto",
+LightingV3Shadows = 0,
+LightingV3Highlights = 0,
+SelectiveTonalControlActive = false,
+ToneCurveMasterGamma = 1,
+ColorFilterActive = false,
+BlurIntensity = 1,
+RedEyeRegions = {
+}
+,
+InpaintingActive = false,
+VignettingIntensity = 0,
+LowlightToningDisableDesaturation = true,
+NoiseActive = false,
+FramingActive = false,
+HSLHueSlicesColorPipeline = "WideGamut",
+ColorRenderingActive = true,
+DistortionType = "Barrel",
+KeystoningHVRatio = 0,
+WhiteBalanceRawTemperature = 5400,
+DehazingValue = 50,
+VignettingType = "Manual",
+GrainFilmFormat = "24x36",
+KeystoningKeepCenter = true,
+ChromaticAberrationSizeAuto = false,
+AnamorphosisHorizontal = 100,
+NoiseLuminanceContrastAuto = false,
+ExposureBias = 0,
+ArtisticVignettingActive = false,
+OPTiltShiftShouldSynchronizeIntensities = true,
+WatermarkImageScale = 0.15,
+ChannelMixerActive = false,
+ChannelMixerYellow = 0,
+VignettedBlurCenterPoint = {
+0.5,
+0.5,
+}
+,
+ColorLookupColorSpace = "sRGB",
+ColorLookupPath = "",
+ColorModeFilterIntensity = 100,
+BlurSmoothTransitions = 50,
+HSLActive = false,
+VibrancyIntensity = 0,
+ToningMode = "single",
+KeystoningHorizonActive = false,
+HistogramActive = false,
+NoiseDetailsPreservation = 0,
+GrainSize = 1,
+ArtisticVignettingCenterPoint = {
+0.5,
+0.5,
+}
+,
+GrainSizeAuto = false,
+VignettedBlurVignetteSize = 100,
+FramingOutside = false,
+GrainType = "Original",
+WhiteBalanceRawPreset = "AsShot",
+FrameID = "1",
+KeystoningPoints = {
+0,
+0,
+0,
+0,
+0,
+0,
+0,
+0,
+}
+,
+EdgeTexturingOpacity = 0.5,
+BlurActiveAuto = false,
+TiltShiftGradient2 = {
+NoCorrectionPoint = {
+0.5,
+0.3,
+}
+,
+FullCorrectionPoint = {
+0.5,
+0.2,
+}
+,
+BlurRadius = 40,
+}
+,
+HLRActive = true,
+ColorModeStyle = "Sepia",
+ArtisticVignettingTransition = 0,
+DistortionIntensity = 0,
+UnsharpMaskActive = false,
+ArtisticVignettingRoundness = 50,
+VignettedBlurMode = "Vignetting",
+NoiseRemoveMoireAuto = true,
+ExposureActive = false,
+}
+,
+Overrides = {
+CropRect = {
+0.32741028070449829,
+0.3859957754611969,
+0.33726248145103455,
+0.33726248145103455,
+}
+,
+CropActive = true,
+}
+,
+Version = "18.6",
+}
+,
+ShotDate = "2023-09-17T18:24:06.0000000+01:00",
+ShouldProcess = 2,
+Uuid = "73446280-E06D-4EAA-8085-CCAFB58EA94A",
+}
+,
+}
+,
+Uuid = "0D69CB47-5267-43A5-AD7F-E86A34A73337",
+}
+,
+Version = "18.1",
+}
+

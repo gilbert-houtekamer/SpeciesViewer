@@ -1,0 +1,131 @@
+This evening or later I want 
+
+Let's first do 1 & 2, next 3, and time permitting (no likely) 4.  Can you do 1 and 2 for me?
+
+>>>1. UI Cleanup
+>>>probably remove the create trip and move the trip.ini next to the existing create and cance button are defined but not used,
+>>>Remove the old “Create Trip” logic
+>>>Move trip.ini creation near the existing Create/Cancel buttons
+>>>Actually wire up those buttons (finally!)
+>>>
+>>>2. to actually create an project with the batch module (shoul trivial, like show_read_dir_dialog) 
+>>>Create a real project using the batch module
+>>>Possibly define a batch config or workflow template
+>>>Hook it into your UI for streamlined execution
+>>>
+>>>3 refactor the create_something like we have for images and directories. 
+>>>Generalize create_something() like you did for images and directories
+>>>Make it modular: create_ini(), create_image_set(), etc.
+>>>Add logging or status feedback for each creation step
+>>>
+>>>4 use my googlettranslate module on the english and dutch versions, 
+>>>Auto-translate English ↔ Dutch for title and description
+>>>Add a “Translate” button or auto-trigger on field change?
+>>>Cache translations to avoid redundant API calls
+>>>
+>>>5 remove redundant dialog in createtrip
+
+>6 A be willing to wait for for batch module (batch.py)
+better spinner would be nice
+
+>7 make 3, like 2.  Different filtering. directory must exist and have 
+>E:\Dropbox\trips\2017 oostzeedb\metadata\review\2017-08-09
+
+>9 status bar at the bottom of the main window
+
+>13 Directory tree with trips defined, and projects under it
+> 
+>   Master Repository:
+>   {config["master"]["masterbiotadatabase"]
+>   Master URL:
+>   www.houtekaer.com/nature
+>   
+>   Trips
+>   [dir list from config["trip"]["tripbiotadatabase"].parent]
+>   
+>   to do: 
+>   - some color or at least some "markering"
+>   - read the trip.ini for hints, pick English texts
+   - update button?  or listen to changes to directories in trip?  
+   later:
+   - projects could do a lot from data_pictures.csv if we want
+>  
+>
+>8 blog panel, more like 1   
+>
+>10 statemachine, 
+>   including display on yellow pane
+> - return code via a file
+>  - one line for each date (directory) with states that we have done, and some stats
+> - explicit refresh or after any batch module
+  - more statistics tonen, bv sysprint summary 
+  
+>11 panel 5-7 in their own panel, but sharing code
+
+-- 10 aug 2025
+
+   work - svr2CountSpecies.py doe not work in this context
+   
+   progress niet herberekend bij WriteBlog
+   
+   better scroller, simple a spinner and in directory in title
+   
+   also subtree directories also scanned
+   
+   less space for names
+   
+   read data_pictures, data_files and species.csv, also from master?
+   
+   multi-select
+   
+   Give acces to metadata
+   
+   ColorFilterBar: kleiner, beter laten zien wat geselecteerd is, implementatie filteren
+   
+	Let me know if you'd like to add a thumbnail grid preview or a “Load More” button for very large directories — we can make this viewer feel snappy and scalable.
+
+	IMAGE CACHE) Later: use QThread or QRunnable for non-blocking image loading
+   
+
+15 rechter muisklik menu en drivers voor menu met rechtermuis menu
+  => ga naar andere trip
+  => ga naar andere dag
+  =>
+
+13 utilities for trips, 
+>   separators in dialog
+ ?  svr2CountSpecies (call goed, module (parameters passed) niet)
+	svr4UpdateTrips?
+	svr8RecreateTripRepository
+	
+>>14 resizable vertical bars
+
+
+  
+12 page 2 and 3 together with statemachine logic
+	
+14 Maintenance (on Master)
+	
+	
+- GUI plan
+
+done - sv1MakeReposity.py
+done - sv2ReadDirExif.py
+done - sv3WritePictures.py
+done - sv4WriteBlog.py
+done - sv5BuildWebsite.py
+done - sv6Freeze.py
+done - sv7WriteCommit.py
+svr1AddSpecies.py
+work - svr2CountSpecies.py
+svr3StatusProjects.py
+svr41AddTrip.py
+svr4UpdateTrips.py
+svr5MergeSpeciesCollections.py
+svr6MergeBlogsForMaster.py
+svr7DeleteFiles.py
+svr8RecreateTripRepository.py
+svr9RedoBlog.py
+svu1BirdingBreaks.py
+svu2avibase.py
+svu3CopySelectedPics.py

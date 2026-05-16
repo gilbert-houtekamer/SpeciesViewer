@@ -1,0 +1,75 @@
+/* CSS for birding / animals / birds */
+body,h1,h2,h3,h4,h5,h6 {
+  font-family: "trebuchet ms", helvetica, sans-serif;
+}
+h1 {font-size: 40px;}
+h2 {font-size: 24px;}
+h3 {font-size: 20px;}
+h4 {font-size: 18px;}
+h5 {font-size: 16px;}
+h6 {font-size: 15px;}
+p  {font-size: 14px;}
+
+
+.grid-container {
+  display: grid;
+  gap: 25px 25px;
+  padding:4px 8px 
+}
+
+.w3-fifth {
+  float:left;
+  padding:0 8px;
+  width:20%;
+  min-width:195px;
+  margin-top:16px;
+  margin-bottom:16px
+}
+
+/* Create two unequal columns for species name and date */
+.column {
+  padding: 5px;
+  float: left;
+}
+
+.left {
+  width: 75%;
+}
+
+.right {
+  text-align: right;
+  width: 25%;
+}
+
+/* Clear floats after the columns */
+.row:after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+/* cdreadcrumb based on 3School */
+ul.breadcrumb {
+  padding: 0px 16px;
+  list-style: none;
+  background-color: #eee;
+  margin: 0
+}
+ul.breadcrumb li {
+  display: inline;
+  font-size: 13px;
+  font-style: italic;
+}
+ul.breadcrumb li+li:before {
+  padding: 8px;
+  color: black;
+  content: "/\00a0";
+}
+ul.breadcrumb li a {
+  color: #6d8764;
+  text-decoration: none;
+}
+ul.breadcrumb li a:hover {
+  color: #01447e;
+  text-decoration: underline;
+}
