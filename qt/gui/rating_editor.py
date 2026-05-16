@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
     QRadioButton, QButtonGroup, QMessageBox,
 )
 from PyQt6.QtGui import QPixmap, QImage, QGuiApplication, QColor, QPainter, QPen, QBrush
-from PyQt6.QtCore import Qt, QTimer, QEvent, QCoreApplication, pyqtSignal, QObject, QRunnable, QThreadPool
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QRunnable, QThreadPool
 
 from engine.filepicture import FilePicture
 from engine.filecsv import Files
@@ -26,6 +26,20 @@ from engine.picturecsv import Pictures
 from ghexif.exif_writer import exiftool_write
 
 logger = logging.getLogger("speciesviewer")
+
+# Machine-specific GUI settings are stored in sv_config_<machinename>.ini.
+# Update _INI_PATH when running on a different machine.
+_INI_SECTION = "GUI"
+_INI_KEY_COLS = "speciesviewercols"
+
+def _read_columns() -> int:
+    from utils.config import get_int_setting
+    return get_int_setting(_INI_SECTION, _INI_KEY_COLS, fallback=3)
+
+def _write_columns(n: int):
+    from utils.config import set_setting
+    set_setting(_INI_SECTION, _INI_KEY_COLS, str(n))
+
 
 COLORS = ["Red", "Yellow", "Green", "Blue", "Purple"]
 COLOR_HEX = {
@@ -297,16 +311,25 @@ class ColorSelector(QWidget):
 
 
 class PictureCard(QFrame):
-    """Thumbnail + star rating + color selector + rate label for one UPN."""
+    """Thumbnail + star rating + color selector + rate label for one UPN.
+
+    Lives in a pool on RatingEditorDialog and is reused across rebuilds via
+    update_content().  No QWidget is created or destroyed during a normal
+    rebuild — only SetWindowPos / hide / show calls are issued, which do not
+    run the Windows embedded message pump and cannot cause DeferredDelete
+    address-reuse crashes.
+    """
 
     card_changed = pyqtSignal(str)  # upn_key
     card_clicked = pyqtSignal(str)  # upn_key — thumbnail clicked → open large view
 
-    def __init__(self, upn_key: str, upn_row: dict, jpg_path, card_width: int,
-                 display_name: str = None, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.upn_key = upn_key
-        self._upn_row = upn_row
+        self.upn_key = ""
+        self._upn_row: dict = {}
+        self._display_path = None
+        self._thumb_pixmap: QPixmap | None = None
+        self._thumb_target_w = 80
         self._pending_rating = None
         self._pending_color = None
 
@@ -316,67 +339,80 @@ class PictureCard(QFrame):
         vbox.setContentsMargins(5, 5, 5, 5)
         vbox.setSpacing(3)
 
-        # All child widgets are created with explicit parents so they are child
-        # (alien) windows rather than top-level native windows.  Top-level
-        # CreateWindowEx / SetParent calls run the Windows message pump, which
-        # can dispatch queued input events that trigger _rebuild_cards mid-loop
-        # and delete self._grid before addWidget is reached.
-
-        # Thumbnail — clicking opens the large-view detail dialog
         self._thumb = QLabel(parent=self)
         self._thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumb.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self._thumb.setCursor(Qt.CursorShape.PointingHandCursor)
         self._thumb.mousePressEvent = lambda _: self.card_clicked.emit(self.upn_key)
-        # Placeholder height (3:2 landscape ratio) until background load completes
-        self._thumb_target_w = max(80, card_width - 18)
-        self._thumb.setFixedHeight(max(60, self._thumb_target_w * 2 // 3))
+        self._thumb.setFixedHeight(60)
         self._thumb.setStyleSheet("background-color: #2a2a2a;")
         vbox.addWidget(self._thumb)
 
-        # Species name
-        species = display_name or (upn_row.get("NLSoortNaam") or upn_row.get("EngSoortNaam")
-                   or upn_row.get("WetSoortNaam") or upn_key)
-        lbl_name = QLabel(species, parent=self)
-        lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_name.setStyleSheet("font-weight: bold; font-size: 10px;")
-        lbl_name.setWordWrap(True)
-        vbox.addWidget(lbl_name)
+        self._lbl_name = QLabel("", parent=self)
+        self._lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._lbl_name.setStyleSheet("font-weight: bold; font-size: 10px;")
+        self._lbl_name.setWordWrap(True)
+        vbox.addWidget(self._lbl_name)
 
-        # Stars row + date + rate
         row_stars = QHBoxLayout()
         row_stars.setContentsMargins(0, 0, 0, 0)
-        initial_stars = _safe_int(upn_row.get("Rating", "0"))
-        self._stars = StarWidget(initial_stars, parent=self)
+        self._stars = StarWidget(0, parent=self)
         self._stars.rating_changed.connect(self._on_rating_changed)
         row_stars.addWidget(self._stars)
-        dto = upn_row.get("DateTimeOriginal", "")
-        if dto:
-            date_str = dto[:10].replace(":", "-")
-            lbl_date = QLabel(date_str, parent=self)
-            lbl_date.setStyleSheet("font-size: 9px; color: #777;")
-            row_stars.addWidget(lbl_date)
+        self._date_lbl = QLabel("", parent=self)
+        self._date_lbl.setStyleSheet("font-size: 9px; color: #777;")
+        self._date_lbl.hide()
+        row_stars.addWidget(self._date_lbl)
         row_stars.addStretch()
-        self._rate_lbl = QLabel(f"Rate: {upn_row.get('Rate', '?')}", parent=self)
+        self._rate_lbl = QLabel("Rate: ?", parent=self)
         self._rate_lbl.setStyleSheet("font-size: 10px; color: #555;")
         row_stars.addWidget(self._rate_lbl)
         vbox.addLayout(row_stars)
 
-        # Color selector
-        self._color_sel = ColorSelector(upn_row.get("Label", ""), parent=self)
+        self._color_sel = ColorSelector("", parent=self)
         self._color_sel.color_changed.connect(self._on_color_changed)
         vbox.addWidget(self._color_sel)
 
-        # UPN key + file types (small)
+        self._lbl_key = QLabel("", parent=self)
+        self._lbl_key.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._lbl_key.setStyleSheet("font-size: 9px; color: #aaa;")
+        vbox.addWidget(self._lbl_key)
+
+    def update_content(self, upn_key: str, upn_row: dict, display_name: str,
+                       jpg_path, card_width: int):
+        """Populate this card with new data — no widget is created or destroyed."""
+        self.upn_key = upn_key
+        self._upn_row = upn_row
+        self._display_path = jpg_path
+        self._thumb_pixmap = None
+        self._pending_rating = None
+        self._pending_color = None
+
+        self._thumb_target_w = max(80, card_width - 18)
+        self._thumb.setFixedHeight(max(60, self._thumb_target_w * 2 // 3))
+        self._thumb.clear()
+        self._thumb.setStyleSheet("background-color: #2a2a2a;")
+
+        self._lbl_name.setText(display_name or upn_key)
+
+        dto = upn_row.get("DateTimeOriginal", "")
+        if dto:
+            self._date_lbl.setText(dto[:10].replace(":", "-"))
+            self._date_lbl.show()
+        else:
+            self._date_lbl.setText("")
+            self._date_lbl.hide()
+
+        self._stars.set_rating(_safe_int(upn_row.get("Rating", "0")))
+        self._rate_lbl.setText(f"Rate: {upn_row.get('Rate', '?')}")
+        self._color_sel.set_color(upn_row.get("Label", ""))
+
         files = upn_row.get("Files", [])
         exts = sorted({Path(f).suffix.lstrip(".").upper()
                        for f in (files if isinstance(files, list) else []) if f})
         key_line = upn_key if not exts else f"{upn_key}  {' · '.join(exts)}"
-        lbl_key = QLabel(key_line, parent=self)
-        lbl_key.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_key.setStyleSheet("font-size: 9px; color: #aaa;")
-        lbl_key.setToolTip(upn_key)
-        vbox.addWidget(lbl_key)
+        self._lbl_key.setText(key_line)
+        self._lbl_key.setToolTip(upn_key)
 
     def _on_rating_changed(self, n: int):
         self._pending_rating = n
@@ -397,15 +433,27 @@ class PictureCard(QFrame):
 
     def set_thumbnail(self, px: QPixmap):
         if px.isNull():
+            self._thumb_pixmap = None
             self._thumb.setStyleSheet("color: #ccc; font-size: 10px;")
             self._thumb.setText("(no image)")
         else:
+            self._thumb_pixmap = px
             self._thumb.setStyleSheet("")
             self._thumb.setFixedHeight(px.height())
             self._thumb.setPixmap(px)
 
+    def resize_to_width(self, new_card_width: int):
+        self._thumb_target_w = max(80, new_card_width - 18)
+        new_h = max(60, self._thumb_target_w * 2 // 3)
+        if self._thumb_pixmap is not None and not self._thumb_pixmap.isNull():
+            scaled = self._thumb_pixmap.scaledToWidth(
+                self._thumb_target_w, Qt.TransformationMode.SmoothTransformation)
+            self._thumb.setFixedHeight(scaled.height())
+            self._thumb.setPixmap(scaled)
+        else:
+            self._thumb.setFixedHeight(new_h)
+
     def take_pending(self):
-        """Return (pending_rating, pending_color) and clear them."""
         r, c = self._pending_rating, self._pending_color
         self._pending_rating = None
         self._pending_color = None
@@ -528,8 +576,9 @@ class RatingEditorDialog(QDialog):
         self._trip_root = Path(trip_root_dir)
         self._initial_day = day_str
         self.fpr: FilePicture | None = None
-        self.columns = 3
-        self._cards: list[PictureCard] = []
+        self.columns = _read_columns()
+        self._card_pool: list[PictureCard] = []   # grows; never shrinks (no widget destruction)
+        self._cards: list[PictureCard] = []        # active cards for current species
         self._cards_by_key: dict[str, PictureCard] = {}
         self._jpg_only = True
         self._species_lang = "NL"
@@ -541,7 +590,7 @@ class RatingEditorDialog(QDialog):
         self._col_rebuild_timer = QTimer(self)
         self._col_rebuild_timer.setSingleShot(True)
         self._col_rebuild_timer.setInterval(80)
-        self._col_rebuild_timer.timeout.connect(self._rebuild_cards)
+        self._col_rebuild_timer.timeout.connect(self._reflow_cards)
         # Trip-scope per-day tracking; None in Day scope
         self._day_objects: dict | None = None   # day_str → (Files, Pictures)
         self._upn_day_map: dict[str, str] = {}  # upn_key → day_str
@@ -772,9 +821,9 @@ class RatingEditorDialog(QDialog):
         if restore_selection:
             idx = self._species_combo.findData(restore_selection)
             if idx >= 0:
-                self._species_combo.setCurrentIndex(idx)  # triggers _rebuild_cards via signal
+                self._species_combo.setCurrentIndex(idx)  # triggers _request_rebuild via signal
                 return
-        self._rebuild_cards()
+        self._request_rebuild()
 
     # ── Sorted picture list ───────────────────────────────────────────────────
 
@@ -900,59 +949,123 @@ class RatingEditorDialog(QDialog):
         return [(idx // ncols, idx % ncols, 1, card_w) for idx in range(total)]
 
     def _clear_grid(self):
+        """Detach all cards from the layout and hide them — no widgets destroyed.
+
+        Pool cards remain alive as children of _grid_widget.  The next
+        _rebuild_cards call will update their content and re-add the needed
+        subset to the layout via addWidget (which only calls SetWindowPos on
+        already-native widgets — no CreateWindowEx, no embedded message pump,
+        no DeferredDelete address-reuse crashes).
+        """
         self._thumb_gen += 1
         self._cards_by_key.clear()
         self._cards.clear()
         for c in range(8):
             self._grid.setColumnStretch(c, 0)
         while self._grid.count():
-            item = self._grid.takeAt(0)
-            w = item.widget()
-            if w:
-                w.deleteLater()
-        # Flush all pending DeferredDelete events now, before new cards are
-        # constructed, so no stale deletions can fire mid-construction.
-        QCoreApplication.sendPostedEvents(None, int(QEvent.Type.DeferredDelete))
+            self._grid.takeAt(0)
+        for card in self._card_pool:
+            card.hide()
+
+    def _reflow_cards(self):
+        """Reposition existing cards for the current column count — no widget creation or destruction.
+
+        Called by the column-spinner debounce timer.  Because no QWidget is
+        constructed here, CreateWindowEx is never called, so the Windows
+        embedded message pump cannot fire and there is no reentrancy risk.
+        """
+        if not self._cards or self._is_rebuilding:
+            return
+        # Remove cards from layout without deleting them.
+        while self._grid.count():
+            self._grid.takeAt(0)
+        for c in range(8):
+            self._grid.setColumnStretch(c, 0)
+        # Re-add at new positions.
+        placement = self._grid_placement(len(self._cards))
+        for c in range(self.columns):
+            self._grid.setColumnStretch(c, 1)
+        self._thumb_gen += 1
+        gen = self._thumb_gen
+        pending_loaders = []
+        for idx, card in enumerate(self._cards):
+            r, col, span, card_w = placement[idx]
+            card.resize_to_width(card_w)
+            self._grid.addWidget(card, r, col, 1, span)
+            pending_loaders.append(
+                _ThumbLoader(card.upn_key, card._display_path,
+                             card._thumb_target_w, gen, self._thumb_signals)
+            )
+        pool = QThreadPool.globalInstance()
+        for loader in pending_loaders:
+            pool.start(loader)
+
+    def _request_rebuild(self):
+        """Defer a rebuild to the next event-loop iteration via QTimer.singleShot(0).
+
+        Calling _rebuild_cards directly from a signal handler can cause
+        re-entrant calls if the handler is itself invoked from within the
+        event loop.  The singleShot(0) ensures the rebuild runs from a clean
+        event-loop tick with _is_rebuilding False.
+        """
+        if self._is_rebuilding:
+            self._rebuild_pending = True
+        else:
+            QTimer.singleShot(0, self._rebuild_cards)
 
     def _rebuild_cards(self):
         if not self.fpr:
             return
-        # Guard against re-entrant calls (Windows message-pump can re-enter Qt
-        # slots during QThreadPool::start or widget construction). Defer the
-        # second rebuild until after the current one finishes.
         if self._is_rebuilding:
             self._rebuild_pending = True
             return
         self._is_rebuilding = True
         self._rebuild_pending = False
+        # Block all interactive controls for the duration of the rebuild.
+        # Pool growth calls PictureCard(parent=...) → CreateWindowEx → embedded
+        # Windows message pump, which can deliver queued user-input events and
+        # fire signal callbacks (e.g. _on_columns_changed) against partially
+        # constructed state.  Blocking prevents that entirely.
+        _interactive = [
+            self._col_spinner, self._jpg_btn, self._species_combo,
+            self._day_combo, self._day_radio, self._trip_radio, self._lang_combo,
+        ]
+        for w in _interactive:
+            w.blockSignals(True)
+        # _clear_grid detaches pool cards from the layout and hides them; no
+        # widget is created or destroyed, so no CreateWindowEx / DeferredDelete.
+        self._clear_grid()
         try:
-            self._clear_grid()
             filter_name = self._species_combo.currentData()
             if filter_name is None:
                 n_species = self._species_combo.count() - 1
                 self._status.setText(f"{n_species} species loaded — select one to view pictures.")
             else:
                 sorted_rows = self._sorted_upns(filter_name)
-                placement = self._grid_placement(len(sorted_rows))
+                needed = len(sorted_rows)
+                placement = self._grid_placement(needed)
                 for c in range(self.columns):
                     self._grid.setColumnStretch(c, 1)
 
+                # Grow the pool when we need more cards than ever before.
+                # New PictureCard creation triggers CreateWindowEx once per card
+                # added to the pool; after that, re-adding to the layout only
+                # calls SetWindowPos (no message-pump reentrancy).
+                while len(self._card_pool) < needed:
+                    card = PictureCard(parent=self._grid_widget)
+                    card.card_changed.connect(self._on_card_changed)
+                    card.card_clicked.connect(self._on_card_clicked)
+                    self._card_pool.append(card)
+
                 gen = self._thumb_gen
-                # Create all cards synchronously while _is_rebuilding is True.
-                # This prevents any reentrant _rebuild_cards from running during
-                # PictureCard construction (child widgets — no CreateWindowEx,
-                # no Windows message-pump reentrancy).  Thumb loaders are
-                # collected and started after all addWidget calls so that
-                # QThreadPool::start cannot trigger reentrancy mid-loop either.
                 pending_loaders = []
                 for idx, (_, upn_key, upn_row) in enumerate(sorted_rows):
                     r, col, span, card_w = placement[idx]
                     img = self._get_display_path(upn_row)
                     dname = self._species_name(upn_row) or upn_key
-                    card = PictureCard(upn_key, upn_row, img, card_w, display_name=dname,
-                                       parent=self._grid_widget)
-                    card.card_changed.connect(self._on_card_changed)
-                    card.card_clicked.connect(self._on_card_clicked)
+                    card = self._card_pool[idx]
+                    card.update_content(upn_key, upn_row, dname, img, card_w)
+                    card.show()
                     self._grid.addWidget(card, r, col, 1, span)
                     self._cards.append(card)
                     self._cards_by_key[upn_key] = card
@@ -960,7 +1073,7 @@ class RatingEditorDialog(QDialog):
                         _ThumbLoader(upn_key, img, card._thumb_target_w, gen, self._thumb_signals)
                     )
 
-                n = len(sorted_rows)
+                n = needed
                 suffix = f" for {filter_name}" if filter_name else ""
                 self._status.setText(f"{n} picture{'s' if n != 1 else ''}{suffix}")
                 self._scroll.verticalScrollBar().setValue(0)
@@ -968,7 +1081,15 @@ class RatingEditorDialog(QDialog):
                 pool = QThreadPool.globalInstance()
                 for loader in pending_loaders:
                     pool.start(loader)
+
         finally:
+            for w in _interactive:
+                w.blockSignals(False)
+            # If the column spinner changed while signals were blocked, apply now.
+            if self._col_spinner.value() != self.columns:
+                self.columns = self._col_spinner.value()
+                _write_columns(self.columns)
+                self._rebuild_pending = True
             self._is_rebuilding = False
             if self._rebuild_pending:
                 self._rebuild_pending = False
@@ -987,9 +1108,32 @@ class RatingEditorDialog(QDialog):
 
     def closeEvent(self, event):
         _active_dialogs.pop(id(self), None)
+        _write_columns(self._col_spinner.value())  # persist even if signals were blocked
         self._col_rebuild_timer.stop()
         self._thumb_gen += 1  # invalidate any in-flight loaders
         super().closeEvent(event)
+
+    def reload(self, trip_root_dir: str, day_str: str | None):
+        """Refresh the dialog for a new open without recreating any widgets.
+
+        Called by open_rating_editor() when the dialog already exists.  Reusing
+        the widget tree means no new Qt object addresses are allocated, so stale
+        DeferredDelete events from previous card rebuilds cannot hit new widgets.
+        """
+        _active_dialogs[id(self)] = self  # re-pin Python wrapper (closeEvent removed it)
+        self._trip_root = Path(trip_root_dir)
+        self._initial_day = day_str
+        # Hide all pool cards immediately so the user doesn't see the previous
+        # session's cards while the new data is loading.
+        for card in self._card_pool:
+            card.hide()
+        # Reset JPG filter to default each open (user expects a fresh start)
+        self._jpg_only = True
+        self._jpg_btn.blockSignals(True)
+        self._jpg_btn.setChecked(True)
+        self._jpg_btn.blockSignals(False)
+        # Re-initialise day combo and reload data (same path as first open)
+        QTimer.singleShot(0, self._init_day_combo)
 
     # ── Event handlers ────────────────────────────────────────────────────────
 
@@ -1002,7 +1146,7 @@ class RatingEditorDialog(QDialog):
             self._load_data()
 
     def _on_species_changed(self):
-        self._rebuild_cards()
+        self._request_rebuild()
 
     def _on_lang_changed(self, _idx: int):
         old_selection = self._species_combo.currentData()  # name in old language, or None
@@ -1028,6 +1172,7 @@ class RatingEditorDialog(QDialog):
 
     def _on_columns_changed(self, value: int):
         self.columns = value
+        _write_columns(value)
         self._col_rebuild_timer.start()  # debounce: restarts the 80 ms window
 
     def _on_jpg_only_toggled(self, checked: bool):
@@ -1035,7 +1180,7 @@ class RatingEditorDialog(QDialog):
         if not checked and self.fpr:
             self._status.setText("Extracting RAW thumbnails…")
             self._batch_extract_raw_thumbs()
-        self._rebuild_cards()
+        self._request_rebuild()
 
     def _on_card_changed(self, upn_key: str):
         card = next((c for c in self._cards if c.upn_key == upn_key), None)

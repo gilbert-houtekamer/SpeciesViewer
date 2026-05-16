@@ -733,8 +733,13 @@ class MainWindow(QMainWindow):
                 item = self.trip_table.item(row, 0)
                 if item:
                     day_str = item.text()
-        dlg = RatingEditorDialog(self, trip_root, day_str)
-        dlg.show()
+        if not hasattr(self, '_rating_editor_dlg') or self._rating_editor_dlg is None:
+            self._rating_editor_dlg = RatingEditorDialog(self, trip_root, day_str)
+        else:
+            self._rating_editor_dlg.reload(trip_root, day_str)
+        self._rating_editor_dlg.show()
+        self._rating_editor_dlg.raise_()
+        self._rating_editor_dlg.activateWindow()
 
     def update_trip_label(self):
         trip_path = _config.get("trip", "tripbiotadatabase", fallback="")
