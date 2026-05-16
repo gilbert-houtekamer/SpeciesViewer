@@ -9,6 +9,7 @@ import os
 import re
 import logging
 import subprocess
+import weakref
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
@@ -16,8 +17,8 @@ from PyQt6.QtWidgets import (
     QLabel, QFrame, QPushButton, QSpinBox, QComboBox, QSizePolicy,
     QRadioButton, QButtonGroup, QMessageBox,
 )
-from PyQt6.QtGui import QPixmap, QImage, QGuiApplication
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QRunnable, QThreadPool
+from PyQt6.QtGui import QPixmap, QImage, QGuiApplication, QColor, QPainter, QPen, QBrush
+from PyQt6.QtCore import Qt, QTimer, QEvent, QCoreApplication, pyqtSignal, QObject, QRunnable, QThreadPool
 
 from engine.filepicture import FilePicture
 from engine.filecsv import Files
@@ -111,22 +112,36 @@ def _compute_rate(upn_row: dict, files_dict: dict) -> int:
     return computation
 
 
+# Keeps Python wrappers for open dialogs alive so Python's GC cannot collect
+# them while timers or background loaders still hold indirect references.
+_active_dialogs: dict = {}
+
 # ── Background thumbnail loader ───────────────────────────────────────────────
 
 class _ThumbSignals(QObject):
+    """Qt signal carrier for cross-thread thumbnail delivery.
+
+    Lives on the main thread; background loaders hold only a weakref so they
+    cannot prevent collection.  The main-thread strong ref is kept via the
+    dialog's _thumb_signals attribute (and via _active_dialogs → dialog).
+    """
     ready = pyqtSignal(str, object, int)  # upn_key, QImage, generation
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
 
 
 class _ThumbLoader(QRunnable):
     """Loads and scales a thumbnail image in a worker thread."""
 
-    def __init__(self, upn_key: str, path, target_w: int, gen: int, signals: _ThumbSignals):
+    def __init__(self, upn_key: str, path, target_w: int, gen: int,
+                 signals: _ThumbSignals):
         super().__init__()
         self._upn_key = upn_key
         self._path = str(path) if path else None
         self._target_w = target_w
         self._gen = gen
-        self._signals = signals
+        self._signals_ref = weakref.ref(signals)
 
     def run(self):
         img = QImage()
@@ -134,10 +149,46 @@ class _ThumbLoader(QRunnable):
             img = QImage(self._path)
             if not img.isNull() and self._target_w > 0:
                 img = img.scaledToWidth(self._target_w, Qt.TransformationMode.SmoothTransformation)
-        self._signals.ready.emit(self._upn_key, img, self._gen)
+        signals = self._signals_ref()
+        if signals is not None:
+            try:
+                signals.ready.emit(self._upn_key, img, self._gen)
+            except RuntimeError:
+                pass  # dialog closed or signals object was already destroyed
 
 
 # ── Sub-widgets ────────────────────────────────────────────────────────────────
+
+class _StarButton(QWidget):
+    """Single star rendered via paintEvent — no QPushButton, no stylesheet,
+    no native HWND creation, no Windows-message-pump reentrancy."""
+    clicked = pyqtSignal()
+
+    def __init__(self, filled: bool = False, parent=None):
+        super().__init__(parent)
+        self._filled = filled
+        self.setFixedSize(22, 22)
+        # No setStyleSheet, no setCursor — both can force native HWND creation.
+
+    def setFilled(self, filled: bool):
+        if self._filled != filled:
+            self._filled = filled
+            self.update()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        font = p.font()
+        font.setPixelSize(15)
+        p.setFont(font)
+        p.setPen(QColor("#e8b800") if self._filled else QColor("#666"))
+        p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
+                   "★" if self._filled else "☆")
+
 
 class StarWidget(QWidget):
     rating_changed = pyqtSignal(int)
@@ -148,16 +199,12 @@ class StarWidget(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(1)
-        self._buttons: list[QPushButton] = []
+        self._buttons: list[_StarButton] = []
         for i in range(1, 6):
-            btn = QPushButton()
-            btn.setFlat(True)
-            btn.setFixedSize(22, 22)
-            btn.setStyleSheet("font-size: 15px; border: none; padding: 0;")
+            btn = _StarButton(filled=(i <= self._rating), parent=self)
             btn.clicked.connect(lambda _, n=i: self._on_click(n))
             layout.addWidget(btn)
             self._buttons.append(btn)
-        self._refresh()
 
     def _on_click(self, n: int):
         self._rating = 0 if self._rating == n else n
@@ -166,7 +213,7 @@ class StarWidget(QWidget):
 
     def _refresh(self):
         for i, btn in enumerate(self._buttons):
-            btn.setText("★" if i < self._rating else "☆")
+            btn.setFilled(i < self._rating)
 
     def set_rating(self, n: int):
         n = max(0, min(5, n))
@@ -174,6 +221,44 @@ class StarWidget(QWidget):
             return
         self._rating = n
         self._refresh()
+
+
+class _ColorDot(QWidget):
+    """Circular colored dot used as a toggle in ColorSelector.
+
+    Draws itself via paintEvent — no stylesheet border-radius, no native
+    HWND creation, no Windows-message-pump reentrancy during card builds.
+    """
+    clicked = pyqtSignal()
+
+    def __init__(self, color_hex: str, parent=None):
+        super().__init__(parent)
+        self._qcolor = QColor(color_hex)
+        self._checked = False
+        self.setFixedSize(16, 16)
+
+    def setChecked(self, v: bool):
+        if self._checked != v:
+            self._checked = v
+            self.update()
+
+    def isChecked(self) -> bool:
+        return self._checked
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if self._checked:
+            p.setPen(QPen(QColor("white"), 2))
+            p.setBrush(QBrush(self._qcolor))
+        else:
+            p.setPen(QPen(self._qcolor, 2))
+            p.setBrush(QBrush(Qt.GlobalColor.transparent))
+        p.drawEllipse(2, 2, 12, 12)
 
 
 class ColorSelector(QWidget):
@@ -185,25 +270,12 @@ class ColorSelector(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(3)
-        self._buttons: dict[str, QPushButton] = {}
+        self._buttons: dict[str, _ColorDot] = {}
         for name in COLORS:
             hc = COLOR_HEX[name]
-            btn = QPushButton()
-            btn.setFixedSize(16, 16)
-            btn.setCheckable(True)
+            btn = _ColorDot(hc, parent=self)
             btn.setToolTip(name)
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: transparent;
-                    border: 2px solid {hc};
-                    border-radius: 8px;
-                }}
-                QPushButton:checked {{
-                    background-color: {hc};
-                    border: 2px solid white;
-                }}
-            """)
-            btn.clicked.connect(lambda _, n=name: self._on_click(n))
+            btn.clicked.connect(lambda n=name: self._on_click(n))
             layout.addWidget(btn)
             self._buttons[name] = btn
         self._refresh()
@@ -244,8 +316,14 @@ class PictureCard(QFrame):
         vbox.setContentsMargins(5, 5, 5, 5)
         vbox.setSpacing(3)
 
+        # All child widgets are created with explicit parents so they are child
+        # (alien) windows rather than top-level native windows.  Top-level
+        # CreateWindowEx / SetParent calls run the Windows message pump, which
+        # can dispatch queued input events that trigger _rebuild_cards mid-loop
+        # and delete self._grid before addWidget is reached.
+
         # Thumbnail — clicking opens the large-view detail dialog
-        self._thumb = QLabel()
+        self._thumb = QLabel(parent=self)
         self._thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumb.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self._thumb.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -259,7 +337,7 @@ class PictureCard(QFrame):
         # Species name
         species = display_name or (upn_row.get("NLSoortNaam") or upn_row.get("EngSoortNaam")
                    or upn_row.get("WetSoortNaam") or upn_key)
-        lbl_name = QLabel(species)
+        lbl_name = QLabel(species, parent=self)
         lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_name.setStyleSheet("font-weight: bold; font-size: 10px;")
         lbl_name.setWordWrap(True)
@@ -269,23 +347,23 @@ class PictureCard(QFrame):
         row_stars = QHBoxLayout()
         row_stars.setContentsMargins(0, 0, 0, 0)
         initial_stars = _safe_int(upn_row.get("Rating", "0"))
-        self._stars = StarWidget(initial_stars)
+        self._stars = StarWidget(initial_stars, parent=self)
         self._stars.rating_changed.connect(self._on_rating_changed)
         row_stars.addWidget(self._stars)
         dto = upn_row.get("DateTimeOriginal", "")
         if dto:
             date_str = dto[:10].replace(":", "-")
-            lbl_date = QLabel(date_str)
+            lbl_date = QLabel(date_str, parent=self)
             lbl_date.setStyleSheet("font-size: 9px; color: #777;")
             row_stars.addWidget(lbl_date)
         row_stars.addStretch()
-        self._rate_lbl = QLabel(f"Rate: {upn_row.get('Rate', '?')}")
+        self._rate_lbl = QLabel(f"Rate: {upn_row.get('Rate', '?')}", parent=self)
         self._rate_lbl.setStyleSheet("font-size: 10px; color: #555;")
         row_stars.addWidget(self._rate_lbl)
         vbox.addLayout(row_stars)
 
         # Color selector
-        self._color_sel = ColorSelector(upn_row.get("Label", ""))
+        self._color_sel = ColorSelector(upn_row.get("Label", ""), parent=self)
         self._color_sel.color_changed.connect(self._on_color_changed)
         vbox.addWidget(self._color_sel)
 
@@ -294,7 +372,7 @@ class PictureCard(QFrame):
         exts = sorted({Path(f).suffix.lstrip(".").upper()
                        for f in (files if isinstance(files, list) else []) if f})
         key_line = upn_key if not exts else f"{upn_key}  {' · '.join(exts)}"
-        lbl_key = QLabel(key_line)
+        lbl_key = QLabel(key_line, parent=self)
         lbl_key.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_key.setStyleSheet("font-size: 9px; color: #aaa;")
         lbl_key.setToolTip(upn_key)
@@ -456,8 +534,14 @@ class RatingEditorDialog(QDialog):
         self._jpg_only = True
         self._species_lang = "NL"
         self._thumb_gen = 0
-        self._thumb_signals = _ThumbSignals()
+        self._thumb_signals = _ThumbSignals()  # no parent; Python-owned
         self._thumb_signals.ready.connect(self._on_thumb_ready)
+        self._is_rebuilding = False   # reentrancy guard for _rebuild_cards
+        self._rebuild_pending = False
+        self._col_rebuild_timer = QTimer(self)
+        self._col_rebuild_timer.setSingleShot(True)
+        self._col_rebuild_timer.setInterval(80)
+        self._col_rebuild_timer.timeout.connect(self._rebuild_cards)
         # Trip-scope per-day tracking; None in Day scope
         self._day_objects: dict | None = None   # day_str → (Files, Pictures)
         self._upn_day_map: dict[str, str] = {}  # upn_key → day_str
@@ -534,17 +618,21 @@ class RatingEditorDialog(QDialog):
         # Wrap grid in a VBox so the stretch below it absorbs extra viewport
         # height; otherwise setWidgetResizable forces the grid to fill the
         # viewport and rows expand to fill the allocated space.
-        _scroll_content = QWidget()
-        _scroll_vbox = QVBoxLayout(_scroll_content)
-        _scroll_vbox.setContentsMargins(0, 0, 0, 0)
-        _scroll_vbox.setSpacing(0)
+        self._scroll_content = QWidget()
+        _vbox = QVBoxLayout(self._scroll_content)
+        _vbox.setContentsMargins(0, 0, 0, 0)
+        _vbox.setSpacing(0)
         self._grid_widget = QWidget()
         self._grid = QGridLayout(self._grid_widget)
         self._grid.setSpacing(6)
-        _scroll_vbox.addWidget(self._grid_widget)
-        _scroll_vbox.addStretch(1)
-        self._scroll.setWidget(_scroll_content)
+        _vbox.addWidget(self._grid_widget)
+        _vbox.addStretch(1)
+        self._scroll.setWidget(self._scroll_content)
         main_layout.addWidget(self._scroll)
+
+        # Keep this Python wrapper alive so Python's GC cannot collect it
+        # while the 30 ms poll timer or deferred callbacks are still queued.
+        _active_dialogs[id(self)] = self
 
         # Populate day combo then load data after show
         QTimer.singleShot(0, self._init_day_combo)
@@ -733,7 +821,11 @@ class RatingEditorDialog(QDialog):
     _RAW_EXTS = {".nef", ".orf", ".cr2", ".arw", ".rw2"}
 
     def _get_raw_thumb(self, upn_row: dict) -> Path | None:
-        """Return a cached JPEG thumbnail for the first RAW file in the UPN, extracting it if needed."""
+        """Return a cached JPEG thumbnail for the first RAW file in the UPN.
+
+        Only checks the on-disk cache — never blocks on exiftool.  Call
+        _batch_extract_raw_thumbs() before this to pre-populate the cache.
+        """
         files = upn_row.get("Files", [])
         if not isinstance(files, list):
             return None
@@ -746,22 +838,9 @@ class RatingEditorDialog(QDialog):
             raw_path = Path(frow.get("WindowsFileName", ""))
             if not raw_path.exists():
                 continue
-            cache_dir = raw_path.parent / ".preview_cache"
-            cache_dir.mkdir(exist_ok=True)
-            cache_path = cache_dir / (raw_path.stem + ".jpg")
+            cache_path = raw_path.parent / ".preview_cache" / (raw_path.stem + ".jpg")
             if cache_path.exists():
                 return cache_path
-            for tag in ["-PreviewImage", "-ThumbnailImage"]:
-                try:
-                    result = subprocess.run(
-                        ["exiftool", "-b", tag, str(raw_path)],
-                        capture_output=True, timeout=15,
-                    )
-                    if result.returncode == 0 and result.stdout:
-                        cache_path.write_bytes(result.stdout)
-                        return cache_path
-                except Exception as e:
-                    logger.warning(f"RAW thumb extraction failed for {raw_path.name}: {e}")
         return None
 
     def _batch_extract_raw_thumbs(self):
@@ -821,59 +900,96 @@ class RatingEditorDialog(QDialog):
         return [(idx // ncols, idx % ncols, 1, card_w) for idx in range(total)]
 
     def _clear_grid(self):
-        self._thumb_gen += 1  # invalidate any in-flight thumbnail loads
+        self._thumb_gen += 1
         self._cards_by_key.clear()
-        for c in range(8):  # reset all possible column stretch values (spinner max = 8)
+        self._cards.clear()
+        for c in range(8):
             self._grid.setColumnStretch(c, 0)
         while self._grid.count():
             item = self._grid.takeAt(0)
             w = item.widget()
             if w:
-                w.deleteLater()  # deferred deletion; avoids GC-triggered C++ cascade
-        self._cards.clear()
+                w.deleteLater()
+        # Flush all pending DeferredDelete events now, before new cards are
+        # constructed, so no stale deletions can fire mid-construction.
+        QCoreApplication.sendPostedEvents(None, int(QEvent.Type.DeferredDelete))
 
     def _rebuild_cards(self):
         if not self.fpr:
             return
-        self._clear_grid()
-        filter_name = self._species_combo.currentData()
-        if filter_name is None:
-            n_species = self._species_combo.count() - 1  # subtract placeholder
-            self._status.setText(f"{n_species} species loaded — select one to view pictures.")
+        # Guard against re-entrant calls (Windows message-pump can re-enter Qt
+        # slots during QThreadPool::start or widget construction). Defer the
+        # second rebuild until after the current one finishes.
+        if self._is_rebuilding:
+            self._rebuild_pending = True
             return
-        sorted_rows = self._sorted_upns(filter_name)
-        placement = self._grid_placement(len(sorted_rows))
-        for c in range(self.columns):
-            self._grid.setColumnStretch(c, 1)
+        self._is_rebuilding = True
+        self._rebuild_pending = False
+        try:
+            self._clear_grid()
+            filter_name = self._species_combo.currentData()
+            if filter_name is None:
+                n_species = self._species_combo.count() - 1
+                self._status.setText(f"{n_species} species loaded — select one to view pictures.")
+            else:
+                sorted_rows = self._sorted_upns(filter_name)
+                placement = self._grid_placement(len(sorted_rows))
+                for c in range(self.columns):
+                    self._grid.setColumnStretch(c, 1)
 
-        pool = QThreadPool.globalInstance()
-        gen = self._thumb_gen
-        for idx, (_, upn_key, upn_row) in enumerate(sorted_rows):
-            r, col, span, card_w = placement[idx]
-            img = self._get_display_path(upn_row)
-            dname = self._species_name(upn_row) or upn_key
-            card = PictureCard(upn_key, upn_row, img, card_w, display_name=dname)
-            card.card_changed.connect(self._on_card_changed)
-            card.card_clicked.connect(self._on_card_clicked)
-            self._grid.addWidget(card, r, col, 1, span)
-            self._cards.append(card)
-            self._cards_by_key[upn_key] = card
-            loader = _ThumbLoader(upn_key, img, card._thumb_target_w, gen, self._thumb_signals)
-            pool.start(loader)
+                gen = self._thumb_gen
+                # Create all cards synchronously while _is_rebuilding is True.
+                # This prevents any reentrant _rebuild_cards from running during
+                # PictureCard construction (child widgets — no CreateWindowEx,
+                # no Windows message-pump reentrancy).  Thumb loaders are
+                # collected and started after all addWidget calls so that
+                # QThreadPool::start cannot trigger reentrancy mid-loop either.
+                pending_loaders = []
+                for idx, (_, upn_key, upn_row) in enumerate(sorted_rows):
+                    r, col, span, card_w = placement[idx]
+                    img = self._get_display_path(upn_row)
+                    dname = self._species_name(upn_row) or upn_key
+                    card = PictureCard(upn_key, upn_row, img, card_w, display_name=dname,
+                                       parent=self._grid_widget)
+                    card.card_changed.connect(self._on_card_changed)
+                    card.card_clicked.connect(self._on_card_clicked)
+                    self._grid.addWidget(card, r, col, 1, span)
+                    self._cards.append(card)
+                    self._cards_by_key[upn_key] = card
+                    pending_loaders.append(
+                        _ThumbLoader(upn_key, img, card._thumb_target_w, gen, self._thumb_signals)
+                    )
 
-        n = len(sorted_rows)
-        suffix = f" for {filter_name}" if filter_name else ""
-        self._status.setText(f"{n} picture{'s' if n != 1 else ''}{suffix}")
-        QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
+                n = len(sorted_rows)
+                suffix = f" for {filter_name}" if filter_name else ""
+                self._status.setText(f"{n} picture{'s' if n != 1 else ''}{suffix}")
+                self._scroll.verticalScrollBar().setValue(0)
+
+                pool = QThreadPool.globalInstance()
+                for loader in pending_loaders:
+                    pool.start(loader)
+        finally:
+            self._is_rebuilding = False
+            if self._rebuild_pending:
+                self._rebuild_pending = False
+                QTimer.singleShot(0, self._rebuild_cards)
 
     def _on_thumb_ready(self, upn_key: str, qimage: QImage, gen: int):
         if gen != self._thumb_gen:
-            return  # stale result from a previous grid build
+            return
         card = self._cards_by_key.get(upn_key)
         if card is None:
             return
         px = QPixmap.fromImage(qimage) if not qimage.isNull() else QPixmap()
         card.set_thumbnail(px)
+
+    # ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    def closeEvent(self, event):
+        _active_dialogs.pop(id(self), None)
+        self._col_rebuild_timer.stop()
+        self._thumb_gen += 1  # invalidate any in-flight loaders
+        super().closeEvent(event)
 
     # ── Event handlers ────────────────────────────────────────────────────────
 
@@ -912,7 +1028,7 @@ class RatingEditorDialog(QDialog):
 
     def _on_columns_changed(self, value: int):
         self.columns = value
-        self._rebuild_cards()
+        self._col_rebuild_timer.start()  # debounce: restarts the 80 ms window
 
     def _on_jpg_only_toggled(self, checked: bool):
         self._jpg_only = checked
@@ -1065,8 +1181,7 @@ class RatingEditorDialog(QDialog):
 
         cards_by_key = {c.upn_key: c for c in self._cards}
 
-        # Remove items from layout positions only; widgets remain children of
-        # _grid_widget so no GC is triggered and no Qt object is deleted.
+        # Remove items from layout positions only (widgets stay as children of _grid_widget).
         while self._grid.count():
             self._grid.takeAt(0)
 
