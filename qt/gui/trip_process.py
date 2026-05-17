@@ -1475,8 +1475,11 @@ class CountSpeciesDialog(BaseTripModuleDialog):
         runner.run(self.menu_spec, on_success=load_report)
 
     def save_report(self):
+        pic_dir = _config.get("project", "picturedirectory", fallback="").strip()
+        default_dir = str(Path(pic_dir).parent) if pic_dir else ""
+        default_path = str(Path(default_dir) / "Species overview.txt") if default_dir else ""
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save Report As", "", "Text Files (*.txt);;All Files (*)"
+            self, "Save Report As", default_path, "Text Files (*.txt);;All Files (*)"
         )
         if filename:
             with open(filename, "w", encoding="utf-8") as f:
