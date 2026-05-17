@@ -1,3 +1,4 @@
+import html
 import logging
 from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -23,14 +24,16 @@ class LogHandler(logging.Handler, QObject):
 
     def emit(self, record):
         msg = self.format(record)
+        # Escape so literal "<-" etc. in messages don't get parsed as malformed
+        # HTML tags by appendHtml (Qt's parser can silently swallow them).
+        safe = html.escape(msg)
 
-        # Apply HTML styling based on content or level
         if "may have a typo" in msg or "correct it" in msg or "GPS missing" in msg:
-            msg = f'<span style="color:red;"><b>{msg}</b></span>'
+            safe = f'<span style="color:red;"><b>{safe}</b></span>'
         elif record.levelno == logging.WARNING:
-            msg = f'<span style="color:blue;"><b>{msg}</b></span>'
+            safe = f'<span style="color:blue;"><b>{safe}</b></span>'
 
-        self._log_signal.emit(msg)
+        self._log_signal.emit(safe)
 
 # Console formatter with ANSI coloring
 class ConsoleFormatter(logging.Formatter):

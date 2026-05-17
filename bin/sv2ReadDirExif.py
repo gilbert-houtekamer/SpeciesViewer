@@ -213,7 +213,33 @@ def main(args, config):
         # Sort by DateTimeOriginal for chronological processing
         all_rows.sort(key=lambda r: r.get("EXIF:DateTimeOriginal", ""))
 
-        backfilled_pairs = []  # (target_upn, donor_upn)
+        # Pass 0: sibling fill. A previous Read Directory run may have written
+        # GPS to the XMP file on disk while leaving the RAW unchanged (we never
+        # modify RAW). On the next run, the ORF row reads as missing GPS even
+        # though the XMP sibling has it. Copy from the sibling — same UPN, same
+        # picture — before going looking for time-based donors. No XMP write
+        # needed since the data is already on disk.
+        sibling_fill_count = 0
+        for row in all_rows:
+            if _has_gps(row):
+                continue
+            upn = row.get("UniquePictureName", "")
+            if not upn:
+                continue
+            for sibling_row in upn_index.get(upn, {}).values():
+                if sibling_row is row or not _has_gps(sibling_row):
+                    continue
+                for field in GPS_FIELDS:
+                    if sibling_row.get(field):
+                        row[field] = sibling_row[field]
+                sibling_fill_count += 1
+                logger.info(
+                    f"GPS backfill: {row.get('File:FileName', '?')} "
+                    f"<- {sibling_row.get('File:FileName', '?')}"
+                )
+                break
+
+        backfilled_pairs = []  # (target_upn, donor_upn) — for Pass 1/2 XMP writes
 
         def _record_backfill(target, donor, reason):
             for field in GPS_FIELDS:
@@ -346,6 +372,11 @@ def main(args, config):
                     f"{target_xmp.get('File:FileName', '?')}: {e.stderr}"
                 )
 
+        if sibling_fill_count:
+            logger.info(
+                f"GPS backfill: copied GPS from XMP to RAW picture in "
+                f"{sibling_fill_count} CSV row(s)."
+            )
         if gps_backfill_count:
             logger.info(
                 f"GPS backfill: filled GPS in {gps_backfill_count} CSV row(s) "
