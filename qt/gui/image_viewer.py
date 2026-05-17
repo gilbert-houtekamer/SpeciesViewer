@@ -5,7 +5,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy,
     QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog, QToolTip)
-from PyQt6.QtGui import QPixmap, QImage, QFontMetrics, QIcon, QPalette
+from PyQt6.QtGui import QPixmap, QImage, QFontMetrics, QIcon, QPalette, QGuiApplication
 from PyQt6.QtCore import Qt, QTimer, QSize
 from widgets.trip_widgets import DirectoryFieldQt
 from engine.filepicture import FilePicture
@@ -15,6 +15,53 @@ logger = logging.getLogger("speciesviewer")
 
 def ensure_path(obj):
     return Path(obj) if isinstance(obj, str) else obj
+
+
+class SingleImageViewer(QDialog):
+    """Full-screen-like viewer for a single image, opened by clicking a thumbnail."""
+
+    def __init__(self, parent, img_path: Path, pixmap: QPixmap, species_name: str = ""):
+        super().__init__(parent)
+        self.setWindowTitle(img_path.name)
+        self._pixmap = pixmap
+
+        screen = QGuiApplication.primaryScreen().availableGeometry()
+        self.resize(int(screen.width() * 0.92), int(screen.height() * 0.92))
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 4)
+        layout.setSpacing(4)
+
+        self._image_label = QLabel()
+        self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout.addWidget(self._image_label, stretch=1)
+
+        info_parts = [str(img_path)]
+        if species_name:
+            info_parts.append(species_name)
+        info_label = QLabel("   ".join(info_parts))
+        info_label.setStyleSheet("font-size: 10px; color: #333;")
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+    def _fit_pixmap(self):
+        if not self._pixmap or self._pixmap.isNull():
+            return
+        size = self._image_label.size()
+        if size.width() <= 1 or size.height() <= 1:
+            return
+        scaled = self._pixmap.scaled(size, Qt.AspectRatioMode.KeepAspectRatio,
+                                     Qt.TransformationMode.SmoothTransformation)
+        self._image_label.setPixmap(scaled)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self._fit_pixmap)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit_pixmap()
 
 class ColorFilterBar(QWidget):
     def __init__(self, on_filter_changed):
@@ -75,14 +122,19 @@ class ImagePreviewDialog(QDialog):
     # key: Path, value: (QPixmap, source_mtime_or_None)
     _pixmap_cache: dict = {}
 
-    def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg"):
+    def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg",
+                 file_list=None, cache_root=None, source_label=None):
         super().__init__(parent)
-        # self.setWindowTitle("Species Image Preview")
         self.resize(800, 600)
         self.mode = mode
         self.trip_root_dir = trip_root_dir
         self.main_window = parent
-        self.setWindowTitle(f"Species Image Preview ({Path(image_dir).name})")
+        self._file_list = [Path(p) if isinstance(p, str) else p for p in file_list] \
+                          if file_list is not None else None
+        self._viewer_label = (f"{len(self._file_list)} files"
+                              if self._file_list is not None
+                              else Path(image_dir).name)
+        self.setWindowTitle(f"Species Image Preview ({self._viewer_label})")
 
         layout = QVBoxLayout(self)
 
@@ -98,21 +150,26 @@ class ImagePreviewDialog(QDialog):
         self.columns = 3
         self.image_dir = image_dir
         self.image_widgets = []
-        self.cache_dir = Path(image_dir) / ".preview_cache"
-        self.cache_dir.mkdir(exist_ok=True)
+        self.cache_dir = Path(cache_root) if cache_root else Path(image_dir) / ".preview_cache"
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         dir_layout = QHBoxLayout()
-        self.dir_field = DirectoryFieldQt("Image Directory", initial_path=image_dir)
-        self.dir_field.field.setReadOnly(True)
-
-        dir_layout.addWidget(self.dir_field)
+        self.dir_field = None
+        if file_list is not None:
+            path_label = QLabel(source_label or "Virtual trip — files from master database")
+            path_label.setStyleSheet("color: #444; font-style: italic;")
+            dir_layout.addWidget(path_label)
+        else:
+            self.dir_field = DirectoryFieldQt("Image Directory", initial_path=image_dir)
+            self.dir_field.field.setReadOnly(True)
+            dir_layout.addWidget(self.dir_field)
         self.cancelled = False
         self.cancel_button = QPushButton("Cancel")
-        self.cancel_button.setEnabled(False)        
+        self.cancel_button.setEnabled(False)
         dir_layout.addWidget(self.cancel_button)
-        self.cancel_button.clicked.connect(self.cancel_scan)               
+        self.cancel_button.clicked.connect(self.cancel_scan)
 
-        layout.addLayout(dir_layout)           
+        layout.addLayout(dir_layout)
 
         # self.dir_field.field.textChanged.connect(self.on_directory_changed)        
 
@@ -167,7 +224,8 @@ class ImagePreviewDialog(QDialog):
         else:
             self.fpr = None
         # make a list of all images based on file type (not yet filtered)
-        self.all_image_paths = self.discover_images(image_dir)
+        self.all_image_paths = self._file_list if self._file_list is not None \
+                               else self.discover_images(image_dir)
 
         # Pre-extract thumbnails for all non-cached RAW files in one batch call
         self.batch_extract_raw_thumbnails(self.all_image_paths)
@@ -280,7 +338,7 @@ class ImagePreviewDialog(QDialog):
 
     def on_column_changed(self, value):
         self.columns = value
-        self.setWindowTitle(f"Species Image Preview ({self.image_dir})")
+        self.setWindowTitle(f"Species Image Preview ({self._viewer_label})")
         self.rebuild_grid()
         self.update_image_sizes()
 
@@ -382,6 +440,15 @@ class ImagePreviewDialog(QDialog):
             if color:
                 border_wrapper.setStyleSheet(f"border: 3px solid {color}; border-radius: 6px; background-color: transparent;")
 
+        def _open_fullscreen(_event, p=img_path):
+            px = self.get_pixmap_for_path(p)
+            if px and not px.isNull():
+                sp = self.fpr.getSpeciesName(p.name) if self.fpr else ""
+                SingleImageViewer(self, p, px, sp).exec()
+
+        border_wrapper.mousePressEvent = _open_fullscreen
+        border_wrapper.setCursor(Qt.CursorShape.PointingHandCursor)
+
         layout.addWidget(border_wrapper)
 
         # Info row
@@ -419,7 +486,7 @@ class ImagePreviewDialog(QDialog):
     
 
         def show_species_info():
-            self.species_dialog = SpeciesInfoDialog(img_path, species_name, error_msg, self.main_window)
+            self.species_dialog = SpeciesInfoDialog(img_path, species_name, error_msg, self)
             self.species_dialog.accepted.connect(self.load_next_image)
             self.species_dialog.rejected.connect(lambda: print("Species info dialog canceled"))
             self.species_dialog.show()

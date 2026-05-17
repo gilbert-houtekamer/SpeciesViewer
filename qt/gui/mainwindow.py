@@ -9,21 +9,15 @@ from utils.config import _config, persist_config
 from gui.menu import create_menubar
 from gui.menuspec import build_menu_spec
 from gui.trip_overview import populate_trip_overview
+from gui.virttrip_overview import populate_virttrip_overview, TAB_TITLE as VIRTTRIP_TAB_TITLE
 from sharedlib.translatelib import CachedTranslate
 from widgets.TripInfoPanel import TripInfoPanel
+from widgets.VirtTripInfoPanel import VirtTripInfoPanel
 from gui.trip_overview import populate_trip_overview
 from sharedlib.statemachine import StateMachine
 from gui.image_viewer import ImagePreviewDialog
 from utils.gui_config import load_gui_cache  # or wherever your cache functions live
 
-
-def Color(name):
-    label = QLabel(name)
-    label.setStyleSheet(f"background-color: {name};")
-    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    label.setMinimumHeight(100)
-    # label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-    return label
 
 
 
@@ -32,8 +26,9 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.trip_table = None
-        self.state_keys = None       
-        self.state_labels = None 
+        self.virttrip_table = None
+        self.state_keys = None
+        self.state_labels = None
         self.setWindowTitle("Species Viewer 0.1")
         # Create and attach status bar
         self.status_bar = QStatusBar()
@@ -63,12 +58,12 @@ class MainWindow(QMainWindow):
         self.yellow_tabs.setStyleSheet("background-color: #fff8d2;")
         self.hsplitter.addWidget(self.yellow_tabs)
 
-        # Purple panel
-        purple_panel = Color("purple")  # Assuming this is a QWidget subclass
-        self.hsplitter.addWidget(purple_panel)
+        # Virtual trip navigator panel
+        self.virttrip_panel = VirtTripInfoPanel(self, populate_virttrip_overview)
+        self.hsplitter.addWidget(self.virttrip_panel)
 
         # Optional: set initial sizes
-        self.hsplitter.setSizes([200, 600, 200])  # Adjust as needed
+        self.hsplitter.setSizes([220, 720, 220])
 
         # Optional: make panels expand
         self.hsplitter.setStretchFactor(0, 1)
@@ -131,6 +126,11 @@ class MainWindow(QMainWindow):
         self.status_bar.addPermanentWidget(self.trip_label)
         self.update_trip_label()
         self.status_bar.showMessage("Ready")
+
+        # Restore virtual trip overview if one was active at last close
+        virt_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
+        if virt_root and os.path.isdir(virt_root):
+            populate_virttrip_overview(self)
 
     def closeEvent(self, event):
         # logger.info("Close and save screen sizes")
@@ -720,6 +720,22 @@ class MainWindow(QMainWindow):
         runner = ColumnBatchRunner(self, self, "Selected steps", day_steps, lambda: None)
         runner.start()
 
+    def open_rating_editor(self):
+        from gui.rating_editor import RatingEditorDialog
+        trip_root = _config.get("trip", "tripbiotadatabase", fallback="")
+        if not trip_root:
+            QMessageBox.warning(self, "Rating Editor", "No trip is configured.")
+            return
+        day_str = None
+        if self.trip_table:
+            row = self.trip_table.currentRow()
+            if row >= 0:
+                item = self.trip_table.item(row, 0)
+                if item:
+                    day_str = item.text()
+        dlg = RatingEditorDialog(self, trip_root, day_str)
+        dlg.show()
+
     def update_trip_label(self):
         trip_path = _config.get("trip", "tripbiotadatabase", fallback="")
         trip_name = Path(trip_path).name if trip_path else "None"
@@ -727,6 +743,12 @@ class MainWindow(QMainWindow):
 
     def remove_existing_overview_tab(self):
         for i in range(self.yellow_tabs.count()):
-            if self.yellow_tabs.tabText(i) == "Overview":
+            if self.yellow_tabs.tabText(i) == "Active Trip":
+                self.yellow_tabs.removeTab(i)
+                break
+
+    def remove_existing_virttrip_tab(self):
+        for i in range(self.yellow_tabs.count()):
+            if self.yellow_tabs.tabText(i) == VIRTTRIP_TAB_TITLE:
                 self.yellow_tabs.removeTab(i)
                 break

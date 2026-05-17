@@ -111,17 +111,15 @@ def _build_column_layout(csv_header, start_date, num_days,
         })
 
     # Hidden helper columns. is_new = 1 when species is not yet "Known";
-    # cum_k counts ticks across day_1..day_k for that species. The totals
-    # rows reference these helpers to compute Day New and the trip-wide
-    # cumulative species/new counts without needing array formulas.
+    # cum_k counts seen (1/P/p) ticks across day_1..day_k per species;
+    # cum_photo_k counts P/p ticks; cum_heard_k counts H/h ticks;
+    # cum_contact_k counts any contact (1/P/H) — used for Seen+Heard totals.
     helpers = [{'header': '_is_new', 'kind': 'is_new_helper', 'width': 5}]
     for i in range(num_days):
-        helpers.append({
-            'header':    f'_cum_{i+1}',
-            'kind':      'cum_helper',
-            'day_index': i,
-            'width':     5,
-        })
+        helpers.append({'header': f'_cum_{i+1}',         'kind': 'cum_helper',         'day_index': i, 'width': 5})
+        helpers.append({'header': f'_cum_photo_{i+1}',   'kind': 'cum_photo_helper',   'day_index': i, 'width': 5})
+        helpers.append({'header': f'_cum_heard_{i+1}',   'kind': 'cum_heard_helper',   'day_index': i, 'width': 5})
+        helpers.append({'header': f'_cum_contact_{i+1}', 'kind': 'cum_contact_helper', 'day_index': i, 'width': 5})
 
     if phone_layout:
         # Phone-friendly: seq# + chosen-language name pinned at the very
@@ -172,33 +170,49 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
     date_col_idxs     = [i for i, c in enumerate(columns, 1) if c['kind'] == 'date']
     is_new_helper_idx = next((i for i, c in enumerate(columns, 1)
                               if c['kind'] == 'is_new_helper'), None)
-    cum_helper_idxs   = [None] * num_days
+    cum_helper_idxs       = [None] * num_days
+    cum_photo_helper_idxs = [None] * num_days
+    cum_heard_helper_idxs   = [None] * num_days
+    cum_contact_helper_idxs = [None] * num_days
     for i, c in enumerate(columns, 1):
         if c['kind'] == 'cum_helper':
             cum_helper_idxs[c['day_index']] = i
+        elif c['kind'] == 'cum_photo_helper':
+            cum_photo_helper_idxs[c['day_index']] = i
+        elif c['kind'] == 'cum_heard_helper':
+            cum_heard_helper_idxs[c['day_index']] = i
+        elif c['kind'] == 'cum_contact_helper':
+            cum_contact_helper_idxs[c['day_index']] = i
     # First helper column = end of the visible block (used for autofilter
     # range and border painting so we don't drag the hidden columns in).
+    _helper_kinds = ('is_new_helper', 'cum_helper', 'cum_photo_helper', 'cum_heard_helper', 'cum_contact_helper')
     first_helper_col  = next((i for i, c in enumerate(columns, 1)
-                              if c['kind'] in ('is_new_helper', 'cum_helper')),
+                              if c['kind'] in _helper_kinds),
                              len(columns) + 1)
     visible_last_col  = first_helper_col - 1
 
     # Layout —
-    #   row 1 : trip-banner title
-    #   rows 2..5 : Day Totals / Day New / Trip Totals / Trip New
-    #   row 6 : blank separator
-    #   row 7 : column headers (bold)
-    #   row 8+ : data
-    # Keeping totals above a blank gap means Excel's autofilter on the
-    # header row leaves the banner + totals untouched.
+    #   row 1  : trip-banner title
+    #   rows 2..11 : summary (photo 2-3, seen 4-7, heard 8-11)
+    #   row 12 : blank separator
+    #   row 13 : column headers (bold)
+    #   row 14+: data
     TITLE_ROW           = 1
-    DAY_TOTALS_ROW      = 2
-    DAY_NEW_ROW         = 3
-    TRIP_TOTALS_ROW     = 4
-    TRIP_NEW_ROW        = 5
-    HEADER_ROW          = 7
-    DATA_START_ROW      = 8
+    DAY_PHOTO_ROW       = 2
+    TRIP_PHOTO_ROW      = 3
+    DAY_TOTALS_ROW      = 4
+    DAY_NEW_ROW         = 5
+    TRIP_TOTALS_ROW     = 6
+    TRIP_NEW_ROW        = 7
+    DAY_HEARD_ROW       = 8
+    DAY_HEARD_NEW_ROW   = 9
+    TRIP_HEARD_ROW      = 10
+    TRIP_HEARD_NEW_ROW  = 11
+    HEADER_ROW          = 13
+    DATA_START_ROW      = 14
     last_data_row       = DATA_START_ROW + len(data) - 1
+    EXTRA_ROWS          = 20
+    extended_last_row   = last_data_row + EXTRA_ROWS
 
     wb = Workbook()
     ws = wb.active
@@ -272,10 +286,15 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
             row = data[excel_row - DATA_START_ROW]
             if len(row) < 2 or not row[CSV_EN].strip():
                 continue  # section header
+            _sr = f'{first_date_letter}{excel_row}:{last_date_letter}{excel_row}'
             ws.cell(row=excel_row, column=seen_col_idx,
-                    value=f'=COUNT({first_date_letter}{excel_row}:{last_date_letter}{excel_row})')
+                    value=f'=COUNTIF({_sr},1)+COUNTIF({_sr},"P")')
             ws.cell(row=excel_row, column=new_col_idx,
                     value=f'=IF(AND({known_letter}{excel_row}<>"Known", {seen_letter}{excel_row}>0), "New", "")')
+            if photo_col_idx and date_col_idxs:
+                _dr = f'{first_date_letter}{excel_row}:{last_date_letter}{excel_row}'
+                ws.cell(row=excel_row, column=photo_col_idx,
+                        value=f'=IF(COUNTIF({_dr},"P")>0,"yes","")')
             if is_new_helper_idx:
                 ws.cell(row=excel_row, column=is_new_helper_idx,
                         value=f'=IF({known_letter}{excel_row}<>"Known", 1, 0)')
@@ -283,44 +302,145 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
                 if not cum_idx:
                     continue
                 day_k_letter = get_column_letter(date_col_idxs[k])
+                _r = f'{first_date_letter}{excel_row}:{day_k_letter}{excel_row}'
                 ws.cell(row=excel_row, column=cum_idx,
-                        value=f'=COUNT({first_date_letter}{excel_row}:{day_k_letter}{excel_row})')
+                        value=f'=COUNTIF({_r},1)+COUNTIF({_r},"P")')
+                photo_idx = cum_photo_helper_idxs[k]
+                if photo_idx:
+                    ws.cell(row=excel_row, column=photo_idx,
+                            value=f'=COUNTIF({_r},"P")')
+                heard_idx = cum_heard_helper_idxs[k]
+                if heard_idx:
+                    ws.cell(row=excel_row, column=heard_idx,
+                            value=f'=COUNTIF({_r},"H")')
+                contact_idx = cum_contact_helper_idxs[k]
+                if contact_idx:
+                    ws.cell(row=excel_row, column=contact_idx,
+                            value=f'=COUNTIF({_r},1)+COUNTIF({_r},"P")+COUNTIF({_r},"H")')
+
+        # Extra blank rows for unanticipated species.
+        no_col_idx  = excel_col_for_csv(CSV_NO)
+        last_number = max(
+            (int(row[CSV_NO]) for row in data
+             if len(row) > CSV_NO and row[CSV_NO].strip().isdigit()),
+            default=0)
+        for i in range(EXTRA_ROWS):
+            excel_row    = last_data_row + 1 + i
+            extra_number = last_number + 1 + i
+            if no_col_idx:
+                ws.cell(row=excel_row, column=no_col_idx, value=extra_number)
+            for col_idx, col in enumerate(columns, 1):
+                if col['kind'] == 'date':
+                    ws.cell(row=excel_row, column=col_idx).number_format = "0"
+                    if col.get('weekend'):
+                        ws.cell(row=excel_row, column=col_idx).fill = weekend_fill
+            for col_idx in range(2, visible_last_col + 1):
+                col = columns[col_idx - 1]
+                if col['kind'] == 'date' and col.get('weekend'):
+                    continue
+                ws.cell(row=excel_row, column=col_idx).fill = unseen_fill
+            _sr = f'{first_date_letter}{excel_row}:{last_date_letter}{excel_row}'
+            ws.cell(row=excel_row, column=seen_col_idx,
+                    value=f'=COUNTIF({_sr},1)+COUNTIF({_sr},"P")')
+            ws.cell(row=excel_row, column=new_col_idx,
+                    value=f'=IF(AND({known_letter}{excel_row}<>"Known",'
+                          f' {seen_letter}{excel_row}>0), "New", "")')
+            if photo_col_idx and date_col_idxs:
+                ws.cell(row=excel_row, column=photo_col_idx,
+                        value=f'=IF(COUNTIF({_sr},"P")>0,"yes","")')
+            if is_new_helper_idx:
+                ws.cell(row=excel_row, column=is_new_helper_idx,
+                        value=f'=IF({known_letter}{excel_row}<>"Known", 1, 0)')
+            for k, cum_idx in enumerate(cum_helper_idxs):
+                if not cum_idx:
+                    continue
+                day_k_letter = get_column_letter(date_col_idxs[k])
+                _r = f'{first_date_letter}{excel_row}:{day_k_letter}{excel_row}'
+                ws.cell(row=excel_row, column=cum_idx,
+                        value=f'=COUNTIF({_r},1)+COUNTIF({_r},"P")')
+                photo_idx = cum_photo_helper_idxs[k]
+                if photo_idx:
+                    ws.cell(row=excel_row, column=photo_idx,
+                            value=f'=COUNTIF({_r},"P")')
+                heard_idx = cum_heard_helper_idxs[k]
+                if heard_idx:
+                    ws.cell(row=excel_row, column=heard_idx,
+                            value=f'=COUNTIF({_r},"H")')
+                contact_idx = cum_contact_helper_idxs[k]
+                if contact_idx:
+                    ws.cell(row=excel_row, column=contact_idx,
+                            value=f'=COUNTIF({_r},1)+COUNTIF({_r},"P")+COUNTIF({_r},"H")')
 
     # ── Title banner (row 1) and totals area (rows 2..5) ────────────────
     title_text = (f"Total counters for {trip_name}" if trip_name
                   else "Total counters")
     title_cell = ws.cell(row=TITLE_ROW, column=1, value=title_text)
     title_cell.font = Font(bold=True)
-    ws.cell(row=DAY_TOTALS_ROW,  column=1, value="Day Totals")
-    ws.cell(row=DAY_NEW_ROW,     column=1, value="Day New")
-    ws.cell(row=TRIP_TOTALS_ROW, column=1, value="Trip Totals")
-    ws.cell(row=TRIP_NEW_ROW,    column=1, value="Trip New")
+    ws.cell(row=DAY_PHOTO_ROW,      column=1, value="Day Photo")
+    ws.cell(row=TRIP_PHOTO_ROW,     column=1, value="Trip Photo")
+    ws.cell(row=DAY_TOTALS_ROW,     column=1, value="Day Seen")
+    ws.cell(row=DAY_NEW_ROW,        column=1, value="Day Seen New")
+    ws.cell(row=TRIP_TOTALS_ROW,    column=1, value="Trip Seen")
+    ws.cell(row=TRIP_NEW_ROW,       column=1, value="Trip Seen New")
+    ws.cell(row=DAY_HEARD_ROW,      column=1, value="Day Seen+Heard")
+    ws.cell(row=DAY_HEARD_NEW_ROW,  column=1, value="Day Seen+Heard New")
+    ws.cell(row=TRIP_HEARD_ROW,     column=1, value="Trip Seen+Heard")
+    ws.cell(row=TRIP_HEARD_NEW_ROW, column=1, value="Trip Seen+Heard New")
 
     is_new_letter = get_column_letter(is_new_helper_idx) if is_new_helper_idx else None
-    is_new_range  = (f'{is_new_letter}{DATA_START_ROW}:{is_new_letter}{last_data_row}'
+    is_new_range  = (f'{is_new_letter}{DATA_START_ROW}:{is_new_letter}{extended_last_row}'
                      if is_new_letter else None)
 
     for k, day_col_idx in enumerate(date_col_idxs):
         day_letter = get_column_letter(day_col_idx)
-        day_range  = f'{day_letter}{DATA_START_ROW}:{day_letter}{last_data_row}'
-        # Day Totals — number of species ticked on day k.
+        day_range  = f'{day_letter}{DATA_START_ROW}:{day_letter}{extended_last_row}'
+
+        # Day Photo
+        ws.cell(row=DAY_PHOTO_ROW, column=day_col_idx,
+                value=f'=COUNTIF({day_range},"P")')
+        # Day Seen (1, P, p all count as "seen"; COUNTIF is case-insensitive so "P" covers p)
         ws.cell(row=DAY_TOTALS_ROW, column=day_col_idx,
-                value=f'=COUNT({day_range})')
-        # Day New — of the species ticked on day k, how many are "new"
-        # (not yet marked Known) — i.e. how many greens.
+                value=f'=COUNTIF({day_range},1)+COUNTIF({day_range},"P")')
+        # Day Seen New
         if is_new_range:
             ws.cell(row=DAY_NEW_ROW, column=day_col_idx,
-                    value=f'=COUNTIFS({is_new_range}, 1, {day_range}, ">0")')
-        # Trip cumulative — uses the per-day cum_k helper.
-        cum_idx = cum_helper_idxs[k] if k < len(cum_helper_idxs) else None
+                    value=f'=SUMPRODUCT(({is_new_range}=1)*'
+                          f'(({day_range}=1)+({day_range}="P")))')
+        # Day Seen+Heard: species contacted (1, P, or H) on this specific day
+        ws.cell(row=DAY_HEARD_ROW, column=day_col_idx,
+                value=f'=COUNTIF({day_range},1)+COUNTIF({day_range},"P")+COUNTIF({day_range},"H")')
+        # Day Seen+Heard New
+        if is_new_range:
+            ws.cell(row=DAY_HEARD_NEW_ROW, column=day_col_idx,
+                    value=f'=SUMPRODUCT(({is_new_range}=1)*'
+                          f'(({day_range}=1)+({day_range}="P")+({day_range}="H")))')
+
+        # Trip cumulative helpers
+        cum_idx         = cum_helper_idxs[k]         if k < len(cum_helper_idxs)         else None
+        cum_photo_idx   = cum_photo_helper_idxs[k]   if k < len(cum_photo_helper_idxs)   else None
+        cum_contact_idx = cum_contact_helper_idxs[k] if k < len(cum_contact_helper_idxs) else None
+        if cum_photo_idx:
+            cum_photo_letter = get_column_letter(cum_photo_idx)
+            cum_photo_range  = f'{cum_photo_letter}{DATA_START_ROW}:{cum_photo_letter}{extended_last_row}'
+            ws.cell(row=TRIP_PHOTO_ROW, column=day_col_idx,
+                    value=f'=COUNTIF({cum_photo_range},">0")')
         if cum_idx:
             cum_letter = get_column_letter(cum_idx)
-            cum_range  = f'{cum_letter}{DATA_START_ROW}:{cum_letter}{last_data_row}'
+            cum_range  = f'{cum_letter}{DATA_START_ROW}:{cum_letter}{extended_last_row}'
             ws.cell(row=TRIP_TOTALS_ROW, column=day_col_idx,
-                    value=f'=COUNTIF({cum_range}, ">0")')
+                    value=f'=COUNTIF({cum_range},">0")')
             if is_new_range:
                 ws.cell(row=TRIP_NEW_ROW, column=day_col_idx,
-                        value=f'=COUNTIFS({is_new_range}, 1, {cum_range}, ">0")')
+                        value=f'=COUNTIFS({is_new_range},1,{cum_range},">0")')
+        # Trip Seen+Heard: no double-counting via cum_contact helper
+        if cum_contact_idx:
+            cum_contact_letter = get_column_letter(cum_contact_idx)
+            cum_contact_range  = f'{cum_contact_letter}{DATA_START_ROW}:{cum_contact_letter}{extended_last_row}'
+            ws.cell(row=TRIP_HEARD_ROW, column=day_col_idx,
+                    value=f'=COUNTIF({cum_contact_range},">0")')
+            if is_new_range:
+                ws.cell(row=TRIP_HEARD_NEW_ROW, column=day_col_idx,
+                        value=f'=COUNTIFS({is_new_range},1,{cum_contact_range},">0")')
 
     # Trip-wide aggregates in the seen?/New?/Photo columns. The seen? and
     # New? Excel cells hold strings ("New"/"") and a formula result, so
@@ -339,19 +459,19 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
         photo_letter = get_column_letter(photo_col_idx)
         ws.cell(row=TRIP_TOTALS_ROW, column=photo_col_idx,
                 value=f'=COUNTIF({photo_letter}{DATA_START_ROW}:'
-                      f'{photo_letter}{last_data_row}, ">0")')
+                      f'{photo_letter}{extended_last_row}, ">0")')
 
     # Column widths + hide helper columns.
     for col_idx, col in enumerate(columns, 1):
         letter = get_column_letter(col_idx)
         ws.column_dimensions[letter].width = col['width']
-        if col['kind'] in ('is_new_helper', 'cum_helper'):
+        if col['kind'] in ('is_new_helper', 'cum_helper', 'cum_photo_helper', 'cum_heard_helper'):
             ws.column_dimensions[letter].hidden = True
 
     # Borders — keep the original ~385-row printable grid so the user's
     # print template is not surprised by a shorter species list. Skip the
     # hidden helper columns (no need for borders no one will see).
-    last_row = max(last_data_row, 385)
+    last_row = max(extended_last_row, 385)
     thin_border = Border(
         left=Side(style='thin'),
         right=Side(style='thin'),
@@ -367,7 +487,7 @@ def create_excel_checklist(csv_path, xlsx_path, start_date, num_days,
     # The four totals rows sit above the filter range so they stay
     # visible (and unaffected) regardless of filtering.
     ws.auto_filter.ref = (
-        f"A{HEADER_ROW}:{get_column_letter(visible_last_col)}{last_data_row}"
+        f"A{HEADER_ROW}:{get_column_letter(visible_last_col)}{extended_last_row}"
     )
 
     # Freeze the totals + header rows. In phone layout pin both the
@@ -398,10 +518,24 @@ def main(args, config):
     # reference project
     # if trip, initialze master
     MyProject.initMasterAndTrip(config, inittrip=True)
+    # Determine reference species file. Priority:
+    #   1. trip.ini master_repository_disk  — the trip's own declared master (comprehensive)
+    #   2. config referencespecies key
+    #   3. svconfig masterbiotadatabase/metadata/active/species.csv (may be sparse)
+    referenceSpecies = None
     if MyProject.Trip:
-        referenceSpecies = os.path.join(MyProject.getMasterRepository(), 'metadata/active/species.csv')
-    else:
-        referenceSpecies = config.get("repository","ReferenceSpecies")
+        trip_name = MyProject.Trip.tripname
+        trip_master = MyProject.Trip.trip_dict.get(trip_name, {}).get('master_repository_disk', '')
+        if trip_master and os.path.isdir(trip_master):
+            candidate = os.path.join(trip_master, 'metadata', 'active', 'species.csv')
+            if os.path.isfile(candidate):
+                referenceSpecies = candidate
+                logger.info(f"Reference species from trip.ini master: {referenceSpecies}")
+    if not referenceSpecies:
+        referenceSpecies = config.get(
+            "repository", "ReferenceSpecies",
+            fallback=os.path.join(MyProject.getMasterRepository(), 'metadata/active/species.csv')
+        )
     Reference_sp = ghexif.specieslib.Species(None)
     Reference_sp.readSpeciesInfo(referenceSpecies, False)
     # test 

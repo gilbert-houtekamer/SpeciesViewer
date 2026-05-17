@@ -131,6 +131,7 @@ class StateMachine:
             'sv7WriteCommitMessage'  : self.Taskstate["WriteCommit"][1]
         }    
 
+        os.makedirs(self.Directory, exist_ok=True)
         with open(statemachine, 'w') as statefile:
             statefile.write('# This is an automatically generated file to track state for SpeciesViewer\n')
             state.write(statefile)

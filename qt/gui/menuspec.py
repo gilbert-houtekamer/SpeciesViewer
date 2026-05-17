@@ -7,6 +7,7 @@ from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDi
         AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
         TestbedDialog, BlogAdminDialog, PhotoMechanicDialog)
+from gui.virttrip_process import VirtualTripCreationDialog, ExtractDaysDialog
 from utils.config import _config
 import os
 from settings.globalsettings import GlobalSettingsDialog
@@ -33,6 +34,8 @@ import bin.svu5SyncSidecars
 import bin.svu8PhotoMechanic
 import bin.svu6EmptyTripData
 import bin.svu7Testbed
+import bin.svv1MakeVirtualRepository
+import bin.svv2ExtractDays
 
 
 def build_menu_spec(main_window):
@@ -383,6 +386,36 @@ def build_menu_spec(main_window):
     )
     testbed.callback = lambda: TestbedDialog(main_window, testbed).exec()
 
+    virttrip_create = MenuSpec(
+        callback=None,
+        title="Create Virtual Trip",
+        batch_parms={
+            'statusname': "",
+            'module_called': bin.svv1MakeVirtualRepository.main,
+            'before_msg': "Creating virtual trip directory structure...",
+            'after_msg': "✅ Virtual trip created. Fill in virttrip.ini details and select a date range."
+        }
+    )
+    virttrip_create.callback = lambda: VirtualTripCreationDialog(main_window, virttrip_create).exec()
+
+    extract_days = MenuSpec(
+        callback=None,
+        title="Extract Days from Master",
+        batch_parms={
+            'statusname': "",
+            'module_called': bin.svv2ExtractDays.main,
+            'before_msg': "Extracting per-day CSVs from master...",
+            'after_msg': "✅ Day extraction complete. Check metadata/review/ for results."
+        }
+    )
+    extract_days.callback = lambda: ExtractDaysDialog(main_window, extract_days).exec()
+
+    rating_editor = MenuSpec(
+        callback=lambda: main_window.open_rating_editor(),
+        title="Rating Editor",
+        showsubdirectory=False,
+    )
+
     return {
         "File": {
             "Quit": MenuSpec(
@@ -407,7 +440,9 @@ def build_menu_spec(main_window):
             "Redo Blogs": redo_trip_blogs,
             f"{MenuSpec.separator()}_3": None,
             "Empty Trip Data": empty_trip_data,
-            "Recreate Trip": recreate_trip,     
+            "Recreate Trip": recreate_trip,
+            f"{MenuSpec.separator()}_4": None,
+            "Rating Editor": rating_editor,
         },
         "Master": {
             "Edit Species List": edit_master_species,
@@ -416,6 +451,11 @@ def build_menu_spec(main_window):
             "Add trip website to master": add_trip_to_master,
             f"{MenuSpec.separator()}_master_1": None,
             "Add Trip Pictures to Master": add_trip_pictures,
+        },
+        "Virtual Trips": {
+            "Create Virtual Trip": virttrip_create,
+            f"{MenuSpec.separator()}_vt1": None,
+            "Extract Days from Master": extract_days,
         },
         "Utilities": {
         #     "BirdingBreaks": None, # PROCESS BIRDING BREAK FILES
