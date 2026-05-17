@@ -26,6 +26,7 @@ def populate_trip_overview(self):
 
     # Get all image day folders
     image_days = sorted([d for d in image_root.iterdir() if d.is_dir()], key=lambda p: p.name)
+    self._trip_overview_day_snapshot = tuple(d.name for d in image_days)
 
     def count_files(path):
         all_files = list(path.glob("*"))

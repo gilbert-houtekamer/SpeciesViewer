@@ -1,7 +1,7 @@
 from pathlib import Path
 import os
 
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStatusBar
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStatusBar, QApplication
 from PyQt6.QtWidgets import QPlainTextEdit, QLabel, QSizePolicy, QLineEdit, QTabWidget, QTableWidgetItem, QMessageBox
 from PyQt6.QtCore import Qt
 
@@ -131,6 +131,34 @@ class MainWindow(QMainWindow):
         virt_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
         if virt_root and os.path.isdir(virt_root):
             populate_virttrip_overview(self)
+
+        # Auto-refresh trip overview when the app regains focus, so day
+        # folders added by external tools (Explorer, card importers) appear
+        # without requiring the user to switch trips.
+        self._trip_overview_day_snapshot = None
+        QApplication.instance().applicationStateChanged.connect(
+            self._on_application_state_changed
+        )
+
+    def _current_trip_day_snapshot(self):
+        pic_dir = _config.get("project", "picturedirectory", fallback="").strip()
+        if not pic_dir:
+            return None
+        image_root = Path(pic_dir).parent
+        if not image_root.exists():
+            return None
+        try:
+            return tuple(sorted(d.name for d in image_root.iterdir() if d.is_dir()))
+        except OSError:
+            return None
+
+    def _on_application_state_changed(self, state):
+        if state != Qt.ApplicationState.ApplicationActive:
+            return
+        snapshot = self._current_trip_day_snapshot()
+        if snapshot is None or snapshot == self._trip_overview_day_snapshot:
+            return
+        populate_trip_overview(self)
 
     def closeEvent(self, event):
         # logger.info("Close and save screen sizes")
