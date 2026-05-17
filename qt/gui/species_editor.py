@@ -88,7 +88,8 @@ class SpeciesInfoDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Species Info")
         self.setMinimumWidth(600)
-        self.main_window_ref = weakref.ref(parent) if parent else None
+        # parent is the ImagePreviewDialog (the image viewer) — store it directly.
+        self.image_viewer_ref = weakref.ref(parent) if parent else None
         self.full_path = full_path
         filename = full_path.name
 
@@ -103,9 +104,7 @@ class SpeciesInfoDialog(QDialog):
         error_text.setPlainText(error_msg or "No error.")
         layout.addWidget(error_text)
 
-        # Subject field
-        main_window = self.main_window_ref() if self.main_window_ref else None
-        image_viewer = getattr(main_window, "image_viewer_dialog", None)
+        image_viewer = self.image_viewer_ref() if self.image_viewer_ref else None
         fpr = getattr(image_viewer, "fpr", None)
 
         subject_value = fpr.getSubject(filename) if fpr else ""
@@ -159,12 +158,14 @@ class SpeciesInfoDialog(QDialog):
             self.suggestion_dropdown.setVisible(False)
             return
 
-        main_window = self.main_window_ref() if self.main_window_ref else None
-        image_viewer = getattr(main_window, "image_viewer_dialog", None)
-        config = getattr(main_window, "config", None)
+        image_viewer = self.image_viewer_ref() if self.image_viewer_ref else None
         fpr = getattr(image_viewer, "fpr", None)
+        if fpr is None:
+            self.status_label.setText("⚠️ Species data not loaded; cannot suggest.")
+            self.suggestion_dropdown.setVisible(False)
+            return
 
-        name_type = config.get("Species", "name_type", fallback="Auto") if config else "Auto"
+        name_type = _config.get("Species", "name_type", fallback="Auto")
 
         try:
             parts = ast.literal_eval(raw_input)
@@ -226,8 +227,7 @@ class SpeciesInfoDialog(QDialog):
 
     def on_validate_clicked(self):
         raw_input = self.subject_field.get_text().strip()
-        main_window = self.main_window_ref() if self.main_window_ref else None
-        image_viewer = getattr(main_window, "image_viewer_dialog", None)
+        image_viewer = self.image_viewer_ref() if self.image_viewer_ref else None
         fpr = getattr(image_viewer, "fpr", None)
 
         if not raw_input:
@@ -264,8 +264,7 @@ class SpeciesInfoDialog(QDialog):
             self.status_label.setText("⚠️ No species name to commit.")
             return
 
-        main_window = self.main_window_ref() if self.main_window_ref else None
-        image_viewer = getattr(main_window, "image_viewer_dialog", None)
+        image_viewer = self.image_viewer_ref() if self.image_viewer_ref else None
         fpr = getattr(image_viewer, "fpr", None)
         if not fpr:
             self.status_label.setText("❌ Cannot access FPR for update.")
