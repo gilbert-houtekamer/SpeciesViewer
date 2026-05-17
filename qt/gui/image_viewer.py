@@ -1,9 +1,10 @@
+import json
 import os
 import logging
 import subprocess
 from pathlib import Path
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy,
+    QApplication, QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy,
     QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog, QToolTip)
 from PyQt6.QtGui import QPixmap, QImage, QFontMetrics, QIcon, QPalette, QGuiApplication
 from PyQt6.QtCore import Qt, QTimer, QSize
@@ -189,6 +190,20 @@ class ImagePreviewDialog(QDialog):
         self.warnings_btn.clicked.connect(self.on_warnings_toggled)
         controls_layout.addWidget(self.warnings_btn)
 
+        # No-GPS toggle: show only files whose CSV row lacks GPS coordinates.
+        # Useful for finding pictures to fix in Lightroom.
+        self.no_gps_only = False
+        self.no_gps_btn = QPushButton("📍")
+        self.no_gps_btn.setFixedSize(24, 24)
+        self.no_gps_btn.setCheckable(True)
+        self.no_gps_btn.setToolTip("Show only files without GPS coordinates")
+        self.no_gps_btn.setStyleSheet("""
+            QPushButton { border: 2px solid #C0392B; border-radius: 4px; background: transparent; }
+            QPushButton:checked { background: #F5B7B1; }
+        """)
+        self.no_gps_btn.clicked.connect(self.on_no_gps_toggled)
+        controls_layout.addWidget(self.no_gps_btn)
+
         # ColorFilterBar instance (assuming you have one)
         self.color_filter_bar = ColorFilterBar(on_filter_changed=self.on_filter_changed)
         controls_layout.addWidget(self.color_filter_bar)
@@ -239,6 +254,10 @@ class ImagePreviewDialog(QDialog):
             initial_paths = self.all_image_paths
 
         QTimer.singleShot(0, lambda: self.load_images(initial_paths))
+
+        QApplication.instance().applicationStateChanged.connect(
+            self._on_application_state_changed
+        )
 
     def discover_images(self, image_dir):
         path = Path(image_dir)
@@ -295,9 +314,109 @@ class ImagePreviewDialog(QDialog):
     def on_warnings_toggled(self):
         self.warnings_only = self.warnings_btn.isChecked()
         if self.warnings_only:
+            self.no_gps_btn.setChecked(False)
+            self.no_gps_only = False
             self.load_images(self.get_warnings_paths())
         else:
             self.load_images(self.all_image_paths)
+
+    def _row_has_gps(self, filename):
+        if not self.fpr:
+            return True
+        row = self.fpr.fi.files_dict.get(filename, {})
+        return bool(row.get("Composite:GPSPosition") or row.get("EXIF:GPSLatitude"))
+
+    def get_no_gps_paths(self):
+        if not self.fpr:
+            return self.all_image_paths
+        return [p for p in self.all_image_paths if not self._row_has_gps(p.name)]
+
+    def on_no_gps_toggled(self):
+        self.no_gps_only = self.no_gps_btn.isChecked()
+        if self.no_gps_only:
+            self.warnings_btn.setChecked(False)
+            self.warnings_only = False
+            self.load_images(self.get_no_gps_paths())
+        else:
+            self.load_images(self.all_image_paths)
+
+    def _refresh_no_gps_from_disk(self):
+        """Re-read GPS for currently-visible no-GPS images and refresh the
+        filter. Triggered on ApplicationActive when the no-GPS filter is on —
+        catches GPS that Lightroom (or another tool) wrote to the XMP sidecar
+        while the user was away. The RAW file itself doesn't change, so we
+        also probe the .xmp sibling explicitly."""
+        if not self.fpr or not self.no_gps_only or not self.isVisible():
+            return
+        visible_paths = [p for (_, _, p) in self.image_widgets]
+        if not visible_paths:
+            return
+
+        # Per visible image, probe both the file itself and its xmp sibling.
+        probes_by_image = {}  # raw_path -> list of paths to query
+        all_probes = []
+        for raw_path in visible_paths:
+            probes = [raw_path]
+            xmp = raw_path.with_suffix(".xmp")
+            if xmp.exists():
+                probes.append(xmp)
+            probes_by_image[raw_path] = probes
+            all_probes.extend(probes)
+
+        try:
+            result = subprocess.run(
+                ["exiftool", "-G", "-json", "-q",
+                 "-Composite:GPSPosition", "-EXIF:GPSLatitude"]
+                + [str(p) for p in all_probes],
+                capture_output=True, text=True, encoding="utf-8", timeout=30,
+            )
+        except Exception as e:
+            logger.warning(f"No-GPS refresh: exiftool call failed: {e}")
+            return
+        if not result.stdout:
+            return
+        try:
+            entries = json.loads(result.stdout)
+        except ValueError:
+            return
+
+        # Map SourceFile (string, as exiftool returns it) -> (gps_pos, gps_lat)
+        gps_by_source = {}
+        for entry in entries:
+            src = entry.get("SourceFile", "")
+            gps_pos = entry.get("Composite:GPSPosition", "")
+            gps_lat = entry.get("EXIF:GPSLatitude", "")
+            if gps_pos or gps_lat:
+                gps_by_source[src] = (gps_pos, gps_lat)
+
+        updated = 0
+        for raw_path, probes in probes_by_image.items():
+            gps_pos = ""
+            gps_lat = ""
+            for p in probes:
+                # exiftool typically returns paths with forward slashes
+                hit = gps_by_source.get(str(p)) or gps_by_source.get(str(p).replace("\\", "/"))
+                if hit:
+                    gps_pos = gps_pos or hit[0]
+                    gps_lat = gps_lat or hit[1]
+            if not (gps_pos or gps_lat):
+                continue
+            row = self.fpr.fi.files_dict.get(raw_path.name)
+            if row is None:
+                continue
+            if gps_pos:
+                row["Composite:GPSPosition"] = gps_pos
+            if gps_lat:
+                row["EXIF:GPSLatitude"] = gps_lat
+            updated += 1
+
+        if updated:
+            logger.info(f"No-GPS refresh: {updated} file(s) now have GPS after Lightroom edit.")
+            self.load_images(self.get_no_gps_paths())
+
+    def _on_application_state_changed(self, state):
+        if state == Qt.ApplicationState.ApplicationActive:
+            self._refresh_no_gps_from_disk()
 
     def compute_max_chars(self, label: QLabel, max_width: int) -> int:
         font_metrics = QFontMetrics(label.font())
@@ -311,7 +430,13 @@ class ImagePreviewDialog(QDialog):
 
     def closeEvent(self, event):
         print(f"🧨 ImagePreviewDialog is being closed! parent {self.parent()}")
-        super().closeEvent(event)        
+        try:
+            QApplication.instance().applicationStateChanged.disconnect(
+                self._on_application_state_changed
+            )
+        except (TypeError, RuntimeError):
+            pass
+        super().closeEvent(event)
         # self.dialog_active = False
         # self.cancelled = True
         # event.accept()
