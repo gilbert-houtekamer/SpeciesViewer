@@ -25,7 +25,7 @@ class LogHandler(logging.Handler, QObject):
         msg = self.format(record)
 
         # Apply HTML styling based on content or level
-        if "may have a typo" in msg or "correct it" in msg:
+        if "may have a typo" in msg or "correct it" in msg or "GPS missing" in msg:
             msg = f'<span style="color:red;"><b>{msg}</b></span>'
         elif record.levelno == logging.WARNING:
             msg = f'<span style="color:blue;"><b>{msg}</b></span>'
@@ -37,7 +37,7 @@ class ConsoleFormatter(logging.Formatter):
     def format(self, record):
         msg = super().format(record)
 
-        if "may have a typo" in msg or "correct it" in msg:
+        if "may have a typo" in msg or "correct it" in msg or "GPS missing" in msg:
             return f"\033[91m{msg}\033[0m"  # Red
         elif record.levelno == logging.WARNING:
             return f"\033[94m{msg}\033[0m"  # Blue
