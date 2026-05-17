@@ -151,6 +151,10 @@ class ImagePreviewDialog(QDialog):
         self.columns = 3
         self.image_dir = image_dir
         self.image_widgets = []
+        # Paths whose GPS was added during this dialog session (via Lightroom
+        # edit picked up by _refresh_no_gps_from_disk). Used to render a green
+        # 📍 badge on the card without removing it from the no-GPS view.
+        self._gps_fixed_paths = set()
         self.cache_dir = Path(cache_root) if cache_root else Path(image_dir) / ".preview_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -346,27 +350,51 @@ class ImagePreviewDialog(QDialog):
         catches GPS that Lightroom (or another tool) wrote to the XMP sidecar
         while the user was away. The RAW file itself doesn't change, so we
         also probe the .xmp sibling explicitly."""
-        if not self.fpr or not self.no_gps_only or not self.isVisible():
+        if not self.fpr:
+            logger.info("No-GPS refresh: skipped (no fpr).")
+            return
+        if not self.no_gps_only:
+            logger.info("No-GPS refresh: skipped (filter not active).")
+            return
+        if not self.isVisible():
+            logger.info("No-GPS refresh: skipped (dialog not visible).")
             return
         visible_paths = [p for (_, _, p) in self.image_widgets]
         if not visible_paths:
+            logger.info("No-GPS refresh: skipped (no visible images).")
             return
 
         # Per visible image, probe both the file itself and its xmp sibling.
         probes_by_image = {}  # raw_path -> list of paths to query
         all_probes = []
+        xmp_hits = 0
+        xmp_misses = 0
         for raw_path in visible_paths:
             probes = [raw_path]
-            xmp = raw_path.with_suffix(".xmp")
-            if xmp.exists():
-                probes.append(xmp)
+            xmp_lower = raw_path.with_suffix(".xmp")
+            xmp_upper = raw_path.with_suffix(".XMP")
+            if xmp_lower.exists():
+                probes.append(xmp_lower)
+                xmp_hits += 1
+            elif xmp_upper.exists():
+                probes.append(xmp_upper)
+                xmp_hits += 1
+            else:
+                xmp_misses += 1
             probes_by_image[raw_path] = probes
             all_probes.extend(probes)
+        logger.info(
+            f"No-GPS refresh: probing {len(visible_paths)} image(s); "
+            f"xmp siblings found {xmp_hits}, missing {xmp_misses}."
+        )
 
         try:
             result = subprocess.run(
                 ["exiftool", "-G", "-json", "-q",
-                 "-Composite:GPSPosition", "-EXIF:GPSLatitude"]
+                 "-Composite:GPSPosition",
+                 "-EXIF:GPSLatitude", "-EXIF:GPSLongitude",
+                 "-XMP:GPSLatitude", "-XMP:GPSLongitude",
+                 "-File:FileModifyDate"]
                 + [str(p) for p in all_probes],
                 capture_output=True, text=True, encoding="utf-8", timeout=30,
             )
@@ -374,22 +402,49 @@ class ImagePreviewDialog(QDialog):
             logger.warning(f"No-GPS refresh: exiftool call failed: {e}")
             return
         if not result.stdout:
+            logger.warning(
+                f"No-GPS refresh: exiftool returned no stdout "
+                f"(rc={result.returncode}, stderr={result.stderr.strip()!r})."
+            )
             return
         try:
             entries = json.loads(result.stdout)
-        except ValueError:
+        except ValueError as e:
+            logger.warning(f"No-GPS refresh: failed to parse exiftool JSON: {e}")
             return
 
         # Map SourceFile (string, as exiftool returns it) -> (gps_pos, gps_lat)
         gps_by_source = {}
+        entries_with_gps = 0
+        xmp_modify_sample = None
         for entry in entries:
             src = entry.get("SourceFile", "")
             gps_pos = entry.get("Composite:GPSPosition", "")
-            gps_lat = entry.get("EXIF:GPSLatitude", "")
+            gps_lat = (entry.get("EXIF:GPSLatitude", "")
+                       or entry.get("XMP:GPSLatitude", ""))
             if gps_pos or gps_lat:
                 gps_by_source[src] = (gps_pos, gps_lat)
+                entries_with_gps += 1
+            if xmp_modify_sample is None and src.lower().endswith(".xmp"):
+                xmp_modify_sample = (src, entry.get("File:FileModifyDate", "?"))
+        logger.info(
+            f"No-GPS refresh: exiftool returned {len(entries)} entries, "
+            f"{entries_with_gps} with GPS."
+        )
+        if entries:
+            sample_src = entries[0].get("SourceFile", "?")
+            logger.info(f"No-GPS refresh: sample SourceFile from exiftool: {sample_src!r}")
+        if all_probes:
+            logger.info(f"No-GPS refresh: sample probe path we sent: {str(all_probes[0])!r}")
+        if xmp_modify_sample:
+            logger.info(
+                f"No-GPS refresh: sample XMP mtime {xmp_modify_sample[1]!r} "
+                f"({Path(xmp_modify_sample[0]).name})"
+            )
 
-        updated = 0
+        updated_paths = set()
+        sibling_propagations = 0
+        unmatched = 0
         for raw_path, probes in probes_by_image.items():
             gps_pos = ""
             gps_lat = ""
@@ -400,22 +455,83 @@ class ImagePreviewDialog(QDialog):
                     gps_pos = gps_pos or hit[0]
                     gps_lat = gps_lat or hit[1]
             if not (gps_pos or gps_lat):
+                unmatched += 1
                 continue
             row = self.fpr.fi.files_dict.get(raw_path.name)
             if row is None:
+                logger.info(f"No-GPS refresh: no CSV row for {raw_path.name}.")
                 continue
             if gps_pos:
                 row["Composite:GPSPosition"] = gps_pos
             if gps_lat:
                 row["EXIF:GPSLatitude"] = gps_lat
-            updated += 1
+            updated_paths.add(raw_path)
+            # Propagate GPS to UPN-siblings (XMP twin, DxO JPG derivative, …)
+            # so they also clear the no-GPS filter. Same idea as the
+            # sv2ReadDirExif Pass 0 sibling fill.
+            upn_name = row.get("UniquePictureName")
+            if upn_name:
+                for sib_filename, sib_row in self.fpr.fi.files_dict.items():
+                    if sib_row is row:
+                        continue
+                    if sib_row.get("UniquePictureName") != upn_name:
+                        continue
+                    if gps_pos and not sib_row.get("Composite:GPSPosition"):
+                        sib_row["Composite:GPSPosition"] = gps_pos
+                        sibling_propagations += 1
+                    if gps_lat and not sib_row.get("EXIF:GPSLatitude"):
+                        sib_row["EXIF:GPSLatitude"] = gps_lat
+                    # If a visible card matches this sibling, mark fixed too.
+                    for _il, _c, img_path in self.image_widgets:
+                        if img_path.name == sib_filename:
+                            updated_paths.add(img_path)
+                            break
 
-        if updated:
-            logger.info(f"No-GPS refresh: {updated} file(s) now have GPS after Lightroom edit.")
-            self.load_images(self.get_no_gps_paths())
+        logger.info(
+            f"No-GPS refresh: updated {len(updated_paths)} (incl. "
+            f"{sibling_propagations} sibling row(s)), still no GPS {unmatched}."
+        )
+        if updated_paths:
+            self._gps_fixed_paths.update(updated_paths)
+            logger.info(
+                f"No-GPS refresh: {len(updated_paths)} file(s) now have GPS after Lightroom edit."
+            )
+            # Refresh the badge on each fixed card in place — don't reload the
+            # grid (which would silently remove fixed files from the no-GPS view).
+            for _img_label, container, img_path in self.image_widgets:
+                if img_path in updated_paths:
+                    self.refresh_image_status(container, img_path)
+
+            # Mirror what species-name commit does (FilePicture.updateSubject):
+            # update the UPN dict GPSPosition then persist both CSVs so the fix
+            # survives dialog close and is visible to downstream pipeline steps.
+            updated_upns = set()
+            for raw_path in updated_paths:
+                row = self.fpr.fi.files_dict.get(raw_path.name)
+                if not row:
+                    continue
+                upn_name = row.get("UniquePictureName")
+                upn_obj = self.fpr.upn.UniquePictureName_dict.get(upn_name)
+                if upn_obj is None:
+                    continue
+                gps_pos = row.get("Composite:GPSPosition", "")
+                if gps_pos:
+                    upn_obj["GPSPosition"] = gps_pos
+                    updated_upns.add(upn_name)
+            try:
+                self.fpr.fi.write_project_files()
+                if updated_upns:
+                    self.fpr.upn.write_project_summary()
+                logger.info(
+                    f"No-GPS refresh: persisted GPS to data_files.csv and "
+                    f"data_pictures.csv ({len(updated_upns)} UPN(s))."
+                )
+            except Exception as e:
+                logger.warning(f"No-GPS refresh: failed to persist CSV(s): {e}")
 
     def _on_application_state_changed(self, state):
         if state == Qt.ApplicationState.ApplicationActive:
+            logger.info("No-GPS refresh: ApplicationActive received.")
             self._refresh_no_gps_from_disk()
 
     def compute_max_chars(self, label: QLabel, max_width: int) -> int:
@@ -621,7 +737,7 @@ class ImagePreviewDialog(QDialog):
 
         # Text label
         text_label = QLabel()
-        max_width = container.width() - 40
+        max_width = container.width() - 60
         max_chars = self.compute_max_chars(text_label, max_width)
         display_text = species_name or self.truncate_filename(img_path.name, max_chars)
         text_label.setText(display_text)
@@ -630,10 +746,31 @@ class ImagePreviewDialog(QDialog):
         text_label.setFixedHeight(20)
 
         info_layout.addWidget(text_label)
+
+        # GPS-fixed badge — green 📍, hidden until _refresh_no_gps_from_disk
+        # detects a Lightroom edit added GPS to this file.
+        gps_badge = QLabel()
+        gps_badge.setObjectName("gps_badge")
+        gps_badge.setFixedSize(20, 20)
+        gps_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        gps_badge.setStyleSheet("color: #2ECC71; font-size: 14px;")
+        self._apply_gps_badge(gps_badge, img_path)
+        info_layout.addWidget(gps_badge)
+
         layout.addWidget(info_row)
 
         return container, image_label, img_path
     
+    def _apply_gps_badge(self, gps_badge: QLabel, img_path: Path):
+        if img_path in self._gps_fixed_paths:
+            gps_badge.setText("📍")
+            gps_badge.setToolTip(
+                "GPS added since dialog opened — will be persisted to CSV on next Read Directory."
+            )
+        else:
+            gps_badge.setText("")
+            gps_badge.setToolTip("")
+
     def refresh_image_status(self, container: QWidget, img_path: Path):
         # Find the info row inside the container
         info_row = container.findChild(QWidget, "info_row")
@@ -651,6 +788,7 @@ class ImagePreviewDialog(QDialog):
 
         status_icon = buttons[0]
         text_label = labels[0]
+        gps_badge = info_row.findChild(QLabel, "gps_badge")
 
         # Recompute status
         error_msg = self.fpr.getErrorMsg(img_path.name) if self.fpr else ""
@@ -669,10 +807,13 @@ class ImagePreviewDialog(QDialog):
             status_icon.setToolTip("")
 
         # Update label text
-        max_width = container.width() - 40
+        max_width = container.width() - 60
         max_chars = self.compute_max_chars(text_label, max_width)
         display_text = species_name or self.truncate_filename(img_path.name, max_chars)
         text_label.setText(display_text)
+
+        if gps_badge is not None:
+            self._apply_gps_badge(gps_badge, img_path)
 
     
     def add_image_to_grid(self, container, image_label, img_path, row, col):
