@@ -742,6 +742,14 @@ class ImagePreviewDialog(QDialog):
             )
         except (TypeError, RuntimeError):
             pass
+        # Refresh the trip-overview row for this day so its species/GPS
+        # health markers reflect any fixes made during this dialog session.
+        try:
+            from gui.trip_overview import refresh_day_health
+            if self.image_dir:
+                refresh_day_health(self.main_window, Path(self.image_dir).name)
+        except Exception as e:
+            print(f"refresh_day_health failed: {e}")
         super().closeEvent(event)
         # self.dialog_active = False
         # self.cancelled = True

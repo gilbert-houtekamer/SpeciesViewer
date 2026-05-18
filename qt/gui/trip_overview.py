@@ -1,3 +1,6 @@
+import csv
+import logging
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem,
@@ -9,6 +12,128 @@ from utils.config import _config
 
 SYNC_COL = 3
 STATE_COL_START = 4
+
+# Extensions the image preview dialog considers "photo files" — matches the
+# affirmative filter in ImagePreviewDialog.discover_images. _day_health uses
+# the same set so its no-GPS count aligns with the dialog's view (PNG
+# screenshots and other non-image rows in data_files.csv are ignored).
+PHOTO_EXTENSIONS = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng",
+                    "heic", "jpg", "jpeg"}
+
+
+def _format_total_files_item(day_path, review_root):
+    """Build the Total Files cell with health markers and tooltip. Re-used by
+    refresh_day_health so the trip-overview row updates after the image
+    preview dialog fixes species/GPS issues."""
+    all_files = list(day_path.glob("*"))
+    total = len(all_files)
+    health = _day_health(review_root / day_path.name)
+    if health is None:
+        text = str(total)
+        tooltip = "Read Directory not yet run for this day."
+    else:
+        warnings, no_gps = health
+        species_mark = "✅" if warnings == 0 else "⚠️"
+        gps_mark = "📍" if no_gps == 0 else "❓"
+        text = f"{total}  {species_mark} {gps_mark}"
+        species_tip = "All species OK" if warnings == 0 else f"{warnings} species typo{'s' if warnings != 1 else ''}"
+        gps_tip = "All GPS OK" if no_gps == 0 else f"{no_gps} missing GPS"
+        tooltip = f"{species_tip} — {gps_tip}"
+    item = QTableWidgetItem(text)
+    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+    item.setToolTip(tooltip)
+    return item
+
+
+def refresh_day_health(main_window, day_name):
+    """Re-read data_pictures.csv for `day_name` and update its Total Files
+    cell. Called from ImagePreviewDialog.closeEvent so the table reflects
+    GPS / species fixes the user just made.
+
+    Logs what it does so we can tell from the green box whether the refresh
+    actually hit the row — surgical updates have failed silently before."""
+    logger = logging.getLogger("speciesviewer")
+    table = getattr(main_window, "trip_table", None)
+    if table is None:
+        logger.info(f"refresh_day_health: no trip_table on main_window for {day_name}")
+        return
+    try:
+        image_root = Path(_config.get("project", "picturedirectory")).parent
+        trip_root = Path(_config.get("trip", "tripbiotadatabase"))
+    except Exception as e:
+        logger.info(f"refresh_day_health: config lookup failed: {e}")
+        return
+    review_root = trip_root / "metadata" / "review"
+    day_path = image_root / day_name
+    if not day_path.exists():
+        logger.info(f"refresh_day_health: day folder doesn't exist: {day_path}")
+        return
+    for row in range(table.rowCount()):
+        cell = table.item(row, 0)
+        if cell and cell.text() == day_name:
+            new_item = _format_total_files_item(day_path, review_root)
+            table.setItem(row, 1, new_item)
+            logger.info(
+                f"refresh_day_health: row {row} for {day_name} → "
+                f"{new_item.text()!r}"
+            )
+            return
+    logger.info(f"refresh_day_health: no matching row for {day_name}")
+
+
+def _day_health(review_day_path):
+    """Return (warnings_count, no_gps_count) for the day.
+
+    GPS is read from data_files.csv (same source the image preview dialog
+    uses, so the trip-overview marker stays consistent with the dialog's
+    "clean day" determination) and aggregated by UniquePictureName — a
+    UPN has GPS if ANY of its file rows (ORF / XMP / JPG) has it.
+
+    Warnings come from data_pictures.csv (errormessage is a UPN-only column).
+
+    Returns None if data_files.csv doesn't exist yet (Read Directory hasn't
+    been run for this day)."""
+    files_csv = review_day_path / "data_files.csv"
+    pictures_csv = review_day_path / "data_pictures.csv"
+    if not files_csv.exists():
+        return None
+
+    upn_has_gps = {}
+    try:
+        with open(files_csv, "r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f, delimiter=";")
+            for row in reader:
+                ext = (row.get("WindowsExtension") or "").lower()
+                if ext not in PHOTO_EXTENSIONS:
+                    continue  # PNG screenshots, XMP sidecars, etc.
+                upn = row.get("UniquePictureName", "")
+                if not upn:
+                    continue
+                has_gps = bool((row.get("Composite:GPSPosition") or "").strip()) \
+                       or bool((row.get("EXIF:GPSLatitude") or "").strip())
+                upn_has_gps[upn] = upn_has_gps.get(upn, False) or has_gps
+    except Exception:
+        return None
+    no_gps = sum(1 for has in upn_has_gps.values() if not has)
+    if no_gps:
+        logger = logging.getLogger("speciesviewer")
+        sample = [upn for upn, has in upn_has_gps.items() if not has][:5]
+        logger.info(
+            f"_day_health: {review_day_path.name} has {no_gps} UPN(s) "
+            f"without GPS in data_files.csv. Sample: {sample}"
+        )
+
+    warnings = 0
+    if pictures_csv.exists():
+        try:
+            with open(pictures_csv, "r", encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f, delimiter=";")
+                for row in reader:
+                    if (row.get("errormessage") or "").strip():
+                        warnings += 1
+        except Exception:
+            pass
+    return warnings, no_gps
 
 def populate_trip_overview(self):
     self.update_trip_label()
@@ -86,12 +211,19 @@ def populate_trip_overview(self):
     header = self.trip_table.horizontalHeader()
     header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
     header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+    # Total Files and JPEG Files auto-size to their content (Total Files
+    # carries "N ✅ 📍" markers that don't fit a stretched column).
+    header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+    header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
 
     for i, day in enumerate(image_days):
         total, jpgs = count_files(day)
         self.trip_table.setItem(i, 0, QTableWidgetItem(day.name))
-        self.trip_table.setItem(i, 1, QTableWidgetItem(str(total)))
-        self.trip_table.setItem(i, 2, QTableWidgetItem(str(jpgs)))
+        self.trip_table.setItem(i, 1, _format_total_files_item(day, review_root))
+
+        jpgs_item = QTableWidgetItem(str(jpgs))
+        jpgs_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.trip_table.setItem(i, 2, jpgs_item)
 
         # Sync Sidecars column — not persisted, starts as ⚪
         sync_item = QTableWidgetItem("⚪")
