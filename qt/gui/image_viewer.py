@@ -5,8 +5,8 @@ import subprocess
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QButtonGroup, QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy,
-    QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog, QToolTip, QStyle)
-from PyQt6.QtGui import QPixmap, QImage, QFontMetrics, QIcon, QPalette, QGuiApplication
+    QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog, QToolTip, QStyle, QTextEdit)
+from PyQt6.QtGui import QPixmap, QImage, QFontMetrics, QIcon, QPalette, QGuiApplication, QShortcut, QKeySequence
 from PyQt6.QtCore import Qt, QTimer, QSize
 from widgets.trip_widgets import DirectoryFieldQt
 from engine.filepicture import FilePicture
@@ -25,6 +25,8 @@ class SingleImageViewer(QDialog):
         super().__init__(parent)
         self.setWindowTitle(img_path.name)
         self._pixmap = pixmap
+        self._img_path = img_path
+        self._parent_ref = parent  # ImagePreviewDialog, holds .fpr
 
         screen = QGuiApplication.primaryScreen().availableGeometry()
         self.resize(int(screen.width() * 0.92), int(screen.height() * 0.92))
@@ -38,13 +40,79 @@ class SingleImageViewer(QDialog):
         self._image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self._image_label, stretch=1)
 
-        info_parts = [str(img_path)]
+        # Path on the left, species on the right — wrapped in a fixed-width
+        # widget that's resized in _fit_pixmap to match the picture's actual
+        # displayed width, so both edges align with the picture's edges.
+        self._info_widget = QWidget()
+        info_row = QHBoxLayout(self._info_widget)
+        info_row.setContentsMargins(0, 0, 0, 0)
+        path_label = QLabel(str(img_path))
+        path_label.setStyleSheet("font-size: 10px; color: #333;")
+        info_row.addWidget(path_label)
+        info_row.addStretch(1)
         if species_name:
-            info_parts.append(species_name)
-        info_label = QLabel("   ".join(info_parts))
-        info_label.setStyleSheet("font-size: 10px; color: #333;")
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
+            species_label = QLabel(species_name)
+            species_label.setStyleSheet("font-size: 10px; color: #333;")
+            info_row.addWidget(species_label)
+        info_outer = QHBoxLayout()
+        info_outer.setContentsMargins(0, 0, 0, 0)
+        info_outer.addStretch(1)
+        info_outer.addWidget(self._info_widget)
+        info_outer.addStretch(1)
+        layout.addLayout(info_outer)
+
+        # Description field (XMP:Description). Ctrl+S to save explicitly,
+        # auto-save on close if the text changed. Capped at 2000px wide and
+        # centered so the line length stays readable on ultra-wide screens.
+        desc_label = QLabel("Enter a story about this picture to be shown on the website (optional)")
+        desc_label.setStyleSheet("font-size: 11px; font-weight: bold;")
+        desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(desc_label)
+
+        self._desc_edit = QTextEdit()
+        fm = self._desc_edit.fontMetrics()
+        self._desc_edit.setFixedHeight(int(fm.lineSpacing() * 3.5) + 8)
+        # Width is set dynamically in resizeEvent — target 1800px, fall back
+        # to (window - 100) when the window is narrower.
+        self._desc_edit.setAcceptRichText(False)
+        fpr = getattr(parent, "fpr", None) if parent else None
+        self._original_description = fpr.getDescription(img_path.name) if fpr else ""
+        self._desc_edit.setPlainText(self._original_description)
+        if fpr is None:
+            self._desc_edit.setReadOnly(True)
+            self._desc_edit.setToolTip("No metadata loaded — descriptions can't be saved.")
+
+        desc_row = QHBoxLayout()
+        desc_row.addStretch(1)
+        desc_row.addWidget(self._desc_edit)
+        desc_row.addStretch(1)
+        layout.addLayout(desc_row)
+
+        save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
+        save_shortcut.activated.connect(self._save_description)
+
+    def _save_description(self):
+        fpr = getattr(self._parent_ref, "fpr", None) if self._parent_ref else None
+        if fpr is None:
+            return
+        new_text = self._desc_edit.toPlainText()
+        if new_text == self._original_description:
+            return
+        try:
+            files_written = fpr.updateDescription(self._img_path.name, new_text)
+            self._original_description = new_text
+            logger.info(
+                f"Description: wrote {files_written} on-disk file(s) for "
+                f"{self._img_path.name}."
+            )
+        except Exception as e:
+            logger.warning(
+                f"Description: save failed for {self._img_path.name}: {e}"
+            )
+
+    def closeEvent(self, event):
+        self._save_description()
+        super().closeEvent(event)
 
     def _fit_pixmap(self):
         if not self._pixmap or self._pixmap.isNull():
@@ -55,6 +123,14 @@ class SingleImageViewer(QDialog):
         scaled = self._pixmap.scaled(size, Qt.AspectRatioMode.KeepAspectRatio,
                                      Qt.TransformationMode.SmoothTransformation)
         self._image_label.setPixmap(scaled)
+        # Match the info row + description box to the picture's actual width
+        # so their edges line up with the picture's edges, regardless of how
+        # much the aspect ratio leaves as letterbox margin.
+        pic_w = max(200, scaled.width())
+        if hasattr(self, "_info_widget"):
+            self._info_widget.setFixedWidth(pic_w)
+        if hasattr(self, "_desc_edit"):
+            self._desc_edit.setFixedWidth(pic_w)
 
     def showEvent(self, event):
         super().showEvent(event)

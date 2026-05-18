@@ -97,6 +97,49 @@ class FilePicture:
         except Exception:
             return ""
         
+    def getDescription(self, filename):
+        try:
+            upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
+            return self.upn.UniquePictureName_dict[upn_name].get("Description", "")
+        except Exception:
+            return ""
+
+    def updateDescription(self, filename, new_description):
+        """Write XMP:Description to the XMP sidecar and any JPGs sharing the
+        same UPN (RAW files are convention-immutable, so we skip those), then
+        persist data_files.csv and data_pictures.csv. Mirrors updateSubject's
+        propagation pattern. Returns the count of on-disk files rewritten."""
+        try:
+            upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
+        except KeyError:
+            logger.warning(f"updateDescription: no CSV row for {filename}")
+            return 0
+        raw_exts = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng", "heic"}
+        files_written = 0
+        for f_key, f_row in self.fi.files_dict.items():
+            if f_row.get("UniquePictureName") != upn_name:
+                continue
+            f_row["XMP:Description"] = new_description
+            ext = f_row.get("WindowsExtension", "").lower()
+            if ext in raw_exts:
+                continue  # RAW files stay immutable
+            filepath = Path(f_row.get("WindowsFileName", ""))
+            if not filepath.exists():
+                continue
+            try:
+                exiftool_write(filepath, [f"-XMP:Description={new_description}"])
+                files_written += 1
+            except subprocess.CalledProcessError as e:
+                logger.warning(
+                    f"updateDescription: failed to write {filepath.name}: {e.stderr}"
+                )
+        self.fi.write_project_files()
+        upn_obj = self.upn.UniquePictureName_dict.get(upn_name)
+        if upn_obj is not None:
+            upn_obj["Description"] = new_description
+            self.upn.write_project_summary()
+        return files_written
+
     def getSpeciesName(self, filename):
         try:
             upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
