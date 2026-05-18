@@ -46,7 +46,11 @@ class SingleImageViewer(QDialog):
         self._info_widget = QWidget()
         info_row = QHBoxLayout(self._info_widget)
         info_row.setContentsMargins(0, 0, 0, 0)
-        path_label = QLabel(str(img_path))
+        if pixmap and not pixmap.isNull():
+            path_text = f"{img_path}  ({pixmap.width()}x{pixmap.height()})"
+        else:
+            path_text = str(img_path)
+        path_label = QLabel(path_text)
         path_label.setStyleSheet("font-size: 10px; color: #333;")
         info_row.addWidget(path_label)
         info_row.addStretch(1)
@@ -120,8 +124,18 @@ class SingleImageViewer(QDialog):
         size = self._image_label.size()
         if size.width() <= 1 or size.height() <= 1:
             return
-        scaled = self._pixmap.scaled(size, Qt.AspectRatioMode.KeepAspectRatio,
-                                     Qt.TransformationMode.SmoothTransformation)
+        # Never upscale — a 1200x900 JPG blown up to 3500px wide just looks
+        # blurry. If the picture's native resolution fits in the available
+        # area, use it as-is; otherwise scale down preserving aspect ratio.
+        src_w = self._pixmap.width()
+        src_h = self._pixmap.height()
+        if src_w <= size.width() and src_h <= size.height():
+            scaled = self._pixmap
+        else:
+            scaled = self._pixmap.scaled(
+                size, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
         self._image_label.setPixmap(scaled)
         # Match the info row + description box to the picture's actual width
         # so their edges line up with the picture's edges, regardless of how
