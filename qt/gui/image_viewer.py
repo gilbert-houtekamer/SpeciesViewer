@@ -824,12 +824,19 @@ class ImagePreviewDialog(QDialog):
         if error_msg:
             icon = QIcon(QPixmap("qt/assets/warning_icon.png").scaled(16, 16))
             status_icon.setIcon(icon)
+            status_icon.setText("")
             status_icon.setToolTip(error_msg)
         elif species_name:
             icon = QIcon(QPixmap("qt/assets/ok_icon.png").scaled(16, 16))
             status_icon.setIcon(icon)
+            status_icon.setText("")
             status_icon.setToolTip("OK")
-    
+        elif self.fpr:
+            # No species set — picture will be skipped by the pipeline.
+            status_icon.setIcon(QIcon())
+            status_icon.setText("❔")
+            status_icon.setToolTip("No species set — picture will be skipped by the pipeline.")
+
 
         def show_species_info():
             self.species_dialog = SpeciesInfoDialog(img_path, species_name, error_msg, self)
@@ -852,13 +859,12 @@ class ImagePreviewDialog(QDialog):
 
         info_layout.addWidget(text_label)
 
-        # GPS-fixed badge — green 📍, hidden until _refresh_no_gps_from_disk
-        # detects a Lightroom edit added GPS to this file.
+        # GPS badge — green 📍 for "fixed in-session", red 📍 for "still
+        # missing", empty when the row has GPS. Set entirely by _apply_gps_badge.
         gps_badge = QLabel()
         gps_badge.setObjectName("gps_badge")
         gps_badge.setFixedSize(20, 20)
         gps_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        gps_badge.setStyleSheet("color: #2ECC71; font-size: 14px;")
         self._apply_gps_badge(gps_badge, img_path)
         info_layout.addWidget(gps_badge)
 
@@ -867,14 +873,25 @@ class ImagePreviewDialog(QDialog):
         return container, image_label, img_path
     
     def _apply_gps_badge(self, gps_badge: QLabel, img_path: Path):
-        if img_path in self._gps_fixed_paths:
-            gps_badge.setText("📍")
-            gps_badge.setToolTip(
-                "GPS added since dialog opened — will be persisted to CSV on next Read Directory."
-            )
-        else:
+        # 📍 = file has GPS (general indicator, like ✅ for species).
+        # ❓ = file lacks GPS.
+        # Tooltip distinguishes "just fixed in this session" from "already had GPS".
+        gps_badge.setStyleSheet("font-size: 14px;")
+        if not self.fpr:
             gps_badge.setText("")
             gps_badge.setToolTip("")
+            return
+        if self._row_has_gps(img_path.name):
+            gps_badge.setText("📍")
+            if img_path in self._gps_fixed_paths:
+                gps_badge.setToolTip(
+                    "GPS added since dialog opened — will be persisted to CSV on next Read Directory."
+                )
+            else:
+                gps_badge.setToolTip("GPS coordinates present.")
+        else:
+            gps_badge.setText("❓")
+            gps_badge.setToolTip("Missing GPS coordinates — fix in Lightroom.")
 
     def refresh_image_status(self, container: QWidget, img_path: Path):
         # Find the info row inside the container
@@ -902,13 +919,20 @@ class ImagePreviewDialog(QDialog):
         if error_msg:
             icon = QIcon(QPixmap("qt/assets/warning_icon.png").scaled(16, 16))
             status_icon.setIcon(icon)
+            status_icon.setText("")
             status_icon.setToolTip(error_msg)
         elif species_name:
             icon = QIcon(QPixmap("qt/assets/ok_icon.png").scaled(16, 16))
             status_icon.setIcon(icon)
+            status_icon.setText("")
             status_icon.setToolTip("OK")
+        elif self.fpr:
+            status_icon.setIcon(QIcon())
+            status_icon.setText("❔")
+            status_icon.setToolTip("No species set — picture will be skipped by the pipeline.")
         else:
             status_icon.setIcon(QIcon())
+            status_icon.setText("")
             status_icon.setToolTip("")
 
         # Update label text
