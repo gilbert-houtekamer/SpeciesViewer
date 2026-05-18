@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy,
-    QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog, QToolTip)
+    QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog, QToolTip, QStyle)
 from PyQt6.QtGui import QPixmap, QImage, QFontMetrics, QIcon, QPalette, QGuiApplication
 from PyQt6.QtCore import Qt, QTimer, QSize
 from widgets.trip_widgets import DirectoryFieldQt
@@ -565,6 +565,15 @@ class ImagePreviewDialog(QDialog):
             return filename
         return "..." + filename[-(max_chars - 3):]        
 
+    def _apply_column_stretches(self):
+        # Ensure every active column claims an equal share of the viewport even
+        # when it has no widget — otherwise a single visible card stretches to
+        # fill the whole row (column spinner max is 10).
+        for c in range(10):
+            self.grid_layout.setColumnStretch(c, 0)
+        for c in range(self.columns):
+            self.grid_layout.setColumnStretch(c, 1)
+
     def rebuild_grid(self):
         while self.grid_layout.count():
             item = self.grid_layout.takeAt(0)
@@ -575,13 +584,17 @@ class ImagePreviewDialog(QDialog):
         for i, (_, container, _) in enumerate(self.image_widgets):
             row, col = divmod(i, self.columns)
             self.grid_layout.addWidget(container, row, col)
+        self._apply_column_stretches()
  
 
     def on_column_changed(self, value):
         self.columns = value
         self.setWindowTitle(f"Species Image Preview ({self._viewer_label})")
         self.rebuild_grid()
-        self.update_image_sizes()
+        # Defer one event-loop tick so the scroll-area viewport reports its
+        # post-rebuild width — otherwise the first spinner change uses stale
+        # dimensions and cards come out the wrong size.
+        QTimer.singleShot(0, self.update_image_sizes)
 
     def on_slider_hover(self):
         value = self.zoom_slider.value()
@@ -654,6 +667,11 @@ class ImagePreviewDialog(QDialog):
     def create_image_widget(self, img_path):
         container = QWidget()
         container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        # Use the same dimension formula as update_image_sizes so cards paint
+        # at the correct width from the first batch — and cap the container
+        # so a later, slightly-different viewport doesn't widen it.
+        column_width, image_width = self._compute_card_dimensions()
+        container.setMaximumWidth(column_width)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(4)
@@ -661,10 +679,7 @@ class ImagePreviewDialog(QDialog):
         # Image preview — scale immediately to avoid full-size flash
         pixmap = self.get_pixmap_for_path(img_path) or QPixmap("qt/assets/spinner.gif")
         if pixmap and not pixmap.isNull():
-            available = self.scroll_area.viewport().width()
-            if available > 0:
-                image_width = available // max(self.columns, 1) - 20
-                pixmap = pixmap.scaledToWidth(image_width, Qt.TransformationMode.SmoothTransformation)
+            pixmap = pixmap.scaledToWidth(image_width, Qt.TransformationMode.SmoothTransformation)
         image_label = QLabel()
         image_label.setPixmap(pixmap)
         image_label.setStyleSheet("background-color: transparent;")
@@ -826,8 +841,7 @@ class ImagePreviewDialog(QDialog):
         BATCH = 10  # images per timer tick — keeps UI responsive without 50ms per image
         for _ in range(BATCH):
             if not self.dialog_active or self.cancelled or self.current_index >= len(self.image_paths):
-                self.cancel_button.setEnabled(False)
-                self.wait_dialog.close()
+                self._finalize_load()
                 return
 
             img_path = Path(self.image_paths[self.current_index])
@@ -839,9 +853,17 @@ class ImagePreviewDialog(QDialog):
         if self.current_index < len(self.image_paths):
             QTimer.singleShot(50, self.load_next_image)
         else:
-            self.cancel_button.setEnabled(False)
-            self.wait_dialog.close()
-            QTimer.singleShot(0, self.update_image_sizes)
+            self._finalize_load()
+
+    def _finalize_load(self):
+        self.cancel_button.setEnabled(False)
+        self.wait_dialog.close()
+        # Two passes: immediate (catches the common case) and one after a
+        # short delay so the scroll-area's layout has definitely settled.
+        # The wait-dialog closing also kicks Qt's layout system, so the
+        # initial paint otherwise reads stale dimensions.
+        QTimer.singleShot(0, self.update_image_sizes)
+        QTimer.singleShot(80, self.update_image_sizes)
 
     def load_images(self, image_paths):
         self.image_paths = [Path(p) if isinstance(p, str) else p for p in image_paths]
@@ -853,6 +875,7 @@ class ImagePreviewDialog(QDialog):
             if widget:
                 widget.setParent(None)
 
+        self._apply_column_stretches()
         self.image_widgets.clear()
         self.cancelled = False
         self.cancel_button.setEnabled(True)
@@ -872,23 +895,49 @@ class ImagePreviewDialog(QDialog):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.update_image_sizes()
+        # Defer so the scroll-area's children have caught up with the new
+        # dialog size — running update_image_sizes synchronously here uses
+        # stale widths and leaves the initial paint wrong until a second
+        # resize. A small delay (vs singleShot(0)) covers cases where Qt's
+        # layout pass is queued behind our event.
+        QTimer.singleShot(30, self.update_image_sizes)
     
+    def _compute_card_dimensions(self):
+        """Return (column_width, image_width) for the current scroll-area size
+        and column count. Shared by create_image_widget (so cards paint at the
+        correct size from the first batch) and update_image_sizes (so column
+        changes / resizes recompute the same way)."""
+        sb_extent = self.scroll_area.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
+        frame = 2 * self.scroll_area.frameWidth()
+        spacing = self.grid_layout.spacing()
+        sa_width = self.scroll_area.width()
+        # Reserve scrollbar + frame + one extra "spacing" right-edge gutter.
+        # Use scroll_area.width() (outer) rather than viewport().width()
+        # because the latter shifts when the scrollbar appears mid-load.
+        available_width = max(1, sa_width - sb_extent - frame - spacing)
+        cols = max(1, self.columns)
+        column_width = max(1, (available_width - spacing * (cols - 1)) // cols)
+        image_width = max(1, column_width - 20)
+        return column_width, image_width
+
     def update_image_sizes(self):
         if not self.image_widgets:
             return
 
-        available_width = self.scroll_area.viewport().width()
-        actual_columns = min(self.columns, len(self.image_widgets))
-        image_width = available_width // actual_columns - 20
+        column_width, image_width = self._compute_card_dimensions()
 
-        for image_label, _, img_path in self.image_widgets:
+        for image_label, container, img_path in self.image_widgets:
             pixmap = self.get_pixmap_for_path(img_path)
             if pixmap and not pixmap.isNull():
                 image_label.setPixmap(pixmap.scaledToWidth(
                     image_width,
                     Qt.TransformationMode.SmoothTransformation
                 ))
+            # Constrain the card itself, otherwise the grid expands the
+            # container to its allocated column width while the border-wrapper
+            # inside stays at the image's natural width — leaving the
+            # whitespace-on-the-right artifact.
+            container.setMaximumWidth(column_width)
 
     def show_all_images(self):
         self.load_images(self.all_image_paths)
