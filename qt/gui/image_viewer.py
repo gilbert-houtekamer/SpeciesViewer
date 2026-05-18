@@ -881,6 +881,10 @@ class ImagePreviewDialog(QDialog):
             if px and not px.isNull():
                 sp = self.fpr.getSpeciesName(p.name) if self.fpr else ""
                 SingleImageViewer(self, p, px, sp).exec()
+                # Description may have changed; refresh the 📝 badge on this
+                # card and any sibling cards sharing the same UPN.
+                if self.fpr:
+                    self._refresh_cards_for_upn(p)
 
         border_wrapper.mousePressEvent = _open_fullscreen
         border_wrapper.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -939,7 +943,7 @@ class ImagePreviewDialog(QDialog):
 
         # Text label
         text_label = QLabel()
-        max_width = container.width() - 60
+        max_width = container.width() - 80
         max_chars = self.compute_max_chars(text_label, max_width)
         display_text = species_name or self.truncate_filename(img_path.name, max_chars)
         text_label.setText(display_text)
@@ -949,8 +953,16 @@ class ImagePreviewDialog(QDialog):
 
         info_layout.addWidget(text_label)
 
-        # GPS badge — green 📍 for "fixed in-session", red 📍 for "still
-        # missing", empty when the row has GPS. Set entirely by _apply_gps_badge.
+        # Description badge — 📝 when the file has a non-empty XMP:Description
+        # ("website-ready"), empty otherwise. Set entirely by _apply_desc_badge.
+        desc_badge = QLabel()
+        desc_badge.setObjectName("desc_badge")
+        desc_badge.setFixedSize(20, 20)
+        desc_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._apply_desc_badge(desc_badge, img_path)
+        info_layout.addWidget(desc_badge)
+
+        # GPS badge — 📍 (has GPS) / ❓ (missing GPS). Set by _apply_gps_badge.
         gps_badge = QLabel()
         gps_badge.setObjectName("gps_badge")
         gps_badge.setFixedSize(20, 20)
@@ -962,6 +974,38 @@ class ImagePreviewDialog(QDialog):
 
         return container, image_label, img_path
     
+    def _apply_desc_badge(self, desc_badge: QLabel, img_path: Path):
+        # 📝 = file has a non-empty XMP:Description ("website-ready").
+        # The description itself goes in the tooltip so the user can preview
+        # it without opening the full-screen viewer.
+        desc_badge.setStyleSheet("font-size: 14px;")
+        if not self.fpr:
+            desc_badge.setText("")
+            desc_badge.setToolTip("")
+            return
+        desc = self.fpr.getDescription(img_path.name)
+        if desc:
+            desc_badge.setText("📝")
+            desc_badge.setToolTip(desc)
+        else:
+            desc_badge.setText("")
+            desc_badge.setToolTip("")
+
+    def _refresh_cards_for_upn(self, source_path: Path):
+        """Refresh badge state on all visible cards sharing source_path's UPN.
+        Called after the full-screen viewer closes — description edits affect
+        every sibling row in the CSV, so the on-disk JPG twin's card should
+        also reflect the new 📝."""
+        if not self.fpr:
+            return
+        source_upn = self.fpr.fi.files_dict.get(source_path.name, {}).get("UniquePictureName")
+        if not source_upn:
+            return
+        for _img_label, container, img_path in self.image_widgets:
+            file_upn = self.fpr.fi.files_dict.get(img_path.name, {}).get("UniquePictureName")
+            if file_upn == source_upn:
+                self.refresh_image_status(container, img_path)
+
     def _apply_gps_badge(self, gps_badge: QLabel, img_path: Path):
         # 📍 = file has GPS (general indicator, like ✅ for species).
         # ❓ = file lacks GPS.
@@ -1001,6 +1045,7 @@ class ImagePreviewDialog(QDialog):
         status_icon = buttons[0]
         text_label = labels[0]
         gps_badge = info_row.findChild(QLabel, "gps_badge")
+        desc_badge = info_row.findChild(QLabel, "desc_badge")
 
         # Recompute status
         error_msg = self.fpr.getErrorMsg(img_path.name) if self.fpr else ""
@@ -1026,11 +1071,13 @@ class ImagePreviewDialog(QDialog):
             status_icon.setToolTip("")
 
         # Update label text
-        max_width = container.width() - 60
+        max_width = container.width() - 80
         max_chars = self.compute_max_chars(text_label, max_width)
         display_text = species_name or self.truncate_filename(img_path.name, max_chars)
         text_label.setText(display_text)
 
+        if desc_badge is not None:
+            self._apply_desc_badge(desc_badge, img_path)
         if gps_badge is not None:
             self._apply_gps_badge(gps_badge, img_path)
 
