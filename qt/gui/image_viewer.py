@@ -416,19 +416,29 @@ class ImagePreviewDialog(QDialog):
         path = Path(image_dir)
         raw_exts = {".nef", ".orf", ".cr2", ".arw", ".rw2", ".heic"}
         if self.mode == "jpg":
-            return sorted(
-                f for f in path.glob("*.jpg")
-                if not f.name.lower().endswith("-small.jpg")
-            )
+            files = [f for f in path.glob("*.jpg")
+                     if not f.name.lower().endswith("-small.jpg")]
         elif self.mode == "raw":
-            return sorted(f for f in path.iterdir() if f.suffix.lower() in raw_exts)
+            files = [f for f in path.iterdir() if f.suffix.lower() in raw_exts]
         elif self.mode == "all":
-            return sorted(
-                f for f in path.iterdir()
-                if f.suffix.lower() in raw_exts
-                or (f.suffix.lower() == ".jpg" and not f.name.lower().endswith("-small.jpg"))
-            )
-        return []
+            files = [f for f in path.iterdir()
+                     if f.suffix.lower() in raw_exts
+                     or (f.suffix.lower() == ".jpg" and not f.name.lower().endswith("-small.jpg"))]
+        else:
+            return []
+        # Sort by EXIF:DateTimeOriginal (lifted from the CSV) so iPhone HEIC /
+        # JPG pictures interleave with Olympus ORFs in capture-time order —
+        # essential for "borrow GPS from a temporally-adjacent neighbour".
+        # Files without a parseable capture time fall back to filename order.
+        return sorted(files, key=self._capture_time_key)
+
+    def _capture_time_key(self, path):
+        if self.fpr:
+            row = self.fpr.fi.files_dict.get(path.name, {})
+            dt = row.get("EXIF:DateTimeOriginal", "")
+            if dt:
+                return (0, dt, path.name)
+        return (1, "", path.name)
 
     def batch_extract_raw_thumbnails(self, paths):
         """Extract embedded JPEG previews for all non-cached RAW files in two ExifTool calls."""
