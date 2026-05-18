@@ -4,7 +4,7 @@ import logging
 import subprocess
 from pathlib import Path
 from PyQt6.QtWidgets import (
-    QApplication, QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy,
+    QApplication, QButtonGroup, QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy,
     QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog, QToolTip, QStyle)
 from PyQt6.QtGui import QPixmap, QImage, QFontMetrics, QIcon, QPalette, QGuiApplication
 from PyQt6.QtCore import Qt, QTimer, QSize
@@ -181,22 +181,26 @@ class ImagePreviewDialog(QDialog):
         # Create a horizontal layout for the spinner and the color filter bar
         controls_layout = QHBoxLayout()
 
-        # Warnings-only toggle (default on when metadata is available)
+        # Filter row — three mutually-exclusive toggles managed by a
+        # QButtonGroup. Buttons get disabled (greyed) when their filter would
+        # be empty, so a day with no warnings and no missing-GPS files shows
+        # two greyed icons at a glance — a clear "clean day" signal.
         self.warnings_only = False
+        self.no_gps_only = False
+        self.show_all = False
+
         self.warnings_btn = QPushButton("⚠️")
         self.warnings_btn.setFixedSize(24, 24)
         self.warnings_btn.setCheckable(True)
-        self.warnings_btn.setToolTip("Show only files with warnings")
+        self.warnings_btn.setToolTip("Show only files with incorrect species information")
         self.warnings_btn.setStyleSheet("""
             QPushButton { border: 2px solid #FFA500; border-radius: 4px; background: transparent; }
             QPushButton:checked { background: #FFA500; }
+            QPushButton:disabled { border-color: #CCCCCC; color: #BBBBBB; }
         """)
         self.warnings_btn.clicked.connect(self.on_warnings_toggled)
         controls_layout.addWidget(self.warnings_btn)
 
-        # No-GPS toggle: show only files whose CSV row lacks GPS coordinates.
-        # Useful for finding pictures to fix in Lightroom.
-        self.no_gps_only = False
         self.no_gps_btn = QPushButton("📍")
         self.no_gps_btn.setFixedSize(24, 24)
         self.no_gps_btn.setCheckable(True)
@@ -204,9 +208,29 @@ class ImagePreviewDialog(QDialog):
         self.no_gps_btn.setStyleSheet("""
             QPushButton { border: 2px solid #C0392B; border-radius: 4px; background: transparent; }
             QPushButton:checked { background: #F5B7B1; }
+            QPushButton:disabled { border-color: #CCCCCC; color: #BBBBBB; }
         """)
         self.no_gps_btn.clicked.connect(self.on_no_gps_toggled)
         controls_layout.addWidget(self.no_gps_btn)
+
+        self.all_btn = QPushButton("All")
+        self.all_btn.setFixedSize(40, 24)
+        self.all_btn.setCheckable(True)
+        self.all_btn.setToolTip("Show all images")
+        self.all_btn.setStyleSheet("""
+            QPushButton { border: 2px solid #3498DB; border-radius: 4px; background: transparent; }
+            QPushButton:checked { background: #AED6F1; }
+        """)
+        self.all_btn.clicked.connect(self.on_all_toggled)
+        controls_layout.addWidget(self.all_btn)
+
+        # Radio-style: exactly one of the three is active. Clicking the active
+        # button does nothing; clicking another switches.
+        self._filter_group = QButtonGroup(self)
+        self._filter_group.setExclusive(True)
+        self._filter_group.addButton(self.warnings_btn)
+        self._filter_group.addButton(self.no_gps_btn)
+        self._filter_group.addButton(self.all_btn)
 
         # ColorFilterBar instance (assuming you have one)
         self.color_filter_bar = ColorFilterBar(on_filter_changed=self.on_filter_changed)
@@ -249,15 +273,50 @@ class ImagePreviewDialog(QDialog):
         # Pre-extract thumbnails for all non-cached RAW files in one batch call
         self.batch_extract_raw_thumbnails(self.all_image_paths)
 
-        # Default to warnings-only when metadata is available
-        if self.fpr:
-            self.warnings_only = True
+        # Cascade: warnings if any → no-GPS if any → all. Disable buttons
+        # whose filter has no hits so the user can see at a glance whether
+        # this day has any open issues.
+        warnings_paths = self.get_warnings_paths() if self.fpr else []
+        no_gps_paths = self.get_no_gps_paths() if self.fpr else []
+
+        if self.fpr and not warnings_paths:
+            self.warnings_btn.setEnabled(False)
+        if self.fpr and not no_gps_paths:
+            self.no_gps_btn.setEnabled(False)
+        if not self.fpr:
+            # Without metadata, the filter distinctions don't apply.
+            self.warnings_btn.setEnabled(False)
+            self.no_gps_btn.setEnabled(False)
+
+        if self.fpr and warnings_paths:
+            self._active_filter = "warnings"
             self.warnings_btn.setChecked(True)
-            initial_paths = self.get_warnings_paths()
+            self.warnings_only = True
+            initial_paths = warnings_paths
+        elif self.fpr and no_gps_paths:
+            self._active_filter = "no_gps"
+            self.no_gps_btn.setChecked(True)
+            self.no_gps_only = True
+            initial_paths = no_gps_paths
+        elif self.fpr:
+            # Clean day — both filters greyed. Don't auto-load (340 images
+            # would be hard to cancel); require an explicit "All" click.
+            self._active_filter = None
+            initial_paths = None
         else:
+            # No metadata — filter buttons don't apply, just show everything.
+            self._active_filter = "all"
+            self.all_btn.setChecked(True)
+            self.show_all = True
             initial_paths = self.all_image_paths
 
-        QTimer.singleShot(0, lambda: self.load_images(initial_paths))
+        self._update_title_for_filter()
+        if initial_paths is not None:
+            QTimer.singleShot(0, lambda: self.load_images(initial_paths))
+        else:
+            # Nothing to load yet — close the modal "preparing preview" dialog
+            # so the user can click the All button.
+            self.wait_dialog.close()
 
         QApplication.instance().applicationStateChanged.connect(
             self._on_application_state_changed
@@ -316,13 +375,14 @@ class ImagePreviewDialog(QDialog):
         return [p for p in self.all_image_paths if self.fpr.getErrorMsg(p.name)]
 
     def on_warnings_toggled(self):
-        self.warnings_only = self.warnings_btn.isChecked()
-        if self.warnings_only:
-            self.no_gps_btn.setChecked(False)
-            self.no_gps_only = False
-            self.load_images(self.get_warnings_paths())
-        else:
-            self.load_images(self.all_image_paths)
+        if not self.warnings_btn.isChecked():
+            return  # exclusive group prevents this; defensive
+        self._active_filter = "warnings"
+        self.warnings_only = True
+        self.no_gps_only = False
+        self.show_all = False
+        self._update_title_for_filter()
+        self.load_images(self.get_warnings_paths())
 
     def _row_has_gps(self, filename):
         if not self.fpr:
@@ -336,13 +396,43 @@ class ImagePreviewDialog(QDialog):
         return [p for p in self.all_image_paths if not self._row_has_gps(p.name)]
 
     def on_no_gps_toggled(self):
-        self.no_gps_only = self.no_gps_btn.isChecked()
-        if self.no_gps_only:
-            self.warnings_btn.setChecked(False)
-            self.warnings_only = False
-            self.load_images(self.get_no_gps_paths())
+        if not self.no_gps_btn.isChecked():
+            return
+        self._active_filter = "no_gps"
+        self.warnings_only = False
+        self.no_gps_only = True
+        self.show_all = False
+        self._update_title_for_filter()
+        self.load_images(self.get_no_gps_paths())
+
+    def on_all_toggled(self):
+        if not self.all_btn.isChecked():
+            return
+        self._active_filter = "all"
+        self.warnings_only = False
+        self.no_gps_only = False
+        self.show_all = True
+        self._update_title_for_filter()
+        self.load_images(self.all_image_paths)
+
+    def _update_title_for_filter(self):
+        base = f"Species Image Preview ({self._viewer_label})"
+        if not self.fpr:
+            self.setWindowTitle(base)
+            return
+        warnings_count = len(self.get_warnings_paths())
+        no_gps_count = len(self.get_no_gps_paths())
+        total = len(self.all_image_paths)
+        if self._active_filter == "warnings":
+            suffix = f"{warnings_count} warning{'s' if warnings_count != 1 else ''}"
+        elif self._active_filter == "no_gps":
+            suffix = f"{no_gps_count} missing GPS"
+        elif self._active_filter == "all":
+            suffix = f"all {total} pictures"
         else:
-            self.load_images(self.all_image_paths)
+            # No filter active — clean day waiting for explicit All click.
+            suffix = f"clean day — click All to view {total} pictures"
+        self.setWindowTitle(f"{base} — {suffix}")
 
     def _refresh_no_gps_from_disk(self):
         """Re-read GPS for currently-visible no-GPS images and refresh the
@@ -589,7 +679,7 @@ class ImagePreviewDialog(QDialog):
 
     def on_column_changed(self, value):
         self.columns = value
-        self.setWindowTitle(f"Species Image Preview ({self._viewer_label})")
+        self._update_title_for_filter()
         self.rebuild_grid()
         # Defer one event-loop tick so the scroll-area viewport reports its
         # post-rebuild width — otherwise the first spinner change uses stale
@@ -885,6 +975,8 @@ class ImagePreviewDialog(QDialog):
             self.wait_dialog.close()
             if self.warnings_only:
                 QMessageBox.information(self, "No Warnings", "All provided species information is correct.")
+            elif self.no_gps_only:
+                QMessageBox.information(self, "No Missing GPS", "All pictures have GPS coordinates.")
             else:
                 QMessageBox.warning(self, "No Images", "No image files found, or none selected, in this directory.")
             return
