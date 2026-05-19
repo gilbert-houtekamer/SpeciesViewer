@@ -1059,7 +1059,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QLabel, QLineEdit,
     QTextEdit, QFormLayout, QPushButton, QHBoxLayout, QSpinBox
 )
-from configparser import ConfigParser
+from configparser import ConfigParser, RawConfigParser
 from pathlib import Path
 
 class CreateBlogDialog(QDialog):
@@ -1070,7 +1070,9 @@ class CreateBlogDialog(QDialog):
 
         self.menu_spec = menu_spec
         self.ini_path = Path(_config["project"]["picturedirectory"]) / "blog.ini"
-        self.parser = ConfigParser()
+        # RawConfigParser disables %-interpolation so prose like "40% less"
+        # in blog text doesn't trip InvalidInterpolationError.
+        self.parser = RawConfigParser()
         self.passed_parent = parent 
         self.logger = parent.logger
 
