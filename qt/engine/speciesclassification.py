@@ -37,6 +37,29 @@ class SpeciesClassification:
                     'male', 'man', 'female', 'vrouw', 'couple', 'paar', 'paartje', 
                     'summer', 'zomer', 'winter', 'breeding', 'non-breeding']
 
+    # Marker keywords for non-species "blog extras": landscapes, context shots,
+    # the birding group, etc. A photo carrying one of these (and no resolvable
+    # species) belongs in the day blog but has no taxon. Kept in sync with
+    # ghexif/speciesclassification.py. See isBlogExtra().
+    LANDSCAPE_KEYWORDS = {'landscape', 'landschap'}
+
+    @classmethod
+    def _subject_tokens(cls, subject):
+        """Split a stored XMP:Subject into lowercase tokens. Handles both a
+        bare keyword ("landschap") and a list-repr ("['robin', 'landscape']")."""
+        s = str(subject).strip()
+        if s.startswith('[') and s.endswith(']'):
+            s = s[1:-1]
+        return [t.strip().strip("'\"").lower() for t in s.split(',') if t.strip()]
+
+    @classmethod
+    def isBlogExtra(cls, subject):
+        """True if the subject marks a non-species blog extra (landscape /
+        context photo)."""
+        if not subject:
+            return False
+        return any(t in cls.LANDSCAPE_KEYWORDS for t in cls._subject_tokens(subject))
+
 
     def __init__(self, MyProject):
         if MyProject != None:
@@ -323,7 +346,7 @@ class SpeciesClassification:
         scientificname = ''
         if LookUpInGBIF:
             timesoort = time.time()
-        if subject == "" or subject in self.DUMMYSPECIES:
+        if subject == "" or subject in self.DUMMYSPECIES or subject in self.LANDSCAPE_KEYWORDS:
             return ""
         elif subject in self.sc_dict:
             return self.sc_dict[subject]['ScientificName']
@@ -373,7 +396,7 @@ class SpeciesClassification:
                     if not subjects:
                         continue
                     # categories are interpreted as Aves etc, avoid this
-                    if subjects.lower() not in self.DUMMYSPECIES:
+                    if subjects.lower() not in self.DUMMYSPECIES and subjects.lower() not in self.LANDSCAPE_KEYWORDS:
                         scientificname = self.getKnownSpecies(subjects, True, LookUpInGBIF)
                         if scientificname != "":
                             # if self.SpeciesDebug > 8:

@@ -738,7 +738,13 @@ class Project:
                     subject_in_jpg = thisfile['IPTC:Keywords']                    
                 if subject_in_jpg != "":
                     scientificname = sp.getSpecies(subject_in_jpg)
-                    if scientificname == "":       
+                    if (scientificname == "" or scientificname is None) and self.sc.isBlogExtra(subject_in_jpg):
+                        # Non-species blog extra (landscape/context photo):
+                        # belongs in the day blog but carries no taxon, so it
+                        # must not warn about an unrecognized species.
+                        picture['errormessage'] = ""
+                        continue
+                    if scientificname == "":
                         logger.warning(f"""The species "{subject_in_jpg}" is not found in the GBIF database as a scientific name for "{upn['UniquePictureName']}".""")
                         picture['errormessage'] = f"""The species "{subject_in_jpg}" is not found in the GBIF database as a scientific name for "{upn['UniquePictureName']}"."""
                     elif scientificname == None:
