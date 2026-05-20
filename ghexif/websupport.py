@@ -412,6 +412,17 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 phylum_local = MyProject.getSpecies(class_local['Up'])
                 kingdom_local = MyProject.getSpecies(phylum_local['Up'])
     _obscure = family_local.get('ScientificName', '').lower() in OBSCURE_FAMILIES
+    # A blog-extra card (landscape/context photo) has a picture but no species;
+    # its title slot shows the XMP:Headline instead of a taxon name. The body
+    # (Description, settings, "shows the environment" prose) is handled by the
+    # existing no-kingdom branches of tokens 41/42/111/112.
+    is_blog_extra = species_param is None and picture is not None
+    if is_blog_extra and tokenno in (25, 36, 37, 125):
+        headline = picture.get('Headline', '') or ''
+        if tokenno == 125:
+            # 3-line title slot — headline only, padded for consistent card height
+            return headline + "<br>&nbsp;<br>&nbsp;"
+        return headline
     try:
         # orders
         if tokenno == 1:   
@@ -741,6 +752,13 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 selected_dict = {}
                 excluded = addSpeciesToSummaryPost(MyProject, species_param['ScientificName'], selected_dict)
                 MyProject.Blog.excluded_species = excluded
+                # also fold in non-species "blog extras" (landscape/context
+                # photos) for the full day post — they have no taxon so the
+                # species-tree walk above never reaches them. Only for the
+                # whole-day blog (root group); a narrower group filter like
+                # "aves" excludes landscapes, which belong to no group.
+                if MyProject.Blog.getSelectedSpeciesGroup() in ("", "biota"):
+                    collectBlogExtras(MyProject, selected_dict)
                 # step 2: sort by time taken picture
                 time_sorted_dict = dict(sorted(selected_dict.items(), key=itemgetter(1)))            
                 # step 3: generate the webpage
@@ -760,11 +778,9 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             if picture['Description'] != "":
                 if picture['Description'][0:1] == "#":
                     suppressnames = True
-            workstr =  ""             
-            if kingdom_local == {}:
-                workstr += "De foto toont de omgeving." 
-            else:
-                # species and relationship
+            workstr =  ""
+            # species and relationship (skipped for non-species blog extras)
+            if kingdom_local != {}:
                 if not (species_local['ScientificName'][0:5] == "homo " or suppressnames):
                     workstr += "De foto toont een "
                     sci_nl = formatSubspecies(species_local['ScientificName'].strip('0123456789 ')).capitalize()
@@ -778,9 +794,9 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                         if class_local['ScientificName'] == "aves":
                             workstr += "vogel"
                         elif class_local['ScientificName'] == "insecta":
-                            workstr += "insect" 
-                        else:                
-                            workstr += "dier" 
+                            workstr += "insect"
+                        else:
+                            workstr += "dier"
                     elif kingdom_local['ScientificName'] == "fungi":
                         workstr += "schimmel"
                     else:
@@ -794,30 +810,29 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     workstr += "</i> en de familie <i>"
                     workstr = makeLinkScienticficName(MyProject, BiotaWebRoot, family_local, workstr)
                     workstr +=  "</i>."
-                # location                    
-                try:
-                    parsed_date = getJPGtime(file, MyProject)
-                    workstr += " De foto is genomen"
-                    if getFormattedLocation(picture, _obscure) != "":
-                        workstr += " bij " + getFormattedLocation(picture, _obscure)
-                    if parsed_date.strftime('%H:%M') not in ["","00:00"]:
-                        workstr += " om " + parsed_date.strftime('%H:%M') 
-                    if parsed_date.strftime('%d %b, %Y') != "":                        
-                        workstr +=  " op " + parsed_date.strftime('%d %b, %Y')  + "."
-                except:
-                    logger.info(f'Location or date error for {file["File:FileName"]}: Location  {file["EXIF:DateTimeOriginal"]} and  {file["IPTC:Keywords"]}')
-                    pass
-            return workstr        
+            # location/date — runs for species AND blog extras, so a landscape
+            # gets the real place/time instead of "De foto toont de omgeving."
+            try:
+                parsed_date = getJPGtime(file, MyProject)
+                workstr += " De foto is genomen"
+                if getFormattedLocation(picture, _obscure) != "":
+                    workstr += " bij " + getFormattedLocation(picture, _obscure)
+                if parsed_date.strftime('%H:%M') not in ["","00:00"]:
+                    workstr += " om " + parsed_date.strftime('%H:%M')
+                if parsed_date.strftime('%d %b, %Y') != "":
+                    workstr +=  " op " + parsed_date.strftime('%d %b, %Y')  + "."
+            except:
+                logger.info(f'Location or date error for {file["File:FileName"]}: Location  {file["EXIF:DateTimeOriginal"]} and  {file["IPTC:Keywords"]}')
+                pass
+            return workstr.strip()
         elif tokenno == 112:         # Engelse tekst
             suppressnames = False
             if picture['Description'] != "":
                 if picture['Description'][0:1] == "#":
                     suppressnames = True
-            workstr =  ""   
-            if kingdom_local == {}:
-                workstr = "The photo shows the environment." 
-            else:
-                # species and relationship
+            workstr =  ""
+            # species and relationship (skipped for non-species blog extras)
+            if kingdom_local != {}:
                 if not (species_local['ScientificName'][0:5] == "homo " or suppressnames):
                     workstr = "The photo shows a "
                     sci_en = formatSubspecies(species_local['ScientificName'].strip('0123456789 ')).capitalize()
@@ -831,9 +846,9 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                         if class_local['ScientificName'] == "aves":
                             workstr += "bird"
                         elif class_local['ScientificName'] == "insecta":
-                            workstr += "insect" 
-                        else:                
-                            workstr += "animal" 
+                            workstr += "insect"
+                        else:
+                            workstr += "animal"
                     elif kingdom_local['ScientificName'] == "fungi":
                         workstr += "fungus"
                     else:
@@ -847,19 +862,20 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     workstr += "</i> and the family <i>"
                     workstr = makeLinkScienticficName(MyProject, BiotaWebRoot, family_local, workstr)
                     workstr +=  "</i>."
-                # location
-                try:
-                    parsed_date = getJPGtime(file, MyProject) 
-                    workstr += " The photo was taken"
-                    if getFormattedLocation(picture, _obscure) != "":
-                        workstr += " at " + getFormattedLocation(picture, _obscure)
-                    if parsed_date.strftime('%H:%M') not in ["","00:00"]:
-                        workstr += " at " + parsed_date.strftime('%H:%M') 
-                    if parsed_date.strftime('%A %B %d, %Y') != "":
-                        workstr += " on " + parsed_date.strftime('%A %B %d, %Y')  + "."
-                except:
-                    pass
-            return workstr    
+            # location/date — runs for species AND blog extras, so a landscape
+            # gets the real place/time instead of "The photo shows the environment."
+            try:
+                parsed_date = getJPGtime(file, MyProject)
+                workstr += " The photo was taken"
+                if getFormattedLocation(picture, _obscure) != "":
+                    workstr += " at " + getFormattedLocation(picture, _obscure)
+                if parsed_date.strftime('%H:%M') not in ["","00:00"]:
+                    workstr += " at " + parsed_date.strftime('%H:%M')
+                if parsed_date.strftime('%A %B %d, %Y') != "":
+                    workstr += " on " + parsed_date.strftime('%A %B %d, %Y')  + "."
+            except:
+                pass
+            return workstr.strip()
         elif tokenno == 114:
             return MyProject.getBiotaBlogLanguageSwitch().lower()
         elif tokenno == 115:
@@ -1396,11 +1412,33 @@ def collectBestJPGs(MyProject, species_scientific_name, selected_species):
         logger.warning(f"collectBestJPGs('{species_scientific_name}') failed: {e}")
     return
 
+def collectBlogExtras(MyProject, selected_species):
+    """Add non-species "blog extras" (landscape/context photos) to the day's
+    summary post. They carry no taxon, so addSpeciesToSummaryPost's tree walk
+    never reaches them. Key each by capture time (like collectBestJPGs) so they
+    interleave chronologically with the species cards."""
+    # Local import avoids a module-load cycle (projectlib <-> websupport).
+    from ghexif.speciesclassification import SpeciesClassification
+    try:
+        for upn_item in MyProject.UniquePictureName_dict.values():
+            if upn_item['BestJPG'] == "":
+                continue
+            if not SpeciesClassification.isBlogExtra(upn_item['subject']):
+                continue
+            if MyProject.Blog.from_time <= upn_item['DateTimeOriginal'] <= MyProject.Blog.last_time:
+                selected_species[upn_item['BestJPG']] = upn_item['DateTimeOriginal']
+    except Exception as e:
+        logger.warning(f"collectBlogExtras failed: {e}")
+    return
+
 def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
     try:
         filedata = MyProject.files_dict[jpgname]
         picturedata = MyProject.UniquePictureName_dict[filedata['UniquePictureName']]
-        species = MyProject.sp.species_dict[picturedata['WetSoortNaam']]
+        # Blog extras have no taxon: render with species=None so the card
+        # template falls back to Headline/Description and the environment text.
+        wetname = picturedata['WetSoortNaam']
+        species = MyProject.sp.species_dict.get(wetname) if wetname else None
         MyProject.Blog.addBestJPG(filedata)
         # print(f"Picture {picturedata['NLSoortNaam']} {picturedata['UniquePictureName']} {picturedata['Description']}")
         for rawline in MyProject.getTemplateLines(templatehtml):
@@ -1411,7 +1449,7 @@ def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
         #print(f'from {sourcestr} to {targetstr}')
         if not MyProject.getSkipJPGs():
             shutil.copy(sourcestr, targetstr)
-            if isObscure(MyProject, species):
+            if species is not None and isObscure(MyProject, species):
                 result = subprocess.run(['exiftool', '-GPS:all=', '-overwrite_original', targetstr],
                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 if '1 image files updated' in result.stdout:
@@ -1420,7 +1458,10 @@ def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
                     logger.warning(f"GPS strip failed for {targetstr}: {result.stdout.strip()} {result.stderr.strip()}")
             jpgResizeCopy(targetstr, horizontalsize = 600)
         if MyProject.getLanguage() == 'en':
-            logger.info(f"Rated {species['currentHighestRating']:3}  {species['EnglishName']:32}  Species path {species['TargetPath']}")
+            if species is not None:
+                logger.info(f"Rated {species['currentHighestRating']:3}  {species['EnglishName']:32}  Species path {species['TargetPath']}")
+            else:
+                logger.info(f"Blog extra        {picturedata.get('Headline', ''):32}  {filedata['File:FileName']}")
     except Exception as e:
         logger.warning(f"addOneSpeciesJPG failed for '{jpgname}': {e}")
     return textCreated

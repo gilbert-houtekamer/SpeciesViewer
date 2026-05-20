@@ -133,10 +133,17 @@ def AppendChangedFileData(MyProject, firstNewFile):
     os.makedirs(MyProject.ReviewFrozen(), exist_ok=True)    
     shutil.copy(existing_file_data, datafilename)
     # Copy existing file data, now add other file records
+    SC = ghexif.speciesclassification.SpeciesClassification
     with open(datafilename, 'a', newline='', encoding='utf-8') as frozencsv:
-        writer = csv.DictWriter(frozencsv, fieldnames=COLUMN_NAMES.values(), quoting=csv.QUOTE_MINIMAL,  delimiter=';')        
+        writer = csv.DictWriter(frozencsv, fieldnames=COLUMN_NAMES.values(), quoting=csv.QUOTE_MINIMAL,  delimiter=';')
         for filespec in list(MyProject.files_dict.values())[firstNewFile:]:
             upn = filespec['UniquePictureName']
+            # Non-species "blog extras" (landscape/context photos) are not
+            # committed to the master: they live only in the trip and in the
+            # blog's own copy. Skip their file records here.
+            extra_picture = MyProject.UniquePictureName_dict.get(upn)
+            if extra_picture is not None and SC.isBlogExtra(extra_picture['subject']):
+                continue
             targetpath = MyProject.UniquePictureName_dict[upn]['TargetPath']
             # save for future situation (after move)
             wfn = filespec['WindowsFileName'] 
@@ -157,13 +164,23 @@ def AppendChangedPictureData(MyProject, firstNewPicture):
     existing_picture_data = os.path.join(MyProject.getMetaDir(), 'active', 'data_pictures.csv')
     picturename = os.path.join(MyProject.ReviewFrozen(), "frozen_data_pictures.csv")     # the base our data
     shutil.copy(existing_picture_data, picturename)
+    SC = ghexif.speciesclassification.SpeciesClassification
+    written = 0
+    extras_skipped = 0
     with open(picturename, 'a', newline='', encoding='utf-8') as frozencsv:
-        ordered_fieldnames = OrderedDict((field, None) for field in PICTURE_FIELDS)                 
+        ordered_fieldnames = OrderedDict((field, None) for field in PICTURE_FIELDS)
         writer = csv.DictWriter(frozencsv, fieldnames=ordered_fieldnames, quoting=csv.QUOTE_MINIMAL,  delimiter=';')
         for picture in list(MyProject.UniquePictureName_dict.values())[firstNewPicture:]:
+            # Blog extras (landscape/context photos) stay out of the master.
+            if SC.isBlogExtra(picture['subject']):
+                extras_skipped += 1
+                continue
             writer.writerow(picture)
-            
-    logger.info(f'Data from {len(MyProject.UniquePictureName_dict)-firstNewPicture} pictures added, total {len(MyProject.UniquePictureName_dict)} now written to {picturename}')
+            written += 1
+
+    if extras_skipped:
+        logger.info(f'{extras_skipped} blog-extra (landscape) pictures excluded from the master collection.')
+    logger.info(f'Data from {written} pictures added, total {len(MyProject.UniquePictureName_dict)} now written to {picturename}')
     return
 
 def writeDeleteList(deletelistfilename):
