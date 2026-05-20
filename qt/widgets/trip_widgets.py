@@ -256,6 +256,10 @@ class LabeledTextFieldQt(QWidget):
 
         if multiline:
             self.field = QTextEdit(self)
+            # Plain-text only: text is stored in .ini files, so a browser
+            # paste carrying HTML styling would both look wrong and break
+            # INI parsing. setAcceptRichText(False) strips formatting on paste.
+            self.field.setAcceptRichText(False)
             self.field.setPlainText(value)
         else:
             self.field = QLineEdit(self)

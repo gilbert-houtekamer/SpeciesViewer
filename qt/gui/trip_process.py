@@ -1201,6 +1201,7 @@ class CreateBlogDialog(QDialog):
         )
         self.title_nl = QLineEdit(self.parser.get("blog_text", "titel_nl", fallback=""))
         self.message_nl = QTextEdit(self.parser.get("blog_text", "message_nl", fallback=""))
+        self.message_nl.setAcceptRichText(False)  # plain text — stored in blog.ini
 
         form.addRow("", self.translate_button)
         form.addRow("", self.info_html)
@@ -1218,6 +1219,7 @@ class CreateBlogDialog(QDialog):
         self.translate_button.clicked.connect(self.translate_dutch_to_english)        
         self.title_en = QLineEdit(self.parser.get("blog_text", "titel_en", fallback=""))
         self.message_en = QTextEdit(self.parser.get("blog_text", "message_en", fallback=""))
+        self.message_en.setAcceptRichText(False)  # plain text — stored in blog.ini
 
         form.addRow("", self.translate_button)
         form.addRow("Title (EN):", self.title_en)
