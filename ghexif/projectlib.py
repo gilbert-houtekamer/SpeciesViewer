@@ -622,6 +622,7 @@ class Project:
             "BestJPGPathName":  "",                
             "TargetPath":       "",
             "Description":      "",
+            "Headline":         "",
             "DateTimeOriginal": "",
             "malefemale":       "",
             "ageintext":        "",
@@ -660,6 +661,7 @@ class Project:
         upn["Settings"] = self.findRawOrJPGItem(files, "EXIF:ExposureTime") + " sec at F" + self.findRawOrJPGItem(files, "EXIF:FNumber")  \
                 + ", ISO " + self.findRawOrJPGItem(files, "EXIF:ISO") + ", distance " + self.getDistance(files)
         upn["Description"] =       self.findXMPItem(files, "XMP:Description")
+        upn["Headline"] =          self.findXMPItem(files, "XMP:Headline")
         if upn["DateTimeOriginal"] == "": upn["DateTimeOriginal"] =  self.findRawOrJPGItem(files, "EXIF:DateTimeOriginal")
         
         if upn["GPSAltitude"] == "undef": 

@@ -57,7 +57,8 @@ COLUMN_NAMES = {
     "-subject": "XMP:Subject",
     "-keywords": "IPTC:Keywords",
     "-DateTimeOriginal": "EXIF:DateTimeOriginal",
-    "-description": "XMP:Description",    
+    "-description": "XMP:Description",
+    "-XMP:Headline": "XMP:Headline",
 }
 
 # below for documentation only, can be obtained from 
@@ -112,7 +113,8 @@ DATA_FILE_FIELDS = [
     "XMP:Subject",
     "IPTC:Keywords",
     "EXIF:DateTimeOriginal",
-    "XMP:Description"
+    "XMP:Description",
+    "XMP:Headline"
 ]
 
 SPECIES_FIELDS = [
@@ -170,10 +172,11 @@ PICTURE_FIELDS = [
     "BestJPGPathName",
     "TargetPath",
     "Description",
+    "Headline",
     "Files",
     "DateTimeOriginal",
     "malefemale",
     "ageintext",
     "summerwinter",
-    "errormessage",  
+    "errormessage",
 ]

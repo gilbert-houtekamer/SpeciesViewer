@@ -52,7 +52,8 @@ DATA_FILE_FIELDS = [
     "XMP:Subject",
     "IPTC:Keywords",
     "EXIF:DateTimeOriginal",
-    "XMP:Description"
+    "XMP:Description",
+    "XMP:Headline"
 ]
 
 SPECIES_FIELDS = [
@@ -110,6 +111,7 @@ PICTURE_FIELDS = [
     "BestJPGPathName",
     "TargetPath",
     "Description",
+    "Headline",
     "Files",
     "DateTimeOriginal",
     "malefemale",
