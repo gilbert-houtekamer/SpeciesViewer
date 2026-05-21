@@ -316,6 +316,11 @@ def getAltTextForJPG(MyProject, jpgname):
     try:
         jpgobj = MyProject.files_dict[jpgname]
         upn = MyProject.UniquePictureName_dict[jpgobj['UniquePictureName']]
+        # Blog extras (landscape/context photos) have no taxon: show the
+        # Headline as the slider title instead of the " /  / " artifact three
+        # blank species names would produce.
+        if upn['WetSoortNaam'] == "":
+            return upn.get('Headline', '').replace('"', '&quot;')
         sci_display = upn['WetSoortNaam'].replace(' ', '&nbsp;').replace('-', '&#8209;').capitalize()
         # Link the scientific name to the species page when it exists in the
         # trip. The alt attribute is double-quoted in the enclosing HTML, so
@@ -331,6 +336,20 @@ def getAltTextForJPG(MyProject, jpgname):
     except:
         names = ""
     return names
+
+def getDescriptionText(MyProject, picture):
+    """The picture's Description, '#'-stripped and translated to the current
+    language (same handling as blog token 41). '' when there is none. Used by
+    the blog card body and the slider caption so both stay consistent."""
+    if not picture or picture.get('Description', '') == "":
+        return ""
+    text = picture['Description']
+    if text[0:1] == "#":
+        text = text[1:]
+    try:
+        return MyProject.ct.getOneLanguage(text, MyProject.getLanguage())
+    except Exception:
+        return text
 
 def getCameraSettings(MyProject, picture):
     if picture:
@@ -1093,11 +1112,15 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             workstr = ""            
             for jpgname in MyProject.Blog.BestJPGs:
                 picture = MyProject.UniquePictureName_dict[MyProject.files_dict[jpgname]['UniquePictureName']]
+                # Description shown below the title for both species and blog
+                # extras; '&quot;' so it can't terminate the alt="" attribute.
+                desc = getDescriptionText(MyProject, picture)
+                desc_html = ('<p>' + desc.replace('"', '&quot;') + '</p>') if desc else ''
                 workstr += '        <div class="column">\n'
                 workstr += '            <img class="demo cursor" src="' + MyProject.Blog.blogday + '/' + jpgname.replace('.jpg', '-small.jpg')  + '" style="width:100%"\n'
-                workstr += '                 onclick="currentSlide(' + str(count) + ')" alt="<h3>' + getAltTextForJPG(MyProject, jpgname) +  '</h3>' + getCameraSettings(MyProject, picture) + '">\n'
+                workstr += '                 onclick="currentSlide(' + str(count) + ')" alt="<h3>' + getAltTextForJPG(MyProject, jpgname) +  '</h3>' + desc_html + getCameraSettings(MyProject, picture) + '">\n'
                 workstr += '        </div>\n'
-                count += 1                  
+                count += 1
             return workstr
         elif tokenno == 162:
             pictures = len(MyProject.Blog.BestJPGs)
