@@ -377,11 +377,19 @@ def getCameraSettings(MyProject, picture):
         elif picture['JPGSize'] in ['3024x4032','4032x3024']:
             workstr += 'Apple iPhone'        
         if picture['Settings'] != ' sec at F, ISO , distance ':
+            # Settings is built as "<exp> sec at F<f>, ISO <iso>, distance <dist>".
+            # Split off the distance so we can (a) drop the clause entirely when
+            # the camera reports none (e.g. iPhone, which leaves it empty) and
+            # (b) glue the value to its unit with a non-breaking space so
+            # "2.59 m" never wraps across lines.
+            settings, _, dist = picture['Settings'].partition(', distance ')
+            dist = dist.strip()
+            if dist and dist != 'inf':
+                settings += ', distance ' + dist.replace(' m', '&nbsp;m')
+            if language != "en":
+                settings = settings.replace('at ', ' bij ').replace('distance', 'afstand')
             if workstr != "": workstr += ", "
-            if language == "en":
-                workstr += picture['Settings']
-            else:
-                workstr += picture['Settings'].replace('at ',' bij ').replace('distance','afstand')
+            workstr += settings
         return workstr
     else: 
         return ""  
