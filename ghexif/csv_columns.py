@@ -111,11 +111,16 @@ PICTURE_FIELDS = [
     "BestJPGPathName",
     "TargetPath",
     "Description",
-    "Headline",
     "Files",
     "DateTimeOriginal",
     "malefemale",
     "ageintext",
     "summerwinter",
-    "errormessage"
+    "errormessage",
+    # Headline is kept LAST on purpose: blog extras (the only pictures that
+    # carry a Headline) are excluded from the master, and the master's
+    # data_pictures.csv header predates this column. A trailing column drifts
+    # off the end harmlessly on read-back instead of shifting Files /
+    # DateTimeOriginal under the wrong header names.
+    "Headline"
 ]

@@ -172,11 +172,15 @@ PICTURE_FIELDS = [
     "BestJPGPathName",
     "TargetPath",
     "Description",
-    "Headline",
     "Files",
     "DateTimeOriginal",
     "malefemale",
     "ageintext",
     "summerwinter",
     "errormessage",
+    # Headline LAST on purpose — keep in sync with ghexif/csv_columns.py.
+    # Blog extras (the only Headline carriers) are excluded from the master,
+    # so a trailing column drifts off the stale master header harmlessly
+    # rather than shifting Files / DateTimeOriginal under wrong header names.
+    "Headline",
 ]
