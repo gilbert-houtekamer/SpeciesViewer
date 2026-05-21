@@ -317,10 +317,10 @@ def getAltTextForJPG(MyProject, jpgname):
         jpgobj = MyProject.files_dict[jpgname]
         upn = MyProject.UniquePictureName_dict[jpgobj['UniquePictureName']]
         # Blog extras (landscape/context photos) have no taxon: show the
-        # Headline as the slider title instead of the " /  / " artifact three
-        # blank species names would produce.
+        # (translated) Headline as the slider title instead of the " /  / "
+        # artifact three blank species names would produce.
         if upn['WetSoortNaam'] == "":
-            return upn.get('Headline', '').replace('"', '&quot;')
+            return getHeadlineText(MyProject, upn).replace('"', '&quot;')
         sci_display = upn['WetSoortNaam'].replace(' ', '&nbsp;').replace('-', '&#8209;').capitalize()
         # Link the scientific name to the species page when it exists in the
         # trip. The alt attribute is double-quoted in the enclosing HTML, so
@@ -350,6 +350,17 @@ def getDescriptionText(MyProject, picture):
         return MyProject.ct.getOneLanguage(text, MyProject.getLanguage())
     except Exception:
         return text
+
+def getHeadlineText(MyProject, picture):
+    """The picture's Headline translated to the current language. Blog extras
+    use it as the card/slider title, so it needs the same getOneLanguage
+    treatment as the Description (entered in one language, shown in both)."""
+    if not picture or picture.get('Headline', '') == "":
+        return ""
+    try:
+        return MyProject.ct.getOneLanguage(picture['Headline'], MyProject.getLanguage())
+    except Exception:
+        return picture['Headline']
 
 def getCameraSettings(MyProject, picture):
     if picture:
@@ -437,7 +448,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
     # existing no-kingdom branches of tokens 41/42/111/112.
     is_blog_extra = species_param is None and picture is not None
     if is_blog_extra and tokenno in (25, 36, 37, 125):
-        headline = picture.get('Headline', '') or ''
+        headline = getHeadlineText(MyProject, picture)
         if tokenno == 125:
             # 3-line title slot — headline only, padded for consistent card height
             return headline + "<br>&nbsp;<br>&nbsp;"
