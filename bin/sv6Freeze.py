@@ -126,17 +126,26 @@ def makeDirectories(MyProject, speciesname, all_or_new):
     return
 
 def AppendChangedFileData(MyProject, firstNewFile):
-    # Copy existing FileData 
-    existing_file_data = os.path.join(MyProject.getMetaDir(), 'active', 'data_files.csv')
+    # Rewrite the frozen data_files.csv from scratch with the CURRENT-schema
+    # header, emitting both the existing master rows and the new ones in one
+    # consistent layout. Previously this copied the active master file (whose
+    # header can predate added columns) and only appended new rows, producing
+    # a frozen file whose header was narrower than its rows. sv7 copies this
+    # file straight onto active/data_files.csv, so this also re-heads (migrates)
+    # the master to the current schema. restval='' fills columns missing from
+    # older master rows; extrasaction='ignore' drops any stray keys.
     targetpathbase = MyProject.getRepositoryPath()
-    datafilename = os.path.join(MyProject.ReviewFrozen(), "frozen_data_files.csv")     # the base our data
-    os.makedirs(MyProject.ReviewFrozen(), exist_ok=True)    
-    shutil.copy(existing_file_data, datafilename)
-    # Copy existing file data, now add other file records
+    datafilename = os.path.join(MyProject.ReviewFrozen(), "frozen_data_files.csv")
+    os.makedirs(MyProject.ReviewFrozen(), exist_ok=True)
     SC = ghexif.speciesclassification.SpeciesClassification
-    with open(datafilename, 'a', newline='', encoding='utf-8') as frozencsv:
-        writer = csv.DictWriter(frozencsv, fieldnames=COLUMN_NAMES.values(), quoting=csv.QUOTE_MINIMAL,  delimiter=';')
-        for filespec in list(MyProject.files_dict.values())[firstNewFile:]:
+    all_files = list(MyProject.files_dict.values())
+    written = 0
+    with open(datafilename, 'w', newline='', encoding='utf-8') as frozencsv:
+        writer = csv.DictWriter(frozencsv, fieldnames=list(COLUMN_NAMES.values()),
+                                restval='', extrasaction='ignore',
+                                quoting=csv.QUOTE_MINIMAL, delimiter=';')
+        writer.writeheader()
+        for idx, filespec in enumerate(all_files):
             upn = filespec['UniquePictureName']
             # Non-species "blog extras" (landscape/context photos) are not
             # committed to the master: they live only in the trip and in the
@@ -144,33 +153,43 @@ def AppendChangedFileData(MyProject, firstNewFile):
             extra_picture = MyProject.UniquePictureName_dict.get(upn)
             if extra_picture is not None and SC.isBlogExtra(extra_picture['subject']):
                 continue
-            targetpath = MyProject.UniquePictureName_dict[upn]['TargetPath']
-            # save for future situation (after move)
-            wfn = filespec['WindowsFileName'] 
-            fd = filespec['File:Directory']
-            new_dir = os.path.join(targetpathbase, targetpath)
-            filespec['WindowsFileName'] = filespec['WindowsFileName'].replace(filespec['File:Directory'], new_dir)
-            filespec['File:Directory'] = new_dir
+            if idx >= firstNewFile:
+                # New file: rewrite its path to the repository (master) location.
+                targetpath = MyProject.UniquePictureName_dict[upn]['TargetPath']
+                wfn = filespec['WindowsFileName']
+                fd = filespec['File:Directory']
+                new_dir = os.path.join(targetpathbase, targetpath)
+                filespec['WindowsFileName'] = filespec['WindowsFileName'].replace(filespec['File:Directory'], new_dir)
+                filespec['File:Directory'] = new_dir
+                writer.writerow(filespec)
+                # restore actual situation for the subsequent file move
+                filespec['WindowsFileName'] = wfn
+                filespec['File:Directory'] = fd
+            else:
+                # Existing master file: already at its repository path.
+                writer.writerow(filespec)
+            written += 1
 
-            writer.writerow(filespec)
-            # restore actual situation for move
-            filespec['WindowsFileName'] = wfn
-            filespec['File:Directory'] = fd
-    
-    logger.info(f'Data from {len(MyProject.files_dict)-firstNewFile} files added to {len(MyProject.files_dict)} and written to {datafilename}')
+    logger.info(f'{written} file records written to {datafilename} (current-schema header).')
     return
 
 def AppendChangedPictureData(MyProject, firstNewPicture):
-    existing_picture_data = os.path.join(MyProject.getMetaDir(), 'active', 'data_pictures.csv')
-    picturename = os.path.join(MyProject.ReviewFrozen(), "frozen_data_pictures.csv")     # the base our data
-    shutil.copy(existing_picture_data, picturename)
+    # Rewrite the frozen data_pictures.csv from scratch with the current-schema
+    # header (see AppendChangedFileData for the rationale and the master
+    # migration via sv7). firstNewPicture is no longer needed to slice — every
+    # row is re-emitted uniformly — but is kept for call-site compatibility.
+    picturename = os.path.join(MyProject.ReviewFrozen(), "frozen_data_pictures.csv")
+    os.makedirs(MyProject.ReviewFrozen(), exist_ok=True)
     SC = ghexif.speciesclassification.SpeciesClassification
     written = 0
     extras_skipped = 0
-    with open(picturename, 'a', newline='', encoding='utf-8') as frozencsv:
+    with open(picturename, 'w', newline='', encoding='utf-8') as frozencsv:
         ordered_fieldnames = OrderedDict((field, None) for field in PICTURE_FIELDS)
-        writer = csv.DictWriter(frozencsv, fieldnames=ordered_fieldnames, quoting=csv.QUOTE_MINIMAL,  delimiter=';')
-        for picture in list(MyProject.UniquePictureName_dict.values())[firstNewPicture:]:
+        writer = csv.DictWriter(frozencsv, fieldnames=ordered_fieldnames,
+                                restval='', extrasaction='ignore',
+                                quoting=csv.QUOTE_MINIMAL, delimiter=';')
+        writer.writeheader()
+        for picture in MyProject.UniquePictureName_dict.values():
             # Blog extras (landscape/context photos) stay out of the master.
             if SC.isBlogExtra(picture['subject']):
                 extras_skipped += 1
@@ -180,7 +199,7 @@ def AppendChangedPictureData(MyProject, firstNewPicture):
 
     if extras_skipped:
         logger.info(f'{extras_skipped} blog-extra (landscape) pictures excluded from the master collection.')
-    logger.info(f'Data from {written} pictures added, total {len(MyProject.UniquePictureName_dict)} now written to {picturename}')
+    logger.info(f'{written} picture records written to {picturename} (current-schema header).')
     return
 
 def writeDeleteList(deletelistfilename):
