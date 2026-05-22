@@ -20,6 +20,12 @@ STATE_COL_START = 4
 PHOTO_EXTENSIONS = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng",
                     "heic", "jpg", "jpeg"}
 
+# Families whose location must be hidden on the public site (GPS stripped from
+# the website copy). Kept in sync with ghexif/websupport.py OBSCURE_FAMILIES.
+# A day whose only special status is such "obscured" species is marked with a
+# lock 🔒 rather than a warning ⚠️ (which is reserved for real species typos).
+OBSCURE_FAMILIES = {"orchidaceae"}
+
 
 def _format_total_files_item(day_path, review_root):
     """Build the Total Files cell with health markers and tooltip. Re-used by
@@ -32,11 +38,21 @@ def _format_total_files_item(day_path, review_root):
         text = str(total)
         tooltip = "Read Directory not yet run for this day."
     else:
-        warnings, no_gps = health
-        species_mark = "✅" if warnings == 0 else "⚠️"
+        warnings, no_gps, obscured = health
+        # Priority: a real species typo (⚠️) outranks an obscured-location
+        # species (🔒); a clean day is ✅. Obscured species are intentional
+        # (location hidden on the website), so they must not look like an error.
+        if warnings > 0:
+            species_mark = "⚠️"
+            species_tip = f"{warnings} species typo{'s' if warnings != 1 else ''}"
+        elif obscured > 0:
+            species_mark = "🔒"
+            species_tip = f"{obscured} obscured-location species (GPS hidden on the website)"
+        else:
+            species_mark = "✅"
+            species_tip = "All species OK"
         gps_mark = "📍" if no_gps == 0 else "❓"
         text = f"{total}  {species_mark} {gps_mark}"
-        species_tip = "All species OK" if warnings == 0 else f"{warnings} species typo{'s' if warnings != 1 else ''}"
         gps_tip = "All GPS OK" if no_gps == 0 else f"{no_gps} missing GPS"
         tooltip = f"{species_tip} — {gps_tip}"
     item = QTableWidgetItem(text)
@@ -82,7 +98,7 @@ def refresh_day_health(main_window, day_name):
 
 
 def _day_health(review_day_path):
-    """Return (warnings_count, no_gps_count) for the day.
+    """Return (warnings_count, no_gps_count, obscured_count) for the day.
 
     GPS is read from data_files.csv (same source the image preview dialog
     uses, so the trip-overview marker stays consistent with the dialog's
@@ -90,6 +106,8 @@ def _day_health(review_day_path):
     UPN has GPS if ANY of its file rows (ORF / XMP / JPG) has it.
 
     Warnings come from data_pictures.csv (errormessage is a UPN-only column).
+    Obscured = pictures whose TargetPath is in an OBSCURE_FAMILY (location
+    hidden on the website); surfaced as a 🔒 marker, not a warning.
 
     Returns None if data_files.csv doesn't exist yet (Read Directory hasn't
     been run for this day)."""
@@ -124,6 +142,7 @@ def _day_health(review_day_path):
         )
 
     warnings = 0
+    obscured = 0
     if pictures_csv.exists():
         try:
             with open(pictures_csv, "r", encoding="utf-8", newline="") as f:
@@ -131,9 +150,12 @@ def _day_health(review_day_path):
                 for row in reader:
                     if (row.get("errormessage") or "").strip():
                         warnings += 1
+                    tp = (row.get("TargetPath") or "").lower()
+                    if any(fam in tp for fam in OBSCURE_FAMILIES):
+                        obscured += 1
         except Exception:
             pass
-    return warnings, no_gps
+    return warnings, no_gps, obscured
 
 def populate_trip_overview(self):
     self.update_trip_label()
