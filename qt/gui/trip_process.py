@@ -347,8 +347,9 @@ class TripCreationDialog(QDialog):
         nl_title = self.title_nl_field.get_text()
         nl_message = self.message_nl_field.get_text()
 
-        translated_title = self.passed_parent.translator.getOneLanguage(nl_title, languagein='en')
-        translated_message = self.passed_parent.translator.getOneLanguage(nl_message, languagein='en')
+        # Force NL->EN; auto-detection misfires on short proper-noun titles.
+        translated_title = self.passed_parent.translator.cachedTranslate(nl_title, language='nl')
+        translated_message = self.passed_parent.translator.cachedTranslate(nl_message, language='nl')
 
         self.title_en_field.set_text(translated_title)
         self.message_en_field.set_text(translated_message)
@@ -359,8 +360,9 @@ class TripCreationDialog(QDialog):
         en_title = self.title_en_field.get_text()
         en_message = self.message_en_field.get_text()
 
-        translated_title = self.passed_parent.translator.getOneLanguage(en_title, languagein='nl')
-        translated_message = self.passed_parent.translator.getOneLanguage(en_message, languagein='nl')
+        # Force EN->NL; auto-detection misfires on short proper-noun titles.
+        translated_title = self.passed_parent.translator.cachedTranslate(en_title, language='en')
+        translated_message = self.passed_parent.translator.cachedTranslate(en_message, language='en')
 
         self.title_nl_field.set_text(translated_title)
         self.message_nl_field.set_text(translated_message)
@@ -1159,8 +1161,11 @@ class CreateBlogDialog(QDialog):
             nl_title = self.title_nl.text().strip()
             nl_message = self.message_nl.toPlainText().strip()
 
-            translated_title = self.passed_parent.translator.getOneLanguage(nl_title, languagein='en')
-            translated_message = self.passed_parent.translator.getOneLanguage(nl_message, languagein='en')
+            # Force the source language (this button is always NL->EN). Auto-
+            # detection misfires on short, proper-noun-heavy titles like
+            # "Dag 8: De Nestos Delta en Nestos kloof" and leaves them untranslated.
+            translated_title = self.passed_parent.translator.cachedTranslate(nl_title, language='nl')
+            translated_message = self.passed_parent.translator.cachedTranslate(nl_message, language='nl')
 
             self.title_en.setText(translated_title)
             self.message_en.setPlainText(translated_message)
@@ -1174,8 +1179,10 @@ class CreateBlogDialog(QDialog):
             en_title = self.title_en.text().strip()
             en_message = self.message_en.toPlainText().strip()
 
-            translated_title = self.passed_parent.translator.getOneLanguage(en_title, languagein='nl')
-            translated_message = self.passed_parent.translator.getOneLanguage(en_message, languagein='nl')
+            # Force the source language (this button is always EN->NL); see the
+            # NL->EN handler for why auto-detection is unreliable on short titles.
+            translated_title = self.passed_parent.translator.cachedTranslate(en_title, language='en')
+            translated_message = self.passed_parent.translator.cachedTranslate(en_message, language='en')
 
             self.title_nl.setText(translated_title)
             self.message_nl.setPlainText(translated_message)
