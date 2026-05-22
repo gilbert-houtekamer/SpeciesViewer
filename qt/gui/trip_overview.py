@@ -48,43 +48,63 @@ def _verified_crc_set(trip_root):
     return verified
 
 
-def _unverified_translation_count(review_day_path, verified_crcs):
-    """Distinct non-empty Headline/Description texts in the day's data_files.csv
-    whose translation isn't verified yet. None if data_files.csv is absent.
-    Normalization mirrors the blog render (Headline raw; Description '#'-stripped)
-    so the crc keys line up with what gets cached/verified."""
-    files_csv = review_day_path / "data_files.csv"
-    if not files_csv.exists():
+def _has_supported_file(files_cell):
+    """True if a data_pictures.csv 'Files' cell (e.g. "['a.HEIC', 'a_DxO.jpg']")
+    lists at least one supported photo file — excludes PNG-only screenshots."""
+    for fn in files_cell.strip("[]").replace("'", "").replace('"', "").split(","):
+        fn = fn.strip()
+        if "." in fn and fn.rsplit(".", 1)[-1].lower() in PHOTO_EXTENSIONS:
+            return True
+    return False
+
+
+def _translation_counts(review_day_path, verified_crcs):
+    """(total, unverified) distinct Headline/Description texts for the day, read
+    from data_pictures.csv — the per-UPN RESOLVED text the panel validates and
+    the blog renders (NOT data_files.csv, whose per-file rows can hold divergent
+    variants and over-count). None if data_pictures.csv is absent. Normalization
+    mirrors the render (Description '#'-stripped); PNG-only UPNs are excluded."""
+    pics_csv = review_day_path / "data_pictures.csv"
+    if not pics_csv.exists():
         return None
     texts = set()
     try:
-        with open(files_csv, "r", encoding="utf-8", newline="") as f:
+        with open(pics_csv, "r", encoding="utf-8", newline="") as f:
             reader = csv.DictReader(f, delimiter=";")
             for row in reader:
-                h = row.get("XMP:Headline") or ""
+                if not _has_supported_file(row.get("Files") or ""):
+                    continue
+                h = row.get("Headline") or ""
                 if h != "":
                     texts.add(h)
-                d = row.get("XMP:Description") or ""
+                d = row.get("Description") or ""
                 if d != "":
                     if d[0:1] == "#":
                         d = d[1:]
                     texts.add(d)
     except Exception:
         return None
-    return sum(1 for t in texts
-               if crc32.aixm(t.encode("utf-8")) not in verified_crcs)
+    unverified = sum(1 for t in texts
+                     if crc32.aixm(t.encode("utf-8")) not in verified_crcs)
+    return len(texts), unverified
 
 
 def _format_translations_item(review_day_path, verified_crcs):
-    """Trip-overview cell: how many of the day's texts still need translation
-    validation. ✅ when none, blank when Read Directory hasn't run yet."""
-    n = _unverified_translation_count(review_day_path, verified_crcs)
-    if n is None:
-        text, tip = "", "Read Directory not yet run for this day."
-    elif n == 0:
-        text, tip = "✅", "All translations verified (or none to translate)."
+    """Trip-overview cell: a sphere showing the day's translation-validation
+    state — 🟢 all verified, 🔵 at least one pending, blank when there are no
+    translatable texts or Read Directory hasn't run. Count is in the tooltip."""
+    counts = _translation_counts(review_day_path, verified_crcs)
+    if counts is None:
+        text, tip = "", "Write Summary not yet run for this day."
     else:
-        text, tip = f"🌐 {n}", f"{n} text{'s' if n != 1 else ''} need translation validation."
+        total, unverified = counts
+        if total == 0:
+            text, tip = "", "No texts to translate on this day."
+        elif unverified == 0:
+            text, tip = "🟢", f"All {total} translation{'s' if total != 1 else ''} verified."
+        else:
+            text, tip = "🔵", (f"{unverified} of {total} translation"
+                               f"{'s' if total != 1 else ''} still need validation.")
     item = QTableWidgetItem(text)
     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
     item.setToolTip(tip)

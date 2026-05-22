@@ -34,6 +34,11 @@ import ghexif.exceptions
 import ghexif.statemachine
 
 IGNOREEXTENSIONS = ['txt', 'ico', 'html']
+# Real photo types whose Headline/Description we translate. Excludes PNG etc.,
+# so Apple's auto "Screenshot" headline on a .PNG isn't flagged. Mirrors
+# qt/gui/trip_overview.py PHOTO_EXTENSIONS.
+TRANSLATABLE_EXTENSIONS = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf",
+                           "dng", "heic", "jpg", "jpeg"}
 logger = logging.getLogger("speciesviewer")
 
 
@@ -47,6 +52,8 @@ def _report_unverified_translations(MyProject, all_rows):
         return
     texts = set()
     for r in all_rows:
+        if (r.get("WindowsExtension") or "").lower() not in TRANSLATABLE_EXTENSIONS:
+            continue  # skip PNG screenshots etc. — only types we support
         h = r.get("XMP:Headline") or ""
         if h != "":
             texts.add(h)

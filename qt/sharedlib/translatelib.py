@@ -15,10 +15,12 @@ class CachedTranslate:
     # records which language the source is, so a later render is deterministic
     # (no re-detection / mis-detection). verified marks a human-confirmed entry.
     # NOTE: kept in sync with ghexif/translatelib.py (consolidation pending).
-    translation_cache = {}
-    admindir = ""
 
     def __init__(self, treedir):
+        # Instance-level cache: separate CachedTranslate instances (e.g. the
+        # GUI's master translator vs a per-trip one) must NOT share state, or
+        # one would write the other's entries into the wrong TransCache.csv.
+        self.translation_cache = {}
         self.translator = googletrans.Translator()
         self.admindir = os.path.join(treedir, 'admin')
         self._dirty = False

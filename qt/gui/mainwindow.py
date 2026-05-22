@@ -225,7 +225,8 @@ class MainWindow(QMainWindow):
         return item
     
     def refresh_trip_row(self, sm, day_name):
-        from gui.trip_overview import STATE_COL_START
+        from gui.trip_overview import (STATE_COL_START, _verified_crc_set,
+                                       _format_translations_item)
         state_label_dict = {
             "Read\nDirectory" : "ReadDirExif",
             "Write\nSummary" : "WritePictures",
@@ -284,6 +285,16 @@ class MainWindow(QMainWindow):
         for row in range(self.trip_table.rowCount()):
             if self.trip_table.item(row, 0).text() == day_name:
                 self.trip_table.setItem(row, STATE_COL_START + len(self.state_labels), summary_item)
+
+        # Update Translations column too — Write Summary rewrites
+        # data_pictures.csv, so the unverified-text count may have changed.
+        verified_crcs = _verified_crc_set(trip_root)
+        translations_col = STATE_COL_START + len(self.state_labels) + 1
+        for row in range(self.trip_table.rowCount()):
+            if self.trip_table.item(row, 0).text() == day_name:
+                self.trip_table.setItem(row, translations_col,
+                                        _format_translations_item(review_day, verified_crcs))
+                break
                 break
 
 
@@ -306,8 +317,15 @@ class MainWindow(QMainWindow):
 
     def handle_trip_table_double_click(self, row, column):
         from gui.trip_overview import SYNC_COL, STATE_COL_START
-        # Ignore the trailing non-action columns (Progress and Translations)
-        # and the Day column / headers.
+        # Translations column (last): open the per-day validation panel.
+        translations_col = STATE_COL_START + len(self.state_labels) + 1
+        if column == translations_col:
+            day_item = self.trip_table.item(row, 0)
+            if day_item:
+                self.open_translation_validator(day_item.text())
+            return
+        # Ignore the remaining trailing non-action column (Progress) and the
+        # Day column / headers.
         progress_col = STATE_COL_START + len(self.state_labels)
         if column >= progress_col or column < 1:
             return
@@ -764,6 +782,15 @@ class MainWindow(QMainWindow):
                 if item:
                     day_str = item.text()
         dlg = RatingEditorDialog(self, trip_root, day_str)
+        dlg.show()
+
+    def open_translation_validator(self, day_str):
+        from gui.translation_validate import TranslationValidateDialog
+        trip_root = _config.get("trip", "tripbiotadatabase", fallback="")
+        if not trip_root:
+            QMessageBox.warning(self, "Translation Validation", "No trip is configured.")
+            return
+        dlg = TranslationValidateDialog(self, trip_root, day_str)
         dlg.show()
 
     def update_trip_label(self):

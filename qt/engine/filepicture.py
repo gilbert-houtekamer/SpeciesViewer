@@ -140,6 +140,42 @@ class FilePicture:
             self.upn.write_project_summary()
         return files_written
 
+    def updateHeadline(self, filename, new_headline):
+        """Write XMP:Headline to the XMP sidecar and any JPGs sharing the same
+        UPN (RAW files are convention-immutable), then persist the CSVs. Parallel
+        to updateDescription; used by the translation-validation panel to fix
+        typos in the source Headline. Returns the count of on-disk files written."""
+        try:
+            upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
+        except KeyError:
+            logger.warning(f"updateHeadline: no CSV row for {filename}")
+            return 0
+        raw_exts = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng", "heic"}
+        files_written = 0
+        for f_key, f_row in self.fi.files_dict.items():
+            if f_row.get("UniquePictureName") != upn_name:
+                continue
+            f_row["XMP:Headline"] = new_headline
+            ext = f_row.get("WindowsExtension", "").lower()
+            if ext in raw_exts:
+                continue  # RAW files stay immutable
+            filepath = Path(f_row.get("WindowsFileName", ""))
+            if not filepath.exists():
+                continue
+            try:
+                exiftool_write(filepath, [f"-XMP:Headline={new_headline}"])
+                files_written += 1
+            except subprocess.CalledProcessError as e:
+                logger.warning(
+                    f"updateHeadline: failed to write {filepath.name}: {e.stderr}"
+                )
+        self.fi.write_project_files()
+        upn_obj = self.upn.UniquePictureName_dict.get(upn_name)
+        if upn_obj is not None:
+            upn_obj["Headline"] = new_headline
+            self.upn.write_project_summary()
+        return files_written
+
     def getSpeciesName(self, filename):
         try:
             upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
