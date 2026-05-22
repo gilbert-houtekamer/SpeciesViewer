@@ -10,7 +10,7 @@ from gui.menu import create_menubar
 from gui.menuspec import build_menu_spec
 from gui.trip_overview import populate_trip_overview
 from gui.virttrip_overview import populate_virttrip_overview, TAB_TITLE as VIRTTRIP_TAB_TITLE
-from sharedlib.translatelib import CachedTranslate
+from ghexif.translatelib import CachedTranslate
 from widgets.TripInfoPanel import TripInfoPanel
 from widgets.VirtTripInfoPanel import VirtTripInfoPanel
 from gui.trip_overview import populate_trip_overview

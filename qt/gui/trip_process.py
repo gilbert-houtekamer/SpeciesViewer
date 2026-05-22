@@ -14,7 +14,7 @@ from utils.config import set_trip_settings, _config
 from utils.trip_config import read_trip_ini
 from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, RecentDirectoryFieldQt, ImageFileFieldQt)
-from sharedlib.translatelib import CachedTranslate
+from ghexif.translatelib import CachedTranslate
 from utils.gui_config import update_cache_gui_section, get_cache_gui_section
 from gui.trip_overview import populate_trip_overview
 
