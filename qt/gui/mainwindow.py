@@ -306,8 +306,10 @@ class MainWindow(QMainWindow):
 
     def handle_trip_table_double_click(self, row, column):
         from gui.trip_overview import SYNC_COL, STATE_COL_START
-        # Ignore clicks on the "Progress" column, and headers
-        if column == self.trip_table.columnCount() - 1 or column < 1:
+        # Ignore the trailing non-action columns (Progress and Translations)
+        # and the Day column / headers.
+        progress_col = STATE_COL_START + len(self.state_labels)
+        if column >= progress_col or column < 1:
             return
 
         day_item = self.trip_table.item(row, 0)

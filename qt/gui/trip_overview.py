@@ -1,6 +1,7 @@
 import csv
 import logging
 
+from fastcrc import crc32
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem,
@@ -25,6 +26,69 @@ PHOTO_EXTENSIONS = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng",
 # A day whose only special status is such "obscured" species is marked with a
 # lock 🔒 rather than a warning ⚠️ (which is reserved for real species typos).
 OBSCURE_FAMILIES = {"orchidaceae"}
+
+
+def _verified_crc_set(trip_root):
+    """crc32 keys whose translation a human has verified, read straight from the
+    per-trip cache (NOT the GUI's master translator) so the count reflects THIS
+    trip. Matches CachedTranslate.getCRC32 (crc32.aixm of the utf-8 text)."""
+    cachefile = trip_root / "admin" / "TransCache.csv"
+    verified = set()
+    if not cachefile.exists():
+        return verified
+    try:
+        with open(cachefile, "r", encoding="utf-8", newline="") as f:
+            reader = csv.reader(f, delimiter="^")
+            next(reader, None)  # header
+            for row in reader:
+                if len(row) > 3 and row[0] and row[3] == "1":
+                    verified.add(int(row[0]))
+    except Exception:
+        pass
+    return verified
+
+
+def _unverified_translation_count(review_day_path, verified_crcs):
+    """Distinct non-empty Headline/Description texts in the day's data_files.csv
+    whose translation isn't verified yet. None if data_files.csv is absent.
+    Normalization mirrors the blog render (Headline raw; Description '#'-stripped)
+    so the crc keys line up with what gets cached/verified."""
+    files_csv = review_day_path / "data_files.csv"
+    if not files_csv.exists():
+        return None
+    texts = set()
+    try:
+        with open(files_csv, "r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f, delimiter=";")
+            for row in reader:
+                h = row.get("XMP:Headline") or ""
+                if h != "":
+                    texts.add(h)
+                d = row.get("XMP:Description") or ""
+                if d != "":
+                    if d[0:1] == "#":
+                        d = d[1:]
+                    texts.add(d)
+    except Exception:
+        return None
+    return sum(1 for t in texts
+               if crc32.aixm(t.encode("utf-8")) not in verified_crcs)
+
+
+def _format_translations_item(review_day_path, verified_crcs):
+    """Trip-overview cell: how many of the day's texts still need translation
+    validation. ✅ when none, blank when Read Directory hasn't run yet."""
+    n = _unverified_translation_count(review_day_path, verified_crcs)
+    if n is None:
+        text, tip = "", "Read Directory not yet run for this day."
+    elif n == 0:
+        text, tip = "✅", "All translations verified (or none to translate)."
+    else:
+        text, tip = f"🌐 {n}", f"{n} text{'s' if n != 1 else ''} need translation validation."
+    item = QTableWidgetItem(text)
+    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+    item.setToolTip(tip)
+    return item
 
 
 def _format_total_files_item(day_path, review_root):
@@ -208,11 +272,19 @@ def populate_trip_overview(self):
         "sv7writecommit": "Successfully run."
     }
 
+    # Translations status is read once per trip from the per-trip cache.
+    verified_crcs = _verified_crc_set(trip_root)
+    translations_col = STATE_COL_START + len(self.state_labels) + 1
+
     self.trip_table = QTableWidget()
-    self.trip_table.setColumnCount(STATE_COL_START + len(self.state_labels) + 1)
+    # +1 for Progress, +1 for the trailing Translations column. Translations is
+    # LAST on purpose so the state-column indices (and the double-click handlers
+    # that map column -> step) are untouched.
+    self.trip_table.setColumnCount(STATE_COL_START + len(self.state_labels) + 2)
     self.trip_table.setRowCount(len(image_days))
     self.trip_table.setHorizontalHeaderLabels(
-        ["Day", "Total\nFiles", "JPEG\nFiles", "Sync\nSidecars"] + self.state_labels + ["Progress"]
+        ["Day", "Total\nFiles", "JPEG\nFiles", "Sync\nSidecars"] + self.state_labels
+        + ["Progress", "Trans-\nlations"]
     )
     self.trip_table.setSortingEnabled(False)
     self.trip_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -237,6 +309,7 @@ def populate_trip_overview(self):
     # carries "N ✅ 📍" markers that don't fit a stretched column).
     header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
     header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+    header.setSectionResizeMode(translations_col, QHeaderView.ResizeMode.ResizeToContents)
 
     for i, day in enumerate(image_days):
         total, jpgs = count_files(day)
@@ -300,6 +373,10 @@ def populate_trip_overview(self):
         # Determine progress summary
         summary_item = self.get_progress_summary_item(sm,  review_root / day.name)
         self.trip_table.setItem(i, STATE_COL_START + len(self.state_labels), summary_item)
+
+        # Translations column (last): texts on this day still needing validation
+        self.trip_table.setItem(i, translations_col,
+                                _format_translations_item(review_root / day.name, verified_crcs))
 
     # Layout
     overview_widget = QWidget()

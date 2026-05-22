@@ -36,6 +36,32 @@ import ghexif.statemachine
 IGNOREEXTENSIONS = ['txt', 'ico', 'html']
 logger = logging.getLogger("speciesviewer")
 
+
+def _report_unverified_translations(MyProject, all_rows):
+    """Log each Headline/Description text whose translation isn't human-verified
+    yet. Pure cache lookup — no prompt, no network. Normalization matches the
+    blog render (Headline raw; Description with a leading '#' stripped) so the
+    crc keys line up. Feeds the trip-overview "Translations" count."""
+    ct = getattr(MyProject, "ct", None)
+    if ct is None:
+        return
+    texts = set()
+    for r in all_rows:
+        h = r.get("XMP:Headline") or ""
+        if h != "":
+            texts.add(h)
+        d = r.get("XMP:Description") or ""
+        if d != "":
+            if d[0:1] == "#":
+                d = d[1:]
+            texts.add(d)
+    unverified = sorted(t for t in texts if not ct.is_verified(t))
+    if unverified:
+        logger.info(f"{len(unverified)} text(s) still need translation validation:")
+        for t in unverified:
+            snippet = t if len(t) <= 80 else t[:77] + "..."
+            logger.info(f"   not validated: {snippet}")
+
 def main(args, config):
     starttime = time.time()
     MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
@@ -409,6 +435,9 @@ def main(args, config):
             writer.writeheader()
             for row in all_rows:
                 writer.writerow(row)
+
+        # Report Headline/Description texts still needing translation validation.
+        _report_unverified_translations(MyProject, all_rows)
 
     # give the filetype report ome space
     logger.info("")
