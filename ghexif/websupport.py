@@ -337,6 +337,33 @@ def getAltTextForJPG(MyProject, jpgname):
         names = ""
     return names
 
+_src_lang_memo = {}  # anchor text -> detected language, process-local
+
+def _pictureSourceLang(MyProject, picture):
+    """Source language for a picture's text, anchored on the longer Description
+    (reliable) and applied to the short Headline too — a bare "Strand" detects
+    poorly on its own. Falls back to the Headline when there's no Description.
+    '' when neither is present or detection is unavailable. Memoized per anchor
+    so a picture's headline and description don't each pay a detect round-trip."""
+    if not picture:
+        return ''
+    desc = (picture.get('Description', '') or '').strip()
+    if desc[0:1] == "#":
+        desc = desc[1:].strip()
+    head = (picture.get('Headline', '') or '').strip()
+    anchor = desc if desc else head
+    if not anchor:
+        return ''
+    if anchor in _src_lang_memo:
+        return _src_lang_memo[anchor]
+    try:
+        detected = MyProject.ct.detectLanguage(anchor)
+        lang = detected.lang if detected else ''
+    except Exception:
+        lang = ''
+    _src_lang_memo[anchor] = lang
+    return lang
+
 def getDescriptionText(MyProject, picture):
     """The picture's Description, '#'-stripped and translated to the current
     language (same handling as blog token 41). '' when there is none. Used by
@@ -347,18 +374,20 @@ def getDescriptionText(MyProject, picture):
     if text[0:1] == "#":
         text = text[1:]
     try:
-        return MyProject.ct.getOneLanguage(text, MyProject.getLanguage())
+        return MyProject.ct.getOneLanguage(text, MyProject.getLanguage(),
+                                           source_lang=_pictureSourceLang(MyProject, picture))
     except Exception:
         return text
 
 def getHeadlineText(MyProject, picture):
     """The picture's Headline translated to the current language. Blog extras
-    use it as the card/slider title, so it needs the same getOneLanguage
-    treatment as the Description (entered in one language, shown in both)."""
+    use it as the card/slider title. Anchors the source-language guess on the
+    Description (see _pictureSourceLang) so a short Headline isn't mis-detected."""
     if not picture or picture.get('Headline', '') == "":
         return ""
     try:
-        return MyProject.ct.getOneLanguage(picture['Headline'], MyProject.getLanguage())
+        return MyProject.ct.getOneLanguage(picture['Headline'], MyProject.getLanguage(),
+                                           source_lang=_pictureSourceLang(MyProject, picture))
     except Exception:
         return picture['Headline']
 
@@ -576,19 +605,8 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 40:
             return getFormattedLocation(picture, _obscure) if picture else ""
         elif tokenno == 41:
-            if picture['Description'] != "":
-                language = MyProject.getLanguage()          # intended language
-                if picture['Description'][0:1] == "#":
-                    picttext = picture['Description'][1:]
-                else:
-                    picttext = picture['Description']
-                try:
-                    workstr = MyProject.ct.getOneLanguage(picttext, language)
-                except:
-                    workstr = picttext
-            else:
-                workstr =  ""          
-            return workstr
+            # Same '#'-strip + description-anchored translation as the slider.
+            return getDescriptionText(MyProject, picture)
         elif tokenno == 42:
             return getCameraSettings(MyProject, picture)
         elif tokenno == 43:# 	case 43: // was 60 = totaal aantal soorten
