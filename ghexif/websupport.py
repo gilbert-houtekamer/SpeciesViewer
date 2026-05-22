@@ -797,18 +797,23 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 # "aves" excludes landscapes, which belong to no group.
                 if MyProject.Blog.getSelectedSpeciesGroup() in ("", "biota"):
                     collectBlogExtras(MyProject, selected_dict)
-                # step 2: sort by time taken picture
-                time_sorted_dict = dict(sorted(selected_dict.items(), key=itemgetter(1)))            
+                # step 2: order the cards. Normal photos run chronologically;
+                # obscured (location-hidden) species are pulled OUT of the time
+                # line — their chronological neighbours would otherwise give away
+                # their location — and appended LAST in taxonomic order under the
+                # "Protected species" heading. Their time is suppressed too
+                # (tokens 111/112) so it can't be correlated with nearby GPS.
+                normal = {f: t for f, t in selected_dict.items() if not isObscureJPG(MyProject, f)}
+                protected = [f for f in selected_dict if isObscureJPG(MyProject, f)]
+                def _tax_key(f):
+                    upn = MyProject.UniquePictureName_dict[MyProject.files_dict[f]['UniquePictureName']]
+                    return ((upn.get('TargetPath') or '').lower(), f)
+                ordered = list(dict(sorted(normal.items(), key=itemgetter(1)))) + sorted(protected, key=_tax_key)
                 # step 3: generate the webpage
-                workstr = ""
-                for file in time_sorted_dict:
-                    workstr = addOneSpeciesJPG(MyProject, file, workstr, "oneblogphoto-" + language + ".html")
-                    MyProject.Blog.CountJPG += 1
-                # return HTML to caller to put in webpage
+                workstr = renderBlogPhotos(MyProject, ordered, language)
             else:
-                for file in BestJPGs:
-                    workstr = addOneSpeciesJPG(MyProject, file, workstr, "oneblogphoto-" + language + ".html")
-                    MyProject.Blog.CountJPG += 1             
+                # Re-render from the stored order (already normal-then-obscured).
+                workstr = renderBlogPhotos(MyProject, BestJPGs, language)
             return workstr
         elif tokenno == 111:         # Nederlandse tekst
             # mogelijke tekst
@@ -855,7 +860,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += " De foto is genomen"
                 if getFormattedLocation(picture, _obscure) != "":
                     workstr += " bij " + getFormattedLocation(picture, _obscure)
-                if parsed_date.strftime('%H:%M') not in ["","00:00"]:
+                if not _obscure and parsed_date.strftime('%H:%M') not in ["","00:00"]:
                     workstr += " om " + parsed_date.strftime('%H:%M')
                 if parsed_date.strftime('%d %b, %Y') != "":
                     workstr +=  " op " + parsed_date.strftime('%d %b, %Y')  + "."
@@ -907,7 +912,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += " The photo was taken"
                 if getFormattedLocation(picture, _obscure) != "":
                     workstr += " at " + getFormattedLocation(picture, _obscure)
-                if parsed_date.strftime('%H:%M') not in ["","00:00"]:
+                if not _obscure and parsed_date.strftime('%H:%M') not in ["","00:00"]:
                     workstr += " at " + parsed_date.strftime('%H:%M')
                 if parsed_date.strftime('%A %B %d, %Y') != "":
                     workstr += " on " + parsed_date.strftime('%A %B %d, %Y')  + "."
@@ -1507,3 +1512,41 @@ def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
     except Exception as e:
         logger.warning(f"addOneSpeciesJPG failed for '{jpgname}': {e}")
     return textCreated
+
+def isObscureJPG(MyProject, jpgname):
+    """True if this JPG's picture belongs to an obscure family (location must
+    be hidden). Detected via TargetPath so it needs no species lookup; matches
+    OBSCURE_FAMILIES and the trip-overview lock marker."""
+    try:
+        upn = MyProject.UniquePictureName_dict[MyProject.files_dict[jpgname]['UniquePictureName']]
+        tp = (upn.get('TargetPath') or '').lower()
+        return any(fam in tp for fam in OBSCURE_FAMILIES)
+    except Exception:
+        return False
+
+def protectedSectionHeading(language):
+    """Full-width grid divider introducing the protected-species block.
+    grid-column:1/-1 spans every column of the #grid in blogtext-<lang>.html."""
+    if language == 'nl':
+        title = "Beschermde soorten"
+        note = "Locatie en tijd zijn weggelaten om deze soorten te beschermen."
+    else:
+        title = "Protected species"
+        note = "Exact location and time are withheld to protect these species."
+    return ('<div style="grid-column:1/-1;text-align:left">'
+            '<h2>' + title + '</h2><p>' + note + '</p></div>\n')
+
+def renderBlogPhotos(MyProject, ordered_files, language):
+    """Render the day's photo cards in `ordered_files`, inserting the
+    protected-species heading once, just before the first obscured photo.
+    Obscured photos are always ordered last (token 110/113), so the heading
+    lands at the boundary on both a fresh build and a re-render from BestJPGs."""
+    workstr = ""
+    heading_done = False
+    for jpgname in ordered_files:
+        if not heading_done and isObscureJPG(MyProject, jpgname):
+            workstr += protectedSectionHeading(language)
+            heading_done = True
+        workstr = addOneSpeciesJPG(MyProject, jpgname, workstr, "oneblogphoto-" + language + ".html")
+        MyProject.Blog.CountJPG += 1
+    return workstr
