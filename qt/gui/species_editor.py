@@ -277,10 +277,20 @@ class SpeciesInfoDialog(QDialog):
         scope_options = getCorrectionScopeOptions(self.full_path)  # Assumes this method returns a dict like {label: [Path, Path, ...]}
         selected_files = scope_options.get(saved_scope, [])
 
-        # Filter files that match the original subject; always include the clicked file itself
-        matching_files = [f for f in selected_files if fpr.getSubject(f.name) == original_subject]
-        if self.full_path not in matching_files:
-            matching_files = [self.full_path] + matching_files
+        # Filter files that match the original subject; always include the clicked file itself.
+        # SPECIAL CASE: when the clicked picture has NO species yet, there is no
+        # "same name error" to batch-correct — the empty-string match below would
+        # otherwise sweep up every unnamed picture in the day folder (observed:
+        # 44 files). Naming an unnamed picture must affect ONLY this picture.
+        def _is_empty_subject(s):
+            return (not s) or (isinstance(s, str) and s.strip() in ("", "[]"))
+
+        if _is_empty_subject(original_subject):
+            matching_files = [self.full_path]
+        else:
+            matching_files = [f for f in selected_files if fpr.getSubject(f.name) == original_subject]
+            if self.full_path not in matching_files:
+                matching_files = [self.full_path] + matching_files
 
         # Apply updates
         self.status_label.setText(f"📦 Committing species name: {format_subject_for_xmp(corrected_subject)} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")

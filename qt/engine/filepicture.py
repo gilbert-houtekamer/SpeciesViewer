@@ -258,7 +258,15 @@ class FilePicture:
                     raise ValueError
             except Exception:
                 original_subject_list = [original_subject]
-            if original_subject_list == current_subjects:
+            # An empty original means the picture had no species yet — there is
+            # nothing to match against (on-disk Subject is []), so SET the new
+            # value unconditionally. The old match-guard (['']==[]) failed here,
+            # so a newly-named picture was never written to disk and the name was
+            # lost on the next re-read.
+            original_is_empty = (not original_subject_list) or all(
+                (s is None or str(s).strip() in ("", "[]")) for s in original_subject_list
+            )
+            if original_is_empty or original_subject_list == current_subjects:
                 exiftool_write(filepath, [f'-XMP:Subject={correct_subject_for_xmp}'])
                 wrote = True
             else:
