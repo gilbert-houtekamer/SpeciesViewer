@@ -294,7 +294,13 @@ class FilePicture:
                 upn_object['NLSoortNaam'] = sc_object['DutchName']
                 upn_object['EngSoortNaam'] = sc_object['EnglishName']
                 upn_object['WetSoortNaam'] = sc_object['ScientificName']
-            # write updated data_pictures file 
+            elif correct_subject == "":
+                # Cleared — drop the resolved names too, else the old Dutch/
+                # English/scientific names linger on a now species-less picture.
+                upn_object['NLSoortNaam'] = ''
+                upn_object['EngSoortNaam'] = ''
+                upn_object['WetSoortNaam'] = ''
+            # write updated data_pictures file
             self.upn.write_project_summary()
         return upn_object
 

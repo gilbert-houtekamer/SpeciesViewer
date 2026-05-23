@@ -260,9 +260,6 @@ class SpeciesInfoDialog(QDialog):
 
     def on_commit_clicked(self):
         corrected_subject = self.subject_field.get_text().strip()
-        if not corrected_subject:
-            self.status_label.setText("⚠️ No species name to commit.")
-            return
 
         image_viewer = self.image_viewer_ref() if self.image_viewer_ref else None
         fpr = getattr(image_viewer, "fpr", None)
@@ -270,64 +267,85 @@ class SpeciesInfoDialog(QDialog):
             self.status_label.setText("❌ Cannot access FPR for update.")
             return
 
-        # Typo guard: if the name resolves to no known species (not in the list,
-        # not in GBIF — the same getSpecies check updateSubject uses to decide
-        # whether to enrich it), confirm before storing. Unrecognized names ARE
-        # sometimes deliberate (placeholders, a species not yet in GBIF), so we
-        # ask rather than block.
-        try:
-            _parts = ast.literal_eval(corrected_subject)
-            _lookup = max(_parts, key=len) if isinstance(_parts, list) and _parts else corrected_subject
-        except Exception:
-            _lookup = corrected_subject
-        if not fpr.sc.getSpecies(_lookup):
-            reply = QMessageBox.question(
-                self, "Unknown species",
-                f"“{_lookup}” is not a known species (not in your list and not "
-                f"found in GBIF).\n\nStore it anyway as a placeholder or a new "
-                f"species?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if reply != QMessageBox.StandardButton.Yes:
-                self.status_label.setText("Commit cancelled — name not stored.")
-                logger.info(f"Commit cancelled: '{_lookup}' not stored (unknown species).")
-                return
-
-        original_subject = fpr.getSubject(self.full_path.name)
-        saved_scope = _config.get("Species", "correction_scope", fallback="All files with same name error in day folder")
-
-        # Determine scope
-        scope_options = getCorrectionScopeOptions(self.full_path)  # Assumes this method returns a dict like {label: [Path, Path, ...]}
-        selected_files = scope_options.get(saved_scope, [])
-
-        # Filter files that match the original subject; always include the clicked file itself.
-        # SPECIAL CASE: when the clicked picture has NO species yet, there is no
-        # "same name error" to batch-correct — the empty-string match below would
-        # otherwise sweep up every unnamed picture in the day folder (observed:
-        # 44 files). Naming an unnamed picture must affect ONLY this picture.
         def _is_empty_subject(s):
             return (not s) or (isinstance(s, str) and s.strip() in ("", "[]"))
 
-        if _is_empty_subject(original_subject):
+        original_subject = fpr.getSubject(self.full_path.name)
+        clearing = (corrected_subject == "")
+
+        if clearing:
+            # Clearing removes the species from THIS picture only — never batched.
+            # (Clearing one Ooievaar must not clear them all; the batch-by-same-
+            # name path is for correcting a shared typo, not for removing a name.)
+            if _is_empty_subject(original_subject):
+                self.status_label.setText("⚠️ This picture has no species to clear.")
+                return
+            reply = QMessageBox.question(
+                self, "Clear species name",
+                f"Remove the species name from this picture only?\n\n"
+                f"{self.full_path.name}",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply != QMessageBox.StandardButton.Yes:
+                self.status_label.setText("Clear cancelled.")
+                return
             matching_files = [self.full_path]
         else:
-            matching_files = [f for f in selected_files if fpr.getSubject(f.name) == original_subject]
-            if self.full_path not in matching_files:
-                matching_files = [self.full_path] + matching_files
+            # Typo guard: if the name resolves to no known species (not in the
+            # list, not in GBIF — the same getSpecies check updateSubject uses),
+            # confirm before storing. Unrecognized names ARE sometimes deliberate
+            # (placeholders, a species not yet in GBIF), so we ask rather than block.
+            try:
+                _parts = ast.literal_eval(corrected_subject)
+                _lookup = max(_parts, key=len) if isinstance(_parts, list) and _parts else corrected_subject
+            except Exception:
+                _lookup = corrected_subject
+            if not fpr.sc.getSpecies(_lookup):
+                reply = QMessageBox.question(
+                    self, "Unknown species",
+                    f"“{_lookup}” is not a known species (not in your list and not "
+                    f"found in GBIF).\n\nStore it anyway as a placeholder or a new "
+                    f"species?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                if reply != QMessageBox.StandardButton.Yes:
+                    self.status_label.setText("Commit cancelled — name not stored.")
+                    logger.info(f"Commit cancelled: '{_lookup}' not stored (unknown species).")
+                    return
+
+            # Scope: a blank original has no "same name error" to batch — affect
+            # ONLY the clicked picture (else the empty-string match sweeps up every
+            # unnamed picture in the day). A real name batches by the same erroneous
+            # name per the correction_scope setting.
+            if _is_empty_subject(original_subject):
+                matching_files = [self.full_path]
+            else:
+                saved_scope = _config.get("Species", "correction_scope",
+                                          fallback="All files with same name error in day folder")
+                selected_files = getCorrectionScopeOptions(self.full_path).get(saved_scope, [])
+                matching_files = [f for f in selected_files if fpr.getSubject(f.name) == original_subject]
+                if self.full_path not in matching_files:
+                    matching_files = [self.full_path] + matching_files
 
         # Apply updates
-        self.status_label.setText(f"📦 Committing species name: {format_subject_for_xmp(corrected_subject)} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")
-        logger.info(f"📦 Committing species name: {format_subject_for_xmp(corrected_subject)} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")
+        n = len(matching_files)
+        action = ("Clearing species from" if clearing
+                  else f"Committing species name: {format_subject_for_xmp(corrected_subject)} to")
+        self.status_label.setText(f"📦 {action} {n} file{'s' if n != 1 else ''}")
+        logger.info(f"📦 {action} {n} file{'s' if n != 1 else ''}")
         updated_upns = set()
         for f in matching_files:
             upn_object, files_written = fpr.updateSubject(f.name, original_subject, corrected_subject)
             if files_written:
-                logger.info(
-                    f"""✅ Updated {f.name}: rewrote {files_written} file{'s' if files_written != 1 else ''} on disk, """
-                    f'''subject "{format_subject_for_xmp(original_subject)}" → "{format_subject_for_xmp(corrected_subject)}".'''
-                )
+                if clearing:
+                    logger.info(f"✅ Cleared {f.name}: removed species from "
+                                f"{files_written} file{'s' if files_written != 1 else ''} on disk.")
+                else:
+                    logger.info(
+                        f"""✅ Updated {f.name}: rewrote {files_written} file{'s' if files_written != 1 else ''} on disk, """
+                        f'''subject "{format_subject_for_xmp(original_subject)}" → "{format_subject_for_xmp(corrected_subject)}".'''
+                    )
             else:
                 logger.warning(
-                    f"""⚠️ {f.name}: no XMP files rewritten (on-disk subject did not match CSV); CSV cache updated to "{format_subject_for_xmp(corrected_subject)}"."""
+                    f"""⚠️ {f.name}: no XMP files rewritten (on-disk subject did not match CSV); CSV cache updated."""
                 )
             upn_name = fpr.fi.files_dict.get(f.name, {}).get("UniquePictureName")
             if upn_name:
