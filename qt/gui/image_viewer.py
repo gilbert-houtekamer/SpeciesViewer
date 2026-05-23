@@ -241,6 +241,9 @@ class ImagePreviewDialog(QDialog):
         self.columns = 3
         self.image_dir = image_dir
         self.image_widgets = []
+        # Set True when a species name is committed (SpeciesInfoDialog) so
+        # closeEvent can offer to re-run Read & Summarize for this day.
+        self._species_changed = False
         # Paths whose GPS was added during this dialog session (via Lightroom
         # edit picked up by _refresh_no_gps_from_disk). Used to render a green
         # 📍 badge on the card without removing it from the no-GPS view.
@@ -750,6 +753,19 @@ class ImagePreviewDialog(QDialog):
                 refresh_day_health(self.main_window, Path(self.image_dir).name)
         except Exception as e:
             print(f"refresh_day_health failed: {e}")
+        # If a species name was committed, the XMP on disk changed → offer to
+        # re-run Read & Summarize for this day so the blog/website catch up.
+        # Deferred to the event loop so it fires after this dialog has closed
+        # (the runner's spinner then parents cleanly to the main window). Only
+        # for a real day folder (not the virtual-trip file_list mode).
+        if (getattr(self, "_species_changed", False) and self.main_window
+                and self.image_dir and self._file_list is None):
+            day_name = Path(self.image_dir).name
+            main_window = self.main_window
+            rerun = getattr(main_window, "rerun_read_summarize_day", None)
+            if rerun:
+                QTimer.singleShot(0, lambda: rerun(
+                    day_name, "A species name was changed for one or more pictures."))
         super().closeEvent(event)
         # self.dialog_active = False
         # self.cancelled = True

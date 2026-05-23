@@ -308,6 +308,11 @@ class SpeciesInfoDialog(QDialog):
                 if file_upn in updated_upns:
                     image_viewer.refresh_image_status(container, img_path)
 
+        # Mark the viewer so its closeEvent can offer to re-run Read & Summarize
+        # — the XMP:Subject on disk changed, so the reports are now stale.
+        if image_viewer is not None:
+            image_viewer._species_changed = True
+
         self.accept()
 
 

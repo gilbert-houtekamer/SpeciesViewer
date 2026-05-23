@@ -721,6 +721,130 @@ class MainWindow(QMainWindow):
         runner = ColumnBatchRunner(self, self, "Selected steps", day_steps, lambda: None)
         runner.start()
 
+    def rerun_read_summarize_day(self, day_name, reason=""):
+        """Confirm, then re-run Read & Summarize for ONE day so an edit reaches
+        the reports. Used after a species-name change written to XMP from the
+        image preview (Total Files / JPG columns): the XMP on disk changed, so
+        the day must be re-read and re-summarized. Phase 3 keeps it cheap — if
+        the resulting data_pictures.csv is unchanged, downstream stays valid."""
+        import configparser
+        import bin.sv2ReadDirExif
+        import bin.sv3WritePictures
+        from gui.batch import ChainedBatchRunner
+        from utils.batch_config import generate_svconfig_ini
+
+        trip_root_str = _config.get("trip", "tripbiotadatabase", fallback="")
+        if not trip_root_str:
+            return
+        trip_root = Path(trip_root_str)
+        review_day = trip_root / "metadata" / "review" / day_name
+
+        prompt = (f"{reason}\n\n" if reason else "")
+        prompt += (f"Re-run Read & Summarize for {day_name} so the change "
+                   f"appears in the blog and website?")
+        if QMessageBox.question(
+                self, "Re-run Read & Summarize", prompt,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        ) != QMessageBox.StandardButton.Yes:
+            return
+
+        project_root = Path(_config.get("project", "picturedirectory")).parent
+        _config.set("project", "picturedirectory", str(project_root / day_name))
+        generate_svconfig_ini()
+        module_config = configparser.ConfigParser()
+        module_config.read("svconfig.ini")
+        sm = StateMachine(str(trip_root), str(review_day), readState=True)
+        steps = [
+            (bin.sv2ReadDirExif.main, "ReadDirExif",
+             "Reading picture directory...", "✅ Directory scan complete."),
+            (bin.sv3WritePictures.main, "WritePictures",
+             "Reading meta data for all pictures ...", "✅ Summary written."),
+        ]
+
+        def on_complete():
+            sm2 = StateMachine(str(trip_root), str(review_day), readState=True)
+            self.refresh_trip_row(sm2, day_name)
+
+        runner = ChainedBatchRunner(self, self, steps, module_config, sm,
+                                    day_name, on_complete)
+        runner.start()
+
+    def rerun_summary_all_days(self, reason=""):
+        """Confirm, then re-run Write Summary (sv3) for every eligible day so a
+        trip-wide species-NAME change (the English/Dutch dialog) reaches the
+        reports. Names live in speciescollection.csv and don't touch
+        data_files.csv, so a re-read is unnecessary — Write Summary alone
+        suffices. Phase 3 conditional invalidation means days the edited species
+        doesn't appear on keep their built Blog/Website/Freeze (their
+        data_pictures.csv comes back byte-identical)."""
+        import configparser
+        from gui.batch import ColumnBatchRunner
+        from utils.batch_config import generate_svconfig_ini
+
+        if not self.trip_table:
+            return
+        trip_root_str = _config.get("trip", "tripbiotadatabase", fallback="")
+        if not trip_root_str:
+            return
+        trip_root = Path(trip_root_str)
+        project_root = Path(_config.get("project", "picturedirectory")).parent
+
+        eligible = []
+        for row in range(self.trip_table.rowCount()):
+            day_item = self.trip_table.item(row, 0)
+            if not day_item:
+                continue
+            day_str = day_item.text()
+            review_day = trip_root / "metadata" / "review" / day_str
+            if not (review_day / "data_files.csv").exists():
+                continue  # Read Directory never run for this day
+            sm = StateMachine(str(trip_root), str(review_day), readState=True)
+            if sm.Taskstate.get("WriteCommit", [False])[0]:
+                continue  # frozen day
+            if "WritePictures" not in sm.Taskstate:
+                continue
+            eligible.append(day_str)
+
+        if not eligible:
+            QMessageBox.information(self, "Re-run Write Summary",
+                                    "No days with summary data to refresh.")
+            return
+
+        prompt = (f"{reason}\n\n" if reason else "")
+        prompt += (f"Re-run Write Summary for all {len(eligible)} day(s) so the "
+                   f"updated names appear in the reports?")
+        if QMessageBox.question(
+                self, "Re-run Write Summary", prompt,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        ) != QMessageBox.StandardButton.Yes:
+            return
+
+        spec_obj = self.menu_spec.get("Trip", {}).get("Write Summary")
+        if not spec_obj or not spec_obj.get_batch_parms():
+            return
+        module_called = spec_obj.get_batch_parms()["module_called"]
+
+        day_steps = []
+        for day_str in eligible:
+            review_day = trip_root / "metadata" / "review" / day_str
+            sm = StateMachine(str(trip_root), str(review_day), readState=True)
+            needs_reset = (sm.Taskstate.get("WritePictures", [False])[0]
+                           and sm.Taskstate["WritePictures"][1] == "Successfully run.")
+            day_steps.append({
+                "day_str":      day_str,
+                "project_root": project_root,
+                "trip_root":    trip_root,
+                "module_called": module_called,
+                "statusname":   "WritePictures",
+                "before_msg":   "Reading meta data for all pictures ...",
+                "after_msg":    "✅ Writing Summary data.",
+                "needs_reset":  needs_reset,
+            })
+
+        generate_svconfig_ini()
+        runner = ColumnBatchRunner(self, self, "Write Summary", day_steps, lambda: None)
+        runner.start()
+
     def open_rating_editor(self):
         from gui.rating_editor import RatingEditorDialog
         trip_root = _config.get("trip", "tripbiotadatabase", fallback="")

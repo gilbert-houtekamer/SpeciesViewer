@@ -204,7 +204,13 @@ def build_menu_spec(main_window):
         if not trip_db:
             return
         csv_path = os.path.join(trip_db, "metadata", "active", "speciescollection.csv")
-        SpeciesCollectionDialog(main_window, csv_path).exec()
+        dlg = SpeciesCollectionDialog(main_window, csv_path)
+        dlg.exec()
+        # A trip-wide name edit → offer to re-summarize all days (see
+        # MainWindow.rerun_summary_all_days). Master species edits are NOT hooked
+        # here — that's a separate pipeline.
+        if getattr(dlg, "_saved_changes", False):
+            main_window.rerun_summary_all_days("Species names were changed.")
 
     edit_trip_species = MenuSpec(
         callback=_edit_trip_species,

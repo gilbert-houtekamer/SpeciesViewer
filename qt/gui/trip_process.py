@@ -702,6 +702,10 @@ class WritePicturesDialog(QDialog):
         csv_path = os.path.join(self.trip_root, "metadata", "active", "speciescollection.csv")
         dlg = SpeciesCollectionDialog(self, csv_path)
         dlg.exec()
+        # A name edit changes how every picture of that species renders, across
+        # all days — offer to re-summarize the trip so the reports catch up.
+        if getattr(dlg, "_saved_changes", False):
+            self.passed_parent.rerun_summary_all_days("Species names were changed.")
 
     def on_write(self):
         selected_subdir = self.subdir_dropdown.currentText()
@@ -778,6 +782,11 @@ class SpeciesCollectionDialog(QDialog):
         self.filter_text = ""
         self.FILTER_MIN_CHARS = 3
         self.dirty = False
+        # dirty is reset on every save, so it can't tell the caller "something
+        # was edited and saved this session". _saved_changes is sticky: set once
+        # any save persists an edit, so the trip call sites can offer to re-run
+        # Write Summary on close.
+        self._saved_changes = False
         self.cell_colors = {}   # (row, visual_col) -> QColor
         self.PAGE_SIZE = 50
 
@@ -1162,6 +1171,7 @@ class SpeciesCollectionDialog(QDialog):
             writer.writeheader()
             writer.writerows(self.all_rows)
         self.dirty = False
+        self._saved_changes = True
         self.save_btn.setEnabled(False)
 
     def closeEvent(self, event):
