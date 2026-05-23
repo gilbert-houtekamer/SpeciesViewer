@@ -845,6 +845,39 @@ class MainWindow(QMainWindow):
         runner = ColumnBatchRunner(self, self, "Write Summary", day_steps, lambda: None)
         runner.start()
 
+    def invalidate_render_day(self, day_name, reason=""):
+        """Mark the day's already-built publish steps (Write Blog / Build Website)
+        stale after a translation or source-text change — WITHOUT running them.
+        Write Blog/Build Website upload to the web server (bad on lodge bandwidth),
+        and the data (CSVs + translation cache) is already current, so there is
+        nothing local to re-run; the user re-publishes deliberately when it suits.
+        This mirrors what a Read & Summarize re-run does to downstream via the
+        statemachine cascade. Returns the list of invalidated step labels."""
+        trip_root_str = _config.get("trip", "tripbiotadatabase", fallback="")
+        if not trip_root_str:
+            return []
+        trip_root = Path(trip_root_str)
+        review_day = trip_root / "metadata" / "review" / day_name
+        sm = StateMachine(str(trip_root), str(review_day), readState=True)
+
+        # A committed (frozen) day is locked — leave it alone.
+        if sm.Taskstate.get("WriteCommit", [False])[0]:
+            return []
+
+        note = "Needs re-run: " + (reason or "content changed")
+        invalidated = []
+        for step, label in (("WriteBlog", "Write Blog"),
+                            ("BuildWebsite", "Build Website")):
+            st = sm.Taskstate.get(step)
+            if st and st[0] and st[1] == "Successfully run.":
+                st[0] = False
+                st[1] = note
+                invalidated.append(label)
+        if invalidated:
+            sm.writeState()
+            self.refresh_trip_row(sm, day_name)
+        return invalidated
+
     def open_rating_editor(self):
         from gui.rating_editor import RatingEditorDialog
         trip_root = _config.get("trip", "tripbiotadatabase", fallback="")

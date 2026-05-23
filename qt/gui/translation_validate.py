@@ -195,6 +195,21 @@ class TranslationValidateDialog(QDialog):
                 populate_trip_overview(parent)
             except Exception as e:
                 self.logger.warning(f"overview refresh after validation failed: {e}")
-        QMessageBox.information(
-            self, "Translation Validation",
-            f"Saved: {verified_count} verified, {source_fixes} source correction(s).")
+
+        # A verified/corrected translation or a source-text fix changes what the
+        # blog/website would publish. We do NOT re-render here — Write Blog/Build
+        # Website upload to the web server, which must be avoided on low (lodge)
+        # bandwidth, and the local data (CSVs + translation cache) is already
+        # current. Instead mark those steps stale so the user re-publishes
+        # deliberately when convenient.
+        changed = (verified_count > 0 or source_fixes > 0)
+        invalidated = []
+        if changed and parent is not None and hasattr(parent, "invalidate_render_day"):
+            invalidated = parent.invalidate_render_day(
+                self.day_str, reason="translation/source text changed")
+        msg = f"Saved: {verified_count} verified, {source_fixes} source correction(s)."
+        if invalidated:
+            joined = " and ".join(invalidated)
+            msg += (f"\n\n{joined} for {self.day_str} marked for re-run — "
+                    f"re-publish when you have bandwidth.")
+        QMessageBox.information(self, "Translation Validation", msg)
