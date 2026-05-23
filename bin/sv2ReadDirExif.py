@@ -32,6 +32,7 @@ from ghexif.handling import deriveUniquePictureName
 from ghexif.exif_writer import exiftool_write
 import ghexif.exceptions
 import ghexif.statemachine
+import ghexif.exifcache as exifcache
 
 IGNOREEXTENSIONS = ['txt', 'ico', 'html']
 # Real photo types whose Headline/Description we translate. Excludes PNG etc.,
@@ -101,22 +102,43 @@ def main(args, config):
         logger.info(f"Reading directories (takes about 1 minute for every 4000 files)...")
         file_extension_count = {}        
          
-        try:
-            metadata = et.get_metadata(
-                MyProject.getProjectPath(), 
-                params=SELECTED_FIELDS)
-        except Exception as e:
-            raise SVException(f"No files found in the directory {MyProject.getProjectPath()}\nError {e}: {e.stderr}{e.stdout}.")
-#            logger.warning(f"No files found in the directory {MyProject.getProjectPath()}\nError {e}: {e.stderr}{e.stdout}.")
+        # EXIF read via the global cache (ghexif/exifcache.py). Immutable files
+        # (RAW/HEIC) and untouched mutable sidecars are served from cache; only
+        # new or edited files are sent to exiftool. --no-cache reproduces the
+        # old full scan (reads nothing, writes nothing); --rebuild-cache
+        # re-reads everything and rewrites the cache.
+        fingerprint = exifcache.field_fingerprint(SELECTED_FIELDS)
+        cache_path = exifcache.exif_cache_path(config)
+        if getattr(args, "no_cache", False):
+            cache, persist = exifcache.new_cache(), False
+        elif getattr(args, "rebuild_cache", False):
+            logger.info("EXIF cache: --rebuild-cache, re-reading all files.")
+            cache, persist = exifcache.new_cache(), True
+        else:
+            cache, persist = exifcache.load_cache(cache_path), True
 
- 
+        root = MyProject.getProjectPath()
+        hits, misses, stats = exifcache.partition(root, cache, fingerprint)
+        try:
+            fresh = et.get_metadata(misses, params=SELECTED_FIELDS) if misses else []
+        except Exception as e:
+            raise SVException(f"No files found in the directory {root}\nError {e}: {e.stderr}{e.stdout}.")
+        metadata = hits + fresh
+        if persist:
+            exifcache.update(cache, fresh, fingerprint)
+            exifcache.save_cache(cache_path, cache)
+
         datafilelocation = MyProject.getMetaDirReview()
-        os.makedirs(datafilelocation, exist_ok=True) 
+        os.makedirs(datafilelocation, exist_ok=True)
         datafilelocation = os.path.join(datafilelocation, "data_files.csv")
 
         metadatareadertime = time.time() - starttime
+        total_hits = stats["imm_hit"] + stats["mut_hit"]
         logger.info(
-            f"Reading EXIF metadata took {metadatareadertime:.1f} seconds for {len(metadata)} files."
+            f"Reading EXIF metadata took {metadatareadertime:.1f} seconds for "
+            f"{len(metadata)} files ({total_hits} from cache, {len(misses)} read; "
+            f"immutable {stats['imm_hit']}h/{stats['imm_miss']}m, "
+            f"mutable {stats['mut_hit']}h/{stats['mut_miss']}m)."
         )
 
         # Build all rows first (needed for GPS backfill)
@@ -467,6 +489,18 @@ if __name__ == "__main__":
         type=str,
         default=os.environ.get("SVCONFIG", "svconfig.ini"),
         help="Module Configuration File",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass the EXIF cache entirely: full scan, nothing read or "
+             "written. Reproduces pre-cache behaviour / the A-B oracle.",
+    )
+    parser.add_argument(
+        "--rebuild-cache",
+        action="store_true",
+        help="Re-read every file from disk and overwrite the cache. Use after "
+             "a schema change you want forced now, or if a cache entry is suspect.",
     )
     args = parser.parse_args()
     # get configuration
