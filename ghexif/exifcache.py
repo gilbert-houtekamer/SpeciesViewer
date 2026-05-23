@@ -82,9 +82,18 @@ def master_repository(config):
 
 def exif_cache_path(config):
     """<master>/metadata/cache/exif_cache.json — the admin area, alongside the
-    other metadata/ subtrees (active, review)."""
+    other metadata/ subtrees (active, review). Used by day/trip Read Directory;
+    stays small."""
     return os.path.join(master_repository(config), "metadata", "cache",
                         "exif_cache.json")
+
+
+def master_cache_path(config):
+    """Separate cache for the master-wide EXIF scan (Master menu > Rescan).
+    Kept distinct from exif_cache.json so warming the full master (~159k files,
+    ~89 MB) never taxes the small day/trip Read Directory cache."""
+    return os.path.join(master_repository(config), "metadata", "cache",
+                        "exif_cache_master.json")
 
 
 def new_cache():
@@ -223,3 +232,35 @@ def update(cache, fresh, fingerprint):
                 "fp": fingerprint, "size": st.st_size,
                 "mtime": int(st.st_mtime), "exif": slim,
             }
+
+
+def rescan(root, cache_path, chunk=2000):
+    """Warm/refresh a cache file by reading `root` with exiftool: read only the
+    files not already cached (or changed), in chunks to bound memory, then save
+    once. No CSV, no XMP writes — a pure cache-population pass for the Master
+    menu's Rescan. Progress is logged so the GUI spinner has running feedback.
+    First full-master pass is slow (~1 h / 159k files); later passes re-read
+    only what changed."""
+    import exiftool
+    from ghexif.selected_fields import SELECTED_FIELDS
+    fp = field_fingerprint(SELECTED_FIELDS)
+    cache = load_cache(cache_path)
+    hits, misses, stats = partition(root, cache, fp)
+    logger.info(f"EXIF cache rescan of {root}: "
+                f"{len(hits)} already cached, {len(misses)} to read.")
+    if misses:
+        # No logger= here: pyexiftool would dump every -stay_open command into
+        # the GUI log; our own per-chunk progress lines below are the feedback.
+        with exiftool.ExifToolHelper(
+                common_args=["-G", "-charset", "utf8", "-charset", "filename=utf8"],
+                encoding="utf-8", check_execute=False) as et:
+            for i in range(0, len(misses), chunk):
+                fresh = et.get_metadata(misses[i:i + chunk], params=SELECTED_FIELDS)
+                update(cache, fresh, fp)
+                logger.info(f"EXIF cache rescan: read "
+                            f"{min(i + chunk, len(misses))}/{len(misses)} files")
+        save_cache(cache_path, cache)
+    logger.info(f"EXIF cache rescan complete: {len(cache['immutable'])} immutable "
+                f"+ {len(cache['mutable'])} mutable entries in "
+                f"{os.path.basename(cache_path)}.")
+    return stats

@@ -1844,6 +1844,22 @@ class AddTripToMasterDialog(BaseTripModuleDialog):
         )
 
 
+class RescanMasterCacheDialog(BaseTripModuleDialog):
+    def __init__(self, parent, menu_spec):
+        super().__init__(
+            parent,
+            menu_spec,
+            title="Rescan master EXIF cache",
+            info_text=("Read EXIF for every picture under the master "
+                       "(<master>/biota) into the master EXIF cache "
+                       "(exif_cache_master.json). The first run is slow "
+                       "(~1 hour for the full master); afterwards only new or "
+                       "changed files are re-read. This cache is separate from "
+                       "the day/trip cache, so it never slows Read Directory."),
+            subdirectory=False
+        )
+
+
 class MasterPipelineDialog(QDialog):
     """Drive the master-side database merge — three progressive steps
     (ingest → build+freeze → commit) inside one dialog. Each step's

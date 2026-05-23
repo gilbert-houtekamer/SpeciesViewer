@@ -1,12 +1,14 @@
 import configparser
 
+from PyQt6.QtWidgets import QMessageBox
 from gui.menu import MenuSpec  # assuming class is defined elsewhere
 from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDialog,
         CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog,
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
         AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
-        TestbedDialog, BlogAdminDialog, PhotoMechanicDialog)
+        TestbedDialog, BlogAdminDialog, PhotoMechanicDialog,
+        RescanMasterCacheDialog)
 from gui.virttrip_process import VirtualTripCreationDialog, ExtractDaysDialog
 from utils.config import _config
 import os
@@ -36,6 +38,7 @@ import bin.svu6EmptyTripData
 import bin.svu7Testbed
 import bin.svv1MakeVirtualRepository
 import bin.svv2ExtractDays
+import ghexif.exifcache as exifcache
 
 
 def build_menu_spec(main_window):
@@ -346,6 +349,66 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # Delete the global EXIF cache (file + .bak ring). The cache is purely
+    # derived — the next scan rebuilds it (one slow pass) and output is
+    # unaffected — so this is a safe "if in doubt, clear it" escape hatch.
+    def _clear_exif_cache():
+        cache_path = exifcache.exif_cache_path(module_config)
+        paths = [cache_path] + [f"{cache_path}.bak{i}"
+                                for i in range(1, exifcache.CACHE_BACKUPS + 1)]
+        existing = [p for p in paths if os.path.exists(p)]
+        if not existing:
+            QMessageBox.information(main_window, "Clear EXIF cache",
+                                    f"No cache file found at\n{cache_path}")
+            return
+        reply = QMessageBox.question(
+            main_window, "Clear EXIF cache",
+            f"Delete the EXIF cache ({len(existing)} file(s))?\n\n{cache_path}\n\n"
+            "The next Read Directory rebuilds it (one slow scan); output is "
+            "unaffected.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        removed = 0
+        for p in existing:
+            try:
+                os.remove(p)
+                removed += 1
+            except OSError as e:
+                QMessageBox.warning(main_window, "Clear EXIF cache",
+                                    f"Could not delete\n{p}\n{e}")
+        QMessageBox.information(
+            main_window, "Clear EXIF cache",
+            f"Deleted {removed} file(s). The cache will rebuild on the next scan.")
+
+    clear_exif_cache = MenuSpec(
+        callback=_clear_exif_cache,
+        title="Clear EXIF cache",
+        showsubdirectory=False,
+    )
+
+    # Warm the SEPARATE master cache (exif_cache_master.json) by reading EXIF
+    # for every picture under <master>/biota. Kept apart from the day/trip
+    # exif_cache.json so the ~89MB master cache never slows Read Directory.
+    def _rescan_master_exif_cache(args, _mod_config):
+        master = exifcache.master_repository(_mod_config)
+        root = os.path.join(master, "biota")
+        exifcache.rescan(root, exifcache.master_cache_path(_mod_config))
+
+    rescan_master_cache = MenuSpec(
+        callback=None,
+        title="Rescan master EXIF cache",
+        showsubdirectory=False,
+        batch_parms={
+            'statusname': "",
+            'module_called': _rescan_master_exif_cache,
+            'before_msg': "Reading EXIF for all master pictures into the cache...",
+            'after_msg': "✅ Master EXIF cache updated.",
+        }
+    )
+    rescan_master_cache.callback = lambda: RescanMasterCacheDialog(
+        main_window, rescan_master_cache).exec()
+
     # utilities
         # Master updates
     convert_avibase = MenuSpec(
@@ -451,6 +514,9 @@ def build_menu_spec(main_window):
             "Add trip website to master": add_trip_to_master,
             f"{MenuSpec.separator()}_master_1": None,
             "Add Trip Pictures to Master": add_trip_pictures,
+            f"{MenuSpec.separator()}_master_2": None,
+            "Rescan master EXIF cache": rescan_master_cache,
+            "Clear EXIF cache": clear_exif_cache,
         },
         "Virtual Trips": {
             "Create Virtual Trip": virttrip_create,
