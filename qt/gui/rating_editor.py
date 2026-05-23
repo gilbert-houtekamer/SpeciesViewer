@@ -23,6 +23,7 @@ from engine.filepicture import FilePicture
 from engine.filecsv import Files
 from engine.picturecsv import Pictures
 from ghexif.exif_writer import exiftool_write
+from gui.window_state import restore_window, save_window
 
 logger = logging.getLogger("speciesviewer")
 
@@ -202,6 +203,14 @@ class ColorSelector(QWidget):
                     background-color: {hc};
                     border: 2px solid white;
                 }}
+                QPushButton:disabled {{
+                    background-color: transparent;
+                    border: 2px dashed #cccccc;
+                }}
+                QPushButton:checked:disabled {{
+                    background-color: #cccccc;
+                    border: 2px solid #eeeeee;
+                }}
             """)
             btn.clicked.connect(lambda _, n=name: self._on_click(n))
             layout.addWidget(btn)
@@ -222,6 +231,22 @@ class ColorSelector(QWidget):
             return
         self._color = color
         self._refresh()
+
+    def set_disabled_colors(self, names, tooltip: str = ""):
+        """Grey out (and block clicks on) the named colours; re-enable the rest.
+
+        Used for Option C: on a JPG-bearing picture, Blue/Purple can't be a
+        deletion candidate, so those two circles are greyed with an explaining
+        tooltip while Red/Yellow/Green stay live.
+        """
+        disabled = set(names)
+        for name, btn in self._buttons.items():
+            if name in disabled:
+                btn.setEnabled(False)
+                btn.setToolTip(tooltip or name)
+            else:
+                btn.setEnabled(True)
+                btn.setToolTip(name)
 
 
 class PictureCard(QFrame):
@@ -244,7 +269,10 @@ class PictureCard(QFrame):
         vbox.setContentsMargins(5, 5, 5, 5)
         vbox.setSpacing(3)
 
-        # Thumbnail — clicking opens the large-view detail dialog
+        # Thumbnail — clicking opens the large-view detail dialog. A coloured
+        # border traces the picture's colour label (less in-your-face than the
+        # bullets, per user pref); kept in sync by _update_thumb_style.
+        self._frame_color = upn_row.get("Label", "")
         self._thumb = QLabel()
         self._thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumb.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
@@ -253,7 +281,7 @@ class PictureCard(QFrame):
         # Placeholder height (3:2 landscape ratio) until background load completes
         self._thumb_target_w = max(80, card_width - 18)
         self._thumb.setFixedHeight(max(60, self._thumb_target_w * 2 // 3))
-        self._thumb.setStyleSheet("background-color: #2a2a2a;")
+        self._update_thumb_style()
         vbox.addWidget(self._thumb)
 
         # Species name
@@ -316,15 +344,29 @@ class PictureCard(QFrame):
 
     def update_color_display(self, color: str):
         self._color_sel.set_color(color)
+        self._frame_color = color
+        self._update_thumb_style()
+
+    def _update_thumb_style(self):
+        """Apply the dark placeholder bg (when no pixmap) plus the coloured
+        frame border (when the picture has a colour label)."""
+        has_pix = self._thumb.pixmap() is not None and not self._thumb.pixmap().isNull()
+        parts = []
+        if not has_pix:
+            parts.append("background-color: #2a2a2a; color: #ccc; font-size: 10px;")
+        hexc = COLOR_HEX.get((self._frame_color or "").capitalize())
+        if hexc:
+            parts.append(f"border: 3px solid {hexc}; border-radius: 4px;")
+        self._thumb.setStyleSheet(" ".join(parts))
 
     def set_thumbnail(self, px: QPixmap):
         if px.isNull():
-            self._thumb.setStyleSheet("color: #ccc; font-size: 10px;")
             self._thumb.setText("(no image)")
         else:
-            self._thumb.setStyleSheet("")
-            self._thumb.setFixedHeight(px.height())
+            # +6 leaves room for the 3px frame border so the pixmap isn't clipped
+            self._thumb.setFixedHeight(px.height() + 6)
             self._thumb.setPixmap(px)
+        self._update_thumb_style()
 
     def take_pending(self):
         """Return (pending_rating, pending_color) and clear them."""
@@ -341,98 +383,6 @@ def _safe_int(s, default: int = 0) -> int:
         return default
 
 
-# ── Large-image detail dialog ─────────────────────────────────────────────────
-
-class RatingCardDetailDialog(QDialog):
-    """Full-size view of a single picture card with live-editable stars and color."""
-
-    def __init__(self, parent, upn_key: str, upn_row: dict, jpg_path,
-                 display_name: str, on_change):
-        super().__init__(parent)
-        self._upn_row = upn_row
-        self._on_change = on_change  # callable(upn_key, new_stars_or_None, new_color_or_None)
-
-        self.setWindowTitle(display_name or upn_key)
-        screen = QGuiApplication.primaryScreen().availableGeometry()
-        self.resize(int(screen.width() * 0.85), int(screen.height() * 0.85))
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
-
-        # Large image — setMinimumSize(1,1) prevents the pixmap size from
-        # becoming the window's minimum size, which would block vertical resize.
-        self._image_label = QLabel()
-        self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self._image_label.setMinimumSize(1, 1)
-        self._pixmap = QPixmap(str(jpg_path)) if jpg_path and Path(jpg_path).exists() else QPixmap()
-        layout.addWidget(self._image_label, stretch=1)
-
-        # Controls strip — centred and limited to 1/3 of window width via
-        # equal stretches on each side (stretch 1 : widget 1 : stretch 1).
-        controls_widget = QWidget()
-        controls_layout = QVBoxLayout(controls_widget)
-        controls_layout.setContentsMargins(0, 0, 0, 0)
-        controls_layout.setSpacing(4)
-
-        lbl_name = QLabel(display_name or upn_key)
-        lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_name.setStyleSheet("font-weight: bold; font-size: 13px;")
-        controls_layout.addWidget(lbl_name)
-
-        row_stars = QHBoxLayout()
-        self._stars = StarWidget(_safe_int(upn_row.get("Rating", "0")))
-        self._stars.rating_changed.connect(lambda n: on_change(upn_key, n, None))
-        row_stars.addWidget(self._stars)
-        dto = upn_row.get("DateTimeOriginal", "")
-        if dto:
-            lbl_date = QLabel(dto[:10].replace(":", "-"))
-            lbl_date.setStyleSheet("font-size: 11px; color: #777;")
-            row_stars.addWidget(lbl_date)
-        row_stars.addStretch()
-        self._rate_lbl = QLabel(f"Rate: {upn_row.get('Rate', '?')}")
-        self._rate_lbl.setStyleSheet("font-size: 11px; color: #555;")
-        row_stars.addWidget(self._rate_lbl)
-        controls_layout.addLayout(row_stars)
-
-        self._color_sel = ColorSelector(upn_row.get("Label", ""))
-        self._color_sel.color_changed.connect(lambda c: on_change(upn_key, None, c))
-        controls_layout.addWidget(self._color_sel)
-
-        lbl_path = QLabel(upn_key)
-        lbl_path.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_path.setStyleSheet("font-size: 9px; color: #aaa;")
-        controls_layout.addWidget(lbl_path)
-
-        ctrl_row = QHBoxLayout()
-        ctrl_row.addStretch(1)
-        ctrl_row.addWidget(controls_widget, 1)
-        ctrl_row.addStretch(1)
-        layout.addLayout(ctrl_row)
-
-    def refresh_rate(self):
-        self._rate_lbl.setText(f"Rate: {self._upn_row.get('Rate', '?')}")
-
-    def _fit_pixmap(self):
-        if self._pixmap.isNull():
-            return
-        size = self._image_label.size()
-        if size.width() <= 1 or size.height() <= 1:
-            return
-        scaled = self._pixmap.scaled(size, Qt.AspectRatioMode.KeepAspectRatio,
-                                     Qt.TransformationMode.SmoothTransformation)
-        self._image_label.setPixmap(scaled)
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        QTimer.singleShot(0, self._fit_pixmap)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._fit_pixmap()
-
-
 # ── Main dialog ────────────────────────────────────────────────────────────────
 
 class RatingEditorDialog(QDialog):
@@ -446,11 +396,18 @@ class RatingEditorDialog(QDialog):
     def __init__(self, parent, trip_root_dir: str, day_str: str = None):
         super().__init__(parent)
         self.setWindowTitle("Rating Editor")
-        self.resize(1000, 720)
+        self.setWindowFlags(self.windowFlags()
+                            | Qt.WindowType.WindowMinimizeButtonHint
+                            | Qt.WindowType.WindowMaximizeButtonHint)
         self._trip_root = Path(trip_root_dir)
         self._initial_day = day_str
         self.fpr: FilePicture | None = None
         self.columns = 3
+        # Restore per-machine remembered geometry + column count (.ini).
+        self._geo_key = "RatingEditor"
+        _st = restore_window(self, self._geo_key, default_size=(1000, 720))
+        if _st["cols"]:
+            self.columns = max(1, min(8, _st["cols"]))
         self._cards: list[PictureCard] = []
         self._cards_by_key: dict[str, PictureCard] = {}
         self._jpg_only = True
@@ -548,6 +505,10 @@ class RatingEditorDialog(QDialog):
 
         # Populate day combo then load data after show
         QTimer.singleShot(0, self._init_day_combo)
+
+    def closeEvent(self, event):
+        save_window(self, self._geo_key, cols=self.columns)
+        super().closeEvent(event)
 
     # ── Initialisation helpers ────────────────────────────────────────────────
 
@@ -929,25 +890,52 @@ class RatingEditorDialog(QDialog):
         self._apply_change(upn_key, new_stars, new_color, card)
 
     def _on_card_clicked(self, upn_key: str):
+        # Local import avoids a circular import: large_image_view imports
+        # StarWidget/ColorSelector from this module.
+        from gui.large_image_view import LargeImageView
         if not self.fpr:
             return
         upn_row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
         if not upn_row:
             return
-        jpg_path = self._get_display_path(upn_row)
+        # Single instance: close any open large view first so a fast double-
+        # click (or clicking another card) never stacks multiple viewers.
+        existing = getattr(self, "_large_view", None)
+        if existing is not None:
+            try:
+                existing.close()
+            except RuntimeError:
+                pass
+            self._large_view = None
+
+        img_path = self._get_display_path(upn_row)
         dname = self._species_name(upn_row) or upn_key
+        has_jpg = self._get_jpg_path(upn_row) is not None
 
         dlg_ref: list = [None]
 
-        def on_detail_change(key, new_stars, new_color):
-            card = next((c for c in self._cards if c.upn_key == key), None)
+        def _apply(new_stars, new_color):
+            card = self._cards_by_key.get(upn_key)
             if card:
-                self._apply_change(key, new_stars, new_color, card)
-            if dlg_ref[0]:
-                dlg_ref[0].refresh_rate()
+                self._apply_change(upn_key, new_stars, new_color, card)
+            if dlg_ref[0] is not None:
+                dlg_ref[0].set_rate(upn_row.get("Rate"))
 
-        dlg = RatingCardDetailDialog(self, upn_key, upn_row, jpg_path, dname, on_detail_change)
+        dlg = LargeImageView(
+            self, image_path=img_path, display_name=dname,
+            rating=_safe_int(upn_row.get("Rating", "0")),
+            color=upn_row.get("Label", ""),
+            description=upn_row.get("Description", ""),  # read-only here for now
+            rate=upn_row.get("Rate"),
+            date=upn_row.get("DateTimeOriginal", ""),
+            has_jpg=has_jpg,
+            on_rating=lambda n: _apply(n, None),
+            on_color=lambda c: _apply(None, c),
+            settings_key="RatingEditor",
+        )
         dlg_ref[0] = dlg
+        self._large_view = dlg
+        dlg.finished.connect(lambda _=0: setattr(self, "_large_view", None))
         dlg.show()
 
     # ── Write-back ────────────────────────────────────────────────────────────

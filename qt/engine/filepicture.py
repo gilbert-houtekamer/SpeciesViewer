@@ -176,6 +176,44 @@ class FilePicture:
             self.upn.write_project_summary()
         return files_written
 
+    def updateLabel(self, filename, new_label):
+        """Write XMP:Label to the XMP sidecar and any JPGs sharing the same UPN
+        (RAW files stay convention-immutable), then persist data_files.csv and
+        data_pictures.csv. Mirrors updateDescription. Used by the large-image
+        viewer to set/clear a colour label (e.g. a Blue/Purple deletion
+        candidate). An empty new_label clears the label. Returns the count of
+        on-disk files rewritten."""
+        try:
+            upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
+        except KeyError:
+            logger.warning(f"updateLabel: no CSV row for {filename}")
+            return 0
+        raw_exts = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng", "heic"}
+        files_written = 0
+        for f_key, f_row in self.fi.files_dict.items():
+            if f_row.get("UniquePictureName") != upn_name:
+                continue
+            f_row["XMP:Label"] = new_label
+            ext = f_row.get("WindowsExtension", "").lower()
+            if ext in raw_exts:
+                continue  # RAW files stay immutable
+            filepath = Path(f_row.get("WindowsFileName", ""))
+            if not filepath.exists():
+                continue
+            try:
+                exiftool_write(filepath, [f"-XMP:Label={new_label}"])
+                files_written += 1
+            except subprocess.CalledProcessError as e:
+                logger.warning(
+                    f"updateLabel: failed to write {filepath.name}: {e.stderr}"
+                )
+        self.fi.write_project_files()
+        upn_obj = self.upn.UniquePictureName_dict.get(upn_name)
+        if upn_obj is not None:
+            upn_obj["Label"] = new_label
+            self.upn.write_project_summary()
+        return files_written
+
     def getSpeciesName(self, filename):
         try:
             upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]

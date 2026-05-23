@@ -11,148 +11,13 @@ from PyQt6.QtCore import Qt, QTimer, QSize
 from widgets.trip_widgets import DirectoryFieldQt
 from engine.filepicture import FilePicture
 from gui.species_editor import SpeciesInfoDialog
+from gui.window_state import restore_window, save_window
 
 logger = logging.getLogger("speciesviewer")
 
 def ensure_path(obj):
     return Path(obj) if isinstance(obj, str) else obj
 
-
-class SingleImageViewer(QDialog):
-    """Full-screen-like viewer for a single image, opened by clicking a thumbnail."""
-
-    def __init__(self, parent, img_path: Path, pixmap: QPixmap, species_name: str = ""):
-        super().__init__(parent)
-        self.setWindowTitle(img_path.name)
-        self._pixmap = pixmap
-        self._img_path = img_path
-        self._parent_ref = parent  # ImagePreviewDialog, holds .fpr
-
-        screen = QGuiApplication.primaryScreen().availableGeometry()
-        self.resize(int(screen.width() * 0.92), int(screen.height() * 0.92))
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 4)
-        layout.setSpacing(4)
-
-        self._image_label = QLabel()
-        self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        layout.addWidget(self._image_label, stretch=1)
-
-        # Path on the left, species on the right — wrapped in a fixed-width
-        # widget that's resized in _fit_pixmap to match the picture's actual
-        # displayed width, so both edges align with the picture's edges.
-        self._info_widget = QWidget()
-        info_row = QHBoxLayout(self._info_widget)
-        info_row.setContentsMargins(0, 0, 0, 0)
-        if pixmap and not pixmap.isNull():
-            path_text = f"{img_path}  ({pixmap.width()}x{pixmap.height()})"
-        else:
-            path_text = str(img_path)
-        path_label = QLabel(path_text)
-        path_label.setStyleSheet("font-size: 10px; color: #333;")
-        info_row.addWidget(path_label)
-        info_row.addStretch(1)
-        if species_name:
-            species_label = QLabel(species_name)
-            species_label.setStyleSheet("font-size: 10px; color: #333;")
-            info_row.addWidget(species_label)
-        info_outer = QHBoxLayout()
-        info_outer.setContentsMargins(0, 0, 0, 0)
-        info_outer.addStretch(1)
-        info_outer.addWidget(self._info_widget)
-        info_outer.addStretch(1)
-        layout.addLayout(info_outer)
-
-        # Description field (XMP:Description). Ctrl+S to save explicitly,
-        # auto-save on close if the text changed. Capped at 2000px wide and
-        # centered so the line length stays readable on ultra-wide screens.
-        desc_label = QLabel("Enter a story about this picture to be shown on the website (optional)")
-        desc_label.setStyleSheet("font-size: 11px; font-weight: bold;")
-        desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(desc_label)
-
-        self._desc_edit = QTextEdit()
-        fm = self._desc_edit.fontMetrics()
-        self._desc_edit.setFixedHeight(int(fm.lineSpacing() * 3.5) + 8)
-        # Width is set dynamically in resizeEvent — target 1800px, fall back
-        # to (window - 100) when the window is narrower.
-        self._desc_edit.setAcceptRichText(False)
-        fpr = getattr(parent, "fpr", None) if parent else None
-        self._original_description = fpr.getDescription(img_path.name) if fpr else ""
-        self._desc_edit.setPlainText(self._original_description)
-        if fpr is None:
-            self._desc_edit.setReadOnly(True)
-            self._desc_edit.setToolTip("No metadata loaded — descriptions can't be saved.")
-
-        desc_row = QHBoxLayout()
-        desc_row.addStretch(1)
-        desc_row.addWidget(self._desc_edit)
-        desc_row.addStretch(1)
-        layout.addLayout(desc_row)
-
-        save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
-        save_shortcut.activated.connect(self._save_description)
-
-    def _save_description(self):
-        fpr = getattr(self._parent_ref, "fpr", None) if self._parent_ref else None
-        if fpr is None:
-            return
-        new_text = self._desc_edit.toPlainText()
-        if new_text == self._original_description:
-            return
-        try:
-            files_written = fpr.updateDescription(self._img_path.name, new_text)
-            self._original_description = new_text
-            logger.info(
-                f"Description: wrote {files_written} on-disk file(s) for "
-                f"{self._img_path.name}."
-            )
-        except Exception as e:
-            logger.warning(
-                f"Description: save failed for {self._img_path.name}: {e}"
-            )
-
-    def closeEvent(self, event):
-        self._save_description()
-        super().closeEvent(event)
-
-    def _fit_pixmap(self):
-        if not self._pixmap or self._pixmap.isNull():
-            return
-        size = self._image_label.size()
-        if size.width() <= 1 or size.height() <= 1:
-            return
-        # Never upscale — a 1200x900 JPG blown up to 3500px wide just looks
-        # blurry. If the picture's native resolution fits in the available
-        # area, use it as-is; otherwise scale down preserving aspect ratio.
-        src_w = self._pixmap.width()
-        src_h = self._pixmap.height()
-        if src_w <= size.width() and src_h <= size.height():
-            scaled = self._pixmap
-        else:
-            scaled = self._pixmap.scaled(
-                size, Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-        self._image_label.setPixmap(scaled)
-        # Match the info row + description box to the picture's actual width
-        # so their edges line up with the picture's edges, regardless of how
-        # much the aspect ratio leaves as letterbox margin.
-        pic_w = max(200, scaled.width())
-        if hasattr(self, "_info_widget"):
-            self._info_widget.setFixedWidth(pic_w)
-        if hasattr(self, "_desc_edit"):
-            self._desc_edit.setFixedWidth(pic_w)
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        QTimer.singleShot(0, self._fit_pixmap)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._fit_pixmap()
 
 class ColorFilterBar(QWidget):
     def __init__(self, on_filter_changed):
@@ -216,7 +81,9 @@ class ImagePreviewDialog(QDialog):
     def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg",
                  file_list=None, cache_root=None, source_label=None):
         super().__init__(parent)
-        self.resize(800, 600)
+        self.setWindowFlags(self.windowFlags()
+                            | Qt.WindowType.WindowMinimizeButtonHint
+                            | Qt.WindowType.WindowMaximizeButtonHint)
         self.mode = mode
         self.trip_root_dir = trip_root_dir
         self.main_window = parent
@@ -239,6 +106,11 @@ class ImagePreviewDialog(QDialog):
         self.dialog_active = True        
  
         self.columns = 3
+        # Restore per-machine remembered geometry + column count (.ini).
+        self._geo_key = "SpeciesPreview"
+        _st = restore_window(self, self._geo_key, default_size=(800, 600))
+        if _st["cols"]:
+            self.columns = max(1, min(10, _st["cols"]))
         self.image_dir = image_dir
         self.image_widgets = []
         # Set True when a species name is committed (SpeciesInfoDialog) so
@@ -739,6 +611,7 @@ class ImagePreviewDialog(QDialog):
 
     def closeEvent(self, event):
         print(f"🧨 ImagePreviewDialog is being closed! parent {self.parent()}")
+        save_window(self, self._geo_key, cols=self.columns)
         try:
             QApplication.instance().applicationStateChanged.disconnect(
                 self._on_application_state_changed
@@ -899,26 +772,48 @@ class ImagePreviewDialog(QDialog):
         image_label.setStyleSheet("background-color: transparent;")
         image_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
 
-        # Border wrapper
+        # Border wrapper — coloured frame traces the picture's colour label,
+        # refreshed in place by _apply_card_border after an edit.
         border_wrapper = QWidget()
+        border_wrapper.setObjectName("border_wrapper")
         border_layout = QVBoxLayout(border_wrapper)
         border_layout.setContentsMargins(3, 3, 3, 3)
         border_layout.addWidget(image_label)
-
-        if self.fpr:
-            color = self.fpr.getColor(img_path)
-            if color:
-                border_wrapper.setStyleSheet(f"border: 3px solid {color}; border-radius: 6px; background-color: transparent;")
+        self._apply_card_border(border_wrapper, img_path)
 
         def _open_fullscreen(_event, p=img_path):
+            from gui.large_image_view import LargeImageView
             px = self.get_pixmap_for_path(p)
-            if px and not px.isNull():
-                sp = self.fpr.getSpeciesName(p.name) if self.fpr else ""
-                SingleImageViewer(self, p, px, sp).exec()
-                # Description may have changed; refresh the 📝 badge on this
-                # card and any sibling cards sharing the same UPN.
-                if self.fpr:
-                    self._refresh_cards_for_upn(p)
+            if not (px and not px.isNull()):
+                return
+            sp = self.fpr.getSpeciesName(p.name) if self.fpr else ""
+            if self.fpr:
+                upn = self.fpr.getUPN(p.name) or {}
+                # getColor returns the label lowercased; ColorSelector wants
+                # the capitalised name ("red" → "Red").
+                color = (self.fpr.getColor(p.name) or "").capitalize()
+                dlg = LargeImageView(
+                    self, image_path=p, pixmap=px, display_name=sp or p.name,
+                    rating=upn.get("Rating", "0"),
+                    color=color,
+                    description=self.fpr.getDescription(p.name),
+                    rate=upn.get("Rate"),
+                    date=upn.get("DateTimeOriginal", ""),
+                    has_jpg=self._upn_has_jpg(p.name),
+                    on_rating=None,  # rating edit not yet wired on this engine
+                    on_color=lambda c, name=p.name: self.fpr.updateLabel(name, c),
+                    on_description=lambda t, name=p.name: self.fpr.updateDescription(name, t),
+                    settings_key="SpeciesPreview",
+                )
+            else:
+                dlg = LargeImageView(self, image_path=p, pixmap=px,
+                                     display_name=sp or p.name,
+                                     settings_key="SpeciesPreview")
+            dlg.exec()
+            # Color/description may have changed; refresh the badges (and any
+            # sibling cards sharing the same UPN).
+            if self.fpr:
+                self._refresh_cards_for_upn(p)
 
         border_wrapper.mousePressEvent = _open_fullscreen
         border_wrapper.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1040,6 +935,23 @@ class ImagePreviewDialog(QDialog):
             if file_upn == source_upn:
                 self.refresh_image_status(container, img_path)
 
+    def _upn_has_jpg(self, filename) -> bool:
+        """True if the picture (UPN) containing `filename` has any JPG file.
+        Such a picture can never be a deletion candidate, so the large viewer
+        greys its Blue/Purple circles (Option C)."""
+        if not self.fpr:
+            return False
+        try:
+            upn_name = self.fpr.fi.files_dict[Path(filename).name]["UniquePictureName"]
+        except (KeyError, AttributeError):
+            return False
+        for f_row in self.fpr.fi.files_dict.values():
+            if f_row.get("UniquePictureName") != upn_name:
+                continue
+            if f_row.get("WindowsExtension", "").lower() in ("jpg", "jpeg"):
+                return True
+        return False
+
     def _apply_gps_badge(self, gps_badge: QLabel, img_path: Path):
         # 📍 = file has GPS (general indicator, like ✅ for species).
         # ❓ = file lacks GPS.
@@ -1115,7 +1027,22 @@ class ImagePreviewDialog(QDialog):
         if gps_badge is not None:
             self._apply_gps_badge(gps_badge, img_path)
 
-    
+        # Repaint the coloured frame so a colour change made in the large view
+        # shows on return without needing a resize/reload.
+        border_wrapper = container.findChild(QWidget, "border_wrapper")
+        if border_wrapper is not None:
+            self._apply_card_border(border_wrapper, img_path)
+
+    def _apply_card_border(self, border_wrapper: QWidget, img_path: Path):
+        """Set the wrapper's coloured frame from the picture's colour label
+        (getColor returns a CSS-usable lowercase name; "" → no frame)."""
+        color = self.fpr.getColor(img_path) if self.fpr else ""
+        if color:
+            border_wrapper.setStyleSheet(
+                f"border: 3px solid {color}; border-radius: 6px; background-color: transparent;")
+        else:
+            border_wrapper.setStyleSheet("background-color: transparent;")
+
     def add_image_to_grid(self, container, image_label, img_path, row, col):
         self.grid_layout.addWidget(container, row, col)
         self.image_widgets.append((image_label, container, img_path))
