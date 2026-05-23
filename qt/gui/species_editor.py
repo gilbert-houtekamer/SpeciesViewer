@@ -270,6 +270,28 @@ class SpeciesInfoDialog(QDialog):
             self.status_label.setText("❌ Cannot access FPR for update.")
             return
 
+        # Typo guard: if the name resolves to no known species (not in the list,
+        # not in GBIF — the same getSpecies check updateSubject uses to decide
+        # whether to enrich it), confirm before storing. Unrecognized names ARE
+        # sometimes deliberate (placeholders, a species not yet in GBIF), so we
+        # ask rather than block.
+        try:
+            _parts = ast.literal_eval(corrected_subject)
+            _lookup = max(_parts, key=len) if isinstance(_parts, list) and _parts else corrected_subject
+        except Exception:
+            _lookup = corrected_subject
+        if not fpr.sc.getSpecies(_lookup):
+            reply = QMessageBox.question(
+                self, "Unknown species",
+                f"“{_lookup}” is not a known species (not in your list and not "
+                f"found in GBIF).\n\nStore it anyway as a placeholder or a new "
+                f"species?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply != QMessageBox.StandardButton.Yes:
+                self.status_label.setText("Commit cancelled — name not stored.")
+                logger.info(f"Commit cancelled: '{_lookup}' not stored (unknown species).")
+                return
+
         original_subject = fpr.getSubject(self.full_path.name)
         saved_scope = _config.get("Species", "correction_scope", fallback="All files with same name error in day folder")
 
