@@ -2,8 +2,8 @@ import configparser
 
 from PyQt6.QtWidgets import QMessageBox
 from gui.menu import MenuSpec  # assuming class is defined elsewhere
-from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDialog,
-        CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog,
+from gui.trip_process import (ReadDirDialog, ReadSummarizeDialog, TripCreationDialog,
+        WritePicturesDialog, CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog,
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
         AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
@@ -89,7 +89,6 @@ def build_menu_spec(main_window):
     read_dir = MenuSpec(
         callback=None,
         title="Read Directory",
-        shortcut="Ctrl+D",
         enabled=make_enabled_checker("ReadDirExif"),
         tooltip=make_tooltip("ReadDirExif"),                
         batch_parms={
@@ -114,6 +113,33 @@ def build_menu_spec(main_window):
         }
     )
     write_summary.callback = lambda: WritePicturesDialog(main_window, write_summary).exec()
+
+    # ── Read & Summarize: the default trip ingest (sv2 + sv3 in one step) ──
+    # The EXIF cache makes re-reading cheap, so fresh data is the sensible
+    # default. _read_summarize is the module the trip-overview column-run and
+    # context-menu reuse (same chaining as the master pipeline's _master_ingest);
+    # the single-day double-click / menu click opens ReadSummarizeDialog, which
+    # runs the two steps via ChainedBatchRunner so both statemachine keys are
+    # set in order. statusname here is informational — eligibility uses the
+    # STATE_COLUMNS gate (ReadDirExif) and state is set per run_keys.
+    def _read_summarize(args, _config):
+        bin.sv2ReadDirExif.main(args, _config)
+        bin.sv3WritePictures.main(args, _config)
+
+    read_summarize = MenuSpec(
+        callback=None,
+        title="Read & Summarize",
+        shortcut="Ctrl+D",
+        enabled=make_enabled_checker("ReadDirExif"),
+        tooltip=make_tooltip("ReadDirExif"),
+        batch_parms={
+            'statusname': "WritePictures",
+            'module_called': _read_summarize,
+            'before_msg': "Reading and summarizing picture directory...",
+            'after_msg': "✅ Read & Summarize complete.",
+        }
+    )
+    read_summarize.callback = lambda: ReadSummarizeDialog(main_window, read_summarize).exec()
 
     write_blog = MenuSpec(
         callback=None,
@@ -490,12 +516,16 @@ def build_menu_spec(main_window):
             "Create Trip": trip_create,
             f"{MenuSpec.separator()}_1": None,
             "Sync Sidecars": sync_sidecars,
-            "Read Directory": read_dir,
-            "Write Summary": write_summary,
+            "Read & Summarize": read_summarize,
             "Write Blog": write_blog,
             "Build Website": build_website,
             "Freeze": freeze_data,
             "Write Commit": commit_website,
+            f"{MenuSpec.separator()}_advanced": None,
+            # Demoted: Read & Summarize runs both in one step. These remain for a
+            # read-only CSV refresh (Rating Editor / translation panel) or debugging.
+            "Read Directory": read_dir,
+            "Write Summary": write_summary,
             f"{MenuSpec.separator()}_2": None,
             "Edit Trip Species List": edit_trip_species,
             "Count Species": count_species,

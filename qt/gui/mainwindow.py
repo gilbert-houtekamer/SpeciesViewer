@@ -225,59 +225,24 @@ class MainWindow(QMainWindow):
         return item
     
     def refresh_trip_row(self, sm, day_name):
-        from gui.trip_overview import (STATE_COL_START, _verified_crc_set,
+        from gui.trip_overview import (STATE_COL_START, STATE_COLUMNS,
+                                       state_cell_symbol, _verified_crc_set,
                                        _format_translations_item)
-        state_label_dict = {
-            "Read\nDirectory" : "ReadDirExif",
-            "Write\nSummary" : "WritePictures",
-            "Write\nBlog" : "WriteBlog",
-            "Build\nWebsite": "BuildWebsite",
-            "Freeze" : "Freeze",
-            "Write\nCommit" : "WriteCommit"
-        }
 
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
         review_day = trip_root / "metadata" / "review" / day_name
 
-        # Note: Sync Sidecars column is intentionally NOT refreshed here
-        # (it is not tracked in the statemachine)
-        for step_key in self.state_labels:
-            step_name = state_label_dict[step_key]
-            if step_name not in sm.Taskstate:
-                symbol = "⚪"
-                tooltip = "Unknown step."
-            else:
-                completed, message, _, _ = sm.Taskstate[step_name]
-                if completed and message == "Successfully run.":
-                    if sm.Taskstate.get("WriteCommit", [False])[0]:
-                        symbol = "⬜"
-                        tooltip = "Step completed. Workflow is frozen after WriteCommit."
-                    else:
-                        symbol = "✅"
-                        tooltip = message
-                elif not completed and "failed" in message.lower():
-                    symbol = "❌"
-                    tooltip = message
-                elif step_name == "WriteBlog":
-                    row = next((r for r in range(self.trip_table.rowCount()) if self.trip_table.item(r, 0).text() == day_name), None)
-                    jpgs = int(self.trip_table.item(row, 2).text()) if row is not None else 0
-                    if jpgs == 0:
-                        symbol = "🚫"
-                        tooltip = "No JPGs available — blog step suppressed."
-                    elif not sm.stateOKtorun(step_name):
-                        symbol = "⚪"
-                        tooltip = sm.explainAbort(step_name, raiseSV=False)
-                    else:
-                        symbol = "🔘"
-                        tooltip = "Click on the sphere to run this step."
-                elif sm.stateOKtorun(step_name):
-                    symbol = "🔘"
-                    tooltip = "Click on the sphere to run this step."
-                else:
-                    symbol = "⚪"
-                    tooltip = sm.explainAbort(step_name, raiseSV=False)
+        row = next((r for r in range(self.trip_table.rowCount())
+                    if self.trip_table.item(r, 0).text() == day_name), None)
+        jpgs = int(self.trip_table.item(row, 2).text()) if row is not None else 0
 
-            self.update_trip_cell(day_name, step_key, symbol, tooltip)
+        # Note: Sync Sidecars column is intentionally NOT refreshed here
+        # (it is not tracked in the statemachine). state_cell_symbol applies the
+        # same rules as populate_trip_overview, including the combined
+        # "Read & Summarize" column that tracks both ReadDirExif + WritePictures.
+        for col in STATE_COLUMNS:
+            symbol, tooltip = state_cell_symbol(sm, col, jpgs)
+            self.update_trip_cell(day_name, col["label"], symbol, tooltip)
 
         # Update progress column
         ini_path = review_day / "statemachine.ini"
@@ -316,7 +281,7 @@ class MainWindow(QMainWindow):
             self.rebuild_menu()
 
     def handle_trip_table_double_click(self, row, column):
-        from gui.trip_overview import SYNC_COL, STATE_COL_START
+        from gui.trip_overview import SYNC_COL, STATE_COL_START, STATE_COLUMNS
         # Translations column (last): open the per-day validation panel.
         translations_col = STATE_COL_START + len(self.state_labels) + 1
         if column == translations_col:
@@ -352,7 +317,8 @@ class MainWindow(QMainWindow):
         # DISABLE logic: check if this step should be blocked (pipeline columns only)
         step_index = column - STATE_COL_START
         if 0 <= step_index < len(self.state_labels):
-            step_name = ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite", "Freeze", "WriteCommit"][step_index]
+            # gate key drives eligibility; the combined column gates on ReadDirExif.
+            step_name = STATE_COLUMNS[step_index]["gate"]
             jpgs = int(self.trip_table.item(row, 2).text())
 
             # Case 1: frozen after WriteCommit
@@ -478,7 +444,7 @@ class MainWindow(QMainWindow):
 
     def handle_column_run_all(self, column):
         """Double-click on a column header: run that step for all eligible rows."""
-        from gui.trip_overview import SYNC_COL, STATE_COL_START
+        from gui.trip_overview import SYNC_COL, STATE_COL_START, STATE_COLUMNS
         from gui.batch import ColumnBatchRunner
         from utils.batch_config import generate_svconfig_ini
 
@@ -493,23 +459,17 @@ class MainWindow(QMainWindow):
             return
 
         step_index = column - STATE_COL_START
-        step_names = ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite", "Freeze", "WriteCommit"]
-        step_name = step_names[step_index]
+        col = STATE_COLUMNS[step_index]
+        step_name = col["gate"]                     # eligibility/guards key
+        primary = col["run_keys"][-1]               # statemachine key set last
+        extra_statusnames = col["run_keys"][:-1]    # set first (combined step)
 
         action_label = self.trip_table.horizontalHeaderItem(column).text().replace("\n", " ")
 
         project_root = Path(_config.get("project", "picturedirectory")).parent
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
 
-        pipeline_msgs = {
-            "ReadDirExif":   ("Reading picture directory...",            "✅ Directory scan complete."),
-            "WritePictures": ("Reading meta data for all pictures ...",  "✅ Writing Summary data."),
-            "WriteBlog":     ("Create a blog entry ...",                 "✅ Blog successfully created."),
-            "BuildWebsite":  ("Build updates for later publication ...", "✅ Website updates prepared."),
-            "Freeze":        ("Freeze all collected data ...",           "✅ Data frozen."),
-            "WriteCommit":   ("Update the trip website ...",             "✅ Please review updated Website."),
-        }
-        before_msg, after_msg = pipeline_msgs[step_name]
+        before_msg, after_msg = col["before"], col["after"]
 
         # Collect eligible rows
         day_steps = []
@@ -551,7 +511,8 @@ class MainWindow(QMainWindow):
                 "project_root": project_root,
                 "trip_root":    trip_root,
                 "module_called": bp["module_called"],
-                "statusname":   step_name,
+                "statusname":   primary,
+                "extra_statusnames": extra_statusnames,
                 "before_msg":   before_msg,
                 "after_msg":    after_msg,
                 "needs_reset":  needs_reset,
@@ -630,20 +591,11 @@ class MainWindow(QMainWindow):
     def handle_trip_table_context_menu(self, pos):
         """Right-click on the Trip Overview: offer to run the user's selected pipeline cells."""
         from PyQt6.QtWidgets import QMenu
-        from gui.trip_overview import STATE_COL_START
+        from gui.trip_overview import STATE_COL_START, STATE_COLUMNS
         from gui.batch import ColumnBatchRunner
         from utils.batch_config import generate_svconfig_ini
 
         state_col_end = STATE_COL_START + len(self.state_labels) - 1
-        step_names = ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite", "Freeze", "WriteCommit"]
-        pipeline_msgs = {
-            "ReadDirExif":   ("Reading picture directory...",            "✅ Directory scan complete."),
-            "WritePictures": ("Reading meta data for all pictures ...",  "✅ Writing Summary data."),
-            "WriteBlog":     ("Create a blog entry ...",                 "✅ Blog successfully created."),
-            "BuildWebsite":  ("Build updates for later publication ...", "✅ Website updates prepared."),
-            "Freeze":        ("Freeze all collected data ...",           "✅ Data frozen."),
-            "WriteCommit":   ("Update the trip website ...",             "✅ Please review updated Website."),
-        }
 
         selected = [
             idx for idx in self.trip_table.selectedIndexes()
@@ -676,7 +628,7 @@ class MainWindow(QMainWindow):
                 "row":        row,
                 "col":        col,
                 "step_index": col - STATE_COL_START,
-                "step_name":  step_names[col - STATE_COL_START],
+                "step_name":  STATE_COLUMNS[col - STATE_COL_START]["gate"],
                 "symbol":     cell_item.text(),
             })
 
@@ -727,15 +679,16 @@ class MainWindow(QMainWindow):
                     continue
 
                 needs_reset = (symbol == "✅")
-                before_msg, after_msg = pipeline_msgs[step_name]
+                colspec = STATE_COLUMNS[c["step_index"]]
                 day_steps.append({
                     "day_str":      day_str,
                     "project_root": project_root,
                     "trip_root":    trip_root,
                     "module_called": bp["module_called"],
-                    "statusname":   step_name,
-                    "before_msg":   before_msg,
-                    "after_msg":    after_msg,
+                    "statusname":   colspec["run_keys"][-1],
+                    "extra_statusnames": colspec["run_keys"][:-1],
+                    "before_msg":   colspec["before"],
+                    "after_msg":    colspec["after"],
                     "needs_reset":  needs_reset,
                 })
 

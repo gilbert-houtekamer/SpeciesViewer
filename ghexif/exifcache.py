@@ -120,26 +120,47 @@ def load_cache(path):
     return new_cache()
 
 
+def _replace_with_retry(tmp, path, attempts=12, delay=0.25):
+    """os.replace, retried on transient PermissionError. The cache lives under
+    the master repo, which is typically a Dropbox/OneDrive folder; the sync
+    client (and AV real-time scanners) briefly open the destination during
+    sync, which surfaces as WinError 5 (Access denied) on an otherwise-valid
+    replace. Retrying for a few seconds rides out the lock."""
+    for attempt in range(attempts):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(delay)
+
+
 def save_cache(path, cache):
     """Atomic write (temp + fsync + os.replace) and rotate .bak1..N so a crash
     never loses the prior good copy. Backups share the cache's volume, so the
-    replace stays atomic."""
+    replace stays atomic. os.replace is retried because a Dropbox/AV lock on the
+    destination is transient (see _replace_with_retry); backup rotation is
+    best-effort — a locked .bak must not cost us the save of fresh data."""
     cache["updated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    # rotate: .bak{N-1} -> .bak{N}, ..., current -> .bak1
-    for i in range(CACHE_BACKUPS, 1, -1):
-        src = f"{path}.bak{i - 1}"
-        if os.path.exists(src):
-            shutil.copy2(src, f"{path}.bak{i}")
-    if os.path.exists(path):
-        shutil.copy2(path, f"{path}.bak1")
+    # rotate: .bak{N-1} -> .bak{N}, ..., current -> .bak1 (best-effort)
+    try:
+        for i in range(CACHE_BACKUPS, 1, -1):
+            src = f"{path}.bak{i - 1}"
+            if os.path.exists(src):
+                shutil.copy2(src, f"{path}.bak{i}")
+        if os.path.exists(path):
+            shutil.copy2(path, f"{path}.bak1")
+    except OSError as e:
+        logger.warning(f"EXIF cache: backup rotation skipped ({e}).")
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        _replace_with_retry(tmp, path)
     finally:
         if os.path.exists(tmp):
             os.remove(tmp)

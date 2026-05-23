@@ -184,7 +184,13 @@ class StateMachine:
 
     # update the state after the job is completed
     # also disable steps that must be run again as previous step is now (potentially) invalid
-    def updateState(self, statejustdone, ok, lastmessage):
+    #
+    # invalidate_downstream=False suppresses the cascade: when a step is re-run
+    # but its output is byte-identical to before (the EXIF cache makes
+    # re-reading cheap, so a no-op re-read of Read/Summarize is common), the
+    # caller can keep downstream Blog/Website/Freeze states intact instead of
+    # forcing the whole chain to redo. The step's OWN state is always updated.
+    def updateState(self, statejustdone, ok, lastmessage, invalidate_downstream=True):
         try:
             self.Taskstate[statejustdone][0] = ok
             self.Taskstate[statejustdone][1] = lastmessage
@@ -198,7 +204,7 @@ class StateMachine:
             "BuildWebsite": ["Freeze"]
         }
 
-        if statejustdone in invalidation_map:
+        if invalidate_downstream and statejustdone in invalidation_map:
             for step in invalidation_map[statejustdone]:
                 if step in self.Taskstate:
                     self.Taskstate[step][0] = False

@@ -126,7 +126,14 @@ def main(args, config):
         metadata = hits + fresh
         if persist:
             exifcache.update(cache, fresh, fingerprint)
-            exifcache.save_cache(cache_path, cache)
+            # The cache is a pure optimization — a failed save (e.g. a Dropbox/AV
+            # lock that outlasts the retries) must NOT cost us the directory read.
+            # Log and continue; the next scan re-reads the un-cached files.
+            try:
+                exifcache.save_cache(cache_path, cache)
+            except OSError as e:
+                logger.warning(f"EXIF cache not saved ({e}); the next scan will "
+                               f"re-read those files. Read continues.")
 
         datafilelocation = MyProject.getMetaDirReview()
         os.makedirs(datafilelocation, exist_ok=True)

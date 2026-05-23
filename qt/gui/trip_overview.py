@@ -14,6 +14,83 @@ from utils.config import _config
 SYNC_COL = 3
 STATE_COL_START = 4
 
+# ── Trip-overview pipeline state columns ─────────────────────────────────────
+# Single source of truth shared by trip_overview (rendering) and mainwindow
+# (the double-click / column-run / context-menu handlers). Each column maps to
+# one or more statemachine keys:
+#   - "Read & Summarize" combines Read Directory (sv2) + Write Summary (sv3).
+#     run_keys are listed in RUN ORDER so updateState's downstream invalidation
+#     resolves correctly (set ReadDirExif first, then WritePictures).
+#   - "gate" is the key used for eligibility (stateOKtorun / explainAbort) and
+#     the WriteBlog no-JPGs special case; a multi-key column is ✅ only when ALL
+#     its run_keys are done.
+#   - "menu" is the Trip-menu action label (header text with newlines→spaces).
+STATE_COLUMNS = [
+    {"label": "Read &\nSummarize", "menu": "Read & Summarize",
+     "gate": "ReadDirExif", "run_keys": ["ReadDirExif", "WritePictures"],
+     "before": "Reading and summarizing picture directory...",
+     "after": "✅ Read & Summarize complete."},
+    {"label": "Write\nBlog", "menu": "Write Blog",
+     "gate": "WriteBlog", "run_keys": ["WriteBlog"],
+     "before": "Create a blog entry ...",
+     "after": "✅ Blog successfully created."},
+    {"label": "Build\nWebsite", "menu": "Build Website",
+     "gate": "BuildWebsite", "run_keys": ["BuildWebsite"],
+     "before": "Build updates for later publication ...",
+     "after": "✅ Website updates prepared."},
+    {"label": "Freeze", "menu": "Freeze",
+     "gate": "Freeze", "run_keys": ["Freeze"],
+     "before": "Freeze all collected data ...",
+     "after": "✅ Data frozen."},
+    {"label": "Write\nCommit", "menu": "Write Commit",
+     "gate": "WriteCommit", "run_keys": ["WriteCommit"],
+     "before": "Update the trip website ...",
+     "after": "✅ Please review updated Website."},
+]
+STATE_LABELS = [c["label"] for c in STATE_COLUMNS]
+
+
+def state_cell_symbol(sm, col, jpgs):
+    """(symbol, tooltip) for one trip-overview state column from a StateMachine.
+
+    A multi-key column (Read & Summarize) is ✅ only when ALL run_keys are done;
+    failure and eligibility use the gate key. Mirrors the symbol rules used
+    across populate / refresh so both paths stay identical."""
+    keys = col["run_keys"]
+    gate = col["gate"]
+    write_commit_done = sm.Taskstate.get("WriteCommit", [False])[0]
+
+    if any(k not in sm.Taskstate for k in keys):
+        return "⚪", "Unknown step."
+
+    states = [sm.Taskstate[k] for k in keys]
+    all_done = all(done and msg == "Successfully run." for done, msg, *_ in states)
+    failed = next(((done, msg) for done, msg, *_ in states
+                   if (not done) and "failed" in msg.lower()), None)
+
+    if all_done:
+        if write_commit_done:
+            return "⬜", "Step completed. Workflow is frozen after WriteCommit."
+        return "✅", "Successfully run."
+    if failed:
+        return "❌", failed[1]
+    if gate == "WriteBlog" and jpgs == 0:
+        return "🚫", "No JPGs available — blog step suppressed."
+    if sm.stateOKtorun(gate):
+        return "🔘", "Click on the sphere to run this step."
+    return "⚪", sm.explainAbort(gate, raiseSV=False)
+
+
+def state_cell_item(sm, col, jpgs):
+    """state_cell_symbol wrapped in a centered QTableWidgetItem."""
+    symbol, tooltip = state_cell_symbol(sm, col, jpgs)
+    item = QTableWidgetItem(symbol)
+    item.setToolTip(tooltip)
+    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+    if symbol == "🚫":
+        item.setFlags(Qt.ItemFlag.NoItemFlags)
+    return item
+
 # Extensions the image preview dialog considers "photo files" — matches the
 # affirmative filter in ImagePreviewDialog.discover_images. _day_health uses
 # the same set so its no-GPS count aligns with the dialog's view (PNG
@@ -264,23 +341,11 @@ def populate_trip_overview(self):
         jpg_files = [f for f in all_files if f.suffix.lower() == ".jpg"]
         return len(all_files), len(jpg_files)
 
-    self.state_labels = [
-        "Read\nDirectory",
-        "Write\nSummary",
-        "Write\nBlog",
-        "Build\nWebsite",
-        "Freeze",
-        "Write\nCommit"
-    ]
-
-    self.state_keys = [
-        "sv2readdirexif",
-        "sv3writepictures",
-        "sv4writeblog",
-        "sv5buildwebsite",
-        "sv6freeze",
-        "sv7writecommit"
-    ]
+    # Pipeline state columns come from the shared STATE_COLUMNS registry.
+    # "Read & Summarize" is one column tracking both sv2 (Read Directory) and
+    # sv3 (Write Summary) — see STATE_COLUMNS at the top of this module.
+    self.state_labels = STATE_LABELS
+    self.state_keys = [c["gate"] for c in STATE_COLUMNS]
 
     expected_messages = {
         "sv1makerepository": "MakeRepository succeeded.",
@@ -351,44 +416,11 @@ def populate_trip_overview(self):
         # Create a StateMachine instance for this day
         sm = StateMachine(str(trip_root), str(review_day), readState=True)
 
-        # Loop through each step
-        for j, step_name in enumerate([
-                    "ReadDirExif", "WritePictures", "WriteBlog",
-                    "BuildWebsite", "Freeze", "WriteCommit"]):
-            if step_name not in sm.Taskstate:
-                symbol = "⚪"
-                tooltip = "Unknown step."
-            else:
-                completed, message, _, _ = sm.Taskstate[step_name]
-                expected = "Successfully run."
-
-                if completed and message == expected:
-                    if completed and sm.Taskstate.get("WriteCommit", [False])[0]:
-                        symbol = "⬜"
-                        tooltip = "Step completed. Workflow is frozen after WriteCommit."
-                    else:
-                        symbol = "✅"
-                        tooltip = message
-                elif not completed and "failed" in message.lower():
-                    symbol = "❌"
-                    tooltip = message
-                elif jpgs == 0 and step_name == "WriteBlog":
-                    symbol = "🚫"
-                    tooltip = "No JPGs available — blog step suppressed."
-                elif sm.stateOKtorun(step_name):
-                    symbol = "🔘"
-                    tooltip = "Click on the sphere to run this step."
-                else:
-                    symbol = "⚪"
-                    tooltip = sm.explainAbort(step_name, raiseSV=False)
-
-            item = QTableWidgetItem(symbol)
-            item.setToolTip(tooltip)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            if symbol == "🚫":
-                item.setFlags(Qt.ItemFlag.NoItemFlags)
-
-            self.trip_table.setItem(i, STATE_COL_START + j, item)
+        # Loop through each state column (Read & Summarize is one column
+        # tracking sv2+sv3 — see STATE_COLUMNS / state_cell_item).
+        for j, col in enumerate(STATE_COLUMNS):
+            self.trip_table.setItem(i, STATE_COL_START + j,
+                                    state_cell_item(sm, col, jpgs))
 
         # Determine progress summary
         summary_item = self.get_progress_summary_item(sm,  review_root / day.name)

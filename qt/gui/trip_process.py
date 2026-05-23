@@ -488,6 +488,131 @@ class ReadDirDialog(QDialog):
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec)
 
+
+class ReadSummarizeDialog(QDialog):
+    """Default trip ingest: run Read Directory (sv2) + Write Summary (sv3) as
+    one step. Now that the EXIF cache makes re-reading cheap, fresh data is the
+    sensible default — a species/spelling/translation fix written to the
+    XMP/JPG only reaches the reports once both steps re-run. Uses
+    ChainedBatchRunner so the two statemachine keys (ReadDirExif first, then
+    WritePictures) are set in the right order. The demoted "Read Directory" and
+    "Write Summary" items remain for a CSV-only refresh / debugging."""
+
+    def __init__(self, parent, menu_spec):
+        super().__init__(parent)
+        self.setWindowTitle("Read & Summarize")
+        self.resize(600, 320)
+
+        self.logger = logging.getLogger("speciesviewer")
+        self.menu_spec = menu_spec
+        self.passed_parent = parent
+
+        full_path = Path(_config["project"]["picturedirectory"])
+        self.base_path = full_path.parent
+        self.subdir_name = full_path.name
+
+        layout = QVBoxLayout(self)
+
+        info_html = HTMLLabel(
+            "<p><b>Read &amp; Summarize a folder of pictures</b><br>"
+            "This runs <b>Read Directory</b> and <b>Write Summary</b> back to "
+            "back. Read Directory extracts Exif metadata (cached, so re-reading "
+            "is fast); Write Summary enriches it with species information and "
+            "writes the per-picture data the blog, website and validation panels "
+            "use.<br>"
+            "Use this as the normal step after correcting species names, spelling "
+            "or translation source texts in Lightroom / DxO PhotoLab — both "
+            "stages must re-run for the fix to reach the reports.<br>"
+            "(The separate <b>Read Directory</b> / <b>Write Summary</b> items "
+            "remain available for a quick read-only refresh or debugging.)</p>"
+        )
+        layout.addWidget(info_html)
+
+        self.base_dir_field = DirectoryFieldQt("Project root folder", str(self.base_path))
+        layout.addWidget(self.base_dir_field)
+
+        self.subdir_dropdown = QComboBox()
+        self.subdir_dropdown.setEditable(False)
+        layout.addWidget(QLabel("Select subdirectory"))
+        layout.addWidget(self.subdir_dropdown)
+
+        self.status_label = QLabel("")
+        layout.addWidget(self.status_label)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        self.read_btn = QPushButton("Read && Summarize")
+        self.close_btn = QPushButton("Close")
+        btn_layout.addWidget(self.read_btn)
+        btn_layout.addWidget(self.close_btn)
+        layout.addLayout(btn_layout)
+
+        self.base_dir_field.field.textChanged.connect(self.update_subdirs)
+        self.read_btn.clicked.connect(self.on_run)
+        self.close_btn.clicked.connect(self.close)
+
+        self.update_subdirs()
+
+    def update_subdirs(self):
+        base_path = Path(self.base_dir_field.get_path())
+        if base_path.is_dir():
+            subdirs = [f.name for f in base_path.iterdir() if f.is_dir()]
+            self.subdir_dropdown.clear()
+            self.subdir_dropdown.addItems(subdirs)
+            if self.subdir_name in subdirs:
+                self.subdir_dropdown.setCurrentText(self.subdir_name)
+        else:
+            self.subdir_dropdown.clear()
+
+    def on_run(self):
+        import configparser
+        from gui.batch import ChainedBatchRunner
+        from sharedlib.statemachine import StateMachine
+        from utils.batch_config import generate_svconfig_ini
+        import bin.sv2ReadDirExif
+        import bin.sv3WritePictures
+
+        selected_base = Path(self.base_dir_field.get_path())
+        selected_subdir = self.subdir_dropdown.currentText()
+        full_selected_path = selected_base / selected_subdir
+
+        if not selected_base.is_dir():
+            self.base_dir_field.show_hint("Invalid base directory.")
+            return
+        if not full_selected_path.is_dir():
+            self.base_dir_field.show_hint("Selected subdirectory does not exist.")
+            return
+
+        _config["project"]["picturedirectory"] = str(full_selected_path)
+        self.logger.info(f"📁 Read & Summarize: {full_selected_path}")
+
+        generate_svconfig_ini()
+        module_config = configparser.ConfigParser()
+        module_config.read("svconfig.ini")
+
+        trip_root = Path(_config.get("trip", "tripbiotadatabase"))
+        review_day = trip_root / "metadata" / "review" / selected_subdir
+        sm = StateMachine(str(trip_root), str(review_day), readState=True)
+
+        steps = [
+            (bin.sv2ReadDirExif.main, "ReadDirExif",
+             "Reading picture directory...", "✅ Directory scan complete."),
+            (bin.sv3WritePictures.main, "WritePictures",
+             "Reading meta data for all pictures ...", "✅ Summary written."),
+        ]
+
+        def on_complete():
+            sm2 = StateMachine(str(trip_root), str(review_day), readState=True)
+            self.passed_parent.refresh_trip_row(sm2, selected_subdir)
+
+        # Parent the runner/spinner to the main window (not this dialog) so we
+        # can close the dialog immediately without affecting the spinner.
+        runner = ChainedBatchRunner(self.passed_parent, self.passed_parent, steps,
+                                    module_config, sm, selected_subdir, on_complete)
+        runner.start()
+        self.close()
+
+
 class WritePicturesDialog(QDialog):
     def __init__(self, parent, menu_spec):
         super().__init__(parent)
