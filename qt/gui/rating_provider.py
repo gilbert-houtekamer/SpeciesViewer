@@ -22,7 +22,8 @@ from pathlib import Path
 
 from PyQt6.QtGui import QImage
 
-from gui.picture_provider import PictureItem, PictureCollection, ExifSummary, PixmapCallback
+from gui.picture_provider import (
+    PictureItem, PictureCollection, ExifSummary, PixmapCallback, exif_from_rows)
 from gui.image_loader import AsyncImageLoader
 from gui.rating_editor import _compute_rate, _safe_int
 from ghexif.exif_writer import exiftool_write
@@ -268,20 +269,7 @@ class RatingEditorCollection(PictureCollection):
 
     def exif_for(self, upn_key: str) -> ExifSummary:
         upn = self.fpr.upn.UniquePictureName_dict.get(upn_key, {})
-        f = self._rep_file_row(upn_key)
-        return ExifSummary(
-            iso=f.get("EXIF:ISO", ""),
-            aperture=f.get("EXIF:FNumber", "") or f.get("Composite:Aperture", ""),
-            shutter=f.get("EXIF:ExposureTime", ""),
-            ev_comp="",  # not captured in the CSV
-            focal_length=f.get("EXIF:FocalLength", ""),
-            model=upn.get("CameraModel", "") or f.get("CameraModel", ""),
-            lens=(upn.get("LensLongName", "") or upn.get("LensShortName", "")
-                  or f.get("EXIF:LensModel", "") or f.get("Composite:LensID", "")),
-            distance=f.get("MakerNotes:FocusDistance", "") or f.get("EXIF:SubjectDistance", ""),
-            dimensions=upn.get("ImageSize", "") or f.get("ImageSize", ""),
-            gps=upn.get("GPSPosition", "") or f.get("Composite:GPSPosition", ""),
-        )
+        return exif_from_rows(upn, self._rep_file_row(upn_key))
 
     # ── write-back (rating/colour), with per-day CSV routing ──────────────
     def apply(self, upn_key: str, *, new_stars: int | None = None,

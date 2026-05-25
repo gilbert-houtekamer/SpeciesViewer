@@ -50,6 +50,27 @@ class ExifSummary:
     gps: str = ""
 
 
+def exif_from_rows(upn_row: dict, file_row: dict) -> ExifSummary:
+    """Build the compact summary from a UPN row (camera/lens/dims/gps) plus a
+    representative file row (the discrete shot settings). Shared by the engine
+    providers so both map the CSV columns identically."""
+    f = file_row or {}
+    u = upn_row or {}
+    return ExifSummary(
+        iso=f.get("EXIF:ISO", ""),
+        aperture=f.get("EXIF:FNumber", "") or f.get("Composite:Aperture", ""),
+        shutter=f.get("EXIF:ExposureTime", ""),
+        ev_comp="",  # not captured in the CSV
+        focal_length=f.get("EXIF:FocalLength", ""),
+        model=u.get("CameraModel", "") or f.get("CameraModel", ""),
+        lens=(u.get("LensLongName", "") or u.get("LensShortName", "")
+              or f.get("EXIF:LensModel", "") or f.get("Composite:LensID", "")),
+        distance=f.get("MakerNotes:FocusDistance", "") or f.get("EXIF:SubjectDistance", ""),
+        dimensions=u.get("ImageSize", "") or f.get("ImageSize", ""),
+        gps=u.get("GPSPosition", "") or f.get("Composite:GPSPosition", ""),
+    )
+
+
 class PictureItem(ABC):
     """One picture (UPN). The website pairs species + headline; both are here
     as visually-similar fields. Write ops raise NotImplementedError by default;
@@ -114,6 +135,10 @@ class PictureItem(ABC):
     @property
     def has_jpg(self) -> bool:          # Option C / deletion eligibility
         return False
+
+    @property
+    def has_gps(self) -> bool:          # False → preview shows the missing-GPS badge
+        return True
 
     @property
     def error_msg(self) -> str:         # species/headline warning (preview only)
