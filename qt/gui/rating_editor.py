@@ -14,7 +14,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea, QGridLayout,
     QLabel, QFrame, QPushButton, QSpinBox, QComboBox, QSizePolicy,
-    QRadioButton, QButtonGroup, QMessageBox,
+    QRadioButton, QButtonGroup, QMessageBox, QStyle,
 )
 from PyQt6.QtGui import QPixmap, QImage, QGuiApplication
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QRunnable, QThreadPool
@@ -24,6 +24,8 @@ from engine.filecsv import Files
 from engine.picturecsv import Pictures
 from ghexif.exif_writer import exiftool_write
 from gui.window_state import restore_window, save_window
+from gui.image_loader import AsyncImageLoader
+from gui.picture_provider import PictureItem
 
 logger = logging.getLogger("speciesviewer")
 
@@ -112,32 +114,6 @@ def _compute_rate(upn_row: dict, files_dict: dict) -> int:
     return computation
 
 
-# ── Background thumbnail loader ───────────────────────────────────────────────
-
-class _ThumbSignals(QObject):
-    ready = pyqtSignal(str, object, int)  # upn_key, QImage, generation
-
-
-class _ThumbLoader(QRunnable):
-    """Loads and scales a thumbnail image in a worker thread."""
-
-    def __init__(self, upn_key: str, path, target_w: int, gen: int, signals: _ThumbSignals):
-        super().__init__()
-        self._upn_key = upn_key
-        self._path = str(path) if path else None
-        self._target_w = target_w
-        self._gen = gen
-        self._signals = signals
-
-    def run(self):
-        img = QImage()
-        if self._path and Path(self._path).exists():
-            img = QImage(self._path)
-            if not img.isNull() and self._target_w > 0:
-                img = img.scaledToWidth(self._target_w, Qt.TransformationMode.SmoothTransformation)
-        self._signals.ready.emit(self._upn_key, img, self._gen)
-
-
 # ── Sub-widgets ────────────────────────────────────────────────────────────────
 
 class StarWidget(QWidget):
@@ -161,7 +137,12 @@ class StarWidget(QWidget):
         self._refresh()
 
     def _on_click(self, n: int):
-        self._rating = 0 if self._rating == n else n
+        # Standard photo-app behaviour:
+        #  - clicking an "on" star (rating >= n) turns it AND every star to its
+        #    right off  → rating = n - 1  (so clicking the lowest lit star clears)
+        #  - clicking an "off" star (rating < n) fills up to it, lighting every
+        #    star to its left → rating = n
+        self._rating = n - 1 if self._rating >= n else n
         self._refresh()
         self.rating_changed.emit(self._rating)
 
@@ -249,19 +230,24 @@ class ColorSelector(QWidget):
                 btn.setToolTip(name)
 
 
+_DISCARD_GREYED_TIP = ("Has a JPG — kept for the website and a future DxO "
+                       "re-export, so it can't be a deletion candidate.")
+
+
 class PictureCard(QFrame):
-    """Thumbnail + star rating + color selector + rate label for one UPN."""
+    """Thumbnail + star rating + color selector + rate label for one picture.
 
-    card_changed = pyqtSignal(str)  # upn_key
-    card_clicked = pyqtSignal(str)  # upn_key — thumbnail clicked → open large view
+    Renders entirely from a PictureItem (the provider seam) and writes edits
+    back through it — no direct engine access. Capability flags decide whether
+    the stars / colour controls are live."""
 
-    def __init__(self, upn_key: str, upn_row: dict, jpg_path, card_width: int,
-                 display_name: str = None, parent=None):
+    card_changed = pyqtSignal(str)  # key — emitted after a write so the host re-sorts
+    card_clicked = pyqtSignal(str)  # key — thumbnail clicked → open large view
+
+    def __init__(self, item: PictureItem, card_width: int, parent=None):
         super().__init__(parent)
-        self.upn_key = upn_key
-        self._upn_row = upn_row
-        self._pending_rating = None
-        self._pending_color = None
+        self._item = item
+        self.upn_key = item.key
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setFrameShadow(QFrame.Shadow.Raised)
@@ -269,25 +255,23 @@ class PictureCard(QFrame):
         vbox.setContentsMargins(5, 5, 5, 5)
         vbox.setSpacing(3)
 
-        # Thumbnail — clicking opens the large-view detail dialog. A coloured
-        # border traces the picture's colour label (less in-your-face than the
-        # bullets, per user pref); kept in sync by _update_thumb_style.
-        self._frame_color = upn_row.get("Label", "")
+        # Thumbnail — clicking opens the large view. The coloured border traces
+        # the colour label (less in-your-face than bullets); kept in sync by
+        # _update_thumb_style. Loaded asynchronously via the provider.
+        self._frame_color = item.color
         self._thumb = QLabel()
         self._thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumb.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self._thumb.setCursor(Qt.CursorShape.PointingHandCursor)
         self._thumb.mousePressEvent = lambda _: self.card_clicked.emit(self.upn_key)
-        # Placeholder height (3:2 landscape ratio) until background load completes
         self._thumb_target_w = max(80, card_width - 18)
         self._thumb.setFixedHeight(max(60, self._thumb_target_w * 2 // 3))
         self._update_thumb_style()
         vbox.addWidget(self._thumb)
+        item.request_thumbnail(self._thumb_target_w, self.set_thumbnail)
 
         # Species name
-        species = display_name or (upn_row.get("NLSoortNaam") or upn_row.get("EngSoortNaam")
-                   or upn_row.get("WetSoortNaam") or upn_key)
-        lbl_name = QLabel(species)
+        lbl_name = QLabel(item.display_name or item.key)
         lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_name.setStyleSheet("font-weight: bold; font-size: 10px;")
         lbl_name.setWordWrap(True)
@@ -296,48 +280,56 @@ class PictureCard(QFrame):
         # Stars row + date + rate
         row_stars = QHBoxLayout()
         row_stars.setContentsMargins(0, 0, 0, 0)
-        initial_stars = _safe_int(upn_row.get("Rating", "0"))
-        self._stars = StarWidget(initial_stars)
-        self._stars.rating_changed.connect(self._on_rating_changed)
+        self._stars = StarWidget(item.rating)
+        if item.can_edit_rating:
+            self._stars.rating_changed.connect(self._on_rating_changed)
+        else:
+            self._stars.setEnabled(False)
         row_stars.addWidget(self._stars)
-        dto = upn_row.get("DateTimeOriginal", "")
-        if dto:
-            date_str = dto[:10].replace(":", "-")
-            lbl_date = QLabel(date_str)
+        if item.date:
+            lbl_date = QLabel(item.date[:10].replace(":", "-"))
             lbl_date.setStyleSheet("font-size: 9px; color: #777;")
             row_stars.addWidget(lbl_date)
         row_stars.addStretch()
-        self._rate_lbl = QLabel(f"Rate: {upn_row.get('Rate', '?')}")
+        self._rate_lbl = QLabel()
         self._rate_lbl.setStyleSheet("font-size: 10px; color: #555;")
+        self.update_rate_display(item.rate)
         row_stars.addWidget(self._rate_lbl)
         vbox.addLayout(row_stars)
 
-        # Color selector
-        self._color_sel = ColorSelector(upn_row.get("Label", ""))
-        self._color_sel.color_changed.connect(self._on_color_changed)
+        # Color selector — greys Blue/Purple on a JPG-bearing picture (Option C)
+        self._color_sel = ColorSelector(item.color)
+        if item.can_edit_color:
+            self._color_sel.color_changed.connect(self._on_color_changed)
+        else:
+            self._color_sel.setEnabled(False)
+        if item.has_jpg:
+            self._color_sel.set_disabled_colors(("Blue", "Purple"), _DISCARD_GREYED_TIP)
         vbox.addWidget(self._color_sel)
 
-        # UPN key + file types (small)
-        files = upn_row.get("Files", [])
-        exts = sorted({Path(f).suffix.lstrip(".").upper()
-                       for f in (files if isinstance(files, list) else []) if f})
-        key_line = upn_key if not exts else f"{upn_key}  {' · '.join(exts)}"
+        # key + file types (small)
+        exts = item.file_exts
+        key_line = item.key if not exts else f"{item.key}  {' · '.join(exts)}"
         lbl_key = QLabel(key_line)
         lbl_key.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_key.setStyleSheet("font-size: 9px; color: #aaa;")
-        lbl_key.setToolTip(upn_key)
+        lbl_key.setToolTip(item.key)
         vbox.addWidget(lbl_key)
 
     def _on_rating_changed(self, n: int):
-        self._pending_rating = n
+        self._item.set_rating(n)             # writes + recomputes Rate via provider
+        self.update_rate_display(self._item.rate)
         self.card_changed.emit(self.upn_key)
 
     def _on_color_changed(self, color: str):
-        self._pending_color = color
+        self._item.set_color(color)
+        self._frame_color = color
+        self._update_thumb_style()
+        self.update_rate_display(self._item.rate)
         self.card_changed.emit(self.upn_key)
 
-    def update_rate_display(self, new_rate: int):
-        self._rate_lbl.setText(f"Rate: {new_rate}")
+    def update_rate_display(self, new_rate):
+        self._rate_lbl.setText(f"Rate: {new_rate if new_rate is not None else '?'}")
 
     def update_rating_display(self, stars: int):
         self._stars.set_rating(stars)
@@ -367,13 +359,6 @@ class PictureCard(QFrame):
             self._thumb.setFixedHeight(px.height() + 6)
             self._thumb.setPixmap(px)
         self._update_thumb_style()
-
-    def take_pending(self):
-        """Return (pending_rating, pending_color) and clear them."""
-        r, c = self._pending_rating, self._pending_color
-        self._pending_rating = None
-        self._pending_color = None
-        return r, c
 
 
 def _safe_int(s, default: int = 0) -> int:
@@ -412,9 +397,10 @@ class RatingEditorDialog(QDialog):
         self._cards_by_key: dict[str, PictureCard] = {}
         self._jpg_only = True
         self._species_lang = "NL"
-        self._thumb_gen = 0
-        self._thumb_signals = _ThumbSignals()
-        self._thumb_signals.ready.connect(self._on_thumb_ready)
+        # One async image loader for the dialog's lifetime; each collection
+        # shares it so cancel_pending_loads() always targets the live loader.
+        self._loader = AsyncImageLoader(self)
+        self._collection = None
         # Trip-scope per-day tracking; None in Day scope
         self._day_objects: dict | None = None   # day_str → (Files, Pictures)
         self._upn_day_map: dict[str, str] = {}  # upn_key → day_str
@@ -562,6 +548,14 @@ class RatingEditorDialog(QDialog):
             logger.error(f"RatingEditorDialog load error: {e}", exc_info=True)
             return
 
+        # Build the provider collection over the freshly-loaded data. Local
+        # import avoids a circular import (rating_provider imports helpers here).
+        from gui.rating_provider import RatingEditorCollection
+        self._collection = RatingEditorCollection(
+            self.fpr, self._day_objects, self._upn_day_map,
+            jpg_only=self._jpg_only, species_lang=self._species_lang,
+            loader=self._loader,
+        )
         self._populate_species_combo(restore_selection=saved_species)
 
     def _load_trip_scope(self):
@@ -649,121 +643,6 @@ class RatingEditorDialog(QDialog):
                 return
         self._rebuild_cards()
 
-    # ── Sorted picture list ───────────────────────────────────────────────────
-
-    def _sorted_upns(self, filter_name=None) -> list[tuple[int, str, dict]]:
-        rows = []
-        for key, upn_row in self.fpr.upn.UniquePictureName_dict.items():
-            if filter_name and self._species_name(upn_row) != filter_name:
-                continue
-            if self._jpg_only and self._get_jpg_path(upn_row) is None:
-                continue
-            rows.append((_safe_int(upn_row.get("Rate", 0) or 0), key, upn_row))
-        rows.sort(key=lambda x: x[0], reverse=True)
-        return rows
-
-    def _get_jpg_path(self, upn_row: dict) -> Path | None:
-        """Return the best available JPG path for a UPN, or None."""
-        best = upn_row.get("BestJPGPathName", "")
-        if best:
-            p = Path(best)
-            if p.exists() and p.suffix.lower() in (".jpg", ".jpeg"):
-                return p
-        files = upn_row.get("Files", [])
-        if not isinstance(files, list):
-            return None
-        for fname in files:
-            if fname not in self.fpr.fi.files_dict:
-                continue
-            frow = self.fpr.fi.files_dict[fname]
-            if frow.get("WindowsExtension", "").lower() in ("jpg", "jpeg"):
-                p = Path(frow.get("WindowsFileName", ""))
-                if p.exists():
-                    return p
-        return None
-
-    def _get_display_path(self, upn_row: dict) -> Path | None:
-        """Return a JPG path for display; falls back to cached RAW thumbnail when not JPG-only."""
-        jpg = self._get_jpg_path(upn_row)
-        if jpg:
-            return jpg
-        if self._jpg_only:
-            return None
-        return self._get_raw_thumb(upn_row)
-
-    _RAW_EXTS = {".nef", ".orf", ".cr2", ".arw", ".rw2"}
-
-    def _get_raw_thumb(self, upn_row: dict) -> Path | None:
-        """Return a cached JPEG thumbnail for the first RAW file in the UPN, extracting it if needed."""
-        files = upn_row.get("Files", [])
-        if not isinstance(files, list):
-            return None
-        for fname in files:
-            if fname not in self.fpr.fi.files_dict:
-                continue
-            frow = self.fpr.fi.files_dict[fname]
-            if ("." + frow.get("WindowsExtension", "").lower()) not in self._RAW_EXTS:
-                continue
-            raw_path = Path(frow.get("WindowsFileName", ""))
-            if not raw_path.exists():
-                continue
-            cache_dir = raw_path.parent / ".preview_cache"
-            cache_dir.mkdir(exist_ok=True)
-            cache_path = cache_dir / (raw_path.stem + ".jpg")
-            if cache_path.exists():
-                return cache_path
-            for tag in ["-PreviewImage", "-ThumbnailImage"]:
-                try:
-                    result = subprocess.run(
-                        ["exiftool", "-b", tag, str(raw_path)],
-                        capture_output=True, timeout=15,
-                    )
-                    if result.returncode == 0 and result.stdout:
-                        cache_path.write_bytes(result.stdout)
-                        return cache_path
-                except Exception as e:
-                    logger.warning(f"RAW thumb extraction failed for {raw_path.name}: {e}")
-        return None
-
-    def _batch_extract_raw_thumbs(self):
-        """Batch-extract RAW thumbnails for all UPNs that have no JPG (pre-fills the cache)."""
-        by_dir: dict[Path, list[Path]] = {}
-        for upn_row in self.fpr.upn.UniquePictureName_dict.values():
-            if self._get_jpg_path(upn_row):
-                continue
-            files = upn_row.get("Files", [])
-            if not isinstance(files, list):
-                continue
-            for fname in files:
-                if fname not in self.fpr.fi.files_dict:
-                    continue
-                frow = self.fpr.fi.files_dict[fname]
-                if ("." + frow.get("WindowsExtension", "").lower()) not in self._RAW_EXTS:
-                    continue
-                raw_path = Path(frow.get("WindowsFileName", ""))
-                if not raw_path.exists():
-                    continue
-                cache_dir = raw_path.parent / ".preview_cache"
-                cache_dir.mkdir(exist_ok=True)
-                if not (cache_dir / (raw_path.stem + ".jpg")).exists():
-                    by_dir.setdefault(cache_dir, []).append(raw_path)
-                break  # one RAW per UPN is enough
-
-        for cache_dir, raw_files in by_dir.items():
-            for tag in ["-PreviewImage", "-ThumbnailImage"]:
-                still_needed = [p for p in raw_files
-                                if not (cache_dir / (p.stem + ".jpg")).exists()]
-                if not still_needed:
-                    break
-                try:
-                    subprocess.run(
-                        ["exiftool", "-b", tag, "-w!", str(cache_dir / "%f.jpg")]
-                        + [str(p) for p in still_needed],
-                        capture_output=True, timeout=120,
-                    )
-                except Exception as e:
-                    logger.warning(f"Batch RAW thumb extraction failed: {e}")
-
     # ── Grid management ───────────────────────────────────────────────────────
 
     def _grid_placement(self, total: int) -> list[tuple[int, int, int, int]]:
@@ -774,15 +653,22 @@ class RatingEditorDialog(QDialog):
         small card as the last picture of a full grid.
         """
         ncols = self.columns
-        avail = self._scroll.viewport().width()
+        # Use the scroll-area's outer width minus a reserved scrollbar extent +
+        # frame + right gutter, rather than viewport().width(): the viewport is
+        # full width before the scrollbar appears, so cards built then come out
+        # too wide and the last column clips once the scrollbar shows.
+        spacing = self._grid.spacing()
+        sb = self._scroll.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
+        frame = 2 * self._scroll.frameWidth()
+        avail = self._scroll.width() - sb - frame - spacing
         if avail < 100:
             avail = 960
-        spacing = self._grid.spacing()
         card_w = max(120, (avail - spacing * (ncols - 1)) // ncols)
         return [(idx // ncols, idx % ncols, 1, card_w) for idx in range(total)]
 
     def _clear_grid(self):
-        self._thumb_gen += 1  # invalidate any in-flight thumbnail loads
+        if self._collection is not None:
+            self._collection.cancel_pending_loads()  # drop in-flight thumbnail loads
         self._cards_by_key.clear()
         for c in range(8):  # reset all possible column stretch values (spinner max = 8)
             self._grid.setColumnStretch(c, 0)
@@ -794,7 +680,7 @@ class RatingEditorDialog(QDialog):
         self._cards.clear()
 
     def _rebuild_cards(self):
-        if not self.fpr:
+        if not self.fpr or self._collection is None:
             return
         self._clear_grid()
         filter_name = self._species_combo.currentData()
@@ -802,39 +688,27 @@ class RatingEditorDialog(QDialog):
             n_species = self._species_combo.count() - 1  # subtract placeholder
             self._status.setText(f"{n_species} species loaded — select one to view pictures.")
             return
-        sorted_rows = self._sorted_upns(filter_name)
-        placement = self._grid_placement(len(sorted_rows))
+        self._collection.set_species_lang(self._species_lang)
+        self._collection.set_jpg_only(self._jpg_only)
+        self._collection.rebuild(filter_name)
+        n = len(self._collection)
+        placement = self._grid_placement(n)
         for c in range(self.columns):
             self._grid.setColumnStretch(c, 1)
 
-        pool = QThreadPool.globalInstance()
-        gen = self._thumb_gen
-        for idx, (_, upn_key, upn_row) in enumerate(sorted_rows):
+        for idx in range(n):
+            item = self._collection.item(idx)
             r, col, span, card_w = placement[idx]
-            img = self._get_display_path(upn_row)
-            dname = self._species_name(upn_row) or upn_key
-            card = PictureCard(upn_key, upn_row, img, card_w, display_name=dname)
+            card = PictureCard(item, card_w)   # requests its own thumbnail (async)
             card.card_changed.connect(self._on_card_changed)
             card.card_clicked.connect(self._on_card_clicked)
             self._grid.addWidget(card, r, col, 1, span)
             self._cards.append(card)
-            self._cards_by_key[upn_key] = card
-            loader = _ThumbLoader(upn_key, img, card._thumb_target_w, gen, self._thumb_signals)
-            pool.start(loader)
+            self._cards_by_key[item.key] = card
 
-        n = len(sorted_rows)
         suffix = f" for {filter_name}" if filter_name else ""
         self._status.setText(f"{n} picture{'s' if n != 1 else ''}{suffix}")
         QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
-
-    def _on_thumb_ready(self, upn_key: str, qimage: QImage, gen: int):
-        if gen != self._thumb_gen:
-            return  # stale result from a previous grid build
-        card = self._cards_by_key.get(upn_key)
-        if card is None:
-            return
-        px = QPixmap.fromImage(qimage) if not qimage.isNull() else QPixmap()
-        card.set_thumbnail(px)
 
     # ── Event handlers ────────────────────────────────────────────────────────
 
@@ -876,18 +750,16 @@ class RatingEditorDialog(QDialog):
         self._rebuild_cards()
 
     def _on_jpg_only_toggled(self, checked: bool):
+        # No pre-extraction needed: the provider loads RAW previews lazily and
+        # off the GUI thread as each card requests its thumbnail.
         self._jpg_only = checked
-        if not checked and self.fpr:
-            self._status.setText("Extracting RAW thumbnails…")
-            self._batch_extract_raw_thumbs()
         self._rebuild_cards()
 
     def _on_card_changed(self, upn_key: str):
-        card = next((c for c in self._cards if c.upn_key == upn_key), None)
-        if not card:
-            return
-        new_stars, new_color = card.take_pending()
-        self._apply_change(upn_key, new_stars, new_color, card)
+        # The card already wrote the edit + refreshed its own Rate via the
+        # provider; the host just re-sorts so the new Rate reorders the grid.
+        self._resort_if_needed()
+        self._status.setText(f"Saved {upn_key}")
 
     def _on_card_clicked(self, upn_key: str):
         # Local import avoids a circular import: large_image_view imports
@@ -908,29 +780,39 @@ class RatingEditorDialog(QDialog):
                 pass
             self._large_view = None
 
-        img_path = self._get_display_path(upn_row)
-        dname = self._species_name(upn_row) or upn_key
-        has_jpg = self._get_jpg_path(upn_row) is not None
-
+        item = self._collection.item(self._collection.index_of(upn_key))
+        card = self._cards_by_key.get(upn_key)
+        img_path = self._collection.display_path(upn_key)
         dlg_ref: list = [None]
 
-        def _apply(new_stars, new_color):
-            card = self._cards_by_key.get(upn_key)
+        def on_rating(n):
+            item.set_rating(n)
             if card:
-                self._apply_change(upn_key, new_stars, new_color, card)
+                card.update_rating_display(n)
+                card.update_rate_display(item.rate)
             if dlg_ref[0] is not None:
-                dlg_ref[0].set_rate(upn_row.get("Rate"))
+                dlg_ref[0].set_rate(item.rate)
+            self._resort_if_needed()
+
+        def on_color(c):
+            item.set_color(c)
+            if card:
+                card.update_color_display(c)
+                card.update_rate_display(item.rate)
+            if dlg_ref[0] is not None:
+                dlg_ref[0].set_rate(item.rate)
+            self._resort_if_needed()
 
         dlg = LargeImageView(
-            self, image_path=img_path, display_name=dname,
-            rating=_safe_int(upn_row.get("Rating", "0")),
-            color=upn_row.get("Label", ""),
-            description=upn_row.get("Description", ""),  # read-only here for now
-            rate=upn_row.get("Rate"),
-            date=upn_row.get("DateTimeOriginal", ""),
-            has_jpg=has_jpg,
-            on_rating=lambda n: _apply(n, None),
-            on_color=lambda c: _apply(None, c),
+            self, image_path=img_path, display_name=item.display_name,
+            rating=item.rating,
+            color=item.color,
+            description=item.description,  # read-only here for now
+            rate=item.rate,
+            date=item.date,
+            has_jpg=item.has_jpg,
+            on_rating=on_rating if item.can_edit_rating else None,
+            on_color=on_color if item.can_edit_color else None,
             settings_key="RatingEditor",
         )
         dlg_ref[0] = dlg
@@ -938,115 +820,16 @@ class RatingEditorDialog(QDialog):
         dlg.finished.connect(lambda _=0: setattr(self, "_large_view", None))
         dlg.show()
 
-    # ── Write-back ────────────────────────────────────────────────────────────
-
-    def _apply_change(self, upn_key: str, new_stars, new_color, card: PictureCard):
-        if upn_key not in self.fpr.upn.UniquePictureName_dict:
-            return
-        upn_row = self.fpr.upn.UniquePictureName_dict[upn_key]
-        files = upn_row.get("Files", [])
-        if not isinstance(files, list):
-            files = []
-
-        wrote_file = False
-        for fname in files:
-            if fname not in self.fpr.fi.files_dict:
-                continue
-            frow = self.fpr.fi.files_dict[fname]
-            ext = frow.get("WindowsExtension", "").lower()
-            if ext not in ("xmp", "jpg", "jpeg"):
-                continue
-            fpath = Path(frow.get("WindowsFileName", ""))
-            if not fpath.exists():
-                logger.warning(f"RatingEditor: file not found: {fpath}")
-                continue
-
-            args: list[str] = []
-            if new_stars is not None:
-                args.append(f"-XMP:Rating={new_stars}")
-            if new_color is not None:
-                # empty string clears the label
-                args.append(f"-XMP:Label={new_color}")
-            if args:
-                try:
-                    exiftool_write(fpath, args)
-                    wrote_file = True
-                except Exception as e:
-                    logger.error(f"exiftool write failed for {fpath.name}: {e}")
-
-            # Update in-memory file dict regardless (we already wrote to disk)
-            if new_stars is not None:
-                frow["XMP:Rating"] = str(new_stars)
-            if new_color is not None:
-                frow["XMP:Label"] = new_color
-
-        # Update UPN in-memory
-        if new_stars is not None:
-            upn_row["Rating"] = str(new_stars)
-        if new_color is not None:
-            upn_row["Label"] = new_color
-
-        # Recompute Rate and refresh the card's label
-        new_rate = _compute_rate(upn_row, self.fpr.fi.files_dict)
-        upn_row["Rate"] = str(new_rate)
-        if new_stars is not None:
-            card.update_rating_display(new_stars)
-        if new_color is not None:
-            card.update_color_display(new_color)
-        card.update_rate_display(new_rate)
-
-        # Persist CSVs
-        self._write_csvs_for_upn(upn_key, wrote_file)
-
-        # Re-sort grid if this card's position changed
-        self._resort_if_needed()
-
-        # Status feedback
-        parts = [f"Saved {upn_key}"]
-        if new_stars is not None:
-            parts.append(f"★={new_stars}")
-        if new_color is not None:
-            parts.append(f"label={new_color or '(cleared)'}")
-        parts.append(f"Rate={new_rate}")
-        self._status.setText("  ".join(parts))
-
-    def _write_csvs_for_upn(self, upn_key: str, wrote_file: bool):
-        """Write the CSV file(s) that contain upn_key, scoped to the right day."""
-        if self._day_objects is None:
-            # Day scope: fpr.fi / fpr.upn point at the single day's files
-            try:
-                self.fpr.upn.write_project_summary()
-            except Exception as e:
-                logger.error(f"Failed to write data_pictures.csv: {e}")
-            if wrote_file:
-                try:
-                    self.fpr.fi.write_project_files()
-                except Exception as e:
-                    logger.error(f"Failed to write data_files.csv: {e}")
-            return
-
-        # Trip scope: write only the specific day's objects
-        day = self._upn_day_map.get(upn_key)
-        if not day or day not in self._day_objects:
-            return
-        fi_day, upn_day = self._day_objects[day]
-        # upn_day.UniquePictureName_dict[upn_key] is the same object reference
-        # as fpr.upn.UniquePictureName_dict[upn_key], so it already has the
-        # updated Rating/Label/Rate values.
-        try:
-            upn_day.write_project_summary()
-        except Exception as e:
-            logger.error(f"Failed to write data_pictures.csv for {day}: {e}")
-        if wrote_file:
-            try:
-                fi_day.write_project_files()
-            except Exception as e:
-                logger.error(f"Failed to write data_files.csv for {day}: {e}")
+    # ── Re-sort ─────────────────────────────────────────────────────────────
 
     def _resort_if_needed(self):
-        """Re-insert cards into the grid according to the current sort order."""
+        """Re-insert cards into the grid according to the collection's current
+        sort order (writes happen in the provider; this only reorders widgets)."""
+        if self._collection is None:
+            return
         filter_name = self._species_combo.currentData()
-        new_order = [key for _, key, _ in self._sorted_upns(filter_name)]
+        self._collection.rebuild(filter_name)
+        new_order = [self._collection.item(i).key for i in range(len(self._collection))]
         old_order = [c.upn_key for c in self._cards]
         if old_order == new_order:
             return

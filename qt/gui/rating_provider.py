@@ -1,0 +1,357 @@
+"""Rating Editor implementation of the picture-provider contract.
+
+Wraps the Rating Editor's loaded data (a FilePicture with merged per-day
+UPN/file dicts, plus the per-day objects for write-back routing) as a
+PictureCollection of PictureItems. This is the richer engine — per-UPN,
+trip/master scope, computed Rate — so it shakes out the interface first.
+
+Editability here: rating + colour are writable (they drive Rate/culling, and
+must stay editable even for master pictures); description/headline/species are
+read-only for now (write-back needs per-day CSV routing — see memory
+rating-editor-and-preview-convergence), so those capability flags are False.
+
+Not yet wired into RatingEditorDialog — that's the next step (the dialog will
+own a RatingEditorCollection and drop its inline grid/write logic).
+"""
+
+from __future__ import annotations
+
+import logging
+import subprocess
+from pathlib import Path
+
+from PyQt6.QtGui import QImage
+
+from gui.picture_provider import PictureItem, PictureCollection, ExifSummary, PixmapCallback
+from gui.image_loader import AsyncImageLoader
+from gui.rating_editor import _compute_rate, _safe_int
+from ghexif.exif_writer import exiftool_write
+
+logger = logging.getLogger("speciesviewer")
+
+_RAW_EXTS = {".nef", ".orf", ".cr2", ".arw", ".rw2"}
+
+
+class RatingEditorItem(PictureItem):
+    """Thin view over one UPN row; writes delegate to the collection."""
+
+    can_edit_rating = True
+    can_edit_color = True
+    # description/headline/species stay read-only on this engine for now
+    can_edit_description = False
+    can_edit_headline = False
+    can_edit_species = False
+
+    def __init__(self, collection: "RatingEditorCollection", upn_key: str):
+        self._c = collection
+        self._key = upn_key
+
+    @property
+    def _row(self) -> dict:
+        return self._c.fpr.upn.UniquePictureName_dict.get(self._key, {})
+
+    # identity
+    @property
+    def key(self) -> str:
+        return self._key
+
+    @property
+    def display_name(self) -> str:
+        return self._c.species_name(self._row) or self._key
+
+    # read fields
+    @property
+    def species(self) -> str:
+        return self._c.species_name(self._row)
+
+    @property
+    def headline(self) -> str:
+        return self._row.get("Headline", "")
+
+    @property
+    def description(self) -> str:
+        return self._row.get("Description", "")
+
+    @property
+    def rating(self) -> int:
+        return _safe_int(self._row.get("Rating", "0"))
+
+    @property
+    def color(self) -> str:
+        return self._row.get("Label", "")
+
+    @property
+    def rate(self):
+        r = self._row.get("Rate")
+        return _safe_int(r) if r not in (None, "") else None
+
+    @property
+    def date(self) -> str:
+        return self._row.get("DateTimeOriginal", "")
+
+    @property
+    def has_jpg(self) -> bool:
+        return self._c.jpg_path(self._key) is not None
+
+    @property
+    def file_exts(self) -> list[str]:
+        files = self._row.get("Files", [])
+        if not isinstance(files, list):
+            return []
+        return sorted({Path(f).suffix.lstrip(".").upper() for f in files if f})
+
+    @property
+    def exif(self) -> ExifSummary:
+        return self._c.exif_for(self._key)
+
+    # write ops
+    def set_rating(self, value: int) -> None:
+        self._c.apply(self._key, new_stars=value)
+
+    def set_color(self, value: str) -> None:
+        self._c.apply(self._key, new_color=value)
+
+    # async image
+    def request_thumbnail(self, target_w: int, on_ready: PixmapCallback) -> None:
+        self._c.request_image(self._key, target_w, on_ready)
+
+    def request_full_pixmap(self, on_ready: PixmapCallback) -> None:
+        self._c.request_image(self._key, None, on_ready)
+
+
+class RatingEditorCollection(PictureCollection):
+    def __init__(self, fpr, day_objects, upn_day_map, *,
+                 jpg_only: bool = True, species_lang: str = "NL",
+                 loader: AsyncImageLoader | None = None):
+        self.fpr = fpr
+        self._day_objects = day_objects      # dict day->(Files,Pictures), or None in Day scope
+        self._upn_day_map = upn_day_map      # upn_key -> day
+        self._jpg_only = jpg_only
+        self._species_lang = species_lang
+        self._loader = loader or AsyncImageLoader()
+        self._order: list[str] = []
+        self.rebuild()
+
+    # ── ordering / filtering ──────────────────────────────────────────────
+    def rebuild(self, filter_name: str | None = None) -> None:
+        rows = []
+        for key, row in self.fpr.upn.UniquePictureName_dict.items():
+            if filter_name and self.species_name(row) != filter_name:
+                continue
+            if self._jpg_only and self.jpg_path(key) is None:
+                continue
+            rows.append((_safe_int(row.get("Rate", 0) or 0), key))
+        rows.sort(key=lambda x: x[0], reverse=True)
+        self._order = [k for _, k in rows]
+
+    def set_jpg_only(self, value: bool) -> None:
+        self._jpg_only = value
+
+    def set_species_lang(self, lang: str) -> None:
+        self._species_lang = lang
+
+    # ── PictureCollection ─────────────────────────────────────────────────
+    def __len__(self) -> int:
+        return len(self._order)
+
+    def item(self, index: int) -> RatingEditorItem:
+        return RatingEditorItem(self, self._order[index])
+
+    def index_of(self, key: str) -> int:
+        return self._order.index(key)
+
+    def cancel_pending_loads(self) -> None:
+        self._loader.cancel_all()
+
+    # ── helpers shared with items ─────────────────────────────────────────
+    def species_name(self, row: dict) -> str:
+        lang = self._species_lang
+        if lang == "EN":
+            return (row.get("EngSoortNaam") or row.get("NLSoortNaam")
+                    or row.get("WetSoortNaam") or "").strip()
+        if lang == "Sci":
+            return (row.get("WetSoortNaam") or row.get("NLSoortNaam")
+                    or row.get("EngSoortNaam") or "").strip()
+        return (row.get("NLSoortNaam") or row.get("EngSoortNaam")
+                or row.get("WetSoortNaam") or "").strip()
+
+    def _rep_file_row(self, upn_key: str) -> dict:
+        """The representative (non-XMP) file row for EXIF — prefer a real
+        photo file over the sidecar."""
+        row = self.fpr.upn.UniquePictureName_dict.get(upn_key, {})
+        files = row.get("Files", [])
+        if not isinstance(files, list):
+            return {}
+        fallback = {}
+        for fname in files:
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            if frow.get("WindowsExtension", "").lower() != "xmp":
+                return frow
+            fallback = frow
+        return fallback
+
+    def jpg_path(self, upn_key: str) -> Path | None:
+        row = self.fpr.upn.UniquePictureName_dict.get(upn_key, {})
+        best = row.get("BestJPGPathName", "")
+        if best:
+            p = Path(best)
+            if p.exists() and p.suffix.lower() in (".jpg", ".jpeg"):
+                return p
+        files = row.get("Files", [])
+        if not isinstance(files, list):
+            return None
+        for fname in files:
+            frow = self.fpr.fi.files_dict.get(fname)
+            if frow and frow.get("WindowsExtension", "").lower() in ("jpg", "jpeg"):
+                p = Path(frow.get("WindowsFileName", ""))
+                if p.exists():
+                    return p
+        return None
+
+    def _raw_thumb_path(self, upn_key: str) -> Path | None:
+        """Cached JPEG preview for the first RAW in the UPN, extracting it (via
+        exiftool) if absent. Runs on a worker thread — keep it self-contained."""
+        row = self.fpr.upn.UniquePictureName_dict.get(upn_key, {})
+        files = row.get("Files", [])
+        if not isinstance(files, list):
+            return None
+        for fname in files:
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            if ("." + frow.get("WindowsExtension", "").lower()) not in _RAW_EXTS:
+                continue
+            raw_path = Path(frow.get("WindowsFileName", ""))
+            if not raw_path.exists():
+                continue
+            cache_dir = raw_path.parent / ".preview_cache"
+            cache_dir.mkdir(exist_ok=True)
+            cache_path = cache_dir / (raw_path.stem + ".jpg")
+            if cache_path.exists():
+                return cache_path
+            for tag in ["-PreviewImage", "-ThumbnailImage"]:
+                try:
+                    result = subprocess.run(
+                        ["exiftool", "-b", tag, str(raw_path)],
+                        capture_output=True, timeout=15,
+                    )
+                    if result.returncode == 0 and result.stdout:
+                        cache_path.write_bytes(result.stdout)
+                        return cache_path
+                except Exception as e:
+                    logger.warning(f"RAW thumb extraction failed for {raw_path.name}: {e}")
+        return None
+
+    def _image_path(self, upn_key: str) -> Path | None:
+        jpg = self.jpg_path(upn_key)
+        if jpg:
+            return jpg
+        if self._jpg_only:
+            return None
+        return self._raw_thumb_path(upn_key)
+
+    def display_path(self, upn_key: str) -> Path | None:
+        """Synchronous best-display path (JPG or extracted RAW thumb) — used by
+        the large view until its loading is made async (Phase 2)."""
+        return self._image_path(upn_key)
+
+    def request_image(self, upn_key: str, target_w, on_ready: PixmapCallback) -> None:
+        def produce():
+            p = self._image_path(upn_key)   # may extract RAW — off the GUI thread
+            if p and p.exists():
+                img = QImage(str(p))
+                return img if not img.isNull() else None
+            return None
+        self._loader.request(produce, on_ready, target_w=target_w)
+
+    def exif_for(self, upn_key: str) -> ExifSummary:
+        upn = self.fpr.upn.UniquePictureName_dict.get(upn_key, {})
+        f = self._rep_file_row(upn_key)
+        return ExifSummary(
+            iso=f.get("EXIF:ISO", ""),
+            aperture=f.get("EXIF:FNumber", "") or f.get("Composite:Aperture", ""),
+            shutter=f.get("EXIF:ExposureTime", ""),
+            ev_comp="",  # not captured in the CSV
+            focal_length=f.get("EXIF:FocalLength", ""),
+            model=upn.get("CameraModel", "") or f.get("CameraModel", ""),
+            lens=(upn.get("LensLongName", "") or upn.get("LensShortName", "")
+                  or f.get("EXIF:LensModel", "") or f.get("Composite:LensID", "")),
+            distance=f.get("MakerNotes:FocusDistance", "") or f.get("EXIF:SubjectDistance", ""),
+            dimensions=upn.get("ImageSize", "") or f.get("ImageSize", ""),
+            gps=upn.get("GPSPosition", "") or f.get("Composite:GPSPosition", ""),
+        )
+
+    # ── write-back (rating/colour), with per-day CSV routing ──────────────
+    def apply(self, upn_key: str, *, new_stars: int | None = None,
+              new_color: str | None = None) -> int | None:
+        upn_row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
+        if not upn_row:
+            return None
+        files = upn_row.get("Files", [])
+        if not isinstance(files, list):
+            files = []
+
+        wrote_file = False
+        for fname in files:
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            if frow.get("WindowsExtension", "").lower() not in ("xmp", "jpg", "jpeg"):
+                continue
+            fpath = Path(frow.get("WindowsFileName", ""))
+            if not fpath.exists():
+                continue
+            args = []
+            if new_stars is not None:
+                args.append(f"-XMP:Rating={new_stars}")
+            if new_color is not None:
+                args.append(f"-XMP:Label={new_color}")
+            if args:
+                try:
+                    exiftool_write(fpath, args)
+                    wrote_file = True
+                except Exception as e:
+                    logger.error(f"exiftool write failed for {fpath.name}: {e}")
+            if new_stars is not None:
+                frow["XMP:Rating"] = str(new_stars)
+            if new_color is not None:
+                frow["XMP:Label"] = new_color
+
+        if new_stars is not None:
+            upn_row["Rating"] = str(new_stars)
+        if new_color is not None:
+            upn_row["Label"] = new_color
+
+        new_rate = _compute_rate(upn_row, self.fpr.fi.files_dict)
+        upn_row["Rate"] = str(new_rate)
+        self._persist_upn(upn_key, wrote_file)
+        return new_rate
+
+    def _persist_upn(self, upn_key: str, wrote_file: bool) -> None:
+        if self._day_objects is None:
+            # Day scope — fpr.fi / fpr.upn point at the single day's files
+            try:
+                self.fpr.upn.write_project_summary()
+            except Exception as e:
+                logger.error(f"Failed to write data_pictures.csv: {e}")
+            if wrote_file:
+                try:
+                    self.fpr.fi.write_project_files()
+                except Exception as e:
+                    logger.error(f"Failed to write data_files.csv: {e}")
+            return
+        day = self._upn_day_map.get(upn_key)
+        if not day or day not in self._day_objects:
+            return
+        fi_day, upn_day = self._day_objects[day]
+        try:
+            upn_day.write_project_summary()
+        except Exception as e:
+            logger.error(f"Failed to write data_pictures.csv for {day}: {e}")
+        if wrote_file:
+            try:
+                fi_day.write_project_files()
+            except Exception as e:
+                logger.error(f"Failed to write data_files.csv for {day}: {e}")
