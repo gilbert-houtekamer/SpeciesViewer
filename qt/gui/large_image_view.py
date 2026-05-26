@@ -1,21 +1,19 @@
-"""Merged large-image viewer — one dialog with ALL features.
+"""Merged large-image viewer — one dialog, navigable across a picture list.
 
-Replaces the two near-duplicate large views:
-  - SingleImageViewer (image_viewer.py)      had description editing only
-  - RatingCardDetailDialog (rating_editor.py) had stars + color only
+Renders entirely from the picture-provider seam: the host passes a
+PictureCollection plus a fixed snapshot of keys (its current grid order) and a
+start index. The viewer reads each picture's fields from the PictureItem, loads
+its image asynchronously, and writes edits back through the item — so it serves
+both hosts (Species preview, Rating Editor) with no engine knowledge.
 
-This version shows the image plus stars, colour, and description together.
-The host (Species Image Preview, per-file engine; or Rating Editor, per-UPN
-engine) supplies initial values and write-back callbacks via the constructor,
-so the dialog stays engine-agnostic — the only seam between the two engines.
+Navigation: ←/→ step through the keys; assigning a star rating or a colour
+label auto-advances to the next picture (the cull-with-few-keystrokes flow).
+After each edit it emits picture_changed(key) so the host can refresh that card
+and (Rating Editor) re-sort. The keys snapshot is fixed for the session, so the
+navigation order stays stable even when the host re-sorts its grid underneath.
 
-Layout note: controls are below the image for now (matching what both old
-dialogs did). The PhotoMechanic horizon — right-hand control panel + bottom
-filmstrip — is the next iteration; see memory project_viewer_convergence.
-
-DISCARD COLOUR RULE (Option C): when has_jpg is True the Blue/Purple circles
-are greyed (a JPG-bearing picture can never be a deletion candidate). See
-memory color-labels-and-delete-workflow.
+DISCARD COLOUR RULE (Option C): when has_jpg is True the Blue/Purple circles are
+greyed (a JPG-bearing picture can never be a deletion candidate).
 """
 
 import logging
@@ -25,9 +23,9 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QTextEdit, QSizePolicy,
 )
 from PyQt6.QtGui import QPixmap, QGuiApplication, QShortcut, QKeySequence
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 
-from gui.rating_editor import StarWidget, ColorSelector, _safe_int, COLOR_HEX
+from gui.rating_editor import StarWidget, ColorSelector, COLOR_HEX
 from gui.window_state import restore_window, save_window, clamp_to_visible_screen
 
 logger = logging.getLogger("speciesviewer")
@@ -47,57 +45,44 @@ def color_to_css(color: str) -> str:
 
 
 class LargeImageView(QDialog):
-    def __init__(self, parent, *, image_path, display_name="",
-                 rating=0, color="", description="", rate=None, date="",
-                 has_jpg=False, pixmap=None,
-                 on_rating=None, on_color=None, on_description=None,
-                 settings_key="LargeImageView"):
+    picture_changed = pyqtSignal(str)  # key — emitted after an edit so the host refreshes/re-sorts
+
+    def __init__(self, parent, collection, keys, index, *,
+                 settings_key="LargeImageView", auto_advance=True):
         """
-        image_path / display_name      what to show (image_path also titles the window).
-        pixmap                         pre-decoded QPixmap to display; if given it
-                                       overrides loading from image_path. Needed for
-                                       RAW (.ORF etc.) which QPixmap can't load directly —
-                                       the host passes its extracted preview pixmap.
-        rating / color / description   initial values (rating int 0-5).
-        rate / date                    read-only display extras (or None/"").
-        has_jpg                        True → grey Blue/Purple (Option C).
-        on_rating(int)                 called when stars change   (None = read-only).
-        on_color(str)                  called when colour changes ("" clears).
-        on_description(str)            called to persist description (None = read-only).
-        settings_key                   namespace for remembered geometry (.ini).
+        collection     PictureCollection backing the pictures.
+        keys           ordered snapshot of keys to navigate (the host's grid order).
+        index          start position in keys.
+        settings_key   namespace for remembered geometry (.ini).
+        auto_advance   True → assigning a rating/colour steps to the next picture.
         """
         super().__init__(parent)
         # Give the dialog real min/max buttons (a QDialog shows only close on
-        # Windows) — the viewer often opens large, so maximize/minimize helps.
+        # Windows) — the viewer often opens large.
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
                             | Qt.WindowType.WindowMaximizeButtonHint)
+        # The dialog itself holds keyboard focus by default so ←/→ navigate;
+        # clicking the description box moves focus there (then arrows edit text).
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._collection = collection
+        self._keys = list(keys)
+        self._index = max(0, min(index, len(self._keys) - 1)) if self._keys else 0
+        self._auto_advance = auto_advance
         self._settings_key = settings_key
         self._geo_key = f"{settings_key}Large"
-        self._on_description = on_description
-        self._original_description = description or ""
-
-        self.setWindowTitle(display_name or Path(str(image_path)).name)
-
-        if pixmap is not None and not pixmap.isNull():
-            self._pixmap = pixmap
-        else:
-            self._pixmap = (QPixmap(str(image_path))
-                            if image_path and Path(str(image_path)).exists()
-                            else QPixmap())
+        self._item = None
+        self._pixmap = QPixmap()
+        self._load_token = 0            # drops stale async image deliveries
+        self._original_description = ""
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 6)
         layout.setSpacing(6)
 
-        # ── Image ─────────────────────────────────────────────────────────
-        # The expanding "stage" defines the available area; inside it a tight
-        # coloured frame hugs the scaled pixmap (sized in _fit_pixmap) and is
-        # centred horizontally + vertically. The frame's border carries the
-        # picture's colour label, updated live when the user picks a colour.
+        # ── Image stage: a tight coloured frame hugs the scaled pixmap, centred.
         self._stage = QWidget()
-        self._stage.setSizePolicy(QSizePolicy.Policy.Expanding,
-                                  QSizePolicy.Policy.Expanding)
+        self._stage.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         stage_v = QVBoxLayout(self._stage)
         stage_v.setContentsMargins(0, 0, 0, 0)
         stage_v.addStretch(1)
@@ -107,17 +92,19 @@ class LargeImageView(QDialog):
         self._img_frame = QWidget()
         self._img_frame.setObjectName("imgFrame")
         frame_l = QVBoxLayout(self._img_frame)
-        frame_l.setContentsMargins(4, 4, 4, 4)  # room for the coloured border
+        frame_l.setContentsMargins(4, 4, 4, 4)
         self._image_label = QLabel()
         self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._image_label.setMinimumSize(1, 1)
+        # Clicking the image takes focus away from the description box, so ←/→
+        # navigate again (a clear way to "leave" the text field).
+        self._image_label.mousePressEvent = lambda _e: self.setFocus()
         frame_l.addWidget(self._image_label)
         stage_h.addWidget(self._img_frame)
         stage_h.addStretch(1)
         stage_v.addLayout(stage_h)
         stage_v.addStretch(1)
         layout.addWidget(self._stage, stretch=1)
-        self._apply_frame_color(color or "")
 
         # ── Controls strip (centred, ~1/3 width) ──────────────────────────
         controls = QWidget()
@@ -125,36 +112,34 @@ class LargeImageView(QDialog):
         cl.setContentsMargins(0, 0, 0, 0)
         cl.setSpacing(4)
 
-        lbl_name = QLabel(display_name or Path(str(image_path)).name)
-        lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_name.setStyleSheet("font-weight: bold; font-size: 13px;")
-        cl.addWidget(lbl_name)
+        name_row = QHBoxLayout()
+        name_row.addStretch(1)
+        self._lbl_name = QLabel("")
+        self._lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._lbl_name.setStyleSheet("font-weight: bold; font-size: 13px;")
+        name_row.addWidget(self._lbl_name)
+        self._lbl_pos = QLabel("")
+        self._lbl_pos.setStyleSheet("font-size: 11px; color: #888;")
+        name_row.addSpacing(8)
+        name_row.addWidget(self._lbl_pos)
+        name_row.addStretch(1)
+        cl.addLayout(name_row)
 
         row = QHBoxLayout()
-        self._stars = StarWidget(_safe_int(rating))
-        if on_rating is not None:
-            self._stars.rating_changed.connect(on_rating)
-        else:
-            self._stars.setEnabled(False)
+        self._stars = StarWidget(0)
+        self._stars.rating_changed.connect(self._on_rating)
         row.addWidget(self._stars)
-        if date:
-            lbl_date = QLabel(str(date)[:10].replace(":", "-"))
-            lbl_date.setStyleSheet("font-size: 11px; color: #777;")
-            row.addWidget(lbl_date)
+        self._lbl_date = QLabel("")
+        self._lbl_date.setStyleSheet("font-size: 11px; color: #777;")
+        row.addWidget(self._lbl_date)
         row.addStretch()
-        self._rate_lbl = QLabel(f"Rate: {rate}" if rate is not None else "")
+        self._rate_lbl = QLabel("")
         self._rate_lbl.setStyleSheet("font-size: 11px; color: #555;")
         row.addWidget(self._rate_lbl)
         cl.addLayout(row)
 
-        self._color_sel = ColorSelector(color or "")
-        self._on_color = on_color
-        if on_color is not None:
-            self._color_sel.color_changed.connect(self._on_color_picked)
-        else:
-            self._color_sel.setEnabled(False)
-        if has_jpg:
-            self._color_sel.set_disabled_colors(_DISCARD_COLORS, _DISCARD_GREYED_TIP)
+        self._color_sel = ColorSelector("")
+        self._color_sel.color_changed.connect(self._on_color)
         cl.addWidget(self._color_sel)
 
         ctrl_row = QHBoxLayout()
@@ -163,7 +148,7 @@ class LargeImageView(QDialog):
         ctrl_row.addStretch(1)
         layout.addLayout(ctrl_row)
 
-        # ── Description (Ctrl+S to save; auto-save on close) ───────────────
+        # ── Description (Ctrl+S to save; auto-saved on navigate / close) ───
         desc_caption = QLabel("Enter a story about this picture to be shown on the website (optional)")
         desc_caption.setStyleSheet("font-size: 11px; font-weight: bold;")
         desc_caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -173,10 +158,6 @@ class LargeImageView(QDialog):
         fm = self._desc_edit.fontMetrics()
         self._desc_edit.setFixedHeight(int(fm.lineSpacing() * 3.5) + 8)
         self._desc_edit.setAcceptRichText(False)
-        self._desc_edit.setPlainText(self._original_description)
-        if on_description is None:
-            self._desc_edit.setReadOnly(True)
-            self._desc_edit.setToolTip("Descriptions can't be saved for this picture.")
         desc_row = QHBoxLayout()
         desc_row.addStretch(1)
         desc_row.addWidget(self._desc_edit, 3)
@@ -186,10 +167,126 @@ class LargeImageView(QDialog):
         QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self._save_description)
 
         self._apply_default_or_remembered_geometry()
+        self._load_current()
 
-    # ── Rate refresh (host calls after a star/colour edit recomputes Rate) ─
-    def set_rate(self, rate):
-        self._rate_lbl.setText(f"Rate: {rate}" if rate is not None else "")
+    def keyPressEvent(self, event):
+        # ←/→ navigate — but only when the description box doesn't have focus
+        # (when it does, the QTextEdit consumes the arrows for cursor movement
+        # and this handler isn't reached anyway; the guard is belt-and-braces).
+        k = event.key()
+        if k in (Qt.Key.Key_Left, Qt.Key.Key_Right) and not self._desc_edit.hasFocus():
+            self._prev() if k == Qt.Key.Key_Left else self._next()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    # ── Load the current picture ──────────────────────────────────────────
+    def _load_current(self):
+        if not self._keys:
+            return
+        key = self._keys[self._index]
+        try:
+            item = self._collection.item_for_key(key)
+        except (ValueError, KeyError):
+            return  # key no longer in the collection
+        self._item = item
+
+        self.setWindowTitle(item.display_name or key)
+        self._lbl_name.setText(item.display_name or key)
+        self._lbl_pos.setText(f"{self._index + 1} of {len(self._keys)}")
+
+        self._stars.set_rating(item.rating)       # programmatic — no signal
+        self._stars.setEnabled(item.can_edit_rating)
+
+        self._color_sel.set_color(item.color)
+        if item.can_edit_color:
+            self._color_sel.setEnabled(True)
+            self._color_sel.set_disabled_colors(
+                _DISCARD_COLORS if item.has_jpg else (), _DISCARD_GREYED_TIP)
+        else:
+            self._color_sel.setEnabled(False)
+
+        self._lbl_date.setText(str(item.date)[:10].replace(":", "-") if item.date else "")
+        self._rate_lbl.setText(f"Rate: {item.rate}" if item.rate is not None else "")
+        self._apply_frame_color(item.color or "")
+
+        self._original_description = item.description or ""
+        self._desc_edit.blockSignals(True)
+        self._desc_edit.setPlainText(self._original_description)
+        self._desc_edit.setReadOnly(not item.can_edit_description)
+        self._desc_edit.setToolTip("" if item.can_edit_description
+                                   else "Descriptions can't be saved for this picture.")
+        self._desc_edit.blockSignals(False)
+
+        # Async image — drop deliveries from a previous picture.
+        self._load_token += 1
+        tok = self._load_token
+        self._pixmap = QPixmap()
+        self._image_label.setText("Loading…")
+        item.request_full_pixmap(lambda px, t=tok: self._on_pixmap(t, px))
+
+        # Keep keyboard focus on the dialog (not auto-parked in the description
+        # box) so ←/→ keep navigating through a culling run.
+        self.setFocus()
+
+    def _on_pixmap(self, token, pixmap):
+        if token != self._load_token:
+            return  # stale — the user already moved on
+        self._pixmap = pixmap if (pixmap is not None and not pixmap.isNull()) else QPixmap()
+        if self._pixmap.isNull():
+            self._image_label.setText("(no image)")
+        else:
+            self._fit_pixmap()
+
+    # ── Navigation ────────────────────────────────────────────────────────
+    def _go(self, delta: int):
+        if not self._keys:
+            return
+        self._save_description()
+        new = max(0, min(self._index + delta, len(self._keys) - 1))
+        if new == self._index:
+            return
+        self._index = new
+        self._load_current()
+
+    def _prev(self):
+        self._go(-1)
+
+    def _next(self):
+        self._go(+1)
+
+    # ── Edits (write via the item, then advance) ──────────────────────────
+    def _on_rating(self, n: int):
+        if self._item is None or not self._item.can_edit_rating:
+            return
+        self._item.set_rating(n)
+        self._rate_lbl.setText(f"Rate: {self._item.rate}" if self._item.rate is not None else "")
+        self.picture_changed.emit(self._item.key)
+        if self._auto_advance and n > 0:
+            self._next()
+
+    def _on_color(self, color: str):
+        if self._item is None or not self._item.can_edit_color:
+            return
+        self._item.set_color(color)
+        self._apply_frame_color(color)
+        self._rate_lbl.setText(f"Rate: {self._item.rate}" if self._item.rate is not None else "")
+        self.picture_changed.emit(self._item.key)
+        if self._auto_advance and color:
+            self._next()
+
+    def _save_description(self):
+        if self._item is None or not self._item.can_edit_description:
+            return
+        text = self._desc_edit.toPlainText()
+        if text == self._original_description:
+            return
+        try:
+            self._item.set_description(text)
+            self._original_description = text
+            self.picture_changed.emit(self._item.key)
+        except Exception as e:
+            logger.warning(f"LargeImageView: description save failed: {e}")
 
     # ── Colour frame ────────────────────────────────────────────────────────
     def _apply_frame_color(self, color: str):
@@ -198,31 +295,10 @@ class LargeImageView(QDialog):
             self._img_frame.setStyleSheet(
                 f"QWidget#imgFrame {{ border: 4px solid {css}; border-radius: 6px; }}")
         else:
-            self._img_frame.setStyleSheet("")  # no label → no frame
-
-    def _on_color_picked(self, color: str):
-        self._apply_frame_color(color)  # live frame update
-        if self._on_color is not None:
-            self._on_color(color)        # persist via host
-
-    # ── Description persistence ────────────────────────────────────────────
-    def _save_description(self):
-        if self._on_description is None:
-            return
-        text = self._desc_edit.toPlainText()
-        if text == self._original_description:
-            return
-        try:
-            self._on_description(text)
-            self._original_description = text
-        except Exception as e:
-            logger.warning(f"LargeImageView: description save failed: {e}")
+            self._img_frame.setStyleSheet("")
 
     # ── Geometry: default size, remembered per settings_key, clamped on-screen
     def _apply_default_or_remembered_geometry(self):
-        # Per-dialog geometry in the per-machine .ini. Large views have no
-        # columns, so a distinct "<key>Large" namespace avoids colliding with
-        # the grid dialog that shares the same settings_key.
         avail = QGuiApplication.primaryScreen().availableGeometry()
         restore_window(self, self._geo_key,
                        default_size=(int(avail.width() * 0.7), int(avail.height() * 0.8)))
@@ -230,9 +306,7 @@ class LargeImageView(QDialog):
     # ── Pixmap fit ─────────────────────────────────────────────────────────
     def _fit_pixmap(self):
         if self._pixmap.isNull():
-            self._image_label.setText("(no image)")
             return
-        # Available area = the stage minus the frame's border margins.
         size = self._stage.size()
         avail_w = size.width() - 10
         avail_h = size.height() - 10
@@ -246,15 +320,12 @@ class LargeImageView(QDialog):
                                          Qt.AspectRatioMode.KeepAspectRatio,
                                          Qt.TransformationMode.SmoothTransformation)
         self._image_label.setPixmap(scaled)
-        # Cap (don't fix) the label to the scaled pixmap: the frame still hugs
-        # the photo via the label's sizeHint, but minimumSize(1,1) lets the
-        # dialog shrink — setFixedSize here would lock the dialog's minimum size
-        # to the current image and block making the window smaller.
         self._image_label.setMaximumSize(scaled.size())
 
     def showEvent(self, event):
         super().showEvent(event)
         clamp_to_visible_screen(self)
+        self.setFocus()  # arrows navigate from the start
         QTimer.singleShot(0, self._fit_pixmap)
 
     def resizeEvent(self, event):

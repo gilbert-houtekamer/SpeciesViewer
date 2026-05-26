@@ -859,10 +859,7 @@ class RatingEditorDialog(QDialog):
         # Local import avoids a circular import: large_image_view imports
         # StarWidget/ColorSelector from this module.
         from gui.large_image_view import LargeImageView
-        if not self.fpr:
-            return
-        upn_row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
-        if not upn_row:
+        if not self.fpr or self._collection is None:
             return
         # Single instance: close any open large view first so a fast double-
         # click (or clicking another card) never stacks multiple viewers.
@@ -874,45 +871,25 @@ class RatingEditorDialog(QDialog):
                 pass
             self._large_view = None
 
-        item = self._collection.item(self._collection.index_of(upn_key))
-        card = self._cards_by_key.get(upn_key)
-        img_path = self._collection.display_path(upn_key)
-        dlg_ref: list = [None]
-
-        def on_rating(n):
-            item.set_rating(n)
-            if card:
-                card.update_rating_display(n)
-                card.update_rate_display(item.rate)
-            if dlg_ref[0] is not None:
-                dlg_ref[0].set_rate(item.rate)
-            self._resort_if_needed()
-
-        def on_color(c):
-            item.set_color(c)
-            if card:
-                card.update_color_display(c)
-                card.update_rate_display(item.rate)
-            if dlg_ref[0] is not None:
-                dlg_ref[0].set_rate(item.rate)
-            self._resort_if_needed()
-
-        dlg = LargeImageView(
-            self, image_path=img_path, display_name=item.display_name,
-            rating=item.rating,
-            color=item.color,
-            description=item.description,  # read-only here for now
-            rate=item.rate,
-            date=item.date,
-            has_jpg=item.has_jpg,
-            on_rating=on_rating if item.can_edit_rating else None,
-            on_color=on_color if item.can_edit_color else None,
-            settings_key="RatingEditor",
-        )
-        dlg_ref[0] = dlg
+        # Navigate a fixed snapshot of the current grid order.
+        keys = [c.upn_key for c in self._cards]
+        if upn_key not in keys:
+            return
+        dlg = LargeImageView(self, self._collection, keys, keys.index(upn_key),
+                             settings_key="RatingEditor", auto_advance=True)
+        dlg.picture_changed.connect(self._on_large_view_changed)
         self._large_view = dlg
         dlg.finished.connect(lambda _=0: setattr(self, "_large_view", None))
         dlg.show()
+
+    def _on_large_view_changed(self, key: str):
+        # The viewer already wrote the edit via the provider; repaint that card
+        # and re-sort the grid so the new Rate reorders it.
+        card = self._cards_by_key.get(key)
+        if card:
+            card.refresh()
+        self._resort_if_needed()
+        self._status.setText(f"Saved {key}")
 
     # ── Re-sort ─────────────────────────────────────────────────────────────
 

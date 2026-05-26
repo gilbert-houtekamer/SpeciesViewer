@@ -186,6 +186,12 @@ class PictureCollection(ABC):
     @abstractmethod
     def index_of(self, key: str) -> int: ...
 
+    def item_for_key(self, key: str) -> PictureItem:
+        """The item for a key regardless of the current sort order. The large
+        viewer navigates a fixed snapshot of keys (so its order is stable across
+        a culling session), but always reads the live item via this."""
+        return self.item(self.index_of(key))
+
     def reference_count(self, item: PictureItem) -> int:
         """How many pictures of this species already exist in the master —
         the cull-against-history signal. 0 when the host has no master view."""
