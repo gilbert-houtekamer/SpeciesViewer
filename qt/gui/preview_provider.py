@@ -292,13 +292,18 @@ class PreviewCollection(PictureCollection):
         return False
 
     def has_writable_sidecar(self, upn_key: str) -> bool:
-        """True if the picture has an XMP or JPG file that apply() can write
-        XMP:Rating / XMP:Label into. False for HEIC-only / PNG-only pictures
-        (RAW is convention-immutable; HEIC carries only a DxO .dop) — their
-        rating/colour can't be durably captured yet, so the card greys them."""
+        """True if rating/colour can be persisted for this picture — either an
+        existing XMP/JPG to write, or a source image (HEIC/PNG/RAW) we can drop a
+        standard <stem>.xmp sidecar beside (see apply / _create_xmp_sidecar).
+        Only false for the degenerate case of a UPN with no on-disk image file
+        (e.g. a stray .dop), so the card greys nothing in practice."""
         for fname in self._files(upn_key):
             frow = self.fpr.fi.files_dict.get(fname)
-            if frow and frow.get("WindowsExtension", "").lower() in ("xmp", "jpg", "jpeg"):
+            if not frow:
+                continue
+            if frow.get("WindowsExtension", "").lower() == "dop":
+                continue
+            if Path(frow.get("WindowsFileName", "")).exists():
                 return True
         return False
 
@@ -341,10 +346,11 @@ class PreviewCollection(PictureCollection):
     # ── write-back (rating / colour) with Rate recompute ──────────────────
     def apply(self, upn_key: str, *, new_stars: int | None = None,
               new_color: str | None = None) -> int | None:
-        """Write XMP:Rating / XMP:Label to the UPN's XMP+JPG files (RAW stays
-        immutable), update the cached rows, recompute Rate, and persist both
-        day CSVs. Day scope only — the preview always wraps one day's fpr.
-        Mirrors RatingEditorCollection.apply's day-scope path."""
+        """Persist rating / colour for one picture, recompute Rate, and write
+        both day CSVs. ORF·XMP / JPG pictures get XMP:Rating/Label via exiftool
+        on their sidecar/JPG (RAW stays immutable); HEIC/PNG-only pictures get
+        the value written INTO the HEIC/PNG itself (the single source LR + DxO +
+        our Read Directory share). Day scope only."""
         upn_row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
         if not upn_row:
             return None
@@ -352,34 +358,43 @@ class PreviewCollection(PictureCollection):
         if not isinstance(files, list):
             files = []
 
-        wrote_file = False
-        for fname in files:
-            frow = self.fpr.fi.files_dict.get(fname)
-            if not frow:
-                continue
-            if frow.get("WindowsExtension", "").lower() not in ("xmp", "jpg", "jpeg"):
-                continue
-            fpath = Path(frow.get("WindowsFileName", ""))
-            args = []
-            if new_stars is not None:
-                args.append(f"-XMP:Rating={new_stars}")
-            if new_color is not None:
-                args.append(f"-XMP:Label={new_color}")
-            if args and fpath.exists():
-                try:
-                    exiftool_write(fpath, args)
-                    wrote_file = True
-                except Exception as e:
-                    logger.error(f"exiftool write failed for {fpath.name}: {e}")
-            if new_stars is not None:
-                frow["XMP:Rating"] = str(new_stars)
-            if new_color is not None:
-                frow["XMP:Label"] = new_color
-
+        # Record the desired state on the UPN first — the single source of truth
+        # for the HEIC write below and the immediate card/Rate refresh.
         if new_stars is not None:
             upn_row["Rating"] = str(new_stars)
         if new_color is not None:
             upn_row["Label"] = new_color
+
+        wrote_file = False
+        if self._heic_only_upn(upn_key):
+            # HEIC/PNG-only — write the value into the HEIC/PNG itself.
+            wrote_file = self._write_into_heic(
+                upn_key, upn_row.get("Rating", "0") or "0", upn_row.get("Label", "") or "")
+        else:
+            # ORF·XMP / JPG — write XMP:Rating/Label into the existing files via
+            # exiftool (those are LR-style and already read by DxO).
+            for fname in files:
+                frow = self.fpr.fi.files_dict.get(fname)
+                if not frow:
+                    continue
+                if frow.get("WindowsExtension", "").lower() not in ("xmp", "jpg", "jpeg"):
+                    continue
+                fpath = Path(frow.get("WindowsFileName", ""))
+                args = []
+                if new_stars is not None:
+                    args.append(f"-XMP:Rating={new_stars}")
+                if new_color is not None:
+                    args.append(f"-XMP:Label={new_color}")
+                if args and fpath.exists():
+                    try:
+                        exiftool_write(fpath, args)
+                        wrote_file = True
+                    except Exception as e:
+                        logger.error(f"exiftool write failed for {fpath.name}: {e}")
+                if new_stars is not None:
+                    frow["XMP:Rating"] = str(new_stars)
+                if new_color is not None:
+                    frow["XMP:Label"] = new_color
 
         new_rate = _compute_rate(upn_row, self.fpr.fi.files_dict)
         upn_row["Rate"] = str(new_rate)
@@ -391,6 +406,56 @@ class PreviewCollection(PictureCollection):
         except Exception as e:
             logger.error(f"Preview apply: failed to persist CSV(s): {e}")
         return new_rate
+
+    def _heic_only_upn(self, upn_key: str) -> bool:
+        """True when the picture has no JPG and no RAW — i.e. HEIC-only /
+        PNG-only. Those carry rating/colour in the HEIC/PNG itself; everything
+        else (RAW owns a Lightroom XMP, or has a JPG) keeps the exiftool path."""
+        raws = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng"}
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            ext = frow.get("WindowsExtension", "").lower()
+            if ext in ("jpg", "jpeg") or ext in raws:
+                return False
+        return True
+
+    def _write_into_heic(self, upn_key: str, rating: str, label: str) -> bool:
+        """Write XMP:Rating/Label (+ EXIF:Rating) INTO the HEIC (or PNG) itself —
+        the single source of truth Lightroom, DxO PhotoLab, and our own Read
+        Directory all read. Updates the cached file row so Rate recomputes now;
+        the next Read Directory re-reads the embedded values. (Abandons the old
+        'HEIC immutable' convention for metadata — pixels are untouched.)"""
+        src = src_row = None
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            if frow.get("WindowsExtension", "").lower() not in ("heic", "png"):
+                continue
+            p = Path(frow.get("WindowsFileName", ""))
+            if p.exists():
+                src, src_row = p, frow
+                break
+        if src is None:
+            logger.warning(f"No HEIC/PNG to write rating/colour into for {upn_key}")
+            return False
+
+        rating = str(rating or "0")
+        # EXIF:Rating too — Lightroom writes it, so keep it in sync to avoid a
+        # stale EXIF star shadowing the XMP one in LR / Windows Explorer.
+        args = [f"-XMP:Rating={rating}", f"-EXIF:Rating={rating}", f"-XMP:Label={label}"]
+        try:
+            exiftool_write(src, args)
+        except Exception as e:
+            logger.error(f"Failed to write metadata into {src.name}: {e}")
+            return False
+        src_row["XMP:Rating"] = rating
+        src_row["XMP:Label"] = label
+        logger.info(f"Wrote rating/colour into {src.name} for {upn_key} "
+                    f"(Rating={rating}, Label={label or '-'}).")
+        return True
 
 
 # ── No-fpr (virtual-trip / metadata-less) preview ────────────────────────────

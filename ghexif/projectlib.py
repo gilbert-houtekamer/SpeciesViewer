@@ -580,6 +580,16 @@ class Project:
     # check for manual input by PhotoMechanic or Lightroom (mostly)
     def findXMPItem(self, filelist, column):
         return self.findBestItem(filelist, column, ("XMP", "JPG"))
+    # Colour label: prefer an XMP/JPG sidecar value, else fall back to the HEIC
+    # (or PNG) itself. SpeciesViewer now writes colour into HEIC-only pictures,
+    # and Lightroom/DxO embed it there too, so the HEIC carries the truth when
+    # no sidecar does. Kept separate from findXMPItem so its other callers
+    # (subject/description/headline/…) are unaffected.
+    def findColorLabelItem(self, filelist, column):
+        val = self.findBestItem(filelist, column, ("XMP", "JPG"))
+        if val == "":
+            val = self.findBestItem(filelist, column, ("HEIC", "PNG"))
+        return val
     def findDNGItem(self, filelist, column):
         return self.findBestItem(filelist, column, ("DNG"))
     # should look at best JPG first!
@@ -639,7 +649,7 @@ class Project:
         if upn["subject"] == "":    # for waarneming.nl
             upn["subject"] =       self.findXMPItem(files, "IPTC:Keywords")
         upn["Rating"] =            self.findXMPItem(files, "XMP:Rating")
-        upn["Label"] =             self.findXMPItem(files, "XMP:Label")
+        upn["Label"] =             self.findColorLabelItem(files, "XMP:Label")
         if upn["Rating"] == "" and upn["Label"] == "":  # for waarneming.nl
             upn["Label"] = "Green"
         if upn["ImageSize"] == "": upn["ImageSize"] = self.findCameraOrXMPItem(files, "ImageSize")
@@ -932,6 +942,12 @@ class Project:
     def computeRating(self, upn):
         computation = 0
         DxOUsed = False
+        # HEIC-only pictures carry their rating in the HEIC itself (SpeciesViewer
+        # + LR/DxO write it there); score them like an XMP. Guarded so a HEIC
+        # alongside a JPG/XMP doesn't override the sidecar that already scores.
+        has_sidecar = any(
+            self.files_dict[f]['WindowsExtension'] in ['xmp', 'jpg', 'jpeg']
+            for f in upn['Files'] if f in self.files_dict)
         # file type logic
         for filename in upn['Files']:
             file = self.files_dict[filename]
@@ -941,10 +957,10 @@ class Project:
                 if label == 'Red':
                     file['XMP:Rating'] = 3
                 elif label == 'Yellow':
-                    file['XMP:Rating'] = 2                
+                    file['XMP:Rating'] = 2
                 elif label == 'Green':
                     file['XMP:Rating'] = 0
-            #    
+            #
             filetype = file['WindowsExtension']
             if filetype in ['xmp']:
                 if file['XMP:Rating'] == "":
@@ -960,7 +976,12 @@ class Project:
                     else:
                         computation = 15 * (1 + int(file['XMP:Rating']))
                 elif file['XMP:Rating'] in ['0', ''] and file['XMP:Label'] == "":
-                        computation = 3                    
+                        computation = 3
+            elif filetype in ['heic'] and not has_sidecar:
+                if file['XMP:Rating'] == "":
+                    computation = 5
+                else:
+                    computation = 15 * (1 + int(file['XMP:Rating']))
 
         # save new Rating for Picture
         bestresult = 0

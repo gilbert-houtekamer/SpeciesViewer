@@ -55,6 +55,12 @@ def _compute_rate(upn_row: dict, files_dict: dict) -> int:
     computation = 0
     dxo_used = False
 
+    # HEIC-only pictures carry their rating in the HEIC itself; score them like
+    # an XMP, but only when no XMP/JPG sidecar already drives the score.
+    has_sidecar = any(
+        files_dict.get(f, {}).get("WindowsExtension", "").lower() in ("xmp", "jpg", "jpeg")
+        for f in files)
+
     for fname in files:
         if fname not in files_dict:
             continue
@@ -81,6 +87,8 @@ def _compute_rate(upn_row: dict, files_dict: dict) -> int:
                 computation = 5 if not rating_str else 15 * (1 + int(rating_str))
             elif rating_str in ("0", "") and not label:
                 computation = 3
+        elif ext == "heic" and not has_sidecar:
+            computation = 5 if not rating_str else 15 * (1 + int(rating_str))
 
     # Small-picture penalty — mirrors computeRating exactly: multiplier starts
     # at 1 and is only recomputed from a JPG's pixel size, so a picture with no
