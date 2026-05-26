@@ -16,8 +16,8 @@ from PyQt6.QtWidgets import (
     QLabel, QFrame, QPushButton, QSpinBox, QComboBox, QSizePolicy,
     QRadioButton, QButtonGroup, QMessageBox, QStyle,
 )
-from PyQt6.QtGui import QPixmap, QImage, QGuiApplication
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QRunnable, QThreadPool
+from PyQt6.QtGui import QPixmap, QImage, QGuiApplication, QIcon
+from PyQt6.QtCore import Qt, QTimer, QSize, pyqtSignal, QObject, QRunnable, QThreadPool
 
 from engine.filepicture import FilePicture
 from engine.filecsv import Files
@@ -241,13 +241,22 @@ class PictureCard(QFrame):
     back through it — no direct engine access. Capability flags decide whether
     the stars / colour controls are live."""
 
-    card_changed = pyqtSignal(str)  # key — emitted after a write so the host re-sorts
-    card_clicked = pyqtSignal(str)  # key — thumbnail clicked → open large view
+    card_changed = pyqtSignal(str)   # key — emitted after a write so the host re-sorts
+    card_clicked = pyqtSignal(str)   # key — thumbnail clicked → open large view
+    status_clicked = pyqtSignal(str) # key — status icon clicked → open SpeciesInfoDialog
 
-    def __init__(self, item: PictureItem, card_width: int, parent=None):
+    def __init__(self, item: PictureItem, card_width: int, parent=None,
+                 *, show_status: bool = False):
         super().__init__(parent)
         self._item = item
         self.upn_key = item.key
+        # Preview hosts set show_status to add a status/desc/GPS badge row and a
+        # clickable warning icon (→ SpeciesInfoDialog); the Rating Editor leaves
+        # it off (its data is already validated).
+        self._show_status = show_status
+        self._status_icon = None
+        self._desc_badge = None
+        self._gps_badge = None
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setFrameShadow(QFrame.Shadow.Raised)
@@ -271,11 +280,11 @@ class PictureCard(QFrame):
         item.request_thumbnail(self._thumb_target_w, self.set_thumbnail)
 
         # Species name
-        lbl_name = QLabel(item.display_name or item.key)
-        lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_name.setStyleSheet("font-weight: bold; font-size: 10px;")
-        lbl_name.setWordWrap(True)
-        vbox.addWidget(lbl_name)
+        self._lbl_name = QLabel(item.display_name or item.key)
+        self._lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._lbl_name.setStyleSheet("font-weight: bold; font-size: 10px;")
+        self._lbl_name.setWordWrap(True)
+        vbox.addWidget(self._lbl_name)
 
         # Stars row + date + rate
         row_stars = QHBoxLayout()
@@ -315,6 +324,81 @@ class PictureCard(QFrame):
         lbl_key.setStyleSheet("font-size: 9px; color: #aaa;")
         lbl_key.setToolTip(item.key)
         vbox.addWidget(lbl_key)
+
+        # Preview-only badge row: clickable status icon (species warning / OK /
+        # none → SpeciesInfoDialog), a 📝 description badge, and a 📍/❓ GPS badge.
+        if self._show_status:
+            badge_row = QHBoxLayout()
+            badge_row.setContentsMargins(0, 0, 0, 0)
+            badge_row.setSpacing(4)
+
+            self._status_icon = QPushButton()
+            self._status_icon.setIconSize(QSize(16, 16))
+            self._status_icon.setFixedSize(20, 20)
+            self._status_icon.setFlat(True)
+            self._status_icon.setStyleSheet(
+                "background-color: white; color: #333; border: 1px solid #ccc; padding: 2px;")
+            self._status_icon.clicked.connect(lambda: self.status_clicked.emit(self.upn_key))
+            badge_row.addWidget(self._status_icon)
+            badge_row.addStretch()
+
+            self._desc_badge = QLabel()
+            self._desc_badge.setStyleSheet("font-size: 14px;")
+            self._desc_badge.setFixedSize(20, 20)
+            self._desc_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge_row.addWidget(self._desc_badge)
+
+            self._gps_badge = QLabel()
+            self._gps_badge.setStyleSheet("font-size: 14px;")
+            self._gps_badge.setFixedSize(20, 20)
+            self._gps_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge_row.addWidget(self._gps_badge)
+
+            vbox.addLayout(badge_row)
+            self._refresh_status_badges()
+
+    def _refresh_status_badges(self):
+        """Set the status icon + description/GPS badges from the live item.
+        Re-callable after an edit (species commit, GPS fix)."""
+        if not self._show_status:
+            return
+        item = self._item
+        error_msg = item.error_msg
+        species = item.species
+        if error_msg:
+            self._status_icon.setIcon(QIcon(QPixmap("qt/assets/warning_icon.png").scaled(16, 16)))
+            self._status_icon.setText("")
+            self._status_icon.setToolTip(error_msg)
+        elif species:
+            self._status_icon.setIcon(QIcon(QPixmap("qt/assets/ok_icon.png").scaled(16, 16)))
+            self._status_icon.setText("")
+            self._status_icon.setToolTip("OK")
+        else:
+            self._status_icon.setIcon(QIcon())
+            self._status_icon.setText("❔")
+            self._status_icon.setToolTip("No species set — picture will be skipped by the pipeline.")
+
+        desc = item.description
+        self._desc_badge.setText("📝" if desc else "")
+        self._desc_badge.setToolTip(desc or "")
+
+        if item.has_gps:
+            self._gps_badge.setText("📍")
+            self._gps_badge.setToolTip("GPS coordinates present.")
+        else:
+            self._gps_badge.setText("❓")
+            self._gps_badge.setToolTip("Missing GPS coordinates — fix in Lightroom.")
+
+    def refresh(self):
+        """Re-read every field from the (live) item and repaint — used after an
+        external edit such as a species commit or a GPS backfill."""
+        self._lbl_name.setText(self._item.display_name or self._item.key)
+        self._frame_color = self._item.color
+        self._update_thumb_style()
+        self._stars.set_rating(self._item.rating)
+        self._color_sel.set_color(self._item.color)
+        self.update_rate_display(self._item.rate)
+        self._refresh_status_badges()
 
     def _on_rating_changed(self, n: int):
         self._item.set_rating(n)             # writes + recomputes Rate via provider

@@ -351,17 +351,11 @@ class SpeciesInfoDialog(QDialog):
             if upn_name:
                 updated_upns.add(upn_name)
 
-        # Refresh all visible images that share a UPN with any updated file (catches DxO JPGs etc.)
-        if updated_upns:
-            for image_label, container, img_path in image_viewer.image_widgets:
-                file_upn = fpr.fi.files_dict.get(img_path.name, {}).get("UniquePictureName")
-                if file_upn in updated_upns:
-                    image_viewer.refresh_image_status(container, img_path)
-
-        # Mark the viewer so its closeEvent can offer to re-run Read & Summarize
-        # — the XMP:Subject on disk changed, so the reports are now stale.
-        if image_viewer is not None:
-            image_viewer._species_changed = True
+        # Refresh the affected picture cards (by UPN) and mark the viewer so its
+        # closeEvent can offer to re-run Read & Summarize — the XMP:Subject on
+        # disk changed, so the reports are now stale.
+        if image_viewer is not None and hasattr(image_viewer, "refresh_after_species_change"):
+            image_viewer.refresh_after_species_change(updated_upns)
 
         self.accept()
 
