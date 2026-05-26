@@ -9,7 +9,9 @@
 import argparse
 import configparser
 import csv
+import math
 import os
+import re
 import subprocess
 import sys
 import time
@@ -30,9 +32,43 @@ from ghexif.handling import deriveUniquePictureName
 from ghexif.exif_writer import exiftool_write
 import ghexif.exceptions
 import ghexif.statemachine
+import ghexif.exifcache as exifcache
 
 IGNOREEXTENSIONS = ['txt', 'ico', 'html']
+# Real photo types whose Headline/Description we translate. Excludes PNG etc.,
+# so Apple's auto "Screenshot" headline on a .PNG isn't flagged. Mirrors
+# qt/gui/trip_overview.py PHOTO_EXTENSIONS.
+TRANSLATABLE_EXTENSIONS = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf",
+                           "dng", "heic", "jpg", "jpeg"}
 logger = logging.getLogger("speciesviewer")
+
+
+def _report_unverified_translations(MyProject, all_rows):
+    """Log each Headline/Description text whose translation isn't human-verified
+    yet. Pure cache lookup — no prompt, no network. Normalization matches the
+    blog render (Headline raw; Description with a leading '#' stripped) so the
+    crc keys line up. Feeds the trip-overview "Translations" count."""
+    ct = getattr(MyProject, "ct", None)
+    if ct is None:
+        return
+    texts = set()
+    for r in all_rows:
+        if (r.get("WindowsExtension") or "").lower() not in TRANSLATABLE_EXTENSIONS:
+            continue  # skip PNG screenshots etc. — only types we support
+        h = r.get("XMP:Headline") or ""
+        if h != "":
+            texts.add(h)
+        d = r.get("XMP:Description") or ""
+        if d != "":
+            if d[0:1] == "#":
+                d = d[1:]
+            texts.add(d)
+    unverified = sorted(t for t in texts if not ct.is_verified(t))
+    if unverified:
+        logger.info(f"{len(unverified)} text(s) still need translation validation:")
+        for t in unverified:
+            snippet = t if len(t) <= 80 else t[:77] + "..."
+            logger.info(f"   not validated: {snippet}")
 
 def main(args, config):
     starttime = time.time()
@@ -66,22 +102,50 @@ def main(args, config):
         logger.info(f"Reading directories (takes about 1 minute for every 4000 files)...")
         file_extension_count = {}        
          
-        try:
-            metadata = et.get_metadata(
-                MyProject.getProjectPath(), 
-                params=SELECTED_FIELDS)
-        except Exception as e:
-            raise SVException(f"No files found in the directory {MyProject.getProjectPath()}\nError {e}: {e.stderr}{e.stdout}.")
-#            logger.warning(f"No files found in the directory {MyProject.getProjectPath()}\nError {e}: {e.stderr}{e.stdout}.")
+        # EXIF read via the global cache (ghexif/exifcache.py). Immutable files
+        # (RAW/HEIC) and untouched mutable sidecars are served from cache; only
+        # new or edited files are sent to exiftool. --no-cache reproduces the
+        # old full scan (reads nothing, writes nothing); --rebuild-cache
+        # re-reads everything and rewrites the cache.
+        fingerprint = exifcache.field_fingerprint(SELECTED_FIELDS)
+        cache_path = exifcache.exif_cache_path(config)
+        if getattr(args, "no_cache", False):
+            cache, persist = exifcache.new_cache(), False
+        elif getattr(args, "rebuild_cache", False):
+            logger.info("EXIF cache: --rebuild-cache, re-reading all files.")
+            cache, persist = exifcache.new_cache(), True
+        else:
+            cache, persist = exifcache.load_cache(cache_path), True
 
- 
+        root = MyProject.getProjectPath()
+        hits, misses, stats = exifcache.partition(root, cache, fingerprint)
+        try:
+            fresh = et.get_metadata(misses, params=SELECTED_FIELDS) if misses else []
+        except Exception as e:
+            raise SVException(f"No files found in the directory {root}\nError {e}: {e.stderr}{e.stdout}.")
+        metadata = hits + fresh
+        if persist:
+            exifcache.update(cache, fresh, fingerprint)
+            # The cache is a pure optimization — a failed save (e.g. a Dropbox/AV
+            # lock that outlasts the retries) must NOT cost us the directory read.
+            # Log and continue; the next scan re-reads the un-cached files.
+            try:
+                exifcache.save_cache(cache_path, cache)
+            except OSError as e:
+                logger.warning(f"EXIF cache not saved ({e}); the next scan will "
+                               f"re-read those files. Read continues.")
+
         datafilelocation = MyProject.getMetaDirReview()
-        os.makedirs(datafilelocation, exist_ok=True) 
+        os.makedirs(datafilelocation, exist_ok=True)
         datafilelocation = os.path.join(datafilelocation, "data_files.csv")
 
         metadatareadertime = time.time() - starttime
+        total_hits = stats["imm_hit"] + stats["mut_hit"]
         logger.info(
-            f"Reading EXIF metadata took {metadatareadertime:.1f} seconds for {len(metadata)} files."
+            f"Reading EXIF metadata took {metadatareadertime:.1f} seconds for "
+            f"{len(metadata)} files ({total_hits} from cache, {len(misses)} read; "
+            f"immutable {stats['imm_hit']}h/{stats['imm_miss']}m, "
+            f"mutable {stats['mut_hit']}h/{stats['mut_miss']}m)."
         )
 
         # Build all rows first (needed for GPS backfill)
@@ -142,12 +206,22 @@ def main(args, config):
                     file_extension_count.get(extension[1:].lower(), 0) + 1
                 )
 
-        # GPS backfill: fill missing GPS from the first later picture that has GPS,
-        # within a 30-second window. This compensates for Bluetooth GPS connection
-        # delay at the start of a shooting session.
-        GPS_BACKFILL_SECONDS = 30
+        # GPS backfill.
+        #
+        # Pass 1 (forward window): fill missing GPS from the first later picture
+        # that has GPS, within GPS_BACKFILL_SECONDS. Compensates for Bluetooth GPS
+        # connection delay at the start of a shooting session.
+        #
+        # Pass 2 (bracket fill): for rows still missing GPS, look at the nearest
+        # GPS-bearing photo before AND after. If those two known positions are
+        # within GPS_BRACKET_MAX_DISTANCE_M of each other, the subject barely moved
+        # (typical slow birding), so copy the closer-in-time donor's position.
+        # The distance gate naturally rejects bracketing across separate sessions.
+        GPS_BACKFILL_SECONDS = 120
+        GPS_BRACKET_MAX_DISTANCE_M = 100
         GPS_FIELDS = ["EXIF:GPSLatitude", "EXIF:GPSLongitude", "Composite:GPSPosition", "EXIF:GPSAltitude"]
         LOCATION_FIELDS = ["XMP:Location", "XMP:City", "XMP:State", "XMP:Country"]
+        WARN_EXTENSIONS = {"orf", "arw", "cr2", "cr3", "nef", "rw2", "raf", "dng", "jpg", "jpeg"}
 
         def _parse_dt(row):
             dt_str = row.get("EXIF:DateTimeOriginal", "")
@@ -161,6 +235,35 @@ def main(args, config):
         def _has_gps(row):
             return bool(row.get("EXIF:GPSLatitude") or row.get("Composite:GPSPosition"))
 
+        _dms_re = re.compile(
+            r"(\d+(?:\.\d+)?)\s*deg\s*(\d+(?:\.\d+)?)['’]\s*"
+            r"(\d+(?:\.\d+)?)[\"”]\s*([NSEW])",
+            re.IGNORECASE,
+        )
+
+        def _parse_position(pos_str):
+            # exiftool's Composite:GPSPosition format: '41 deg 10\' 53.34" N, 23 deg 6\' 14.94" E'
+            if not pos_str:
+                return None, None
+            matches = _dms_re.findall(pos_str)
+            if len(matches) != 2:
+                return None, None
+            coords = []
+            for deg, minutes, sec, hemi in matches:
+                val = float(deg) + float(minutes) / 60.0 + float(sec) / 3600.0
+                if hemi.upper() in ("S", "W"):
+                    val = -val
+                coords.append(val)
+            return coords[0], coords[1]
+
+        def _haversine_m(lat1, lon1, lat2, lon2):
+            R = 6371000.0
+            p1, p2 = math.radians(lat1), math.radians(lat2)
+            dp = math.radians(lat2 - lat1)
+            dl = math.radians(lon2 - lon1)
+            a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+            return 2 * R * math.asin(math.sqrt(a))
+
         # Build a lookup from UniquePictureName to rows by extension
         upn_index = {}
         for row in all_rows:
@@ -172,13 +275,52 @@ def main(args, config):
         # Sort by DateTimeOriginal for chronological processing
         all_rows.sort(key=lambda r: r.get("EXIF:DateTimeOriginal", ""))
 
-        gps_backfill_count = 0
-        backfilled_pairs = []  # (target_upn, donor_upn)
+        # Pass 0: sibling fill. A previous Read Directory run may have written
+        # GPS to the XMP file on disk while leaving the RAW unchanged (we never
+        # modify RAW). On the next run, the ORF row reads as missing GPS even
+        # though the XMP sibling has it. Copy from the sibling — same UPN, same
+        # picture — before going looking for time-based donors. No XMP write
+        # needed since the data is already on disk.
+        sibling_fill_count = 0
+        for row in all_rows:
+            if _has_gps(row):
+                continue
+            upn = row.get("UniquePictureName", "")
+            if not upn:
+                continue
+            for sibling_row in upn_index.get(upn, {}).values():
+                if sibling_row is row or not _has_gps(sibling_row):
+                    continue
+                for field in GPS_FIELDS:
+                    if sibling_row.get(field):
+                        row[field] = sibling_row[field]
+                sibling_fill_count += 1
+                logger.info(
+                    f"GPS backfill: {row.get('File:FileName', '?')} "
+                    f"<- {sibling_row.get('File:FileName', '?')}"
+                )
+                break
+
+        backfilled_pairs = []  # (target_upn, donor_upn) — for Pass 1/2 XMP writes
+
+        def _record_backfill(target, donor, reason):
+            for field in GPS_FIELDS:
+                if donor.get(field):
+                    target[field] = donor[field]
+            backfilled_pairs.append((
+                target.get("UniquePictureName", ""),
+                donor.get("UniquePictureName", ""),
+            ))
+            logger.info(
+                f"GPS backfill: {target.get('File:FileName', '?')} "
+                f"<- {donor.get('File:FileName', '?')} ({reason})"
+            )
+
+        # Pass 1: forward window
         for i, row in enumerate(all_rows):
             if _has_gps(row) or _parse_dt(row) is None:
                 continue
             row_dt = _parse_dt(row)
-            # Look forward for the first picture with GPS within the window
             for j in range(i + 1, len(all_rows)):
                 candidate = all_rows[j]
                 cand_dt = _parse_dt(candidate)
@@ -187,51 +329,139 @@ def main(args, config):
                 if (cand_dt - row_dt) > timedelta(seconds=GPS_BACKFILL_SECONDS):
                     break
                 if _has_gps(candidate):
-                    for field in GPS_FIELDS:
-                        if field in candidate:
-                            row[field] = candidate[field]
-                    gps_backfill_count += 1
-                    backfilled_pairs.append((
-                        row.get("UniquePictureName", ""),
-                        candidate.get("UniquePictureName", "")
-                    ))
-                    logger.info(
-                        f"GPS backfill: {row.get('File:FileName', '?')} "
-                        f"<- {candidate.get('File:FileName', '?')} "
-                        f"({(cand_dt - row_dt).seconds}s later)"
-                    )
+                    _record_backfill(row, candidate, f"+{(cand_dt - row_dt).seconds}s forward")
                     break
 
-        # Second pass: backfill XMP location fields from donor's XMP sibling
-        # and write the updated fields back to the XMP file on disk
-        xmp_backfill_count = 0
+        # Pass 2: bracket fill with distance gate
+        for i, row in enumerate(all_rows):
+            if _has_gps(row) or _parse_dt(row) is None:
+                continue
+            row_dt = _parse_dt(row)
+            before = None
+            for j in range(i - 1, -1, -1):
+                c = all_rows[j]
+                c_dt = _parse_dt(c)
+                if c_dt is None:
+                    continue
+                if _has_gps(c):
+                    before = (c, c_dt)
+                    break
+            after = None
+            for j in range(i + 1, len(all_rows)):
+                c = all_rows[j]
+                c_dt = _parse_dt(c)
+                if c_dt is None:
+                    continue
+                if _has_gps(c):
+                    after = (c, c_dt)
+                    break
+            if before is None or after is None:
+                continue
+            b_lat, b_lon = _parse_position(before[0].get("Composite:GPSPosition", ""))
+            a_lat, a_lon = _parse_position(after[0].get("Composite:GPSPosition", ""))
+            if b_lat is None or a_lat is None:
+                continue
+            dist_m = _haversine_m(b_lat, b_lon, a_lat, a_lon)
+            if dist_m > GPS_BRACKET_MAX_DISTANCE_M:
+                continue
+            b_gap = (row_dt - before[1]).total_seconds()
+            a_gap = (after[1] - row_dt).total_seconds()
+            donor = before[0] if b_gap <= a_gap else after[0]
+            gap = int(min(b_gap, a_gap))
+            _record_backfill(row, donor, f"bracket fill (donors {dist_m:.0f}m apart, {gap}s away)")
+
+        gps_backfill_count = len(backfilled_pairs)
+
+        # Second pass: propagate donor's GPS and (when available) location text
+        # to the target's XMP sibling, and write the new fields to disk.
+        # GPS and location are handled independently — a donor with only GPS
+        # still gets GPS written, even if it has no city/location text yet.
+        gps_xmp_written_count = 0
+        location_xmp_written_count = 0
+        xmp_already_complete_count = 0
+        xmp_sibling_missing_count = 0
         for target_upn, donor_upn in backfilled_pairs:
             target_xmp = upn_index.get(target_upn, {}).get("xmp")
             donor_xmp = upn_index.get(donor_upn, {}).get("xmp")
-            if target_xmp and donor_xmp:
-                has_location = any(donor_xmp.get(f) for f in LOCATION_FIELDS)
-                target_already_has_location = any(target_xmp.get(f) for f in LOCATION_FIELDS)
-                if has_location:
-                    exif_args = []
-                    for field in LOCATION_FIELDS + GPS_FIELDS:
-                        if donor_xmp.get(field):
-                            target_xmp[field] = donor_xmp[field]
-                            exif_args.append(f"-{field}={donor_xmp[field]}")
-                    xmp_backfill_count += 1
-                    # Only write to disk if the XMP didn't already have location data
-                    if not target_already_has_location:
-                        xmp_filepath = target_xmp.get("WindowsFileName", "")
-                        if xmp_filepath and exif_args:
-                            try:
-                                exiftool_write(xmp_filepath, exif_args)
-                                logger.info(f"GPS backfill: wrote location to {target_xmp.get('File:FileName', '?')}")
-                            except subprocess.CalledProcessError as e:
-                                logger.warning(f"GPS backfill: failed to write {target_xmp.get('File:FileName', '?')}: {e.stderr}")
+            if not (target_xmp and donor_xmp):
+                xmp_sibling_missing_count += 1
+                continue
 
+            target_has_gps = any(target_xmp.get(f) for f in GPS_FIELDS)
+            target_has_location = any(target_xmp.get(f) for f in LOCATION_FIELDS)
+
+            exif_args = []
+            wrote_gps = False
+            wrote_location = False
+            if not target_has_gps:
+                for field in GPS_FIELDS:
+                    if donor_xmp.get(field):
+                        target_xmp[field] = donor_xmp[field]
+                        exif_args.append(f"-{field}={donor_xmp[field]}")
+                        wrote_gps = True
+            if not target_has_location:
+                for field in LOCATION_FIELDS:
+                    if donor_xmp.get(field):
+                        target_xmp[field] = donor_xmp[field]
+                        exif_args.append(f"-{field}={donor_xmp[field]}")
+                        wrote_location = True
+
+            if not exif_args:
+                xmp_already_complete_count += 1
+                continue
+
+            xmp_filepath = target_xmp.get("WindowsFileName", "")
+            if not xmp_filepath:
+                continue
+            parts = []
+            if wrote_gps:
+                parts.append("GPS")
+            if wrote_location:
+                parts.append("location")
+            try:
+                exiftool_write(xmp_filepath, exif_args)
+                logger.info(
+                    f"GPS backfill: wrote {' + '.join(parts)} to "
+                    f"{target_xmp.get('File:FileName', '?')}"
+                )
+                if wrote_gps:
+                    gps_xmp_written_count += 1
+                if wrote_location:
+                    location_xmp_written_count += 1
+            except subprocess.CalledProcessError as e:
+                logger.warning(
+                    f"GPS backfill: failed to write "
+                    f"{target_xmp.get('File:FileName', '?')}: {e.stderr}"
+                )
+
+        if sibling_fill_count:
+            logger.info(
+                f"GPS backfill: copied GPS from XMP to RAW picture in "
+                f"{sibling_fill_count} CSV row(s)."
+            )
         if gps_backfill_count:
-            logger.info(f"GPS backfill: filled {gps_backfill_count} RAW file(s) from later pictures.")
-        if xmp_backfill_count:
-            logger.info(f"GPS backfill: wrote location data to {xmp_backfill_count} XMP file(s) on disk.")
+            logger.info(
+                f"GPS backfill: filled GPS in {gps_backfill_count} CSV row(s) "
+                f"from neighbouring pictures."
+            )
+            xmp_summary = (
+                f"GPS backfill: XMP siblings — wrote GPS to {gps_xmp_written_count}, "
+                f"location to {location_xmp_written_count}; "
+                f"{xmp_already_complete_count} already complete"
+            )
+            if xmp_sibling_missing_count:
+                xmp_summary += f"; {xmp_sibling_missing_count} XMP sibling(s) not found"
+            xmp_summary += "."
+            logger.info(xmp_summary)
+
+        # Warn loudly for any picture still lacking GPS after both passes.
+        # Sidecar .xmp twins are skipped to avoid double-warning per UPN.
+        unfilled = [
+            r for r in all_rows
+            if not _has_gps(r) and r.get("WindowsExtension", "") in WARN_EXTENSIONS
+        ]
+        for r in unfilled:
+            logger.warning(f"GPS missing: {r.get('File:FileName', '?')}")
 
         # Write all rows to CSV
         with open(datafilelocation, "w", newline="", encoding='utf-8') as csvfile:
@@ -241,6 +471,9 @@ def main(args, config):
             writer.writeheader()
             for row in all_rows:
                 writer.writerow(row)
+
+        # Report Headline/Description texts still needing translation validation.
+        _report_unverified_translations(MyProject, all_rows)
 
     # give the filetype report ome space
     logger.info("")
@@ -263,6 +496,18 @@ if __name__ == "__main__":
         type=str,
         default=os.environ.get("SVCONFIG", "svconfig.ini"),
         help="Module Configuration File",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass the EXIF cache entirely: full scan, nothing read or "
+             "written. Reproduces pre-cache behaviour / the A-B oracle.",
+    )
+    parser.add_argument(
+        "--rebuild-cache",
+        action="store_true",
+        help="Re-read every file from disk and overwrite the cache. Use after "
+             "a schema change you want forced now, or if a cache entry is suspect.",
     )
     args = parser.parse_args()
     # get configuration

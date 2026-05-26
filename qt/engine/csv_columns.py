@@ -57,7 +57,8 @@ COLUMN_NAMES = {
     "-subject": "XMP:Subject",
     "-keywords": "IPTC:Keywords",
     "-DateTimeOriginal": "EXIF:DateTimeOriginal",
-    "-description": "XMP:Description",    
+    "-description": "XMP:Description",
+    "-XMP:Headline": "XMP:Headline",
 }
 
 # below for documentation only, can be obtained from 
@@ -112,7 +113,8 @@ DATA_FILE_FIELDS = [
     "XMP:Subject",
     "IPTC:Keywords",
     "EXIF:DateTimeOriginal",
-    "XMP:Description"
+    "XMP:Description",
+    "XMP:Headline"
 ]
 
 SPECIES_FIELDS = [
@@ -175,5 +177,10 @@ PICTURE_FIELDS = [
     "malefemale",
     "ageintext",
     "summerwinter",
-    "errormessage",  
+    "errormessage",
+    # Headline LAST on purpose — keep in sync with ghexif/csv_columns.py.
+    # Blog extras (the only Headline carriers) are excluded from the master,
+    # so a trailing column drifts off the stale master header harmlessly
+    # rather than shifting Files / DateTimeOriginal under wrong header names.
+    "Headline",
 ]

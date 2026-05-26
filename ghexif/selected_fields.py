@@ -64,6 +64,7 @@ SELECTED_FIELDS = [
     "-subject",
     "-keywords",
     "-description",
+    "-XMP:Headline",
     "-DateTimeOriginal",
 ]
 
@@ -125,5 +126,6 @@ COLUMN_NAMES = {
     "-subject": "XMP:Subject",
     "-keywords": "IPTC:Keywords",
     "-DateTimeOriginal": "EXIF:DateTimeOriginal",
-    "-description": "XMP:Description",    
+    "-description": "XMP:Description",
+    "-XMP:Headline": "XMP:Headline",
 }

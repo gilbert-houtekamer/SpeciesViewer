@@ -1,5 +1,7 @@
 import logging
 import configparser
+import os
+import hashlib
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QApplication
@@ -10,15 +12,55 @@ from PyQt6.QtGui import QMovie
 from utils.batch_config import generate_svconfig_ini
 from sharedlib.statemachine import StateMachine
 
+# statusname → trip-overview cell header. ReadDirExif and WritePictures share
+# ONE cell now (the combined "Read & Summarize" column); surgical updates may
+# flicker mid-chain but refresh_trip_row recomputes the cell from both keys.
 _EXPECTED_CELLS = {
     "SyncSidecars":  'Sync\nSidecars',
-    "ReadDirExif":   'Read\nDirectory',
-    "WritePictures": 'Write\nSummary',
+    "ReadDirExif":   'Read &\nSummarize',
+    "WritePictures": 'Read &\nSummarize',
     "WriteBlog":     'Write\nBlog',
     "BuildWebsite":  'Build\nWebsite',
     "Freeze":        'Freeze',
     "WriteCommit":   'Write\nCommit',
 }
+
+
+# Conditional-invalidation support (Phase 3 of the Read & Summarize merge).
+# Each step's downstream invalidation can be skipped when re-running it produced
+# byte-identical output — re-reading is cheap (EXIF cache), so a no-op re-read of
+# Read/Summarize should not nuke an already-built Blog/Website/Freeze. We compare
+# the step's OWN output CSV (in the day's metadata/review dir = sm.Directory)
+# before and after the run. Steps not listed here always invalidate.
+_STEP_OUTPUT_CSV = {
+    "ReadDirExif":   "data_files.csv",
+    "WritePictures": "data_pictures.csv",
+}
+
+
+def _csv_fingerprint(directory, statusname):
+    """sha256 of the step's output CSV, or None if the step has no tracked
+    output / the file does not exist yet (e.g. the first run)."""
+    fn = _STEP_OUTPUT_CSV.get(statusname)
+    if not fn or not directory:
+        return None
+    path = os.path.join(directory, fn)
+    if not os.path.exists(path):
+        return None
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+    except OSError:
+        return None
+    return h.hexdigest()
+
+
+def _should_invalidate(pre, post):
+    """Invalidate downstream UNLESS we have a before AND after fingerprint and
+    they match (output unchanged). A missing before/after (None) → invalidate."""
+    return not (pre is not None and post is not None and pre == post)
 
 
 class _BatchWorker(QObject):
@@ -74,6 +116,10 @@ class BatchModuleRunner:
 
         directory_name = Path(module_config.get("project", "PictureDirectory")).name
         expected_messages = _EXPECTED_CELLS
+
+        # Fingerprint this step's output CSV before the run so we can skip
+        # downstream invalidation if the output is unchanged (see _STEP_OUTPUT_CSV).
+        pre_fingerprint = _csv_fingerprint(sm.Directory, statusname)
 
         if statusname and not sm.stateOKtorun(statusname):
             msg = sm.explainAbort(statusname, raiseSV=False)
@@ -145,7 +191,10 @@ class BatchModuleRunner:
                 display_msg = result_msg if result_msg else after_msg
                 self.logger.info(f"{display_msg}{warn_suffix}")
                 if statusname and statusname != "MakeRepository":
-                    sm.updateState(statusname, True, "Successfully run.")
+                    post_fingerprint = _csv_fingerprint(sm.Directory, statusname)
+                    sm.updateState(statusname, True, "Successfully run.",
+                                   invalidate_downstream=_should_invalidate(
+                                       pre_fingerprint, post_fingerprint))
                     cell_key = expected_messages.get(statusname)
                     if cell_key:
                         try:
@@ -223,12 +272,17 @@ class ChainedBatchRunner:
         self._progress_label.setText(", ".join(s for _, s, _, _ in self._steps[index:]))
         self._logger.info(before_msg)
 
+        # Fingerprint the step's output before running so unchanged output can
+        # skip downstream invalidation (lets a no-op re-read keep Blog/Website).
+        pre_fingerprint = _csv_fingerprint(self._sm.Directory, statusname)
+
         self._thread = QThread()
         self._worker = _BatchWorker(module_called, None, self._module_config)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
 
-        def on_done(errorstring, _result_msg, idx=index, sname=statusname, amsg=after_msg):
+        def on_done(errorstring, _result_msg, idx=index, sname=statusname, amsg=after_msg,
+                    pre=pre_fingerprint):
             self._thread.quit()
             self._thread.wait()
             cell_key = _EXPECTED_CELLS.get(sname)
@@ -242,7 +296,9 @@ class ChainedBatchRunner:
                 self._on_complete()
             else:
                 self._logger.info(amsg)
-                self._sm.updateState(sname, True, "Successfully run.")
+                post = _csv_fingerprint(self._sm.Directory, sname)
+                self._sm.updateState(sname, True, "Successfully run.",
+                                     invalidate_downstream=_should_invalidate(pre, post))
                 if cell_key:
                     self._main_window.update_trip_cell(self._directory_name, cell_key, "✅", "Successfully run.")
                 self._run_step(idx + 1)
@@ -339,6 +395,11 @@ class ColumnBatchRunner:
         before_msg = step["before_msg"]
         after_msg = step["after_msg"]
         needs_reset = step["needs_reset"]
+        # Extra statemachine keys to also mark done on success (the combined
+        # "Read & Summarize" step sets ReadDirExif in addition to its primary
+        # WritePictures). Applied BEFORE the primary so updateState's downstream
+        # invalidation resolves correctly (ReadDirExif first, then WritePictures).
+        extra_statusnames = step.get("extra_statusnames", [])
 
         total = len(self._day_steps)
         self._step_label.setText(f"{before_msg} ({day_str})")
@@ -362,13 +423,20 @@ class ColumnBatchRunner:
             sm.Taskstate[statusname][1] = ""
             sm.writeState()
 
+        # Fingerprint each key's output CSV before the run (extras first, primary
+        # last — the order they'll be applied) so unchanged output can skip
+        # downstream invalidation.
+        pre_fingerprints = {k: _csv_fingerprint(sm.Directory, k)
+                            for k in (extra_statusnames + [statusname])}
+
         self._thread = QThread()
         self._worker = _BatchWorker(module_called, None, module_config)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
 
         def on_done(errorstring, result_msg, idx=index, sname=statusname, amsg=after_msg,
-                    d_str=day_str, sm_ref=sm, trip=trip_root, review=review_day):
+                    d_str=day_str, sm_ref=sm, trip=trip_root, review=review_day,
+                    extras=extra_statusnames, pre=pre_fingerprints):
             self._thread.quit()
             self._thread.wait()
             cell_key = _EXPECTED_CELLS.get(sname)
@@ -382,7 +450,11 @@ class ColumnBatchRunner:
             else:
                 self._successes += 1
                 self._logger.info(f"{amsg} — {d_str}")
-                sm_ref.updateState(sname, True, "Successfully run.")
+                for key in (extras + [sname]):
+                    post = _csv_fingerprint(sm_ref.Directory, key)
+                    sm_ref.updateState(key, True, "Successfully run.",
+                                       invalidate_downstream=_should_invalidate(
+                                           pre.get(key), post))
                 sm_ref.writeState()
                 if cell_key:
                     self._main_window.update_trip_cell(d_str, cell_key, "✅", "Successfully run.")

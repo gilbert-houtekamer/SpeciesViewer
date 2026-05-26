@@ -9,21 +9,23 @@ import os
 import re
 import logging
 import subprocess
-import weakref
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea, QGridLayout,
     QLabel, QFrame, QPushButton, QSpinBox, QComboBox, QSizePolicy,
-    QRadioButton, QButtonGroup, QMessageBox,
+    QRadioButton, QButtonGroup, QMessageBox, QStyle,
 )
-from PyQt6.QtGui import QPixmap, QImage, QGuiApplication, QColor, QPainter, QPen, QBrush
-from PyQt6.QtCore import Qt, QTimer, QEvent, QCoreApplication, pyqtSignal, QObject, QRunnable, QThreadPool
+from PyQt6.QtGui import QPixmap, QImage, QGuiApplication, QIcon
+from PyQt6.QtCore import Qt, QTimer, QSize, pyqtSignal, QObject, QRunnable, QThreadPool
 
 from engine.filepicture import FilePicture
 from engine.filecsv import Files
 from engine.picturecsv import Pictures
 from ghexif.exif_writer import exiftool_write
+from gui.window_state import restore_window, save_window
+from gui.image_loader import AsyncImageLoader
+from gui.picture_provider import PictureItem
 
 logger = logging.getLogger("speciesviewer")
 
@@ -53,6 +55,12 @@ def _compute_rate(upn_row: dict, files_dict: dict) -> int:
     computation = 0
     dxo_used = False
 
+    # HEIC-only pictures carry their rating in the HEIC itself; score them like
+    # an XMP, but only when no XMP/JPG sidecar already drives the score.
+    has_sidecar = any(
+        files_dict.get(f, {}).get("WindowsExtension", "").lower() in ("xmp", "jpg", "jpeg")
+        for f in files)
+
     for fname in files:
         if fname not in files_dict:
             continue
@@ -79,30 +87,34 @@ def _compute_rate(upn_row: dict, files_dict: dict) -> int:
                 computation = 5 if not rating_str else 15 * (1 + int(rating_str))
             elif rating_str in ("0", "") and not label:
                 computation = 3
+        elif ext == "heic" and not has_sidecar:
+            computation = 5 if not rating_str else 15 * (1 + int(rating_str))
 
+    # Small-picture penalty — mirrors computeRating exactly: multiplier starts
+    # at 1 and is only recomputed from a JPG's pixel size, so a picture with no
+    # JPG (ORF/XMP, HEIC) keeps multiplier 1. saved_multiplier is the running
+    # max, floored at 0.1. (The earlier reimplementation left the floor at 0.1
+    # for JPG-less pictures, which scaled every ORF/XMP/HEIC Rate down ~10×.)
     saved_multiplier = 0.1
+    multiplier = 1.0
     for fname in files:
-        if fname not in files_dict:
+        frow = files_dict.get(fname)
+        if frow is None:
             continue
-        frow = files_dict[fname]
-        if frow.get("WindowsExtension", "").lower() not in ("jpg", "jpeg"):
-            continue
-        img_size = frow.get("ImageSize", "")
-        if not img_size:
-            continue
-        try:
-            parts = re.split(r"[x ]", img_size)
-            w, h = int(parts[0]), int(parts[1])
-            multiplier = float(min(1500, max(w, h))) / 1500.0
-            upn_size = upn_row.get("ImageSize", "")
-            if upn_size:
-                up = re.split(r"[x ]", upn_size)
-                uw, uh = int(up[0]), int(up[1])
-                if uw >= 1.5 * w or uh >= 1.5 * h:
-                    multiplier *= 1.5
-            saved_multiplier = max(saved_multiplier, multiplier)
-        except Exception:
-            pass
+        if frow.get("WindowsExtension", "").lower() in ("jpg", "jpeg") and frow.get("ImageSize", ""):
+            try:
+                parts = re.split(r"[x ]", frow["ImageSize"])
+                w, h = int(parts[0]), int(parts[1])
+                multiplier = float(min(1500, max(w, h))) / 1500.0
+                upn_size = upn_row.get("ImageSize", "")
+                if upn_size:
+                    up = re.split(r"[x ]", upn_size)
+                    uw, uh = int(up[0]), int(up[1])
+                    if uw >= 1.5 * w or uh >= 1.5 * h:
+                        multiplier *= 1.5
+            except Exception:
+                pass
+        saved_multiplier = max(saved_multiplier, multiplier)
 
     computation = int(float(computation) * saved_multiplier)
     if dxo_used:
@@ -112,83 +124,7 @@ def _compute_rate(upn_row: dict, files_dict: dict) -> int:
     return computation
 
 
-# Keeps Python wrappers for open dialogs alive so Python's GC cannot collect
-# them while timers or background loaders still hold indirect references.
-_active_dialogs: dict = {}
-
-# ── Background thumbnail loader ───────────────────────────────────────────────
-
-class _ThumbSignals(QObject):
-    """Qt signal carrier for cross-thread thumbnail delivery.
-
-    Lives on the main thread; background loaders hold only a weakref so they
-    cannot prevent collection.  The main-thread strong ref is kept via the
-    dialog's _thumb_signals attribute (and via _active_dialogs → dialog).
-    """
-    ready = pyqtSignal(str, object, int)  # upn_key, QImage, generation
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-
-class _ThumbLoader(QRunnable):
-    """Loads and scales a thumbnail image in a worker thread."""
-
-    def __init__(self, upn_key: str, path, target_w: int, gen: int,
-                 signals: _ThumbSignals):
-        super().__init__()
-        self._upn_key = upn_key
-        self._path = str(path) if path else None
-        self._target_w = target_w
-        self._gen = gen
-        self._signals_ref = weakref.ref(signals)
-
-    def run(self):
-        img = QImage()
-        if self._path and Path(self._path).exists():
-            img = QImage(self._path)
-            if not img.isNull() and self._target_w > 0:
-                img = img.scaledToWidth(self._target_w, Qt.TransformationMode.SmoothTransformation)
-        signals = self._signals_ref()
-        if signals is not None:
-            try:
-                signals.ready.emit(self._upn_key, img, self._gen)
-            except RuntimeError:
-                pass  # dialog closed or signals object was already destroyed
-
-
 # ── Sub-widgets ────────────────────────────────────────────────────────────────
-
-class _StarButton(QWidget):
-    """Single star rendered via paintEvent — no QPushButton, no stylesheet,
-    no native HWND creation, no Windows-message-pump reentrancy."""
-    clicked = pyqtSignal()
-
-    def __init__(self, filled: bool = False, parent=None):
-        super().__init__(parent)
-        self._filled = filled
-        self.setFixedSize(22, 22)
-        # No setStyleSheet, no setCursor — both can force native HWND creation.
-
-    def setFilled(self, filled: bool):
-        if self._filled != filled:
-            self._filled = filled
-            self.update()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.clicked.emit()
-
-    def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        font = p.font()
-        font.setPixelSize(15)
-        p.setFont(font)
-        p.setPen(QColor("#e8b800") if self._filled else QColor("#666"))
-        p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
-                   "★" if self._filled else "☆")
-
 
 class StarWidget(QWidget):
     rating_changed = pyqtSignal(int)
@@ -199,21 +135,30 @@ class StarWidget(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(1)
-        self._buttons: list[_StarButton] = []
+        self._buttons: list[QPushButton] = []
         for i in range(1, 6):
-            btn = _StarButton(filled=(i <= self._rating), parent=self)
+            btn = QPushButton()
+            btn.setFlat(True)
+            btn.setFixedSize(22, 22)
+            btn.setStyleSheet("font-size: 15px; border: none; padding: 0;")
             btn.clicked.connect(lambda _, n=i: self._on_click(n))
             layout.addWidget(btn)
             self._buttons.append(btn)
+        self._refresh()
 
     def _on_click(self, n: int):
-        self._rating = 0 if self._rating == n else n
+        # Standard photo-app behaviour:
+        #  - clicking an "on" star (rating >= n) turns it AND every star to its
+        #    right off  → rating = n - 1  (so clicking the lowest lit star clears)
+        #  - clicking an "off" star (rating < n) fills up to it, lighting every
+        #    star to its left → rating = n
+        self._rating = n - 1 if self._rating >= n else n
         self._refresh()
         self.rating_changed.emit(self._rating)
 
     def _refresh(self):
         for i, btn in enumerate(self._buttons):
-            btn.setFilled(i < self._rating)
+            btn.setText("★" if i < self._rating else "☆")
 
     def set_rating(self, n: int):
         n = max(0, min(5, n))
@@ -221,44 +166,6 @@ class StarWidget(QWidget):
             return
         self._rating = n
         self._refresh()
-
-
-class _ColorDot(QWidget):
-    """Circular colored dot used as a toggle in ColorSelector.
-
-    Draws itself via paintEvent — no stylesheet border-radius, no native
-    HWND creation, no Windows-message-pump reentrancy during card builds.
-    """
-    clicked = pyqtSignal()
-
-    def __init__(self, color_hex: str, parent=None):
-        super().__init__(parent)
-        self._qcolor = QColor(color_hex)
-        self._checked = False
-        self.setFixedSize(16, 16)
-
-    def setChecked(self, v: bool):
-        if self._checked != v:
-            self._checked = v
-            self.update()
-
-    def isChecked(self) -> bool:
-        return self._checked
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.clicked.emit()
-
-    def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        if self._checked:
-            p.setPen(QPen(QColor("white"), 2))
-            p.setBrush(QBrush(self._qcolor))
-        else:
-            p.setPen(QPen(self._qcolor, 2))
-            p.setBrush(QBrush(Qt.GlobalColor.transparent))
-        p.drawEllipse(2, 2, 12, 12)
 
 
 class ColorSelector(QWidget):
@@ -270,12 +177,33 @@ class ColorSelector(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(3)
-        self._buttons: dict[str, _ColorDot] = {}
+        self._buttons: dict[str, QPushButton] = {}
         for name in COLORS:
             hc = COLOR_HEX[name]
-            btn = _ColorDot(hc, parent=self)
+            btn = QPushButton()
+            btn.setFixedSize(16, 16)
+            btn.setCheckable(True)
             btn.setToolTip(name)
-            btn.clicked.connect(lambda n=name: self._on_click(n))
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: transparent;
+                    border: 2px solid {hc};
+                    border-radius: 8px;
+                }}
+                QPushButton:checked {{
+                    background-color: {hc};
+                    border: 2px solid white;
+                }}
+                QPushButton:disabled {{
+                    background-color: transparent;
+                    border: 2px dashed #cccccc;
+                }}
+                QPushButton:checked:disabled {{
+                    background-color: #cccccc;
+                    border: 2px solid #eeeeee;
+                }}
+            """)
+            btn.clicked.connect(lambda _, n=name: self._on_click(n))
             layout.addWidget(btn)
             self._buttons[name] = btn
         self._refresh()
@@ -295,20 +223,50 @@ class ColorSelector(QWidget):
         self._color = color
         self._refresh()
 
+    def set_disabled_colors(self, names, tooltip: str = ""):
+        """Grey out (and block clicks on) the named colours; re-enable the rest.
+
+        Used for Option C: on a JPG-bearing picture, Blue/Purple can't be a
+        deletion candidate, so those two circles are greyed with an explaining
+        tooltip while Red/Yellow/Green stay live.
+        """
+        disabled = set(names)
+        for name, btn in self._buttons.items():
+            if name in disabled:
+                btn.setEnabled(False)
+                btn.setToolTip(tooltip or name)
+            else:
+                btn.setEnabled(True)
+                btn.setToolTip(name)
+
+
+_DISCARD_GREYED_TIP = ("Has a JPG — kept for the website and a future DxO "
+                       "re-export, so it can't be a deletion candidate.")
+
 
 class PictureCard(QFrame):
-    """Thumbnail + star rating + color selector + rate label for one UPN."""
+    """Thumbnail + star rating + color selector + rate label for one picture.
 
-    card_changed = pyqtSignal(str)  # upn_key
-    card_clicked = pyqtSignal(str)  # upn_key — thumbnail clicked → open large view
+    Renders entirely from a PictureItem (the provider seam) and writes edits
+    back through it — no direct engine access. Capability flags decide whether
+    the stars / colour controls are live."""
 
-    def __init__(self, upn_key: str, upn_row: dict, jpg_path, card_width: int,
-                 display_name: str = None, parent=None):
+    card_changed = pyqtSignal(str)   # key — emitted after a write so the host re-sorts
+    card_clicked = pyqtSignal(str)   # key — thumbnail clicked → open large view
+    status_clicked = pyqtSignal(str) # key — status icon clicked → open SpeciesInfoDialog
+
+    def __init__(self, item: PictureItem, card_width: int, parent=None,
+                 *, show_status: bool = False):
         super().__init__(parent)
-        self.upn_key = upn_key
-        self._upn_row = upn_row
-        self._pending_rating = None
-        self._pending_color = None
+        self._item = item
+        self.upn_key = item.key
+        # Preview hosts set show_status to add a status/desc/GPS badge row and a
+        # clickable warning icon (→ SpeciesInfoDialog); the Rating Editor leaves
+        # it off (its data is already validated).
+        self._show_status = show_status
+        self._status_icon = None
+        self._desc_badge = None
+        self._gps_badge = None
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setFrameShadow(QFrame.Shadow.Raised)
@@ -316,100 +274,185 @@ class PictureCard(QFrame):
         vbox.setContentsMargins(5, 5, 5, 5)
         vbox.setSpacing(3)
 
-        # All child widgets are created with explicit parents so they are child
-        # (alien) windows rather than top-level native windows.  Top-level
-        # CreateWindowEx / SetParent calls run the Windows message pump, which
-        # can dispatch queued input events that trigger _rebuild_cards mid-loop
-        # and delete self._grid before addWidget is reached.
-
-        # Thumbnail — clicking opens the large-view detail dialog
-        self._thumb = QLabel(parent=self)
+        # Thumbnail — clicking opens the large view. The coloured border traces
+        # the colour label (less in-your-face than bullets); kept in sync by
+        # _update_thumb_style. Loaded asynchronously via the provider.
+        self._frame_color = item.color
+        self._thumb = QLabel()
         self._thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumb.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self._thumb.setCursor(Qt.CursorShape.PointingHandCursor)
         self._thumb.mousePressEvent = lambda _: self.card_clicked.emit(self.upn_key)
-        # Placeholder height (3:2 landscape ratio) until background load completes
         self._thumb_target_w = max(80, card_width - 18)
         self._thumb.setFixedHeight(max(60, self._thumb_target_w * 2 // 3))
-        self._thumb.setStyleSheet("background-color: #2a2a2a;")
+        self._update_thumb_style()
         vbox.addWidget(self._thumb)
+        item.request_thumbnail(self._thumb_target_w, self.set_thumbnail)
 
         # Species name
-        species = display_name or (upn_row.get("NLSoortNaam") or upn_row.get("EngSoortNaam")
-                   or upn_row.get("WetSoortNaam") or upn_key)
-        lbl_name = QLabel(species, parent=self)
-        lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_name.setStyleSheet("font-weight: bold; font-size: 10px;")
-        lbl_name.setWordWrap(True)
-        vbox.addWidget(lbl_name)
+        self._lbl_name = QLabel(item.display_name or item.key)
+        self._lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._lbl_name.setStyleSheet("font-weight: bold; font-size: 10px;")
+        self._lbl_name.setWordWrap(True)
+        vbox.addWidget(self._lbl_name)
 
         # Stars row + date + rate
         row_stars = QHBoxLayout()
         row_stars.setContentsMargins(0, 0, 0, 0)
-        initial_stars = _safe_int(upn_row.get("Rating", "0"))
-        self._stars = StarWidget(initial_stars, parent=self)
-        self._stars.rating_changed.connect(self._on_rating_changed)
+        self._stars = StarWidget(item.rating)
+        if item.can_edit_rating:
+            self._stars.rating_changed.connect(self._on_rating_changed)
+        else:
+            self._stars.setEnabled(False)
         row_stars.addWidget(self._stars)
-        dto = upn_row.get("DateTimeOriginal", "")
-        if dto:
-            date_str = dto[:10].replace(":", "-")
-            lbl_date = QLabel(date_str, parent=self)
+        if item.date:
+            lbl_date = QLabel(item.date[:10].replace(":", "-"))
             lbl_date.setStyleSheet("font-size: 9px; color: #777;")
             row_stars.addWidget(lbl_date)
         row_stars.addStretch()
-        self._rate_lbl = QLabel(f"Rate: {upn_row.get('Rate', '?')}", parent=self)
+        self._rate_lbl = QLabel()
         self._rate_lbl.setStyleSheet("font-size: 10px; color: #555;")
+        self.update_rate_display(item.rate)
         row_stars.addWidget(self._rate_lbl)
         vbox.addLayout(row_stars)
 
-        # Color selector
-        self._color_sel = ColorSelector(upn_row.get("Label", ""), parent=self)
-        self._color_sel.color_changed.connect(self._on_color_changed)
+        # Color selector — greys Blue/Purple on a JPG-bearing picture (Option C)
+        self._color_sel = ColorSelector(item.color)
+        if item.can_edit_color:
+            self._color_sel.color_changed.connect(self._on_color_changed)
+        else:
+            self._color_sel.setEnabled(False)
+        if item.has_jpg:
+            self._color_sel.set_disabled_colors(("Blue", "Purple"), _DISCARD_GREYED_TIP)
         vbox.addWidget(self._color_sel)
 
-        # UPN key + file types (small)
-        files = upn_row.get("Files", [])
-        exts = sorted({Path(f).suffix.lstrip(".").upper()
-                       for f in (files if isinstance(files, list) else []) if f})
-        key_line = upn_key if not exts else f"{upn_key}  {' · '.join(exts)}"
-        lbl_key = QLabel(key_line, parent=self)
+        # key + file types (small)
+        exts = item.file_exts
+        key_line = item.key if not exts else f"{item.key}  {' · '.join(exts)}"
+        lbl_key = QLabel(key_line)
         lbl_key.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_key.setStyleSheet("font-size: 9px; color: #aaa;")
-        lbl_key.setToolTip(upn_key)
+        lbl_key.setToolTip(item.key)
         vbox.addWidget(lbl_key)
 
+        # Preview-only badge row: clickable status icon (species warning / OK /
+        # none → SpeciesInfoDialog), a 📝 description badge, and a 📍/❓ GPS badge.
+        if self._show_status:
+            badge_row = QHBoxLayout()
+            badge_row.setContentsMargins(0, 0, 0, 0)
+            badge_row.setSpacing(4)
+
+            self._status_icon = QPushButton()
+            self._status_icon.setIconSize(QSize(16, 16))
+            self._status_icon.setFixedSize(20, 20)
+            self._status_icon.setFlat(True)
+            self._status_icon.setStyleSheet(
+                "background-color: white; color: #333; border: 1px solid #ccc; padding: 2px;")
+            self._status_icon.clicked.connect(lambda: self.status_clicked.emit(self.upn_key))
+            badge_row.addWidget(self._status_icon)
+            badge_row.addStretch()
+
+            self._desc_badge = QLabel()
+            self._desc_badge.setStyleSheet("font-size: 14px;")
+            self._desc_badge.setFixedSize(20, 20)
+            self._desc_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge_row.addWidget(self._desc_badge)
+
+            self._gps_badge = QLabel()
+            self._gps_badge.setStyleSheet("font-size: 14px;")
+            self._gps_badge.setFixedSize(20, 20)
+            self._gps_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge_row.addWidget(self._gps_badge)
+
+            vbox.addLayout(badge_row)
+            self._refresh_status_badges()
+
+    def _refresh_status_badges(self):
+        """Set the status icon + description/GPS badges from the live item.
+        Re-callable after an edit (species commit, GPS fix)."""
+        if not self._show_status:
+            return
+        item = self._item
+        error_msg = item.error_msg
+        species = item.species
+        if error_msg:
+            self._status_icon.setIcon(QIcon(QPixmap("qt/assets/warning_icon.png").scaled(16, 16)))
+            self._status_icon.setText("")
+            self._status_icon.setToolTip(error_msg)
+        elif species:
+            self._status_icon.setIcon(QIcon(QPixmap("qt/assets/ok_icon.png").scaled(16, 16)))
+            self._status_icon.setText("")
+            self._status_icon.setToolTip("OK")
+        else:
+            self._status_icon.setIcon(QIcon())
+            self._status_icon.setText("❔")
+            self._status_icon.setToolTip("No species set — picture will be skipped by the pipeline.")
+
+        desc = item.description
+        self._desc_badge.setText("📝" if desc else "")
+        self._desc_badge.setToolTip(desc or "")
+
+        if item.has_gps:
+            self._gps_badge.setText("📍")
+            self._gps_badge.setToolTip("GPS coordinates present.")
+        else:
+            self._gps_badge.setText("❓")
+            self._gps_badge.setToolTip("Missing GPS coordinates — fix in Lightroom.")
+
+    def refresh(self):
+        """Re-read every field from the (live) item and repaint — used after an
+        external edit such as a species commit or a GPS backfill."""
+        self._lbl_name.setText(self._item.display_name or self._item.key)
+        self._frame_color = self._item.color
+        self._update_thumb_style()
+        self._stars.set_rating(self._item.rating)
+        self._color_sel.set_color(self._item.color)
+        self.update_rate_display(self._item.rate)
+        self._refresh_status_badges()
+
     def _on_rating_changed(self, n: int):
-        self._pending_rating = n
+        self._item.set_rating(n)             # writes + recomputes Rate via provider
+        self.update_rate_display(self._item.rate)
         self.card_changed.emit(self.upn_key)
 
     def _on_color_changed(self, color: str):
-        self._pending_color = color
+        self._item.set_color(color)
+        self._frame_color = color
+        self._update_thumb_style()
+        self.update_rate_display(self._item.rate)
         self.card_changed.emit(self.upn_key)
 
-    def update_rate_display(self, new_rate: int):
-        self._rate_lbl.setText(f"Rate: {new_rate}")
+    def update_rate_display(self, new_rate):
+        self._rate_lbl.setText(f"Rate: {new_rate if new_rate is not None else '?'}")
 
     def update_rating_display(self, stars: int):
         self._stars.set_rating(stars)
 
     def update_color_display(self, color: str):
         self._color_sel.set_color(color)
+        self._frame_color = color
+        self._update_thumb_style()
+
+    def _update_thumb_style(self):
+        """Apply the dark placeholder bg (when no pixmap) plus the coloured
+        frame border (when the picture has a colour label)."""
+        has_pix = self._thumb.pixmap() is not None and not self._thumb.pixmap().isNull()
+        parts = []
+        if not has_pix:
+            parts.append("background-color: #2a2a2a; color: #ccc; font-size: 10px;")
+        hexc = COLOR_HEX.get((self._frame_color or "").capitalize())
+        if hexc:
+            parts.append(f"border: 3px solid {hexc}; border-radius: 4px;")
+        self._thumb.setStyleSheet(" ".join(parts))
 
     def set_thumbnail(self, px: QPixmap):
         if px.isNull():
-            self._thumb.setStyleSheet("color: #ccc; font-size: 10px;")
             self._thumb.setText("(no image)")
         else:
-            self._thumb.setStyleSheet("")
-            self._thumb.setFixedHeight(px.height())
+            # +6 leaves room for the 3px frame border so the pixmap isn't clipped
+            self._thumb.setFixedHeight(px.height() + 6)
             self._thumb.setPixmap(px)
-
-    def take_pending(self):
-        """Return (pending_rating, pending_color) and clear them."""
-        r, c = self._pending_rating, self._pending_color
-        self._pending_rating = None
-        self._pending_color = None
-        return r, c
+        self._update_thumb_style()
 
 
 def _safe_int(s, default: int = 0) -> int:
@@ -417,98 +460,6 @@ def _safe_int(s, default: int = 0) -> int:
         return int(s)
     except (ValueError, TypeError):
         return default
-
-
-# ── Large-image detail dialog ─────────────────────────────────────────────────
-
-class RatingCardDetailDialog(QDialog):
-    """Full-size view of a single picture card with live-editable stars and color."""
-
-    def __init__(self, parent, upn_key: str, upn_row: dict, jpg_path,
-                 display_name: str, on_change):
-        super().__init__(parent)
-        self._upn_row = upn_row
-        self._on_change = on_change  # callable(upn_key, new_stars_or_None, new_color_or_None)
-
-        self.setWindowTitle(display_name or upn_key)
-        screen = QGuiApplication.primaryScreen().availableGeometry()
-        self.resize(int(screen.width() * 0.85), int(screen.height() * 0.85))
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
-
-        # Large image — setMinimumSize(1,1) prevents the pixmap size from
-        # becoming the window's minimum size, which would block vertical resize.
-        self._image_label = QLabel()
-        self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self._image_label.setMinimumSize(1, 1)
-        self._pixmap = QPixmap(str(jpg_path)) if jpg_path and Path(jpg_path).exists() else QPixmap()
-        layout.addWidget(self._image_label, stretch=1)
-
-        # Controls strip — centred and limited to 1/3 of window width via
-        # equal stretches on each side (stretch 1 : widget 1 : stretch 1).
-        controls_widget = QWidget()
-        controls_layout = QVBoxLayout(controls_widget)
-        controls_layout.setContentsMargins(0, 0, 0, 0)
-        controls_layout.setSpacing(4)
-
-        lbl_name = QLabel(display_name or upn_key)
-        lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_name.setStyleSheet("font-weight: bold; font-size: 13px;")
-        controls_layout.addWidget(lbl_name)
-
-        row_stars = QHBoxLayout()
-        self._stars = StarWidget(_safe_int(upn_row.get("Rating", "0")))
-        self._stars.rating_changed.connect(lambda n: on_change(upn_key, n, None))
-        row_stars.addWidget(self._stars)
-        dto = upn_row.get("DateTimeOriginal", "")
-        if dto:
-            lbl_date = QLabel(dto[:10].replace(":", "-"))
-            lbl_date.setStyleSheet("font-size: 11px; color: #777;")
-            row_stars.addWidget(lbl_date)
-        row_stars.addStretch()
-        self._rate_lbl = QLabel(f"Rate: {upn_row.get('Rate', '?')}")
-        self._rate_lbl.setStyleSheet("font-size: 11px; color: #555;")
-        row_stars.addWidget(self._rate_lbl)
-        controls_layout.addLayout(row_stars)
-
-        self._color_sel = ColorSelector(upn_row.get("Label", ""))
-        self._color_sel.color_changed.connect(lambda c: on_change(upn_key, None, c))
-        controls_layout.addWidget(self._color_sel)
-
-        lbl_path = QLabel(upn_key)
-        lbl_path.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_path.setStyleSheet("font-size: 9px; color: #aaa;")
-        controls_layout.addWidget(lbl_path)
-
-        ctrl_row = QHBoxLayout()
-        ctrl_row.addStretch(1)
-        ctrl_row.addWidget(controls_widget, 1)
-        ctrl_row.addStretch(1)
-        layout.addLayout(ctrl_row)
-
-    def refresh_rate(self):
-        self._rate_lbl.setText(f"Rate: {self._upn_row.get('Rate', '?')}")
-
-    def _fit_pixmap(self):
-        if self._pixmap.isNull():
-            return
-        size = self._image_label.size()
-        if size.width() <= 1 or size.height() <= 1:
-            return
-        scaled = self._pixmap.scaled(size, Qt.AspectRatioMode.KeepAspectRatio,
-                                     Qt.TransformationMode.SmoothTransformation)
-        self._image_label.setPixmap(scaled)
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        QTimer.singleShot(0, self._fit_pixmap)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._fit_pixmap()
 
 
 # ── Main dialog ────────────────────────────────────────────────────────────────
@@ -524,24 +475,26 @@ class RatingEditorDialog(QDialog):
     def __init__(self, parent, trip_root_dir: str, day_str: str = None):
         super().__init__(parent)
         self.setWindowTitle("Rating Editor")
-        self.resize(1000, 720)
+        self.setWindowFlags(self.windowFlags()
+                            | Qt.WindowType.WindowMinimizeButtonHint
+                            | Qt.WindowType.WindowMaximizeButtonHint)
         self._trip_root = Path(trip_root_dir)
         self._initial_day = day_str
         self.fpr: FilePicture | None = None
         self.columns = 3
+        # Restore per-machine remembered geometry + column count (.ini).
+        self._geo_key = "RatingEditor"
+        _st = restore_window(self, self._geo_key, default_size=(1000, 720))
+        if _st["cols"]:
+            self.columns = max(1, min(8, _st["cols"]))
         self._cards: list[PictureCard] = []
         self._cards_by_key: dict[str, PictureCard] = {}
         self._jpg_only = True
         self._species_lang = "NL"
-        self._thumb_gen = 0
-        self._thumb_signals = _ThumbSignals()  # no parent; Python-owned
-        self._thumb_signals.ready.connect(self._on_thumb_ready)
-        self._is_rebuilding = False   # reentrancy guard for _rebuild_cards
-        self._rebuild_pending = False
-        self._col_rebuild_timer = QTimer(self)
-        self._col_rebuild_timer.setSingleShot(True)
-        self._col_rebuild_timer.setInterval(80)
-        self._col_rebuild_timer.timeout.connect(self._rebuild_cards)
+        # One async image loader for the dialog's lifetime; each collection
+        # shares it so cancel_pending_loads() always targets the live loader.
+        self._loader = AsyncImageLoader(self)
+        self._collection = None
         # Trip-scope per-day tracking; None in Day scope
         self._day_objects: dict | None = None   # day_str → (Files, Pictures)
         self._upn_day_map: dict[str, str] = {}  # upn_key → day_str
@@ -618,24 +571,24 @@ class RatingEditorDialog(QDialog):
         # Wrap grid in a VBox so the stretch below it absorbs extra viewport
         # height; otherwise setWidgetResizable forces the grid to fill the
         # viewport and rows expand to fill the allocated space.
-        self._scroll_content = QWidget()
-        _vbox = QVBoxLayout(self._scroll_content)
-        _vbox.setContentsMargins(0, 0, 0, 0)
-        _vbox.setSpacing(0)
+        _scroll_content = QWidget()
+        _scroll_vbox = QVBoxLayout(_scroll_content)
+        _scroll_vbox.setContentsMargins(0, 0, 0, 0)
+        _scroll_vbox.setSpacing(0)
         self._grid_widget = QWidget()
         self._grid = QGridLayout(self._grid_widget)
         self._grid.setSpacing(6)
-        _vbox.addWidget(self._grid_widget)
-        _vbox.addStretch(1)
-        self._scroll.setWidget(self._scroll_content)
+        _scroll_vbox.addWidget(self._grid_widget)
+        _scroll_vbox.addStretch(1)
+        self._scroll.setWidget(_scroll_content)
         main_layout.addWidget(self._scroll)
-
-        # Keep this Python wrapper alive so Python's GC cannot collect it
-        # while the 30 ms poll timer or deferred callbacks are still queued.
-        _active_dialogs[id(self)] = self
 
         # Populate day combo then load data after show
         QTimer.singleShot(0, self._init_day_combo)
+
+    def closeEvent(self, event):
+        save_window(self, self._geo_key, cols=self.columns)
+        super().closeEvent(event)
 
     # ── Initialisation helpers ────────────────────────────────────────────────
 
@@ -689,6 +642,14 @@ class RatingEditorDialog(QDialog):
             logger.error(f"RatingEditorDialog load error: {e}", exc_info=True)
             return
 
+        # Build the provider collection over the freshly-loaded data. Local
+        # import avoids a circular import (rating_provider imports helpers here).
+        from gui.rating_provider import RatingEditorCollection
+        self._collection = RatingEditorCollection(
+            self.fpr, self._day_objects, self._upn_day_map,
+            jpg_only=self._jpg_only, species_lang=self._species_lang,
+            loader=self._loader,
+        )
         self._populate_species_combo(restore_selection=saved_species)
 
     def _load_trip_scope(self):
@@ -776,112 +737,6 @@ class RatingEditorDialog(QDialog):
                 return
         self._rebuild_cards()
 
-    # ── Sorted picture list ───────────────────────────────────────────────────
-
-    def _sorted_upns(self, filter_name=None) -> list[tuple[int, str, dict]]:
-        rows = []
-        for key, upn_row in self.fpr.upn.UniquePictureName_dict.items():
-            if filter_name and self._species_name(upn_row) != filter_name:
-                continue
-            if self._jpg_only and self._get_jpg_path(upn_row) is None:
-                continue
-            rows.append((_safe_int(upn_row.get("Rate", 0) or 0), key, upn_row))
-        rows.sort(key=lambda x: x[0], reverse=True)
-        return rows
-
-    def _get_jpg_path(self, upn_row: dict) -> Path | None:
-        """Return the best available JPG path for a UPN, or None."""
-        best = upn_row.get("BestJPGPathName", "")
-        if best:
-            p = Path(best)
-            if p.exists() and p.suffix.lower() in (".jpg", ".jpeg"):
-                return p
-        files = upn_row.get("Files", [])
-        if not isinstance(files, list):
-            return None
-        for fname in files:
-            if fname not in self.fpr.fi.files_dict:
-                continue
-            frow = self.fpr.fi.files_dict[fname]
-            if frow.get("WindowsExtension", "").lower() in ("jpg", "jpeg"):
-                p = Path(frow.get("WindowsFileName", ""))
-                if p.exists():
-                    return p
-        return None
-
-    def _get_display_path(self, upn_row: dict) -> Path | None:
-        """Return a JPG path for display; falls back to cached RAW thumbnail when not JPG-only."""
-        jpg = self._get_jpg_path(upn_row)
-        if jpg:
-            return jpg
-        if self._jpg_only:
-            return None
-        return self._get_raw_thumb(upn_row)
-
-    _RAW_EXTS = {".nef", ".orf", ".cr2", ".arw", ".rw2"}
-
-    def _get_raw_thumb(self, upn_row: dict) -> Path | None:
-        """Return a cached JPEG thumbnail for the first RAW file in the UPN.
-
-        Only checks the on-disk cache — never blocks on exiftool.  Call
-        _batch_extract_raw_thumbs() before this to pre-populate the cache.
-        """
-        files = upn_row.get("Files", [])
-        if not isinstance(files, list):
-            return None
-        for fname in files:
-            if fname not in self.fpr.fi.files_dict:
-                continue
-            frow = self.fpr.fi.files_dict[fname]
-            if ("." + frow.get("WindowsExtension", "").lower()) not in self._RAW_EXTS:
-                continue
-            raw_path = Path(frow.get("WindowsFileName", ""))
-            if not raw_path.exists():
-                continue
-            cache_path = raw_path.parent / ".preview_cache" / (raw_path.stem + ".jpg")
-            if cache_path.exists():
-                return cache_path
-        return None
-
-    def _batch_extract_raw_thumbs(self):
-        """Batch-extract RAW thumbnails for all UPNs that have no JPG (pre-fills the cache)."""
-        by_dir: dict[Path, list[Path]] = {}
-        for upn_row in self.fpr.upn.UniquePictureName_dict.values():
-            if self._get_jpg_path(upn_row):
-                continue
-            files = upn_row.get("Files", [])
-            if not isinstance(files, list):
-                continue
-            for fname in files:
-                if fname not in self.fpr.fi.files_dict:
-                    continue
-                frow = self.fpr.fi.files_dict[fname]
-                if ("." + frow.get("WindowsExtension", "").lower()) not in self._RAW_EXTS:
-                    continue
-                raw_path = Path(frow.get("WindowsFileName", ""))
-                if not raw_path.exists():
-                    continue
-                cache_dir = raw_path.parent / ".preview_cache"
-                cache_dir.mkdir(exist_ok=True)
-                if not (cache_dir / (raw_path.stem + ".jpg")).exists():
-                    by_dir.setdefault(cache_dir, []).append(raw_path)
-                break  # one RAW per UPN is enough
-
-        for cache_dir, raw_files in by_dir.items():
-            for tag in ["-PreviewImage", "-ThumbnailImage"]:
-                still_needed = [p for p in raw_files
-                                if not (cache_dir / (p.stem + ".jpg")).exists()]
-                if not still_needed:
-                    break
-                try:
-                    subprocess.run(
-                        ["exiftool", "-b", tag, "-w!", str(cache_dir / "%f.jpg")]
-                        + [str(p) for p in still_needed],
-                        capture_output=True, timeout=120,
-                    )
-                except Exception as e:
-                    logger.warning(f"Batch RAW thumb extraction failed: {e}")
-
     # ── Grid management ───────────────────────────────────────────────────────
 
     def _grid_placement(self, total: int) -> list[tuple[int, int, int, int]]:
@@ -892,104 +747,62 @@ class RatingEditorDialog(QDialog):
         small card as the last picture of a full grid.
         """
         ncols = self.columns
-        avail = self._scroll.viewport().width()
+        # Use the scroll-area's outer width minus a reserved scrollbar extent +
+        # frame + right gutter, rather than viewport().width(): the viewport is
+        # full width before the scrollbar appears, so cards built then come out
+        # too wide and the last column clips once the scrollbar shows.
+        spacing = self._grid.spacing()
+        sb = self._scroll.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
+        frame = 2 * self._scroll.frameWidth()
+        avail = self._scroll.width() - sb - frame - spacing
         if avail < 100:
             avail = 960
-        spacing = self._grid.spacing()
         card_w = max(120, (avail - spacing * (ncols - 1)) // ncols)
         return [(idx // ncols, idx % ncols, 1, card_w) for idx in range(total)]
 
     def _clear_grid(self):
-        self._thumb_gen += 1
+        if self._collection is not None:
+            self._collection.cancel_pending_loads()  # drop in-flight thumbnail loads
         self._cards_by_key.clear()
-        self._cards.clear()
-        for c in range(8):
+        for c in range(8):  # reset all possible column stretch values (spinner max = 8)
             self._grid.setColumnStretch(c, 0)
         while self._grid.count():
             item = self._grid.takeAt(0)
             w = item.widget()
             if w:
-                w.deleteLater()
-        # Flush all pending DeferredDelete events now, before new cards are
-        # constructed, so no stale deletions can fire mid-construction.
-        QCoreApplication.sendPostedEvents(None, int(QEvent.Type.DeferredDelete))
+                w.deleteLater()  # deferred deletion; avoids GC-triggered C++ cascade
+        self._cards.clear()
 
     def _rebuild_cards(self):
-        if not self.fpr:
+        if not self.fpr or self._collection is None:
             return
-        # Guard against re-entrant calls (Windows message-pump can re-enter Qt
-        # slots during QThreadPool::start or widget construction). Defer the
-        # second rebuild until after the current one finishes.
-        if self._is_rebuilding:
-            self._rebuild_pending = True
+        self._clear_grid()
+        filter_name = self._species_combo.currentData()
+        if filter_name is None:
+            n_species = self._species_combo.count() - 1  # subtract placeholder
+            self._status.setText(f"{n_species} species loaded — select one to view pictures.")
             return
-        self._is_rebuilding = True
-        self._rebuild_pending = False
-        try:
-            self._clear_grid()
-            filter_name = self._species_combo.currentData()
-            if filter_name is None:
-                n_species = self._species_combo.count() - 1
-                self._status.setText(f"{n_species} species loaded — select one to view pictures.")
-            else:
-                sorted_rows = self._sorted_upns(filter_name)
-                placement = self._grid_placement(len(sorted_rows))
-                for c in range(self.columns):
-                    self._grid.setColumnStretch(c, 1)
+        self._collection.set_species_lang(self._species_lang)
+        self._collection.set_jpg_only(self._jpg_only)
+        self._collection.rebuild(filter_name)
+        n = len(self._collection)
+        placement = self._grid_placement(n)
+        for c in range(self.columns):
+            self._grid.setColumnStretch(c, 1)
 
-                gen = self._thumb_gen
-                # Create all cards synchronously while _is_rebuilding is True.
-                # This prevents any reentrant _rebuild_cards from running during
-                # PictureCard construction (child widgets — no CreateWindowEx,
-                # no Windows message-pump reentrancy).  Thumb loaders are
-                # collected and started after all addWidget calls so that
-                # QThreadPool::start cannot trigger reentrancy mid-loop either.
-                pending_loaders = []
-                for idx, (_, upn_key, upn_row) in enumerate(sorted_rows):
-                    r, col, span, card_w = placement[idx]
-                    img = self._get_display_path(upn_row)
-                    dname = self._species_name(upn_row) or upn_key
-                    card = PictureCard(upn_key, upn_row, img, card_w, display_name=dname,
-                                       parent=self._grid_widget)
-                    card.card_changed.connect(self._on_card_changed)
-                    card.card_clicked.connect(self._on_card_clicked)
-                    self._grid.addWidget(card, r, col, 1, span)
-                    self._cards.append(card)
-                    self._cards_by_key[upn_key] = card
-                    pending_loaders.append(
-                        _ThumbLoader(upn_key, img, card._thumb_target_w, gen, self._thumb_signals)
-                    )
+        for idx in range(n):
+            item = self._collection.item(idx)
+            r, col, span, card_w = placement[idx]
+            card = PictureCard(item, card_w)   # requests its own thumbnail (async)
+            card.card_changed.connect(self._on_card_changed)
+            card.card_clicked.connect(self._on_card_clicked)
+            self._grid.addWidget(card, r, col, 1, span)
+            self._cards.append(card)
+            self._cards_by_key[item.key] = card
 
-                n = len(sorted_rows)
-                suffix = f" for {filter_name}" if filter_name else ""
-                self._status.setText(f"{n} picture{'s' if n != 1 else ''}{suffix}")
-                self._scroll.verticalScrollBar().setValue(0)
-
-                pool = QThreadPool.globalInstance()
-                for loader in pending_loaders:
-                    pool.start(loader)
-        finally:
-            self._is_rebuilding = False
-            if self._rebuild_pending:
-                self._rebuild_pending = False
-                QTimer.singleShot(0, self._rebuild_cards)
-
-    def _on_thumb_ready(self, upn_key: str, qimage: QImage, gen: int):
-        if gen != self._thumb_gen:
-            return
-        card = self._cards_by_key.get(upn_key)
-        if card is None:
-            return
-        px = QPixmap.fromImage(qimage) if not qimage.isNull() else QPixmap()
-        card.set_thumbnail(px)
-
-    # ── Lifecycle ─────────────────────────────────────────────────────────────
-
-    def closeEvent(self, event):
-        _active_dialogs.pop(id(self), None)
-        self._col_rebuild_timer.stop()
-        self._thumb_gen += 1  # invalidate any in-flight loaders
-        super().closeEvent(event)
+        suffix = f" for {filter_name}" if filter_name else ""
+        self._status.setText(f"{n} picture{'s' if n != 1 else ''}{suffix}")
+        QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
 
     # ── Event handlers ────────────────────────────────────────────────────────
 
@@ -1028,160 +841,74 @@ class RatingEditorDialog(QDialog):
 
     def _on_columns_changed(self, value: int):
         self.columns = value
-        self._col_rebuild_timer.start()  # debounce: restarts the 80 ms window
+        self._rebuild_cards()
 
     def _on_jpg_only_toggled(self, checked: bool):
+        # No pre-extraction needed: the provider loads RAW previews lazily and
+        # off the GUI thread as each card requests its thumbnail.
         self._jpg_only = checked
-        if not checked and self.fpr:
-            self._status.setText("Extracting RAW thumbnails…")
-            self._batch_extract_raw_thumbs()
         self._rebuild_cards()
 
     def _on_card_changed(self, upn_key: str):
-        card = next((c for c in self._cards if c.upn_key == upn_key), None)
-        if not card:
-            return
-        new_stars, new_color = card.take_pending()
-        self._apply_change(upn_key, new_stars, new_color, card)
+        # The card already wrote the edit + refreshed its own Rate via the
+        # provider; the host just re-sorts so the new Rate reorders the grid.
+        self._resort_if_needed()
+        self._status.setText(f"Saved {upn_key}")
 
     def _on_card_clicked(self, upn_key: str):
-        if not self.fpr:
+        # Local import avoids a circular import: large_image_view imports
+        # StarWidget/ColorSelector from this module.
+        from gui.large_image_view import LargeImageView
+        if not self.fpr or self._collection is None:
             return
-        upn_row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
-        if not upn_row:
+        # Single instance: close any open large view first so a fast double-
+        # click (or clicking another card) never stacks multiple viewers.
+        existing = getattr(self, "_large_view", None)
+        if existing is not None:
+            try:
+                existing.close()
+            except RuntimeError:
+                pass
+            self._large_view = None
+
+        # Navigate a fixed snapshot of the current grid order.
+        keys = [c.upn_key for c in self._cards]
+        if upn_key not in keys:
             return
-        jpg_path = self._get_display_path(upn_row)
-        dname = self._species_name(upn_row) or upn_key
-
-        dlg_ref: list = [None]
-
-        def on_detail_change(key, new_stars, new_color):
-            card = next((c for c in self._cards if c.upn_key == key), None)
-            if card:
-                self._apply_change(key, new_stars, new_color, card)
-            if dlg_ref[0]:
-                dlg_ref[0].refresh_rate()
-
-        dlg = RatingCardDetailDialog(self, upn_key, upn_row, jpg_path, dname, on_detail_change)
-        dlg_ref[0] = dlg
+        dlg = LargeImageView(self, self._collection, keys, keys.index(upn_key),
+                             settings_key="RatingEditor", auto_advance=True)
+        dlg.picture_changed.connect(self._on_large_view_changed)
+        self._large_view = dlg
+        dlg.finished.connect(lambda _=0: setattr(self, "_large_view", None))
         dlg.show()
 
-    # ── Write-back ────────────────────────────────────────────────────────────
-
-    def _apply_change(self, upn_key: str, new_stars, new_color, card: PictureCard):
-        if upn_key not in self.fpr.upn.UniquePictureName_dict:
-            return
-        upn_row = self.fpr.upn.UniquePictureName_dict[upn_key]
-        files = upn_row.get("Files", [])
-        if not isinstance(files, list):
-            files = []
-
-        wrote_file = False
-        for fname in files:
-            if fname not in self.fpr.fi.files_dict:
-                continue
-            frow = self.fpr.fi.files_dict[fname]
-            ext = frow.get("WindowsExtension", "").lower()
-            if ext not in ("xmp", "jpg", "jpeg"):
-                continue
-            fpath = Path(frow.get("WindowsFileName", ""))
-            if not fpath.exists():
-                logger.warning(f"RatingEditor: file not found: {fpath}")
-                continue
-
-            args: list[str] = []
-            if new_stars is not None:
-                args.append(f"-XMP:Rating={new_stars}")
-            if new_color is not None:
-                # empty string clears the label
-                args.append(f"-XMP:Label={new_color}")
-            if args:
-                try:
-                    exiftool_write(fpath, args)
-                    wrote_file = True
-                except Exception as e:
-                    logger.error(f"exiftool write failed for {fpath.name}: {e}")
-
-            # Update in-memory file dict regardless (we already wrote to disk)
-            if new_stars is not None:
-                frow["XMP:Rating"] = str(new_stars)
-            if new_color is not None:
-                frow["XMP:Label"] = new_color
-
-        # Update UPN in-memory
-        if new_stars is not None:
-            upn_row["Rating"] = str(new_stars)
-        if new_color is not None:
-            upn_row["Label"] = new_color
-
-        # Recompute Rate and refresh the card's label
-        new_rate = _compute_rate(upn_row, self.fpr.fi.files_dict)
-        upn_row["Rate"] = str(new_rate)
-        if new_stars is not None:
-            card.update_rating_display(new_stars)
-        if new_color is not None:
-            card.update_color_display(new_color)
-        card.update_rate_display(new_rate)
-
-        # Persist CSVs
-        self._write_csvs_for_upn(upn_key, wrote_file)
-
-        # Re-sort grid if this card's position changed
+    def _on_large_view_changed(self, key: str):
+        # The viewer already wrote the edit via the provider; repaint that card
+        # and re-sort the grid so the new Rate reorders it.
+        card = self._cards_by_key.get(key)
+        if card:
+            card.refresh()
         self._resort_if_needed()
+        self._status.setText(f"Saved {key}")
 
-        # Status feedback
-        parts = [f"Saved {upn_key}"]
-        if new_stars is not None:
-            parts.append(f"★={new_stars}")
-        if new_color is not None:
-            parts.append(f"label={new_color or '(cleared)'}")
-        parts.append(f"Rate={new_rate}")
-        self._status.setText("  ".join(parts))
-
-    def _write_csvs_for_upn(self, upn_key: str, wrote_file: bool):
-        """Write the CSV file(s) that contain upn_key, scoped to the right day."""
-        if self._day_objects is None:
-            # Day scope: fpr.fi / fpr.upn point at the single day's files
-            try:
-                self.fpr.upn.write_project_summary()
-            except Exception as e:
-                logger.error(f"Failed to write data_pictures.csv: {e}")
-            if wrote_file:
-                try:
-                    self.fpr.fi.write_project_files()
-                except Exception as e:
-                    logger.error(f"Failed to write data_files.csv: {e}")
-            return
-
-        # Trip scope: write only the specific day's objects
-        day = self._upn_day_map.get(upn_key)
-        if not day or day not in self._day_objects:
-            return
-        fi_day, upn_day = self._day_objects[day]
-        # upn_day.UniquePictureName_dict[upn_key] is the same object reference
-        # as fpr.upn.UniquePictureName_dict[upn_key], so it already has the
-        # updated Rating/Label/Rate values.
-        try:
-            upn_day.write_project_summary()
-        except Exception as e:
-            logger.error(f"Failed to write data_pictures.csv for {day}: {e}")
-        if wrote_file:
-            try:
-                fi_day.write_project_files()
-            except Exception as e:
-                logger.error(f"Failed to write data_files.csv for {day}: {e}")
+    # ── Re-sort ─────────────────────────────────────────────────────────────
 
     def _resort_if_needed(self):
-        """Re-insert cards into the grid according to the current sort order."""
+        """Re-insert cards into the grid according to the collection's current
+        sort order (writes happen in the provider; this only reorders widgets)."""
+        if self._collection is None:
+            return
         filter_name = self._species_combo.currentData()
-        new_order = [key for _, key, _ in self._sorted_upns(filter_name)]
+        self._collection.rebuild(filter_name)
+        new_order = [self._collection.item(i).key for i in range(len(self._collection))]
         old_order = [c.upn_key for c in self._cards]
         if old_order == new_order:
             return
 
         cards_by_key = {c.upn_key: c for c in self._cards}
 
-        # Remove items from layout positions only (widgets stay as children of _grid_widget).
+        # Remove items from layout positions only; widgets remain children of
+        # _grid_widget so no GC is triggered and no Qt object is deleted.
         while self._grid.count():
             self._grid.takeAt(0)
 

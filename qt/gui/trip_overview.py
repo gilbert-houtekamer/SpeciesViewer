@@ -1,3 +1,7 @@
+import csv
+import logging
+
+from fastcrc import crc32
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem,
@@ -9,6 +13,310 @@ from utils.config import _config
 
 SYNC_COL = 3
 STATE_COL_START = 4
+
+# ── Trip-overview pipeline state columns ─────────────────────────────────────
+# Single source of truth shared by trip_overview (rendering) and mainwindow
+# (the double-click / column-run / context-menu handlers). Each column maps to
+# one or more statemachine keys:
+#   - "Read & Summarize" combines Read Directory (sv2) + Write Summary (sv3).
+#     run_keys are listed in RUN ORDER so updateState's downstream invalidation
+#     resolves correctly (set ReadDirExif first, then WritePictures).
+#   - "gate" is the key used for eligibility (stateOKtorun / explainAbort) and
+#     the WriteBlog no-JPGs special case; a multi-key column is ✅ only when ALL
+#     its run_keys are done.
+#   - "menu" is the Trip-menu action label (header text with newlines→spaces).
+STATE_COLUMNS = [
+    {"label": "Read &\nSummarize", "menu": "Read & Summarize",
+     "gate": "ReadDirExif", "run_keys": ["ReadDirExif", "WritePictures"],
+     "before": "Reading and summarizing picture directory...",
+     "after": "✅ Read & Summarize complete."},
+    {"label": "Write\nBlog", "menu": "Write Blog",
+     "gate": "WriteBlog", "run_keys": ["WriteBlog"],
+     "before": "Create a blog entry ...",
+     "after": "✅ Blog successfully created."},
+    {"label": "Build\nWebsite", "menu": "Build Website",
+     "gate": "BuildWebsite", "run_keys": ["BuildWebsite"],
+     "before": "Build updates for later publication ...",
+     "after": "✅ Website updates prepared."},
+    {"label": "Freeze", "menu": "Freeze",
+     "gate": "Freeze", "run_keys": ["Freeze"],
+     "before": "Freeze all collected data ...",
+     "after": "✅ Data frozen."},
+    {"label": "Write\nCommit", "menu": "Write Commit",
+     "gate": "WriteCommit", "run_keys": ["WriteCommit"],
+     "before": "Update the trip website ...",
+     "after": "✅ Please review updated Website."},
+]
+STATE_LABELS = [c["label"] for c in STATE_COLUMNS]
+
+
+def state_cell_symbol(sm, col, jpgs):
+    """(symbol, tooltip) for one trip-overview state column from a StateMachine.
+
+    A multi-key column (Read & Summarize) is ✅ only when ALL run_keys are done;
+    failure and eligibility use the gate key. Mirrors the symbol rules used
+    across populate / refresh so both paths stay identical."""
+    keys = col["run_keys"]
+    gate = col["gate"]
+    write_commit_done = sm.Taskstate.get("WriteCommit", [False])[0]
+
+    if any(k not in sm.Taskstate for k in keys):
+        return "⚪", "Unknown step."
+
+    states = [sm.Taskstate[k] for k in keys]
+    all_done = all(done and msg == "Successfully run." for done, msg, *_ in states)
+    failed = next(((done, msg) for done, msg, *_ in states
+                   if (not done) and "failed" in msg.lower()), None)
+
+    if all_done:
+        if write_commit_done:
+            return "⬜", "Step completed. Workflow is frozen after WriteCommit."
+        return "✅", "Successfully run."
+    if failed:
+        return "❌", failed[1]
+    if gate == "WriteBlog" and jpgs == 0:
+        return "🚫", "No JPGs available — blog step suppressed."
+    if sm.stateOKtorun(gate):
+        return "🔘", "Click on the sphere to run this step."
+    return "⚪", sm.explainAbort(gate, raiseSV=False)
+
+
+def state_cell_item(sm, col, jpgs):
+    """state_cell_symbol wrapped in a centered QTableWidgetItem."""
+    symbol, tooltip = state_cell_symbol(sm, col, jpgs)
+    item = QTableWidgetItem(symbol)
+    item.setToolTip(tooltip)
+    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+    if symbol == "🚫":
+        item.setFlags(Qt.ItemFlag.NoItemFlags)
+    return item
+
+# Extensions the image preview dialog considers "photo files" — matches the
+# affirmative filter in ImagePreviewDialog.discover_images. _day_health uses
+# the same set so its no-GPS count aligns with the dialog's view (PNG
+# screenshots and other non-image rows in data_files.csv are ignored).
+PHOTO_EXTENSIONS = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng",
+                    "heic", "jpg", "jpeg"}
+
+# Families whose location must be hidden on the public site (GPS stripped from
+# the website copy). Kept in sync with ghexif/websupport.py OBSCURE_FAMILIES.
+# A day whose only special status is such "obscured" species is marked with a
+# lock 🔒 rather than a warning ⚠️ (which is reserved for real species typos).
+OBSCURE_FAMILIES = {"orchidaceae"}
+
+
+def _verified_crc_set(trip_root):
+    """crc32 keys whose translation a human has verified, read straight from the
+    per-trip cache (NOT the GUI's master translator) so the count reflects THIS
+    trip. Matches CachedTranslate.getCRC32 (crc32.aixm of the utf-8 text)."""
+    cachefile = trip_root / "admin" / "TransCache.csv"
+    verified = set()
+    if not cachefile.exists():
+        return verified
+    try:
+        with open(cachefile, "r", encoding="utf-8", newline="") as f:
+            reader = csv.reader(f, delimiter="^")
+            next(reader, None)  # header
+            for row in reader:
+                if len(row) > 3 and row[0] and row[3] == "1":
+                    verified.add(int(row[0]))
+    except Exception:
+        pass
+    return verified
+
+
+def _has_supported_file(files_cell):
+    """True if a data_pictures.csv 'Files' cell (e.g. "['a.HEIC', 'a_DxO.jpg']")
+    lists at least one supported photo file — excludes PNG-only screenshots."""
+    for fn in files_cell.strip("[]").replace("'", "").replace('"', "").split(","):
+        fn = fn.strip()
+        if "." in fn and fn.rsplit(".", 1)[-1].lower() in PHOTO_EXTENSIONS:
+            return True
+    return False
+
+
+def _translation_counts(review_day_path, verified_crcs):
+    """(total, unverified) distinct Headline/Description texts for the day, read
+    from data_pictures.csv — the per-UPN RESOLVED text the panel validates and
+    the blog renders (NOT data_files.csv, whose per-file rows can hold divergent
+    variants and over-count). None if data_pictures.csv is absent. Normalization
+    mirrors the render (Description '#'-stripped); PNG-only UPNs are excluded."""
+    pics_csv = review_day_path / "data_pictures.csv"
+    if not pics_csv.exists():
+        return None
+    texts = set()
+    try:
+        with open(pics_csv, "r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f, delimiter=";")
+            for row in reader:
+                if not _has_supported_file(row.get("Files") or ""):
+                    continue
+                h = row.get("Headline") or ""
+                if h != "":
+                    texts.add(h)
+                d = row.get("Description") or ""
+                if d != "":
+                    if d[0:1] == "#":
+                        d = d[1:]
+                    texts.add(d)
+    except Exception:
+        return None
+    unverified = sum(1 for t in texts
+                     if crc32.aixm(t.encode("utf-8")) not in verified_crcs)
+    return len(texts), unverified
+
+
+def _format_translations_item(review_day_path, verified_crcs):
+    """Trip-overview cell: a sphere showing the day's translation-validation
+    state — 🟢 all verified, 🔵 at least one pending, blank when there are no
+    translatable texts or Read Directory hasn't run. Count is in the tooltip."""
+    counts = _translation_counts(review_day_path, verified_crcs)
+    if counts is None:
+        text, tip = "", "Write Summary not yet run for this day."
+    else:
+        total, unverified = counts
+        if total == 0:
+            text, tip = "", "No texts to translate on this day."
+        elif unverified == 0:
+            text, tip = "🟢", f"All {total} translation{'s' if total != 1 else ''} verified."
+        else:
+            text, tip = "🔵", (f"{unverified} of {total} translation"
+                               f"{'s' if total != 1 else ''} still need validation.")
+    item = QTableWidgetItem(text)
+    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+    item.setToolTip(tip)
+    return item
+
+
+def _format_total_files_item(day_path, review_root):
+    """Build the Total Files cell with health markers and tooltip. Re-used by
+    refresh_day_health so the trip-overview row updates after the image
+    preview dialog fixes species/GPS issues."""
+    all_files = list(day_path.glob("*"))
+    total = len(all_files)
+    health = _day_health(review_root / day_path.name)
+    if health is None:
+        text = str(total)
+        tooltip = "Read Directory not yet run for this day."
+    else:
+        warnings, no_gps, obscured = health
+        # Priority: a real species typo (⚠️) outranks an obscured-location
+        # species (🔒); a clean day is ✅. Obscured species are intentional
+        # (location hidden on the website), so they must not look like an error.
+        if warnings > 0:
+            species_mark = "⚠️"
+            species_tip = f"{warnings} species typo{'s' if warnings != 1 else ''}"
+        elif obscured > 0:
+            species_mark = "🔒"
+            species_tip = f"{obscured} obscured-location species (GPS hidden on the website)"
+        else:
+            species_mark = "✅"
+            species_tip = "All species OK"
+        gps_mark = "📍" if no_gps == 0 else "❓"
+        text = f"{total}  {species_mark} {gps_mark}"
+        gps_tip = "All GPS OK" if no_gps == 0 else f"{no_gps} missing GPS"
+        tooltip = f"{species_tip} — {gps_tip}"
+    item = QTableWidgetItem(text)
+    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+    item.setToolTip(tooltip)
+    return item
+
+
+def refresh_day_health(main_window, day_name):
+    """Re-read data_pictures.csv for `day_name` and update its Total Files
+    cell. Called from ImagePreviewDialog.closeEvent so the table reflects
+    GPS / species fixes the user just made.
+
+    Logs what it does so we can tell from the green box whether the refresh
+    actually hit the row — surgical updates have failed silently before."""
+    logger = logging.getLogger("speciesviewer")
+    table = getattr(main_window, "trip_table", None)
+    if table is None:
+        logger.info(f"refresh_day_health: no trip_table on main_window for {day_name}")
+        return
+    try:
+        image_root = Path(_config.get("project", "picturedirectory")).parent
+        trip_root = Path(_config.get("trip", "tripbiotadatabase"))
+    except Exception as e:
+        logger.info(f"refresh_day_health: config lookup failed: {e}")
+        return
+    review_root = trip_root / "metadata" / "review"
+    day_path = image_root / day_name
+    if not day_path.exists():
+        logger.info(f"refresh_day_health: day folder doesn't exist: {day_path}")
+        return
+    for row in range(table.rowCount()):
+        cell = table.item(row, 0)
+        if cell and cell.text() == day_name:
+            new_item = _format_total_files_item(day_path, review_root)
+            table.setItem(row, 1, new_item)
+            logger.info(
+                f"refresh_day_health: row {row} for {day_name} → "
+                f"{new_item.text()!r}"
+            )
+            return
+    logger.info(f"refresh_day_health: no matching row for {day_name}")
+
+
+def _day_health(review_day_path):
+    """Return (warnings_count, no_gps_count, obscured_count) for the day.
+
+    GPS is read from data_files.csv (same source the image preview dialog
+    uses, so the trip-overview marker stays consistent with the dialog's
+    "clean day" determination) and aggregated by UniquePictureName — a
+    UPN has GPS if ANY of its file rows (ORF / XMP / JPG) has it.
+
+    Warnings come from data_pictures.csv (errormessage is a UPN-only column).
+    Obscured = pictures whose TargetPath is in an OBSCURE_FAMILY (location
+    hidden on the website); surfaced as a 🔒 marker, not a warning.
+
+    Returns None if data_files.csv doesn't exist yet (Read Directory hasn't
+    been run for this day)."""
+    files_csv = review_day_path / "data_files.csv"
+    pictures_csv = review_day_path / "data_pictures.csv"
+    if not files_csv.exists():
+        return None
+
+    upn_has_gps = {}
+    try:
+        with open(files_csv, "r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f, delimiter=";")
+            for row in reader:
+                ext = (row.get("WindowsExtension") or "").lower()
+                if ext not in PHOTO_EXTENSIONS:
+                    continue  # PNG screenshots, XMP sidecars, etc.
+                upn = row.get("UniquePictureName", "")
+                if not upn:
+                    continue
+                has_gps = bool((row.get("Composite:GPSPosition") or "").strip()) \
+                       or bool((row.get("EXIF:GPSLatitude") or "").strip())
+                upn_has_gps[upn] = upn_has_gps.get(upn, False) or has_gps
+    except Exception:
+        return None
+    no_gps = sum(1 for has in upn_has_gps.values() if not has)
+    if no_gps:
+        logger = logging.getLogger("speciesviewer")
+        sample = [upn for upn, has in upn_has_gps.items() if not has][:5]
+        logger.info(
+            f"_day_health: {review_day_path.name} has {no_gps} UPN(s) "
+            f"without GPS in data_files.csv. Sample: {sample}"
+        )
+
+    warnings = 0
+    obscured = 0
+    if pictures_csv.exists():
+        try:
+            with open(pictures_csv, "r", encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f, delimiter=";")
+                for row in reader:
+                    if (row.get("errormessage") or "").strip():
+                        warnings += 1
+                    tp = (row.get("TargetPath") or "").lower()
+                    if any(fam in tp for fam in OBSCURE_FAMILIES):
+                        obscured += 1
+        except Exception:
+            pass
+    return warnings, no_gps, obscured
 
 def populate_trip_overview(self):
     self.update_trip_label()
@@ -26,29 +334,18 @@ def populate_trip_overview(self):
 
     # Get all image day folders
     image_days = sorted([d for d in image_root.iterdir() if d.is_dir()], key=lambda p: p.name)
+    self._trip_overview_day_snapshot = tuple(d.name for d in image_days)
 
     def count_files(path):
         all_files = list(path.glob("*"))
         jpg_files = [f for f in all_files if f.suffix.lower() == ".jpg"]
         return len(all_files), len(jpg_files)
 
-    self.state_labels = [
-        "Read\nDirectory",
-        "Write\nSummary",
-        "Write\nBlog",
-        "Build\nWebsite",
-        "Freeze",
-        "Write\nCommit"
-    ]
-
-    self.state_keys = [
-        "sv2readdirexif",
-        "sv3writepictures",
-        "sv4writeblog",
-        "sv5buildwebsite",
-        "sv6freeze",
-        "sv7writecommit"
-    ]
+    # Pipeline state columns come from the shared STATE_COLUMNS registry.
+    # "Read & Summarize" is one column tracking both sv2 (Read Directory) and
+    # sv3 (Write Summary) — see STATE_COLUMNS at the top of this module.
+    self.state_labels = STATE_LABELS
+    self.state_keys = [c["gate"] for c in STATE_COLUMNS]
 
     expected_messages = {
         "sv1makerepository": "MakeRepository succeeded.",
@@ -60,11 +357,19 @@ def populate_trip_overview(self):
         "sv7writecommit": "Successfully run."
     }
 
+    # Translations status is read once per trip from the per-trip cache.
+    verified_crcs = _verified_crc_set(trip_root)
+    translations_col = STATE_COL_START + len(self.state_labels) + 1
+
     self.trip_table = QTableWidget()
-    self.trip_table.setColumnCount(STATE_COL_START + len(self.state_labels) + 1)
+    # +1 for Progress, +1 for the trailing Translations column. Translations is
+    # LAST on purpose so the state-column indices (and the double-click handlers
+    # that map column -> step) are untouched.
+    self.trip_table.setColumnCount(STATE_COL_START + len(self.state_labels) + 2)
     self.trip_table.setRowCount(len(image_days))
     self.trip_table.setHorizontalHeaderLabels(
-        ["Day", "Total\nFiles", "JPEG\nFiles", "Sync\nSidecars"] + self.state_labels + ["Progress"]
+        ["Day", "Total\nFiles", "JPEG\nFiles", "Sync\nSidecars"] + self.state_labels
+        + ["Progress", "Trans-\nlations"]
     )
     self.trip_table.setSortingEnabled(False)
     self.trip_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -85,12 +390,20 @@ def populate_trip_overview(self):
     header = self.trip_table.horizontalHeader()
     header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
     header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+    # Total Files and JPEG Files auto-size to their content (Total Files
+    # carries "N ✅ 📍" markers that don't fit a stretched column).
+    header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+    header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+    header.setSectionResizeMode(translations_col, QHeaderView.ResizeMode.ResizeToContents)
 
     for i, day in enumerate(image_days):
         total, jpgs = count_files(day)
         self.trip_table.setItem(i, 0, QTableWidgetItem(day.name))
-        self.trip_table.setItem(i, 1, QTableWidgetItem(str(total)))
-        self.trip_table.setItem(i, 2, QTableWidgetItem(str(jpgs)))
+        self.trip_table.setItem(i, 1, _format_total_files_item(day, review_root))
+
+        jpgs_item = QTableWidgetItem(str(jpgs))
+        jpgs_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.trip_table.setItem(i, 2, jpgs_item)
 
         # Sync Sidecars column — not persisted, starts as ⚪
         sync_item = QTableWidgetItem("⚪")
@@ -103,48 +416,19 @@ def populate_trip_overview(self):
         # Create a StateMachine instance for this day
         sm = StateMachine(str(trip_root), str(review_day), readState=True)
 
-        # Loop through each step
-        for j, step_name in enumerate([
-                    "ReadDirExif", "WritePictures", "WriteBlog",
-                    "BuildWebsite", "Freeze", "WriteCommit"]):
-            if step_name not in sm.Taskstate:
-                symbol = "⚪"
-                tooltip = "Unknown step."
-            else:
-                completed, message, _, _ = sm.Taskstate[step_name]
-                expected = "Successfully run."
-
-                if completed and message == expected:
-                    if completed and sm.Taskstate.get("WriteCommit", [False])[0]:
-                        symbol = "⬜"
-                        tooltip = "Step completed. Workflow is frozen after WriteCommit."
-                    else:
-                        symbol = "✅"
-                        tooltip = message
-                elif not completed and "failed" in message.lower():
-                    symbol = "❌"
-                    tooltip = message
-                elif jpgs == 0 and step_name == "WriteBlog":
-                    symbol = "🚫"
-                    tooltip = "No JPGs available — blog step suppressed."
-                elif sm.stateOKtorun(step_name):
-                    symbol = "🔘"
-                    tooltip = "Click on the sphere to run this step."
-                else:
-                    symbol = "⚪"
-                    tooltip = sm.explainAbort(step_name, raiseSV=False)
-
-            item = QTableWidgetItem(symbol)
-            item.setToolTip(tooltip)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            if symbol == "🚫":
-                item.setFlags(Qt.ItemFlag.NoItemFlags)
-
-            self.trip_table.setItem(i, STATE_COL_START + j, item)
+        # Loop through each state column (Read & Summarize is one column
+        # tracking sv2+sv3 — see STATE_COLUMNS / state_cell_item).
+        for j, col in enumerate(STATE_COLUMNS):
+            self.trip_table.setItem(i, STATE_COL_START + j,
+                                    state_cell_item(sm, col, jpgs))
 
         # Determine progress summary
         summary_item = self.get_progress_summary_item(sm,  review_root / day.name)
         self.trip_table.setItem(i, STATE_COL_START + len(self.state_labels), summary_item)
+
+        # Translations column (last): texts on this day still needing validation
+        self.trip_table.setItem(i, translations_col,
+                                _format_translations_item(review_root / day.name, verified_crcs))
 
     # Layout
     overview_widget = QWidget()

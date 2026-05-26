@@ -97,6 +97,123 @@ class FilePicture:
         except Exception:
             return ""
         
+    def getDescription(self, filename):
+        try:
+            upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
+            return self.upn.UniquePictureName_dict[upn_name].get("Description", "")
+        except Exception:
+            return ""
+
+    def updateDescription(self, filename, new_description):
+        """Write XMP:Description to the XMP sidecar and any JPGs sharing the
+        same UPN (RAW files are convention-immutable, so we skip those), then
+        persist data_files.csv and data_pictures.csv. Mirrors updateSubject's
+        propagation pattern. Returns the count of on-disk files rewritten."""
+        try:
+            upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
+        except KeyError:
+            logger.warning(f"updateDescription: no CSV row for {filename}")
+            return 0
+        raw_exts = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng", "heic"}
+        files_written = 0
+        for f_key, f_row in self.fi.files_dict.items():
+            if f_row.get("UniquePictureName") != upn_name:
+                continue
+            f_row["XMP:Description"] = new_description
+            ext = f_row.get("WindowsExtension", "").lower()
+            if ext in raw_exts:
+                continue  # RAW files stay immutable
+            filepath = Path(f_row.get("WindowsFileName", ""))
+            if not filepath.exists():
+                continue
+            try:
+                exiftool_write(filepath, [f"-XMP:Description={new_description}"])
+                files_written += 1
+            except subprocess.CalledProcessError as e:
+                logger.warning(
+                    f"updateDescription: failed to write {filepath.name}: {e.stderr}"
+                )
+        self.fi.write_project_files()
+        upn_obj = self.upn.UniquePictureName_dict.get(upn_name)
+        if upn_obj is not None:
+            upn_obj["Description"] = new_description
+            self.upn.write_project_summary()
+        return files_written
+
+    def updateHeadline(self, filename, new_headline):
+        """Write XMP:Headline to the XMP sidecar and any JPGs sharing the same
+        UPN (RAW files are convention-immutable), then persist the CSVs. Parallel
+        to updateDescription; used by the translation-validation panel to fix
+        typos in the source Headline. Returns the count of on-disk files written."""
+        try:
+            upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
+        except KeyError:
+            logger.warning(f"updateHeadline: no CSV row for {filename}")
+            return 0
+        raw_exts = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng", "heic"}
+        files_written = 0
+        for f_key, f_row in self.fi.files_dict.items():
+            if f_row.get("UniquePictureName") != upn_name:
+                continue
+            f_row["XMP:Headline"] = new_headline
+            ext = f_row.get("WindowsExtension", "").lower()
+            if ext in raw_exts:
+                continue  # RAW files stay immutable
+            filepath = Path(f_row.get("WindowsFileName", ""))
+            if not filepath.exists():
+                continue
+            try:
+                exiftool_write(filepath, [f"-XMP:Headline={new_headline}"])
+                files_written += 1
+            except subprocess.CalledProcessError as e:
+                logger.warning(
+                    f"updateHeadline: failed to write {filepath.name}: {e.stderr}"
+                )
+        self.fi.write_project_files()
+        upn_obj = self.upn.UniquePictureName_dict.get(upn_name)
+        if upn_obj is not None:
+            upn_obj["Headline"] = new_headline
+            self.upn.write_project_summary()
+        return files_written
+
+    def updateLabel(self, filename, new_label):
+        """Write XMP:Label to the XMP sidecar and any JPGs sharing the same UPN
+        (RAW files stay convention-immutable), then persist data_files.csv and
+        data_pictures.csv. Mirrors updateDescription. Used by the large-image
+        viewer to set/clear a colour label (e.g. a Blue/Purple deletion
+        candidate). An empty new_label clears the label. Returns the count of
+        on-disk files rewritten."""
+        try:
+            upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
+        except KeyError:
+            logger.warning(f"updateLabel: no CSV row for {filename}")
+            return 0
+        raw_exts = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng", "heic"}
+        files_written = 0
+        for f_key, f_row in self.fi.files_dict.items():
+            if f_row.get("UniquePictureName") != upn_name:
+                continue
+            f_row["XMP:Label"] = new_label
+            ext = f_row.get("WindowsExtension", "").lower()
+            if ext in raw_exts:
+                continue  # RAW files stay immutable
+            filepath = Path(f_row.get("WindowsFileName", ""))
+            if not filepath.exists():
+                continue
+            try:
+                exiftool_write(filepath, [f"-XMP:Label={new_label}"])
+                files_written += 1
+            except subprocess.CalledProcessError as e:
+                logger.warning(
+                    f"updateLabel: failed to write {filepath.name}: {e.stderr}"
+                )
+        self.fi.write_project_files()
+        upn_obj = self.upn.UniquePictureName_dict.get(upn_name)
+        if upn_obj is not None:
+            upn_obj["Label"] = new_label
+            self.upn.write_project_summary()
+        return files_written
+
     def getSpeciesName(self, filename):
         try:
             upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
@@ -179,7 +296,15 @@ class FilePicture:
                     raise ValueError
             except Exception:
                 original_subject_list = [original_subject]
-            if original_subject_list == current_subjects:
+            # An empty original means the picture had no species yet — there is
+            # nothing to match against (on-disk Subject is []), so SET the new
+            # value unconditionally. The old match-guard (['']==[]) failed here,
+            # so a newly-named picture was never written to disk and the name was
+            # lost on the next re-read.
+            original_is_empty = (not original_subject_list) or all(
+                (s is None or str(s).strip() in ("", "[]")) for s in original_subject_list
+            )
+            if original_is_empty or original_subject_list == current_subjects:
                 exiftool_write(filepath, [f'-XMP:Subject={correct_subject_for_xmp}'])
                 wrote = True
             else:
@@ -207,7 +332,13 @@ class FilePicture:
                 upn_object['NLSoortNaam'] = sc_object['DutchName']
                 upn_object['EngSoortNaam'] = sc_object['EnglishName']
                 upn_object['WetSoortNaam'] = sc_object['ScientificName']
-            # write updated data_pictures file 
+            elif correct_subject == "":
+                # Cleared — drop the resolved names too, else the old Dutch/
+                # English/scientific names linger on a now species-less picture.
+                upn_object['NLSoortNaam'] = ''
+                upn_object['EngSoortNaam'] = ''
+                upn_object['WetSoortNaam'] = ''
+            # write updated data_pictures file
             self.upn.write_project_summary()
         return upn_object
 

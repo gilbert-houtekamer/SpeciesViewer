@@ -60,6 +60,31 @@ def save_repo_settings(repo_paths):
     _config.set("Repositories", "repo_paths", joined)
     persist_config()
 
+# 🪟 Per-dialog window geometry + column count (machine-specific, so it lives
+# in this per-machine .ini). Stored as plain ints under [WindowState] keyed
+# "<dialog>_x/_y/_w/_h/_cols" so the values stay human-readable.
+_WINDOW_SECTION = "WindowState"
+
+def save_window_state(key, *, x=None, y=None, w=None, h=None, cols=None):
+    if not _config.has_section(_WINDOW_SECTION):
+        _config.add_section(_WINDOW_SECTION)
+    for sub, val in (("x", x), ("y", y), ("w", w), ("h", h), ("cols", cols)):
+        if val is not None:
+            _config.set(_WINDOW_SECTION, f"{key}_{sub}", str(int(val)))
+    persist_config()
+
+def get_window_state(key):
+    """Return {x, y, w, h, cols} for `key`; missing values are None."""
+    def _get(sub):
+        opt = f"{key}_{sub}"
+        if _config.has_option(_WINDOW_SECTION, opt):
+            try:
+                return _config.getint(_WINDOW_SECTION, opt)
+            except ValueError:
+                return None
+        return None
+    return {sub: _get(sub) for sub in ("x", "y", "w", "h", "cols")}
+
 # 🔄 Optional: Upgrade logic
 def upgrade_config_if_needed(latest_version=1.1):
     current_version = float(_config.get("Global", "config_version", fallback="0.0"))

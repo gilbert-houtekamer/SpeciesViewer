@@ -52,7 +52,8 @@ DATA_FILE_FIELDS = [
     "XMP:Subject",
     "IPTC:Keywords",
     "EXIF:DateTimeOriginal",
-    "XMP:Description"
+    "XMP:Description",
+    "XMP:Headline"
 ]
 
 SPECIES_FIELDS = [
@@ -115,5 +116,11 @@ PICTURE_FIELDS = [
     "malefemale",
     "ageintext",
     "summerwinter",
-    "errormessage"
+    "errormessage",
+    # Headline is kept LAST on purpose: blog extras (the only pictures that
+    # carry a Headline) are excluded from the master, and the master's
+    # data_pictures.csv header predates this column. A trailing column drifts
+    # off the end harmlessly on read-back instead of shifting Files /
+    # DateTimeOriginal under the wrong header names.
+    "Headline"
 ]

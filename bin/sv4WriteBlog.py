@@ -74,8 +74,10 @@ def main(args, config):
     # bloginifile = MyProject.getProjectPath() + "/blog.ini"
     bloginifile = os.path.join(MyProject.getProjectPath(), "blog.ini")
     if os.path.exists(bloginifile):
-        # create a separete config instance
-        blogconfig = configparser.ConfigParser()
+        # RawConfigParser disables %-interpolation so prose like "40% less"
+        # in blog text doesn't trip InvalidInterpolationError. Encoding is
+        # independent of the parser class — UTF-8 (é, à, etc.) handled fine.
+        blogconfig = configparser.RawConfigParser()
         try:
             blogconfig.read(bloginifile, encoding="utf-8")
         except UnicodeDecodeError:

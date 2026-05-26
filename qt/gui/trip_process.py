@@ -14,7 +14,7 @@ from utils.config import set_trip_settings, _config
 from utils.trip_config import read_trip_ini
 from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, RecentDirectoryFieldQt, ImageFileFieldQt)
-from sharedlib.translatelib import CachedTranslate
+from ghexif.translatelib import CachedTranslate
 from utils.gui_config import update_cache_gui_section, get_cache_gui_section
 from gui.trip_overview import populate_trip_overview
 
@@ -347,8 +347,9 @@ class TripCreationDialog(QDialog):
         nl_title = self.title_nl_field.get_text()
         nl_message = self.message_nl_field.get_text()
 
-        translated_title = self.passed_parent.translator.getOneLanguage(nl_title, languagein='en')
-        translated_message = self.passed_parent.translator.getOneLanguage(nl_message, languagein='en')
+        # Force NL->EN; auto-detection misfires on short proper-noun titles.
+        translated_title = self.passed_parent.translator.cachedTranslate(nl_title, language='nl')
+        translated_message = self.passed_parent.translator.cachedTranslate(nl_message, language='nl')
 
         self.title_en_field.set_text(translated_title)
         self.message_en_field.set_text(translated_message)
@@ -359,8 +360,9 @@ class TripCreationDialog(QDialog):
         en_title = self.title_en_field.get_text()
         en_message = self.message_en_field.get_text()
 
-        translated_title = self.passed_parent.translator.getOneLanguage(en_title, languagein='nl')
-        translated_message = self.passed_parent.translator.getOneLanguage(en_message, languagein='nl')
+        # Force EN->NL; auto-detection misfires on short proper-noun titles.
+        translated_title = self.passed_parent.translator.cachedTranslate(en_title, language='en')
+        translated_message = self.passed_parent.translator.cachedTranslate(en_message, language='en')
 
         self.title_nl_field.set_text(translated_title)
         self.message_nl_field.set_text(translated_message)
@@ -486,6 +488,131 @@ class ReadDirDialog(QDialog):
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec)
 
+
+class ReadSummarizeDialog(QDialog):
+    """Default trip ingest: run Read Directory (sv2) + Write Summary (sv3) as
+    one step. Now that the EXIF cache makes re-reading cheap, fresh data is the
+    sensible default — a species/spelling/translation fix written to the
+    XMP/JPG only reaches the reports once both steps re-run. Uses
+    ChainedBatchRunner so the two statemachine keys (ReadDirExif first, then
+    WritePictures) are set in the right order. The demoted "Read Directory" and
+    "Write Summary" items remain for a CSV-only refresh / debugging."""
+
+    def __init__(self, parent, menu_spec):
+        super().__init__(parent)
+        self.setWindowTitle("Read & Summarize")
+        self.resize(600, 320)
+
+        self.logger = logging.getLogger("speciesviewer")
+        self.menu_spec = menu_spec
+        self.passed_parent = parent
+
+        full_path = Path(_config["project"]["picturedirectory"])
+        self.base_path = full_path.parent
+        self.subdir_name = full_path.name
+
+        layout = QVBoxLayout(self)
+
+        info_html = HTMLLabel(
+            "<p><b>Read &amp; Summarize a folder of pictures</b><br>"
+            "This runs <b>Read Directory</b> and <b>Write Summary</b> back to "
+            "back. Read Directory extracts Exif metadata (cached, so re-reading "
+            "is fast); Write Summary enriches it with species information and "
+            "writes the per-picture data the blog, website and validation panels "
+            "use.<br>"
+            "Use this as the normal step after correcting species names, spelling "
+            "or translation source texts in Lightroom / DxO PhotoLab — both "
+            "stages must re-run for the fix to reach the reports.<br>"
+            "(The separate <b>Read Directory</b> / <b>Write Summary</b> items "
+            "remain available for a quick read-only refresh or debugging.)</p>"
+        )
+        layout.addWidget(info_html)
+
+        self.base_dir_field = DirectoryFieldQt("Project root folder", str(self.base_path))
+        layout.addWidget(self.base_dir_field)
+
+        self.subdir_dropdown = QComboBox()
+        self.subdir_dropdown.setEditable(False)
+        layout.addWidget(QLabel("Select subdirectory"))
+        layout.addWidget(self.subdir_dropdown)
+
+        self.status_label = QLabel("")
+        layout.addWidget(self.status_label)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        self.read_btn = QPushButton("Read && Summarize")
+        self.close_btn = QPushButton("Close")
+        btn_layout.addWidget(self.read_btn)
+        btn_layout.addWidget(self.close_btn)
+        layout.addLayout(btn_layout)
+
+        self.base_dir_field.field.textChanged.connect(self.update_subdirs)
+        self.read_btn.clicked.connect(self.on_run)
+        self.close_btn.clicked.connect(self.close)
+
+        self.update_subdirs()
+
+    def update_subdirs(self):
+        base_path = Path(self.base_dir_field.get_path())
+        if base_path.is_dir():
+            subdirs = [f.name for f in base_path.iterdir() if f.is_dir()]
+            self.subdir_dropdown.clear()
+            self.subdir_dropdown.addItems(subdirs)
+            if self.subdir_name in subdirs:
+                self.subdir_dropdown.setCurrentText(self.subdir_name)
+        else:
+            self.subdir_dropdown.clear()
+
+    def on_run(self):
+        import configparser
+        from gui.batch import ChainedBatchRunner
+        from sharedlib.statemachine import StateMachine
+        from utils.batch_config import generate_svconfig_ini
+        import bin.sv2ReadDirExif
+        import bin.sv3WritePictures
+
+        selected_base = Path(self.base_dir_field.get_path())
+        selected_subdir = self.subdir_dropdown.currentText()
+        full_selected_path = selected_base / selected_subdir
+
+        if not selected_base.is_dir():
+            self.base_dir_field.show_hint("Invalid base directory.")
+            return
+        if not full_selected_path.is_dir():
+            self.base_dir_field.show_hint("Selected subdirectory does not exist.")
+            return
+
+        _config["project"]["picturedirectory"] = str(full_selected_path)
+        self.logger.info(f"📁 Read & Summarize: {full_selected_path}")
+
+        generate_svconfig_ini()
+        module_config = configparser.ConfigParser()
+        module_config.read("svconfig.ini")
+
+        trip_root = Path(_config.get("trip", "tripbiotadatabase"))
+        review_day = trip_root / "metadata" / "review" / selected_subdir
+        sm = StateMachine(str(trip_root), str(review_day), readState=True)
+
+        steps = [
+            (bin.sv2ReadDirExif.main, "ReadDirExif",
+             "Reading picture directory...", "✅ Directory scan complete."),
+            (bin.sv3WritePictures.main, "WritePictures",
+             "Reading meta data for all pictures ...", "✅ Summary written."),
+        ]
+
+        def on_complete():
+            sm2 = StateMachine(str(trip_root), str(review_day), readState=True)
+            self.passed_parent.refresh_trip_row(sm2, selected_subdir)
+
+        # Parent the runner/spinner to the main window (not this dialog) so we
+        # can close the dialog immediately without affecting the spinner.
+        runner = ChainedBatchRunner(self.passed_parent, self.passed_parent, steps,
+                                    module_config, sm, selected_subdir, on_complete)
+        runner.start()
+        self.close()
+
+
 class WritePicturesDialog(QDialog):
     def __init__(self, parent, menu_spec):
         super().__init__(parent)
@@ -575,6 +702,10 @@ class WritePicturesDialog(QDialog):
         csv_path = os.path.join(self.trip_root, "metadata", "active", "speciescollection.csv")
         dlg = SpeciesCollectionDialog(self, csv_path)
         dlg.exec()
+        # A name edit changes how every picture of that species renders, across
+        # all days — offer to re-summarize the trip so the reports catch up.
+        if getattr(dlg, "_saved_changes", False):
+            self.passed_parent.rerun_summary_all_days("Species names were changed.")
 
     def on_write(self):
         selected_subdir = self.subdir_dropdown.currentText()
@@ -651,6 +782,11 @@ class SpeciesCollectionDialog(QDialog):
         self.filter_text = ""
         self.FILTER_MIN_CHARS = 3
         self.dirty = False
+        # dirty is reset on every save, so it can't tell the caller "something
+        # was edited and saved this session". _saved_changes is sticky: set once
+        # any save persists an edit, so the trip call sites can offer to re-run
+        # Write Summary on close.
+        self._saved_changes = False
         self.cell_colors = {}   # (row, visual_col) -> QColor
         self.PAGE_SIZE = 50
 
@@ -1035,6 +1171,7 @@ class SpeciesCollectionDialog(QDialog):
             writer.writeheader()
             writer.writerows(self.all_rows)
         self.dirty = False
+        self._saved_changes = True
         self.save_btn.setEnabled(False)
 
     def closeEvent(self, event):
@@ -1059,7 +1196,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QLabel, QLineEdit,
     QTextEdit, QFormLayout, QPushButton, QHBoxLayout, QSpinBox
 )
-from configparser import ConfigParser
+from configparser import ConfigParser, RawConfigParser
 from pathlib import Path
 
 class CreateBlogDialog(QDialog):
@@ -1070,7 +1207,9 @@ class CreateBlogDialog(QDialog):
 
         self.menu_spec = menu_spec
         self.ini_path = Path(_config["project"]["picturedirectory"]) / "blog.ini"
-        self.parser = ConfigParser()
+        # RawConfigParser disables %-interpolation so prose like "40% less"
+        # in blog text doesn't trip InvalidInterpolationError.
+        self.parser = RawConfigParser()
         self.passed_parent = parent 
         self.logger = parent.logger
 
@@ -1157,8 +1296,11 @@ class CreateBlogDialog(QDialog):
             nl_title = self.title_nl.text().strip()
             nl_message = self.message_nl.toPlainText().strip()
 
-            translated_title = self.passed_parent.translator.getOneLanguage(nl_title, languagein='en')
-            translated_message = self.passed_parent.translator.getOneLanguage(nl_message, languagein='en')
+            # Force the source language (this button is always NL->EN). Auto-
+            # detection misfires on short, proper-noun-heavy titles like
+            # "Dag 8: De Nestos Delta en Nestos kloof" and leaves them untranslated.
+            translated_title = self.passed_parent.translator.cachedTranslate(nl_title, language='nl')
+            translated_message = self.passed_parent.translator.cachedTranslate(nl_message, language='nl')
 
             self.title_en.setText(translated_title)
             self.message_en.setPlainText(translated_message)
@@ -1172,8 +1314,10 @@ class CreateBlogDialog(QDialog):
             en_title = self.title_en.text().strip()
             en_message = self.message_en.toPlainText().strip()
 
-            translated_title = self.passed_parent.translator.getOneLanguage(en_title, languagein='nl')
-            translated_message = self.passed_parent.translator.getOneLanguage(en_message, languagein='nl')
+            # Force the source language (this button is always EN->NL); see the
+            # NL->EN handler for why auto-detection is unreliable on short titles.
+            translated_title = self.passed_parent.translator.cachedTranslate(en_title, language='en')
+            translated_message = self.passed_parent.translator.cachedTranslate(en_message, language='en')
 
             self.title_nl.setText(translated_title)
             self.message_nl.setPlainText(translated_message)
@@ -1199,6 +1343,7 @@ class CreateBlogDialog(QDialog):
         )
         self.title_nl = QLineEdit(self.parser.get("blog_text", "titel_nl", fallback=""))
         self.message_nl = QTextEdit(self.parser.get("blog_text", "message_nl", fallback=""))
+        self.message_nl.setAcceptRichText(False)  # plain text — stored in blog.ini
 
         form.addRow("", self.translate_button)
         form.addRow("", self.info_html)
@@ -1216,6 +1361,7 @@ class CreateBlogDialog(QDialog):
         self.translate_button.clicked.connect(self.translate_dutch_to_english)        
         self.title_en = QLineEdit(self.parser.get("blog_text", "titel_en", fallback=""))
         self.message_en = QTextEdit(self.parser.get("blog_text", "message_en", fallback=""))
+        self.message_en.setAcceptRichText(False)  # plain text — stored in blog.ini
 
         form.addRow("", self.translate_button)
         form.addRow("Title (EN):", self.title_en)
@@ -1475,8 +1621,11 @@ class CountSpeciesDialog(BaseTripModuleDialog):
         runner.run(self.menu_spec, on_success=load_report)
 
     def save_report(self):
+        pic_dir = _config.get("project", "picturedirectory", fallback="").strip()
+        default_dir = str(Path(pic_dir).parent) if pic_dir else ""
+        default_path = str(Path(default_dir) / "Species overview.txt") if default_dir else ""
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save Report As", "", "Text Files (*.txt);;All Files (*)"
+            self, "Save Report As", default_path, "Text Files (*.txt);;All Files (*)"
         )
         if filename:
             with open(filename, "w", encoding="utf-8") as f:
@@ -1826,6 +1975,22 @@ class AddTripToMasterDialog(BaseTripModuleDialog):
                        "and upload them — together with the trip admin CSV — "
                        "to the website. Other trips still in draft on disk "
                        "are not touched."),
+            subdirectory=False
+        )
+
+
+class RescanMasterCacheDialog(BaseTripModuleDialog):
+    def __init__(self, parent, menu_spec):
+        super().__init__(
+            parent,
+            menu_spec,
+            title="Rescan master EXIF cache",
+            info_text=("Read EXIF for every picture under the master "
+                       "(<master>/biota) into the master EXIF cache "
+                       "(exif_cache_master.json). The first run is slow "
+                       "(~1 hour for the full master); afterwards only new or "
+                       "changed files are re-read. This cache is separate from "
+                       "the day/trip cache, so it never slows Read Directory."),
             subdirectory=False
         )
 

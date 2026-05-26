@@ -1,12 +1,14 @@
 import configparser
 
+from PyQt6.QtWidgets import QMessageBox
 from gui.menu import MenuSpec  # assuming class is defined elsewhere
-from gui.trip_process import (ReadDirDialog, TripCreationDialog, WritePicturesDialog,
-        CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog,
+from gui.trip_process import (ReadDirDialog, ReadSummarizeDialog, TripCreationDialog,
+        WritePicturesDialog, CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog,
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
         AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
-        TestbedDialog, BlogAdminDialog, PhotoMechanicDialog)
+        TestbedDialog, BlogAdminDialog, PhotoMechanicDialog,
+        RescanMasterCacheDialog)
 from gui.virttrip_process import VirtualTripCreationDialog, ExtractDaysDialog
 from utils.config import _config
 import os
@@ -36,6 +38,7 @@ import bin.svu6EmptyTripData
 import bin.svu7Testbed
 import bin.svv1MakeVirtualRepository
 import bin.svv2ExtractDays
+import ghexif.exifcache as exifcache
 
 
 def build_menu_spec(main_window):
@@ -86,7 +89,6 @@ def build_menu_spec(main_window):
     read_dir = MenuSpec(
         callback=None,
         title="Read Directory",
-        shortcut="Ctrl+D",
         enabled=make_enabled_checker("ReadDirExif"),
         tooltip=make_tooltip("ReadDirExif"),                
         batch_parms={
@@ -111,6 +113,33 @@ def build_menu_spec(main_window):
         }
     )
     write_summary.callback = lambda: WritePicturesDialog(main_window, write_summary).exec()
+
+    # ── Read & Summarize: the default trip ingest (sv2 + sv3 in one step) ──
+    # The EXIF cache makes re-reading cheap, so fresh data is the sensible
+    # default. _read_summarize is the module the trip-overview column-run and
+    # context-menu reuse (same chaining as the master pipeline's _master_ingest);
+    # the single-day double-click / menu click opens ReadSummarizeDialog, which
+    # runs the two steps via ChainedBatchRunner so both statemachine keys are
+    # set in order. statusname here is informational — eligibility uses the
+    # STATE_COLUMNS gate (ReadDirExif) and state is set per run_keys.
+    def _read_summarize(args, _config):
+        bin.sv2ReadDirExif.main(args, _config)
+        bin.sv3WritePictures.main(args, _config)
+
+    read_summarize = MenuSpec(
+        callback=None,
+        title="Read & Summarize",
+        shortcut="Ctrl+D",
+        enabled=make_enabled_checker("ReadDirExif"),
+        tooltip=make_tooltip("ReadDirExif"),
+        batch_parms={
+            'statusname': "WritePictures",
+            'module_called': _read_summarize,
+            'before_msg': "Reading and summarizing picture directory...",
+            'after_msg': "✅ Read & Summarize complete.",
+        }
+    )
+    read_summarize.callback = lambda: ReadSummarizeDialog(main_window, read_summarize).exec()
 
     write_blog = MenuSpec(
         callback=None,
@@ -175,7 +204,13 @@ def build_menu_spec(main_window):
         if not trip_db:
             return
         csv_path = os.path.join(trip_db, "metadata", "active", "speciescollection.csv")
-        SpeciesCollectionDialog(main_window, csv_path).exec()
+        dlg = SpeciesCollectionDialog(main_window, csv_path)
+        dlg.exec()
+        # A trip-wide name edit → offer to re-summarize all days (see
+        # MainWindow.rerun_summary_all_days). Master species edits are NOT hooked
+        # here — that's a separate pipeline.
+        if getattr(dlg, "_saved_changes", False):
+            main_window.rerun_summary_all_days("Species names were changed.")
 
     edit_trip_species = MenuSpec(
         callback=_edit_trip_species,
@@ -346,6 +381,66 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # Delete the global EXIF cache (file + .bak ring). The cache is purely
+    # derived — the next scan rebuilds it (one slow pass) and output is
+    # unaffected — so this is a safe "if in doubt, clear it" escape hatch.
+    def _clear_exif_cache():
+        cache_path = exifcache.exif_cache_path(module_config)
+        paths = [cache_path] + [f"{cache_path}.bak{i}"
+                                for i in range(1, exifcache.CACHE_BACKUPS + 1)]
+        existing = [p for p in paths if os.path.exists(p)]
+        if not existing:
+            QMessageBox.information(main_window, "Clear EXIF cache",
+                                    f"No cache file found at\n{cache_path}")
+            return
+        reply = QMessageBox.question(
+            main_window, "Clear EXIF cache",
+            f"Delete the EXIF cache ({len(existing)} file(s))?\n\n{cache_path}\n\n"
+            "The next Read Directory rebuilds it (one slow scan); output is "
+            "unaffected.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        removed = 0
+        for p in existing:
+            try:
+                os.remove(p)
+                removed += 1
+            except OSError as e:
+                QMessageBox.warning(main_window, "Clear EXIF cache",
+                                    f"Could not delete\n{p}\n{e}")
+        QMessageBox.information(
+            main_window, "Clear EXIF cache",
+            f"Deleted {removed} file(s). The cache will rebuild on the next scan.")
+
+    clear_exif_cache = MenuSpec(
+        callback=_clear_exif_cache,
+        title="Clear EXIF cache",
+        showsubdirectory=False,
+    )
+
+    # Warm the SEPARATE master cache (exif_cache_master.json) by reading EXIF
+    # for every picture under <master>/biota. Kept apart from the day/trip
+    # exif_cache.json so the ~89MB master cache never slows Read Directory.
+    def _rescan_master_exif_cache(args, _mod_config):
+        master = exifcache.master_repository(_mod_config)
+        root = os.path.join(master, "biota")
+        exifcache.rescan(root, exifcache.master_cache_path(_mod_config))
+
+    rescan_master_cache = MenuSpec(
+        callback=None,
+        title="Rescan master EXIF cache",
+        showsubdirectory=False,
+        batch_parms={
+            'statusname': "",
+            'module_called': _rescan_master_exif_cache,
+            'before_msg': "Reading EXIF for all master pictures into the cache...",
+            'after_msg': "✅ Master EXIF cache updated.",
+        }
+    )
+    rescan_master_cache.callback = lambda: RescanMasterCacheDialog(
+        main_window, rescan_master_cache).exec()
+
     # utilities
         # Master updates
     convert_avibase = MenuSpec(
@@ -427,12 +522,16 @@ def build_menu_spec(main_window):
             "Create Trip": trip_create,
             f"{MenuSpec.separator()}_1": None,
             "Sync Sidecars": sync_sidecars,
-            "Read Directory": read_dir,
-            "Write Summary": write_summary,
+            "Read & Summarize": read_summarize,
             "Write Blog": write_blog,
             "Build Website": build_website,
             "Freeze": freeze_data,
             "Write Commit": commit_website,
+            f"{MenuSpec.separator()}_advanced": None,
+            # Demoted: Read & Summarize runs both in one step. These remain for a
+            # read-only CSV refresh (Rating Editor / translation panel) or debugging.
+            "Read Directory": read_dir,
+            "Write Summary": write_summary,
             f"{MenuSpec.separator()}_2": None,
             "Edit Trip Species List": edit_trip_species,
             "Count Species": count_species,
@@ -451,6 +550,9 @@ def build_menu_spec(main_window):
             "Add trip website to master": add_trip_to_master,
             f"{MenuSpec.separator()}_master_1": None,
             "Add Trip Pictures to Master": add_trip_pictures,
+            f"{MenuSpec.separator()}_master_2": None,
+            "Rescan master EXIF cache": rescan_master_cache,
+            "Clear EXIF cache": clear_exif_cache,
         },
         "Virtual Trips": {
             "Create Virtual Trip": virttrip_create,

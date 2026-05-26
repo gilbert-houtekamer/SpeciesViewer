@@ -88,7 +88,8 @@ class SpeciesInfoDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Species Info")
         self.setMinimumWidth(600)
-        self.main_window_ref = weakref.ref(parent) if parent else None
+        # parent is the ImagePreviewDialog (the image viewer) — store it directly.
+        self.image_viewer_ref = weakref.ref(parent) if parent else None
         self.full_path = full_path
         filename = full_path.name
 
@@ -103,9 +104,7 @@ class SpeciesInfoDialog(QDialog):
         error_text.setPlainText(error_msg or "No error.")
         layout.addWidget(error_text)
 
-        # Subject field
-        main_window = self.main_window_ref() if self.main_window_ref else None
-        image_viewer = getattr(main_window, "image_viewer_dialog", None)
+        image_viewer = self.image_viewer_ref() if self.image_viewer_ref else None
         fpr = getattr(image_viewer, "fpr", None)
 
         subject_value = fpr.getSubject(filename) if fpr else ""
@@ -159,12 +158,14 @@ class SpeciesInfoDialog(QDialog):
             self.suggestion_dropdown.setVisible(False)
             return
 
-        main_window = self.main_window_ref() if self.main_window_ref else None
-        image_viewer = getattr(main_window, "image_viewer_dialog", None)
-        config = getattr(main_window, "config", None)
+        image_viewer = self.image_viewer_ref() if self.image_viewer_ref else None
         fpr = getattr(image_viewer, "fpr", None)
+        if fpr is None:
+            self.status_label.setText("⚠️ Species data not loaded; cannot suggest.")
+            self.suggestion_dropdown.setVisible(False)
+            return
 
-        name_type = config.get("Species", "name_type", fallback="Auto") if config else "Auto"
+        name_type = _config.get("Species", "name_type", fallback="Auto")
 
         try:
             parts = ast.literal_eval(raw_input)
@@ -226,8 +227,7 @@ class SpeciesInfoDialog(QDialog):
 
     def on_validate_clicked(self):
         raw_input = self.subject_field.get_text().strip()
-        main_window = self.main_window_ref() if self.main_window_ref else None
-        image_viewer = getattr(main_window, "image_viewer_dialog", None)
+        image_viewer = self.image_viewer_ref() if self.image_viewer_ref else None
         fpr = getattr(image_viewer, "fpr", None)
 
         if not raw_input:
@@ -260,54 +260,102 @@ class SpeciesInfoDialog(QDialog):
 
     def on_commit_clicked(self):
         corrected_subject = self.subject_field.get_text().strip()
-        if not corrected_subject:
-            self.status_label.setText("⚠️ No species name to commit.")
-            return
 
-        main_window = self.main_window_ref() if self.main_window_ref else None
-        image_viewer = getattr(main_window, "image_viewer_dialog", None)
+        image_viewer = self.image_viewer_ref() if self.image_viewer_ref else None
         fpr = getattr(image_viewer, "fpr", None)
         if not fpr:
             self.status_label.setText("❌ Cannot access FPR for update.")
             return
 
+        def _is_empty_subject(s):
+            return (not s) or (isinstance(s, str) and s.strip() in ("", "[]"))
+
         original_subject = fpr.getSubject(self.full_path.name)
-        saved_scope = _config.get("Species", "correction_scope", fallback="All files with same name error in day folder")
+        clearing = (corrected_subject == "")
 
-        # Determine scope
-        scope_options = getCorrectionScopeOptions(self.full_path)  # Assumes this method returns a dict like {label: [Path, Path, ...]}
-        selected_files = scope_options.get(saved_scope, [])
+        if clearing:
+            # Clearing removes the species from THIS picture only — never batched.
+            # (Clearing one Ooievaar must not clear them all; the batch-by-same-
+            # name path is for correcting a shared typo, not for removing a name.)
+            if _is_empty_subject(original_subject):
+                self.status_label.setText("⚠️ This picture has no species to clear.")
+                return
+            reply = QMessageBox.question(
+                self, "Clear species name",
+                f"Remove the species name from this picture only?\n\n"
+                f"{self.full_path.name}",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply != QMessageBox.StandardButton.Yes:
+                self.status_label.setText("Clear cancelled.")
+                return
+            matching_files = [self.full_path]
+        else:
+            # Typo guard: if the name resolves to no known species (not in the
+            # list, not in GBIF — the same getSpecies check updateSubject uses),
+            # confirm before storing. Unrecognized names ARE sometimes deliberate
+            # (placeholders, a species not yet in GBIF), so we ask rather than block.
+            try:
+                _parts = ast.literal_eval(corrected_subject)
+                _lookup = max(_parts, key=len) if isinstance(_parts, list) and _parts else corrected_subject
+            except Exception:
+                _lookup = corrected_subject
+            if not fpr.sc.getSpecies(_lookup):
+                reply = QMessageBox.question(
+                    self, "Unknown species",
+                    f"“{_lookup}” is not a known species (not in your list and not "
+                    f"found in GBIF).\n\nStore it anyway as a placeholder or a new "
+                    f"species?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                if reply != QMessageBox.StandardButton.Yes:
+                    self.status_label.setText("Commit cancelled — name not stored.")
+                    logger.info(f"Commit cancelled: '{_lookup}' not stored (unknown species).")
+                    return
 
-        # Filter files that match the original subject; always include the clicked file itself
-        matching_files = [f for f in selected_files if fpr.getSubject(f.name) == original_subject]
-        if self.full_path not in matching_files:
-            matching_files = [self.full_path] + matching_files
+            # Scope: a blank original has no "same name error" to batch — affect
+            # ONLY the clicked picture (else the empty-string match sweeps up every
+            # unnamed picture in the day). A real name batches by the same erroneous
+            # name per the correction_scope setting.
+            if _is_empty_subject(original_subject):
+                matching_files = [self.full_path]
+            else:
+                saved_scope = _config.get("Species", "correction_scope",
+                                          fallback="All files with same name error in day folder")
+                selected_files = getCorrectionScopeOptions(self.full_path).get(saved_scope, [])
+                matching_files = [f for f in selected_files if fpr.getSubject(f.name) == original_subject]
+                if self.full_path not in matching_files:
+                    matching_files = [self.full_path] + matching_files
 
         # Apply updates
-        self.status_label.setText(f"📦 Committing species name: {format_subject_for_xmp(corrected_subject)} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")
-        logger.info(f"📦 Committing species name: {format_subject_for_xmp(corrected_subject)} to {len(matching_files)} file{'s' if len(matching_files) > 1 else ''}")
+        n = len(matching_files)
+        action = ("Clearing species from" if clearing
+                  else f"Committing species name: {format_subject_for_xmp(corrected_subject)} to")
+        self.status_label.setText(f"📦 {action} {n} file{'s' if n != 1 else ''}")
+        logger.info(f"📦 {action} {n} file{'s' if n != 1 else ''}")
         updated_upns = set()
         for f in matching_files:
             upn_object, files_written = fpr.updateSubject(f.name, original_subject, corrected_subject)
             if files_written:
-                logger.info(
-                    f"""✅ Updated {f.name}: rewrote {files_written} file{'s' if files_written != 1 else ''} on disk, """
-                    f'''subject "{format_subject_for_xmp(original_subject)}" → "{format_subject_for_xmp(corrected_subject)}".'''
-                )
+                if clearing:
+                    logger.info(f"✅ Cleared {f.name}: removed species from "
+                                f"{files_written} file{'s' if files_written != 1 else ''} on disk.")
+                else:
+                    logger.info(
+                        f"""✅ Updated {f.name}: rewrote {files_written} file{'s' if files_written != 1 else ''} on disk, """
+                        f'''subject "{format_subject_for_xmp(original_subject)}" → "{format_subject_for_xmp(corrected_subject)}".'''
+                    )
             else:
                 logger.warning(
-                    f"""⚠️ {f.name}: no XMP files rewritten (on-disk subject did not match CSV); CSV cache updated to "{format_subject_for_xmp(corrected_subject)}"."""
+                    f"""⚠️ {f.name}: no XMP files rewritten (on-disk subject did not match CSV); CSV cache updated."""
                 )
             upn_name = fpr.fi.files_dict.get(f.name, {}).get("UniquePictureName")
             if upn_name:
                 updated_upns.add(upn_name)
 
-        # Refresh all visible images that share a UPN with any updated file (catches DxO JPGs etc.)
-        if updated_upns:
-            for image_label, container, img_path in image_viewer.image_widgets:
-                file_upn = fpr.fi.files_dict.get(img_path.name, {}).get("UniquePictureName")
-                if file_upn in updated_upns:
-                    image_viewer.refresh_image_status(container, img_path)
+        # Refresh the affected picture cards (by UPN) and mark the viewer so its
+        # closeEvent can offer to re-run Read & Summarize — the XMP:Subject on
+        # disk changed, so the reports are now stale.
+        if image_viewer is not None and hasattr(image_viewer, "refresh_after_species_change"):
+            image_viewer.refresh_after_species_change(updated_upns)
 
         self.accept()
 
