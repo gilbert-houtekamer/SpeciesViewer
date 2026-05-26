@@ -500,10 +500,23 @@ class ImagePreviewDialog(QDialog):
         card = self._cards_by_key.get(key)
 
         if self.fpr is not None:
+            dlg_ref = [None]
+
+            def on_rating(n, it=item, cd=card):
+                it.set_rating(n)
+                if cd:
+                    cd.update_rating_display(n)
+                    cd.update_rate_display(it.rate)
+                if dlg_ref[0] is not None:
+                    dlg_ref[0].set_rate(it.rate)
+
             def on_color(c, it=item, cd=card):
                 it.set_color(c)
                 if cd:
                     cd.update_color_display(c)
+                    cd.update_rate_display(it.rate)
+                if dlg_ref[0] is not None:
+                    dlg_ref[0].set_rate(it.rate)
 
             def on_description(t, it=item):
                 it.set_description(t)
@@ -512,11 +525,12 @@ class ImagePreviewDialog(QDialog):
                 self, image_path=img_path, display_name=item.display_name or key,
                 rating=item.rating, color=item.color, description=item.description,
                 rate=item.rate, date=item.date, has_jpg=item.has_jpg,
-                on_rating=None,  # rating edit not yet wired on this engine
+                on_rating=on_rating if item.can_edit_rating else None,
                 on_color=on_color if item.can_edit_color else None,
                 on_description=on_description if item.can_edit_description else None,
                 settings_key="SpeciesPreview",
             )
+            dlg_ref[0] = dlg
             dlg.exec()
             # Colour / description may have changed — repaint the card's frame + badges.
             if card:

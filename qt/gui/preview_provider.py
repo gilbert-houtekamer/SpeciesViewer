@@ -25,6 +25,8 @@ from PyQt6.QtGui import QImage
 from gui.picture_provider import (
     PictureItem, PictureCollection, ExifSummary, PixmapCallback, exif_from_rows)
 from gui.image_loader import AsyncImageLoader
+from gui.rating_editor import _compute_rate
+from ghexif.exif_writer import exiftool_write
 
 logger = logging.getLogger("speciesviewer")
 
@@ -76,15 +78,26 @@ def cached_jpg_for(src: Path | None, cache_dir: Path) -> Path | None:
 
 
 class PreviewItem(PictureItem):
-    can_edit_color = True
     can_edit_description = True
-    can_edit_rating = False       # no rating writer on this engine
     can_edit_headline = False
     can_edit_species = False      # species edits go through SpeciesInfoDialog
 
     def __init__(self, collection: "PreviewCollection", upn_key: str):
         self._c = collection
         self._key = upn_key
+
+    # Rating + colour are only editable when the picture has a file we can write
+    # the value into (an XMP sidecar or a JPG). HEIC-only / PNG-only pictures
+    # have neither — a star/colour set on them would live only in the CSV and be
+    # lost on the next Read Directory — so the card greys those controls. (The
+    # durable-HEIC-capture follow-up is tracked in project memory.)
+    @property
+    def can_edit_rating(self) -> bool:
+        return self._c.has_writable_sidecar(self._key)
+
+    @property
+    def can_edit_color(self) -> bool:
+        return self._c.has_writable_sidecar(self._key)
 
     @property
     def _row(self) -> dict:
@@ -158,8 +171,12 @@ class PreviewItem(PictureItem):
         return exif_from_rows(self._row, self._c.rep_file_row(self._key))
 
     # write ops
+    def set_rating(self, value: int) -> None:
+        self._c.apply(self._key, new_stars=value)
+
     def set_color(self, value: str) -> None:
-        self._c.fpr.updateLabel(self._rep, value)
+        # Routed through apply (not fpr.updateLabel) so Rate recomputes too.
+        self._c.apply(self._key, new_color=value)
 
     def set_description(self, value: str) -> None:
         self._c.fpr.updateDescription(self._rep, value)
@@ -274,6 +291,17 @@ class PreviewCollection(PictureCollection):
                 return True
         return False
 
+    def has_writable_sidecar(self, upn_key: str) -> bool:
+        """True if the picture has an XMP or JPG file that apply() can write
+        XMP:Rating / XMP:Label into. False for HEIC-only / PNG-only pictures
+        (RAW is convention-immutable; HEIC carries only a DxO .dop) — their
+        rating/colour can't be durably captured yet, so the card greys them."""
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if frow and frow.get("WindowsExtension", "").lower() in ("xmp", "jpg", "jpeg"):
+                return True
+        return False
+
     def _source_file(self, upn_key: str) -> Path | None:
         """Best display source: JPG > RAW > HEIC."""
         jpg = raw = heic = None
@@ -309,6 +337,60 @@ class PreviewCollection(PictureCollection):
                 return img if not img.isNull() else None
             return None
         self._loader.request(produce, on_ready, target_w=target_w)
+
+    # ── write-back (rating / colour) with Rate recompute ──────────────────
+    def apply(self, upn_key: str, *, new_stars: int | None = None,
+              new_color: str | None = None) -> int | None:
+        """Write XMP:Rating / XMP:Label to the UPN's XMP+JPG files (RAW stays
+        immutable), update the cached rows, recompute Rate, and persist both
+        day CSVs. Day scope only — the preview always wraps one day's fpr.
+        Mirrors RatingEditorCollection.apply's day-scope path."""
+        upn_row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
+        if not upn_row:
+            return None
+        files = upn_row.get("Files", [])
+        if not isinstance(files, list):
+            files = []
+
+        wrote_file = False
+        for fname in files:
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            if frow.get("WindowsExtension", "").lower() not in ("xmp", "jpg", "jpeg"):
+                continue
+            fpath = Path(frow.get("WindowsFileName", ""))
+            args = []
+            if new_stars is not None:
+                args.append(f"-XMP:Rating={new_stars}")
+            if new_color is not None:
+                args.append(f"-XMP:Label={new_color}")
+            if args and fpath.exists():
+                try:
+                    exiftool_write(fpath, args)
+                    wrote_file = True
+                except Exception as e:
+                    logger.error(f"exiftool write failed for {fpath.name}: {e}")
+            if new_stars is not None:
+                frow["XMP:Rating"] = str(new_stars)
+            if new_color is not None:
+                frow["XMP:Label"] = new_color
+
+        if new_stars is not None:
+            upn_row["Rating"] = str(new_stars)
+        if new_color is not None:
+            upn_row["Label"] = new_color
+
+        new_rate = _compute_rate(upn_row, self.fpr.fi.files_dict)
+        upn_row["Rate"] = str(new_rate)
+
+        try:
+            self.fpr.upn.write_project_summary()
+            if wrote_file:
+                self.fpr.fi.write_project_files()
+        except Exception as e:
+            logger.error(f"Preview apply: failed to persist CSV(s): {e}")
+        return new_rate
 
 
 # ── No-fpr (virtual-trip / metadata-less) preview ────────────────────────────

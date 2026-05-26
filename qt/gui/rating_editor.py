@@ -82,29 +82,31 @@ def _compute_rate(upn_row: dict, files_dict: dict) -> int:
             elif rating_str in ("0", "") and not label:
                 computation = 3
 
+    # Small-picture penalty — mirrors computeRating exactly: multiplier starts
+    # at 1 and is only recomputed from a JPG's pixel size, so a picture with no
+    # JPG (ORF/XMP, HEIC) keeps multiplier 1. saved_multiplier is the running
+    # max, floored at 0.1. (The earlier reimplementation left the floor at 0.1
+    # for JPG-less pictures, which scaled every ORF/XMP/HEIC Rate down ~10×.)
     saved_multiplier = 0.1
+    multiplier = 1.0
     for fname in files:
-        if fname not in files_dict:
+        frow = files_dict.get(fname)
+        if frow is None:
             continue
-        frow = files_dict[fname]
-        if frow.get("WindowsExtension", "").lower() not in ("jpg", "jpeg"):
-            continue
-        img_size = frow.get("ImageSize", "")
-        if not img_size:
-            continue
-        try:
-            parts = re.split(r"[x ]", img_size)
-            w, h = int(parts[0]), int(parts[1])
-            multiplier = float(min(1500, max(w, h))) / 1500.0
-            upn_size = upn_row.get("ImageSize", "")
-            if upn_size:
-                up = re.split(r"[x ]", upn_size)
-                uw, uh = int(up[0]), int(up[1])
-                if uw >= 1.5 * w or uh >= 1.5 * h:
-                    multiplier *= 1.5
-            saved_multiplier = max(saved_multiplier, multiplier)
-        except Exception:
-            pass
+        if frow.get("WindowsExtension", "").lower() in ("jpg", "jpeg") and frow.get("ImageSize", ""):
+            try:
+                parts = re.split(r"[x ]", frow["ImageSize"])
+                w, h = int(parts[0]), int(parts[1])
+                multiplier = float(min(1500, max(w, h))) / 1500.0
+                upn_size = upn_row.get("ImageSize", "")
+                if upn_size:
+                    up = re.split(r"[x ]", upn_size)
+                    uw, uh = int(up[0]), int(up[1])
+                    if uw >= 1.5 * w or uh >= 1.5 * h:
+                        multiplier *= 1.5
+            except Exception:
+                pass
+        saved_multiplier = max(saved_multiplier, multiplier)
 
     computation = int(float(computation) * saved_multiplier)
     if dxo_used:
