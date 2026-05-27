@@ -1,26 +1,25 @@
-"""Merged large-image viewer — one dialog, navigable across a picture list.
+"""Merged large-image viewer — image stage on the left, metadata panel on the right.
 
-Renders entirely from the picture-provider seam: the host passes a
-PictureCollection plus a fixed snapshot of keys (its current grid order) and a
-start index. The viewer reads each picture's fields from the PictureItem, loads
-its image asynchronously, and writes edits back through the item — so it serves
-both hosts (Species preview, Rating Editor) with no engine knowledge.
+The panel has four collapsible-style sections (top→bottom):
+  File    — UPN key, file-type badges, directory path
+  EXIF    — camera/lens, exposure settings, focal/distance, dims, date, GPS
+  Species — SpeciesInfoPanel when the engine supports it; read-only labels otherwise
+  Rating  — stars, colour, computed Rate, description story field
 
-Navigation: ←/→ step through the keys; assigning a star rating or a colour
-label auto-advances to the next picture (the cull-with-few-keystrokes flow).
-After each edit it emits picture_changed(key) so the host can refresh that card
-and (Rating Editor) re-sort. The keys snapshot is fixed for the session, so the
-navigation order stays stable even when the host re-sorts its grid underneath.
+Both hosts (Species Preview and Rating Editor) share this viewer via the
+PictureCollection/PictureItem provider seam — no engine knowledge inside here.
 
-DISCARD COLOUR RULE (Option C): when has_jpg is True the Blue/Purple circles are
-greyed (a JPG-bearing picture can never be a deletion candidate).
+Navigation: ←/→ step through keys; assigning a rating or colour auto-advances
+(the cull-with-few-keystrokes flow). picture_changed(key) lets the host refresh
+a card and re-sort. species_committed(upns) lets the host handle the
+refresh_after_species_change + Read & Summarize offer.
 """
 
 import logging
-from pathlib import Path
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QTextEdit, QSizePolicy,
+    QDialog, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QTextEdit,
+    QSizePolicy, QScrollArea, QSplitter, QFrame,
 )
 from PyQt6.QtGui import QPixmap, QGuiApplication, QShortcut, QKeySequence
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
@@ -30,22 +29,62 @@ from gui.window_state import restore_window, save_window, clamp_to_visible_scree
 
 logger = logging.getLogger("speciesviewer")
 
-# Colours that mean "deletion candidate" — greyed on JPG-bearing pictures.
 _DISCARD_COLORS = ("Blue", "Purple")
 _DISCARD_GREYED_TIP = ("Has a JPG — kept for the website and a future DxO "
                        "re-export, so it can't be a deletion candidate.")
 
 
 def color_to_css(color: str) -> str:
-    """Map a label name ("Red", "red", …) to a CSS colour; "" → empty.
-    Falls back to using the name verbatim (CSS understands "red" etc.)."""
     if not color:
         return ""
     return COLOR_HEX.get(color.capitalize(), color)
 
 
+# ── Panel widget helpers ───────────────────────────────────────────────────────
+
+def _section_header(title: str) -> QLabel:
+    lbl = QLabel(title)
+    lbl.setStyleSheet(
+        "font-weight: bold; font-size: 10px; color: #555; "
+        "padding: 5px 0 1px 0; letter-spacing: 0.5px;")
+    return lbl
+
+
+def _hsep() -> QFrame:
+    line = QFrame()
+    line.setFrameShape(QFrame.Shape.HLine)
+    line.setFrameShadow(QFrame.Shadow.Plain)
+    line.setStyleSheet("color: #ddd; margin: 2px 0;")
+    return line
+
+
+def _field_lbl(text: str = "") -> QLabel:
+    lbl = QLabel(text)
+    lbl.setWordWrap(True)
+    lbl.setStyleSheet("font-size: 11px;")
+    return lbl
+
+
+def _small_lbl(text: str = "") -> QLabel:
+    lbl = QLabel(text)
+    lbl.setWordWrap(True)
+    lbl.setStyleSheet("font-size: 10px; color: #666;")
+    return lbl
+
+
+def _clear_layout(layout):
+    while layout.count():
+        child = layout.takeAt(0)
+        if child.widget():
+            child.widget().deleteLater()
+
+
+# ── Main dialog ────────────────────────────────────────────────────────────────
+
 class LargeImageView(QDialog):
-    picture_changed = pyqtSignal(str)  # key — emitted after an edit so the host refreshes/re-sorts
+    picture_changed   = pyqtSignal(str)  # key — emitted after rating/colour/desc edit
+    picture_navigated = pyqtSignal(str)  # key — emitted when ←/→ moves to a new picture
+    species_committed = pyqtSignal(set)  # upns — emitted after a species commit in the panel
 
     def __init__(self, parent, collection, keys, index, *,
                  settings_key="LargeImageView", auto_advance=True):
@@ -57,13 +96,9 @@ class LargeImageView(QDialog):
         auto_advance   True → assigning a rating/colour steps to the next picture.
         """
         super().__init__(parent)
-        # Give the dialog real min/max buttons (a QDialog shows only close on
-        # Windows) — the viewer often opens large.
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
                             | Qt.WindowType.WindowMaximizeButtonHint)
-        # The dialog itself holds keyboard focus by default so ←/→ navigate;
-        # clicking the description box moves focus there (then arrows edit text).
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._collection = collection
         self._keys = list(keys)
@@ -73,14 +108,21 @@ class LargeImageView(QDialog):
         self._geo_key = f"{settings_key}Large"
         self._item = None
         self._pixmap = QPixmap()
-        self._load_token = 0            # drops stale async image deliveries
+        self._load_token = 0
         self._original_description = ""
+        self._panel_first_show = True  # deferred splitter sizing
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 6)
-        layout.setSpacing(6)
+        # ── Main layout: thin margin, then a horizontal splitter ──────────────
+        root = QVBoxLayout(self)
+        root.setContentsMargins(8, 8, 8, 6)
+        root.setSpacing(0)
 
-        # ── Image stage: a tight coloured frame hugs the scaled pixmap, centred.
+        self._splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._splitter.setChildrenCollapsible(False)
+        self._splitter.splitterMoved.connect(lambda *_: self._fit_pixmap())
+        root.addWidget(self._splitter, stretch=1)
+
+        # ── Left: image stage ─────────────────────────────────────────────────
         self._stage = QWidget()
         self._stage.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         stage_v = QVBoxLayout(self._stage)
@@ -96,83 +138,106 @@ class LargeImageView(QDialog):
         self._image_label = QLabel()
         self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._image_label.setMinimumSize(1, 1)
-        # Clicking the image takes focus away from the description box, so ←/→
-        # navigate again (a clear way to "leave" the text field).
+        # Click the image to leave the description box so ←/→ resume navigating.
         self._image_label.mousePressEvent = lambda _e: self.setFocus()
         frame_l.addWidget(self._image_label)
         stage_h.addWidget(self._img_frame)
         stage_h.addStretch(1)
         stage_v.addLayout(stage_h)
         stage_v.addStretch(1)
-        layout.addWidget(self._stage, stretch=1)
+        self._splitter.addWidget(self._stage)
+        self._splitter.setStretchFactor(0, 1)  # image grows when dialog resizes
 
-        # ── Controls strip (centred, ~1/3 width) ──────────────────────────
-        controls = QWidget()
-        cl = QVBoxLayout(controls)
-        cl.setContentsMargins(0, 0, 0, 0)
-        cl.setSpacing(4)
+        # ── Right: metadata panel ─────────────────────────────────────────────
+        panel_scroll = QScrollArea()
+        panel_scroll.setWidgetResizable(True)
+        panel_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        panel_scroll.setMinimumWidth(220)
 
-        name_row = QHBoxLayout()
-        name_row.addStretch(1)
-        self._lbl_name = QLabel("")
-        self._lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._lbl_name.setStyleSheet("font-weight: bold; font-size: 13px;")
-        name_row.addWidget(self._lbl_name)
-        self._lbl_pos = QLabel("")
-        self._lbl_pos.setStyleSheet("font-size: 11px; color: #888;")
-        name_row.addSpacing(8)
-        name_row.addWidget(self._lbl_pos)
-        name_row.addStretch(1)
-        cl.addLayout(name_row)
+        self._panel_widget = QWidget()
+        self._panel_widget.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        pl = QVBoxLayout(self._panel_widget)
+        pl.setContentsMargins(8, 6, 8, 6)
+        pl.setSpacing(2)
+        panel_scroll.setWidget(self._panel_widget)
+        self._splitter.addWidget(panel_scroll)
+        self._splitter.setStretchFactor(1, 0)  # panel doesn't stretch
 
-        row = QHBoxLayout()
+        # ── Section: FILE ─────────────────────────────────────────────────────
+        pl.addWidget(_section_header("FILE"))
+        self._file_key_lbl = _field_lbl()
+        self._file_key_lbl.setStyleSheet(
+            "font-weight: bold; font-size: 12px; padding-bottom: 1px;")
+        pl.addWidget(self._file_key_lbl)
+        self._file_exts_lbl = _small_lbl()
+        pl.addWidget(self._file_exts_lbl)
+        self._file_dir_lbl = _small_lbl()
+        pl.addWidget(self._file_dir_lbl)
+        pl.addWidget(_hsep())
+
+        # ── Section: EXIF ─────────────────────────────────────────────────────
+        pl.addWidget(_section_header("EXIF"))
+        self._exif_camera_lbl  = _field_lbl()
+        self._exif_lens_lbl    = _small_lbl()
+        self._exif_settings_lbl = _small_lbl()
+        self._exif_focal_lbl   = _small_lbl()
+        self._exif_dims_lbl    = _small_lbl()
+        self._exif_date_lbl    = _small_lbl()
+        self._exif_gps_lbl     = _small_lbl()
+        for w in (self._exif_camera_lbl, self._exif_lens_lbl,
+                  self._exif_settings_lbl, self._exif_focal_lbl,
+                  self._exif_dims_lbl, self._exif_date_lbl, self._exif_gps_lbl):
+            pl.addWidget(w)
+        pl.addWidget(_hsep())
+
+        # ── Section: SPECIES (container rebuilt on each picture) ──────────────
+        pl.addWidget(_section_header("SPECIES"))
+        self._species_container = QWidget()
+        self._species_cl = QVBoxLayout(self._species_container)
+        self._species_cl.setContentsMargins(0, 0, 0, 0)
+        self._species_cl.setSpacing(4)
+        pl.addWidget(self._species_container)
+        pl.addWidget(_hsep())
+
+        # ── Section: RATING ───────────────────────────────────────────────────
+        pl.addWidget(_section_header("RATING"))
+
+        stars_row = QHBoxLayout()
+        stars_row.setContentsMargins(0, 2, 0, 2)
         self._stars = StarWidget(0)
         self._stars.rating_changed.connect(self._on_rating)
-        row.addWidget(self._stars)
-        self._lbl_date = QLabel("")
-        self._lbl_date.setStyleSheet("font-size: 11px; color: #777;")
-        row.addWidget(self._lbl_date)
-        row.addStretch()
+        stars_row.addWidget(self._stars)
+        stars_row.addStretch()
         self._rate_lbl = QLabel("")
         self._rate_lbl.setStyleSheet("font-size: 11px; color: #555;")
-        row.addWidget(self._rate_lbl)
-        cl.addLayout(row)
+        stars_row.addWidget(self._rate_lbl)
+        pl.addLayout(stars_row)
 
         self._color_sel = ColorSelector("")
         self._color_sel.color_changed.connect(self._on_color)
-        cl.addWidget(self._color_sel)
+        pl.addWidget(self._color_sel)
 
-        ctrl_row = QHBoxLayout()
-        ctrl_row.addStretch(1)
-        ctrl_row.addWidget(controls, 1)
-        ctrl_row.addStretch(1)
-        layout.addLayout(ctrl_row)
-
-        # ── Description (Ctrl+S to save; auto-saved on navigate / close) ───
-        desc_caption = QLabel("Enter a story about this picture to be shown on the website (optional)")
-        desc_caption.setStyleSheet("font-size: 11px; font-weight: bold;")
-        desc_caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(desc_caption)
-
+        pl.addWidget(_section_header("DESCRIPTION"))
+        desc_hint = _small_lbl("Story for the website (optional)")
+        pl.addWidget(desc_hint)
         self._desc_edit = QTextEdit()
         fm = self._desc_edit.fontMetrics()
-        self._desc_edit.setFixedHeight(int(fm.lineSpacing() * 3.5) + 8)
+        self._desc_edit.setMinimumHeight(int(fm.lineSpacing() * 3) + 8)
+        self._desc_edit.setMaximumHeight(int(fm.lineSpacing() * 8) + 8)
         self._desc_edit.setAcceptRichText(False)
-        desc_row = QHBoxLayout()
-        desc_row.addStretch(1)
-        desc_row.addWidget(self._desc_edit, 3)
-        desc_row.addStretch(1)
-        layout.addLayout(desc_row)
+        pl.addWidget(self._desc_edit)
+
+        pl.addStretch(1)
 
         QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self._save_description)
 
         self._apply_default_or_remembered_geometry()
         self._load_current()
 
+    # ── Keyboard navigation ───────────────────────────────────────────────────
+
     def keyPressEvent(self, event):
-        # ←/→ navigate — but only when the description box doesn't have focus
-        # (when it does, the QTextEdit consumes the arrows for cursor movement
-        # and this handler isn't reached anyway; the guard is belt-and-braces).
         k = event.key()
         if k in (Qt.Key.Key_Left, Qt.Key.Key_Right) and not self._desc_edit.hasFocus():
             self._prev() if k == Qt.Key.Key_Left else self._next()
@@ -180,7 +245,8 @@ class LargeImageView(QDialog):
             return
         super().keyPressEvent(event)
 
-    # ── Load the current picture ──────────────────────────────────────────
+    # ── Load the current picture ──────────────────────────────────────────────
+
     def _load_current(self):
         if not self._keys:
             return
@@ -188,16 +254,66 @@ class LargeImageView(QDialog):
         try:
             item = self._collection.item_for_key(key)
         except (ValueError, KeyError):
-            return  # key no longer in the collection
+            return
         self._item = item
 
-        self.setWindowTitle(item.display_name or key)
-        self._lbl_name.setText(item.display_name or key)
-        self._lbl_pos.setText(f"{self._index + 1} of {len(self._keys)}")
+        pos = f"  ({self._index + 1} of {len(self._keys)})"
+        self.setWindowTitle((item.display_name or key) + pos)
 
-        self._stars.set_rating(item.rating)       # programmatic — no signal
+        # File section
+        self._file_key_lbl.setText(item.key)
+        exts = item.file_exts
+        self._file_exts_lbl.setText("  ·  ".join(exts) if exts else "")
+        self._file_exts_lbl.setVisible(bool(exts))
+        dir_path = self._collection.file_directory(key)
+        self._file_dir_lbl.setText(dir_path)
+        self._file_dir_lbl.setVisible(bool(dir_path))
+
+        # EXIF section
+        exif = item.exif
+        self._exif_camera_lbl.setText(exif.model or "")
+        self._exif_camera_lbl.setVisible(bool(exif.model))
+        self._exif_lens_lbl.setText(exif.lens or "")
+        self._exif_lens_lbl.setVisible(bool(exif.lens))
+
+        shot_parts = []
+        if exif.shutter:
+            shot_parts.append(f"{exif.shutter}s")
+        if exif.aperture:
+            shot_parts.append(f"f/{exif.aperture}")
+        if exif.iso:
+            shot_parts.append(f"ISO {exif.iso}")
+        if exif.ev_comp:
+            shot_parts.append(f"EV {exif.ev_comp}")
+        shot_text = "  ·  ".join(shot_parts)
+        self._exif_settings_lbl.setText(shot_text)
+        self._exif_settings_lbl.setVisible(bool(shot_text))
+
+        focal_parts = []
+        if exif.focal_length:
+            focal_parts.append(exif.focal_length)
+        if exif.distance:
+            focal_parts.append(f"@ {exif.distance}")
+        focal_text = "  ·  ".join(focal_parts)
+        self._exif_focal_lbl.setText(focal_text)
+        self._exif_focal_lbl.setVisible(bool(focal_text))
+
+        self._exif_dims_lbl.setText(exif.dimensions or "")
+        self._exif_dims_lbl.setVisible(bool(exif.dimensions))
+
+        date_text = str(item.date)[:10].replace(":", "-") if item.date else ""
+        self._exif_date_lbl.setText(date_text)
+        self._exif_date_lbl.setVisible(bool(date_text))
+
+        self._exif_gps_lbl.setText(exif.gps or "")
+        self._exif_gps_lbl.setVisible(bool(exif.gps))
+
+        # Species section
+        self._rebuild_species_section(item, key)
+
+        # Rating section
+        self._stars.set_rating(item.rating)
         self._stars.setEnabled(item.can_edit_rating)
-
         self._color_sel.set_color(item.color)
         if item.can_edit_color:
             self._color_sel.setEnabled(True)
@@ -205,8 +321,6 @@ class LargeImageView(QDialog):
                 _DISCARD_COLORS if item.has_jpg else (), _DISCARD_GREYED_TIP)
         else:
             self._color_sel.setEnabled(False)
-
-        self._lbl_date.setText(str(item.date)[:10].replace(":", "-") if item.date else "")
         self._rate_lbl.setText(f"Rate: {item.rate}" if item.rate is not None else "")
         self._apply_frame_color(item.color or "")
 
@@ -218,27 +332,68 @@ class LargeImageView(QDialog):
                                    else "Descriptions can't be saved for this picture.")
         self._desc_edit.blockSignals(False)
 
-        # Async image — drop deliveries from a previous picture.
+        # Async image load — drop deliveries from any previous picture.
         self._load_token += 1
         tok = self._load_token
         self._pixmap = QPixmap()
         self._image_label.setText("Loading…")
         item.request_full_pixmap(lambda px, t=tok: self._on_pixmap(t, px))
 
-        # Keep keyboard focus on the dialog (not auto-parked in the description
-        # box) so ←/→ keep navigating through a culling run.
         self.setFocus()
 
     def _on_pixmap(self, token, pixmap):
         if token != self._load_token:
-            return  # stale — the user already moved on
+            return
         self._pixmap = pixmap if (pixmap is not None and not pixmap.isNull()) else QPixmap()
         if self._pixmap.isNull():
             self._image_label.setText("(no image)")
         else:
             self._fit_pixmap()
 
-    # ── Navigation ────────────────────────────────────────────────────────
+    # ── Species section rebuild ───────────────────────────────────────────────
+
+    def _rebuild_species_section(self, item, key: str):
+        _clear_layout(self._species_cl)
+        ctx = self._collection.species_editor_context(key)
+        if ctx is not None:
+            fpr, file_paths = ctx
+            from gui.species_editor import SpeciesInfoPanel
+            panel = SpeciesInfoPanel(
+                fpr,
+                file_paths=file_paths,
+                species_names=[item.species or ""],
+                error_msgs=[item.error_msg or ""],
+                parent=self._species_container,
+            )
+            panel.committed.connect(self._on_species_committed)
+            self._species_cl.addWidget(panel)
+        else:
+            # Read-only display (e.g. Rating Editor — data already validated)
+            if item.species:
+                lbl = _field_lbl(item.species)
+                lbl.setStyleSheet("font-size: 11px; font-weight: bold;")
+                self._species_cl.addWidget(lbl)
+            if item.headline:
+                self._species_cl.addWidget(_small_lbl(item.headline))
+            if item.error_msg:
+                err = _small_lbl(f"⚠  {item.error_msg}")
+                err.setStyleSheet("font-size: 10px; color: #c0392b;")
+                self._species_cl.addWidget(err)
+            if not item.species and not item.error_msg:
+                placeholder = _small_lbl("(no species)")
+                placeholder.setStyleSheet("font-size: 10px; color: #999; font-style: italic;")
+                self._species_cl.addWidget(placeholder)
+
+    def _on_species_committed(self, upns: set):
+        # Rebuild the species section so the new name shows immediately.
+        if self._item is not None:
+            self._rebuild_species_section(self._item, self._item.key)
+        self.species_committed.emit(upns)
+        for k in upns:
+            self.picture_changed.emit(k)
+
+    # ── Navigation ────────────────────────────────────────────────────────────
+
     def _go(self, delta: int):
         if not self._keys:
             return
@@ -248,6 +403,7 @@ class LargeImageView(QDialog):
             return
         self._index = new
         self._load_current()
+        self.picture_navigated.emit(self._keys[self._index])
 
     def _prev(self):
         self._go(-1)
@@ -255,7 +411,8 @@ class LargeImageView(QDialog):
     def _next(self):
         self._go(+1)
 
-    # ── Edits (write via the item, then advance) ──────────────────────────
+    # ── Edits ─────────────────────────────────────────────────────────────────
+
     def _on_rating(self, n: int):
         if self._item is None or not self._item.can_edit_rating:
             return
@@ -288,7 +445,8 @@ class LargeImageView(QDialog):
         except Exception as e:
             logger.warning(f"LargeImageView: description save failed: {e}")
 
-    # ── Colour frame ────────────────────────────────────────────────────────
+    # ── Colour frame ──────────────────────────────────────────────────────────
+
     def _apply_frame_color(self, color: str):
         css = color_to_css(color)
         if css:
@@ -297,13 +455,16 @@ class LargeImageView(QDialog):
         else:
             self._img_frame.setStyleSheet("")
 
-    # ── Geometry: default size, remembered per settings_key, clamped on-screen
+    # ── Geometry ──────────────────────────────────────────────────────────────
+
     def _apply_default_or_remembered_geometry(self):
         avail = QGuiApplication.primaryScreen().availableGeometry()
         restore_window(self, self._geo_key,
-                       default_size=(int(avail.width() * 0.7), int(avail.height() * 0.8)))
+                       default_size=(int(avail.width() * 0.80),
+                                     int(avail.height() * 0.85)))
 
-    # ── Pixmap fit ─────────────────────────────────────────────────────────
+    # ── Pixmap fit ─────────────────────────────────────────────────────────────
+
     def _fit_pixmap(self):
         if self._pixmap.isNull():
             return
@@ -314,7 +475,7 @@ class LargeImageView(QDialog):
             return
         src_w, src_h = self._pixmap.width(), self._pixmap.height()
         if src_w <= avail_w and src_h <= avail_h:
-            scaled = self._pixmap  # never upscale
+            scaled = self._pixmap
         else:
             scaled = self._pixmap.scaled(avail_w, avail_h,
                                          Qt.AspectRatioMode.KeepAspectRatio,
@@ -325,7 +486,13 @@ class LargeImageView(QDialog):
     def showEvent(self, event):
         super().showEvent(event)
         clamp_to_visible_screen(self)
-        self.setFocus()  # arrows navigate from the start
+        self.setFocus()
+        if self._panel_first_show:
+            self._panel_first_show = False
+            # Give panel ~300 px on first open; image takes the rest.
+            panel_w = 300
+            image_w = max(200, self.width() - panel_w - self._splitter.handleWidth())
+            self._splitter.setSizes([image_w, panel_w])
         QTimer.singleShot(0, self._fit_pixmap)
 
     def resizeEvent(self, event):

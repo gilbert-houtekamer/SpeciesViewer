@@ -241,6 +241,13 @@ class PreviewCollection(PictureCollection):
     def cancel_pending_loads(self) -> None:
         self._loader.cancel_all()
 
+    def species_editor_context(self, key: str):
+        return self.fpr, [self.rep_full_path(key)]
+
+    def file_directory(self, key: str) -> str:
+        p = self.rep_full_path(key)
+        return str(p.parent) if p and p.parent != p else ""
+
     # ── helpers shared with items ─────────────────────────────────────────
     def _files(self, upn_key: str) -> list[str]:
         files = self.fpr.upn.UniquePictureName_dict.get(upn_key, {}).get("Files", [])

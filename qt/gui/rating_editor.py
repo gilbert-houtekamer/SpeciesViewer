@@ -964,6 +964,7 @@ class RatingEditorDialog(QDialog):
         dlg = LargeImageView(self, self._collection, keys, keys.index(upn_key),
                              settings_key="RatingEditor", auto_advance=True)
         dlg.picture_changed.connect(self._on_large_view_changed)
+        dlg.picture_navigated.connect(self._on_large_view_navigated)
         self._large_view = dlg
         dlg.finished.connect(lambda _=0: setattr(self, "_large_view", None))
         dlg.show()
@@ -976,6 +977,16 @@ class RatingEditorDialog(QDialog):
             card.refresh()
         self._resort_if_needed()
         self._status.setText(f"Saved {key}")
+
+    def _on_large_view_navigated(self, key: str):
+        prev = self._cards_by_key.get(self._last_clicked_key) if self._last_clicked_key else None
+        if prev:
+            prev.set_cursor_focus(False)
+        self._last_clicked_key = key
+        card = self._cards_by_key.get(key)
+        if card:
+            card.set_cursor_focus(True)
+            self._scroll.ensureWidgetVisible(card)
 
     # ── Multi-select ────────────────────────────────────────────────────────
 

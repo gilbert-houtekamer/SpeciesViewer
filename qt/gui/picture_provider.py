@@ -201,3 +201,12 @@ class PictureCollection(ABC):
         """Invalidate outstanding async image loads — call when the visible set
         changes (species/day switch, filter, column change) so stale results
         don't paint onto reused widgets. Default: no-op (trivial providers)."""
+
+    def species_editor_context(self, key: str):
+        """Return (fpr, [file_paths]) for SpeciesInfoPanel, or None if
+        the engine doesn't support species editing (e.g. Rating Editor)."""
+        return None
+
+    def file_directory(self, key: str) -> str:
+        """Return the directory path of the representative file, or ''."""
+        return ""

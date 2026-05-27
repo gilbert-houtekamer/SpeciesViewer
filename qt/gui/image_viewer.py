@@ -556,6 +556,8 @@ class ImagePreviewDialog(QDialog):
         dlg = LargeImageView(self, self._collection, keys, keys.index(key),
                              settings_key="SpeciesPreview", auto_advance=True)
         dlg.picture_changed.connect(self._on_large_view_changed)
+        dlg.picture_navigated.connect(self._on_large_view_navigated)
+        dlg.species_committed.connect(self.refresh_after_species_change)
         self._large_view = dlg
         dlg.finished.connect(lambda _=0: setattr(self, "_large_view", None))
         dlg.show()
@@ -566,6 +568,18 @@ class ImagePreviewDialog(QDialog):
         card = self._cards_by_key.get(key)
         if card:
             card.refresh()
+
+    def _on_large_view_navigated(self, key):
+        # Sync the grid cursor to the large view's current picture so the user
+        # can see exactly where they are in the contact sheet.
+        prev = self._cards_by_key.get(self._last_clicked_key) if self._last_clicked_key else None
+        if prev:
+            prev.set_cursor_focus(False)
+        self._last_clicked_key = key
+        card = self._cards_by_key.get(key)
+        if card:
+            card.set_cursor_focus(True)
+            self.scroll_area.ensureWidgetVisible(card)
 
     def refresh_after_species_change(self, updated_upns):
         """Called by SpeciesInfoDialog after a commit: repaint affected cards
