@@ -153,6 +153,11 @@ class ImagePreviewDialog(QDialog):
         self.warnings_only = False
         self.no_gps_only = False
         self.show_all = False
+        # Multi-select state
+        self._selected_keys: set[str] = set()
+        self._bracket_left: str | None = None
+        self._bracket_right: str | None = None
+        self._last_clicked_key: str | None = None
 
         # ── Build UI ───────────────────────────────────────────────────────
         layout = QVBoxLayout(self)
@@ -233,11 +238,30 @@ class ImagePreviewDialog(QDialog):
 
         layout.addLayout(controls_layout)
 
+        # ── Selection bar (hidden until ≥1 card is selected) ─────────────────
+        self._sel_bar = QWidget()
+        _sb_layout = QHBoxLayout(self._sel_bar)
+        _sb_layout.setContentsMargins(4, 2, 4, 2)
+        _sb_layout.setSpacing(8)
+        self._sel_label = QLabel()
+        self._sel_label.setStyleSheet("color: #1565c0; font-weight: bold;")
+        _sb_layout.addWidget(self._sel_label)
+        _sel_species_btn = QPushButton("Set species…")
+        _sel_species_btn.clicked.connect(self._open_species_dialog_for_selection)
+        _sb_layout.addWidget(_sel_species_btn)
+        _sb_layout.addStretch()
+        _sel_clear_btn = QPushButton("Clear selection")
+        _sel_clear_btn.clicked.connect(self._clear_selection)
+        _sb_layout.addWidget(_sel_clear_btn)
+        self._sel_bar.setVisible(False)
+        layout.addWidget(self._sel_bar)
+
         # Scroll area + grid (grid wrapped in a VBox with a trailing stretch so
         # rows stay top-aligned instead of expanding to fill the viewport).
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
-        _scroll_content = QWidget()
+        self._scroll_content = QWidget()
+        _scroll_content = self._scroll_content
         _scroll_vbox = QVBoxLayout(_scroll_content)
         _scroll_vbox.setContentsMargins(0, 0, 0, 0)
         _scroll_vbox.setSpacing(0)
@@ -422,6 +446,11 @@ class ImagePreviewDialog(QDialog):
 
     def _rebuild_grid_from_keys(self, keys):
         self._clear_grid()
+        self._selected_keys.clear()
+        self._bracket_left = None
+        self._bracket_right = None
+        self._last_clicked_key = None
+        self._update_selection_display()
         self.cancelled = False
         self._collection.rebuild(list(keys))
         self._build_index = 0
@@ -456,7 +485,9 @@ class ImagePreviewDialog(QDialog):
             item = self._collection.item(idx)
             r, col, span, card_w = self._placement[idx]
             card = PictureCard(item, card_w, show_status=show_status)
-            card.card_clicked.connect(self._open_large_view)
+            card.card_clicked.connect(self._on_card_cursor)
+            card.card_double_clicked.connect(self._open_large_view)
+            card.card_right_clicked.connect(self._on_card_context_menu)
             card.status_clicked.connect(self._open_species_dialog)
             self.grid_layout.addWidget(card, r, col, 1, span)
             self._cards.append(card)
@@ -493,7 +524,23 @@ class ImagePreviewDialog(QDialog):
         self.species_dialog = SpeciesInfoDialog(full_path, species_name, error_msg, self)
         self.species_dialog.show()
 
+    def _on_card_cursor(self, key):
+        prev = self._cards_by_key.get(self._last_clicked_key) if self._last_clicked_key else None
+        if prev:
+            prev.set_cursor_focus(False)
+        self._last_clicked_key = key
+        card = self._cards_by_key.get(key)
+        if card:
+            card.set_cursor_focus(True)
+
     def _open_large_view(self, key):
+        prev = self._cards_by_key.get(self._last_clicked_key) if self._last_clicked_key else None
+        if prev:
+            prev.set_cursor_focus(False)
+        self._last_clicked_key = key
+        card = self._cards_by_key.get(key)
+        if card:
+            card.set_cursor_focus(True)
         from gui.large_image_view import LargeImageView
         keys = [c.upn_key for c in self._cards]
         if key not in keys:
@@ -528,6 +575,167 @@ class ImagePreviewDialog(QDialog):
                 card.refresh()
         if updated_upns:
             self._species_changed = True
+
+    # ── Multi-select ────────────────────────────────────────────────────────
+
+    def _update_selection_display(self):
+        for c in self._cards:
+            c.set_selected(c.upn_key in self._selected_keys)
+        n = len(self._selected_keys)
+        self._sel_bar.setVisible(n > 0)
+        if n > 0:
+            self._sel_label.setText(f"{n} picture{'s' if n != 1 else ''} selected")
+
+    def _selection_from_brackets(self) -> set:
+        order = [c.upn_key for c in self._cards]
+        left, right = self._bracket_left, self._bracket_right
+        if left is None and right is None:
+            return set()
+        anchor = left if right is None else (right if left is None else None)
+        if anchor is not None:
+            return {anchor} if anchor in order else set()
+        try:
+            a, b = order.index(left), order.index(right)
+        except ValueError:
+            surviving = next((k for k in (left, right) if k in order), None)
+            return {surviving} if surviving else set()
+        if a > b:
+            a, b = b, a
+        return set(order[a:b + 1])
+
+    def _clear_selection(self):
+        self._selected_keys.clear()
+        self._bracket_left = None
+        self._bracket_right = None
+        self._update_selection_display()
+
+    def _open_species_dialog_for_selection(self):
+        if self._selected_keys:
+            self._open_species_dialog_for_keys(self._selected_keys)
+
+    def _on_card_context_menu(self, key: str):
+        from PyQt6.QtWidgets import QMenu
+        from PyQt6.QtGui import QCursor
+        keys_for_action = (self._selected_keys
+                           if key in self._selected_keys and self._selected_keys
+                           else {key})
+        n = len(keys_for_action)
+        lbl = f"{n} picture{'s' if n != 1 else ''}"
+        menu = QMenu(self)
+        act_species = menu.addAction(f"Set species…  ({lbl})")
+        act_rate = menu.addAction(f"Set rating…  ({lbl})")
+        chosen = menu.exec(QCursor.pos())
+        if chosen == act_species:
+            self._open_species_dialog_for_keys(keys_for_action)
+        elif chosen == act_rate:
+            self._open_batch_rate_dialog(keys_for_action)
+
+    def _open_species_dialog_for_keys(self, keys: set):
+        if not self.fpr or not keys:
+            return
+        from gui.species_editor import SpeciesInfoPanel
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout
+        file_paths, species_names, error_msgs = [], [], []
+        for k in keys:
+            path = self._collection.rep_full_path(k)
+            if path:
+                file_paths.append(path)
+                species_names.append(self.fpr.getSpeciesName(path.name) or "")
+                error_msgs.append(self.fpr.getErrorMsg(path.name) or "")
+        if not file_paths:
+            return
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Set species — {len(file_paths)} picture{'s' if len(file_paths) != 1 else ''}")
+        dlg.setMinimumWidth(600)
+        dlg_layout = QVBoxLayout(dlg)
+        panel = SpeciesInfoPanel(self.fpr, file_paths, species_names, error_msgs, parent=dlg)
+        panel.committed.connect(lambda upns: (
+            self.refresh_after_species_change(upns),
+            self._clear_selection(),
+            dlg.accept()
+        ))
+        dlg_layout.addWidget(panel)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(dlg.reject)
+        row = QHBoxLayout()
+        row.addStretch()
+        row.addWidget(cancel_btn)
+        dlg_layout.addLayout(row)
+        dlg.show()
+
+    def _open_batch_rate_dialog(self, keys: set):
+        if not keys or self._collection is None:
+            return
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QDialogButtonBox
+        from gui.rating_editor import StarWidget, ColorSelector
+        n = len(keys)
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Set rating / color — {n} picture{'s' if n != 1 else ''}")
+        layout = QVBoxLayout(dlg)
+        layout.addWidget(QLabel(f"Apply to {n} picture{'s' if n != 1 else ''}:"))
+
+        star_row = QHBoxLayout()
+        star_row.addWidget(QLabel("Rating:"))
+        star_w = StarWidget(0)
+        star_row.addWidget(star_w)
+        star_row.addStretch()
+        layout.addLayout(star_row)
+
+        color_row = QHBoxLayout()
+        color_row.addWidget(QLabel("Color:"))
+        color_w = ColorSelector("")
+        color_row.addWidget(color_w)
+        color_row.addStretch()
+        layout.addLayout(color_row)
+
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
+                                QDialogButtonBox.StandardButton.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        layout.addWidget(btns)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            stars = star_w.rating
+            color = color_w.color
+            key_list = list(keys)
+            progress = QProgressDialog("Updating…", None, 0, len(key_list), self)
+            progress.setWindowTitle("Updating pictures")
+            progress.setMinimumDuration(0)
+            progress.show()
+            for i, k in enumerate(key_list):
+                progress.setValue(i)
+                progress.setLabelText(f"Updating {i + 1} of {len(key_list)}…")
+                QApplication.processEvents()
+                try:
+                    item = self._collection.item(self._collection.index_of(k))
+                    item.set_rating(stars)
+                    if color:
+                        item.set_color(color)
+                    card = self._cards_by_key.get(k)
+                    if card:
+                        card.refresh()
+                except (ValueError, IndexError):
+                    pass
+            progress.setValue(len(key_list))
+
+    def keyPressEvent(self, event):
+        k = event.key()
+        if k == Qt.Key.Key_BracketLeft:          # [ — set left bracket at cursor
+            if self._last_clicked_key:
+                self._bracket_left = self._last_clicked_key
+                self._selected_keys = self._selection_from_brackets()
+                self._update_selection_display()
+        elif k == Qt.Key.Key_BracketRight:       # ] — set right bracket at cursor
+            if self._last_clicked_key:
+                self._bracket_right = self._last_clicked_key
+                self._selected_keys = self._selection_from_brackets()
+                self._update_selection_display()
+        elif k == Qt.Key.Key_Escape:
+            if self._selected_keys:
+                self._clear_selection()
+            else:
+                super().keyPressEvent(event)
+        else:
+            super().keyPressEvent(event)
 
     # ── No-GPS refresh from disk (fpr mode only) ────────────────────────────
     def _files_of(self, upn_key):
