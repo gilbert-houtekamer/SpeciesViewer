@@ -962,9 +962,11 @@ class RatingEditorDialog(QDialog):
         if upn_key not in keys:
             return
         dlg = LargeImageView(self, self._collection, keys, keys.index(upn_key),
-                             settings_key="RatingEditor", auto_advance=True)
+                             settings_key="RatingEditor", auto_advance=True,
+                             initial_selection=set(self._selected_keys))
         dlg.picture_changed.connect(self._on_large_view_changed)
         dlg.picture_navigated.connect(self._on_large_view_navigated)
+        dlg.selection_changed.connect(self._on_large_view_selection_changed)
         self._large_view = dlg
         dlg.finished.connect(lambda _=0: setattr(self, "_large_view", None))
         dlg.show()
@@ -987,6 +989,12 @@ class RatingEditorDialog(QDialog):
         if card:
             card.set_cursor_focus(True)
             self._scroll.ensureWidgetVisible(card)
+
+    def _on_large_view_selection_changed(self, keys: set):
+        self._selected_keys = keys
+        self._bracket_left = None
+        self._bracket_right = None
+        self._update_selection_display()
 
     # ── Multi-select ────────────────────────────────────────────────────────
 

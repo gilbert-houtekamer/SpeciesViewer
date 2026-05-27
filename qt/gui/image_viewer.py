@@ -554,9 +554,11 @@ class ImagePreviewDialog(QDialog):
                 pass
             self._large_view = None
         dlg = LargeImageView(self, self._collection, keys, keys.index(key),
-                             settings_key="SpeciesPreview", auto_advance=True)
+                             settings_key="SpeciesPreview", auto_advance=True,
+                             initial_selection=set(self._selected_keys))
         dlg.picture_changed.connect(self._on_large_view_changed)
         dlg.picture_navigated.connect(self._on_large_view_navigated)
+        dlg.selection_changed.connect(self._on_large_view_selection_changed)
         dlg.species_committed.connect(self.refresh_after_species_change)
         self._large_view = dlg
         dlg.finished.connect(lambda _=0: setattr(self, "_large_view", None))
@@ -580,6 +582,12 @@ class ImagePreviewDialog(QDialog):
         if card:
             card.set_cursor_focus(True)
             self.scroll_area.ensureWidgetVisible(card)
+
+    def _on_large_view_selection_changed(self, keys: set):
+        self._selected_keys = keys
+        self._bracket_left = None
+        self._bracket_right = None
+        self._update_selection_display()
 
     def refresh_after_species_change(self, updated_upns):
         """Called by SpeciesInfoDialog after a commit: repaint affected cards

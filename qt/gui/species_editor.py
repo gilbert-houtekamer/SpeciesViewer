@@ -107,7 +107,12 @@ class SpeciesInfoPanel(QWidget):
     committed = pyqtSignal(set)   # set of updated UPN keys
 
     def __init__(self, fpr, file_paths: list, species_names: list, error_msgs: list, *,
-                 parent=None):
+                 parent=None, collapsible_error: bool = False):
+        """
+        collapsible_error  When True the error-message text is hidden behind a
+                           ⚠ toggle button — useful when the panel is embedded
+                           in a narrow sidebar rather than a standalone dialog.
+        """
         super().__init__(parent)
         self._fpr = fpr
         self._file_paths = list(file_paths)   # list[Path]
@@ -122,12 +127,33 @@ class SpeciesInfoPanel(QWidget):
             layout.addWidget(QLabel(f"<b>Filename:</b> {file_paths[0].name}"))
             layout.addWidget(QLabel(f"<b>Species:</b> {species_names[0] or '(unknown)'}"))
             if error_msgs[0]:
-                layout.addWidget(QLabel("<b>Error Message:</b>"))
-                error_text = QTextEdit()
-                error_text.setReadOnly(True)
-                error_text.setMaximumHeight(70)
-                error_text.setPlainText(error_msgs[0])
-                layout.addWidget(error_text)
+                if collapsible_error:
+                    # Compact toggle: ⚠ button reveals the error text on demand.
+                    err_btn = QPushButton("⚠  Show error  ▸")
+                    err_btn.setCheckable(True)
+                    err_btn.setFlat(True)
+                    err_btn.setStyleSheet(
+                        "QPushButton { color: #c0392b; "
+                        "text-align: left; padding: 2px 0; border: none; }"
+                        "QPushButton:checked { font-weight: bold; }")
+                    err_body = QTextEdit()
+                    err_body.setReadOnly(True)
+                    err_body.setMaximumHeight(80)
+                    err_body.setPlainText(error_msgs[0])
+                    err_body.setVisible(False)
+                    def _toggle(checked, w=err_body, b=err_btn):
+                        w.setVisible(checked)
+                        b.setText("⚠  Hide error  ▾" if checked else "⚠  Show error  ▸")
+                    err_btn.toggled.connect(_toggle)
+                    layout.addWidget(err_btn)
+                    layout.addWidget(err_body)
+                else:
+                    layout.addWidget(QLabel("<b>Error Message:</b>"))
+                    error_text = QTextEdit()
+                    error_text.setReadOnly(True)
+                    error_text.setMaximumHeight(70)
+                    error_text.setPlainText(error_msgs[0])
+                    layout.addWidget(error_text)
         else:
             preview = ", ".join(p.name for p in file_paths[:4])
             if n > 4:
