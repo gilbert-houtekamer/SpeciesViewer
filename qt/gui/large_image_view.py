@@ -19,10 +19,10 @@ Navigation: ←/→ step through keys; assigning a rating or colour auto-advance
 import logging
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QTextEdit,
+    QApplication, QDialog, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QTextEdit,
     QSizePolicy, QScrollArea, QSplitter, QFrame, QPushButton,
 )
-from PyQt6.QtGui import QPixmap, QGuiApplication, QShortcut, QKeySequence
+from PyQt6.QtGui import QMovie, QPixmap, QGuiApplication, QShortcut, QKeySequence
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 
 from gui.rating_editor import StarWidget, ColorSelector, COLOR_HEX
@@ -120,7 +120,7 @@ class _StripItem(QWidget):
         self._star_lbl = QLabel("★" * r + "☆" * (5 - r))
         self._star_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._star_lbl.setStyleSheet(
-            "font-size: 9px; color: #aaa; background: transparent;")
+            "font-size: 9px; color: #ddd; background: transparent;")
         vbox.addWidget(self._star_lbl)
 
         self._repaint_border()
@@ -144,7 +144,7 @@ class _StripItem(QWidget):
                 "border-radius: 2px; padding: 0 4px;")
         else:
             self._star_lbl.setStyleSheet(
-                "font-size: 9px; color: #aaa; background: transparent;")
+                "font-size: 9px; color: #ddd; background: transparent;")
 
     def set_current(self, yes: bool):
         if self._current == yes:
@@ -428,6 +428,14 @@ class LargeImageView(QDialog):
         self._color_sel = ColorSelector("")
         self._color_sel.color_changed.connect(self._on_color)
         pl.addWidget(self._color_sel)
+
+        self._apply_all_btn = QPushButton("Apply to selected")
+        self._apply_all_btn.setEnabled(False)
+        self._apply_all_btn.setFlat(True)
+        self._apply_all_btn.setStyleSheet(
+            "font-size: 10px; color: #555; padding: 1px 4px; margin-top: 2px;")
+        self._apply_all_btn.clicked.connect(self._apply_to_all_selected)
+        pl.addWidget(self._apply_all_btn)
 
         pl.addWidget(_section_header("DESCRIPTION"))
         pl.addWidget(_small_lbl("Story for the website (optional)"))
@@ -714,6 +722,15 @@ class LargeImageView(QDialog):
         if n > 0:
             self._sel_label.setText(
                 f"{n} picture{'s' if n != 1 else ''} selected")
+            self._apply_all_btn.setText(f"Apply to {n} selected")
+            self._apply_all_btn.setEnabled(True)
+            self._apply_all_btn.setStyleSheet(
+                "font-size: 10px; color: #aad4ff; padding: 1px 4px; margin-top: 2px;")
+        else:
+            self._apply_all_btn.setText("Apply to selected")
+            self._apply_all_btn.setEnabled(False)
+            self._apply_all_btn.setStyleSheet(
+                "font-size: 10px; color: #555; padding: 1px 4px; margin-top: 2px;")
         self.selection_changed.emit(set(self._selected_keys))
 
     def _clear_selection(self):
@@ -721,6 +738,55 @@ class LargeImageView(QDialog):
         self._bracket_left = None
         self._bracket_right = None
         self._update_selection_display()
+
+    def _apply_to_all_selected(self):
+        """Apply the current picture's rating + colour to every selected picture."""
+        if not self._selected_keys or not self._item:
+            return
+        stars = self._item.rating
+        color = self._item.color
+        key_list = list(self._selected_keys)
+        total = len(key_list)
+        cur_key = self._item.key
+
+        progress = QDialog(self)
+        progress.setWindowTitle("Even geduld…")
+        progress.setModal(True)
+        progress.setFixedSize(320, 110)
+        prog_layout = QVBoxLayout(progress)
+        prog_lbl = QLabel(f"Updating 0 of {total}…")
+        prog_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        prog_layout.addWidget(prog_lbl)
+        spin_lbl = QLabel()
+        spin_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        movie = QMovie("spinner.gif")
+        spin_lbl.setMovie(movie)
+        prog_layout.addWidget(spin_lbl)
+        movie.start()
+        progress.show()
+        QApplication.processEvents()
+
+        changed: list[str] = []
+        for i, k in enumerate(key_list):
+            prog_lbl.setText(f"Updating {i + 1} of {total}…")
+            QApplication.processEvents()
+            if k == cur_key:
+                changed.append(k)
+                continue
+            try:
+                item = self._collection.item_for_key(k)
+                item.set_rating(stars)
+                item.set_color(color)
+                changed.append(k)
+            except (ValueError, KeyError):
+                pass
+
+        progress.close()
+
+        for k in changed:
+            self._filmstrip.refresh_item(k)
+        for k in changed:
+            self.picture_changed.emit(k)
 
     def _batch_species(self):
         if not self._selected_keys:
@@ -754,7 +820,6 @@ class LargeImageView(QDialog):
             fpr, file_paths, species_names, error_msgs, parent=dlg)
         panel.committed.connect(lambda upns: (
             self._on_species_committed(upns),
-            self._clear_selection(),
             dlg.accept(),
         ))
         layout.addWidget(panel)
@@ -764,7 +829,7 @@ class LargeImageView(QDialog):
         row.addStretch()
         row.addWidget(cancel_btn)
         layout.addLayout(row)
-        dlg.show()
+        dlg.exec()  # modal — prevents the panel from z-fighting with the main viewer
 
     def _batch_rating(self):
         if not self._selected_keys:
@@ -794,26 +859,59 @@ class LargeImageView(QDialog):
         btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
         layout.addWidget(btns)
+
+        # Track interaction so stars=0 or color="" can mean "clear", not "no change".
+        _star_touched = [False]
+        _color_touched = [False]
+        star_w.rating_changed.connect(lambda _: _star_touched.__setitem__(0, True))
+        color_w.color_changed.connect(lambda _: _color_touched.__setitem__(0, True))
+
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         stars = star_w.rating
         color = color_w.color
-        if not stars and not color:
-            return
+        if not _star_touched[0] and not _color_touched[0]:
+            return  # user didn't interact with anything
         key_list = list(self._selected_keys)
-        # Apply writes synchronously — no processEvents() so the host's
-        # resort/refresh can't interleave and cause index mismatches.
+        total = len(key_list)
+
+        # Progress dialog — modal so user can't trigger re-sorts mid-write.
+        progress = QDialog(self)
+        progress.setWindowTitle("Even geduld…")
+        progress.setModal(True)
+        progress.setFixedSize(320, 110)
+        prog_layout = QVBoxLayout(progress)
+        prog_lbl = QLabel(f"Updating 0 of {total}…")
+        prog_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        prog_layout.addWidget(prog_lbl)
+        spin_lbl = QLabel()
+        spin_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        movie = QMovie("spinner.gif")
+        spin_lbl.setMovie(movie)
+        prog_layout.addWidget(spin_lbl)
+        movie.start()
+        progress.show()
+        QApplication.processEvents()
+
+        # Apply writes; processEvents() keeps the spinner animated and the
+        # progress label updating.  Signals are emitted only after all writes
+        # are done so the host can't re-sort and invalidate the key list mid-loop.
         changed: list[str] = []
-        for k in key_list:
+        for i, k in enumerate(key_list):
+            prog_lbl.setText(f"Updating {i + 1} of {total}…")
+            QApplication.processEvents()
             try:
                 item = self._collection.item_for_key(k)
-                if stars > 0:
-                    item.set_rating(stars)
-                if color:
-                    item.set_color(color)
+                if _star_touched[0]:
+                    item.set_rating(stars)   # stars=0 clears rating
+                if _color_touched[0]:
+                    item.set_color(color)    # color="" clears colour
                 changed.append(k)
             except (ValueError, KeyError):
                 pass
+
+        progress.close()
+
         # Refresh filmstrip and notify host only after all writes are done.
         for k in changed:
             self._filmstrip.refresh_item(k)
@@ -832,7 +930,7 @@ class LargeImageView(QDialog):
         self._rate_lbl.setText(f"Rate: {self._item.rate}" if self._item.rate is not None else "")
         self._filmstrip.refresh_item(self._item.key)
         self.picture_changed.emit(self._item.key)
-        if self._auto_advance and n > 0:
+        if self._auto_advance and n > 0 and not self._selected_keys:
             self._next()
 
     def _on_color(self, color: str):
@@ -843,7 +941,7 @@ class LargeImageView(QDialog):
         self._rate_lbl.setText(f"Rate: {self._item.rate}" if self._item.rate is not None else "")
         self._filmstrip.refresh_item(self._item.key)
         self.picture_changed.emit(self._item.key)
-        if self._auto_advance and color:
+        if self._auto_advance and color and not self._selected_keys:
             self._next()
 
     def _save_description(self):
