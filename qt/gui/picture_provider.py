@@ -148,6 +148,10 @@ class PictureItem(ABC):
     def file_exts(self) -> list[str]:   # e.g. ["JPG", "ORF", "XMP"] — a compact
         return []                       # "what files exist" hint on the card
 
+    @property
+    def from_master(self) -> bool:      # True → reference picture pulled from the
+        return False                    # master DB (shown greyed, read-only)
+
     # ── write ops (gated by the capability flags below) ──────────────────────
     def set_species(self, value: str) -> None:
         raise NotImplementedError

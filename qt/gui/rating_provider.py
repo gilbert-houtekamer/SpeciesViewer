@@ -34,10 +34,12 @@ _RAW_EXTS = {".nef", ".orf", ".cr2", ".arw", ".rw2"}
 
 
 class RatingEditorItem(PictureItem):
-    """Thin view over one UPN row; writes delegate to the collection."""
+    """Thin view over one UPN row; writes delegate to the collection.
 
-    can_edit_rating = True
-    can_edit_color = True
+    A trip item is rating/colour-editable. A master item (pulled from the
+    master DB as a reference for judging website-worthiness) is read-only — its
+    capability flags are False so the card greys the controls."""
+
     # description/headline/species stay read-only on this engine for now
     can_edit_description = False
     can_edit_headline = False
@@ -46,10 +48,18 @@ class RatingEditorItem(PictureItem):
     def __init__(self, collection: "RatingEditorCollection", upn_key: str):
         self._c = collection
         self._key = upn_key
+        self._master = collection.is_master(upn_key)
+        # trip pictures are editable; master reference pictures are read-only (v1)
+        self.can_edit_rating = not self._master
+        self.can_edit_color = not self._master
+
+    @property
+    def from_master(self) -> bool:
+        return self._master
 
     @property
     def _row(self) -> dict:
-        return self._c.fpr.upn.UniquePictureName_dict.get(self._key, {})
+        return self._c._upn_row(self._key)
 
     # identity
     @property
@@ -131,10 +141,60 @@ class RatingEditorCollection(PictureCollection):
         self._species_lang = species_lang
         self._loader = loader or AsyncImageLoader()
         self._order: list[str] = []
+        # Master reference state (Trip+Master scope) — read-only pictures pulled
+        # from the master DB for the selected species. Empty until set_master().
+        self._master_upn: dict = {}          # upn_key -> master picture row
+        self._master_files: dict = {}        # filename -> master file row
+        self._master_root: Path | None = None
+        self._include_master = False
+        self._master_keys: set[str] = set()  # keys currently shown from master
         self.rebuild()
+
+    # ── master reference wiring ───────────────────────────────────────────
+    def set_master(self, master_upn: dict, master_files: dict,
+                   master_root, *, include: bool = True) -> None:
+        """Attach the master DB's picture/file dicts so rebuild() can append
+        read-only reference cards for the selected species. include=False keeps
+        them attached but hidden (e.g. when scope is not Trip+Master)."""
+        self._master_upn = master_upn or {}
+        self._master_files = master_files or {}
+        self._master_root = Path(master_root) if master_root else None
+        self._include_master = include
+
+    def is_master(self, key: str) -> bool:
+        return key in self._master_keys
+
+    def _upn_row(self, key: str) -> dict:
+        if key in self._master_keys:
+            return self._master_upn.get(key, {})
+        return self.fpr.upn.UniquePictureName_dict.get(key, {})
+
+    def _files_dict_for(self, key: str) -> dict:
+        return self._master_files if key in self._master_keys else self.fpr.fi.files_dict
 
     # ── ordering / filtering ──────────────────────────────────────────────
     def rebuild(self, filter_name: str | None = None) -> None:
+        # Resolve the scientific name of the selected species (from the trip
+        # rows) so master pictures can be matched on WetSoortNaam — robust
+        # across the NL/Eng/Sci display languages.
+        sci = None
+        if filter_name and self._include_master and self._master_upn:
+            for row in self.fpr.upn.UniquePictureName_dict.values():
+                if self.species_name(row) == filter_name:
+                    sci = (row.get("WetSoortNaam") or "").strip().casefold()
+                    break
+
+        # Candidate master keys for this species (dedupe any UPN already in the
+        # trip). Set before jpg_path() is called so routing picks master files.
+        self._master_keys = set()
+        if sci:
+            trip_keys = self.fpr.upn.UniquePictureName_dict
+            for key, row in self._master_upn.items():
+                if key in trip_keys:
+                    continue
+                if (row.get("WetSoortNaam") or "").strip().casefold() == sci:
+                    self._master_keys.add(key)
+
         rows = []
         for key, row in self.fpr.upn.UniquePictureName_dict.items():
             if filter_name and self.species_name(row) != filter_name:
@@ -142,6 +202,12 @@ class RatingEditorCollection(PictureCollection):
             if self._jpg_only and self.jpg_path(key) is None:
                 continue
             rows.append((_safe_int(row.get("Rate", 0) or 0), key))
+        for key in list(self._master_keys):
+            if self._jpg_only and self.jpg_path(key) is None:
+                self._master_keys.discard(key)   # not shown → not a master key
+                continue
+            rows.append((_safe_int(self._master_upn[key].get("Rate", 0) or 0), key))
+
         rows.sort(key=lambda x: x[0], reverse=True)
         self._order = [k for _, k in rows]
 
@@ -179,13 +245,14 @@ class RatingEditorCollection(PictureCollection):
     def _rep_file_row(self, upn_key: str) -> dict:
         """The representative (non-XMP) file row for EXIF — prefer a real
         photo file over the sidecar."""
-        row = self.fpr.upn.UniquePictureName_dict.get(upn_key, {})
+        row = self._upn_row(upn_key)
+        files_dict = self._files_dict_for(upn_key)
         files = row.get("Files", [])
         if not isinstance(files, list):
             return {}
         fallback = {}
         for fname in files:
-            frow = self.fpr.fi.files_dict.get(fname)
+            frow = files_dict.get(fname)
             if not frow:
                 continue
             if frow.get("WindowsExtension", "").lower() != "xmp":
@@ -193,7 +260,25 @@ class RatingEditorCollection(PictureCollection):
             fallback = frow
         return fallback
 
+    def _master_jpg_path(self, upn_key: str) -> Path | None:
+        """Resolve a master picture's JPG on disk: master_root + relative
+        TargetPath/BestJPGPathName + BestJPG filename. Master CSV paths are
+        RELATIVE (e.g. 'biota/.../pica pica/'), unlike the absolute trip paths."""
+        if self._master_root is None:
+            return None
+        row = self._master_upn.get(upn_key, {})
+        best_jpg = (row.get("BestJPG") or "").strip()
+        rel_dir = (row.get("TargetPath") or row.get("BestJPGPathName") or "").strip()
+        if not best_jpg or not rel_dir:
+            return None
+        p = self._master_root / rel_dir / best_jpg
+        if p.exists() and p.suffix.lower() in (".jpg", ".jpeg"):
+            return p
+        return None
+
     def jpg_path(self, upn_key: str) -> Path | None:
+        if upn_key in self._master_keys:
+            return self._master_jpg_path(upn_key)
         row = self.fpr.upn.UniquePictureName_dict.get(upn_key, {})
         best = row.get("BestJPGPathName", "")
         if best:
@@ -214,17 +299,26 @@ class RatingEditorCollection(PictureCollection):
     def _raw_thumb_path(self, upn_key: str) -> Path | None:
         """Cached JPEG preview for the first RAW in the UPN, extracting it (via
         exiftool) if absent. Runs on a worker thread — keep it self-contained."""
-        row = self.fpr.upn.UniquePictureName_dict.get(upn_key, {})
+        row = self._upn_row(upn_key)
+        files_dict = self._files_dict_for(upn_key)
         files = row.get("Files", [])
         if not isinstance(files, list):
             return None
+        master = upn_key in self._master_keys
+        rel_dir = ((row.get("TargetPath") or row.get("BestJPGPathName") or "").strip()
+                   if master else "")
         for fname in files:
-            frow = self.fpr.fi.files_dict.get(fname)
+            frow = files_dict.get(fname)
             if not frow:
                 continue
             if ("." + frow.get("WindowsExtension", "").lower()) not in _RAW_EXTS:
                 continue
-            raw_path = Path(frow.get("WindowsFileName", ""))
+            # Master file paths are relative → rebuild from master_root; trip
+            # paths are absolute in WindowsFileName.
+            if master and self._master_root is not None and rel_dir:
+                raw_path = self._master_root / rel_dir / fname
+            else:
+                raw_path = Path(frow.get("WindowsFileName", ""))
             if not raw_path.exists():
                 continue
             cache_dir = raw_path.parent / ".preview_cache"
@@ -268,12 +362,14 @@ class RatingEditorCollection(PictureCollection):
         self._loader.request(produce, on_ready, target_w=target_w)
 
     def exif_for(self, upn_key: str) -> ExifSummary:
-        upn = self.fpr.upn.UniquePictureName_dict.get(upn_key, {})
+        upn = self._upn_row(upn_key)
         return exif_from_rows(upn, self._rep_file_row(upn_key))
 
     # ── write-back (rating/colour), with per-day CSV routing ──────────────
     def apply(self, upn_key: str, *, new_stars: int | None = None,
               new_color: str | None = None) -> int | None:
+        if upn_key in self._master_keys:
+            return None   # master reference pictures are read-only (v1)
         upn_row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
         if not upn_row:
             return None

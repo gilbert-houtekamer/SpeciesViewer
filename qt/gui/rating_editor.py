@@ -17,7 +17,8 @@ from PyQt6.QtWidgets import (
     QProgressDialog, QRadioButton, QButtonGroup, QMessageBox, QStyle,
 )
 from PyQt6.QtGui import QPixmap, QImage, QGuiApplication, QIcon
-from PyQt6.QtCore import Qt, QTimer, QSize, pyqtSignal, QObject, QRunnable, QThreadPool
+from PyQt6.QtCore import (Qt, QTimer, QSize, pyqtSignal, QObject, QRunnable,
+                          QThreadPool, QThread)
 
 from engine.filepicture import FilePicture
 from engine.filecsv import Files
@@ -26,6 +27,7 @@ from ghexif.exif_writer import exiftool_write
 from gui.window_state import restore_window, save_window
 from gui.image_loader import AsyncImageLoader
 from gui.picture_provider import PictureItem
+from utils.config import _config
 
 logger = logging.getLogger("speciesviewer")
 
@@ -273,6 +275,7 @@ class PictureCard(QFrame):
         self.upn_key = item.key
         self._selected = False
         self._cursor = False
+        self._from_master = getattr(item, "from_master", False)
         # Preview hosts set show_status to add a status/desc/GPS badge row and a
         # clickable warning icon (→ SpeciesInfoDialog); the Rating Editor leaves
         # it off (its data is already validated).
@@ -313,6 +316,13 @@ class PictureCard(QFrame):
         self._lbl_name.setStyleSheet("font-weight: bold; font-size: 10px;")
         self._lbl_name.setWordWrap(True)
         vbox.addWidget(self._lbl_name)
+
+        # Reference-from-master tag (read-only comparison picture)
+        if self._from_master:
+            tag = QLabel("— from master —")
+            tag.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            tag.setStyleSheet("color: #888; font-size: 8px; font-style: italic;")
+            vbox.addWidget(tag)
 
         # Stars row + date + rate
         row_stars = QHBoxLayout()
@@ -384,6 +394,9 @@ class PictureCard(QFrame):
 
             vbox.addLayout(badge_row)
             self._refresh_status_badges()
+
+        if self._from_master:
+            self._update_frame_style()   # paint the grey reference background now
 
     def _refresh_status_badges(self):
         """Set the status icon + description/GPS badges from the live item.
@@ -469,7 +482,12 @@ class PictureCard(QFrame):
                 "QFrame#PictureCard { border: 2px solid #2196f3; "
                 "background: rgba(33, 150, 243, 0.08); }")
         elif self._cursor:
-            self.setStyleSheet("QFrame#PictureCard { border: 1px solid #333; }")
+            bg = "background: #e2e2e2; " if self._from_master else ""
+            self.setStyleSheet(f"QFrame#PictureCard {{ border: 1px solid #333; {bg}}}")
+        elif self._from_master:
+            # Light-grey card so reference pictures read as "existing master".
+            self.setStyleSheet(
+                "QFrame#PictureCard { background: #ececec; border: 1px solid #cfcfcf; }")
         else:
             self.setStyleSheet("")
 
@@ -500,6 +518,31 @@ def _safe_int(s, default: int = 0) -> int:
         return int(s)
     except (ValueError, TypeError):
         return default
+
+
+# ── Background master loader ─────────────────────────────────────────────────
+
+class _MasterLoader(QObject):
+    """Reads the master DB's CSVs (readMaster, ~2-3s) on a worker thread so the
+    GUI never blocks. readMaster builds plain Python data (no Qt objects) and
+    logs via the cross-thread-safe queued logger, so it's safe off-thread. The
+    resulting FilePicture is handed to the GUI thread via `finished`."""
+
+    finished = pyqtSignal(object)   # FilePicture, or None on failure
+
+    def __init__(self, master_root: str):
+        super().__init__()
+        self._root = master_root
+
+    def run(self):
+        fp = None
+        try:
+            fp = FilePicture(None)
+            fp.readMaster(self._root, None)
+        except Exception as e:
+            logger.error(f"RatingEditor master load failed: {e}", exc_info=True)
+            fp = None
+        self.finished.emit(fp)
 
 
 # ── Main dialog ────────────────────────────────────────────────────────────────
@@ -542,6 +585,13 @@ class RatingEditorDialog(QDialog):
         # Trip-scope per-day tracking; None in Day scope
         self._day_objects: dict | None = None   # day_str → (Files, Pictures)
         self._upn_day_map: dict[str, str] = {}  # upn_key → day_str
+        # Master DB (Trip+Master scope) — loaded lazily on a worker thread, then
+        # kept for the dialog's lifetime.
+        self._master_fpr: FilePicture | None = None
+        self._master_root: str | None = None
+        self._master_thread: QThread | None = None
+        self._master_worker: _MasterLoader | None = None
+        self._closing = False
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(6, 6, 6, 4)
@@ -553,14 +603,20 @@ class RatingEditorDialog(QDialog):
         # Scope radio
         self._day_radio = QRadioButton("Day")
         self._trip_radio = QRadioButton("Trip")
-        grp = QButtonGroup(self)
-        grp.addButton(self._day_radio)
-        grp.addButton(self._trip_radio)
+        self._tm_radio = QRadioButton("Trip+Master")
+        self._tm_radio.setToolTip(
+            "Also show this species' existing master pictures (read-only, greyed) "
+            "alongside the trip's, to judge whether a new shot is website-worthy")
+        self._scope_grp = QButtonGroup(self)
+        self._scope_grp.addButton(self._day_radio)
+        self._scope_grp.addButton(self._trip_radio)
+        self._scope_grp.addButton(self._tm_radio)
         (self._day_radio if day_str else self._trip_radio).setChecked(True)
-        self._day_radio.toggled.connect(self._on_scope_toggled)
+        self._scope_grp.buttonToggled.connect(self._on_scope_toggled)
         top.addWidget(QLabel("Scope:"))
         top.addWidget(self._day_radio)
         top.addWidget(self._trip_radio)
+        top.addWidget(self._tm_radio)
         top.addSpacing(8)
 
         # Day picker (visible only in Day scope)
@@ -647,9 +703,20 @@ class RatingEditorDialog(QDialog):
         main_layout.addWidget(self._scroll)
 
         # Populate day combo then load data after show
+        logger.info("RatingEditor: __init__ complete; scheduling first load")
         QTimer.singleShot(0, self._init_day_combo)
 
     def closeEvent(self, event):
+        # Stop the master loader cleanly so its finished signal never fires into
+        # a half-destroyed dialog. wait() blocks briefly (the read is ~2-3s) but
+        # only when closing during an in-flight load.
+        self._closing = True
+        if self._master_thread is not None:
+            try:
+                self._master_thread.quit()
+                self._master_thread.wait(5000)
+            except RuntimeError:
+                pass
         save_window(self, self._geo_key, cols=self.columns)
         super().closeEvent(event)
 
@@ -681,12 +748,31 @@ class RatingEditorDialog(QDialog):
     # ── Data loading ──────────────────────────────────────────────────────────
 
     def _load_data(self):
+        # Non-reentrant: scope/day/species signals can fire while a load runs;
+        # re-entering would rebuild the combo/grid mid-flight and delete widgets
+        # out from under the outer call (observed: QComboBox C++ object deleted).
+        # The master read itself is off-thread (see _attach_master).
+        if getattr(self, "_loading", False):
+            return
+        self._loading = True
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            self._load_data_inner()
+        finally:
+            QApplication.restoreOverrideCursor()
+            self._loading = False
+
+    def _load_data_inner(self):
+        scope = ("day" if self._day_radio.isChecked()
+                 else "tripmaster" if self._tm_radio.isChecked() else "trip")
+        logger.info(f"RatingEditor: _load_data_inner start (scope={scope})")
         saved_species = self._species_combo.currentData()  # preserve across reload
         self._status.setText("Loading…")
         self.fpr = FilePicture(None)
         self._day_objects = None
         self._upn_day_map = {}
         scope_day = self._day_radio.isChecked()
+        tripmaster = self._tm_radio.isChecked()
         try:
             if scope_day:
                 day = self._current_day()
@@ -699,7 +785,7 @@ class RatingEditorDialog(QDialog):
                     return
                 self._status.setText(f"Day: {day}")
             else:
-                self._load_trip_scope()
+                self._load_trip_scope()   # Trip and Trip+Master both load the full trip
         except Exception as e:
             self._status.setText(f"Load error: {e}")
             logger.error(f"RatingEditorDialog load error: {e}", exc_info=True)
@@ -714,6 +800,70 @@ class RatingEditorDialog(QDialog):
             loader=self._loader,
         )
         self._populate_species_combo(restore_selection=saved_species)
+        logger.info(f"RatingEditor: combo populated ({self._species_combo.count()} entries); "
+                    f"_load_data_inner done")
+        if tripmaster:
+            self._attach_master()
+
+    def _attach_master(self):
+        """Make the master reference set available for Trip+Master. The CSV read
+        (~2-3s) runs on a worker thread so the GUI never freezes; results are
+        applied back on the GUI thread in _on_master_loaded. If already loaded
+        (or a load is in flight) we reuse/await it."""
+        if not self._tm_radio.isChecked() or self._collection is None:
+            return
+        if self._master_fpr is not None:
+            logger.info("RatingEditor: master already loaded; applying")
+            self._apply_master(self._master_fpr)
+            return
+        if getattr(self, "_master_thread", None) is not None:
+            logger.info("RatingEditor: master load already in flight")
+            return   # a background load is already running
+        master_root = _config.get("master", "masterbiotadatabase", fallback="").strip()
+        if not master_root or not Path(master_root).exists():
+            self._status.setText(
+                "Master database not available — showing trip pictures only.")
+            return
+        self._master_root = master_root
+        logger.info("RatingEditor: starting background master load")
+        self._status.setText("Loading master database in the background…")
+        self._master_thread = QThread(self)
+        self._master_worker = _MasterLoader(master_root)
+        self._master_worker.moveToThread(self._master_thread)
+        self._master_thread.started.connect(self._master_worker.run)
+        self._master_worker.finished.connect(self._on_master_loaded)
+        self._master_worker.finished.connect(self._master_thread.quit)
+        self._master_worker.finished.connect(self._master_worker.deleteLater)
+        self._master_thread.finished.connect(self._master_thread.deleteLater)
+        self._master_thread.start()
+
+    def _on_master_loaded(self, fp):
+        # Back on the GUI thread (queued signal). Drop the thread handle so a
+        # later scope switch can start a fresh load if this one failed.
+        self._master_thread = None
+        self._master_worker = None
+        logger.info(f"RatingEditor: master load finished (ok={fp is not None})")
+        if getattr(self, "_closing", False):
+            return
+        if fp is None:
+            self._status.setText(
+                "Master database load failed — showing trip pictures only.")
+            return
+        self._master_fpr = fp
+        self._apply_master(fp)
+
+    def _apply_master(self, fp):
+        if self._collection is None or not self._tm_radio.isChecked():
+            return
+        self._collection.set_master(
+            fp.upn.UniquePictureName_dict, fp.fi.files_dict,
+            self._master_root, include=True)
+        if self._species_combo.currentData() is not None:
+            self._rebuild_cards()
+        else:
+            n_master = len(fp.upn.UniquePictureName_dict)
+            self._status.setText(
+                f"Trip + master ready ({n_master} master pictures) — select a species.")
 
     def _load_trip_scope(self):
         """Load all review-day CSVs into fpr, keeping per-day objects for write-back."""
@@ -871,13 +1021,18 @@ class RatingEditorDialog(QDialog):
 
         suffix = f" for {filter_name}" if filter_name else ""
         self._status.setText(f"{n} picture{'s' if n != 1 else ''}{suffix}")
+        logger.info(f"RatingEditor: rebuilt grid with {n} card(s) for filter={filter_name!r}")
         self._update_selection_display()
         QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
 
     # ── Event handlers ────────────────────────────────────────────────────────
 
-    def _on_scope_toggled(self, day_checked: bool):
-        self._day_combo.setVisible(day_checked)
+    def _on_scope_toggled(self, _button, checked: bool):
+        # buttonToggled fires for both the de-selected and newly-selected radio;
+        # act only on the one that became checked.
+        if not checked:
+            return
+        self._day_combo.setVisible(self._day_radio.isChecked())
         self._load_data()
 
     def _on_day_changed(self):
@@ -1029,9 +1184,16 @@ class RatingEditorDialog(QDialog):
         self._bracket_right = None
         self._update_selection_display()
 
+    def _editable_keys(self, keys) -> set:
+        """Drop master reference keys — they're read-only (v1)."""
+        if self._collection is None:
+            return set(keys)
+        return {k for k in keys if not self._collection.is_master(k)}
+
     def _open_species_dialog_for_selection(self):
-        if self._selected_keys:
-            self._open_species_dialog_for_keys(self._selected_keys)
+        keys = self._editable_keys(self._selected_keys)
+        if keys:
+            self._open_species_dialog_for_keys(keys)
 
     def _on_card_context_menu(self, upn_key: str):
         from PyQt6.QtWidgets import QMenu
@@ -1039,6 +1201,9 @@ class RatingEditorDialog(QDialog):
         keys_for_action = (self._selected_keys
                            if upn_key in self._selected_keys and self._selected_keys
                            else {upn_key})
+        keys_for_action = self._editable_keys(keys_for_action)
+        if not keys_for_action:
+            return   # master-only selection — nothing editable
         n = len(keys_for_action)
         menu = QMenu(self)
         lbl = f"{n} picture{'s' if n != 1 else ''}"
