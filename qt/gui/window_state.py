@@ -48,10 +48,17 @@ def clamp_to_visible_screen(dialog):
                        if s.availableGeometry().intersects(frame)), None)
     avail = (target or QGuiApplication.primaryScreen()).availableGeometry()
 
+    # setGeometry positions the CLIENT area; the title bar sits above it. Reserve
+    # room for the title bar/border so clamping to the top edge doesn't push the
+    # title bar off-screen (frame margins are 0 before the window is shown, so
+    # fall back to a sensible default).
     g = dialog.geometry()
-    w = min(g.width(), avail.width())
-    h = min(g.height(), avail.height())
-    x = max(avail.left(), min(g.x(), avail.right() - w + 1))
-    y = max(avail.top(), min(g.y(), avail.bottom() - h + 1))
+    frame = dialog.frameGeometry()
+    top_margin = max(g.y() - frame.y(), 36)
+    left_margin = max(g.x() - frame.x(), 0)
+    w = min(g.width(), avail.width() - left_margin)
+    h = min(g.height(), avail.height() - top_margin)
+    x = max(avail.left() + left_margin, min(g.x(), avail.right() - w + 1))
+    y = max(avail.top() + top_margin, min(g.y(), avail.bottom() - h + 1))
     if (x, y, w, h) != (g.x(), g.y(), g.width(), g.height()):
         dialog.setGeometry(x, y, w, h)

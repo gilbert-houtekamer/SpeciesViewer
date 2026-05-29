@@ -891,8 +891,12 @@ class MainWindow(QMainWindow):
                 item = self.trip_table.item(row, 0)
                 if item:
                     day_str = item.text()
-        dlg = RatingEditorDialog(self, trip_root, day_str)
-        dlg.show()
+        # Keep a strong reference on the main window. A non-modal dialog held
+        # only in a local goes out of scope when this method returns; Python's
+        # GC (triggered by the heavy master CSV read) then reclaims it and its
+        # widgets mid-operation → "wrapped C/C++ object ... deleted" crashes.
+        self._rating_editor_dlg = RatingEditorDialog(self, trip_root, day_str)
+        self._rating_editor_dlg.show()
 
     def open_translation_validator(self, day_str):
         from gui.translation_validate import TranslationValidateDialog

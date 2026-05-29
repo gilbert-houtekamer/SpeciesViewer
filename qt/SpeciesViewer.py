@@ -16,6 +16,15 @@ from gui.mainwindow import MainWindow
 from utils.logger_support import init_logger
 from gui.trip_overview import populate_trip_overview
 
+# Strong, module-level reference to the main window for the app's lifetime.
+# Without it the window is created as a local inside launch_main_window and kept
+# alive only by Qt (C++). Python's cyclic GC — fired by big allocations such as
+# the Rating Editor's master CSV read (~260k dicts) — then reclaims the whole
+# unrooted Python widget graph mid-operation, deleting live widgets and crashing
+# with "wrapped C/C++ object ... has been deleted".
+_main_window = None
+
+
 def start_main():
     # 🖼️ Splash screen setup
     splash_pix = QPixmap("assets/svsplash.jpg")
@@ -41,10 +50,12 @@ def start_main():
 
     # 🪄 Launch main app window after splash
     def launch_main_window():
-        main_window = MainWindow()
+        global _main_window
+        _main_window = MainWindow()
+        main_window = _main_window
         main_window.logger = init_logger(main_window.green_log_box)           # ✅ Set up logging
         print(f"✅ Logging configured, logger assigned: {main_window.logger}")
-        
+
         populate_trip_overview(main_window)  # ✅ Now logger is ready
         splash.finish(main_window)
         main_window.show()
