@@ -317,9 +317,12 @@ class PictureCard(QFrame):
         self._lbl_name.setWordWrap(True)
         vbox.addWidget(self._lbl_name)
 
-        # Reference-from-master tag (read-only comparison picture)
+        # Reference-from-master tag (read-only comparison picture). Show the
+        # master picture's resolution (the JPG/web size) so its quality is
+        # comparable at a glance, e.g. "— from master (800x599) —".
         if self._from_master:
-            tag = QLabel("— from master —")
+            res = item.exif.jpg_dimensions or item.exif.dimensions
+            tag = QLabel(f"— from master ({res}) —" if res else "— from master —")
             tag.setAlignment(Qt.AlignmentFlag.AlignCenter)
             tag.setStyleSheet("color: #888; font-size: 8px; font-style: italic;")
             vbox.addWidget(tag)

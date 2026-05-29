@@ -342,6 +342,58 @@ class RatingEditorCollection(PictureCollection):
                     logger.warning(f"RAW thumb extraction failed for {raw_path.name}: {e}")
         return None
 
+    def raw_path(self, upn_key: str) -> Path | None:
+        """Absolute path of the first RAW file in the UPN (master-aware), for
+        opening it in DxO PhotoLab. Master file paths are relative to the master
+        root; trip paths are absolute in WindowsFileName."""
+        row = self._upn_row(upn_key)
+        files_dict = self._files_dict_for(upn_key)
+        files = row.get("Files", [])
+        if not isinstance(files, list):
+            return None
+        master = upn_key in self._master_keys
+        rel_dir = ((row.get("TargetPath") or row.get("BestJPGPathName") or "").strip()
+                   if master else "")
+        for fname in files:
+            frow = files_dict.get(fname)
+            if not frow:
+                continue
+            if ("." + frow.get("WindowsExtension", "").lower()) not in _RAW_EXTS:
+                continue
+            if master and self._master_root is not None and rel_dir:
+                p = self._master_root / rel_dir / fname
+            else:
+                p = Path(frow.get("WindowsFileName", ""))
+            if p.exists():
+                return p
+        return None
+
+    def file_directory(self, upn_key: str) -> str:
+        """Absolute directory holding the UPN's files (master-aware). Prefers an
+        existing image file so 'open in Explorer' lands in the right folder."""
+        for p in (self.jpg_path(upn_key), self.raw_path(upn_key)):
+            if p:
+                return str(p.parent)
+        # Fall back to any file row with an on-disk path.
+        row = self._upn_row(upn_key)
+        files_dict = self._files_dict_for(upn_key)
+        master = upn_key in self._master_keys
+        rel_dir = ((row.get("TargetPath") or row.get("BestJPGPathName") or "").strip()
+                   if master else "")
+        files = row.get("Files", [])
+        if isinstance(files, list):
+            for fname in files:
+                frow = files_dict.get(fname)
+                if not frow:
+                    continue
+                if master and self._master_root is not None and rel_dir:
+                    p = self._master_root / rel_dir / fname
+                else:
+                    p = Path(frow.get("WindowsFileName", ""))
+                if p.exists():
+                    return str(p.parent)
+        return ""
+
     def _image_path(self, upn_key: str) -> Path | None:
         jpg = self.jpg_path(upn_key)
         if jpg:

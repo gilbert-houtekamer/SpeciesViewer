@@ -17,22 +17,57 @@ Navigation: ←/→ step through keys; assigning a rating or colour auto-advance
 """
 
 import logging
+from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QTextEdit,
-    QSizePolicy, QScrollArea, QSplitter, QFrame, QPushButton,
+    QSizePolicy, QScrollArea, QSplitter, QFrame, QPushButton, QToolButton, QStyle,
+    QMessageBox,
 )
-from PyQt6.QtGui import QMovie, QPixmap, QGuiApplication, QShortcut, QKeySequence
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import (
+    QMovie, QPixmap, QGuiApplication, QShortcut, QKeySequence, QPainter, QColor,
+    QIcon, QFont)
+from PyQt6.QtCore import Qt, QTimer, QSize, pyqtSignal
 
 from gui.rating_editor import StarWidget, ColorSelector, COLOR_HEX
 from gui.window_state import restore_window, save_window, clamp_to_visible_screen
+from utils.open_path import open_path, launch_app_with_file
+from utils.config import get_setting
 
 logger = logging.getLogger("speciesviewer")
 
 _DISCARD_COLORS = ("Blue", "Purple")
 _DISCARD_GREYED_TIP = ("Has a JPG — kept for the website and a future DxO "
                        "re-export, so it can't be a deletion candidate.")
+
+# Where DxO PhotoLab is installed. The path is configurable in Settings →
+# Global Settings ([Global] dxo_path); this is the fallback used when unset.
+_DEFAULT_DXO_PATH = r"C:\Program Files\DxO\DxO PhotoLab 9\DxO.PhotoLab.exe"
+
+
+def _make_pl_icon(size: int = 18) -> QIcon:
+    """A small navy 'PL' badge standing in for DxO PhotoLab — drawn in code so
+    there's no binary asset to ship and it renders the same on Win/Mac."""
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor("#16223d"))
+    p.drawRoundedRect(0, 0, size, size, 4, 4)
+    p.setPen(QColor("#e8eefc"))
+    f = QFont()
+    f.setBold(True)
+    f.setPixelSize(max(7, int(size * 0.5)))
+    p.setFont(f)
+    p.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "PL")
+    p.end()
+    return QIcon(pm)
+
+
+def dxo_executable() -> str:
+    """The configured DxO PhotoLab path, falling back to the default install."""
+    return (get_setting("Global", "dxo_path", fallback="") or "").strip() or _DEFAULT_DXO_PATH
 
 # ── Filmstrip geometry ─────────────────────────────────────────────────────────
 _THUMB_W   = 144   # px — thumbnail width inside a strip cell
@@ -378,10 +413,36 @@ class LargeImageView(QDialog):
 
         # FILE section
         pl.addWidget(_section_header("FILE"))
+        file_row = QHBoxLayout()
+        file_row.setContentsMargins(0, 0, 0, 0)
+        file_row.setSpacing(4)
         self._file_key_lbl = _field_lbl()
         self._file_key_lbl.setStyleSheet(
             "font-weight: bold; font-size: 12px; padding-bottom: 1px;")
-        pl.addWidget(self._file_key_lbl)
+        file_row.addWidget(self._file_key_lbl, stretch=1)
+
+        # Open the picture's folder in Explorer / Finder (all files of the UPN).
+        self._explorer_btn = QToolButton()
+        self._explorer_btn.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
+        self._explorer_btn.setIconSize(QSize(18, 18))
+        self._explorer_btn.setAutoRaise(True)
+        self._explorer_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._explorer_btn.setToolTip("Show this picture's files in Explorer")
+        self._explorer_btn.clicked.connect(self._open_in_explorer)
+        file_row.addWidget(self._explorer_btn, alignment=Qt.AlignmentFlag.AlignTop)
+
+        # Open the RAW file in DxO PhotoLab.
+        self._dxo_btn = QToolButton()
+        self._dxo_btn.setIcon(_make_pl_icon(18))
+        self._dxo_btn.setIconSize(QSize(18, 18))
+        self._dxo_btn.setAutoRaise(True)
+        self._dxo_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._dxo_btn.setToolTip("Open this picture's folder in DxO PhotoLab")
+        self._dxo_btn.clicked.connect(self._open_in_dxo)
+        file_row.addWidget(self._dxo_btn, alignment=Qt.AlignmentFlag.AlignTop)
+        pl.addLayout(file_row)
+
         self._file_exts_lbl = _small_lbl()
         pl.addWidget(self._file_exts_lbl)
         self._file_dir_lbl = _small_lbl()
@@ -542,6 +603,11 @@ class LargeImageView(QDialog):
         dir_path = self._collection.file_directory(key)
         self._file_dir_lbl.setText(dir_path)
         self._file_dir_lbl.setVisible(bool(dir_path))
+        self._explorer_btn.setEnabled(bool(dir_path))
+        raw = self._collection.raw_path(key)
+        self._dxo_btn.setEnabled(raw is not None)
+        self._dxo_btn.setToolTip("Open this picture's folder in DxO PhotoLab" if raw
+                                 else "No RAW file for this picture")
 
         # EXIF
         exif = item.exif
@@ -572,8 +638,14 @@ class LargeImageView(QDialog):
         self._exif_focal_lbl.setText(focal_t)
         self._exif_focal_lbl.setVisible(bool(focal_t))
 
-        self._exif_dims_lbl.setText(exif.dimensions or "")
-        self._exif_dims_lbl.setVisible(bool(exif.dimensions))
+        # Show the master/RAW size and, when it differs, the displayed JPG size
+        # too: "5600x3728  (JPG 800x533)". Older pictures often have a small JPG.
+        dims = exif.dimensions or ""
+        jpg_dims = exif.jpg_dimensions or ""
+        if jpg_dims and jpg_dims != dims:
+            dims = f"{dims}  (JPG {jpg_dims})" if dims else f"JPG {jpg_dims}"
+        self._exif_dims_lbl.setText(dims)
+        self._exif_dims_lbl.setVisible(bool(dims))
         # Keep the full datetime ("2026:03:16 15:30:45" → "2026-03-16 15:30:45")
         date_t = item.date.replace(":", "-", 2) if item.date else ""
         self._exif_date_lbl.setText(date_t)
@@ -956,6 +1028,37 @@ class LargeImageView(QDialog):
             self.picture_changed.emit(self._item.key)
         except Exception as e:
             logger.warning(f"LargeImageView: description save failed: {e}")
+
+    # ── External tools (Explorer / DxO PhotoLab) ───────────────────────────────
+
+    def _open_in_explorer(self):
+        if self._item is None:
+            return
+        dir_path = self._collection.file_directory(self._item.key)
+        if dir_path:
+            open_path(dir_path)
+
+    def _open_in_dxo(self):
+        if self._item is None:
+            return
+        raw = self._collection.raw_path(self._item.key)
+        if not raw:
+            return
+        exe = dxo_executable()
+        if not Path(exe).exists():
+            QMessageBox.warning(
+                self, "DxO PhotoLab not found",
+                f"Could not find DxO PhotoLab at:\n\n{exe}\n\n"
+                "Set the correct path in Settings → Global Settings.")
+            return
+        # Open the picture's FOLDER in DxO's PhotoLibrary (the browse / contact
+        # sheet view), not the single RAW — passing a file jumps straight into
+        # Customize and hides which directory you're in. From the folder view
+        # the RAW is one click away, with all of the group's files in context.
+        if not launch_app_with_file(exe, raw.parent):
+            QMessageBox.warning(
+                self, "DxO PhotoLab",
+                f"Could not launch DxO PhotoLab for:\n{raw.parent}")
 
     # ── Colour frame ──────────────────────────────────────────────────────────
 

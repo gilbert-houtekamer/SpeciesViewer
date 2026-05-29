@@ -9,7 +9,7 @@ class GlobalSettingsDialog(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
         self.setWindowTitle("Global Settings")
-        self.setFixedSize(400, 300)
+        self.setFixedSize(400, 380)
 
         layout = QVBoxLayout(self)
 
@@ -22,6 +22,10 @@ class GlobalSettingsDialog(QDialog):
         self.height_field = self._labeled_field(layout, "Window height", _config.get("Global", "default_window_height", fallback="1200"))
         self.webpassword_field = self._labeled_field(layout, "Website password", _config.get("websettings", "sftppwd", fallback="? still needed"), password=True)
         self.base_url_field = self._labeled_field(layout, "Base URL for web address", _config.get("websettings", "base_url", fallback="https://houtekamer.com"))
+        self.dxo_path_field = self._labeled_field(
+            layout, "DxO PhotoLab path",
+            _config.get("Global", "dxo_path",
+                        fallback=r"C:\Program Files\DxO\DxO PhotoLab 9\DxO.PhotoLab.exe"))
 
         save_button = QPushButton("Save")
         save_button.clicked.connect(self.save_settings)
@@ -40,7 +44,8 @@ class GlobalSettingsDialog(QDialog):
         _config.set("Global", "default_window_width", self.width_field.text())
         _config.set("Global", "default_window_height", self.height_field.text())
         _config.set("websettings", "sftppwd", self.webpassword_field.text())
-        _config.set("websettings", "base_url", self.base_url_field.text())        
+        _config.set("websettings", "base_url", self.base_url_field.text())
+        _config.set("Global", "dxo_path", self.dxo_path_field.text())
 
         persist_config()
 

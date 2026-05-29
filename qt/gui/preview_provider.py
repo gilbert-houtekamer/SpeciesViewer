@@ -248,6 +248,18 @@ class PreviewCollection(PictureCollection):
         p = self.rep_full_path(key)
         return str(p.parent) if p and p.parent != p else ""
 
+    def raw_path(self, key: str) -> Path | None:
+        """Absolute path of the UPN's first RAW file (for opening in DxO)."""
+        for fname in self._files(key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            if ("." + frow.get("WindowsExtension", "").lower()) in _RAW_EXTS:
+                p = Path(frow.get("WindowsFileName", ""))
+                if p.exists():
+                    return p
+        return None
+
     # ── helpers shared with items ─────────────────────────────────────────
     def _files(self, upn_key: str) -> list[str]:
         files = self.fpr.upn.UniquePictureName_dict.get(upn_key, {}).get("Files", [])

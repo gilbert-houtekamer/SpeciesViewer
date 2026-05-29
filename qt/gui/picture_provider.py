@@ -46,7 +46,8 @@ class ExifSummary:
     model: str = ""             # camera body, e.g. "OM-1 Mark II"
     lens: str = ""              # e.g. "OLYMPUS M.150-400mm F4.5"
     distance: str = ""          # subject/focus distance, e.g. "85.0 m"
-    dimensions: str = ""
+    dimensions: str = ""        # the master/RAW image size, e.g. "5600x3728"
+    jpg_dimensions: str = ""    # the displayed/web JPG size, e.g. "800x533"
     gps: str = ""
 
 
@@ -67,6 +68,7 @@ def exif_from_rows(upn_row: dict, file_row: dict) -> ExifSummary:
               or f.get("EXIF:LensModel", "") or f.get("Composite:LensID", "")),
         distance=f.get("MakerNotes:FocusDistance", "") or f.get("EXIF:SubjectDistance", ""),
         dimensions=u.get("ImageSize", "") or f.get("ImageSize", ""),
+        jpg_dimensions=u.get("JPGSize", ""),
         gps=u.get("GPSPosition", "") or f.get("Composite:GPSPosition", ""),
     )
 
@@ -214,3 +216,8 @@ class PictureCollection(ABC):
     def file_directory(self, key: str) -> str:
         """Return the directory path of the representative file, or ''."""
         return ""
+
+    def raw_path(self, key: str):
+        """Return the on-disk Path of the UPN's RAW file (for opening it in an
+        external RAW editor like DxO PhotoLab), or None if there is no RAW."""
+        return None
