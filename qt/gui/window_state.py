@@ -32,10 +32,26 @@ def save_window(dialog, key, cols=None):
 
 
 def clamp_to_visible_screen(dialog):
+    """Move/resize the window so it sits FULLY inside one screen's available
+    area. A partly off-screen window (e.g. a negative top-left straddling two
+    high-DPI monitors) is a known Qt/Windows case where the backing store never
+    paints — the window comes up blank/white. Intersecting a screen isn't
+    enough; the whole frame must fit, or we reposition it."""
     frame = dialog.frameGeometry()
-    for screen in QGuiApplication.screens():
-        if screen.availableGeometry().intersects(frame):
-            return  # at least partially on some screen — fine
-    avail = (dialog.screen() or QGuiApplication.primaryScreen()).availableGeometry()
-    dialog.move(avail.center().x() - dialog.width() // 2,
-                avail.center().y() - dialog.height() // 2)
+    center = frame.center()
+    # Prefer the screen containing the window's center; else any it intersects;
+    # else the primary screen.
+    target = next((s for s in QGuiApplication.screens()
+                   if s.availableGeometry().contains(center)), None)
+    if target is None:
+        target = next((s for s in QGuiApplication.screens()
+                       if s.availableGeometry().intersects(frame)), None)
+    avail = (target or QGuiApplication.primaryScreen()).availableGeometry()
+
+    g = dialog.geometry()
+    w = min(g.width(), avail.width())
+    h = min(g.height(), avail.height())
+    x = max(avail.left(), min(g.x(), avail.right() - w + 1))
+    y = max(avail.top(), min(g.y(), avail.bottom() - h + 1))
+    if (x, y, w, h) != (g.x(), g.y(), g.width(), g.height()):
+        dialog.setGeometry(x, y, w, h)

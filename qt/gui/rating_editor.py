@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QPixmap, QImage, QGuiApplication, QIcon
 from PyQt6.QtCore import (Qt, QTimer, QSize, pyqtSignal, QObject, QRunnable,
-                          QThreadPool, QThread)
+                          QThreadPool)
 
 from engine.filepicture import FilePicture
 from engine.filecsv import Files
@@ -520,31 +520,6 @@ def _safe_int(s, default: int = 0) -> int:
         return default
 
 
-# ── Background master loader ─────────────────────────────────────────────────
-
-class _MasterLoader(QObject):
-    """Reads the master DB's CSVs (readMaster, ~2-3s) on a worker thread so the
-    GUI never blocks. readMaster builds plain Python data (no Qt objects) and
-    logs via the cross-thread-safe queued logger, so it's safe off-thread. The
-    resulting FilePicture is handed to the GUI thread via `finished`."""
-
-    finished = pyqtSignal(object)   # FilePicture, or None on failure
-
-    def __init__(self, master_root: str):
-        super().__init__()
-        self._root = master_root
-
-    def run(self):
-        fp = None
-        try:
-            fp = FilePicture(None)
-            fp.readMaster(self._root, None)
-        except Exception as e:
-            logger.error(f"RatingEditor master load failed: {e}", exc_info=True)
-            fp = None
-        self.finished.emit(fp)
-
-
 # ── Main dialog ────────────────────────────────────────────────────────────────
 
 class RatingEditorDialog(QDialog):
@@ -585,13 +560,10 @@ class RatingEditorDialog(QDialog):
         # Trip-scope per-day tracking; None in Day scope
         self._day_objects: dict | None = None   # day_str → (Files, Pictures)
         self._upn_day_map: dict[str, str] = {}  # upn_key → day_str
-        # Master DB (Trip+Master scope) — loaded lazily on a worker thread, then
-        # kept for the dialog's lifetime.
+        # Master DB (Trip+Master scope) — loaded lazily on first use, then kept
+        # for the dialog's lifetime.
         self._master_fpr: FilePicture | None = None
         self._master_root: str | None = None
-        self._master_thread: QThread | None = None
-        self._master_worker: _MasterLoader | None = None
-        self._closing = False
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(6, 6, 6, 4)
@@ -703,20 +675,9 @@ class RatingEditorDialog(QDialog):
         main_layout.addWidget(self._scroll)
 
         # Populate day combo then load data after show
-        logger.info("RatingEditor: __init__ complete; scheduling first load")
         QTimer.singleShot(0, self._init_day_combo)
 
     def closeEvent(self, event):
-        # Stop the master loader cleanly so its finished signal never fires into
-        # a half-destroyed dialog. wait() blocks briefly (the read is ~2-3s) but
-        # only when closing during an in-flight load.
-        self._closing = True
-        if self._master_thread is not None:
-            try:
-                self._master_thread.quit()
-                self._master_thread.wait(5000)
-            except RuntimeError:
-                pass
         save_window(self, self._geo_key, cols=self.columns)
         super().closeEvent(event)
 
@@ -763,9 +724,6 @@ class RatingEditorDialog(QDialog):
             self._loading = False
 
     def _load_data_inner(self):
-        scope = ("day" if self._day_radio.isChecked()
-                 else "tripmaster" if self._tm_radio.isChecked() else "trip")
-        logger.info(f"RatingEditor: _load_data_inner start (scope={scope})")
         saved_species = self._species_combo.currentData()  # preserve across reload
         self._status.setText("Loading…")
         self.fpr = FilePicture(None)
@@ -800,57 +758,36 @@ class RatingEditorDialog(QDialog):
             loader=self._loader,
         )
         self._populate_species_combo(restore_selection=saved_species)
-        logger.info(f"RatingEditor: combo populated ({self._species_combo.count()} entries); "
-                    f"_load_data_inner done")
         if tripmaster:
             self._attach_master()
 
     def _attach_master(self):
-        """Make the master reference set available for Trip+Master. The CSV read
-        (~2-3s) runs on a worker thread so the GUI never freezes; results are
-        applied back on the GUI thread in _on_master_loaded. If already loaded
-        (or a load is in flight) we reuse/await it."""
+        """Load the master reference set for Trip+Master (once, then cached) and
+        apply it to the live collection. The CSV read is ~2-3s; it runs after the
+        combo/grid are already built (end of _load_data_inner) so it can't
+        interfere with rebuilding those widgets. Kept synchronous on purpose — a
+        worker thread here proved fragile (QThread teardown crashes), and a brief
+        one-time wait is acceptable."""
         if not self._tm_radio.isChecked() or self._collection is None:
             return
-        if self._master_fpr is not None:
-            logger.info("RatingEditor: master already loaded; applying")
-            self._apply_master(self._master_fpr)
-            return
-        if getattr(self, "_master_thread", None) is not None:
-            logger.info("RatingEditor: master load already in flight")
-            return   # a background load is already running
-        master_root = _config.get("master", "masterbiotadatabase", fallback="").strip()
-        if not master_root or not Path(master_root).exists():
-            self._status.setText(
-                "Master database not available — showing trip pictures only.")
-            return
-        self._master_root = master_root
-        logger.info("RatingEditor: starting background master load")
-        self._status.setText("Loading master database in the background…")
-        self._master_thread = QThread(self)
-        self._master_worker = _MasterLoader(master_root)
-        self._master_worker.moveToThread(self._master_thread)
-        self._master_thread.started.connect(self._master_worker.run)
-        self._master_worker.finished.connect(self._on_master_loaded)
-        self._master_worker.finished.connect(self._master_thread.quit)
-        self._master_worker.finished.connect(self._master_worker.deleteLater)
-        self._master_thread.finished.connect(self._master_thread.deleteLater)
-        self._master_thread.start()
-
-    def _on_master_loaded(self, fp):
-        # Back on the GUI thread (queued signal). Drop the thread handle so a
-        # later scope switch can start a fresh load if this one failed.
-        self._master_thread = None
-        self._master_worker = None
-        logger.info(f"RatingEditor: master load finished (ok={fp is not None})")
-        if getattr(self, "_closing", False):
-            return
-        if fp is None:
-            self._status.setText(
-                "Master database load failed — showing trip pictures only.")
-            return
-        self._master_fpr = fp
-        self._apply_master(fp)
+        if self._master_fpr is None:
+            master_root = _config.get("master", "masterbiotadatabase", fallback="").strip()
+            if not master_root or not Path(master_root).exists():
+                self._status.setText(
+                    "Master database not available — showing trip pictures only.")
+                return
+            self._status.setText("Loading master database…")
+            try:
+                fp = FilePicture(None)
+                fp.readMaster(master_root, None)
+            except Exception as e:
+                logger.error(f"RatingEditor master load failed: {e}", exc_info=True)
+                self._status.setText(
+                    "Master database load failed — showing trip pictures only.")
+                return
+            self._master_fpr = fp
+            self._master_root = master_root
+        self._apply_master(self._master_fpr)
 
     def _apply_master(self, fp):
         if self._collection is None or not self._tm_radio.isChecked():
@@ -1021,7 +958,6 @@ class RatingEditorDialog(QDialog):
 
         suffix = f" for {filter_name}" if filter_name else ""
         self._status.setText(f"{n} picture{'s' if n != 1 else ''}{suffix}")
-        logger.info(f"RatingEditor: rebuilt grid with {n} card(s) for filter={filter_name!r}")
         self._update_selection_display()
         QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
 

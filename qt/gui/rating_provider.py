@@ -140,7 +140,6 @@ class RatingEditorCollection(PictureCollection):
         self._jpg_only = jpg_only
         self._species_lang = species_lang
         self._loader = loader or AsyncImageLoader()
-        self._order: list[str] = []
         # Master reference state (Trip+Master scope) — read-only pictures pulled
         # from the master DB for the selected species. Empty until set_master().
         self._master_upn: dict = {}          # upn_key -> master picture row
@@ -148,7 +147,11 @@ class RatingEditorCollection(PictureCollection):
         self._master_root: Path | None = None
         self._include_master = False
         self._master_keys: set[str] = set()  # keys currently shown from master
-        self.rebuild()
+        # Lazy: don't scan all trip pictures (each jpg_path() does several
+        # Path.exists() calls — thousands of filesystem stats over D:/E: and
+        # Dropbox) until a species is actually selected. The dialog shows
+        # "select a species" first; _rebuild_cards calls rebuild(filter) then.
+        self._order: list[str] = []
 
     # ── master reference wiring ───────────────────────────────────────────
     def set_master(self, master_upn: dict, master_files: dict,

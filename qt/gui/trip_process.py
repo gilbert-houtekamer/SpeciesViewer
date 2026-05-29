@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
     QTabWidget, QWidget, QVBoxLayout, QComboBox, QLineEdit, QFormLayout, QSizePolicy, QFileDialog, QDateEdit, QTextEdit,
     QTableWidget, QTableWidgetItem, QAbstractItemView, QStyledItemDelegate, QMessageBox)
 from PyQt6.QtGui import QFont, QGuiApplication, QColor
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
 import logging
 import sys, os, shutil
 from datetime import datetime
@@ -1435,7 +1435,8 @@ class BaseTripModuleDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
-        layout.addWidget(QLabel("Trip root folder"))
+        self.root_caption = QLabel("Trip root folder")
+        layout.addWidget(self.root_caption)
         self.root_label = QLineEdit(str(self.base_path))
         self.root_label.setReadOnly(True)
         layout.addWidget(self.root_label)
@@ -1979,6 +1980,27 @@ class AddTripToMasterDialog(BaseTripModuleDialog):
         )
 
 
+class _RescanWorker(QObject):
+    """Runs exifcache.rescan (the long master EXIF scan) on a worker thread so
+    the dialog stays responsive. rescan logs its own per-chunk progress."""
+    finished = pyqtSignal(str)   # error string, or "" on success
+
+    def __init__(self, root, cache_path):
+        super().__init__()
+        self._root = root
+        self._cache_path = cache_path
+
+    def run(self):
+        try:
+            from ghexif import exifcache
+            exifcache.rescan(self._root, self._cache_path)
+            self.finished.emit("")
+        except Exception as e:
+            logging.getLogger("speciesviewer").error(
+                f"Master EXIF rescan failed: {e}", exc_info=True)
+            self.finished.emit(str(e))
+
+
 class RescanMasterCacheDialog(BaseTripModuleDialog):
     def __init__(self, parent, menu_spec):
         super().__init__(
@@ -1993,6 +2015,48 @@ class RescanMasterCacheDialog(BaseTripModuleDialog):
                        "the day/trip cache, so it never slows Read Directory."),
             subdirectory=False
         )
+        # The base dialog defaults the path to the TRIP picture root, which is
+        # wrong for a master-wide scan (no biota tree there → nothing cached).
+        # Point it at <master>/biota and make it editable so the user can
+        # confirm/adjust the scan target; this field drives the scan (on_write).
+        from ghexif import exifcache
+        master = exifcache.master_repository(_config)
+        self._default_root = os.path.join(master, "biota") if master else ""
+        self.root_caption.setText("Master biota folder to scan")
+        self.root_label.setText(self._default_root)
+        self.root_label.setReadOnly(False)
+        self._rescan_thread = None
+        self._rescan_worker = None
+
+    def on_write(self):
+        root = self.root_label.text().strip()
+        if not root or not os.path.isdir(root):
+            self.status_label.setText(f"❌ Folder not found: {root or '(empty)'}")
+            return
+        if self._rescan_thread is not None:
+            return   # already running
+        from ghexif import exifcache
+        cache_path = exifcache.master_cache_path(_config)
+        self.write_btn.setEnabled(False)
+        self.status_label.setText(
+            "Scanning master EXIF into the cache… (progress in the log; "
+            "first run can take ~1 hour)")
+        self._rescan_thread = QThread(self)
+        self._rescan_worker = _RescanWorker(root, cache_path)
+        self._rescan_worker.moveToThread(self._rescan_thread)
+        self._rescan_thread.started.connect(self._rescan_worker.run)
+        self._rescan_worker.finished.connect(self._on_rescan_done)
+        self._rescan_worker.finished.connect(self._rescan_thread.quit)
+        self._rescan_worker.finished.connect(self._rescan_worker.deleteLater)
+        self._rescan_thread.finished.connect(self._rescan_thread.deleteLater)
+        self._rescan_thread.start()
+
+    def _on_rescan_done(self, err):
+        self._rescan_thread = None
+        self._rescan_worker = None
+        self.write_btn.setEnabled(True)
+        self.status_label.setText(
+            f"❌ {err}" if err else "✅ Master EXIF cache updated.")
 
 
 class MasterPipelineDialog(QDialog):
