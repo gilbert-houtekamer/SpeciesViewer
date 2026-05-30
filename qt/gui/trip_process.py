@@ -407,11 +407,13 @@ class _SDCardCopyWorker(QObject):
     progress = pyqtSignal(int, int, str)   # done, total, filename
     finished = pyqtSignal(dict, str)       # summary, errorstring ("" == clean)
 
-    def __init__(self, source, dest, prefix=""):
+    def __init__(self, source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0):
         super().__init__()
         self._source = source
         self._dest = dest
         self._prefix = prefix
+        self._bucket_by_date = bucket_by_date
+        self._tz_offset_hours = tz_offset_hours
         self._cancel = False
 
     def cancel(self):
@@ -422,6 +424,7 @@ class _SDCardCopyWorker(QObject):
             from bin.sv0ReadSDCard import copy_card
             summary = copy_card(
                 self._source, self._dest, prefix=self._prefix,
+                bucket_by_date=self._bucket_by_date, tz_offset_hours=self._tz_offset_hours,
                 progress=lambda done, total, name: self.progress.emit(done, total, name),
                 should_cancel=lambda: self._cancel,
             )
@@ -466,6 +469,19 @@ class ReadSDCardDialog(QDialog):
         )
         layout.addWidget(self.prefix_field)
 
+        # Date bucketing: copy into dest/<YYYY-MM-DD>/ using EXIF capture time,
+        # shifted by the timezone offset BEFORE the date is taken so near-midnight
+        # shots land in the intended day.
+        date_row = QHBoxLayout()
+        self.bucket_checkbox = QCheckBox("Sort into date subfolders (YYYY-MM-DD)")
+        date_row.addWidget(self.bucket_checkbox)
+        date_row.addSpacing(20)
+        self.tz_offset_field = LabeledTextFieldQt("Timezone offset (hours)", "0", inline=True)
+        self.tz_offset_field.field.setMaximumWidth(60)
+        date_row.addWidget(self.tz_offset_field)
+        date_row.addStretch()
+        layout.addLayout(date_row)
+
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
@@ -492,12 +508,22 @@ class ReadSDCardDialog(QDialog):
             return
 
         prefix = self.prefix_field.get_text()
+        bucket_by_date = self.bucket_checkbox.isChecked()
+        try:
+            tz_offset = float(self.tz_offset_field.get_text() or "0")
+        except ValueError:
+            self.tz_offset_field.field.setText("0")
+            tz_offset = 0.0
+
         self.read_btn.setEnabled(False)
         self.status_label.setText("Scanning…")
-        self.logger.info(f"Reading SD-card from {source} → {dest} (prefix: {prefix or '(none)'})")
+        self.logger.info(
+            f"Reading SD-card from {source} → {dest} (prefix: {prefix or '(none)'}, "
+            f"by-date: {bucket_by_date}, tz-offset: {tz_offset}h)"
+        )
 
         self._thread = QThread()
-        self._worker = _SDCardCopyWorker(source, dest, prefix)
+        self._worker = _SDCardCopyWorker(source, dest, prefix, bucket_by_date, tz_offset)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.progress.connect(self.on_progress)

@@ -16,8 +16,12 @@
 
 import hashlib
 import logging
+import os
 import shutil
+from datetime import datetime, timedelta
 from pathlib import Path
+
+UNKNOWN_DATE_DIR = "unknown-date"
 
 # Lower-case extensions (incl. dot) we treat as "pictures" worth ingesting.
 PICTURE_EXTENSIONS = {
@@ -55,12 +59,67 @@ def target_name(src_name, prefix=""):
     return f"{prefix} - {src_name}" if prefix else src_name
 
 
-def copy_card(source, dest, prefix="", logger=None, progress=None, should_cancel=None):
-    """Copy picture files from `source` (recursively) into `dest` (flat).
+def _norm(path):
+    """Normalised key for matching exiftool's SourceFile against our paths
+    (handles / vs \\ and case-insensitive Windows filesystems)."""
+    return os.path.normcase(os.path.normpath(str(path)))
 
-    prefix                       - optional filename prefix (see target_name).
-    progress(done, total, name)  - optional callback, called per file before copy.
-    should_cancel()              - optional callable; return True to stop early.
+
+def _read_capture_datetimes(files, log):
+    """{normalised path: datetime} from EXIF DateTimeOriginal, batched through
+    exiftool. Files without a readable date are simply omitted (caller falls
+    back to file mtime). exiftool is imported lazily so copy_card stays usable
+    (and unit-testable) without it for the no-bucketing path."""
+    result = {}
+    try:
+        import exiftool
+        with exiftool.ExifToolHelper(
+            common_args=["-G", "-charset", "utf8", "-charset", "filename=utf8"],
+            encoding="utf-8", check_execute=False,
+        ) as et:
+            for meta in et.get_metadata([str(p) for p in files], params=["-DateTimeOriginal"]):
+                src = meta.get("SourceFile")
+                dt_str = meta.get("EXIF:DateTimeOriginal", "")
+                if src and dt_str:
+                    try:
+                        result[_norm(src)] = datetime.strptime(dt_str[:19], "%Y:%m:%d %H:%M:%S")
+                    except ValueError:
+                        pass
+    except Exception as e:
+        log.warning(f"Could not read capture dates via exiftool ({e}); using file mtime instead.")
+    return result
+
+
+def _bucket_dates(files, tz_offset_hours, log):
+    """{normalised path: 'YYYY-MM-DD'} for each file, applying tz_offset_hours
+    BEFORE taking the date so a near-midnight shot lands in the right day.
+    Capture time comes from EXIF; missing EXIF falls back to file mtime."""
+    dt_map = _read_capture_datetimes(files, log)
+    offset = timedelta(hours=tz_offset_hours or 0)
+    buckets = {}
+    for f in files:
+        key = _norm(f)
+        dt = dt_map.get(key)
+        if dt is None:
+            try:
+                dt = datetime.fromtimestamp(f.stat().st_mtime)
+            except OSError:
+                buckets[key] = UNKNOWN_DATE_DIR
+                continue
+        buckets[key] = (dt + offset).strftime("%Y-%m-%d")
+    return buckets
+
+
+def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0,
+              logger=None, progress=None, should_cancel=None):
+    """Copy picture files from `source` (recursively) into `dest`.
+
+    prefix            - optional filename prefix (see target_name).
+    bucket_by_date    - when True, files go into dest/<YYYY-MM-DD>/ subfolders.
+    tz_offset_hours   - hours added to capture time BEFORE the date is taken,
+                        so near-midnight shots land in the intended day.
+    progress(done, total, name) - optional callback, called per file before copy.
+    should_cancel()             - optional callable; return True to stop early.
 
     Returns a summary dict: total / copied / skipped / conflict / failed / bytes.
     """
@@ -78,6 +137,10 @@ def copy_card(source, dest, prefix="", logger=None, progress=None, should_cancel
 
     log.info(f"Found {total} picture(s) under {source}")
 
+    # Resolve date buckets up front (one batched exiftool call) so the copy loop
+    # just looks up where each file goes.
+    buckets = _bucket_dates(files, tz_offset_hours, log) if bucket_by_date else {}
+
     for i, src in enumerate(files, 1):
         if should_cancel and should_cancel():
             log.warning("⏹ Card read cancelled by user.")
@@ -85,7 +148,8 @@ def copy_card(source, dest, prefix="", logger=None, progress=None, should_cancel
         if progress:
             progress(i, total, src.name)
 
-        target = dest / target_name(src.name, prefix)
+        target_dir = dest / buckets.get(_norm(src), UNKNOWN_DATE_DIR) if bucket_by_date else dest
+        target = target_dir / target_name(src.name, prefix)
         try:
             if target.exists():
                 if _already_copied(src, target):
@@ -100,7 +164,8 @@ def copy_card(source, dest, prefix="", logger=None, progress=None, should_cancel
                 continue
 
             src_hash = _sha256(src)
-            shutil.copy2(src, target)  # copy2 keeps mtime — needed for date-bucketing later
+            target.parent.mkdir(parents=True, exist_ok=True)  # create date subdir on demand
+            shutil.copy2(src, target)  # copy2 keeps mtime — fallback date source when EXIF is absent
             if _sha256(target) != src_hash:
                 target.unlink(missing_ok=True)
                 log.warning(f"❌ Verification failed, removed partial copy: {src.name}")
@@ -128,5 +193,8 @@ if __name__ == "__main__":
     parser.add_argument("source", help="Source folder (e.g. a mounted SD-card)")
     parser.add_argument("dest", help="Destination project pictures folder")
     parser.add_argument("--prefix", default="", help="Optional filename prefix, e.g. '2026 Zeeland'")
+    parser.add_argument("--by-date", action="store_true", help="Sort into dest/<YYYY-MM-DD>/ subfolders")
+    parser.add_argument("--tz-offset", type=float, default=0.0, help="Hours added to capture time before bucketing")
     args = parser.parse_args()
-    copy_card(args.source, args.dest, prefix=args.prefix)
+    copy_card(args.source, args.dest, prefix=args.prefix,
+              bucket_by_date=args.by_date, tz_offset_hours=args.tz_offset)
