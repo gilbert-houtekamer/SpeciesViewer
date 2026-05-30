@@ -134,6 +134,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     total = len(files)
     summary = {"total": total, "copied": 0, "skipped": 0,
                "conflict": 0, "failed": 0, "bytes": 0}
+    targets = []  # destination paths now present (copied or already-there) — for previewing
 
     log.info(f"Found {total} picture(s) under {source}")
 
@@ -154,6 +155,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
             if target.exists():
                 if _already_copied(src, target):
                     summary["skipped"] += 1
+                    targets.append(str(target))
                     continue
                 # Same name, different content — flat copy has no place to put
                 # this without overwriting. Leave the existing file alone and
@@ -174,6 +176,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
 
             summary["copied"] += 1
             summary["bytes"] += target.stat().st_size
+            targets.append(str(target))
         except OSError as e:
             log.warning(f"❌ Failed to copy {src.name}: {e}")
             summary["failed"] += 1
@@ -182,6 +185,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
         f"Card read summary — copied {summary['copied']}, skipped {summary['skipped']}, "
         f"conflicts {summary['conflict']}, failed {summary['failed']} of {total}."
     )
+    summary["targets"] = targets
     return summary
 
 

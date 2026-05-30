@@ -501,12 +501,19 @@ class ReadSDCardDialog(QDialog):
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         self.read_btn = QPushButton("Read")
+        self.view_btn = QPushButton("View pictures")
+        self.view_btn.setEnabled(False)  # enabled once a read produced files
         self.close_btn = QPushButton("Close")
         btn_row.addWidget(self.read_btn)
+        btn_row.addWidget(self.view_btn)
         btn_row.addWidget(self.close_btn)
         layout.addLayout(btn_row)
 
+        self._last_targets = []     # picture paths from the most recent read
+        self._last_dest = ""        # destination root (used as preview cache dir)
+
         self.read_btn.clicked.connect(self.on_read)
+        self.view_btn.clicked.connect(self.on_view)
         self.close_btn.clicked.connect(self.reject)
 
     def on_read(self):
@@ -527,7 +534,9 @@ class ReadSDCardDialog(QDialog):
             self.tz_offset_field.field.setText("0")
             tz_offset = 0.0
 
+        self._last_dest = dest
         self.read_btn.setEnabled(False)
+        self.view_btn.setEnabled(False)
         self.status_label.setText("Scanning…")
         self.logger.info(
             f"Reading SD-card from {source} → {dest} (prefix: {prefix or '(none)'}, "
@@ -558,6 +567,26 @@ class ReadSDCardDialog(QDialog):
                f"of {summary.get('total', 0)} pictures.")
         self.logger.info(f"✅ Card read complete. {msg}")
         self.status_label.setText(f"✅ {msg}")
+        self._last_targets = summary.get("targets", [])
+        self.view_btn.setEnabled(bool(self._last_targets))
+
+    def on_view(self):
+        """Open the picture grid over the just-copied files. Uses an explicit
+        file list (not folder discovery) so it works regardless of date
+        bucketing; RAW cards render via the embedded preview (cached_jpg_for)."""
+        from gui.image_viewer import ImagePreviewDialog
+        # Only formats the grid can render (still images + RAW); skip video.
+        viewable_exts = {".jpg", ".jpeg", ".heic", ".heif", ".png",
+                         ".nef", ".orf", ".cr2", ".cr3", ".arw", ".rw2", ".raf", ".dng"}
+        paths = [p for p in self._last_targets if Path(p).suffix.lower() in viewable_exts]
+        if not paths:
+            self.status_label.setText("No viewable pictures to preview.")
+            return
+        cache_root = str(Path(self._last_dest) / ".preview_cache") if self._last_dest else None
+        dlg = ImagePreviewDialog(self.passed_parent, file_list=paths,
+                                 cache_root=cache_root, mode="all",
+                                 source_label="SD-card read")
+        dlg.show()
 
 
 class ReadDirDialog(QDialog):
