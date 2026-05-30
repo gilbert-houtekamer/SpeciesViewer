@@ -37,7 +37,7 @@ import time
 from pathlib import Path
 from typing import Callable, Iterable
 
-from engine.csv_columns import PICTURE_FIELDS, DATA_FILE_FIELDS
+from engine.csv_columns import PICTURE_FIELDS, DATA_FILE_FIELDS, SPECIES_FIELDS
 
 logger = logging.getLogger("speciesviewer")
 
@@ -51,10 +51,19 @@ def _diag(msg: str) -> None:
 
 
 # Bump this if the schema changes; mismatch triggers a full rebuild.
-SCHEMA_VERSION = 1
+# v2: added the `species` table (mirrors species.csv) for master add/delete.
+SCHEMA_VERSION = 2
 
 # Column that's typed as INTEGER (we sort on Rate; rest stay TEXT to mirror CSV).
 _INT_COLS_PICTURES = {"Rate"}
+
+# species.csv columns that need special handling in the DB mirror.
+_SPEC_NUM_COLS = {
+    "currentHighestRating", "iSpeciesThisRunCount", "iSpeciesCollectionCount",
+    "iPictureThisRunCount", "iPictureCollectionCount",
+    "iPicturesWithJPGsThisRun", "iPicturesWithJPGsCollection",
+}
+_SPEC_LIST_COLS = {"Leaves", "JPGmap"}  # stored as JSON, written back as ['a', 'b']
 
 
 # ── DB path resolution ─────────────────────────────────────────────────────────
@@ -133,10 +142,43 @@ def _create_files_sql() -> str:
     return f"CREATE TABLE files (\n  " + ",\n  ".join(cols) + "\n)"
 
 
+def _spec_col_def(name: str) -> str:
+    typ = "INTEGER" if name in _SPEC_NUM_COLS else "TEXT"
+    pk = " PRIMARY KEY" if name == "ScientificName" else ""
+    return f"{_quoted(name)} {typ}{pk}"
+
+
+def _create_species_sql() -> str:
+    cols = [_spec_col_def("ScientificName")] + [
+        _spec_col_def(c) for c in SPECIES_FIELDS if c != "ScientificName"
+    ]
+    return f"CREATE TABLE species (\n  " + ",\n  ".join(cols) + "\n)"
+
+
 _PIC_COLS_SQL = ", ".join(_quoted(c) for c in PICTURE_FIELDS)
 _PIC_PLACEHOLDERS = ", ".join(["?"] * len(PICTURE_FIELDS))
 _FILE_COLS_SQL = ", ".join(_quoted(c) for c in DATA_FILE_FIELDS)
 _FILE_PLACEHOLDERS = ", ".join(["?"] * len(DATA_FILE_FIELDS))
+_SPEC_COLS_SQL = ", ".join(_quoted(c) for c in SPECIES_FIELDS)
+_SPEC_PLACEHOLDERS = ", ".join(["?"] * len(SPECIES_FIELDS))
+
+
+def _coerce_int(raw) -> int:
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _area(image_size: str) -> int:
+    """Pixel area from an 'ImageSize' string like '6036 4020' or '799x533'.
+    Used to decide whether an added crop JPG is the larger/better one. Returns 0
+    when it can't be parsed (so anything real beats an empty value)."""
+    import re as _re
+    nums = _re.findall(r"\d+", image_size or "")
+    if len(nums) >= 2:
+        return int(nums[0]) * int(nums[1])
+    return 0
 
 
 # ── Files-column codec (matches Pictures.read_pictures' repr-list parsing) ────
@@ -221,6 +263,9 @@ class MasterDB:
     def _files_csv(self) -> Path:
         return Path(self.master_root) / "metadata" / "active" / "data_files.csv"
 
+    def _species_csv(self) -> Path:
+        return Path(self.master_root) / "metadata" / "active" / "species.csv"
+
     # ── staleness ─────────────────────────────────────────────────────────
     def _meta(self, con: sqlite3.Connection) -> dict[str, str]:
         try:
@@ -245,6 +290,11 @@ class MasterDB:
         if meta.get("pictures_csv_mtime") != self._csv_mtime(pics_csv):
             return True
         if meta.get("files_csv_mtime") != self._csv_mtime(files_csv):
+            return True
+        # species.csv is optional (older masters may predate it); only treat a
+        # drift as stale when the file exists.
+        spec_csv = self._species_csv()
+        if spec_csv.exists() and meta.get("species_csv_mtime") != self._csv_mtime(spec_csv):
             return True
         return False
 
@@ -297,9 +347,11 @@ class MasterDB:
         with con:  # implicit transaction
             con.execute("DROP TABLE IF EXISTS pictures")
             con.execute("DROP TABLE IF EXISTS files")
+            con.execute("DROP TABLE IF EXISTS species")
             con.execute("DROP TABLE IF EXISTS meta")
             con.execute(_create_pictures_sql())
             con.execute(_create_files_sql())
+            con.execute(_create_species_sql())
             con.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
 
             # Pictures
@@ -336,11 +388,36 @@ class MasterDB:
                 f"INSERT OR REPLACE INTO files ({_FILE_COLS_SQL}) "
                 f"VALUES ({_FILE_PLACEHOLDERS})", file_rows)
 
+            # Species (species.csv — optional on very old masters)
+            spec_csv = self._species_csv()
+            spec_mtime = ""
+            if spec_csv.exists():
+                note(f"  loading {spec_csv.name}…")
+                spec_rows = []
+                with open(spec_csv, "r", newline="", encoding="utf-8") as fh:
+                    reader = csv.DictReader(fh, delimiter=";")
+                    for row in reader:
+                        values = []
+                        for col in SPECIES_FIELDS:
+                            raw = row.get(col, "")
+                            if col in _SPEC_LIST_COLS:
+                                values.append(json.dumps(_parse_files_csv(raw)))
+                            elif col in _SPEC_NUM_COLS:
+                                values.append(_coerce_int(raw))
+                            else:
+                                values.append(raw)
+                        spec_rows.append(values)
+                con.executemany(
+                    f"INSERT OR REPLACE INTO species ({_SPEC_COLS_SQL}) "
+                    f"VALUES ({_SPEC_PLACEHOLDERS})", spec_rows)
+                spec_mtime = self._csv_mtime(spec_csv)
+
             # Indexes (created after bulk insert = much faster than per-row)
             note("  indexing…")
             con.execute('CREATE INDEX idx_pic_sci ON pictures("WetSoortNaam")')
             con.execute('CREATE INDEX idx_pic_rate ON pictures("Rate" DESC)')
             con.execute('CREATE INDEX idx_files_upn ON files("UniquePictureName")')
+            con.execute('CREATE INDEX idx_spec_up ON species("Up")')
 
             con.executemany(
                 "INSERT INTO meta(key, value) VALUES (?, ?)",
@@ -348,6 +425,7 @@ class MasterDB:
                  ("master_root", self.master_root),
                  ("pictures_csv_mtime", self._csv_mtime(pics_csv)),
                  ("files_csv_mtime", self._csv_mtime(files_csv)),
+                 ("species_csv_mtime", spec_mtime),
                  ("built_at", f"{time.time():.0f}")])
 
         dt = time.time() - t0
@@ -513,6 +591,309 @@ class MasterDB:
                 self._replay_file(con, fn, fields)
         MasterCheckpointWorker.get(self.master_root).notify()
 
+    # ── generic row mutators (used by add/delete ops) ─────────────────────────
+    @staticmethod
+    def _set_picture_fields(con: sqlite3.Connection, upn: str, fields: dict) -> None:
+        sets, vals = [], []
+        for col, v in fields.items():
+            sets.append(f"{_quoted(col)}=?")
+            if col == "Files":
+                vals.append(v if isinstance(v, str) else json.dumps(v or []))
+            elif col == "Rate":
+                vals.append(_coerce_rate(v))
+            else:
+                vals.append(v)
+        if not sets:
+            return
+        vals.append(upn)
+        con.execute(
+            f'UPDATE pictures SET {", ".join(sets)} WHERE "UniquePictureName"=?', vals)
+
+    @staticmethod
+    def _set_file_fields(con: sqlite3.Connection, fname: str, fields: dict) -> None:
+        sets, vals = [], []
+        for col, v in fields.items():
+            sets.append(f"{_quoted(col)}=?")
+            vals.append(v)
+        if not sets:
+            return
+        vals.append(fname)
+        con.execute(
+            f'UPDATE files SET {", ".join(sets)} WHERE "File:FileName"=?', vals)
+
+    @staticmethod
+    def _insert_file_row(con: sqlite3.Connection, row: dict) -> None:
+        vals = [row.get(c, "") for c in DATA_FILE_FIELDS]
+        con.execute(
+            f'INSERT OR REPLACE INTO files ({_FILE_COLS_SQL}) '
+            f'VALUES ({_FILE_PLACEHOLDERS})', vals)
+
+    @staticmethod
+    def _insert_picture_row(con: sqlite3.Connection, row: dict) -> None:
+        vals = []
+        for c in PICTURE_FIELDS:
+            v = row.get(c, "")
+            if c == "Files":
+                vals.append(v if isinstance(v, str) else json.dumps(v or []))
+            elif c == "Rate":
+                vals.append(_coerce_rate(v))
+            else:
+                vals.append(v)
+        con.execute(
+            f'INSERT OR REPLACE INTO pictures ({_PIC_COLS_SQL}) '
+            f'VALUES ({_PIC_PLACEHOLDERS})', vals)
+
+    @staticmethod
+    def _delete_pictures(con: sqlite3.Connection, upns) -> None:
+        for u in upns:
+            con.execute('DELETE FROM pictures WHERE "UniquePictureName"=?', (u,))
+
+    @staticmethod
+    def _delete_files(con: sqlite3.Connection, fnames) -> None:
+        for f in fnames:
+            con.execute('DELETE FROM files WHERE "File:FileName"=?', (f,))
+
+    @staticmethod
+    def _set_species_fields(con: sqlite3.Connection, sci: str, fields: dict) -> None:
+        sets, vals = [], []
+        for col, v in fields.items():
+            sets.append(f"{_quoted(col)}=?")
+            if col in _SPEC_LIST_COLS:
+                vals.append(v if isinstance(v, str) else json.dumps(v or []))
+            elif col in _SPEC_NUM_COLS:
+                vals.append(_coerce_int(v))
+            else:
+                vals.append(v)
+        if not sets:
+            return
+        vals.append(sci)
+        con.execute(
+            f'UPDATE species SET {", ".join(sets)} WHERE "ScientificName"=?', vals)
+
+    @staticmethod
+    def _delete_species(con: sqlite3.Connection, scinames) -> None:
+        for s in scinames:
+            con.execute('DELETE FROM species WHERE "ScientificName"=?', (s,))
+
+    def _upn_has_jpg(self, con: sqlite3.Connection, upn: str) -> bool:
+        row = con.execute(
+            'SELECT 1 FROM files WHERE "UniquePictureName"=? AND '
+            'LOWER("WindowsExtension") IN ("jpg","jpeg") LIMIT 1', (upn,)).fetchone()
+        return row is not None
+
+    # ── species count maintenance for a no-JPG delete ─────────────────────────
+    def _species_delete_updates(self, con: sqlite3.Connection, sci: str):
+        """Compute the species-table changes for removing ONE no-JPG picture of
+        `sci`, from the pre-delete snapshot. Returns (updates, deleted) where
+        updates is {ScientificName: {col: value}} and deleted is [ScientificName].
+
+        Because no JPG is ever deleted, BestJPG / BestUPN / currentHighestRating /
+        ...WithJPGs... are invariant; only iPictureCollectionCount changes on the
+        species + ancestors, plus iSpeciesCollectionCount when the species empties
+        (and the species row + its parent's Leaves entry are removed)."""
+        updates: dict[str, dict] = {}
+        deleted: list[str] = []
+        sci = (sci or "").strip()
+        if not sci:
+            return updates, deleted
+        row = con.execute(
+            'SELECT * FROM species WHERE LOWER("ScientificName")=?',
+            (sci.lower(),)).fetchone()
+        if row is None:
+            return updates, deleted   # species not tracked → just drop the rows
+        sciname = row["ScientificName"]
+        n_before = con.execute(
+            'SELECT COUNT(*) FROM pictures WHERE LOWER(TRIM("WetSoortNaam"))=?',
+            (sciname.lower(),)).fetchone()[0]
+        n_left = max(n_before - 1, 0)
+        emptied = (n_left == 0)
+
+        # ancestor chain (pre-delete snapshot)
+        chain = []
+        up = row["Up"]
+        seen = set()
+        while up and up not in seen:
+            seen.add(up)
+            arow = con.execute(
+                'SELECT * FROM species WHERE "ScientificName"=?', (up,)).fetchone()
+            if arow is None:
+                break
+            chain.append(arow)
+            up = arow["Up"]
+
+        if emptied:
+            deleted.append(sciname)
+            parent = row["Up"]
+            prow = next((a for a in chain if a["ScientificName"] == parent), None)
+            if prow is not None:
+                leaves = json.loads(prow["Leaves"]) if prow["Leaves"] else []
+                updates.setdefault(parent, {})["Leaves"] = [
+                    x for x in leaves if x != sciname]
+        else:
+            updates.setdefault(sciname, {})["iPictureCollectionCount"] = n_left
+
+        for a in chain:
+            u = updates.setdefault(a["ScientificName"], {})
+            u["iPictureCollectionCount"] = _coerce_int(a["iPictureCollectionCount"]) - 1
+            if emptied:
+                u["iSpeciesCollectionCount"] = _coerce_int(a["iSpeciesCollectionCount"]) - 1
+        return updates, deleted
+
+    def _species_addjpg_updates(self, con: sqlite3.Connection, sci: str,
+                                upn: str, fname: str, rel: str, pic_rate: int):
+        """Species-table changes when a picture that had NO JPG gains its first
+        one (add of a crop). Symmetric to _species_delete_updates: increment
+        iPicturesWithJPGsCollection on the species + ancestors, and bump the
+        best-pick (BestJPG/BestUPN/BestJPGPathName/currentHighestRating) on any
+        node the new picture's rating now leads. Returns {ScientificName: {...}}."""
+        updates: dict[str, dict] = {}
+        sci = (sci or "").strip()
+        if not sci:
+            return updates
+        row = con.execute(
+            'SELECT * FROM species WHERE LOWER("ScientificName")=?',
+            (sci.lower(),)).fetchone()
+        if row is None:
+            return updates
+        chain = [row]
+        up = row["Up"]
+        seen = set()
+        while up and up not in seen:
+            seen.add(up)
+            arow = con.execute(
+                'SELECT * FROM species WHERE "ScientificName"=?', (up,)).fetchone()
+            if arow is None:
+                break
+            chain.append(arow)
+            up = arow["Up"]
+        for a in chain:
+            u = updates.setdefault(a["ScientificName"], {})
+            u["iPicturesWithJPGsCollection"] = \
+                _coerce_int(a["iPicturesWithJPGsCollection"]) + 1
+            cur_best = _coerce_int(a["currentHighestRating"])
+            if pic_rate > cur_best or not (a["BestJPG"] or ""):
+                u["BestJPG"] = fname
+                u["BestUPN"] = upn
+                u["BestJPGPathName"] = rel
+                u["currentHighestRating"] = pic_rate
+        return updates
+
+    # ── master add/delete operations (durable; mirror apply_rating's discipline)
+    def apply_delete_upn(self, upn: str) -> list[str] | None:
+        """Delete a whole picture (UPN) + its file rows from the master, and
+        decrement species counts. Caller MUST have verified the UPN has no JPG
+        and trashed/handles the physical files. Returns the deleted file names."""
+        con = self._connect()
+        prow = con.execute(
+            'SELECT * FROM pictures WHERE "UniquePictureName"=?', (upn,)).fetchone()
+        if prow is None:
+            return None
+        sci = prow["WetSoortNaam"] or ""
+        fnames = [r["File:FileName"] for r in con.execute(
+            'SELECT "File:FileName" FROM files WHERE "UniquePictureName"=?', (upn,))]
+        spec_updates, spec_deleted = self._species_delete_updates(con, sci)
+        entry = {"op": "delete_upn", "ts": time.time(), "upn": upn,
+                 "pictures_delete": [upn], "files_delete": fnames,
+                 "species": spec_updates, "species_delete": spec_deleted}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        with con:
+            self._delete_pictures(con, [upn])
+            self._delete_files(con, fnames)
+            for s, fields in spec_updates.items():
+                self._set_species_fields(con, s, fields)
+            self._delete_species(con, spec_deleted)
+        MasterCheckpointWorker.get(self.master_root).notify()
+        return fnames
+
+    def apply_delete_file(self, upn: str, fname: str) -> bool:
+        """Delete ONE non-JPG file from a UPN that survives (keeps other files).
+        Caller verifies non-JPG and that it isn't the last file."""
+        con = self._connect()
+        prow = con.execute(
+            'SELECT * FROM pictures WHERE "UniquePictureName"=?', (upn,)).fetchone()
+        if prow is None:
+            return False
+        cur = json.loads(prow["Files"]) if prow["Files"] else []
+        new_files = [f for f in cur if f != fname]
+        entry = {"op": "delete_file", "ts": time.time(), "upn": upn,
+                 "files_delete": [fname],
+                 "pictures": {upn: {"Files": new_files}}}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        with con:
+            self._delete_files(con, [fname])
+            self._set_picture_fields(con, upn, {"Files": new_files})
+        MasterCheckpointWorker.get(self.master_root).notify()
+        return True
+
+    def apply_add_file(self, upn: str, file_row: dict) -> bool:
+        """Attach one new file (a crop JPG) to an existing UPN. Picture-level
+        distillation (Files, JPGSize/BestJPG when the new JPG is larger) is done
+        here; species-level rollups (WithJPGs counts, best-pick bubbling) are the
+        genuinely hard part and are left to the Recount backstop — callers should
+        flag master rollups dirty after an add."""
+        con = self._connect()
+        prow = con.execute(
+            'SELECT * FROM pictures WHERE "UniquePictureName"=?', (upn,)).fetchone()
+        if prow is None:
+            return False
+        fname = file_row.get("File:FileName", "")
+        if not fname:
+            return False
+        file_row = {**file_row, "UniquePictureName": upn}
+        cur = json.loads(prow["Files"]) if prow["Files"] else []
+        new_files = cur + [fname] if fname not in cur else cur
+        pic_updates: dict = {"Files": new_files}
+        is_jpg = file_row.get("WindowsExtension", "").lower() in ("jpg", "jpeg")
+        had_jpg = self._upn_has_jpg(con, upn)   # pre-insert snapshot
+        if is_jpg:
+            new_size = file_row.get("ImageSize", "")
+            if _area(new_size) >= _area(prow["JPGSize"] or ""):
+                pic_updates["JPGSize"] = new_size
+                pic_updates["BestJPG"] = fname
+        spec_updates = {}
+        if is_jpg and not had_jpg:
+            rel = (prow["TargetPath"] or prow["BestJPGPathName"] or "").strip()
+            spec_updates = self._species_addjpg_updates(
+                con, prow["WetSoortNaam"] or "", upn, fname, rel,
+                _coerce_rate(prow["Rate"]) or 0)
+        entry = {"op": "add_file", "ts": time.time(), "upn": upn,
+                 "files_insert": {fname: file_row},
+                 "pictures": {upn: pic_updates},
+                 "species": spec_updates}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        with con:
+            self._insert_file_row(con, file_row)
+            self._set_picture_fields(con, upn, pic_updates)
+            for s, fields in spec_updates.items():
+                self._set_species_fields(con, s, fields)
+        MasterCheckpointWorker.get(self.master_root).notify()
+        return True
+
+    def apply_restore(self, picture: dict, files: list[dict]) -> None:
+        """Undo support: re-insert a previously-deleted picture row + its file
+        rows (shaped like the query API returns). Species counts are NOT restored
+        here — a Recount reconciles them (the common single-delete case stays
+        exact because the inverse count delta is tiny)."""
+        upn = picture.get("UniquePictureName", "")
+        entry = {"op": "restore", "ts": time.time(), "upn": upn,
+                 "pictures_insert": {upn: picture},
+                 "files_insert": {fr.get("File:FileName", ""): fr for fr in files}}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        con = self._connect()
+        with con:
+            self._insert_picture_row(con, picture)
+            for fr in files:
+                self._insert_file_row(con, fr)
+        MasterCheckpointWorker.get(self.master_root).notify()
+
     # ── checkpoint (CSV catch-up) ─────────────────────────────────────────────
     def _rewrite_pictures_csv(self, con: sqlite3.Connection, target: Path) -> None:
         from engine.picturecsv import Pictures
@@ -535,6 +916,85 @@ class MasterDB:
         f.filename = str(tmp)
         f.write_project_files()
         os.replace(tmp, target)
+
+    def _species_row_to_dict(self, row: sqlite3.Row) -> dict:
+        """Shape a species DB row for the CSV writer: Leaves/JPGmap JSON → list
+        (DictWriter renders ['a', 'b']); Level stays the 'Level.SPECIES' string;
+        counts stay ints. Reproduces the pipeline's writeSpeciesInfo format."""
+        d = {}
+        for col in SPECIES_FIELDS:
+            v = row[col]
+            if col in _SPEC_LIST_COLS:
+                try:
+                    d[col] = json.loads(v) if v else []
+                except Exception:
+                    d[col] = []
+            else:
+                d[col] = v
+        return d
+
+    def _rewrite_species_csv(self, con: sqlite3.Connection, target: Path) -> None:
+        import csv
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        with open(tmp, "w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(
+                fh, fieldnames=SPECIES_FIELDS, quoting=csv.QUOTE_MINIMAL, delimiter=";")
+            writer.writeheader()
+            for r in con.execute("SELECT * FROM species ORDER BY rowid"):
+                writer.writerow(self._species_row_to_dict(r))
+        os.replace(tmp, target)
+
+    def _replay_sections(self, con: sqlite3.Connection, e: dict,
+                         pics_mtime: float, files_mtime: float,
+                         spec_mtime: float) -> tuple[bool, bool, bool]:
+        """Apply a generic add/delete entry's sections, each gated by its target
+        CSV's mtime (Phase 2 stale-drop). Returns (dirty_pics, dirty_files,
+        dirty_species)."""
+        ts = e.get("ts", 0.0)
+        dp = df = ds = False
+
+        pics = e.get("pictures") or {}
+        pins = e.get("pictures_insert") or {}
+        pdel = e.get("pictures_delete") or []
+        if pics or pins or pdel:
+            if ts > pics_mtime:
+                for upn, row in pins.items():
+                    self._insert_picture_row(con, row)
+                for upn, fields in pics.items():
+                    self._set_picture_fields(con, upn, fields)
+                self._delete_pictures(con, pdel)
+                dp = True
+            else:
+                logger.warning(f"master checkpoint: dropping stale pictures op "
+                               f"{e.get('op')} for {e.get('upn')}")
+
+        fset = e.get("files") or {}
+        fins = e.get("files_insert") or {}
+        fdel = e.get("files_delete") or []
+        if fset or fins or fdel:
+            if ts > files_mtime:
+                for fn, fields in fset.items():
+                    self._set_file_fields(con, fn, fields)
+                for fn, row in fins.items():
+                    self._insert_file_row(con, row)
+                self._delete_files(con, fdel)
+                df = True
+            else:
+                logger.warning(f"master checkpoint: dropping stale files op "
+                               f"{e.get('op')} for {e.get('upn')}")
+
+        sset = e.get("species") or {}
+        sdel = e.get("species_delete") or []
+        if sset or sdel:
+            if ts > spec_mtime:
+                for sci, fields in sset.items():
+                    self._set_species_fields(con, sci, fields)
+                self._delete_species(con, sdel)
+                ds = True
+            else:
+                logger.warning(f"master checkpoint: dropping stale species op "
+                               f"{e.get('op')} for {e.get('upn')}")
+        return dp, df, ds
 
     def _truncate_jsonl(self, processed_max_seq: int) -> None:
         """Drop entries up to processed_max_seq, preserving any appended during
@@ -560,36 +1020,49 @@ class MasterDB:
                 return 0
             con = self._connect()
             pics_csv, files_csv = self._pictures_csv(), self._files_csv()
+            spec_csv = self._species_csv()
             pics_mtime = pics_csv.stat().st_mtime if pics_csv.exists() else 0.0
             files_mtime = files_csv.stat().st_mtime if files_csv.exists() else 0.0
+            spec_mtime = spec_csv.stat().st_mtime if spec_csv.exists() else 0.0
             max_seq = max(e.get("seq", 0) for e in entries)
-            dirty_pics = dirty_files = False
+            dirty_pics = dirty_files = dirty_species = False
             with con:
                 for e in entries:
                     ts = e.get("ts", 0.0)
-                    pic = e.get("pictures")
-                    if pic and any(v is not None for v in pic.values()):
-                        if ts > pics_mtime:
-                            self._replay_picture(con, e["upn"], pic)
-                            dirty_pics = True
-                        else:
-                            logger.warning(
-                                f"master checkpoint: dropping stale pictures entry "
-                                f"for {e.get('upn')} (older than {pics_csv.name})")
-                    fls = e.get("files") or {}
-                    if fls:
-                        if ts > files_mtime:
-                            for fname, fields in fls.items():
-                                self._replay_file(con, fname, fields)
-                            dirty_files = True
-                        else:
-                            logger.warning(
-                                f"master checkpoint: dropping stale files entry "
-                                f"for {e.get('upn')} (older than {files_csv.name})")
+                    if e.get("op", "rate") == "rate":
+                        # Phase-2 re-rating entry (flat pictures + files{fname})
+                        pic = e.get("pictures")
+                        if pic and any(v is not None for v in pic.values()):
+                            if ts > pics_mtime:
+                                self._replay_picture(con, e["upn"], pic)
+                                dirty_pics = True
+                            else:
+                                logger.warning(
+                                    f"master checkpoint: dropping stale pictures entry "
+                                    f"for {e.get('upn')} (older than {pics_csv.name})")
+                        fls = e.get("files") or {}
+                        if fls:
+                            if ts > files_mtime:
+                                for fname, fields in fls.items():
+                                    self._replay_file(con, fname, fields)
+                                dirty_files = True
+                            else:
+                                logger.warning(
+                                    f"master checkpoint: dropping stale files entry "
+                                    f"for {e.get('upn')} (older than {files_csv.name})")
+                    else:
+                        # add/delete op (generic, keyed sections)
+                        dp, df, ds = self._replay_sections(
+                            con, e, pics_mtime, files_mtime, spec_mtime)
+                        dirty_pics |= dp
+                        dirty_files |= df
+                        dirty_species |= ds
             if dirty_pics:
                 self._rewrite_pictures_csv(con, pics_csv)
             if dirty_files:
                 self._rewrite_files_csv(con, files_csv)
+            if dirty_species and spec_csv.exists():
+                self._rewrite_species_csv(con, spec_csv)
             # Refresh stored mtimes for whatever we rewrote so the next
             # is_stale() check doesn't see our own write as an external change.
             updates = []
@@ -597,6 +1070,8 @@ class MasterDB:
                 updates.append(("pictures_csv_mtime", self._csv_mtime(pics_csv)))
             if dirty_files:
                 updates.append(("files_csv_mtime", self._csv_mtime(files_csv)))
+            if dirty_species and spec_csv.exists():
+                updates.append(("species_csv_mtime", self._csv_mtime(spec_csv)))
             if updates:
                 with con:
                     con.executemany(

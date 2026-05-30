@@ -190,6 +190,56 @@ class RatingEditorCollection(PictureCollection):
     def is_master(self, key: str) -> bool:
         return key in self._master_keys
 
+    # ── master add/delete (Phase 3 of the master cache) ───────────────────────
+    def _master_file_is_jpg(self, fname: str) -> bool:
+        fr = self._master_files.get(fname)
+        ext = ((fr or {}).get("WindowsExtension", "").lower()
+               or Path(fname).suffix.lstrip(".").lower())
+        return ext in ("jpg", "jpeg")
+
+    def master_upn_has_jpg(self, key: str) -> bool:
+        if key not in self._master_keys:
+            return False
+        files = self._master_upn.get(key, {}).get("Files", []) or []
+        return any(self._master_file_is_jpg(f) for f in files)
+
+    def master_upn_deletable(self, key: str) -> bool:
+        """A master picture is deletable only when writes are enabled and it has
+        no JPG (the hard 'never trash a JPG' invariant)."""
+        return (key in self._master_keys and not self._master_read_only
+                and self._master_db is not None and not self.master_upn_has_jpg(key))
+
+    def master_nonjpg_files(self, key: str) -> list[str]:
+        files = self._master_upn.get(key, {}).get("Files", []) or []
+        return [f for f in files if not self._master_file_is_jpg(f)]
+
+    def master_upn_dir(self, key: str) -> str:
+        """On-disk species folder of a master UPN (master_root/rel_dir), for
+        defaulting the 'Add crop' file picker. '' if not resolvable."""
+        if self._master_root is None or key not in self._master_keys:
+            return ""
+        row = self._master_upn.get(key, {})
+        rel = (row.get("TargetPath") or row.get("BestJPGPathName") or "").strip()
+        if rel:
+            p = self._master_root / rel
+            if p.exists():
+                return str(p)
+        return ""
+
+    def delete_master_picture(self, key: str) -> dict:
+        from db.master_mutate import delete_picture
+        return delete_picture(self._master_db, self._master_root, key)
+
+    def delete_master_file(self, key: str, fname: str) -> dict:
+        from db.master_mutate import delete_file
+        return delete_file(self._master_db, self._master_root, key, fname)
+
+    def add_master_files(self, key: str) -> dict:
+        """Ingest any untracked files of this UPN sitting in its species folder
+        (e.g. a freshly-rendered DxO JPG + its .dop)."""
+        from db.master_mutate import add_upn_files
+        return add_upn_files(self._master_db, self._master_root, key)
+
     def _upn_row(self, key: str) -> dict:
         if key in self._master_keys:
             return self._master_upn.get(key, {})

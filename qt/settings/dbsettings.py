@@ -61,6 +61,7 @@ class DatabaseSettingsDialog(QDialog):
             ("pics_mtime", "pictures CSV mtime"),
             ("files_mtime", "files CSV mtime"),
             ("pending", "Pending master writes"),
+            ("trash", "Trash (deleted, recoverable)"),
         ):
             val = QLabel("—")
             val.setWordWrap(True)
@@ -87,6 +88,9 @@ class DatabaseSettingsDialog(QDialog):
         rebuild_btn = QPushButton("Rebuild master DB")
         rebuild_btn.clicked.connect(self._rebuild)
         btn_row.addWidget(rebuild_btn)
+        purge_btn = QPushButton("Empty trash…")
+        purge_btn.clicked.connect(self._purge_trash)
+        btn_row.addWidget(purge_btn)
         btn_row.addStretch(1)
         save_btn = QPushButton("Save")
         save_btn.clicked.connect(self._save)
@@ -170,6 +174,19 @@ class DatabaseSettingsDialog(QDialog):
                     oldest = stats_db.pending_oldest_ts()
                 finally:
                     stats_db.close()
+        # Trash (deleted-but-recoverable master files).
+        if self._master_root:
+            try:
+                from db.master_mutate import trash_size
+                tbytes, tfiles = trash_size(self._master_root)
+                v["trash"].setText(
+                    f"{_fmt_size(tbytes)} in {tfiles} file(s)" if tfiles
+                    else "empty")
+            except Exception as e:
+                v["trash"].setText(f"(error: {e})")
+        else:
+            v["trash"].setText("—")
+
         if pending == 0:
             v["pending"].setText("0 (queue empty)")
             self._warn.hide()
@@ -209,6 +226,29 @@ class DatabaseSettingsDialog(QDialog):
             QMessageBox.warning(self, "Flush", f"Flush failed:\n{e}")
             return
         QMessageBox.information(self, "Flush", f"Flushed {n} pending write(s).")
+        self._refresh()
+
+    def _purge_trash(self):
+        if not self._master_root:
+            return
+        from db.master_mutate import trash_size, purge_trash, trash_root
+        root = trash_root(self._master_root)
+        if not root.exists() or not any(root.iterdir()):
+            QMessageBox.information(self, "Empty trash", "The master trash is already empty.")
+            return
+        tbytes, tfiles = trash_size(self._master_root)
+        if QMessageBox.question(
+                self, "Empty trash",
+                f"Permanently delete {tfiles} recoverable file(s) "
+                f"({_fmt_size(tbytes)}) and clear the trash manifest/snapshots? "
+                f"This cannot be undone.") != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            n = purge_trash(self._master_root, older_than_days=0)
+        except Exception as e:
+            QMessageBox.warning(self, "Empty trash", f"Purge failed:\n{e}")
+            return
+        QMessageBox.information(self, "Empty trash", f"Removed {n} day-folder(s).")
         self._refresh()
 
     def _rebuild(self):
