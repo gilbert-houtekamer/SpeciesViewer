@@ -17,6 +17,7 @@ Navigation: ←/→ step through keys; assigning a rating or colour auto-advance
 """
 
 import logging
+import sys
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
@@ -31,7 +32,7 @@ from PyQt6.QtCore import Qt, QTimer, QSize, pyqtSignal
 
 from gui.rating_editor import StarWidget, ColorSelector, COLOR_HEX
 from gui.window_state import restore_window, save_window, clamp_to_visible_screen
-from utils.open_path import open_path, launch_app_with_file
+from utils.open_path import open_path, reveal_group, launch_app_with_file
 from utils.config import get_setting
 
 logger = logging.getLogger("speciesviewer")
@@ -428,7 +429,9 @@ class LargeImageView(QDialog):
         self._explorer_btn.setIconSize(QSize(18, 18))
         self._explorer_btn.setAutoRaise(True)
         self._explorer_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._explorer_btn.setToolTip("Show this picture's files in Explorer")
+        self._explorer_btn.setToolTip(
+            "Show this picture's files in Explorer "
+            "(folder + UPN search)")
         self._explorer_btn.clicked.connect(self._open_in_explorer)
         file_row.addWidget(self._explorer_btn, alignment=Qt.AlignmentFlag.AlignTop)
 
@@ -438,7 +441,7 @@ class LargeImageView(QDialog):
         self._dxo_btn.setIconSize(QSize(18, 18))
         self._dxo_btn.setAutoRaise(True)
         self._dxo_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._dxo_btn.setToolTip("Open this picture's folder in DxO PhotoLab")
+        self._dxo_btn.setToolTip("Open the RAW file in the associated viewer")
         self._dxo_btn.clicked.connect(self._open_in_dxo)
         file_row.addWidget(self._dxo_btn, alignment=Qt.AlignmentFlag.AlignTop)
         pl.addLayout(file_row)
@@ -606,7 +609,7 @@ class LargeImageView(QDialog):
         self._explorer_btn.setEnabled(bool(dir_path))
         raw = self._collection.raw_path(key)
         self._dxo_btn.setEnabled(raw is not None)
-        self._dxo_btn.setToolTip("Open this picture's folder in DxO PhotoLab" if raw
+        self._dxo_btn.setToolTip("Open the RAW file in the associated viewer" if raw
                                  else "No RAW file for this picture")
 
         # EXIF
@@ -1032,18 +1035,40 @@ class LargeImageView(QDialog):
     # ── External tools (Explorer / DxO PhotoLab) ───────────────────────────────
 
     def _open_in_explorer(self):
+        """Open the picture's folder in Explorer with the UPN typed into the
+        search box, so only the group's files show. Equivalent to: open the
+        folder, then type the UPN in Explorer's search bar."""
         if self._item is None:
             return
-        dir_path = self._collection.file_directory(self._item.key)
+        key = self._item.key
+        dir_path = self._collection.file_directory(key)
         if dir_path:
-            open_path(dir_path)
+            reveal_group(dir_path, key)
 
     def _open_in_dxo(self):
+        """Open the RAW file in DxO PhotoLab — gives the Customize view with a
+        filmstrip of siblings, and the PhotoLibrary tab lands in the right
+        species folder.
+
+        On Windows we dispatch via `os.startfile` (which calls ShellExecuteEx
+        with the file's shell IDList — the same path Explorer takes on a
+        right-click → Open). A plain Popen launch, even with cwd set, gave
+        DxO only the single file and a 'Today' filter, no filmstrip; the
+        IDList seems to be the missing context. Trade-off: this opens
+        whatever the user has registered as the default RAW handler, ignoring
+        the configured [Global] dxo_path. On Mac/Linux we fall through to the
+        configured app path (no equivalent shell-context plumbing needed
+        there as far as we know).
+        """
         if self._item is None:
             return
         raw = self._collection.raw_path(self._item.key)
         if not raw:
             return
+        if sys.platform.startswith("win"):
+            if open_path(raw):
+                return
+            # fall through to configured-path attempt if startfile failed
         exe = dxo_executable()
         if not Path(exe).exists():
             QMessageBox.warning(
@@ -1051,14 +1076,10 @@ class LargeImageView(QDialog):
                 f"Could not find DxO PhotoLab at:\n\n{exe}\n\n"
                 "Set the correct path in Settings → Global Settings.")
             return
-        # Open the picture's FOLDER in DxO's PhotoLibrary (the browse / contact
-        # sheet view), not the single RAW — passing a file jumps straight into
-        # Customize and hides which directory you're in. From the folder view
-        # the RAW is one click away, with all of the group's files in context.
-        if not launch_app_with_file(exe, raw.parent):
+        if not launch_app_with_file(exe, raw):
             QMessageBox.warning(
                 self, "DxO PhotoLab",
-                f"Could not launch DxO PhotoLab for:\n{raw.parent}")
+                f"Could not launch DxO PhotoLab for:\n{raw}")
 
     # ── Colour frame ──────────────────────────────────────────────────────────
 
