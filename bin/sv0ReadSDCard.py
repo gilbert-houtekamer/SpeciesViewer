@@ -46,9 +46,19 @@ def _already_copied(src, target):
     return _sha256(src) == _sha256(target)
 
 
-def copy_card(source, dest, logger=None, progress=None, should_cancel=None):
+def target_name(src_name, prefix=""):
+    """Destination filename for a source picture. With a prefix, the original
+    name is preserved and prefixed: 'IMG_1234.CR3' -> '2026 Zeeland - IMG_1234.CR3'.
+    The prefix is what makes names unique across cards/runs, so re-running is
+    still idempotent (same input -> same target name)."""
+    prefix = (prefix or "").strip()
+    return f"{prefix} - {src_name}" if prefix else src_name
+
+
+def copy_card(source, dest, prefix="", logger=None, progress=None, should_cancel=None):
     """Copy picture files from `source` (recursively) into `dest` (flat).
 
+    prefix                       - optional filename prefix (see target_name).
     progress(done, total, name)  - optional callback, called per file before copy.
     should_cancel()              - optional callable; return True to stop early.
 
@@ -75,7 +85,7 @@ def copy_card(source, dest, logger=None, progress=None, should_cancel=None):
         if progress:
             progress(i, total, src.name)
 
-        target = dest / src.name
+        target = dest / target_name(src.name, prefix)
         try:
             if target.exists():
                 if _already_copied(src, target):
@@ -84,7 +94,7 @@ def copy_card(source, dest, logger=None, progress=None, should_cancel=None):
                 # Same name, different content — flat copy has no place to put
                 # this without overwriting. Leave the existing file alone and
                 # flag it; renaming (M1) is what ultimately resolves this.
-                log.warning(f"⚠️ Name collision, not overwriting: {src.name} "
+                log.warning(f"⚠️ Name collision, not overwriting: {target.name} "
                             f"(already exists with different content)")
                 summary["conflict"] += 1
                 continue
@@ -117,5 +127,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Copy pictures from an SD-card folder into a project directory.")
     parser.add_argument("source", help="Source folder (e.g. a mounted SD-card)")
     parser.add_argument("dest", help="Destination project pictures folder")
+    parser.add_argument("--prefix", default="", help="Optional filename prefix, e.g. '2026 Zeeland'")
     args = parser.parse_args()
-    copy_card(args.source, args.dest)
+    copy_card(args.source, args.dest, prefix=args.prefix)

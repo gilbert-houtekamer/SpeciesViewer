@@ -407,10 +407,11 @@ class _SDCardCopyWorker(QObject):
     progress = pyqtSignal(int, int, str)   # done, total, filename
     finished = pyqtSignal(dict, str)       # summary, errorstring ("" == clean)
 
-    def __init__(self, source, dest):
+    def __init__(self, source, dest, prefix=""):
         super().__init__()
         self._source = source
         self._dest = dest
+        self._prefix = prefix
         self._cancel = False
 
     def cancel(self):
@@ -420,7 +421,7 @@ class _SDCardCopyWorker(QObject):
         try:
             from bin.sv0ReadSDCard import copy_card
             summary = copy_card(
-                self._source, self._dest,
+                self._source, self._dest, prefix=self._prefix,
                 progress=lambda done, total, name: self.progress.emit(done, total, name),
                 should_cancel=lambda: self._cancel,
             )
@@ -446,17 +447,24 @@ class ReadSDCardDialog(QDialog):
         layout.addWidget(HTMLLabel(
             "<p><b>Read SD-cards</b><br>"
             "Copy pictures from a folder — typically a mounted SD-card — into the "
-            "project pictures directory. Files are copied <b>as-is</b>: no renaming "
-            "and nothing is ever changed or deleted on the card. Each copy is verified, "
-            "and pictures already copied are skipped, so you can re-run this safely.</p>"
+            "project pictures directory. The filename prefix is added to each picture "
+            "(e.g. <i>2026 Zeeland - IMG_1234.CR3</i>); leave it empty to keep names as-is. "
+            "Nothing is ever changed or deleted on the card, each copy is verified, and "
+            "pictures already copied are skipped, so you can re-run this safely.</p>"
         ))
 
         self.source_field = DirectoryFieldQt("Card / source folder", "")
         layout.addWidget(self.source_field)
-        self.dest_field = DirectoryFieldQt(
-            "Project pictures", _config.get("project", "picturedirectory", fallback="")
-        )
+        dest_default = _config.get("project", "picturedirectory", fallback="")
+        self.dest_field = DirectoryFieldQt("Project pictures", dest_default)
         layout.addWidget(self.dest_field)
+
+        # Prefix defaults to the destination folder's leaf name (usually the
+        # trip/project name), which is what makes copied names unique per trip.
+        self.prefix_field = LabeledTextFieldQt(
+            "Filename prefix", Path(dest_default).name if dest_default else "", inline=True
+        )
+        layout.addWidget(self.prefix_field)
 
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
@@ -483,12 +491,13 @@ class ReadSDCardDialog(QDialog):
             self.dest_field.show_hint("Please select a valid project pictures folder.")
             return
 
+        prefix = self.prefix_field.get_text()
         self.read_btn.setEnabled(False)
         self.status_label.setText("Scanning…")
-        self.logger.info(f"Reading SD-card from {source} → {dest}")
+        self.logger.info(f"Reading SD-card from {source} → {dest} (prefix: {prefix or '(none)'})")
 
         self._thread = QThread()
-        self._worker = _SDCardCopyWorker(source, dest)
+        self._worker = _SDCardCopyWorker(source, dest, prefix)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.progress.connect(self.on_progress)
