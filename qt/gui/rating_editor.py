@@ -570,9 +570,11 @@ class RatingEditorDialog(QDialog):
         # Trip-scope per-day tracking; None in Day scope
         self._day_objects: dict | None = None   # day_str → (Files, Pictures)
         self._upn_day_map: dict[str, str] = {}  # upn_key → day_str
-        # Master DB (Trip+Master scope) — loaded lazily on first use, then kept
-        # for the dialog's lifetime.
-        self._master_fpr: FilePicture | None = None
+        # Master DB (Trip+Master scope) — opened lazily on first use, then
+        # kept for the dialog's lifetime. SQLite-backed (Plan B): the first
+        # open after a master rebuild rebuilds from CSV (~2-6s); subsequent
+        # opens just attach to the existing DB.
+        self._master_db = None    # qt.db.master_db.MasterDB | None
         self._master_root: str | None = None
 
         main_layout = QVBoxLayout(self)
@@ -772,43 +774,45 @@ class RatingEditorDialog(QDialog):
             self._attach_master()
 
     def _attach_master(self):
-        """Load the master reference set for Trip+Master (once, then cached) and
-        apply it to the live collection. The CSV read is ~2-3s; it runs after the
-        combo/grid are already built (end of _load_data_inner) so it can't
-        interfere with rebuilding those widgets. Kept synchronous on purpose — a
-        worker thread here proved fragile (QThread teardown crashes), and a brief
-        one-time wait is acceptable."""
+        """Open the master DB for Trip+Master and apply it to the live
+        collection. Plan B: the master CSVs are mirrored into a per-machine
+        SQLite cache (NOT in Dropbox); after the first cold rebuild every
+        subsequent open is near-instant. Kept synchronous on purpose — a
+        worker thread here proved fragile (QThread teardown crashes), and the
+        warm path is essentially free."""
         if not self._tm_radio.isChecked() or self._collection is None:
             return
-        if self._master_fpr is None:
+        if self._master_db is None:
             master_root = _config.get("master", "masterbiotadatabase", fallback="").strip()
             if not master_root or not Path(master_root).exists():
                 self._status.setText(
                     "Master database not available — showing trip pictures only.")
                 return
-            self._status.setText("Loading master database…")
+            from db.master_db import MasterDB
+            self._status.setText("Opening master database…")
             try:
-                fp = FilePicture(None)
-                fp.readMaster(master_root, None)
+                db = MasterDB(master_root)
+                rebuilt = db.ensure_fresh(
+                    progress_cb=lambda msg: self._status.setText(msg))
             except Exception as e:
                 logger.error(f"RatingEditor master load failed: {e}", exc_info=True)
                 self._status.setText(
                     "Master database load failed — showing trip pictures only.")
                 return
-            self._master_fpr = fp
+            self._master_db = db
             self._master_root = master_root
-        self._apply_master(self._master_fpr)
+            if rebuilt:
+                logger.info("Master DB was stale and has been rebuilt.")
+        self._apply_master(self._master_db)
 
-    def _apply_master(self, fp):
+    def _apply_master(self, db):
         if self._collection is None or not self._tm_radio.isChecked():
             return
-        self._collection.set_master(
-            fp.upn.UniquePictureName_dict, fp.fi.files_dict,
-            self._master_root, include=True)
+        self._collection.set_master(db, self._master_root, include=True)
         if self._species_combo.currentData() is not None:
             self._rebuild_cards()
         else:
-            n_master = len(fp.upn.UniquePictureName_dict)
+            n_master = db.picture_count()
             self._status.setText(
                 f"Trip + master ready ({n_master} master pictures) — select a species.")
 

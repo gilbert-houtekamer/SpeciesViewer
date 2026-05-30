@@ -441,6 +441,35 @@ def build_menu_spec(main_window):
     rescan_master_cache.callback = lambda: RescanMasterCacheDialog(
         main_window, rescan_master_cache).exec()
 
+    # Force-rebuild the per-machine SQLite cache of the two big master CSVs.
+    # Normally `ensure_fresh()` rebuilds on its own when CSV mtimes change;
+    # this is the manual escape hatch for debugging / after a schema bump.
+    def _rebuild_master_db():
+        master_root = _config.get("master", "masterbiotadatabase", fallback="").strip()
+        if not master_root or not os.path.exists(master_root):
+            QMessageBox.warning(main_window, "Rebuild master DB",
+                                "Master root not configured or not found.")
+            return
+        from db.master_db import MasterDB
+        try:
+            db = MasterDB(master_root)
+            db.rebuild()
+            n = db.picture_count()
+            db.close()
+        except Exception as e:
+            QMessageBox.warning(main_window, "Rebuild master DB",
+                                f"Rebuild failed:\n{e}")
+            return
+        QMessageBox.information(
+            main_window, "Rebuild master DB",
+            f"Master DB rebuilt — {n} pictures indexed.")
+
+    rebuild_master_db = MenuSpec(
+        callback=_rebuild_master_db,
+        title="Rebuild master DB",
+        showsubdirectory=False,
+    )
+
     # utilities
         # Master updates
     convert_avibase = MenuSpec(
@@ -553,6 +582,7 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_master_2": None,
             "Rescan master EXIF cache": rescan_master_cache,
             "Clear EXIF cache": clear_exif_cache,
+            "Rebuild master DB": rebuild_master_db,
         },
         "Virtual Trips": {
             "Create Virtual Trip": virttrip_create,

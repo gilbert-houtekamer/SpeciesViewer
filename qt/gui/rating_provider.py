@@ -142,6 +142,10 @@ class RatingEditorCollection(PictureCollection):
         self._loader = loader or AsyncImageLoader()
         # Master reference state (Trip+Master scope) — read-only pictures pulled
         # from the master DB for the selected species. Empty until set_master().
+        # With the SQLite-backed MasterDB (Plan B) we no longer preload the 85k
+        # master rows: only the currently-selected species' pictures + their
+        # files live in these dicts, repopulated on each rebuild(filter_name).
+        self._master_db = None               # MasterDB | None
         self._master_upn: dict = {}          # upn_key -> master picture row
         self._master_files: dict = {}        # filename -> master file row
         self._master_root: Path | None = None
@@ -154,15 +158,20 @@ class RatingEditorCollection(PictureCollection):
         self._order: list[str] = []
 
     # ── master reference wiring ───────────────────────────────────────────
-    def set_master(self, master_upn: dict, master_files: dict,
-                   master_root, *, include: bool = True) -> None:
-        """Attach the master DB's picture/file dicts so rebuild() can append
-        read-only reference cards for the selected species. include=False keeps
-        them attached but hidden (e.g. when scope is not Trip+Master)."""
-        self._master_upn = master_upn or {}
-        self._master_files = master_files or {}
+    def set_master(self, master_db, master_root, *, include: bool = True) -> None:
+        """Attach the master SQLite cache so rebuild() can append read-only
+        reference cards for the selected species. include=False keeps it
+        attached but hidden (e.g. when scope is not Trip+Master).
+
+        The per-species rows are pulled lazily in rebuild() — _master_upn /
+        _master_files stay empty until then.
+        """
+        self._master_db = master_db
         self._master_root = Path(master_root) if master_root else None
-        self._include_master = include
+        self._include_master = bool(include and master_db is not None)
+        self._master_upn = {}
+        self._master_files = {}
+        self._master_keys = set()
 
     def is_master(self, key: str) -> bool:
         return key in self._master_keys
@@ -181,22 +190,27 @@ class RatingEditorCollection(PictureCollection):
         # rows) so master pictures can be matched on WetSoortNaam — robust
         # across the NL/Eng/Sci display languages.
         sci = None
-        if filter_name and self._include_master and self._master_upn:
+        if filter_name and self._include_master and self._master_db is not None:
             for row in self.fpr.upn.UniquePictureName_dict.values():
                 if self.species_name(row) == filter_name:
                     sci = (row.get("WetSoortNaam") or "").strip().casefold()
                     break
 
-        # Candidate master keys for this species (dedupe any UPN already in the
-        # trip). Set before jpg_path() is called so routing picks master files.
+        # Pull just this species' master pictures + their files from the DB
+        # (vs the old preload-all-85k approach). Routing helpers below see
+        # _master_keys before jpg_path() is called, so they pick master rows.
         self._master_keys = set()
+        self._master_upn = {}
+        self._master_files = {}
         if sci:
+            pics = self._master_db.pictures_for_species(sci)
             trip_keys = self.fpr.upn.UniquePictureName_dict
-            for key, row in self._master_upn.items():
-                if key in trip_keys:
-                    continue
-                if (row.get("WetSoortNaam") or "").strip().casefold() == sci:
-                    self._master_keys.add(key)
+            pics = [p for p in pics if p["UniquePictureName"] not in trip_keys]
+            self._master_upn = {p["UniquePictureName"]: p for p in pics}
+            if self._master_upn:
+                self._master_files = self._master_db.files_for_upns(
+                    self._master_upn.keys())
+            self._master_keys = set(self._master_upn.keys())
 
         rows = []
         for key, row in self.fpr.upn.UniquePictureName_dict.items():
