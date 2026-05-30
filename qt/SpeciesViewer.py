@@ -55,9 +55,14 @@ def _warm_master_db_in_background() -> None:
             from db.master_db import MasterDB
             db = MasterDB(master_root)
             rebuilt = db.ensure_fresh()
+            # Crash recovery: flush any master writes that were queued but never
+            # checkpointed to the canonical CSVs before a prior crash/quit. Runs
+            # off the GUI thread while the splash is up.
+            recovered = db.recover_if_needed()
             db.close()
-            diag(f"warm done (rebuilt={rebuilt})")
-            logger.info(f"Master DB warm complete (rebuilt={rebuilt}).")
+            diag(f"warm done (rebuilt={rebuilt}, recovered={recovered})")
+            logger.info(
+                f"Master DB warm complete (rebuilt={rebuilt}, recovered={recovered}).")
         except Exception as e:
             diag(f"warm FAILED: {e!r}")
             logger.warning(f"Splash-time master DB warm failed: {e}")

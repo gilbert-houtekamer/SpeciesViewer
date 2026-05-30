@@ -74,6 +74,38 @@ def db_path() -> Path:
     return _app_data_dir() / "db" / "master.db"
 
 
+def wal_jsonl_path() -> Path:
+    """Append-only pending-CSV-writes log, sibling of master.db (Phase 2).
+
+    NEVER in Dropbox — it is per-machine pending state tied to the local DB.
+    An entry is appended (intent-first, fsync'd) before each master write hits
+    SQLite; the checkpoint worker rewrites the affected master CSV from the DB
+    and truncates the log once the canonical CSV has caught up."""
+    return _app_data_dir() / "db" / "master.wal.jsonl"
+
+
+def _opt_str(v) -> str | None:
+    return None if v is None else str(v)
+
+
+# ── Phase-2 config knobs (read lazily so master_db stays import-light) ──────────
+
+def _cfg_int(key: str, default: int) -> int:
+    try:
+        from utils.config import _config
+        return _config.getint("masterdb", key, fallback=default)
+    except Exception:
+        return default
+
+
+def pending_warn_seconds() -> int:
+    return _cfg_int("pending_warn_seconds", 30)
+
+
+def _checkpoint_debounce_seconds() -> float:
+    return float(_cfg_int("checkpoint_debounce_seconds", 2))
+
+
 # ── DDL helpers ────────────────────────────────────────────────────────────────
 
 def _quoted(name: str) -> str:
@@ -148,11 +180,17 @@ class MasterDB:
     # instance with its own sqlite3 connection — the lock just stops two
     # threads from both seeing "stale" and rebuilding in parallel.
     _build_lock = threading.Lock()
+    # Serialises checkpoint() + jsonl truncate across the GUI flush and the
+    # background worker (each has its own sqlite connection).
+    _checkpoint_lock = threading.Lock()
 
     def __init__(self, master_root: str | Path):
         self.master_root = str(master_root)
         self._db_path = db_path()
+        self._jsonl_path = wal_jsonl_path()
         self._con: sqlite3.Connection | None = None
+        self._seq: int | None = None          # next-seq cache (append side)
+        self._append_lock = threading.Lock()  # guards _next_seq + append
 
     # ── lifecycle ──────────────────────────────────────────────────────────
     def _connect(self) -> sqlite3.Connection:
@@ -382,3 +420,274 @@ class MasterDB:
                 d = {k: r[k] for k in r.keys()}
                 out[d["File:FileName"]] = d
         return out
+
+    # ── Phase 2: DB-first writes + WAL-jsonl queue ────────────────────────────
+    #
+    # Write path (called on the GUI thread by the Rating Editor):
+    #   apply_rating() appends a jsonl entry (intent-first, fsync), applies the
+    #   field UPDATEs to SQLite, then nudges the background checkpoint worker.
+    # The worker (own connection, see MasterCheckpointWorker) debounces, then
+    # checkpoint()s: rewrite the affected master CSV(s) from the DB and truncate
+    # the log. Crash recovery (recover_if_needed) replays the log on launch.
+
+    def _read_jsonl(self) -> list[dict]:
+        p = self._jsonl_path
+        if not p.exists():
+            return []
+        out: list[dict] = []
+        with open(p, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    out.append(json.loads(line))
+                except Exception:
+                    logger.warning("master checkpoint: skipping corrupt jsonl line")
+        return out
+
+    def _next_seq(self) -> int:
+        if self._seq is None:
+            self._seq = max((e.get("seq", 0) for e in self._read_jsonl()), default=0)
+        self._seq += 1
+        return self._seq
+
+    def _append_jsonl(self, entry: dict) -> None:
+        self._jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self._jsonl_path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry) + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+
+    @staticmethod
+    def _replay_picture(con: sqlite3.Connection, upn: str, fields: dict) -> None:
+        sets, vals = [], []
+        for col in ("Rating", "Label", "Rate"):
+            if fields.get(col) is None:
+                continue
+            sets.append(f"{_quoted(col)}=?")
+            vals.append(_coerce_rate(fields[col]) if col == "Rate" else fields[col])
+        if not sets:
+            return
+        vals.append(upn)
+        con.execute(
+            f'UPDATE pictures SET {", ".join(sets)} WHERE "UniquePictureName"=?', vals)
+
+    @staticmethod
+    def _replay_file(con: sqlite3.Connection, fname: str, fields: dict) -> None:
+        sets, vals = [], []
+        for col in ("XMP:Rating", "XMP:Label"):
+            if fields.get(col) is None:
+                continue
+            sets.append(f"{_quoted(col)}=?")
+            vals.append(fields[col])
+        if not sets:
+            return
+        vals.append(fname)
+        con.execute(
+            f'UPDATE files SET {", ".join(sets)} WHERE "File:FileName"=?', vals)
+
+    def apply_rating(self, upn: str, *, rating=None, label=None, rate=None,
+                     file_updates: dict | None = None) -> None:
+        """Durably record a master re-rating. Order matters (WAL discipline):
+        jsonl intent first (fsync), then the SQLite UPDATE, then nudge the
+        checkpoint worker that rewrites the canonical CSV. file_updates maps
+        File:FileName -> {"XMP:Rating": str|None, "XMP:Label": str|None}."""
+        file_updates = file_updates or {}
+        entry = {
+            "ts": time.time(),
+            "upn": upn,
+            "pictures": {"Rating": _opt_str(rating), "Label": _opt_str(label),
+                         "Rate": _opt_str(rate)},
+            "files": {fn: {"XMP:Rating": _opt_str(v.get("XMP:Rating")),
+                           "XMP:Label": _opt_str(v.get("XMP:Label"))}
+                      for fn, v in file_updates.items()},
+        }
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        con = self._connect()
+        with con:
+            self._replay_picture(con, upn, entry["pictures"])
+            for fn, fields in entry["files"].items():
+                self._replay_file(con, fn, fields)
+        MasterCheckpointWorker.get(self.master_root).notify()
+
+    # ── checkpoint (CSV catch-up) ─────────────────────────────────────────────
+    def _rewrite_pictures_csv(self, con: sqlite3.Connection, target: Path) -> None:
+        from engine.picturecsv import Pictures
+        p = Pictures(None)
+        for r in con.execute("SELECT * FROM pictures ORDER BY rowid"):
+            d = self._picture_row_to_dict(r)
+            p.UniquePictureName_dict[d["UniquePictureName"]] = d
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        p.picturefile = str(tmp)
+        p.write_project_summary()
+        os.replace(tmp, target)
+
+    def _rewrite_files_csv(self, con: sqlite3.Connection, target: Path) -> None:
+        from engine.filecsv import Files
+        f = Files(None)
+        for r in con.execute("SELECT * FROM files ORDER BY rowid"):
+            d = {k: r[k] for k in r.keys()}
+            f.files_dict[d["File:FileName"]] = d
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        f.filename = str(tmp)
+        f.write_project_files()
+        os.replace(tmp, target)
+
+    def _truncate_jsonl(self, processed_max_seq: int) -> None:
+        """Drop entries up to processed_max_seq, preserving any appended during
+        the checkpoint (seq strictly greater)."""
+        keep = [e for e in self._read_jsonl()
+                if e.get("seq", 0) > processed_max_seq]
+        tmp = self._jsonl_path.with_suffix(self._jsonl_path.suffix + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            for e in keep:
+                fh.write(json.dumps(e) + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, self._jsonl_path)
+
+    def checkpoint(self) -> int:
+        """Replay pending entries into the DB (those newer than the affected CSV
+        mtime; older ones are stale conflicts → dropped) and atomically rewrite
+        the dirty master CSV(s) from the DB. Returns the number of entries
+        processed. Thread-safe via the class-level checkpoint lock."""
+        with MasterDB._checkpoint_lock:
+            entries = self._read_jsonl()
+            if not entries:
+                return 0
+            con = self._connect()
+            pics_csv, files_csv = self._pictures_csv(), self._files_csv()
+            pics_mtime = pics_csv.stat().st_mtime if pics_csv.exists() else 0.0
+            files_mtime = files_csv.stat().st_mtime if files_csv.exists() else 0.0
+            max_seq = max(e.get("seq", 0) for e in entries)
+            dirty_pics = dirty_files = False
+            with con:
+                for e in entries:
+                    ts = e.get("ts", 0.0)
+                    pic = e.get("pictures")
+                    if pic and any(v is not None for v in pic.values()):
+                        if ts > pics_mtime:
+                            self._replay_picture(con, e["upn"], pic)
+                            dirty_pics = True
+                        else:
+                            logger.warning(
+                                f"master checkpoint: dropping stale pictures entry "
+                                f"for {e.get('upn')} (older than {pics_csv.name})")
+                    fls = e.get("files") or {}
+                    if fls:
+                        if ts > files_mtime:
+                            for fname, fields in fls.items():
+                                self._replay_file(con, fname, fields)
+                            dirty_files = True
+                        else:
+                            logger.warning(
+                                f"master checkpoint: dropping stale files entry "
+                                f"for {e.get('upn')} (older than {files_csv.name})")
+            if dirty_pics:
+                self._rewrite_pictures_csv(con, pics_csv)
+            if dirty_files:
+                self._rewrite_files_csv(con, files_csv)
+            # Refresh stored mtimes for whatever we rewrote so the next
+            # is_stale() check doesn't see our own write as an external change.
+            updates = []
+            if dirty_pics:
+                updates.append(("pictures_csv_mtime", self._csv_mtime(pics_csv)))
+            if dirty_files:
+                updates.append(("files_csv_mtime", self._csv_mtime(files_csv)))
+            if updates:
+                with con:
+                    con.executemany(
+                        "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
+                        updates)
+            self._truncate_jsonl(max_seq)
+            n = len(entries)
+            logger.info(f"master checkpoint: {n} pending write(s) flushed to CSV.")
+            return n
+
+    def recover_if_needed(self) -> int:
+        """On launch: if the pending-writes log is non-empty, flush it. Safe to
+        call after ensure_fresh() on the warm thread."""
+        if self.pending_count() > 0:
+            logger.info("master: pending CSV writes found at launch — checkpointing.")
+            return self.checkpoint()
+        return 0
+
+    # ── stats (for the Database settings dialog) ──────────────────────────────
+    def pending_count(self) -> int:
+        return len(self._read_jsonl())
+
+    def pending_oldest_ts(self) -> float | None:
+        tss = [e.get("ts") for e in self._read_jsonl() if e.get("ts")]
+        return min(tss) if tss else None
+
+    def meta_value(self, key: str) -> str | None:
+        try:
+            con = self._connect()
+            row = con.execute(
+                "SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+            return row["value"] if row else None
+        except sqlite3.OperationalError:
+            return None
+
+    def file_count(self) -> int:
+        con = self._connect()
+        try:
+            return con.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+        except sqlite3.OperationalError:
+            return 0
+
+
+# ── background checkpoint worker ────────────────────────────────────────────────
+
+class MasterCheckpointWorker:
+    """One daemon thread per master root that debounces master writes into a
+    single CSV rewrite. It owns its own MasterDB (sqlite connections are
+    thread-affine), so the GUI thread never blocks on the ~85k/178k-row CSV
+    rewrite. notify() coalesces rapid star-clicks; flush() runs a synchronous
+    checkpoint (Database dialog's "Flush now" / shutdown)."""
+
+    _instances: dict[str, "MasterCheckpointWorker"] = {}
+    _registry_lock = threading.Lock()
+
+    @classmethod
+    def get(cls, master_root) -> "MasterCheckpointWorker":
+        key = str(master_root)
+        with cls._registry_lock:
+            w = cls._instances.get(key)
+            if w is None:
+                w = cls(master_root)
+                cls._instances[key] = w
+            return w
+
+    def __init__(self, master_root):
+        self.master_root = str(master_root)
+        self._wake = threading.Event()
+        self._thread = threading.Thread(
+            target=self._run, name="MasterCheckpoint", daemon=True)
+        self._thread.start()
+
+    def notify(self) -> None:
+        self._wake.set()
+
+    def _run(self) -> None:
+        db = MasterDB(self.master_root)   # own connection, created in-thread
+        while True:
+            self._wake.wait()
+            # Debounce: keep waiting until writes go quiet for the interval.
+            debounce = _checkpoint_debounce_seconds()
+            while True:
+                self._wake.clear()
+                if self._wake.wait(timeout=debounce):
+                    continue
+                break
+            try:
+                db.checkpoint()
+            except Exception as e:
+                logger.error(f"master checkpoint worker failed: {e}", exc_info=True)
+
+    def flush(self) -> int:
+        """Synchronous checkpoint on the caller's thread (fresh connection)."""
+        return MasterDB(self.master_root).checkpoint()

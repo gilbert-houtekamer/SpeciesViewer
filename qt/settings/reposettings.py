@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFileDialog, QMessageBox, QFrame
+    QFileDialog, QMessageBox, QFrame, QCheckBox
 )
 import logging
 from utils.config import _config, persist_config
@@ -20,6 +20,13 @@ class RepoSettingsDialog(QDialog):
         browse_master_btn.clicked.connect(self.browse_master)
         layout.addWidget(browse_master_btn)
         self.master_web = self._labeled_field(layout, "Web root", _config.get("master", "masterbiotawebroot", fallback=""))
+        # Master Read-Only: when checked, the Rating Editor cannot write back to
+        # the master (re-rating master pictures). Default ON (safe) — needed on a
+        # machine that does not hold the complete master (e.g. the laptop).
+        self.master_readonly = QCheckBox("Master Read-Only (block master re-rating)")
+        self.master_readonly.setChecked(
+            _config.get("master", "readonly", fallback="yes").strip().lower() != "no")
+        layout.addWidget(self.master_readonly)
         layout.addWidget(self._divider())
 
         # Active Trip section
@@ -78,6 +85,8 @@ class RepoSettingsDialog(QDialog):
     def save_settings(self):
         _config.set("master", "masterbiotadatabase", self.master_field.text())
         _config.set("master", "masterbiotawebroot", self.master_web.text())
+        _config.set("master", "readonly",
+                    "yes" if self.master_readonly.isChecked() else "no")
         _config.set("trip", "tripbiotadatabase", self.trip_field.text())
         _config.set("trip", "tripbiotawebroot", self.trip_web.text())
         if not _config.has_section("virttrip"):

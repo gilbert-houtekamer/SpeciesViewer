@@ -49,9 +49,11 @@ class RatingEditorItem(PictureItem):
         self._c = collection
         self._key = upn_key
         self._master = collection.is_master(upn_key)
-        # trip pictures are editable; master reference pictures are read-only (v1)
-        self.can_edit_rating = not self._master
-        self.can_edit_color = not self._master
+        # Trip pictures are always editable. Master reference pictures are
+        # editable only when the master is not in read-only mode (Phase 2).
+        editable = (not self._master) or (not collection.master_read_only)
+        self.can_edit_rating = editable
+        self.can_edit_color = editable
 
     @property
     def from_master(self) -> bool:
@@ -150,6 +152,7 @@ class RatingEditorCollection(PictureCollection):
         self._master_files: dict = {}        # filename -> master file row
         self._master_root: Path | None = None
         self._include_master = False
+        self._master_read_only = True        # Phase 2: master writes opt-in
         self._master_keys: set[str] = set()  # keys currently shown from master
         # Lazy: don't scan all trip pictures (each jpg_path() does several
         # Path.exists() calls — thousands of filesystem stats over D:/E: and
@@ -158,10 +161,16 @@ class RatingEditorCollection(PictureCollection):
         self._order: list[str] = []
 
     # ── master reference wiring ───────────────────────────────────────────
-    def set_master(self, master_db, master_root, *, include: bool = True) -> None:
-        """Attach the master SQLite cache so rebuild() can append read-only
-        reference cards for the selected species. include=False keeps it
-        attached but hidden (e.g. when scope is not Trip+Master).
+    def set_master(self, master_db, master_root, *, include: bool = True,
+                   read_only: bool = True) -> None:
+        """Attach the master SQLite cache so rebuild() can append reference
+        cards for the selected species. include=False keeps it attached but
+        hidden (e.g. when scope is not Trip+Master).
+
+        read_only (Phase 2): when True (the safe default, e.g. a laptop without
+        the full master) master cards stay non-editable; when False, editing a
+        master card writes XMP to the master image files and records the change
+        in the master SQLite WAL + CSV via MasterDB.apply_rating.
 
         The per-species rows are pulled lazily in rebuild() — _master_upn /
         _master_files stay empty until then.
@@ -169,9 +178,14 @@ class RatingEditorCollection(PictureCollection):
         self._master_db = master_db
         self._master_root = Path(master_root) if master_root else None
         self._include_master = bool(include and master_db is not None)
+        self._master_read_only = bool(read_only)
         self._master_upn = {}
         self._master_files = {}
         self._master_keys = set()
+
+    @property
+    def master_read_only(self) -> bool:
+        return getattr(self, "_master_read_only", True)
 
     def is_master(self, key: str) -> bool:
         return key in self._master_keys
@@ -438,7 +452,10 @@ class RatingEditorCollection(PictureCollection):
     def apply(self, upn_key: str, *, new_stars: int | None = None,
               new_color: str | None = None) -> int | None:
         if upn_key in self._master_keys:
-            return None   # master reference pictures are read-only (v1)
+            if self._master_read_only:
+                return None   # master cards are read-only on this machine
+            return self._apply_master_rating(
+                upn_key, new_stars=new_stars, new_color=new_color)
         upn_row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
         if not upn_row:
             return None
@@ -508,3 +525,68 @@ class RatingEditorCollection(PictureCollection):
                 fi_day.write_project_files()
             except Exception as e:
                 logger.error(f"Failed to write data_files.csv for {day}: {e}")
+
+    # ── master write-back (Phase 2) ───────────────────────────────────────────
+    def _apply_master_rating(self, upn_key: str, *, new_stars: int | None = None,
+                             new_color: str | None = None) -> int | None:
+        """Re-rate a master picture. Writes XMP to the master image files (so the
+        rating survives a future master EXIF re-read), then records the change
+        durably via MasterDB.apply_rating (SQLite WAL + queued CSV rewrite).
+        Master file paths are RELATIVE in the CSV → rebuilt from master_root."""
+        upn_row = self._master_upn.get(upn_key)
+        if not upn_row or self._master_db is None or self._master_root is None:
+            return None
+        rel_dir = (upn_row.get("TargetPath")
+                   or upn_row.get("BestJPGPathName") or "").strip()
+        files = upn_row.get("Files", [])
+        if not isinstance(files, list):
+            files = []
+
+        file_updates: dict[str, dict] = {}
+        for fname in files:
+            frow = self._master_files.get(fname)
+            if not frow:
+                continue
+            if frow.get("WindowsExtension", "").lower() not in ("xmp", "jpg", "jpeg"):
+                continue
+            if not rel_dir:
+                continue
+            fpath = self._master_root / rel_dir / fname
+            if not fpath.exists():
+                continue
+            args = []
+            if new_stars is not None:
+                args.append(f"-XMP:Rating={new_stars}")
+            if new_color is not None:
+                args.append(f"-XMP:Label={new_color}")
+            if not args:
+                continue
+            try:
+                exiftool_write(fpath, args)
+            except Exception as e:
+                logger.error(f"master exiftool write failed for {fpath.name}: {e}")
+                continue
+            upd: dict = {}
+            if new_stars is not None:
+                frow["XMP:Rating"] = str(new_stars)
+                upd["XMP:Rating"] = str(new_stars)
+            if new_color is not None:
+                frow["XMP:Label"] = new_color
+                upd["XMP:Label"] = new_color
+            file_updates[fname] = upd
+
+        if new_stars is not None:
+            upn_row["Rating"] = str(new_stars)
+        if new_color is not None:
+            upn_row["Label"] = new_color
+        new_rate = _compute_rate(upn_row, self._master_files)
+        upn_row["Rate"] = str(new_rate)
+
+        try:
+            self._master_db.apply_rating(
+                upn_key,
+                rating=new_stars, label=new_color, rate=new_rate,
+                file_updates=file_updates)
+        except Exception as e:
+            logger.error(f"master DB write failed for {upn_key}: {e}", exc_info=True)
+        return new_rate

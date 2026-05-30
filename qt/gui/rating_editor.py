@@ -808,13 +808,20 @@ class RatingEditorDialog(QDialog):
     def _apply_master(self, db):
         if self._collection is None or not self._tm_radio.isChecked():
             return
-        self._collection.set_master(db, self._master_root, include=True)
+        # Master writes are opt-in per machine (default read-only — e.g. a
+        # laptop without the full master). See Repository Settings.
+        read_only = _config.get(
+            "master", "readonly", fallback="yes").strip().lower() != "no"
+        self._collection.set_master(
+            db, self._master_root, include=True, read_only=read_only)
+        ro_note = " — master is read-only" if read_only else " — master editable"
         if self._species_combo.currentData() is not None:
             self._rebuild_cards()
         else:
             n_master = db.picture_count()
             self._status.setText(
-                f"Trip + master ready ({n_master} master pictures) — select a species.")
+                f"Trip + master ready ({n_master} master pictures{ro_note}) "
+                f"— select a species.")
 
     def _load_trip_scope(self):
         """Load all review-day CSVs into fpr, keeping per-day objects for write-back."""

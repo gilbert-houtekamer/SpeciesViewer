@@ -10,17 +10,26 @@ class SuppressExifToolOutput(logging.Filter):
             record.getMessage().startswith("ExifToolHelper.execute: OUT stdout =")
         )
 
-# GUI handler for QTextEdit/QTextBrowser
-# Inherits QObject so the signal/slot mechanism handles cross-thread delivery:
-# when emit() is called from a worker thread, the queued connection automatically
-# posts the message to the main thread's event loop — appearing in real-time.
-class LogHandler(logging.Handler, QObject):
-    _log_signal = pyqtSignal(str)
+# Cross-thread signal carrier for the GUI handler. Kept as a SEPARATE QObject
+# (composition, not inheritance) so that LogHandler itself stays a pure-Python
+# logging.Handler. At interpreter exit the stdlib's logging.shutdown walks every
+# handler and does getattr(h, 'flushOnClose', True); if the handler were a
+# QObject whose C++ half Qt already deleted, that getattr raises
+# "wrapped C/C++ object ... has been deleted". With the QObject tucked inside,
+# shutdown only ever touches the Python handler — no crash on close.
+class _LogEmitter(QObject):
+    sig = pyqtSignal(str)
 
+
+# GUI handler for QTextEdit/QTextBrowser.
+# The queued signal/slot connection handles cross-thread delivery: when emit()
+# is called from a worker thread, the message is posted to the main thread's
+# event loop and appears in real-time.
+class LogHandler(logging.Handler):
     def __init__(self, log_widget):
-        logging.Handler.__init__(self)
-        QObject.__init__(self)
-        self._log_signal.connect(log_widget.appendHtml)
+        super().__init__()
+        self._emitter = _LogEmitter()
+        self._emitter.sig.connect(log_widget.appendHtml)
 
     def emit(self, record):
         msg = self.format(record)
@@ -33,7 +42,11 @@ class LogHandler(logging.Handler, QObject):
         elif record.levelno == logging.WARNING:
             safe = f'<span style="color:blue;"><b>{safe}</b></span>'
 
-        self._log_signal.emit(safe)
+        try:
+            self._emitter.sig.emit(safe)
+        except RuntimeError:
+            # Widget/emitter torn down during shutdown — drop the late record.
+            pass
 
 # Console formatter with ANSI coloring
 class ConsoleFormatter(logging.Formatter):

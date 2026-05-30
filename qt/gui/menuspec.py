@@ -15,6 +15,7 @@ import os
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
 from settings.speciessettings import SpeciesSettingsDialog
+from settings.dbsettings import DatabaseSettingsDialog
 from dialogs.setting import AboutDialog
 from utils.batch_config import generate_svconfig_ini
 from sharedlib.statemachine import StateMachine
@@ -605,6 +606,9 @@ def build_menu_spec(main_window):
             ),
             "Species Settings": MenuSpec(
                 callback=lambda: SpeciesSettingsDialog(main_window).exec(),
+            ),
+            "Database Settings": MenuSpec(
+                callback=lambda: DatabaseSettingsDialog(main_window).exec(),
             ),
         },
         "Help": {
