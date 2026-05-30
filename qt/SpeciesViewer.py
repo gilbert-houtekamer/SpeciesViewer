@@ -1,4 +1,6 @@
+import logging
 import sys
+import threading
 from pathlib import Path
 
 # Ensure both the project root and qt/ are on sys.path regardless of CWD
@@ -15,6 +17,52 @@ from PyQt6.QtCore import Qt, QTimer
 from gui.mainwindow import MainWindow
 from utils.logger_support import init_logger
 from gui.trip_overview import populate_trip_overview
+from utils.config import _config
+
+
+def _warm_master_db_in_background() -> None:
+    """Run MasterDB.ensure_fresh() on a daemon thread during splash so the
+    cold-rebuild cost (~6s when the master CSVs have changed) is paid while
+    the user is already waiting, instead of when they later open the Rating
+    Editor's Trip+Master scope.
+
+    The thread opens its own sqlite3 connection (sqlite3 connections are
+    thread-affine) and closes it before returning; the Rating Editor's later
+    open is then a warm <10ms path. Failures (missing master, permission
+    errors, etc.) log a warning and otherwise pretend nothing happened — the
+    lazy path in `_attach_master` still falls back cleanly.
+
+    Concurrency with the lazy open is handled by MasterDB._build_lock + the
+    double-checked is_stale() inside ensure_fresh().
+    """
+    def _run():
+        # Diagnostic prints go straight to stderr so they survive
+        # init_logger()'s handler.clear() + mode="w" reset at t=2s; the
+        # post-init logger.info also writes to studio.log.
+        def diag(msg):
+            print(f"[splash-warm] {msg}", file=sys.stderr, flush=True)
+        logger = logging.getLogger("speciesviewer")
+        try:
+            master_root = _config.get(
+                "master", "masterbiotadatabase", fallback="").strip()
+            if not master_root:
+                diag("master root not configured — skipping warm")
+                return
+            if not Path(master_root).exists():
+                diag(f"master root missing: {master_root!r} — skipping warm")
+                return
+            diag(f"warming master DB from {master_root}")
+            from db.master_db import MasterDB
+            db = MasterDB(master_root)
+            rebuilt = db.ensure_fresh()
+            db.close()
+            diag(f"warm done (rebuilt={rebuilt})")
+            logger.info(f"Master DB warm complete (rebuilt={rebuilt}).")
+        except Exception as e:
+            diag(f"warm FAILED: {e!r}")
+            logger.warning(f"Splash-time master DB warm failed: {e}")
+
+    threading.Thread(target=_run, name="MasterDBWarm", daemon=True).start()
 
 # Strong, module-level reference to the main window for the app's lifetime.
 # Without it the window is created as a local inside launch_main_window and kept
@@ -47,6 +95,11 @@ def start_main():
         Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
     )
     splash.show()
+
+    # Warm the master SQLite cache in the background while the splash is up.
+    # If the master CSVs changed since last launch this avoids paying the ~6s
+    # rebuild later, when the user opens Rating Editor → Trip+Master.
+    _warm_master_db_in_background()
 
     # 🪄 Launch main app window after splash
     def launch_main_window():

@@ -32,6 +32,7 @@ import logging
 import os
 import sqlite3
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Callable, Iterable
@@ -39,6 +40,15 @@ from typing import Callable, Iterable
 from engine.csv_columns import PICTURE_FIELDS, DATA_FILE_FIELDS
 
 logger = logging.getLogger("speciesviewer")
+
+
+def _diag(msg: str) -> None:
+    """Diagnostic print straight to stderr. Bypasses the speciesviewer logger
+    so we still see what happens during splash-time warming, BEFORE
+    init_logger() attaches the file handler at t≈2s. Visible in the VS Code
+    debug console / terminal."""
+    print(f"[master_db] {msg}", file=sys.stderr, flush=True)
+
 
 # Bump this if the schema changes; mismatch triggers a full rebuild.
 SCHEMA_VERSION = 1
@@ -133,6 +143,12 @@ class MasterDB:
     table — at first run, after a master pipeline, or when SCHEMA_VERSION
     changes."""
 
+    # Class-level lock: serialise rebuilds across threads (splash-time warm-up
+    # vs Rating Editor lazy-open). Each thread still creates its own MasterDB
+    # instance with its own sqlite3 connection — the lock just stops two
+    # threads from both seeing "stale" and rebuilding in parallel.
+    _build_lock = threading.Lock()
+
     def __init__(self, master_root: str | Path):
         self.master_root = str(master_root)
         self._db_path = db_path()
@@ -141,13 +157,16 @@ class MasterDB:
     # ── lifecycle ──────────────────────────────────────────────────────────
     def _connect(self) -> sqlite3.Connection:
         if self._con is None:
+            _diag(f"_connect: mkdir {self._db_path.parent}")
             self._db_path.parent.mkdir(parents=True, exist_ok=True)
+            _diag(f"_connect: sqlite3.connect({self._db_path})")
             con = sqlite3.connect(self._db_path)
             con.row_factory = sqlite3.Row
             # WAL gives us fast crash-safe writes (Phase 2). Harmless for reads.
             con.execute("PRAGMA journal_mode = WAL")
             con.execute("PRAGMA synchronous = NORMAL")
             self._con = con
+            _diag(f"_connect: ok (WAL mode)")
         return self._con
 
     def close(self) -> None:
@@ -193,14 +212,33 @@ class MasterDB:
 
     def ensure_fresh(self, *, progress_cb: Callable[[str], None] | None = None) -> bool:
         """Build the DB if missing, rebuild if stale, otherwise just open it.
-        Returns True iff a rebuild was performed."""
-        if not self._pictures_csv().exists() or not self._files_csv().exists():
+        Returns True iff a rebuild was performed.
+
+        Thread-safe against concurrent rebuilds — the class-level _build_lock
+        serialises competing rebuilds (splash-time warm-up racing the
+        Rating Editor's lazy open). The double-check inside the lock means
+        the loser of the race just returns False instead of rebuilding twice.
+        """
+        _diag(f"ensure_fresh: master_root={self.master_root!r}")
+        pics_csv, files_csv = self._pictures_csv(), self._files_csv()
+        _diag(f"ensure_fresh: pics_csv exists={pics_csv.exists()} ({pics_csv})")
+        _diag(f"ensure_fresh: files_csv exists={files_csv.exists()} ({files_csv})")
+        if not pics_csv.exists() or not files_csv.exists():
             raise FileNotFoundError(
                 f"Master CSVs not found under {self.master_root}/metadata/active/")
-        if self.is_stale():
+        stale = self.is_stale()
+        _diag(f"ensure_fresh: is_stale={stale}")
+        if not stale:
+            return False
+        with MasterDB._build_lock:
+            # Another thread may have rebuilt while we were waiting.
+            if not self.is_stale():
+                _diag("ensure_fresh: another thread rebuilt while we waited")
+                return False
+            _diag("ensure_fresh: starting rebuild")
             self.rebuild(progress_cb=progress_cb)
+            _diag("ensure_fresh: rebuild complete")
             return True
-        return False
 
     # ── rebuild ───────────────────────────────────────────────────────────
     def rebuild(self, *, progress_cb: Callable[[str], None] | None = None) -> None:
@@ -211,6 +249,7 @@ class MasterDB:
 
         def note(msg: str) -> None:
             logger.info(msg)
+            _diag(f"rebuild: {msg}")
             if progress_cb:
                 progress_cb(msg)
 

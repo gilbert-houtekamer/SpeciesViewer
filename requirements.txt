@@ -20,6 +20,9 @@ PyQt6
 # Outgoing REST calls
 requests
 pysftp
+# pysftp is unmaintained and only works with paramiko < 4 (paramiko 4 dropped
+# DSSKey). Pin until we replace pysftp with a maintained alternative.
+paramiko<4
 
 # testing/tools
 pytest
