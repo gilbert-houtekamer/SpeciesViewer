@@ -322,12 +322,16 @@ class TripCreationDialog(QDialog):
             print("⚠️ No trip.ini found at", new_path, ", be sure to complete all tabs.")
 
     def on_write_tripini_clicked(self):
-        self.create_trip_ini()        
-        self.logger.info("Trip.ini created or updated successfully!")        
+        if not self.create_trip_ini():
+            return
+        self.logger.info("Trip.ini created or updated successfully!")
         self.passed_parent.status_bar.showMessage("Trip.ini created or updated successfully!")
 
     def on_create_clicked(self):
-        self.create_trip_ini()
+        # Abort if trip root or project pictures folder is invalid — otherwise the
+        # batch below would build a trip pointing at a non-existent picture dir.
+        if not self.create_trip_ini():
+            return
         # make sure new structure is created
         set_trip_settings(self.root_field.get_text(), self.trip_web.field.text(), self.project_path.field.text())
         # Also save trip/project pair
@@ -383,9 +387,16 @@ class TripCreationDialog(QDialog):
 
         if not trip_root or not os.path.isdir(trip_root):
             self.root_field.show_hint("Please select a valid trip folder.")
-            return
+            return False
         else:
             self.root_field.clear_hint()
+
+        project_dir = self.project_path.get_path()
+        if not project_dir or not os.path.isdir(project_dir):
+            self.project_path.show_hint("Please select a valid project pictures folder.")
+            return False
+        else:
+            self.project_path.clear_hint()
 
         generate_trip_ini(
             trip_root,
@@ -399,7 +410,8 @@ class TripCreationDialog(QDialog):
             title_en,
             message_en,
             self.logger
-    )
+        )
+        return True
 
 class _SDCardCopyWorker(QObject):
     """Runs copy_card on a worker thread so a multi-GB card read keeps the UI
