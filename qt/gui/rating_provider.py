@@ -213,19 +213,6 @@ class RatingEditorCollection(PictureCollection):
         files = self._master_upn.get(key, {}).get("Files", []) or []
         return [f for f in files if not self._master_file_is_jpg(f)]
 
-    def master_upn_dir(self, key: str) -> str:
-        """On-disk species folder of a master UPN (master_root/rel_dir), for
-        defaulting the 'Add crop' file picker. '' if not resolvable."""
-        if self._master_root is None or key not in self._master_keys:
-            return ""
-        row = self._master_upn.get(key, {})
-        rel = (row.get("TargetPath") or row.get("BestJPGPathName") or "").strip()
-        if rel:
-            p = self._master_root / rel
-            if p.exists():
-                return str(p)
-        return ""
-
     def delete_master_picture(self, key: str) -> dict:
         from db.master_mutate import delete_picture
         return delete_picture(self._master_db, self._master_root, key)
