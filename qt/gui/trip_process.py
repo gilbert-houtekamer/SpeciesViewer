@@ -401,6 +401,118 @@ class TripCreationDialog(QDialog):
             self.logger
     )
 
+class _SDCardCopyWorker(QObject):
+    """Runs copy_card on a worker thread so a multi-GB card read keeps the UI
+    responsive. Progress/finished are queued back to the GUI thread via signals."""
+    progress = pyqtSignal(int, int, str)   # done, total, filename
+    finished = pyqtSignal(dict, str)       # summary, errorstring ("" == clean)
+
+    def __init__(self, source, dest):
+        super().__init__()
+        self._source = source
+        self._dest = dest
+        self._cancel = False
+
+    def cancel(self):
+        self._cancel = True
+
+    def run(self):
+        try:
+            from bin.sv0ReadSDCard import copy_card
+            summary = copy_card(
+                self._source, self._dest,
+                progress=lambda done, total, name: self.progress.emit(done, total, name),
+                should_cancel=lambda: self._cancel,
+            )
+            self.finished.emit(summary, "")
+        except Exception as e:
+            self.finished.emit({}, str(e))
+
+
+class ReadSDCardDialog(QDialog):
+    """Front-stage ingest (M0): copy pictures from a folder (e.g. a mounted
+    SD-card) into the project pictures directory. No rename, no date-bucketing,
+    no deletion from the card — pictures already copied are skipped so re-runs
+    are safe."""
+    def __init__(self, parent, menu_spec):
+        super().__init__(parent)
+        self.menu_spec = menu_spec
+        self.passed_parent = parent
+        self.logger = parent.logger
+        self.setWindowTitle("Read SD-cards")
+        self.resize(700, 320)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(HTMLLabel(
+            "<p><b>Read SD-cards</b><br>"
+            "Copy pictures from a folder — typically a mounted SD-card — into the "
+            "project pictures directory. Files are copied <b>as-is</b>: no renaming "
+            "and nothing is ever changed or deleted on the card. Each copy is verified, "
+            "and pictures already copied are skipped, so you can re-run this safely.</p>"
+        ))
+
+        self.source_field = DirectoryFieldQt("Card / source folder", "")
+        layout.addWidget(self.source_field)
+        self.dest_field = DirectoryFieldQt(
+            "Project pictures", _config.get("project", "picturedirectory", fallback="")
+        )
+        layout.addWidget(self.dest_field)
+
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        self.read_btn = QPushButton("Read")
+        self.close_btn = QPushButton("Close")
+        btn_row.addWidget(self.read_btn)
+        btn_row.addWidget(self.close_btn)
+        layout.addLayout(btn_row)
+
+        self.read_btn.clicked.connect(self.on_read)
+        self.close_btn.clicked.connect(self.reject)
+
+    def on_read(self):
+        source = self.source_field.get_path()
+        dest = self.dest_field.get_path()
+        if not source or not os.path.isdir(source):
+            self.source_field.show_hint("Please select a valid source folder.")
+            return
+        if not dest or not os.path.isdir(dest):
+            self.dest_field.show_hint("Please select a valid project pictures folder.")
+            return
+
+        self.read_btn.setEnabled(False)
+        self.status_label.setText("Scanning…")
+        self.logger.info(f"Reading SD-card from {source} → {dest}")
+
+        self._thread = QThread()
+        self._worker = _SDCardCopyWorker(source, dest)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.progress.connect(self.on_progress)
+        self._worker.finished.connect(self.on_finished)
+        self._thread.start()
+
+    def on_progress(self, done, total, name):
+        self.status_label.setText(f"Copying {done}/{total}: {name}")
+
+    def on_finished(self, summary, error):
+        self._thread.quit()
+        self._thread.wait()
+        self.read_btn.setEnabled(True)
+        if error:
+            self.logger.warning(f"❌ Card read failed: {error}")
+            self.status_label.setText(f"❌ {error}")
+            return
+        msg = (f"Copied {summary.get('copied', 0)}, skipped {summary.get('skipped', 0)}, "
+               f"conflicts {summary.get('conflict', 0)}, failed {summary.get('failed', 0)} "
+               f"of {summary.get('total', 0)} pictures.")
+        self.logger.info(f"✅ Card read complete. {msg}")
+        self.status_label.setText(f"✅ {msg}")
+
+
 class ReadDirDialog(QDialog):
     def __init__(self, parent, menu_spec):
         super().__init__(parent)

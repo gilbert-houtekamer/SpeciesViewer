@@ -2,7 +2,7 @@ import configparser
 
 from PyQt6.QtWidgets import QMessageBox
 from gui.menu import MenuSpec  # assuming class is defined elsewhere
-from gui.trip_process import (ReadDirDialog, ReadSummarizeDialog, TripCreationDialog,
+from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDialog, TripCreationDialog,
         WritePicturesDialog, CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog,
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
         AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
@@ -62,6 +62,17 @@ def build_menu_spec(main_window):
             return sm.explainAbort(statusname, raiseSV=False)
         except:
             return None    
+
+    # ── Read SD-cards: the front-stage ingest (M0). Copies pictures from a
+    # folder (e.g. a mounted card) into the project pictures dir. Runs the copy
+    # directly on a worker thread — no statemachine, no svconfig plumbing —
+    # because it precedes any day/trip structure.
+    read_sdcard = MenuSpec(
+        callback=None,
+        title="Read SD-cards",
+        showsubdirectory=False,
+    )
+    read_sdcard.callback = lambda: ReadSDCardDialog(main_window, read_sdcard).exec()
 
     trip_create = MenuSpec(
         callback=None,
@@ -549,6 +560,8 @@ def build_menu_spec(main_window):
             ),
         },
         "Trip": {
+            "Read SD-cards": read_sdcard,
+            f"{MenuSpec.separator()}_sd": None,
             "Create Trip": trip_create,
             f"{MenuSpec.separator()}_1": None,
             "Sync Sidecars": sync_sidecars,
