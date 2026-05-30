@@ -268,7 +268,7 @@ class PictureCard(QFrame):
     status_clicked = pyqtSignal(str)      # key — status icon clicked → open SpeciesInfoDialog
 
     def __init__(self, item: PictureItem, card_width: int, parent=None,
-                 *, show_status: bool = False):
+                 *, show_status: bool = False, show_kind_tag: bool = False):
         super().__init__(parent)
         self.setObjectName("PictureCard")
         self._item = item
@@ -276,6 +276,10 @@ class PictureCard(QFrame):
         self._selected = False
         self._cursor = False
         self._from_master = getattr(item, "from_master", False)
+        # In Trip+Master scope the grid mixes the two; tag each card with its
+        # origin + the picture's web/JPG size so they're directly comparable.
+        # Hosts that don't mix kinds (Day, Trip alone) leave this off.
+        self._show_kind_tag = show_kind_tag
         # Preview hosts set show_status to add a status/desc/GPS badge row and a
         # clickable warning icon (→ SpeciesInfoDialog); the Rating Editor leaves
         # it off (its data is already validated).
@@ -317,12 +321,15 @@ class PictureCard(QFrame):
         self._lbl_name.setWordWrap(True)
         vbox.addWidget(self._lbl_name)
 
-        # Reference-from-master tag (read-only comparison picture). Show the
-        # master picture's resolution (the JPG/web size) so its quality is
-        # comparable at a glance, e.g. "— from master (800x599) —".
-        if self._from_master:
+        # Origin tag. Master cards always carry one ("— from master (800x599) —")
+        # since they're read-only references; trip cards get a matching
+        # "— from trip (2000x1500) —" only in Trip+Master scope where the two
+        # kinds share the grid and the user is comparing quality side-by-side.
+        if self._from_master or self._show_kind_tag:
             res = item.exif.jpg_dimensions or item.exif.dimensions
-            tag = QLabel(f"— from master ({res}) —" if res else "— from master —")
+            origin = "master" if self._from_master else "trip"
+            tag = QLabel(f"— from {origin} ({res}) —" if res
+                         else f"— from {origin} —")
             tag.setAlignment(Qt.AlignmentFlag.AlignCenter)
             tag.setStyleSheet("color: #888; font-size: 8px; font-style: italic;")
             vbox.addWidget(tag)
@@ -947,10 +954,11 @@ class RatingEditorDialog(QDialog):
         for c in range(self.columns):
             self._grid.setColumnStretch(c, 1)
 
+        show_kind_tag = self._tm_radio.isChecked()
         for idx in range(n):
             item = self._collection.item(idx)
             r, col, span, card_w = placement[idx]
-            card = PictureCard(item, card_w)   # requests its own thumbnail (async)
+            card = PictureCard(item, card_w, show_kind_tag=show_kind_tag)   # async thumb
             card.card_changed.connect(self._on_card_changed)
             card.card_clicked.connect(self._on_card_cursor)
             card.card_double_clicked.connect(self._on_card_clicked)
