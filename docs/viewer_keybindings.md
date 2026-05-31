@@ -40,6 +40,7 @@ species…" for bulk edits over a multi-selection.
 | `0` | Clear colour label |
 | `Space` | Move to the next picture (no change) |
 | `←` / `→` | Previous / next picture (Large Image View) |
+| Mouse wheel | Over the image in the Large Image View: up → next, down → previous |
 
 ## Dialogs (apply to the selection, else the focused picture)
 

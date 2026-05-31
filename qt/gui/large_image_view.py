@@ -557,6 +557,20 @@ class LargeImageView(QDialog):
 
     # ── Keyboard navigation ───────────────────────────────────────────────────
 
+    def wheelEvent(self, event):
+        # Wheel over the image flips through pictures: up → next, down → previous.
+        # (Wheels over the description panel / filmstrip are consumed by their own
+        # scroll areas, so this only fires over the photo.)
+        dy = event.angleDelta().y()
+        if dy > 0:
+            self._next()
+            event.accept()
+        elif dy < 0:
+            self._prev()
+            event.accept()
+        else:
+            super().wheelEvent(event)
+
     def _cull_set_cursor(self, key):
         if key in self._keys:
             self._index = self._keys.index(key)
