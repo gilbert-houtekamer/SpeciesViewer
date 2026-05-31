@@ -734,6 +734,12 @@ class LargeImageView(QDialog):
         self._batch_rating()
 
     def keyPressEvent(self, event):
+        # Space = next, routed through _go so it honours the 100%-tab reject-skip
+        # (handle_cull_key's generic 'next' would jump straight to the literal next).
+        if event.key() == Qt.Key.Key_Space and not self._desc_edit.hasFocus():
+            self._next()
+            event.accept()
+            return
         from gui.viewer_keys import handle_cull_key
         if self._keys and handle_cull_key(
                 event, order=list(self._keys),
@@ -939,13 +945,30 @@ class LargeImageView(QDialog):
 
     # ── Navigation ────────────────────────────────────────────────────────────
 
+    def _is_reject(self, key):
+        try:
+            item = self._collection.item_for_key(key)
+        except (ValueError, KeyError):
+            return False
+        return (item.color or "").capitalize() in ("Blue", "Purple")
+
     def _go(self, delta: int):
         if not self._keys:
             return
         self._save_description()
-        new = max(0, min(self._index + delta, len(self._keys) - 1))
-        if new == self._index:
-            return
+        n = len(self._keys)
+        step = 1 if delta >= 0 else -1
+        # In the 100% tab, Blue/Purple are rejects and aren't even decoded, so
+        # navigation steps over them to the next live candidate (Fit tab / grids
+        # keep normal navigation, so a reject is still reachable to re-judge).
+        skip = (getattr(self, "_view_tabs", None) is not None
+                and self._view_tabs.currentIndex() == 1)
+        new = self._index + step
+        if skip:
+            while 0 <= new < n and self._is_reject(self._keys[new]):
+                new += step
+        if not (0 <= new < n) or new == self._index:
+            return  # hit an end (or only rejects ahead) — stay put
         self._index = new
         self._load_current()
         self.picture_navigated.emit(self._keys[self._index])

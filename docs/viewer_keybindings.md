@@ -53,6 +53,10 @@ rejected). Drag with the left mouse button to pan; the 1:1 point **stays put as
 you move through a group** (→ / Space), so a set of similar shots compares at the
 same crop and the sharpest one stands out.
 
+While the 100% tab is active, **navigation steps over Blue/Purple** pictures
+(→ / ← / Space / wheel) — you flip only through the live candidates. The Fit tab
+and the grids keep normal navigation, so a reject is still reachable to re-judge.
+
 ## Dialogs (apply to the selection, else the focused picture)
 
 | Key | Action |
