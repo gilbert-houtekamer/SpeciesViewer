@@ -132,13 +132,23 @@ class ImagePreviewDialog(QDialog):
 
         # ── Load project metadata (fpr) if present ─────────────────────────
         projectname = Path(self.image_dir).name
+        # Use the pipeline (fpr) viewer only when the day's CSVs actually exist —
+        # the per-day data_files.csv, not just the review/<day> folder. If they're
+        # absent (never read, or deleted), fall back to the metadata-less path
+        # (sidecar culling viewer / file list) instead of crashing on the read.
+        day_csv = os.path.join(self.trip_root_dir, "metadata", "review",
+                               projectname, "data_files.csv")
         if self._injected_collection is not None:
             self.fpr = None  # injected collection is its own backend
-        elif self.image_dir and os.path.exists(
-                os.path.join(self.trip_root_dir, "metadata", "review", projectname)):
+        elif self.image_dir and os.path.exists(day_csv):
             self.fpr = FilePicture(None)
-            self.fpr.readMaster(self.trip_root_dir, projectname)
-            self.fpr.readTripDay(self.trip_root_dir, projectname)
+            try:
+                self.fpr.readMaster(self.trip_root_dir, projectname)
+                self.fpr.readTripDay(self.trip_root_dir, projectname)
+            except Exception as e:
+                logger.warning(f"Could not load day metadata for {projectname} "
+                               f"({e}); opening in culling mode.")
+                self.fpr = None
         else:
             self.fpr = None
 
