@@ -633,6 +633,7 @@ class ReadSDCardDialog(QDialog):
         file list (not folder discovery) so it works regardless of date
         bucketing; RAW cards render via the embedded preview (cached_jpg_for)."""
         from gui.image_viewer import ImagePreviewDialog
+        from gui.sidecar_provider import SidecarCollection
         from db.master_db import _app_data_dir
         # Only formats the grid can render (still images + RAW); skip video.
         viewable_exts = {".jpg", ".jpeg", ".heic", ".heif", ".png",
@@ -647,9 +648,10 @@ class ReadSDCardDialog(QDialog):
         # override for this location is a separate, later effort.)
         proj_name = re.sub(r"[^\w.-]+", "_", Path(self._last_dest).name or "sdcard")
         cache_root = str(_app_data_dir() / "preview_cache" / proj_name)
-        dlg = ImagePreviewDialog(self.passed_parent, file_list=paths,
-                                 cache_root=cache_root, mode="all",
-                                 source_label="SD-card read")
+        # Sidecar-backed culling viewer: reads/edits the XMP sidecars, no pipeline.
+        collection = SidecarCollection(paths, cache_root=cache_root)
+        dlg = ImagePreviewDialog(self.passed_parent, collection=collection,
+                                 cache_root=cache_root, source_label="SD-card read — culling")
         dlg.show()
 
 

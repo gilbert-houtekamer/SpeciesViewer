@@ -86,7 +86,7 @@ class ImagePreviewDialog(QDialog):
     """
 
     def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg",
-                 file_list=None, cache_root=None, source_label=None):
+                 file_list=None, cache_root=None, source_label=None, collection=None):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
@@ -96,9 +96,16 @@ class ImagePreviewDialog(QDialog):
         self.main_window = parent
         self._file_list = [Path(p) if isinstance(p, str) else p for p in file_list] \
                           if file_list is not None else None
-        self._viewer_label = (f"{len(self._file_list)} files"
-                              if self._file_list is not None
-                              else Path(image_dir).name)
+        # A pre-built PictureCollection injected by the caller (e.g. the sidecar-
+        # backed culling collection). When set, it overrides the fpr/file_list
+        # construction below and the dialog runs in metadata-less (fpr=None) mode.
+        self._injected_collection = collection
+        if collection is not None:
+            self._viewer_label = source_label or "Culling"
+        elif self._file_list is not None:
+            self._viewer_label = f"{len(self._file_list)} files"
+        else:
+            self._viewer_label = Path(image_dir).name
         self.setWindowTitle(f"Species Image Preview ({self._viewer_label})")
 
         self.image_dir = image_dir
@@ -125,7 +132,9 @@ class ImagePreviewDialog(QDialog):
 
         # ── Load project metadata (fpr) if present ─────────────────────────
         projectname = Path(self.image_dir).name
-        if self.image_dir and os.path.exists(
+        if self._injected_collection is not None:
+            self.fpr = None  # injected collection is its own backend
+        elif self.image_dir and os.path.exists(
                 os.path.join(self.trip_root_dir, "metadata", "review", projectname)):
             self.fpr = FilePicture(None)
             self.fpr.readMaster(self.trip_root_dir, projectname)
@@ -135,13 +144,23 @@ class ImagePreviewDialog(QDialog):
 
         # ── Provider collection ────────────────────────────────────────────
         self._loader = AsyncImageLoader(self)
-        if self.fpr is not None:
+        if self._injected_collection is not None:
+            self._collection = self._injected_collection
+        elif self.fpr is not None:
             self._collection = PreviewCollection(self.fpr, loader=self._loader)
         else:
             paths = (self._file_list if self._file_list is not None
                      else self.discover_images(image_dir))
-            self._collection = FileListPreviewCollection(
-                paths, cache_root=self.cache_dir, loader=self._loader)
+            # Ingested-but-not-yet-read folder: if the files have XMP sidecars,
+            # use the editable sidecar-backed culling collection; otherwise the
+            # plain (read-only) file-list preview.
+            if paths and any(Path(p).with_suffix(".xmp").exists() for p in paths):
+                from gui.sidecar_provider import SidecarCollection
+                self._collection = SidecarCollection(
+                    paths, cache_root=self.cache_dir, loader=self._loader)
+            else:
+                self._collection = FileListPreviewCollection(
+                    paths, cache_root=self.cache_dir, loader=self._loader)
 
         # Grid state
         self._cards: list[PictureCard] = []
@@ -164,7 +183,7 @@ class ImagePreviewDialog(QDialog):
 
         dir_layout = QHBoxLayout()
         self.dir_field = None
-        if self._file_list is not None:
+        if self._file_list is not None or self._injected_collection is not None:
             path_label = QLabel(source_label or "Virtual trip — files from master database")
             path_label.setStyleSheet("color: #444; font-style: italic;")
             dir_layout.addWidget(path_label)
