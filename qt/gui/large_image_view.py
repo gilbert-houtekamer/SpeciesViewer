@@ -23,14 +23,15 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QTextEdit,
     QSizePolicy, QScrollArea, QSplitter, QFrame, QPushButton, QToolButton, QStyle,
-    QMessageBox,
+    QMessageBox, QTabWidget,
 )
 from PyQt6.QtGui import (
-    QMovie, QPixmap, QGuiApplication, QShortcut, QKeySequence, QPainter, QColor,
+    QMovie, QPixmap, QImage, QGuiApplication, QShortcut, QKeySequence, QPainter, QColor,
     QIcon, QFont)
 from PyQt6.QtCore import Qt, QTimer, QSize, pyqtSignal
 
 from gui.rating_editor import StarWidget, ColorSelector, COLOR_HEX
+from gui.image_loader import AsyncImageLoader
 from gui.window_state import restore_window, save_window, clamp_to_visible_screen
 from utils.open_path import open_path, reveal_group, launch_app_with_file
 from utils.config import get_setting
@@ -324,6 +325,80 @@ class FilmstripWidget(QWidget):
                 self._cells[key].request_load()
 
 
+class _FullResView(QScrollArea):
+    """1:1 viewport onto a full-resolution image. Drag with the left button to
+    pan; the viewport-centre position is reported (normalised) so the host can
+    keep the same spot when flipping through a group — the sharpest-of-similar
+    comparison. Messages (decoding / skipped / no-RAW) render in place of an image."""
+    point_changed = pyqtSignal(float, float)  # normalised centre (fx, fy)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWidgetResizable(False)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setStyleSheet("background:#1e1e1e;")
+        self._label = QLabel()
+        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._label.setStyleSheet("color:#bbb;")
+        self.setWidget(self._label)
+        self._pixmap = QPixmap()
+        self._drag = None
+        self._label.mousePressEvent = self._on_press
+        self._label.mouseMoveEvent = self._on_move
+        self._label.mouseReleaseEvent = self._on_release
+
+    def set_message(self, text):
+        self._pixmap = QPixmap()
+        self._label.setPixmap(QPixmap())
+        self._label.setText(text)
+        self._label.resize(self.viewport().size())
+
+    def set_image(self, pixmap, point):
+        self._pixmap = pixmap
+        self._label.setText("")
+        self._label.setPixmap(pixmap)
+        self._label.resize(pixmap.size())
+        self._center_on(point)
+
+    def _center_on(self, point):
+        if self._pixmap.isNull():
+            return
+        fx, fy = point
+        self.horizontalScrollBar().setValue(
+            int(fx * self._pixmap.width()) - self.viewport().width() // 2)
+        self.verticalScrollBar().setValue(
+            int(fy * self._pixmap.height()) - self.viewport().height() // 2)
+
+    def _emit_point(self):
+        if self._pixmap.isNull():
+            return
+        cx = self.horizontalScrollBar().value() + self.viewport().width() // 2
+        cy = self.verticalScrollBar().value() + self.viewport().height() // 2
+        self.point_changed.emit(cx / max(1, self._pixmap.width()),
+                                cy / max(1, self._pixmap.height()))
+
+    def _on_press(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self._drag = e.globalPosition()
+            self._label.setCursor(Qt.CursorShape.ClosedHandCursor)
+
+    def _on_move(self, e):
+        if self._drag is not None:
+            gp = e.globalPosition()
+            d = gp - self._drag
+            self._drag = gp
+            self.horizontalScrollBar().setValue(
+                self.horizontalScrollBar().value() - int(d.x()))
+            self.verticalScrollBar().setValue(
+                self.verticalScrollBar().value() - int(d.y()))
+
+    def _on_release(self, e):
+        if e.button() == Qt.MouseButton.LeftButton and self._drag is not None:
+            self._drag = None
+            self._label.unsetCursor()
+            self._emit_point()
+
+
 # ── Main dialog ────────────────────────────────────────────────────────────────
 
 class LargeImageView(QDialog):
@@ -388,12 +463,24 @@ class LargeImageView(QDialog):
         self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._image_label.setMinimumSize(1, 1)
         self._image_label.mousePressEvent = lambda _e: self.setFocus()
+        self._image_label.mouseDoubleClickEvent = self._on_fit_double_click
         frame_l.addWidget(self._image_label)
         stage_h.addWidget(self._img_frame)
         stage_h.addStretch(1)
         stage_v.addLayout(stage_h)
         stage_v.addStretch(1)
-        self._splitter.addWidget(self._stage)
+
+        # Tabbed centre: "Fit" (the scaled preview) + "100%" (full-res from the
+        # RAW, decoded lazily and cached). The 1:1 point persists across the group.
+        self._fullres_point = (0.5, 0.5)
+        self._fr_loader = AsyncImageLoader(self)
+        self._fullres_view = _FullResView()
+        self._fullres_view.point_changed.connect(self._on_fullres_point_changed)
+        self._view_tabs = QTabWidget()
+        self._view_tabs.addTab(self._stage, "Fit")
+        self._view_tabs.addTab(self._fullres_view, "100%")
+        self._view_tabs.currentChanged.connect(self._on_view_tab_changed)
+        self._splitter.addWidget(self._view_tabs)
         self._splitter.setStretchFactor(0, 1)
 
         # Right — metadata panel
@@ -571,6 +658,69 @@ class LargeImageView(QDialog):
         else:
             super().wheelEvent(event)
 
+    # ── 100% (full-resolution) view ──────────────────────────────────────────
+    def _fullres_cache_dir(self):
+        from db.master_db import _app_data_dir
+        return _app_data_dir() / "fullres_cache"
+
+    def _fit_click_to_point(self, posf):
+        """Map a click on the Fit image to a normalised (fx, fy) of the picture."""
+        pm = self._image_label.pixmap()
+        if pm is None or pm.isNull():
+            return (0.5, 0.5)
+        ox = (self._image_label.width() - pm.width()) / 2
+        oy = (self._image_label.height() - pm.height()) / 2
+        fx = (posf.x() - ox) / max(1, pm.width())
+        fy = (posf.y() - oy) / max(1, pm.height())
+        return (min(1.0, max(0.0, fx)), min(1.0, max(0.0, fy)))
+
+    def _on_fit_double_click(self, e):
+        # Double-click the photo → jump to 100% centred on that spot.
+        self._fullres_point = self._fit_click_to_point(e.position())
+        self._view_tabs.setCurrentIndex(1)
+
+    def _on_view_tab_changed(self, idx):
+        if idx == 1:
+            self._load_fullres()
+
+    def _on_fullres_point_changed(self, fx, fy):
+        self._fullres_point = (fx, fy)
+
+    def _load_fullres(self):
+        if getattr(self, "_view_tabs", None) is None or self._view_tabs.currentIndex() != 1:
+            return
+        if not self._keys or self._item is None:
+            return
+        key = self._keys[self._index]
+        item = self._item
+        if (item.color or "").capitalize() in ("Blue", "Purple"):
+            self._fullres_view.set_message("Blue / Purple — already a reject, skipped.")
+            return
+        raw = self._collection.raw_path(key)
+        if not raw:
+            self._fullres_view.set_message("No RAW file for this picture.")
+            return
+        self._fullres_view.set_message("Decoding full resolution…")
+        cache_root = str(self._fullres_cache_dir())
+        raw_s = str(raw)
+        self._fr_loader.cancel_all()  # drop a decode still running for a previous picture
+
+        def produce():
+            from gui.fullres import ensure_fullres_jpeg
+            p = ensure_fullres_jpeg(raw_s, cache_root)
+            if not p:
+                return None
+            img = QImage(str(p))
+            return img if not img.isNull() else None
+
+        self._fr_loader.request(produce, self._on_fullres_pixmap)
+
+    def _on_fullres_pixmap(self, px):
+        if px is None or px.isNull():
+            self._fullres_view.set_message("Could not decode full resolution.")
+            return
+        self._fullres_view.set_image(px, self._fullres_point)
+
     def _cull_set_cursor(self, key):
         if key in self._keys:
             self._index = self._keys.index(key)
@@ -597,6 +747,10 @@ class LargeImageView(QDialog):
             return
         k = event.key()
         desc_focused = self._desc_edit.hasFocus()
+        if k == Qt.Key.Key_F and not desc_focused:
+            self._view_tabs.setCurrentIndex(0 if self._view_tabs.currentIndex() == 1 else 1)
+            event.accept()
+            return
         if k in (Qt.Key.Key_Left, Qt.Key.Key_Right) and not desc_focused:
             self._prev() if k == Qt.Key.Key_Left else self._next()
             event.accept()
@@ -724,6 +878,11 @@ class LargeImageView(QDialog):
         self._image_label.setText("Loading…")
         item.request_full_pixmap(lambda px, t=tok: self._on_pixmap(t, px))
         self.setFocus()
+
+        # If the 100% tab is showing, decode the new picture too — keeping the
+        # same 1:1 point so a group of similars compares at the same crop.
+        if getattr(self, "_view_tabs", None) is not None and self._view_tabs.currentIndex() == 1:
+            self._load_fullres()
 
     def _on_pixmap(self, token, pixmap):
         if token != self._load_token:

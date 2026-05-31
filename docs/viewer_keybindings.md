@@ -41,6 +41,17 @@ species…" for bulk edits over a multi-selection.
 | `Space` | Move to the next picture (no change) |
 | `←` / `→` | Previous / next picture (Large Image View) |
 | Mouse wheel | Over the image in the Large Image View: up → next, down → previous |
+| `f` | Large Image View: toggle the **100% (full-resolution)** tab |
+| Double-click image | Large Image View: open the 100% tab centred on the clicked spot |
+
+## 100% (full-resolution) view — Large Image View
+
+A **100%** tab shows the picture decoded from the RAW at full sensor resolution
+(the embedded preview is only ~3200×2400). It's decoded lazily on first view and
+cached, so later views are instant. **Blue/Purple** pictures are skipped (already
+rejected). Drag with the left mouse button to pan; the 1:1 point **stays put as
+you move through a group** (→ / Space), so a set of similar shots compares at the
+same crop and the sharpest one stands out.
 
 ## Dialogs (apply to the selection, else the focused picture)
 
