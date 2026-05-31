@@ -110,14 +110,69 @@ def _bucket_dates(files, tz_offset_hours, log):
     return buckets
 
 
+class _DestIndex:
+    """Content index of pictures already in the destination tree, for dedup that
+    is independent of filename/prefix ('is this card file already on the laptop?').
+
+    Files are bucketed by size; hashes are computed lazily — only when a source
+    file matches an existing size — so a card of all-new pictures triggers no
+    hashing of the existing library, keeping the check fast on big projects."""
+
+    def __init__(self, dest_root):
+        self._by_size = {}
+        self._hash = {}
+        root = Path(dest_root)
+        if root.is_dir():
+            for p in root.rglob("*"):
+                if p.is_file() and p.suffix.lower() in PICTURE_EXTENSIONS:
+                    try:
+                        self._by_size.setdefault(p.stat().st_size, []).append(p)
+                    except OSError:
+                        pass
+
+    def _h(self, p):
+        if p not in self._hash:
+            try:
+                self._hash[p] = _sha256(p)
+            except OSError:
+                self._hash[p] = None
+        return self._hash[p]
+
+    def find_match(self, src):
+        """Return an existing dest path with identical content to `src`, or None."""
+        try:
+            size = src.stat().st_size
+        except OSError:
+            return None
+        candidates = self._by_size.get(size)
+        if not candidates:
+            return None
+        src_hash = _sha256(src)
+        for p in candidates:
+            if self._h(p) == src_hash:
+                return p
+        return None
+
+    def add(self, path):
+        """Register a freshly-copied file so later identical sources are skipped."""
+        try:
+            self._by_size.setdefault(path.stat().st_size, []).append(path)
+            self._hash[path] = _sha256(path)
+        except OSError:
+            pass
+
+
 def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0,
-              logger=None, progress=None, should_cancel=None):
+              skip_if_on_disk=True, logger=None, progress=None, should_cancel=None):
     """Copy picture files from `source` (recursively) into `dest`.
 
     prefix            - optional filename prefix (see target_name).
     bucket_by_date    - when True, files go into dest/<YYYY-MM-DD>/ subfolders.
     tz_offset_hours   - hours added to capture time BEFORE the date is taken,
                         so near-midnight shots land in the intended day.
+    skip_if_on_disk   - when True (default), skip any card file whose content is
+                        already anywhere in `dest` (content match, ignores name),
+                        so incremental re-reads only copy new pictures.
     progress(done, total, name) - optional callback, called per file before copy.
     should_cancel()             - optional callable; return True to stop early.
 
@@ -142,6 +197,10 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     # just looks up where each file goes.
     buckets = _bucket_dates(files, tz_offset_hours, log) if bucket_by_date else {}
 
+    # Content index of what's already on the laptop — drives dedup independent of
+    # the prefix, so re-reading a card only copies pictures not yet imported.
+    dest_index = _DestIndex(dest) if skip_if_on_disk else None
+
     for i, src in enumerate(files, 1):
         if should_cancel and should_cancel():
             log.warning("⏹ Card read cancelled by user.")
@@ -149,17 +208,26 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
         if progress:
             progress(i, total, src.name)
 
-        target_dir = dest / buckets.get(_norm(src), UNKNOWN_DATE_DIR) if bucket_by_date else dest
-        target = target_dir / target_name(src.name, prefix)
         try:
+            # Already on the laptop (by content, any name)? Skip — this is the
+            # incremental-ingest case. Deleting a copy and re-reading brings it
+            # back, which is also how a wrong-prefix run is corrected.
+            if dest_index is not None:
+                match = dest_index.find_match(src)
+                if match is not None:
+                    summary["skipped"] += 1
+                    targets.append(str(match))
+                    continue
+
+            target_dir = dest / buckets.get(_norm(src), UNKNOWN_DATE_DIR) if bucket_by_date else dest
+            target = target_dir / target_name(src.name, prefix)
             if target.exists():
-                if _already_copied(src, target):
+                if not skip_if_on_disk and _already_copied(src, target):
                     summary["skipped"] += 1
                     targets.append(str(target))
                     continue
-                # Same name, different content — flat copy has no place to put
-                # this without overwriting. Leave the existing file alone and
-                # flag it; renaming (M1) is what ultimately resolves this.
+                # Content is new but the prefixed name is taken by a different
+                # file — don't overwrite; flag it (a different prefix avoids it).
                 log.warning(f"⚠️ Name collision, not overwriting: {target.name} "
                             f"(already exists with different content)")
                 summary["conflict"] += 1
@@ -177,6 +245,8 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
             summary["copied"] += 1
             summary["bytes"] += target.stat().st_size
             targets.append(str(target))
+            if dest_index is not None:
+                dest_index.add(target)
         except OSError as e:
             log.warning(f"❌ Failed to copy {src.name}: {e}")
             summary["failed"] += 1
@@ -199,6 +269,8 @@ if __name__ == "__main__":
     parser.add_argument("--prefix", default="", help="Optional filename prefix, e.g. '2026 Zeeland'")
     parser.add_argument("--by-date", action="store_true", help="Sort into dest/<YYYY-MM-DD>/ subfolders")
     parser.add_argument("--tz-offset", type=float, default=0.0, help="Hours added to capture time before bucketing")
+    parser.add_argument("--no-dedup", action="store_true", help="Do not skip files already present on disk by content")
     args = parser.parse_args()
     copy_card(args.source, args.dest, prefix=args.prefix,
-              bucket_by_date=args.by_date, tz_offset_hours=args.tz_offset)
+              bucket_by_date=args.by_date, tz_offset_hours=args.tz_offset,
+              skip_if_on_disk=not args.no_dedup)
