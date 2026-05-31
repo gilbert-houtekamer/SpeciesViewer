@@ -1373,7 +1373,30 @@ class RatingEditorDialog(QDialog):
                 fallback = p
         return fallback
 
+    def _cull_set_cursor(self, key):
+        prev = self._cards_by_key.get(self._last_clicked_key) if self._last_clicked_key else None
+        if prev:
+            prev.set_cursor_focus(False)
+        self._last_clicked_key = key
+        c = self._cards_by_key.get(key)
+        if c:
+            c.set_cursor_focus(True)
+            self._scroll.ensureWidgetVisible(c)
+
+    def _cull_refresh_key(self, key):
+        c = self._cards_by_key.get(key)
+        if c:
+            c.refresh()
+
     def keyPressEvent(self, event):
+        from gui.viewer_keys import handle_cull_key
+        if handle_cull_key(event, order=[c.upn_key for c in self._cards],
+                           current_key=self._last_clicked_key,
+                           item_for_key=self._collection.item_for_key,
+                           set_cursor=self._cull_set_cursor,
+                           refresh_key=self._cull_refresh_key):
+            event.accept()
+            return
         k = event.key()
         if k == Qt.Key.Key_BracketLeft:          # [ — set left bracket at cursor
             if self._last_clicked_key:

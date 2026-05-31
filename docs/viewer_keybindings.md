@@ -1,0 +1,43 @@
+# Viewer key bindings
+
+These keys work the same in all three picture viewers — the **Species Image
+Preview** grid, the **Rating Editor** grid, and the **Large Image View** — so
+culling feels identical whichever one you're in.
+
+Implementation: [`qt/gui/viewer_keys.py`](../qt/gui/viewer_keys.py) (one
+definition, called from each viewer's `keyPressEvent`). Keep this file in sync
+when bindings change.
+
+## Selection
+
+| Key | Action |
+|-----|--------|
+| `[` | Set the start of a selection range at the focused picture |
+| `]` | Set the end of a selection range at the focused picture |
+| `Esc` | Clear the selection |
+
+(`[` … `]` select an inclusive range in display order.)
+
+## Rating, colour, and moving on
+
+These apply to the **focused / current** picture and then **advance to the next
+picture** (across group boundaries). Use the toolbar "Set rating…" / "Set
+species…" for bulk edits over a multi-selection.
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+1` … `Ctrl+5` | Set rating to 1–5 stars |
+| `q` `w` `e` `r` `t` | Set rating to 1–5 stars (aliases — easier than `Ctrl+5`) |
+| `Ctrl+0` | Clear rating (0 stars) |
+| `1` … `5` | Set colour label: **1 Red · 2 Yellow · 3 Green · 4 Blue · 5 Purple** |
+| `0` | Clear colour label |
+| `Space` | Move to the next picture (no change) |
+| `←` / `→` | Previous / next picture (Large Image View) |
+
+Notes:
+- Keys are ignored while a **text field** (description or species name) has
+  focus, so typing there is never hijacked.
+- Rating/colour are only applied when the picture can carry them (e.g. a RAW
+  with an XMP sidecar); otherwise the key is ignored.
+- The colour order matches the on-screen swatches (Red, Yellow, Green, Blue,
+  Purple).

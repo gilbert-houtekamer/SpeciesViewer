@@ -557,7 +557,21 @@ class LargeImageView(QDialog):
 
     # ── Keyboard navigation ───────────────────────────────────────────────────
 
+    def _cull_set_cursor(self, key):
+        if key in self._keys:
+            self._index = self._keys.index(key)
+            self._load_current()
+
     def keyPressEvent(self, event):
+        from gui.viewer_keys import handle_cull_key
+        if self._keys and handle_cull_key(
+                event, order=list(self._keys),
+                current_key=self._keys[self._index],
+                item_for_key=self._collection.item_for_key,
+                set_cursor=self._cull_set_cursor,
+                refresh_key=self._filmstrip.refresh_item):
+            event.accept()
+            return
         k = event.key()
         desc_focused = self._desc_edit.hasFocus()
         if k in (Qt.Key.Key_Left, Qt.Key.Key_Right) and not desc_focused:
