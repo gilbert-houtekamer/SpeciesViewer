@@ -26,6 +26,17 @@ from utils.config import _config
 logger = logging.getLogger("speciesviewer")
 
 
+def _internet_available(host="api.gbif.org", port=443, timeout=3.0):
+    """Quick reachability probe so we can tell 'not a known species' from
+    'couldn't reach GBIF' — and avoid a long blocking GBIF timeout when offline."""
+    import socket
+    try:
+        socket.create_connection((host, port), timeout=timeout).close()
+        return True
+    except OSError:
+        return False
+
+
 def load_species_classification():
     """Load a standalone SpeciesClassification from the active trip's (else the
     master's) speciescollection.csv — independent of any fpr / trip CSVs.
@@ -125,13 +136,22 @@ class CullingSpeciesDialog(QDialog):
         if not text or self._sc is None:
             self.feedback.setText("")
             return
+        # Local lookup first (no network) — runs on every keystroke.
         try:
-            if use_gbif:
-                sci = self._sc.getSpecies(text)
-            else:
-                sci = self._sc.getKnownSpecies(text.lower(), False, LookUpInGBIF=False)
+            sci = self._sc.getKnownSpecies(text.lower(), False, LookUpInGBIF=False)
         except Exception:
             sci = ""
+        # GBIF only on explicit request, and only if reachable — otherwise the
+        # call blocks on a long timeout and we can't tell offline from not-found.
+        if not sci and use_gbif:
+            if not _internet_available():
+                self.feedback.setText("⚠️ couldn't reach GBIF (no internet?) — "
+                                      "will be stored as typed")
+                return
+            try:
+                sci = self._sc.getSpecies(text)
+            except Exception:
+                sci = ""
         if sci and sci in self._sc.sc_dict:
             props = self._sc.sc_dict[sci]
             nl = props.get("DutchName", "") or "—"
@@ -139,9 +159,12 @@ class CullingSpeciesDialog(QDialog):
             self.feedback.setText(f"✓ <b>{sci}</b>  (NL: {nl} / EN: {en})")
         elif sci:
             self.feedback.setText(f"✓ recognised as <b>{sci}</b>")
+        elif use_gbif:
+            self.feedback.setText("⚠️ not a known species (not in your list, "
+                                  "not in GBIF) — will be stored as typed")
         else:
-            hint = "" if use_gbif else "  (try Check online)"
-            self.feedback.setText(f"⚠️ not in your species list — will be stored as typed{hint}")
+            self.feedback.setText("⚠️ not in your species list — "
+                                  "will be stored as typed  (try Check online)")
 
     def _on_ok(self):
         name = self.field.text().strip()

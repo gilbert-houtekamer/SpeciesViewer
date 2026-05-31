@@ -922,7 +922,11 @@ class LargeImageView(QDialog):
         from gui.culling_species import CullingSpeciesDialog
         host = self.parent()
         sc = host._culling_sc() if hasattr(host, "_culling_sc") else None
-        current = item0.species if len(keys) == 1 else ""
+        # Pre-fill with the species of the picture being viewed (helps when
+        # re-tagging a group that's mostly the same species), else the single
+        # selected picture's species.
+        current = ((self._item.species if self._item is not None else "")
+                   or (item0.species if len(keys) == 1 else ""))
         dlg = CullingSpeciesDialog(sc, current, len(keys), self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             name = dlg.chosen_name()
