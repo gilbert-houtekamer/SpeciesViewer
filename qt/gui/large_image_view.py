@@ -539,7 +539,18 @@ class LargeImageView(QDialog):
         pl.addWidget(self._file_dir_lbl)
         pl.addWidget(_hsep())
 
-        # EXIF section
+        # LOCATION section (right after FILE) — reverse-geocoded place + the GPS
+        # coordinates, read straight from the XMP (shows during culling, before
+        # any CSV). Filled/updated by 'l'.
+        pl.addWidget(_section_header("LOCATION"))
+        self._loc_place_lbl = _field_lbl()   # descriptive place (reserve / lake / town)
+        self._loc_admin_lbl = _small_lbl()   # City · State · Country
+        self._gps_lbl       = _small_lbl()   # GPS coordinates
+        for w in (self._loc_place_lbl, self._loc_admin_lbl, self._gps_lbl):
+            pl.addWidget(w)
+        pl.addWidget(_hsep())
+
+        # EXIF section (GPS moved up to LOCATION)
         pl.addWidget(_section_header("EXIF"))
         self._exif_camera_lbl   = _field_lbl()
         self._exif_lens_lbl     = _small_lbl()
@@ -547,19 +558,9 @@ class LargeImageView(QDialog):
         self._exif_focal_lbl    = _small_lbl()
         self._exif_dims_lbl     = _small_lbl()
         self._exif_date_lbl     = _small_lbl()
-        self._exif_gps_lbl      = _small_lbl()
         for w in (self._exif_camera_lbl, self._exif_lens_lbl,
                   self._exif_settings_lbl, self._exif_focal_lbl,
-                  self._exif_dims_lbl, self._exif_date_lbl, self._exif_gps_lbl):
-            pl.addWidget(w)
-        pl.addWidget(_hsep())
-
-        # LOCATION section — reverse-geocoded place text read straight from the
-        # XMP (so it shows during culling, before any CSV exists). Filled by 'l'.
-        pl.addWidget(_section_header("LOCATION"))
-        self._loc_place_lbl = _field_lbl()   # descriptive place (reserve / lake / town)
-        self._loc_admin_lbl = _small_lbl()   # City · State · Country
-        for w in (self._loc_place_lbl, self._loc_admin_lbl):
+                  self._exif_dims_lbl, self._exif_date_lbl):
             pl.addWidget(w)
         pl.addWidget(_hsep())
 
@@ -888,8 +889,8 @@ class LargeImageView(QDialog):
         date_t = item.date.replace(":", "-", 2) if item.date else ""
         self._exif_date_lbl.setText(date_t)
         self._exif_date_lbl.setVisible(bool(date_t))
-        self._exif_gps_lbl.setText(exif.gps or "")
-        self._exif_gps_lbl.setVisible(bool(exif.gps))
+        self._gps_lbl.setText(exif.gps or "")
+        self._gps_lbl.setVisible(bool(exif.gps))
 
         self._show_location(key)
 
