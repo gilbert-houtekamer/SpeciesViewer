@@ -14,6 +14,7 @@ when bindings change.
 |-----|--------|
 | `[` | Set the start of a selection range at the focused picture |
 | `]` | Set the end of a selection range at the focused picture |
+| `Ctrl+A` | Select all pictures (grids) |
 | `Esc` | Clear the selection |
 
 (`[` … `]` select an inclusive range in display order.)
@@ -63,6 +64,14 @@ and the grids keep normal navigation, so a reject is still reachable to re-judge
 |-----|--------|
 | `s` | Open the **species** dialog |
 | `c` | Open the **rating / colour** dialog |
+| `f` | **Full resolution** — pre-decode to the 1:1 cache |
+| `l` | **Get location** — reverse-geocode GPS → write `Location/City/State/Country` to the XMP |
+
+`l` reverse-geocodes each picture's GPS (OpenStreetMap/Nominatim, English) and
+writes the place name into the XMP. It's throttled and **deduplicated by
+distance** — consecutive shots within ~100 m of the last fix reuse it — so
+`Ctrl+A` then `l` does a whole day with only a handful of lookups. Pictures
+with no GPS (or nowhere to write) are skipped.
 
 Notes:
 - Keys are ignored while a **text field** (description or species name) has

@@ -221,3 +221,12 @@ class PictureCollection(ABC):
         """Return the on-disk Path of the UPN's RAW file (for opening it in an
         external RAW editor like DxO PhotoLab), or None if there is no RAW."""
         return None
+
+    def gps(self, key: str):
+        """Signed decimal (lat, lon) for the picture, or None if it has no GPS."""
+        return None
+
+    def location_targets(self, key: str):
+        """Writable files (XMP sidecar / JPG) to receive reverse-geocoded location
+        text. Empty when there's nowhere LR-style to write it."""
+        return []

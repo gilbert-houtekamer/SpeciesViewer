@@ -726,6 +726,19 @@ class LargeImageView(QDialog):
             self._index = self._keys.index(key)
             self._load_current()
 
+    def _geolocate_current(self):
+        if not self._keys:
+            return
+        key = self._keys[self._index]
+        gps = self._collection.gps(key)
+        files = self._collection.location_targets(key)
+        if not gps or not files:
+            logger.info("Get location: no GPS / writable files for this picture.")
+            return
+        from gui.geolocate import run_geolocate_batch
+        label = (self._item.display_name if self._item else key) or key
+        run_geolocate_batch(self, [(label, gps, files)])
+
     def _cull_open_rating(self):
         # 'c' with no selection → act on the picture being viewed.
         if not self._selected_keys and self._item is not None:
@@ -755,6 +768,10 @@ class LargeImageView(QDialog):
         desc_focused = self._desc_edit.hasFocus()
         if k == Qt.Key.Key_F and not desc_focused:
             self._view_tabs.setCurrentIndex(0 if self._view_tabs.currentIndex() == 1 else 1)
+            event.accept()
+            return
+        if k == Qt.Key.Key_L and not desc_focused:
+            self._geolocate_current()
             event.accept()
             return
         if k in (Qt.Key.Key_Left, Qt.Key.Key_Right) and not desc_focused:

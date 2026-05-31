@@ -689,6 +689,7 @@ class ImagePreviewDialog(QDialog):
         act_species = menu.addAction(f"Set species…  ({lbl})")
         act_rate = menu.addAction(f"Set rating…  ({lbl})")
         act_fullres = menu.addAction(f"Full resolution  ({lbl})")
+        act_geo = menu.addAction(f"Get location  ({lbl})")
         chosen = menu.exec(QCursor.pos())
         if chosen == act_species:
             self._open_species_dialog_for_keys(keys_for_action)
@@ -696,6 +697,8 @@ class ImagePreviewDialog(QDialog):
             self._open_batch_rate_dialog(keys_for_action)
         elif chosen == act_fullres:
             self._cull_full_res(keys_for_action)
+        elif chosen == act_geo:
+            self._cull_geolocate(keys_for_action)
 
     def _culling_sc(self):
         """Lazily load (and cache) the standalone species collection for the
@@ -868,6 +871,29 @@ class ImagePreviewDialog(QDialog):
         from gui.fullres import run_fullres_batch
         run_fullres_batch(self, raws)
 
+    def _cull_geolocate(self, keys=None):
+        """Reverse-geocode the selection (else focused picture) in display order
+        and write the location into each picture's XMP. Dedup-by-distance + the
+        Nominatim throttle live in run_geolocate_batch."""
+        keys = keys if keys else self._cull_keys_target()
+        order = [c.upn_key for c in self._cards]
+        ordered = [k for k in order if k in keys] or list(keys)
+        targets = []
+        for k in ordered:
+            try:
+                item = self._collection.item_for_key(k)
+            except (ValueError, KeyError):
+                continue
+            gps = self._collection.gps(k)
+            files = self._collection.location_targets(k)
+            if gps and files:
+                targets.append((item.display_name or k, gps, files))
+        if not targets:
+            logger.info("Get location: no GPS / writable files in the selection.")
+            return
+        from gui.geolocate import run_geolocate_batch
+        run_geolocate_batch(self, targets)
+
     def keyPressEvent(self, event):
         from gui.viewer_keys import handle_cull_key, handle_grid_arrows, text_input_focused
         if handle_cull_key(event, order=[c.upn_key for c in self._cards],
@@ -886,6 +912,17 @@ class ImagePreviewDialog(QDialog):
             return
         if event.key() == Qt.Key.Key_F and not text_input_focused():
             self._cull_full_res()
+            event.accept()
+            return
+        if event.key() == Qt.Key.Key_L and not text_input_focused():
+            self._cull_geolocate()
+            event.accept()
+            return
+        if (event.key() == Qt.Key.Key_A
+                and (event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+                and not text_input_focused()):
+            self._selected_keys = {c.upn_key for c in self._cards}
+            self._update_selection_display()
             event.accept()
             return
         k = event.key()

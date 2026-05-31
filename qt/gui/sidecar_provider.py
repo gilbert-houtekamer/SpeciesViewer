@@ -265,6 +265,15 @@ class SidecarCollection(PictureCollection):
         raw = self._groups.get(key, {}).get("raw")
         return raw if raw and Path(raw).exists() else None
 
+    def gps(self, key: str):
+        from gui.geolocate import gps_decimal
+        src = self._groups.get(key, {}).get("xmp") or self._source_file(key)
+        return gps_decimal(src) if src else None
+
+    def location_targets(self, key: str):
+        g = self._groups.get(key, {})
+        return [g[k] for k in ("xmp", "jpg") if g.get(k)]
+
     # ── image + write helpers ───────────────────────────────────────────────
     def _source_file(self, stem: str):
         """Best display source: JPG (fast) if present, else the RAW (embedded preview)."""

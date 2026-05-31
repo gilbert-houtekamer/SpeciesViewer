@@ -260,6 +260,24 @@ class PreviewCollection(PictureCollection):
                     return p
         return None
 
+    def gps(self, upn_key: str):
+        from gui.geolocate import gps_decimal
+        p = self.rep_full_path(upn_key)
+        return gps_decimal(p) if p else None
+
+    def location_targets(self, upn_key: str):
+        """The UPN's XMP/JPG files — where LR-style location text is written."""
+        out = []
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            if frow.get("WindowsExtension", "").lower() in ("xmp", "jpg", "jpeg"):
+                wf = frow.get("WindowsFileName", "")
+                if wf and Path(wf).exists():
+                    out.append(wf)
+        return out
+
     # ── helpers shared with items ─────────────────────────────────────────
     def _files(self, upn_key: str) -> list[str]:
         files = self.fpr.upn.UniquePictureName_dict.get(upn_key, {}).get("Files", [])
