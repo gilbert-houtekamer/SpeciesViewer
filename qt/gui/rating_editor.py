@@ -1171,11 +1171,14 @@ class RatingEditorDialog(QDialog):
         lbl = f"{n} picture{'s' if n != 1 else ''}"
         act_species = menu.addAction(f"Set species…  ({lbl})")
         act_rate = menu.addAction(f"Set rating…  ({lbl})")
+        act_fullres = menu.addAction(f"Full resolution  ({lbl})")
         chosen = menu.exec(QCursor.pos())
         if chosen == act_species:
             self._open_species_dialog_for_keys(keys_for_action)
         elif chosen == act_rate:
             self._open_batch_rate_dialog(keys_for_action)
+        elif chosen == act_fullres:
+            self._cull_full_res(keys_for_action)
 
     # ── master add/delete context menu ────────────────────────────────────────
     def _master_context_menu(self, upn_key: str):
@@ -1403,8 +1406,29 @@ class RatingEditorDialog(QDialog):
         if keys:
             self._open_batch_rate_dialog(keys)
 
+    def _cull_full_res(self, keys=None):
+        """Pre-decode the selection (else focused picture) to the full-res cache,
+        skipping Blue/Purple."""
+        keys = keys if keys else self._cull_keys_target()
+        raws = []
+        for k in keys:
+            try:
+                item = self._collection.item_for_key(k)
+            except (ValueError, KeyError):
+                continue
+            if (item.color or "").capitalize() in ("Blue", "Purple"):
+                continue
+            r = self._collection.raw_path(k)
+            if r:
+                raws.append(r)
+        if not raws:
+            logger.info("Full resolution: nothing to decode (no RAWs / all Blue or Purple).")
+            return
+        from gui.fullres import run_fullres_batch
+        run_fullres_batch(self, raws)
+
     def keyPressEvent(self, event):
-        from gui.viewer_keys import handle_cull_key, handle_grid_arrows
+        from gui.viewer_keys import handle_cull_key, handle_grid_arrows, text_input_focused
         if handle_cull_key(event, order=[c.upn_key for c in self._cards],
                            current_key=self._last_clicked_key,
                            item_for_key=self._collection.item_for_key,
@@ -1417,6 +1441,10 @@ class RatingEditorDialog(QDialog):
         if handle_grid_arrows(event, order=[c.upn_key for c in self._cards],
                               current_key=self._last_clicked_key,
                               columns=self.columns, set_cursor=self._cull_set_cursor):
+            event.accept()
+            return
+        if event.key() == Qt.Key.Key_F and not text_input_focused():
+            self._cull_full_res()
             event.accept()
             return
         k = event.key()

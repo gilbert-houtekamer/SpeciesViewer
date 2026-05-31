@@ -431,6 +431,23 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    def _clear_fullres_cache():
+        from gui.fullres import clear_fullres_cache, fullres_cache_dir
+        if QMessageBox.question(
+                main_window, "Clear full-res cache",
+                f"Delete all cached full-resolution images?\n\n{fullres_cache_dir()}"
+                ) != QMessageBox.StandardButton.Yes:
+            return
+        n = clear_fullres_cache()
+        QMessageBox.information(main_window, "Clear full-res cache",
+                                f"Removed {n} cached full-resolution image(s).")
+
+    clear_fullres_cache_spec = MenuSpec(
+        callback=_clear_fullres_cache,
+        title="Clear full-res cache",
+        showsubdirectory=False,
+    )
+
     # Warm the SEPARATE master cache (exif_cache_master.json) by reading EXIF
     # for every picture under <master>/biota. Kept apart from the day/trip
     # exif_cache.json so the ~89MB master cache never slows Read Directory.
@@ -596,6 +613,7 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_master_2": None,
             "Rescan master EXIF cache": rescan_master_cache,
             "Clear EXIF cache": clear_exif_cache,
+            "Clear full-res cache": clear_fullres_cache_spec,
             "Rebuild master DB": rebuild_master_db,
         },
         "Virtual Trips": {

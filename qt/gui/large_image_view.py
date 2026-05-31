@@ -660,8 +660,8 @@ class LargeImageView(QDialog):
 
     # ── 100% (full-resolution) view ──────────────────────────────────────────
     def _fullres_cache_dir(self):
-        from db.master_db import _app_data_dir
-        return _app_data_dir() / "fullres_cache"
+        from gui.fullres import fullres_cache_dir
+        return fullres_cache_dir()
 
     def _fit_click_to_point(self, posf):
         """Map a click on the Fit image to a normalised (fx, fy) of the picture."""
