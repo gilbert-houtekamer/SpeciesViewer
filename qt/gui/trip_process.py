@@ -560,10 +560,32 @@ class ReadSDCardDialog(QDialog):
 
         self._last_targets = []     # picture paths from the most recent read
         self._last_dest = ""        # destination root (used as preview cache dir)
+        self._thread = None
+        self._worker = None
 
         self.read_btn.clicked.connect(self.on_read)
         self.view_btn.clicked.connect(self.on_view)
         self.close_btn.clicked.connect(self.reject)
+
+    def _stop_worker(self):
+        # Don't let the dialog (and its QThread) be destroyed while the copy
+        # worker is still running — that crashes Qt ("QThread: Destroyed while
+        # thread is still running"). Cancel and wait for a clean stop first.
+        if self._thread is not None and self._thread.isRunning():
+            if self._worker is not None:
+                self._worker.cancel()
+            self._thread.quit()
+            self._thread.wait(5000)
+
+    def closeEvent(self, event):
+        self._stop_worker()
+        super().closeEvent(event)
+
+    def reject(self):
+        # The Close button → reject() does not fire closeEvent, and with exec()
+        # the dialog is dropped right after, so wait here too.
+        self._stop_worker()
+        super().reject()
 
     def on_read(self):
         source = self.source_field.get_path()
@@ -620,8 +642,10 @@ class ReadSDCardDialog(QDialog):
             self.logger.warning(f"❌ Card read failed: {error}")
             self.status_label.setText(f"❌ {error}")
             return
-        msg = (f"Copied {summary.get('copied', 0)}, skipped {summary.get('skipped', 0)}, "
-               f"conflicts {summary.get('conflict', 0)}, failed {summary.get('failed', 0)} "
+        renamed = summary.get("renamed", 0)
+        renamed_txt = f" ({renamed} renamed)" if renamed else ""
+        msg = (f"Copied {summary.get('copied', 0)}{renamed_txt}, "
+               f"skipped {summary.get('skipped', 0)}, failed {summary.get('failed', 0)} "
                f"of {summary.get('total', 0)} pictures; {summary.get('sidecars', 0)} sidecar(s).")
         self.logger.info(f"✅ Card read complete. {msg}")
         self.status_label.setText(f"✅ {msg}")

@@ -198,6 +198,25 @@ class _DestIndex:
             pass
 
 
+def _dup_suffix(n):
+    """Disambiguation suffix for the n-th name collision: ' B', ' C', … then ' 28'
+    once past the alphabet. (The original, unsuffixed file is the implicit 'A'.)"""
+    return f" {chr(ord('A') + n)}" if n < 26 else f" {n + 1}"
+
+
+def _next_free_name(target):
+    """A non-existing path beside `target`, inserting a ' B'/' C'/… suffix before
+    the extension. Used when a different file already owns the wanted name (e.g. a
+    dual-slot camera that restarts frame numbers per card)."""
+    parent, stem, ext = target.parent, target.stem, target.suffix
+    n = 1
+    while True:
+        cand = parent / f"{stem}{_dup_suffix(n)}{ext}"
+        if not cand.exists():
+            return cand
+        n += 1
+
+
 def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0,
               skip_if_on_disk=True, write_sidecars=True,
               logger=None, progress=None, should_cancel=None):
@@ -227,7 +246,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     )
     total = len(files)
     summary = {"total": total, "copied": 0, "skipped": 0,
-               "conflict": 0, "failed": 0, "bytes": 0}
+               "renamed": 0, "conflict": 0, "failed": 0, "bytes": 0}
     targets = []  # destination paths now present (copied or already-there) — for previewing
 
     log.info(f"Found {total} picture(s) under {source}")
@@ -261,16 +280,19 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
             target_dir = dest / buckets.get(_norm(src), UNKNOWN_DATE_DIR) if bucket_by_date else dest
             target = target_dir / target_name(src.name, prefix)
             if target.exists():
-                if not skip_if_on_disk and _already_copied(src, target):
+                if _already_copied(src, target):
+                    # Identical file already there (only reachable with dedup off;
+                    # with dedup on, the content index already skipped it above).
                     summary["skipped"] += 1
                     targets.append(str(target))
                     continue
-                # Content is new but the prefixed name is taken by a different
-                # file — don't overwrite; flag it (a different prefix avoids it).
-                log.warning(f"⚠️ Name collision, not overwriting: {target.name} "
-                            f"(already exists with different content)")
-                summary["conflict"] += 1
-                continue
+                # Same name, different content — typically a dual-slot camera that
+                # restarts frame numbers per card. Auto-rename (… B/C/…) and copy;
+                # a re-read recognises it by content and skips, so it's idempotent.
+                renamed = _next_free_name(target)
+                log.info(f"Name in use by a different shot — saving as {renamed.name}")
+                target = renamed
+                summary["renamed"] += 1
 
             src_hash = _sha256(src)
             target.parent.mkdir(parents=True, exist_ok=True)  # create date subdir on demand
@@ -302,8 +324,8 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
             summary["sidecars"] = _write_sidecars(raw_targets, log)
 
     log.info(
-        f"Card read summary — copied {summary['copied']}, skipped {summary['skipped']}, "
-        f"conflicts {summary['conflict']}, failed {summary['failed']} of {total}; "
+        f"Card read summary — copied {summary['copied']} (of which {summary['renamed']} renamed), "
+        f"skipped {summary['skipped']}, failed {summary['failed']} of {total}; "
         f"{summary['sidecars']} sidecar(s)."
     )
     summary["targets"] = targets
