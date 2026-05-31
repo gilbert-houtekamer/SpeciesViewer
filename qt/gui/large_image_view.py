@@ -735,6 +735,17 @@ class LargeImageView(QDialog):
             self._index = self._keys.index(key)
             self._load_current()
 
+    def _show_location(self, key):
+        """Fill the LOCATION panel from the picture's XMP (no CSV needed)."""
+        loc = self._collection.read_location(key)
+        place = loc.get("Location", "")
+        admin = "  ·  ".join(p for p in (loc.get("City"), loc.get("State"),
+                                         loc.get("Country")) if p)
+        self._loc_place_lbl.setText(place)
+        self._loc_place_lbl.setVisible(bool(place))
+        self._loc_admin_lbl.setText(admin)
+        self._loc_admin_lbl.setVisible(bool(admin))
+
     def _geolocate_current(self):
         if not self._keys:
             return
@@ -747,6 +758,7 @@ class LargeImageView(QDialog):
         from gui.geolocate import run_geolocate_batch
         label = (self._item.display_name if self._item else key) or key
         run_geolocate_batch(self, [(label, gps, files)])
+        self._show_location(key)  # reflect the just-written location in the panel
 
     def _cull_open_rating(self):
         # 'c' with no selection → act on the picture being viewed.
@@ -879,15 +891,7 @@ class LargeImageView(QDialog):
         self._exif_gps_lbl.setText(exif.gps or "")
         self._exif_gps_lbl.setVisible(bool(exif.gps))
 
-        # LOCATION — read from the XMP (no CSV needed)
-        loc = self._collection.read_location(key)
-        place = loc.get("Location", "")
-        admin = "  ·  ".join(p for p in (loc.get("City"), loc.get("State"),
-                                         loc.get("Country")) if p)
-        self._loc_place_lbl.setText(place)
-        self._loc_place_lbl.setVisible(bool(place))
-        self._loc_admin_lbl.setText(admin)
-        self._loc_admin_lbl.setVisible(bool(admin))
+        self._show_location(key)
 
         # SPECIES
         self._rebuild_species_section(item, key)
