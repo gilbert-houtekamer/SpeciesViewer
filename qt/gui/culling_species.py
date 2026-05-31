@@ -17,7 +17,7 @@ import logging
 import os
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QCompleter)
+    QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QCompleter)
 from PyQt6.QtCore import Qt
 
 from engine.speciesclassification import SpeciesClassification, Level
@@ -26,15 +26,25 @@ from utils.config import _config
 logger = logging.getLogger("speciesviewer")
 
 
-def _internet_available(host="api.gbif.org", port=443, timeout=3.0):
-    """Quick reachability probe so we can tell 'not a known species' from
-    'couldn't reach GBIF' — and avoid a long blocking GBIF timeout when offline."""
-    import socket
+def gbif_match(name, timeout=6.0):
+    """Look a name up in the GBIF species-match API with a short, explicit
+    timeout. Returns one of:
+      ("found", canonical_name)  — GBIF recognises it
+      ("notfound", "")           — reached GBIF, no match
+      ("unreachable", "")        — request failed/timed out (offline, blocked, slow)
+
+    A bare TCP probe is not enough: the connect can succeed while the actual HTTP
+    request times out, which previously got mislabelled as 'not in GBIF'."""
     try:
-        socket.create_connection((host, port), timeout=timeout).close()
-        return True
-    except OSError:
-        return False
+        import requests
+        r = requests.get("https://api.gbif.org/v1/species/match",
+                         params={"name": name}, timeout=timeout)
+        data = r.json()
+    except Exception:
+        return ("unreachable", "")
+    if (data.get("matchType") or "NONE").upper() in ("EXACT", "FUZZY") and data.get("canonicalName"):
+        return ("found", data.get("canonicalName") or data.get("scientificName") or name)
+    return ("notfound", "")
 
 
 def load_species_classification():
@@ -141,30 +151,34 @@ class CullingSpeciesDialog(QDialog):
             sci = self._sc.getKnownSpecies(text.lower(), False, LookUpInGBIF=False)
         except Exception:
             sci = ""
-        # GBIF only on explicit request, and only if reachable — otherwise the
-        # call blocks on a long timeout and we can't tell offline from not-found.
-        if not sci and use_gbif:
-            if not _internet_available():
-                self.feedback.setText("⚠️ couldn't reach GBIF (no internet?) — "
-                                      "will be stored as typed")
-                return
-            try:
-                sci = self._sc.getSpecies(text)
-            except Exception:
-                sci = ""
+        # Found locally — show the resolved taxon and stop (no network).
         if sci and sci in self._sc.sc_dict:
             props = self._sc.sc_dict[sci]
             nl = props.get("DutchName", "") or "—"
             en = props.get("EnglishName", "") or "—"
             self.feedback.setText(f"✓ <b>{sci}</b>  (NL: {nl} / EN: {en})")
-        elif sci:
+            return
+        if sci:
             self.feedback.setText(f"✓ recognised as <b>{sci}</b>")
-        elif use_gbif:
-            self.feedback.setText("⚠️ not a known species (not in your list, "
-                                  "not in GBIF) — will be stored as typed")
-        else:
+            return
+        # Not local. Only hit GBIF on explicit request, with a real HTTP call so
+        # we can tell 'no match' from 'couldn't connect'.
+        if not use_gbif:
             self.feedback.setText("⚠️ not in your species list — "
                                   "will be stored as typed  (try Check online)")
+            return
+        self.feedback.setText("⏳ checking GBIF…")
+        QApplication.processEvents()
+        status, gname = gbif_match(text)
+        if status == "found":
+            self.feedback.setText(f"✓ found in GBIF: <b>{gname}</b> "
+                                  f"(new to your list) — will be stored")
+        elif status == "unreachable":
+            self.feedback.setText("⚠️ couldn't reach GBIF (no internet?) — "
+                                  "will be stored as typed")
+        else:
+            self.feedback.setText("⚠️ not a known species (not in your list, "
+                                  "not in GBIF) — will be stored as typed")
 
     def _on_ok(self):
         name = self.field.text().strip()
