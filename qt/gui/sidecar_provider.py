@@ -74,13 +74,13 @@ def _subject_to_text(subject) -> str:
 
 
 class SidecarItem(PictureItem):
-    # Rating / colour / description are durable in the sidecar → editable.
-    # Species editing goes through the dedicated culling panel (later step).
+    # Rating / colour / description / species are durable in the sidecar →
+    # editable. Species editing is offered through the smart culling panel.
     can_edit_rating = True
     can_edit_color = True
     can_edit_description = True
     can_edit_headline = False
-    can_edit_species = False
+    can_edit_species = True
 
     def __init__(self, collection: "SidecarCollection", stem: str):
         self._c = collection
@@ -182,6 +182,11 @@ class SidecarItem(PictureItem):
 
     def set_description(self, value: str) -> None:
         self._c.write_tag(self._stem, "XMP:Description", value, "Description")
+
+    def set_species(self, value: str) -> None:
+        # Assigning a list-type XMP tag replaces it, so the sidecar carries the
+        # single chosen keyword; the pipeline resolves it to a taxon later.
+        self._c.write_tag(self._stem, "XMP:Subject", value, "Subject")
 
 
 class SidecarCollection(PictureCollection):

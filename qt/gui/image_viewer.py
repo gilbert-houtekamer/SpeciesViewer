@@ -536,6 +536,7 @@ class ImagePreviewDialog(QDialog):
     # ── Card actions ────────────────────────────────────────────────────────
     def _open_species_dialog(self, key):
         if not self.fpr:
+            self._open_culling_species_dialog({key})
             return
         full_path = self._collection.rep_full_path(key)
         species_name = self.fpr.getSpeciesName(full_path.name)
@@ -671,8 +672,41 @@ class ImagePreviewDialog(QDialog):
         elif chosen == act_rate:
             self._open_batch_rate_dialog(keys_for_action)
 
+    def _culling_sc(self):
+        """Lazily load (and cache) the standalone species collection for the
+        fpr-free culling species panel."""
+        if not hasattr(self, "_culling_sc_cache"):
+            from gui.culling_species import load_species_classification
+            self._culling_sc_cache = load_species_classification()
+        return self._culling_sc_cache
+
+    def _open_culling_species_dialog(self, keys: set):
+        """Smart species assignment for the sidecar/culling viewer (no fpr):
+        write the chosen name to each selected picture's XMP:Subject."""
+        keys = {k for k in keys if k}
+        if not keys:
+            return
+        item0 = self._collection.item_for_key(next(iter(keys)))
+        if not getattr(item0, "can_edit_species", False):
+            return
+        from gui.culling_species import CullingSpeciesDialog
+        current = item0.species if len(keys) == 1 else ""
+        dlg = CullingSpeciesDialog(self._culling_sc(), current, len(keys), self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            name = dlg.chosen_name()
+            for k in keys:
+                try:
+                    self._collection.item_for_key(k).set_species(name)
+                except Exception as e:
+                    logger.error(f"set_species failed for {k}: {e}")
+            self.refresh_after_species_change(set(keys))
+            self._clear_selection()
+
     def _open_species_dialog_for_keys(self, keys: set):
-        if not self.fpr or not keys:
+        if not keys:
+            return
+        if not self.fpr:
+            self._open_culling_species_dialog(set(keys))
             return
         from gui.species_editor import SpeciesInfoPanel
         from PyQt6.QtWidgets import QDialog, QVBoxLayout
