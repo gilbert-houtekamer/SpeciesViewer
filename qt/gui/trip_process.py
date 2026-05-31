@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
 from PyQt6.QtGui import QFont, QGuiApplication, QColor
 from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
 import logging
+import re
 import sys, os, shutil
 from datetime import datetime
 from pathlib import Path
@@ -413,6 +414,31 @@ class TripCreationDialog(QDialog):
         )
         return True
 
+_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _strip_to_project_root(path: str) -> str:
+    """Walk a project picture path up past any trailing day folder (YYYY-MM-DD)
+    and/or tool-cache folder (.preview_cache etc.) so the SD-card target defaults
+    to the project root — never a specific day or a cache subdir."""
+    if not path:
+        return path
+    p = Path(path)
+    while p.name and (p.name.startswith(".") or _DAY_RE.match(p.name)):
+        if p.parent == p:
+            break
+        p = p.parent
+    return str(p)
+
+
+def _default_year(project_root: str) -> str:
+    """Year for the default filename prefix: the leading year of the project-root
+    folder name (e.g. '2026 Zeeland' -> '2026'), else the current year."""
+    name = Path(project_root).name if project_root else ""
+    m = re.match(r"(\d{4})", name)
+    return m.group(1) if m else str(datetime.now().year)
+
+
 class _SDCardCopyWorker(QObject):
     """Runs copy_card on a worker thread so a multi-GB card read keeps the UI
     responsive. Progress/finished are queued back to the GUI thread via signals."""
@@ -468,16 +494,26 @@ class ReadSDCardDialog(QDialog):
             "pictures already copied are skipped, so you can re-run this safely.</p>"
         ))
 
-        self.source_field = DirectoryFieldQt("Card / source folder", "")
+        # Card source + prefix are remembered between runs (usually the same card
+        # and the same trip), so the dialog reopens pre-filled.
+        saved_source = get_cache_gui_section("sdcard_ingest", "source")
+        saved_prefix = get_cache_gui_section("sdcard_ingest", "prefix")
+
+        self.source_field = DirectoryFieldQt("Card / source folder", saved_source)
         layout.addWidget(self.source_field)
-        dest_default = _config.get("project", "picturedirectory", fallback="")
+
+        # picturedirectory points at a day folder (.../<project>/YYYY-MM-DD) for
+        # historic reasons; the card target is the project root, so strip a
+        # trailing date component for the default.
+        dest_default = _strip_to_project_root(_config.get("project", "picturedirectory", fallback=""))
         self.dest_field = DirectoryFieldQt("Project pictures", dest_default)
         layout.addWidget(self.dest_field)
 
-        # Prefix defaults to the destination folder's leaf name (usually the
-        # trip/project name), which is what makes copied names unique per trip.
+        # Prefix default = the year (e.g. '2026') unless a previous run saved one;
+        # the user typically extends it to '2026 Zeeland'. Year is taken from the
+        # project-root name when it starts with one, else the current year.
         self.prefix_field = LabeledTextFieldQt(
-            "Filename prefix", Path(dest_default).name if dest_default else "", inline=True
+            "Filename prefix", saved_prefix or _default_year(dest_default), inline=True
         )
         layout.addWidget(self.prefix_field)
 
@@ -486,9 +522,13 @@ class ReadSDCardDialog(QDialog):
         # shots land in the intended day.
         date_row = QHBoxLayout()
         self.bucket_checkbox = QCheckBox("Sort into date subfolders (YYYY-MM-DD)")
+        # Remembered between runs; defaults ON (date-per-day is the normal layout).
+        self.bucket_checkbox.setChecked(get_cache_gui_section("sdcard_ingest", "by_date") != "0")
         date_row.addWidget(self.bucket_checkbox)
         date_row.addSpacing(20)
-        self.tz_offset_field = LabeledTextFieldQt("Timezone offset (hours)", "0", inline=True)
+        self.tz_offset_field = LabeledTextFieldQt(
+            "Timezone offset (hours)",
+            get_cache_gui_section("sdcard_ingest", "tz_offset") or "0", inline=True)
         self.tz_offset_field.field.setMaximumWidth(60)
         date_row.addWidget(self.tz_offset_field)
         date_row.addStretch()
@@ -534,6 +574,12 @@ class ReadSDCardDialog(QDialog):
             self.tz_offset_field.field.setText("0")
             tz_offset = 0.0
 
+        # Remember the inputs for next time (usually the same card / trip / layout).
+        update_cache_gui_section("sdcard_ingest", "source", source)
+        update_cache_gui_section("sdcard_ingest", "prefix", prefix)
+        update_cache_gui_section("sdcard_ingest", "by_date", "1" if bucket_by_date else "0")
+        update_cache_gui_section("sdcard_ingest", "tz_offset", str(tz_offset))
+
         self._last_dest = dest
         self.read_btn.setEnabled(False)
         self.view_btn.setEnabled(False)
@@ -575,6 +621,7 @@ class ReadSDCardDialog(QDialog):
         file list (not folder discovery) so it works regardless of date
         bucketing; RAW cards render via the embedded preview (cached_jpg_for)."""
         from gui.image_viewer import ImagePreviewDialog
+        from db.master_db import _app_data_dir
         # Only formats the grid can render (still images + RAW); skip video.
         viewable_exts = {".jpg", ".jpeg", ".heic", ".heif", ".png",
                          ".nef", ".orf", ".cr2", ".cr3", ".arw", ".rw2", ".raf", ".dng"}
@@ -582,7 +629,12 @@ class ReadSDCardDialog(QDialog):
         if not paths:
             self.status_label.setText("No viewable pictures to preview.")
             return
-        cache_root = str(Path(self._last_dest) / ".preview_cache") if self._last_dest else None
+        # Keep the preview cache OUT of the project tree — inside it, the cache
+        # folder shows up as a 'day' in the trip overview and would be scanned by
+        # Read Directory. Park it in the per-user app dir instead. (A user-config
+        # override for this location is a separate, later effort.)
+        proj_name = re.sub(r"[^\w.-]+", "_", Path(self._last_dest).name or "sdcard")
+        cache_root = str(_app_data_dir() / "preview_cache" / proj_name)
         dlg = ImagePreviewDialog(self.passed_parent, file_list=paths,
                                  cache_root=cache_root, mode="all",
                                  source_label="SD-card read")

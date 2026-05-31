@@ -332,8 +332,10 @@ def populate_trip_overview(self):
 
     trip_name = image_root.name
 
-    # Get all image day folders
-    image_days = sorted([d for d in image_root.iterdir() if d.is_dir()], key=lambda p: p.name)
+    # Get all image day folders. Skip dot-folders (e.g. .preview_cache) — they are
+    # tool caches, not trip days, and the EXIF scan already prunes them too.
+    image_days = sorted([d for d in image_root.iterdir()
+                         if d.is_dir() and not d.name.startswith(".")], key=lambda p: p.name)
     self._trip_overview_day_snapshot = tuple(d.name for d in image_days)
 
     def count_files(path):
