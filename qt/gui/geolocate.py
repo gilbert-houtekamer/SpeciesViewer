@@ -161,25 +161,64 @@ def write_location(path, fields):
         return False
 
 
-def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttle_s=1.1):
+# ── THROWAWAY: safe-compare dry run ───────────────────────────────────────────
+# While True, 'l' / run_geolocate_batch does NOT touch any file — it writes a CSV
+# comparing the CURRENT vs PROPOSED location for each picture, so the override
+# policy can be decided from real data first. Set False (or delete this block and
+# the dry_run branch) to restore real writing.
+DRY_RUN_COMPARE = True
+
+
+def _write_compare_csv(rows):
+    """rows: list of (label, (lat,lon), current_fields, proposed_fields).
+    Writes a current-vs-proposed comparison CSV to the user's home dir."""
+    import csv
+    import time
+    from pathlib import Path
+    fields = ["Location", "City", "State", "Country", "CountryCode"]
+    path = Path.home() / f"location_compare_{time.strftime('%Y%m%d-%H%M%S')}.csv"
+    header = ["Picture", "Lat", "Lon"]
+    for f in fields:
+        header += [f + "_current", f + "_proposed", f + "_changes"]
+    header.append("display")
+    with open(path, "w", newline="", encoding="utf-8-sig") as fh:  # -sig → Excel reads UTF-8
+        w = csv.writer(fh)
+        w.writerow(header)
+        for label, (lat, lon), cur, new in rows:
+            row = [label, f"{lat:.6f}", f"{lon:.6f}"]
+            for f in fields:
+                c = cur.get(f, "") or ""
+                n = new.get(f, "") or ""
+                row += [c, n, "CHANGE" if c != n else ""]
+            row.append(new.get("display", ""))
+            w.writerow(row)
+    logger.info(f"Location safe-compare CSV written: {path}")
+    return str(path)
+
+
+def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttle_s=1.1,
+                        dry_run=None):
     """Reverse-geocode and write location for an ordered list of targets, on a
     worker thread behind a modal progress dialog with Cancel.
 
     targets: list of (label, (lat, lon) | None, [files_to_write]).
     Dedup-by-distance: consecutive shots within `min_move_m` of the last queried
     fix reuse its result (no new query) — birds at one spot share a location.
-    Nominatim queries are throttled (`throttle_s`) to honour the usage policy."""
+    Nominatim queries are throttled (`throttle_s`) to honour the usage policy.
+    dry_run (default DRY_RUN_COMPARE): write a comparison CSV instead of the XMP."""
     from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
     from PyQt6.QtWidgets import QProgressDialog
     import time
 
+    if dry_run is None:
+        dry_run = DRY_RUN_COMPARE
     targets = list(targets)
     if not targets:
         return
 
     class _Worker(QObject):
         progress = pyqtSignal(int, str)
-        finished = pyqtSignal(int, int, int)  # queried, written, total
+        finished = pyqtSignal(int, int, int, str)  # queried, written, total, csv_path
 
         def __init__(self):
             super().__init__()
@@ -191,6 +230,7 @@ def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttl
         def run(self):
             last_pt = last_fields = None
             queried = written = 0
+            compare_rows = []
             for i, (label, latlon, files) in enumerate(targets, 1):
                 if self._cancel:
                     break
@@ -206,11 +246,17 @@ def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttl
                     fields = place_fields(reverse_geocode(*latlon, lang=lang))
                     queried += 1
                     last_pt, last_fields = latlon, fields
-                if fields and any(fields.get(k) for k in _LOCATION_TAGS):
+                if not fields:
+                    continue
+                if dry_run:
+                    # Safe compare — read current, record, touch nothing.
+                    compare_rows.append((label, latlon, read_location_fields(files[0]), fields))
+                elif any(fields.get(k) for k in _LOCATION_TAGS):
                     for f in files:
                         write_location(f, fields)
                     written += 1
-            self.finished.emit(queried, written, len(targets))
+            csv_path = _write_compare_csv(compare_rows) if (dry_run and compare_rows) else ""
+            self.finished.emit(queried, written, len(targets), csv_path)
 
     dlg = QProgressDialog(f"Looking up locations for {len(targets)} pictures…",
                           "Cancel", 0, len(targets), parent)
@@ -225,12 +271,24 @@ def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttl
                                              dlg.setLabelText(f"{i} / {len(targets)}\n{name}")))
     dlg.canceled.connect(worker.cancel)
 
-    def on_finished(queried, written, total):
+    def on_finished(queried, written, total, csv_path):
         thread.quit()
         thread.wait()
         dlg.close()
-        logger.info(f"Get location: wrote {written}/{total} pictures "
-                    f"({queried} Nominatim queries; the rest reused nearby fixes).")
+        if csv_path:
+            logger.info(f"Get location (SAFE COMPARE — no files changed): {total} pictures, "
+                        f"{queried} Nominatim queries → {csv_path}")
+            try:
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.information(
+                    parent, "Location — safe compare (nothing changed)",
+                    f"No files were modified.\n\nCurrent-vs-proposed comparison for "
+                    f"{total} pictures written to:\n{csv_path}\n\n({queried} Nominatim queries.)")
+            except Exception:
+                pass
+        else:
+            logger.info(f"Get location: wrote {written}/{total} pictures "
+                        f"({queried} Nominatim queries; the rest reused nearby fixes).")
 
     worker.finished.connect(on_finished)
     dlg._thread, dlg._worker = thread, worker
