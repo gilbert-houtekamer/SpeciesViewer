@@ -432,15 +432,29 @@ def build_menu_spec(main_window):
     )
 
     def _clear_fullres_cache():
-        from gui.fullres import clear_fullres_cache, fullres_cache_dir
+        import shutil as _sh
+        from gui.fullres import clear_fullres_cache, fullres_cache_dir, fullres_cache_stats
+        d = fullres_cache_dir()
+        count, used = fullres_cache_stats()
+        probe = d if d.exists() else d.parent
+        try:
+            total, _u, free = _sh.disk_usage(str(probe))
+        except OSError:
+            total = free = 0
+        gb = lambda b: b / 1e9
+        used_pct = f"{used / total * 100:.1f}% of drive" if total else "—"
+        free_txt = (f"{gb(free):.0f} GB free of {gb(total):.0f} GB ({free / total * 100:.0f}% free)"
+                    if total else "drive size unknown")
         if QMessageBox.question(
                 main_window, "Clear full-res cache",
-                f"Delete all cached full-resolution images?\n\n{fullres_cache_dir()}"
+                f"Full-resolution cache: {gb(used):.2f} GB in {count} file(s) ({used_pct}).\n"
+                f"Drive: {free_txt}.\n\n"
+                f"Delete all cached full-resolution images?\n{d}"
                 ) != QMessageBox.StandardButton.Yes:
             return
         n = clear_fullres_cache()
         QMessageBox.information(main_window, "Clear full-res cache",
-                                f"Removed {n} cached full-resolution image(s).")
+                                f"Removed {n} file(s), freed {gb(used):.2f} GB.")
 
     clear_fullres_cache_spec = MenuSpec(
         callback=_clear_fullres_cache,

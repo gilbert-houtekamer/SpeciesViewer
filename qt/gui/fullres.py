@@ -29,6 +29,20 @@ def fullres_cache_path(raw_path, cache_root) -> Path:
     return Path(cache_root) / (Path(raw_path).stem + ".fullres.jpg")
 
 
+def fullres_cache_stats():
+    """(file_count, total_bytes) for the full-res cache."""
+    d = fullres_cache_dir()
+    count = total = 0
+    if d.is_dir():
+        for f in d.glob("*.fullres.jpg"):
+            try:
+                total += f.stat().st_size
+                count += 1
+            except OSError:
+                pass
+    return count, total
+
+
 def clear_fullres_cache() -> int:
     """Delete all cached full-res JPEGs. Returns how many files were removed."""
     d = fullres_cache_dir()

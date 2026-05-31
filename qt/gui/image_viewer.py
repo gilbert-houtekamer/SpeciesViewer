@@ -591,8 +591,20 @@ class ImagePreviewDialog(QDialog):
         dlg.selection_changed.connect(self._on_large_view_selection_changed)
         dlg.species_committed.connect(self.refresh_after_species_change)
         self._large_view = dlg
-        dlg.finished.connect(lambda _=0: setattr(self, "_large_view", None))
+        dlg.finished.connect(lambda _=0: self._on_large_view_closed())
         dlg.show()
+
+    def _on_large_view_closed(self):
+        # Repaint every card from the live provider. Per-edit picture_changed
+        # already refreshes the active card, but a card's coloured frame can fail
+        # to repaint while the grid is occluded by the large view; refreshing on
+        # close (now that the grid is visible again) guarantees it reflects edits.
+        for card in self._cards:
+            try:
+                card.refresh()
+            except RuntimeError:
+                pass
+        self._large_view = None
 
     def _on_large_view_changed(self, key):
         # The viewer wrote the edit via the provider; repaint that card's frame +
