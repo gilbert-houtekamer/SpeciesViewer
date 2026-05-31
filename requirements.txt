@@ -5,6 +5,8 @@ exif
 opencv-python
 pyexiftool
 pillow-heif
+# rawpy (libraw, LGPL-2.1/CDDL-1.0) — full-resolution RAW decode for the 100% view
+rawpy
 configparser
 pygbif
 pysftp
