@@ -445,13 +445,15 @@ class _SDCardCopyWorker(QObject):
     progress = pyqtSignal(int, int, str)   # done, total, filename
     finished = pyqtSignal(dict, str)       # summary, errorstring ("" == clean)
 
-    def __init__(self, source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0):
+    def __init__(self, source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0,
+                 write_sidecars=True):
         super().__init__()
         self._source = source
         self._dest = dest
         self._prefix = prefix
         self._bucket_by_date = bucket_by_date
         self._tz_offset_hours = tz_offset_hours
+        self._write_sidecars = write_sidecars
         self._cancel = False
 
     def cancel(self):
@@ -463,6 +465,7 @@ class _SDCardCopyWorker(QObject):
             summary = copy_card(
                 self._source, self._dest, prefix=self._prefix,
                 bucket_by_date=self._bucket_by_date, tz_offset_hours=self._tz_offset_hours,
+                write_sidecars=self._write_sidecars,
                 progress=lambda done, total, name: self.progress.emit(done, total, name),
                 should_cancel=lambda: self._cancel,
             )
@@ -534,6 +537,12 @@ class ReadSDCardDialog(QDialog):
         date_row.addStretch()
         layout.addLayout(date_row)
 
+        # XMP sidecars: the durable, RAW-immutable carrier for culling metadata
+        # the grid reads/edits. Default ON, remembered between runs.
+        self.sidecar_checkbox = QCheckBox("Write XMP sidecars for RAWs (date, GPS, EXIF — for culling)")
+        self.sidecar_checkbox.setChecked(get_cache_gui_section("sdcard_ingest", "write_sidecars") != "0")
+        layout.addWidget(self.sidecar_checkbox)
+
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
@@ -568,6 +577,7 @@ class ReadSDCardDialog(QDialog):
 
         prefix = self.prefix_field.get_text()
         bucket_by_date = self.bucket_checkbox.isChecked()
+        write_sidecars = self.sidecar_checkbox.isChecked()
         try:
             tz_offset = float(self.tz_offset_field.get_text() or "0")
         except ValueError:
@@ -579,6 +589,7 @@ class ReadSDCardDialog(QDialog):
         update_cache_gui_section("sdcard_ingest", "prefix", prefix)
         update_cache_gui_section("sdcard_ingest", "by_date", "1" if bucket_by_date else "0")
         update_cache_gui_section("sdcard_ingest", "tz_offset", str(tz_offset))
+        update_cache_gui_section("sdcard_ingest", "write_sidecars", "1" if write_sidecars else "0")
 
         self._last_dest = dest
         self.read_btn.setEnabled(False)
@@ -586,11 +597,12 @@ class ReadSDCardDialog(QDialog):
         self.status_label.setText("Scanning…")
         self.logger.info(
             f"Reading SD-card from {source} → {dest} (prefix: {prefix or '(none)'}, "
-            f"by-date: {bucket_by_date}, tz-offset: {tz_offset}h)"
+            f"by-date: {bucket_by_date}, tz-offset: {tz_offset}h, sidecars: {write_sidecars})"
         )
 
         self._thread = QThread()
-        self._worker = _SDCardCopyWorker(source, dest, prefix, bucket_by_date, tz_offset)
+        self._worker = _SDCardCopyWorker(source, dest, prefix, bucket_by_date, tz_offset,
+                                         write_sidecars)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.progress.connect(self.on_progress)
@@ -610,7 +622,7 @@ class ReadSDCardDialog(QDialog):
             return
         msg = (f"Copied {summary.get('copied', 0)}, skipped {summary.get('skipped', 0)}, "
                f"conflicts {summary.get('conflict', 0)}, failed {summary.get('failed', 0)} "
-               f"of {summary.get('total', 0)} pictures.")
+               f"of {summary.get('total', 0)} pictures; {summary.get('sidecars', 0)} sidecar(s).")
         self.logger.info(f"✅ Card read complete. {msg}")
         self.status_label.setText(f"✅ {msg}")
         self._last_targets = summary.get("targets", [])

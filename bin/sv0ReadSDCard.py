@@ -24,8 +24,8 @@ from pathlib import Path
 UNKNOWN_DATE_DIR = "unknown-date"
 
 # Lower-case extensions (incl. dot) we treat as "pictures" worth ingesting.
-PICTURE_EXTENSIONS = {
-    ".cr3", ".cr2", ".nef", ".arw", ".raf", ".dng", ".orf", ".rw2",  # raw
+RAW_EXTENSIONS = {".cr3", ".cr2", ".nef", ".arw", ".raf", ".dng", ".orf", ".rw2"}
+PICTURE_EXTENSIONS = RAW_EXTENSIONS | {
     ".jpg", ".jpeg", ".heic", ".heif", ".png", ".tif", ".tiff",       # stills
     ".mp4", ".mov",                                                    # video
 }
@@ -110,6 +110,42 @@ def _bucket_dates(files, tz_offset_hours, log):
     return buckets
 
 
+def _write_sidecars(raw_paths, log):
+    """Create one XMP sidecar per RAW (stem-named, beside the RAW) carrying the
+    RAW's full metadata translated into XMP namespaces — capture date, GPS,
+    make/model, lens, ISO, shutter, aperture, focal length, dimensions, plus any
+    Rating/Subject/Label. This is the durable, RAW-immutable carrier the culling
+    grid reads and edits; Read & Summarize later absorbs it into the CSV.
+
+    One batched exiftool process for all files. Skips RAWs that already have a
+    sidecar (idempotent). Returns the number of sidecars created."""
+    todo = [p for p in raw_paths if not Path(p).with_suffix(".xmp").exists()]
+    if not todo:
+        return 0
+    import subprocess
+    # -tagsfromfile @  → copy from each file being processed
+    # -xmp:all<all     → translate every readable tag into its XMP equivalent
+    # SubjectDistance  → AF focus distance lives in Olympus/OM maker notes (no XMP
+    #                    equivalent, so <all drops it); copy it explicitly into the
+    #                    standard XMP-exif:SubjectDistance slot. Missing on other
+    #                    brands → exiftool silently skips that one copy.
+    # -o %d%f.xmp      → write a sidecar next to each RAW (won't overwrite existing)
+    cmd = ["exiftool", "-charset", "filename=utf8", "-charset", "utf8",
+           "-tagsfromfile", "@", "-xmp:all<all",
+           "-XMP-exif:SubjectDistance<Olympus:FocusDistance#",
+           "-o", "%d%f.xmp"] + [str(p) for p in todo]
+    try:
+        subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+    except Exception as e:
+        log.warning(f"XMP sidecar creation failed: {e}")
+    created = sum(1 for p in todo if Path(p).with_suffix(".xmp").exists())
+    if created < len(todo):
+        log.warning(f"XMP sidecars: created {created} of {len(todo)} (some failed).")
+    else:
+        log.info(f"Created {created} XMP sidecar(s).")
+    return created
+
+
 class _DestIndex:
     """Content index of pictures already in the destination tree, for dedup that
     is independent of filename/prefix ('is this card file already on the laptop?').
@@ -163,7 +199,8 @@ class _DestIndex:
 
 
 def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0,
-              skip_if_on_disk=True, logger=None, progress=None, should_cancel=None):
+              skip_if_on_disk=True, write_sidecars=True,
+              logger=None, progress=None, should_cancel=None):
     """Copy picture files from `source` (recursively) into `dest`.
 
     prefix            - optional filename prefix (see target_name).
@@ -173,6 +210,8 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     skip_if_on_disk   - when True (default), skip any card file whose content is
                         already anywhere in `dest` (content match, ignores name),
                         so incremental re-reads only copy new pictures.
+    write_sidecars    - when True (default), create an XMP sidecar per RAW (see
+                        _write_sidecars) carrying its metadata for the culling grid.
     progress(done, total, name) - optional callback, called per file before copy.
     should_cancel()             - optional callable; return True to stop early.
 
@@ -251,9 +290,21 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
             log.warning(f"❌ Failed to copy {src.name}: {e}")
             summary["failed"] += 1
 
+    # XMP sidecars for every RAW now in dest (copied or already-present) that
+    # lacks one — the durable culling carrier. Done after the copy loop in one
+    # batched exiftool process.
+    summary["sidecars"] = 0
+    if write_sidecars and not (should_cancel and should_cancel()):
+        raw_targets = [t for t in targets if Path(t).suffix.lower() in RAW_EXTENSIONS]
+        if raw_targets:
+            if progress:
+                progress(total, total, "Writing XMP sidecars…")
+            summary["sidecars"] = _write_sidecars(raw_targets, log)
+
     log.info(
         f"Card read summary — copied {summary['copied']}, skipped {summary['skipped']}, "
-        f"conflicts {summary['conflict']}, failed {summary['failed']} of {total}."
+        f"conflicts {summary['conflict']}, failed {summary['failed']} of {total}; "
+        f"{summary['sidecars']} sidecar(s)."
     )
     summary["targets"] = targets
     return summary
@@ -270,7 +321,8 @@ if __name__ == "__main__":
     parser.add_argument("--by-date", action="store_true", help="Sort into dest/<YYYY-MM-DD>/ subfolders")
     parser.add_argument("--tz-offset", type=float, default=0.0, help="Hours added to capture time before bucketing")
     parser.add_argument("--no-dedup", action="store_true", help="Do not skip files already present on disk by content")
+    parser.add_argument("--no-sidecars", action="store_true", help="Do not create XMP sidecars for RAWs")
     args = parser.parse_args()
     copy_card(args.source, args.dest, prefix=args.prefix,
               bucket_by_date=args.by_date, tz_offset_hours=args.tz_offset,
-              skip_if_on_disk=not args.no_dedup)
+              skip_if_on_disk=not args.no_dedup, write_sidecars=not args.no_sidecars)
