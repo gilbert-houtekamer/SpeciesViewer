@@ -895,6 +895,7 @@ class MainWindow(QMainWindow):
         # only in a local goes out of scope when this method returns; Python's
         # GC (triggered by the heavy master CSV read) then reclaims it and its
         # widgets mid-operation → "wrapped C/C++ object ... deleted" crashes.
+        # (We recreate per open — our converged RatingEditorDialog has no reload().)
         self._rating_editor_dlg = RatingEditorDialog(self, trip_root, day_str)
         self._rating_editor_dlg.show()
 

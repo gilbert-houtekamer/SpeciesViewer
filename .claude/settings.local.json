@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(*)",
-      "Read(//c/laptop/Zuid Afrika/metadata/active/**)"
+      "Read(//c/laptop/Zuid Afrika/metadata/active/**)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git checkout *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('qt/gui/rating_editor.py'\\).read\\(\\)\\); print\\('syntax OK'\\)\")",
+      "Bash(python -c \"import qt.gui.rating_editor; print\\('OK'\\)\")",
+      "Bash(python -c \"import py_compile; py_compile.compile\\('qt/gui/rating_editor.py', doraise=True\\); print\\('OK'\\)\")"
     ]
   }
 }
