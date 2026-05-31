@@ -71,6 +71,7 @@ def load_species_classification():
     except Exception as e:
         logger.warning(f"Could not read species collection {path}: {e}")
         return None
+    sc._source_path = path  # so culling can persist newly-added species back
     return sc
 
 
@@ -113,6 +114,9 @@ class CullingSpeciesDialog(QDialog):
             completer.setFilterMode(Qt.MatchFlag.MatchContains)
             completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
             self.field.setCompleter(completer)
+            self._completer = completer
+        else:
+            self._completer = None
         layout.addWidget(self.field)
 
         self.feedback = QLabel("")
@@ -171,14 +175,53 @@ class CullingSpeciesDialog(QDialog):
         QApplication.processEvents()
         status, gname = gbif_match(text)
         if status == "found":
-            self.feedback.setText(f"✓ found in GBIF: <b>{gname}</b> "
-                                  f"(new to your list) — will be stored")
+            sci = self._add_to_collection(text)
+            if sci and sci in self._sc.sc_dict:
+                props = self._sc.sc_dict[sci]
+                nl = props.get("DutchName", "") or "—"
+                en = props.get("EnglishName", "") or "—"
+                self.feedback.setText(f"✓ added to your species list: <b>{sci}</b>  "
+                                      f"(NL: {nl} / EN: {en})")
+            elif sci:
+                self.feedback.setText(f"✓ added to your species list: <b>{sci}</b>")
+            else:
+                self.feedback.setText(f"✓ found in GBIF: <b>{gname}</b> "
+                                      f"(couldn't add locally) — will be stored")
         elif status == "unreachable":
             self.feedback.setText("⚠️ couldn't reach GBIF (no internet?) — "
                                   "will be stored as typed")
         else:
             self.feedback.setText("⚠️ not a known species (not in your list, "
                                   "not in GBIF) — will be stored as typed")
+
+    def _add_to_collection(self, name):
+        """Resolve `name` via the species infrastructure (GBIF backbone +
+        vernacular names) so it is added to the in-memory collection, refresh the
+        auto-complete, and persist to speciescollection.csv. Returns the resolved
+        scientific name or None. Only called when `name` was not already local."""
+        sc = self._sc
+        if sc is None:
+            return None
+        try:
+            sci = sc.getSpecies(name)  # local-then-GBIF; addSpecies() on a GBIF hit
+        except Exception as e:
+            logger.warning(f"GBIF add failed for '{name}': {e}")
+            return None
+        if not sci:
+            return None
+        if self._completer is not None:
+            try:
+                self._completer.model().setStringList(species_name_candidates(sc))
+            except Exception:
+                pass
+        path = getattr(sc, "_source_path", "")
+        if path:
+            try:
+                sc.updateSpeciesCollection(path)
+                logger.info(f"Added '{sci}' to species collection {path}.")
+            except Exception as e:
+                logger.warning(f"Could not save species collection {path}: {e}")
+        return sci
 
     def _on_ok(self):
         name = self.field.text().strip()
