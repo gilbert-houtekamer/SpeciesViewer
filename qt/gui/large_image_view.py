@@ -864,11 +864,13 @@ class LargeImageView(QDialog):
             self.picture_changed.emit(k)
 
     def _batch_species(self):
-        if not self._selected_keys:
+        # Default to the currently-viewed picture when nothing is multi-selected.
+        keys = set(self._selected_keys) or ({self._item.key} if self._item else set())
+        if not keys:
             return
         fpr = None
         file_paths, species_names, error_msgs = [], [], []
-        for k in self._selected_keys:
+        for k in keys:
             ctx = self._collection.species_editor_context(k)
             if ctx is None:
                 continue
@@ -883,6 +885,8 @@ class LargeImageView(QDialog):
             species_names.extend([item.species or ""] * len(fps))
             error_msgs.extend([item.error_msg or ""] * len(fps))
         if not fpr or not file_paths:
+            # Sidecar / culling mode (no fpr) → smart culling species dialog.
+            self._batch_species_culling(keys)
             return
         from gui.species_editor import SpeciesInfoPanel
         n = len(file_paths)
@@ -905,6 +909,29 @@ class LargeImageView(QDialog):
         row.addWidget(cancel_btn)
         layout.addLayout(row)
         dlg.exec()  # modal — prevents the panel from z-fighting with the main viewer
+
+    def _batch_species_culling(self, keys):
+        """fpr-free species assignment for the culling viewer: the smart culling
+        dialog writes the chosen name to each picture's XMP:Subject."""
+        keys = {k for k in keys if k}
+        if not keys:
+            return
+        item0 = self._collection.item_for_key(next(iter(keys)))
+        if not getattr(item0, "can_edit_species", False):
+            return
+        from gui.culling_species import CullingSpeciesDialog
+        host = self.parent()
+        sc = host._culling_sc() if hasattr(host, "_culling_sc") else None
+        current = item0.species if len(keys) == 1 else ""
+        dlg = CullingSpeciesDialog(sc, current, len(keys), self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            name = dlg.chosen_name()
+            for k in keys:
+                try:
+                    self._collection.item_for_key(k).set_species(name)
+                except Exception as e:
+                    logger.error(f"set_species failed for {k}: {e}")
+            self._on_species_committed(set(keys))
 
     def _batch_rating(self):
         if not self._selected_keys:

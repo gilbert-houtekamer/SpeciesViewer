@@ -950,9 +950,12 @@ class ImagePreviewDialog(QDialog):
         except Exception as e:
             logger.warning(f"refresh_day_health failed: {e}")
         # If a species name was committed, the XMP on disk changed → offer to
-        # re-run Read & Summarize for this day (real day folder only).
+        # re-run Read & Summarize for this day (real day folder only). NOT in
+        # culling/sidecar mode (fpr is None): culling is deliberately isolated
+        # from the pipeline, so editing a sidecar must never trigger a read.
         if (getattr(self, "_species_changed", False) and self.main_window
-                and self.image_dir and self._file_list is None):
+                and self.image_dir and self._file_list is None
+                and self.fpr is not None):
             day_name = Path(self.image_dir).name
             rerun = getattr(self.main_window, "rerun_read_summarize_day", None)
             if rerun:
