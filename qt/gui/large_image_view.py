@@ -554,6 +554,15 @@ class LargeImageView(QDialog):
             pl.addWidget(w)
         pl.addWidget(_hsep())
 
+        # LOCATION section — reverse-geocoded place text read straight from the
+        # XMP (so it shows during culling, before any CSV exists). Filled by 'l'.
+        pl.addWidget(_section_header("LOCATION"))
+        self._loc_place_lbl = _field_lbl()   # descriptive place (reserve / lake / town)
+        self._loc_admin_lbl = _small_lbl()   # City · State · Country
+        for w in (self._loc_place_lbl, self._loc_admin_lbl):
+            pl.addWidget(w)
+        pl.addWidget(_hsep())
+
         # SPECIES section (container rebuilt on each picture)
         pl.addWidget(_section_header("SPECIES"))
         self._species_container = QWidget()
@@ -869,6 +878,16 @@ class LargeImageView(QDialog):
         self._exif_date_lbl.setVisible(bool(date_t))
         self._exif_gps_lbl.setText(exif.gps or "")
         self._exif_gps_lbl.setVisible(bool(exif.gps))
+
+        # LOCATION — read from the XMP (no CSV needed)
+        loc = self._collection.read_location(key)
+        place = loc.get("Location", "")
+        admin = "  ·  ".join(p for p in (loc.get("City"), loc.get("State"),
+                                         loc.get("Country")) if p)
+        self._loc_place_lbl.setText(place)
+        self._loc_place_lbl.setVisible(bool(place))
+        self._loc_admin_lbl.setText(admin)
+        self._loc_admin_lbl.setVisible(bool(admin))
 
         # SPECIES
         self._rebuild_species_section(item, key)

@@ -44,6 +44,24 @@ def gps_decimal(path):
         return None
 
 
+def read_location_fields(path):
+    """Read the location text already in a file's XMP (the same tags we write),
+    so the viewer can show it without the CSV. Empty strings when absent."""
+    out = subprocess.run(
+        ["exiftool", "-charset", "utf8", "-j",
+         "-location", "-city", "-state", "-country", "-countrycode", str(path)],
+        capture_output=True, text=True, encoding="utf-8").stdout
+    rows = json.loads(out) if out.strip() else []
+    d = rows[0] if rows else {}
+    return {
+        "Location": d.get("Location", "") or "",
+        "City": d.get("City", "") or "",
+        "State": d.get("State", "") or "",
+        "Country": d.get("Country", "") or "",
+        "CountryCode": d.get("CountryCode", "") or "",
+    }
+
+
 def reverse_geocode(lat, lon, *, lang="en", zoom=14, timeout=10):
     """Raw Nominatim reverse-geocode result (dict), or None on failure.
     `lang` (accept-language) controls the script of the names — without it

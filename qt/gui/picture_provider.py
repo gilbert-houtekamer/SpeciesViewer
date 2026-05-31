@@ -230,3 +230,8 @@ class PictureCollection(ABC):
         """Writable files (XMP sidecar / JPG) to receive reverse-geocoded location
         text. Empty when there's nowhere LR-style to write it."""
         return []
+
+    def read_location(self, key: str) -> dict:
+        """Location text currently in the picture's XMP (Location/City/State/
+        Country/CountryCode), for display without the CSV. {} if none."""
+        return {}

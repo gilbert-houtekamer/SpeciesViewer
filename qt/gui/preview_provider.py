@@ -278,6 +278,15 @@ class PreviewCollection(PictureCollection):
                     out.append(wf)
         return out
 
+    def read_location(self, upn_key: str) -> dict:
+        from gui.geolocate import read_location_fields
+        for f in (self.location_targets(upn_key) or [self.rep_full_path(upn_key)]):
+            if f and Path(f).exists():
+                d = read_location_fields(f)
+                if any(d.values()):
+                    return d
+        return {}
+
     # ── helpers shared with items ─────────────────────────────────────────
     def _files(self, upn_key: str) -> list[str]:
         files = self.fpr.upn.UniquePictureName_dict.get(upn_key, {}).get("Files", [])

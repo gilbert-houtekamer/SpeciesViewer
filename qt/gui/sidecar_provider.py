@@ -274,6 +274,11 @@ class SidecarCollection(PictureCollection):
         g = self._groups.get(key, {})
         return [g[k] for k in ("xmp", "jpg") if g.get(k)]
 
+    def read_location(self, key: str) -> dict:
+        from gui.geolocate import read_location_fields
+        src = self._groups.get(key, {}).get("xmp") or self._source_file(key)
+        return read_location_fields(src) if src else {}
+
     # ── image + write helpers ───────────────────────────────────────────────
     def _source_file(self, stem: str):
         """Best display source: JPG (fast) if present, else the RAW (embedded preview)."""
