@@ -18,6 +18,13 @@ when bindings change.
 
 (`[` … `]` select an inclusive range in display order.)
 
+## Moving the cursor (grids)
+
+| Key | Action |
+|-----|--------|
+| `←` / `→` | Move the cursor one picture left / right |
+| `↑` / `↓` | Move the cursor one **row** up / down |
+
 ## Rating, colour, and moving on
 
 These apply to the **focused / current** picture and then **advance to the next
@@ -28,11 +35,18 @@ species…" for bulk edits over a multi-selection.
 |-----|--------|
 | `Ctrl+1` … `Ctrl+5` | Set rating to 1–5 stars |
 | `q` `w` `e` `r` `t` | Set rating to 1–5 stars (aliases — easier than `Ctrl+5`) |
-| `Ctrl+0` | Clear rating (0 stars) |
+| `Ctrl+0` / `p` | Clear rating (0 stars) |
 | `1` … `5` | Set colour label: **1 Red · 2 Yellow · 3 Green · 4 Blue · 5 Purple** |
 | `0` | Clear colour label |
 | `Space` | Move to the next picture (no change) |
 | `←` / `→` | Previous / next picture (Large Image View) |
+
+## Dialogs (apply to the selection, else the focused picture)
+
+| Key | Action |
+|-----|--------|
+| `s` | Open the **species** dialog |
+| `c` | Open the **rating / colour** dialog |
 
 Notes:
 - Keys are ignored while a **text field** (description or species name) has

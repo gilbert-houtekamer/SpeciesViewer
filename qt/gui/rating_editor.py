@@ -1388,13 +1388,35 @@ class RatingEditorDialog(QDialog):
         if c:
             c.refresh()
 
+    def _cull_keys_target(self):
+        """Selection if any, else the focused picture — what 's'/'c' act on."""
+        return set(self._selected_keys) or (
+            {self._last_clicked_key} if self._last_clicked_key else set())
+
+    def _cull_open_species(self):
+        keys = self._cull_keys_target()
+        if keys:
+            self._open_species_dialog_for_keys(keys)
+
+    def _cull_open_rating(self):
+        keys = self._cull_keys_target()
+        if keys:
+            self._open_batch_rate_dialog(keys)
+
     def keyPressEvent(self, event):
-        from gui.viewer_keys import handle_cull_key
+        from gui.viewer_keys import handle_cull_key, handle_grid_arrows
         if handle_cull_key(event, order=[c.upn_key for c in self._cards],
                            current_key=self._last_clicked_key,
                            item_for_key=self._collection.item_for_key,
                            set_cursor=self._cull_set_cursor,
-                           refresh_key=self._cull_refresh_key):
+                           refresh_key=self._cull_refresh_key,
+                           open_species=self._cull_open_species,
+                           open_rating=self._cull_open_rating):
+            event.accept()
+            return
+        if handle_grid_arrows(event, order=[c.upn_key for c in self._cards],
+                              current_key=self._last_clicked_key,
+                              columns=self.columns, set_cursor=self._cull_set_cursor):
             event.accept()
             return
         k = event.key()

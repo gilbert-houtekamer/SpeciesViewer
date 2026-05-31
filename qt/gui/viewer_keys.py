@@ -22,9 +22,9 @@ from PyQt6.QtWidgets import QApplication, QLineEdit, QTextEdit, QAbstractSpinBox
 # Colour-label order matching the UI swatches (1→Red … 5→Purple).
 CULL_COLORS = ["Red", "Yellow", "Green", "Blue", "Purple"]
 
-# Star aliases for people who find Ctrl+5 awkward: q w e r t → 1 2 3 4 5.
+# Star aliases for people who find Ctrl+digits awkward: q w e r t → 1..5, p → 0.
 _STAR_ALIAS = {Qt.Key.Key_Q: 1, Qt.Key.Key_W: 2, Qt.Key.Key_E: 3,
-               Qt.Key.Key_R: 4, Qt.Key.Key_T: 5}
+               Qt.Key.Key_R: 4, Qt.Key.Key_T: 5, Qt.Key.Key_P: 0}
 _DIGIT = {Qt.Key.Key_1: 1, Qt.Key.Key_2: 2, Qt.Key.Key_3: 3,
           Qt.Key.Key_4: 4, Qt.Key.Key_5: 5}
 
@@ -42,6 +42,10 @@ def parse_cull_key(event):
     ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
     if k == Qt.Key.Key_Space and not ctrl:
         return ("next", None)
+    if not ctrl and k == Qt.Key.Key_S:
+        return ("species", None)
+    if not ctrl and k == Qt.Key.Key_C:
+        return ("rating_dialog", None)
     if ctrl and k in _DIGIT:
         return ("rating", _DIGIT[k])
     if ctrl and k == Qt.Key.Key_0:
@@ -55,7 +59,8 @@ def parse_cull_key(event):
     return None
 
 
-def handle_cull_key(event, *, order, current_key, item_for_key, set_cursor, refresh_key) -> bool:
+def handle_cull_key(event, *, order, current_key, item_for_key, set_cursor, refresh_key,
+                    open_species=None, open_rating=None) -> bool:
     """Apply a culling key to the current picture and advance. Returns True if the
     event was a culling key (and is now consumed), False to let the caller handle it.
 
@@ -64,15 +69,25 @@ def handle_cull_key(event, *, order, current_key, item_for_key, set_cursor, refr
     item_for_key - key -> PictureItem
     set_cursor   - key -> focus/scroll/navigate to that picture (the 'advance')
     refresh_key  - key -> repaint that picture's card/thumbnail after an edit
+    open_species - callback for 's' (open the species dialog for the selection/current)
+    open_rating  - callback for 'c' (open the rating/colour dialog likewise)
     """
     if text_input_focused():
         return False
     parsed = parse_cull_key(event)
     if parsed is None:
         return False
+    action, value = parsed
+    if action == "species":
+        if open_species:
+            open_species()
+        return True
+    if action == "rating_dialog":
+        if open_rating:
+            open_rating()
+        return True
     if not order:
         return True
-    action, value = parsed
     cur = current_key if current_key in order else order[0]
 
     def advance():
@@ -100,4 +115,19 @@ def handle_cull_key(event, *, order, current_key, item_for_key, set_cursor, refr
     if applied:
         refresh_key(cur)
         advance()
+    return True
+
+
+def handle_grid_arrows(event, *, order, current_key, columns, set_cursor) -> bool:
+    """Move the grid cursor with the arrow keys: Left/Right by one, Up/Down by a
+    full row (`columns`). Returns True if an arrow was handled."""
+    if text_input_focused() or not order:
+        return False
+    step = {Qt.Key.Key_Left: -1, Qt.Key.Key_Right: 1,
+            Qt.Key.Key_Up: -max(1, columns), Qt.Key.Key_Down: max(1, columns)}.get(event.key())
+    if step is None:
+        return False
+    cur = current_key if current_key in order else order[0]
+    j = max(0, min(order.index(cur) + step, len(order) - 1))
+    set_cursor(order[j])
     return True

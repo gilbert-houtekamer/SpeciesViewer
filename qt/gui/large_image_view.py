@@ -562,6 +562,13 @@ class LargeImageView(QDialog):
             self._index = self._keys.index(key)
             self._load_current()
 
+    def _cull_open_rating(self):
+        # 'c' with no selection → act on the picture being viewed.
+        if not self._selected_keys and self._item is not None:
+            self._selected_keys = {self._item.key}
+            self._update_selection_display()
+        self._batch_rating()
+
     def keyPressEvent(self, event):
         from gui.viewer_keys import handle_cull_key
         if self._keys and handle_cull_key(
@@ -569,7 +576,9 @@ class LargeImageView(QDialog):
                 current_key=self._keys[self._index],
                 item_for_key=self._collection.item_for_key,
                 set_cursor=self._cull_set_cursor,
-                refresh_key=self._filmstrip.refresh_item):
+                refresh_key=self._filmstrip.refresh_item,
+                open_species=self._batch_species,
+                open_rating=self._cull_open_rating):
             event.accept()
             return
         k = event.key()
