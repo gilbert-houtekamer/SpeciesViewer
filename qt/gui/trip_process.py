@@ -543,6 +543,12 @@ class ReadSDCardDialog(QDialog):
         self.sidecar_checkbox.setChecked(get_cache_gui_section("sdcard_ingest", "write_sidecars") != "0")
         layout.addWidget(self.sidecar_checkbox)
 
+        # Reverse-geocode the copied pictures' GPS → write place names into the
+        # sidecars (online; dedup-by-distance + throttle). Default off.
+        self.location_checkbox = QCheckBox("Add location names (reverse-geocode GPS — needs internet)")
+        self.location_checkbox.setChecked(get_cache_gui_section("sdcard_ingest", "add_location") == "1")
+        layout.addWidget(self.location_checkbox)
+
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
@@ -612,6 +618,8 @@ class ReadSDCardDialog(QDialog):
         update_cache_gui_section("sdcard_ingest", "by_date", "1" if bucket_by_date else "0")
         update_cache_gui_section("sdcard_ingest", "tz_offset", str(tz_offset))
         update_cache_gui_section("sdcard_ingest", "write_sidecars", "1" if write_sidecars else "0")
+        update_cache_gui_section("sdcard_ingest", "add_location",
+                                 "1" if self.location_checkbox.isChecked() else "0")
 
         self._last_dest = dest
         self.read_btn.setEnabled(False)
@@ -651,6 +659,28 @@ class ReadSDCardDialog(QDialog):
         self.status_label.setText(f"✅ {msg}")
         self._last_targets = summary.get("targets", [])
         self.view_btn.setEnabled(bool(self._last_targets))
+
+        if self.location_checkbox.isChecked() and self._last_targets:
+            self._add_location_names()
+
+    def _add_location_names(self):
+        """Reverse-geocode the just-copied RAWs and write place names into their
+        XMP sidecars (real write, fill-empties-only)."""
+        from gui.geolocate import run_geolocate_batch
+        raw_exts = {".cr3", ".cr2", ".nef", ".arw", ".raf", ".dng", ".orf", ".rw2"}
+        targets = []
+        for t in self._last_targets:
+            p = Path(t)
+            if p.suffix.lower() not in raw_exts:
+                continue
+            xmp = p.with_suffix(".xmp")
+            if xmp.exists():
+                targets.append((p.stem, str(xmp), [str(xmp)]))  # GPS + write both in the sidecar
+        if not targets:
+            return
+        self.status_label.setText("Looking up location names…")
+        run_geolocate_batch(self, targets, dry_run=False, overwrite=False)
+        self.status_label.setText(self.status_label.text() + "  + location names added.")
 
     def on_view(self):
         """Open the picture grid over the just-copied files. Uses an explicit

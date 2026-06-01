@@ -28,14 +28,14 @@ def gps_decimal(path):
     out = subprocess.run(
         ["exiftool", "-n", "-G", "-j",
          "-Composite:GPSLatitude", "-Composite:GPSLongitude",
-         "-GPSLatitude", "-GPSLongitude", str(path)],
+         "-XMP:GPSLatitude", "-XMP:GPSLongitude", str(path)],
         capture_output=True, text=True, encoding="utf-8").stdout
     rows = json.loads(out) if out.strip() else []
     if not rows:
         return None
     d = rows[0]
-    lat = d.get("Composite:GPSLatitude", d.get("EXIF:GPSLatitude", d.get("XMP:GPSLatitude")))
-    lon = d.get("Composite:GPSLongitude", d.get("EXIF:GPSLongitude", d.get("XMP:GPSLongitude")))
+    lat = d.get("Composite:GPSLatitude", d.get("XMP:GPSLatitude"))  # both signed; not EXIF (unsigned)
+    lon = d.get("Composite:GPSLongitude", d.get("XMP:GPSLongitude"))
     if lat is None or lon is None:
         return None
     try:
@@ -116,11 +116,40 @@ def place_fields(result):
     return {
         "Location": location,
         "City": city,
+        "Municipality": a.get("municipality") or "",  # compare-only (no standard XMP tag)
         "State": a.get("state") or a.get("region") or "",
         "Country": a.get("country") or "",
         "CountryCode": (a.get("country_code") or "").upper(),
         "display": result.get("display_name", ""),
     }
+
+
+def batch_gps(paths):
+    """{normalised path: (lat, lon)} read for many files in ONE exiftool call —
+    so the batch reads GPS off the GUI thread instead of one call per picture
+    (which froze the UI before the progress dialog appeared)."""
+    import os
+    paths = [str(p) for p in paths if p]
+    if not paths:
+        return {}
+    # Composite is signed for RAW EXIF; XMP:GPSLatitude is signed for sidecars.
+    # Never EXIF:GPSLatitude (that's the unsigned magnitude).
+    out = subprocess.run(
+        ["exiftool", "-n", "-G", "-j", "-Composite:GPSLatitude", "-Composite:GPSLongitude",
+         "-XMP:GPSLatitude", "-XMP:GPSLongitude"] + paths,
+        capture_output=True, text=True, encoding="utf-8").stdout
+    rows = json.loads(out) if out.strip() else []
+    res = {}
+    for r in rows:
+        lat = r.get("Composite:GPSLatitude", r.get("XMP:GPSLatitude"))
+        lon = r.get("Composite:GPSLongitude", r.get("XMP:GPSLongitude"))
+        if lat is None or lon is None:
+            continue
+        try:
+            res[os.path.normcase(os.path.normpath(r.get("SourceFile", "")))] = (float(lat), float(lon))
+        except (TypeError, ValueError):
+            pass
+    return res
 
 
 def haversine_m(a, b):
@@ -146,11 +175,17 @@ _LOCATION_TAGS = {
 }
 
 
-def write_location(path, fields):
-    """Write the non-empty location fields into a file's XMP (sidecar or JPG)."""
+def write_location(path, fields, overwrite=True):
+    """Write the non-empty location fields into a file's XMP (sidecar or JPG).
+    overwrite=False → only fill fields that are currently empty (don't replace
+    existing Location/City/State/Country)."""
     from ghexif.exif_writer import exiftool_write
     from pathlib import Path
-    args = [f"-{tag}={fields[k]}" for k, tag in _LOCATION_TAGS.items() if fields.get(k)]
+    to_write = {k: tag for k, tag in _LOCATION_TAGS.items() if fields.get(k)}
+    if not overwrite and to_write:
+        current = read_location_fields(path)
+        to_write = {k: tag for k, tag in to_write.items() if not current.get(k)}
+    args = [f"-{tag}={fields[k]}" for k, tag in to_write.items()]
     if not args:
         return False
     try:
@@ -182,7 +217,7 @@ def _write_compare_csv(rows):
     import csv
     import time
     from pathlib import Path
-    fields = ["Location", "City", "State", "Country", "CountryCode"]
+    fields = ["Location", "City", "Municipality", "State", "Country", "CountryCode"]
     path = Path.home() / f"location_compare_{time.strftime('%Y%m%d-%H%M%S')}.csv"
     header = ["Picture", "Lat", "Lon"]
     for f in fields:
@@ -205,17 +240,20 @@ def _write_compare_csv(rows):
 
 
 def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttle_s=1.1,
-                        dry_run=None):
+                        dry_run=None, overwrite=False):
     """Reverse-geocode and write location for an ordered list of targets, on a
     worker thread behind a modal progress dialog with Cancel.
 
-    targets: list of (label, (lat, lon) | None, [files_to_write]).
-    Dedup-by-distance: consecutive shots within `min_move_m` of the last queried
-    fix reuse its result (no new query) — birds at one spot share a location.
-    Nominatim queries are throttled (`throttle_s`) to honour the usage policy.
-    dry_run (default DRY_RUN_COMPARE): write a comparison CSV instead of the XMP."""
+    targets: list of (label, gps_source_path | None, [files_to_write]).
+    GPS is read for all targets in one batched exiftool call ON THE WORKER THREAD
+    (so the dialog shows immediately instead of the UI freezing while ~hundreds of
+    per-file reads run). Dedup-by-distance: consecutive shots within `min_move_m`
+    of the last queried fix reuse its result. Nominatim queries are throttled.
+    dry_run (default DRY_RUN_COMPARE): write a comparison CSV instead of the XMP.
+    overwrite=False: only fill empty location fields, never replace existing."""
     from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
     from PyQt6.QtWidgets import QProgressDialog
+    import os
     import time
 
     if dry_run is None:
@@ -236,13 +274,17 @@ def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttl
             self._cancel = True
 
         def run(self):
+            # All GPS in one batched exiftool call (off the GUI thread).
+            self.progress.emit(0, "Reading GPS…")
+            gps_map = batch_gps([gsrc for (_, gsrc, _) in targets if gsrc])
             last_pt = last_fields = last_addr = None
             queried = written = 0
             compare_rows = []
-            for i, (label, latlon, files) in enumerate(targets, 1):
+            for i, (label, gps_source, files) in enumerate(targets, 1):
                 if self._cancel:
                     break
                 self.progress.emit(i, label)
+                latlon = gps_map.get(os.path.normcase(os.path.normpath(gps_source))) if gps_source else None
                 if not latlon or not files:
                     continue
                 if (last_pt is not None and last_fields is not None
@@ -263,7 +305,7 @@ def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttl
                     compare_rows.append((label, latlon, read_location_fields(files[0]), fields, addr))
                 elif any(fields.get(k) for k in _LOCATION_TAGS):
                     for f in files:
-                        write_location(f, fields)
+                        write_location(f, fields, overwrite=overwrite)
                     written += 1
             csv_path = _write_compare_csv(compare_rows) if (dry_run and compare_rows) else ""
             self.finished.emit(queried, written, len(targets), csv_path)

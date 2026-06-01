@@ -265,9 +265,12 @@ class SidecarCollection(PictureCollection):
         raw = self._groups.get(key, {}).get("raw")
         return raw if raw and Path(raw).exists() else None
 
+    def gps_source(self, key: str):
+        return self._groups.get(key, {}).get("xmp") or self._source_file(key)
+
     def gps(self, key: str):
         from gui.geolocate import gps_decimal
-        src = self._groups.get(key, {}).get("xmp") or self._source_file(key)
+        src = self.gps_source(key)
         return gps_decimal(src) if src else None
 
     def location_targets(self, key: str):

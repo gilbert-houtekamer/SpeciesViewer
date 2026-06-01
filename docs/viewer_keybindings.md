@@ -15,6 +15,7 @@ when bindings change.
 | `[` | Set the start of a selection range at the focused picture |
 | `]` | Set the end of a selection range at the focused picture |
 | `Ctrl+A` | Select all pictures (grids) |
+| `Ctrl+D` | Deselect all (grids) |
 | `Esc` | Clear the selection |
 
 (`[` … `]` select an inclusive range in display order.)

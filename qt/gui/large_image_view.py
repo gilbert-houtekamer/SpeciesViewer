@@ -751,14 +751,14 @@ class LargeImageView(QDialog):
         if not self._keys:
             return
         key = self._keys[self._index]
-        gps = self._collection.gps(key)
+        src = self._collection.gps_source(key)
         files = self._collection.location_targets(key)
-        if not gps or not files:
+        if not src or not files:
             logger.info("Get location: no GPS / writable files for this picture.")
             return
         from gui.geolocate import run_geolocate_batch
         label = (self._item.display_name if self._item else key) or key
-        run_geolocate_batch(self, [(label, gps, files)])
+        run_geolocate_batch(self, [(label, src, files)])
         self._show_location(key)  # reflect the just-written location in the panel
 
     def _cull_open_rating(self):

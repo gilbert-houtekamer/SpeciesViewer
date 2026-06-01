@@ -260,9 +260,12 @@ class PreviewCollection(PictureCollection):
                     return p
         return None
 
+    def gps_source(self, upn_key: str):
+        return self.rep_full_path(upn_key)
+
     def gps(self, upn_key: str):
         from gui.geolocate import gps_decimal
-        p = self.rep_full_path(upn_key)
+        p = self.gps_source(upn_key)
         return gps_decimal(p) if p else None
 
     def location_targets(self, upn_key: str):

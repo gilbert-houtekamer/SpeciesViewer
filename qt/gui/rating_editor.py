@@ -1442,10 +1442,10 @@ class RatingEditorDialog(QDialog):
                 item = self._collection.item_for_key(k)
             except (ValueError, KeyError):
                 continue
-            gps = self._collection.gps(k)
+            src = self._collection.gps_source(k)        # path only — batch reads GPS off-thread
             files = self._collection.location_targets(k)
-            if gps and files:
-                targets.append((item.display_name or k, gps, files))
+            if src and files:
+                targets.append((item.display_name or k, src, files))
         if not targets:
             logger.info("Get location: no GPS / writable files in the selection.")
             return
@@ -1481,6 +1481,12 @@ class RatingEditorDialog(QDialog):
                 and not text_input_focused()):
             self._selected_keys = {c.upn_key for c in self._cards}
             self._update_selection_display()
+            event.accept()
+            return
+        if (event.key() == Qt.Key.Key_D
+                and (event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+                and not text_input_focused()):
+            self._clear_selection()
             event.accept()
             return
         k = event.key()

@@ -226,6 +226,11 @@ class PictureCollection(ABC):
         """Signed decimal (lat, lon) for the picture, or None if it has no GPS."""
         return None
 
+    def gps_source(self, key: str):
+        """The file to read GPS FROM (path only — no read), so a batch can read
+        many at once off the GUI thread. None if there's no source."""
+        return None
+
     def location_targets(self, key: str):
         """Writable files (XMP sidecar / JPG) to receive reverse-geocoded location
         text. Empty when there's nowhere LR-style to write it."""
