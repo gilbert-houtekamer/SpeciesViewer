@@ -169,9 +169,16 @@ def write_location(path, fields):
 DRY_RUN_COMPARE = True
 
 
+# Raw Nominatim address keys worth seeing in the compare, to decide the mapping.
+_RAW_ADDRESS_KEYS = ["nature_reserve", "protected_area", "leisure", "tourism",
+                     "neighbourhood", "suburb", "road", "hamlet", "village",
+                     "town", "city", "municipality", "county", "state", "country"]
+
+
 def _write_compare_csv(rows):
-    """rows: list of (label, (lat,lon), current_fields, proposed_fields).
-    Writes a current-vs-proposed comparison CSV to the user's home dir."""
+    """rows: list of (label, (lat,lon), current_fields, proposed_fields, raw_address).
+    Writes a current-vs-proposed comparison CSV (+ every raw Nominatim address
+    part) to the user's home dir."""
     import csv
     import time
     from pathlib import Path
@@ -180,17 +187,18 @@ def _write_compare_csv(rows):
     header = ["Picture", "Lat", "Lon"]
     for f in fields:
         header += [f + "_current", f + "_proposed", f + "_changes"]
-    header.append("display")
+    header += ["display"] + ["nm_" + k for k in _RAW_ADDRESS_KEYS]
     with open(path, "w", newline="", encoding="utf-8-sig") as fh:  # -sig → Excel reads UTF-8
         w = csv.writer(fh)
         w.writerow(header)
-        for label, (lat, lon), cur, new in rows:
+        for label, (lat, lon), cur, new, addr in rows:
             row = [label, f"{lat:.6f}", f"{lon:.6f}"]
             for f in fields:
                 c = cur.get(f, "") or ""
                 n = new.get(f, "") or ""
                 row += [c, n, "CHANGE" if c != n else ""]
             row.append(new.get("display", ""))
+            row += [(addr or {}).get(k, "") for k in _RAW_ADDRESS_KEYS]
             w.writerow(row)
     logger.info(f"Location safe-compare CSV written: {path}")
     return str(path)
@@ -228,7 +236,7 @@ def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttl
             self._cancel = True
 
         def run(self):
-            last_pt = last_fields = None
+            last_pt = last_fields = last_addr = None
             queried = written = 0
             compare_rows = []
             for i, (label, latlon, files) in enumerate(targets, 1):
@@ -239,18 +247,20 @@ def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttl
                     continue
                 if (last_pt is not None and last_fields is not None
                         and haversine_m(last_pt, latlon) < min_move_m):
-                    fields = last_fields            # reuse — same place
+                    fields, addr = last_fields, last_addr   # reuse — same place
                 else:
                     if queried > 0:
-                        time.sleep(throttle_s)      # honour ≤1 req/s
-                    fields = place_fields(reverse_geocode(*latlon, lang=lang))
+                        time.sleep(throttle_s)              # honour ≤1 req/s
+                    res = reverse_geocode(*latlon, lang=lang)
+                    fields = place_fields(res)
+                    addr = (res or {}).get("address", {})
                     queried += 1
-                    last_pt, last_fields = latlon, fields
+                    last_pt, last_fields, last_addr = latlon, fields, addr
                 if not fields:
                     continue
                 if dry_run:
                     # Safe compare — read current, record, touch nothing.
-                    compare_rows.append((label, latlon, read_location_fields(files[0]), fields))
+                    compare_rows.append((label, latlon, read_location_fields(files[0]), fields, addr))
                 elif any(fields.get(k) for k in _LOCATION_TAGS):
                     for f in files:
                         write_location(f, fields)
