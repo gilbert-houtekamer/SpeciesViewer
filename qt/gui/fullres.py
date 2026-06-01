@@ -18,6 +18,38 @@ from pathlib import Path
 logger = logging.getLogger("speciesviewer")
 
 
+# ── Decode quality (tune these, then Master → "Clear full-res cache" to re-decode) ──
+# Timings on a 20 MP OM-1 ORF: DHT demosaic ≈0.9s and noise_thr are ~free; fbdd
+# Full adds ≈5s (the big noise-reduction win); each median pass adds ≈2s. So the
+# default below is the quality recipe (~6s/picture); set FULLRES_FBDD="Off" to
+# get back to ~1s. Low-ISO shots barely need NR; high-ISO wants more.
+FULLRES_DEMOSAIC = "DHT"        # AHD (fast default) | DHT (cleaner) | AAHD | VNG | DCB | AMAZE …
+FULLRES_FBDD = "Full"          # Off | Light | Full   (pre-demosaic NR; Full ≈ +5s)
+FULLRES_NOISE_THR = 150        # wavelet denoise threshold, ~free; higher = stronger/softer; 0 = off
+FULLRES_MEDIAN_PASSES = 0      # chroma-speckle passes, ≈2s each
+FULLRES_NO_AUTO_BRIGHT = True  # don't auto-lift shadows (which amplifies noise)
+FULLRES_BRIGHT = 1.0           # raise gently if too dark
+
+
+def _postprocess_params():
+    """rawpy.postprocess kwargs built from the tunable constants above."""
+    import rawpy
+    params = dict(
+        use_camera_wb=True,
+        output_color=rawpy.ColorSpace.sRGB,
+        no_auto_bright=FULLRES_NO_AUTO_BRIGHT,
+        bright=FULLRES_BRIGHT,
+        median_filter_passes=int(FULLRES_MEDIAN_PASSES),
+        demosaic_algorithm=getattr(rawpy.DemosaicAlgorithm, FULLRES_DEMOSAIC,
+                                   rawpy.DemosaicAlgorithm.AHD),
+        fbdd_noise_reduction=getattr(rawpy.FBDDNoiseReductionMode, FULLRES_FBDD,
+                                     rawpy.FBDDNoiseReductionMode.Off),
+    )
+    if FULLRES_NOISE_THR and FULLRES_NOISE_THR > 0:
+        params["noise_thr"] = float(FULLRES_NOISE_THR)
+    return params
+
+
 def fullres_cache_dir() -> Path:
     """Per-user cache directory for full-res JPEGs (never in the data tree)."""
     from db.master_db import _app_data_dir
@@ -132,7 +164,7 @@ def ensure_fullres_jpeg(raw_path, cache_root, quality=90):
         from PIL import Image
         out.parent.mkdir(parents=True, exist_ok=True)
         with rawpy.imread(str(raw_path)) as raw:
-            rgb = raw.postprocess()  # default AHD demosaic, sRGB
+            rgb = raw.postprocess(**_postprocess_params())
         Image.fromarray(rgb).save(str(out), "JPEG", quality=quality)
         return out
     except Exception as e:
