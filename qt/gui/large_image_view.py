@@ -740,8 +740,8 @@ class LargeImageView(QDialog):
         """Fill the LOCATION panel from the picture's XMP (no CSV needed)."""
         loc = self._collection.read_location(key)
         place = loc.get("Location", "")
-        admin = "  ·  ".join(p for p in (loc.get("City"), loc.get("State"),
-                                         loc.get("Country")) if p)
+        admin = "  ·  ".join(p for p in (loc.get("City"), loc.get("Municipality"),
+                                         loc.get("State"), loc.get("Country")) if p)
         self._loc_place_lbl.setText(place)
         self._loc_place_lbl.setVisible(bool(place))
         self._loc_admin_lbl.setText(admin)

@@ -49,11 +49,12 @@ def exiftool_write(
             pass
 
 
-def run_exiftool_files(option_args, files):
+def run_exiftool_files(option_args, files, *, pre_args=None):
     """Run exiftool with `option_args` over many `files`, passing EVERYTHING
     (options + file paths) through a -@ argfile. This avoids the OS command-line
     length limit (~32 KB on Windows) that silently breaks a single exiftool call
-    over hundreds of files — the cause of '0 sidecars' on a big card. Returns the
+    over hundreds of files — the cause of '0 sidecars' on a big card. `pre_args`
+    go on the command line BEFORE -@ (e.g. ["-config", path]). Returns the
     CompletedProcess (stdout/stderr captured)."""
     files = [str(f) for f in files]
     fd, arg_path = tempfile.mkstemp(prefix="exiftool_files_", suffix=".txt", text=False)
@@ -61,7 +62,8 @@ def run_exiftool_files(option_args, files):
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             for token in list(option_args) + files:
                 f.write(token + "\n")
-        cmd = ["exiftool", "-charset", "utf8", "-charset", "filename=utf8", "-@", arg_path]
+        cmd = (["exiftool"] + list(pre_args or [])
+               + ["-charset", "utf8", "-charset", "filename=utf8", "-@", arg_path])
         return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                               text=True, encoding="utf-8")
     finally:

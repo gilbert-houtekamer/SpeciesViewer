@@ -603,6 +603,20 @@ class ReadSDCardDialog(QDialog):
             self.dest_field.show_hint("Please select a valid project pictures folder.")
             return
 
+        # The project dir tracks the active trip, so it can change unexpectedly
+        # when the trip switched — warn before reading a card into a different
+        # folder than last time (they can easily drift out of sync otherwise).
+        last_dest = get_cache_gui_section("sdcard_ingest", "last_dest")
+        if last_dest and os.path.normpath(last_dest) != os.path.normpath(dest):
+            if QMessageBox.question(
+                    self, "Project directory changed",
+                    f"Last time you read a card into:\n{last_dest}\n\n"
+                    f"Now you're about to read into:\n{dest}\n\n"
+                    f"These differ — read into the new folder?"
+                    ) != QMessageBox.StandardButton.Yes:
+                return
+        update_cache_gui_section("sdcard_ingest", "last_dest", dest)
+
         prefix = self.prefix_field.get_text()
         bucket_by_date = self.bucket_checkbox.isChecked()
         write_sidecars = self.sidecar_checkbox.isChecked()

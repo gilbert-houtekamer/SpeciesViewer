@@ -48,14 +48,16 @@ def read_location_fields(path):
     """Read the location text already in a file's XMP (the same tags we write),
     so the viewer can show it without the CSV. Empty strings when absent."""
     out = subprocess.run(
-        ["exiftool", "-charset", "utf8", "-j",
-         "-location", "-city", "-state", "-country", "-countrycode", str(path)],
+        ["exiftool", "-config", _exiftool_config(), "-charset", "utf8", "-j",
+         "-location", "-city", "-state", "-country", "-countrycode",
+         "-XMP-sv:Municipality", str(path)],
         capture_output=True, text=True, encoding="utf-8").stdout
     rows = json.loads(out) if out.strip() else []
     d = rows[0] if rows else {}
     return {
         "Location": d.get("Location", "") or "",
         "City": d.get("City", "") or "",
+        "Municipality": d.get("Municipality", "") or "",
         "State": d.get("State", "") or "",
         "Country": d.get("Country", "") or "",
         "CountryCode": d.get("CountryCode", "") or "",
@@ -165,22 +167,32 @@ def haversine_m(a, b):
     return 2 * r * math.asin(min(1.0, math.sqrt(h)))
 
 
-# XMP tags written for each location field (round-trip-verified against the
-# pipeline's -location/-city/-state/-country read).
+# XMP tags written for each location field. Standard ones round-trip against the
+# pipeline's -location/-city/-state/-country read; Municipality is a custom tag
+# (no standard slot exists) written via the -config namespace below.
 _LOCATION_TAGS = {
     "Location": "XMP-iptcCore:Location",
     "City": "XMP-photoshop:City",
+    "Municipality": "XMP-sv:Municipality",
     "State": "XMP-photoshop:State",
     "Country": "XMP-photoshop:Country",
     "CountryCode": "XMP-iptcCore:CountryCode",
 }
 
 
+def _exiftool_config():
+    """Path to the exiftool config defining XMP-sv:Municipality (needed to WRITE
+    the custom tag; reading it needs no config)."""
+    from pathlib import Path
+    return str(Path(__file__).with_name("sv_exiftool.config"))
+
+
 def write_location(path, fields, overwrite=True):
     """Write the non-empty location fields into a file's XMP (sidecar or JPG).
     overwrite=False → only fill fields that are currently empty (don't replace
-    existing Location/City/State/Country)."""
-    from ghexif.exif_writer import exiftool_write
+    existing values). Uses -config so the custom Municipality tag is defined;
+    values go through a -@ argfile (run_exiftool_files) for unicode safety."""
+    from ghexif.exif_writer import run_exiftool_files
     from pathlib import Path
     to_write = {k: tag for k, tag in _LOCATION_TAGS.items() if fields.get(k)}
     if not overwrite and to_write:
@@ -190,8 +202,9 @@ def write_location(path, fields, overwrite=True):
     if not args:
         return False
     try:
-        exiftool_write(Path(path), args)
-        return True
+        r = run_exiftool_files(args + ["-overwrite_original"], [str(path)],
+                               pre_args=["-config", _exiftool_config()])
+        return r.returncode == 0
     except Exception as e:
         logger.warning(f"Location write failed for {Path(path).name}: {e}")
         return False
