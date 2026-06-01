@@ -122,7 +122,7 @@ def _write_sidecars(raw_paths, log):
     todo = [p for p in raw_paths if not Path(p).with_suffix(".xmp").exists()]
     if not todo:
         return 0
-    import subprocess
+    from ghexif.exif_writer import run_exiftool_files
     # -tagsfromfile @  → copy from each file being processed
     # -xmp:all<all     → translate every readable tag into its XMP equivalent
     # SubjectDistance  → AF focus distance lives in Olympus/OM maker notes (no XMP
@@ -130,12 +130,12 @@ def _write_sidecars(raw_paths, log):
     #                    standard XMP-exif:SubjectDistance slot. Missing on other
     #                    brands → exiftool silently skips that one copy.
     # -o %d%f.xmp      → write a sidecar next to each RAW (won't overwrite existing)
-    cmd = ["exiftool", "-charset", "filename=utf8", "-charset", "utf8",
-           "-tagsfromfile", "@", "-xmp:all<all",
-           "-XMP-exif:SubjectDistance<Olympus:FocusDistance#",
-           "-o", "%d%f.xmp"] + [str(p) for p in todo]
+    # All files go through a -@ argfile (run_exiftool_files) so a big card (100s
+    # of RAWs) can't exceed the OS command-line length limit → previously 0 sidecars.
+    opts = ["-tagsfromfile", "@", "-xmp:all<all",
+            "-XMP-exif:SubjectDistance<Olympus:FocusDistance#", "-o", "%d%f.xmp"]
     try:
-        subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+        run_exiftool_files(opts, todo)
     except Exception as e:
         log.warning(f"XMP sidecar creation failed: {e}")
     created = sum(1 for p in todo if Path(p).with_suffix(".xmp").exists())

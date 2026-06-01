@@ -129,15 +129,16 @@ def batch_gps(paths):
     so the batch reads GPS off the GUI thread instead of one call per picture
     (which froze the UI before the progress dialog appeared)."""
     import os
+    from ghexif.exif_writer import run_exiftool_files
     paths = [str(p) for p in paths if p]
     if not paths:
         return {}
     # Composite is signed for RAW EXIF; XMP:GPSLatitude is signed for sidecars.
-    # Never EXIF:GPSLatitude (that's the unsigned magnitude).
-    out = subprocess.run(
-        ["exiftool", "-n", "-G", "-j", "-Composite:GPSLatitude", "-Composite:GPSLongitude",
-         "-XMP:GPSLatitude", "-XMP:GPSLongitude"] + paths,
-        capture_output=True, text=True, encoding="utf-8").stdout
+    # Never EXIF:GPSLatitude (that's the unsigned magnitude). Files go through a
+    # -@ argfile so a big day (100s of files) can't exceed the command-line limit.
+    out = run_exiftool_files(
+        ["-n", "-G", "-j", "-Composite:GPSLatitude", "-Composite:GPSLongitude",
+         "-XMP:GPSLatitude", "-XMP:GPSLongitude"], paths).stdout
     rows = json.loads(out) if out.strip() else []
     res = {}
     for r in rows:
