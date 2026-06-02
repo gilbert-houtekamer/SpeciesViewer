@@ -20,7 +20,16 @@ build
 
 # source code
 venv
+.venv
 .envrc
+
+# runtime artifacts (logs, caches, scratch)
+*.log
+SpeciesViewerLog.txt
+sv_gui_cache.json
+last_blog_url.txt
+sysprint-recreatetrip.txt
+qt/sysprint-recreatetrip.txt
 
 # development
 .idea

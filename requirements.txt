@@ -30,6 +30,8 @@ paramiko<4
 pytest
 black
 ruff
+# bm3d — only for tools/raw_decode_lab.py (decode-quality experiments), not used by the app
+bm3d
 
 # create executable
 pyinstaller
