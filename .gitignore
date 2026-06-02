@@ -30,6 +30,7 @@ sv_gui_cache.json
 last_blog_url.txt
 sysprint-recreatetrip.txt
 qt/sysprint-recreatetrip.txt
+tools/lab_out/
 
 # development
 .idea

@@ -286,10 +286,20 @@ class Lab(QWidget):
             worker.moveToThread(thread)
             thread.started.connect(worker.run)
             worker.done.connect(self._on_done)
-            worker.done.connect(lambda *a, t=thread: (t.quit(),))
+            worker.done.connect(thread.quit)
+            # Self-clean: drop our refs first (thread still alive here), then schedule
+            # deletion. Done before deleteLater so we never touch a deleted wrapper.
+            thread.finished.connect(lambda t=thread, w=worker: self._cleanup(t, w))
+            thread.finished.connect(worker.deleteLater)
             thread.finished.connect(thread.deleteLater)
             self._threads.append((thread, worker))
             thread.start()
+
+    def _cleanup(self, thread, worker):
+        try:
+            self._threads.remove((thread, worker))
+        except ValueError:
+            pass
 
     def _on_done(self, index, rgb, info):
         (self.paneA if index == 0 else self.paneB).show_result(rgb, info)
@@ -297,12 +307,14 @@ class Lab(QWidget):
         if self._pending <= 0:
             self._pending = 0
             self.decode_btn.setEnabled(True)
-            self._threads = [(t, w) for t, w in self._threads if t.isRunning()]
 
     def closeEvent(self, e):
-        for t, w in self._threads:
-            if t.isRunning():
-                t.quit(); t.wait(5000)
+        for t, w in list(self._threads):
+            try:
+                if t.isRunning():
+                    t.quit(); t.wait(5000)
+            except RuntimeError:
+                pass
         super().closeEvent(e)
 
 
