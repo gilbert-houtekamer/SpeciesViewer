@@ -48,6 +48,7 @@ from pathlib import Path
 UNKNOWN_DATE_DIR = "unknown-date"
 
 _COPY_WORKERS = 4   # parallel copy threads; card I/O is the bottleneck, 4 keeps pipeline full
+_XMP_WORKERS  = 4   # parallel exiftool processes for XMP sidecar creation
 
 # ── Platform-specific fast copy ───────────────────────────────────────────────
 # Windows: CopyFileEx (the same kernel call Explorer uses — internal async I/O,
@@ -410,32 +411,44 @@ def _build_buckets(files, tz_offset_hours, cache: "_CardCache | None", log) -> d
 # ── XMP sidecars ─────────────────────────────────────────────────────────────
 
 def _write_sidecars(raw_paths, log, progress_cb=None) -> int:
-    """Create one XMP sidecar per RAW that lacks one. Batched in groups of 200
-    so the caller can update a progress counter without excessive exiftool
-    startup overhead."""
+    """Create one XMP sidecar per RAW that lacks one.
+
+    Splits the work across _XMP_WORKERS parallel exiftool processes.  Each
+    process is an independent subprocess so there is no shared state.
+    progress_cb is called from the calling thread (as_completed loop) so it
+    is safe to update Qt widgets from there."""
     todo = [p for p in raw_paths if not Path(p).with_suffix(".xmp").exists()]
     if not todo:
         return 0
     from ghexif.exif_writer import run_exiftool_files
-    # -tagsfromfile @  → copy from each file being processed
-    # -xmp:all<all     → translate every readable tag into its XMP equivalent
-    # SubjectDistance  → AF focus distance in Olympus/OM maker notes; copy
-    #                    explicitly since <all doesn't cover it
-    # -o %d%f.xmp      → sidecar beside the RAW (won't overwrite existing)
     opts = ["-tagsfromfile", "@", "-xmp:all<all",
             "-XMP-exif:SubjectDistance<Olympus:FocusDistance#", "-o", "%d%f.xmp"]
-    created = 0
+
     n = len(todo)
-    batch_size = 400   # 1–2 exiftool starts per 600-file card; balances overhead vs UX
-    for start in range(0, n, batch_size):
-        batch = todo[start : start + batch_size]
+    chunk_size = max(1, (n + _XMP_WORKERS - 1) // _XMP_WORKERS)
+    chunks = [todo[i:i + chunk_size] for i in range(0, n, chunk_size)]
+
+    def _run_chunk(chunk):
         try:
-            run_exiftool_files(opts, batch)
+            run_exiftool_files(opts, chunk)
         except Exception as e:
-            log.warning(f"XMP sidecar batch failed: {e}")
-        created += sum(1 for p in batch if Path(p).with_suffix(".xmp").exists())
-        if progress_cb:
-            progress_cb(min(start + batch_size, n), n)
+            log.warning(f"XMP sidecar chunk failed: {e}")
+        return sum(1 for p in chunk if Path(p).with_suffix(".xmp").exists()), len(chunk)
+
+    created = 0
+    done_count = 0
+    with ThreadPoolExecutor(max_workers=_XMP_WORKERS) as pool:
+        future_map = {pool.submit(_run_chunk, chunk): chunk for chunk in chunks}
+        for future in as_completed(future_map):
+            try:
+                c, cnt = future.result()
+            except Exception as e:
+                log.warning(f"XMP sidecar chunk failed: {e}")
+                c, cnt = 0, len(future_map[future])
+            created += c
+            done_count += cnt
+            if progress_cb:
+                progress_cb(done_count, n)   # called from this thread, not worker
 
     if created < n:
         log.warning(f"XMP sidecars: created {created} of {n} (some failed).")
