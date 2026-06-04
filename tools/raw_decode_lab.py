@@ -3,7 +3,7 @@
 
 NOT part of the app — a throwaway tuning tool. Two independent panes (A and B),
 each with its own rawpy postprocess knobs (demosaic / FBDD / noise_thr / median /
-brightness) and optional OpenCV NL-means or BM3D denoise pass. Press "Decode both"
+brightness) and optional OpenCV NL or BM3D denoise pass. Press "Decode both"
 and the two results render at 1:1; the scroll areas pan in lock-step so you can
 pixel-peep the SAME spot under two recipes. Each pane prints a copy-ready recipe
 string — paste the winner into the FULLRES_* constants in qt/gui/fullres.py.
@@ -58,7 +58,7 @@ def _decode(path, params, denoise):
         rgb = rgb[y0:y0 + c, x0:x0 + c].copy()
         info += f"  |  crop {rgb.shape[1]}x{rgb.shape[0]}"
 
-    if denoise["mode"] == "OpenCV NL-means":
+    if denoise["mode"] == "OpenCV NL":
         import cv2
         t2 = time.time()
         rgb = cv2.fastNlMeansDenoisingColored(
@@ -134,7 +134,7 @@ class RecipePane(QWidget):
         # denoise knobs
         dn = QHBoxLayout()
         self.denoise_mode = QComboBox()
-        self.denoise_mode.addItems(["None", "OpenCV NL-means"] + (["BM3D"] if _HAS_BM3D else []))
+        self.denoise_mode.addItems(["None", "OpenCV NL"] + (["BM3D"] if _HAS_BM3D else []))
         self.denoise_mode.setCurrentText(defaults["denoise"])
         self.h = QSpinBox(); self.h.setRange(1, 60); self.h.setValue(defaults["h"])
         self.hColor = QSpinBox(); self.hColor.setRange(1, 60); self.hColor.setValue(defaults["hColor"])
@@ -158,18 +158,27 @@ class RecipePane(QWidget):
         self.scroll.setWidget(self.img)
         v.addWidget(self.scroll, 1)
 
+    # DHT and AAHD + noise_thr > 0 is a LibRaw bug: wavelet denoising corrupts channel
+    # scaling for these algorithms, producing a 2× green cast. AHD is not affected.
+    _NOISE_THR_BROKEN = {"DHT", "AAHD"}
+
     def params(self):
+        algo = self.demosaic.currentText()
+        thr = self.noise_thr.value()
+        if thr > 0 and algo in self._NOISE_THR_BROKEN:
+            # signal the caller via recipe_str; suppress the broken parameter
+            thr = 0
         p = dict(
             use_camera_wb=True,
             output_color=rawpy.ColorSpace.sRGB,
             no_auto_bright=self.no_auto_bright.isChecked(),
             bright=self.bright.value(),
             median_filter_passes=self.median.value(),
-            demosaic_algorithm=getattr(rawpy.DemosaicAlgorithm, self.demosaic.currentText()),
+            demosaic_algorithm=getattr(rawpy.DemosaicAlgorithm, algo),
             fbdd_noise_reduction=getattr(rawpy.FBDDNoiseReductionMode, self.fbdd.currentText()),
         )
-        if self.noise_thr.value() > 0:
-            p["noise_thr"] = float(self.noise_thr.value())
+        if thr > 0:
+            p["noise_thr"] = float(thr)
         return p
 
     def denoise(self, crop):
@@ -177,10 +186,13 @@ class RecipePane(QWidget):
                     hColor=self.hColor.value(), sigma=self.sigma.value(), crop=crop)
 
     def recipe_str(self):
-        s = (f"{self.demosaic.currentText()} | FBDD={self.fbdd.currentText()} | "
-             f"noise_thr={self.noise_thr.value()} | median={self.median.value()}")
+        algo = self.demosaic.currentText()
+        thr = self.noise_thr.value()
+        thr_str = f"{thr}⚠broken" if thr > 0 and algo in self._NOISE_THR_BROKEN else str(thr)
+        s = (f"{algo} | FBDD={self.fbdd.currentText()} | "
+             f"noise_thr={thr_str} | median={self.median.value()}")
         m = self.denoise_mode.currentText()
-        if m == "OpenCV NL-means":
+        if m == "OpenCV NL":
             s += f" | NL-means h={self.h.value()} hC={self.hColor.value()}"
         elif m == "BM3D":
             s += f" | BM3D σ={self.sigma.value()}"
@@ -229,7 +241,7 @@ class Lab(QWidget):
         # Two panes
         a_def = dict(demosaic="DHT", fbdd="Full", noise_thr=150, median=0, bright=1.0,
                      no_auto_bright=True, denoise="None", h=6, hColor=6, sigma=15)
-        b_def = dict(a_def, denoise="OpenCV NL-means" if not _HAS_BM3D else "BM3D")
+        b_def = dict(a_def, denoise="OpenCV NL" if not _HAS_BM3D else "BM3D")
         self.paneA = RecipePane("A", a_def)
         self.paneB = RecipePane("B", b_def)
         self.paneA.on_save = self.paneB.on_save = self._save_pane
