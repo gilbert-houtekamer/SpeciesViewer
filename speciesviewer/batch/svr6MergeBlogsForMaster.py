@@ -20,13 +20,13 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import speciesviewer.engine as engine
-import speciesviewer.engine.projectlib
-import speciesviewer.engine.specieslib
-import speciesviewer.engine.speciesclassification
-from speciesviewer.engine.specieslib import Level
-import speciesviewer.engine.triplib
-import speciesviewer.engine.bloglib
+import engine
+import engine.projectlib
+import engine.specieslib
+import engine.speciesclassification
+from engine.specieslib import Level
+import engine.triplib
+import engine.bloglib
 
 logger = logging.getLogger("speciesviewer")
 result_dict = {}

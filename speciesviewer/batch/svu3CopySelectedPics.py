@@ -9,7 +9,7 @@ import shutil
 import glob
 from xml.etree import ElementTree as ET
 from datetime import datetime
-import speciesviewer.engine.translatelib 
+import engine.translatelib 
 # Define namespaces from your XML snippet
 namespaces = {
     'xmp': 'http://ns.adobe.com/xap/1.0/',
