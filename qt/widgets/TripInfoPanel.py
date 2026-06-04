@@ -5,10 +5,10 @@ from PyQt6.QtGui import QFont, QCursor
 from PyQt6.QtCore import Qt
 from pathlib import Path
 import os
-import subprocess
 from utils.trip_config import read_trip_ini
 from utils.config import _config, persist_config
 from utils.gui_config import load_gui_cache
+from utils.open_path import open_path
 
 class TripInfoPanel(QWidget):
     def __init__(self, parent, trip_project_map, on_trip_selected):
@@ -115,4 +115,4 @@ class TripInfoPanel(QWidget):
             if action == open_action:
                 folder = self.trip_project_map[trip_key]
                 if os.path.isdir(folder):
-                    subprocess.Popen(f'explorer "{folder}"')
+                    open_path(folder)

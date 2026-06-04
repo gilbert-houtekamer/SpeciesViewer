@@ -584,7 +584,8 @@ def main(args, config):
                                first_column_lang=first_column_lang,
                                trip_name=trip_name)
         logger.info(f"Checklist created for {MyProject.Trip.tripname} trip in {xlsx_path}.")
-        os.startfile(xlsx_path)
+        if sys.platform.startswith("win"):
+            os.startfile(xlsx_path)  # noqa: cross-platform branch
     else:
         logger.warning(f"This project does not refer to a trip, no checklist is created.")
     os.remove(temp_csv_file)

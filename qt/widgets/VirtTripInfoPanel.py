@@ -3,10 +3,9 @@ from PyQt6.QtGui import QFont, QCursor
 from PyQt6.QtCore import Qt
 from pathlib import Path
 import os
-import subprocess
-
 from utils.virttrip_config import read_virttrip_ini
 from utils.config import _config, persist_config
+from utils.open_path import open_path
 
 
 class VirtTripInfoPanel(QWidget):
@@ -131,4 +130,4 @@ class VirtTripInfoPanel(QWidget):
         open_action = menu.addAction("Open Virtual Trip Folder")
         action = menu.exec(QCursor.pos())
         if action == open_action and os.path.isdir(trip_dir):
-            subprocess.Popen(f'explorer "{trip_dir}"')
+            open_path(trip_dir)

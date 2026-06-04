@@ -8,21 +8,13 @@ Guidance for new code: see memory `cross-platform-avoid-windows-specific`.
 
 ---
 
-## A. Windows-only "open file/folder" APIs — MUST change (live app)
+## A. Windows-only "open file/folder" APIs — **DONE**
 
-These are the only hard blockers in the running app. Recommend one shared
-helper, e.g. `utils/open_path.py`:
-```python
-import sys, os, subprocess
-def open_path(path):
-    if sys.platform.startswith("win"): os.startfile(path)          # noqa
-    elif sys.platform == "darwin":     subprocess.Popen(["open", str(path)])
-    else:                              subprocess.Popen(["xdg-open", str(path)])
-```
-Then replace:
-- `qt/widgets/TripInfoPanel.py:118` — `subprocess.Popen(f'explorer "{folder}"')`
-- `qt/widgets/VirtTripInfoPanel.py:134` — `subprocess.Popen(f'explorer "{trip_dir}"')`
-- `bin/svu2avibase.py:587` — `os.startfile(xlsx_path)` (batch script)
+`qt/utils/open_path.py` is the shared helper (created commit f5c7154). All
+three original blockers have been wired up:
+- `qt/widgets/TripInfoPanel.py` — now calls `open_path(folder)` ✓
+- `qt/widgets/VirtTripInfoPanel.py` — now calls `open_path(trip_dir)` ✓
+- `bin/svu2avibase.py` — `os.startfile` guarded by `sys.platform.startswith("win")` ✓
 
 ## B. Hardcoded Windows paths in source
 
@@ -31,8 +23,8 @@ Low severity — mostly fallbacks and dev/test scaffolding, not shipped logic.
   and (legacy wx) `gui/dialogs.py:456` — `fallback="E:\\Dropbox\\naturedb"`.
   Only used when config is missing; switch to forward slashes / a neutral
   default. Real machine roots already live in the per-machine `.ini` (good).
-- **Verify:** `ghexif/triplib.py:158` sets `master_repository_disk = "c:/laptop/Zuid Afrika"`
-  — confirm this is a test default, not a value written into live config.
+- **FIXED:** `ghexif/triplib.py:158` — default `master_repository_disk` changed from
+  `"c:/laptop/Zuid Afrika"` to `""` (blank).
 - **Dev/test scaffolding** (hardcoded `C:/ D:/ E:/` in `if __name__` blocks; update
   when you want to run them on Mac): `qt/test_driver.py:9`,
   `qt/test_driver_all_csv.py:125`, `bin/run_*.py`, `bin/svu*.py`,
@@ -59,7 +51,25 @@ Low severity — mostly fallbacks and dev/test scaffolding, not shipped logic.
 - `qt/gui/image_viewer.py:518` — `str(p).replace("\\", "/")` to match exiftool's
   forward-slash output: Windows-centric but a harmless no-op on Mac.
 
-## E. Watch during the port (not enumerated — review on first Mac run)
+## E. New items found in 2026-06 sweep (code added since May 25)
+
+### E1. DxO PhotoLab default path — medium priority (fix when Mac arrives)
+- `qt/gui/large_image_view.py:47` — `_DEFAULT_DXO_PATH = r"C:\Program Files\DxO\..."`
+- `qt/settings/globalsettings.py:28` — same string as `fallback=` in Settings dialog
+
+  On Mac the DxO app bundle path will differ (e.g. `/Applications/DxO PhotoLab 9.app`).
+  `launch_app_with_file()` already handles `.app` bundles via `open -a`. Fix: make the
+  default `None`/`""` and let the user set it once in Global Settings on each machine.
+
+### E2. Full-path `.lower()` in web-output code — low priority (fix before running website build on Mac)
+- `ghexif/projectlib.py` lines 295, 334, 356, 382, 419, 445, 482, 508 — `os.path.join(...).lower()`
+  used to build directory paths and HTML filenames.
+
+  On case-sensitive macOS this lowercases the entire path including any uppercase in the
+  master root. Harmless on case-insensitive Windows. Strip `.lower()` from path assembly;
+  keep it only on the filename leaf where intentional normalisation is desired.
+
+## F. Watch during the port (not enumerated — review on first Mac run)
 
 - **Fonts / fixed pixel sizes**: many Qt stylesheets use fixed `px` font-sizes and
   widths. Qt's HiDPI handling usually scales them on Retina, but eyeball the
@@ -71,6 +81,7 @@ Low severity — mostly fallbacks and dev/test scaffolding, not shipped logic.
   spots checked).
 
 ---
-**Bottom line:** the only must-fix-before-Mac items are the 3 open-file/folder
-calls in section A (one small helper covers all). Everything else is install
-dependencies (C) or low-priority cleanup (B).
+**Bottom line (updated 2026-06-04):** Section A is fully done. Remaining items:
+install deps on Mac (section C), set DxO path in Global Settings (E1), strip
+full-path `.lower()` in web build before running on Mac (E2), update test-script
+paths when needed (B dev/test scaffolding).

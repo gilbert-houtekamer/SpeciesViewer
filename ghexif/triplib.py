@@ -155,7 +155,7 @@ class Trip:
                 tripconfig.add_section('trip_text')        
             # set defaults
             tripconfig['trip_config']['master_repository_web'] = "/safari/"
-            tripconfig['trip_config']['master_repository_disk'] = "c:/laptop/Zuid Afrika"            
+            tripconfig['trip_config']['master_repository_disk'] = ""
             #tripconfig['trip_config']['repositorybanner'] = self.mp.getRepositoryBanner()
             tripconfig['trip_config']['trip_banner'] = "keerkringvogel.jpg"
             tripconfig['trip_config']['trip_picture'] = ""
