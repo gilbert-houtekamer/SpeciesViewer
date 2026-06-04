@@ -28,18 +28,19 @@
 #   - XMP sidecars are written in batches of 400 so the progress counter updates
 #     roughly every 20 s instead of freezing for the full exiftool run.
 #
-# Copy speed vs Explorer: Explorer uses async overlapped I/O (CopyFileEx) which
-# keeps the card pipeline full.  ThreadPoolExecutor(_COPY_WORKERS) submits all
-# copy jobs at once so the OS can interleave card reads with SSD writes — the
-# same pipelining advantage Explorer has.  SHA256 is NOT the bottleneck (runs at
-# ~500 MB/s vs a card at ~60 MB/s, ~12% overhead); hashing the SSD copy instead
-# of the card copy keeps the card free for the next read.
+# Copy speed: on Windows _os_copy calls CopyFileEx (the same kernel routine
+# Explorer uses — internal async I/O, read-ahead, no Python read/write loop).
+# ThreadPoolExecutor(_COPY_WORKERS) submits all copies at once so the card
+# controller can pipeline requests across files.  On macOS shutil.copy2 already
+# uses clonefile/fcopyfile.  SHA256 is hashed from the SSD dest (500 MB/s),
+# not the card (~60 MB/s).
 
 import hashlib
 import json
 import logging
 import os
 import shutil
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -47,6 +48,29 @@ from pathlib import Path
 UNKNOWN_DATE_DIR = "unknown-date"
 
 _COPY_WORKERS = 4   # parallel copy threads; card I/O is the bottleneck, 4 keeps pipeline full
+
+# ── Platform-specific fast copy ───────────────────────────────────────────────
+# Windows: CopyFileEx (the same kernel call Explorer uses — internal async I/O,
+#          read-ahead, no Python read/write loop overhead).
+# macOS:   shutil.copy2 already calls clonefile/fcopyfile — near-instant on APFS,
+#          and hardware-optimal over USB (no change needed there).
+if sys.platform == "win32":
+    import ctypes
+    import ctypes.wintypes as _wt
+    _kernel32   = ctypes.WinDLL("kernel32", use_last_error=True)
+    _CopyFileExW = _kernel32.CopyFileExW
+    _CopyFileExW.restype  = _wt.BOOL
+    _CopyFileExW.argtypes = [_wt.LPCWSTR, _wt.LPCWSTR,
+                              ctypes.c_void_p, ctypes.c_void_p,
+                              ctypes.c_void_p, _wt.DWORD]
+
+    def _os_copy(src: Path, dest: Path):
+        if not _CopyFileExW(str(src), str(dest), None, None, None, 0):
+            raise OSError(ctypes.get_last_error(), os.strerror(ctypes.get_last_error()),
+                          str(src))
+else:
+    def _os_copy(src: Path, dest: Path):
+        shutil.copy2(src, dest)
 
 # Lower-case extensions (incl. dot) we treat as "pictures" worth ingesting.
 RAW_EXTENSIONS = {".cr3", ".cr2", ".nef", ".arw", ".raf", ".dng", ".orf", ".rw2"}
@@ -68,19 +92,13 @@ def _sha256(path, chunk_size=1 << 20) -> str:
 
 
 def _copy_and_hash_dest(src: Path, dest: Path) -> str:
-    """Copy src→dest using shutil, then hash the local dest copy.
+    """Copy src→dest via the OS native API, then hash the local dest copy.
 
-    shutil.copy2 uses OS-optimised paths (8 MB buffers on Windows; clonefile /
-    fcopyfile on macOS which can be near-instant).  Hashing on the local SSD is
-    5-10× faster than hashing from the card, so total wall time is less than
-    doing both in a single streaming card read.
-
-    Verifies file size immediately after copy (raises OSError on mismatch so the
-    caller can remove the partial file).  Does NOT byte-compare src vs dest —
-    USB/Thunderbolt hardware CRC makes silent bit-flips effectively impossible in
-    practice, and any OS-level I/O error raises before we get here.
+    Hashing on the local SSD (500 MB/s) is 5-10× faster than hashing from
+    the card (~60 MB/s), so total wall time is lower than a single streaming
+    card read.  Size mismatch raises OSError; caller removes the partial file.
     """
-    shutil.copy2(src, dest)
+    _os_copy(src, dest)
     if src.stat().st_size != dest.stat().st_size:
         dest.unlink(missing_ok=True)
         raise OSError(f"Size mismatch after copy: {src.name}")
