@@ -178,7 +178,7 @@ PICTURE_FIELDS = [
     "ageintext",
     "summerwinter",
     "errormessage",
-    # Headline LAST on purpose — keep in sync with ghexif/csv_columns.py.
+    # Headline LAST on purpose — so a trailing column drifts off a stale master header harmlessly.
     # Blog extras (the only Headline carriers) are excluded from the master,
     # so a trailing column drifts off the stale master header harmlessly
     # rather than shifting Files / DateTimeOriginal under wrong header names.

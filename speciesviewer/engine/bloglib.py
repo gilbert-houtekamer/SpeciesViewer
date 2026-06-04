@@ -4,18 +4,18 @@ from pathlib import Path
 import csv
 from datetime import datetime, date
 from collections import OrderedDict
-import ghexif.projectlib
+import engine.projectlib
 import logging
 
-import ghexif
-import ghexif.projectlib
-import ghexif.specieslib
-import ghexif.speciesclassification
-import ghexif.sftplib
-from ghexif.websupport import getTemplateOutputString
-import ghexif.translatelib
-from ghexif.handling import parseListFromCSV
-from ghexif.specieslib import Level
+import engine
+import engine.projectlib
+import engine.specieslib
+import engine.speciesclassification
+import engine.sftplib
+from engine.websupport import getTemplateOutputString
+import engine.translatelib
+from engine.handling import parseListFromCSV
+from engine.specieslib import Level
 
 logger = logging.getLogger("speciesviewer")
 
@@ -328,7 +328,7 @@ class Blog:
     def openSFTP(self, pwd):
         MyProject = self.mp
         if MyProject.online:        
-            sftp = ghexif.sftplib.Sftp(
+            sftp = engine.sftplib.Sftp(
                 hostname='houtfp.ssh.transip.me',
                 username='houtekamercom',
                 password=pwd,

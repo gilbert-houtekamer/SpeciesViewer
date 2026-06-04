@@ -26,7 +26,7 @@ from gui.picture_provider import (
     PictureItem, PictureCollection, ExifSummary, PixmapCallback, exif_from_rows)
 from gui.image_loader import AsyncImageLoader
 from gui.rating_editor import _compute_rate
-from ghexif.exif_writer import exiftool_write
+from engine.exif_writer import exiftool_write
 
 logger = logging.getLogger("speciesviewer")
 

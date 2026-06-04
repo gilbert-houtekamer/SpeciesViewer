@@ -18,12 +18,12 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import ghexif
-import ghexif.projectlib
-import ghexif.specieslib
-import ghexif.speciesclassification
-from ghexif.specieslib import Level
-import ghexif.triplib
+import speciesviewer.engine as engine
+import speciesviewer.engine.projectlib
+import speciesviewer.engine.specieslib
+import speciesviewer.engine.speciesclassification
+from speciesviewer.engine.specieslib import Level
+import speciesviewer.engine.triplib
 
 logger = logging.getLogger("speciesviewer")
 result_dict = {}
@@ -198,15 +198,15 @@ def main(args, config):
     SpeciesDebug = 0        # default
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
 
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"),
+    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"),
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
 
 
     # get repository-wide sc and per project sp.
-    sc = ghexif.speciesclassification.SpeciesClassification(MyProject)
+    sc = engine.speciesclassification.SpeciesClassification(MyProject)
     MyProject.registerSpeciesClassification(sc)
-    sp = ghexif.specieslib.Species(MyProject)
+    sp = engine.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)
 
     # Build the "already known" reference set from master's species.csv —

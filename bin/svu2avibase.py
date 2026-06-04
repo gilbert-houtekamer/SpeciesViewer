@@ -22,13 +22,13 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import ghexif
-import ghexif.projectlib
-import ghexif.specieslib
-import ghexif.speciesclassification
-from ghexif.specieslib import Level
-import ghexif.triplib
-from ghexif.avibaselib import read_avibase, add_species_info
+import speciesviewer.engine as engine
+import speciesviewer.engine.projectlib
+import speciesviewer.engine.specieslib
+import speciesviewer.engine.speciesclassification
+from speciesviewer.engine.specieslib import Level
+import speciesviewer.engine.triplib
+from speciesviewer.engine.avibaselib import read_avibase, add_species_info
 
 logger = logging.getLogger("speciesviewer")
 avibase_dict = {}
@@ -504,15 +504,15 @@ def main(args, config):
     SpeciesDebug = 0        # default   
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
 
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
+    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     
     
     # get repository-wide sc and per project sp.
-    sc = ghexif.speciesclassification.SpeciesClassification(MyProject)
+    sc = engine.speciesclassification.SpeciesClassification(MyProject)
     MyProject.registerSpeciesClassification(sc)
-    sp = ghexif.specieslib.Species(MyProject)
+    sp = engine.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)   
 
     # reference project
@@ -536,7 +536,7 @@ def main(args, config):
             "repository", "ReferenceSpecies",
             fallback=os.path.join(MyProject.getMasterRepository(), 'metadata/active/species.csv')
         )
-    Reference_sp = ghexif.specieslib.Species(None)
+    Reference_sp = engine.specieslib.Species(None)
     Reference_sp.readSpeciesInfo(referenceSpecies, False)
     # test 
     speciesok = Reference_sp.species_dict['biota']

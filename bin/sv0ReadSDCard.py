@@ -420,7 +420,7 @@ def _write_sidecars(raw_paths, log, progress_cb=None) -> int:
     todo = [p for p in raw_paths if not Path(p).with_suffix(".xmp").exists()]
     if not todo:
         return 0
-    from ghexif.exif_writer import run_exiftool_files
+    from speciesviewer.engine.exif_writer import run_exiftool_files
     opts = ["-tagsfromfile", "@", "-xmp:all<all",
             "-XMP-exif:SubjectDistance<Olympus:FocusDistance#", "-o", "%d%f.xmp"]
 

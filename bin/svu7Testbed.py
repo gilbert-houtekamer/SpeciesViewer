@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import sys
 import time
-import ghexif.projectlib
+import speciesviewer.engine.projectlib
 import logging
 
 if __name__ == "__main__":
@@ -13,19 +13,19 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-from ghexif import SVException
-import ghexif
-import ghexif.projectlib
-import ghexif.specieslib
-import ghexif.speciesclassification
-import ghexif.sftplib
-import ghexif.specieslib
-import ghexif.translatelib
-import ghexif.bloglib
-import ghexif.exceptions
-import ghexif.statemachine
-import ghexif.triplib
-from ghexif import SVException
+from speciesviewer.engine import SVException
+import speciesviewer.engine as engine
+import speciesviewer.engine.projectlib
+import speciesviewer.engine.specieslib
+import speciesviewer.engine.speciesclassification
+import speciesviewer.engine.sftplib
+import speciesviewer.engine.specieslib
+import speciesviewer.engine.translatelib
+import speciesviewer.engine.bloglib
+import speciesviewer.engine.exceptions
+import speciesviewer.engine.statemachine
+import speciesviewer.engine.triplib
+from speciesviewer.engine import SVException
 
 logger = logging.getLogger("speciesviewer")
 
@@ -45,7 +45,7 @@ def main(args, config):
     global starttime
     starttime = time.time()
 
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
+    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     # if trip, initialze master
@@ -56,9 +56,9 @@ def main(args, config):
         raise SVException(f'Use svr6MergeBlogsForMaster to update the blog page for the master repository.')
 
     # get repository-wide sc and per project sp.
-    sc = ghexif.speciesclassification.SpeciesClassification(MyProject)
+    sc = engine.speciesclassification.SpeciesClassification(MyProject)
     MyProject.registerSpeciesClassification(sc)
-    sp = ghexif.specieslib.Species(MyProject)
+    sp = engine.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)
 
     logger.info(f"sv4WriteBlog: Create a blog for project {MyProject.ProjectName()}")

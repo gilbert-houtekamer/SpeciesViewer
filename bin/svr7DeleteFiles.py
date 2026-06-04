@@ -19,10 +19,10 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import ghexif
-import ghexif.projectlib
-import ghexif.exceptions
-import ghexif.triplib
+import speciesviewer.engine as engine
+import speciesviewer.engine.projectlib
+import speciesviewer.engine.exceptions
+import speciesviewer.engine.triplib
 logger = logging.getLogger("speciesviewer")
 
 def deleteCopiedFiles(deletelist):
@@ -51,7 +51,7 @@ def delete_files(directory_to_scan, file_deletelist):
 def main(args, config):
     global starttime
     starttime = time.time()
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
+    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
  

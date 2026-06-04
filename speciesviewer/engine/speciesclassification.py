@@ -5,9 +5,9 @@ import time
 import logging
 from pygbif import species
 
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SPECIES_FIELDS
-import ghexif
-import ghexif.projectlib
+from engine import COLUMN_NAMES, SELECTED_FIELDS, SPECIES_FIELDS
+import engine
+import engine.projectlib
 
 from enum import Enum, auto
 
@@ -30,24 +30,22 @@ class SpeciesClassification:
     english_dict = {}       # all species we have the English name for, points to scientific name
     names_not_found_list = []
 
-    DUMMYSPECIES = ['vogel', 'vogels', 'bird', 'libel', 'libellen', 'onbekend',
+    DUMMYSPECIES = ['vogel', 'vogels', 'bird', 'libel', 'libellen', 'onbekend', 
                     'rups', 'panama', 'californie', 'onbekend', 'sprinkhaan', 'turkey',
                     'blog', 'goodidpicture',
-                    'juvenile', 'juv.', 'ímmature', 'imm.', 'onvolwassen',  'adult', 'volwassen',
-                    'male', 'man', 'female', 'vrouw', 'couple', 'paar', 'paartje',
+                    'juvenile', 'juv.', 'ímmature', 'imm.', 'onvolwassen',  'adult', 'volwassen', 
+                    'male', 'man', 'female', 'vrouw', 'couple', 'paar', 'paartje', 
                     'summer', 'zomer', 'winter', 'breeding', 'non-breeding']
 
     # Marker keywords for non-species "blog extras": landscapes, context shots,
     # the birding group, etc. A photo carrying one of these (and no resolvable
-    # species) belongs in the day blog but has no taxon, so it must NOT warn
-    # about an unrecognized species. See isBlogExtra().
+    # species) belongs in the day blog but has no taxon. See isBlogExtra().
     LANDSCAPE_KEYWORDS = {'landscape', 'landschap'}
 
     @classmethod
     def _subject_tokens(cls, subject):
         """Split a stored XMP:Subject into lowercase tokens. Handles both a
-        bare keyword ("landschap") and a list-repr ("['robin', 'landscape']"),
-        mirroring how the picture/file CSV stores multi-keyword subjects."""
+        bare keyword ("landschap") and a list-repr ("['robin', 'landscape']")."""
         s = str(subject).strip()
         if s.startswith('[') and s.endswith(']'):
             s = s[1:-1]
@@ -56,15 +54,15 @@ class SpeciesClassification:
     @classmethod
     def isBlogExtra(cls, subject):
         """True if the subject marks a non-species blog extra (landscape /
-        context photo). Reused by the blog generator and website steps so the
-        rule for "this is not a species" lives in one place."""
+        context photo)."""
         if not subject:
             return False
         return any(t in cls.LANDSCAPE_KEYWORDS for t in cls._subject_tokens(subject))
 
 
     def __init__(self, MyProject):
-        MyProject.registerSpeciesClassification(self)
+        if MyProject != None:
+            MyProject.registerSpeciesClassification(self)
         return 
     
     def clearDict(self):
@@ -190,38 +188,11 @@ class SpeciesClassification:
 
     # merge both SpeciesCollections
     def mergeSpeciesCollections(self, newSC):
-        """Fold trip-side species into master.
-
-        - Species not yet in master are added outright.
-        - Species already in master have any blank vernacular name
-          (DutchName, EnglishName) backfilled from the trip. Names
-          master already has are never overwritten — master is the
-          canonical source; the trip only contributes where master is
-          silent. The merge-review dialog gives the user a final pass.
-        """
         for species in newSC:
-            trip_obj = newSC[species]
-            if species in self.sc_dict:
-                master_obj = self.sc_dict[species]
-                for field in ('DutchName', 'EnglishName'):
-                    trip_val = (trip_obj.get(field, '') or '').strip()
-                    master_val = (master_obj.get(field, '') or '').strip()
-                    if not master_val and trip_val:
-                        master_obj[field] = trip_val
-                        logger.info(
-                            f'Filled missing {field} for "{species}" from '
-                            f'trip: "{trip_val}".')
-                continue
-            self.sc_dict[species] = trip_obj
-            if trip_obj["Level"].value == 1:
-                outstr = ""
-                if trip_obj['EnglishName'] != "":
-                    outstr += f'"{trip_obj["EnglishName"]}" (English) / '
-                if trip_obj['DutchName'] != "":
-                    outstr += f'"{trip_obj["DutchName"]}" (Dutch) / '
-                logger.info(
-                    f'Merge {outstr}"{trip_obj["ScientificName"]}" (Scientific) '
-                    f'to Master species repository.')
+            if species in self.sc_dict: continue
+            speciesobject = newSC[species] 
+            self.sc_dict[species] = speciesobject
+    
         return
 
 
@@ -370,7 +341,7 @@ class SpeciesClassification:
         cleaned = [p for p in parts if p not in ('ssp', 'ssp.', 'subsp', 'subsp.', 'var', 'var.')]
         return ' '.join(cleaned)
 
-    def getKnownSpecies(self, subject, nested, LookUpInGBIF=False):
+    def getKnownSpecies(self, subject, nested, LookUpInGBIF=False, fuzzy=False):
         scientificname = ''
         if LookUpInGBIF:
             timesoort = time.time()
@@ -391,17 +362,27 @@ class SpeciesClassification:
                 # check if we already searched for this species
                 if subject not in self.names_not_found_list:
                     gbif = species.name_backbone(name=subject)
-                    if gbif['matchType'] == 'EXACT' and gbif.get('species'):
-                        scientificname = self.addSpecies(gbif).lower()
-                        timesoort = time.time() - timesoort
-                        logger.info(f'The species "{gbif["canonicalName"].lower()}" is found in the GBIF database in {timesoort:.3f} seconds, class {gbif["class"]} in {gbif["kingdom"]}.')
-                        # Cache the original input so repeated lookups don't hit GBIF again
-                        if subject != scientificname and subject not in self.sc_dict:
-                            self.sc_dict[subject] = self.sc_dict[scientificname]
-                    else:
-                        timesoort = time.time() - timesoort
-                        logger.info(f"""The species "{subject}" is not found in the GBIF database as a scientific name, took {timesoort:.3f} seconds.""")
-                        self.names_not_found_list.append(subject)
+                    if not fuzzy: # batch  mode
+                        if gbif['matchType'] == 'EXACT' and gbif.get('species'):
+                            scientificname = self.addSpecies(gbif).lower()
+                            timesoort = time.time() - timesoort
+                            logger.info(f'The species "{gbif["canonicalName"].lower()}" is found in the GBIF database in {timesoort:.3f} seconds, class {gbif["class"]} in {gbif["kingdom"]}.')
+                        else:
+                            timesoort = time.time() - timesoort
+                            logger.info(f"""The species "{subject}" is not found in the GBIF database as a scientific name, took {timesoort:.3f} seconds.""")
+                            self.names_not_found_list.append(subject)
+                    else: # GUI
+                        if gbif['matchType'] in ['EXACT', 'FUZZY'] and gbif.get('species'):
+                            if gbif['confidence'] >= 90:
+                                scientificname = self.addSpecies(gbif).lower()
+                                logger.info(f"'{subject}' matched GBIF as '{gbif['canonicalName']}' with confidence {gbif['confidence']} ({gbif['matchType']}) in {timesoort:.3f} seconds")
+                            else:
+                                logger.info(f"'{subject}' matched GBIF fuzzily but with low confidence ({gbif['confidence']}) in {timesoort:.3f} seconds")
+                        else:
+                            logger.info(f"'{subject}' not found in GBIF with FUZZY or EXACT matching.")
+                    # Cache the original input so repeated lookups don't hit GBIF again
+                    if scientificname and subject != scientificname and subject not in self.sc_dict:
+                        self.sc_dict[subject] = self.sc_dict[scientificname]
             except:
                 logger.warning(f'Timeout on internet connection')
         elif not nested:
@@ -424,7 +405,7 @@ class SpeciesClassification:
         return scientificname
 
     # See if we recognize the species from either languages, if not call GBIF
-    def getSpecies(self, rawsubject):       
+    def getSpecies(self, rawsubject, fuzzy=False):       
         # lower case
         subject = rawsubject.lower().lstrip().rstrip()
         nested = False
@@ -433,7 +414,7 @@ class SpeciesClassification:
 
         # not found, see if it is a new species
         if (scientificname == ""):
-            scientificname = self.getKnownSpecies(subject, nested,  LookUpInGBIF=True)   
+            scientificname = self.getKnownSpecies(subject, nested,  LookUpInGBIF=True, fuzzy=fuzzy)   
     
         return scientificname
 

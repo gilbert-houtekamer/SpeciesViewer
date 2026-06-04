@@ -5,8 +5,9 @@ import logging
 import configparser
 from pathlib import Path
 
-import ghexif
-from ghexif import SVException
+import engine
+from engine.exceptions import SVException
+#from sharedlib.statemachine import StateMachine
 
 logger = logging.getLogger("speciesviewer")
 
@@ -130,21 +131,34 @@ class StateMachine:
             'sv7WriteCommitMessage'  : self.Taskstate["WriteCommit"][1]
         }    
 
+        os.makedirs(self.Directory, exist_ok=True)
         with open(statemachine, 'w') as statefile:
             statefile.write('# This is an automatically generated file to track state for SpeciesViewer\n')
             state.write(statefile)
         return
     
-    # see if the state can run
     def stateOKtorun(self, statetotest):
-        # all pre-req must be met
-        for states in self.Taskstate[statetotest][3]:
-            if not self.Taskstate[states][0]: 
+        # If WriteCommit is done, allow WriteBlog unconditionally
+        if statetotest == "WriteBlog":
+            if self.Taskstate.get("WriteCommit", [False])[0]:
+                return True
+            # Otherwise, check prerequisites
+            for prereq in self.Taskstate.get("WriteBlog", [None, None, None, []])[3]:
+                if not self.Taskstate.get(prereq, [False])[0]:
+                    return False
+            return True
+
+        # Standard logic for all other steps
+        if self.Taskstate.get("WriteCommit", [False])[0]:
+            return False  # No other steps allowed after WriteCommit
+
+        for prereq in self.Taskstate.get(statetotest, [None, None, None, []])[3]:
+            if not self.Taskstate.get(prereq, [False])[0]:
                 return False
         return True
     
     # we know that the step will fail, explain why and abort
-    def explainAbort(self, statetotest):
+    def explainAbort(self, statetotest, raiseSV=True):
         prereq = ""
         missingcount = 0
         # run through all pre-reqs
@@ -162,17 +176,56 @@ class StateMachine:
             need = 'needs'
         else:
             steps = 'steps'
-            need = 'need'            
-        raise SVException(f"Task {statetotest} cannot be run, the {steps} {prereq} {need} to be run first.")
+            need = 'need'  
+        if raiseSV:    
+            raise SVException(f"Task {statetotest} cannot be run, the {steps} {prereq} {need} to be run first.")
+        else:
+            return f"Task {statetotest} cannot be run, the {steps} {prereq} {need} to be run first."
 
     # update the state after the job is completed
-    def updateState(self, statejustdone, ok, lastmessage):
+    # also disable steps that must be run again as previous step is now (potentially) invalid
+    #
+    # invalidate_downstream=False suppresses the cascade: when a step is re-run
+    # but its output is byte-identical to before (the EXIF cache makes
+    # re-reading cheap, so a no-op re-read of Read/Summarize is common), the
+    # caller can keep downstream Blog/Website/Freeze states intact instead of
+    # forcing the whole chain to redo. The step's OWN state is always updated.
+    def updateState(self, statejustdone, ok, lastmessage, invalidate_downstream=True):
         try:
             self.Taskstate[statejustdone][0] = ok
             self.Taskstate[statejustdone][1] = lastmessage
         except:
             pass  # test modules are not listed
+
+        # Invalidate downstream steps if needed
+        invalidation_map = {
+            "ReadDirExif": ["WritePictures", "WriteBlog", "BuildWebsite", "Freeze"],
+            "WritePictures": ["WriteBlog", "BuildWebsite", "Freeze"],
+            "BuildWebsite": ["Freeze"]
+        }
+
+        if invalidate_downstream and statejustdone in invalidation_map:
+            for step in invalidation_map[statejustdone]:
+                if step in self.Taskstate:
+                    self.Taskstate[step][0] = False
+                    self.Taskstate[step][1] = "Invalidated due to rerun of " + statejustdone
+
+        self.writeState()
         return
+    
+    # return the return string from task that was (just or last) created
+    # return True for "MakeRepository", since it passes no return code (yet?)
+    def getState(self, statejustdone):
+        try:
+            if self.Taskstate[statejustdone] == "MakeRepository":
+                return True, ""
+            if not self.Taskstate[statejustdone][0]:
+                return False, self.Taskstate[statejustdone][1]
+        except: 
+            pass
+        return True, "" # test modules are not listed, return True
+
+
     
 def getAllProjectStatus(MyProject, directory, silent=False):
     days_dict = {}
@@ -187,9 +240,9 @@ def getAllProjectStatus(MyProject, directory, silent=False):
                 name = rel.split(os.sep)[0]
                 if name in days_dict:
                     continue
-                statemachine = ghexif.statemachine.StateMachine(MyProject.getRepositoryPath(), name)
+                statemachine = StateMachine(MyProject.getRepositoryPath(), name)
                 days_dict[name] = statemachine.Taskstate.copy()
-    # Sort by day name so the loop in readProject iterates in chronological order
+    # Sort by day name so iteration is chronological
     days_dict = dict(sorted(days_dict.items()))
 
     if not silent:

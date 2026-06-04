@@ -99,7 +99,7 @@ PHOTO_EXTENSIONS = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng",
                     "heic", "jpg", "jpeg"}
 
 # Families whose location must be hidden on the public site (GPS stripped from
-# the website copy). Kept in sync with ghexif/websupport.py OBSCURE_FAMILIES.
+# the website copy). Keep in sync with engine/websupport.py OBSCURE_FAMILIES.
 # A day whose only special status is such "obscured" species is marked with a
 # lock 🔒 rather than a warning ⚠️ (which is reserved for real species typos).
 OBSCURE_FAMILIES = {"orchidaceae"}

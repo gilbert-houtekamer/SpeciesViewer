@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
 )
 
 from engine.filepicture import FilePicture
-from ghexif.translatelib import CachedTranslate
+from engine.translatelib import CachedTranslate
 
 logger = logging.getLogger("speciesviewer")
 

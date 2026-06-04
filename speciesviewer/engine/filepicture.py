@@ -2,7 +2,7 @@ from engine.specieslib import Species
 from engine.speciesclassification import SpeciesClassification
 from engine.filecsv import Files
 from engine.picturecsv import Pictures
-from ghexif.exif_writer import exiftool_write
+from engine.exif_writer import exiftool_write
 import logging
 import time
 import os

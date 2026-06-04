@@ -10,7 +10,7 @@ import time
 from pygbif import species
 from collections import OrderedDict
 from enum import Enum, auto
-from ghexif import SVException
+from speciesviewer.engine import SVException
 import logging
 
 if __name__ == "__main__":
@@ -19,17 +19,17 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import ghexif
-import ghexif.projectlib
-import ghexif.specieslib
-import ghexif.speciesclassification
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS
-from ghexif.csv_columns import PICTURE_FIELDS
-#from ghexif.specieslib import readSpeciesInfo, writeSpeciesInfo, computeRating
-from ghexif.handling import read_file, read_pictures
-from ghexif.specieslib import Level, Species
-import ghexif.exceptions
-import ghexif.statemachine
+import speciesviewer.engine as engine
+import speciesviewer.engine.projectlib
+import speciesviewer.engine.specieslib
+import speciesviewer.engine.speciesclassification
+from speciesviewer.engine import COLUMN_NAMES, SELECTED_FIELDS
+from speciesviewer.engine.csv_columns import PICTURE_FIELDS
+#from speciesviewer.engine.specieslib import readSpeciesInfo, writeSpeciesInfo, computeRating
+from speciesviewer.engine.handling import read_file, read_pictures
+from speciesviewer.engine.specieslib import Level, Species
+import speciesviewer.engine.exceptions
+import speciesviewer.engine.statemachine
 
 logger = logging.getLogger("speciesviewer")
 
@@ -45,14 +45,14 @@ def main(args, config):
 
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
 
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
+    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     
     # get repository-wide sc and per project sp.
-    sc = ghexif.speciesclassification.SpeciesClassification(MyProject)
+    sc = engine.speciesclassification.SpeciesClassification(MyProject)
     MyProject.registerSpeciesClassification(sc)
-    sp = ghexif.specieslib.Species(MyProject)
+    sp = engine.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)   
     MyProject.setSpeciesDebug(SpeciesDebug)
 
@@ -147,7 +147,7 @@ if __name__ == "__main__":
     config = configparser.ConfigParser()
     config.read(INI_LOCATION)
     # define state machine and see if we can run this step
-    statemachine = ghexif.statemachine.StateMachine(config.get("repository","BiotaDatabase"), config.get("project","PictureDirectory"))
+    statemachine = engine.statemachine.StateMachine(config.get("repository","BiotaDatabase"), config.get("project","PictureDirectory"))
     # call the actual code
     try:
         if not statemachine.stateOKtorun(parser.description):

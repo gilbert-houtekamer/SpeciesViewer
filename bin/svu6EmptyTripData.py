@@ -15,16 +15,16 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import ghexif.projectlib
-from ghexif.tripresetlib import clear_review_directories, reset_active_data
-from ghexif import SVException
+import speciesviewer.engine.projectlib
+from speciesviewer.engine.tripresetlib import clear_review_directories, reset_active_data
+from speciesviewer.engine import SVException
 
 logger = logging.getLogger("speciesviewer")
 
 
 def main(args, config):
     starttime = time.time()
-    MyProject = ghexif.projectlib.Project(
+    MyProject = engine.projectlib.Project(
         config.get("repository", "BiotaDatabase"),
         config.get("project", "PictureDirectory"),
         config.get("repository", "BiotaWebRoot"),

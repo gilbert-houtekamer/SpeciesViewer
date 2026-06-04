@@ -21,12 +21,12 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import ghexif
-from ghexif import SVException
-import ghexif.projectlib
-import ghexif.exceptions
-import ghexif.statemachine
-from ghexif.tripresetlib import clear_review_directories, reset_active_data
+import speciesviewer.engine as engine
+from speciesviewer.engine import SVException
+import speciesviewer.engine.projectlib
+import speciesviewer.engine.exceptions
+import speciesviewer.engine.statemachine
+from speciesviewer.engine.tripresetlib import clear_review_directories, reset_active_data
 import bin.sv1MakeReposity
 import bin.sv2ReadDirExif
 import bin.sv3WritePictures
@@ -95,7 +95,7 @@ def main(args, config):
     SpeciesDebug = 0        # default   
 
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
+    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     

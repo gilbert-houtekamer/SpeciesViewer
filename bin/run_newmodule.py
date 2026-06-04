@@ -23,15 +23,15 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import ghexif
-import ghexif.projectlib
-import ghexif.exceptions
-import ghexif.statemachine
-import ghexif.specieslib
-import ghexif.speciesclassification
-import ghexif.triplib
-import ghexif.breadcrumb
-from ghexif import SVException
+import speciesviewer.engine as engine
+import speciesviewer.engine.projectlib
+import speciesviewer.engine.exceptions
+import speciesviewer.engine.statemachine
+import speciesviewer.engine.specieslib
+import speciesviewer.engine.speciesclassification
+import speciesviewer.engine.triplib
+import speciesviewer.engine.breadcrumb
+from speciesviewer.engine import SVException
 
 logger = logging.getLogger("speciesviewer")
 # create file handler which logs even debug messages
@@ -200,7 +200,7 @@ def main(args, config):
 
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
 
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
+    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     
@@ -213,9 +213,9 @@ def main(args, config):
         raise SVException(f'Use svr6MergeBlogsForMaster to update the blog page for the master repository.')
 
     # get repository-wide sc and per project sp.
-    sc = ghexif.speciesclassification.SpeciesClassification(MyProject)
+    sc = engine.speciesclassification.SpeciesClassification(MyProject)
     MyProject.registerSpeciesClassification(sc)
-    sp = ghexif.specieslib.Species(MyProject)
+    sp = engine.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)
         # read the list with all pre-defined species
     metadatadir = MyProject.getMetaDir()
@@ -284,7 +284,7 @@ def main(args, config):
 #         else:
 #             logger.info(f"{obs['date']} {obs['species name']} {obs['scientific name']} has no photos.")
 
-#     bc = ghexif.breadcrumb.Breadcrumb(MyProject)
+#     bc = engine.breadcrumb.Breadcrumb(MyProject)
 #     # sp.getBiotaWebRoot
 #     bc.addBCsimple("Nature", MyProject.getBiotaWebRoot() + "/intro-nl.html")
 #     bc.addBCsimple("Trips", MyProject.getBiotaWebRoot() + "/trips-nl.html")
@@ -342,7 +342,7 @@ if __name__ == "__main__":
     # init the logging subsystem
     logging.basicConfig(level=logging.INFO)
     # define state machine and see if we can run this step
-    #statemachine = ghexif.statemachine.StateMachine(config.get("repository","BiotaDatabase"), config.get("project","PictureDirectory"))
+    #statemachine = engine.statemachine.StateMachine(config.get("repository","BiotaDatabase"), config.get("project","PictureDirectory"))
     # call the actual code
     try:
         main(args, config)

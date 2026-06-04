@@ -18,18 +18,18 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import ghexif
-import ghexif.projectlib
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
-from ghexif.csv_columns import PICTURE_FIELDS
-from ghexif.handling import read_file, read_pictures
-from ghexif.specieslib import Level
-from ghexif.websupport import jpgResizeCopy, getSmallJPG
-import ghexif.specieslib
-import ghexif.sftplib
-import ghexif.exceptions
-import ghexif.statemachine
-import ghexif.triplib
+import speciesviewer.engine as engine
+import speciesviewer.engine.projectlib
+from speciesviewer.engine import COLUMN_NAMES, SELECTED_FIELDS, SVException
+from speciesviewer.engine.csv_columns import PICTURE_FIELDS
+from speciesviewer.engine.handling import read_file, read_pictures
+from speciesviewer.engine.specieslib import Level
+from speciesviewer.engine.websupport import jpgResizeCopy, getSmallJPG
+import speciesviewer.engine.specieslib
+import speciesviewer.engine.sftplib
+import speciesviewer.engine.exceptions
+import speciesviewer.engine.statemachine
+import speciesviewer.engine.triplib
 
 logger = logging.getLogger("speciesviewer")
 
@@ -73,7 +73,7 @@ def commitProjectFiles(MyProject):
 
 def putRecursiveTreeWeb(MyProject, config):
     password = config.get("websettings","Sftppwd").strip("'")
-    sftp = ghexif.sftplib.Sftp(
+    sftp = engine.sftplib.Sftp(
         hostname='houtfp.ssh.transip.me',
         username='houtekamercom',
         password=password,
@@ -124,7 +124,7 @@ def main(args, config):
     global starttime
     starttime = time.time()
 
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
+    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     # if trip, initialze master
@@ -167,7 +167,7 @@ if __name__ == "__main__":
     # init the logging subsystem
     logging.basicConfig(level=logging.INFO)    
     # define state machine and see if we can run this step
-    statemachine = ghexif.statemachine.StateMachine(config.get("repository","BiotaDatabase"), config.get("project","PictureDirectory"))
+    statemachine = engine.statemachine.StateMachine(config.get("repository","BiotaDatabase"), config.get("project","PictureDirectory"))
     # call the actual code
     try:
         if not statemachine.stateOKtorun(parser.description):

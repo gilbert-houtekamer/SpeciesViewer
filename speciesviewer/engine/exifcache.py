@@ -263,7 +263,7 @@ def rescan(root, cache_path, chunk=2000):
     First full-master pass is slow (~1 h / 159k files); later passes re-read
     only what changed."""
     import exiftool
-    from ghexif.selected_fields import SELECTED_FIELDS
+    from engine.selected_fields import SELECTED_FIELDS
     fp = field_fingerprint(SELECTED_FIELDS)
     cache = load_cache(cache_path)
     hits, misses, stats = partition(root, cache, fp)

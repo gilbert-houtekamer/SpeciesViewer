@@ -16,8 +16,8 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-from ghexif.sidecarlib import sync_sidecars
-import ghexif.projectlib
+from speciesviewer.engine.sidecarlib import sync_sidecars
+import speciesviewer.engine.projectlib
 
 RAW_EXTENSIONS = {'.orf', '.nef', '.nrw', '.heic'}
 logger = logging.getLogger("speciesviewer")
@@ -25,7 +25,7 @@ logger = logging.getLogger("speciesviewer")
 
 def main(args, config):
     starttime = time.time()
-    MyProject = ghexif.projectlib.Project(
+    MyProject = engine.projectlib.Project(
         config.get("repository", "BiotaDatabase"),
         config.get("project", "PictureDirectory"),
         config.get("repository", "BiotaWebRoot"),

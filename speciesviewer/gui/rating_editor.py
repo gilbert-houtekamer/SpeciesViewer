@@ -23,7 +23,7 @@ from PyQt6.QtCore import (Qt, QTimer, QSize, pyqtSignal, QObject, QRunnable,
 from engine.filepicture import FilePicture
 from engine.filecsv import Files
 from engine.picturecsv import Pictures
-from ghexif.exif_writer import exiftool_write
+from engine.exif_writer import exiftool_write
 from gui.window_state import restore_window, save_window
 from gui.image_loader import AsyncImageLoader
 from gui.picture_provider import PictureItem

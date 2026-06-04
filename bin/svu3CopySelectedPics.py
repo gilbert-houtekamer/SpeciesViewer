@@ -9,7 +9,7 @@ import shutil
 import glob
 from xml.etree import ElementTree as ET
 from datetime import datetime
-import ghexif.translatelib 
+import speciesviewer.engine.translatelib 
 # Define namespaces from your XML snippet
 namespaces = {
     'xmp': 'http://ns.adobe.com/xap/1.0/',
@@ -22,7 +22,7 @@ trip_naam = os.path.basename(destination_root)
 trip_name_en = "Baltic Sea sailing summer"
 
 # # establish cache for translation -- unfortunately it was not very good :-(
-# ct = ghexif.translatelib.CachedTranslate("c:/temp/translate cache.bin")
+# ct = engine.translatelib.CachedTranslate("c:/temp/translate cache.bin")
 
 # Dutch month names
 nl_months = {

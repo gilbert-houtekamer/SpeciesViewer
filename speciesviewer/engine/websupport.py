@@ -13,10 +13,10 @@ from PIL import Image
 
 global config
 
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS
-from ghexif.specieslib import Level
-import ghexif.projectlib
-import ghexif.breadcrumb
+from engine import COLUMN_NAMES, SELECTED_FIELDS
+from engine.specieslib import Level
+import engine.projectlib
+import engine.breadcrumb
 
 logger = logging.getLogger("speciesviewer")
 
@@ -1483,7 +1483,7 @@ def collectBlogExtras(MyProject, selected_species):
     never reaches them. Key each by capture time (like collectBestJPGs) so they
     interleave chronologically with the species cards."""
     # Local import avoids a module-load cycle (projectlib <-> websupport).
-    from ghexif.speciesclassification import SpeciesClassification
+    from engine.speciesclassification import SpeciesClassification
     try:
         for upn_item in MyProject.UniquePictureName_dict.values():
             if upn_item['BestJPG'] == "":

@@ -15,7 +15,7 @@ from utils.config import set_trip_settings, _config
 from utils.trip_config import read_trip_ini
 from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, RecentDirectoryFieldQt, ImageFileFieldQt)
-from ghexif.translatelib import CachedTranslate
+from engine.translatelib import CachedTranslate
 from utils.gui_config import update_cache_gui_section, get_cache_gui_section
 from gui.trip_overview import populate_trip_overview
 
@@ -1224,7 +1224,7 @@ class SpeciesCollectionDialog(QDialog):
 
     def on_lookup_nba(self):
         """Look up missing English/Dutch names via the NBA API."""
-        from ghexif.nabortalib import NBASpecies
+        from engine.nabortalib import NBASpecies
         from PyQt6.QtCore import QThread, pyqtSignal
 
         # Find rows with missing names among displayed rows
@@ -2163,17 +2163,17 @@ class BlogAdminDialog(QDialog):
 
             def _do_work(self):
                 import configparser as _cp
-                import ghexif.projectlib
-                import ghexif.speciesclassification
-                import ghexif.specieslib
-                import ghexif.bloglib
+                import engine.projectlib
+                import engine.speciesclassification
+                import engine.specieslib
+                import engine.bloglib
                 worker_logger = logging.getLogger("speciesviewer")
 
                 cfg = _cp.ConfigParser()
                 cfg.read("svconfig.ini")
 
                 worker_logger.info("Manage Blogs: initializing project for index rebuild...")
-                project = ghexif.projectlib.Project(
+                project = engine.projectlib.Project(
                     cfg.get("repository", "BiotaDatabase"),
                     cfg.get("project", "PictureDirectory"),
                     cfg.get("repository", "BiotaWebRoot"))
@@ -2181,12 +2181,12 @@ class BlogAdminDialog(QDialog):
                 # Index template renders need species/classification objects
                 # registered (token resolution touches them even when no
                 # species data is loaded).
-                sc = ghexif.speciesclassification.SpeciesClassification(project)
+                sc = engine.speciesclassification.SpeciesClassification(project)
                 project.registerSpeciesClassification(sc)
-                sp = ghexif.specieslib.Species(project)
+                sp = engine.specieslib.Species(project)
                 project.registerSpecies(sp)
 
-                blog = ghexif.bloglib.Blog(project)
+                blog = engine.bloglib.Blog(project)
                 blog.read_BlogAdmin()
                 worker_logger.info(
                     f"Manage Blogs: blog_admin.csv has {len(blog.blog_dict)} entries after prune."
@@ -2314,7 +2314,7 @@ class _RescanWorker(QObject):
 
     def run(self):
         try:
-            from ghexif import exifcache
+            from engine import exifcache
             exifcache.rescan(self._root, self._cache_path)
             self.finished.emit("")
         except Exception as e:
@@ -2341,7 +2341,7 @@ class RescanMasterCacheDialog(BaseTripModuleDialog):
         # wrong for a master-wide scan (no biota tree there → nothing cached).
         # Point it at <master>/biota and make it editable so the user can
         # confirm/adjust the scan target; this field drives the scan (on_write).
-        from ghexif import exifcache
+        from engine import exifcache
         master = exifcache.master_repository(_config)
         self._default_root = os.path.join(master, "biota") if master else ""
         self.root_caption.setText("Master biota folder to scan")
@@ -2357,7 +2357,7 @@ class RescanMasterCacheDialog(BaseTripModuleDialog):
             return
         if self._rescan_thread is not None:
             return   # already running
-        from ghexif import exifcache
+        from engine import exifcache
         cache_path = exifcache.master_cache_path(_config)
         self.write_btn.setEnabled(False)
         self.status_label.setText(

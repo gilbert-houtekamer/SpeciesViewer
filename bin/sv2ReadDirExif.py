@@ -26,13 +26,13 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
-import ghexif.projectlib
-from ghexif.handling import deriveUniquePictureName
-from ghexif.exif_writer import exiftool_write
-import ghexif.exceptions
-import ghexif.statemachine
-import ghexif.exifcache as exifcache
+from speciesviewer.engine import COLUMN_NAMES, SELECTED_FIELDS, SVException
+import speciesviewer.engine.projectlib
+from speciesviewer.engine.handling import deriveUniquePictureName
+from speciesviewer.engine.exif_writer import exiftool_write
+import speciesviewer.engine.exceptions
+import speciesviewer.engine.statemachine
+import speciesviewer.engine.exifcache as exifcache
 
 IGNOREEXTENSIONS = ['txt', 'ico', 'html']
 # Real photo types whose Headline/Description we translate. Excludes PNG etc.,
@@ -72,7 +72,7 @@ def _report_unverified_translations(MyProject, all_rows):
 
 def main(args, config):
     starttime = time.time()
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
+    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))  
     
@@ -102,7 +102,7 @@ def main(args, config):
         logger.info(f"Reading directories (takes about 1 minute for every 4000 files)...")
         file_extension_count = {}        
          
-        # EXIF read via the global cache (ghexif/exifcache.py). Immutable files
+        # EXIF read via the global cache (engine/exifcache.py). Immutable files
         # (RAW/HEIC) and untouched mutable sidecars are served from cache; only
         # new or edited files are sent to exiftool. --no-cache reproduces the
         # old full scan (reads nothing, writes nothing); --rebuild-cache
@@ -517,7 +517,7 @@ if __name__ == "__main__":
     # init the logging subsystem
     logging.basicConfig(level=logging.INFO)
     # define state machine and see if we can run this step
-    statemachine = ghexif.statemachine.StateMachine(config.get("repository","BiotaDatabase"), config.get("project","PictureDirectory"))
+    statemachine = engine.statemachine.StateMachine(config.get("repository","BiotaDatabase"), config.get("project","PictureDirectory"))
     # call the actual code
     try:
         if not statemachine.stateOKtorun(parser.description):

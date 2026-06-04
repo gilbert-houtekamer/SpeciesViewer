@@ -21,15 +21,15 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import ghexif
-from ghexif import SVException
-import ghexif.projectlib
-import ghexif.exceptions
-import ghexif.statemachine
-import ghexif.speciesclassification
-import ghexif.specieslib
-import ghexif.bloglib
-from ghexif.handling import read_file, read_pictures
+import speciesviewer.engine as engine
+from speciesviewer.engine import SVException
+import speciesviewer.engine.projectlib
+import speciesviewer.engine.exceptions
+import speciesviewer.engine.statemachine
+import speciesviewer.engine.speciesclassification
+import speciesviewer.engine.specieslib
+import speciesviewer.engine.bloglib
+from speciesviewer.engine.handling import read_file, read_pictures
 import bin.sv1MakeReposity
 import bin.sv2ReadDirExif
 import bin.sv3WritePictures
@@ -46,7 +46,7 @@ def main(args, config):
     SpeciesDebug = 0        # default   
 
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
+    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     
@@ -64,9 +64,9 @@ def main(args, config):
         # if trip, initialze master
         MyProject.initMasterAndTrip(config, inittrip=True)
         # get repository-wide sc and per project sp.
-        sc = ghexif.speciesclassification.SpeciesClassification(MyProject)
+        sc = engine.speciesclassification.SpeciesClassification(MyProject)
         MyProject.registerSpeciesClassification(sc)
-        sp = ghexif.specieslib.Species(MyProject)
+        sp = engine.specieslib.Species(MyProject)
         MyProject.registerSpecies(sp)
 
         # RedoBlog operates on committed trip-wide data. Unlike WriteBlog (which
@@ -82,7 +82,7 @@ def main(args, config):
         read_pictures(MyProject, os.path.join(metadatadir, "active", "data_pictures.csv"))
 
         # read blog_index.csv
-        blog = ghexif.bloglib.Blog(MyProject)
+        blog = engine.bloglib.Blog(MyProject)
         blog.read_BlogAdmin()
 
         # setup internet with cache objects
@@ -100,7 +100,7 @@ def main(args, config):
             if not os.path.exists(sm_ini):
                 return False
             try:
-                sm = ghexif.statemachine.StateMachine(
+                sm = engine.statemachine.StateMachine(
                     config.get("repository", "BiotaDatabase"),
                     MyProject.NewPictDir[:-10] + project)
                 return bool(sm.Taskstate.get("WriteCommit", [False])[0])

@@ -16,10 +16,10 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import ghexif.projectlib
-import ghexif.specieslib
-import ghexif.speciesclassification
-from ghexif.avibaselib import read_avibase, add_species_info
+import speciesviewer.engine.projectlib
+import speciesviewer.engine.specieslib
+import speciesviewer.engine.speciesclassification
+from speciesviewer.engine.avibaselib import read_avibase, add_species_info
 
 logger = logging.getLogger("speciesviewer")
 
@@ -52,15 +52,15 @@ def write_photomechanic_snap(names, output_path):
 def main(args, config):
     starttime = time.time()
 
-    MyProject = ghexif.projectlib.Project(
+    MyProject = engine.projectlib.Project(
         config.get("repository", "BiotaDatabase"),
         config.get("project", "PictureDirectory"),
         config.get("repository", "BiotaWebRoot"),
     )
 
-    sc = ghexif.speciesclassification.SpeciesClassification(MyProject)
+    sc = engine.speciesclassification.SpeciesClassification(MyProject)
     MyProject.registerSpeciesClassification(sc)
-    sp = ghexif.specieslib.Species(MyProject)
+    sp = engine.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)
 
     MyProject.initMasterAndTrip(config, inittrip=True)
@@ -78,7 +78,7 @@ def main(args, config):
             fallback=os.path.join(MyProject.getMasterRepository(), 'metadata/active/species.csv')
         )
 
-    Reference_sp = ghexif.specieslib.Species(None)
+    Reference_sp = engine.specieslib.Species(None)
     Reference_sp.readSpeciesInfo(referenceSpecies, False)
 
     metadatadir = MyProject.getMetaDir()

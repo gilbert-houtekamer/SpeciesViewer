@@ -18,10 +18,10 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import ghexif.sftplib
-import ghexif.projectlib
-import ghexif.triplib
-import ghexif.bloglib
+import speciesviewer.engine.sftplib
+import speciesviewer.engine.projectlib
+import speciesviewer.engine.triplib
+import speciesviewer.engine.bloglib
 
 logger = logging.getLogger("speciesviewer")
 
@@ -95,7 +95,7 @@ def main(args, config):
 
     # create missing link pages relative to intro page
     # first create the "master", but that needs a "real" environemnt with MyProject
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"),
+    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"),
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     # if trip, initialze master
@@ -104,7 +104,7 @@ def main(args, config):
         shutil.copy(os.path.join(MyProject.getMasterRepository(), 'metadata/active/speciescollection.csv'), 
                 os.path.join(NEW_DB_TREE, 'metadata/active/speciescollection.csv'))
         
-    blog = ghexif.bloglib.Blog(MyProject)   
+    blog = engine.bloglib.Blog(MyProject)   
     blog.updateIndexPage()
     # create intro page, already in good location
     MyProject.setLanguage('nl')
@@ -136,7 +136,7 @@ def main(args, config):
 
     if WEB_TREE != "":
         password = config.get("websettings","Sftppwd").strip("'")
-        sftp = ghexif.sftplib.Sftp(
+        sftp = engine.sftplib.Sftp(
             hostname='houtfp.ssh.transip.me',
             username='houtekamercom',
             password=password,

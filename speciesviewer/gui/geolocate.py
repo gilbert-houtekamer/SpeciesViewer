@@ -131,7 +131,7 @@ def batch_gps(paths):
     so the batch reads GPS off the GUI thread instead of one call per picture
     (which froze the UI before the progress dialog appeared)."""
     import os
-    from ghexif.exif_writer import run_exiftool_files
+    from engine.exif_writer import run_exiftool_files
     paths = [str(p) for p in paths if p]
     if not paths:
         return {}
@@ -192,7 +192,7 @@ def write_location(path, fields, overwrite=True):
     overwrite=False → only fill fields that are currently empty (don't replace
     existing values). Uses -config so the custom Municipality tag is defined;
     values go through a -@ argfile (run_exiftool_files) for unicode safety."""
-    from ghexif.exif_writer import run_exiftool_files
+    from engine.exif_writer import run_exiftool_files
     from pathlib import Path
     to_write = {k: tag for k, tag in _LOCATION_TAGS.items() if fields.get(k)}
     if not overwrite and to_write:

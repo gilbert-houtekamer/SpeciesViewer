@@ -6,13 +6,13 @@ from pathlib import Path
 from urllib.parse import urljoin
 import time
 import shutil
-from ghexif.exceptions import SVException
-from ghexif.handling import read_file, read_pictures
-from ghexif.websupport import getTemplateOutputString
-from ghexif.specieslib import Level
-from ghexif.statemachine import getAllProjectStatus
-import ghexif.breadcrumb
-import ghexif.translatelib
+from engine.exceptions import SVException
+from engine.handling import read_file, read_pictures
+from engine.websupport import getTemplateOutputString
+from engine.specieslib import Level
+from engine.statemachine import getAllProjectStatus
+import engine.breadcrumb
+import engine.translatelib
 import requests
 import logging
 
@@ -77,7 +77,7 @@ class Project:
     	# global flag
         self.online = self.internet_connection()
         if self.online:
-            self.ct = ghexif.translatelib.CachedTranslate(self.Repository)
+            self.ct = engine.translatelib.CachedTranslate(self.Repository)
         # build site
         self.addTemplate("vogelordepage-nl.html")    
         self.addTemplate("vogelordepage-en.html")
@@ -104,7 +104,7 @@ class Project:
         self.addTemplate("tripindex-nl.html")
         self.addTemplate("tripindex-en.html")
         # breadcrumb
-        self.breadcrumb = ghexif.breadcrumb.Breadcrumb(self)
+        self.breadcrumb = engine.breadcrumb.Breadcrumb(self)
 
     def internet_connection(self):
         try:
@@ -241,7 +241,7 @@ class Project:
             self.MasterRepository = ""
         # if this is a sub-repository, read trip.ini
         if self.MasterRepository != "":
-            self.Trip = ghexif.triplib.Trip(self, config)
+            self.Trip = engine.triplib.Trip(self, config)
             if inittrip:
                 self.Trip.readAndWriteTripAdmin()                   # not sure we want this for every step?  maybe only 4 and 9?
         return

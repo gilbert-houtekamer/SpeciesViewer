@@ -28,7 +28,7 @@ from PyQt6.QtGui import QImage
 from gui.picture_provider import PictureItem, PictureCollection, ExifSummary, PixmapCallback
 from gui.image_loader import AsyncImageLoader
 from gui.preview_provider import cached_jpg_for
-from ghexif.exif_writer import exiftool_write
+from engine.exif_writer import exiftool_write
 
 logger = logging.getLogger("speciesviewer")
 

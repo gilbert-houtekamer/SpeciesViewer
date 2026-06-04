@@ -15,17 +15,17 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import ghexif
-import ghexif.projectlib
-import ghexif.specieslib
-import ghexif.speciesclassification
-from ghexif import COLUMN_NAMES, SELECTED_FIELDS, SVException
-from ghexif.csv_columns import PICTURE_FIELDS
-from ghexif.handling import read_file, read_pictures
-from ghexif.specieslib import Level
-import ghexif.exceptions
-import ghexif.statemachine
-import ghexif.triplib
+import speciesviewer.engine as engine
+import speciesviewer.engine.projectlib
+import speciesviewer.engine.specieslib
+import speciesviewer.engine.speciesclassification
+from speciesviewer.engine import COLUMN_NAMES, SELECTED_FIELDS, SVException
+from speciesviewer.engine.csv_columns import PICTURE_FIELDS
+from speciesviewer.engine.handling import read_file, read_pictures
+from speciesviewer.engine.specieslib import Level
+import speciesviewer.engine.exceptions
+import speciesviewer.engine.statemachine
+import speciesviewer.engine.triplib
 
 logger = logging.getLogger("speciesviewer")
 files_to_delete = []
@@ -137,7 +137,7 @@ def AppendChangedFileData(MyProject, firstNewFile):
     targetpathbase = MyProject.getRepositoryPath()
     datafilename = os.path.join(MyProject.ReviewFrozen(), "frozen_data_files.csv")
     os.makedirs(MyProject.ReviewFrozen(), exist_ok=True)
-    SC = ghexif.speciesclassification.SpeciesClassification
+    SC = engine.speciesclassification.SpeciesClassification
     all_files = list(MyProject.files_dict.values())
     written = 0
     with open(datafilename, 'w', newline='', encoding='utf-8') as frozencsv:
@@ -180,7 +180,7 @@ def AppendChangedPictureData(MyProject, firstNewPicture):
     # row is re-emitted uniformly — but is kept for call-site compatibility.
     picturename = os.path.join(MyProject.ReviewFrozen(), "frozen_data_pictures.csv")
     os.makedirs(MyProject.ReviewFrozen(), exist_ok=True)
-    SC = ghexif.speciesclassification.SpeciesClassification
+    SC = engine.speciesclassification.SpeciesClassification
     written = 0
     extras_skipped = 0
     with open(picturename, 'w', newline='', encoding='utf-8') as frozencsv:
@@ -212,7 +212,7 @@ def main(args, config):
     global starttime, species_dict, debugfile, count
     starttime = time.time()
 
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
+    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     # if trip, initialze master
@@ -220,9 +220,9 @@ def main(args, config):
 
     # metafiles
     # get repository-wide sc and per project sp.
-    sc = ghexif.speciesclassification.SpeciesClassification(MyProject)
+    sc = engine.speciesclassification.SpeciesClassification(MyProject)
     MyProject.registerSpeciesClassification(sc)
-    sp = ghexif.specieslib.Species(MyProject)
+    sp = engine.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)   
     
     logger.info(f"sv6Freeze: Freeze data for project {MyProject.ProjectName()} on local copy on Windows")
@@ -273,7 +273,7 @@ if __name__ == "__main__":
     config = configparser.ConfigParser()
     config.read(INI_LOCATION)
     # define state machine and see if we can run this step
-    statemachine = ghexif.statemachine.StateMachine(config.get("repository","BiotaDatabase"), config.get("project","PictureDirectory"))
+    statemachine = engine.statemachine.StateMachine(config.get("repository","BiotaDatabase"), config.get("project","PictureDirectory"))
     # call the actual code
     try:
         if not statemachine.stateOKtorun(parser.description):

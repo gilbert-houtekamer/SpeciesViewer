@@ -40,7 +40,7 @@ import bin.svu6EmptyTripData
 import bin.svu7Testbed
 import bin.svv1MakeVirtualRepository
 import bin.svv2ExtractDays
-import ghexif.exifcache as exifcache
+import engine.exifcache as exifcache
 
 
 def build_menu_spec(main_window):

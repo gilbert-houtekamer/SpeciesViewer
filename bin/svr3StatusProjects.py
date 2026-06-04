@@ -17,10 +17,10 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import ghexif
-import ghexif.projectlib
-import ghexif.exceptions
-import ghexif.statemachine
+import speciesviewer.engine as engine
+import speciesviewer.engine.projectlib
+import speciesviewer.engine.exceptions
+import speciesviewer.engine.statemachine
 
 logger = logging.getLogger("speciesviewer")
 
@@ -39,7 +39,7 @@ def getAllProjectStatus(directory):
                 parseddir = root.split('\\')
                 name = parseddir[1]
                 if name == "": name = parseddir[0]
-                statemachine = ghexif.statemachine.StateMachine(config.get("repository","BiotaDatabase"), name) #, readState=False)
+                statemachine = engine.statemachine.StateMachine(config.get("repository","BiotaDatabase"), name) #, readState=False)
                 days_dict[name] = statemachine.Taskstate.copy()
 
     # make summary report
@@ -63,7 +63,7 @@ def main(args, config):
     SpeciesDebug = 0        # default   
 
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
+    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     

@@ -20,13 +20,13 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import ghexif
-import ghexif.projectlib
-import ghexif.specieslib
-import ghexif.speciesclassification
-from ghexif.specieslib import Level
-import ghexif.triplib
-import ghexif.bloglib
+import speciesviewer.engine as engine
+import speciesviewer.engine.projectlib
+import speciesviewer.engine.specieslib
+import speciesviewer.engine.speciesclassification
+from speciesviewer.engine.specieslib import Level
+import speciesviewer.engine.triplib
+import speciesviewer.engine.bloglib
 
 logger = logging.getLogger("speciesviewer")
 result_dict = {}
@@ -59,12 +59,12 @@ def main(args, config):
     SpeciesDebug = 0        # default   
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
 
-    MyProject = ghexif.projectlib.Project(config.get("repository","BiotaDatabase"), 
+    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
 
-    blog = ghexif.bloglib.Blog(MyProject)
-    trip = ghexif.triplib.Trip(MyProject, config)
+    blog = engine.bloglib.Blog(MyProject)
+    trip = engine.triplib.Trip(MyProject, config)
 
     # run through the projects, and add the blogs from the trips
     countBlogs  = {}
