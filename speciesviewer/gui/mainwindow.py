@@ -728,8 +728,8 @@ class MainWindow(QMainWindow):
         the day must be re-read and re-summarized. Phase 3 keeps it cheap — if
         the resulting data_pictures.csv is unchanged, downstream stays valid."""
         import configparser
-        import bin.sv2ReadDirExif
-        import bin.sv3WritePictures
+        import batch.sv2ReadDirExif
+        import batch.sv3WritePictures
         from gui.batch import ChainedBatchRunner
         from utils.batch_config import generate_svconfig_ini
 

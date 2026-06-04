@@ -21,19 +21,19 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import speciesviewer.engine as engine
-from speciesviewer.engine import SVException
-import speciesviewer.engine.projectlib
-import speciesviewer.engine.exceptions
-import speciesviewer.engine.statemachine
-from speciesviewer.engine.tripresetlib import clear_review_directories, reset_active_data
-import bin.sv1MakeReposity
-import bin.sv2ReadDirExif
-import bin.sv3WritePictures
-import bin.sv4WriteBlog
-import bin.sv5BuildWebsite
-import bin.sv6Freeze
-import bin.sv7WriteCommit
+import engine
+from engine import SVException
+import engine.projectlib
+import engine.exceptions
+import engine.statemachine
+from engine.tripresetlib import clear_review_directories, reset_active_data
+import batch.sv1MakeReposity
+import batch.sv2ReadDirExif
+import batch.sv3WritePictures
+import batch.sv4WriteBlog
+import batch.sv5BuildWebsite
+import batch.sv6Freeze
+import batch.sv7WriteCommit
 
 logger = logging.getLogger("speciesviewer")
 # create file handler which logs even debug messages

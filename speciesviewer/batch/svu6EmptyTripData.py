@@ -15,9 +15,9 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import speciesviewer.engine.projectlib
-from speciesviewer.engine.tripresetlib import clear_review_directories, reset_active_data
-from speciesviewer.engine import SVException
+import engine.projectlib
+from engine.tripresetlib import clear_review_directories, reset_active_data
+from engine import SVException
 
 logger = logging.getLogger("speciesviewer")
 

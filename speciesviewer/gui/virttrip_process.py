@@ -11,12 +11,12 @@ from gui.batch import BatchModuleRunner
 from utils.config import set_setting, _config
 from utils.virttrip_config import read_virttrip_ini
 from gui.virttrip_overview import populate_virttrip_overview
-import bin.svv2ExtractDays
+import batch.svv2ExtractDays
 from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt,
                                    RecentDirectoryFieldQt, ImageFileFieldQt)
 
-import bin.svv1MakeVirtualRepository
+import batch.svv1MakeVirtualRepository
 
 
 def generate_virttrip_ini(

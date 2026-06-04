@@ -16,10 +16,10 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import speciesviewer.engine.projectlib
-import speciesviewer.engine.specieslib
-import speciesviewer.engine.speciesclassification
-from speciesviewer.engine.avibaselib import read_avibase, add_species_info
+import engine.projectlib
+import engine.specieslib
+import engine.speciesclassification
+from engine.avibaselib import read_avibase, add_species_info
 
 logger = logging.getLogger("speciesviewer")
 

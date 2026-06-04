@@ -461,7 +461,7 @@ class _SDCardCopyWorker(QObject):
 
     def run(self):
         try:
-            from bin.sv0ReadSDCard import copy_card
+            from batch.sv0ReadSDCard import copy_card
             summary = copy_card(
                 self._source, self._dest, prefix=self._prefix,
                 bucket_by_date=self._bucket_by_date, tz_offset_hours=self._tz_offset_hours,
@@ -891,8 +891,8 @@ class ReadSummarizeDialog(QDialog):
         from gui.batch import ChainedBatchRunner
         from sharedlib.statemachine import StateMachine
         from utils.batch_config import generate_svconfig_ini
-        import bin.sv2ReadDirExif
-        import bin.sv3WritePictures
+        import batch.sv2ReadDirExif
+        import batch.sv3WritePictures
 
         selected_base = Path(self.base_dir_field.get_path())
         selected_subdir = self.subdir_dropdown.currentText()
@@ -917,9 +917,9 @@ class ReadSummarizeDialog(QDialog):
         sm = StateMachine(str(trip_root), str(review_day), readState=True)
 
         steps = [
-            (bin.sv2ReadDirExif.main, "ReadDirExif",
+            (batch.sv2ReadDirExif.main, "ReadDirExif",
              "Reading picture directory...", "✅ Directory scan complete."),
-            (bin.sv3WritePictures.main, "WritePictures",
+            (batch.sv3WritePictures.main, "WritePictures",
              "Reading meta data for all pictures ...", "✅ Summary written."),
         ]
 

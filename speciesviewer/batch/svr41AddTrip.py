@@ -8,6 +8,7 @@ import configparser
 import time
 import logging
 import argparse
+from pathlib import Path
 
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
@@ -16,10 +17,10 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import speciesviewer.engine as engine
-import speciesviewer.engine.projectlib
-import speciesviewer.engine.exceptions
-import speciesviewer.engine.triplib
+import engine
+import engine.projectlib
+import engine.exceptions
+import engine.triplib
 
 logger = logging.getLogger("speciesviewer")
 
@@ -35,31 +36,38 @@ def main(args, config):
     SpeciesDebug = 0        # default   
 
     SpeciesDebug = int(config.get("debug","SpeciesFound"))
-    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"),
+    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
-    # if trip, initialze master — pass inittrip=False so init does not
-    # auto-call readAndWriteTripAdmin; we run it explicitly below to keep
-    # this script self-contained (and to avoid the duplicate CSV write
-    # that the auto-call produces in combination with our own).
+    # if trip, find master
     MyProject.initMasterAndTrip(config, inittrip=False)
     trip = MyProject.Trip
+    # read project directory from master website (eg /nature/includes web/), 
+    # such that projects can be added from different computers
 
-    # Update the master trip admin CSV with a fresh row for the *active*
-    # trip (only). All other historic trips already in the CSV are kept
-    # untouched, so siblings still in draft on disk do not get published.
-    trip.readAndWriteTripAdmin()
-    # Regenerate the master tripindex pages from the now-current CSV.
+    # get existing trips, and put them in dictionary
+    url = "https://houtekamer.com/nature/includes web/trip_admin.csv"
+    trip.read_TripAdmin_from_web(url)
+
+    # Read the trip file for the current project
+    tripfilename = os.path.join(MyProject.Repository, 'trip.ini')
+    triprow = trip.readTrip(tripfilename)
+    logger.info(f"Read trip information from {MyProject.Trip.tripname} refreshed or added.")
+    trip.trip_dict[MyProject.Trip.tripname] = triprow
+
+    # save the csv file with all projects to disk and on the web
+    trip.write_TripAdmin()
+
+    # generate website
     trip.updateTripIndexPage('nl')
     trip.updateTripIndexPage('en')
 
-    # Upload index pages and the trip admin CSV to the website. The CSV
-    # mirror lets a different machine pick up the latest published state
-    # even without Dropbox sync of the master.
+    # sFTP index files, assume all picture are there
     pwd = config.get("websettings","Sftppwd").strip("'")
     sftp = trip.openSFTP(pwd)
     trip.uploadTrip(sftp)
-    trip.uploadTripAdmin(sftp, trip.getTripAdminWeb())
+    path = "/nature/includes web/trip_admin.csv"
+    trip.uploadTripAdmin(sftp, path)
     sftp.disconnect()
 
         

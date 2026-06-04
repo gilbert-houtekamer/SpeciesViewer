@@ -18,18 +18,18 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import speciesviewer.engine as engine
-import speciesviewer.engine.projectlib
-from speciesviewer.engine import COLUMN_NAMES, SELECTED_FIELDS, SVException
-from speciesviewer.engine.csv_columns import PICTURE_FIELDS
-from speciesviewer.engine.handling import read_file, read_pictures
-from speciesviewer.engine.specieslib import Level
-from speciesviewer.engine.websupport import jpgResizeCopy, getSmallJPG
-import speciesviewer.engine.specieslib
-import speciesviewer.engine.sftplib
-import speciesviewer.engine.exceptions
-import speciesviewer.engine.statemachine
-import speciesviewer.engine.triplib
+import engine
+import engine.projectlib
+from engine import COLUMN_NAMES, SELECTED_FIELDS, SVException
+from engine.csv_columns import PICTURE_FIELDS
+from engine.handling import read_file, read_pictures
+from engine.specieslib import Level
+from engine.websupport import jpgResizeCopy, getSmallJPG
+import engine.specieslib
+import engine.sftplib
+import engine.exceptions
+import engine.statemachine
+import engine.triplib
 
 logger = logging.getLogger("speciesviewer")
 

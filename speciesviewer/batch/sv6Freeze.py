@@ -15,17 +15,17 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import speciesviewer.engine as engine
-import speciesviewer.engine.projectlib
-import speciesviewer.engine.specieslib
-import speciesviewer.engine.speciesclassification
-from speciesviewer.engine import COLUMN_NAMES, SELECTED_FIELDS, SVException
-from speciesviewer.engine.csv_columns import PICTURE_FIELDS
-from speciesviewer.engine.handling import read_file, read_pictures
-from speciesviewer.engine.specieslib import Level
-import speciesviewer.engine.exceptions
-import speciesviewer.engine.statemachine
-import speciesviewer.engine.triplib
+import engine
+import engine.projectlib
+import engine.specieslib
+import engine.speciesclassification
+from engine import COLUMN_NAMES, SELECTED_FIELDS, SVException
+from engine.csv_columns import PICTURE_FIELDS
+from engine.handling import read_file, read_pictures
+from engine.specieslib import Level
+import engine.exceptions
+import engine.statemachine
+import engine.triplib
 
 logger = logging.getLogger("speciesviewer")
 files_to_delete = []

@@ -22,13 +22,13 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import speciesviewer.engine as engine
-import speciesviewer.engine.projectlib
-import speciesviewer.engine.specieslib
-import speciesviewer.engine.speciesclassification
-from speciesviewer.engine.specieslib import Level
-import speciesviewer.engine.triplib
-from speciesviewer.engine.avibaselib import read_avibase, add_species_info
+import engine
+import engine.projectlib
+import engine.specieslib
+import engine.speciesclassification
+from engine.specieslib import Level
+import engine.triplib
+from engine.avibaselib import read_avibase, add_species_info
 
 logger = logging.getLogger("speciesviewer")
 avibase_dict = {}

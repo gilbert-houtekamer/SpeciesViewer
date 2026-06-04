@@ -16,8 +16,8 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-from speciesviewer.engine.sidecarlib import sync_sidecars
-import speciesviewer.engine.projectlib
+from engine.sidecarlib import sync_sidecars
+import engine.projectlib
 
 RAW_EXTENSIONS = {'.orf', '.nef', '.nrw', '.heic'}
 logger = logging.getLogger("speciesviewer")

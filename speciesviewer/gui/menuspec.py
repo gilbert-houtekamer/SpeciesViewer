@@ -21,25 +21,25 @@ from dialogs.setting import AboutDialog
 from utils.batch_config import generate_svconfig_ini
 from sharedlib.statemachine import StateMachine
 
-import bin.sv1MakeReposity
-import bin.sv2ReadDirExif
-import bin.sv3WritePictures
-import bin.sv4WriteBlog
-import bin.sv5BuildWebsite
-import bin.sv6Freeze
-import bin.sv7WriteCommit
-import bin.svr2CountSpecies
-import bin.svr4UpdateTrips
-import bin.svr5MergeSpeciesCollections
-import bin.svr8RecreateTripRepository
-import bin.svr9RedoBlog
-import bin.svu2avibase
-import bin.svu5SyncSidecars
-import bin.svu8PhotoMechanic
-import bin.svu6EmptyTripData
-import bin.svu7Testbed
-import bin.svv1MakeVirtualRepository
-import bin.svv2ExtractDays
+import batch.sv1MakeReposity
+import batch.sv2ReadDirExif
+import batch.sv3WritePictures
+import batch.sv4WriteBlog
+import batch.sv5BuildWebsite
+import batch.sv6Freeze
+import batch.sv7WriteCommit
+import batch.svr2CountSpecies
+import batch.svr4UpdateTrips
+import batch.svr5MergeSpeciesCollections
+import batch.svr8RecreateTripRepository
+import batch.svr9RedoBlog
+import batch.svu2avibase
+import batch.svu5SyncSidecars
+import batch.svu8PhotoMechanic
+import batch.svu6EmptyTripData
+import batch.svu7Testbed
+import batch.svv1MakeVirtualRepository
+import batch.svv2ExtractDays
 import engine.exifcache as exifcache
 
 
@@ -80,7 +80,7 @@ def build_menu_spec(main_window):
         title="Start New Trip",
         batch_parms={
             'statusname': "MakeRepository",
-            'module_called': bin.sv1MakeReposity.main,
+            'module_called': batch.sv1MakeReposity.main,
             'before_msg': "Creating trip data structures...",
             'after_msg': "✅ Trip creation complete. Please review the log messages."
         }
@@ -92,7 +92,7 @@ def build_menu_spec(main_window):
         title="Sync Sidecars",
         batch_parms={
             'statusname': "SyncSidecars",
-            'module_called': bin.svu5SyncSidecars.main,
+            'module_called': batch.svu5SyncSidecars.main,
             'before_msg': "Synchronizing DOP and XMP sidecars...",
             'after_msg': "✅ Sidecar sync complete."
         }
@@ -106,7 +106,7 @@ def build_menu_spec(main_window):
         tooltip=make_tooltip("ReadDirExif"),                
         batch_parms={
             'statusname': "ReadDirExif",
-            'module_called': bin.sv2ReadDirExif.main,
+            'module_called': batch.sv2ReadDirExif.main,
             'before_msg': "Reading picture directory...",
             'after_msg': "✅ Directory scan complete."
         }
@@ -120,7 +120,7 @@ def build_menu_spec(main_window):
         tooltip=make_tooltip("WritePictures"),             
         batch_parms={
             'statusname': "WritePictures",
-            'module_called': bin.sv3WritePictures.main,
+            'module_called': batch.sv3WritePictures.main,
             'before_msg': "Reading meta data for all pictures ...",
             'after_msg': "✅ Writing Summary data."
         }
@@ -136,8 +136,8 @@ def build_menu_spec(main_window):
     # set in order. statusname here is informational — eligibility uses the
     # STATE_COLUMNS gate (ReadDirExif) and state is set per run_keys.
     def _read_summarize(args, _config):
-        bin.sv2ReadDirExif.main(args, _config)
-        bin.sv3WritePictures.main(args, _config)
+        batch.sv2ReadDirExif.main(args, _config)
+        batch.sv3WritePictures.main(args, _config)
 
     read_summarize = MenuSpec(
         callback=None,
@@ -161,7 +161,7 @@ def build_menu_spec(main_window):
         tooltip=make_tooltip("WriteBlog"),        
         batch_parms={
             'statusname': "WriteBlog",
-            'module_called': bin.sv4WriteBlog.main,
+            'module_called': batch.sv4WriteBlog.main,
             'before_msg': "Create a blog entry ...",
             'after_msg': "✅ Blog successfully created."
         }
@@ -175,7 +175,7 @@ def build_menu_spec(main_window):
         tooltip=make_tooltip("BuildWebsite"),        
         batch_parms={
             'statusname': "BuildWebsite",
-            'module_called': bin.sv5BuildWebsite.main,
+            'module_called': batch.sv5BuildWebsite.main,
             'before_msg': "Build updates for later publication ...",
             'after_msg': "✅ Website updates prepared."
         }
@@ -189,7 +189,7 @@ def build_menu_spec(main_window):
         tooltip=make_tooltip("Freeze"),        
         batch_parms={
             'statusname': "Freeze",
-            'module_called': bin.sv6Freeze.main,
+            'module_called': batch.sv6Freeze.main,
             'before_msg': "Freeze all collected data ...",
             'after_msg': "✅ Data frozen."
         }
@@ -203,7 +203,7 @@ def build_menu_spec(main_window):
         tooltip=make_tooltip("WriteCommit"),        
         batch_parms={
             'statusname': "WriteCommit",
-            'module_called': bin.sv7WriteCommit.main,
+            'module_called': batch.sv7WriteCommit.main,
             'before_msg': "Update the trip website ...",
             'after_msg': "✅ Please review updated Website."
         }
@@ -237,7 +237,7 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
-            'module_called': bin.svr2CountSpecies.main,
+            'module_called': batch.svr2CountSpecies.main,
             'before_msg': "Analyzing species information ...",
             'after_msg': "✅ Species report will be shown."
         }
@@ -256,7 +256,7 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
-            'module_called': bin.svr9RedoBlog.main,
+            'module_called': batch.svr9RedoBlog.main,
             'before_msg': "Recreating blogs that have JPG pictures ...",
             'after_msg': "✅ Valid Blogs recreated."
         }
@@ -269,7 +269,7 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
-            'module_called': bin.svu6EmptyTripData.main,
+            'module_called': batch.svu6EmptyTripData.main,
             'before_msg': "Clearing trip data ...",
             'after_msg': "✅ Trip data cleared."
         }
@@ -282,7 +282,7 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
-            'module_called': bin.svr8RecreateTripRepository.main,
+            'module_called': batch.svr8RecreateTripRepository.main,
             'before_msg': "Delete existing repository and rebuild it ...",
             'after_msg': "✅ Trip recreated."
         }
@@ -296,7 +296,7 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
-            'module_called': bin.svr5MergeSpeciesCollections.main,
+            'module_called': batch.svr5MergeSpeciesCollections.main,
             'before_msg': "List and merge species lists from master and trip ...",
             'after_msg': "✅ Review merge results, and decide to copy to master."
         }
@@ -309,7 +309,7 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
-            'module_called': bin.svr4UpdateTrips.main,
+            'module_called': batch.svr4UpdateTrips.main,
             'before_msg': "Updating master trip admin and tripindex pages, then uploading ...",
             'after_msg': "✅ Master trip admin updated and uploaded."
         }
@@ -323,12 +323,12 @@ def build_menu_spec(main_window):
     # blank) — the same "no trip" config the scripts have always
     # accepted from the CLI.
     def _master_ingest(args, _config):
-        bin.sv2ReadDirExif.main(args, _config)
-        bin.sv3WritePictures.main(args, _config)
+        batch.sv2ReadDirExif.main(args, _config)
+        batch.sv3WritePictures.main(args, _config)
 
     def _master_build(args, _config):
-        bin.sv5BuildWebsite.main(args, _config)
-        bin.sv6Freeze.main(args, _config)
+        batch.sv5BuildWebsite.main(args, _config)
+        batch.sv6Freeze.main(args, _config)
 
     master_ingest_spec = MenuSpec(
         callback=None,
@@ -360,7 +360,7 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
         batch_parms={
             'statusname':     "",
-            'module_called':  bin.sv7WriteCommit.main,
+            'module_called':  batch.sv7WriteCommit.main,
             'before_msg':     "Committing frozen artifact to master active CSVs...",
             'after_msg':      "✅ Master commit complete.",
             'master_mode':    True,
@@ -522,7 +522,7 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
-            'module_called': bin.svu2avibase.main,
+            'module_called': batch.svu2avibase.main,
             'before_msg': "Reading a XLS CSV file read from a copy.",
             'after_msg': "✅ XLSX checklist created."
         }
@@ -535,7 +535,7 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
-            'module_called': bin.svu8PhotoMechanic.main,
+            'module_called': batch.svu8PhotoMechanic.main,
             'before_msg': "Generating PhotoMechanic keyword snap files...",
             'after_msg': "✅ PhotoMechanic snap files created."
         }
@@ -547,7 +547,7 @@ def build_menu_spec(main_window):
         title="Call Testbed for trip day",
         batch_parms={
             'statusname': "",
-            'module_called': bin.svu7Testbed.main,
+            'module_called': batch.svu7Testbed.main,
             'before_msg': "Running testbed for trip day...",
             'after_msg': "✅ Testbed run complete.",
         }
@@ -559,7 +559,7 @@ def build_menu_spec(main_window):
         title="Create Virtual Trip",
         batch_parms={
             'statusname': "",
-            'module_called': bin.svv1MakeVirtualRepository.main,
+            'module_called': batch.svv1MakeVirtualRepository.main,
             'before_msg': "Creating virtual trip directory structure...",
             'after_msg': "✅ Virtual trip created. Fill in virttrip.ini details and select a date range."
         }
@@ -571,7 +571,7 @@ def build_menu_spec(main_window):
         title="Extract Days from Master",
         batch_parms={
             'statusname': "",
-            'module_called': bin.svv2ExtractDays.main,
+            'module_called': batch.svv2ExtractDays.main,
             'before_msg': "Extracting per-day CSVs from master...",
             'after_msg': "✅ Day extraction complete. Check metadata/review/ for results."
         }

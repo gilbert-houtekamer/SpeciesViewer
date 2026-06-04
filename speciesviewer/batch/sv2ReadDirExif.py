@@ -26,13 +26,13 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-from speciesviewer.engine import COLUMN_NAMES, SELECTED_FIELDS, SVException
-import speciesviewer.engine.projectlib
-from speciesviewer.engine.handling import deriveUniquePictureName
-from speciesviewer.engine.exif_writer import exiftool_write
-import speciesviewer.engine.exceptions
-import speciesviewer.engine.statemachine
-import speciesviewer.engine.exifcache as exifcache
+from engine import COLUMN_NAMES, SELECTED_FIELDS, SVException
+import engine.projectlib
+from engine.handling import deriveUniquePictureName
+from engine.exif_writer import exiftool_write
+import engine.exceptions
+import engine.statemachine
+import engine.exifcache as exifcache
 
 IGNOREEXTENSIONS = ['txt', 'ico', 'html']
 # Real photo types whose Headline/Description we translate. Excludes PNG etc.,

@@ -16,10 +16,10 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import speciesviewer.engine as engine
-import speciesviewer.engine.projectlib
-import speciesviewer.engine.exceptions
-import speciesviewer.engine.triplib
+import engine
+import engine.projectlib
+import engine.exceptions
+import engine.triplib
 
 logger = logging.getLogger("speciesviewer")
 

@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import sys
 import time
-import speciesviewer.engine.projectlib
+import engine.projectlib
 import logging
 
 if __name__ == "__main__":
@@ -13,19 +13,19 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-from speciesviewer.engine import SVException
-import speciesviewer.engine as engine
-import speciesviewer.engine.projectlib
-import speciesviewer.engine.specieslib
-import speciesviewer.engine.speciesclassification
-import speciesviewer.engine.sftplib
-import speciesviewer.engine.specieslib
-import speciesviewer.engine.translatelib
-import speciesviewer.engine.bloglib
-import speciesviewer.engine.exceptions
-import speciesviewer.engine.statemachine
-import speciesviewer.engine.triplib
-from speciesviewer.engine import SVException
+from engine import SVException
+import engine
+import engine.projectlib
+import engine.specieslib
+import engine.speciesclassification
+import engine.sftplib
+import engine.specieslib
+import engine.translatelib
+import engine.bloglib
+import engine.exceptions
+import engine.statemachine
+import engine.triplib
+from engine import SVException
 
 logger = logging.getLogger("speciesviewer")
 

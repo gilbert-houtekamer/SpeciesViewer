@@ -21,22 +21,22 @@ if __name__ == "__main__":
     os.chdir(modpath)
     sys.path.append(modpath)
 
-import speciesviewer.engine as engine
-from speciesviewer.engine import SVException
-import speciesviewer.engine.projectlib
-import speciesviewer.engine.exceptions
-import speciesviewer.engine.statemachine
-import speciesviewer.engine.speciesclassification
-import speciesviewer.engine.specieslib
-import speciesviewer.engine.bloglib
-from speciesviewer.engine.handling import read_file, read_pictures
-import bin.sv1MakeReposity
-import bin.sv2ReadDirExif
-import bin.sv3WritePictures
-import bin.sv4WriteBlog
-import bin.sv5BuildWebsite
-import bin.sv6Freeze
-import bin.sv7WriteCommit
+import engine
+from engine import SVException
+import engine.projectlib
+import engine.exceptions
+import engine.statemachine
+import engine.speciesclassification
+import engine.specieslib
+import engine.bloglib
+from engine.handling import read_file, read_pictures
+import batch.sv1MakeReposity
+import batch.sv2ReadDirExif
+import batch.sv3WritePictures
+import batch.sv4WriteBlog
+import batch.sv5BuildWebsite
+import batch.sv6Freeze
+import batch.sv7WriteCommit
 
 logger = logging.getLogger("speciesviewer")
 
