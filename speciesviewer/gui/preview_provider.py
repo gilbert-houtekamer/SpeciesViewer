@@ -392,6 +392,46 @@ class PreviewCollection(PictureCollection):
             return None
         self._loader.request(produce, on_ready, target_w=target_w)
 
+    def delete_by_color(self, color: str, trash_root: Path) -> tuple[int, int, int]:
+        """Move all UPNs with the given color label to trash.
+
+        Returns (total_matching, protected_count, deleted_count).
+        UPNs that have a JPG are skipped (HARD INVARIANT: never trash a JPG-bearing picture).
+        Caller supplies trash_root = <trip_root>/.trash/<day>; files land at trash_root/<key>/<file>.
+        """
+        import shutil
+        wanted = color.lower()
+        matching = [k for k in self.all_keys()
+                    if (self.fpr.getColor(self.rep_filename(k)) or "").lower() == wanted]
+        protected = 0
+        deleted = 0
+        for key in matching:
+            if self.jpg_path(key):
+                protected += 1
+                continue
+            upn_dir = trash_root / key
+            upn_dir.mkdir(parents=True, exist_ok=True)
+            for fname in self._files(key):
+                frow = self.fpr.fi.files_dict.get(fname)
+                if not frow:
+                    continue
+                src = Path(frow.get("WindowsFileName", ""))
+                if src.exists():
+                    try:
+                        shutil.move(str(src), str(upn_dir / src.name))
+                    except Exception as e:
+                        logger.error(f"Trash move failed for {src.name}: {e}")
+                self.fpr.fi.files_dict.pop(fname, None)
+            self.fpr.upn.UniquePictureName_dict.pop(key, None)
+            deleted += 1
+        if deleted:
+            try:
+                self.fpr.upn.write_project_summary()
+                self.fpr.fi.write_project_files()
+            except Exception as e:
+                logger.error(f"delete_by_color: CSV write failed: {e}")
+        return len(matching), protected, deleted
+
     # ── write-back (rating / colour) with Rate recompute ──────────────────
     def apply(self, upn_key: str, *, new_stars: int | None = None,
               new_color: str | None = None) -> int | None:

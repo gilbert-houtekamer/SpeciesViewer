@@ -258,6 +258,38 @@ class ImagePreviewDialog(QDialog):
         self.color_filter_bar = ColorFilterBar(on_filter_changed=self.on_filter_changed)
         controls_layout.addWidget(self.color_filter_bar)
 
+        # Blue/Purple batch-delete — enabled whenever the collection supports it
+        # (PreviewCollection in fpr mode, SidecarCollection in culling mode;
+        #  disabled for FileListPreviewCollection / injected collections)
+        _can_delete = hasattr(self._collection, 'delete_by_color')
+        self._del_blue_btn = QPushButton("✖B")
+        self._del_blue_btn.setFixedSize(28, 24)
+        self._del_blue_btn.setToolTip("Delete all Blue-tagged pictures (move to trash)")
+        self._del_blue_btn.setStyleSheet("""
+            QPushButton { border: 2px solid #1E90FF; border-radius: 4px;
+                          background: transparent; font-size: 11px; color: #1E90FF;
+                          font-weight: bold; padding: 0; }
+            QPushButton:hover { background: rgba(30,144,255,0.15); }
+            QPushButton:disabled { border-color: #cccccc; color: #cccccc; }
+        """)
+        self._del_blue_btn.setEnabled(_can_delete)
+        self._del_blue_btn.clicked.connect(lambda: self._batch_delete_color("Blue"))
+        controls_layout.addWidget(self._del_blue_btn)
+
+        self._del_purple_btn = QPushButton("✖P")
+        self._del_purple_btn.setFixedSize(28, 24)
+        self._del_purple_btn.setToolTip("Delete all Purple-tagged pictures (move to trash)")
+        self._del_purple_btn.setStyleSheet("""
+            QPushButton { border: 2px solid #9370DB; border-radius: 4px;
+                          background: transparent; font-size: 11px; color: #9370DB;
+                          font-weight: bold; padding: 0; }
+            QPushButton:hover { background: rgba(147,112,219,0.15); }
+            QPushButton:disabled { border-color: #cccccc; color: #cccccc; }
+        """)
+        self._del_purple_btn.setEnabled(_can_delete)
+        self._del_purple_btn.clicked.connect(lambda: self._batch_delete_color("Purple"))
+        controls_layout.addWidget(self._del_purple_btn)
+
         self.column_spinner = QSpinBox()
         self.column_spinner.setRange(1, 10)
         self.column_spinner.setValue(self.columns)
@@ -1069,6 +1101,48 @@ class ImagePreviewDialog(QDialog):
     def _on_application_state_changed(self, state):
         if state == Qt.ApplicationState.ApplicationActive:
             self._refresh_no_gps_from_disk()
+
+    # ── Batch delete by colour ───────────────────────────────────────────────
+    def _batch_delete_color(self, color: str):
+        if not hasattr(self._collection, 'delete_by_color'):
+            return
+        matching = self._collection.color_keys({color})
+        if not matching:
+            QMessageBox.information(self, f"No {color} pictures",
+                                    f"No {color.lower()} pictures found here.")
+            return
+        jpg_set = set(self._collection.jpg_keys())
+        protected = sum(1 for k in matching if k in jpg_set)
+        deletable = len(matching) - protected
+
+        n = len(matching)
+        lines = [f"{n} {color.lower()} picture{'s' if n != 1 else ''} found."]
+        if protected:
+            lines.append(f"Skipped (have JPG): {protected}")
+        lines.append(f"Will be moved to .trash: {deletable}")
+        msg = "\n".join(lines)
+
+        if deletable == 0:
+            QMessageBox.information(self, f"Delete {color}", msg)
+            return
+        if QMessageBox.question(
+                self, f"Delete {color} pictures", msg,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
+        ) != QMessageBox.StandardButton.Yes:
+            return
+
+        # Culling mode: trash beside the source folder; fpr mode: trip .trash/<day>
+        if self.fpr is not None and self.trip_root_dir:
+            trash_root = Path(self.trip_root_dir) / ".trash" / Path(self.image_dir).name
+        else:
+            trash_root = Path(self.image_dir) / ".trash"
+
+        _total, _prot, deleted = self._collection.delete_by_color(color, trash_root)
+        logger.info(f"Batch delete {color}: {deleted} picture(s) moved to trash.")
+        self._active_filter = "all"
+        self.warnings_only, self.no_gps_only, self.show_all = False, False, True
+        self.all_btn.setChecked(True)
+        self._rebuild_grid_from_keys(self._base_keys())
 
     # ── Close ───────────────────────────────────────────────────────────────
     def closeEvent(self, event):

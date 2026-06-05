@@ -643,6 +643,31 @@ class RatingEditorDialog(QDialog):
         self._col_spinner.setValue(self.columns)
         self._col_spinner.valueChanged.connect(self._on_columns_changed)
         top.addWidget(self._col_spinner)
+        top.addSpacing(8)
+
+        self._del_blue_btn = QPushButton("✖ Blue")
+        self._del_blue_btn.setFixedSize(66, 24)
+        self._del_blue_btn.setToolTip("Delete all Blue-tagged pictures (move to trash)")
+        self._del_blue_btn.setStyleSheet("""
+            QPushButton { border: 1px solid #1E90FF; border-radius: 3px;
+                          padding: 2px 4px; background: transparent; color: #1E90FF;
+                          font-weight: bold; }
+            QPushButton:hover { background: rgba(30,144,255,0.1); }
+        """)
+        self._del_blue_btn.clicked.connect(lambda: self._batch_delete_color("Blue"))
+        top.addWidget(self._del_blue_btn)
+
+        self._del_purple_btn = QPushButton("✖ Purple")
+        self._del_purple_btn.setFixedSize(76, 24)
+        self._del_purple_btn.setToolTip("Delete all Purple-tagged pictures (move to trash)")
+        self._del_purple_btn.setStyleSheet("""
+            QPushButton { border: 1px solid #9370DB; border-radius: 3px;
+                          padding: 2px 4px; background: transparent; color: #9370DB;
+                          font-weight: bold; }
+            QPushButton:hover { background: rgba(147,112,219,0.1); }
+        """)
+        self._del_purple_btn.clicked.connect(lambda: self._batch_delete_color("Purple"))
+        top.addWidget(self._del_purple_btn)
 
         main_layout.addLayout(top)
 
@@ -694,6 +719,55 @@ class RatingEditorDialog(QDialog):
     def closeEvent(self, event):
         save_window(self, self._geo_key, cols=self.columns)
         super().closeEvent(event)
+
+    # ── Batch delete by colour ────────────────────────────────────────────────
+
+    def _batch_delete_color(self, color: str):
+        if not self.fpr or self._collection is None:
+            return
+        wanted = color.lower()
+        matching = [k for k, row in self.fpr.upn.UniquePictureName_dict.items()
+                    if (row.get("Label", "") or "").lower() == wanted
+                    and not self._collection.is_master(k)]
+        if not matching:
+            QMessageBox.information(self, f"No {color} pictures",
+                                    f"No {color.lower()} trip pictures found.")
+            return
+        protected = sum(1 for k in matching if self._collection.jpg_path(k))
+        deletable = len(matching) - protected
+        # Describe the scope clearly — trip-scope ignores the species filter, so
+        # the count may be higher than what is visible in the current grid.
+        if self._day_radio.isChecked():
+            scope = f"this day ({self._current_day() or '?'})"
+        elif self._species_combo.currentData():
+            scope = "this trip — all species"
+        else:
+            scope = "this trip"
+        n = len(matching)
+        lines = [f"{n} {color.lower()} picture{'s' if n != 1 else ''} in {scope}."]
+        if protected:
+            lines.append(f"Skipped (have JPG): {protected}")
+        lines.append(f"Will be moved to .trash: {deletable}")
+        msg = "\n".join(lines)
+        if deletable == 0:
+            QMessageBox.information(self, f"Delete {color}", msg)
+            return
+        if QMessageBox.question(
+                self, f"Delete {color} pictures", msg,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        day_hint = self._current_day() or "" if self._day_radio.isChecked() else ""
+        from gui.rating_provider import RatingEditorCollection
+        if not isinstance(self._collection, RatingEditorCollection):
+            return
+        _total, _prot, deleted = self._collection.delete_by_color(
+            color, self._trip_root / ".trash", day_hint=day_hint)
+        logger.info(f"Batch delete {color}: {deleted} picture(s) moved to trash.")
+        self._status.setText(
+            f"Deleted {deleted} {color.lower()} picture{'s' if deleted != 1 else ''} "
+            f"(moved to .trash).")
+        self._rebuild_cards()
 
     # ── Initialisation helpers ────────────────────────────────────────────────
 

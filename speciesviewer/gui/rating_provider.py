@@ -596,6 +596,73 @@ class RatingEditorCollection(PictureCollection):
         upn_row["Description"] = value
         self._persist_upn(upn_key, wrote_file)
 
+    def delete_by_color(self, color: str, trash_root: Path,
+                        day_hint: str = "") -> tuple[int, int, int]:
+        """Move all trip UPNs with the given color label to trash.
+
+        Returns (total_matching, protected_count, deleted_count).
+        Skips master keys and JPG-bearing UPNs (HARD INVARIANT).
+        trash_root should be <trip_root>/.trash; files land at
+        trash_root/<day>/<key>/<file> with day from _upn_day_map or day_hint.
+        """
+        import shutil
+        wanted = color.lower()
+        matching = [k for k, row in self.fpr.upn.UniquePictureName_dict.items()
+                    if (row.get("Label", "") or "").lower() == wanted
+                    and k not in self._master_keys]
+        protected = 0
+        deleted = 0
+        days_to_persist: set[str] = set()
+        for key in matching:
+            if self.jpg_path(key):
+                protected += 1
+                continue
+            upn_row = self.fpr.upn.UniquePictureName_dict.get(key, {})
+            files = upn_row.get("Files", [])
+            if not isinstance(files, list):
+                files = []
+            day = self._upn_day_map.get(key) or day_hint or "unknown"
+            upn_dir = trash_root / day / key
+            upn_dir.mkdir(parents=True, exist_ok=True)
+            for fname in files:
+                frow = self.fpr.fi.files_dict.get(fname)
+                if not frow:
+                    continue
+                src = Path(frow.get("WindowsFileName", ""))
+                if src.exists():
+                    try:
+                        shutil.move(str(src), str(upn_dir / src.name))
+                    except Exception as e:
+                        logger.error(f"Trash move failed for {src.name}: {e}")
+                self.fpr.fi.files_dict.pop(fname, None)
+                # Also clean the per-day files dict (shared reference won't auto-reflect pops)
+                if self._day_objects and day in self._day_objects:
+                    self._day_objects[day][0].files_dict.pop(fname, None)
+            self.fpr.upn.UniquePictureName_dict.pop(key, None)
+            if self._day_objects and day in self._day_objects:
+                self._day_objects[day][1].UniquePictureName_dict.pop(key, None)
+            if self._day_objects and day in self._day_objects:
+                days_to_persist.add(day)
+            deleted += 1
+        for day in days_to_persist:
+            fi_day, upn_day = self._day_objects[day]
+            try:
+                upn_day.write_project_summary()
+            except Exception as e:
+                logger.error(f"delete_by_color: pictures CSV write failed for {day}: {e}")
+            try:
+                fi_day.write_project_files()
+            except Exception as e:
+                logger.error(f"delete_by_color: files CSV write failed for {day}: {e}")
+        if not days_to_persist and deleted:
+            # Day scope — fpr.fi / fpr.upn ARE the single day's objects
+            try:
+                self.fpr.upn.write_project_summary()
+                self.fpr.fi.write_project_files()
+            except Exception as e:
+                logger.error(f"delete_by_color: CSV write failed (day scope): {e}")
+        return len(matching), protected, deleted
+
     # ── master write-back (Phase 2) ───────────────────────────────────────────
     def _apply_master_rating(self, upn_key: str, *, new_stars: int | None = None,
                              new_color: str | None = None) -> int | None:

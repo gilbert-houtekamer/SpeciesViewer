@@ -328,6 +328,44 @@ class SidecarCollection(PictureCollection):
             return None
         self._loader.request(produce, on_ready, target_w=target_w)
 
+    def jpg_path(self, key: str):
+        g = self._groups.get(key, {})
+        jpg = g.get("jpg")
+        return Path(jpg) if jpg and Path(jpg).exists() else None
+
+    def delete_by_color(self, color: str, trash_root: Path) -> tuple[int, int, int]:
+        """Move all stems with the given color label to trash.
+
+        Returns (total_matching, protected_count, deleted_count).
+        Stems that have a JPG are skipped (HARD INVARIANT).
+        Files go to trash_root/<stem>/<filename>.
+        """
+        import shutil
+        wanted = color.lower()
+        matching = [s for s in self.all_keys()
+                    if SidecarItem(self, s).color.lower() == wanted]
+        protected = 0
+        deleted = 0
+        for stem in matching:
+            grp = self._groups.get(stem, {})
+            if grp.get("jpg"):
+                protected += 1
+                continue
+            upn_dir = trash_root / stem
+            upn_dir.mkdir(parents=True, exist_ok=True)
+            for kind in ("raw", "xmp"):
+                src = grp.get(kind)
+                if src and Path(src).exists():
+                    try:
+                        shutil.move(str(src), str(upn_dir / Path(src).name))
+                    except Exception as e:
+                        logger.error(f"Trash move failed for {Path(src).name}: {e}")
+            self._groups.pop(stem, None)
+            if grp.get("xmp"):
+                self._rows.pop(_norm(grp["xmp"]), None)
+            deleted += 1
+        return len(matching), protected, deleted
+
     def write_tag(self, stem: str, tag: str, value: str, row_key: str) -> None:
         """Write one XMP tag into the stem's sidecar (creating it if needed),
         update the in-memory row, and patch the on-disk cache so the next
