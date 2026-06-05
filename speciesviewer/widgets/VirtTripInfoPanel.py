@@ -4,7 +4,7 @@ from PyQt6.QtCore import Qt
 from pathlib import Path
 import os
 from utils.virttrip_config import read_virttrip_ini
-from utils.config import _config, persist_config
+from utils.config import _config, persist_config, get_virttrips_root
 from utils.open_path import open_path
 
 
@@ -23,7 +23,7 @@ class VirtTripInfoPanel(QWidget):
 
         layout.addWidget(self._styled_label("Virtual Trip Root:", font_style))
         virttrip_active = _config.get("virttrip", "virttripbiotadatabase", fallback="")
-        virttrip_root = str(Path(virttrip_active).parent) if virttrip_active else ""
+        virttrip_root = get_virttrips_root()
         layout.addWidget(self._styled_label(virttrip_root or "(not configured)", font_style))
 
         layout.addSpacing(10)
@@ -94,6 +94,7 @@ class VirtTripInfoPanel(QWidget):
         if not _config.has_section("virttrip"):
             _config.add_section("virttrip")
         _config.set("virttrip", "virttripbiotadatabase", str(trip_dir))
+        _config.set("virttrip", "virttriprootdirectory", str(trip_dir.parent))
         trip_data = read_virttrip_ini(str(trip_dir))
         if trip_data:
             trip_name = trip_data.get("trip_name", "").strip()

@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from gui.batch import BatchModuleRunner
-from utils.config import set_setting, _config
+from utils.config import set_setting, _config, get_virttrips_root, get_trips_root
 from utils.virttrip_config import read_virttrip_ini
 from gui.virttrip_overview import populate_virttrip_overview
 import batch.svv2ExtractDays
@@ -235,9 +235,8 @@ class VirtualTripCreationDialog(QDialog):
             self.status_label.setText("❌ Enter a folder name first.")
             return
 
-        current_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
-        trips_parent = Path(current_root).parent if current_root else \
-                       Path(_config.get("trip", "tripbiotadatabase", fallback="")).parent
+        trips_parent_str = get_virttrips_root() or get_trips_root()
+        trips_parent = Path(trips_parent_str) if trips_parent_str else Path()
         if not trips_parent.is_dir():
             self.status_label.setText(f"❌ Cannot find parent directory: {trips_parent}")
             return
@@ -286,6 +285,7 @@ class VirtualTripCreationDialog(QDialog):
     def on_create_clicked(self):
         self._write_virttrip_ini()
         # Persist virtual trip settings
+        set_setting("virttrip", "virttriprootdirectory", str(Path(self.root_field.get_text()).parent))
         set_setting("virttrip", "virttripbiotadatabase", self.root_field.get_text())
         set_setting("virttrip", "virttripbiotawebroot",  self.trip_web.field.text())
         # Point active trip at the virtual trip so batch_config picks up the right BiotaDatabase
@@ -295,6 +295,7 @@ class VirtualTripCreationDialog(QDialog):
         runner.run(self.menu_spec)
 
     def on_select(self):
+        set_setting("virttrip", "virttriprootdirectory", str(Path(self.root_field.get_text()).parent))
         set_setting("virttrip", "virttripbiotadatabase", self.root_field.get_text())
         set_setting("virttrip", "virttripbiotawebroot",  self.trip_web.field.text())
         populate_virttrip_overview(self.passed_parent)

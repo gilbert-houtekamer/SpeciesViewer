@@ -85,6 +85,24 @@ def get_window_state(key):
         return None
     return {sub: _get(sub) for sub in ("x", "y", "w", "h", "cols")}
 
+# 📂 Trips / VirtTrips root directories
+# These return the explicit config key when present; otherwise derive via .parent
+# of the active database path (backward-compatible fallback for old configs).
+
+def get_trips_root() -> str:
+    explicit = _config.get("trip", "tripsrootdirectory", fallback="")
+    if explicit:
+        return explicit
+    active = _config.get("trip", "tripbiotadatabase", fallback="")
+    return str(Path(active).parent) if active else ""
+
+def get_virttrips_root() -> str:
+    explicit = _config.get("virttrip", "virttriprootdirectory", fallback="")
+    if explicit:
+        return explicit
+    active = _config.get("virttrip", "virttripbiotadatabase", fallback="")
+    return str(Path(active).parent) if active else ""
+
 # 🔄 Optional: Upgrade logic
 def upgrade_config_if_needed(latest_version=1.1):
     current_version = float(_config.get("Global", "config_version", fallback="0.0"))

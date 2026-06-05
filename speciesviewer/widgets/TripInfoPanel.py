@@ -6,7 +6,7 @@ from PyQt6.QtCore import Qt
 from pathlib import Path
 import os
 from utils.trip_config import read_trip_ini
-from utils.config import _config, persist_config
+from utils.config import _config, persist_config, get_trips_root
 from utils.gui_config import load_gui_cache
 from utils.open_path import open_path
 
@@ -47,7 +47,7 @@ class TripInfoPanel(QWidget):
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.show_context_menu)
 
-        trip_root = Path(_config["trip"]["tripbiotadatabase"]).parent
+        trip_root = Path(get_trips_root())
         if trip_root.is_dir():
             for trip_dir in sorted(trip_root.iterdir()):
                 if trip_dir.is_dir():
@@ -97,6 +97,7 @@ class TripInfoPanel(QWidget):
             trip_name = trip_data.get("trip_name", "").strip()
             _config["trip"]["tripbiotadatabase"] = str(trip_dir)
             _config["trip"]["tripbiotawebroot"] = "/trips/" + trip_name
+            _config["trip"]["tripsrootdirectory"] = str(trip_dir.parent)
             # load corresponding project
             _config["project"]["picturedirectory"] = self.trip_project_map["/trips/" + trip_name]     
             persist_config()

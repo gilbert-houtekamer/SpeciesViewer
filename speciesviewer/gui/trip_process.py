@@ -11,7 +11,7 @@ from pathlib import Path
 import webbrowser
 from gui.batch import BatchModuleRunner  # Assuming batch handler is here
 
-from utils.config import set_trip_settings, _config
+from utils.config import set_trip_settings, _config, get_trips_root
 from utils.trip_config import read_trip_ini
 from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, RecentDirectoryFieldQt, ImageFileFieldQt)
@@ -271,7 +271,7 @@ class TripCreationDialog(QDialog):
             self.status_label.setText("❌ Enter a folder name first.")
             return
 
-        trips_parent = Path(_config.get("trip", "tripbiotadatabase", fallback="")).parent
+        trips_parent = Path(get_trips_root())
         if not trips_parent.is_dir():
             self.status_label.setText(f"❌ Cannot find trips parent directory: {trips_parent}")
             return
@@ -334,6 +334,7 @@ class TripCreationDialog(QDialog):
         if not self.create_trip_ini():
             return
         # make sure new structure is created
+        _config.set("trip", "tripsrootdirectory", str(Path(self.root_field.get_text()).parent))
         set_trip_settings(self.root_field.get_text(), self.trip_web.field.text(), self.project_path.field.text())
         # Also save trip/project pair
         update_cache_gui_section("trip_project_map", self.trip_web.field.text(), self.project_path.field.text() )
@@ -343,6 +344,7 @@ class TripCreationDialog(QDialog):
 
     def on_select(self):
         # save settings
+        _config.set("trip", "tripsrootdirectory", str(Path(self.root_field.get_text()).parent))
         set_trip_settings(self.root_field.get_text(), self.trip_web.field.text(), self.project_path.field.text())
         update_cache_gui_section("trip_project_map", self.trip_web.field.text(), self.project_path.field.text() )   
         populate_trip_overview(self.passed_parent)        

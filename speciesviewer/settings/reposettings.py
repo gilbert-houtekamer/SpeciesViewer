@@ -3,13 +3,13 @@ from PyQt6.QtWidgets import (
     QFileDialog, QMessageBox, QFrame, QCheckBox
 )
 import logging
-from utils.config import _config, persist_config
+from utils.config import _config, persist_config, get_trips_root, get_virttrips_root
 
 class RepoSettingsDialog(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
         self.setWindowTitle("Repositories")
-        self.setFixedSize(600, 600)
+        self.setMinimumSize(600, 700)
 
         layout = QVBoxLayout(self)
 
@@ -36,6 +36,10 @@ class RepoSettingsDialog(QDialog):
         browse_trip_btn.clicked.connect(self.browse_trip)
         layout.addWidget(browse_trip_btn)
         self.trip_web = self._labeled_field(layout, "Web root", _config.get("trip", "tripbiotawebroot", fallback=""))
+        self.trips_root_field = self._labeled_field(layout, "Trips root directory", get_trips_root())
+        browse_trips_root_btn = QPushButton("Browse Trips Root")
+        browse_trips_root_btn.clicked.connect(self.browse_trips_root)
+        layout.addWidget(browse_trips_root_btn)
         layout.addWidget(self._divider())
 
         # Active Virtual Trip section
@@ -45,6 +49,10 @@ class RepoSettingsDialog(QDialog):
         browse_virttrip_btn.clicked.connect(self.browse_virttrip)
         layout.addWidget(browse_virttrip_btn)
         self.virttrip_web = self._labeled_field(layout, "Web root", _config.get("virttrip", "virttripbiotawebroot", fallback=""))
+        self.virttrips_root_field = self._labeled_field(layout, "Virtual trips root directory", get_virttrips_root())
+        browse_virttrips_root_btn = QPushButton("Browse Virtual Trips Root")
+        browse_virttrips_root_btn.clicked.connect(self.browse_virttrips_root)
+        layout.addWidget(browse_virttrips_root_btn)
 
         save_btn = QPushButton("Save")
         save_btn.clicked.connect(self.save_settings)
@@ -77,10 +85,20 @@ class RepoSettingsDialog(QDialog):
         if path:
             self.trip_field.setText(path)
 
+    def browse_trips_root(self):
+        path = QFileDialog.getExistingDirectory(self, "Select Trips Root Directory")
+        if path:
+            self.trips_root_field.setText(path)
+
     def browse_virttrip(self):
         path = QFileDialog.getExistingDirectory(self, "Select Virtual Trip Database Directory")
         if path:
             self.virttrip_field.setText(path)
+
+    def browse_virttrips_root(self):
+        path = QFileDialog.getExistingDirectory(self, "Select Virtual Trips Root Directory")
+        if path:
+            self.virttrips_root_field.setText(path)
 
     def save_settings(self):
         _config.set("master", "masterbiotadatabase", self.master_field.text())
@@ -89,10 +107,14 @@ class RepoSettingsDialog(QDialog):
                     "yes" if self.master_readonly.isChecked() else "no")
         _config.set("trip", "tripbiotadatabase", self.trip_field.text())
         _config.set("trip", "tripbiotawebroot", self.trip_web.text())
+        if self.trips_root_field.text():
+            _config.set("trip", "tripsrootdirectory", self.trips_root_field.text())
         if not _config.has_section("virttrip"):
             _config.add_section("virttrip")
         _config.set("virttrip", "virttripbiotadatabase", self.virttrip_field.text())
         _config.set("virttrip", "virttripbiotawebroot", self.virttrip_web.text())
+        if self.virttrips_root_field.text():
+            _config.set("virttrip", "virttriprootdirectory", self.virttrips_root_field.text())
 
         persist_config()
 
