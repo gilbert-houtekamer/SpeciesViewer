@@ -17,10 +17,8 @@ panel (separate step); here species is read-only display.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-import subprocess
 from pathlib import Path
 
 from PyQt6.QtGui import QImage
@@ -35,33 +33,58 @@ logger = logging.getLogger("speciesviewer")
 _RAW_EXTS = {".cr3", ".cr2", ".nef", ".arw", ".raf", ".dng", ".orf", ".rw2"}
 _JPG_EXTS = {".jpg", ".jpeg"}
 
-# Tags read from each sidecar in one batched exiftool pass (short names; exiftool
-# returns them un-grouped). The EXIF snapshot was written into the XMP at ingest.
-_READ_TAGS = [
-    "-Subject", "-Rating", "-Label", "-Description", "-Headline",
-    "-DateTimeOriginal", "-ISO", "-FNumber", "-ExposureTime", "-FocalLength",
-    "-Make", "-Model", "-LensModel", "-SubjectDistance", "-ImageWidth", "-ImageHeight",
-    "-GPSPosition", "-GPSLatitude", "-GPSLongitude",
-]
-
 
 def _norm(p) -> str:
     return os.path.normcase(os.path.normpath(str(p)))
 
 
-def _read_sidecar_rows(xmp_paths):
-    """One batched exiftool read of all sidecars → {normalised xmp path: row}."""
+def _read_sidecar_rows(xmp_paths: list) -> tuple[dict, dict]:
+    """Cache-first metadata load.
+
+    Returns (rows, caches):
+      rows   — {normalised xmp path: metadata dict}
+      caches — {folder Path: SidecarCache}, held by SidecarCollection for
+               write-back updates so the cache stays consistent with edits.
+
+    Hit path: O(stat()) per file — no exiftool call.
+    Miss path: exiftool via argfile (no command-line length limit) for
+               stale/missing entries only; cache is updated and flushed.
+    """
+    from engine.sidecar_cache import SidecarCache, read_xmp_rows
+
     if not xmp_paths:
-        return {}
-    cmd = (["exiftool", "-charset", "filename=utf8", "-charset", "utf8", "-j"]
-           + _READ_TAGS + [str(p) for p in xmp_paths])
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
-        rows = json.loads(r.stdout) if r.stdout.strip() else []
-    except Exception as e:
-        logger.warning(f"Could not read XMP sidecars: {e}")
-        return {}
-    return {_norm(row.get("SourceFile", "")): row for row in rows}
+        return {}, {}
+
+    paths = [Path(p) for p in xmp_paths]
+    rows: dict[str, dict] = {}
+    caches: dict[Path, SidecarCache] = {}
+    stale_by_folder: dict[Path, list[Path]] = {}
+
+    for p in paths:
+        folder = p.parent
+        if folder not in caches:
+            caches[folder] = SidecarCache(folder)
+        entry = caches[folder].get(p)
+        if entry is not None:
+            rows[_norm(p)] = entry
+        else:
+            stale_by_folder.setdefault(folder, []).append(p)
+
+    stale_count = sum(len(v) for v in stale_by_folder.values())
+    if stale_count:
+        logger.info(f"Sidecar cache: {len(rows)} cached, {stale_count} stale/missing — reading via exiftool")
+
+    for folder, stale in stale_by_folder.items():
+        fresh = read_xmp_rows(stale)
+        for row in fresh:
+            src = row.get("SourceFile", "")
+            if src:
+                xmp = Path(src)
+                caches[folder].put(xmp, row)
+                rows[_norm(xmp)] = row
+        caches[folder].save()
+
+    return rows, caches
 
 
 def _subject_to_text(subject) -> str:
@@ -213,7 +236,8 @@ class SidecarCollection(PictureCollection):
                     grp["xmp"] = xmp
         # Drop groups that ended up with no image file (e.g. a stray .xmp passed in).
         self._groups = {s: g for s, g in self._groups.items() if g.get("raw") or g.get("jpg")}
-        self._rows = _read_sidecar_rows([g["xmp"] for g in self._groups.values() if g.get("xmp")])
+        self._rows, self._caches = _read_sidecar_rows(
+            [g["xmp"] for g in self._groups.values() if g.get("xmp")])
         self.rebuild()
 
     # ── ordering ──────────────────────────────────────────────────────────
@@ -305,8 +329,9 @@ class SidecarCollection(PictureCollection):
         self._loader.request(produce, on_ready, target_w=target_w)
 
     def write_tag(self, stem: str, tag: str, value: str, row_key: str) -> None:
-        """Write one XMP tag into the stem's sidecar (creating it if needed) and
-        update the in-memory row so the card repaints with the new value."""
+        """Write one XMP tag into the stem's sidecar (creating it if needed),
+        update the in-memory row, and patch the on-disk cache so the next
+        culling session opens without re-running exiftool for this file."""
         grp = self._groups.get(stem, {})
         xmp = grp.get("xmp")
         if xmp is None:
@@ -321,4 +346,13 @@ class SidecarCollection(PictureCollection):
         except Exception as e:
             logger.error(f"Sidecar write failed for {Path(xmp).name}: {e}")
             return
+        # Update in-memory row
         self._rows.setdefault(_norm(xmp), {"SourceFile": str(xmp)})[row_key] = value
+        # Patch the on-disk cache entry (mtime_ns updated to the freshly written file)
+        xmp_path = Path(xmp)
+        folder = xmp_path.parent
+        if folder not in self._caches:
+            from engine.sidecar_cache import SidecarCache
+            self._caches[folder] = SidecarCache(folder)
+        self._caches[folder].put_field(xmp_path, row_key, value)
+        self._caches[folder].save()

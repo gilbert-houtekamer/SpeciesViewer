@@ -666,6 +666,20 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
             summary["sidecars"] = _write_sidecars(raw_targets, log,
                                                    progress_cb=_xmp_progress)
 
+            # Build per-folder sidecar cache so the culling viewer opens
+            # without re-running exiftool.  Incremental: only new/changed XMPs
+            # are re-read, so a card top-up on a second machine is fast.
+            from engine.sidecar_cache import build_cache_for_folder
+            xmp_by_folder: dict[Path, list[Path]] = {}
+            for t in raw_targets:
+                xmp = Path(t).with_suffix(".xmp")
+                if xmp.exists():
+                    xmp_by_folder.setdefault(xmp.parent, []).append(xmp)
+            for folder, xmps in xmp_by_folder.items():
+                if progress:
+                    progress(total, total, f"Caching XMP metadata… {folder.name}")
+                build_cache_for_folder(folder, xmps)
+
     log.info(
         f"Card read summary — copied {summary['copied']} (of which {summary['renamed']} renamed), "
         f"skipped {summary['skipped']}, failed {summary['failed']} of {total}; "
