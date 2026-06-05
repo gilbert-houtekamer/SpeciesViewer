@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QHeaderView, QAbstractItemView, QAbstractItemView
 )
 from pathlib import Path
-from sharedlib.statemachine import StateMachine
+from engine.statemachine import StateMachine
 from utils.config import _config
 
 SYNC_COL = 3

@@ -889,7 +889,7 @@ class ReadSummarizeDialog(QDialog):
     def on_run(self):
         import configparser
         from gui.batch import ChainedBatchRunner
-        from sharedlib.statemachine import StateMachine
+        from engine.statemachine import StateMachine
         from utils.batch_config import generate_svconfig_ini
         import batch.sv2ReadDirExif
         import batch.sv3WritePictures

@@ -10,7 +10,7 @@ from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
 from PyQt6.QtGui import QMovie
 
 from utils.batch_config import generate_svconfig_ini
-from sharedlib.statemachine import StateMachine
+from engine.statemachine import StateMachine
 
 # statusname → trip-overview cell header. ReadDirExif and WritePictures share
 # ONE cell now (the combined "Read & Summarize" column); surgical updates may

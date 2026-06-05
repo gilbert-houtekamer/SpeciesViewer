@@ -19,7 +19,7 @@ from settings.dbsettings import DatabaseSettingsDialog
 from settings.rawsettings import RawProcessingDialog
 from dialogs.setting import AboutDialog
 from utils.batch_config import generate_svconfig_ini
-from sharedlib.statemachine import StateMachine
+from engine.statemachine import StateMachine
 
 import batch.sv1MakeReposity
 import batch.sv2ReadDirExif

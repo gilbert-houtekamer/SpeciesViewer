@@ -14,7 +14,7 @@ from engine.translatelib import CachedTranslate
 from widgets.TripInfoPanel import TripInfoPanel
 from widgets.VirtTripInfoPanel import VirtTripInfoPanel
 from gui.trip_overview import populate_trip_overview
-from sharedlib.statemachine import StateMachine
+from engine.statemachine import StateMachine
 from gui.image_viewer import ImagePreviewDialog
 from utils.gui_config import load_gui_cache  # or wherever your cache functions live
 
