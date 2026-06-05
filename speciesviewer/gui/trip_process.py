@@ -284,7 +284,7 @@ class TripCreationDialog(QDialog):
             return
 
         # Copy default images from dist/includes web/
-        dist_dir = Path(__file__).resolve().parent.parent.parent / "dist" / "includes web"
+        dist_dir = Path(__file__).resolve().parent.parent / "dist" / "includes web"
         for src_name, dest_name in [("tripbanner.jpg", "tripbanner.jpg"), ("tripimage.jpg", "tripimage.jpg")]:
             src = dist_dir / src_name
             dest = new_trip_path / dest_name

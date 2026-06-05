@@ -5,6 +5,7 @@ import shutil
 import configparser
 import logging
 import argparse
+from pathlib import Path
 
 if __name__ == "__main__":
     scriptpath = os.path.dirname(__file__)
@@ -16,7 +17,7 @@ logger = logging.getLogger("speciesviewer")
 
 
 def main(args, config):
-    MY_GHEXIF_DIR = os.path.join(os.getcwd(), "dist")
+    MY_GHEXIF_DIR = str(Path(__file__).resolve().parent.parent / "dist")
     NEW_DB_TREE   = config.get("repository", "BiotaDatabase")
 
     logger.info("svv1MakeVirtualRepository: creating virtual trip directory structure.")

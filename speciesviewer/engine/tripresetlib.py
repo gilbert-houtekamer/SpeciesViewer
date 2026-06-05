@@ -4,6 +4,7 @@ import os
 import shutil
 import logging
 import time
+from pathlib import Path
 
 logger = logging.getLogger("speciesviewer")
 
@@ -56,7 +57,7 @@ def clear_review_directories(repo_path):
 
 def reset_active_data(repo_path):
     """Reset the active data CSV files to empty templates."""
-    dist_dir = os.path.join(os.getcwd(), 'dist', 'installation files')
+    dist_dir = str(Path(__file__).resolve().parent.parent / "dist" / "installation files")
     active_dir = os.path.join(repo_path, 'metadata', 'active')
 
     templates = [

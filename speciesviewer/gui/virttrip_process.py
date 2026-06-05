@@ -249,7 +249,7 @@ class VirtualTripCreationDialog(QDialog):
             self.status_label.setText(f"❌ Could not create folder: {e}")
             return
 
-        dist_dir = Path(__file__).resolve().parent.parent.parent / "dist" / "includes web"
+        dist_dir = Path(__file__).resolve().parent.parent / "dist" / "includes web"
         for src_name in ("tripbanner.jpg", "tripimage.jpg"):
             src = dist_dir / src_name
             dest = new_trip_path / src_name

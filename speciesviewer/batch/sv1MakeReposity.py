@@ -37,7 +37,7 @@ def getUTF8(tripconfig, group, ansistring):
     return workstr
 
 def main(args, config):
-    MY_GHEXIF_DIR = os.path.join(os.getcwd(),"dist")
+    MY_GHEXIF_DIR = str(Path(__file__).resolve().parent.parent / "dist")
     NEW_DB_TREE = config.get("repository","BiotaDatabase")    # "e:/test3/SpeciesViewDB/"
     WEB_TREE = config.get("repository","BiotaWebRoot")
 
