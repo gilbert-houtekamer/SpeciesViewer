@@ -14,9 +14,6 @@ from PyQt6.QtWidgets import QApplication, QSplashScreen, QToolTip
 from PyQt6.QtGui import QPixmap, QFont
 from PyQt6.QtCore import Qt, QTimer
 
-from gui.mainwindow import MainWindow
-from utils.logger_support import init_logger
-from gui.trip_overview import populate_trip_overview
 from utils.config import _config
 
 
@@ -108,6 +105,9 @@ def start_main():
 
     # 🪄 Launch main app window after splash
     def launch_main_window():
+        from gui.mainwindow import MainWindow
+        from utils.logger_support import init_logger
+        from gui.trip_overview import populate_trip_overview
         global _main_window
         _main_window = MainWindow()
         main_window = _main_window
