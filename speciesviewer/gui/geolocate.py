@@ -215,7 +215,7 @@ def write_location(path, fields, overwrite=True):
 # comparing the CURRENT vs PROPOSED location for each picture, so the override
 # policy can be decided from real data first. Set False (or delete this block and
 # the dry_run branch) to restore real writing.
-DRY_RUN_COMPARE = True
+DRY_RUN_COMPARE = False
 
 
 # Raw Nominatim address keys worth seeing in the compare, to decide the mapping.
@@ -254,7 +254,7 @@ def _write_compare_csv(rows):
 
 
 def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttle_s=1.1,
-                        dry_run=None, overwrite=False):
+                        dry_run=None, overwrite=False, on_done=None):
     """Reverse-geocode and write location for an ordered list of targets, on a
     worker thread behind a modal progress dialog with Cancel.
 
@@ -264,7 +264,10 @@ def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttl
     per-file reads run). Dedup-by-distance: consecutive shots within `min_move_m`
     of the last queried fix reuse its result. Nominatim queries are throttled.
     dry_run (default DRY_RUN_COMPARE): write a comparison CSV instead of the XMP.
-    overwrite=False: only fill empty location fields, never replace existing."""
+    overwrite=False: only fill empty location fields, never replace existing.
+    on_done(): called after writes complete but BEFORE dlg.close() — use this to
+    refresh UI from the just-written XMP while still inside the exec() loop so
+    Qt repaints the caller's window on dialog close."""
     from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
     from PyQt6.QtWidgets import QProgressDialog
     import os
@@ -340,6 +343,11 @@ def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttl
     def on_finished(queried, written, total, csv_path):
         thread.quit()
         thread.wait()
+        if on_done is not None:
+            try:
+                on_done()
+            except Exception as e:
+                logger.warning(f"run_geolocate_batch on_done raised: {e}")
         dlg.close()
         if csv_path:
             logger.info(f"Get location (SAFE COMPARE — no files changed): {total} pictures, "

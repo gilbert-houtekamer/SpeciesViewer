@@ -337,12 +337,12 @@ class ImagePreviewDialog(QDialog):
         # ── Initial filter cascade ─────────────────────────────────────────
         base = set(self._base_keys())
         warnings_keys = [k for k in self._collection.warning_keys() if k in base] if self.fpr else []
-        no_gps_keys = [k for k in self._collection.no_gps_keys() if k in base] if self.fpr else []
+        no_gps_keys = [k for k in self._collection.no_gps_keys() if k in base]
 
         if not self.fpr:
-            # No metadata — the warnings / no-GPS distinctions don't apply.
             self.warnings_btn.setEnabled(False)
-            self.no_gps_btn.setEnabled(False)
+            if not no_gps_keys:
+                self.no_gps_btn.setEnabled(False)
         else:
             if not warnings_keys:
                 self.warnings_btn.setEnabled(False)
@@ -457,17 +457,21 @@ class ImagePreviewDialog(QDialog):
         return len([k for k in self._collection.warning_keys() if k in base])
 
     def _no_gps_count(self) -> int:
-        if not self.fpr:
-            return 0
         base = set(self._base_keys())
         return len([k for k in self._collection.no_gps_keys() if k in base])
 
     def _update_title_for_filter(self):
         base = f"Species Image Preview ({self._viewer_label})"
-        if not self.fpr:
-            self.setWindowTitle(base)
-            return
         total = len(self._base_keys())
+        if not self.fpr:
+            if self._active_filter == "no_gps":
+                suffix = f"{self._no_gps_count()} missing GPS"
+            elif self._active_filter == "all":
+                suffix = f"all {total} pictures"
+            else:
+                suffix = ""
+            self.setWindowTitle(f"{base} — {suffix}" if suffix else base)
+            return
         if self._active_filter == "warnings":
             n = self._warnings_count()
             suffix = f"{n} warning{'s' if n != 1 else ''}"

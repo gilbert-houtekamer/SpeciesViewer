@@ -160,8 +160,7 @@ class SidecarItem(PictureItem):
 
     @property
     def has_gps(self) -> bool:
-        r = self._row
-        return bool(r.get("GPSPosition") or r.get("GPSLatitude"))
+        return self._stem in self._c._gps_stems
 
     @property
     def file_exts(self) -> list[str]:
@@ -238,7 +237,30 @@ class SidecarCollection(PictureCollection):
         self._groups = {s: g for s, g in self._groups.items() if g.get("raw") or g.get("jpg")}
         self._rows, self._caches = _read_sidecar_rows(
             [g["xmp"] for g in self._groups.values() if g.get("xmp")])
+        # Batch-read GPS from each picture's best source (XMP if present, else
+        # RAW). At the culling stage GPS lives in the RAW's EXIF, not the XMP
+        # sidecar, so the sidecar cache alone can't populate the GPS badge.
+        # One exiftool call covers all files.
+        self._gps_stems: frozenset[str] = self._build_gps_stems()
         self.rebuild()
+
+    def _build_gps_stems(self) -> frozenset[str]:
+        """Return the set of stems that have GPS in any source file.
+        Uses gps_source() (XMP preferred, else RAW) so the RAW's EXIF GPS is
+        found even when the XMP sidecar has none (common before geocoding)."""
+        from gui.geolocate import batch_gps
+        src_by_stem = {
+            s: (g.get("xmp") or g.get("jpg") or g.get("raw"))
+            for s, g in self._groups.items()
+        }
+        src_by_stem = {s: p for s, p in src_by_stem.items() if p}
+        if not src_by_stem:
+            return frozenset()
+        gps_result = batch_gps([str(p) for p in src_by_stem.values()])
+        return frozenset(
+            s for s, p in src_by_stem.items()
+            if os.path.normcase(os.path.normpath(str(p))) in gps_result
+        )
 
     # ── ordering ──────────────────────────────────────────────────────────
     def rebuild(self, keys: list[str] | None = None) -> None:

@@ -758,8 +758,11 @@ class LargeImageView(QDialog):
             return
         from gui.geolocate import run_geolocate_batch
         label = (self._item.display_name if self._item else key) or key
-        run_geolocate_batch(self, [(label, src, files)])
-        self._show_location(key)  # reflect the just-written location in the panel
+        # on_done runs inside on_finished, before dlg.close(). Updating the
+        # panel there means Qt repaints the labels when the dialog closes —
+        # the normal post-exec() call site is too late for an immediate repaint.
+        run_geolocate_batch(self, [(label, src, files)],
+                            on_done=lambda: self._show_location(key))
 
     def _cull_open_rating(self):
         # 'c' with no selection → act on the picture being viewed.
