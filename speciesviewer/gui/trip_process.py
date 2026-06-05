@@ -574,6 +574,21 @@ class ReadSDCardDialog(QDialog):
         self.read_btn.clicked.connect(self.on_read)
         self.view_btn.clicked.connect(self.on_view)
         self.close_btn.clicked.connect(self.reject)
+        self._close_connected = True   # True = Close, False = Cancel
+
+    def _on_cancel(self):
+        self.status_label.setText("Cancelling…")
+        self._stop_worker()
+        self.status_label.setText("Cancelled.")
+        self.read_btn.setEnabled(True)
+        self._restore_close_btn()
+
+    def _restore_close_btn(self):
+        if not self._close_connected:
+            self.close_btn.clicked.disconnect(self._on_cancel)
+            self.close_btn.clicked.connect(self.reject)
+            self.close_btn.setText("Close")
+            self._close_connected = True
 
     def _stop_worker(self):
         # Don't let the dialog (and its QThread) be destroyed while the copy
@@ -641,6 +656,11 @@ class ReadSDCardDialog(QDialog):
         self.read_btn.setEnabled(False)
         self.view_btn.setEnabled(False)
         self.status_label.setText("Scanning…")
+        if self._close_connected:
+            self.close_btn.clicked.disconnect(self.reject)
+            self.close_btn.clicked.connect(self._on_cancel)
+            self.close_btn.setText("Cancel")
+            self._close_connected = False
         self.logger.info(
             f"Reading SD-card from {source} → {dest} (prefix: {prefix or '(none)'}, "
             f"by-date: {bucket_by_date}, tz-offset: {tz_offset}h, sidecars: {write_sidecars})"
@@ -662,6 +682,7 @@ class ReadSDCardDialog(QDialog):
         self._thread.quit()
         self._thread.wait()
         self.read_btn.setEnabled(True)
+        self._restore_close_btn()
         if error:
             self.logger.warning(f"❌ Card read failed: {error}")
             self.status_label.setText(f"❌ {error}")
