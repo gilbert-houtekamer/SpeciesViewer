@@ -65,16 +65,20 @@ def save_repo_settings(repo_paths):
 # "<dialog>_x/_y/_w/_h/_cols" so the values stay human-readable.
 _WINDOW_SECTION = "WindowState"
 
-def save_window_state(key, *, x=None, y=None, w=None, h=None, cols=None):
+def save_window_state(key, *, x=None, y=None, w=None, h=None, cols=None,
+                      vsplit=None, hsplit=None):
     if not _config.has_section(_WINDOW_SECTION):
         _config.add_section(_WINDOW_SECTION)
     for sub, val in (("x", x), ("y", y), ("w", w), ("h", h), ("cols", cols)):
         if val is not None:
             _config.set(_WINDOW_SECTION, f"{key}_{sub}", str(int(val)))
+    for sub, sizes in (("vsplit", vsplit), ("hsplit", hsplit)):
+        if sizes is not None:
+            _config.set(_WINDOW_SECTION, f"{key}_{sub}", ",".join(str(int(v)) for v in sizes))
     persist_config()
 
 def get_window_state(key):
-    """Return {x, y, w, h, cols} for `key`; missing values are None."""
+    """Return {x, y, w, h, cols, vsplit, hsplit} for `key`; missing values are None."""
     def _get(sub):
         opt = f"{key}_{sub}"
         if _config.has_option(_WINDOW_SECTION, opt):
@@ -83,7 +87,16 @@ def get_window_state(key):
             except ValueError:
                 return None
         return None
-    return {sub: _get(sub) for sub in ("x", "y", "w", "h", "cols")}
+    def _get_split(sub):
+        opt = f"{key}_{sub}"
+        if _config.has_option(_WINDOW_SECTION, opt):
+            try:
+                return [int(v) for v in _config.get(_WINDOW_SECTION, opt).split(",")]
+            except ValueError:
+                return None
+        return None
+    return ({sub: _get(sub) for sub in ("x", "y", "w", "h", "cols")}
+            | {"vsplit": _get_split("vsplit"), "hsplit": _get_split("hsplit")})
 
 # 📂 Trips / VirtTrips root directories
 # These return the explicit config key when present; otherwise derive via .parent

@@ -26,9 +26,10 @@ def restore_window(dialog, key, default_size=None):
     return st
 
 
-def save_window(dialog, key, cols=None):
+def save_window(dialog, key, cols=None, vsplit=None, hsplit=None):
     g = dialog.geometry()
-    save_window_state(key, x=g.x(), y=g.y(), w=g.width(), h=g.height(), cols=cols)
+    save_window_state(key, x=g.x(), y=g.y(), w=g.width(), h=g.height(),
+                      cols=cols, vsplit=vsplit, hsplit=hsplit)
 
 
 def clamp_to_visible_screen(dialog):

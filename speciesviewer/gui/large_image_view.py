@@ -34,7 +34,7 @@ from gui.rating_editor import StarWidget, ColorSelector, COLOR_HEX
 from gui.image_loader import AsyncImageLoader
 from gui.window_state import restore_window, save_window, clamp_to_visible_screen
 from utils.open_path import open_path, reveal_group, launch_app_with_file
-from utils.config import get_setting
+from utils.config import get_setting, get_window_state
 
 logger = logging.getLogger("speciesviewer")
 
@@ -1416,14 +1416,21 @@ class LargeImageView(QDialog):
         self.setFocus()
         if self._panel_first_show:
             self._panel_first_show = False
+            st = get_window_state(self._geo_key)
             # H-splitter: image | panel
-            panel_w = 300
-            image_w = max(200, self.width() - panel_w - self._splitter.handleWidth())
-            self._splitter.setSizes([image_w, panel_w])
+            if st["hsplit"] and len(st["hsplit"]) == 2:
+                self._splitter.setSizes(st["hsplit"])
+            else:
+                panel_w = 300
+                image_w = max(200, self.width() - panel_w - self._splitter.handleWidth())
+                self._splitter.setSizes([image_w, panel_w])
             # V-splitter: image+panel | filmstrip
-            strip_h = _ITEM_H + 40
-            top_h = max(200, self.height() - strip_h - self._v_splitter.handleWidth())
-            self._v_splitter.setSizes([top_h, strip_h])
+            if st["vsplit"] and len(st["vsplit"]) == 2:
+                self._v_splitter.setSizes(st["vsplit"])
+            else:
+                strip_h = _ITEM_H + 40
+                top_h = max(200, self.height() - strip_h - self._v_splitter.handleWidth())
+                self._v_splitter.setSizes([top_h, strip_h])
         QTimer.singleShot(0, self._fit_pixmap)
 
     def resizeEvent(self, event):
@@ -1432,5 +1439,7 @@ class LargeImageView(QDialog):
 
     def closeEvent(self, event):
         self._save_description()
-        save_window(self, self._geo_key)
+        save_window(self, self._geo_key,
+                    vsplit=self._v_splitter.sizes(),
+                    hsplit=self._splitter.sizes())
         super().closeEvent(event)
