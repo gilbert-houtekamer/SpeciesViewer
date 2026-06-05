@@ -7,7 +7,6 @@ from pathlib import Path
 
 import engine
 from engine.exceptions import SVException
-#from sharedlib.statemachine import StateMachine
 
 logger = logging.getLogger("speciesviewer")
 

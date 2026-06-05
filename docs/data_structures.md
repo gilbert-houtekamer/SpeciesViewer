@@ -9,17 +9,17 @@ into master).
 
 The focus is on relationships between the structures and the few
 load-bearing fields. The exhaustive column lists live in
-[ghexif/csv_columns.py](../ghexif/csv_columns.py) — that file is the single
+[speciesviewer/engine/csv_columns.py](../speciesviewer/engine/csv_columns.py) — that file is the single
 source of truth, this document deliberately does not mirror it.
 
 ## The four structures at a glance
 
 | CSV (on disk) | In-memory dict | Owning class | Holds |
 |---|---|---|---|
-| `speciescollection.csv` | `sc_dict` | [`SpeciesClassification`](../ghexif/speciesclassification.py) | Pure taxonomy: every species/family/order/etc. the system knows about, with parent/child links and vernacular names. |
-| `species.csv` | `species_dict` | [`Species`](../ghexif/specieslib.py) | Subset of the taxonomy that we actually have pictures for, **plus** per-species rollups (best JPG, counters, target path). |
-| `data_files.csv` | `files_dict` | [`Project`](../ghexif/projectlib.py) | One row per **physical file** (RAW, XMP, DOP, JPG, DNG…) with raw EXIF/XMP read by exiftool. |
-| `data_pictures.csv` | `UniquePictureName_dict` | [`Project`](../ghexif/projectlib.py) | One row per **camera click**, grouping the files that belong to that click and holding the distilled picture-level metadata. |
+| `speciescollection.csv` | `sc_dict` | [`SpeciesClassification`](../speciesviewer/engine/speciesclassification.py) | Pure taxonomy: every species/family/order/etc. the system knows about, with parent/child links and vernacular names. |
+| `species.csv` | `species_dict` | [`Species`](../speciesviewer/engine/specieslib.py) | Subset of the taxonomy that we actually have pictures for, **plus** per-species rollups (best JPG, counters, target path). |
+| `data_files.csv` | `files_dict` | [`Project`](../speciesviewer/engine/projectlib.py) | One row per **physical file** (RAW, XMP, DOP, JPG, DNG…) with raw EXIF/XMP read by exiftool. |
+| `data_pictures.csv` | `UniquePictureName_dict` | [`Project`](../speciesviewer/engine/projectlib.py) | One row per **camera click**, grouping the files that belong to that click and holding the distilled picture-level metadata. |
 
 ```mermaid
 graph TD
@@ -41,14 +41,14 @@ graph TD
   "what species exist, what family does this bird belong to, what's its
   Dutch name?". The taxonomy is bootstrapped from a static
   `initial_speciescollection.csv` and extended on the fly via GBIF
-  ([`SpeciesClassification.addSpecies`](../ghexif/speciesclassification.py)).
+  ([`SpeciesClassification.addSpecies`](../speciesviewer/engine/speciesclassification.py)).
 - **Photographic evidence** is in `files_dict` and `UniquePictureName_dict`.
   These dicts know nothing about taxonomy beyond a single foreign key
   (`WetSoortNaam` — the scientific name string). They answer "what files
   do I have, what camera, lens, GPS, rating?".
 
 The two halves are joined by name lookup at picture-write time
-([`Species.getSpecies`](../ghexif/specieslib.py)), which resolves whatever
+([`Species.getSpecies`](../speciesviewer/engine/specieslib.py)), which resolves whatever
 the user typed in the XMP `Subject` field — Dutch, English, scientific,
 misspelled, with a "male/winter/juv." qualifier — to a canonical lowercase
 scientific name that exists in `sc_dict`. If the name is new, GBIF is
@@ -72,7 +72,7 @@ called and the result is added to `sc_dict` (and consequently to
   enumerates everything below a node — used for the per-family/per-order
   pages on the website.
 - A trip's `sc_dict` is folded into the master's via
-  [`mergeSpeciesCollections`](../ghexif/speciesclassification.py): species
+  [`mergeSpeciesCollections`](../speciesviewer/engine/speciesclassification.py): species
   not in master are added; vernacular names already in master are never
   overwritten by the trip (master is canonical for names).
 
@@ -84,7 +84,7 @@ called and the result is added to `sc_dict` (and consequently to
   can be read without `speciescollection.csv` present.
 - Additionally holds per-species **photo rollups**:
   - `BestJPG`, `BestUPN`, `BestJPGPathName`, `currentHighestRating` — chosen
-    by [`summarizeSpeciesCounters`](../ghexif/specieslib.py), bubble up the
+    by [`summarizeSpeciesCounters`](../speciesviewer/engine/specieslib.py), bubble up the
     tree so a family node's "best JPG" is the best one beneath it.
   - `TargetPath` — where on disk the species' pictures get written
     (derived from the lineage, e.g. `animalia/chordata/aves/...`).
@@ -92,7 +92,7 @@ called and the result is added to `sc_dict` (and consequently to
   - Counters split into **`...ThisRunCount`** and **`...CollectionCount`**:
     `ThisRun` is what the current trip/project just produced, `Collection`
     is the master total. On commit, `ThisRun` is added into `Collection`
-    and reset to zero ([`writeSpeciesInfo` with `commit_counters=True`](../ghexif/specieslib.py)).
+    and reset to zero ([`writeSpeciesInfo` with `commit_counters=True`](../speciesviewer/engine/specieslib.py)).
 - Entries are created lazily: when `getSpecies` resolves a name and the
   scientific name isn't in `species_dict` yet, a record is built from
   `sc_dict` and all its parents are also injected via `addParents`. So
@@ -104,14 +104,14 @@ called and the result is added to `sc_dict` (and consequently to
   uniqueness is assumed within a repository).
 - Every column is a raw `exiftool` field: `EXIF:DateTimeOriginal`,
   `Composite:GPSPosition`, `XMP:Rating`, `XMP:Subject`, `EXIF:LensModel`,
-  `MakerNotes:FocusDistance`, etc. See [`csv_columns.py`](../ghexif/csv_columns.py)
+  `MakerNotes:FocusDistance`, etc. See [`csv_columns.py`](../speciesviewer/engine/csv_columns.py)
   for the full list.
-- Populated by [`sv2ReadDirExif.py`](../bin/sv2ReadDirExif.py), which
+- Populated by [`sv2ReadDirExif.py`](../speciesviewer/batch/sv2ReadDirExif.py), which
   walks the project's source directory and runs exiftool.
 - This dict is content-addressable EXIF storage. Nothing taxonomic lives
   here — even `XMP:Subject` is just the user-typed string at this stage.
 - `UniquePictureName` is also stored on the file row, derived by
-  [`deriveUniquePictureName`](../ghexif/handling.py). This is the FK back
+  [`deriveUniquePictureName`](../speciesviewer/engine/handling.py). This is the FK back
   into `UniquePictureName_dict`.
 
 ### `UniquePictureName_dict` — one row per camera click
@@ -123,9 +123,9 @@ called and the result is added to `sc_dict` (and consequently to
   UPN and become one picture record.
 - The `Files` column is a Python list of `File:FileName`s — the FK list
   into `files_dict`. On read it's parsed back from its CSV string form
-  (see the list-parsing block in [`read_pictures`](../ghexif/handling.py)).
+  (see the list-parsing block in [`read_pictures`](../speciesviewer/engine/handling.py)).
 - All other fields are **distilled** from those files by
-  [`Project.UpdatePicture`](../ghexif/projectlib.py). The distillation
+  [`Project.UpdatePicture`](../speciesviewer/engine/projectlib.py). The distillation
   rules are encoded in helpers like `findXMPItem` (prefer XMP, fall back
   to JPG), `findJPGItem`, `findRawOrJPGItem`, `findCameraOrXMPItem` —
   picking the right source per field (e.g. rating from XMP, image size
@@ -136,13 +136,13 @@ called and the result is added to `sc_dict` (and consequently to
   are denormalised onto the picture row so the website can render them
   without traversing back through `sc_dict` at render time.
 - Additional decoded qualifiers (`malefemale`, `ageintext`, `summerwinter`)
-  come from [`Species.getBirdInfo`](../ghexif/specieslib.py) parsing the
+  come from [`Species.getBirdInfo`](../speciesviewer/engine/specieslib.py) parsing the
   subject string for tokens like "male", "juv.", "winter".
 
 ## Master vs. trip — same shape, different role
 
 A repository is the unit that owns all four CSVs. The directory layout is
-created by [`Repository.populate`](../sview/model/repository.py):
+created by `Repository.populate`:
 
 ```
 <repo-root>/
@@ -168,11 +168,11 @@ created by [`Repository.populate`](../sview/model/repository.py):
 
 A **trip repository** has the exact same layout. What makes it a trip is
 that its `config.ini` sets `[master] MasterBiotaDatabase = <path-to-master>`
-(see [`Project.initMasterAndTrip`](../ghexif/projectlib.py)). The trip
+(see [`Project.initMasterAndTrip`](../speciesviewer/engine/projectlib.py)). The trip
 processes its own days in `metadata/review/<day>/`, freezes them, commits
 them into its own `metadata/active/`, and the trip's accumulated species
 get merged back into master via
-[`svr5MergeSpeciesCollections.py`](../bin/svr5MergeSpeciesCollections.py).
+[`svr5MergeSpeciesCollections.py`](../speciesviewer/batch/svr5MergeSpeciesCollections.py).
 
 In master, the same flow runs but there's no upstream to merge to.
 
@@ -190,20 +190,20 @@ single batch (a day, a project) walks through these stages:
 3. **Build & blog** — `sv4WriteBlog.py` / `sv5BuildWebsite.py` read both
    the active (already-committed) CSVs *and* the review CSVs to render
    pages that include the new pictures.
-4. **Freeze** — [`sv6Freeze.py`](../bin/sv6Freeze.py) concatenates
+4. **Freeze** — [`sv6Freeze.py`](../speciesviewer/batch/sv6Freeze.py) concatenates
    `active/data_files.csv` + `review/<project>/data_files.csv` →
    `review/<project>/frozen/frozen_data_files.csv` (and likewise for
    pictures and species). This is the human-review artifact: the user
    can edit it, build a `deletelist.csv` for pictures to drop, etc.
-5. **Commit** — [`sv7WriteCommit.py`](../bin/sv7WriteCommit.py) snapshots
+5. **Commit** — [`sv7WriteCommit.py`](../speciesviewer/batch/sv7WriteCommit.py) snapshots
    the current `active/*.csv` into `active/backup/<date>_*.csv`, then
    copies the `frozen_*.csv` files over the active ones. At this point
    the run-counters in `species.csv` are folded into the collection
    counters and reset (see `commit_counters=True` in
-   [`writeSpeciesInfo`](../ghexif/specieslib.py)). The pictures are now
+   [`writeSpeciesInfo`](../speciesviewer/engine/specieslib.py)). The pictures are now
    "approved" and part of the canonical collection.
 
-When [`Project.readProject`](../ghexif/projectlib.py) loads a repository,
+When [`Project.readProject`](../speciesviewer/engine/projectlib.py) loads a repository,
 it deliberately layers reads in this order:
 
 1. The committed `active/` CSVs (the baseline).
@@ -211,8 +211,8 @@ it deliberately layers reads in this order:
    *not* yet been committed (so their species and pictures are visible).
 3. The current project's own `review/<project>/` CSVs.
 
-The duplicate-detection in [`read_file`](../ghexif/handling.py) and
-[`read_pictures`](../ghexif/handling.py) means later reads never override
+The duplicate-detection in [`read_file`](../speciesviewer/engine/handling.py) and
+[`read_pictures`](../speciesviewer/engine/handling.py) means later reads never override
 earlier ones — the committed active version always wins, and review-stage
 data only fills in things active doesn't know about yet. This is what
 keeps "approved" approved.
@@ -221,13 +221,12 @@ keeps "approved" approved.
 
 | Concern | File |
 |---|---|
-| Column lists for all four CSVs | [`ghexif/csv_columns.py`](../ghexif/csv_columns.py) |
-| Repository directory layout & seeding | [`sview/model/repository.py`](../sview/model/repository.py) |
-| Project-level orchestration, `files_dict` / `UniquePictureName_dict` | [`ghexif/projectlib.py`](../ghexif/projectlib.py) |
-| `sc_dict`, GBIF lookup, master/trip merge | [`ghexif/speciesclassification.py`](../ghexif/speciesclassification.py) |
-| `species_dict`, counters, best-JPG rollup | [`ghexif/specieslib.py`](../ghexif/specieslib.py) |
-| CSV read/write for files & pictures, UPN derivation | [`ghexif/handling.py`](../ghexif/handling.py) |
-| Picture record creation & EXIF distillation | `Project.CreatePicture` / `Project.UpdatePicture` in [`ghexif/projectlib.py`](../ghexif/projectlib.py) |
-| Freeze step | [`bin/sv6Freeze.py`](../bin/sv6Freeze.py) |
-| Commit step | [`bin/sv7WriteCommit.py`](../bin/sv7WriteCommit.py) |
-| Trip → master species merge | [`bin/svr5MergeSpeciesCollections.py`](../bin/svr5MergeSpeciesCollections.py) |
+| Column lists for all four CSVs | [`speciesviewer/engine/csv_columns.py`](../speciesviewer/engine/csv_columns.py) |
+| Project-level orchestration, `files_dict` / `UniquePictureName_dict` | [`speciesviewer/engine/projectlib.py`](../speciesviewer/engine/projectlib.py) |
+| `sc_dict`, GBIF lookup, master/trip merge | [`speciesviewer/engine/speciesclassification.py`](../speciesviewer/engine/speciesclassification.py) |
+| `species_dict`, counters, best-JPG rollup | [`speciesviewer/engine/specieslib.py`](../speciesviewer/engine/specieslib.py) |
+| CSV read/write for files & pictures, UPN derivation | [`speciesviewer/engine/handling.py`](../speciesviewer/engine/handling.py) |
+| Picture record creation & EXIF distillation | `Project.CreatePicture` / `Project.UpdatePicture` in [`speciesviewer/engine/projectlib.py`](../speciesviewer/engine/projectlib.py) |
+| Freeze step | [`speciesviewer/batch/sv6Freeze.py`](../speciesviewer/batch/sv6Freeze.py) |
+| Commit step | [`speciesviewer/batch/sv7WriteCommit.py`](../speciesviewer/batch/sv7WriteCommit.py) |
+| Trip → master species merge | [`speciesviewer/batch/svr5MergeSpeciesCollections.py`](../speciesviewer/batch/svr5MergeSpeciesCollections.py) |
