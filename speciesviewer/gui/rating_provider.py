@@ -40,8 +40,6 @@ class RatingEditorItem(PictureItem):
     master DB as a reference for judging website-worthiness) is read-only — its
     capability flags are False so the card greys the controls."""
 
-    # description/headline/species stay read-only on this engine for now
-    can_edit_description = False
     can_edit_headline = False
     can_edit_species = False
 
@@ -54,6 +52,10 @@ class RatingEditorItem(PictureItem):
         editable = (not self._master) or (not collection.master_read_only)
         self.can_edit_rating = editable
         self.can_edit_color = editable
+        # Description write-back uses the same per-day CSV routing as
+        # rating/colour, so it works for trip pictures. Master description
+        # write-back is not yet implemented.
+        self.can_edit_description = not self._master
 
     @property
     def from_master(self) -> bool:
@@ -123,6 +125,9 @@ class RatingEditorItem(PictureItem):
 
     def set_color(self, value: str) -> None:
         self._c.apply(self._key, new_color=value)
+
+    def set_description(self, value: str) -> None:
+        self._c.apply_description(self._key, value)
 
     # async image
     def request_thumbnail(self, target_w: int, on_ready: PixmapCallback) -> None:
@@ -562,6 +567,34 @@ class RatingEditorCollection(PictureCollection):
                 fi_day.write_project_files()
             except Exception as e:
                 logger.error(f"Failed to write data_files.csv for {day}: {e}")
+
+    def apply_description(self, upn_key: str, value: str) -> None:
+        if upn_key in self._master_keys:
+            return  # master description write-back not yet implemented
+        upn_row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
+        if not upn_row:
+            return
+        files = upn_row.get("Files", [])
+        if not isinstance(files, list):
+            files = []
+        wrote_file = False
+        for fname in files:
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            if frow.get("WindowsExtension", "").lower() not in ("xmp", "jpg", "jpeg"):
+                continue
+            fpath = Path(frow.get("WindowsFileName", ""))
+            if not fpath.exists():
+                continue
+            try:
+                exiftool_write(fpath, [f"-XMP:Description={value}"])
+                wrote_file = True
+            except Exception as e:
+                logger.error(f"exiftool write failed for {fpath.name}: {e}")
+            frow["XMP:Description"] = value
+        upn_row["Description"] = value
+        self._persist_upn(upn_key, wrote_file)
 
     # ── master write-back (Phase 2) ───────────────────────────────────────────
     def _apply_master_rating(self, upn_key: str, *, new_stars: int | None = None,
