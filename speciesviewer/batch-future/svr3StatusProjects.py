@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 
-# Process the EXIF metadata and analyze them per picture based on the UniquePictureName
+# svr3StatusProjects.py: Print a cross-trip pipeline-progress summary for the master.
+# Walks master/metadata/review/, reads the statemachine.ini for every trip day, and prints
+# a table showing which sv2–sv7 steps have completed for each project.
+# Useful for auditing which trips still need Freeze or WriteCommit before a release.
+# The GUI trip-overview shows per-day state for one active trip only; this gives the
+# full cross-trip view from the command line.
+# Candidate for a future status panel in the GUI (batch-future), although the GUI is more focused 
+# on the active trip, and this script is more focused on the overall status of 
+# all trips in the master database.
 import re
 import csv
 import os
@@ -13,9 +21,9 @@ import argparse
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
     scriptpath = os.path.dirname(__file__)
-    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-    os.chdir(modpath)
-    sys.path.append(modpath)
+    reporoot = os.path.abspath(os.path.join(scriptpath, os.pardir, os.pardir))
+    os.chdir(reporoot)                                  # svconfig.ini lives at repo root
+    sys.path.append(os.path.join(reporoot, 'speciesviewer'))  # makes 'import engine' work
 
 import engine
 import engine.projectlib
@@ -58,12 +66,10 @@ def getAllProjectStatus(directory):
 
 
 def main(args, config):
-    global starttime, SpeciesDebug, Reference_sp
+    global starttime
     starttime = time.time()
-    SpeciesDebug = 0        # default   
 
-    SpeciesDebug = int(config.get("debug","SpeciesFound"))
-    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"), 
+    MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"),
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
     
@@ -96,7 +102,7 @@ if __name__ == "__main__":
         help="Module Configuration File",
     )
     parser.add_argument(
-        "--dir", type=str, default=os.path.join(modpath, "data"), help="foto directory"
+        "--dir", type=str, default=os.path.join(reporoot, "data"), help="foto directory"
     )
     args = parser.parse_args()
     # get configuration

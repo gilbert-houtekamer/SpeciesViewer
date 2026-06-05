@@ -1,6 +1,35 @@
 # need module to make a blog index for master (all trips)
 #!/usr/bin/env python3
 
+# svr6MergeBlogsForMaster.py: Merge blogs from all trips into the master blog index.
+# This script scans through the trip directories, reads the 'blog_admin.csv' files for each
+# trip, and merges the blog information into the master 'blog_admin.csv' in the master database.
+# It also updates the blog index page and uploads it to the web if the project is online.
+# This is a one-off script to merge blogs from all trips into the master blog index.
+# In the GUI, this function is not directly available, but it can be used as part of the maintenance process 
+# after adding trips and their blogs to the master database.
+
+# this relates to the "Trip Editor" in the Project Settings, which allows adding or updating trip 
+# information with more control and immediate feedback. 
+# The difference is that this script merges the blogs from all trips into the master blog index, 
+# while the Trip Editor allows managing trip information on a per-trip basis.
+
+# the trip-editor is safe to use on a laptop, that has only a few trips.  
+# svr6MergeBlogsForMaster is needed to merge the blogs from all trips into the master blog index, 
+# and is best run on the server where the master database is located, to avoid issues with file \
+# paths and permissions.
+
+# why do I need this? Because the blogs are stored per trip, and the master blog index needs to be updated  
+# with the blogs from all trips, to be able to show them in the master blog index page.  
+# the trip-editor allows adding or updating trip information, but does not merge the blogs from all trips into the master blog index, 
+# which is needed to show the blogs in the master blog index page.
+
+# why not just use trip-editor?  Do we need to merge the blogs from all trips into the master blog index?  
+# Yes, because the blogs are stored per trip, and the master blog index needs to be updated with the blogs 
+# from all trips, to be able to show them in the master blog index page.  
+# The trip-editor allows adding or updating trip information, but does not merge the blogs from all trips 
+# into the master blog index, which is needed to show the blogs in the master blog index page.
+
 # Process the EXIF metadata and analyze them per picture based on the UniquePictureName
 import re
 import csv
@@ -16,9 +45,9 @@ from datetime import datetime
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
     scriptpath = os.path.dirname(__file__)
-    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-    os.chdir(modpath)
-    sys.path.append(modpath)
+    reporoot = os.path.abspath(os.path.join(scriptpath, os.pardir, os.pardir))
+    os.chdir(reporoot)
+    sys.path.append(os.path.join(reporoot, 'speciesviewer'))
 
 import engine
 import engine.projectlib
@@ -142,7 +171,7 @@ if __name__ == "__main__":
         help="Module Configuration File",
     )
     parser.add_argument(
-        "--dir", type=str, default=os.path.join(modpath, "data"), help="foto directory"
+        "--dir", type=str, default=os.path.join(reporoot, "data"), help="foto directory"
     )
     args = parser.parse_args()
     # get configuration

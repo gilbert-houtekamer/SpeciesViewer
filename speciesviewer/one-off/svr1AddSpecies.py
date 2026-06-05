@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
 
+# svr1AddSpecies.py: Add species to the species collection based on a list of scientific names.
+
+# this is a one-off script to add species to the collection based on a list of scientific names in a CSV file.
+# It reads the list of scientific names from "admin/speclist.csv", looks up their details in the existing species 
+# collection, and prints the scientific name along with Dutch and English names to "admin/speclist.txt". 
+# Finally, it updates the species collection CSV file.   
+
+# in the GUI, this function is superceeded by the "Add Species" button in the Species Editor, 
+# which allows adding species one by one with more control and immediate feedback.
+
 # Process the EXIF metadata and analyze them per picture based on the UniquePictureName
 import argparse
 import csv
@@ -13,9 +23,9 @@ import argparse
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
     scriptpath = os.path.dirname(__file__)
-    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-    os.chdir(modpath)
-    sys.path.append(modpath)
+    reporoot = os.path.abspath(os.path.join(scriptpath, os.pardir, os.pardir))
+    os.chdir(reporoot)
+    sys.path.append(os.path.join(reporoot, 'speciesviewer'))
 
 import engine
 import engine.projectlib
@@ -79,7 +89,7 @@ if __name__ == "__main__":
         help="Module Configuration File",
     )
     parser.add_argument(
-        "--dir", type=str, default=os.path.join(modpath, "data"), help="foto directory"
+        "--dir", type=str, default=os.path.join(reporoot, "data"), help="foto directory"
     )
     args = parser.parse_args()
     # get configuration

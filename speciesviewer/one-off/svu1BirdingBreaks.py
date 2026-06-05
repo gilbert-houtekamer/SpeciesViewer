@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 
-# Read the potential species list region
+# svu1BirdingBreaks.py: Cross-reference a guided-tour checklist against the species collection.
+# Reads a semicolon-delimited checklist CSV (hardcoded path — update per trip before running),
+# looks up each species by English or Dutch name in the species classification, and writes a
+# formatted .prn report showing count, heard-only, known/new, and photo status.
+# Hardcoded to the Oman 2025 birding-break file; adapt input/output paths for each new trip.
 import re
 import csv
 import os
@@ -13,9 +17,9 @@ import argparse
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
     scriptpath = os.path.dirname(__file__)
-    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-    os.chdir(modpath)
-    sys.path.append(modpath)
+    reporoot = os.path.abspath(os.path.join(scriptpath, os.pardir, os.pardir))
+    os.chdir(reporoot)
+    sys.path.append(os.path.join(reporoot, 'speciesviewer'))
 
 import engine
 import engine.projectlib
@@ -186,7 +190,7 @@ if __name__ == "__main__":
         help="Module Configuration File",
     )
     parser.add_argument(
-        "--dir", type=str, default=os.path.join(modpath, "data"), help="foto directory"
+        "--dir", type=str, default=os.path.join(reporoot, "data"), help="foto directory"
     )
     args = parser.parse_args()
     # get configuration

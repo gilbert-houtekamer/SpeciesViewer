@@ -1,7 +1,15 @@
-# module to delete files that are copied to targetdatabase 
-# use this with a project file for the trip, 
-# AFTER you created both the trip but also you did the merge in the master.
+
 #!/usr/bin/env python3
+
+# svr7DeleteFiles.py: Delete files that are copied to target database.
+# This script searches through the metadata directories for a project, looking for 'deletelist.csv' files. 
+# For each 'deletelist.csv' found, it reads the list of files to delete and removes them from the filesystem. 
+# It also logs the number of files deleted and how many are left without species information. 
+# This is a one-off script to clean up files that were copied to the target database but need to be 
+# removed after a merge in the master. In the GUI, this function is not directly available, 
+# but it can be used as part of the maintenance process after merging trips in the master database.
+
+# BE careful: use this AFTER you created both the trip but also you did the merge in the master.
 import re
 import csv
 import os
@@ -15,9 +23,9 @@ from pathlib import Path
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
     scriptpath = os.path.dirname(__file__)
-    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-    os.chdir(modpath)
-    sys.path.append(modpath)
+    reporoot = os.path.abspath(os.path.join(scriptpath, os.pardir, os.pardir))
+    os.chdir(reporoot)
+    sys.path.append(os.path.join(reporoot, 'speciesviewer'))
 
 import engine
 import engine.projectlib
@@ -70,7 +78,7 @@ if __name__ == "__main__":
         help="Module Configuration File",
     )
     parser.add_argument(
-        "--dir", type=str, default=os.path.join(modpath, "data"), help="foto directory"
+        "--dir", type=str, default=os.path.join(reporoot, "data"), help="foto directory"
     )
     args = parser.parse_args()
     # get configuration

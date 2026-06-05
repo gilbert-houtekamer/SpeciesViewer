@@ -1,3 +1,11 @@
+# svu4checklist.py: Enrich a pre-trip species list with English names and known-species status.
+# Reads a semicolon-delimited input CSV (scientific name in col 3, Dutch name in col 2),
+# looks up each entry in the species classification and the master species database,
+# appends the English name and a "Known" flag (non-empty BestJPG = photographed before),
+# and writes the enriched CSV to an output file.
+# Hardcoded to an Extramadura 2026 trip (in_csv / out_csv) — update those paths per trip.
+# Predecessor to the Excel checklist generator (svu2avibase) which is wired to the GUI.
+
 import argparse
 import configparser
 import os
@@ -9,9 +17,9 @@ import logging
 
 if __name__ == "__main__":
     scriptpath = os.path.dirname(__file__)
-    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-    os.chdir(modpath)
-    sys.path.append(modpath)
+    reporoot = os.path.abspath(os.path.join(scriptpath, os.pardir, os.pardir))
+    os.chdir(reporoot)
+    sys.path.append(os.path.join(reporoot, 'speciesviewer'))
 
 from engine import SVException
 import engine

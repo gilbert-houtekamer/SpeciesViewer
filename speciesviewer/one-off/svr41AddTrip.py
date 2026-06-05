@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
 
+# svr41AddTrip.py: Add or update trip information for a project, and upload to the web.
+# This script reads the trip information from the local 'trip.ini' file, 
+# updates the central 'trip_admin.csv' on the web, and generates the trip index pages 
+# in both Dutch and English. Finally, it uploads the updated trip information to the web via SFTP.
+# This is a one-off script to add or update trip information for a project.
+# In the GUI, this function is superceeded by the "Trip Editor" in the Project Settings, 
+# which allows adding or updating trip information with more control and immediate feedback. 
+# The script assumes that the local 'trip.ini' file is already populated with the correct trip 
+# information for the project.
+
 import re
 import csv
 import os
@@ -13,9 +23,9 @@ from pathlib import Path
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
     scriptpath = os.path.dirname(__file__)
-    modpath = os.path.abspath(os.path.join(scriptpath, os.pardir))
-    os.chdir(modpath)
-    sys.path.append(modpath)
+    reporoot = os.path.abspath(os.path.join(scriptpath, os.pardir, os.pardir))
+    os.chdir(reporoot)
+    sys.path.append(os.path.join(reporoot, 'speciesviewer'))
 
 import engine
 import engine.projectlib
@@ -86,7 +96,7 @@ if __name__ == "__main__":
         help="Module Configuration File",
     )
     parser.add_argument(
-        "--dir", type=str, default=os.path.join(modpath, "data"), help="foto directory"
+        "--dir", type=str, default=os.path.join(reporoot, "data"), help="foto directory"
     )
     args = parser.parse_args()
     # get configuration
