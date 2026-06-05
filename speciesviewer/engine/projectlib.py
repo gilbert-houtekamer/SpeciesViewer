@@ -838,9 +838,12 @@ class Project:
                 if upn['BestJPG'] != "":                # do we have a picture?
                     species['iPicturesWithJPGsThisRun'] = int(species['iPicturesWithJPGsThisRun']) + 1    # add the JPGs from this run, starting from 0
 
-        # at least biota must be present
+        # at least biota must be present to run species summarization;
+        # skip it gracefully when no keywords matched (culling-first workflow:
+        # species may still be assigned in the viewer after Read & Summarize).
         if 'biota' not in sp.species_dict:
-            raise SVException(f"None of the files have the names of the animals or plants in the keywords, so no pictures can be processed.")
+            logger.warning("No recognized species in this batch — data_pictures.csv written without species assignment.")
+            return 0
 
         # Add counters from species to higher levels, tail-recursion works fine
         counters = []
