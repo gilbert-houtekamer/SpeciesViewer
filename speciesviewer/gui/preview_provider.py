@@ -33,6 +33,21 @@ logger = logging.getLogger("speciesviewer")
 _RAW_EXTS = {".nef", ".orf", ".cr2", ".arw", ".rw2"}
 
 
+def preview_cache_dir_for(src_folder: Path) -> Path:
+    """AppData-based preview cache directory for src_folder.
+
+    Uses a short SHA-1 of the normalised folder path as a subdirectory so files
+    with identical stems from different trip days never collide.
+    """
+    import hashlib
+    import os
+    from db.master_db import _app_data_dir
+    folder_hash = hashlib.sha1(
+        os.path.normcase(str(src_folder)).encode()
+    ).hexdigest()[:16]
+    return _app_data_dir() / "preview_cache" / folder_hash
+
+
 def _safe_int(s, default=None):
     try:
         return int(s)
@@ -381,7 +396,7 @@ class PreviewCollection(PictureCollection):
         src = self._source_file(upn_key)
         if src is None:
             return None
-        return cached_jpg_for(src, src.parent / ".preview_cache")
+        return cached_jpg_for(src, preview_cache_dir_for(src.parent))
 
     def request_image(self, upn_key: str, target_w, on_ready: PixmapCallback) -> None:
         def produce():
@@ -649,7 +664,7 @@ class FileListPreviewCollection(PictureCollection):
 
     # ── image helpers ─────────────────────────────────────────────────────
     def _cache_dir_for(self, src: Path) -> Path:
-        return self._cache_root if self._cache_root else src.parent / ".preview_cache"
+        return self._cache_root if self._cache_root else preview_cache_dir_for(src.parent)
 
     def display_path(self, key: str) -> Path | None:
         src = Path(key)

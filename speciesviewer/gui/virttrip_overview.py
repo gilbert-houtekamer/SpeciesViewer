@@ -50,11 +50,9 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
     file_list = _build_file_list(day_dir / "data_files.csv", jpeg_only)
     if not file_list:
         return
-    cache_root = virttrip_root / "admin" / ".preview_cache"
     dlg = ImagePreviewDialog(
         parent=parent,
         file_list=file_list,
-        cache_root=str(cache_root),
         source_label=str(day_dir),
     )
     dlg.exec()

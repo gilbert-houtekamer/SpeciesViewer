@@ -25,6 +25,7 @@ from PyQt6.QtGui import QImage
 from gui.picture_provider import (
     PictureItem, PictureCollection, ExifSummary, PixmapCallback, exif_from_rows)
 from gui.image_loader import AsyncImageLoader
+from gui.preview_provider import preview_cache_dir_for
 from gui.rating_editor import _compute_rate, _safe_int
 from engine.exif_writer import exiftool_write
 
@@ -394,8 +395,8 @@ class RatingEditorCollection(PictureCollection):
                 raw_path = Path(frow.get("WindowsFileName", ""))
             if not raw_path.exists():
                 continue
-            cache_dir = raw_path.parent / ".preview_cache"
-            cache_dir.mkdir(exist_ok=True)
+            cache_dir = preview_cache_dir_for(raw_path.parent)
+            cache_dir.mkdir(parents=True, exist_ok=True)
             cache_path = cache_dir / (raw_path.stem + ".jpg")
             if cache_path.exists():
                 return cache_path

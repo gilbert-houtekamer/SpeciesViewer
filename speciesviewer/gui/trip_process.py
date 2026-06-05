@@ -725,7 +725,7 @@ class ReadSDCardDialog(QDialog):
         bucketing; RAW cards render via the embedded preview (cached_jpg_for)."""
         from gui.image_viewer import ImagePreviewDialog
         from gui.sidecar_provider import SidecarCollection
-        from db.master_db import _app_data_dir
+        from gui.preview_provider import preview_cache_dir_for
         # Only formats the grid can render (still images + RAW); skip video.
         viewable_exts = {".jpg", ".jpeg", ".heic", ".heif", ".png",
                          ".nef", ".orf", ".cr2", ".cr3", ".arw", ".rw2", ".raf", ".dng"}
@@ -735,10 +735,8 @@ class ReadSDCardDialog(QDialog):
             return
         # Keep the preview cache OUT of the project tree — inside it, the cache
         # folder shows up as a 'day' in the trip overview and would be scanned by
-        # Read Directory. Park it in the per-user app dir instead. (A user-config
-        # override for this location is a separate, later effort.)
-        proj_name = re.sub(r"[^\w.-]+", "_", Path(self._last_dest).name or "sdcard")
-        cache_root = str(_app_data_dir() / "preview_cache" / proj_name)
+        # Read Directory. Park it in the per-user app dir instead.
+        cache_root = str(preview_cache_dir_for(Path(self._last_dest)))
         # Sidecar-backed culling viewer: reads/edits the XMP sidecars, no pipeline.
         collection = SidecarCollection(paths, cache_root=cache_root)
         dlg = ImagePreviewDialog(self.passed_parent, collection=collection,

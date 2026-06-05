@@ -394,72 +394,14 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
-    # Delete the global EXIF cache (file + .bak ring). The cache is purely
-    # derived — the next scan rebuilds it (one slow pass) and output is
-    # unaffected — so this is a safe "if in doubt, clear it" escape hatch.
-    def _clear_exif_cache():
-        cache_path = exifcache.exif_cache_path(module_config)
-        paths = [cache_path] + [f"{cache_path}.bak{i}"
-                                for i in range(1, exifcache.CACHE_BACKUPS + 1)]
-        existing = [p for p in paths if os.path.exists(p)]
-        if not existing:
-            QMessageBox.information(main_window, "Clear EXIF cache",
-                                    f"No cache file found at\n{cache_path}")
-            return
-        reply = QMessageBox.question(
-            main_window, "Clear EXIF cache",
-            f"Delete the EXIF cache ({len(existing)} file(s))?\n\n{cache_path}\n\n"
-            "The next Read Directory rebuilds it (one slow scan); output is "
-            "unaffected.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        removed = 0
-        for p in existing:
-            try:
-                os.remove(p)
-                removed += 1
-            except OSError as e:
-                QMessageBox.warning(main_window, "Clear EXIF cache",
-                                    f"Could not delete\n{p}\n{e}")
-        QMessageBox.information(
-            main_window, "Clear EXIF cache",
-            f"Deleted {removed} file(s). The cache will rebuild on the next scan.")
+    def _manage_caches():
+        from gui.cache_manager import ManageCachesDialog
+        exif_path = str(exifcache.exif_cache_path(module_config))
+        ManageCachesDialog(main_window, exif_cache_path=exif_path).exec()
 
-    clear_exif_cache = MenuSpec(
-        callback=_clear_exif_cache,
-        title="Clear EXIF cache",
-        showsubdirectory=False,
-    )
-
-    def _clear_fullres_cache():
-        import shutil as _sh
-        from gui.fullres import clear_fullres_cache, fullres_cache_dir, fullres_cache_stats
-        d = fullres_cache_dir()
-        count, used = fullres_cache_stats()
-        probe = d if d.exists() else d.parent
-        try:
-            total, _u, free = _sh.disk_usage(str(probe))
-        except OSError:
-            total = free = 0
-        gb = lambda b: b / 1e9
-        used_pct = f"{used / total * 100:.1f}% of drive" if total else "—"
-        free_txt = (f"{gb(free):.0f} GB free of {gb(total):.0f} GB ({free / total * 100:.0f}% free)"
-                    if total else "drive size unknown")
-        if QMessageBox.question(
-                main_window, "Clear full-res cache",
-                f"Full-resolution cache: {gb(used):.2f} GB in {count} file(s) ({used_pct}).\n"
-                f"Drive: {free_txt}.\n\n"
-                f"Delete all cached full-resolution images?\n{d}"
-                ) != QMessageBox.StandardButton.Yes:
-            return
-        n = clear_fullres_cache()
-        QMessageBox.information(main_window, "Clear full-res cache",
-                                f"Removed {n} file(s), freed {gb(used):.2f} GB.")
-
-    clear_fullres_cache_spec = MenuSpec(
-        callback=_clear_fullres_cache,
-        title="Clear full-res cache",
+    manage_caches = MenuSpec(
+        callback=_manage_caches,
+        title="Manage caches…",
         showsubdirectory=False,
     )
 
@@ -627,8 +569,7 @@ def build_menu_spec(main_window):
             "Add Trip Pictures to Master": add_trip_pictures,
             f"{MenuSpec.separator()}_master_2": None,
             "Rescan master EXIF cache": rescan_master_cache,
-            "Clear EXIF cache": clear_exif_cache,
-            "Clear full-res cache": clear_fullres_cache_spec,
+            "Manage caches…": manage_caches,
             "Rebuild master DB": rebuild_master_db,
         },
         "Virtual Trips": {

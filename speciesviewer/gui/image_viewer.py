@@ -12,7 +12,7 @@ from engine.filepicture import FilePicture
 from gui.species_editor import SpeciesInfoDialog
 from gui.window_state import restore_window, save_window
 from gui.image_loader import AsyncImageLoader
-from gui.preview_provider import PreviewCollection, FileListPreviewCollection
+from gui.preview_provider import PreviewCollection, FileListPreviewCollection, preview_cache_dir_for
 from gui.rating_editor import PictureCard
 
 logger = logging.getLogger("speciesviewer")
@@ -112,7 +112,7 @@ class ImagePreviewDialog(QDialog):
         # Set True when a species name is committed (SpeciesInfoDialog) so
         # closeEvent can offer to re-run Read & Summarize for this day.
         self._species_changed = False
-        self.cache_dir = Path(cache_root) if cache_root else Path(image_dir) / ".preview_cache"
+        self.cache_dir = Path(cache_root) if cache_root else preview_cache_dir_for(Path(image_dir))
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Modal "preparing preview" spinner — closed once the first grid is built.

@@ -25,7 +25,7 @@ from PyQt6.QtGui import QImage
 
 from gui.picture_provider import PictureItem, PictureCollection, ExifSummary, PixmapCallback
 from gui.image_loader import AsyncImageLoader
-from gui.preview_provider import cached_jpg_for
+from gui.preview_provider import cached_jpg_for, preview_cache_dir_for
 from engine.exif_writer import exiftool_write
 
 logger = logging.getLogger("speciesviewer")
@@ -313,7 +313,7 @@ class SidecarCollection(PictureCollection):
         return g.get("jpg") or g.get("raw")
 
     def _cache_dir_for(self, src: Path) -> Path:
-        return self._cache_root if self._cache_root else src.parent / ".preview_cache"
+        return self._cache_root if self._cache_root else preview_cache_dir_for(src.parent)
 
     def request_image(self, stem: str, target_w, on_ready: PixmapCallback) -> None:
         src = self._source_file(stem)

@@ -117,6 +117,39 @@ def clear_fullres_cache() -> int:
     return n
 
 
+# ── Preview cache helpers (AppData/SpeciesViewer/preview_cache/) ──────────────
+
+def preview_cache_root() -> Path:
+    from db.master_db import _app_data_dir
+    return _app_data_dir() / "preview_cache"
+
+
+def preview_cache_stats() -> tuple[int, int]:
+    """(file_count, total_bytes) for the preview cache."""
+    d = preview_cache_root()
+    count = total = 0
+    if d.is_dir():
+        for f in d.rglob("*.jpg"):
+            try:
+                total += f.stat().st_size
+                count += 1
+            except OSError:
+                pass
+    return count, total
+
+
+def clear_preview_cache() -> int:
+    """Delete the entire preview cache tree. Returns approximate file count."""
+    import shutil
+    d = preview_cache_root()
+    if not d.is_dir():
+        return 0
+    count, _ = preview_cache_stats()
+    shutil.rmtree(d, ignore_errors=True)
+    logger.info(f"Cleared ~{count} preview cache file(s) from {d}.")
+    return count
+
+
 def run_fullres_batch(parent, raw_paths, cache_root=None):
     """Decode a list of RAWs into the full-res cache on a worker thread, behind a
     modal progress dialog with Cancel. Already-cached files are quick no-ops, so
