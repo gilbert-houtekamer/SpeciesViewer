@@ -80,7 +80,7 @@ _main_window = None
 
 def start_main():
     # 🖼️ Splash screen setup
-    splash_pix = QPixmap("assets/svsplash.jpg")
+    splash_pix = QPixmap(str(Path(__file__).parent / "assets" / "svsplash.jpg"))
     splash = QSplashScreen(splash_pix)
     splash.setWindowFlag(Qt.WindowType.FramelessWindowHint)
 

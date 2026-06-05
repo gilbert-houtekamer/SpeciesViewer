@@ -11,6 +11,8 @@ import logging
 import subprocess
 from pathlib import Path
 
+_ASSETS = Path(__file__).resolve().parent.parent / "assets"
+
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea, QGridLayout,
     QLabel, QFrame, QPushButton, QSpinBox, QComboBox, QSizePolicy,
@@ -417,11 +419,11 @@ class PictureCard(QFrame):
         error_msg = item.error_msg
         species = item.species
         if error_msg:
-            self._status_icon.setIcon(QIcon(QPixmap("qt/assets/warning_icon.png").scaled(16, 16)))
+            self._status_icon.setIcon(QIcon(QPixmap(str(_ASSETS / "warning_icon.png")).scaled(16, 16)))
             self._status_icon.setText("")
             self._status_icon.setToolTip(error_msg)
         elif species:
-            self._status_icon.setIcon(QIcon(QPixmap("qt/assets/ok_icon.png").scaled(16, 16)))
+            self._status_icon.setIcon(QIcon(QPixmap(str(_ASSETS / "ok_icon.png")).scaled(16, 16)))
             self._status_icon.setText("")
             self._status_icon.setToolTip("OK")
         else:

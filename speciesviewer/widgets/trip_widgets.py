@@ -5,11 +5,14 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QPixmap
 import os
+from pathlib import Path
 from PIL import Image
 from utils.gui_config import load_gui_cache, add_recent_gui_project
 
+_ASSETS = str(Path(__file__).resolve().parent.parent / "assets")
+
 class ImageFileFieldQt(QWidget):
-    def __init__(self, label, expected_size, root_field, icon_path="qt/assets"):
+    def __init__(self, label, expected_size, root_field, icon_path=_ASSETS):
         super().__init__()
         self.expected_size = expected_size
         self.root_field = root_field  # QLineEdit or similar widget with .text()
@@ -107,7 +110,7 @@ class ImageFileFieldQt(QWidget):
            
 
 class DirectoryFieldQt(QWidget):
-    def __init__(self, label, initial_path="", icon_path="qt/assets"):
+    def __init__(self, label, initial_path="", icon_path=_ASSETS):
         super().__init__()
         self.icon_path = icon_path
 
@@ -171,7 +174,7 @@ class DirectoryFieldQt(QWidget):
 
 
 class RecentDirectoryFieldQt(QWidget):
-    def __init__(self, label, initial_path="", section="recent_projects", icon_path="qt/assets"):
+    def __init__(self, label, initial_path="", section="recent_projects", icon_path=_ASSETS):
         super().__init__()
         self.icon_path = icon_path
         self.section = section
