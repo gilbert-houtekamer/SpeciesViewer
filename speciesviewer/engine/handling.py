@@ -1,9 +1,33 @@
 import os
 import csv
 import logging
+from pathlib import Path
 import engine
 
 logger = logging.getLogger("speciesviewer")
+
+
+def relativize_path(abs_path, root):
+    """Convert a Windows absolute path to a /-prefixed path relative to root.
+    Returns abs_path unchanged when it is already relative, empty, or not under root."""
+    if not abs_path or not Path(abs_path).drive:
+        return abs_path
+    try:
+        return "/" + Path(abs_path).relative_to(Path(root)).as_posix()
+    except ValueError:
+        return abs_path
+
+
+def resolve_path(stored_path, root):
+    """Resolve a stored path back to absolute.
+    Drive-letter paths (C:/…) are returned as-is; /-prefixed relative paths are
+    joined with root.  Returns stored_path unchanged when root is None/empty."""
+    if not stored_path or not root:
+        return stored_path
+    if Path(stored_path).drive:
+        return stored_path
+    return str(Path(root) / stored_path.lstrip("/\\"))
+
 
 # strip all suffixes for files from Lightroom, DxO PureRaw, DxO Photolab, Capture etc
 def deriveUniquePictureName(windows_filename):
@@ -40,9 +64,13 @@ def read_file(MyProject, filename, silent=False):
     from_time = ""
     last_time = ""
     filecount = len(MyProject.files_dict)
+    pictures_root = Path(MyProject.getProjectPath()).parent if MyProject is not None else None
     with open(filename, "r", newline="", encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile, delimiter=';')
         for row in reader:
+            if pictures_root:
+                row["File:Directory"] = resolve_path(row.get("File:Directory", ""), pictures_root)
+                row["WindowsFileName"] = resolve_path(row.get("WindowsFileName", ""), pictures_root)
             if row['File:FileName'] not in MyProject.files_dict:
                 MyProject.files_dict[row['File:FileName']] = row
                 if row['EXIF:DateTimeOriginal'] != "":

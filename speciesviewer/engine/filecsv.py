@@ -2,6 +2,7 @@
 import os
 import csv
 import logging
+from pathlib import Path
 from engine.csv_columns import COLUMN_NAMES
 
 logger = logging.getLogger("speciesviewer")
@@ -55,9 +56,21 @@ class Files:
         last_time = ""
         self.filename = filename
         runningcounter = len(self.files_dict)
+        pictures_root = None
+        try:
+            from utils.config import _config
+            from engine.handling import resolve_path
+            pic_dir = _config.get("project", "picturedirectory", fallback="")
+            if pic_dir:
+                pictures_root = Path(pic_dir).parent
+        except Exception:
+            pass
         with open(filename, "r", newline="", encoding='utf-8') as csvfile:
             reader = csv.DictReader(csvfile, delimiter=';')
             for row in reader:
+                if pictures_root:
+                    row["File:Directory"] = resolve_path(row.get("File:Directory", ""), pictures_root)
+                    row["WindowsFileName"] = resolve_path(row.get("WindowsFileName", ""), pictures_root)
                 if row['File:FileName'] not in self.files_dict:
                     self.files_dict[row['File:FileName']] = row
                     if row['EXIF:DateTimeOriginal'] != "":

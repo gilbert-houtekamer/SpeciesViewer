@@ -28,7 +28,7 @@ if __name__ == "__main__":
 
 from engine import COLUMN_NAMES, SELECTED_FIELDS, SVException
 import engine.projectlib
-from engine.handling import deriveUniquePictureName
+from engine.handling import deriveUniquePictureName, relativize_path
 from engine.exif_writer import exiftool_write
 import engine.exceptions
 import engine.statemachine
@@ -463,14 +463,21 @@ def main(args, config):
         for r in unfilled:
             logger.warning(f"GPS missing: {r.get('File:FileName', '?')}")
 
-        # Write all rows to CSV
+        # Write all rows to CSV.  Paths are stored relative to the pictures root
+        # (parent of the day folder) so the CSV is portable across machines.
+        # The in-memory all_rows keeps absolute paths — they are still needed above
+        # for the GPS XMP write-back (exiftool_write must receive an absolute path).
+        pic_parent = Path(root).parent
         with open(datafilelocation, "w", newline="", encoding='utf-8') as csvfile:
             writer = csv.DictWriter(
                 csvfile, fieldnames=COLUMN_NAMES.values(), quoting=csv.QUOTE_MINIMAL, delimiter=';'
             )
             writer.writeheader()
             for row in all_rows:
-                writer.writerow(row)
+                csv_row = dict(row)
+                csv_row["File:Directory"] = relativize_path(csv_row.get("File:Directory", ""), pic_parent)
+                csv_row["WindowsFileName"] = csv_row["File:Directory"] + "/" + csv_row.get("File:FileName", "")
+                writer.writerow(csv_row)
 
         # Report Headline/Description texts still needing translation validation.
         _report_unverified_translations(MyProject, all_rows)
