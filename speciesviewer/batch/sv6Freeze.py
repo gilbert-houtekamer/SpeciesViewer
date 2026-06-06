@@ -91,8 +91,7 @@ def makeSpeciesDirectory(MyProject, leaf):
                     # first run still skips no-op copies.
                     if not _same_file_on_disk(sourcefile, targetfile):
                         shutil.copy(sourcefile, targetfile)
-                        #also make delete list
-                        files_to_delete.append(sourcefile)
+                        files_to_delete.append((sourcefile, targetfile))
                     count += 1
                 except Exception as exc:
                     logger.info(
@@ -204,8 +203,10 @@ def AppendChangedPictureData(MyProject, firstNewPicture):
 
 def writeDeleteList(deletelistfilename):
     with open(deletelistfilename, 'w', newline='', encoding='utf-8') as deletecsv:
-        for fn in files_to_delete:
-            print(f'"{fn}"', file=deletecsv)
+        writer = csv.writer(deletecsv, delimiter=';')
+        writer.writerow(['source_path', 'target_path'])
+        for source, target in files_to_delete:
+            writer.writerow([source, target])
     return
 
 def main(args, config):

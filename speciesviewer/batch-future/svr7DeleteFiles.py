@@ -34,17 +34,42 @@ import engine.triplib
 logger = logging.getLogger("speciesviewer")
 
 def deleteCopiedFiles(deletelist):
-    with open(deletelist, mode="r", newline="", encoding='utf-8') as csvfile: 
-        linecount = 0
-        cleaneddirectory = ""
-        for filename in csvfile:
-            filename = filename.replace("\n","").replace('"', '')
-            cleaneddirectory = os.path.dirname(filename)            
-            if os.path.exists(filename): 
-                linecount += 1
-                os.remove(filename)
-        filesleft = sum(len(files) for _, _, files in os.walk(cleaneddirectory))
-        logger.info(f'{linecount} files deleted from {cleaneddirectory}, {filesleft} left without species information.')
+    deleted = 0
+    skipped_no_master = 0
+    already_gone = 0
+    cleaneddirectory = ""
+
+    with open(deletelist, mode="r", newline="", encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile, delimiter=';')
+        for row in reader:
+            source = row.get('source_path', '').strip()
+            target = row.get('target_path', '').strip()
+            if not source:
+                continue
+            cleaneddirectory = os.path.dirname(source)
+            master_has_file = os.path.exists(target) if target else False
+
+            if master_has_file:
+                if os.path.exists(source):
+                    os.remove(source)
+                    deleted += 1
+                else:
+                    already_gone += 1
+            else:
+                if os.path.exists(source):
+                    logger.warning(f'Skipping {os.path.basename(source)}: not found in master at {target}')
+                    skipped_no_master += 1
+                else:
+                    logger.info(f'Already gone and not in master: {os.path.basename(source)}')
+                    already_gone += 1
+
+    filesleft = sum(len(files) for _, _, files in os.walk(cleaneddirectory)) if cleaneddirectory else 0
+    logger.info(
+        f'{deleted} files deleted from {cleaneddirectory}, '
+        f'{skipped_no_master} skipped (not in master), '
+        f'{already_gone} already absent, '
+        f'{filesleft} files remaining.'
+    )
     return
 
 def delete_files(directory_to_scan, file_deletelist):
