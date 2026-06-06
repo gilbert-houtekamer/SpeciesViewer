@@ -8,7 +8,7 @@ from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDial
         AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
         TestbedDialog, BlogAdminDialog, PhotoMechanicDialog,
-        RescanMasterCacheDialog, SmallMasterDialog)
+        RescanMasterCacheDialog, SmallMasterDialog, TripMasterDashboard)
 from gui.virttrip_process import VirtualTripCreationDialog, ExtractDaysDialog
 from utils.config import _config
 import os
@@ -380,6 +380,20 @@ def build_menu_spec(main_window):
     add_trip_pictures.callback = lambda: MasterPipelineDialog(
         main_window, master_pipeline_steps).exec()
 
+    trip_master_dashboard = MenuSpec(
+        callback=lambda: TripMasterDashboard(
+            main_window,
+            {
+                'redo_blogs':          redo_trip_blogs,
+                'merge_species':       merge_trip_species,
+                'add_website':         add_trip_to_master,
+                'add_pictures_steps':  master_pipeline_steps,
+            }
+        ).exec(),
+        title="Trip to Master Dashboard",
+        showsubdirectory=False,
+    )
+
     # Edit the master speciescollection.csv directly — same dialog the
     # Write Summary trip flow exposes, just pointed at the master path.
     def _edit_master_species():
@@ -575,6 +589,8 @@ def build_menu_spec(main_window):
             "Rating Editor": rating_editor,
         },
         "Master": {
+            "Trip to Master Dashboard…": trip_master_dashboard,
+            f"{MenuSpec.separator()}_master_dash": None,
             "Edit Species List": edit_master_species,
             f"{MenuSpec.separator()}_master_0": None,
             "Merge Species": merge_trip_species,

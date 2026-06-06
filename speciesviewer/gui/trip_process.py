@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,QCheckBox,
     QTabWidget, QWidget, QVBoxLayout, QComboBox, QLineEdit, QFormLayout, QSizePolicy, QFileDialog, QDateEdit, QTextEdit,
-    QTableWidget, QTableWidgetItem, QAbstractItemView, QStyledItemDelegate, QMessageBox)
+    QTableWidget, QTableWidgetItem, QAbstractItemView, QStyledItemDelegate, QMessageBox, QFrame)
 from PyQt6.QtGui import QFont, QGuiApplication, QColor
 from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
 import logging
@@ -2953,3 +2953,455 @@ class SmallMasterDialog(QDialog):
         _config["utilities"]["smallmaster_target"] = target
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec)
+
+
+class TripMasterDashboard(QDialog):
+    """Ordered dashboard showing all trip-to-master merge stages for the active trip.
+
+    Each stage shows its current status (probed from artifacts on disk or a per-trip
+    marker file) and, where supported, a Run button to perform the action inline.
+
+    specs dict keys
+    ---------------
+    redo_blogs          MenuSpec for svr9RedoBlog
+    merge_species       MenuSpec for svr5MergeSpeciesCollections
+    add_website         MenuSpec for svr4UpdateTrips
+    add_pictures_steps  list of (label, MenuSpec) for MasterPipelineDialog
+    """
+
+    ICON = {
+        'green':   '🟢',
+        'orange':  '🟠',
+        'red':     '🔴',
+        'done':    '✅',
+        'pending': '⬜',
+        'na':      '—',
+        'running': '⏳',
+        'failed':  '❌',
+    }
+
+    def __init__(self, parent, specs):
+        super().__init__(parent)
+        self.setWindowTitle("Merge Trip to Master")
+        self.resize(800, 620)
+        self.logger = logging.getLogger("speciesviewer")
+        self.passed_parent = parent   # main window — has status_bar
+        self.specs = specs
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        self.status_label.setMaximumHeight(60)
+        self._rows = []
+        self._day_states_cache = None
+        self._setup_ui()
+        self._refresh_all()
+
+    # ── Config helpers ───────────────────────────────────────────────────
+
+    def _master_dir(self):
+        return _config.get("master", "masterbiotadatabase", fallback="")
+
+    def _trip_root(self):
+        pic = _config.get("project", "picturedirectory", fallback="").strip()
+        return str(Path(pic).parent) if pic else ""
+
+    def _trip_name(self):
+        root = self._trip_root()
+        return Path(root).name if root else ""
+
+    # ── Marker file (merge_log.csv) ──────────────────────────────────────
+    # Tracks completion of stages that have no natural artifact to probe.
+
+    def _merge_log_path(self):
+        master = self._master_dir()
+        return os.path.join(master, "admin", "merge_log.csv") if master else None
+
+    def _read_merge_log(self):
+        import csv as _csv
+        path = self._merge_log_path()
+        if not path or not os.path.isfile(path):
+            return []
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return list(_csv.DictReader(f, delimiter=";"))
+        except OSError:
+            return []
+
+    def _log_stage_done(self, stage):
+        import csv as _csv
+        path = self._merge_log_path()
+        if not path:
+            return
+        trip = self._trip_name()
+        records = [r for r in self._read_merge_log()
+                   if not (r.get("trip_name") == trip and r.get("stage") == stage)]
+        records.append({
+            "trip_name": trip,
+            "stage": stage,
+            "done_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        })
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                w = _csv.DictWriter(
+                    f, fieldnames=["trip_name", "stage", "done_at"], delimiter=";")
+                w.writeheader()
+                w.writerows(records)
+        except OSError as exc:
+            self.logger.warning(f"Could not write merge_log.csv: {exc}")
+
+    def _log_done_at(self, stage):
+        trip = self._trip_name()
+        for r in self._read_merge_log():
+            if r.get("trip_name") == trip and r.get("stage") == stage:
+                return r.get("done_at", "")
+        return None
+
+    # ── State probing ────────────────────────────────────────────────────
+
+    def _walk_day_states(self):
+        """Return list of (day_name, Taskstate) for every day under the trip root.
+        Result is cached for the duration of one _refresh_all() call."""
+        if self._day_states_cache is not None:
+            return self._day_states_cache
+        from engine.statemachine import StateMachine
+        root = self._trip_root()
+        master = self._master_dir()
+        if not root or not master or not os.path.isdir(root):
+            self._day_states_cache = []
+            return []
+        review_dir = os.path.join(master, "metadata", "review")
+        result = []
+        for day_dir in sorted(Path(root).iterdir()):
+            if not day_dir.is_dir():
+                continue
+            if not os.path.isfile(
+                    os.path.join(review_dir, day_dir.name, "statemachine.ini")):
+                continue
+            sm = StateMachine(master, str(day_dir))
+            result.append((day_dir.name, sm.Taskstate))
+        self._day_states_cache = result
+        return result
+
+    def _probe_trip_completion(self):
+        """Returns ('green'/'orange'/'red', detail_text)."""
+        days = self._walk_day_states()
+        if not days:
+            return 'red', "No days found under trip root"
+        total = len(days)
+        blog_done   = sum(1 for _, ts in days if ts.get("WriteBlog",   [False])[0])
+        commit_done = sum(1 for _, ts in days if ts.get("WriteCommit", [False])[0])
+        detail = f"{commit_done}/{total} days committed"
+        if blog_done < total:
+            detail += f", {blog_done}/{total} blogs done"
+        if commit_done == total:
+            return 'green', detail
+        if blog_done == total or commit_done > 0:
+            return 'orange', detail
+        return 'red', detail
+
+    def _probe_blogs_done(self):
+        """Returns (blog_done_count, total_day_count)."""
+        days = self._walk_day_states()
+        if not days:
+            return 0, 0
+        total = len(days)
+        done = sum(1 for _, ts in days if ts.get("WriteBlog", [False])[0])
+        return done, total
+
+    def _probe_website_added(self):
+        """Check master trip_admin.csv for the active trip.
+        Returns (found: bool, created_timestamp: str)."""
+        import csv as _csv
+        master = self._master_dir()
+        if not master:
+            return False, ""
+        trip_name = self._trip_name()
+        admin_csv = os.path.join(master, "admin", "trip_admin.csv")
+        if not os.path.isfile(admin_csv):
+            return False, ""
+        try:
+            with open(admin_csv, "r", encoding="utf-8") as f:
+                for row in _csv.DictReader(f, delimiter=";"):
+                    if row.get("trip_name", "").strip() == trip_name:
+                        return True, row.get("created", "")
+        except OSError:
+            pass
+        return False, ""
+
+    def _probe_pictures_added(self):
+        """Check master_commits.csv for this trip root.
+        Returns (found: bool, committed_at: str)."""
+        import csv as _csv
+        master = self._master_dir()
+        if not master:
+            return False, ""
+        trip_root = self._trip_root().lower()
+        path = os.path.join(master, "admin", "master_commits.csv")
+        if not os.path.isfile(path):
+            return False, ""
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for row in _csv.DictReader(f, delimiter=";"):
+                    if (row.get("picture_directory") or "").strip().lower() == trip_root:
+                        return True, row.get("committed_at", "")
+        except OSError:
+            pass
+        return False, ""
+
+    # ── UI construction ──────────────────────────────────────────────────
+
+    def _setup_ui(self):
+        outer = QVBoxLayout(self)
+        outer.setSpacing(4)
+        outer.setContentsMargins(10, 10, 10, 10)
+
+        trip_name = self._trip_name() or "(no trip configured)"
+        trip_root = self._trip_root()
+        header = HTMLLabel(
+            f"<p style='margin:0'><b>Merge Trip to Master</b>"
+            f" &nbsp;—&nbsp; <code>{trip_name}</code></p>"
+            f"<p style='margin:2px 0 0 0; color:#666;'>{trip_root}</p>"
+        )
+        outer.addWidget(header)
+
+        for defn in self._stage_defs():
+            w = self._make_stage_widget(defn)
+            self._rows.append({
+                'defn': defn,
+                'widget': w,
+                'icon':   w._sv_icon,
+                'detail': w._sv_detail,
+                'btn':    w._sv_btn,
+            })
+            outer.addWidget(w)
+
+        outer.addStretch()
+        outer.addWidget(self.status_label)
+
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet("color: #ddd;")
+        outer.addWidget(sep)
+
+        btn_bar = QHBoxLayout()
+        btn_bar.addStretch()
+        refresh_btn = QPushButton("Refresh")
+        refresh_btn.clicked.connect(self._refresh_all)
+        btn_bar.addWidget(refresh_btn)
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.close)
+        btn_bar.addWidget(close_btn)
+        outer.addLayout(btn_bar)
+
+    def _stage_defs(self):
+        return [
+            dict(
+                key='trip_complete', num='1', title='Trip days complete',
+                desc=('Reporting only — no action. '
+                      'Red = blogs missing on some days; '
+                      'orange = blogs done, commit partial; '
+                      'green = all days Write-Committed.'),
+                action=None,
+            ),
+            dict(
+                key='blogs_recreated', num='2', title='Recreate trip blogs',
+                desc=('Re-run blog generation across all days. '
+                      'Required once all days are complete; repeat after blog edits.'),
+                action='run_batch', spec_key='redo_blogs',
+            ),
+            dict(
+                key='species_merged', num='3', title='Merge trip species into master',
+                desc=("Add this trip's species to the master collection. "
+                      "Can be run multiple times (e.g. to broadcast to other trips)."),
+                action='open_dialog', marker='species_merged',
+            ),
+            dict(
+                key='website_added', num='4', title='Add trip to master website',
+                desc=('Publish a link to this trip in the master trip index. '
+                      'Available once the trip is at least orange.'),
+                action='run_batch', spec_key='add_website',
+            ),
+            dict(
+                key='blogs_merged', num='5', title='Add trip blogs to master',
+                desc=('Merge trip blogs into the master blog index. '
+                      'Not yet in GUI — run batch-future/svr6MergeBlogsForMaster.py manually.'),
+                action=None,
+            ),
+            dict(
+                key='pictures_added', num='6', title='Add trip pictures to master',
+                desc=('Three-step master pipeline: read → build → commit. '
+                      'Best run after all earlier steps are complete. '
+                      'Can only be fully undone manually.'),
+                action='open_dialog',
+            ),
+            dict(
+                key='files_deleted', num='7', title='Delete trip files (now in master)',
+                desc=('Remove pictures from the trip once safely added to master. '
+                      'Not yet in GUI — run batch-future/svr7DeleteFiles.py manually.'),
+                action=None,
+            ),
+        ]
+
+    def _make_stage_widget(self, defn):
+        frame = QFrame()
+        frame.setFrameShape(QFrame.Shape.StyledPanel)
+        frame.setStyleSheet(
+            "QFrame { border: 1px solid #e5e7eb; border-radius: 4px; "
+            "background: #fafafa; }")
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(8, 6, 8, 6)
+
+        icon = QLabel('⬜')
+        f = icon.font()
+        f.setPointSize(f.pointSize() + 3)
+        icon.setFont(f)
+        icon.setFixedWidth(32)
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(icon)
+        frame._sv_icon = icon
+
+        text_col = QVBoxLayout()
+        text_col.setSpacing(1)
+
+        title_lbl = QLabel(f"<b>{defn['num']}. {defn['title']}</b>")
+        text_col.addWidget(title_lbl)
+
+        desc_lbl = QLabel(defn['desc'])
+        desc_lbl.setWordWrap(True)
+        df = desc_lbl.font()
+        df.setPointSize(max(df.pointSize() - 1, 8))
+        desc_lbl.setFont(df)
+        desc_lbl.setStyleSheet("color: #555;")
+        text_col.addWidget(desc_lbl)
+
+        detail_lbl = QLabel("")
+        detail_lbl.setStyleSheet("color: #777; font-style: italic;")
+        ddf = detail_lbl.font()
+        ddf.setPointSize(max(ddf.pointSize() - 1, 8))
+        detail_lbl.setFont(ddf)
+        text_col.addWidget(detail_lbl)
+        frame._sv_detail = detail_lbl
+
+        layout.addLayout(text_col, 1)
+
+        btn = None
+        if defn.get('action'):
+            btn = QPushButton("Run")
+            btn.setFixedWidth(110)
+            if defn['action'] == 'run_batch':
+                btn.clicked.connect(
+                    lambda _=False, d=defn: self._run_batch_stage(d))
+            else:
+                btn.clicked.connect(
+                    lambda _=False, d=defn: self._open_stage_dialog(d))
+            layout.addWidget(btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        frame._sv_btn = btn
+
+        return frame
+
+    # ── State refresh ────────────────────────────────────────────────────
+
+    def _refresh_all(self):
+        self._day_states_cache = None   # invalidate per-refresh cache
+        self.status_label.setText("")
+
+        trip_status, trip_detail = self._probe_trip_completion()
+        blog_done, blog_total   = self._probe_blogs_done()
+        website_ok, website_ts  = self._probe_website_added()
+        pics_ok, pics_ts        = self._probe_pictures_added()
+
+        for row in self._rows:
+            key    = row['defn']['key']
+            icon   = row['icon']
+            detail = row['detail']
+            btn    = row['btn']
+
+            if key == 'trip_complete':
+                icon.setText(self.ICON[trip_status])
+                detail.setText(trip_detail)
+
+            elif key == 'blogs_recreated':
+                if blog_total == 0:
+                    icon.setText(self.ICON['pending'])
+                    detail.setText("No days found")
+                elif blog_done == blog_total:
+                    icon.setText(self.ICON['done'])
+                    detail.setText(f"All {blog_total} days done")
+                else:
+                    icon.setText(self.ICON['pending'])
+                    detail.setText(f"{blog_done}/{blog_total} days done")
+                if btn:
+                    btn.setEnabled(True)
+
+            elif key == 'species_merged':
+                done_at = self._log_done_at('species_merged')
+                icon.setText(self.ICON['done'] if done_at else self.ICON['pending'])
+                detail.setText(f"Last run {done_at}" if done_at else "")
+                if btn:
+                    btn.setEnabled(True)
+
+            elif key == 'website_added':
+                icon.setText(self.ICON['done'] if website_ok else self.ICON['pending'])
+                if website_ok:
+                    detail.setText(f"Added {website_ts}" if website_ts else "Done")
+                else:
+                    detail.setText("")
+                if btn:
+                    btn.setEnabled(trip_status in ('orange', 'green'))
+
+            elif key == 'blogs_merged':
+                done_at = self._log_done_at('blogs_merged')
+                icon.setText(self.ICON['done'] if done_at else self.ICON['na'])
+                detail.setText(f"Last run {done_at}" if done_at
+                               else "Run svr6MergeBlogsForMaster.py manually")
+
+            elif key == 'pictures_added':
+                icon.setText(self.ICON['done'] if pics_ok else self.ICON['pending'])
+                if pics_ok:
+                    detail.setText(f"Committed {pics_ts}" if pics_ts else "Done")
+                else:
+                    detail.setText("")
+                if btn:
+                    btn.setEnabled(True)
+
+            elif key == 'files_deleted':
+                done_at = self._log_done_at('files_deleted')
+                icon.setText(self.ICON['done'] if done_at else self.ICON['na'])
+                detail.setText(f"Last run {done_at}" if done_at
+                               else "Run svr7DeleteFiles.py manually")
+
+    # ── Action handlers ──────────────────────────────────────────────────
+
+    def _run_batch_stage(self, defn):
+        row = next(r for r in self._rows if r['defn']['key'] == defn['key'])
+        row['icon'].setText(self.ICON['running'])
+        if row['btn']:
+            row['btn'].setEnabled(False)
+
+        def on_success():
+            if defn.get('marker'):
+                self._log_stage_done(defn['marker'])
+            self._refresh_all()
+
+        def on_failure(_err):
+            row['icon'].setText(self.ICON['failed'])
+            if row['btn']:
+                row['btn'].setEnabled(True)
+
+        BatchModuleRunner(self, self.passed_parent).run(
+            self.specs[defn['spec_key']],
+            on_success=on_success,
+            on_failure=on_failure,
+        )
+
+    def _open_stage_dialog(self, defn):
+        # Always use main window as parent so sub-dialogs' BatchModuleRunner
+        # can reach passed_parent.status_bar.
+        mw = self.passed_parent
+        key = defn['key']
+        if key == 'species_merged':
+            MergeTripDialog(mw, self.specs['merge_species']).exec()
+            self._log_stage_done('species_merged')
+        elif key == 'pictures_added':
+            MasterPipelineDialog(mw, self.specs['add_pictures_steps']).exec()
+        self._refresh_all()
