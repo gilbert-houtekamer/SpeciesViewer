@@ -51,6 +51,9 @@ def generate_svconfig_ini(svconfig_path="svconfig.ini", master_mode=False):
         "phone_layout":      _config.get("avibase", "phone_layout",      fallback="false"),
         "first_column_lang": _config.get("avibase", "first_column_lang", fallback="nl"),
     }
+    cfg["utilities"] = {
+        "smallmaster_target": _config.get("utilities", "smallmaster_target", fallback=""),
+    }
 
     try:
         with open(svconfig_path, "w", encoding="utf-8") as f:

@@ -8,7 +8,7 @@ from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDial
         AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
         TestbedDialog, BlogAdminDialog, PhotoMechanicDialog,
-        RescanMasterCacheDialog)
+        RescanMasterCacheDialog, SmallMasterDialog)
 from gui.virttrip_process import VirtualTripCreationDialog, ExtractDaysDialog
 from utils.config import _config
 import os
@@ -37,6 +37,7 @@ import batch.svu2avibase
 import batch.svu5SyncSidecars
 import batch.svu8PhotoMechanic
 import batch.svu6EmptyTripData
+import batch.svu9SmallMaster
 import batch.svu7Testbed
 import batch.svv1MakeVirtualRepository
 import batch.svv2ExtractDays
@@ -484,6 +485,19 @@ def build_menu_spec(main_window):
     )
     photo_mechanic.callback = lambda: PhotoMechanicDialog(main_window, photo_mechanic).exec()
 
+    small_master = MenuSpec(
+        callback=None,
+        title="Create Small Master Database",
+        showsubdirectory=False,
+        batch_parms={
+            'statusname': "",
+            'module_called': batch.svu9SmallMaster.main,
+            'before_msg': "Copying master biota files (JPG/XMP only)...",
+            'after_msg': "✅ SmallMaster copy complete.",
+        }
+    )
+    small_master.callback = lambda: SmallMasterDialog(main_window, small_master).exec()
+
     testbed = MenuSpec(
         callback=None,
         title="Call Testbed for trip day",
@@ -581,6 +595,7 @@ def build_menu_spec(main_window):
         #     "BirdingBreaks": None, # PROCESS BIRDING BREAK FILES
              "AviBase": convert_avibase,
              "PhotoMechanic": photo_mechanic,
+             "Small Master Database": small_master,
              "Call Testbed for trip day": testbed,
         },
         "Settings": {

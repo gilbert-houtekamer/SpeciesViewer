@@ -2892,3 +2892,64 @@ class PhotoMechanicDialog(BaseTripModuleDialog):
             ),
             subdirectory=False
         )
+
+
+class SmallMasterDialog(QDialog):
+    """Copy JPG+XMP files from the master biota tree and metadata/active/ CSVs
+    to a target directory.  The result is a read-only SmallMaster that the laptop
+    can use without the full RAW archive."""
+
+    def __init__(self, parent, menu_spec):
+        super().__init__(parent)
+        self.setWindowTitle("Create Small Master Database")
+        self.resize(650, 310)
+        self.menu_spec = menu_spec
+        self.logger = logging.getLogger("speciesviewer")
+        self.passed_parent = parent
+
+        master_root = _config.get("master", "masterbiotadatabase", fallback="")
+
+        layout = QVBoxLayout(self)
+
+        info = QLabel(
+            "<b>Create a SmallMaster database</b><br>"
+            "Copies only JPG and XMP files from the master biota tree, plus the "
+            "metadata/active/ CSVs.  RAW files and website output are excluded.  "
+            "The result can be copied to the laptop for read-only access."
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        layout.addWidget(QLabel("Master source (read-only):"))
+        source_label = QLineEdit(master_root or "(not configured)")
+        source_label.setReadOnly(True)
+        layout.addWidget(source_label)
+
+        self.target_field = DirectoryFieldQt("Copy target directory", "")
+        layout.addWidget(self.target_field)
+
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        self.copy_btn = QPushButton("Copy")
+        self.close_btn = QPushButton("Close")
+        btn_layout.addWidget(self.copy_btn)
+        btn_layout.addWidget(self.close_btn)
+        layout.addLayout(btn_layout)
+
+        self.copy_btn.clicked.connect(self.on_copy)
+        self.close_btn.clicked.connect(self.close)
+
+    def on_copy(self):
+        target = self.target_field.get_path()
+        if not target or not os.path.isdir(target):
+            self.status_label.setText("Select a valid target directory first.")
+            return
+        if not _config.has_section("utilities"):
+            _config.add_section("utilities")
+        _config["utilities"]["smallmaster_target"] = target
+        runner = BatchModuleRunner(self, self.passed_parent)
+        runner.run(self.menu_spec)
