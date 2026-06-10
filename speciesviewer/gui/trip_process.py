@@ -1,6 +1,6 @@
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,QCheckBox,
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox,
     QTabWidget, QWidget, QVBoxLayout, QComboBox, QLineEdit, QFormLayout, QSizePolicy, QFileDialog, QDateEdit, QTextEdit,
-    QTableWidget, QTableWidgetItem, QAbstractItemView, QStyledItemDelegate, QMessageBox, QFrame)
+    QTableWidget, QTableWidgetItem, QAbstractItemView, QStyledItemDelegate, QMessageBox, QFrame, QApplication)
 from PyQt6.QtGui import QFont, QGuiApplication, QColor
 from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
 import logging
@@ -2895,14 +2895,16 @@ class PhotoMechanicDialog(BaseTripModuleDialog):
 
 
 class SmallMasterDialog(QDialog):
-    """Copy JPG+XMP files from the master biota tree and metadata/active/ CSVs
-    to a target directory.  The result is a read-only SmallMaster that the laptop
-    can use without the full RAW archive."""
+    """Create a smallmaster.zip from the master biota tree.
+
+    The ZIP contains JPG+XMP species images (biota/) and the master index
+    CSVs (metadata/active/).  RAW files and website output are excluded.
+    Transfer the ZIP to the laptop and use Install Small Master to unpack it."""
 
     def __init__(self, parent, menu_spec):
         super().__init__(parent)
         self.setWindowTitle("Create Small Master Database")
-        self.resize(650, 310)
+        self.resize(650, 320)
         self.menu_spec = menu_spec
         self.logger = logging.getLogger("speciesviewer")
         self.passed_parent = parent
@@ -2912,10 +2914,13 @@ class SmallMasterDialog(QDialog):
         layout = QVBoxLayout(self)
 
         info = QLabel(
-            "<b>Create a SmallMaster database</b><br>"
-            "Copies only JPG and XMP files from the master biota tree, plus the "
-            "metadata/active/ CSVs.  RAW files and website output are excluded.  "
-            "The result can be copied to the laptop for read-only access."
+            "<b>Create SmallMaster ZIP</b><br>"
+            "Writes <tt>smallmaster.zip</tt> into the selected directory.  "
+            "The ZIP contains only JPG and XMP files from <tt>biota/</tt>, "
+            "plus all CSVs from <tt>metadata/active/</tt> "
+            "(data_files, data_pictures, species, speciescollection…).  "
+            "RAW files and web output are excluded.  "
+            "Use <i>Install Small Master</i> on the laptop to unpack it."
         )
         info.setWordWrap(True)
         layout.addWidget(info)
@@ -2925,7 +2930,7 @@ class SmallMasterDialog(QDialog):
         source_label.setReadOnly(True)
         layout.addWidget(source_label)
 
-        self.target_field = DirectoryFieldQt("Copy target directory", "")
+        self.target_field = DirectoryFieldQt("Output directory (ZIP saved here)", "")
         layout.addWidget(self.target_field)
 
         self.status_label = QLabel("")
@@ -2934,7 +2939,7 @@ class SmallMasterDialog(QDialog):
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        self.copy_btn = QPushButton("Copy")
+        self.copy_btn = QPushButton("Create ZIP")
         self.close_btn = QPushButton("Close")
         btn_layout.addWidget(self.copy_btn)
         btn_layout.addWidget(self.close_btn)
@@ -2946,13 +2951,153 @@ class SmallMasterDialog(QDialog):
     def on_copy(self):
         target = self.target_field.get_path()
         if not target or not os.path.isdir(target):
-            self.status_label.setText("Select a valid target directory first.")
+            self.status_label.setText("Select a valid output directory first.")
             return
         if not _config.has_section("utilities"):
             _config.add_section("utilities")
         _config["utilities"]["smallmaster_target"] = target
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec)
+
+
+class InstallSmallMasterDialog(QDialog):
+    """Extract a smallmaster.zip to the configured master database directory.
+
+    Contents of the ZIP:
+      biota/          JPG and XMP species images — what the viewer displays
+      metadata/active/
+        data_files.csv       EXIF data for every master file (camera, GPS, lens…)
+        data_pictures.csv    Species rating data (rating, colour, which files belong
+                             to which picture)
+        species.csv          Species list with picture counts
+        speciescollection*.csv  Trip-specific species checklists
+    All four are required; without metadata/active/ the master DB cannot be built.
+    """
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setWindowTitle("Install Small Master Database")
+        self.resize(680, 400)
+
+        layout = QVBoxLayout(self)
+
+        info = QLabel(
+            "<b>Install SmallMaster from a ZIP file</b><br>"
+            "Extracts <tt>biota/</tt> (JPG + XMP species images) and "
+            "<tt>metadata/active/</tt> (data_files, data_pictures, species, "
+            "speciescollection…) to the configured master directory.  "
+            "Existing files are overwritten; nothing else is removed.  "
+            "The master database is rebuilt automatically on next launch."
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        # ZIP file picker
+        zip_row = QHBoxLayout()
+        zip_row.addWidget(QLabel("ZIP file:"))
+        self.zip_field = QLineEdit()
+        self.zip_field.setPlaceholderText("Select smallmaster.zip…")
+        zip_row.addWidget(self.zip_field)
+        browse_btn = QPushButton("Browse…")
+        browse_btn.clicked.connect(self._browse_zip)
+        zip_row.addWidget(browse_btn)
+        layout.addLayout(zip_row)
+
+        # Extract target
+        master_root = _config.get("master", "masterbiotadatabase", fallback="")
+        layout.addWidget(QLabel("Extract to (master database directory):"))
+        self.target_edit = QLineEdit(master_root or "(not configured — set MasterBiotaDatabase in settings)")
+        self.target_edit.setReadOnly(bool(master_root))
+        layout.addWidget(self.target_edit)
+
+        # ZIP contents summary (populated when a file is chosen)
+        self.contents_label = QLabel("Select a ZIP file to see its contents.")
+        self.contents_label.setWordWrap(True)
+        self.contents_label.setStyleSheet("color: #555; font-style: italic;")
+        layout.addWidget(self.contents_label)
+
+        self.delete_check = QCheckBox("Delete ZIP file after successful install")
+        layout.addWidget(self.delete_check)
+
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        self.install_btn = QPushButton("Install")
+        self.close_btn = QPushButton("Close")
+        btn_layout.addWidget(self.install_btn)
+        btn_layout.addWidget(self.close_btn)
+        layout.addLayout(btn_layout)
+
+        self.install_btn.clicked.connect(self._on_install)
+        self.close_btn.clicked.connect(self.close)
+        self.zip_field.textChanged.connect(self._update_contents)
+
+    def _browse_zip(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select SmallMaster ZIP", "", "ZIP files (*.zip);;All files (*)")
+        if path:
+            self.zip_field.setText(path)
+
+    def _update_contents(self):
+        import zipfile as _zf
+        zip_path = self.zip_field.text().strip()
+        if not zip_path or not os.path.isfile(zip_path):
+            self.contents_label.setText("Select a ZIP file to see its contents.")
+            return
+        try:
+            with _zf.ZipFile(zip_path, "r") as zf:
+                names = zf.namelist()
+            biota = sum(1 for n in names if n.startswith("biota/") and not n.endswith("/"))
+            meta  = sorted(
+                os.path.basename(n)
+                for n in names
+                if n.startswith("metadata/active/") and not n.endswith("/")
+            )
+            meta_str = ", ".join(meta[:6])
+            if len(meta) > 6:
+                meta_str += f" + {len(meta) - 6} more"
+            size_mb = os.path.getsize(zip_path) / 1024 / 1024
+            self.contents_label.setText(
+                f"{biota:,} biota files (JPG/XMP)  |  "
+                f"Metadata ({len(meta)}): {meta_str}  |  "
+                f"ZIP: {size_mb:.0f} MB"
+            )
+        except Exception as e:
+            self.contents_label.setText(f"Cannot read ZIP: {e}")
+
+    def _on_install(self):
+        import zipfile as _zf
+        import time as _time
+        zip_path = self.zip_field.text().strip()
+        target   = self.target_edit.text().strip()
+        if not zip_path or not os.path.isfile(zip_path):
+            self.status_label.setText("Select a valid ZIP file first.")
+            return
+        if not target or target.startswith("(not configured"):
+            self.status_label.setText("No target directory configured.")
+            return
+        os.makedirs(target, exist_ok=True)
+        self.status_label.setText("Extracting…  (this may take a minute for a large master)")
+        QApplication.processEvents()
+        t0 = _time.time()
+        try:
+            with _zf.ZipFile(zip_path, "r") as zf:
+                zf.extractall(target)
+        except Exception as e:
+            self.status_label.setText(f"Extract failed: {e}")
+            return
+        elapsed = _time.time() - t0
+        msg = f"✅ Installed in {elapsed:.0f}s → {target}"
+        if self.delete_check.isChecked():
+            try:
+                os.remove(zip_path)
+                msg += "  (ZIP deleted)"
+            except Exception as e:
+                msg += f"  (could not delete ZIP: {e})"
+        self.status_label.setText(msg)
 
 
 class TripMasterDashboard(QDialog):

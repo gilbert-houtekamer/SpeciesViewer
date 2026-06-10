@@ -8,7 +8,7 @@ from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDial
         AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
         TestbedDialog, BlogAdminDialog, PhotoMechanicDialog,
-        RescanMasterCacheDialog, SmallMasterDialog, TripMasterDashboard)
+        RescanMasterCacheDialog, SmallMasterDialog, InstallSmallMasterDialog, TripMasterDashboard)
 from gui.virttrip_process import VirtualTripCreationDialog, ExtractDaysDialog
 from utils.config import _config
 import os
@@ -512,6 +512,11 @@ def build_menu_spec(main_window):
     )
     small_master.callback = lambda: SmallMasterDialog(main_window, small_master).exec()
 
+    install_small_master = MenuSpec(
+        callback=lambda: InstallSmallMasterDialog(main_window).exec(),
+        title="Install Small Master Database",
+    )
+
     testbed = MenuSpec(
         callback=None,
         title="Call Testbed for trip day",
@@ -612,6 +617,7 @@ def build_menu_spec(main_window):
              "AviBase": convert_avibase,
              "PhotoMechanic": photo_mechanic,
              "Small Master Database": small_master,
+             "Install Small Master": install_small_master,
              "Call Testbed for trip day": testbed,
         },
         "Settings": {
