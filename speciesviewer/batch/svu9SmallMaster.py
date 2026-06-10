@@ -8,6 +8,7 @@ safe: existing destination files are overwritten and nothing is deleted.
 
 import argparse
 import configparser
+import csv as csv_mod
 import os
 import shutil
 import sys
@@ -22,10 +23,31 @@ if __name__ == "__main__":
     sys.path.append(modpath)
 
 from engine.exceptions import SVException
+from engine.handling import relativize_path
 
 logger = logging.getLogger("speciesviewer")
 
 _COPY_EXTS = {".jpg", ".jpeg", ".xmp"}
+
+
+def _copy_data_files_relativized(src: str, dst: str, master_root: str) -> None:
+    """Copy data_files.csv while rewriting WindowsFileName and File:Directory
+    to be root-relative (e.g. /biota/animalia/...) so the copy is portable."""
+    with open(src, "r", newline="", encoding="utf-8") as fh_in:
+        reader = csv_mod.DictReader(fh_in, delimiter=";")
+        fieldnames = reader.fieldnames
+        with open(dst, "w", newline="", encoding="utf-8") as fh_out:
+            writer = csv_mod.DictWriter(
+                fh_out, fieldnames=fieldnames,
+                delimiter=";", quoting=csv_mod.QUOTE_MINIMAL,
+            )
+            writer.writeheader()
+            for row in reader:
+                row["File:Directory"] = relativize_path(
+                    row.get("File:Directory", ""), master_root)
+                row["WindowsFileName"] = relativize_path(
+                    row.get("WindowsFileName", ""), master_root)
+                writer.writerow(row)
 
 
 def main(args, config):
@@ -79,13 +101,18 @@ def main(args, config):
         os.makedirs(meta_dst, exist_ok=True)
         for fname in os.listdir(meta_src):
             src_file = os.path.join(meta_src, fname)
-            if os.path.isfile(src_file):
-                try:
-                    shutil.copy2(src_file, os.path.join(meta_dst, fname))
-                    copied_meta += 1
-                except Exception as e:
-                    logger.warning(f"  Metadata copy failed {fname}: {e}")
-                    errors += 1
+            if not os.path.isfile(src_file):
+                continue
+            dst_file = os.path.join(meta_dst, fname)
+            try:
+                if fname.lower() == "data_files.csv":
+                    _copy_data_files_relativized(src_file, dst_file, source_root)
+                else:
+                    shutil.copy2(src_file, dst_file)
+                copied_meta += 1
+            except Exception as e:
+                logger.warning(f"  Metadata copy failed {fname}: {e}")
+                errors += 1
 
     elapsed = time.time() - starttime
     warn = f", {errors} errors" if errors else ""

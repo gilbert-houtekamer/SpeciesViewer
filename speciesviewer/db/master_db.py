@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from engine.csv_columns import PICTURE_FIELDS, DATA_FILE_FIELDS, SPECIES_FIELDS
+from engine.handling import resolve_path
 
 logger = logging.getLogger("speciesviewer")
 
@@ -383,6 +384,10 @@ class MasterDB:
             with open(files_csv, "r", newline="", encoding="utf-8") as fh:
                 reader = csv.DictReader(fh, delimiter=";")
                 for row in reader:
+                    # Resolve root-relative paths written by the SmallMaster copy tool
+                    for col in ("WindowsFileName", "File:Directory"):
+                        if col in row:
+                            row[col] = resolve_path(row[col], self.master_root)
                     file_rows.append([row.get(c, "") for c in DATA_FILE_FIELDS])
             con.executemany(
                 f"INSERT OR REPLACE INTO files ({_FILE_COLS_SQL}) "
