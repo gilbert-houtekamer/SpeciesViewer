@@ -3069,6 +3069,7 @@ class InstallSmallMasterDialog(QDialog):
             self.contents_label.setText(f"Cannot read ZIP: {e}")
 
     def _on_install(self):
+        import tempfile as _tmp
         import zipfile as _zf
         import time as _time
         zip_path = self.zip_field.text().strip()
@@ -3080,6 +3081,19 @@ class InstallSmallMasterDialog(QDialog):
             self.status_label.setText("No target directory configured.")
             return
         os.makedirs(target, exist_ok=True)
+
+        # Snapshot existing speciescollection.csv before the ZIP overwrites it.
+        # Trip processing on this machine may have added species via svr5 that
+        # the ZIP (built on another machine) doesn't know about yet.
+        sc_path = os.path.join(target, "metadata", "active", "speciescollection.csv")
+        existing_sc_content = None
+        if os.path.isfile(sc_path):
+            try:
+                with open(sc_path, "r", encoding="utf-8") as _f:
+                    existing_sc_content = _f.read()
+            except Exception:
+                pass
+
         self.status_label.setText("Extracting…  (this may take a minute for a large master)")
         QApplication.processEvents()
         t0 = _time.time()
@@ -3090,7 +3104,39 @@ class InstallSmallMasterDialog(QDialog):
             self.status_label.setText(f"Extract failed: {e}")
             return
         elapsed = _time.time() - t0
-        msg = f"✅ Installed in {elapsed:.0f}s → {target}"
+
+        # Merge back any species that were in the existing collection but are
+        # not in the ZIP (e.g. new insects added on this machine via svr5).
+        merged_note = ""
+        if existing_sc_content and os.path.isfile(sc_path):
+            try:
+                from engine.speciesclassification import SpeciesClassification
+                sc_zip = SpeciesClassification(None)
+                sc_zip.clearDict()
+                sc_zip.readSpeciesCollection(sc_path, donotaddLanguageIndices=True)
+                zip_keys = set(sc_zip.sc_dict.keys())
+
+                with _tmp.NamedTemporaryFile(
+                    mode="w", suffix=".csv", delete=False, encoding="utf-8"
+                ) as tf:
+                    tf.write(existing_sc_content)
+                    tmp_path = tf.name
+                try:
+                    sc_existing = SpeciesClassification(None)
+                    sc_existing.clearDict()
+                    sc_existing.readSpeciesCollection(tmp_path, donotaddLanguageIndices=True)
+                finally:
+                    os.unlink(tmp_path)
+
+                new_entries = [s for s in sc_existing.sc_dict if s not in zip_keys]
+                if new_entries:
+                    sc_zip.mergeSpeciesCollections(sc_existing.scCopy())
+                    sc_zip.writeSpeciesCollection(sc_path)
+                    merged_note = f"  Merged {len(new_entries)} local species entries into speciescollection."
+            except Exception as e:
+                merged_note = f"  (speciescollection merge skipped: {e})"
+
+        msg = f"✅ Installed in {elapsed:.0f}s → {target}{merged_note}"
         if self.delete_check.isChecked():
             try:
                 os.remove(zip_path)
