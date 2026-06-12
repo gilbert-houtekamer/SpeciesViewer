@@ -3094,12 +3094,22 @@ class InstallSmallMasterDialog(QDialog):
             except Exception:
                 pass
 
-        self.status_label.setText("Extracting…  (this may take a minute for a large master)")
-        QApplication.processEvents()
         t0 = _time.time()
         try:
             with _zf.ZipFile(zip_path, "r") as zf:
-                zf.extractall(target)
+                members = zf.namelist()
+                total = len(members)
+                last_ui = t0
+                for i, member in enumerate(members):
+                    zf.extract(member, target)
+                    now = _time.time()
+                    if now - last_ui >= 0.5:
+                        pct = 100 * i // total
+                        self.status_label.setText(
+                            f"Extracting… {i:,} / {total:,} files ({pct}%)"
+                        )
+                        QApplication.processEvents()
+                        last_ui = now
         except Exception as e:
             self.status_label.setText(f"Extract failed: {e}")
             return
@@ -3136,7 +3146,27 @@ class InstallSmallMasterDialog(QDialog):
             except Exception as e:
                 merged_note = f"  (speciescollection merge skipped: {e})"
 
-        msg = f"✅ Installed in {elapsed:.0f}s → {target}{merged_note}"
+        # Rebuild the master DB immediately so it is ready on first use.
+        db_note = ""
+        try:
+            from db.master_db import MasterDB
+            self.status_label.setText(
+                f"Extracted {total:,} files in {elapsed:.0f}s.{merged_note}  Building master database…"
+            )
+            QApplication.processEvents()
+
+            def _db_progress(msg):
+                self.status_label.setText(
+                    f"Extracted {total:,} files in {elapsed:.0f}s.{merged_note}  {msg}"
+                )
+                QApplication.processEvents()
+
+            MasterDB(target).rebuild(progress_cb=_db_progress)
+            db_note = "  Master database built."
+        except Exception as e:
+            db_note = f"  (DB build skipped: {e})"
+
+        msg = f"✅ Installed in {elapsed:.0f}s → {target}{merged_note}{db_note}"
         if self.delete_check.isChecked():
             try:
                 os.remove(zip_path)
