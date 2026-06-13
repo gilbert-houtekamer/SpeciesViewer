@@ -108,6 +108,11 @@ class SidecarItem(PictureItem):
     def __init__(self, collection: "SidecarCollection", stem: str):
         self._c = collection
         self._stem = stem
+        if collection.readonly:
+            self.can_edit_rating = False
+            self.can_edit_color = False
+            self.can_edit_description = False
+            self.can_edit_species = False
 
     @property
     def _grp(self) -> dict:
@@ -215,7 +220,8 @@ class SidecarCollection(PictureCollection):
     """Pictures discovered from RAW(+JPG)+XMP sidecar groups in a folder or an
     explicit RAW list. Reads metadata from the sidecars; edits write back to them."""
 
-    def __init__(self, paths, *, cache_root=None, loader: AsyncImageLoader | None = None):
+    def __init__(self, paths, *, readonly=False, cache_root=None, loader: AsyncImageLoader | None = None):
+        self.readonly = readonly
         self._cache_root = Path(cache_root) if cache_root else None
         self._loader = loader or AsyncImageLoader()
         # Group input picture files by stem.

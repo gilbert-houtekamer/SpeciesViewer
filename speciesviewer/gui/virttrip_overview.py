@@ -54,6 +54,7 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
         parent=parent,
         file_list=file_list,
         source_label=str(day_dir),
+        readonly=True,
     )
     dlg.exec()
 

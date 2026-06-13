@@ -86,7 +86,8 @@ class ImagePreviewDialog(QDialog):
     """
 
     def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg",
-                 file_list=None, cache_root=None, source_label=None, collection=None):
+                 file_list=None, cache_root=None, source_label=None, collection=None,
+                 readonly=False):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
@@ -162,12 +163,14 @@ class ImagePreviewDialog(QDialog):
             paths = (self._file_list if self._file_list is not None
                      else self.discover_images(image_dir))
             # Ingested-but-not-yet-read folder: if the files have XMP sidecars,
-            # use the editable sidecar-backed culling collection; otherwise the
-            # plain (read-only) file-list preview.
+            # use the sidecar-backed collection (reads species/rating/colour).
+            # readonly=True keeps display intact but disables all write-back
+            # (virtual-trip viewer — master files must never be edited here).
             if paths and any(Path(p).with_suffix(".xmp").exists() for p in paths):
                 from gui.sidecar_provider import SidecarCollection
                 self._collection = SidecarCollection(
-                    paths, cache_root=self.cache_dir, loader=self._loader)
+                    paths, cache_root=self.cache_dir, loader=self._loader,
+                    readonly=readonly)
             else:
                 self._collection = FileListPreviewCollection(
                     paths, cache_root=self.cache_dir, loader=self._loader)

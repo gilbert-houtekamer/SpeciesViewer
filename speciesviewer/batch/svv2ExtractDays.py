@@ -26,6 +26,7 @@ if __name__ == "__main__":
     sys.path.append(modpath)
 
 from utils.virttrip_config import read_virttrip_ini
+from engine.handling import resolve_path
 
 logger = logging.getLogger("speciesviewer")
 
@@ -84,6 +85,12 @@ def main(args, config):
 
     logger.info(f"Reading master data_files.csv from {master_files_path}")
     file_fields, all_file_rows = _read_csv(master_files_path)
+    # SmallMaster stores root-relative paths; resolve them to absolute so the
+    # virtual-trip day CSVs contain paths the image viewer can actually open.
+    for row in all_file_rows:
+        for col in ("File:Directory", "WindowsFileName"):
+            if col in row:
+                row[col] = resolve_path(row[col], master_db)
 
     logger.info(f"Reading master data_pictures.csv from {master_pictures_path}")
     pic_fields, all_pic_rows = _read_csv(master_pictures_path)

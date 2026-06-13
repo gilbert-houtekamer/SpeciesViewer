@@ -112,6 +112,7 @@ class VirtualTripCreationDialog(QDialog):
         self.new_folder_name = QLineEdit()
         self.new_folder_name.setPlaceholderText("e.g. birds2024")
         self.new_folder_name.setMaximumWidth(300)
+        self.new_folder_name.textChanged.connect(self._update_folder_preview)
         new_folder_row.addWidget(self.new_folder_name)
         create_folder_btn = QPushButton("Create Folder")
         create_folder_btn.setFixedWidth(110)
@@ -229,14 +230,32 @@ class VirtualTripCreationDialog(QDialog):
         self.passed_parent.translator.writeTranslationCache()
         super().closeEvent(event)
 
+    def _update_folder_preview(self, folder_name):
+        root = _config.get("virttrip", "virttriprootdirectory", fallback="")
+        if not folder_name:
+            self.status_label.setText("")
+        elif not root:
+            self.status_label.setText("⚠ Virtual Trips root not configured — set it in Settings → Config first.")
+        else:
+            self.status_label.setText(f"Will create: {Path(root) / folder_name}")
+
     def create_new_trip_folder(self):
         folder_name = self.new_folder_name.text().strip()
         if not folder_name:
             self.status_label.setText("❌ Enter a folder name first.")
             return
 
-        trips_parent_str = get_virttrips_root() or get_trips_root()
-        trips_parent = Path(trips_parent_str) if trips_parent_str else Path()
+        # Use only the explicit root key — the get_virttrips_root() fallback
+        # derives from virttripbiotadatabase's parent, which silently lands in
+        # the regular trips directory when no root is configured yet.
+        trips_parent_str = _config.get("virttrip", "virttriprootdirectory", fallback="")
+        if not trips_parent_str:
+            self.status_label.setText(
+                "❌ Virtual Trips root directory is not configured. "
+                "Set it in Settings → Config before creating a trip folder."
+            )
+            return
+        trips_parent = Path(trips_parent_str)
         if not trips_parent.is_dir():
             self.status_label.setText(f"❌ Cannot find parent directory: {trips_parent}")
             return
