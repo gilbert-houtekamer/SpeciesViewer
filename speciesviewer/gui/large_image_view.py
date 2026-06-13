@@ -34,7 +34,7 @@ from gui.rating_editor import StarWidget, ColorSelector, COLOR_HEX
 from gui.image_loader import AsyncImageLoader
 from gui.window_state import restore_window, save_window, clamp_to_visible_screen
 from utils.open_path import open_path, reveal_group, launch_app_with_file
-from utils.config import get_setting, get_window_state
+from utils.config import get_setting, set_setting, get_window_state
 
 logger = logging.getLogger("speciesviewer")
 
@@ -78,6 +78,7 @@ _ITEM_W    = 160   # px — total strip-cell width  (thumb + 8px margin × 2)
 _ITEM_H    = 130   # px — total strip-cell height (thumb + gap + stars + margins)
 _ITEM_GAP  = 4     # px — gap between cells
 _PREFETCH  = 4     # cells to load beyond each viewport edge
+
 
 
 def color_to_css(color: str) -> str:
@@ -224,44 +225,66 @@ class _StripItem(QWidget):
 
 
 class FilmstripWidget(QWidget):
-    """Horizontal thumbnail strip — one cell per picture, lazy-loaded."""
+    """Thumbnail strip — one cell per picture, lazy-loaded.
+
+    orientation: Horizontal (default) = bottom strip; Vertical = left strip.
+    """
     item_clicked = pyqtSignal(str)  # key — host navigates on click
 
-    def __init__(self, collection, keys, parent=None):
+    def __init__(self, collection, keys, parent=None,
+                 orientation=Qt.Orientation.Horizontal):
         super().__init__(parent)
         self._collection  = collection
         self._keys        = list(keys)
         self._cells: dict[str, _StripItem] = {}
         self._current_key: str | None = None
+        self._orientation = orientation
+        _vert = (orientation == Qt.Orientation.Vertical)
 
-        # Minimum height: one row of cells + scrollbar (~17 px) + outer margins
-        self.setMinimumHeight(_ITEM_H + 22)
-
-        outer = QHBoxLayout(self)
+        if _vert:
+            # Vertical strip: fixed minimum width, unlimited height via scroll.
+            self.setMinimumWidth(_ITEM_W + 30)
+            outer = QVBoxLayout(self)
+        else:
+            # Horizontal strip: fixed minimum height, unlimited width via scroll.
+            self.setMinimumHeight(_ITEM_H + 22)
+            outer = QHBoxLayout(self)
         outer.setContentsMargins(4, 2, 4, 2)
         outer.setSpacing(6)
 
-        # "94 of 335" counter
+        # Position counter — "94 of 335"
         self._pos_lbl = QLabel("")
-        self._pos_lbl.setStyleSheet(
-            "font-size: 10px; color: #888; min-width: 58px;")
-        self._pos_lbl.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        if _vert:
+            self._pos_lbl.setStyleSheet("font-size: 10px; color: #888;")
+            self._pos_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        else:
+            self._pos_lbl.setStyleSheet(
+                "font-size: 10px; color: #888; min-width: 58px;")
+            self._pos_lbl.setAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         outer.addWidget(self._pos_lbl)
 
-        # Horizontal-only scroll area
+        # Scroll area — axis depends on orientation
         self._sa = QScrollArea()
         self._sa.setWidgetResizable(False)
-        self._sa.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-        self._sa.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._sa.horizontalScrollBar().valueChanged.connect(self._on_scrolled)
+        if _vert:
+            self._sa.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self._sa.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+            self._sa.verticalScrollBar().valueChanged.connect(self._on_scrolled)
+        else:
+            self._sa.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+            self._sa.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self._sa.horizontalScrollBar().valueChanged.connect(self._on_scrolled)
         outer.addWidget(self._sa, stretch=1)
 
-        # Content strip
+        # Content strip — cells laid out along the scroll axis
         self._strip = QWidget()
-        strip_h = QHBoxLayout(self._strip)
-        strip_h.setContentsMargins(2, 0, 2, 0)
-        strip_h.setSpacing(_ITEM_GAP)
+        if _vert:
+            strip_layout = QVBoxLayout(self._strip)
+        else:
+            strip_layout = QHBoxLayout(self._strip)
+        strip_layout.setContentsMargins(2, 0, 2, 0)
+        strip_layout.setSpacing(_ITEM_GAP)
 
         for key in self._keys:
             try:
@@ -270,12 +293,16 @@ class FilmstripWidget(QWidget):
                 continue
             cell = _StripItem(item, self._strip)
             cell.tapped.connect(self.item_clicked)
-            strip_h.addWidget(cell)
+            strip_layout.addWidget(cell)
             self._cells[key] = cell
 
         n = len(self._cells)
-        total_w = n * _ITEM_W + max(0, n - 1) * _ITEM_GAP + 4
-        self._strip.setFixedSize(max(total_w, 1), _ITEM_H)
+        if _vert:
+            total_h = n * _ITEM_H + max(0, n - 1) * _ITEM_GAP + 4
+            self._strip.setFixedSize(_ITEM_W, max(total_h, 1))
+        else:
+            total_w = n * _ITEM_W + max(0, n - 1) * _ITEM_GAP + 4
+            self._strip.setFixedSize(max(total_w, 1), _ITEM_H)
         self._sa.setWidget(self._strip)
 
         # Load initially-visible cells once the layout has settled.
@@ -313,12 +340,18 @@ class FilmstripWidget(QWidget):
         self._load_visible()
 
     def _load_visible(self):
-        bar    = self._sa.horizontalScrollBar()
-        vp_l   = bar.value()
-        vp_r   = vp_l + self._sa.viewport().width()
-        stride = _ITEM_W + _ITEM_GAP
-        first  = max(0, vp_l  // stride - _PREFETCH)
-        last   = min(len(self._keys) - 1, vp_r // stride + _PREFETCH)
+        if self._orientation == Qt.Orientation.Vertical:
+            bar    = self._sa.verticalScrollBar()
+            vp_lo  = bar.value()
+            vp_hi  = vp_lo + self._sa.viewport().height()
+            stride = _ITEM_H + _ITEM_GAP
+        else:
+            bar    = self._sa.horizontalScrollBar()
+            vp_lo  = bar.value()
+            vp_hi  = vp_lo + self._sa.viewport().width()
+            stride = _ITEM_W + _ITEM_GAP
+        first = max(0, vp_lo  // stride - _PREFETCH)
+        last  = min(len(self._keys) - 1, vp_hi // stride + _PREFETCH)
         for i in range(first, last + 1):
             key = self._keys[i]
             if key in self._cells:
@@ -435,16 +468,44 @@ class LargeImageView(QDialog):
         root.setContentsMargins(8, 8, 8, 6)
         root.setSpacing(0)
 
-        # ── Vertical splitter: image+panel (top) ↕ filmstrip area (bottom) ───
-        self._v_splitter = QSplitter(Qt.Orientation.Vertical)
-        self._v_splitter.setChildrenCollapsible(False)
-        root.addWidget(self._v_splitter, stretch=1)
+        # Filmstrip position is a persistent user preference ([layout] filmstrip_left).
+        # Default: left strip (better for 4:3 and 3:2 on widescreen monitors).
+        self._strip_left = get_setting("layout", "filmstrip_left", fallback="yes").strip().lower() != "no"
 
-        # ── Horizontal splitter: image (left) + panel (right) ────────────────
+        # ── Filmstrip toggle button — thin bar at top-right of dialog ──────────
+        top_bar = QWidget()
+        top_bar.setFixedHeight(22)
+        top_bar_row = QHBoxLayout(top_bar)
+        top_bar_row.setContentsMargins(0, 0, 4, 0)
+        top_bar_row.setSpacing(0)
+        top_bar_row.addStretch()
+        self._filmstrip_btn = QToolButton()
+        self._filmstrip_btn.setAutoRaise(True)
+        self._filmstrip_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._filmstrip_btn.setStyleSheet("font-size: 10px; padding: 1px 5px;")
+        self._filmstrip_btn.clicked.connect(self._on_toggle_filmstrip)
+        self._update_filmstrip_btn()
+        top_bar_row.addWidget(self._filmstrip_btn)
+        root.addWidget(top_bar)
+
+        # ── Horizontal splitter: image (left) + panel (right) ─────────────────
+        # Always exists; its parent depends on the filmstrip mode set up below.
         self._splitter = QSplitter(Qt.Orientation.Horizontal)
         self._splitter.setChildrenCollapsible(False)
         self._splitter.splitterMoved.connect(lambda *_: self._fit_pixmap())
-        self._v_splitter.addWidget(self._splitter)
+
+        # Both splitters always present — toggling hides/shows filmstrip panels
+        # live without rebuilding the layout.
+        self._outer_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._outer_splitter.setChildrenCollapsible(True)
+        self._outer_splitter.setHandleWidth(6)
+        self._outer_splitter.splitterMoved.connect(self._on_outer_splitter_moved)
+        root.addWidget(self._outer_splitter, stretch=1)
+
+        self._v_splitter = QSplitter(Qt.Orientation.Vertical)
+        self._v_splitter.setChildrenCollapsible(True)
+        self._v_splitter.splitterMoved.connect(self._on_v_splitter_moved)
+        # (children assembled in the filmstrip block below)
 
         # Left — image stage
         self._stage = QWidget()
@@ -480,6 +541,7 @@ class LargeImageView(QDialog):
         self._view_tabs.addTab(self._stage, "Fit")
         self._view_tabs.addTab(self._fullres_view, "100%")
         self._view_tabs.currentChanged.connect(self._on_view_tab_changed)
+
         self._splitter.addWidget(self._view_tabs)
         self._splitter.setStretchFactor(0, 1)
 
@@ -608,14 +670,7 @@ class LargeImageView(QDialog):
         pl.addWidget(self._desc_edit)
         pl.addStretch(1)
 
-        # ── Bottom widget (selection bar + separator + filmstrip) ─────────────
-        bottom = QWidget()
-        bottom_v = QVBoxLayout(bottom)
-        bottom_v.setContentsMargins(0, 0, 0, 0)
-        bottom_v.setSpacing(0)
-        self._v_splitter.addWidget(bottom)
-
-        # Selection bar (hidden when empty)
+        # ── Selection bar (same markup in both layout modes) ──────────────────
         self._sel_bar = QWidget()
         self._sel_bar.setStyleSheet("background: #1e2a3a; border-radius: 3px;")
         sel_row = QHBoxLayout(self._sel_bar)
@@ -634,16 +689,55 @@ class LargeImageView(QDialog):
             _btn.clicked.connect(_slot)
             sel_row.addWidget(_btn)
         self._sel_bar.setVisible(False)
-        bottom_v.addWidget(self._sel_bar)
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
         sep.setStyleSheet("color: #555; margin: 0;")
-        bottom_v.addWidget(sep)
 
-        self._filmstrip = FilmstripWidget(collection, self._keys, self)
-        self._filmstrip.item_clicked.connect(self._on_filmstrip_click)
-        bottom_v.addWidget(self._filmstrip, stretch=1)
+        # ── Both filmstrips always exist; toggle just shows/hides them ────────
+        self._filmstrip_left = FilmstripWidget(collection, self._keys, self,
+                                               orientation=Qt.Orientation.Vertical)
+        self._filmstrip_left.setMinimumWidth(0)
+        self._filmstrip_left.item_clicked.connect(self._on_filmstrip_click)
+
+        self._filmstrip_bottom = FilmstripWidget(collection, self._keys, self)
+        self._filmstrip_bottom.setMinimumHeight(0)
+        self._filmstrip_bottom.item_clicked.connect(self._on_filmstrip_click)
+
+        # Content wrapper: image+panel splitter + sel-bar + sep
+        # (top pane of _v_splitter in both modes)
+        content_wrapper = QWidget()
+        wrap_vbox = QVBoxLayout(content_wrapper)
+        wrap_vbox.setContentsMargins(0, 0, 0, 0)
+        wrap_vbox.setSpacing(0)
+        wrap_vbox.addWidget(self._splitter, stretch=1)
+        wrap_vbox.addWidget(self._sel_bar)
+        wrap_vbox.addWidget(sep)
+
+        # _v_splitter: content (top) | bottom filmstrip (bottom)
+        self._v_splitter.addWidget(content_wrapper)
+        self._v_splitter.addWidget(self._filmstrip_bottom)
+
+        # right_pane: wraps _v_splitter so it can be the right child of _outer_splitter
+        right_pane = QWidget()
+        right_vbox = QVBoxLayout(right_pane)
+        right_vbox.setContentsMargins(0, 0, 0, 0)
+        right_vbox.setSpacing(0)
+        right_vbox.addWidget(self._v_splitter, stretch=1)
+
+        # _outer_splitter: left filmstrip | right_pane
+        self._outer_splitter.addWidget(self._filmstrip_left)
+        self._outer_splitter.setStretchFactor(0, 0)
+        self._outer_splitter.addWidget(right_pane)
+        self._outer_splitter.setStretchFactor(1, 1)
+
+        # Saved sizes for the inactive mode — restored when toggling back.
+        self._last_fsplit: list | None = None
+        self._last_vsplit: list | None = None
+
+        # Apply initial visibility (sizes come from showEvent).
+        self._filmstrip_left.setVisible(self._strip_left)
+        self._filmstrip_bottom.setVisible(not self._strip_left)
 
         QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self._save_description)
 
@@ -695,6 +789,52 @@ class LargeImageView(QDialog):
 
     def _on_fullres_point_changed(self, fx, fy):
         self._fullres_point = (fx, fy)
+
+    def _update_filmstrip_btn(self):
+        if self._strip_left:
+            self._filmstrip_btn.setText("⬇ Strip")
+            self._filmstrip_btn.setToolTip("Filmstrip is on the left — click to move it to the bottom.")
+        else:
+            self._filmstrip_btn.setText("⬅ Strip")
+            self._filmstrip_btn.setToolTip("Filmstrip is at the bottom — click to move it to the left.")
+
+    def _on_toggle_filmstrip(self):
+        # Save the active splitter's current sizes before switching.
+        if self._strip_left:
+            self._last_fsplit = self._outer_splitter.sizes()
+        else:
+            self._last_vsplit = self._v_splitter.sizes()
+
+        self._strip_left = not self._strip_left
+        set_setting("layout", "filmstrip_left", "yes" if self._strip_left else "no")
+
+        self._filmstrip_left.setVisible(self._strip_left)
+        self._filmstrip_bottom.setVisible(not self._strip_left)
+
+        # Restore the sizes for the newly-active filmstrip.
+        if self._strip_left:
+            if self._last_fsplit:
+                self._outer_splitter.setSizes(self._last_fsplit)
+        else:
+            if self._last_vsplit:
+                self._v_splitter.setSizes(self._last_vsplit)
+
+        self._update_filmstrip_btn()
+        QTimer.singleShot(0, self._fit_pixmap)
+
+    def _on_outer_splitter_moved(self, *_):
+        if self._strip_left:
+            self._last_fsplit = self._outer_splitter.sizes()
+        self._fit_pixmap()
+
+    def _on_v_splitter_moved(self, *_):
+        if not self._strip_left:
+            self._last_vsplit = self._v_splitter.sizes()
+        self._fit_pixmap()
+
+    def _refresh_strip_items(self, key: str):
+        self._filmstrip_left.refresh_item(key)
+        self._filmstrip_bottom.refresh_item(key)
 
     def _load_fullres(self):
         if getattr(self, "_view_tabs", None) is None or self._view_tabs.currentIndex() != 1:
@@ -784,7 +924,7 @@ class LargeImageView(QDialog):
                 current_key=self._keys[self._index],
                 item_for_key=self._collection.item_for_key,
                 set_cursor=self._cull_set_cursor,
-                refresh_key=self._filmstrip.refresh_item,
+                refresh_key=self._refresh_strip_items,
                 open_species=self._batch_species,
                 open_rating=self._cull_open_rating):
             event.accept()
@@ -799,8 +939,12 @@ class LargeImageView(QDialog):
             self._geolocate_current()
             event.accept()
             return
-        if k in (Qt.Key.Key_Left, Qt.Key.Key_Right) and not desc_focused:
-            self._prev() if k == Qt.Key.Key_Left else self._next()
+        if k in (Qt.Key.Key_Left, Qt.Key.Key_Right,
+                 Qt.Key.Key_Up,   Qt.Key.Key_Down) and not desc_focused:
+            if k in (Qt.Key.Key_Left, Qt.Key.Key_Up):
+                self._prev()
+            else:
+                self._next()
             event.accept()
             return
         if k == Qt.Key.Key_BracketLeft and not desc_focused and self._keys:
@@ -835,7 +979,8 @@ class LargeImageView(QDialog):
 
         pos = f"  ({self._index + 1} of {len(self._keys)})"
         self.setWindowTitle((item.display_name or key) + pos)
-        self._filmstrip.set_current(key, self._index, len(self._keys))
+        for _fs in (self._filmstrip_left, self._filmstrip_bottom):
+            _fs.set_current(key, self._index, len(self._keys))
 
         # FILE
         self._file_key_lbl.setText(item.key)
@@ -982,7 +1127,7 @@ class LargeImageView(QDialog):
         if self._item is not None:
             self._rebuild_species_section(self._item, self._item.key)
             for k in upns:
-                self._filmstrip.refresh_item(k)
+                self._refresh_strip_items(k)
         self.species_committed.emit(upns)
         for k in upns:
             self.picture_changed.emit(k)
@@ -1054,7 +1199,8 @@ class LargeImageView(QDialog):
         return set(order[a:b + 1])
 
     def _update_selection_display(self):
-        self._filmstrip.set_selected(self._selected_keys)
+        for _fs in (self._filmstrip_left, self._filmstrip_bottom):
+            _fs.set_selected(self._selected_keys)
         n = len(self._selected_keys)
         self._sel_bar.setVisible(n > 0)
         if n > 0:
@@ -1122,7 +1268,7 @@ class LargeImageView(QDialog):
         progress.close()
 
         for k in changed:
-            self._filmstrip.refresh_item(k)
+            self._refresh_strip_items(k)
         for k in changed:
             self.picture_changed.emit(k)
 
@@ -1283,7 +1429,7 @@ class LargeImageView(QDialog):
 
         # Refresh filmstrip and notify host only after all writes are done.
         for k in changed:
-            self._filmstrip.refresh_item(k)
+            self._refresh_strip_items(k)
         for k in changed:
             self.picture_changed.emit(k)
         cur_key = self._keys[self._index] if self._keys else None
@@ -1297,7 +1443,7 @@ class LargeImageView(QDialog):
             return
         self._item.set_rating(n)
         self._rate_lbl.setText(f"Rate: {self._item.rate}" if self._item.rate is not None else "")
-        self._filmstrip.refresh_item(self._item.key)
+        self._refresh_strip_items(self._item.key)
         self.picture_changed.emit(self._item.key)
         if self._auto_advance and n > 0 and not self._selected_keys:
             self._next()
@@ -1308,7 +1454,7 @@ class LargeImageView(QDialog):
         self._item.set_color(color)
         self._apply_frame_color(color)
         self._rate_lbl.setText(f"Rate: {self._item.rate}" if self._item.rate is not None else "")
-        self._filmstrip.refresh_item(self._item.key)
+        self._refresh_strip_items(self._item.key)
         self.picture_changed.emit(self._item.key)
         if self._auto_advance and color and not self._selected_keys:
             self._next()
@@ -1420,20 +1566,27 @@ class LargeImageView(QDialog):
         if self._panel_first_show:
             self._panel_first_show = False
             st = get_window_state(self._geo_key)
-            # H-splitter: image | panel
+            # H-splitter: image | panel (both modes)
             if st["hsplit"] and len(st["hsplit"]) == 2:
                 self._splitter.setSizes(st["hsplit"])
             else:
                 panel_w = 300
                 image_w = max(200, self.width() - panel_w - self._splitter.handleWidth())
                 self._splitter.setSizes([image_w, panel_w])
-            # V-splitter: image+panel | filmstrip
-            if st["vsplit"] and len(st["vsplit"]) == 2:
-                self._v_splitter.setSizes(st["vsplit"])
+            # Load saved sizes for both positions; only apply the active one now.
+            # The inactive one is stored in _last_* for when the user toggles.
+            strip_w = _ITEM_W + 30
+            strip_h = _ITEM_H + 40
+            self._last_fsplit = (st["fsplit"] if st["fsplit"] and len(st["fsplit"]) == 2
+                                 else [strip_w, max(400, self.width() - strip_w
+                                                    - self._outer_splitter.handleWidth())])
+            self._last_vsplit = (st["vsplit"] if st["vsplit"] and len(st["vsplit"]) == 2
+                                 else [max(200, self.height() - strip_h
+                                          - self._v_splitter.handleWidth()), strip_h])
+            if self._strip_left:
+                self._outer_splitter.setSizes(self._last_fsplit)
             else:
-                strip_h = _ITEM_H + 40
-                top_h = max(200, self.height() - strip_h - self._v_splitter.handleWidth())
-                self._v_splitter.setSizes([top_h, strip_h])
+                self._v_splitter.setSizes(self._last_vsplit)
         QTimer.singleShot(0, self._fit_pixmap)
 
     def resizeEvent(self, event):
@@ -1442,7 +1595,10 @@ class LargeImageView(QDialog):
 
     def closeEvent(self, event):
         self._save_description()
+        # Save the ACTIVE splitter's live sizes; use _last_* for the inactive one
+        # (querying a splitter with a hidden child returns misleading 0 values).
         save_window(self, self._geo_key,
-                    vsplit=self._v_splitter.sizes(),
-                    hsplit=self._splitter.sizes())
+                    vsplit=self._v_splitter.sizes() if not self._strip_left else self._last_vsplit,
+                    hsplit=self._splitter.sizes(),
+                    fsplit=self._outer_splitter.sizes() if self._strip_left else self._last_fsplit)
         super().closeEvent(event)
