@@ -11,7 +11,7 @@ from pathlib import Path
 import webbrowser
 from gui.batch import BatchModuleRunner  # Assuming batch handler is here
 
-from utils.config import set_trip_settings, _config, get_trips_root
+from utils.config import set_trip_settings, _config, get_trips_root, persist_config
 from utils.trip_config import read_trip_ini
 from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, RecentDirectoryFieldQt, ImageFileFieldQt)
@@ -3165,6 +3165,13 @@ class InstallSmallMasterDialog(QDialog):
             db_note = "  Master database built."
         except Exception as e:
             db_note = f"  (DB build skipped: {e})"
+
+        # SmallMaster machines never hold the full RAW archive, so master writes
+        # must be permanently blocked.  Write both keys and save now so the lock
+        # survives even if the user never opens Repository Settings.
+        _config.set("master", "readonly", "yes")
+        _config.set("master", "readonly_locked", "yes")
+        persist_config()
 
         msg = f"✅ Installed in {elapsed:.0f}s → {target}{merged_note}{db_note}"
         if self.delete_check.isChecked():

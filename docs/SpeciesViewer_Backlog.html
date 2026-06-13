@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SpeciesViewer — Project Backlog</title>
+<style>
+  body {
+    font-family: Calibri, Arial, sans-serif;
+    font-size: 11pt;
+    margin: 2.5cm 2.5cm 2.5cm 2.5cm;
+    color: #1a1a1a;
+    line-height: 1.4;
+  }
+
+  h1 {
+    font-size: 20pt;
+    color: #1F3864;
+    border-bottom: 2px solid #1F3864;
+    padding-bottom: 4pt;
+    margin-top: 0;
+  }
+
+  h2 {
+    font-size: 13pt;
+    color: #2E5496;
+    border-bottom: 1px solid #9DC3E6;
+    padding-bottom: 2pt;
+    margin-top: 18pt;
+    margin-bottom: 6pt;
+  }
+
+  h3 {
+    font-size: 11pt;
+    color: #2E5496;
+    margin-top: 10pt;
+    margin-bottom: 4pt;
+  }
+
+  p {
+    margin: 4pt 0;
+  }
+
+  ul {
+    margin: 4pt 0 8pt 0;
+    padding-left: 20pt;
+  }
+
+  li {
+    margin-bottom: 3pt;
+  }
+
+  .meta {
+    font-size: 9pt;
+    color: #555;
+    margin-bottom: 16pt;
+  }
+
+  .tag-shipped {
+    background: #E2EFDA;
+    color: #375623;
+    padding: 1pt 5pt;
+    border-radius: 3pt;
+    font-size: 9pt;
+    font-weight: bold;
+  }
+
+  .tag-open {
+    background: #FFF2CC;
+    color: #7F6000;
+    padding: 1pt 5pt;
+    border-radius: 3pt;
+    font-size: 9pt;
+    font-weight: bold;
+  }
+
+  .tag-deferred {
+    background: #EDEDED;
+    color: #444;
+    padding: 1pt 5pt;
+    border-radius: 3pt;
+    font-size: 9pt;
+    font-weight: bold;
+  }
+
+  .tag-big {
+    background: #FCE4D6;
+    color: #833C00;
+    padding: 1pt 5pt;
+    border-radius: 3pt;
+    font-size: 9pt;
+    font-weight: bold;
+  }
+
+  .tag-pending-test {
+    background: #DEEAF1;
+    color: #1F3864;
+    padding: 1pt 5pt;
+    border-radius: 3pt;
+    font-size: 9pt;
+    font-weight: bold;
+  }
+
+  .done {
+    color: #888;
+    text-decoration: line-through;
+  }
+
+  .note {
+    font-size: 9.5pt;
+    color: #555;
+    margin-top: 6pt;
+    padding-left: 10pt;
+    border-left: 3px solid #D3D3D3;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 10pt;
+    margin-top: 6pt;
+  }
+
+  th {
+    background: #2E5496;
+    color: white;
+    padding: 4pt 8pt;
+    text-align: left;
+  }
+
+  td {
+    padding: 3pt 8pt;
+    border-bottom: 1px solid #E0E0E0;
+    vertical-align: top;
+  }
+
+  tr:nth-child(even) td {
+    background: #F7F9FC;
+  }
+
+  .section-divider {
+    border: none;
+    border-top: 1px solid #D0D0D0;
+    margin: 18pt 0 0 0;
+  }
+</style>
+</head>
+<body>
+
+<h1>SpeciesViewer — Project Backlog</h1>
+<div class="meta">Updated: 13 June 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+
+<p>Working task list for the SpeciesViewer nature-photo pipeline and GUI.
+Items are grouped by feature area. Each section shows what is open, what has been
+shipped recently, and what is deliberately deferred.</p>
+
+<!-- ============================================================ -->
+<h2>1. SD-card Ingest &amp; Culling</h2>
+
+<p>Milestones M0–M4 (copy, prefix, date-sort, validation, viewer), plus sidecar cache
+and GPS place-names, are all <span class="tag-shipped">SHIPPED &amp; TESTED</span>.</p>
+
+<h3>Still open</h3>
+<ul>
+  <li>
+    <strong>M5 — Bulk species assignment in the grid</strong> <span class="tag-open">NOT BUILT</span><br>
+    Marquee-select multiple picture cards, then stamp them all with one species keyword
+    (type-ahead auto-complete, GBIF online fallback). The current workflow handles one
+    picture at a time; this is the batch equivalent for day-wide or trip-wide assignment.
+  </li>
+  <li>
+    <strong>Cancel button during copy</strong> <span class="tag-pending-test">NEEDS LIVE TEST</span><br>
+    Shipped (commit e6f49a7): Close button becomes "Cancel" during a running copy; clicking
+    it stops the worker. Has not yet been tested against a real SD-card copy run.
+  </li>
+</ul>
+
+<h3>Deferred (GPS / geolocation fine-tuning)</h3>
+<ul>
+  <li>Tune Nominatim zoom level so Location returns a reserve or lake name rather than
+    the nearest road (current zoom 14 returns roads most of the time).</li>
+  <li>Expose lang / radius / zoom settings and an overwrite toggle in the UI.</li>
+  <li>Push the Municipality field into the pipeline CSV and website output
+    (currently written to XMP only).</li>
+  <li>Offline <em>reverse_geocoder</em> (scipy) fallback for use without internet.</li>
+  <li>Cache the LOCATION read per navigation step if it turns out to be laggy.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2>2. Virtual Trips <span class="tag-big">BIG FEATURE</span></h2>
+
+<p>The core infrastructure is working: create a virtual trip, populate per-day CSVs
+from the master, view pictures read-only. The main remaining work is <strong>publishing</strong>.</p>
+
+<ul>
+  <li>
+    <strong>Write Blog for virtual trips</strong> — currently a disabled placeholder (white dot)
+    in the virtual-trip overview. Needs a new batch module (<em>svv3WriteBlog</em>?) that
+    generates blog text from the curated species list, reading from
+    <code>data_pictures.csv</code> rather than the live master scan.
+  </li>
+  <li>
+    <strong>Build Website for virtual trips</strong> — also a placeholder. Needs the full
+    web-build pipeline adapted for virtual trips.
+  </li>
+  <li>
+    <em>Deferred:</em> VirtTrip panel refresh after "Create Virtual Trip" (currently requires
+    a restart to see the new trip in the list); web root update on trip switch.
+  </li>
+</ul>
+
+<!-- ============================================================ -->
+<h2>3. Master Database &amp; Editing</h2>
+
+<p>Phases 1–3 are <span class="tag-shipped">SHIPPED &amp; LIVE-TESTED</span>:
+Phase 1 (SQLite read-cache), Phase 2 (DB-first re-rating with WAL + CSV checkpoint),
+Phase 3 (add / delete pictures with reversible file-move to trash).
+The Rating Editor's Trip+Master scope is fully working.</p>
+
+<h3>Still open</h3>
+<ul>
+  <li>
+    <strong>"Undo last delete" UI button</strong> — the headless capability
+    (<code>undo_delete()</code>) is built and tested; it reads the trash manifest,
+    moves files back, and restores the DB rows. No menu item or toolbar button exists yet.
+  </li>
+  <li>
+    <strong>EXIF-cache mutable bucket prune</strong> — the mutable bucket (XMP / JPG files
+    keyed by path + mtime) grows without bound as master re-reads accumulate.
+    Add a size-capped or time-based eviction pass.
+  </li>
+</ul>
+
+<h3>Deferred</h3>
+<ul>
+  <li>Trip-side SQLite DBs — same pattern as the master DB, not urgent now that the
+    design is proven by the master implementation.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2>4. Trip-to-Master Pipeline</h2>
+
+<p>Both pieces are committed to <em>ClaudeSpecies</em>:
+TripMasterDashboard (commit 65d47e7) — a 7-stage ordered dialog in the Master menu;
+svr7DeleteFiles (commit bf23edd) — verifies the master copy exists before deleting a trip file.</p>
+
+<p>Both need a <span class="tag-pending-test">LIVE END-TO-END TEST</span> before they ship:</p>
+<ol>
+  <li>Run sv6 Freeze on a real trip → inspect <code>deletelist.csv</code>
+    (format: header row, semicolon-delimited <code>source_path;target_path</code>).</li>
+  <li>Run svr7 → verify that the skip-warning fires correctly when the master target
+    is absent.</li>
+  <li>After tests pass: wire svr7DeleteFiles into TripMasterDashboard stage 7
+    as a <strong>Run</strong> button (today stage 7 is informational-only).</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2>5. SmallMaster (Laptop-Friendly Master)</h2>
+
+<p>Full feature <span class="tag-shipped">SHIPPED</span> (commits 4b8a7ce → 1602203):</p>
+<ul>
+  <li>BigBoy: Utilities → Small Master Database → Create ZIP — packages JPGs, XMPs,
+    and the four metadata CSVs with relative paths; RAWs excluded; ZIP_STORED for JPGs.</li>
+  <li>SmallBoy: Utilities → Install Small Master → pick ZIP →
+    shows summary → extracts → merges local speciescollection additions → rebuilds master DB.</li>
+  <li>DB rebuild resolves root-relative paths back to absolute for the current machine.</li>
+</ul>
+
+<h3>Pending</h3>
+<ul>
+  <li><strong>End-to-end live test on SmallBoy</strong> — full flow: Create ZIP on BigBoy →
+    copy file → Install on SmallBoy → confirm app opens, master DB rebuilds, species images
+    appear correctly.</li>
+  <li><em>Operational reminder:</em> enable Master Read-Only in Repository Settings on
+    SmallBoy once tested.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2>6. Taxonomy &amp; Species</h2>
+
+<p>All four items are still pending:</p>
+<ul>
+  <li>
+    <strong>Sequence redesign</strong> — replace the "040 passeriformes" text-prefix sort
+    with an eBird <code>TAXON_ORDER</code> float column. Schema change touching the species
+    tree and all sort / display logic.
+  </li>
+  <li>
+    <strong>Auto-detect obscure flag</strong> — derive from GBIF family membership
+    (Orchidaceae, Orobanchaceae, etc.) using data already fetched during species lookup.
+    No extra API call needed.
+  </li>
+  <li>
+    <strong>Placeholder-species cleanup</strong> — <code>? &lt;name&gt;</code> entries are
+    intentional placeholders that propagate from trip to master via merge.
+    Cleaning them up requires coordinated changes in both trip and master collections.
+  </li>
+  <li>
+    <strong>Regional most-likely-birds list</strong> (eBird API) — weighted auto-complete
+    for species assignment in the culling viewer. Deferred.
+  </li>
+</ul>
+
+<!-- ============================================================ -->
+<h2>7. Rating &amp; Website</h2>
+
+<ul>
+  <li>
+    <strong>Rating-formula tuning</strong> <span class="tag-deferred">DEFERRED</span><br>
+    Fine-tuning the weights (Red/Yellow/Green boost, star / size / DxO / description
+    balance) is deliberately deferred to the end of the viewer-convergence work.
+    Tuning now risks wasting effort before the full picture set is finalised.
+    This formula directly feeds the website best-pick selection.
+  </li>
+  <li>
+    <strong>HEIC / PNG sidecar capture</strong> <span class="tag-open">NEEDS DECISION</span><br>
+    HEIC-only and PNG-only pictures have no writable sidecar, so rating and colour
+    cannot be stored durably (controls are greyed in the UI today).
+    Three options under consideration:
+    <ul>
+      <li>(a) Write a separate <code>.xmp</code> sidecar alongside the HEIC</li>
+      <li>(b) Patch the <code>.dop</code> DxO project file</li>
+      <li>(c) Write directly into the HEIC container</li>
+    </ul>
+    User decision required before coding starts.
+  </li>
+</ul>
+
+<!-- ============================================================ -->
+<h2>8. Viewer Convergence — Horizon</h2>
+
+<p>The core convergence work is done. Summary of completed items:</p>
+<ul>
+  <li class="done">Splitter sizes persisted across sessions</li>
+  <li class="done">Rating-engine description write-back</li>
+  <li class="done">SpeciesInfoDialog refactored into an embeddable panel</li>
+  <li class="done">Blue / Purple batch-delete in all three viewers</li>
+  <li class="done">Shared PictureCard + UPN-converged preview grid</li>
+  <li class="done">LargeImageView + filmstrip + right panel (PhotoMechanic-style layout)</li>
+</ul>
+
+<h3>Remaining horizon items (agreed design, not yet built)</h3>
+<ul>
+  <li>
+    <strong>Filmstrip adaptive position</strong> — bottom strip for landscape pictures,
+    but should move to a left vertical strip when the majority of pictures are portrait
+    (2:3 / 3:4 ratio) or when the monitor is wider than tall.
+  </li>
+  <li>
+    <strong>Inline master comparison</strong> — show how many pictures of this species
+    already exist in the master alongside the new trip cards ("cull against history").
+    Design open: inline count badge, or only visible in Trip+Master scope.
+  </li>
+  <li>
+    <strong>Filmstrip ↔ grid sort/filter sync</strong> — decide whether the filmstrip
+    carries the grid's active species / colour filter and what resets it when navigating
+    out of the filtered view.
+  </li>
+</ul>
+
+<!-- ============================================================ -->
+<h2>9. Usability &amp; Polish</h2>
+
+<ul>
+  <li>
+    <strong>Virtual-trip preview path — needs live test</strong><br>
+    <code>FileListPreviewCollection</code> and <code>FilePreviewItem</code> back the
+    virtual-trip <code>file_list</code> mode and metadata-less day folders.
+    Import-verified but not yet exercised in a running app — confirm thumbnails render
+    and the filter buttons are greyed correctly.
+  </li>
+  <li>
+    <strong>Preview cards don't resize live</strong><br>
+    Card width is fixed at build time and only recomputed when the column spinner changes
+    (matches the Rating Editor's behaviour). If this feels wrong in daily use,
+    add a debounced <code>resizeEvent</code> that rebuilds at the new card width.
+  </li>
+  <li>
+    <strong>Commit the config state files doc</strong> <span class="tag-open">SMALL TASK</span><br>
+    <code>docs/config_state_files.md</code> has been written (covers machine / master /
+    trip / per-day / per-card scopes, deletion safety table) but is currently untracked.
+    Stage it and commit.
+  </li>
+  <li>
+    <strong>"Undo last delete" UI button</strong> — the headless capability is done
+    (see item 3); surface it as a menu item or button in the Rating Editor or Database
+    Settings dialog.
+  </li>
+  <li>
+    <em>Watch point — Translation:</em> when a source text is edited, its CRC changes
+    and the old cache entry becomes an orphan. Not a crash, but stale entries accumulate.
+    Also: if a HEIC ever holds a competing Headline/Description value, the pipeline could
+    re-resolve to the HEIC's stale text after a re-read (not observed in testing; watch only).
+  </li>
+  <li>
+    <em>Deferred:</em> user-configurable cache locations (all currently in <code>%LOCALAPPDATA%</code>).
+  </li>
+</ul>
+
+<!-- ============================================================ -->
+<h2>10. Cross-platform (Mac) Prep</h2>
+
+<p>First pass <span class="tag-shipped">DONE</span> (commit 8701821):
+<code>open_path()</code> helper that routes to the correct OS call;
+Windows-only defaults in dialogs cleared.</p>
+
+<p>Full portability sweep still pending before the MacBook switch:</p>
+<ul>
+  <li>Remaining <code>os.startfile()</code> call sites — no equivalent on macOS.</li>
+  <li>Hardcoded paths containing drive letters (<code>E:/Dropbox/…</code>) or backslashes.</li>
+  <li><code>QSettings</code> registry usage — macOS uses <code>~/Library/Preferences</code>,
+    not the Windows registry.</li>
+  <li>Case-sensitivity traps — file lookups that work on Windows (case-insensitive NTFS)
+    but fail silently on macOS (case-sensitive HFS+), e.g. <code>file.jpg</code>
+    vs <code>file.JPG</code>.</li>
+  <li><code>subprocess</code> calls that assume Windows path conventions or Windows-only
+    tools (<code>exiftool.exe</code> etc.).</li>
+</ul>
+
+<!-- ============================================================ -->
+<hr class="section-divider">
+
+<h2>Recently Completed (since May 2026)</h2>
+
+<p>Items removed from the active backlog because they are now shipped and working:</p>
+
+<table>
+  <tr>
+    <th>Area</th>
+    <th>What was done</th>
+    <th>Key commit(s)</th>
+  </tr>
+  <tr>
+    <td>Codebase restructure</td>
+    <td><code>qt/</code> → <code>speciesviewer/</code>, <code>ghexif/</code> → <code>engine/</code>,
+      <code>bin/</code> fully cleaned up; app confirmed working after restructure.</td>
+    <td>fc3060d, f8069d1</td>
+  </tr>
+  <tr>
+    <td>100% decode quality</td>
+    <td>Decode Quality settings dialog (4 presets + custom); rawpy LibRaw 0.22 green-cast bug fixed;
+      <code>raw_decode_lab.py</code> A/B tool retained as standalone.</td>
+    <td>b4d52b3</td>
+  </tr>
+  <tr>
+    <td>Geolocation (activation)</td>
+    <td>XMP writes active (DRY_RUN_COMPARE off); GPS badge in culling viewer;
+      large-view repaint; overwrite=False fill-empty-only mode.</td>
+    <td>d93c3b6</td>
+  </tr>
+  <tr>
+    <td>Blue / Purple batch-delete</td>
+    <td>✖B / ✖P buttons in preview and rating editor grids; HARD INVARIANT enforced
+      (JPG-bearing UPN never trashed); confirmation dialog with skip count.</td>
+    <td>d46e978</td>
+  </tr>
+  <tr>
+    <td>Preview caches to AppData</td>
+    <td>All preview / fullres caches moved to <code>%LOCALAPPDATA%\SpeciesViewer\</code>;
+      unified cache manager dialog.</td>
+    <td>5bd8922</td>
+  </tr>
+  <tr>
+    <td>Sidecar metadata cache</td>
+    <td>Per-folder <code>.sv_sidecar_cache.json</code>; culling viewer opens instantly
+      after first ingest.</td>
+    <td>17c9db9</td>
+  </tr>
+  <tr>
+    <td>Blog extras (landscape)</td>
+    <td>Non-species context photos in day blog via <code>landscape</code> keyword +
+      Headline/Description; excluded from master and species website.</td>
+    <td>6e0fe3f</td>
+  </tr>
+  <tr>
+    <td>Translation validation</td>
+    <td>verified bit + source_lang on per-trip cache; per-day validation panel
+      (edit source → XMP + translation + verify); trip-overview 🟢/🔵 sphere.
+      translatelib consolidated to one copy.</td>
+    <td>274630b, df9a7c0, 6758386, beee982</td>
+  </tr>
+  <tr>
+    <td>Master SQLite (re-rating)</td>
+    <td>DB-first re-rating (Phase 2): exiftool XMP write + WAL + debounced CSV checkpoint +
+      crash recovery + Read-Only toggle + Database dialog.</td>
+    <td>bc30db6</td>
+  </tr>
+  <tr>
+    <td>Master add / delete</td>
+    <td>Phase 3: add/delete pictures in master; reversible file-move to <code>.trash/</code>;
+      trash manifest; JPG-protection invariant; species-count maintenance in DB.</td>
+    <td>2a9c42e</td>
+  </tr>
+  <tr>
+    <td>Explicit root-dir config keys</td>
+    <td><code>tripsrootdirectory</code> and <code>virttriprootdirectory</code> added to
+      config and Repositories dialog; no longer derived via <code>.parent()</code>.</td>
+    <td>a6aadda</td>
+  </tr>
+  <tr>
+    <td>Description write-back</td>
+    <td>Rating-engine description write-back for trip pictures;
+      splitter sizes persisted across sessions.</td>
+    <td>a50063e, 35a2f9c</td>
+  </tr>
+  <tr>
+    <td>SpeciesInfoPanel</td>
+    <td>SpeciesInfoDialog refactored into embeddable <code>SpeciesInfoPanel(QWidget)</code>;
+      used in large-viewer right panel and grid context menu.</td>
+    <td>—</td>
+  </tr>
+  <tr>
+    <td>SmallMaster</td>
+    <td>ZIP export on BigBoy + Install dialog on SmallBoy + speciescollection merge +
+      progress + DB rebuild on install.</td>
+    <td>1602203</td>
+  </tr>
+  <tr>
+    <td>Mac portability (first pass)</td>
+    <td><code>open_path()</code> helper; Windows-only dialog defaults cleared.</td>
+    <td>8701821</td>
+  </tr>
+</table>
+
+<hr class="section-divider">
+<p class="note">
+  <strong>Reference:</strong> Viewer keybindings → <code>docs/viewer_keybindings.md</code>.
+  Full ingest / culling detail → project_sdcard_ingest memory.
+  Master DB phases → project_master_db memory.
+  SmallMaster detail → project_small_master memory.
+</p>
+
+</body>
+</html>

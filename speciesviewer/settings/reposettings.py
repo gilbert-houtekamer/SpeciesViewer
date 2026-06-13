@@ -23,9 +23,16 @@ class RepoSettingsDialog(QDialog):
         # Master Read-Only: when checked, the Rating Editor cannot write back to
         # the master (re-rating master pictures). Default ON (safe) — needed on a
         # machine that does not hold the complete master (e.g. the laptop).
+        # readonly_locked = yes means the SmallMaster install has permanently
+        # blocked writes; the checkbox is shown but greyed out.
+        _ro_locked = _config.get("master", "readonly_locked", fallback="no").strip().lower() == "yes"
         self.master_readonly = QCheckBox("Master Read-Only (block master re-rating)")
         self.master_readonly.setChecked(
             _config.get("master", "readonly", fallback="yes").strip().lower() != "no")
+        if _ro_locked:
+            self.master_readonly.setEnabled(False)
+            self.master_readonly.setToolTip(
+                "Locked — this machine holds a SmallMaster subset and cannot write to the master.")
         layout.addWidget(self.master_readonly)
         layout.addWidget(self._divider())
 
@@ -103,8 +110,9 @@ class RepoSettingsDialog(QDialog):
     def save_settings(self):
         _config.set("master", "masterbiotadatabase", self.master_field.text())
         _config.set("master", "masterbiotawebroot", self.master_web.text())
-        _config.set("master", "readonly",
-                    "yes" if self.master_readonly.isChecked() else "no")
+        if _config.get("master", "readonly_locked", fallback="no").strip().lower() != "yes":
+            _config.set("master", "readonly",
+                        "yes" if self.master_readonly.isChecked() else "no")
         _config.set("trip", "tripbiotadatabase", self.trip_field.text())
         _config.set("trip", "tripbiotawebroot", self.trip_web.text())
         if self.trips_root_field.text():
