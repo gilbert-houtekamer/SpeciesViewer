@@ -251,6 +251,10 @@ def main(args, config):
 
     project = engine.projectlib.Project(virttrip_root, "", web_root)
     project.initMasterAndTrip(config, inittrip=False)
+    master_web = config.get("master", "MasterBiotaWebRoot", fallback="/nature/")
+    project.master_biota_web_root = master_web
+    if project.Trip is not None:
+        project.Trip.master_repository_web = master_web
 
     if not project.online:
         raise SVException("svv3WriteBlog: blog cannot be created without internet access")
@@ -290,6 +294,15 @@ def main(args, config):
     blog.read_BlogAdmin()
     sftp = blog.openSFTP(password)
 
+    # Open FTP cache BEFORE the day loop — uploadBlog → put_r_portable →
+    # cachedUpload all access self.openFTPCache, which is the method itself
+    # until openFTPCache() is called and replaces it with a dict.
+    admin_dir = os.path.join(project.getRepositoryPath(), "admin")
+    os.makedirs(admin_dir, exist_ok=True)
+    location_cache = os.path.join(admin_dir, "FTPcache.json")
+    if sftp is not None:
+        sftp.openFTPCache(location_cache)
+
     # Ensure the remote trip directories exist.  Regular trips get these created
     # by sv7WriteCommit; virtual trips need them on first blog upload.
     if sftp is not None:
@@ -317,16 +330,42 @@ def main(args, config):
         # Reset species counters so only this day's pictures contribute
         sp.readSpeciesInfo(master_species_csv, True)
 
-        # Load this day's data
-        read_file(project,     str(day_dir / "data_files.csv"),    silent=True)
+        # Load this day's data; capture time range for the blog's picture filter
+        _, from_time, last_time = read_file(project, str(day_dir / "data_files.csv"), silent=True)
         read_pictures(project, str(day_dir / "data_pictures.csv"))
+
+        # collectBestJPGs filters by Blog.from_time / Blog.last_time.
+        # Without these, last_time == "" so every DateTimeOriginal comparison
+        # fails and no pictures are selected for the blog.
+        blog.from_time = from_time
+        blog.last_time = last_time
 
         if not project.files_dict:
             logger.warning(f"  {day_dir.name}: empty after load — skipping")
             continue
 
+        # Save master BestJPG/BestJPGPathName before addSpeciesInformation
+        # overwrites them with the virtual trip's target path.  For virtual
+        # trips the per-day data_pictures.csv is a direct copy of master rows,
+        # so these fields point at the actual sorted JPGs in the master.
+        _master_best = {
+            k: (upn.get("BestJPG", ""), upn.get("BestJPGPathName", ""))
+            for k, upn in project.UniquePictureName_dict.items()
+        }
+
         # Build species info for this day
         project.addSpeciesInformation(sp, 0)
+
+        # Restore master JPG paths for UPNs where no JPG was found in
+        # files_dict (RAW-only UPNs have no in-camera or DxO JPG in the
+        # per-day data_files.csv, so addSpeciesInformation leaves BestJPG="").
+        for k, upn in project.UniquePictureName_dict.items():
+            if not upn.get("BestJPG", ""):
+                master_jpg, master_path = _master_best.get(k, ("", ""))
+                if master_jpg:
+                    upn["BestJPG"] = master_jpg
+                    upn["BestJPGPathName"] = master_path
+
         project.addPicturesToSpecies(sp, 0, 0)
 
         # DEBUG: diagnose why pictures may be excluded from the blog
@@ -384,10 +423,6 @@ def main(args, config):
     blog.write_BlogAdmin()
     blog.updateIndexPage()
 
-    admin_dir = os.path.join(project.getRepositoryPath(), "admin")
-    os.makedirs(admin_dir, exist_ok=True)
-    location_cache = os.path.join(admin_dir, "FTPcache.json")
-    sftp.openFTPCache(location_cache)
     blog.uploadBlogIndex(sftp)
     blog.uploadBlogAdmin(sftp)
     sftp.closeFTPCache(location_cache)

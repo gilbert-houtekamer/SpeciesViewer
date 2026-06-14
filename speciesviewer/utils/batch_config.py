@@ -22,27 +22,28 @@ def generate_svconfig_ini(svconfig_path="svconfig.ini", master_mode=False,
 
     species_csv = os.path.join(master_db, "metadata", "active", "species.csv")
 
+    master_web = _config.get("master", "masterbiotawebroot", fallback="/nature/")
     if master_mode:
         cfg["repository"] = {
             "BiotaDatabase":    master_db,
-            "BiotaWebRoot":     _config.get("master", "masterbiotawebroot", fallback="/nature/"),
+            "BiotaWebRoot":     master_web,
             "ReferenceSpecies": species_csv,
         }
-        cfg["master"] = {"MasterBiotaDatabase": ""}
+        cfg["master"] = {"MasterBiotaDatabase": "", "MasterBiotaWebRoot": master_web}
     elif virttrip_mode:
         cfg["repository"] = {
             "BiotaDatabase":    _config.get("virttrip", "virttripbiotadatabase", fallback=""),
             "BiotaWebRoot":     _config.get("virttrip", "virttripbiotawebroot", fallback=""),
             "ReferenceSpecies": species_csv,
         }
-        cfg["master"] = {"MasterBiotaDatabase": master_db}
+        cfg["master"] = {"MasterBiotaDatabase": master_db, "MasterBiotaWebRoot": master_web}
     else:
         cfg["repository"] = {
             "BiotaDatabase":    _config.get("trip", "tripbiotadatabase", fallback=""),
             "BiotaWebRoot":     _config.get("trip", "tripbiotawebroot", fallback=""),
             "ReferenceSpecies": species_csv,
         }
-        cfg["master"] = {"MasterBiotaDatabase": master_db}
+        cfg["master"] = {"MasterBiotaDatabase": master_db, "MasterBiotaWebRoot": master_web}
     pic_dir = _config.get("project", "picturedirectory", fallback="")
     if master_mode and pic_dir:
         # The GUI's picturedirectory points at the active day inside a

@@ -1104,10 +1104,10 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
         elif tokenno == 148 or tokenno == 149:            # banner link
             language = 'nl' if tokenno == 148 else 'en'
             if MyProject.Trip != None:
-                directory = MyProject.Trip.getMasterBiotaWebRoot()     # path to current main repository, NOT to trip also for subdirectories   
+                directory = MyProject.Trip.getMasterBiotaWebRoot()     # path to current main repository, NOT to trip also for subdirectories
             else:
-                directory = BiotaWebRoot
-            workstr = '<li><a href="' + directory + 'tripindex-' + language + '.html">Trips</a></li>'         
+                directory = getattr(MyProject, 'master_biota_web_root', BiotaWebRoot)
+            workstr = '<li><a href="' + directory + 'tripindex-' + language + '.html">Trips</a></li>'
             return workstr
         elif tokenno == 150 or tokenno == 151:
             language = 'nl' if tokenno == 150 else 'en'

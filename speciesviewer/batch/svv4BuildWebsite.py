@@ -75,6 +75,10 @@ def main(args, config):
 
     project = engine.projectlib.Project(virttrip_root, "", web_root)
     project.initMasterAndTrip(config, inittrip=False)
+    master_web = config.get("master", "MasterBiotaWebRoot", fallback="/nature/")
+    project.master_biota_web_root = master_web
+    if project.Trip is not None:
+        project.Trip.master_repository_web = master_web
 
     sc = engine.speciesclassification.SpeciesClassification(project)
     project.registerSpeciesClassification(sc)
@@ -135,6 +139,11 @@ def main(args, config):
     sftp.safeMkdir(prefix + bio_web.rstrip("/") + "/admin")
     sftp.safeMkdir(prefix + bio_web.rstrip("/") + "/includes web")
 
+    admin_dir = os.path.join(project.getRepositoryPath(), "admin")
+    os.makedirs(admin_dir, exist_ok=True)
+    location_cache = os.path.join(admin_dir, "FTPcache.json")
+    sftp.openFTPCache(location_cache)
+
     # Upload 'includes web/' (CSS, banner, category images).
     # sv1MakeReposity does this for regular trips; virtual trips skip sv1 so the
     # banner is missing until this step runs.
@@ -144,11 +153,6 @@ def main(args, config):
                             prefix + bio_web.rstrip("/") + "/includes web",
                             preserve_mtime=True)
         logger.info("  Uploaded 'includes web/' (banner/CSS).")
-
-    admin_dir = os.path.join(project.getRepositoryPath(), "admin")
-    os.makedirs(admin_dir, exist_ok=True)
-    location_cache = os.path.join(admin_dir, "FTPcache.json")
-    sftp.openFTPCache(location_cache)
 
     # 1. Upload species HTML pages + full-size JPGs from frozen/biota/
     frozen_biota = os.path.join(frozen, "biota")

@@ -475,7 +475,7 @@ class VirttripWriteBlogDialog(QDialog):
         score_row.addWidget(QLabel("Minimum rating (0–100):"))
         self.min_score_spin = QSpinBox()
         self.min_score_spin.setRange(0, 100)
-        self.min_score_spin.setValue(25)
+        self.min_score_spin.setValue(int(_config.get("virttrip", "minimum_score", fallback="25")))
         self.min_score_spin.setToolTip(
             "Pictures with a computed rating below this value are excluded from the blog.\n"
             "Lower this if blog pages appear empty."
@@ -509,6 +509,7 @@ class VirttripWriteBlogDialog(QDialog):
             return base_url
 
     def on_run(self):
+        set_setting("virttrip", "minimum_score", str(self.min_score_spin.value()))
         # Build menu_spec dynamically so the current minimum_score is captured
         menu_spec = _virttrip_spec(
             batch.svv3WriteBlog.main,
