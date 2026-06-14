@@ -99,6 +99,16 @@ def main(args, config):
     pictures_by_name = {row["UniquePictureName"]: row for row in all_pic_rows
                         if "UniquePictureName" in row}
 
+    # Build a UPN→XMP-rows index once, so we can add sidecar rows per day.
+    # XMP files carry XMP:Rating which computeRating needs; they lack
+    # EXIF:DateTimeOriginal so they would otherwise be excluded by the date filter.
+    xmp_by_upn: dict = {}
+    for r in all_file_rows:
+        if r.get("WindowsExtension", "").lower() == "xmp":
+            upn = r.get("UniquePictureName", "")
+            if upn:
+                xmp_by_upn.setdefault(upn, []).append(r)
+
     review_root = os.path.join(virttrip_root, "metadata", "review")
     days_written = 0
     current = from_date
@@ -106,12 +116,20 @@ def main(args, config):
         day_label = current.strftime("%Y-%m-%d")   # directory name
         exif_day  = current.strftime("%Y:%m:%d")   # prefix in EXIF:DateTimeOriginal
 
-        day_files = [r for r in all_file_rows
-                     if r.get("EXIF:DateTimeOriginal", "").startswith(exif_day)]
+        # Primary files: JPG/RAW that have a matching DateTimeOriginal
+        dated_files = [r for r in all_file_rows
+                       if r.get("EXIF:DateTimeOriginal", "").startswith(exif_day)]
 
-        if day_files:
-            day_names    = {r.get("UniquePictureName", "") for r in day_files}
+        if dated_files:
+            day_names = {r.get("UniquePictureName", "") for r in dated_files}
             day_names.discard("")
+
+            # Also include XMP sidecars for those UPNs; they carry XMP:Rating
+            # which computeRating reads when building the blog.
+            day_xmps = [xmp_row for upn in day_names
+                        for xmp_row in xmp_by_upn.get(upn, [])]
+            day_files = dated_files + day_xmps
+
             day_pictures = [pictures_by_name[n] for n in day_names if n in pictures_by_name]
 
             day_dir = os.path.join(review_root, day_label)

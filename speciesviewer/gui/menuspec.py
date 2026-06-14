@@ -9,7 +9,8 @@ from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDial
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
         TestbedDialog, BlogAdminDialog, PhotoMechanicDialog,
         RescanMasterCacheDialog, SmallMasterDialog, InstallSmallMasterDialog, TripMasterDashboard)
-from gui.virttrip_process import VirtualTripCreationDialog, ExtractDaysDialog
+from gui.virttrip_process import (VirtualTripCreationDialog, ExtractDaysDialog,
+                                   VirttripWriteBlogDialog, VirttripBuildWebsiteDialog)
 from utils.config import _config
 import os
 from settings.globalsettings import GlobalSettingsDialog
@@ -41,6 +42,8 @@ import batch.svu9SmallMaster
 import batch.svu7Testbed
 import batch.svv1MakeVirtualRepository
 import batch.svv2ExtractDays
+import batch.svv3WriteBlog
+import batch.svv4BuildWebsite
 import engine.exifcache as exifcache
 
 
@@ -611,6 +614,15 @@ def build_menu_spec(main_window):
             "Create Virtual Trip": virttrip_create,
             f"{MenuSpec.separator()}_vt1": None,
             "Extract Days from Master": extract_days,
+            f"{MenuSpec.separator()}_vt2": None,
+            "Write Virtual Trip Blogs": MenuSpec(
+                callback=lambda: VirttripWriteBlogDialog(main_window).exec(),
+                title="Write Virtual Trip Blogs",
+            ),
+            "Build Virtual Trip Website": MenuSpec(
+                callback=lambda: VirttripBuildWebsiteDialog(main_window).exec(),
+                title="Build Virtual Trip Website",
+            ),
         },
         "Utilities": {
         #     "BirdingBreaks": None, # PROCESS BIRDING BREAK FILES

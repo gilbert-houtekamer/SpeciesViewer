@@ -363,18 +363,18 @@ class Project:
                 self.breadcrumb.addBCsimple("/nature/intro-nl.html", "Natuur")
                 if self.Trip:
                     self.breadcrumb.addBCsimple("/nature/tripindex-nl.html", "Trips")
-                    self.breadcrumb.addBCsimple("/trips/" + self.Trip.tripname + "/summaries/all biota species-nl.html", "Trip soorten")
+                    self.breadcrumb.addBCsimple(self.Trip.web_prefix + self.Trip.tripname + "/summaries/all biota species-nl.html", "Trip soorten")
                 else:
                     self.breadcrumb.addBCsimple("/nature/summaries/all biota species-nl.html", "Alle soorten")
             else:
                 self.breadcrumb.addBCsimple("/nature/intro-en.html", "Nature")
                 if self.Trip:
                     self.breadcrumb.addBCsimple("/nature/tripindex-en.html", "Trips")
-                    self.breadcrumb.addBCsimple("/trips/" + self.Trip.tripname + "/summaries/all biota species-en.html", "Trip species")
+                    self.breadcrumb.addBCsimple(self.Trip.web_prefix + self.Trip.tripname + "/summaries/all biota species-en.html", "Trip species")
                 else:
                     self.breadcrumb.addBCsimple("/nature/summaries/all biota species-en.html", "All species")
             if self.Trip:
-                self.breadcrumb.appendLevelBC(species, "/trips/" + self.Trip.tripname + "/")
+                self.breadcrumb.appendLevelBC(species, self.Trip.web_prefix + self.Trip.tripname + "/")
             else:
                 self.breadcrumb.appendLevelBC(species,"/nature/")
 
@@ -426,18 +426,18 @@ class Project:
                 self.breadcrumb.addBCsimple("/nature/intro-nl.html", "Natuur")
                 if self.Trip:
                     self.breadcrumb.addBCsimple("/nature/tripindex-nl.html", "Trips")
-                    self.breadcrumb.addBCsimple("/trips/" + self.Trip.tripname + "/summaries/all biota species-nl.html", "Trip soorten")
+                    self.breadcrumb.addBCsimple(self.Trip.web_prefix + self.Trip.tripname + "/summaries/all biota species-nl.html", "Trip soorten")
                 else:
                     self.breadcrumb.addBCsimple("/nature/summaries/all biota species-nl.html", "Alle soorten")
             else:
                 self.breadcrumb.addBCsimple("/nature/intro-en.html", "Nature")
                 if self.Trip:
                     self.breadcrumb.addBCsimple("/nature/tripindex-en.html", "Trips")
-                    self.breadcrumb.addBCsimple("/trips/" + self.Trip.tripname + "/summaries/all biota species-en.html", "Trip species")
+                    self.breadcrumb.addBCsimple(self.Trip.web_prefix + self.Trip.tripname + "/summaries/all biota species-en.html", "Trip species")
                 else:
                     self.breadcrumb.addBCsimple("/nature/summaries/all biota species-en.html", "All species")
             if self.Trip:
-                self.breadcrumb.appendLevelBC(species, "/trips/" + self.Trip.tripname + "/")
+                self.breadcrumb.appendLevelBC(species, self.Trip.web_prefix + self.Trip.tripname + "/")
             else:
                 self.breadcrumb.appendLevelBC(species,"/nature/")
 
@@ -465,18 +465,18 @@ class Project:
             self.breadcrumb.addBCsimple("/nature/intro-nl.html", "Natuur")
             if self.Trip:
                 self.breadcrumb.addBCsimple("/nature/tripindex-nl.html", "Trips")
-                self.breadcrumb.addBCsimple("/trips/" + self.Trip.tripname + "/summaries/all biota species-nl.html", "Trip soorten")
+                self.breadcrumb.addBCsimple(self.Trip.web_prefix + self.Trip.tripname + "/summaries/all biota species-nl.html", "Trip soorten")
             else:
                 self.breadcrumb.addBCsimple("/nature/summaries/all biota species-nl.html", "Alle soorten")
         else:
             self.breadcrumb.addBCsimple("/nature/intro-en.html", "Nature")
             if self.Trip:
                 self.breadcrumb.addBCsimple("/nature/tripindex-en.html", "Trips")
-                self.breadcrumb.addBCsimple("/trips/" + self.Trip.tripname + "/summaries/all biota species-en.html", "Trip species")
+                self.breadcrumb.addBCsimple(self.Trip.web_prefix + self.Trip.tripname + "/summaries/all biota species-en.html", "Trip species")
             else:
                 self.breadcrumb.addBCsimple("/nature/summaries/all biota species-en.html", "All species")
         #biota is implied, do not show this
-        #self.breadcrumb.appendLevelBC(self.sp.species_dict[speciesname], "/trips/" + self.Trip.tripname)
+        #self.breadcrumb.appendLevelBC(self.sp.species_dict[speciesname], self.Trip.web_prefix + self.Trip.tripname)
 
         speciesOverview = self.getTemplateLines("allspecies-" + language + ".html")
         outpath = os.path.join(biota, 'summaries', f'all {speciesname} species-{language}.html').lower()
@@ -501,7 +501,7 @@ class Project:
             self.breadcrumb.addBCsimple("/nature/" + simplepage + '-' + language + ".html", natuur)
             if self.Trip:
                 self.breadcrumb.addBCsimple("/nature/tripindex-" + language + ".html", "Trips")
-                self.breadcrumb.addBCsimple("/trips/" + self.Trip.tripname + "/" + simplepage + '-' + language + ".html", "Intro")
+                self.breadcrumb.addBCsimple(self.Trip.web_prefix + self.Trip.tripname + "/" + simplepage + '-' + language + ".html", "Intro")
 
         simplepage += '-' + language
         speciesOverview = self.getTemplateLines(simplepage + ".html")
@@ -560,9 +560,12 @@ class Project:
         bestresult = ""
         # preferred location
         for file in filelist:
-            ext = self.files_dict[file]['WindowsExtension']
+            filedata = self.files_dict.get(file)
+            if filedata is None:
+                continue   # file absent from files_dict (e.g. XMP not extracted for virtual trip)
+            ext = filedata['WindowsExtension']
             if ext.upper() in preferredtypes:
-                bestresult = self.files_dict[file].get(column,"")
+                bestresult = filedata.get(column, "")
                 if bestresult != "":
                     return bestresult
 
@@ -741,11 +744,16 @@ class Project:
             species = None  # reset; otherwise the second JPG loop can pour this UPN's data into the previous UPN's species record
             # Read species data and put in the UniquePictureName (upn)
             for filename in picture['Files']:
-                thisfile = self.files_dict[filename]
+                try:
+                    thisfile = self.files_dict[filename]
+                except KeyError:
+                    # File not in files_dict (e.g. XMP sidecar absent from a
+                    # virtual-trip day extract) — skip and try the next file.
+                    continue
                 if thisfile['XMP:Subject'] != "":
                     subject_in_jpg = thisfile['XMP:Subject']
                 else:
-                    subject_in_jpg = thisfile['IPTC:Keywords']                    
+                    subject_in_jpg = thisfile['IPTC:Keywords']
                 if subject_in_jpg != "":
                     scientificname = sp.getSpecies(subject_in_jpg)
                     if (scientificname == "" or scientificname is None) and self.sc.isBlogExtra(subject_in_jpg):
@@ -793,7 +801,10 @@ class Project:
 
             # find JPG (if there is more than 1, find the best JPG)
             for filename in picture['Files']:
-                thisfile = self.files_dict[filename]
+                try:
+                    thisfile = self.files_dict[filename]
+                except KeyError:
+                    continue
                 rating = 0
                 if thisfile['WindowsExtension'] in ['jpg','jpeg']:
                     if filename.find('-small') != -1: continue                          # do not -small picture for BestJPG etc.
@@ -953,7 +964,9 @@ class Project:
             for f in upn['Files'] if f in self.files_dict)
         # file type logic
         for filename in upn['Files']:
-            file = self.files_dict[filename]
+            file = self.files_dict.get(filename)
+            if file is None:
+                continue
             # copy Label to Rating
             if file['XMP:Rating'] in ['0', ''] and file['XMP:Label'] != '':
                 label = file['XMP:Label']
@@ -989,7 +1002,10 @@ class Project:
         # save new Rating for Picture
         bestresult = 0
         for filename in upn['Files']:
-            rating = self.files_dict[filename]['XMP:Rating']
+            filedata = self.files_dict.get(filename)
+            if filedata is None:
+                continue
+            rating = filedata['XMP:Rating']
             if rating != "":
                 bestresult = max(bestresult, int(rating))
         upn['Rating'] = bestresult
@@ -998,7 +1014,9 @@ class Project:
         saved_multiplier = 0.1
         multiplier = 1
         for filename in upn['Files']:
-            file = self.files_dict[filename]
+            file = self.files_dict.get(filename)
+            if file is None:
+                continue
             if file['WindowsExtension'] in ['jpg', 'jpeg'] and file['ImageSize'] != "":
                 width_jpg, heigth_jpg = map(int, re.split('[x ]', file['ImageSize']))
                 multiplier = float(min(1500, max(width_jpg, heigth_jpg))) / 1500.0

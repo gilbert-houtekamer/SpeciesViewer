@@ -4,13 +4,13 @@ from pathlib import Path
 import logging
 from utils.config import _config, persist_config
 
-def generate_svconfig_ini(svconfig_path="svconfig.ini", master_mode=False):
+def generate_svconfig_ini(svconfig_path="svconfig.ini", master_mode=False,
+                          virttrip_mode=False):
     """Write svconfig.ini for the next batch step.
 
-    When master_mode is True, the script runs against the master
-    database itself (no trip context). BiotaDatabase becomes the
-    master path and MasterBiotaDatabase is left empty — the same
-    "no trip" signal the scripts already understand from CLI runs.
+    master_mode=True  — runs against the master database (no trip context).
+    virttrip_mode=True — runs against the active virtual trip; reads
+        [virttrip] keys so the regular [trip] settings are never touched.
     """
     logger = logging.getLogger("speciesviewer")
     cfg = ConfigParser()
@@ -29,6 +29,13 @@ def generate_svconfig_ini(svconfig_path="svconfig.ini", master_mode=False):
             "ReferenceSpecies": species_csv,
         }
         cfg["master"] = {"MasterBiotaDatabase": ""}
+    elif virttrip_mode:
+        cfg["repository"] = {
+            "BiotaDatabase":    _config.get("virttrip", "virttripbiotadatabase", fallback=""),
+            "BiotaWebRoot":     _config.get("virttrip", "virttripbiotawebroot", fallback=""),
+            "ReferenceSpecies": species_csv,
+        }
+        cfg["master"] = {"MasterBiotaDatabase": master_db}
     else:
         cfg["repository"] = {
             "BiotaDatabase":    _config.get("trip", "tripbiotadatabase", fallback=""),

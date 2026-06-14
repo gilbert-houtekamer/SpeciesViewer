@@ -65,10 +65,15 @@ class Trip:
         try:
             self.master_repository_disk = config.get("master","MasterBiotaDatabase")
             self.mp.setMasterRepository(self.master_repository_disk)
-            self.tripname = Path(self.mp.getBiotaWebRoot()).name
+            web_root = self.mp.getBiotaWebRoot()
+            self.tripname = Path(web_root).name
+            # Derive the URL prefix (/trips/ or /virttrips/) from the web root so
+            # breadcrumbs are correct for both regular and virtual trips.
+            parts = Path(web_root.lstrip("/")).parts
+            self.web_prefix = "/" + parts[0] + "/" if len(parts) >= 1 else "/trips/"
         except:
-            pass
-        return 
+            self.web_prefix = "/trips/"
+        return
 
     def setTripLanguageSwitch(self, name):
         self.tripname = name

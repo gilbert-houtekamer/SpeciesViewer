@@ -1,5 +1,6 @@
+import webbrowser
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTabWidget, QWidget, QLineEdit)
+    QCheckBox, QSpinBox, QTabWidget, QWidget, QLineEdit)
 import logging
 import os
 import shutil
@@ -12,6 +13,9 @@ from utils.config import set_setting, _config, get_virttrips_root, get_trips_roo
 from utils.virttrip_config import read_virttrip_ini
 from gui.virttrip_overview import populate_virttrip_overview
 import batch.svv2ExtractDays
+import batch.svv3WriteBlog
+import batch.svv4BuildWebsite
+from gui.menu import MenuSpec
 from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt,
                                    RecentDirectoryFieldQt, ImageFileFieldQt)
@@ -303,13 +307,9 @@ class VirtualTripCreationDialog(QDialog):
 
     def on_create_clicked(self):
         self._write_virttrip_ini()
-        # Persist virtual trip settings
         set_setting("virttrip", "virttriprootdirectory", str(Path(self.root_field.get_text()).parent))
         set_setting("virttrip", "virttripbiotadatabase", self.root_field.get_text())
         set_setting("virttrip", "virttripbiotawebroot",  self.trip_web.field.text())
-        # Point active trip at the virtual trip so batch_config picks up the right BiotaDatabase
-        set_setting("trip", "tripbiotadatabase", self.root_field.get_text())
-        set_setting("trip", "tripbiotawebroot",  self.trip_web.field.text())
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec)
 
@@ -410,3 +410,170 @@ class ExtractDaysDialog(QDialog):
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec,
                    on_success=lambda: populate_virttrip_overview(self.passed_parent))
+
+
+def _virttrip_spec(module_fn, before_msg, after_msg):
+    """Return a MenuSpec that runs a virtual-trip batch module."""
+    return MenuSpec(
+        callback=None,
+        batch_parms={
+            "statusname":    "",
+            "module_called": module_fn,
+            "before_msg":    before_msg,
+            "after_msg":     after_msg,
+            "virttrip_mode": True,
+        },
+    )
+
+
+class VirttripWriteBlogDialog(QDialog):
+    """Run svv3WriteBlog: auto-create blog ini files + generate + upload all days."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.logger       = parent.logger
+        self.passed_parent = parent
+        self.setWindowTitle("Write Virtual Trip Blogs")
+        self.resize(580, 300)
+
+        layout = QVBoxLayout(self)
+
+        virttrip_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
+        trip_data  = read_virttrip_ini(virttrip_root) if virttrip_root else {}
+        trip_name  = (trip_data or {}).get("trip_name", Path(virttrip_root).name if virttrip_root else "?")
+        day_count  = 0
+        if virttrip_root:
+            review_root = Path(virttrip_root) / "metadata" / "review"
+            if review_root.is_dir():
+                day_count = sum(
+                    1 for d in review_root.iterdir()
+                    if d.is_dir() and (d / "data_files.csv").exists()
+                )
+
+        layout.addWidget(HTMLLabel(
+            "<p><b>Write Virtual Trip Blogs</b></p>"
+            "<p>For every day that has extracted data:</p>"
+            "<ul>"
+            "<li>Auto-creates <code>metadata/blog/blog_YYYY-MM-DD.ini</code> if absent "
+            "(title and text generated from species + location data).</li>"
+            "<li>Reads the ini (auto-generated or hand-edited) and uploads "
+            "NL + EN blog HTML pages.</li>"
+            "</ul>"
+            "<p>Re-running is safe — existing ini files are preserved; "
+            "HTML is always regenerated and re-uploaded.</p>"
+        ))
+
+        layout.addWidget(QLabel(f"Virtual trip:   {virttrip_root or '(not set)'}"))
+        layout.addWidget(QLabel(f"Trip name:      {trip_name}"))
+        layout.addWidget(QLabel(f"Days with data: {day_count}"))
+
+        self.status_label = QLabel("")
+        layout.addWidget(self.status_label)
+
+        # Minimum rating threshold — overrides the per-day ini value for this run
+        score_row = QHBoxLayout()
+        score_row.addWidget(QLabel("Minimum rating (0–100):"))
+        self.min_score_spin = QSpinBox()
+        self.min_score_spin.setRange(0, 100)
+        self.min_score_spin.setValue(25)
+        self.min_score_spin.setToolTip(
+            "Pictures with a computed rating below this value are excluded from the blog.\n"
+            "Lower this if blog pages appear empty."
+        )
+        score_row.addWidget(self.min_score_spin)
+        score_row.addStretch()
+        layout.addLayout(score_row)
+
+        self.open_after_checkbox = QCheckBox("Open trip blog in browser after writing")
+        self.open_after_checkbox.setChecked(True)
+        layout.addWidget(self.open_after_checkbox)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        run_btn   = QPushButton("Write All Blogs")
+        close_btn = QPushButton("Close")
+        btn_layout.addWidget(run_btn)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+        run_btn.clicked.connect(self.on_run)
+        close_btn.clicked.connect(self.close)
+
+    def get_blog_url(self) -> str:
+        base_url = _config.get("websettings", "base_url", fallback="https://houtekamer.com/")
+        try:
+            with open("last_blog_url.txt", "r") as f:
+                relative_url = f.read().strip()
+            return base_url.rstrip("/") + relative_url
+        except FileNotFoundError:
+            return base_url
+
+    def on_run(self):
+        # Build menu_spec dynamically so the current minimum_score is captured
+        menu_spec = _virttrip_spec(
+            batch.svv3WriteBlog.main,
+            "Writing virtual trip blogs...",
+            "✅ All blogs written and uploaded.",
+        )
+        menu_spec.batch_parms["extra_config"] = [
+            ("blogconfig", "minimum_score", self.min_score_spin.value()),
+        ]
+
+        def on_success():
+            populate_virttrip_overview(self.passed_parent)
+            if self.open_after_checkbox.isChecked():
+                webbrowser.open(self.get_blog_url())
+
+        runner = BatchModuleRunner(self, self.passed_parent)
+        runner.run(menu_spec, on_success=on_success)
+
+
+class VirttripBuildWebsiteDialog(QDialog):
+    """Run svv4BuildWebsite: generate species HTML pages for the virtual trip."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.logger        = parent.logger
+        self.passed_parent = parent
+        self.setWindowTitle("Build Virtual Trip Website")
+        self.resize(560, 260)
+
+        layout = QVBoxLayout(self)
+
+        virttrip_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
+        trip_data = read_virttrip_ini(virttrip_root) if virttrip_root else {}
+        trip_name = (trip_data or {}).get("trip_name", Path(virttrip_root).name if virttrip_root else "?")
+
+        layout.addWidget(HTMLLabel(
+            "<p><b>Build Virtual Trip Website</b></p>"
+            "<p>Generates species HTML pages (NL + EN) for the virtual trip "
+            "using pictures extracted from the master. No SFTP — local build only, "
+            "identical to the regular trip's Build Website step.</p>"
+            "<p>Requires 'Extract Days from Master' to have been run first.</p>"
+        ))
+
+        layout.addWidget(QLabel(f"Virtual trip:  {virttrip_root or '(not set)'}"))
+        layout.addWidget(QLabel(f"Trip name:     {trip_name}"))
+
+        self.status_label = QLabel("")
+        layout.addWidget(self.status_label)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        run_btn   = QPushButton("Build Website")
+        close_btn = QPushButton("Close")
+        btn_layout.addWidget(run_btn)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+        self.menu_spec = _virttrip_spec(
+            batch.svv4BuildWebsite.main,
+            "Building virtual trip species pages...",
+            "✅ Virtual trip website built.",
+        )
+        run_btn.clicked.connect(self.on_run)
+        close_btn.clicked.connect(self.close)
+
+    def on_run(self):
+        runner = BatchModuleRunner(self, self.passed_parent)
+        runner.run(self.menu_spec)

@@ -98,15 +98,19 @@ class BatchModuleRunner:
         before_msg = batch_parms["before_msg"]
         after_msg = batch_parms["after_msg"]
         statusname = batch_parms["statusname"]
-        master_mode = batch_parms.get("master_mode", False)
+        master_mode   = batch_parms.get("master_mode",   False)
+        virttrip_mode = batch_parms.get("virttrip_mode", False)
 
-        # Config prep — master_mode flips BiotaDatabase to point at
-        # master so steps like sv2/sv3/sv5/sv6/sv7 can run against
-        # master directly without a trip context.
-        generate_svconfig_ini(master_mode=master_mode)
+        generate_svconfig_ini(master_mode=master_mode, virttrip_mode=virttrip_mode)
         args = None
         module_config = configparser.ConfigParser()
         module_config.read("svconfig.ini")
+
+        # Inject any caller-supplied config overrides (e.g. minimum_score from dialog)
+        for (section, key, value) in batch_parms.get("extra_config", []):
+            if not module_config.has_section(section):
+                module_config.add_section(section)
+            module_config.set(section, key, str(value))
 
         sm = StateMachine(
             module_config.get("repository", "BiotaDatabase"),
