@@ -38,6 +38,40 @@ from engine.websupport import jpgResizeCopy, getSmallJPG
 logger = logging.getLogger("speciesviewer")
 
 
+def _seed_empty_kingdom_stubs(project) -> int:
+    """Create a stub node page for each top-level kingdom that is present in
+    the master species collection but has no pictures in this virtual trip.
+
+    makeWebDirectories("biota", "New") skips kingdoms with iPicturesWithJPGsThisRun==0,
+    so e.g. fungi/fungi-nl.html is never written for a trip without fungi.
+    The all-species summary still links to it (from the collection data),
+    causing a 404.  A stub page — showing 0 species for this trip — avoids that.
+
+    A stub is created for every direct kingdom child of "biota" with zero
+    trip pictures — no collection-count check, because the all-species summary
+    links to all kingdoms in the classification tree regardless of master photos.
+
+    Must be called AFTER makeWebDirectories so AllOrNew is already "New"
+    (makeWebLevel uses getBiotaAllorNewDir() which maps "New" → frozen/).
+    """
+    biota = project.sp.species_dict.get("biota")
+    if biota is None:
+        return 0
+    count = 0
+    for leaf in sorted(biota.get("Leaves", [])):
+        sp = project.sp.species_dict.get(leaf)
+        if sp is None:
+            continue
+        # Seed a stub for every top-level kingdom that has no trip pictures.
+        # No collection-count check: the all-species summary links to all kingdoms
+        # in the classification tree regardless of whether the master has photos,
+        # so we need a page even for kingdoms with iPicturesWithJPGsCollection==0.
+        if int(sp.get("iPicturesWithJPGsThisRun", 0)) == 0:
+            project.makeWebLevel(sp, "New")
+            count += 1
+    return count
+
+
 def read_virttrip_days(project, virttrip_root: str) -> int:
     """Load all per-day CSVs into project.files_dict / UniquePictureName_dict.
     Returns the number of days loaded."""
@@ -110,6 +144,9 @@ def main(args, config):
     for language in ("nl", "en"):
         project.setLanguage(language)
         project.makeWebDirectories("biota", "New")
+        seeded = _seed_empty_kingdom_stubs(project)
+        if seeded:
+            logger.info(f"  Seeded {seeded} kingdom stub page(s) for kingdoms not in this trip ({language.upper()}).")
         project.makeAllSpeciesPage("biota", language)
         logger.info(f"  Built {language.upper()} pages.")
 
