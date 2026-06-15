@@ -160,21 +160,29 @@ def populate_virttrip_overview(self):
         self.virttrip_table.setItem(i, FILES_COL, QTableWidgetItem(str(total)))
         self.virttrip_table.setItem(i, JPGS_COL,  QTableWidgetItem(str(jpegs)))
 
-        # BLOG_COL: show whether a blog ini exists for this day
+        # BLOG_COL: grey when no JPEGs; otherwise show ini-exists state
         blog_ini = blog_dir / f"blog_{day_dir.name}.ini"
-        blog_icon = "✅" if blog_ini.exists() else "⚪"
+        if jpegs == 0:
+            blog_icon, blog_tooltip = "○", "No JPEG files — blog page not generated"
+        elif blog_ini.exists():
+            blog_icon, blog_tooltip = "✅", "Blog ini exists — double-click to edit."
+        else:
+            blog_icon, blog_tooltip = "⚪", "No blog ini yet. Click 'Write All Blogs' to auto-create."
         blog_item = QTableWidgetItem(blog_icon)
-        blog_item.setToolTip("Blog ini exists — double-click to edit." if blog_ini.exists()
-                             else "No blog ini yet. Click 'Write All Blogs' to auto-create.")
+        blog_item.setToolTip(blog_tooltip)
         blog_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         blog_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
         self.virttrip_table.setItem(i, BLOG_COL, blog_item)
 
-        # WEB_COL: show whether species pages have been built (trip-wide, not per-day)
-        web_icon = "✅" if web_built else "⚪"
+        # WEB_COL: grey when no JPEGs; otherwise show trip-wide build state
+        if jpegs == 0:
+            web_icon, web_tooltip = "○", "No JPEG files — website not generated"
+        elif web_built:
+            web_icon, web_tooltip = "✅", "Species pages built and uploaded."
+        else:
+            web_icon, web_tooltip = "⚪", "Click 'Build Website' to generate species pages."
         web_item = QTableWidgetItem(web_icon)
-        web_item.setToolTip("Species pages built and uploaded." if web_built
-                            else "Click 'Build Website' to generate species pages.")
+        web_item.setToolTip(web_tooltip)
         web_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         web_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
         self.virttrip_table.setItem(i, WEB_COL, web_item)

@@ -20,9 +20,10 @@ import csv
 import io
 import logging
 import os
+import re
 import sys
 from collections import Counter
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 if __name__ == "__main__":
@@ -125,6 +126,22 @@ def _generate_blog_ini(ini_path: Path, day_dir: Path, day_num: int) -> None:
     )
     ini_path.write_text(text, encoding="utf-8")
     logger.info(f"  Created {ini_path.name}")
+
+
+def _patch_day_num_in_ini(ini_path: Path, day_num: int) -> None:
+    """Replace the 'Dag N:' / 'Day N:' prefix in auto-generated titel lines.
+
+    Only touches lines that already have the auto-generated pattern so
+    hand-edited titles (no "Dag N:" prefix) are left untouched.
+    """
+    try:
+        text = ini_path.read_text(encoding="utf-8")
+        patched = re.sub(r'(?m)^(titel_nl\s*=\s*)Dag \d+:', rf'\g<1>Dag {day_num}:', text)
+        patched = re.sub(r'(?m)^(titel_en\s*=\s*)Day \d+:', rf'\g<1>Day {day_num}:', patched)
+        if patched != text:
+            ini_path.write_text(patched, encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"  Could not patch day number in {ini_path.name}: {e}")
 
 
 def _read_blog_ini(ini_path: Path) -> dict:
@@ -243,16 +260,21 @@ def main(args, config):
     blog_dir = Path(virttrip_root) / "metadata" / "blog"
     blog_dir.mkdir(parents=True, exist_ok=True)
 
-    for idx, day_dir in enumerate(day_dirs, start=1):
+    first_date = date.fromisoformat(day_dirs[0].name)
+
+    for day_dir in day_dirs:
         ini_path = blog_dir / f"blog_{day_dir.name}.ini"
+        day_num = (date.fromisoformat(day_dir.name) - first_date).days + 1
         if not ini_path.exists():
-            _generate_blog_ini(ini_path, day_dir, idx)
+            _generate_blog_ini(ini_path, day_dir, day_num)
+        else:
+            _patch_day_num_in_ini(ini_path, day_num)
 
     # --- set up blog object and read existing admin once ---
     password = config.get("websettings", "Sftppwd", fallback="").strip("'")
     blog = engine.bloglib.Blog(project)
-    blog.blog_dict = {}          # ensure fresh instance dict (avoid class-level sharing)
     blog.read_BlogAdmin()
+    blog.blog_dict = {}          # discard stale entries — rebuild fully from this run
     sftp = blog.openSFTP(password)
 
     # Open FTP cache BEFORE the day loop — uploadBlog → put_r_portable →
@@ -338,6 +360,15 @@ def main(args, config):
             logger.info(f"  {day_dir.name}: 0 species recognized — skipping")
             continue
 
+        # Issue 1: skip days where no UPN has a renderable JPEG (RAW-only with no
+        # DxO/Lightroom export).  makeRunSummaryPost would produce a blank page.
+        has_any_jpg = any(
+            upn.get("BestJPG", "") for upn in project.UniquePictureName_dict.values()
+        )
+        if not has_any_jpg:
+            logger.warning(f"  {day_dir.name}: no JPEG files found — skipping blog page")
+            continue
+
         today = blog.getDateFromPictures(0)
 
         # Read blog ini; allow dialog to override minimum_score for this run
@@ -366,6 +397,17 @@ def main(args, config):
         project.setSkipJPGs(True)
         blog.makeRunSummaryPost("biota", "en")
         project.setSkipJPGs(False)
+
+        # Issue 2: if all species were below the score threshold, BestJPGs is empty.
+        # Don't lower the threshold — warn and skip so no blank page is published.
+        if not blog.BestJPGs:
+            blog.logExcludedSpecies()
+            below = len(blog.excluded_species.get("below_score", []))
+            logger.warning(
+                f"  {day_dir.name}: {below} species below score threshold "
+                f"({bc['minimum_score']}) — skipping blog page"
+            )
+            continue
 
         # Register AFTER summary posts so BestJPGs is captured correctly
         _register_day_blog(blog, project)
