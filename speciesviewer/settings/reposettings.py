@@ -83,27 +83,32 @@ class RepoSettingsDialog(QDialog):
         return line
 
     def browse_master(self):
-        path = QFileDialog.getExistingDirectory(self, "Select Master Database Directory")
+        start = self.master_field.text() or ""
+        path = QFileDialog.getExistingDirectory(self, "Select Master Database Directory", start)
         if path:
             self.master_field.setText(path)
 
     def browse_trip(self):
-        path = QFileDialog.getExistingDirectory(self, "Select Trip Database Directory")
+        start = self.trips_root_field.text() or self.trip_field.text() or ""
+        path = QFileDialog.getExistingDirectory(self, "Select Trip Database Directory", start)
         if path:
             self.trip_field.setText(path)
 
     def browse_trips_root(self):
-        path = QFileDialog.getExistingDirectory(self, "Select Trips Root Directory")
+        start = self.trips_root_field.text() or ""
+        path = QFileDialog.getExistingDirectory(self, "Select Trips Root Directory", start)
         if path:
             self.trips_root_field.setText(path)
 
     def browse_virttrip(self):
-        path = QFileDialog.getExistingDirectory(self, "Select Virtual Trip Database Directory")
+        start = self.virttrips_root_field.text() or self.virttrip_field.text() or ""
+        path = QFileDialog.getExistingDirectory(self, "Select Virtual Trip Database Directory", start)
         if path:
             self.virttrip_field.setText(path)
 
     def browse_virttrips_root(self):
-        path = QFileDialog.getExistingDirectory(self, "Select Virtual Trips Root Directory")
+        start = self.virttrips_root_field.text() or ""
+        path = QFileDialog.getExistingDirectory(self, "Select Virtual Trips Root Directory", start)
         if path:
             self.virttrips_root_field.setText(path)
 
