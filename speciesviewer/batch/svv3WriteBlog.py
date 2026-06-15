@@ -20,6 +20,7 @@ import csv
 import io
 import logging
 import os
+import random
 import re
 import sys
 from collections import Counter
@@ -57,6 +58,15 @@ def _read_day_pictures_raw(day_dir: Path) -> list:
 
 
 _UNNAMED_ROADS = {'Vía Sin Nombre', 'Route sans nom', 'Unnamed Road'}
+
+
+def _cap_name(name: str) -> str:
+    """Capitalize the first letter of each space-separated word.
+
+    Safer than str.title() which breaks apostrophes ("Cooper'S Hawk").
+    Hyphens within a word are left as-is ("White-crowned Sparrow" → kept).
+    """
+    return ' '.join(w[0].upper() + w[1:] if w else '' for w in name.split(' '))
 
 
 def _day_location_label(rows: list) -> tuple:
@@ -100,17 +110,21 @@ def _generate_blog_ini(ini_path: Path, day_num: int, rows: list,
     if not rows:
         return
 
-    # city is still used for the message body ("We zagen N soorten in <city>")
+    # Top sublocation(s) for opening phrase (raw, without city suffix)
+    raw_locs = [r.get("Location", "").strip() for r in rows]
+    valid_locs_all = [l for l in raw_locs if l and l not in _UNNAMED_ROADS]
+    top_locs = [l for l, _ in Counter(valid_locs_all).most_common(2)]
     cities = [r.get("City", "").strip() for r in rows if r.get("City", "").strip()]
     city   = Counter(cities).most_common(1)[0][0] if cities else ""
+    loc1   = top_locs[0] if top_locs else (city or loc_nl)
 
-    # --- species count ---
+    # Species count
     sp_nl = {r.get("NLSoortNaam",  "").strip() for r in rows if r.get("NLSoortNaam",  "").strip()}
     sp_en = {r.get("EngSoortNaam", "").strip() for r in rows if r.get("EngSoortNaam", "").strip()}
     n_species = max(len(sp_nl), len(sp_en))
 
-    # --- top-2 species by Rate ---
-    best: dict = {}   # scientific → (rate, nl_name, en_name)
+    # Best rate per scientific name
+    best: dict = {}   # sci → (rate, nl_name, en_name)
     for r in rows:
         wet = r.get("WetSoortNaam", "").strip()
         if not wet:
@@ -122,24 +136,81 @@ def _generate_blog_ini(ini_path: Path, day_num: int, rows: list,
         if rate > best.get(wet, (-1, "", ""))[0]:
             best[wet] = (rate, r.get("NLSoortNaam", "").strip(), r.get("EngSoortNaam", "").strip())
 
-    top2   = sorted(best.values(), reverse=True)[:2]
-    t_nl   = [t[1] or t[2] for t in top2]
-    t_en   = [t[2] or t[1] for t in top2]
+    ranked = sorted(best.items(), key=lambda kv: -kv[1][0])  # [(sci,(rate,nl,en)), …]
+    top_score = ranked[0][1][0] if ranked else 0
 
-    if len(t_nl) >= 2:
-        phrase_nl = f"De foto's van {t_nl[0]} en {t_nl[1]} kwamen er mooi uit."
-        phrase_en = f"The photos of {t_en[0]} and {t_en[1]} came out nicely."
-    elif len(t_nl) == 1:
-        phrase_nl = f"De foto's van {t_nl[0]} kwamen er mooi uit."
-        phrase_en = f"The photos of {t_en[0]} came out nicely."
+    # Quiet-day: very few species or nothing photographed well
+    quiet = n_species < 3 or top_score < 20
+
+    # Deterministic variety: each day date seeds a different template pick
+    rng = random.Random(ini_path.stem)
+
+    # --- Opening sentence ---
+    if len(top_locs) >= 2:
+        loc2     = top_locs[1]
+        open_nl  = f"{loc1} en {loc2} leverden samen {n_species} soorten op."
+        open_en  = f"{loc1} and {loc2} together yielded {n_species} species."
+    elif quiet:
+        open_nl  = f"Een rustige dag in {loc1}: {n_species} soorten genoteerd."
+        open_en  = f"A quiet day at {loc1}: {n_species} species recorded."
     else:
-        phrase_nl = ""
-        phrase_en = ""
+        pool_nl  = [
+            f"Een dag in {loc1} leverde {n_species} soorten op.",
+            f"Vandaag telden we {n_species} soorten in {loc1}.",
+            f"We bezochten {loc1} en noteerden {n_species} soorten.",
+        ]
+        pool_en  = [
+            f"A day at {loc1} yielded {n_species} species.",
+            f"Today we counted {n_species} species in {loc1}.",
+            f"We visited {loc1} and recorded {n_species} species.",
+        ]
+        idx      = rng.randrange(len(pool_nl))
+        open_nl  = pool_nl[idx]
+        open_en  = pool_en[idx]
+
+    # --- Species callout ---
+    def _fmt_nl(sci: str, nl: str, en: str) -> str:
+        name  = _cap_name(nl) if nl else (_cap_name(en) if en else None)
+        sci_i = f"<i>{sci.capitalize()}</i>"
+        return f"de {name} ({sci_i})" if name else sci_i
+
+    def _fmt_en(sci: str, nl: str, en: str) -> str:
+        name  = _cap_name(en) if en else (_cap_name(nl) if nl else None)
+        sci_i = f"<i>{sci.capitalize()}</i>"
+        return f"{name} ({sci_i})" if name else sci_i
+
+    note_nl = note_en = ""
+    if not quiet and ranked:
+        sci1, (r1, nl1, en1) = ranked[0]
+        r2 = ranked[1][1][0] if len(ranked) >= 2 else -1
+
+        # One clear winner: score ≥ 85 and at least 10 pts above #2
+        standout = r1 >= 85 and (r2 < 0 or r1 - r2 >= 10)
+        # Two tied at the top: exact same high score (≥ 80)
+        two_tied = not standout and len(ranked) >= 2 and r1 == r2 and r1 >= 80
+
+        if standout:
+            note_nl = f"Uitblinker van de dag: {_fmt_nl(sci1, nl1, en1)}, score {r1:.0f}."
+            note_en = f"Standout of the day: {_fmt_en(sci1, nl1, en1)}, score {r1:.0f}."
+        elif two_tied:
+            sci2, (_, nl2, en2) = ranked[1]
+            note_nl = (f"Hoogtepunt: {_fmt_nl(sci1, nl1, en1)} en "
+                       f"{_fmt_nl(sci2, nl2, en2)}, beide met score {r1:.0f}.")
+            note_en = (f"Highlight: {_fmt_en(sci1, nl1, en1)} and "
+                       f"{_fmt_en(sci2, nl2, en2)}, both scoring {r1:.0f}.")
+        elif len(ranked) >= 2:
+            sci2, (_, nl2, en2) = ranked[1]
+            note_nl = f"Mooiste opnames: {_fmt_nl(sci1, nl1, en1)} en {_fmt_nl(sci2, nl2, en2)}."
+            note_en = f"Best shots: {_fmt_en(sci1, nl1, en1)} and {_fmt_en(sci2, nl2, en2)}."
+        else:
+            note_nl = f"Mooiste opname: {_fmt_nl(sci1, nl1, en1)}."
+            note_en = f"Best shot: {_fmt_en(sci1, nl1, en1)}."
+
+    msg_nl = " ".join(x for x in [open_nl, note_nl, "(auto-tekst)"] if x)
+    msg_en = " ".join(x for x in [open_en, note_en, "(auto-generated)"] if x)
 
     title_nl = f"Dag {day_num}: {loc_nl}"
     title_en = f"Day {day_num}: {loc_en}"
-    msg_nl   = f"We zagen {n_species} soorten in {city or loc_nl}. {phrase_nl}".strip()
-    msg_en   = f"We saw {n_species} species in {city or loc_en}. {phrase_en}".strip()
 
     text = (
         "[blog_config]\n"
