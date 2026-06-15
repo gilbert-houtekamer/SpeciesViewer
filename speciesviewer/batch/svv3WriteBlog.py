@@ -56,21 +56,53 @@ def _read_day_pictures_raw(day_dir: Path) -> list:
         return list(csv.DictReader(f, delimiter=";"))
 
 
-def _generate_blog_ini(ini_path: Path, day_dir: Path, day_num: int) -> None:
-    """Auto-generate a blog ini from the day's data_pictures.csv.
+_UNNAMED_ROADS = {'Vía Sin Nombre', 'Route sans nom', 'Unnamed Road'}
+
+
+def _day_location_label(rows: list) -> tuple:
+    """Return (loc_nl, loc_en) for a day, preferring XMP:Location (sublocation)
+    over City/State.
+
+    - Single distinct sublocation: "<Subloc>, <City>" (or just "<Subloc>" if city
+      is the same or absent).
+    - Two distinct top sublocations: "<Subloc1> en <Subloc2>" / "… and …".
+    - No usable sublocation: "<City>, <State>" or "<City>" or "onbekend"/"unknown".
+
+    Sublocations that duplicate the city/state or are unnamed-road placeholders
+    are filtered out.
+    """
+    cities = [r.get("City",  "").strip() for r in rows if r.get("City",  "").strip()]
+    states = [r.get("State", "").strip() for r in rows if r.get("State", "").strip()]
+    city  = Counter(cities).most_common(1)[0][0] if cities else ""
+    state = Counter(states).most_common(1)[0][0] if states else ""
+
+    raw_locs = [r.get("Location", "").strip() for r in rows]
+    valid_locs = [l for l in raw_locs
+                  if l and l not in _UNNAMED_ROADS and l != city and l != state]
+
+    if not valid_locs:
+        if city and state and state != city:
+            return f"{city}, {state}", f"{city}, {state}"
+        return city or "onbekend", city or "unknown"
+
+    top = [l for l, _ in Counter(valid_locs).most_common(2)]
+    if len(top) == 1:
+        loc = top[0]
+        suffix = f", {city}" if city and city.lower() != loc.lower() else ""
+        return f"{loc}{suffix}", f"{loc}{suffix}"
+    return f"{top[0]} en {top[1]}", f"{top[0]} and {top[1]}"
+
+
+def _generate_blog_ini(ini_path: Path, day_num: int, rows: list,
+                       loc_nl: str, loc_en: str) -> None:
+    """Auto-generate a blog ini from pre-read picture rows.
     Only called when the ini file does not yet exist."""
-    rows = _read_day_pictures_raw(day_dir)
     if not rows:
         return
 
-    # --- location ---
-    cities  = [r.get("City",  "").strip() for r in rows if r.get("City",  "").strip()]
-    states  = [r.get("State", "").strip() for r in rows if r.get("State", "").strip()]
-    city  = Counter(cities).most_common(1)[0][0]  if cities  else ""
-    state = Counter(states).most_common(1)[0][0]  if states  else ""
-
-    loc_nl = f"{city}, {state}" if (city and state and state != city) else (city or "onbekend")
-    loc_en = f"{city}, {state}" if (city and state and state != city) else (city or "unknown")
+    # city is still used for the message body ("We zagen N soorten in <city>")
+    cities = [r.get("City", "").strip() for r in rows if r.get("City", "").strip()]
+    city   = Counter(cities).most_common(1)[0][0] if cities else ""
 
     # --- species count ---
     sp_nl = {r.get("NLSoortNaam",  "").strip() for r in rows if r.get("NLSoortNaam",  "").strip()}
@@ -128,20 +160,22 @@ def _generate_blog_ini(ini_path: Path, day_dir: Path, day_num: int) -> None:
     logger.info(f"  Created {ini_path.name}")
 
 
-def _patch_day_num_in_ini(ini_path: Path, day_num: int) -> None:
-    """Replace the 'Dag N:' / 'Day N:' prefix in auto-generated titel lines.
+def _patch_ini_titles(ini_path: Path, day_num: int, loc_nl: str, loc_en: str) -> None:
+    """Update the full 'Dag N: <loc>' / 'Day N: <loc>' title lines in existing ini files.
 
-    Only touches lines that already have the auto-generated pattern so
-    hand-edited titles (no "Dag N:" prefix) are left untouched.
+    Only touches lines that match the auto-generated 'Dag N:' / 'Day N:' pattern,
+    so hand-edited titles (no numbered-day prefix) are left untouched.
     """
     try:
         text = ini_path.read_text(encoding="utf-8")
-        patched = re.sub(r'(?m)^(titel_nl\s*=\s*)Dag \d+:', rf'\g<1>Dag {day_num}:', text)
-        patched = re.sub(r'(?m)^(titel_en\s*=\s*)Day \d+:', rf'\g<1>Day {day_num}:', patched)
+        patched = re.sub(r'(?m)^(titel_nl\s*=\s*)Dag \d+:.*$',
+                         rf'\g<1>Dag {day_num}: {loc_nl}', text)
+        patched = re.sub(r'(?m)^(titel_en\s*=\s*)Day \d+:.*$',
+                         rf'\g<1>Day {day_num}: {loc_en}', patched)
         if patched != text:
             ini_path.write_text(patched, encoding="utf-8")
     except Exception as e:
-        logger.warning(f"  Could not patch day number in {ini_path.name}: {e}")
+        logger.warning(f"  Could not patch titles in {ini_path.name}: {e}")
 
 
 def _read_blog_ini(ini_path: Path) -> dict:
@@ -264,11 +298,13 @@ def main(args, config):
 
     for day_dir in day_dirs:
         ini_path = blog_dir / f"blog_{day_dir.name}.ini"
-        day_num = (date.fromisoformat(day_dir.name) - first_date).days + 1
+        day_num  = (date.fromisoformat(day_dir.name) - first_date).days + 1
+        rows     = _read_day_pictures_raw(day_dir)
+        loc_nl, loc_en = _day_location_label(rows)
         if not ini_path.exists():
-            _generate_blog_ini(ini_path, day_dir, day_num)
+            _generate_blog_ini(ini_path, day_num, rows, loc_nl, loc_en)
         else:
-            _patch_day_num_in_ini(ini_path, day_num)
+            _patch_ini_titles(ini_path, day_num, loc_nl, loc_en)
 
     # --- set up blog object and read existing admin once ---
     password = config.get("websettings", "Sftppwd", fallback="").strip("'")
