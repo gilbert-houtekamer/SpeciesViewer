@@ -15,6 +15,7 @@ from gui.virttrip_overview import populate_virttrip_overview
 import batch.svv2ExtractDays
 import batch.svv3WriteBlog
 import batch.svv4BuildWebsite
+import batch.svv5AddToMaster
 from gui.menu import MenuSpec
 from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt,
@@ -578,3 +579,75 @@ class VirttripBuildWebsiteDialog(QDialog):
     def on_run(self):
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec)
+
+
+class VirttripAddToMasterDialog(QDialog):
+    """Run svv5AddToMaster: register the virtual trip in the master trip index."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.logger        = parent.logger
+        self.passed_parent = parent
+        self.setWindowTitle("Add Virtual Trip to Master")
+        self.resize(580, 280)
+
+        layout = QVBoxLayout(self)
+
+        virttrip_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
+        trip_data = read_virttrip_ini(virttrip_root) if virttrip_root else {}
+        trip_name = (trip_data or {}).get("trip_name", Path(virttrip_root).name if virttrip_root else "?")
+        master_db = _config.get("master", "masterbiotadatabase", fallback="")
+
+        layout.addWidget(HTMLLabel(
+            "<p><b>Add Virtual Trip to Master</b></p>"
+            "<p>Registers this virtual trip in the master trip index so it appears "
+            "on the website alongside regular trips:</p>"
+            "<ul>"
+            "<li>Adds (or refreshes) the trip row in the master <code>trip_admin.csv</code>.</li>"
+            "<li>Regenerates the master <code>tripindex-nl.html</code> and "
+            "<code>tripindex-en.html</code> pages.</li>"
+            "<li>Uploads the updated index pages and trip admin CSV via SFTP.</li>"
+            "</ul>"
+            "<p>Run this once after the trip is complete and the blog + website are ready. "
+            "Re-running is safe — the existing entry is replaced in place.</p>"
+        ))
+
+        layout.addWidget(QLabel(f"Virtual trip:  {virttrip_root or '(not set)'}"))
+        layout.addWidget(QLabel(f"Trip name:     {trip_name}"))
+        layout.addWidget(QLabel(f"Master:        {master_db or '(not set)'}"))
+
+        self.status_label = QLabel("")
+        layout.addWidget(self.status_label)
+
+        self.local_checkbox = QCheckBox(
+            "Read from local trip_admin.csv instead of web (use after manual cleanup)")
+        self.local_checkbox.setChecked(False)
+        self.local_checkbox.setToolTip(
+            "Normally the live web copy is used as the authoritative source.\n"
+            "Enable this only when you have manually edited the local trip_admin.csv\n"
+            "to remove unwanted entries and want to re-upload that cleaned version.")
+        layout.addWidget(self.local_checkbox)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        run_btn   = QPushButton("Add to Master")
+        close_btn = QPushButton("Close")
+        btn_layout.addWidget(run_btn)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+        run_btn.clicked.connect(self.on_run)
+        close_btn.clicked.connect(self.close)
+
+    def on_run(self):
+        menu_spec = _virttrip_spec(
+            batch.svv5AddToMaster.main,
+            "Registering virtual trip in master trip index...",
+            "✅ Virtual trip added to master trip index and uploaded.",
+        )
+        if self.local_checkbox.isChecked():
+            menu_spec.batch_parms["extra_config"] = [
+                ("virttrip_addtomaster", "read_from_local", "true"),
+            ]
+        runner = BatchModuleRunner(self, self.passed_parent)
+        runner.run(menu_spec)

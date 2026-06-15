@@ -53,7 +53,10 @@ def generate_svconfig_ini(svconfig_path="svconfig.ini", master_mode=False,
         pic_dir = str(Path(pic_dir).parent)
     cfg["project"] = {"PictureDirectory": pic_dir}
     cfg["debug"] = {"Classification": "0", "SpeciesFound": "0"}
-    cfg["websettings"] = {"Sftppwd": _config.get("websettings", "Sftppwd", fallback="? still needed")}
+    cfg["websettings"] = {
+        "Sftppwd":  _config.get("websettings", "Sftppwd",  fallback="? still needed"),
+        "base_url": _config.get("websettings", "base_url", fallback=""),
+    }
     cfg["avibase"] = {
         "source_format":     _config.get("avibase", "source_format",     fallback="avibase"),
         "phone_layout":      _config.get("avibase", "phone_layout",      fallback="false"),

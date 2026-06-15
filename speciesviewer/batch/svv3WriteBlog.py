@@ -194,45 +194,6 @@ def _register_day_blog(blog, project) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Debug helper
-# ---------------------------------------------------------------------------
-
-def _debug_ratings(project, sp, day_label: str) -> None:
-    """Log rating diagnostics to help trace why BestJPGs stays empty."""
-    upn_dict  = project.UniquePictureName_dict
-    file_dict = project.files_dict
-
-    # 1. UPN-level rates
-    rates = [int(p.get("Rate", 0) or 0) for p in upn_dict.values()]
-    nonzero = [r for r in rates if r > 0]
-    logger.info(f"  DBG {day_label}: {len(upn_dict)} UPNs, "
-                f"{len(nonzero)} with Rate>0 "
-                f"(max={max(rates) if rates else 0})")
-
-    # 2. Sample the first UPN's Files list vs files_dict presence
-    for upn_name, upn in list(upn_dict.items())[:3]:
-        files = upn.get("Files", [])
-        present = [f for f in files if f in file_dict]
-        missing = [f for f in files if f not in file_dict]
-        xmp_present = [f for f in present
-                       if file_dict[f].get("WindowsExtension","").lower() == "xmp"]
-        xmp_ratings  = [file_dict[f].get("XMP:Rating","?") for f in xmp_present]
-        logger.info(f"    UPN {upn_name}: Files={files}, "
-                    f"inDict={len(present)}/{len(files)}, "
-                    f"missing={missing}, "
-                    f"xmpRatings={xmp_ratings}, "
-                    f"Rate={upn.get('Rate','?')}")
-
-    # 3. Species currentHighestRating
-    sp_rated = [(n, d.get("currentHighestRating", 0))
-                for n, d in sp.species_dict.items()
-                if d.get("currentHighestRating", 0) > 0]
-    logger.info(f"  DBG {day_label}: {len(sp_rated)} species with currentHighestRating>0")
-    for name, r in sorted(sp_rated, key=lambda x: -x[1])[:5]:
-        logger.info(f"    species {name}: rating={r}")
-
-
-# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -367,9 +328,6 @@ def main(args, config):
                     upn["BestJPGPathName"] = master_path
 
         project.addPicturesToSpecies(sp, 0, 0)
-
-        # DEBUG: diagnose why pictures may be excluded from the blog
-        _debug_ratings(project, sp, day_dir.name)
 
         # Skip days with no recognized species (e.g. RAW-only with missing tags)
         species_count = sum(

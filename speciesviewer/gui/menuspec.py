@@ -10,7 +10,8 @@ from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDial
         TestbedDialog, BlogAdminDialog, PhotoMechanicDialog,
         RescanMasterCacheDialog, SmallMasterDialog, InstallSmallMasterDialog, TripMasterDashboard)
 from gui.virttrip_process import (VirtualTripCreationDialog, ExtractDaysDialog,
-                                   VirttripWriteBlogDialog, VirttripBuildWebsiteDialog)
+                                   VirttripWriteBlogDialog, VirttripBuildWebsiteDialog,
+                                   VirttripAddToMasterDialog)
 from utils.config import _config
 import os
 from settings.globalsettings import GlobalSettingsDialog
@@ -622,6 +623,11 @@ def build_menu_spec(main_window):
             "Build Virtual Trip Website": MenuSpec(
                 callback=lambda: VirttripBuildWebsiteDialog(main_window).exec(),
                 title="Build Virtual Trip Website",
+            ),
+            f"{MenuSpec.separator()}_vt3": None,
+            "Add Virtual Trip to Master": MenuSpec(
+                callback=lambda: VirttripAddToMasterDialog(main_window).exec(),
+                title="Add Virtual Trip to Master",
             ),
         },
         "Utilities": {
