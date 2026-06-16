@@ -38,6 +38,13 @@ class VirtTripInfoPanel(QWidget):
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._show_context_menu)
 
+        self._populate_tree()
+
+    def _populate_tree(self):
+        """Clear and re-populate the tree from the current virttrips root."""
+        self.tree.clear()
+        virttrip_active = _config.get("virttrip", "virttripbiotadatabase", fallback="")
+        virttrip_root = get_virttrips_root()
         root_path = Path(virttrip_root) if virttrip_root else None
         if root_path and root_path.is_dir():
             active_path = Path(virttrip_active) if virttrip_active else None
@@ -77,6 +84,10 @@ class VirtTripInfoPanel(QWidget):
                 self.tree.addTopLevelItem(item)
         else:
             self.tree.addTopLevelItem(QTreeWidgetItem(["(No virtual trips found)"]))
+
+    def rebuild(self):
+        """Re-enumerate the virttrips root and refresh the tree (e.g. after creation)."""
+        self._populate_tree()
 
     def _styled_label(self, text, style):
         lbl = QLabel(text)

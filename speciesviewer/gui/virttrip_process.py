@@ -312,13 +312,18 @@ class VirtualTripCreationDialog(QDialog):
         set_setting("virttrip", "virttripbiotadatabase", self.root_field.get_text())
         set_setting("virttrip", "virttripbiotawebroot",  self.trip_web.field.text())
         runner = BatchModuleRunner(self, self.passed_parent)
-        runner.run(self.menu_spec)
+        runner.run(self.menu_spec, on_success=self._refresh_panels)
+
+    def _refresh_panels(self):
+        populate_virttrip_overview(self.passed_parent)
+        self.passed_parent.virttrip_panel.rebuild()
 
     def on_select(self):
         set_setting("virttrip", "virttriprootdirectory", str(Path(self.root_field.get_text()).parent))
         set_setting("virttrip", "virttripbiotadatabase", self.root_field.get_text())
         set_setting("virttrip", "virttripbiotawebroot",  self.trip_web.field.text())
         populate_virttrip_overview(self.passed_parent)
+        self.passed_parent.virttrip_panel.rebuild()
         self.accept()
 
     def translate_dutch_to_english(self):
