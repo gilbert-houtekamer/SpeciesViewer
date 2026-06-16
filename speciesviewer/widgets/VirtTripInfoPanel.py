@@ -109,8 +109,7 @@ class VirtTripInfoPanel(QWidget):
         trip_data = read_virttrip_ini(str(trip_dir))
         if trip_data:
             trip_name = trip_data.get("trip_name", "").strip()
-            web_root = _config.get("virttrip", "virttripbiotawebroot", fallback="")
-            if trip_name and not web_root:
+            if trip_name:
                 _config.set("virttrip", "virttripbiotawebroot", f"/virttrips/{trip_name}")
         persist_config()
         self._refresh_highlights(trip_dir)
