@@ -17,7 +17,6 @@ own a RatingEditorCollection and drop its inline grid/write logic).
 from __future__ import annotations
 
 import logging
-import subprocess
 from pathlib import Path
 
 from PyQt6.QtGui import QImage
@@ -400,17 +399,11 @@ class RatingEditorCollection(PictureCollection):
             cache_path = cache_dir / (raw_path.stem + ".jpg")
             if cache_path.exists():
                 return cache_path
-            for tag in ["-PreviewImage", "-ThumbnailImage"]:
-                try:
-                    result = subprocess.run(
-                        ["exiftool", "-b", tag, str(raw_path)],
-                        capture_output=True, timeout=15,
-                    )
-                    if result.returncode == 0 and result.stdout:
-                        cache_path.write_bytes(result.stdout)
-                        return cache_path
-                except Exception as e:
-                    logger.warning(f"RAW thumb extraction failed for {raw_path.name}: {e}")
+            # One shared, serialised exiftool — never a per-RAW process storm
+            # (which intermittently yielded an empty preview → blank cards).
+            from gui.preview_extract import extract_preview_to
+            if extract_preview_to(raw_path, cache_path):
+                return cache_path
         return None
 
     def raw_path(self, upn_key: str) -> Path | None:

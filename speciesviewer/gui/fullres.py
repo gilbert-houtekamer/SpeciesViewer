@@ -150,6 +150,53 @@ def clear_preview_cache() -> int:
     return count
 
 
+# A full embedded preview is ~1 MB (typically 1600px+); the small ThumbnailImage
+# fallback is ~6-8 KB (160x120). Anything under this threshold is a degraded
+# entry — either a stale fallback written when a concurrent exiftool returned an
+# empty preview (the old grid bug), or a genuinely preview-less RAW. Either way
+# deleting it is safe: it just forces a re-extract, which now reliably yields the
+# full preview (or the same small thumbnail for the rare preview-less file).
+_SMALL_PREVIEW_BYTES = 50_000
+
+
+def small_preview_stats() -> tuple[int, int]:
+    """(file_count, total_bytes) of cached previews below the low-res threshold."""
+    d = preview_cache_root()
+    count = total = 0
+    if d.is_dir():
+        for f in d.rglob("*.jpg"):
+            try:
+                sz = f.stat().st_size
+            except OSError:
+                continue
+            if sz < _SMALL_PREVIEW_BYTES:
+                total += sz
+                count += 1
+    return count, total
+
+
+def purge_small_previews() -> int:
+    """Delete only the low-res preview entries (< ~50 KB), leaving the good
+    full-size previews in place. Returns the number removed.
+
+    Unlike clear_preview_cache (which nukes everything and forces a slow
+    re-extract of the whole master), this targets just the degraded thumbnails,
+    so the next view re-extracts only those at full resolution."""
+    d = preview_cache_root()
+    if not d.is_dir():
+        return 0
+    removed = 0
+    for f in d.rglob("*.jpg"):
+        try:
+            if f.stat().st_size < _SMALL_PREVIEW_BYTES:
+                f.unlink()
+                removed += 1
+        except OSError:
+            pass
+    logger.info(f"Removed {removed} low-res preview cache file(s) from {d}.")
+    return removed
+
+
 def run_fullres_batch(parent, raw_paths, cache_root=None):
     """Decode a list of RAWs into the full-res cache on a worker thread, behind a
     modal progress dialog with Cancel. Already-cached files are quick no-ops, so

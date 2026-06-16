@@ -17,7 +17,6 @@ next step). The virtual-trip file_list mode (no fpr) is not covered here.
 from __future__ import annotations
 
 import logging
-import subprocess
 from pathlib import Path
 
 from PyQt6.QtGui import QImage
@@ -80,15 +79,11 @@ def cached_jpg_for(src: Path | None, cache_dir: Path) -> Path | None:
         except Exception as e:
             logger.warning(f"HEIC decode failed for {src.name}: {e}")
             return None
-    for tag in ("-PreviewImage", "-ThumbnailImage"):
-        try:
-            r = subprocess.run(["exiftool", "-b", tag, str(src)],
-                               capture_output=True, timeout=15)
-            if r.returncode == 0 and r.stdout:
-                cache.write_bytes(r.stdout)
-                return cache
-        except Exception as e:
-            logger.warning(f"RAW preview extraction failed for {src.name}: {e}")
+    # One shared, serialised exiftool — never a per-RAW process storm (which
+    # intermittently yielded an empty preview → blank cards).
+    from gui.preview_extract import extract_preview_to
+    if extract_preview_to(src, cache):
+        return cache
     return None
 
 

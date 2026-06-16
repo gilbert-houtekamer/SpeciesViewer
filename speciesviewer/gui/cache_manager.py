@@ -143,6 +143,8 @@ class ManageCachesDialog(QDialog):
                 stat_fn=self._preview_stats,
                 clear_fn=self._clear_preview,
                 warning=None,
+                extra=("Remove low-res", self._purge_small_previews,
+                       self._small_preview_stats),
             ),
             dict(
                 title="EXIF metadata cache",
@@ -167,6 +169,16 @@ class ManageCachesDialog(QDialog):
             size_lbl = QLabel()
             size_row.addWidget(size_lbl)
             size_row.addStretch()
+            extra_btn = None
+            if spec.get("extra"):
+                label, handler, _stat = spec["extra"]
+                extra_btn = QPushButton(label)
+                extra_btn.setFixedWidth(120)
+                extra_btn.setToolTip(
+                    "Delete only the low-res (< ~50 KB) thumbnails, keeping the "
+                    "full-size previews — they re-extract at full resolution.")
+                extra_btn.clicked.connect(lambda _, h=handler: h())
+                size_row.addWidget(extra_btn)
             btn = QPushButton("Clear")
             btn.setFixedWidth(80)
             size_row.addWidget(btn)
@@ -185,7 +197,8 @@ class ManageCachesDialog(QDialog):
             root.addWidget(group)
             row = dict(size_lbl=size_lbl, path_lbl=path_lbl, btn=btn,
                        stat_fn=spec["stat_fn"], clear_fn=spec["clear_fn"],
-                       title=spec["title"])
+                       title=spec["title"], extra_btn=extra_btn,
+                       extra_stat_fn=spec["extra"][2] if spec.get("extra") else None)
             self._rows.append(row)
             btn.clicked.connect(lambda _, r=row: self._on_clear(r))
 
@@ -212,6 +225,10 @@ class ManageCachesDialog(QDialog):
         from gui.fullres import preview_cache_stats, preview_cache_root
         count, total = preview_cache_stats()
         return count, total, str(preview_cache_root())
+
+    def _small_preview_stats(self) -> tuple[int, int]:
+        from gui.fullres import small_preview_stats
+        return small_preview_stats()
 
     def _exif_stats(self) -> tuple[int, int, str]:
         if not self._exif_path:
@@ -243,6 +260,12 @@ class ManageCachesDialog(QDialog):
                 row["size_lbl"].setText("Empty")
             row["path_lbl"].setText(path)
             row["btn"].setEnabled(count > 0)
+            if row.get("extra_btn") is not None and row.get("extra_stat_fn"):
+                small_count, small_total = row["extra_stat_fn"]()
+                row["extra_btn"].setEnabled(small_count > 0)
+                row["extra_btn"].setText(
+                    f"Remove low-res ({small_count})" if small_count
+                    else "Remove low-res")
             sizes.append(float(total))
 
         for i, sz in enumerate(sizes):
@@ -278,6 +301,23 @@ class ManageCachesDialog(QDialog):
             return
         from gui.fullres import clear_preview_cache
         clear_preview_cache()
+        self._refresh()
+
+    def _purge_small_previews(self) -> None:
+        count, total = self._small_preview_stats()
+        if count == 0:
+            QMessageBox.information(self, "Remove low-res previews",
+                                    "No low-res preview thumbnails to remove.")
+            return
+        if QMessageBox.question(
+                self, "Remove low-res previews",
+                f"Delete {count} low-res thumbnail(s) ({_fmt(total)}), keeping the "
+                f"full-size previews?\n\nThey re-extract at full resolution the "
+                f"next time you view those pictures."
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        from gui.fullres import purge_small_previews
+        purge_small_previews()
         self._refresh()
 
     def _clear_exif(self, row: dict) -> None:
