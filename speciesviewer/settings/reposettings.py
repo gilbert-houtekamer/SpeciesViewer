@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton,
     QFileDialog, QMessageBox, QFrame, QCheckBox
@@ -112,7 +114,29 @@ class RepoSettingsDialog(QDialog):
         if path:
             self.virttrips_root_field.setText(path)
 
+    def _warn_if_trip_inside_virttrips(self) -> bool:
+        """Return True if the user wants to proceed despite the mismatch."""
+        trip = self.trip_field.text().strip()
+        vroot = self.virttrips_root_field.text().strip()
+        if not trip or not vroot:
+            return True
+        try:
+            Path(trip).relative_to(vroot)
+        except ValueError:
+            return True  # not inside virttrips root — fine
+        answer = QMessageBox.warning(
+            self, "Possible configuration error",
+            f"The Active Trip path\n  {trip}\n\nis inside the Virtual Trips root\n  {vroot}\n\n"
+            "This looks like a virtual trip set as a regular trip by mistake.\n\n"
+            "Save anyway?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
     def save_settings(self):
+        if not self._warn_if_trip_inside_virttrips():
+            return
         _config.set("master", "masterbiotadatabase", self.master_field.text())
         _config.set("master", "masterbiotawebroot", self.master_web.text())
         if _config.get("master", "readonly_locked", fallback="no").strip().lower() != "yes":
