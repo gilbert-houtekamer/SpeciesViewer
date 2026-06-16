@@ -1,5 +1,6 @@
 import csv
 import re
+from datetime import date
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
@@ -47,27 +48,15 @@ def _build_file_list(csv_path: Path, jpeg_only: bool) -> list:
     return paths
 
 
-def _open_blog_editor(parent, day_dir: Path, virttrip_root: Path):
-    """Open the per-day blog editor (stub — shows the current ini content)."""
-    from PyQt6.QtWidgets import QMessageBox
-    blog_ini = virttrip_root / "metadata" / "blog" / f"blog_{day_dir.name}.ini"
-    if not blog_ini.exists():
-        QMessageBox.information(
-            parent, "Blog ini not found",
-            f"No blog ini for {day_dir.name} yet.\n\n"
-            "Click 'Write All Blogs' to auto-generate it, then double-click here to edit.",
-        )
-        return
-    try:
-        text = blog_ini.read_text(encoding="utf-8")
-    except Exception as e:
-        QMessageBox.warning(parent, "Cannot read blog ini", str(e))
-        return
-    # Placeholder: just show the ini content.  Full editor to be added later.
-    QMessageBox.information(
-        parent, f"Blog ini — {day_dir.name}",
-        text,
-    )
+def _open_blog_editor(parent, day_dirs: list, first_date: date,
+                      virttrip_root: Path, jump_to_day_num: int = 0):
+    """Open the tabbed blog editor, optionally jumping to a specific day's tab."""
+    from gui.virttrip_blog_editor import VirtTripBlogEditorDialog
+    blog_dir = virttrip_root / "metadata" / "blog"
+    dlg = VirtTripBlogEditorDialog(parent, blog_dir, day_dirs, first_date)
+    if jump_to_day_num:
+        dlg.jump_to_day(jump_to_day_num)
+    dlg.exec()
 
 
 def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path):
@@ -148,7 +137,8 @@ def populate_virttrip_overview(self):
     header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
     header.setSectionResizeMode(DATE_COL, QHeaderView.ResizeMode.ResizeToContents)
 
-    blog_dir = virttrip_path / "metadata" / "blog"
+    blog_dir  = virttrip_path / "metadata" / "blog"
+    first_date = date.fromisoformat(day_dirs[0].name)
 
     # Website is built trip-wide (not per-day); detect from the all-species summary page.
     web_built = (virttrip_path / "web" / "summaries" / "all biota species-nl.html").exists()
@@ -196,10 +186,13 @@ def populate_virttrip_overview(self):
     header_row.addWidget(header_label)
     header_row.addStretch()
 
+    edit_blogs_btn = QPushButton("Edit Blogs")
+    edit_blogs_btn.setToolTip("Open the tabbed blog editor to edit titles, text and settings for every day.")
     write_blog_btn = QPushButton("Write All Blogs")
     write_blog_btn.setToolTip("Auto-create blog ini files and upload all day blogs.")
     build_web_btn  = QPushButton("Build Website")
     build_web_btn.setToolTip("Generate species HTML pages for this virtual trip.")
+    header_row.addWidget(edit_blogs_btn)
     header_row.addWidget(write_blog_btn)
     header_row.addWidget(build_web_btn)
 
@@ -209,6 +202,9 @@ def populate_virttrip_overview(self):
     self.yellow_tabs.addTab(overview_widget, TAB_TITLE)
     self.yellow_tabs.setCurrentWidget(overview_widget)
 
+    def _on_edit_blogs():
+        _open_blog_editor(self, day_dirs, first_date, virttrip_path)
+
     def _on_write_blog():
         from gui.virttrip_process import VirttripWriteBlogDialog
         VirttripWriteBlogDialog(self).exec()
@@ -217,6 +213,7 @@ def populate_virttrip_overview(self):
         from gui.virttrip_process import VirttripBuildWebsiteDialog
         VirttripBuildWebsiteDialog(self).exec()
 
+    edit_blogs_btn.clicked.connect(_on_edit_blogs)
     write_blog_btn.clicked.connect(_on_write_blog)
     build_web_btn.clicked.connect(_on_build_website)
 
@@ -227,6 +224,8 @@ def populate_virttrip_overview(self):
             jpeg_only = (col == JPGS_COL)
             _open_day_viewer(self, day_dirs[row], jpeg_only, virttrip_path)
         elif col == BLOG_COL:
-            _open_blog_editor(self, day_dirs[row], virttrip_path)
+            day_num = (date.fromisoformat(day_dirs[row].name) - first_date).days + 1
+            _open_blog_editor(self, day_dirs, first_date, virttrip_path,
+                              jump_to_day_num=day_num)
 
     self.virttrip_table.cellDoubleClicked.connect(_on_cell_double_clicked)

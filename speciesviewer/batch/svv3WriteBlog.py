@@ -212,10 +212,16 @@ def _generate_blog_ini(ini_path: Path, day_num: int, rows: list,
     title_nl = f"Dag {day_num}: {loc_nl}"
     title_en = f"Day {day_num}: {loc_en}"
 
+    try:
+        from utils.config import _config as _sv_config
+        default_score = int(_sv_config.get("virttrip", "minimum_score", fallback="25"))
+    except Exception:
+        default_score = 25
+
     text = (
         "[blog_config]\n"
         "only_new = False\n"
-        "minimum_score = 25\n"
+        f"minimum_score = {default_score}\n"
         "column_width = 300\n"
         "\n"
         "[blog_selection]\n"
