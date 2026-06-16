@@ -232,13 +232,15 @@ fully operational; GUI panel improvements complete as of June 2026.</p>
   </li>
 </ul>
 
-<div class="note">
-  <strong>Data quality note (Tucson 2023, 2023-04-02):</strong>
-  All pictures are ORF+XMP only — no JPG was ever exported.
-  SmallMaster shows "(no image)" for these because it only holds JPGs.
-  Ratings come from XMP sidecar metadata. May warrant exporting JPGs from
-  originals and re-promoting to master.
-</div>
+<ul>
+  <li>
+    <strong>Live test on BigBoy</strong> <span class="tag-pending-test">NEEDS LIVE TEST</span><br>
+    Virtual trip creation and publishing has only been tested on SmallBoy (read-only master).
+    Needs an end-to-end run on BigBoy (full master, read-write) to confirm the pipeline
+    works correctly against a live master: create trip → extract days → write blog →
+    build website → add to master.
+  </li>
+</ul>
 
 <!-- ============================================================ -->
 <h2>3. Master Database &amp; Editing</h2>
