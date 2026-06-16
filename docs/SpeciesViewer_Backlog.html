@@ -100,6 +100,15 @@
     font-weight: bold;
   }
 
+  .tag-complete {
+    background: #C6EFCE;
+    color: #276221;
+    padding: 1pt 5pt;
+    border-radius: 3pt;
+    font-size: 9pt;
+    font-weight: bold;
+  }
+
   .done {
     color: #888;
     text-decoration: line-through;
@@ -147,7 +156,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 13 June 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 16 June 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Working task list for the SpeciesViewer nature-photo pipeline and GUI.
 Items are grouped by feature area. Each section shows what is open, what has been
@@ -156,8 +165,8 @@ shipped recently, and what is deliberately deferred.</p>
 <!-- ============================================================ -->
 <h2>1. SD-card Ingest &amp; Culling</h2>
 
-<p>Milestones M0–M4 (copy, prefix, date-sort, validation, viewer), plus sidecar cache
-and GPS place-names, are all <span class="tag-shipped">SHIPPED &amp; TESTED</span>.</p>
+<p>Milestones M0–M4 (copy, prefix, date-sort, validation, viewer), sidecar cache,
+and GPS place-names are all <span class="tag-shipped">SHIPPED &amp; TESTED</span>.</p>
 
 <h3>Still open</h3>
 <ul>
@@ -169,51 +178,77 @@ and GPS place-names, are all <span class="tag-shipped">SHIPPED &amp; TESTED</spa
   </li>
   <li>
     <strong>Cancel button during copy</strong> <span class="tag-pending-test">NEEDS LIVE TEST</span><br>
-    Shipped (commit e6f49a7): Close button becomes "Cancel" during a running copy; clicking
-    it stops the worker. Has not yet been tested against a real SD-card copy run.
+    Shipped (e6f49a7): Close becomes "Cancel" during a running copy; clicking it stops the
+    worker. Has not yet been tested against a real SD-card copy run.
   </li>
 </ul>
 
 <h3>Deferred (GPS / geolocation fine-tuning)</h3>
 <ul>
   <li>Tune Nominatim zoom level so Location returns a reserve or lake name rather than
-    the nearest road (current zoom 14 returns roads most of the time).</li>
+    the nearest road (zoom 14 currently returns roads most of the time).</li>
   <li>Expose lang / radius / zoom settings and an overwrite toggle in the UI.</li>
-  <li>Push the Municipality field into the pipeline CSV and website output
-    (currently written to XMP only).</li>
+  <li>Push the Municipality field into the pipeline CSV and website output.</li>
   <li>Offline <em>reverse_geocoder</em> (scipy) fallback for use without internet.</li>
-  <li>Cache the LOCATION read per navigation step if it turns out to be laggy.</li>
+  <li>Cache the LOCATION read per navigation step if laggy.</li>
 </ul>
 
 <!-- ============================================================ -->
-<h2>2. Virtual Trips <span class="tag-big">BIG FEATURE</span></h2>
+<h2>2. Virtual Trips <span class="tag-shipped">CORE SHIPPED</span></h2>
 
-<p>The core infrastructure is working: create a virtual trip, populate per-day CSVs
-from the master, view pictures read-only. The main remaining work is <strong>publishing</strong>.</p>
+<p>The full virtual-trip pipeline is in place and live on the website
+(Tucson 2023 trip). svv1 → svv5 all working; blog and website publishing
+fully operational; GUI panel improvements complete as of June 2026.</p>
 
+<h3>What was built (all shipped)</h3>
+<ul>
+  <li>svv1 creates directory tree; svv2 extracts per-day CSVs from master</li>
+  <li>svv3 WriteBlog: auto-generates blog ini per day, uploads NL+EN blogs + sliders.
+    Enhancements: XMP:Location sublocation in day titles; richer auto-generated message
+    text (opening variety, species callouts with italic scientific names, quiet-day mode,
+    <code>(auto-tekst)</code> marker); minimum score read from config key.</li>
+  <li>svv4 BuildWebsite: species HTML pages, biota tree, summaries; empty kingdom stubs
+    for classification nodes with no trip pictures.</li>
+  <li>svv5 AddToMaster: registers trip in master trip_admin.csv, uploads trip picture/banner
+    and tripindex NL+EN; live web copy fetched to avoid SmallBoy serving stale drafts.</li>
+  <li>Per-day blog editor (<code>VirtTripBlogEditorDialog</code>): tabbed QDialog, one tab
+    per day ini; NL/EN title+message fields; ↓/↑ translate buttons; min-score + column-width
+    spinners; Save All / Save All &amp; Re-upload. Double-click BLOG_COL opens at that day.</li>
+  <li>Repositories Browse buttons default to the correct root directories.</li>
+  <li>VirtTripInfoPanel: ✅/📝/⚪ state icons; purple ▶ active marker; rebuilds after
+    Create/Select; web root always derived from trip_name on trip switch.</li>
+  <li>TripInfoPanel: matching purple ▶ active marker; tab auto-focuses on trip click.</li>
+  <li>Active Trip field warning when path is inside the virttrips root.</li>
+  <li>bloglib.py breadcrumb links use <code>Trip.web_prefix</code> (not hardcoded <code>/trips/</code>).</li>
+</ul>
+
+<h3>Still open</h3>
 <ul>
   <li>
-    <strong>Write Blog for virtual trips</strong> — currently a disabled placeholder (white dot)
-    in the virtual-trip overview. Needs a new batch module (<em>svv3WriteBlog</em>?) that
-    generates blog text from the curated species list, reading from
-    <code>data_pictures.csv</code> rather than the live master scan.
-  </li>
-  <li>
-    <strong>Build Website for virtual trips</strong> — also a placeholder. Needs the full
-    web-build pipeline adapted for virtual trips.
-  </li>
-  <li>
-    <em>Deferred:</em> VirtTrip panel refresh after "Create Virtual Trip" (currently requires
-    a restart to see the new trip in the list); web root update on trip switch.
+    <strong>Single-day re-upload</strong> <span class="tag-open">MINOR / FUTURE</span><br>
+    "Save All &amp; Re-upload All" in the blog editor re-runs the full Write-All-Blogs
+    dialog. A future refinement could re-run svv3 for just the edited day to avoid
+    re-processing unchanged days.
   </li>
 </ul>
+
+<div class="note">
+  <strong>Data quality note (Tucson 2023, 2023-04-02):</strong>
+  All pictures are ORF+XMP only — no JPG was ever exported.
+  SmallMaster shows "(no image)" for these because it only holds JPGs.
+  Ratings come from XMP sidecar metadata. May warrant exporting JPGs from
+  originals and re-promoting to master.
+</div>
 
 <!-- ============================================================ -->
 <h2>3. Master Database &amp; Editing</h2>
 
 <p>Phases 1–3 are <span class="tag-shipped">SHIPPED &amp; LIVE-TESTED</span>:
-Phase 1 (SQLite read-cache), Phase 2 (DB-first re-rating with WAL + CSV checkpoint),
-Phase 3 (add / delete pictures with reversible file-move to trash).
+Phase 1 (global JSON EXIF cache under <code>master/metadata/cache/</code>),
+Phase 2 (SQLite DB-first re-rating: WAL + debounced CSV checkpoint + crash recovery
++ Read-Only toggle + Database dialog),
+Phase 3 (add / delete pictures with reversible file-move to <code>.trash/</code>;
+trash manifest; JPG-protection invariant; species-count maintenance in DB).
 The Rating Editor's Trip+Master scope is fully working.</p>
 
 <h3>Still open</h3>
@@ -221,7 +256,7 @@ The Rating Editor's Trip+Master scope is fully working.</p>
   <li>
     <strong>"Undo last delete" UI button</strong> — the headless capability
     (<code>undo_delete()</code>) is built and tested; it reads the trash manifest,
-    moves files back, and restores the DB rows. No menu item or toolbar button exists yet.
+    moves files back, and restores DB rows. No menu item or button exists yet.
   </li>
   <li>
     <strong>EXIF-cache mutable bucket prune</strong> — the mutable bucket (XMP / JPG files
@@ -239,40 +274,29 @@ The Rating Editor's Trip+Master scope is fully working.</p>
 <!-- ============================================================ -->
 <h2>4. Trip-to-Master Pipeline</h2>
 
-<p>Both pieces are committed to <em>ClaudeSpecies</em>:
-TripMasterDashboard (commit 65d47e7) — a 7-stage ordered dialog in the Master menu;
-svr7DeleteFiles (commit bf23edd) — verifies the master copy exists before deleting a trip file.</p>
+<p>Both pieces are committed: TripMasterDashboard (65d47e7) — a 7-stage ordered dialog
+in the Master menu; svr7DeleteFiles (bf23edd) — verifies the master copy exists before
+deleting a trip file.</p>
 
 <p>Both need a <span class="tag-pending-test">LIVE END-TO-END TEST</span> before they ship:</p>
 <ol>
   <li>Run sv6 Freeze on a real trip → inspect <code>deletelist.csv</code>
     (format: header row, semicolon-delimited <code>source_path;target_path</code>).</li>
-  <li>Run svr7 → verify that the skip-warning fires correctly when the master target
-    is absent.</li>
+  <li>Run svr7 → verify skip-warning fires correctly when the master target is absent.</li>
   <li>After tests pass: wire svr7DeleteFiles into TripMasterDashboard stage 7
     as a <strong>Run</strong> button (today stage 7 is informational-only).</li>
 </ol>
 
 <!-- ============================================================ -->
-<h2>5. SmallMaster (Laptop-Friendly Master)</h2>
+<h2>5. SmallMaster (Laptop-Friendly Master) <span class="tag-complete">COMPLETE ✓</span></h2>
 
-<p>Full feature <span class="tag-shipped">SHIPPED</span> (commits 4b8a7ce → 1602203):</p>
-<ul>
-  <li>BigBoy: Utilities → Small Master Database → Create ZIP — packages JPGs, XMPs,
-    and the four metadata CSVs with relative paths; RAWs excluded; ZIP_STORED for JPGs.</li>
-  <li>SmallBoy: Utilities → Install Small Master → pick ZIP →
-    shows summary → extracts → merges local speciescollection additions → rebuilds master DB.</li>
-  <li>DB rebuild resolves root-relative paths back to absolute for the current machine.</li>
-</ul>
-
-<h3>Pending</h3>
-<ul>
-  <li><strong>End-to-end live test on SmallBoy</strong> — full flow: Create ZIP on BigBoy →
-    copy file → Install on SmallBoy → confirm app opens, master DB rebuilds, species images
-    appear correctly.</li>
-  <li><em>Operational reminder:</em> enable Master Read-Only in Repository Settings on
-    SmallBoy once tested.</li>
-</ul>
+<p>Full feature shipped and live-tested on SmallBoy (2026-06-13).
+BigBoy creates <code>smallmaster.zip</code> (JPGs stored, text deflated, CSV paths relativized);
+SmallBoy installs via "Install Small Master" dialog (summary → extract → speciescollection merge →
+DB rebuild with absolute paths). Install dialog automatically writes
+<code>readonly = yes</code> + <code>readonly_locked = yes</code> to the machine config;
+the Repository Settings checkbox is greyed out and locked on SmallBoy.
+No open items.</p>
 
 <!-- ============================================================ -->
 <h2>6. Taxonomy &amp; Species</h2>
@@ -282,7 +306,7 @@ svr7DeleteFiles (commit bf23edd) — verifies the master copy exists before dele
   <li>
     <strong>Sequence redesign</strong> — replace the "040 passeriformes" text-prefix sort
     with an eBird <code>TAXON_ORDER</code> float column. Schema change touching the species
-    tree and all sort / display logic.
+    tree and all sort / display logic. Branch: <em>seq-decouple-prefix</em> (not started).
   </li>
   <li>
     <strong>Auto-detect obscure flag</strong> — derive from GBIF family membership
@@ -308,7 +332,6 @@ svr7DeleteFiles (commit bf23edd) — verifies the master copy exists before dele
     <strong>Rating-formula tuning</strong> <span class="tag-deferred">DEFERRED</span><br>
     Fine-tuning the weights (Red/Yellow/Green boost, star / size / DxO / description
     balance) is deliberately deferred to the end of the viewer-convergence work.
-    Tuning now risks wasting effort before the full picture set is finalised.
     This formula directly feeds the website best-pick selection.
   </li>
   <li>
@@ -326,9 +349,9 @@ svr7DeleteFiles (commit bf23edd) — verifies the master copy exists before dele
 </ul>
 
 <!-- ============================================================ -->
-<h2>8. Viewer Convergence — Horizon</h2>
+<h2>8. Viewer Convergence <span class="tag-complete">COMPLETE ✓</span></h2>
 
-<p>The core convergence work is done. Summary of completed items:</p>
+<p>All convergence work closed as of June 2026. Completed items:</p>
 <ul>
   <li class="done">Splitter sizes persisted across sessions</li>
   <li class="done">Rating-engine description write-back</li>
@@ -336,25 +359,12 @@ svr7DeleteFiles (commit bf23edd) — verifies the master copy exists before dele
   <li class="done">Blue / Purple batch-delete in all three viewers</li>
   <li class="done">Shared PictureCard + UPN-converged preview grid</li>
   <li class="done">LargeImageView + filmstrip + right panel (PhotoMechanic-style layout)</li>
-</ul>
-
-<h3>Remaining horizon items (agreed design, not yet built)</h3>
-<ul>
-  <li>
-    <strong>Filmstrip adaptive position</strong> — bottom strip for landscape pictures,
-    but should move to a left vertical strip when the majority of pictures are portrait
-    (2:3 / 3:4 ratio) or when the monitor is wider than tall.
-  </li>
-  <li>
-    <strong>Inline master comparison</strong> — show how many pictures of this species
-    already exist in the master alongside the new trip cards ("cull against history").
-    Design open: inline count badge, or only visible in Trip+Master scope.
-  </li>
-  <li>
-    <strong>Filmstrip ↔ grid sort/filter sync</strong> — decide whether the filmstrip
-    carries the grid's active species / colour filter and what resets it when navigating
-    out of the filtered view.
-  </li>
+  <li class="done">Filmstrip adaptive position — always-left default; live toggle button;
+    Up/Down keys alias Left/Right; sizes remembered per mode (0672b53)</li>
+  <li class="done">Inline master comparison — covered by Rating Editor Trip+Master scope
+    (master JPGs load instantly via EXIF cache)</li>
+  <li class="done">Filmstrip ↔ grid sort/filter sync — resolved by design: LargeImageView
+    receives the grid's filtered key list at open time</li>
 </ul>
 
 <!-- ============================================================ -->
@@ -362,34 +372,27 @@ svr7DeleteFiles (commit bf23edd) — verifies the master copy exists before dele
 
 <ul>
   <li>
-    <strong>Virtual-trip preview path — needs live test</strong><br>
+    <strong>Virtual-trip preview path — needs live test</strong> <span class="tag-pending-test">PENDING TEST</span><br>
     <code>FileListPreviewCollection</code> and <code>FilePreviewItem</code> back the
     virtual-trip <code>file_list</code> mode and metadata-less day folders.
     Import-verified but not yet exercised in a running app — confirm thumbnails render
-    and the filter buttons are greyed correctly.
+    and filter buttons are greyed correctly.
   </li>
   <li>
     <strong>Preview cards don't resize live</strong><br>
-    Card width is fixed at build time and only recomputed when the column spinner changes
-    (matches the Rating Editor's behaviour). If this feels wrong in daily use,
-    add a debounced <code>resizeEvent</code> that rebuilds at the new card width.
+    Card width is fixed at build time and only recomputed when the column spinner changes.
+    If this feels wrong in daily use, add a debounced <code>resizeEvent</code> that
+    rebuilds at the new card width.
   </li>
   <li>
-    <strong>Commit the config state files doc</strong> <span class="tag-open">SMALL TASK</span><br>
-    <code>docs/config_state_files.md</code> has been written (covers machine / master /
-    trip / per-day / per-card scopes, deletion safety table) but is currently untracked.
-    Stage it and commit.
+    <strong>"Undo last delete" UI button</strong> — headless capability done (see item 3);
+    surface it as a menu item or button in the Rating Editor or Database Settings dialog.
   </li>
   <li>
-    <strong>"Undo last delete" UI button</strong> — the headless capability is done
-    (see item 3); surface it as a menu item or button in the Rating Editor or Database
-    Settings dialog.
-  </li>
-  <li>
-    <em>Watch point — Translation:</em> when a source text is edited, its CRC changes
-    and the old cache entry becomes an orphan. Not a crash, but stale entries accumulate.
-    Also: if a HEIC ever holds a competing Headline/Description value, the pipeline could
-    re-resolve to the HEIC's stale text after a re-read (not observed in testing; watch only).
+    <em>Watch point — Translation:</em> when a source text is edited its CRC changes and
+    the old cache entry becomes an orphan (stale entries accumulate, no crash).
+    Also: if a HEIC holds a competing Headline/Description, the pipeline could
+    re-resolve to the stale HEIC text after a re-read (not observed in testing; watch only).
   </li>
   <li>
     <em>Deferred:</em> user-configurable cache locations (all currently in <code>%LOCALAPPDATA%</code>).
@@ -399,21 +402,19 @@ svr7DeleteFiles (commit bf23edd) — verifies the master copy exists before dele
 <!-- ============================================================ -->
 <h2>10. Cross-platform (Mac) Prep</h2>
 
-<p>First pass <span class="tag-shipped">DONE</span> (commit 8701821):
-<code>open_path()</code> helper that routes to the correct OS call;
+<p>First pass <span class="tag-shipped">DONE</span> (8701821):
+<code>open_path()</code> helper routes to the correct OS call;
 Windows-only defaults in dialogs cleared.</p>
 
 <p>Full portability sweep still pending before the MacBook switch:</p>
 <ul>
   <li>Remaining <code>os.startfile()</code> call sites — no equivalent on macOS.</li>
-  <li>Hardcoded paths containing drive letters (<code>E:/Dropbox/…</code>) or backslashes.</li>
-  <li><code>QSettings</code> registry usage — macOS uses <code>~/Library/Preferences</code>,
-    not the Windows registry.</li>
-  <li>Case-sensitivity traps — file lookups that work on Windows (case-insensitive NTFS)
-    but fail silently on macOS (case-sensitive HFS+), e.g. <code>file.jpg</code>
-    vs <code>file.JPG</code>.</li>
-  <li><code>subprocess</code> calls that assume Windows path conventions or Windows-only
-    tools (<code>exiftool.exe</code> etc.).</li>
+  <li>Hardcoded paths with drive letters (<code>E:/Dropbox/…</code>) or backslashes.</li>
+  <li><code>QSettings</code> registry usage — macOS uses <code>~/Library/Preferences</code>.</li>
+  <li>Case-sensitivity traps — lookups that work on Windows NTFS but fail on macOS HFS+,
+    e.g. <code>file.jpg</code> vs <code>file.JPG</code>.</li>
+  <li><code>subprocess</code> calls assuming Windows paths or Windows-only tools
+    (<code>exiftool.exe</code> etc.).</li>
 </ul>
 
 <!-- ============================================================ -->
@@ -437,8 +438,8 @@ Windows-only defaults in dialogs cleared.</p>
   </tr>
   <tr>
     <td>100% decode quality</td>
-    <td>Decode Quality settings dialog (4 presets + custom); rawpy LibRaw 0.22 green-cast bug fixed;
-      <code>raw_decode_lab.py</code> A/B tool retained as standalone.</td>
+    <td>Decode Quality settings dialog (4 presets + custom); rawpy LibRaw 0.22 green-cast
+      bug fixed; <code>raw_decode_lab.py</code> A/B tool retained as standalone.</td>
     <td>b4d52b3</td>
   </tr>
   <tr>
@@ -449,8 +450,8 @@ Windows-only defaults in dialogs cleared.</p>
   </tr>
   <tr>
     <td>Blue / Purple batch-delete</td>
-    <td>✖B / ✖P buttons in preview and rating editor grids; HARD INVARIANT enforced
-      (JPG-bearing UPN never trashed); confirmation dialog with skip count.</td>
+    <td>✖B / ✖P buttons in preview and rating editor grids; JPG-bearing UPN never
+      trashed (hard invariant); confirmation dialog with skip count.</td>
     <td>d46e978</td>
   </tr>
   <tr>
@@ -473,15 +474,22 @@ Windows-only defaults in dialogs cleared.</p>
   </tr>
   <tr>
     <td>Translation validation</td>
-    <td>verified bit + source_lang on per-trip cache; per-day validation panel
+    <td>Verified bit + source_lang on per-trip cache; per-day validation panel
       (edit source → XMP + translation + verify); trip-overview 🟢/🔵 sphere.
       translatelib consolidated to one copy.</td>
-    <td>274630b, df9a7c0, 6758386, beee982</td>
+    <td>274630b, beee982</td>
+  </tr>
+  <tr>
+    <td>Global EXIF cache</td>
+    <td>JSON EXIF cache under <code>master/metadata/cache/</code>; immutable bucket
+      (EXIF/IPTC) + mutable bucket (XMP/JPG by mtime). Read Directory: day 6.9 s → 0.6 s,
+      full trip ~80 s → seconds. Cache on by default; Master menu Clear/Rescan items.</td>
+    <td>ddb7c01, 0125c2a</td>
   </tr>
   <tr>
     <td>Master SQLite (re-rating)</td>
-    <td>DB-first re-rating (Phase 2): exiftool XMP write + WAL + debounced CSV checkpoint +
-      crash recovery + Read-Only toggle + Database dialog.</td>
+    <td>DB-first re-rating (Phase 2): exiftool XMP write + WAL + debounced CSV checkpoint
+      + crash recovery + Read-Only toggle + Database dialog.</td>
     <td>bc30db6</td>
   </tr>
   <tr>
@@ -497,7 +505,7 @@ Windows-only defaults in dialogs cleared.</p>
     <td>a6aadda</td>
   </tr>
   <tr>
-    <td>Description write-back</td>
+    <td>Description write-back + splitters</td>
     <td>Rating-engine description write-back for trip pictures;
       splitter sizes persisted across sessions.</td>
     <td>a50063e, 35a2f9c</td>
@@ -509,15 +517,51 @@ Windows-only defaults in dialogs cleared.</p>
     <td>—</td>
   </tr>
   <tr>
+    <td>Filmstrip adaptive position</td>
+    <td>Always-left default (<code>[layout] filmstrip_left</code>); live toggle "⬅/⬇ Strip"
+      button; both filmstrips always built, <code>setVisible</code> swaps instantly;
+      Up/Down keys alias Left/Right; sizes remembered per mode.</td>
+    <td>0672b53</td>
+  </tr>
+  <tr>
     <td>SmallMaster</td>
-    <td>ZIP export on BigBoy + Install dialog on SmallBoy + speciescollection merge +
-      progress + DB rebuild on install.</td>
-    <td>1602203</td>
+    <td>BigBoy creates ZIP (JPGs stored, text deflated, relative CSV paths);
+      SmallBoy Install dialog extracts, merges speciescollection, rebuilds master DB.
+      Auto-locks repository to read-only on SmallBoy. Live-tested 2026-06-13.</td>
+    <td>5b1421f, 1ee86dd</td>
   </tr>
   <tr>
     <td>Mac portability (first pass)</td>
     <td><code>open_path()</code> helper; Windows-only dialog defaults cleared.</td>
     <td>8701821</td>
+  </tr>
+  <tr>
+    <td>Virtual trip pipeline</td>
+    <td>svv1–svv5 all working: create repo, extract days, write blog, build website,
+      register in master. Tucson 2023 live on website. Day-title sublocation,
+      richer auto-generated blog text, empty kingdom stubs, JPG-less day handling.</td>
+    <td>db09269, d7f713e, c132ca6, 3e26407, e1094e4</td>
+  </tr>
+  <tr>
+    <td>Virtual trip — blog editor</td>
+    <td>Per-day blog editor dialog (tabbed, NL/EN fields, translate buttons, settings);
+      min_score read from config; Edit Blogs button + BLOG_COL double-click.</td>
+    <td>c169a1e</td>
+  </tr>
+  <tr>
+    <td>Virtual trip — panel &amp; GUI polish</td>
+    <td>bloglib breadcrumbs use <code>Trip.web_prefix</code>; VirtTripInfoPanel rebuild
+      after Create/Select; web root always updated on trip switch; Active Trip warning
+      when path is inside virttrips root; ✅/📝/⚪ state icons; purple ▶ active marker
+      in both panels; tab auto-focus on trip/virttrip click;
+      Repositories Browse defaults.</td>
+    <td>2da9c81, 315832c, 57627e7, 2e44462, 6fe5043, cbd17f5</td>
+  </tr>
+  <tr>
+    <td>Config state files doc</td>
+    <td><code>docs/config_state_files.md</code>: every .ini / .json / state file by scope
+      (machine / master / trip / per-day / per-card); deletion safety table.</td>
+    <td>b3c0eb7</td>
   </tr>
 </table>
 
@@ -527,6 +571,7 @@ Windows-only defaults in dialogs cleared.</p>
   Full ingest / culling detail → project_sdcard_ingest memory.
   Master DB phases → project_master_db memory.
   SmallMaster detail → project_small_master memory.
+  Virtual trip pending → project_virttrip_pending memory.
 </p>
 
 </body>
