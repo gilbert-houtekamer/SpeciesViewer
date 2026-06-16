@@ -22,7 +22,7 @@ class VirtTripInfoPanel(QWidget):
         layout.setSpacing(6)
 
         font_style = "font-size: 10pt; font-family: Consolas, monospace;"
-        self.setStyleSheet(f"{font_style} background-color: #f9f9f9;")
+        self.setStyleSheet(f"{font_style} background-color: white;")
 
         virttrip_root = get_virttrips_root()
         layout.addWidget(self._header_label("Virtual Trip Root:"))
