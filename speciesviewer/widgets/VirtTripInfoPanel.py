@@ -7,6 +7,9 @@ from utils.virttrip_config import read_virttrip_ini
 from utils.config import _config, persist_config, get_virttrips_root
 from utils.open_path import open_path
 
+_PATH_ROLE = Qt.ItemDataRole.UserRole          # trip_dir Path object
+_BASE_ROLE = Qt.ItemDataRole.UserRole + 1      # base label text without ▶
+
 
 class VirtTripInfoPanel(QWidget):
     def __init__(self, parent, on_virttrip_selected):
@@ -21,13 +24,12 @@ class VirtTripInfoPanel(QWidget):
         font_style = "font-size: 10pt; font-family: Consolas, monospace;"
         self.setStyleSheet(f"{font_style} background-color: #f9f9f9;")
 
-        layout.addWidget(self._styled_label("Virtual Trip Root:", font_style))
-        virttrip_active = _config.get("virttrip", "virttripbiotadatabase", fallback="")
         virttrip_root = get_virttrips_root()
-        layout.addWidget(self._styled_label(virttrip_root or "(not configured)", font_style))
+        layout.addWidget(self._header_label("Virtual Trip Root:"))
+        layout.addWidget(self._header_label(virttrip_root or "(not configured)"))
 
         layout.addSpacing(10)
-        layout.addWidget(self._styled_label("Virtual Trips:", font_style))
+        layout.addWidget(self._header_label("Virtual Trips:"))
 
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
@@ -40,29 +42,39 @@ class VirtTripInfoPanel(QWidget):
 
         self._populate_tree()
 
+    def _header_label(self, text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setFont(QFont("Consolas", 10))
+        lbl.setWordWrap(True)
+        return lbl
+
     def _populate_tree(self):
         """Clear and re-populate the tree from the current virttrips root."""
         self.tree.clear()
-        virttrip_active = _config.get("virttrip", "virttripbiotadatabase", fallback="")
         virttrip_root = get_virttrips_root()
         root_path = Path(virttrip_root) if virttrip_root else None
         if root_path and root_path.is_dir():
-            active_path = Path(virttrip_active) if virttrip_active else None
             for d in sorted(root_path.iterdir()):
                 if not d.is_dir():
                     continue
                 trip_data = read_virttrip_ini(str(d))
                 if trip_data is None:
-                    continue  # not a virttrip directory
+                    continue
 
-                label = d.name
-                item = QTreeWidgetItem([label])
-                item.setData(0, Qt.ItemDataRole.UserRole, d)
+                web_built = (d / "web" / "summaries").is_dir()
+                blog_dir  = d / "metadata" / "blog"
+                has_blogs = blog_dir.is_dir() and any(blog_dir.glob("*.ini"))
+                icon = "✅" if web_built else ("📝" if has_blogs else "⚪")
+                base_text = f"{icon} {d.name}"
 
-                fromdate = trip_data.get("fromdate", "")
-                todate = trip_data.get("todate", "")
-                title_nl = trip_data.get("title_nl", "")
-                title_en = trip_data.get("title_en", "")
+                item = QTreeWidgetItem([base_text])
+                item.setData(0, _PATH_ROLE, d)
+                item.setData(0, _BASE_ROLE, base_text)
+
+                fromdate  = trip_data.get("fromdate", "")
+                todate    = trip_data.get("todate", "")
+                title_nl  = trip_data.get("title_nl", "")
+                title_en  = trip_data.get("title_en", "")
                 message_nl = trip_data.get("message_nl", "")
                 message_en = trip_data.get("message_en", "")
                 date_range = f"{fromdate} – {todate}" if fromdate else ""
@@ -75,28 +87,36 @@ class VirtTripInfoPanel(QWidget):
                     </body></html>
                 """
                 item.setToolTip(0, tooltip_html)
-
-                if active_path and d == active_path:
-                    item.setText(0, f"▶ {d.name}")
-                    item.setFont(0, QFont("Consolas", 10, QFont.Weight.Bold))
-                    item.setForeground(0, Qt.GlobalColor.darkMagenta)
-
                 self.tree.addTopLevelItem(item)
         else:
             self.tree.addTopLevelItem(QTreeWidgetItem(["(No virtual trips found)"]))
+
+        self._refresh_highlights()
 
     def rebuild(self):
         """Re-enumerate the virttrips root and refresh the tree (e.g. after creation)."""
         self._populate_tree()
 
-    def _styled_label(self, text, style):
-        lbl = QLabel(text)
-        lbl.setStyleSheet(style)
-        lbl.setWordWrap(True)
-        return lbl
+    def _refresh_highlights(self):
+        virttrip_active = _config.get("virttrip", "virttripbiotadatabase", fallback="")
+        active_path = Path(virttrip_active) if virttrip_active else None
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            d         = item.data(0, _PATH_ROLE)
+            base_text = item.data(0, _BASE_ROLE)
+            if not d or base_text is None:
+                continue
+            if active_path and d == active_path:
+                item.setText(0, f"▶ {base_text}")
+                item.setFont(0, QFont("Consolas", 10, QFont.Weight.Bold))
+                item.setForeground(0, Qt.GlobalColor.darkMagenta)
+            else:
+                item.setText(0, base_text)
+                item.setFont(0, QFont("Consolas", 10))
+                item.setForeground(0, self.tree.palette().color(self.tree.foregroundRole()))
 
     def _handle_click(self, item, column):
-        trip_dir = item.data(0, Qt.ItemDataRole.UserRole)
+        trip_dir = item.data(0, _PATH_ROLE)
         if not trip_dir:
             return
         active = _config.get("virttrip", "virttripbiotadatabase", fallback="")
@@ -112,29 +132,14 @@ class VirtTripInfoPanel(QWidget):
             if trip_name:
                 _config.set("virttrip", "virttripbiotawebroot", f"/virttrips/{trip_name}")
         persist_config()
-        self._refresh_highlights(trip_dir)
+        self._refresh_highlights()
         self.on_virttrip_selected(self.main_window)
-
-    def _refresh_highlights(self, active_dir):
-        for i in range(self.tree.topLevelItemCount()):
-            item = self.tree.topLevelItem(i)
-            trip_dir = item.data(0, Qt.ItemDataRole.UserRole)
-            if not trip_dir:
-                continue
-            if trip_dir == active_dir:
-                item.setText(0, f"▶ {trip_dir.name}")
-                item.setFont(0, QFont("Consolas", 10, QFont.Weight.Bold))
-                item.setForeground(0, Qt.GlobalColor.darkMagenta)
-            else:
-                item.setText(0, trip_dir.name)
-                item.setFont(0, QFont("Consolas", 10))
-                item.setForeground(0, self.tree.palette().color(self.tree.foregroundRole()))
 
     def _show_context_menu(self, position):
         item = self.tree.itemAt(position)
         if not item:
             return
-        trip_dir = item.data(0, Qt.ItemDataRole.UserRole)
+        trip_dir = item.data(0, _PATH_ROLE)
         if not trip_dir:
             return
         menu = QMenu()
