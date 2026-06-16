@@ -22,7 +22,7 @@ class VirtTripInfoPanel(QWidget):
         layout.setSpacing(6)
 
         font_style = "font-size: 10pt; font-family: Consolas, monospace;"
-        self.setStyleSheet(f"{font_style} background-color: white;")
+        self.setStyleSheet(f"{font_style} background-color: #f9f9f9;")
 
         virttrip_root = get_virttrips_root()
         layout.addWidget(self._header_label("Virtual Trip Root:"))
@@ -33,7 +33,7 @@ class VirtTripInfoPanel(QWidget):
 
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
-        self.tree.setStyleSheet(font_style)
+        self.tree.setStyleSheet(f"{font_style} background-color: white;")
         layout.addWidget(self.tree)
 
         self.tree.itemClicked.connect(self._handle_click)
