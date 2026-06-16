@@ -44,7 +44,8 @@ class VirtTripInfoPanel(QWidget):
 
     def _header_label(self, text: str) -> QLabel:
         lbl = QLabel(text)
-        lbl.setFont(QFont("Consolas", 10))
+        lbl.setStyleSheet(
+            "font-size: 10pt; font-family: Consolas, monospace; background-color: transparent;")
         lbl.setWordWrap(True)
         return lbl
 
