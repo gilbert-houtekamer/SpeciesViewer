@@ -29,13 +29,14 @@ def _print_table(rows):
     if not rows:
         print("No trips or virttrips found on this machine.")
         return
-    print(f"\n{'Trip':24} {'Type':9} {'Days':>4} {'Commit':>6} {'inMaster':>8} {'?plac':>6} {'Status':20} {'Range'}")
-    print("-" * 108)
+    print(f"\n{'Trip':20} {'Days':>4} {'Cmt':>4} {'local':>6} {'inMast':>6} {'miss':>5}  "
+          f"{'Verdict':16} {'Status':20} {'inWindow':>8}")
+    print("-" * 104)
     for r in rows:
-        rng = f"{r['fromdate']}..{r['todate']}".strip(".")
-        print(f"{r['trip_name'][:24]:24} {r['type']:9} {r['num_days']:>4} "
-              f"{r['days_committed']:>6} {str(r['species_files_in_master']):>8} "
-              f"{str(r['placeholder_in_master']):>6} {r['status']:20} {rng}")
+        print(f"{r['trip_name'][:20]:20} {r['num_days']:>4} {r['days_committed']:>4} "
+              f"{str(r['local_species']):>6} {str(r['local_in_master']):>6} "
+              f"{str(r['local_missing']):>5}  {str(r['delete_local']):16} "
+              f"{r['status']:20} {str(r['species_files_in_master']):>8}")
 
 
 def main(args):
