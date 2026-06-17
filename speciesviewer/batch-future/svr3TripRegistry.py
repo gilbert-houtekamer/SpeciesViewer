@@ -21,6 +21,7 @@ if __name__ == "__main__":
 
 import engine.trip_registry as trip_registry
 import engine.trip_registry_html as trip_registry_html
+import engine.trip_thumbs as trip_thumbs
 from utils.config import MACHINE_NAME, get_trips_root, get_virttrips_root, get_setting
 
 logger = logging.getLogger("speciesviewer")
@@ -62,7 +63,14 @@ def main(args):
 
     # Local private management console (index + per-trip drill-downs).
     console_dir = os.path.join(out_dir, "console")
-    index = trip_registry_html.render_console(rows, console_dir, machine)
+    thumb_map = None
+    if args.thumbs:
+        print(f"Generating thumbnails (cap {args.max_thumbs})...")
+        thumb_map = trip_thumbs.generate_thumbs(rows, console_dir,
+                                                max_thumbs=args.max_thumbs,
+                                                per_trip=args.per_trip_thumbs)
+        print(f"  {len(thumb_map)} thumbnails ready")
+    index = trip_registry_html.render_console(rows, console_dir, machine, thumb_map)
     print(f"Console: {index}")
 
 
@@ -73,6 +81,12 @@ if __name__ == "__main__":
     parser.add_argument("--virttrips-root", default=None, help="override virttrips root dir")
     parser.add_argument("--master", default=None, help="override master repository dir")
     parser.add_argument("--out", default=None, help="override output directory")
+    parser.add_argument("--thumbs", action="store_true",
+                        help="generate drill-down thumbnails for missing pictures")
+    parser.add_argument("--max-thumbs", type=int, default=300,
+                        help="global cap on thumbnails generated")
+    parser.add_argument("--per-trip-thumbs", type=int, default=60,
+                        help="max thumbnails per trip (NEW-species first)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)

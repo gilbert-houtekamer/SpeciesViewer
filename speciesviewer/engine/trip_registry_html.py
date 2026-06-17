@@ -50,6 +50,45 @@ a{color:#1a5fb4;text-decoration:none} a:hover{text-decoration:underline}
 .tag{font-size:11px;padding:1px 6px;border-radius:8px}
 .tag.new{background:#e7503a;color:#fff} .tag.dup{background:#7aa83a;color:#fff}
 .back{font-size:12px}
+.nothumb{color:#bbb}
+.taxon{color:#555;white-space:nowrap}
+/* images are off by default so the grouping stays readable */
+.inline-thumb{display:none;height:120px;border:1px solid #ccc}
+body.show-images .inline-thumb{display:block}
+tr[data-thumb]{cursor:zoom-in}
+.toolbar{margin:14px 0}
+.toolbar button{font-size:13px;padding:6px 14px;cursor:pointer;border:1px solid #aaa;
+  border-radius:5px;background:#fff}
+.toolbar button:hover{background:#eef4ff}
+.hint{color:#888;font-size:12px;margin-left:10px}
+/* floating hover preview (only when images are not pinned inline) */
+#preview{position:fixed;top:14px;right:14px;display:none;z-index:100;background:#fff;
+  border:2px solid #1a5fb4;padding:3px;box-shadow:0 6px 20px rgba(0,0,0,.3)}
+#preview img{max-height:72vh;max-width:44vw;display:block}
+"""
+
+# Tiny vanilla-JS: hover any picture row to peek at it in a corner pane; the
+# toolbar button pins all thumbnails inline (and suppresses the hover peek).
+_SCRIPT = """
+<script>
+(function(){
+  var pv=document.getElementById('preview'), img=pv?pv.querySelector('img'):null;
+  document.addEventListener('mouseover',function(e){
+    var tr=e.target.closest&&e.target.closest('tr[data-thumb]');
+    if(tr && img && !document.body.classList.contains('show-images')){
+      img.src=tr.getAttribute('data-thumb'); pv.style.display='block';
+    }
+  });
+  document.addEventListener('mouseout',function(e){
+    if(pv && e.target.closest && e.target.closest('tr[data-thumb]')) pv.style.display='none';
+  });
+  window.toggleImages=function(btn){
+    var on=document.body.classList.toggle('show-images');
+    btn.textContent= on ? 'Hide images' : 'Show images';
+    if(on && pv) pv.style.display='none';
+  };
+})();
+</script>
 """
 
 
@@ -63,9 +102,11 @@ def _e(v):
     return html.escape(str(v))
 
 
-def render_console(rows, out_dir, machine=""):
+def render_console(rows, out_dir, machine="", thumb_map=None):
     """Write index.html + per-trip drill-down pages into out_dir. Returns the
-    index path. Expects rows produced by build_registry (carrying _missing)."""
+    index path. Expects rows produced by build_registry (carrying _missing).
+    thumb_map maps UPN -> relative thumbnail path (optional)."""
+    thumb_map = thumb_map or {}
     os.makedirs(out_dir, exist_ok=True)
     has_page = {}
     for row in rows:
@@ -78,7 +119,7 @@ def render_console(rows, out_dir, machine=""):
                 n += 1
                 fn = f"{base}_{n}.html"
             has_page[id(row)] = fn
-            _write_trip_page(os.path.join(out_dir, fn), row, missing)
+            _write_trip_page(os.path.join(out_dir, fn), row, missing, thumb_map)
 
     index_path = os.path.join(out_dir, "index.html")
     _write_index(index_path, rows, machine, has_page)
@@ -120,44 +161,69 @@ def _write_index(path, rows, machine, has_page):
         fh.write(_page(f"Trip registry — {machine}", body))
 
 
-def _missing_table(items):
-    head = ["", "Scientific", "English", "Dutch", "Best JPG", "UPN"]
+def _taxon(s):
+    """Strip the eBird-style numeric sort prefix (e.g. '040 passeriformes')."""
+    return s.lstrip("0123456789 ").capitalize()
+
+
+def _missing_table(items, thumb_map):
+    # Taxonomic order so related species cluster — the grouping the user wants
+    # to stay visible even with images off.
+    items = sorted(items, key=lambda m: (
+        m.get("phylum", ""), m.get("cls", ""),
+        _taxon(m.get("order", "")), _taxon(m.get("family", "")), m["sci"]))
+    head = ["", "Phylum", "Class", "Order", "Family", "Scientific", "English", "Dutch", "Image"]
     th = "".join(f"<th>{_e(h)}</th>" for h in head)
     trs = []
     for m in items:
         cls = "new" if m["is_new"] else "dup"
         tag = "NEW" if m["is_new"] else "have"
+        thumb = thumb_map.get(m["upn"])
+        data = f" data-thumb='{_e(thumb)}'" if thumb else ""
+        img = (f"<a href='{_e(thumb)}' target='_blank'>"
+               f"<img class='inline-thumb' src='{_e(thumb)}' loading='lazy'></a>"
+               if thumb else "<span class='nothumb'>—</span>")
         trs.append(
-            f"<tr class='{cls}'>"
+            f"<tr class='{cls}'{data}>"
             f"<td><span class='tag {cls}'>{tag}</span></td>"
+            f"<td class='taxon'>{_e(_taxon(m.get('phylum','')))}</td>"
+            f"<td class='taxon'>{_e(_taxon(m.get('cls','')))}</td>"
+            f"<td class='taxon'>{_e(_taxon(m.get('order','')))}</td>"
+            f"<td class='taxon'>{_e(_taxon(m.get('family','')))}</td>"
             f"<td><i>{_e(m['sci'])}</i></td>"
             f"<td>{_e(m['eng'])}</td>"
             f"<td>{_e(m['nl'])}</td>"
-            f"<td>{_e(m['jpg'])}</td>"
-            f"<td>{_e(m['upn'])}</td></tr>")
+            f"<td>{img}</td></tr>")
     return f"<table><thead><tr>{th}</tr></thead><tbody>{''.join(trs)}</tbody></table>"
 
 
-def _write_trip_page(path, row, missing):
+def _write_trip_page(path, row, missing, thumb_map):
     new = [m for m in missing if m["is_new"]]
     dup = [m for m in missing if not m["is_new"]]
     n_new_species = len({m["sci"].lower() for m in new})
     n_dup_species = len({m["sci"].lower() for m in dup})
     rng = f"{row['fromdate']}..{row['todate']}".strip(".")
+    have_thumbs = any(m["upn"] in thumb_map for m in missing)
+    toolbar = ("<div class='toolbar'><button onclick='toggleImages(this)'>Show images</button>"
+               "<span class='hint'>or hover a row to preview</span></div>" if have_thumbs else "")
     body = [f"<div class='back'><a href='index.html'>&larr; back to console</a></div>",
             f"<h1>{_e(row['trip_name'])} &mdash; {_e(row['local_missing'])} pictures not in master</h1>",
             f"<div class='meta'>{_e(row['type'])} &middot; {_e(rng)} &middot; "
             f"local {_e(row['local_pics'])} pictures / in master {_e(row['local_in_master'])} &middot; "
-            f"verdict: <b>{_e(row['delete_local'])}</b> &middot; {_e(row['repo_path'])}</div>"]
+            f"verdict: <b>{_e(row['delete_local'])}</b> &middot; {_e(row['repo_path'])}</div>",
+            toolbar]
     if new:
         body.append(f"<h2>New species &mdash; not in the master "
                     f"({n_new_species} species, {len(new)} pictures) — would be lost on delete</h2>")
-        body.append(_missing_table(new))
+        body.append(_missing_table(new, thumb_map))
     if dup:
         body.append(f"<h2>Species already in the master "
                     f"({n_dup_species} species, {len(dup)} pictures) — extra pictures, low risk</h2>")
-        body.append(_missing_table(dup))
+        body.append(_missing_table(dup, thumb_map))
     if not missing:
         body.append("<p>Nothing missing.</p>")
+    if have_thumbs:
+        body.append("<div id='preview'><img alt=''></div>")
+        body.append(_SCRIPT)
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(_page(row["trip_name"], "".join(body)))

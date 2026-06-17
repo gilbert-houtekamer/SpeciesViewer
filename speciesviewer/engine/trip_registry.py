@@ -182,6 +182,8 @@ def _read_day_species_pics(day_dir):
                 return out
             ei, ni = idx.get("EngSoortNaam"), idx.get("NLSoortNaam")
             bji, bpi = idx.get("BestJPG"), idx.get("BestJPGPathName")
+            ki, pi = idx.get("Kingdom"), idx.get("Phylum")
+            ci, oi, fi = idx.get("Class"), idx.get("Order"), idx.get("Family")
 
             def cell(i):
                 return row[i].strip() if i is not None and i < len(row) else ""
@@ -193,6 +195,8 @@ def _read_day_species_pics(day_dir):
                         "sci": row[si].strip(),
                         "eng": cell(ei), "nl": cell(ni),
                         "jpg": cell(bji), "path": cell(bpi),
+                        "kingdom": cell(ki), "phylum": cell(pi),
+                        "cls": cell(ci), "order": cell(oi), "family": cell(fi),
                     }
     except Exception as e:
         logger.info(f"trip_registry: failed reading {path}: {e}")
