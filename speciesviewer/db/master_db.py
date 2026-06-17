@@ -70,14 +70,13 @@ _SPEC_LIST_COLS = {"Leaves", "JPGmap"}  # stored as JSON, written back as ['a', 
 # ── DB path resolution ─────────────────────────────────────────────────────────
 
 def _app_data_dir() -> Path:
-    """Per-OS user app-data directory (NOT in Dropbox)."""
-    if sys.platform.startswith("win"):
-        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-    elif sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "SpeciesViewer"
-    else:
-        base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    return Path(base) / "SpeciesViewer"
+    """Per-OS user app-data directory (NOT in Dropbox).
+
+    Canonical implementation lives in utils.cache_paths so the caches and the DB
+    share one definition; kept here under the historical name for callers.
+    """
+    from utils.cache_paths import app_data_dir
+    return app_data_dir()
 
 
 def db_path() -> Path:

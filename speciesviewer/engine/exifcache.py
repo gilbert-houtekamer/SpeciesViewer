@@ -81,19 +81,23 @@ def master_repository(config):
 
 
 def exif_cache_path(config):
-    """<master>/metadata/cache/exif_cache.json — the admin area, alongside the
-    other metadata/ subtrees (active, review). Used by day/trip Read Directory;
-    stays small."""
-    return os.path.join(master_repository(config), "metadata", "cache",
-                        "exif_cache.json")
+    """exif_cache.json in the local EXIF cache dir (per-machine SSD by default;
+    relocatable via Manage Caches). Used by day/trip Read Directory; stays small.
+
+    Historically lived under <master>/metadata/cache (Dropbox, shared across
+    machines); it is now per-machine so master scans no longer churn Dropbox.
+    `config` is kept in the signature for callers but no longer used here."""
+    from utils.cache_paths import cache_root
+    return str(cache_root("exif") / "exif_cache.json")
 
 
 def master_cache_path(config):
     """Separate cache for the master-wide EXIF scan (Master menu > Rescan).
     Kept distinct from exif_cache.json so warming the full master (~159k files,
-    ~89 MB) never taxes the small day/trip Read Directory cache."""
-    return os.path.join(master_repository(config), "metadata", "cache",
-                        "exif_cache_master.json")
+    ~89 MB) never taxes the small day/trip Read Directory cache. Same local
+    EXIF cache dir as exif_cache_path; `config` kept for signature compat."""
+    from utils.cache_paths import cache_root
+    return str(cache_root("exif") / "exif_cache_master.json")
 
 
 def new_cache():

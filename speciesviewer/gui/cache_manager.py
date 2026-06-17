@@ -13,7 +13,7 @@ from pathlib import Path
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPainter, QPen, QBrush
 from PyQt6.QtWidgets import (
-    QDialog, QDialogButtonBox, QGroupBox, QHBoxLayout, QLabel,
+    QDialog, QDialogButtonBox, QFileDialog, QGroupBox, QHBoxLayout, QLabel,
     QMessageBox, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
 )
 
@@ -75,19 +75,14 @@ class _PieWidget(QWidget):
 
 
 class ManageCachesDialog(QDialog):
-    """Single dialog to inspect and selectively clear all three caches.
-
-    Parameters
-    ----------
-    exif_cache_path : str | None
-        Path to the EXIF cache JSON file (exif_cache_path(config) from
-        exifcache).  None when no master is configured — the EXIF row will
-        show as unavailable and its Clear button will be disabled.
+    """Single dialog to inspect, relocate, and selectively clear the three
+    per-machine caches (full-res, preview, EXIF). Each cache resolves its
+    location live through utils.cache_paths, so paths track relocations made
+    here without the dialog needing to be told where anything lives.
     """
 
-    def __init__(self, parent, exif_cache_path: str | None = None):
+    def __init__(self, parent):
         super().__init__(parent)
-        self._exif_path = exif_cache_path
         self.setWindowTitle("Manage Caches")
         self.setMinimumWidth(500)
         self._build_ui()
@@ -131,6 +126,7 @@ class ManageCachesDialog(QDialog):
         # ── per-cache rows ────────────────────────────────────────────────────
         specs = [
             dict(
+                kind="fullres",
                 title="Full-res images",
                 subtitle="Decoded RAW images for the 100% culling view",
                 stat_fn=self._fullres_stats,
@@ -138,6 +134,7 @@ class ManageCachesDialog(QDialog):
                 warning=None,
             ),
             dict(
+                kind="preview",
                 title="Preview thumbnails",
                 subtitle="Extracted previews for image grids and the large viewer",
                 stat_fn=self._preview_stats,
@@ -147,8 +144,9 @@ class ManageCachesDialog(QDialog):
                        self._small_preview_stats),
             ),
             dict(
+                kind="exif",
                 title="EXIF metadata cache",
-                subtitle="Cached EXIF reads — speeds up Read Directory",
+                subtitle="Cached EXIF reads — day/trip (Read Directory) + master scan",
                 stat_fn=self._exif_stats,
                 clear_fn=self._clear_exif,
                 warning="Rebuilds on the next Read Directory (one slow scan).",
@@ -179,6 +177,11 @@ class ManageCachesDialog(QDialog):
                     "full-size previews — they re-extract at full resolution.")
                 extra_btn.clicked.connect(lambda _, h=handler: h())
                 size_row.addWidget(extra_btn)
+            edit_btn = QPushButton("Edit…")
+            edit_btn.setFixedWidth(70)
+            edit_btn.setToolTip(
+                "Move this cache to another folder (e.g. a faster or larger disk).")
+            size_row.addWidget(edit_btn)
             btn = QPushButton("Clear")
             btn.setFixedWidth(80)
             size_row.addWidget(btn)
@@ -195,12 +198,14 @@ class ManageCachesDialog(QDialog):
                 gl.addWidget(warn)
 
             root.addWidget(group)
-            row = dict(size_lbl=size_lbl, path_lbl=path_lbl, btn=btn,
+            row = dict(kind=spec["kind"], size_lbl=size_lbl, path_lbl=path_lbl,
+                       btn=btn, edit_btn=edit_btn,
                        stat_fn=spec["stat_fn"], clear_fn=spec["clear_fn"],
                        title=spec["title"], extra_btn=extra_btn,
                        extra_stat_fn=spec["extra"][2] if spec.get("extra") else None)
             self._rows.append(row)
             btn.clicked.connect(lambda _, r=row: self._on_clear(r))
+            edit_btn.clicked.connect(lambda _, r=row: self._on_edit(r))
 
         # ── bottom buttons ────────────────────────────────────────────────────
         btns = QHBoxLayout()
@@ -230,21 +235,33 @@ class ManageCachesDialog(QDialog):
         from gui.fullres import small_preview_stats
         return small_preview_stats()
 
-    def _exif_stats(self) -> tuple[int, int, str]:
-        if not self._exif_path:
-            return 0, 0, "(no master configured)"
+    def _exif_file(self) -> str:
+        """Live path to exif_cache.json (recomputed so it tracks relocations)."""
         from engine import exifcache
-        paths = [self._exif_path] + [
-            f"{self._exif_path}.bak{i}" for i in range(1, exifcache.CACHE_BACKUPS + 1)
-        ]
+        return str(exifcache.exif_cache_path(None))
+
+    def _exif_all_files(self) -> list[str]:
+        """Every EXIF cache file on disk: the day/trip cache and the master-scan
+        cache, plus each one's .bak ring. Both live in the same EXIF cache dir."""
+        from engine import exifcache
+        bases = [str(exifcache.exif_cache_path(None)),
+                 str(exifcache.master_cache_path(None))]
+        files: list[str] = []
+        for base in bases:
+            files.append(base)
+            files.extend(f"{base}.bak{i}"
+                         for i in range(1, exifcache.CACHE_BACKUPS + 1))
+        return files
+
+    def _exif_stats(self) -> tuple[int, int, str]:
         count = total = 0
-        for p in paths:
+        for p in self._exif_all_files():
             try:
                 total += os.path.getsize(p)
                 count += 1
             except OSError:
                 pass
-        return count, total, str(Path(self._exif_path).parent)
+        return count, total, str(Path(self._exif_file()).parent)
 
     # ── refresh ───────────────────────────────────────────────────────────────
 
@@ -258,7 +275,8 @@ class ManageCachesDialog(QDialog):
                 row["size_lbl"].setText(f"{_fmt(total)} · {count} file(s)")
             else:
                 row["size_lbl"].setText("Empty")
-            row["path_lbl"].setText(path)
+            from utils.cache_paths import display_path
+            row["path_lbl"].setText(display_path(path))
             row["btn"].setEnabled(count > 0)
             if row.get("extra_btn") is not None and row.get("extra_stat_fn"):
                 small_count, small_total = row["extra_stat_fn"]()
@@ -280,6 +298,54 @@ class ManageCachesDialog(QDialog):
 
     def _on_clear(self, row: dict) -> None:
         row["clear_fn"](row)
+
+    # ── relocate ───────────────────────────────────────────────────────────────
+
+    def _on_edit(self, row: dict) -> None:
+        """Move a cache to a user-chosen folder and persist the override."""
+        from utils.cache_paths import (
+            cache_root, default_cache_root, display_path, relocate_cache,
+            is_overridden,
+        )
+        kind = row["kind"]
+        current = cache_root(kind)
+        chosen = QFileDialog.getExistingDirectory(
+            self, f"Choose a folder for the {row['title']} cache", str(current))
+        if not chosen:
+            return
+        chosen_p = Path(chosen)
+        if chosen_p.resolve() == current.resolve():
+            # Picking the same folder is a no-op, but offer a reset if overridden.
+            if is_overridden(kind) and QMessageBox.question(
+                    self, "Reset to default",
+                    "This folder is the current location. Reset this cache back to "
+                    f"the default location?\n\n{display_path(default_cache_root(kind))}"
+            ) == QMessageBox.StandardButton.Yes:
+                relocate_cache(kind, default_cache_root(kind))
+                self._refresh()
+            return
+
+        count, total, _ = row["stat_fn"]()
+        move = False
+        if count > 0:
+            ans = QMessageBox.question(
+                self, "Move cache",
+                f"Move the {row['title']} cache to:\n{chosen_p}\n\n"
+                f"Move the existing {count} file(s) ({_fmt(total)}) there now? "
+                f"(Choose No to leave them and start fresh — they become orphaned "
+                f"in the old folder.)",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel)
+            if ans == QMessageBox.StandardButton.Cancel:
+                return
+            move = ans == QMessageBox.StandardButton.Yes
+
+        try:
+            relocate_cache(kind, chosen_p, move_existing=move)
+        except OSError as e:
+            QMessageBox.warning(self, "Move cache", f"Could not move the cache:\n{e}")
+            return
+        self._refresh()
 
     def _clear_fullres(self, row: dict) -> None:
         count, total, path = self._fullres_stats()
@@ -321,25 +387,20 @@ class ManageCachesDialog(QDialog):
         self._refresh()
 
     def _clear_exif(self, row: dict) -> None:
-        if not self._exif_path:
-            return
         count, total, path = self._exif_stats()
         if count == 0:
             QMessageBox.information(self, "Clear EXIF cache",
                                     f"No cache files found at:\n{path}")
             return
-        from engine import exifcache
         if QMessageBox.question(
                 self, "Clear EXIF cache",
                 f"Delete {count} file(s) ({_fmt(total)}) from:\n{path}\n\n"
-                "⚠  The cache will rebuild on the next Read Directory "
-                "(one slow scan); output is unaffected."
+                "⚠  The day/trip cache rebuilds on the next Read Directory and "
+                "the master cache on the next Rescan master EXIF cache (slow "
+                "scans); output is unaffected."
         ) != QMessageBox.StandardButton.Yes:
             return
-        paths = [self._exif_path] + [
-            f"{self._exif_path}.bak{i}" for i in range(1, exifcache.CACHE_BACKUPS + 1)
-        ]
-        for p in paths:
+        for p in self._exif_all_files():
             try:
                 os.remove(p)
             except OSError:
@@ -355,20 +416,16 @@ class ManageCachesDialog(QDialog):
         )
         msg = (f"Delete all cached data ({_fmt(grand_total)} total)?\n\n"
                f"{lines}")
-        if self._exif_path and self._rows[2]["_count"] > 0:
-            msg += ("\n\n⚠  The EXIF cache will rebuild on the next Read "
-                    "Directory (one slow scan).")
+        if self._rows[2]["_count"] > 0:
+            msg += ("\n\n⚠  The EXIF caches rebuild on the next Read Directory "
+                    "and Rescan master EXIF cache (slow scans).")
         if QMessageBox.question(self, "Clear All Caches", msg) != QMessageBox.StandardButton.Yes:
             return
         from gui.fullres import clear_fullres_cache, clear_preview_cache
         clear_fullres_cache()
         clear_preview_cache()
-        if self._exif_path and self._rows[2]["_count"] > 0:
-            from engine import exifcache
-            paths = [self._exif_path] + [
-                f"{self._exif_path}.bak{i}" for i in range(1, exifcache.CACHE_BACKUPS + 1)
-            ]
-            for p in paths:
+        if self._rows[2]["_count"] > 0:
+            for p in self._exif_all_files():
                 try:
                     os.remove(p)
                 except OSError:

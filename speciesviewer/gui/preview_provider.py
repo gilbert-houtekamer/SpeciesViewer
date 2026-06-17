@@ -40,11 +40,11 @@ def preview_cache_dir_for(src_folder: Path) -> Path:
     """
     import hashlib
     import os
-    from db.master_db import _app_data_dir
+    from utils.cache_paths import cache_root
     folder_hash = hashlib.sha1(
         os.path.normcase(str(src_folder)).encode()
     ).hexdigest()[:16]
-    return _app_data_dir() / "preview_cache" / folder_hash
+    return cache_root("preview") / folder_hash
 
 
 def _safe_int(s, default=None):

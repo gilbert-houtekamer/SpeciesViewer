@@ -78,8 +78,8 @@ def _apply_denoise(rgb):
 
 def fullres_cache_dir() -> Path:
     """Per-user cache directory for full-res JPEGs (never in the data tree)."""
-    from db.master_db import _app_data_dir
-    return _app_data_dir() / "fullres_cache"
+    from utils.cache_paths import cache_root
+    return cache_root("fullres")
 
 
 def fullres_cache_path(raw_path, cache_root) -> Path:
@@ -120,8 +120,8 @@ def clear_fullres_cache() -> int:
 # ── Preview cache helpers (AppData/SpeciesViewer/preview_cache/) ──────────────
 
 def preview_cache_root() -> Path:
-    from db.master_db import _app_data_dir
-    return _app_data_dir() / "preview_cache"
+    from utils.cache_paths import cache_root
+    return cache_root("preview")
 
 
 def preview_cache_stats() -> tuple[int, int]:
