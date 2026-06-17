@@ -20,6 +20,7 @@ if __name__ == "__main__":
     sys.path.append(os.path.join(reporoot, "speciesviewer"))  # makes 'import engine'/'utils' work
 
 import engine.trip_registry as trip_registry
+import engine.trip_registry_html as trip_registry_html
 from utils.config import MACHINE_NAME, get_trips_root, get_virttrips_root, get_setting
 
 logger = logging.getLogger("speciesviewer")
@@ -29,14 +30,14 @@ def _print_table(rows):
     if not rows:
         print("No trips or virttrips found on this machine.")
         return
-    print(f"\n{'Trip':20} {'Days':>4} {'Cmt':>4} {'local':>6} {'inMast':>6} {'miss':>5}  "
-          f"{'Verdict':16} {'Status':20} {'inWindow':>8}")
+    print(f"\n{'Trip':20} {'Days':>4} {'Cmt':>4} {'pics':>6} {'inMast':>6} {'miss':>5} "
+          f"{'newSp':>5} {'Verdict':22} {'Status'}")
     print("-" * 104)
     for r in rows:
         print(f"{r['trip_name'][:20]:20} {r['num_days']:>4} {r['days_committed']:>4} "
-              f"{str(r['local_species']):>6} {str(r['local_in_master']):>6} "
-              f"{str(r['local_missing']):>5}  {str(r['delete_local']):16} "
-              f"{r['status']:20} {str(r['species_files_in_master']):>8}")
+              f"{str(r['local_pics']):>6} {str(r['local_in_master']):>6} "
+              f"{str(r['local_missing']):>5} {str(r['new_species']):>5} "
+              f"{str(r['delete_local']):22} {r['status']}")
 
 
 def main(args):
@@ -58,6 +59,11 @@ def main(args):
     out_path = os.path.join(out_dir, f"trip_registry_{machine}.csv")
     written = trip_registry.write_registry_csv(rows, out_path)
     print(f"\nWrote {len(rows)} rows to {written}")
+
+    # Local private management console (index + per-trip drill-downs).
+    console_dir = os.path.join(out_dir, "console")
+    index = trip_registry_html.render_console(rows, console_dir, machine)
+    print(f"Console: {index}")
 
 
 if __name__ == "__main__":

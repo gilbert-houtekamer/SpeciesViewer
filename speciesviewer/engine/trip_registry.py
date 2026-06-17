@@ -44,10 +44,11 @@ REGISTRY_FIELDS = [
     "placeholder_in_master",     # "? name" placeholder pictures — cleanup candidates
     # Copy-completeness / "safe to delete the local" — by UniquePictureName set,
     # not date-range counts (which are polluted by overlapping collections).
-    "local_species",             # identified pictures (UPNs) in the local trip repo
+    "local_pics",                # identified pictures (UPNs) in the local trip repo
     "local_in_master",           # of those, how many are present in the master
     "local_missing",             # local identified pictures NOT yet in the master
-    "delete_local",              # verdict: SAFE / keep (N missing) / not in master / no local data
+    "new_species",               # DISTINCT species among the missing that the master lacks (real loss)
+    "delete_local",              # verdict (uses new_species): SAFE / safe (have all species) / keep (N new sp) / not in master / no local data
     "status",
     "repo_path", "scanned_at",
 ]
@@ -107,7 +108,7 @@ def scan_repo(repo_path, trip_type, machine):
     # copy-completeness check against the master).
     day_names = []
     step_counts = {col: 0 for _, col in _DAY_STEP_COLUMNS}
-    local_upns = set()
+    local_pics = {}   # UPN -> {sci, eng, nl, jpg, path}
     if os.path.isdir(review_dir):
         for entry in sorted(os.listdir(review_dir)):
             day_dir = os.path.join(review_dir, entry)
@@ -122,7 +123,7 @@ def scan_repo(repo_path, trip_type, machine):
                         step_counts[col] += 1
                 except (KeyError, IndexError, TypeError):
                     pass
-            local_upns |= _read_day_species_upns(day_dir)
+            local_pics.update(_read_day_species_pics(day_dir))
 
     num_days = len(day_names)
 
@@ -148,11 +149,12 @@ def scan_repo(repo_path, trip_type, machine):
         "num_days": num_days,
         "species_files_in_master": "",
         "placeholder_in_master": "",
-        "local_species": len(local_upns),
+        "local_pics": len(local_pics),
         "local_in_master": "",
         "local_missing": "",
+        "new_species": "",
         "delete_local": "",
-        "_local_upns": local_upns,   # consumed by build_registry, not written to CSV
+        "_local_pics": local_pics,   # consumed by build_registry, not written to CSV
         "repo_path": repo_path,
         "scanned_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
@@ -161,12 +163,13 @@ def scan_repo(repo_path, trip_type, machine):
     return row
 
 
-def _read_day_species_upns(day_dir):
-    """Set of UniquePictureNames in a day's data_pictures.csv that carry a
-    species name. Empty when the file is absent (e.g. an ingested-but-unprocessed
-    day) or has no identified pictures."""
+def _read_day_species_pics(day_dir):
+    """Map UniquePictureName -> {sci, eng, nl, jpg, path} for a day's
+    data_pictures.csv rows that carry a species name. Empty when the file is
+    absent (e.g. an ingested-but-unprocessed day) or has no identified
+    pictures. The extra fields feed the drill-down/HTML."""
     path = os.path.join(day_dir, "data_pictures.csv")
-    out = set()
+    out = {}
     if not os.path.exists(path):
         return out
     try:
@@ -177,10 +180,20 @@ def _read_day_species_upns(day_dir):
             ui, si = idx.get("UniquePictureName"), idx.get("WetSoortNaam")
             if ui is None or si is None:
                 return out
+            ei, ni = idx.get("EngSoortNaam"), idx.get("NLSoortNaam")
+            bji, bpi = idx.get("BestJPG"), idx.get("BestJPGPathName")
+
+            def cell(i):
+                return row[i].strip() if i is not None and i < len(row) else ""
+
             for row in reader:
                 if (ui < len(row) and row[ui].strip()
                         and si < len(row) and row[si].strip()):
-                    out.add(row[ui].strip())
+                    out[row[ui].strip()] = {
+                        "sci": row[si].strip(),
+                        "eng": cell(ei), "nl": cell(ni),
+                        "jpg": cell(bji), "path": cell(bpi),
+                    }
     except Exception as e:
         logger.info(f"trip_registry: failed reading {path}: {e}")
     return out
@@ -236,19 +249,21 @@ def master_active_csv(master_repo):
 
 def load_master_index(master_repo):
     """Single pass over the master active CSV, returning
-    (real_species_dates, placeholder_dates, all_upns):
+    (real_species_dates, placeholder_dates, all_upns, species_set):
       - real/placeholder: sorted YYYY-MM-DD capture-date lists for the
         date-range counts ("? name" placeholders split out).
       - all_upns: set of every UniquePictureName present in the master
-        (regardless of species), used for the copy-completeness intersection.
-    Returns (None, None, None) when the CSV is missing/unreadable."""
+        (regardless of species), for the copy-completeness intersection.
+      - species_set: lowercased set of identified species the master holds,
+        used to tell whether a missing trip picture is of a NEW species.
+    Returns (None, None, None, None) when the CSV is missing/unreadable."""
     if not master_repo:
-        return None, None, None
+        return None, None, None, None
     path = master_active_csv(master_repo)
     if not os.path.exists(path):
         logger.info(f"trip_registry: master CSV not found: {path}")
-        return None, None, None
-    real, placeholder, upns = [], [], set()
+        return None, None, None, None
+    real, placeholder, upns, species = [], [], set(), set()
     try:
         with open(path, "r", encoding="utf-8", errors="replace", newline="") as fh:
             reader = csv.reader(fh, delimiter=";")
@@ -258,39 +273,44 @@ def load_master_index(master_repo):
                           idx.get("UniquePictureName"))
             if di is None or si is None or ui is None:
                 logger.info("trip_registry: master CSV missing expected columns")
-                return None, None, None
+                return None, None, None, None
             for row in reader:
                 if ui < len(row) and row[ui].strip():
                     upns.add(row[ui].strip())
-                if si >= len(row) or di >= len(row):
+                if si >= len(row):
                     continue
                 wsn = row[si].strip()
                 if not wsn:
                     continue
-                d = _norm_date(row[di])
+                if not wsn.startswith("?"):
+                    species.add(wsn.lower())
+                d = _norm_date(row[di]) if di < len(row) else None
                 if not d:
                     continue
                 (placeholder if wsn.startswith("?") else real).append(d)
     except Exception as e:
         logger.info(f"trip_registry: failed reading master CSV: {e}")
-        return None, None, None
+        return None, None, None, None
     real.sort()
     placeholder.sort()
-    return real, placeholder, upns
+    return real, placeholder, upns, species
 
 
-def delete_local_verdict(local_species, in_master):
-    """Plain-language "is the local repo safe to delete?" from the UPN match.
-    Conservative: only says SAFE when every identified local picture is in the
-    master."""
-    if local_species == 0:
+def delete_local_verdict(local_pics, in_master, new_species):
+    """Plain-language "is the local repo safe to delete?" The risk that matters
+    is losing a SPECIES the master does not already have (new_species, a distinct
+    count); missing pictures of species the master already holds are low-risk
+    extras."""
+    if local_pics == 0:
         return "no local data"        # nothing identified locally to lose
-    missing = local_species - in_master
+    if in_master == 0:
+        return "not in master"        # nothing integrated yet — still being worked
+    missing = local_pics - in_master
     if missing == 0:
         return "SAFE to delete"
-    if in_master == 0:
-        return "not in master"
-    return f"keep ({missing} missing)"
+    if new_species == 0:
+        return "safe (have all species)"   # only extra angles of species we keep
+    return f"keep ({new_species} new sp)"
 
 
 def count_in_range(sorted_dates, lo, hi):
@@ -324,19 +344,31 @@ def build_registry(machine, trips_root, virttrips_root, master_repo=None):
     rows = enumerate_repos(trips_root, "trip", machine)
     rows += enumerate_repos(virttrips_root, "virttrip", machine)
 
-    real_dates, placeholder_dates, master_upns = load_master_index(master_repo)
+    real_dates, placeholder_dates, master_upns, master_species = load_master_index(master_repo)
     for row in rows:
-        local = row.pop("_local_upns", set())
+        local_pics = row.pop("_local_pics", {})
+        row["_missing"] = []
         if master_upns is None:
             continue
         lo, hi = row["fromdate"], row["todate"]
         if lo and hi:
             row["species_files_in_master"] = count_in_range(real_dates, lo, hi)
             row["placeholder_in_master"] = count_in_range(placeholder_dates, lo, hi)
-        in_master = len(local & master_upns)
+        in_master = 0
+        missing = []
+        for upn, info in local_pics.items():
+            if upn in master_upns:
+                in_master += 1
+            else:
+                is_new = info["sci"].lower() not in master_species
+                missing.append({**info, "upn": upn, "is_new": is_new})
+        new_species = len({m["sci"].lower() for m in missing if m["is_new"]})
         row["local_in_master"] = in_master
-        row["local_missing"] = row["local_species"] - in_master
-        row["delete_local"] = delete_local_verdict(row["local_species"], in_master)
+        row["local_missing"] = len(missing)
+        row["new_species"] = new_species
+        row["delete_local"] = delete_local_verdict(row["local_pics"], in_master, new_species)
+        # sorted for the drill-down: new-species first, then by name
+        row["_missing"] = sorted(missing, key=lambda m: (not m["is_new"], m["sci"]))
     return rows
 
 
