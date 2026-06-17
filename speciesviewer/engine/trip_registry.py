@@ -376,6 +376,44 @@ def build_registry(machine, trips_root, virttrips_root, master_repo=None):
     return rows
 
 
+def upload_status_shard(local_csv, web_root, pwd,
+                        hostname="houtfp.ssh.transip.me", username="houtekamercom"):
+    """Upload a per-machine registry shard to '<web_root>includes web/status/'
+    on the website host (same transport/credentials as the trip publishing).
+    The status area is non-public. Returns the remote path on success, else None.
+    """
+    import engine.sftplib as sftplib
+    if not pwd:
+        logger.warning("trip_registry: no sftp password configured; skipping upload")
+        return None
+    try:
+        sftp = sftplib.Sftp(hostname=hostname, username=username, password=pwd)
+        sftp.connect()
+    except Exception as e:
+        logger.warning(f"trip_registry: SFTP connect failed: {e}")
+        return None
+    try:
+        remote_dir = sftp.remotePrefix() + web_root.rstrip("/") + "/includes web/status"
+        remote = remote_dir + "/" + os.path.basename(local_csv)
+        # Create the status/ subdir if missing (ensure_remote_dir mishandles
+        # absolute roots; makedirs takes the absolute path directly).
+        try:
+            sftp.connection.makedirs(remote_dir)
+        except Exception:
+            pass  # already exists, or will surface on the upload
+        sftp.upload(local_csv, remote)
+        logger.info(f"trip_registry: uploaded shard to {remote}")
+        return remote
+    except Exception as e:
+        logger.warning(f"trip_registry: upload failed: {e}")
+        return None
+    finally:
+        try:
+            sftp.disconnect()
+        except Exception:
+            pass
+
+
 def write_registry_csv(rows, path):
     """Write the shard atomically (temp + replace). If the target is locked
     (commonly: open in Excel), keep the temp file and warn instead of crashing.

@@ -533,6 +533,66 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # ── Trip Status Console: cross-machine (virt)trip lifecycle overview ──
+    # Scans this machine's trips, scores each against the master (which pictures
+    # are already integrated / which would be lost), writes the per-machine shard
+    # CSV, renders the local private HTML console, and optionally uploads the
+    # shard to 'includes web/status/' so the other machine can be merged in later.
+    def _trip_status_console():
+        import webbrowser
+        from pathlib import Path
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from PyQt6.QtCore import Qt
+        import engine.trip_registry as tr
+        import engine.trip_registry_html as trh
+        import engine.trip_thumbs as tt
+        from utils.config import MACHINE_NAME, get_trips_root, get_virttrips_root
+
+        master = _config.get("master", "masterbiotadatabase", fallback="")
+        if not master:
+            QMessageBox.warning(main_window, "Trip Status Console",
+                                "No master database is configured.")
+            return
+        yesno = QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        want_thumbs = QMessageBox.question(
+            main_window, "Trip Status Console",
+            "Generate picture thumbnails for the drill-down?\n"
+            "(slower — extracts RAW previews)", yesno,
+            QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes
+        want_upload = QMessageBox.question(
+            main_window, "Trip Status Console",
+            "Upload this machine's status shard to the web?", yesno,
+            QMessageBox.StandardButton.Yes) == QMessageBox.StandardButton.Yes
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        upload_msg = ""
+        try:
+            rows = tr.build_registry(MACHINE_NAME, get_trips_root(),
+                                     get_virttrips_root(), master)
+            out_dir = os.path.join(master, "admin", "status")
+            written = tr.write_registry_csv(
+                rows, os.path.join(out_dir, f"trip_registry_{MACHINE_NAME}.csv"))
+            console_dir = os.path.join(out_dir, "console")
+            thumb_map = tt.generate_thumbs(rows, console_dir) if want_thumbs else None
+            index = trh.render_console(rows, console_dir, MACHINE_NAME, thumb_map)
+            if want_upload:
+                web_root = _config.get("master", "masterbiotawebroot", fallback="/nature/")
+                pwd = _config.get("websettings", "sftppwd", fallback="")
+                remote = tr.upload_status_shard(written, web_root, pwd)
+                upload_msg = ("\nShard uploaded to the web." if remote
+                              else "\nShard upload FAILED (see log).")
+        finally:
+            QApplication.restoreOverrideCursor()
+        webbrowser.open(Path(index).as_uri())
+        QMessageBox.information(main_window, "Trip Status Console",
+                                f"Console opened in your browser:\n{index}{upload_msg}")
+
+    trip_status_console = MenuSpec(
+        callback=_trip_status_console,
+        title="Trip Status Console…",
+        showsubdirectory=False,
+    )
+
     return {
         "File": {
             "Quit": MenuSpec(
@@ -576,6 +636,8 @@ def build_menu_spec(main_window):
             "Add trip website to master": add_trip_to_master,
             f"{MenuSpec.separator()}_master_1": None,
             "Add Trip Pictures to Master": add_trip_pictures,
+            f"{MenuSpec.separator()}_master_2": None,
+            "Trip Status Console…": trip_status_console,
         },
         "Virtual Trips": {
             "Create Virtual Trip": virttrip_create,

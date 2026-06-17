@@ -73,6 +73,13 @@ def main(args):
     index = trip_registry_html.render_console(rows, console_dir, machine, thumb_map)
     print(f"Console: {index}")
 
+    if args.upload:
+        web_root = get_setting("master", "masterbiotawebroot", fallback="/nature/")
+        pwd = get_setting("websettings", "sftppwd", fallback="")
+        print("Uploading shard to the web...")
+        remote = trip_registry.upload_status_shard(written, web_root, pwd)
+        print(f"  uploaded to {remote}" if remote else "  upload failed (see log)")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="svr3TripRegistry (Phase 1: local scan)")
@@ -87,6 +94,8 @@ if __name__ == "__main__":
                         help="global cap on thumbnails generated")
     parser.add_argument("--per-trip-thumbs", type=int, default=60,
                         help="max thumbnails per trip (NEW-species first)")
+    parser.add_argument("--upload", action="store_true",
+                        help="upload the shard CSV to 'includes web/status/' on the web host")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
