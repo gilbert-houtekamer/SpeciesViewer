@@ -11,6 +11,35 @@ import engine.projectlib
 
 from enum import Enum, auto
 
+
+def _flatten_name_backbone(r):
+    """Adapt pygbif 0.6.6's nested name_backbone response back to the flat dict
+    this module was written against. The GBIF match API changed BOTH the request
+    parameter (name -> scientificName) and the response shape: matchType /
+    confidence now live under 'diagnostics', and the taxonomy under a
+    'classification' list of {rank, name, key}. We rebuild kingdom/phylum/class/
+    order/family/genus/species (+ their <rank>Key for vernacular lookups),
+    canonicalName, matchType and confidence so addSpecies works unchanged."""
+    if not isinstance(r, dict):
+        return {}
+    diag = r.get("diagnostics") or {}
+    usage = r.get("usage") or {}
+    flat = {
+        "matchType":     diag.get("matchType"),
+        "confidence":    diag.get("confidence", 0),
+        "canonicalName": usage.get("canonicalName", ""),
+        "synonym":       r.get("synonym", False),
+    }
+    rankmap = {"KINGDOM": "kingdom", "PHYLUM": "phylum", "CLASS": "class",
+               "ORDER": "order", "FAMILY": "family", "GENUS": "genus",
+               "SPECIES": "species"}
+    for c in r.get("classification") or []:
+        name = rankmap.get((c.get("rank") or "").upper())
+        if name:
+            flat[name] = c.get("name", "")
+            flat[name + "Key"] = c.get("key", "")
+    return flat
+
 logger = logging.getLogger("speciesviewer")
 
 # Biota, Kingdom, Phylum, Class, Order, Family, Species
@@ -353,7 +382,7 @@ class SpeciesClassification:
             return self.dutch_dict[subject]
         elif subject in self.english_dict:
             return self.english_dict[subject]
-        elif LookUpInGBIF and (',' not in subject):
+        elif LookUpInGBIF and not getattr(self, "_gbif_offline", False) and (',' not in subject):
             # Normalize subspecies qualifiers before lookup
             normalized = self._normalize_subspecies(subject)
             if normalized != subject and normalized in self.sc_dict:
@@ -361,7 +390,9 @@ class SpeciesClassification:
             try:
                 # check if we already searched for this species
                 if subject not in self.names_not_found_list:
-                    gbif = species.name_backbone(name=subject)
+                    # pygbif 0.6.6: param is scientificName (not name), and the
+                    # response is nested — flatten it back to the old flat shape.
+                    gbif = _flatten_name_backbone(species.name_backbone(scientificName=subject))
                     if not fuzzy: # batch  mode
                         if gbif['matchType'] == 'EXACT' and gbif.get('species'):
                             scientificname = self.addSpecies(gbif).lower()
@@ -383,8 +414,25 @@ class SpeciesClassification:
                     # Cache the original input so repeated lookups don't hit GBIF again
                     if scientificname and subject != scientificname and subject not in self.sc_dict:
                         self.sc_dict[subject] = self.sc_dict[scientificname]
-            except:
-                logger.warning(f'Timeout on internet connection')
+            except Exception as e:
+                # Report the REAL error instead of mislabeling everything as a
+                # timeout (a pygbif/GBIF-API change once hid here for ages as a
+                # fake "timeout"). Log the actual type+message once per run.
+                import requests as _requests
+                if not getattr(self, "_gbif_error_logged", False):
+                    self._gbif_error_logged = True
+                    logger.warning(f"GBIF lookup failed for '{subject}' "
+                                   f"({type(e).__name__}: {e}).")
+                # Only a genuine connectivity failure justifies giving up on
+                # every remaining name for this run.
+                if isinstance(e, (_requests.exceptions.ConnectionError,
+                                  _requests.exceptions.Timeout)):
+                    self._gbif_offline = True
+                    logger.warning("Network/GBIF unreachable — skipping online "
+                                   "species lookups for the rest of this run.")
+                # Don't retry the same name again this run regardless.
+                if subject not in self.names_not_found_list:
+                    self.names_not_found_list.append(subject)
         elif not nested:
             # likely a list of variables, decode it
             if len(subject.split(','))>1:
