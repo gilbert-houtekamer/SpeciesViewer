@@ -138,7 +138,7 @@ class _DayTab(QWidget):
         self.min_score = QSpinBox()
         self.min_score.setRange(0, 100)
         self.min_score.setValue(self._data["minimum_score"])
-        self.min_score.setFixedWidth(60)
+        self.min_score.setFixedWidth(90)
         row.addWidget(self.min_score)
         row.addSpacing(16)
         row.addWidget(QLabel("Column width:"))

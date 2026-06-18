@@ -11,7 +11,7 @@ from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDial
         RescanMasterCacheDialog, SmallMasterDialog, InstallSmallMasterDialog, TripMasterDashboard)
 from gui.virttrip_process import (VirtualTripCreationDialog, ExtractDaysDialog,
                                    VirttripWriteBlogDialog, VirttripBuildWebsiteDialog,
-                                   VirttripAddToMasterDialog)
+                                   VirttripAddToMasterDialog, retire_trip_to_virttrip)
 from utils.config import _config
 import os
 from settings.globalsettings import GlobalSettingsDialog
@@ -533,6 +533,15 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # ── Trip retirement: from the ACTIVE trip, create the successor virtual trip
+    # (same name/range/text), build it (svv1), extract its master days (svv2),
+    # and migrate the day blogs — one action. The svr7 delete stays separate.
+    retire_trip_item = MenuSpec(
+        callback=lambda: retire_trip_to_virttrip(main_window),
+        title="Retire Trip to Virtual Trip",
+        showsubdirectory=False,
+    )
+
     # ── Trip Status Console: cross-machine (virt)trip lifecycle overview ──
     # Scans this machine's trips, scores each against the master (which pictures
     # are already integrated / which would be lost), writes the per-machine shard
@@ -660,6 +669,8 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_3": None,
             "Empty Trip Data": empty_trip_data,
             "Recreate Trip": recreate_trip,
+            f"{MenuSpec.separator()}_retire": None,
+            "Retire Trip to Virtual Trip": retire_trip_item,
             f"{MenuSpec.separator()}_4": None,
             "Rating Editor": rating_editor,
         },

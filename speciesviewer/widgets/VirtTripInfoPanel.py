@@ -24,9 +24,9 @@ class VirtTripInfoPanel(QWidget):
         font_style = "font-size: 10pt; font-family: Consolas, monospace;"
         self.setStyleSheet(f"{font_style} background-color: #f9f9f9;")
 
-        virttrip_root = get_virttrips_root()
         layout.addWidget(self._header_label("Virtual Trip Root:"))
-        layout.addWidget(self._header_label(virttrip_root or "(not configured)"))
+        self.root_label = self._header_label(get_virttrips_root() or "(not configured)")
+        layout.addWidget(self.root_label)
 
         layout.addSpacing(10)
         layout.addWidget(self._header_label("Virtual Trips:"))
@@ -53,6 +53,8 @@ class VirtTripInfoPanel(QWidget):
         """Clear and re-populate the tree from the current virttrips root."""
         self.tree.clear()
         virttrip_root = get_virttrips_root()
+        if hasattr(self, "root_label"):
+            self.root_label.setText(virttrip_root or "(not configured)")
         root_path = Path(virttrip_root) if virttrip_root else None
         if root_path and root_path.is_dir():
             for d in sorted(root_path.iterdir()):

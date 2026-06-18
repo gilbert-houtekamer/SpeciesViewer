@@ -375,13 +375,16 @@ def main(args, config):
 
     for day_dir in day_dirs:
         ini_path = blog_dir / f"blog_{day_dir.name}.ini"
+        # Never fabricate blog text: a day gets a page only if it already has a
+        # blog ini — migrated from the trip (retirement) or authored in the
+        # editor. Days without one are left alone and skipped by the build loop
+        # below, so a virtual-trip blog matches the original trip blog exactly.
+        if not ini_path.exists():
+            continue
         day_num  = (date.fromisoformat(day_dir.name) - first_date).days + 1
         rows     = _read_day_pictures_raw(day_dir)
         loc_nl, loc_en = _day_location_label(rows)
-        if not ini_path.exists():
-            _generate_blog_ini(ini_path, day_num, rows, loc_nl, loc_en)
-        else:
-            _patch_ini_titles(ini_path, day_num, loc_nl, loc_en)
+        _patch_ini_titles(ini_path, day_num, loc_nl, loc_en)
 
     # --- set up blog object and read existing admin once ---
     password = config.get("websettings", "Sftppwd", fallback="").strip("'")

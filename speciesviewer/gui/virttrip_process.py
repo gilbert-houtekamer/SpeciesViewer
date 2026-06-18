@@ -78,6 +78,167 @@ message_en = {_ini_escape(message_en)}
         logger.info(f"❌ Failed to write virttrip.ini: {err}")
 
 
+def _common_blog_min_score(virttrip_root):
+    """If every day's blog ini shares the same minimum_score, return it; else
+    None. Lets the Write-Blogs dialog default to the value the days actually use
+    instead of a hard-coded 25."""
+    import configparser as _cp
+    import glob as _glob
+    blog_dir = os.path.join(virttrip_root, "metadata", "blog")
+    if not os.path.isdir(blog_dir):
+        return None
+    scores = set()
+    for fn in _glob.glob(os.path.join(blog_dir, "blog_*.ini")):
+        cfg = _cp.RawConfigParser()
+        try:
+            cfg.read(fn, encoding="utf-8")
+            scores.add(cfg.getint("blog_config", "minimum_score", fallback=25))
+        except Exception:
+            pass
+    return scores.pop() if len(scores) == 1 else None
+
+
+def _trip_picture_root(trip_db):
+    """The CurrentPictures root of a trip (parent of its dated day folders),
+    derived from any WindowsFileName in the trip's per-day data_files.csv."""
+    import csv as _csv
+    review = os.path.join(trip_db, "metadata", "review")
+    if not os.path.isdir(review):
+        return None
+    for d in sorted(os.listdir(review)):
+        fp = os.path.join(review, d, "data_files.csv")
+        if not os.path.isfile(fp):
+            continue
+        try:
+            with open(fp, encoding="utf-8", errors="replace", newline="") as fh:
+                for row in _csv.DictReader(fh, delimiter=";"):
+                    wd = (row.get("WindowsFileName") or "").strip()
+                    if wd:
+                        return str(Path(wd).parent.parent)
+        except Exception:
+            pass
+    return None
+
+
+def retire_trip_to_virttrip(parent):
+    """One action: create the successor virtual trip from the ACTIVE trip (same
+    name, date range and trip text), build its tree (svv1), extract its days
+    from the master (svv2), and migrate the day blogs — so the virtual-trip blog
+    comes out identical to the original trip blog. (svr7 delete stays separate.)"""
+    import re as _re
+    import argparse as _argparse
+    import configparser as _cp
+    from PyQt6.QtWidgets import QApplication, QMessageBox
+    from PyQt6.QtCore import Qt
+    from utils.batch_config import generate_svconfig_ini
+    import engine.blogmigrate as blogmigrate
+
+    logger = parent.logger
+    trip_db = _config.get("trip", "tripbiotadatabase", fallback="").replace('"', "").replace("'", "")
+    if not trip_db or not os.path.isdir(trip_db):
+        QMessageBox.warning(parent, "Retire Trip", "Select an active trip first.")
+        return
+    trip_ini = os.path.join(trip_db, "trip.ini")
+    if not os.path.isfile(trip_ini):
+        QMessageBox.warning(parent, "Retire Trip", f"No trip.ini found in {trip_db}.")
+        return
+
+    tc = _cp.ConfigParser()
+    try:
+        tc.read(trip_ini, encoding="utf-8")
+    except Exception as e:
+        QMessageBox.warning(parent, "Retire Trip", f"Could not read trip.ini: {e}")
+        return
+
+    def g(sec, key, fb=""):           # config value with inline-comment stripped
+        try:
+            return tc.get(sec, key, fallback=fb).split(";")[0].strip()
+        except Exception:
+            return fb
+
+    def raw(sec, key, fb=""):         # raw text (trip_text may contain ';')
+        try:
+            return tc.get(sec, key, fallback=fb)
+        except Exception:
+            return fb
+
+    leaf = Path(trip_db).name
+    trip_name = (g("trip_config", "trip_name") or leaf).strip("/").rsplit("/", 1)[-1] or leaf
+    fromdate = g("trip_config", "fromdate")
+    todate = g("trip_config", "todate")
+    if not (fromdate and todate):
+        review = os.path.join(trip_db, "metadata", "review")
+        days = sorted(d for d in (os.listdir(review) if os.path.isdir(review) else [])
+                      if _re.match(r"^\d{4}-\d{2}-\d{2}$", d))
+        if days:
+            fromdate, todate = fromdate or days[0], todate or days[-1]
+    if not (fromdate and todate):
+        QMessageBox.warning(parent, "Retire Trip", "Could not determine the trip's date range.")
+        return
+
+    web_root = (_config.get("trip", "tripbiotawebroot", fallback="").replace('"', "").replace("'", "")
+                or f"/trips/{trip_name}")
+    banner = g("trip_config", "trip_banner") or "keerkringvogel.jpg"
+    picture = g("trip_config", "trip_picture")
+    title_nl, message_nl = raw("trip_text", "title_nl", trip_name), raw("trip_text", "message_nl")
+    title_en, message_en = raw("trip_text", "title_en", trip_name), raw("trip_text", "message_en")
+
+    virttrips_root = get_virttrips_root() or str(Path(get_trips_root() or trip_db).parent / "virttrips")
+    virttrip_root = os.path.join(virttrips_root, leaf)
+
+    exists = os.path.isfile(os.path.join(virttrip_root, "virttrip.ini"))
+    prompt = (f"A virtual trip already exists at {virttrip_root}. Rebuild it?"
+              if exists else
+              f"Create successor virtual trip from '{trip_name}'?\n\n"
+              f"Virtual trip:  {virttrip_root}\nWeb:  {web_root}\nRange:  {fromdate} → {todate}\n\n"
+              f"Creates the virttrip, extracts its days from the master, and migrates the blogs.")
+    if QMessageBox.question(parent, "Retire Trip to Virtual Trip", prompt,
+                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                            QMessageBox.StandardButton.Yes) != QMessageBox.StandardButton.Yes:
+        return
+
+    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+    copied = no_blog = 0
+    try:
+        set_setting("virttrip", "virttriprootdirectory", str(Path(virttrip_root).parent))
+        set_setting("virttrip", "virttripbiotadatabase", virttrip_root)
+        set_setting("virttrip", "virttripbiotawebroot",
+                    web_root if web_root.endswith("/") else web_root + "/")
+        os.makedirs(virttrip_root, exist_ok=True)
+        generate_virttrip_ini(virttrip_root, web_root, banner, picture, fromdate, todate,
+                              title_nl, message_nl, title_en, message_en, logger)
+        generate_svconfig_ini(virttrip_mode=True)
+        mcfg = _cp.ConfigParser()
+        mcfg.read("svconfig.ini")
+        args = _argparse.Namespace(config="svconfig.ini", dir="")
+        batch.svv1MakeVirtualRepository.main(args, mcfg)
+        batch.svv2ExtractDays.main(args, mcfg)
+        trip_pic_root = _trip_picture_root(trip_db)
+        if trip_pic_root:
+            copied, _kept, no_blog = blogmigrate.migrate_trip_blogs(trip_pic_root, virttrip_root)
+        else:
+            logger.warning("retire: could not locate the trip's picture folder; blogs not migrated")
+        generate_svconfig_ini()       # restore active-trip context
+    except Exception as e:
+        QApplication.restoreOverrideCursor()
+        logger.warning(f"Retire trip failed: {e}")
+        QMessageBox.critical(parent, "Retire Trip", f"Failed: {e}")
+        return
+    finally:
+        QApplication.restoreOverrideCursor()
+
+    try:
+        populate_virttrip_overview(parent)
+        parent.virttrip_panel.rebuild()
+    except Exception:
+        pass
+    QMessageBox.information(
+        parent, "Retire Trip to Virtual Trip",
+        f"Successor virtual trip '{trip_name}' created and days extracted.\n"
+        f"Migrated {copied} day blog(s); {no_blog} day(s) had none (nothing fabricated).\n\n"
+        f"Next: Virtual Trips → Write Virtual Trip Blogs, then compare to the trip blog.")
+
+
 class VirtualTripCreationDialog(QDialog):
     def __init__(self, parent, menu_spec):
         super().__init__(parent)
@@ -456,14 +617,15 @@ class VirttripWriteBlogDialog(QDialog):
                     if d.is_dir() and (d / "data_files.csv").exists()
                 )
 
+        common_score = _common_blog_min_score(virttrip_root) if virttrip_root else None
+
         layout.addWidget(HTMLLabel(
             "<p><b>Write Virtual Trip Blogs</b></p>"
             "<p>For every day that has extracted data:</p>"
             "<ul>"
-            "<li>Auto-creates <code>metadata/blog/blog_YYYY-MM-DD.ini</code> if absent "
-            "(title and text generated from species + location data).</li>"
-            "<li>Reads the ini (auto-generated or hand-edited) and uploads "
-            "NL + EN blog HTML pages.</li>"
+            "<li>Reads each day's <code>metadata/blog/blog_YYYY-MM-DD.ini</code> "
+            "(migrated from the trip or hand-edited) and uploads NL + EN blog HTML pages.</li>"
+            "<li>A day with no blog ini is skipped — nothing is fabricated.</li>"
             "</ul>"
             "<p>Re-running is safe — existing ini files are preserved; "
             "HTML is always regenerated and re-uploaded.</p>"
@@ -481,12 +643,19 @@ class VirttripWriteBlogDialog(QDialog):
         score_row.addWidget(QLabel("Minimum rating (0–100):"))
         self.min_score_spin = QSpinBox()
         self.min_score_spin.setRange(0, 100)
-        self.min_score_spin.setValue(int(_config.get("virttrip", "minimum_score", fallback="25")))
+        self.min_score_spin.setMinimumWidth(90)
+        self.min_score_spin.setValue(
+            common_score if common_score is not None
+            else int(_config.get("virttrip", "minimum_score", fallback="25")))
         self.min_score_spin.setToolTip(
             "Pictures with a computed rating below this value are excluded from the blog.\n"
             "Lower this if blog pages appear empty."
         )
         score_row.addWidget(self.min_score_spin)
+        if common_score is not None:
+            note = QLabel(f"(all days currently use {common_score})")
+            note.setStyleSheet("color:#666;")
+            score_row.addWidget(note)
         score_row.addStretch()
         layout.addLayout(score_row)
 
@@ -583,7 +752,8 @@ class VirttripBuildWebsiteDialog(QDialog):
 
     def on_run(self):
         runner = BatchModuleRunner(self, self.passed_parent)
-        runner.run(self.menu_spec)
+        runner.run(self.menu_spec,
+                   on_success=lambda: populate_virttrip_overview(self.passed_parent))
 
 
 class VirttripAddToMasterDialog(QDialog):
