@@ -73,12 +73,19 @@ def main(args):
     index = trip_registry_html.render_console(rows, console_dir, machine, thumb_map)
     print(f"Console: {index}")
 
+    web_root = get_setting("master", "masterbiotawebroot", fallback="/nature/")
+    pwd = get_setting("websettings", "sftppwd", fallback="")
+
     if args.upload:
-        web_root = get_setting("master", "masterbiotawebroot", fallback="/nature/")
-        pwd = get_setting("websettings", "sftppwd", fallback="")
         print("Uploading shard to the web...")
         remote = trip_registry.upload_status_shard(written, web_root, pwd)
         print(f"  uploaded to {remote}" if remote else "  upload failed (see log)")
+
+    if args.merge:
+        print("Downloading all machines' shards and building merged page...")
+        merged, machines = trip_registry.build_merged_console(master, web_root, pwd, console_dir)
+        print(f"  Merged console: {merged} (machines: {', '.join(machines)})"
+              if merged else "  merge failed / no shards (see log)")
 
 
 if __name__ == "__main__":
@@ -96,6 +103,8 @@ if __name__ == "__main__":
                         help="max thumbnails per trip (NEW-species first)")
     parser.add_argument("--upload", action="store_true",
                         help="upload the shard CSV to 'includes web/status/' on the web host")
+    parser.add_argument("--merge", action="store_true",
+                        help="download all machines' shards and build the merged overview page")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)

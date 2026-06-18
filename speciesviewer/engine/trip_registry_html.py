@@ -51,6 +51,11 @@ a{color:#1a5fb4;text-decoration:none} a:hover{text-decoration:underline}
 .tag.new{background:#e7503a;color:#fff} .tag.dup{background:#7aa83a;color:#fff}
 .back{font-size:12px}
 .nothumb{color:#bbb}
+.sub{color:#777;font-size:11px}
+td.absent{color:#ccc;text-align:center}
+.legend div{margin:3px 0;font-size:12px}
+.swatch{display:inline-block;width:14px;height:14px;border:1px solid #999;
+  vertical-align:middle;margin-right:6px}
 .taxon{color:#555;white-space:nowrap}
 /* images are off by default so the grouping stays readable */
 .inline-thumb{display:none;height:120px;border:1px solid #ccc}
@@ -124,6 +129,90 @@ def render_console(rows, out_dir, machine="", thumb_map=None):
     index_path = os.path.join(out_dir, "index.html")
     _write_index(index_path, rows, machine, has_page)
     return index_path
+
+
+# Per-machine role colours: green = done/safe, amber = CAUTION (unique field
+# work, copy before deleting), blue = active, purple = virtual keeper.
+_ROLE_COLOR = {
+    "Complete (in master)":   "#bfe6b0",
+    "Superseded — delete":    "#dceec6",
+    "Copy to primary first":  "#ffcf99",
+    "Active (in progress)":   "#dfe9ff",
+    "Active (not in master)": "#dfe9ff",
+    "Virtual (keep)":         "#e7dcff",
+    "Ongoing (keep)":         "#9fe7df",
+    "no local data":          "#eeeeee",
+}
+_OVERALL_COLOR = {"Integrated": "#bfe6b0", "Active": "#dfe9ff",
+                  "Virtual (keep)": "#e7dcff", "Ongoing (keep)": "#9fe7df"}
+
+_ROLE_LEGEND = [
+    ("Complete (in master)", "the authoritative copy, fully backed up"),
+    ("Superseded — delete", "leftover fragment, nothing the master lacks — safe to delete"),
+    ("Copy to primary first", "holds species not yet upstream — copy to BigBoy before deleting"),
+    ("Active (in progress)", "still being worked, new species not yet in master"),
+    ("Virtual (keep)", "virtual trip — tiny footprint, keep the blogs"),
+    ("Ongoing (keep)", "open-ended collection with no date range — permanent keeper"),
+]
+
+
+def render_merged(by_trip, machines, out_path, console_dir):
+    """Integrated cross-machine view. Picks the most-complete (primary) copy per
+    trip, labels each machine's copy with its role, and derives an overall.
+    Trip names link to the LOCAL machine's drill-down when present."""
+    import engine.trip_registry as tr
+    mheads = "".join(f"<th>{_e(m)}</th>" for m in machines)
+    head = f"<th>Trip</th><th>Type</th>{mheads}<th>Overall</th><th>Range</th>"
+    trs = []
+    for trip in sorted(by_trip):
+        recs = by_trip[trip]
+        primary_m, overall, roles = tr.classify_trip(recs)
+        any_row = next(iter(recs.values()))
+        page = _safe_filename(trip) + ".html"
+        name = (f"<a href='{_e(page)}'>{_e(trip)}</a>"
+                if os.path.exists(os.path.join(console_dir, page)) else _e(trip))
+        cells = [f"<td>{name}</td>", f"<td>{_e(any_row.get('type',''))}</td>"]
+        for m in machines:
+            cells.append(_machine_cell(recs.get(m), roles.get(m), m == primary_m))
+        cells.append(f"<td style='background:{_OVERALL_COLOR.get(overall,'#fff')}'>"
+                     f"<b>{_e(overall)}</b> <span class='sub'>(primary: {_e(primary_m)})</span></td>")
+        cells.append(f"<td>{_e(_trip_range(recs))}</td>")
+        trs.append("<tr>" + "".join(cells) + "</tr>")
+    legend = "".join(
+        f"<div><span class='swatch' style='background:{_ROLE_COLOR.get(r,'#fff')}'></span>"
+        f"<b>{_e(r)}</b> &mdash; {_e(d)}</div>" for r, d in _ROLE_LEGEND)
+    body = (f"<h1>Trip registry &mdash; all machines</h1>"
+            f"<div class='meta'>generated {datetime.now():%Y-%m-%d %H:%M} &middot; "
+            f"machines: {_e(', '.join(machines))} &middot; "
+            f"<a href='index.html'>this machine only</a></div>"
+            f"<table><thead><tr>{head}</tr></thead><tbody>{''.join(trs)}</tbody></table>"
+            f"<h2>Legend</h2><div class='legend'>{legend}</div>")
+    with open(out_path, "w", encoding="utf-8") as fh:
+        fh.write(_page("Trip registry — all machines", body))
+    return out_path
+
+
+def _machine_cell(row, role, is_primary):
+    if not row:
+        return "<td class='absent'>&mdash;</td>"
+    bits = [f"{row.get('local_pics','')} pics"]
+    miss = row.get("local_missing", "")
+    if miss not in ("", "0"):
+        bits.append(f"{miss} miss")
+    nsp = row.get("new_species", "")
+    if nsp not in ("", "0"):
+        bits.append(f"{nsp} new sp")
+    star = " &#9733;" if is_primary else ""
+    return (f"<td style='background:{_ROLE_COLOR.get(role,'#fff')}'>"
+            f"<b>{_e(role)}</b>{star}<br><span class='sub'>{_e(', '.join(bits))}</span></td>")
+
+
+def _trip_range(recs):
+    froms = [r.get("fromdate", "") for r in recs.values() if r.get("fromdate")]
+    tos = [r.get("todate", "") for r in recs.values() if r.get("todate")]
+    if not froms and not tos:
+        return ""
+    return f"{min(froms) if froms else ''}..{max(tos) if tos else ''}".strip(".")
 
 
 def _write_index(path, rows, machine, has_page):

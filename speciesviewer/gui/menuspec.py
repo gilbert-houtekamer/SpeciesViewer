@@ -593,6 +593,42 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # Pull every machine's shard from the web and show the integrated overview
+    # (one row per trip, a column per machine). No local scan — fast.
+    def _merged_status_console():
+        import webbrowser
+        from pathlib import Path
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from PyQt6.QtCore import Qt
+        import engine.trip_registry as tr
+
+        master = _config.get("master", "masterbiotadatabase", fallback="")
+        if not master:
+            QMessageBox.warning(main_window, "Merged Status",
+                                "No master database is configured.")
+            return
+        web_root = _config.get("master", "masterbiotawebroot", fallback="/nature/")
+        pwd = _config.get("websettings", "sftppwd", fallback="")
+        console_dir = os.path.join(master, "admin", "status", "console")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            merged, machines = tr.build_merged_console(master, web_root, pwd, console_dir)
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not merged:
+            QMessageBox.warning(main_window, "Merged Status",
+                                "No shards found on the web (see log).")
+            return
+        webbrowser.open(Path(merged).as_uri())
+        QMessageBox.information(main_window, "Merged Status",
+                               f"Merged overview for: {', '.join(machines)}\n{merged}")
+
+    merged_status_console = MenuSpec(
+        callback=_merged_status_console,
+        title="Merged Status (all machines)…",
+        showsubdirectory=False,
+    )
+
     return {
         "File": {
             "Quit": MenuSpec(
@@ -638,6 +674,7 @@ def build_menu_spec(main_window):
             "Add Trip Pictures to Master": add_trip_pictures,
             f"{MenuSpec.separator()}_master_2": None,
             "Trip Status Console…": trip_status_console,
+            "Merged Status (all machines)…": merged_status_console,
         },
         "Virtual Trips": {
             "Create Virtual Trip": virttrip_create,

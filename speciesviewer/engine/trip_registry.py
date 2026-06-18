@@ -414,6 +414,151 @@ def upload_status_shard(local_csv, web_root, pwd,
             pass
 
 
+def read_shard_csv(path):
+    """Read a per-machine registry shard back into a list of row dicts."""
+    with open(path, "r", encoding="utf-8", errors="replace", newline="") as fh:
+        return list(csv.DictReader(fh, delimiter=";"))
+
+
+def download_status_shards(web_root, pwd, dest_dir,
+                           hostname="houtfp.ssh.transip.me", username="houtekamercom"):
+    """Download every per-machine shard (trip_registry_*.csv) from
+    '<web_root>includes web/status/' into dest_dir. Returns the local paths."""
+    import engine.sftplib as sftplib
+    if not pwd:
+        logger.warning("trip_registry: no sftp password; cannot download shards")
+        return []
+    try:
+        sftp = sftplib.Sftp(hostname=hostname, username=username, password=pwd)
+        sftp.connect()
+    except Exception as e:
+        logger.warning(f"trip_registry: SFTP connect failed: {e}")
+        return []
+    paths = []
+    try:
+        remote_dir = sftp.remotePrefix() + web_root.rstrip("/") + "/includes web/status"
+        os.makedirs(dest_dir, exist_ok=True)
+        for fname in sftp.listdir(remote_dir):
+            if fname.startswith("trip_registry_") and fname.endswith(".csv"):
+                local = os.path.join(dest_dir, fname)
+                sftp.download(remote_dir + "/" + fname, local)
+                paths.append(local)
+    except Exception as e:
+        logger.warning(f"trip_registry: shard download failed: {e}")
+    finally:
+        try:
+            sftp.disconnect()
+        except Exception:
+            pass
+    return paths
+
+
+def merge_shards(shard_paths):
+    """Group shard rows by trip_name across machines.
+    Returns (by_trip, machines) where by_trip is {trip_name: {machine: row}}."""
+    by_trip = {}
+    machines = []
+    for path in shard_paths:
+        try:
+            rows = read_shard_csv(path)
+        except Exception as e:
+            logger.warning(f"trip_registry: cannot read shard {path}: {e}")
+            continue
+        for row in rows:
+            machine = row.get("machine", "")
+            if machine and machine not in machines:
+                machines.append(machine)
+            by_trip.setdefault(row.get("trip_name", ""), {})[machine] = row
+    machines.sort()
+    return by_trip, machines
+
+
+def build_merged_console(master, web_root, pwd, console_dir):
+    """Download all machines' shards from the web, merge by trip, and render the
+    integrated merged.html into console_dir. Returns (path, machines) or
+    (None, []) when no shards could be fetched."""
+    import engine.trip_registry_html as trh
+    shards_dir = os.path.join(master, "admin", "status", "shards")
+    paths = download_status_shards(web_root, pwd, shards_dir)
+    if not paths:
+        return None, []
+    by_trip, machines = merge_shards(paths)
+    os.makedirs(console_dir, exist_ok=True)
+    out = os.path.join(console_dir, "merged.html")
+    trh.render_merged(by_trip, machines, out, console_dir)
+    return out, machines
+
+
+# ── Cross-machine interpretation (the merged "what does this mean" layer) ───────
+#
+# Workflow: a trip is prepared fresh on the laptop (species names added in the
+# field), then the CurrentProject folder is copied laptop -> bigboy and finished
+# there (locations, timezones, full pipeline -> master). So for a trip held on
+# both machines, the MOST COMPLETE copy is authoritative and the other is the
+# leftover. "Most complete" = furthest along: pictures already in the master
+# first, then days that reached sv7 (WriteCommit), then total pictures.
+
+def _i(v):
+    try:
+        return int(v or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _completeness(row):
+    return (_i(row.get("local_in_master")), _i(row.get("days_committed")),
+            _i(row.get("local_pics")))
+
+
+def _role(row, is_primary):
+    """The per-machine role of one copy. Secondary copies that still hold
+    species the master lacks (new_species>0) are flagged to COPY FIRST, never
+    delete — that's the field work the laptop produces."""
+    if row.get("type") == "virttrip":
+        return "Virtual (keep)"
+    if _i(row.get("local_pics")) == 0:
+        return "no local data"
+    # A project that HAS pictures but no date range is an ongoing/open collection
+    # (e.g. the month-grouped phone "waarneming"), not a laptop->bigboy trip — a
+    # permanent keeper, never a delete candidate. (An empty 0-pic copy also lacks
+    # a range, hence the local_pics check above comes first.)
+    if not (row.get("fromdate") and row.get("todate")):
+        return "Ongoing (keep)"
+    in_master = _i(row.get("local_in_master"))
+    new_sp = _i(row.get("new_species"))
+    if is_primary:
+        if in_master == 0:
+            return "Active (not in master)"
+        if new_sp == 0:
+            return "Complete (in master)"
+        return "Active (in progress)"
+    # secondary copy
+    if new_sp > 0:
+        return "Copy to primary first"
+    return "Superseded — delete"
+
+
+def _overall(primary_row, primary_role):
+    if primary_row.get("type") == "virttrip":
+        return "Virtual (keep)"
+    if primary_role == "Ongoing (keep)":
+        return "Ongoing (keep)"
+    if primary_role.startswith("Complete"):
+        return "Integrated"
+    if primary_role.startswith("Active"):
+        return "Active"
+    return primary_role
+
+
+def classify_trip(records):
+    """records: {machine: row}. Returns (primary_machine, overall, roles) where
+    roles is {machine: role}."""
+    primary_machine = max(records, key=lambda m: _completeness(records[m]))
+    roles = {m: _role(r, m == primary_machine) for m, r in records.items()}
+    overall = _overall(records[primary_machine], roles[primary_machine])
+    return primary_machine, overall, roles
+
+
 def write_registry_csv(rows, path):
     """Write the shard atomically (temp + replace). If the target is locked
     (commonly: open in Excel), keep the temp file and warn instead of crashing.
