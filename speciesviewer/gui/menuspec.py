@@ -542,6 +542,64 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # ── Retirement step 2: delete the trip's local files that are already in the
+    # master (UPN-driven — the master holds the full RAW+XMP+JPG, so it's the
+    # backup). Pictures NOT in the master are kept. Preview + confirm; the
+    # master-presence check is the safety, so no freeze deletelist is needed.
+    def _delete_trip_in_master():
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from PyQt6.QtCore import Qt
+        import engine.trip_delete as trip_delete
+        trip_db = _config.get("trip", "tripbiotadatabase", fallback="").replace('"', "").replace("'", "")
+        master = _config.get("master", "masterbiotadatabase", fallback="").replace('"', "").replace("'", "")
+        if not trip_db or not master:
+            QMessageBox.warning(main_window, "Delete Trip Files",
+                                "Select an active trip and a master first.")
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            plan = trip_delete.plan_trip_delete(trip_db, master)
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not plan.get("ok"):
+            QMessageBox.warning(main_window, "Delete Trip Files", plan.get("error", "Failed."))
+            return
+        if plan["n_pictures"] == 0:
+            QMessageBox.information(main_window, "Delete Trip Files",
+                                   "Nothing to delete — no identified pictures from this "
+                                   "trip are in the master yet.")
+            return
+        msg = (f"Delete {plan['n_pictures']} identified pictures ({plan['n_files']} files) "
+               f"from this trip's local folders?\n\n"
+               f"All are confirmed present in the master (the backup).\n"
+               f"Keeping {plan['kept_unidentified']} unidentified pictures for later "
+               f"identification" +
+               (f", and {plan['kept_not_in_master']} not yet in the master" if plan['kept_not_in_master'] else "") +
+               ".\n\n"
+               f"Tip: retire the trip to a virtual trip first. This frees local disk space "
+               f"and is not undoable here (the files remain in the master).")
+        if QMessageBox.question(main_window, "Delete Trip Files (backed up in master)", msg,
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            nf, npx, errs = trip_delete.execute_trip_delete(plan)
+        finally:
+            QApplication.restoreOverrideCursor()
+        for e in errs[:20]:
+            main_window.logger.warning(f"delete: {e}")
+        extra = f"\n{len(errs)} files could not be deleted (see log)." if errs else ""
+        QMessageBox.information(main_window, "Delete Trip Files",
+                               f"Deleted {npx} identified pictures ({nf} files). "
+                               f"Kept {plan['kept_unidentified']} unidentified for later.{extra}")
+
+    delete_trip_item = MenuSpec(
+        callback=_delete_trip_in_master,
+        title="Delete Local Files Backed Up in Master…",
+        showsubdirectory=False,
+    )
+
     # ── Trip Status Console: cross-machine (virt)trip lifecycle overview ──
     # Scans this machine's trips, scores each against the master (which pictures
     # are already integrated / which would be lost), writes the per-machine shard
@@ -671,6 +729,7 @@ def build_menu_spec(main_window):
             "Recreate Trip": recreate_trip,
             f"{MenuSpec.separator()}_retire": None,
             "Retire Trip to Virtual Trip": retire_trip_item,
+            "Delete Local Files Backed Up in Master…": delete_trip_item,
             f"{MenuSpec.separator()}_4": None,
             "Rating Editor": rating_editor,
         },
