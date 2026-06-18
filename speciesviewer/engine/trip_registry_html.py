@@ -218,8 +218,9 @@ def _trip_range(recs):
 def _write_index(path, rows, machine, has_page):
     # (label, is_numeric) — descriptive labels wrap onto two lines.
     head = [("Trip", False), ("Type", False), ("Days", True), ("Committed", True),
-            ("Local Pictures", True), ("In Master", True), ("Missing from Master", True),
-            ("New Species", True), ("Verdict", False), ("Status", False), ("Range", False)]
+            ("Local Pictures", True), ("Unidentified", True), ("In Master", True),
+            ("Missing from Master", True), ("New Species", True),
+            ("Verdict", False), ("Status", False), ("Range", False)]
     th = "".join(f"<th class='{'n' if n else ''}'>{_e(h)}</th>" for h, n in head)
     trs = []
     for row in rows:
@@ -234,6 +235,7 @@ def _write_index(path, rows, machine, has_page):
             f"<td class='n'>{_e(row['num_days'])}</td>",
             f"<td class='n'>{_e(row['days_committed'])}</td>",
             f"<td class='n'>{_e(row['local_pics'])}</td>",
+            f"<td class='n'>{_e(row.get('unidentified',''))}</td>",
             f"<td class='n'>{_e(row['local_in_master'])}</td>",
             f"<td class='n'>{_e(row['local_missing'])}</td>",
             f"<td class='n'>{_e(row['new_species'])}</td>",

@@ -31,14 +31,14 @@ def _print_table(rows):
     if not rows:
         print("No trips or virttrips found on this machine.")
         return
-    print(f"\n{'Trip':20} {'Days':>4} {'Cmt':>4} {'pics':>6} {'inMast':>6} {'miss':>5} "
-          f"{'newSp':>5} {'Verdict':22} {'Status'}")
-    print("-" * 104)
+    print(f"\n{'Trip':20} {'Days':>4} {'Cmt':>4} {'pics':>6} {'unid':>5} {'inMast':>6} "
+          f"{'miss':>5} {'newSp':>5} {'Verdict':22} {'Status'}")
+    print("-" * 112)
     for r in rows:
         print(f"{r['trip_name'][:20]:20} {r['num_days']:>4} {r['days_committed']:>4} "
-              f"{str(r['local_pics']):>6} {str(r['local_in_master']):>6} "
-              f"{str(r['local_missing']):>5} {str(r['new_species']):>5} "
-              f"{str(r['delete_local']):22} {r['status']}")
+              f"{str(r['local_pics']):>6} {str(r.get('unidentified','')):>5} "
+              f"{str(r['local_in_master']):>6} {str(r['local_missing']):>5} "
+              f"{str(r['new_species']):>5} {str(r['delete_local']):22} {r['status']}")
 
 
 def main(args):

@@ -45,6 +45,7 @@ REGISTRY_FIELDS = [
     # Copy-completeness / "safe to delete the local" — by UniquePictureName set,
     # not date-range counts (which are polluted by overlapping collections).
     "local_pics",                # identified pictures (UPNs) in the local trip repo
+    "unidentified",              # pictures with NO species name (remain after the cull)
     "local_in_master",           # of those, how many are present in the master
     "local_missing",             # local identified pictures NOT yet in the master
     "new_species",               # DISTINCT species among the missing that the master lacks (real loss)
@@ -109,6 +110,7 @@ def scan_repo(repo_path, trip_type, machine):
     day_names = []
     step_counts = {col: 0 for _, col in _DAY_STEP_COLUMNS}
     local_pics = {}   # UPN -> {sci, eng, nl, jpg, path}
+    unidentified = 0  # pictures with no species name (remain after the cull)
     if os.path.isdir(review_dir):
         for entry in sorted(os.listdir(review_dir)):
             day_dir = os.path.join(review_dir, entry)
@@ -123,7 +125,9 @@ def scan_repo(repo_path, trip_type, machine):
                         step_counts[col] += 1
                 except (KeyError, IndexError, TypeError):
                     pass
-            local_pics.update(_read_day_species_pics(day_dir))
+            pics, unident = _read_day_species_pics(day_dir)
+            local_pics.update(pics)
+            unidentified += unident
 
     num_days = len(day_names)
 
@@ -150,6 +154,7 @@ def scan_repo(repo_path, trip_type, machine):
         "species_files_in_master": "",
         "placeholder_in_master": "",
         "local_pics": len(local_pics),
+        "unidentified": unidentified,
         "local_in_master": "",
         "local_missing": "",
         "new_species": "",
@@ -164,14 +169,17 @@ def scan_repo(repo_path, trip_type, machine):
 
 
 def _read_day_species_pics(day_dir):
-    """Map UniquePictureName -> {sci, eng, nl, jpg, path} for a day's
-    data_pictures.csv rows that carry a species name. Empty when the file is
-    absent (e.g. an ingested-but-unprocessed day) or has no identified
-    pictures. The extra fields feed the drill-down/HTML."""
+    """For a day's data_pictures.csv return (pics, unidentified):
+      - pics: {UniquePictureName -> {sci, eng, nl, jpg, path, taxonomy}} for the
+        rows that carry a species name (feeds the drill-down/HTML);
+      - unidentified: count of picture rows with NO species name — the
+        unculled/unidentified pictures that remain in the project directory.
+    (data_pictures.csv has one row per picture, identified or not.)"""
     path = os.path.join(day_dir, "data_pictures.csv")
     out = {}
     if not os.path.exists(path):
-        return out
+        return out, 0
+    unidentified = 0
     try:
         with open(path, "r", encoding="utf-8", errors="replace", newline="") as fh:
             reader = csv.reader(fh, delimiter=";")
@@ -179,7 +187,7 @@ def _read_day_species_pics(day_dir):
             idx = {h: i for i, h in enumerate(header)}
             ui, si = idx.get("UniquePictureName"), idx.get("WetSoortNaam")
             if ui is None or si is None:
-                return out
+                return out, 0
             ei, ni = idx.get("EngSoortNaam"), idx.get("NLSoortNaam")
             bji, bpi = idx.get("BestJPG"), idx.get("BestJPGPathName")
             ki, pi = idx.get("Kingdom"), idx.get("Phylum")
@@ -189,8 +197,9 @@ def _read_day_species_pics(day_dir):
                 return row[i].strip() if i is not None and i < len(row) else ""
 
             for row in reader:
-                if (ui < len(row) and row[ui].strip()
-                        and si < len(row) and row[si].strip()):
+                if ui >= len(row) or not row[ui].strip():
+                    continue
+                if si < len(row) and row[si].strip():
                     out[row[ui].strip()] = {
                         "sci": row[si].strip(),
                         "eng": cell(ei), "nl": cell(ni),
@@ -198,9 +207,11 @@ def _read_day_species_pics(day_dir):
                         "kingdom": cell(ki), "phylum": cell(pi),
                         "cls": cell(ci), "order": cell(oi), "family": cell(fi),
                     }
+                else:
+                    unidentified += 1
     except Exception as e:
         logger.info(f"trip_registry: failed reading {path}: {e}")
-    return out
+    return out, unidentified
 
 
 def derive_status(row):
