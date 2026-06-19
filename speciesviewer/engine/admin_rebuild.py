@@ -41,7 +41,10 @@ def _index_disk(master_repo):
     are not the canonical location a rebuild should point at."""
     paths, byname, species = set(), {}, {}
     biota = os.path.join(master_repo, "biota")
-    for dirpath, _dirs, files in os.walk(biota):
+    for dirpath, dirs, files in os.walk(biota):
+        # Skip hidden helper dirs (.preview_cache thumbnails, etc.) — they are
+        # not canonical pictures and would masquerade as adds / repoint targets.
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
         folder = os.path.basename(dirpath).lower()
         for f in files:
             full = os.path.join(dirpath, f)
@@ -143,23 +146,33 @@ def _atomic_write_csv(path, header, rows):
     os.replace(tmp, path)
 
 
-def execute_heal(master_repo, do_remove=True, do_repoint=True):
-    """Apply the reviewed rebuild_remove.csv / rebuild_repoint.csv to the master
-    admin. Backs up data_files.csv + data_pictures.csv first. DESTRUCTIVE.
+def execute_heal(master_repo, do_remove=True, do_repoint=True, do_species=True):
+    """Apply the reviewed rebuild_remove.csv / rebuild_repoint.csv /
+    rebuild_species_change.csv to the master admin. Backs up data_files.csv +
+    data_pictures.csv first. DESTRUCTIVE.
       - remove : drop those data_files rows; drop the file from each picture's
                  Files list; drop a picture whose Files becomes empty.
       - repoint: set WindowsFileName + File:Directory to the real biota path.
-    data_pictures path fields (BestJPGPathName/TargetPath) are left for Build
-    Website to recompute. Returns a counts dict."""
+      - species: a picture whose folder says a different species than the admin
+                 is re-classified to the folder (ground truth): copy Wet/Eng/NL
+                 names + TargetPath from an existing row of that species, and
+                 rewrite the old species path inside BestJPGPathName.
+    data_pictures path fields are otherwise left for Build Website to recompute.
+    rebuild_add.csv is NOT applied (see find/refine; mostly renders + junk).
+    Returns a counts dict."""
     status = os.path.join(master_repo, "admin", "status")
     remove_rows = _read_report(os.path.join(status, "rebuild_remove.csv")) if do_remove else []
     repoint_rows = _read_report(os.path.join(status, "rebuild_repoint.csv")) if do_repoint else []
-    if not remove_rows and not repoint_rows:
+    species_rows = _read_report(os.path.join(status, "rebuild_species_change.csv")) if do_species else []
+    if not remove_rows and not repoint_rows and not species_rows:
         return {"ok": False, "error": "No rebuild_*.csv to apply — run the dry-run first."}
 
     remove_key = {(r[0].lower(), _norm(r[1])) for r in remove_rows if len(r) >= 2}
     repoint_map = {(r[0].lower(), _norm(r[1])): r[2] for r in repoint_rows if len(r) >= 3}
     removed_filenames = {r[0] for r in remove_rows if r}
+    # UPN -> target species (folder is ground truth); species names are lower-case.
+    species_target = {r[0]: r[2] for r in species_rows if len(r) >= 3}
+    species_needed = {s.lower() for s in species_target.values()}
 
     files_csv = os.path.join(master_repo, "metadata", "active", "data_files.csv")
     pics_csv = os.path.join(master_repo, "metadata", "active", "data_pictures.csv")
@@ -198,14 +211,19 @@ def execute_heal(master_repo, do_remove=True, do_repoint=True):
             out_files.append(row)
     _atomic_write_csv(files_csv, header, out_files)
 
-    # --- data_pictures.csv: clean Files lists, drop now-empty pictures ---
-    pics_dropped = files_cleaned = 0
+    # --- data_pictures.csv: clean Files lists, drop empty pictures, reclassify ---
+    pics_dropped = files_cleaned = species_changed = 0
     with open(pics_csv, "r", encoding="utf-8", errors="replace", newline="") as fh:
         reader = csv.reader(fh, delimiter=";")
         pheader = next(reader)
         pidx = {h: i for i, h in enumerate(pheader)}
         filesi = pidx.get("Files")
+        ui = pidx.get("UniquePictureName")
+        wet_i, eng_i, nl_i = pidx.get("WetSoortNaam"), pidx.get("EngSoortNaam"), pidx.get("NLSoortNaam")
+        tp_i, bjp_i = pidx.get("TargetPath"), pidx.get("BestJPGPathName")
         out_pics = []
+        templates = {}        # species(lower) -> {wet, eng, nl, targetpath}
+        species_pending = []  # rows awaiting reclassify (template may appear later)
         for row in reader:
             if removed_filenames and filesi is not None and filesi < len(row):
                 raw = row[filesi].strip()
@@ -221,12 +239,40 @@ def execute_heal(master_repo, do_remove=True, do_repoint=True):
                             continue
                     except Exception:
                         pass
+            # Collect a template row for any species we need to reclassify into.
+            if species_needed and wet_i is not None and wet_i < len(row):
+                wet = row[wet_i].strip().lower()
+                if wet in species_needed and wet not in templates:
+                    templates[wet] = {
+                        "wet": row[wet_i], "eng": row[eng_i] if eng_i is not None else "",
+                        "nl": row[nl_i] if nl_i is not None else "",
+                        "tp": row[tp_i] if tp_i is not None else ""}
+            if species_target and ui is not None and ui < len(row) and row[ui] in species_target:
+                species_pending.append(row)
             out_pics.append(row)
+
+        for row in species_pending:
+            t = templates.get(species_target[row[ui]].lower())
+            if not t:
+                continue          # no existing row of that species to copy from
+            old_tp = row[tp_i] if tp_i is not None and tp_i < len(row) else ""
+            if wet_i is not None and wet_i < len(row):
+                row[wet_i] = t["wet"]
+            if eng_i is not None and eng_i < len(row):
+                row[eng_i] = t["eng"]
+            if nl_i is not None and nl_i < len(row):
+                row[nl_i] = t["nl"]
+            if bjp_i is not None and bjp_i < len(row) and old_tp and t["tp"]:
+                row[bjp_i] = row[bjp_i].replace(old_tp, t["tp"])
+            if tp_i is not None and tp_i < len(row):
+                row[tp_i] = t["tp"]
+            species_changed += 1
     _atomic_write_csv(pics_csv, pheader, out_pics)
 
     return {"ok": True, "removed_files": removed, "repointed": repointed,
             "kept_files": len(out_files), "pictures_dropped": pics_dropped,
-            "files_cleaned": files_cleaned, "backup_dir": backup_dir}
+            "files_cleaned": files_cleaned, "species_changed": species_changed,
+            "backup_dir": backup_dir}
 
 
 # ── Orphan sidecars (XMP/DOP whose image was deleted) ───────────────────────────

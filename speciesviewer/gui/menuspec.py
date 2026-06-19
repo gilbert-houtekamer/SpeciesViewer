@@ -784,14 +784,15 @@ def build_menu_spec(main_window):
         if not plan.get("ok"):
             QMessageBox.warning(main_window, "Heal Admin", plan.get("error", "Failed."))
             return
-        if plan["remove"] == 0 and plan["repoint"] == 0:
+        if plan["remove"] == 0 and plan["repoint"] == 0 and plan["species_change"] == 0:
             QMessageBox.information(main_window, "Heal Admin", "Nothing to heal.")
             return
         msg = (f"Apply to the master admin (data_files.csv / data_pictures.csv)?\n\n"
                f"  • REMOVE {plan['remove']} dead file rows\n"
                f"  • REPOINT {plan['repoint']} stale paths → real biota location\n"
+               f"  • RECLASSIFY {plan['species_change']} pictures to their folder species\n"
                f"  • DROP phantom pictures whose files are all gone\n\n"
-               f"(The {plan['add']} adds and {plan['species_change']} species changes are NOT applied.)\n\n"
+               f"(The {plan['add']} adds are NOT applied — mostly DxO renders + junk.)\n\n"
                f"Both CSVs are backed up first to admin/status/backup/.\n"
                f"This rewrites the master admin. Continue?")
         if QMessageBox.question(main_window, "Heal Admin — apply (destructive)", msg,
@@ -812,6 +813,7 @@ def build_menu_spec(main_window):
             main_window, "Heal Admin — done",
             f"Removed {r['removed_files']} dead file rows.\n"
             f"Repointed {r['repointed']} paths.\n"
+            f"Reclassified {r.get('species_changed', 0)} pictures to their folder species.\n"
             f"Dropped {r['pictures_dropped']} phantom pictures "
             f"(cleaned {r['files_cleaned']} Files lists).\n\n"
             f"Backups in: {r['backup_dir']}\n\n"
