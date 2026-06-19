@@ -27,6 +27,7 @@ from gui.picture_provider import PictureItem, PictureCollection, ExifSummary, Pi
 from gui.image_loader import AsyncImageLoader
 from gui.preview_provider import cached_jpg_for, preview_cache_dir_for
 from engine.exif_writer import exiftool_write
+from engine.handling import deriveUniquePictureName
 
 logger = logging.getLogger("speciesviewer")
 
@@ -224,12 +225,17 @@ class SidecarCollection(PictureCollection):
         self.readonly = readonly
         self._cache_root = Path(cache_root) if cache_root else None
         self._loader = loader or AsyncImageLoader()
-        # Group input picture files by stem.
+        # Group input picture files by their unique-picture name. Using
+        # deriveUniquePictureName (not the raw stem) folds DxO/PureRaw renders
+        # and -small thumbnails onto their source RAW — otherwise e.g.
+        # N2040705_DxO.jpg becomes its OWN picture, splitting one shot into two
+        # and inflating the count. (At pure ingest there are no such suffixes,
+        # so this is a no-op there.)
         self._groups: dict[str, dict] = {}
         for p in paths:
             p = Path(p)
             ext = p.suffix.lower()
-            grp = self._groups.setdefault(p.stem, {})
+            grp = self._groups.setdefault(deriveUniquePictureName(p.name), {})
             if ext in _RAW_EXTS:
                 grp["raw"] = p
             elif ext in _JPG_EXTS:

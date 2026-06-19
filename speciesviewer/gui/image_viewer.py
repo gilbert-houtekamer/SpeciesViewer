@@ -463,6 +463,23 @@ class ImagePreviewDialog(QDialog):
         base = set(self._base_keys())
         return len([k for k in self._collection.no_gps_keys() if k in base])
 
+    def _present_count(self) -> int | None:
+        """How many pictures in the current base still have a file on disk; None
+        in no-metadata mode (those keys are discovered files, always present)."""
+        if not self.fpr:
+            return None
+        try:
+            base = set(self._base_keys())
+            return len([k for k in self._collection.present_keys() if k in base])
+        except Exception:
+            return None
+
+    def _all_pictures_suffix(self, total: int) -> str:
+        present = self._present_count()
+        if present is not None and present < total:
+            return f"all {total} pictures ({present} with files, {total - present} missing)"
+        return f"all {total} pictures"
+
     def _update_title_for_filter(self):
         base = f"Species Image Preview ({self._viewer_label})"
         total = len(self._base_keys())
@@ -481,7 +498,7 @@ class ImagePreviewDialog(QDialog):
         elif self._active_filter == "no_gps":
             suffix = f"{self._no_gps_count()} missing GPS"
         elif self._active_filter == "all":
-            suffix = f"all {total} pictures"
+            suffix = self._all_pictures_suffix(total)
         else:
             suffix = f"clean day — click All to view {total} pictures"
         self.setWindowTitle(f"{base} — {suffix}")

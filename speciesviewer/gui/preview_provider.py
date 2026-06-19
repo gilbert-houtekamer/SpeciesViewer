@@ -211,6 +211,7 @@ class PreviewCollection(PictureCollection):
         """Order the given UPN keys (or all) by capture time, so iPhone HEIC and
         Olympus ORF interleave in shooting order — same intent as the preview's
         per-file sort. `keys` lets the host pass a filtered subset."""
+        self._present_cache = None
         if keys is None:
             keys = list(self.fpr.upn.UniquePictureName_dict.keys())
         self._order = sorted(keys, key=self._capture_key)
@@ -237,6 +238,16 @@ class PreviewCollection(PictureCollection):
     def jpg_keys(self) -> list[str]:
         """UPNs that have at least one JPG file — the 'JPG only' (column 2) set."""
         return [k for k in self.all_keys() if self.jpg_path(k) is not None]
+
+    def present_keys(self) -> list[str]:
+        """UPNs that still have at least one file physically on disk. The rest are
+        'ghost' pictures — admin records whose files were deleted/moved — so the
+        host can show an honest count instead of trusting the admin total. Cached
+        per rebuild (one existence pass)."""
+        if self._present_cache is None:
+            self._present_cache = [k for k in self.all_keys()
+                                   if self.has_writable_sidecar(k)]
+        return self._present_cache
 
     # ── PictureCollection ─────────────────────────────────────────────────
     def __len__(self) -> int:

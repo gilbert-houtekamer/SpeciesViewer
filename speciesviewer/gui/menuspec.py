@@ -696,6 +696,41 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # Audit the master admin for ghost records — data_files.csv rows whose file
+    # is not at the recorded path (dangling = nowhere; elsewhere = wrong path).
+    def _audit_admin():
+        import os
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from PyQt6.QtCore import Qt
+        import engine.admin_audit as admin_audit
+        master = _config.get("master", "masterbiotadatabase", fallback="").replace('"', "").replace("'", "")
+        if not master:
+            QMessageBox.warning(main_window, "Audit Admin", "No master is configured.")
+            return
+        out = os.path.join(master, "admin", "status", "ghost_files.csv")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            r = admin_audit.find_ghost_files(master, out_csv=out)
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not r.get("ok"):
+            QMessageBox.warning(main_window, "Audit Admin", r.get("error", "Failed."))
+            return
+        pct = (r["ghosts"] / r["total"] * 100) if r["total"] else 0
+        QMessageBox.information(
+            main_window, "Audit Admin — ghost records",
+            f"Scanned {r['total']} admin file-records.\n\n"
+            f"Ghost records: {r['ghosts']} ({pct:.1f}%)\n"
+            f"  • {r['dangling']} dangling (file nowhere in the master)\n"
+            f"  • {r['elsewhere']} wrong-path (file exists elsewhere)\n\n"
+            f"Details written to:\n{out}")
+
+    audit_admin_item = MenuSpec(
+        callback=_audit_admin,
+        title="Audit Admin (find ghost records)…",
+        showsubdirectory=False,
+    )
+
     return {
         "File": {
             "Quit": MenuSpec(
@@ -745,6 +780,8 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_master_2": None,
             "Trip Status Console…": trip_status_console,
             "Merged Status (all machines)…": merged_status_console,
+            f"{MenuSpec.separator()}_master_3": None,
+            "Audit Admin (find ghost records)…": audit_admin_item,
         },
         "Virtual Trips": {
             "Create Virtual Trip": virttrip_create,
