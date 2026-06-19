@@ -766,6 +766,64 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # Apply the heal: remove dead rows + repoint stale paths in the master admin.
+    # Re-runs the dry-run first (fresh), confirms, backs up both CSVs, then writes.
+    def _heal_admin():
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from PyQt6.QtCore import Qt
+        import engine.admin_rebuild as admin_rebuild
+        master = _config.get("master", "masterbiotadatabase", fallback="").replace('"', "").replace("'", "")
+        if not master:
+            QMessageBox.warning(main_window, "Heal Admin", "No master is configured.")
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            plan = admin_rebuild.plan_rebuild(master)
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not plan.get("ok"):
+            QMessageBox.warning(main_window, "Heal Admin", plan.get("error", "Failed."))
+            return
+        if plan["remove"] == 0 and plan["repoint"] == 0:
+            QMessageBox.information(main_window, "Heal Admin", "Nothing to heal.")
+            return
+        msg = (f"Apply to the master admin (data_files.csv / data_pictures.csv)?\n\n"
+               f"  • REMOVE {plan['remove']} dead file rows\n"
+               f"  • REPOINT {plan['repoint']} stale paths → real biota location\n"
+               f"  • DROP phantom pictures whose files are all gone\n\n"
+               f"(The {plan['add']} adds and {plan['species_change']} species changes are NOT applied.)\n\n"
+               f"Both CSVs are backed up first to admin/status/backup/.\n"
+               f"This rewrites the master admin. Continue?")
+        if QMessageBox.question(main_window, "Heal Admin — apply (destructive)", msg,
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            r = admin_rebuild.execute_heal(master)
+        except Exception as e:
+            r = {"ok": False, "error": f"{type(e).__name__}: {e} (CSV open in Excel / Dropbox lock?)"}
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not r.get("ok"):
+            QMessageBox.warning(main_window, "Heal Admin", r.get("error", "Failed."))
+            return
+        QMessageBox.information(
+            main_window, "Heal Admin — done",
+            f"Removed {r['removed_files']} dead file rows.\n"
+            f"Repointed {r['repointed']} paths.\n"
+            f"Dropped {r['pictures_dropped']} phantom pictures "
+            f"(cleaned {r['files_cleaned']} Files lists).\n\n"
+            f"Backups in: {r['backup_dir']}\n\n"
+            f"Next: re-run Count Species to refresh per-species counts; the master "
+            f"DB cache rebuilds itself.")
+
+    heal_admin_item = MenuSpec(
+        callback=_heal_admin,
+        title="Heal Admin (apply fixes)…",
+        showsubdirectory=False,
+    )
+
     return {
         "File": {
             "Quit": MenuSpec(
@@ -818,6 +876,7 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_master_3": None,
             "Audit Admin (find ghost records)…": audit_admin_item,
             "Rebuild Admin (dry-run compare)…": rebuild_admin_item,
+            "Heal Admin (apply fixes)…": heal_admin_item,
         },
         "Virtual Trips": {
             "Create Virtual Trip": virttrip_create,
