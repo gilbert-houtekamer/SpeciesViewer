@@ -824,6 +824,56 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # Move orphan sidecars (XMP/DOP whose image was deleted) to a recoverable
+    # trash; their now-dangling admin rows are swept by the next Heal Admin run.
+    def _clean_orphan_sidecars():
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from PyQt6.QtCore import Qt
+        import engine.admin_rebuild as admin_rebuild
+        master = _config.get("master", "masterbiotadatabase", fallback="").replace('"', "").replace("'", "")
+        if not master:
+            QMessageBox.warning(main_window, "Clean Orphan Sidecars", "No master is configured.")
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            info = admin_rebuild.find_orphan_sidecars(master)
+        finally:
+            QApplication.restoreOverrideCursor()
+        n = info.get("orphan_files", 0)
+        if n == 0:
+            QMessageBox.information(main_window, "Clean Orphan Sidecars", "No orphan sidecars found.")
+            return
+        by = info.get("by_ext", {})
+        detail = ", ".join(f"{v} .{k}" for k, v in sorted(by.items()))
+        if QMessageBox.question(
+                main_window, "Clean Orphan Sidecars",
+                f"Move {n} orphan sidecar(s) ({detail}) to a recoverable trash "
+                f"folder?\n\nThese have no image left in their picture group.\n"
+                f"Run Heal Admin afterward to clear their admin rows.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            r = admin_rebuild.clean_orphan_sidecars(master)
+        except Exception as e:
+            r = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not r.get("ok"):
+            QMessageBox.warning(main_window, "Clean Orphan Sidecars", r.get("error", "Failed."))
+            return
+        QMessageBox.information(
+            main_window, "Clean Orphan Sidecars — done",
+            f"Moved {r['moved']} orphan sidecar(s) to:\n{r['trash']}\n\n"
+            f"Run Heal Admin to clear their (now-dangling) admin rows.")
+
+    clean_orphans_item = MenuSpec(
+        callback=_clean_orphan_sidecars,
+        title="Clean Orphan Sidecars (move to trash)…",
+        showsubdirectory=False,
+    )
+
     return {
         "File": {
             "Quit": MenuSpec(
@@ -877,6 +927,7 @@ def build_menu_spec(main_window):
             "Audit Admin (find ghost records)…": audit_admin_item,
             "Rebuild Admin (dry-run compare)…": rebuild_admin_item,
             "Heal Admin (apply fixes)…": heal_admin_item,
+            "Clean Orphan Sidecars (move to trash)…": clean_orphans_item,
         },
         "Virtual Trips": {
             "Create Virtual Trip": virttrip_create,

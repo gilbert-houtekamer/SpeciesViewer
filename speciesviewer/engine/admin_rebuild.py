@@ -227,3 +227,65 @@ def execute_heal(master_repo, do_remove=True, do_repoint=True):
     return {"ok": True, "removed_files": removed, "repointed": repointed,
             "kept_files": len(out_files), "pictures_dropped": pics_dropped,
             "files_cleaned": files_cleaned, "backup_dir": backup_dir}
+
+
+# ── Orphan sidecars (XMP/DOP whose image was deleted) ───────────────────────────
+
+def find_orphan_sidecars(master_repo, out_csv=None):
+    """Walk <master>/biota, group files by unique-picture name, and find groups
+    that have a sidecar (.xmp/.dop) but NO image left — the RAW/JPG was deleted,
+    leaving a useless sidecar. Returns counts + writes the orphan paths."""
+    biota = os.path.join(master_repo, "biota")
+    groups = {}      # upn -> {"image": bool, "sidecars": [path]}
+    for dirpath, _dirs, files in os.walk(biota):
+        for f in files:
+            ext = os.path.splitext(f)[1].lower()
+            # .dop carries a double extension (X.jpg.dop / X.NEF.dop); strip it
+            # before deriving so the sidecar groups with its image, not alone.
+            base = os.path.splitext(f)[0] if ext == ".dop" else f
+            g = groups.setdefault(deriveUniquePictureName(base),
+                                  {"image": False, "sidecars": []})
+            if ext in _IMG_EXTS and not f.lower().endswith("-small.jpg"):
+                g["image"] = True
+            elif ext in (".xmp", ".dop"):
+                g["sidecars"].append(os.path.join(dirpath, f))
+
+    orphans = []     # (path, ext)
+    for g in groups.values():
+        if g["sidecars"] and not g["image"]:
+            for p in g["sidecars"]:
+                orphans.append((p, os.path.splitext(p)[1].lower().lstrip(".")))
+
+    if out_csv:
+        os.makedirs(os.path.dirname(out_csv), exist_ok=True)
+        with open(out_csv, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh, delimiter=";")
+            w.writerow(["path", "ext"])
+            w.writerows(orphans)
+
+    by_ext = {}
+    for _p, e in orphans:
+        by_ext[e] = by_ext.get(e, 0) + 1
+    return {"ok": True, "orphan_files": len(orphans), "by_ext": by_ext,
+            "paths": [p for p, _e in orphans], "report": out_csv}
+
+
+def clean_orphan_sidecars(master_repo):
+    """Move orphan sidecars (no image left in the group) to a recoverable trash
+    folder under admin/status/orphan_trash/<timestamp>/. Their now-dangling admin
+    rows are swept by the next Heal Admin run. Returns counts + trash path."""
+    info = find_orphan_sidecars(master_repo)
+    paths = info.get("paths", [])
+    if not paths:
+        return {"ok": True, "moved": 0, "trash": None}
+    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    trash = os.path.join(master_repo, "admin", "status", "orphan_trash", ts)
+    os.makedirs(trash, exist_ok=True)
+    moved = 0
+    for p in paths:
+        try:
+            shutil.move(p, os.path.join(trash, os.path.basename(p)))
+            moved += 1
+        except Exception as e:
+            logger.warning(f"clean_orphan_sidecars: {p}: {e}")
+    return {"ok": True, "moved": moved, "trash": trash}
