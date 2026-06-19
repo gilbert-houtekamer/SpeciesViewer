@@ -751,14 +751,19 @@ def build_menu_spec(main_window):
         if not r.get("ok"):
             QMessageBox.warning(main_window, "Rebuild Admin", r.get("error", "Failed."))
             return
+        bd = r.get("add_breakdown", {})
+        add_detail = (" (" + ", ".join(f"{v} {k}" for k, v in sorted(bd.items())) + ")") if bd else ""
         QMessageBox.information(
             main_window, "Rebuild Admin — dry run (what would change)",
             f"A clean rebuild from the current tree would:\n\n"
             f"  • REMOVE {r['remove']} dead lines (file nowhere)\n"
             f"  • REPOINT {r['repoint']} stale paths (file exists elsewhere)\n"
-            f"  • ADD {r['add']} files on disk not in the admin\n"
-            f"  • CHANGE species on {r['species_change']} pictures (folder ≠ admin)\n\n"
-            f"Nothing was changed. Details written to:\n{r['out_dir']}\\rebuild_*.csv")
+            f"  • CHANGE species on {r['species_change']} pictures (folder ≠ admin)\n"
+            f"  • ADD {r['add']} files not in the admin{add_detail}\n"
+            f"        — report only, not applied: 'attach' belongs to an existing\n"
+            f"        picture, 'junk?' has no frame number, 'new?' looks real.\n\n"
+            f"Heal Admin applies remove + repoint + species. Nothing was changed.\n"
+            f"Details written to:\n{r['out_dir']}\\rebuild_*.csv")
 
     rebuild_admin_item = MenuSpec(
         callback=_rebuild_admin_dryrun,

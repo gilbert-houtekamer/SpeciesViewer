@@ -13,6 +13,7 @@
 # Reports are written to <master>/admin/status/rebuild_*.csv.
 
 import os
+import re
 import csv
 import ast
 import shutil
@@ -87,23 +88,42 @@ def plan_rebuild(master_repo, out_dir=None):
             else:
                 remove.append((fn, wfn))
 
-    # Files on disk the admin doesn't list (would be ADDed). Image files only.
-    add = [name for name in disk_byname
-           if name not in admin_names
-           and os.path.splitext(name)[1].lower() in _IMG_EXTS
-           and not name.endswith("-small.jpg")]
-
-    # Species differences: admin's recorded species vs the folder the file is in.
+    # Species differences + the set of picture UPNs the admin already knows
+    # (used to tell an "attach" render from a genuinely new picture).
     species_change = []      # (upn, recorded_species, folder_species)
+    admin_upns = set()
     with open(pics_csv, "r", encoding="utf-8", errors="replace", newline="") as fh:
         for row in csv.DictReader(fh, delimiter=";"):
             upn = (row.get("UniquePictureName") or "").strip()
+            if upn:
+                admin_upns.add(upn)
             rec = (row.get("WetSoortNaam") or "").strip().lower()
             if not upn or not rec:
                 continue
             folder = disk_species.get(upn)
             if folder is not None and folder != rec:
                 species_change.append((upn, rec, folder))
+
+    # Files on disk the admin doesn't list. Classify each (report only — never
+    # auto-applied) so a handful can be eyeballed:
+    #   attach : its picture (UPN) is already in the admin -> a DxO render or
+    #            extra file of an existing picture, not a new picture;
+    #   new?   : UPN unknown but the name carries a camera frame number;
+    #   junk?  : UPN unknown and no frame number (banners, stray exports).
+    add = []                 # (filename, klass, upn, path)
+    for name in sorted(disk_byname):
+        if (name in admin_names
+                or os.path.splitext(name)[1].lower() not in _IMG_EXTS
+                or name.endswith("-small.jpg")):
+            continue
+        upn = deriveUniquePictureName(name)
+        if upn in admin_upns:
+            klass = "attach"
+        elif re.search(r"\d{3,}", os.path.splitext(name)[0]):
+            klass = "new?"
+        else:
+            klass = "junk?"
+        add.append((name, klass, upn, disk_byname[name]))
 
     out_dir = out_dir or os.path.join(master_repo, "admin", "status")
     os.makedirs(out_dir, exist_ok=True)
@@ -116,14 +136,18 @@ def plan_rebuild(master_repo, out_dir=None):
 
     _write("rebuild_remove.csv", ["File:FileName", "recorded_path"], remove)
     _write("rebuild_repoint.csv", ["File:FileName", "recorded_path", "real_path"], repoint)
-    _write("rebuild_add.csv", ["File:FileName"], [[n] for n in sorted(add)])
+    _write("rebuild_add.csv", ["File:FileName", "class", "UPN", "path"], add)
     _write("rebuild_species_change.csv",
            ["UPN", "admin_species", "folder_species"], species_change)
+
+    add_breakdown = {}
+    for _n, klass, _u, _p in add:
+        add_breakdown[klass] = add_breakdown.get(klass, 0) + 1
 
     return {"ok": True, "out_dir": out_dir,
             "disk_files": len(disk_paths), "admin_files": len(admin_names),
             "remove": len(remove), "repoint": len(repoint), "add": len(add),
-            "species_change": len(species_change)}
+            "add_breakdown": add_breakdown, "species_change": len(species_change)}
 
 
 # ── Execute the heal (DESTRUCTIVE — rewrites the master admin CSVs) ──────────────
