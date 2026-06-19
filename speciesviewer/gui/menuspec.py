@@ -731,6 +731,41 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # Dry-run "what would a clean rebuild change?" — compares the current admin
+    # against the actual tree (paths + folder species). Non-destructive; writes
+    # rebuild_*.csv reports for review before any real rebuild.
+    def _rebuild_admin_dryrun():
+        import os
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from PyQt6.QtCore import Qt
+        import engine.admin_rebuild as admin_rebuild
+        master = _config.get("master", "masterbiotadatabase", fallback="").replace('"', "").replace("'", "")
+        if not master:
+            QMessageBox.warning(main_window, "Rebuild Admin", "No master is configured.")
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            r = admin_rebuild.plan_rebuild(master)
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not r.get("ok"):
+            QMessageBox.warning(main_window, "Rebuild Admin", r.get("error", "Failed."))
+            return
+        QMessageBox.information(
+            main_window, "Rebuild Admin — dry run (what would change)",
+            f"A clean rebuild from the current tree would:\n\n"
+            f"  • REMOVE {r['remove']} dead lines (file nowhere)\n"
+            f"  • REPOINT {r['repoint']} stale paths (file exists elsewhere)\n"
+            f"  • ADD {r['add']} files on disk not in the admin\n"
+            f"  • CHANGE species on {r['species_change']} pictures (folder ≠ admin)\n\n"
+            f"Nothing was changed. Details written to:\n{r['out_dir']}\\rebuild_*.csv")
+
+    rebuild_admin_item = MenuSpec(
+        callback=_rebuild_admin_dryrun,
+        title="Rebuild Admin (dry-run compare)…",
+        showsubdirectory=False,
+    )
+
     return {
         "File": {
             "Quit": MenuSpec(
@@ -782,6 +817,7 @@ def build_menu_spec(main_window):
             "Merged Status (all machines)…": merged_status_console,
             f"{MenuSpec.separator()}_master_3": None,
             "Audit Admin (find ghost records)…": audit_admin_item,
+            "Rebuild Admin (dry-run compare)…": rebuild_admin_item,
         },
         "Virtual Trips": {
             "Create Virtual Trip": virttrip_create,
