@@ -239,6 +239,41 @@ def retire_trip_to_virttrip(parent):
         f"Next: Virtual Trips → Write Virtual Trip Blogs, then compare to the trip blog.")
 
 
+def _clear_virttrip_blogs(virttrip_root, web_root, pwd, logger):
+    """Remove stale blog artifacts before a fresh write: the local biotablog
+    HTML dir, blog_admin.csv, the FTP upload cache (so everything re-uploads),
+    and the published biotablog dir on the web. Old per-min-rating runs each
+    produced differently-named pages, so without this they accumulate (doubled
+    days, leftover garbage on the site)."""
+    import shutil
+    biotablog = os.path.join(virttrip_root, "web", "biotablog")
+    try:
+        if os.path.isdir(biotablog):
+            shutil.rmtree(biotablog, ignore_errors=True)
+        os.makedirs(biotablog, exist_ok=True)
+    except Exception as e:
+        logger.warning(f"clear blogs: local biotablog: {e}")
+    for rel in ("admin/blog_admin.csv", "admin/FTPcache.json"):
+        try:
+            os.remove(os.path.join(virttrip_root, *rel.split("/")))
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            logger.warning(f"clear blogs: {rel}: {e}")
+    if pwd and web_root:
+        try:
+            import engine.sftplib as sftplib
+            s = sftplib.Sftp(hostname="houtfp.ssh.transip.me",
+                             username="houtekamercom", password=pwd)
+            s.connect()
+            remote = s.remotePrefix() + web_root.rstrip("/") + "/biotablog"
+            s.rmtree(remote)
+            s.disconnect()
+            logger.info(f"clear blogs: removed remote {remote}")
+        except Exception as e:
+            logger.warning(f"clear blogs: remote biotablog: {e}")
+
+
 class VirtualTripCreationDialog(QDialog):
     def __init__(self, parent, menu_spec):
         super().__init__(parent)
@@ -659,6 +694,12 @@ class VirttripWriteBlogDialog(QDialog):
         score_row.addStretch()
         layout.addLayout(score_row)
 
+        self.clear_first_checkbox = QCheckBox(
+            "Clear old blog pages first (wipes biotablog + blog_admin.csv, "
+            "local and on the web — removes stale/duplicate entries)")
+        self.clear_first_checkbox.setChecked(False)
+        layout.addWidget(self.clear_first_checkbox)
+
         self.open_after_checkbox = QCheckBox("Open trip blog in browser after writing")
         self.open_after_checkbox.setChecked(True)
         layout.addWidget(self.open_after_checkbox)
@@ -684,6 +725,17 @@ class VirttripWriteBlogDialog(QDialog):
             return base_url
 
     def on_run(self):
+        if self.clear_first_checkbox.isChecked():
+            from PyQt6.QtWidgets import QApplication
+            from PyQt6.QtCore import Qt
+            vt = _config.get("virttrip", "virttripbiotadatabase", fallback="").replace('"', "").replace("'", "")
+            wr = _config.get("virttrip", "virttripbiotawebroot", fallback="")
+            pwd = _config.get("websettings", "sftppwd", fallback="")
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                _clear_virttrip_blogs(vt, wr, pwd, self.logger)
+            finally:
+                QApplication.restoreOverrideCursor()
         set_setting("virttrip", "minimum_score", str(self.min_score_spin.value()))
         # Build menu_spec dynamically so the current minimum_score is captured
         menu_spec = _virttrip_spec(
