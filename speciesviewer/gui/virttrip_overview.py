@@ -73,17 +73,22 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
     dlg.exec()
 
 
-def _count_files_from_csv(csv_path: Path):
-    """Return (total_rows, jpeg_rows) parsed from a data_files.csv."""
+def _count_pictures_from_csv(csv_path: Path):
+    """Return (pictures, jpeg_files) parsed from a data_files.csv: distinct
+    UniquePictureNames (pictures) and JPEG file rows. A RAW and its sidecars
+    share one UPN, so they count as one picture, not several files."""
     try:
         with open(csv_path, newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f, delimiter=";")
-            total = jpegs = 0
+            upns = set()
+            jpegs = 0
             for row in reader:
-                total += 1
+                u = (row.get("UniquePictureName") or "").strip()
+                if u:
+                    upns.add(u)
                 if row.get("WindowsExtension", "").lower() in ("jpg", "jpeg"):
                     jpegs += 1
-        return total, jpegs
+        return len(upns), jpegs
     except (FileNotFoundError, KeyError, OSError):
         return 0, 0
 
@@ -120,7 +125,7 @@ def populate_virttrip_overview(self):
     self.virttrip_table.setColumnCount(5)
     self.virttrip_table.setRowCount(len(day_dirs))
     self.virttrip_table.setHorizontalHeaderLabels(
-        ["Date", "Total\nFiles", "JPEG\nFiles", "Write\nBlog", "Build\nWebsite"]
+        ["Date", "Pictures", "JPEG\nFiles", "Write\nBlog", "Build\nWebsite"]
     )
     self.virttrip_table.setSortingEnabled(False)
     self.virttrip_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -144,7 +149,7 @@ def populate_virttrip_overview(self):
     web_built = (virttrip_path / "web" / "summaries" / "all biota species-nl.html").exists()
 
     for i, day_dir in enumerate(day_dirs):
-        total, jpegs = _count_files_from_csv(day_dir / "data_files.csv")
+        total, jpegs = _count_pictures_from_csv(day_dir / "data_files.csv")
 
         self.virttrip_table.setItem(i, DATE_COL,  QTableWidgetItem(day_dir.name))
         self.virttrip_table.setItem(i, FILES_COL, QTableWidgetItem(str(total)))

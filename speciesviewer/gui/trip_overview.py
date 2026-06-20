@@ -188,12 +188,31 @@ def _format_translations_item(review_day_path, verified_crcs):
     return item
 
 
+def _count_pictures(day_path):
+    """Distinct UniquePictureNames among the day folder's own picture files
+    (top level only) — the picture count, matching what PhotoLab shows. A RAW
+    and its XMP sidecar / DxO render share one UPN, so they count once (not as
+    separate files)."""
+    from engine.filecsv import deriveUniquePictureName
+    from engine.trip_delete_scan import PICTURE_EXTS
+    # Count only primary images, not sidecars: an orphan .xmp/.dop is not a
+    # picture, and a present one shares its RAW's UPN anyway.
+    primary = PICTURE_EXTS - {".xmp", ".dop"}
+    upns = set()
+    for f in day_path.glob("*"):
+        if f.is_file() and f.suffix.lower() in primary:
+            u = (deriveUniquePictureName(f.name) or "").strip()
+            if u:
+                upns.add(u)
+    return len(upns)
+
+
 def _format_total_files_item(day_path, review_root):
-    """Build the Total Files cell with health markers and tooltip. Re-used by
+    """Build the Pictures cell with health markers and tooltip. Re-used by
     refresh_day_health so the trip-overview row updates after the image
-    preview dialog fixes species/GPS issues."""
-    all_files = list(day_path.glob("*"))
-    total = len(all_files)
+    preview dialog fixes species/GPS issues. Shows the picture (UPN) count,
+    not the raw file count."""
+    total = _count_pictures(day_path)
     health = _day_health(review_root / day_path.name)
     if health is None:
         text = str(total)
@@ -370,7 +389,7 @@ def populate_trip_overview(self):
     self.trip_table.setColumnCount(STATE_COL_START + len(self.state_labels) + 2)
     self.trip_table.setRowCount(len(image_days))
     self.trip_table.setHorizontalHeaderLabels(
-        ["Day", "Total\nFiles", "JPEG\nFiles", "Sync\nSidecars"] + self.state_labels
+        ["Day", "Pictures", "JPEG\nFiles", "Sync\nSidecars"] + self.state_labels
         + ["Progress", "Trans-\nlations"]
     )
     self.trip_table.setSortingEnabled(False)
@@ -392,7 +411,7 @@ def populate_trip_overview(self):
     header = self.trip_table.horizontalHeader()
     header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
     header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-    # Total Files and JPEG Files auto-size to their content (Total Files
+    # Pictures and JPEG Files auto-size to their content (Pictures
     # carries "N ✅ 📍" markers that don't fit a stretched column).
     header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
     header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)

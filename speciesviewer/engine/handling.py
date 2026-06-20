@@ -34,8 +34,8 @@ def deriveUniquePictureName(windows_filename):
     # start with filename.extensiom
     # strip extension, make it lower case
     uniquename, extension = os.path.splitext(windows_filename)
-    if extension == "DOP":  # do it again for DOP files that have double extension
-        uniquename, extension = os.path.splitext(windows_filename)
+    if extension.lower() == ".dop":  # DOP sidecars carry a double extension (e.g. foo.ORF.dop)
+        uniquename, extension = os.path.splitext(uniquename)
     uniquename = uniquename.lower()
     # look for common extensions
     uniquename = uniquename.split("-small")[0]  # SpeciesViewer
