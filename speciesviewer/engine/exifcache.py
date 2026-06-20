@@ -38,12 +38,17 @@ CACHE_VERSION = 1
 CACHE_BACKUPS = 3
 
 # Bytes never change → name+size key (enables cross-folder / cross-copy reuse).
-IMMUTABLE_EXTENSIONS = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf",
-                        "dng", "heic"}
+# NOTE: dng is deliberately NOT here — DxO/PureRaw DeepPRIME DNGs are bulky and
+# recreatable from the RAW (PhotoLab regenerates them for free), so we don't
+# read or store them in the master (DENY below). They're cleaned locally by the
+# normal trip-delete (recreatable, RAW is in the master).
+IMMUTABLE_EXTENSIONS = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "heic"}
 # exiftool does NOT emit rows for these in a recursive scan (verified: 1482 .dop
 # and the .ini files produced 0 rows on Kreta). Never feed them — an explicit
 # file list would otherwise create spurious rows the dir-scan never produced.
-DENY_EXTENSIONS = {"dop", "ini", "txt", "ico", "html", "lrcat", "lrdata"}
+# dng: excluded by policy (bulky, recreatable). dop is read separately as a
+# copy-only sidecar (see sv2's .dop pass) so the DxO recipe travels with the RAW.
+DENY_EXTENSIONS = {"dop", "dng", "ini", "txt", "ico", "html", "lrcat", "lrdata"}
 # Everything else readable (xmp, jpg, jpeg, png, mov, aae, ...) is treated as
 # mutable and keyed by path+size+mtime.
 

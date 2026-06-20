@@ -195,9 +195,16 @@ def scan_trip(picture_root, master_root, trip_db):
                 # Deletion gate: a byte-identical copy must exist in the master.
                 # That means UPN in master AND (this exact file is in the master
                 # file list, or we have no file index to check against).
+                # Exception: a .dng is bulky and recreatable from the RAW, so it's
+                # deletable whenever its picture (the RAW) is in the master, even
+                # though the master never stores the DNG itself.
+                recreatable_dng = ext == ".dng" and upn_in_master
                 file_backed = file_in_master is True or (file_in_master is None and upn_in_master)
-                if upn_in_master and file_backed:
-                    item["reason"] = "in master (file confirmed)" if have_file_index else "in master (UPN)"
+                if upn_in_master and (file_backed or recreatable_dng):
+                    if recreatable_dng and not file_backed:
+                        item["reason"] = "recreatable DNG (RAW in master)"
+                    else:
+                        item["reason"] = "in master (file confirmed)" if have_file_index else "in master (UPN)"
                     if not in_deletelist:
                         tot["deletable_not_in_deletelist"] += 1
                     d_deletable.append(item)

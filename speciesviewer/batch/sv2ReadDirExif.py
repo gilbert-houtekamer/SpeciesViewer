@@ -36,6 +36,35 @@ import engine.statemachine
 import engine.exifcache as exifcache
 
 IGNOREEXTENSIONS = ['txt', 'ico', 'html']
+
+
+def _append_dop_rows(all_rows, root, recurse):
+    """DxO .dop sidecars carry the edit recipe (crop, light, …) to regenerate
+    the JPG from the RAW — small and worth keeping in the master. exiftool emits
+    no row for them, so enumerate them here and synthesise minimal rows. They
+    derive the RAW's UniquePictureName, so they group under the RAW's picture and
+    get copied into the biota tree with it (projectlib copies every file in a
+    picture's Files list)."""
+    seen = {(r.get("File:Directory", ""), r.get("File:FileName", "")) for r in all_rows}
+    added = 0
+    for dirpath, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        if not recurse:
+            dirs[:] = []
+        directory = dirpath.replace("\\", "/")
+        for fn in files:
+            if not fn.lower().endswith(".dop") or (directory, fn) in seen:
+                continue
+            all_rows.append({
+                "File:FileName": fn,
+                "File:Directory": directory,
+                "WindowsExtension": "dop",
+                "WindowsFileName": directory + "/" + fn,
+                "UniquePictureName": deriveUniquePictureName(fn),
+            })
+            added += 1
+    if added:
+        logger.info(f"Included {added} DxO .dop recipe sidecar(s).")
 # Real photo types whose Headline/Description we translate. Excludes PNG etc.,
 # so Apple's auto "Screenshot" headline on a .PNG isn't flagged. Mirrors
 # qt/gui/trip_overview.py PHOTO_EXTENSIONS.
@@ -467,6 +496,10 @@ def main(args, config):
         ]
         for r in unfilled:
             logger.warning(f"GPS missing: {r.get('File:FileName', '?')}")
+
+        # Pull in DxO .dop recipe sidecars (exiftool skips them) so they travel
+        # into the master with their RAW.
+        _append_dop_rows(all_rows, root, config.getboolean("project", "Recurse", fallback=True))
 
         # Write all rows to CSV.  Paths are stored relative to the pictures root
         # (parent of the day folder) so the CSV is portable across machines.
