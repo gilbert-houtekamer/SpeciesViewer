@@ -209,6 +209,11 @@ def partition(root, cache, fingerprint, recurse=True):
         if not recurse:
             dirs[:] = []        # top-level only
         for name in files:
+            # Hidden helper files (.sv_sidecar_cache.json, .sv_ingest_cache.json,
+            # .DS_Store, …) are tool caches, never pictures — skip like dot-dirs.
+            if name.startswith("."):
+                stats["skipped"] += 1
+                continue
             ext = os.path.splitext(name)[1][1:].lower()
             if ext in DENY_EXTENSIONS:
                 stats["skipped"] += 1

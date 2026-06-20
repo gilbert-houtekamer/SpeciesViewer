@@ -51,9 +51,8 @@ class MicroTripReviewDialog(ImagePreviewDialog):
                       f"(untagged are not added)")
         info.setStyleSheet("color: #444;")
         self.delete_originals_cb = QCheckBox("Delete originals after commit")
-        self.delete_originals_cb.setEnabled(False)        # next increment
-        self.delete_originals_cb.setToolTip("Coming next — use Trip ▸ Delete Local "
-                                            "Files Backed Up in Master for now.")
+        self.delete_originals_cb.setToolTip("After committing, delete the folder's "
+                                            "files that are confirmed present in the master.")
         self.commit_btn = QPushButton("Commit to Master")
         self.commit_btn.setEnabled(ident > 0)
         self.commit_btn.clicked.connect(self._commit)
@@ -118,9 +117,12 @@ class MicroTripReviewDialog(ImagePreviewDialog):
                 QApplication.processEvents()
                 fn(None, cfg)
             prog.setValue(len(steps))
+            deleted_msg = ""
+            if self.delete_originals_cb.isChecked():
+                deleted_msg = self._delete_originals(folder)
             QMessageBox.information(
                 self, "Add to Master",
-                f"Added {ident} picture(s) to the master and updated the website.")
+                f"Added {ident} picture(s) to the master and updated the website.{deleted_msg}")
             self.commit_btn.setText("Committed ✓")
         except Exception as e:
             logger.warning(f"add_to_master: commit failed: {e}")
@@ -128,6 +130,27 @@ class MicroTripReviewDialog(ImagePreviewDialog):
             self.commit_btn.setEnabled(True)
         finally:
             prog.close()
+
+    def _delete_originals(self, folder):
+        """Delete the folder's files now confirmed present in the master (reuses
+        the master-authoritative trip-delete scan — only byte-confirmed files are
+        removed). Returns a message fragment for the result dialog."""
+        import engine.trip_delete_scan as tds
+        try:
+            plan = tds.scan_trip(folder, self._micro_trip.master_root, "")
+            if not plan.get("ok"):
+                return f"\nOriginals kept — could not verify against master: {plan.get('error')}"
+            nf, npx, errs = tds.execute_scan_delete(plan)
+            msg = f"\nDeleted {npx} original picture(s) ({nf} files) now safe in the master."
+            held = plan["totals"].get("held_files", 0) + plan["totals"].get("keep_files", 0)
+            if held:
+                msg += f" Kept {held} not byte-confirmed in the master."
+            if errs:
+                msg += f" {len(errs)} could not be deleted (see log)."
+            return msg
+        except Exception as e:
+            logger.warning(f"add_to_master: delete originals failed: {e}")
+            return f"\nOriginals kept — delete failed: {e}"
 
 
 class AddToMasterDialog(QDialog):
