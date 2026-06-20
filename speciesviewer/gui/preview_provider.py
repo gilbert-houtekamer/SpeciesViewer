@@ -235,6 +235,12 @@ class PreviewCollection(PictureCollection):
         return [k for k in self.all_keys()
                 if (self.fpr.getColor(self.rep_filename(k)) or "grey").lower() in wanted]
 
+    def species_keys(self) -> list[str]:
+        """UPNs that carry a species — the only ones an add-to-master commit
+        takes. Untagged pictures are excluded."""
+        return [k for k in self.all_keys()
+                if (self.fpr.getSpeciesName(self.rep_filename(k)) or "").strip()]
+
     def jpg_keys(self) -> list[str]:
         """UPNs that have at least one JPG file — the 'JPG only' (column 2) set."""
         return [k for k in self.all_keys() if self.jpg_path(k) is not None]

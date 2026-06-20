@@ -37,7 +37,8 @@ class MicroTripReviewDialog(ImagePreviewDialog):
         super().__init__(parent,
                          image_dir=micro_trip.input_dir,
                          trip_root_dir=micro_trip.scratch_repo,
-                         mode="all")
+                         mode="all",
+                         start_species=True)   # focus on the pictures that will be committed
         folder = Path(micro_trip.input_dir).name
         self.setWindowTitle(f"Add to Master — {folder}")
         self._add_commit_bar(self._report)

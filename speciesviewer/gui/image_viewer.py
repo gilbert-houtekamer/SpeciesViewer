@@ -87,7 +87,7 @@ class ImagePreviewDialog(QDialog):
 
     def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg",
                  file_list=None, cache_root=None, source_label=None, collection=None,
-                 readonly=False):
+                 readonly=False, start_species=False):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
@@ -185,6 +185,8 @@ class ImagePreviewDialog(QDialog):
         self.warnings_only = False
         self.no_gps_only = False
         self.show_all = False
+        self.species_only = False
+        self._start_species = start_species
         # Multi-select state
         self._selected_keys: set[str] = set()
         self._bracket_left: str | None = None
@@ -251,12 +253,29 @@ class ImagePreviewDialog(QDialog):
         self.all_btn.clicked.connect(self.on_all_toggled)
         controls_layout.addWidget(self.all_btn)
 
-        # Radio-style: exactly one of the three is active.
+        # "Species" — show only pictures that carry a species (the ones an
+        # add-to-master commit would take). Enabled only when the backend can
+        # report species (fpr / culling collections).
+        self.species_btn = QPushButton("Species")
+        self.species_btn.setFixedSize(64, 24)
+        self.species_btn.setCheckable(True)
+        self.species_btn.setToolTip("Show only pictures that have a species")
+        self.species_btn.setStyleSheet("""
+            QPushButton { border: 2px solid #27AE60; border-radius: 4px; background: transparent; }
+            QPushButton:checked { background: #ABEBC6; }
+            QPushButton:disabled { border-color: #CCCCCC; color: #BBBBBB; }
+        """)
+        self.species_btn.clicked.connect(self.on_species_toggled)
+        self.species_btn.setEnabled(hasattr(self._collection, "species_keys"))
+        controls_layout.addWidget(self.species_btn)
+
+        # Radio-style: exactly one of these is active.
         self._filter_group = QButtonGroup(self)
         self._filter_group.setExclusive(True)
         self._filter_group.addButton(self.warnings_btn)
         self._filter_group.addButton(self.no_gps_btn)
         self._filter_group.addButton(self.all_btn)
+        self._filter_group.addButton(self.species_btn)
 
         self.color_filter_bar = ColorFilterBar(on_filter_changed=self.on_filter_changed)
         controls_layout.addWidget(self.color_filter_bar)
@@ -352,7 +371,16 @@ class ImagePreviewDialog(QDialog):
             if not no_gps_keys:
                 self.no_gps_btn.setEnabled(False)
 
-        if self.fpr and warnings_keys:
+        species_keys = ([k for k in self._collection.species_keys() if k in base]
+                        if hasattr(self._collection, "species_keys") else [])
+
+        if self._start_species and species_keys:
+            # Add-to-Master opens focused on the pictures that will be committed.
+            self._active_filter = "species"
+            self.species_btn.setChecked(True)
+            self.species_only = True
+            initial_keys = species_keys
+        elif self.fpr and warnings_keys:
             self._active_filter = "warnings"
             self.warnings_btn.setChecked(True)
             self.warnings_only = True
@@ -417,7 +445,7 @@ class ImagePreviewDialog(QDialog):
         if not self.warnings_btn.isChecked():
             return  # exclusive group; defensive
         self._active_filter = "warnings"
-        self.warnings_only, self.no_gps_only, self.show_all = True, False, False
+        self.warnings_only, self.no_gps_only, self.show_all, self.species_only = True, False, False, False
         self._update_title_for_filter()
         base = set(self._base_keys())
         self._rebuild_grid_from_keys([k for k in self._collection.warning_keys() if k in base])
@@ -426,16 +454,25 @@ class ImagePreviewDialog(QDialog):
         if not self.no_gps_btn.isChecked():
             return
         self._active_filter = "no_gps"
-        self.warnings_only, self.no_gps_only, self.show_all = False, True, False
+        self.warnings_only, self.no_gps_only, self.show_all, self.species_only = False, True, False, False
         self._update_title_for_filter()
         base = set(self._base_keys())
         self._rebuild_grid_from_keys([k for k in self._collection.no_gps_keys() if k in base])
+
+    def on_species_toggled(self):
+        if not self.species_btn.isChecked():
+            return
+        self._active_filter = "species"
+        self.warnings_only, self.no_gps_only, self.show_all, self.species_only = False, False, False, True
+        self._update_title_for_filter()
+        base = set(self._base_keys())
+        self._rebuild_grid_from_keys([k for k in self._collection.species_keys() if k in base])
 
     def on_all_toggled(self):
         if not self.all_btn.isChecked():
             return
         self._active_filter = "all"
-        self.warnings_only, self.no_gps_only, self.show_all = False, False, True
+        self.warnings_only, self.no_gps_only, self.show_all, self.species_only = False, False, True, False
         self._update_title_for_filter()
         self._rebuild_grid_from_keys(self._base_keys())
 
@@ -446,6 +483,8 @@ class ImagePreviewDialog(QDialog):
                 self.on_warnings_toggled()
             elif self._active_filter == "no_gps":
                 self.on_no_gps_toggled()
+            elif self._active_filter == "species":
+                self.on_species_toggled()
             else:
                 self._rebuild_grid_from_keys(self._base_keys())
             return
@@ -462,6 +501,12 @@ class ImagePreviewDialog(QDialog):
     def _no_gps_count(self) -> int:
         base = set(self._base_keys())
         return len([k for k in self._collection.no_gps_keys() if k in base])
+
+    def _species_count(self) -> int:
+        if not hasattr(self._collection, "species_keys"):
+            return 0
+        base = set(self._base_keys())
+        return len([k for k in self._collection.species_keys() if k in base])
 
     def _present_count(self) -> int | None:
         """How many pictures in the current base still have a file on disk; None
@@ -497,6 +542,8 @@ class ImagePreviewDialog(QDialog):
             suffix = f"{n} warning{'s' if n != 1 else ''}"
         elif self._active_filter == "no_gps":
             suffix = f"{self._no_gps_count()} missing GPS"
+        elif self._active_filter == "species":
+            suffix = f"{self._species_count()} with a species"
         elif self._active_filter == "all":
             suffix = self._all_pictures_suffix(total)
         else:
@@ -547,6 +594,8 @@ class ImagePreviewDialog(QDialog):
                 QMessageBox.information(self, "No Warnings", "All provided species information is correct.")
             elif self.no_gps_only:
                 QMessageBox.information(self, "No Missing GPS", "All pictures have GPS coordinates.")
+            elif self.species_only:
+                QMessageBox.information(self, "No Species", "No pictures have a species yet — tag them first.")
             else:
                 QMessageBox.warning(self, "No Images", "No pictures found, or none selected.")
             return
