@@ -384,6 +384,25 @@ def build_menu_spec(main_window):
     add_trip_pictures.callback = lambda: MasterPipelineDialog(
         main_window, master_pipeline_steps).exec()
 
+    # Add pictures from ANY folder to the master (trip-independent), via an
+    # ephemeral micro-trip. First slice: scan + report only.
+    def _add_pictures_to_master():
+        from gui.add_to_master import AddToMasterDialog
+        # Non-modal session controller — the user edits in the Trip tab while it
+        # stays open. Keep a reference so it isn't garbage-collected.
+        dlg = getattr(main_window, "_add_to_master_dialog", None)
+        if dlg is None:
+            dlg = AddToMasterDialog(main_window)
+            main_window._add_to_master_dialog = dlg
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
+    add_pictures_to_master_item = MenuSpec(
+        callback=_add_pictures_to_master,
+        title="Add Pictures to Master…",
+        showsubdirectory=False,
+    )
+
     trip_master_dashboard = MenuSpec(
         callback=lambda: TripMasterDashboard(
             main_window,
@@ -947,6 +966,7 @@ def build_menu_spec(main_window):
             "Add trip website to master": add_trip_to_master,
             f"{MenuSpec.separator()}_master_1": None,
             "Add Trip Pictures to Master": add_trip_pictures,
+            "Add Pictures to Master…": add_pictures_to_master_item,
             f"{MenuSpec.separator()}_master_2": None,
             "Trip Status Console…": trip_status_console,
             "Merged Status (all machines)…": merged_status_console,

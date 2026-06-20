@@ -44,7 +44,10 @@ class MicroTrip:
         self.project_name = Path(self.input_dir).stem
 
     # ── lifecycle ──────────────────────────────────────────────────────────
-    def __enter__(self):
+    # Use either the context-manager form (`with MicroTrip(...) as mt:`) for a
+    # scan-and-forget pass, or the explicit setup()/teardown() pair when the
+    # scratch must outlive the call (the GUI keeps it alive for editing).
+    def setup(self):
         if not os.path.isdir(self.input_dir):
             raise FileNotFoundError(f"Input directory not found: {self.input_dir}")
         species_csv = os.path.join(self.master_root, "metadata", "active", "species.csv")
@@ -54,13 +57,21 @@ class MicroTrip:
         logger.info(f"micro_trip: scratch repo {self.scratch_repo}")
         return self
 
-    def __exit__(self, exc_type, exc, tb):
+    def teardown(self):
         if self.scratch_repo and os.path.isdir(self.scratch_repo) and not self.keep:
             try:
                 shutil.rmtree(self.scratch_repo, ignore_errors=True)
                 logger.info("micro_trip: scratch repo removed")
             except Exception as e:
                 logger.warning(f"micro_trip: could not remove scratch repo: {e}")
+            finally:
+                self.scratch_repo = None
+
+    def __enter__(self):
+        return self.setup()
+
+    def __exit__(self, exc_type, exc, tb):
+        self.teardown()
         return False
 
     # ── config (mirrors utils.batch_config.generate_svconfig_ini, trip mode) ──
@@ -144,7 +155,12 @@ class MicroTrip:
                     sp = (row.get("WetSoortNaam") or "").strip()
                     if sp:
                         identified += 1
-                        species[sp] = species.get(sp, 0) + 1
+                        rec = species.setdefault(sp, {"n": 0, "nl": "", "eng": ""})
+                        rec["n"] += 1
+                        if not rec["nl"]:
+                            rec["nl"] = (row.get("NLSoortNaam") or "").strip()
+                        if not rec["eng"]:
+                            rec["eng"] = (row.get("EngSoortNaam") or "").strip()
                     else:
                         no_species += 1
         except Exception as e:
@@ -167,7 +183,10 @@ def format_summary(rep):
         "",
     ]
     for sp in sorted(rep["species"]):
-        lines.append(f"    {rep['species'][sp]:>4}  {sp}")
+        rec = rep["species"][sp]
+        names = " / ".join(x for x in (rec["nl"], rec["eng"]) if x)
+        suffix = f"  ({names})" if names else ""
+        lines.append(f"    {rec['n']:>4}  {sp}{suffix}")
     return "\n".join(lines)
 
 
