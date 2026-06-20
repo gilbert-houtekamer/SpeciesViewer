@@ -180,11 +180,37 @@ class MicroTrip:
                         no_species += 1
         except Exception as e:
             return {"ok": False, "error": f"failed reading {pic_csv}: {e}"}
+        # How many of each species the master ALREADY holds — a rarity cue: a
+        # species the master is rich in makes the trip's extra copies expendable
+        # (cull blue); a near-absent one is worth keeping. Counted from the
+        # master's real pictures (NOT the drift-prone species.csv counters).
+        master_counts = self._master_species_counts()
+        for sp, rec in species.items():
+            mp, mj = master_counts.get(sp.lower(), (0, 0))
+            rec["master_pics"], rec["master_jpgs"] = mp, mj
         with_jpg = sum(r["jpgs"] for r in species.values())
         return {"ok": True, "pictures": pictures, "identified": identified,
                 "no_species": no_species, "species": species,
                 "identified_with_jpg": with_jpg, "identified_no_jpg": identified - with_jpg,
                 "review_dir": self.review_dir}
+
+    def _master_species_counts(self):
+        """{species_lower: (pictures, jpgs)} from the master's real pictures."""
+        counts = {}
+        pic_csv = os.path.join(self.master_root, "metadata", "active", "data_pictures.csv")
+        if not os.path.isfile(pic_csv):
+            return counts
+        try:
+            with open(pic_csv, "r", encoding="utf-8", errors="replace", newline="") as fh:
+                for row in csv.DictReader(fh, delimiter=";"):
+                    sp = (row.get("WetSoortNaam") or "").strip().lower()
+                    if not sp:
+                        continue
+                    p, j = counts.get(sp, (0, 0))
+                    counts[sp] = (p + 1, j + (1 if _row_has_jpg(row) else 0))
+        except Exception as e:
+            logger.warning(f"micro_trip: could not read master species counts: {e}")
+        return counts
 
 
 def format_summary(rep):
@@ -204,13 +230,16 @@ def format_summary(rep):
         lines.append(f"  (!) {no_jpg} identified picture(s) have NO JPG - these would become "
                      f"ghost species in the master. DxO-render them first.")
     lines.append("")
-    lines.append(f"    {'#':>4} {'JPG':>4}  species")
+    lines.append(f"    {'this trip':>14}   {'in master':>14}")
+    lines.append(f"    {'#':>6} {'JPG':>6}   {'#':>6} {'JPG':>6}   species  (master rich = trip copies expendable)")
     for sp in sorted(rep["species"]):
         rec = rep["species"][sp]
         names = " / ".join(x for x in (rec["nl"], rec["eng"]) if x)
         suffix = f"  ({names})" if names else ""
         flag = "" if rec["jpgs"] else "  <- no JPG"
-        lines.append(f"    {rec['n']:>4} {rec['jpgs']:>4}  {sp}{suffix}{flag}")
+        lines.append(f"    {rec['n']:>6} {rec['jpgs']:>6}   "
+                     f"{rec.get('master_pics', 0):>6} {rec.get('master_jpgs', 0):>6}   "
+                     f"{sp}{suffix}{flag}")
     return "\n".join(lines)
 
 

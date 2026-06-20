@@ -1176,6 +1176,15 @@ class ImagePreviewDialog(QDialog):
             self._refresh_no_gps_from_disk()
 
     # ── Batch delete by colour ───────────────────────────────────────────────
+    def _color_delete_trash_root(self):
+        """Where blue/purple deletes are trashed. Culling mode: beside the source
+        folder; fpr mode: trip .trash/<day>. Subclasses (the Add-to-Master review
+        window, whose trip_root is a throwaway scratch) override this so deletes
+        go to a persistent, recoverable location instead."""
+        if self.fpr is not None and self.trip_root_dir:
+            return Path(self.trip_root_dir) / ".trash" / Path(self.image_dir).name
+        return Path(self.image_dir) / ".trash"
+
     def _batch_delete_color(self, color: str):
         if not hasattr(self._collection, 'delete_by_color'):
             return
@@ -1204,12 +1213,7 @@ class ImagePreviewDialog(QDialog):
         ) != QMessageBox.StandardButton.Yes:
             return
 
-        # Culling mode: trash beside the source folder; fpr mode: trip .trash/<day>
-        if self.fpr is not None and self.trip_root_dir:
-            trash_root = Path(self.trip_root_dir) / ".trash" / Path(self.image_dir).name
-        else:
-            trash_root = Path(self.image_dir) / ".trash"
-
+        trash_root = self._color_delete_trash_root()
         _total, _prot, deleted = self._collection.delete_by_color(color, trash_root)
         logger.info(f"Batch delete {color}: {deleted} picture(s) moved to trash.")
         self._active_filter = "all"

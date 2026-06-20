@@ -43,6 +43,13 @@ class MicroTripReviewDialog(ImagePreviewDialog):
         self.setWindowTitle(f"Add to Master — {folder}")
         self._add_commit_bar(self._report)
 
+    def _color_delete_trash_root(self):
+        # The trip_root here is the throwaway scratch (discarded on close), so a
+        # blue/purple cull must NOT trash there. Send it beside the real pictures
+        # so it's recoverable, like a normal trip cull.
+        from pathlib import Path as _P
+        return _P(self._micro_trip.input_dir) / ".trash"
+
     def _add_commit_bar(self, report):
         bar = QHBoxLayout()
         n = report.get("pictures", 0)
