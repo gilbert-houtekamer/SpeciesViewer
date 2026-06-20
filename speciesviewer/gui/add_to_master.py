@@ -315,9 +315,26 @@ class AddToMasterDialog(QDialog):
             self._mt = None
             self._report = None
 
+    def _reset_scan_state(self):
+        """Clean slate for a (re)open: the scratch from a previous session is
+        gone, so the old scan results are stale and Review/Discard are dead.
+        Keep the remembered directory; require a fresh Scan."""
+        self.review_btn.setEnabled(False)
+        self.discard_btn.setEnabled(False)
+        self.out.setPlainText('Click "Scan folder" to read this folder.')
+
     def closeEvent(self, event):
         # Closing ends the session: close the review window and remove the
-        # scratch (XMP edits already live on the real files).
+        # scratch (XMP edits already live on the real files), then leave the
+        # dialog clean so the next open isn't showing stale results.
         self._close_review()
         self._cleanup_scratch()
+        self._reset_scan_state()
         super().closeEvent(event)
+
+    def showEvent(self, event):
+        # Reopened (the instance is reused) with no live scratch -> stale state.
+        # Reset so the slow scan is simply redone, keeping the remembered folder.
+        super().showEvent(event)
+        if self._mt is None:
+            self._reset_scan_state()
