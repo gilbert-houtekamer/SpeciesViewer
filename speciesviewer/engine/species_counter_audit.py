@@ -54,10 +54,49 @@ def _actual_from_pictures(active_dir):
     return per, upns
 
 
-def audit(master_root):
+def _recover_from_backups(master_root, ghost_keys):
+    """For ghost species (no current pictures), recover their last-known file
+    names from the dated backup data_pictures.csv snapshots in
+    metadata/active/backup. Returns {key: {'date', 'files', 'upns'}} from the
+    NEWEST backup that still holds each species."""
+    out = {}
+    bdir = os.path.join(master_root, "metadata", "active", "backup")
+    if not os.path.isdir(bdir) or not ghost_keys:
+        return out
+    backups = sorted([f for f in os.listdir(bdir)
+                      if f.endswith("_data_pictures.csv")], reverse=True)
+    pending = set(ghost_keys)
+    for bf in backups:
+        if not pending:
+            break
+        date = bf.split("_")[0]
+        acc = {}
+        try:
+            with open(os.path.join(bdir, bf), "r", encoding="utf-8",
+                      errors="replace", newline="") as fh:
+                for r in csv.DictReader(fh, delimiter=";"):
+                    sp = (r.get("WetSoortNaam") or "").strip().lower()
+                    if sp in pending:
+                        fs, us = acc.setdefault(sp, (set(), set()))
+                        for f in _parse_files(r.get("Files", "")):
+                            fs.add(f)
+                        u = (r.get("UniquePictureName") or "").strip()
+                        if u:
+                            us.add(u)
+        except Exception as e:
+            logger.info(f"species_counter_audit: backup {bf}: {e}")
+            continue
+        for k, (fs, us) in acc.items():
+            out[k] = {"date": date, "files": sorted(fs), "upns": sorted(us)}
+            pending.discard(k)
+    return out
+
+
+def audit(master_root, recover_backups=True):
     """Compare species.csv (Level.SPECIES rows) against the real pictures.
     Returns {ok, ghosts, drift, orphan_pick, totals} or {ok: False, error}.
-    Non-destructive."""
+    When recover_backups, ghost entries also carry last-known file names from
+    species.csv JPGmap and the backup snapshots. Non-destructive."""
     active = os.path.join(master_root, "metadata", "active")
     sp_csv = os.path.join(active, "species.csv")
     pic_csv = os.path.join(active, "data_pictures.csv")
@@ -91,8 +130,14 @@ def audit(master_root):
                 best_upn = (r.get("BestUPN") or "").strip()
 
                 if claim_pic > 0 and act["pics"] == 0:
+                    # Last-known filenames still recorded on the species row.
+                    known = _parse_files(r.get("JPGmap", ""))
+                    best_jpg = (r.get("BestJPG") or "").strip()
+                    if best_jpg and best_jpg not in known:
+                        known.append(best_jpg)
                     ghosts.append({"name": name, "claim_pic": claim_pic,
-                                   "claim_jpg": claim_jpg, "best_upn": best_upn})
+                                   "claim_jpg": claim_jpg, "best_upn": best_upn,
+                                   "known_files": known, "recovered": None})
                 elif act["pics"] > 0 and (claim_pic != act["pics"] or claim_jpg != act["jpgs"]):
                     drift.append({"name": name, "claim_pic": claim_pic, "act_pic": act["pics"],
                                   "claim_jpg": claim_jpg, "act_jpg": act["jpgs"]})
@@ -103,6 +148,11 @@ def audit(master_root):
                     orphan.append({"name": name, "best_upn": best_upn, "act_pic": act["pics"]})
     except Exception as e:
         return {"ok": False, "error": f"failed reading species.csv: {e}"}
+
+    if recover_backups and ghosts:
+        rec = _recover_from_backups(master_root, [g["name"].lower() for g in ghosts])
+        for g in ghosts:
+            g["recovered"] = rec.get(g["name"].lower())
 
     return {"ok": True, "master_root": master_root,
             "ghosts": ghosts, "drift": drift, "orphan_pick": orphan,
@@ -129,9 +179,17 @@ def format_report(rep):
         lines.append("")
         lines.append("  Ghosts (species claiming pictures that do not exist):")
         for g in sorted(rep["ghosts"], key=lambda x: -x["claim_pic"]):
-            tag = f"  best_upn={g['best_upn']}" if g["best_upn"] else ""
-            lines.append(f"    claims {g['claim_pic']:>3} pic / {g['claim_jpg']:>3} jpg   "
-                         f"{g['name']}{tag}")
+            lines.append(f"    claims {g['claim_pic']:>3} pic / {g['claim_jpg']:>3} jpg   {g['name']}")
+            known = g.get("known_files") or []
+            if known:
+                lines.append(f"        species.csv files: {', '.join(known)}")
+            rec = g.get("recovered")
+            if rec and rec.get("files"):
+                lines.append(f"        backup {rec['date']} files: {', '.join(rec['files'])}")
+            elif rec and rec.get("upns"):
+                lines.append(f"        backup {rec['date']} pictures: {', '.join(rec['upns'])}")
+            if not known and not (rec and (rec.get("files") or rec.get("upns"))):
+                lines.append("        (no file names recoverable)")
     if rep["drift"]:
         lines.append("")
         lines.append("  Count drift (claimed vs actual):")

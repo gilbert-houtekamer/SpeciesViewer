@@ -770,6 +770,57 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # Species-counter audit (QA, report only): species.csv counts vs the actual
+    # pictures — lists ghosts (with recovered last-known file names), count
+    # drift and orphaned best-picks. Never modifies anything.
+    def _audit_species_counters():
+        import os
+        from PyQt6.QtWidgets import (QApplication, QMessageBox, QDialog, QVBoxLayout,
+                                     QPlainTextEdit, QPushButton)
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtGui import QFont
+        import engine.species_counter_audit as sca
+        master = _config.get("master", "masterbiotadatabase", fallback="").replace('"', "").replace("'", "")
+        if not master:
+            QMessageBox.warning(main_window, "Audit Species Counters", "No master is configured.")
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            rep = sca.audit(master)
+            text = sca.format_report(rep)
+            out = os.path.join(master, "admin", "status", "species_counter_audit.txt")
+            try:
+                os.makedirs(os.path.dirname(out), exist_ok=True)
+                with open(out, "w", encoding="utf-8") as fh:
+                    fh.write(text)
+            except Exception:
+                out = None
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not rep.get("ok"):
+            QMessageBox.warning(main_window, "Audit Species Counters", rep.get("error", "Failed."))
+            return
+        if out:
+            text += f"\n\nReport written to:\n{out}"
+        dlg = QDialog(main_window)
+        dlg.setWindowTitle("Audit Species Counters (dry-run, no changes)")
+        dlg.resize(840, 580)
+        lay = QVBoxLayout(dlg)
+        view = QPlainTextEdit(text, readOnly=True)
+        view.setFont(QFont("Consolas", 9))
+        view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        lay.addWidget(view)
+        btn = QPushButton("Close")
+        btn.clicked.connect(dlg.accept)
+        lay.addWidget(btn)
+        dlg.exec()
+
+    audit_species_item = MenuSpec(
+        callback=_audit_species_counters,
+        title="Audit Species Counters (dry-run)…",
+        showsubdirectory=False,
+    )
+
     # Dry-run "what would a clean rebuild change?" — compares the current admin
     # against the actual tree (paths + folder species). Non-destructive; writes
     # rebuild_*.csv reports for review before any real rebuild.
@@ -972,6 +1023,7 @@ def build_menu_spec(main_window):
             "Merged Status (all machines)…": merged_status_console,
             f"{MenuSpec.separator()}_master_3": None,
             "Audit Admin (find ghost records)…": audit_admin_item,
+            "Audit Species Counters (dry-run)…": audit_species_item,
             "Rebuild Admin (dry-run compare)…": rebuild_admin_item,
             "Heal Admin (apply fixes)…": heal_admin_item,
             "Clean Orphan Sidecars (move to trash)…": clean_orphans_item,
