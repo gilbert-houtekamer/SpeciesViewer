@@ -339,6 +339,14 @@ def _day_health(review_day_path):
 
 def populate_trip_overview(self):
     self.update_trip_label()
+    # Keep the left Trips panel's active-trip ▶ marker in sync after any trip
+    # switch (panel click, create/select-trip dialog, add-to-master, …).
+    panel = getattr(self, "trip_panel", None)
+    if panel is not None:
+        try:
+            panel._refresh_highlights()
+        except Exception:
+            pass
     self.remove_existing_overview_tab()
     # Get image and statemachine directories
     image_root = Path(_config.get("project", "picturedirectory")).parent

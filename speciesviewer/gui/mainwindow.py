@@ -50,7 +50,10 @@ class MainWindow(QMainWindow):
         red_layout.setContentsMargins(0, 0, 0, 0)
         cache = load_gui_cache()
         trip_project_map = cache.get("trip_project_map", {})  # ✅ actual dict
-        red_layout.addWidget(TripInfoPanel(self, trip_project_map, populate_trip_overview))
+        # Keep a reference so populate_trip_overview can refresh the active-trip
+        # ▶ marker after any trip switch (panel click, create/select dialog, …).
+        self.trip_panel = TripInfoPanel(self, trip_project_map, populate_trip_overview)
+        red_layout.addWidget(self.trip_panel)
         self.hsplitter.addWidget(red_panel)
 
         # Yellow panel
