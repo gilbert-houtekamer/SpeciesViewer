@@ -22,6 +22,16 @@ from configparser import ConfigParser
 logger = logging.getLogger("speciesviewer")
 
 
+def _row_has_jpg(row):
+    """True if a data_pictures row has a JPG in its group (so it can show on the
+    website). A picture with only RAW/HEIC and no JPG is what becomes a 'ghost
+    species' in the master — worth flagging before commit."""
+    if (row.get("BestJPG") or "").strip() or (row.get("JPGSize") or "").strip():
+        return True
+    files = (row.get("Files") or "")
+    return ".jpg" in files.lower() or ".jpeg" in files.lower()
+
+
 class MicroTrip:
     """Context manager that stands up a scratch trip repo around `input_dir` and
     tears it down on exit. The picture directory (input_dir) is treated as one
@@ -88,7 +98,10 @@ class MicroTrip:
         cfg["master"] = {"MasterBiotaDatabase": self.master_root,
                          "MasterBiotaWebRoot": self.web_root}
         cfg["project"] = {"PictureDirectory": self.input_dir,
-                          "Recurse": "1" if self.recurse else "0"}
+                          "Recurse": "1" if self.recurse else "0",
+                          # absolute paths in the scratch so the review window
+                          # resolves files no matter which trip is active.
+                          "Relativize": "0"}
         cfg["debug"] = {"Classification": "0", "SpeciesFound": "0"}
         cfg["websettings"] = {"Sftppwd": "", "base_url": ""}
         cfg["avibase"] = {"source_format": "avibase", "phone_layout": "false",
@@ -155,38 +168,49 @@ class MicroTrip:
                     sp = (row.get("WetSoortNaam") or "").strip()
                     if sp:
                         identified += 1
-                        rec = species.setdefault(sp, {"n": 0, "nl": "", "eng": ""})
+                        rec = species.setdefault(sp, {"n": 0, "nl": "", "eng": "", "jpgs": 0})
                         rec["n"] += 1
                         if not rec["nl"]:
                             rec["nl"] = (row.get("NLSoortNaam") or "").strip()
                         if not rec["eng"]:
                             rec["eng"] = (row.get("EngSoortNaam") or "").strip()
+                        if _row_has_jpg(row):
+                            rec["jpgs"] += 1
                     else:
                         no_species += 1
         except Exception as e:
             return {"ok": False, "error": f"failed reading {pic_csv}: {e}"}
+        with_jpg = sum(r["jpgs"] for r in species.values())
         return {"ok": True, "pictures": pictures, "identified": identified,
                 "no_species": no_species, "species": species,
+                "identified_with_jpg": with_jpg, "identified_no_jpg": identified - with_jpg,
                 "review_dir": self.review_dir}
 
 
 def format_summary(rep):
     if not rep.get("ok"):
         return f"Micro-trip ingest failed: {rep.get('error', 'unknown error')}"
+    no_jpg = rep.get("identified_no_jpg", 0)
     lines = [
         "Micro-trip ingest (scratch repo, master not modified)",
         f"  review dir : {rep['review_dir']}",
         "",
         f"  pictures   : {rep['pictures']}",
-        f"  identified : {rep['identified']}",
+        f"  identified : {rep['identified']}  ({rep.get('identified_with_jpg', 0)} with a JPG, "
+        f"{no_jpg} without)",
         f"  no species : {rep['no_species']}",
-        "",
     ]
+    if no_jpg:
+        lines.append(f"  (!) {no_jpg} identified picture(s) have NO JPG - these would become "
+                     f"ghost species in the master. DxO-render them first.")
+    lines.append("")
+    lines.append(f"    {'#':>4} {'JPG':>4}  species")
     for sp in sorted(rep["species"]):
         rec = rep["species"][sp]
         names = " / ".join(x for x in (rec["nl"], rec["eng"]) if x)
         suffix = f"  ({names})" if names else ""
-        lines.append(f"    {rec['n']:>4}  {sp}{suffix}")
+        flag = "" if rec["jpgs"] else "  <- no JPG"
+        lines.append(f"    {rec['n']:>4} {rec['jpgs']:>4}  {sp}{suffix}{flag}")
     return "\n".join(lines)
 
 

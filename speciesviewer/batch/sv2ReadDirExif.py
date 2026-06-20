@@ -472,6 +472,10 @@ def main(args, config):
         # (parent of the day folder) so the CSV is portable across machines.
         # The in-memory all_rows keeps absolute paths — they are still needed above
         # for the GPS XMP write-back (exiftool_write must receive an absolute path).
+        # The Add-to-Master micro-trip sets [project] Relativize=0 so its throwaway
+        # scratch keeps ABSOLUTE paths — its review window must resolve files
+        # regardless of which trip is active.
+        relativize = config.getboolean("project", "Relativize", fallback=True)
         pic_parent = Path(root).parent
         with open(datafilelocation, "w", newline="", encoding='utf-8') as csvfile:
             writer = csv.DictWriter(
@@ -480,7 +484,8 @@ def main(args, config):
             writer.writeheader()
             for row in all_rows:
                 csv_row = dict(row)
-                csv_row["File:Directory"] = relativize_path(csv_row.get("File:Directory", ""), pic_parent)
+                if relativize:
+                    csv_row["File:Directory"] = relativize_path(csv_row.get("File:Directory", ""), pic_parent)
                 csv_row["WindowsFileName"] = csv_row["File:Directory"] + "/" + csv_row.get("File:FileName", "")
                 writer.writerow(csv_row)
 
