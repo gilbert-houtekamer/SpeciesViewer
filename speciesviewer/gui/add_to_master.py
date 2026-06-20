@@ -33,13 +33,14 @@ class MicroTripReviewDialog(ImagePreviewDialog):
 
     def __init__(self, parent, micro_trip, report):
         self._micro_trip = micro_trip
+        self._report = report or {}
         super().__init__(parent,
                          image_dir=micro_trip.input_dir,
                          trip_root_dir=micro_trip.scratch_repo,
                          mode="all")
         folder = Path(micro_trip.input_dir).name
         self.setWindowTitle(f"Add to Master — {folder}")
-        self._add_commit_bar(report)
+        self._add_commit_bar(self._report)
 
     def _add_commit_bar(self, report):
         bar = QHBoxLayout()
@@ -50,15 +51,83 @@ class MicroTripReviewDialog(ImagePreviewDialog):
                       f"(untagged are not added)")
         info.setStyleSheet("color: #444;")
         self.delete_originals_cb = QCheckBox("Delete originals after commit")
-        self.delete_originals_cb.setEnabled(False)        # wired with the commit step
+        self.delete_originals_cb.setEnabled(False)        # next increment
+        self.delete_originals_cb.setToolTip("Coming next — use Trip ▸ Delete Local "
+                                            "Files Backed Up in Master for now.")
         self.commit_btn = QPushButton("Commit to Master")
-        self.commit_btn.setEnabled(False)                 # next step
-        self.commit_btn.setToolTip("The commit step is not built yet.")
+        self.commit_btn.setEnabled(ident > 0)
+        self.commit_btn.clicked.connect(self._commit)
         bar.addWidget(info)
         bar.addStretch(1)
         bar.addWidget(self.delete_originals_cb)
         bar.addWidget(self.commit_btn)
         self.layout().addLayout(bar)
+
+    def _commit(self):
+        """Run the proven master pipeline (sv2→sv3→sv5→sv6→sv7) scoped to this
+        one folder. Re-reads the real files (with any species/GPS edits the user
+        just made), copies them into the master, and updates the website."""
+        import tempfile
+        import configparser
+        from utils.batch_config import generate_svconfig_ini
+        import batch.sv2ReadDirExif as sv2
+        import batch.sv3WritePictures as sv3
+        import batch.sv5BuildWebsite as sv5
+        import batch.sv6Freeze as sv6
+        import batch.sv7WriteCommit as sv7
+        from PyQt6.QtWidgets import QProgressDialog
+
+        folder = self._micro_trip.input_dir
+        recurse = getattr(self._micro_trip, "recurse", False)
+        ident = self._report.get("identified", 0)
+        if QMessageBox.question(
+                self, "Commit to Master",
+                f"Add the {ident} identified picture(s) in\n{folder}\n"
+                f"to the master and update the website?\n\n"
+                f"Untagged pictures are not added. This writes to the master "
+                f"(undoable via the master .trash).",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+
+        # Write to a temp svconfig so the user's svconfig.ini is left alone.
+        tmp_cfg = os.path.join(tempfile.gettempdir(), "sv_addmaster_svconfig.ini")
+        generate_svconfig_ini(svconfig_path=tmp_cfg, master_mode=True,
+                              single_dir=folder, recurse=recurse)
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_cfg)
+
+        steps = [
+            ("Reading & recognising species", sv2.main),
+            ("Summarising pictures", sv3.main),
+            ("Building master website", sv5.main),
+            ("Freezing", sv6.main),
+            ("Committing", sv7.main),
+        ]
+        prog = QProgressDialog("Committing to master…", None, 0, len(steps), self)
+        prog.setWindowTitle("Add to Master")
+        prog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        prog.setCancelButton(None)
+        prog.setMinimumDuration(0)
+        prog.show()
+        self.commit_btn.setEnabled(False)
+        try:
+            for i, (label, fn) in enumerate(steps):
+                prog.setLabelText(f"{label}…")
+                prog.setValue(i)
+                QApplication.processEvents()
+                fn(None, cfg)
+            prog.setValue(len(steps))
+            QMessageBox.information(
+                self, "Add to Master",
+                f"Added {ident} picture(s) to the master and updated the website.")
+            self.commit_btn.setText("Committed ✓")
+        except Exception as e:
+            logger.warning(f"add_to_master: commit failed: {e}")
+            QMessageBox.warning(self, "Add to Master", f"Commit failed:\n{e}")
+            self.commit_btn.setEnabled(True)
+        finally:
+            prog.close()
 
 
 class AddToMasterDialog(QDialog):

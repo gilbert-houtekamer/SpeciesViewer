@@ -5,12 +5,16 @@ import logging
 from utils.config import _config, persist_config
 
 def generate_svconfig_ini(svconfig_path="svconfig.ini", master_mode=False,
-                          virttrip_mode=False):
+                          virttrip_mode=False, single_dir=None, recurse=True):
     """Write svconfig.ini for the next batch step.
 
     master_mode=True  — runs against the master database (no trip context).
     virttrip_mode=True — runs against the active virtual trip; reads
         [virttrip] keys so the regular [trip] settings are never touched.
+    single_dir — ingest EXACTLY this folder (used by Add-Pictures-to-Master's
+        micro-trip): PictureDirectory is set to it as-is (NOT stepped up to a
+        parent) and [project] Recurse reflects `recurse`. Without it, master
+        ingest steps up to the parent so it reads every day-subdir of a trip.
     """
     logger = logging.getLogger("speciesviewer")
     cfg = ConfigParser()
@@ -45,13 +49,18 @@ def generate_svconfig_ini(svconfig_path="svconfig.ini", master_mode=False,
         }
         cfg["master"] = {"MasterBiotaDatabase": master_db, "MasterBiotaWebRoot": master_web}
     pic_dir = _config.get("project", "picturedirectory", fallback="")
-    if master_mode and pic_dir:
+    if single_dir:
+        # Add-Pictures-to-Master: ingest exactly this one folder, no parent step.
+        pic_dir = single_dir
+    elif master_mode and pic_dir:
         # The GUI's picturedirectory points at the active day inside a
         # trip; for master ingest we want every day-subdir under the
         # trip root, so step up one level. sv2 walks recursively from
         # there.
         pic_dir = str(Path(pic_dir).parent)
     cfg["project"] = {"PictureDirectory": pic_dir}
+    if single_dir:
+        cfg["project"]["Recurse"] = "1" if recurse else "0"
     cfg["debug"] = {"Classification": "0", "SpeciesFound": "0"}
     cfg["websettings"] = {
         "Sftppwd":  _config.get("websettings", "Sftppwd",  fallback="? still needed"),
