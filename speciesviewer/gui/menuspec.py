@@ -628,9 +628,12 @@ def build_menu_spec(main_window):
         for e in errs[:20]:
             main_window.logger.warning(f"delete: {e}")
         extra = f"\n{len(errs)} files could not be deleted (see log)." if errs else ""
+        kept_id = t.get('keep_with_species', 0)
+        id_note = (f" ({kept_id} have a species — rescue via Add Pictures to Master "
+                   f"before retiring the whole trip)") if kept_id else ""
         QMessageBox.information(main_window, "Delete Trip Files",
                                f"Deleted {npx} pictures ({nf} files).\n"
-                               f"Kept {t['keep_pictures']} pictures not in the master and "
+                               f"Kept {t['keep_pictures']} pictures not in the master{id_note} and "
                                f"{t['held_pictures']} held local renders.{extra}")
 
     delete_trip_item = MenuSpec(

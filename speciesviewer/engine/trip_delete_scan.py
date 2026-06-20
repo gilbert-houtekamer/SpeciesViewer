@@ -105,6 +105,29 @@ def load_trip_deletelist(trip_db):
     return basenames
 
 
+def _trip_species_by_upn(trip_db):
+    """UPN (lowercased) -> species from the trip's per-day data_pictures.csv.
+    Lets the keep set be split into identified vs unidentified. Empty if the
+    trip metadata isn't available."""
+    out = {}
+    review = os.path.join(trip_db, "metadata", "review") if trip_db else ""
+    if not review or not os.path.isdir(review):
+        return out
+    for day in sorted(os.listdir(review)):
+        fp = os.path.join(review, day, "data_pictures.csv")
+        if not os.path.isfile(fp):
+            continue
+        try:
+            with open(fp, "r", encoding="utf-8", errors="replace", newline="") as fh:
+                for row in csv.DictReader(fh, delimiter=";"):
+                    u = (row.get("UniquePictureName") or "").strip().lower()
+                    if u and u not in out:
+                        out[u] = (row.get("WetSoortNaam") or "").strip()
+        except Exception as e:
+            logger.warning(f"trip_delete_scan: failed reading {fp}: {e}")
+    return out
+
+
 def _iter_day_dirs(picture_root):
     """Yield (day_name, day_path) for each immediate sub-directory of the trip
     picture root. Falls back to treating picture_root itself as a single day if
@@ -203,12 +226,19 @@ def scan_trip(picture_root, master_root, trip_db):
                      "counts": {"deletable": len(d_deletable), "keep": len(d_keep),
                                 "held": len(d_held), "other": len(d_other)}})
 
+    # Split the kept (not-in-master) pictures into identified vs unidentified —
+    # the identified ones are the "would be lost if the whole trip is deleted"
+    # set (rescue via Add-to-Master before fully retiring the trip).
+    species_by_upn = _trip_species_by_upn(trip_db)
+    keep_with_species = sum(1 for u in tot["keep_upns"] if species_by_upn.get(u))
     totals = {
         "files_scanned": tot["files"],
         "deletable_files": tot["deletable_files"],
         "deletable_pictures": len(tot["deletable_upns"]),
         "keep_files": tot["keep_files"],
         "keep_pictures": len(tot["keep_upns"]),
+        "keep_with_species": keep_with_species,
+        "keep_no_species": len(tot["keep_upns"]) - keep_with_species,
         "held_files": tot["held_files"],
         "held_pictures": len(tot["held_upns"]),
         "other_files": tot["other_files"],
@@ -238,7 +268,9 @@ def format_report(report):
     lines.append(f"  TOTAL  deletable : {t['deletable_files']} files "
                  f"({t['deletable_pictures']} pictures) - confirmed in master")
     lines.append(f"         keep      : {t['keep_files']} files "
-                 f"({t['keep_pictures']} pictures, not in master)")
+                 f"({t['keep_pictures']} pictures, not in master "
+                 f"- {t.get('keep_with_species', 0)} with a species, "
+                 f"{t.get('keep_no_species', 0)} unidentified)")
     lines.append(f"         held      : {t['held_files']} files "
                  f"({t['held_pictures']} pictures) - UPN in master but this exact "
                  f"file is not (likely a local render); kept")
