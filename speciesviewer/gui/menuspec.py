@@ -543,56 +543,76 @@ def build_menu_spec(main_window):
     )
 
     # ── Retirement step 2: delete the trip's local files that are already in the
-    # master (UPN-driven — the master holds the full RAW+XMP+JPG, so it's the
-    # backup). Pictures NOT in the master are kept. Preview + confirm; the
-    # master-presence check is the safety, so no freeze deletelist is needed.
+    # master. Ground-truth driven (engine/trip_delete_scan): walk the ACTUAL
+    # files on disk under the trip picture root and classify each against the
+    # master. A file is deletable only when a byte-identical copy is confirmed in
+    # the master (its UPN is in the master AND its exact name is in the master
+    # file list) — the master is the backup. 'keep' (not in master) and 'held'
+    # (UPN in master but this exact local render is not) files are never touched.
+    # Shows the full report; the explicit "Delete N files" button is the confirm.
     def _delete_trip_in_master():
-        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from PyQt6.QtWidgets import (QApplication, QMessageBox, QDialog, QVBoxLayout,
+                                     QPlainTextEdit, QDialogButtonBox)
         from PyQt6.QtCore import Qt
-        import engine.trip_delete as trip_delete
-        trip_db = _config.get("trip", "tripbiotadatabase", fallback="").replace('"', "").replace("'", "")
+        from PyQt6.QtGui import QFont
+        import engine.trip_delete_scan as tds
         master = _config.get("master", "masterbiotadatabase", fallback="").replace('"', "").replace("'", "")
-        if not trip_db or not master:
+        trip_db = _config.get("trip", "tripbiotadatabase", fallback="").replace('"', "").replace("'", "")
+        picdir = _config.get("project", "picturedirectory", fallback="").replace('"', "").replace("'", "")
+        picture_root = os.path.dirname(picdir.rstrip("/\\")) if picdir else ""
+        if not master or not trip_db or not picture_root:
             QMessageBox.warning(main_window, "Delete Trip Files",
                                 "Select an active trip and a master first.")
             return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            plan = trip_delete.plan_trip_delete(trip_db, master)
+            report = tds.scan_trip(picture_root, master, trip_db)
+            detail = tds.write_detail_csv(
+                report, os.path.join(trip_db, "metadata", "trip_delete_dryrun.csv")) \
+                if report.get("ok") else None
         finally:
             QApplication.restoreOverrideCursor()
-        if not plan.get("ok"):
-            QMessageBox.warning(main_window, "Delete Trip Files", plan.get("error", "Failed."))
+        if not report.get("ok"):
+            QMessageBox.warning(main_window, "Delete Trip Files", report.get("error", "Failed."))
             return
-        if plan["n_pictures"] == 0:
-            QMessageBox.information(main_window, "Delete Trip Files",
-                                   "Nothing to delete — no identified pictures from this "
-                                   "trip are in the master yet.")
+        t = report["totals"]
+        n_files = t["deletable_files"]
+        text = tds.format_report(report)
+        if detail:
+            text += f"\n\nPer-file detail written to:\n{detail}"
+
+        dlg = QDialog(main_window)
+        dlg.setWindowTitle("Delete Trip Files Backed Up in Master")
+        dlg.resize(760, 520)
+        lay = QVBoxLayout(dlg)
+        view = QPlainTextEdit(text, readOnly=True)
+        view.setFont(QFont("Consolas", 10))
+        view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        lay.addWidget(view)
+        bb = QDialogButtonBox()
+        bb.addButton(QDialogButtonBox.StandardButton.Cancel)
+        if n_files:
+            del_btn = bb.addButton(f"Delete {n_files} files",
+                                   QDialogButtonBox.ButtonRole.AcceptRole)
+            del_btn.setStyleSheet("color: white; background-color: #b00020; padding: 4px 10px;")
+        bb.rejected.connect(dlg.reject)
+        bb.accepted.connect(dlg.accept)
+        lay.addWidget(bb)
+        if dlg.exec() != QDialog.DialogCode.Accepted or not n_files:
             return
-        msg = (f"Delete {plan['n_pictures']} identified pictures ({plan['n_files']} files) "
-               f"from this trip's local folders?\n\n"
-               f"All are confirmed present in the master (the backup).\n"
-               f"Keeping {plan['kept_unidentified']} unidentified pictures for later "
-               f"identification" +
-               (f", and {plan['kept_not_in_master']} not yet in the master" if plan['kept_not_in_master'] else "") +
-               ".\n\n"
-               f"Tip: retire the trip to a virtual trip first. This frees local disk space "
-               f"and is not undoable here (the files remain in the master).")
-        if QMessageBox.question(main_window, "Delete Trip Files (backed up in master)", msg,
-                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
-            return
+
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            nf, npx, errs = trip_delete.execute_trip_delete(plan)
+            nf, npx, errs = tds.execute_scan_delete(report)
         finally:
             QApplication.restoreOverrideCursor()
         for e in errs[:20]:
             main_window.logger.warning(f"delete: {e}")
         extra = f"\n{len(errs)} files could not be deleted (see log)." if errs else ""
         QMessageBox.information(main_window, "Delete Trip Files",
-                               f"Deleted {npx} identified pictures ({nf} files). "
-                               f"Kept {plan['kept_unidentified']} unidentified for later.{extra}")
+                               f"Deleted {npx} pictures ({nf} files).\n"
+                               f"Kept {t['keep_pictures']} pictures not in the master and "
+                               f"{t['held_pictures']} held local renders.{extra}")
 
     delete_trip_item = MenuSpec(
         callback=_delete_trip_in_master,

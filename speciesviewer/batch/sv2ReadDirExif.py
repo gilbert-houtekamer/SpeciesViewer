@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 import exiftool
 import logging
 
@@ -118,7 +119,11 @@ def main(args, config):
             cache, persist = exifcache.load_cache(cache_path), True
 
         root = MyProject.getProjectPath()
-        hits, misses, stats = exifcache.partition(root, cache, fingerprint)
+        # Recurse into sub-directories by default (a trip day with no subdirs is
+        # unaffected). The Add-to-Master micro-trip sets [project] Recurse=0 to
+        # read just the chosen folder's own pictures.
+        recurse = config.getboolean("project", "Recurse", fallback=True)
+        hits, misses, stats = exifcache.partition(root, cache, fingerprint, recurse)
         try:
             fresh = et.get_metadata(misses, params=SELECTED_FIELDS) if misses else []
         except Exception as e:

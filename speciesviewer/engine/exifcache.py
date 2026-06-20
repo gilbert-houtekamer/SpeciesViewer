@@ -188,11 +188,14 @@ def _inject_paths(exif, full, dirpath, name):
     return e
 
 
-def partition(root, cache, fingerprint):
+def partition(root, cache, fingerprint, recurse=True):
     """Walk `root` once; return (hits, misses, stats).
         hits   – cached exif dicts, path keys re-injected for the on-disk file
         misses – absolute paths that must go to exiftool
         stats  – dict of per-bucket hit/miss counts for logging
+    recurse=False reads only `root`'s own files (no sub-directories) — used by
+    the Add-to-Master micro-trip so a folder with nested trips/exports counts
+    just its own pictures.
     """
     imm, mut = cache["immutable"], cache["mutable"]
     hits, misses = [], []
@@ -203,6 +206,8 @@ def partition(root, cache, fingerprint):
         # begin with '.' (e.g. the GUI's .preview_cache). Prune in place so we
         # don't read files the dir-scan never produced rows for.
         dirs[:] = [d for d in dirs if not d.startswith(".")]
+        if not recurse:
+            dirs[:] = []        # top-level only
         for name in files:
             ext = os.path.splitext(name)[1][1:].lower()
             if ext in DENY_EXTENSIONS:
