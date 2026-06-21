@@ -692,7 +692,8 @@ def build_menu_spec(main_window):
                               else "\nShard upload FAILED (see log).")
         finally:
             QApplication.restoreOverrideCursor()
-        webbrowser.open(Path(index).as_uri())
+        from utils.open_path import open_in_browser
+        open_in_browser(index)
         QMessageBox.information(main_window, "Trip Status Console",
                                 f"Console opened in your browser:\n{index}{upload_msg}")
 
@@ -728,7 +729,8 @@ def build_menu_spec(main_window):
             QMessageBox.warning(main_window, "Merged Status",
                                 "No shards found on the web (see log).")
             return
-        webbrowser.open(Path(merged).as_uri())
+        from utils.open_path import open_in_browser
+        open_in_browser(merged)
         QMessageBox.information(main_window, "Merged Status",
                                f"Merged overview for: {', '.join(machines)}\n{merged}")
 

@@ -79,6 +79,39 @@ def reveal_group(folder, query) -> bool:
     return open_path(folder)
 
 
+def open_in_browser(path_or_url) -> bool:
+    """Open a local HTML file (or URL) in a web BROWSER — not whatever the OS
+    has associated with .html. On Windows os.startfile/webbrowser honour the
+    .html file association, which the user may have set to an editor (e.g.
+    Notepad++); so launch a real browser executable directly. macOS/Linux open a
+    browser by default, so just use webbrowser there."""
+    import webbrowser
+    s = str(path_or_url)
+    url = s if "://" in s else Path(s).as_uri()
+    if sys.platform.startswith("win"):
+        import os
+        rel = [r"Microsoft\Edge\Application\msedge.exe",
+               r"Google\Chrome\Application\chrome.exe",
+               r"Mozilla Firefox\firefox.exe"]
+        for var in ("ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"):
+            base = os.environ.get(var)
+            if not base:
+                continue
+            for r in rel:
+                exe = os.path.join(base, r)
+                if os.path.isfile(exe):
+                    try:
+                        subprocess.Popen([exe, url])
+                        return True
+                    except Exception as e:
+                        logger.warning(f"open_in_browser: {exe} failed: {e}")
+    try:
+        return bool(webbrowser.open(url, new=2))
+    except Exception as e:
+        logger.warning(f"open_in_browser failed for {url}: {e}")
+        return False
+
+
 def launch_app_with_file(app_path, file_path) -> bool:
     """Launch an external app (e.g. DxO PhotoLab) on a file. On macOS a `.app`
     bundle is opened via `open -a`; elsewhere the executable is run directly.
