@@ -1216,10 +1216,25 @@ class ImagePreviewDialog(QDialog):
         trash_root = self._color_delete_trash_root()
         _total, _prot, deleted = self._collection.delete_by_color(color, trash_root)
         logger.info(f"Batch delete {color}: {deleted} picture(s) moved to trash.")
-        self._active_filter = "all"
-        self.warnings_only, self.no_gps_only, self.show_all = False, False, True
-        self.all_btn.setChecked(True)
-        self._rebuild_grid_from_keys(self._base_keys())
+        # Stay on the filter the user was using (e.g. Species), not jump to All.
+        self._reapply_filter()
+
+    def _reapply_filter(self):
+        """Rebuild the grid for the currently-active filter (after a batch
+        delete the displayed set must reflect the same filter, minus the
+        removed pictures)."""
+        base = set(self._base_keys())
+        f = self._active_filter
+        if f == "warnings":
+            keys = [k for k in self._collection.warning_keys() if k in base]
+        elif f == "no_gps":
+            keys = [k for k in self._collection.no_gps_keys() if k in base]
+        elif f == "species" and hasattr(self._collection, "species_keys"):
+            keys = [k for k in self._collection.species_keys() if k in base]
+        else:
+            keys = self._base_keys()
+        self._update_title_for_filter()
+        self._rebuild_grid_from_keys(keys)
 
     # ── Close ───────────────────────────────────────────────────────────────
     def closeEvent(self, event):

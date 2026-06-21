@@ -157,8 +157,10 @@ class MicroTrip:
         pic_csv = os.path.join(self.review_dir, "data_pictures.csv")
         if not os.path.isfile(pic_csv):
             return {"ok": False, "error": f"No data_pictures.csv produced at {pic_csv}"}
+        import re
         pictures = identified = no_species = 0
         species = {}
+        unrecognized = {}            # tagged name -> count (name didn't resolve)
         try:
             with open(pic_csv, "r", encoding="utf-8", errors="replace", newline="") as fh:
                 for row in csv.DictReader(fh, delimiter=";"):
@@ -166,6 +168,17 @@ class MicroTrip:
                         continue
                     pictures += 1
                     sp = (row.get("WetSoortNaam") or "").strip()
+                    err = (row.get("errormessage") or "").strip()
+                    if not sp and err:
+                        # The user tagged a name that didn't resolve to a species
+                        # ("may have a typo" / not in GBIF). Surface it so it's
+                        # obvious — otherwise it's silently dropped from the set.
+                        name = (row.get("subject") or "").strip()
+                        if not name:
+                            m = re.search(r'"([^"]+)"', err)
+                            name = m.group(1) if m else "(unresolved)"
+                        unrecognized[name] = unrecognized.get(name, 0) + 1
+                        continue
                     if sp:
                         identified += 1
                         rec = species.setdefault(sp, {"n": 0, "nl": "", "eng": "", "jpgs": 0})
@@ -191,6 +204,7 @@ class MicroTrip:
         with_jpg = sum(r["jpgs"] for r in species.values())
         return {"ok": True, "pictures": pictures, "identified": identified,
                 "no_species": no_species, "species": species,
+                "unrecognized": unrecognized,
                 "identified_with_jpg": with_jpg, "identified_no_jpg": identified - with_jpg,
                 "review_dir": self.review_dir}
 
@@ -229,6 +243,14 @@ def format_summary(rep):
     if no_jpg:
         lines.append(f"  (!) {no_jpg} identified picture(s) have NO JPG - these would become "
                      f"ghost species in the master. DxO-render them first.")
+    unrec = rep.get("unrecognized") or {}
+    if unrec:
+        total = sum(unrec.values())
+        lines.append(f"  (!) {total} picture(s) have a name that was NOT recognised - fix the "
+                     f"name (or add the species), then re-scan. They show under the Species "
+                     f"filter with a warning (!) marker:")
+        for name in sorted(unrec):
+            lines.append(f"        {unrec[name]:>4}  {name}")
     lines.append("")
     lines.append(f"    {'this trip':>14}   {'in master':>14}")
     lines.append(f"    {'#':>6} {'JPG':>6}   {'#':>6} {'JPG':>6}   species  (master rich = trip copies expendable)")

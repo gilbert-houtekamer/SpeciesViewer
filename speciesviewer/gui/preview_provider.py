@@ -236,10 +236,17 @@ class PreviewCollection(PictureCollection):
                 if (self.fpr.getColor(self.rep_filename(k)) or "grey").lower() in wanted]
 
     def species_keys(self) -> list[str]:
-        """UPNs that carry a species — the only ones an add-to-master commit
-        takes. Untagged pictures are excluded."""
-        return [k for k in self.all_keys()
-                if (self.fpr.getSpeciesName(self.rep_filename(k)) or "").strip()]
+        """UPNs that the user TRIED to identify: a resolved species OR a species
+        warning (a name that didn't resolve — "may have a typo"). The latter
+        carry no WetSoortNaam so they'd otherwise be invisible in this filter and
+        never get committed; surfacing them (flagged with the ⚠ status icon) lets
+        the user spot and fix the name. Plain untagged pictures stay excluded."""
+        out = []
+        for k in self.all_keys():
+            rep = self.rep_filename(k)
+            if (self.fpr.getSpeciesName(rep) or "").strip() or self.fpr.getErrorMsg(rep):
+                out.append(k)
+        return out
 
     def jpg_keys(self) -> list[str]:
         """UPNs that have at least one JPG file — the 'JPG only' (column 2) set."""
