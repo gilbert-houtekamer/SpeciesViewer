@@ -235,6 +235,15 @@ class PreviewCollection(PictureCollection):
         return [k for k in self.all_keys()
                 if (self.fpr.getColor(self.rep_filename(k)) or "grey").lower() in wanted]
 
+    def find_keys(self, query: str) -> list[str]:
+        """UPNs whose species name contains `query` (case-insensitive substring) —
+        the 'find species' box. Plain string match, nothing fancy."""
+        q = (query or "").strip().lower()
+        if not q:
+            return self.all_keys()
+        return [k for k in self.all_keys()
+                if q in (self.fpr.getSpeciesName(self.rep_filename(k)) or "").lower()]
+
     def species_keys(self) -> list[str]:
         """UPNs that the user TRIED to identify: a resolved species OR a species
         warning (a name that didn't resolve — "may have a typo"). The latter

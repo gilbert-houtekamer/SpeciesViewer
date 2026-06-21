@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QButtonGroup, QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton, QSizePolicy,
-    QLabel, QMessageBox, QHBoxLayout, QProgressDialog, QStyle)
+    QLabel, QMessageBox, QHBoxLayout, QProgressDialog, QStyle, QLineEdit)
 from PyQt6.QtCore import Qt, QTimer
 from widgets.trip_widgets import DirectoryFieldQt
 from engine.filepicture import FilePicture
@@ -187,6 +187,7 @@ class ImagePreviewDialog(QDialog):
         self.show_all = False
         self.species_only = False
         self._start_species = start_species
+        self._find_query = ""
         # Multi-select state
         self._selected_keys: set[str] = set()
         self._bracket_left: str | None = None
@@ -268,6 +269,16 @@ class ImagePreviewDialog(QDialog):
         self.species_btn.clicked.connect(self.on_species_toggled)
         self.species_btn.setEnabled(hasattr(self._collection, "species_keys"))
         controls_layout.addWidget(self.species_btn)
+
+        # Find species — plain case-insensitive substring of the species name.
+        self.find_edit = QLineEdit()
+        self.find_edit.setPlaceholderText("Find species…")
+        self.find_edit.setClearButtonEnabled(True)
+        self.find_edit.setFixedWidth(150)
+        self.find_edit.setToolTip("Show only pictures whose species name contains this text")
+        self.find_edit.setEnabled(hasattr(self._collection, "find_keys"))
+        self.find_edit.textChanged.connect(self._on_find_changed)
+        controls_layout.addWidget(self.find_edit)
 
         # Radio-style: exactly one of these is active.
         self._filter_group = QButtonGroup(self)
@@ -444,6 +455,7 @@ class ImagePreviewDialog(QDialog):
     def on_warnings_toggled(self):
         if not self.warnings_btn.isChecked():
             return  # exclusive group; defensive
+        self._clear_find_silently()
         self._active_filter = "warnings"
         self.warnings_only, self.no_gps_only, self.show_all, self.species_only = True, False, False, False
         self._update_title_for_filter()
@@ -453,15 +465,49 @@ class ImagePreviewDialog(QDialog):
     def on_no_gps_toggled(self):
         if not self.no_gps_btn.isChecked():
             return
+        self._clear_find_silently()
         self._active_filter = "no_gps"
         self.warnings_only, self.no_gps_only, self.show_all, self.species_only = False, True, False, False
         self._update_title_for_filter()
         base = set(self._base_keys())
         self._rebuild_grid_from_keys([k for k in self._collection.no_gps_keys() if k in base])
 
+    def _clear_find_silently(self):
+        """Clear the Find box without re-triggering its handler (used when a
+        filter button takes over)."""
+        if hasattr(self, "find_edit") and self.find_edit.text():
+            self.find_edit.blockSignals(True)
+            self.find_edit.clear()
+            self.find_edit.blockSignals(False)
+        self._find_query = ""
+
+    def _on_find_changed(self, text):
+        if not hasattr(self._collection, "find_keys"):
+            return
+        q = text.strip()
+        self._find_query = q
+        if not q:
+            # Back to the active filter button's set (or All).
+            if self.species_btn.isChecked():
+                self.on_species_toggled()
+            elif self.warnings_btn.isChecked():
+                self.on_warnings_toggled()
+            elif self.no_gps_btn.isChecked():
+                self.on_no_gps_toggled()
+            else:
+                self.all_btn.setChecked(True)
+                self.on_all_toggled()
+            return
+        self._active_filter = "find"
+        self.warnings_only = self.no_gps_only = self.show_all = self.species_only = False
+        base = set(self._base_keys())
+        self._update_title_for_filter()
+        self._rebuild_grid_from_keys([k for k in self._collection.find_keys(q) if k in base])
+
     def on_species_toggled(self):
         if not self.species_btn.isChecked():
             return
+        self._clear_find_silently()
         self._active_filter = "species"
         self.warnings_only, self.no_gps_only, self.show_all, self.species_only = False, False, False, True
         self._update_title_for_filter()
@@ -471,6 +517,7 @@ class ImagePreviewDialog(QDialog):
     def on_all_toggled(self):
         if not self.all_btn.isChecked():
             return
+        self._clear_find_silently()
         self._active_filter = "all"
         self.warnings_only, self.no_gps_only, self.show_all, self.species_only = False, False, True, False
         self._update_title_for_filter()
@@ -479,14 +526,7 @@ class ImagePreviewDialog(QDialog):
     def on_filter_changed(self, selected_colors):
         if selected_colors is None or self.fpr is None:
             # Cleared colour filter → fall back to the active filter's set.
-            if self._active_filter == "warnings":
-                self.on_warnings_toggled()
-            elif self._active_filter == "no_gps":
-                self.on_no_gps_toggled()
-            elif self._active_filter == "species":
-                self.on_species_toggled()
-            else:
-                self._rebuild_grid_from_keys(self._base_keys())
+            self._reapply_filter()
             return
         base = set(self._base_keys())
         keys = [k for k in self._collection.color_keys(selected_colors) if k in base]
@@ -544,6 +584,8 @@ class ImagePreviewDialog(QDialog):
             suffix = f"{self._no_gps_count()} missing GPS"
         elif self._active_filter == "species":
             suffix = f"{self._species_count()} with a species"
+        elif self._active_filter == "find":
+            suffix = f"find '{self._find_query}'"
         elif self._active_filter == "all":
             suffix = self._all_pictures_suffix(total)
         else:
@@ -596,6 +638,8 @@ class ImagePreviewDialog(QDialog):
                 QMessageBox.information(self, "No Missing GPS", "All pictures have GPS coordinates.")
             elif self.species_only:
                 QMessageBox.information(self, "No Species", "No pictures have a species yet — tag them first.")
+            elif self._active_filter == "find":
+                pass  # no match for the find text — just show an empty grid, no popup
             else:
                 QMessageBox.warning(self, "No Images", "No pictures found, or none selected.")
             return
@@ -1231,6 +1275,8 @@ class ImagePreviewDialog(QDialog):
             keys = [k for k in self._collection.no_gps_keys() if k in base]
         elif f == "species" and hasattr(self._collection, "species_keys"):
             keys = [k for k in self._collection.species_keys() if k in base]
+        elif f == "find" and hasattr(self._collection, "find_keys"):
+            keys = [k for k in self._collection.find_keys(self._find_query) if k in base]
         else:
             keys = self._base_keys()
         self._update_title_for_filter()
