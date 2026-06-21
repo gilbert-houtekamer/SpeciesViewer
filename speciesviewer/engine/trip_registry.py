@@ -168,6 +168,53 @@ def scan_repo(repo_path, trip_type, machine):
     return row
 
 
+def _present_upns_for_day(day_dir):
+    """UPNs that still have at least one file on disk, read from the day's
+    data_files.csv (absolute WindowsFileName). Deletions (blue-cull, trip-delete,
+    or via the Add-to-Master micro-trip) move files to .trash but DON'T rewrite
+    the trip CSVs, so the metadata is stale; this re-grounds the counts in what's
+    actually on disk. Returns None when it can't tell — no data_files.csv, or
+    NONE of the files are reachable (an offloaded / other-machine trip) — so the
+    caller trusts the metadata instead of zeroing everything."""
+    path = os.path.join(day_dir, "data_files.csv")
+    if not os.path.exists(path):
+        return None
+    present = set()
+    reachable = False          # is the picture directory actually on this disk?
+    dirs_seen = set()
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace", newline="") as fh:
+            reader = csv.reader(fh, delimiter=";")
+            header = next(reader)
+            idx = {h: i for i, h in enumerate(header)}
+            ui, wi = idx.get("UniquePictureName"), idx.get("WindowsFileName")
+            if ui is None or wi is None:
+                return None
+            for row in reader:
+                if ui >= len(row) or wi >= len(row):
+                    continue
+                upn, fn = row[ui].strip(), row[wi].strip()
+                if not upn or not fn or not os.path.isabs(fn):
+                    continue
+                d = os.path.dirname(fn)
+                if d not in dirs_seen:
+                    dirs_seen.add(d)
+                    if os.path.isdir(d):
+                        reachable = True
+                if upn not in present and os.path.exists(fn):
+                    present.add(upn)
+    except Exception as e:
+        logger.info(f"trip_registry: presence check failed for {path}: {e}")
+        return None
+    # If none of the picture folders are on this disk (offloaded / other-machine
+    # trip), we can't tell what's deleted — trust the metadata. Otherwise the
+    # folders are here, so absent files were genuinely deleted: filter by
+    # `present` (which may be empty when the whole day was cleared).
+    if not reachable:
+        return None
+    return present
+
+
 def _read_day_species_pics(day_dir):
     """For a day's data_pictures.csv return (pics, unidentified):
       - pics: {UniquePictureName -> {sci, eng, nl, jpg, path, taxonomy}} for the
@@ -196,8 +243,14 @@ def _read_day_species_pics(day_dir):
             def cell(i):
                 return row[i].strip() if i is not None and i < len(row) else ""
 
+            # Drop pictures whose files were deleted (moved to .trash) so the
+            # counts reflect what's actually on disk, not stale metadata.
+            present = _present_upns_for_day(day_dir)
+
             for row in reader:
                 if ui >= len(row) or not row[ui].strip():
+                    continue
+                if present is not None and row[ui].strip() not in present:
                     continue
                 if si < len(row) and row[si].strip():
                     out[row[ui].strip()] = {
