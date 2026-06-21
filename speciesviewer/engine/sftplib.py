@@ -152,25 +152,32 @@ class Sftp:
                     self.connection.chdir(current)
 
     def put_r_portable(self, localdir, remotedir, preserve_mtime=True):
-        for entry in os.listdir(localdir):
+        try:
+            entries = os.listdir(localdir)
+        except OSError as e:
+            logger.warning(f"FTP upload skipped — cannot list '{localdir}': {e}")
+            return
+        for entry in entries:
             remotepath = remotedir + "/" + entry
             localpath = os.path.join(localdir, entry)
-            if not os.path.isfile(localpath):
-                cacheddir = True
-                try:
-                    if not self.cached_mkdir(remotepath):
-                        cacheddir = True
-                except OSError:     
-                    pass
-                self.put_r_portable(localpath, remotepath, preserve_mtime)
-                if not cacheddir:
-                    logger.info(f'Status:  Created directory {remotepath.replace(self.remote_path, "[WebServer]")}')
-            else:
-                rc = self.cachedUpload(localpath, remotepath, preserve_mtime)    
-                action = 'Cached' if rc else 'Copied'       
-                #self.connection.put(localpath, remotepath, preserve_mtime=preserve_mtime)
-                if not rc: 
-                    logger.info(f'Status:  {action} {remotepath.replace(self.remote_path, "[WebServer]")}')
+            try:
+                if not os.path.isfile(localpath):
+                    cacheddir = True
+                    try:
+                        if not self.cached_mkdir(remotepath):
+                            cacheddir = True
+                    except OSError:
+                        pass
+                    self.put_r_portable(localpath, remotepath, preserve_mtime)
+                    if not cacheddir:
+                        logger.info(f'Status:  Created directory {remotepath.replace(self.remote_path, "[WebServer]")}')
+                else:
+                    rc = self.cachedUpload(localpath, remotepath, preserve_mtime)
+                    action = 'Cached' if rc else 'Copied'
+                    if not rc:
+                        logger.info(f'Status:  {action} {remotepath.replace(self.remote_path, "[WebServer]")}')
+            except Exception as e:
+                logger.warning(f"FTP upload skipped '{localpath}': {e}")
     
     def safeMkdir(self, remotepath):
         try:
@@ -202,6 +209,12 @@ class Sftp:
     
     # cache, uniquenes is size for JPG, CRC fo other files
     def cachedUpload(self, source_local_path, remote_path, preserve_mtime=True):
+        # Skip (don't crash the whole upload) when the source is missing — e.g. a
+        # species whose master best-JPG path is broken/unregistered. One bad file
+        # must not abort building a virtual trip.
+        if not os.path.isfile(source_local_path):
+            logger.warning(f"FTP upload skipped — source missing: {source_local_path}")
+            return True
         # search by target name, value is path and length/crc on computer
         if source_local_path.endswith('.jpg'):
             sizeOrCRC = os.path.getsize(source_local_path)
@@ -222,9 +235,11 @@ class Sftp:
         try:
             self.connection.put(source_local_path, remote_path, preserve_mtime=True)
             self.openFTPCache[remote_path]  = (source_local_path, sizeOrCRC)
-            self.FTPmisses += 1            
+            self.FTPmisses += 1
         except Exception as err:
-            raise Exception(err)
+            # Warn and continue — a single file's upload failure shouldn't abort
+            # the whole tree (was: re-raise, which killed the build).
+            logger.warning(f"FTP upload failed for '{source_local_path}' -> '{remote_path}': {err}")
         return False
     
     def cached_mkdir(self, remote_path):
