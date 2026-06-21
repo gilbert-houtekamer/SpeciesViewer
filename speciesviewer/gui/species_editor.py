@@ -298,11 +298,31 @@ class SpeciesInfoPanel(QWidget):
 
     # ── Commit ────────────────────────────────────────────────────────────────
 
+    def _safe_status(self, text):
+        # The per-file processEvents() can rebuild/close this panel, deleting the
+        # label; setting it then raises "wrapped C/C++ object deleted".
+        try:
+            self.status_label.setText(text)
+        except RuntimeError:
+            pass
+
     def _on_commit_clicked(self):
+        # Re-entrancy guard: the per-file QApplication.processEvents() below can
+        # deliver a queued SECOND Commit click, which ran a nested commit and
+        # deleted this panel's status_label mid-loop (RuntimeError crash).
+        if getattr(self, "_committing", False):
+            return
+        self._committing = True
+        try:
+            self._do_commit()
+        finally:
+            self._committing = False
+
+    def _do_commit(self):
         corrected_subject = self.subject_field.get_text().strip()
         fpr = self._fpr
         if not fpr:
-            self.status_label.setText("❌ Cannot access FPR for update.")
+            self._safe_status("❌ Cannot access FPR for update.")
             return
 
         def _is_empty(s):
@@ -378,7 +398,7 @@ class SpeciesInfoPanel(QWidget):
 
         updated_upns: set[str] = set()
         for i, f in enumerate(matching_files):
-            self.status_label.setText(f"📦 {action} … {i + 1} of {n}")
+            self._safe_status(f"📦 {action} … {i + 1} of {n}")
             QApplication.processEvents()
             orig = fpr.getSubject(f.name)
             upn_object, files_written = fpr.updateSubject(f.name, orig, corrected_subject)
@@ -390,7 +410,7 @@ class SpeciesInfoPanel(QWidget):
             if upn_name:
                 updated_upns.add(upn_name)
 
-        self.status_label.setText(f"✅ Done — {n} file{'s' if n != 1 else ''} updated.")
+        self._safe_status(f"✅ Done — {n} file{'s' if n != 1 else ''} updated.")
         QApplication.processEvents()
         self.committed.emit(updated_upns)
 
