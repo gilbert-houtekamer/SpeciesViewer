@@ -236,10 +236,20 @@ class Sftp:
             self.connection.put(source_local_path, remote_path, preserve_mtime=True)
             self.openFTPCache[remote_path]  = (source_local_path, sizeOrCRC)
             self.FTPmisses += 1
-        except Exception as err:
-            # Warn and continue — a single file's upload failure shouldn't abort
-            # the whole tree (was: re-raise, which killed the build).
-            logger.warning(f"FTP upload failed for '{source_local_path}' -> '{remote_path}': {err}")
+        except Exception:
+            # Most often the remote parent directory doesn't exist yet (e.g. the
+            # small-JPG step uploads into species folders the page step didn't
+            # create). Create the remote dir tree and retry once.
+            try:
+                parent = remote_path.rsplit("/", 1)[0]
+                self.connection.makedirs(parent)
+                self.connection.put(source_local_path, remote_path, preserve_mtime=True)
+                self.openFTPCache[remote_path] = (source_local_path, sizeOrCRC)
+                self.FTPmisses += 1
+            except Exception as err2:
+                # Warn and continue — a single file's upload failure shouldn't
+                # abort the whole tree (was: re-raise, which killed the build).
+                logger.warning(f"FTP upload failed for '{source_local_path}' -> '{remote_path}': {err2}")
         return False
     
     def cached_mkdir(self, remote_path):
