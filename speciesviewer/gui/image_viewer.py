@@ -1259,7 +1259,8 @@ class ImagePreviewDialog(QDialog):
         # from the pipeline, so editing a sidecar must never trigger a read.
         if (getattr(self, "_species_changed", False) and self.main_window
                 and self.image_dir and self._file_list is None
-                and self.fpr is not None):
+                and self.fpr is not None
+                and not getattr(self, "_suppress_rerun", False)):
             day_name = Path(self.image_dir).name
             rerun = getattr(self.main_window, "rerun_read_summarize_day", None)
             if rerun:

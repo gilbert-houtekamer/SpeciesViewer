@@ -34,6 +34,10 @@ class MicroTripReviewDialog(ImagePreviewDialog):
     def __init__(self, parent, micro_trip, report):
         self._micro_trip = micro_trip
         self._report = report or {}
+        # A species fix here writes the real XMP, but the scratch is ephemeral and
+        # belongs to no live trip — don't trigger the trip's "re-run Read &
+        # Summarize" (it targets the active trip, not the scratch). Re-Scan instead.
+        self._suppress_rerun = True
         super().__init__(parent,
                          image_dir=micro_trip.input_dir,
                          trip_root_dir=micro_trip.scratch_repo,
