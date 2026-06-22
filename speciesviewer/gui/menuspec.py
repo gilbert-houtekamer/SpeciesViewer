@@ -826,6 +826,16 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    def _species_no_display():
+        import gui.master_no_display as nd
+        nd.show(main_window, _config)
+
+    no_display_item = MenuSpec(
+        callback=_species_no_display,
+        title="Species Without a Website Picture…",
+        showsubdirectory=False,
+    )
+
     # Dry-run "what would a clean rebuild change?" — compares the current admin
     # against the actual tree (paths + folder species). Non-destructive; writes
     # rebuild_*.csv reports for review before any real rebuild.
@@ -1029,6 +1039,7 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_master_3": None,
             "Audit Admin (find ghost records)…": audit_admin_item,
             "Audit Species Counters (dry-run)…": audit_species_item,
+            "Species Without a Website Picture…": no_display_item,
             "Rebuild Admin (dry-run compare)…": rebuild_admin_item,
             "Heal Admin (apply fixes)…": heal_admin_item,
             "Clean Orphan Sidecars (move to trash)…": clean_orphans_item,
