@@ -131,17 +131,43 @@ def scan(trip_db, virttrips_root, active_trip_db=""):
 
 def execute_retire(trip_db):
     """Permanently delete the trip repo. Returns (ok, error). The caller must
-    have confirmed the scan blockers passed and the user acknowledged warnings."""
+    have confirmed the scan blockers passed and the user acknowledged warnings.
+
+    Robust against the common Windows failure modes: read-only files (cleared and
+    retried) and transient sharing-violations (WinError 32 — most often Dropbox
+    mid-sync). Retries a few times; on a persistent lock it stops early (so it
+    doesn't gut the tree) and returns an actionable hint."""
+    import stat
+    import time
+
     trip_db = os.path.normpath(trip_db)
     if not os.path.isdir(trip_db):
         return (False, f"trip folder not found: {trip_db}")
-    try:
-        shutil.rmtree(trip_db)
-        logger.info(f"Retire trip: deleted {trip_db}")
-        return (True, "")
-    except Exception as e:
-        logger.warning(f"Retire trip: delete failed for {trip_db}: {e}")
-        return (False, str(e))
+
+    def _onerror(func, path, _exc_info):
+        # Clear a read-only flag and retry. A real lock raises again here, which
+        # propagates out of rmtree and stops it early (minimises partial delete).
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+
+    last = ""
+    for attempt in range(3):
+        try:
+            shutil.rmtree(trip_db, onerror=_onerror)
+            logger.info(f"Retire trip: deleted {trip_db}")
+            return (True, "")
+        except Exception as e:
+            last = str(e)
+            logger.warning(f"Retire trip: attempt {attempt + 1} failed for {trip_db}: {e}")
+            time.sleep(0.8)
+
+    hint = ""
+    if "WinError 32" in last or "used by another process" in last:
+        hint = ("\n\nA file in the trip is locked by another process — most often "
+                "Dropbox syncing this folder, or an open Explorer/app window. "
+                "Pause Dropbox syncing (or close whatever is using the trip), "
+                "then retire again. The trip data is otherwise untouched.")
+    return (False, last + hint)
 
 
 def _fmt_size(n):
