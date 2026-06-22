@@ -14,10 +14,12 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QCheckBox,
-    QPlainTextEdit, QFileDialog, QLabel, QApplication, QMessageBox,
+    QPlainTextEdit, QFileDialog, QLabel, QApplication, QMessageBox, QWidget,
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import (
+    QFont, QShortcut, QKeySequence, QTextCursor, QTextDocument,
+)
 
 from utils.config import _config, persist_config
 from gui.image_viewer import ImagePreviewDialog
@@ -193,6 +195,8 @@ class AddToMasterDialog(QDialog):
         lay.addLayout(row)
 
         self.recurse_cb = QCheckBox("Include nested folders")
+        self.recurse_cb.setChecked(_config.get("addmaster", "recurse", fallback="0") == "1")
+        self.recurse_cb.toggled.connect(self._save_recurse)
         lay.addWidget(self.recurse_cb)
 
         btns = QHBoxLayout()
@@ -217,6 +221,8 @@ class AddToMasterDialog(QDialog):
         self.out.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         lay.addWidget(self.out)
 
+        lay.addWidget(self._build_find_bar())
+
         self.hint = QLabel("Next: after editing, commit to the master (coming next).")
         self.hint.setStyleSheet("color: gray;")
         lay.addWidget(self.hint)
@@ -224,6 +230,86 @@ class AddToMasterDialog(QDialog):
         close = QPushButton("Close")
         close.clicked.connect(self.close)
         lay.addWidget(close)
+
+        # Ctrl+F (and F3 / Shift+F3) search the report text.
+        QShortcut(QKeySequence.StandardKey.Find, self).activated.connect(self._open_find)
+        QShortcut(QKeySequence.StandardKey.FindNext, self).activated.connect(self._find_next)
+        QShortcut(QKeySequence.StandardKey.FindPrevious, self).activated.connect(self._find_prev)
+
+    # ── Find-in-report bar (Ctrl+F) ───────────────────────────────────────────
+    def _build_find_bar(self) -> QWidget:
+        self.find_row = QWidget()
+        fr = QHBoxLayout(self.find_row)
+        fr.setContentsMargins(0, 0, 0, 0)
+        self.find_input = QLineEdit()
+        self.find_input.setPlaceholderText("Find in report…  (Enter = next, Esc = close)")
+        self.find_input.returnPressed.connect(self._find_next)
+        self.find_input.textChanged.connect(self._find_incremental)
+        prev_btn = QPushButton("▲"); prev_btn.setFixedWidth(28)
+        next_btn = QPushButton("▼"); next_btn.setFixedWidth(28)
+        prev_btn.setToolTip("Previous match"); next_btn.setToolTip("Next match")
+        prev_btn.clicked.connect(self._find_prev)
+        next_btn.clicked.connect(self._find_next)
+        self.find_status = QLabel("")
+        self.find_status.setStyleSheet("color: #888;")
+        for w in (self.find_input, prev_btn, next_btn, self.find_status):
+            fr.addWidget(w)
+        fr.addStretch(1)
+        # Esc closes the find bar only (scoped to the box so it doesn't reject the dialog).
+        esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self.find_input)
+        esc.setContext(Qt.ShortcutContext.WidgetShortcut)
+        esc.activated.connect(self._close_find)
+        self.find_row.setVisible(False)
+        return self.find_row
+
+    def _open_find(self):
+        self.find_row.setVisible(True)
+        self.find_input.setFocus()
+        self.find_input.selectAll()
+
+    def _close_find(self):
+        self.find_row.setVisible(False)
+        self.find_status.clear()
+        self.out.setFocus()
+
+    def _find_incremental(self, _text):
+        # Keep the current match selected as the query grows: search from the
+        # start of the current selection.
+        cursor = self.out.textCursor()
+        cursor.setPosition(cursor.selectionStart())
+        self.out.setTextCursor(cursor)
+        self._do_find(backward=False)
+
+    def _find_next(self):
+        self._do_find(backward=False)
+
+    def _find_prev(self):
+        self._do_find(backward=True)
+
+    def _do_find(self, backward: bool):
+        text = self.find_input.text()
+        if not text:
+            self.find_status.clear()
+            return
+        flags = QTextDocument.FindFlag.FindBackward if backward else QTextDocument.FindFlag(0)
+        if self.out.find(text, flags):
+            self.find_status.clear()
+            return
+        # Wrap around to the other end and try once more.
+        cursor = self.out.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End if backward
+                            else QTextCursor.MoveOperation.Start)
+        self.out.setTextCursor(cursor)
+        self.find_status.setText("" if self.out.find(text, flags) else "no match")
+
+    def _save_recurse(self, checked: bool):
+        if not _config.has_section("addmaster"):
+            _config.add_section("addmaster")
+        _config.set("addmaster", "recurse", "1" if checked else "0")
+        try:
+            persist_config()
+        except Exception as e:
+            logger.info(f"add_to_master: could not persist recurse: {e}")
 
     def _browse(self):
         start = (self.dir_edit.text().strip()
