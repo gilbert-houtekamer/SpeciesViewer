@@ -566,6 +566,8 @@ class ImagePreviewDialog(QDialog):
         # Below the minimum length the search is ignored (too broad / slow); the
         # box keeps the typed text, the filter just doesn't engage yet.
         use = q if (len(q) >= self._find_min_chars and hasattr(self._collection, method)) else ""
+        if getattr(self, query_attr) == use:
+            return  # no effective change (e.g. typing the 1st char) — don't rebuild
         setattr(self, query_attr, use)
         if use:
             self._clear_find_silently(except_mode=mode)  # only one search dimension
