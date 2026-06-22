@@ -139,12 +139,27 @@ class TripInfoPanel(QWidget):
         if not item:
             return
 
-        trip_key = item.data(0, Qt.ItemDataRole.UserRole)
-        if trip_key and trip_key in self.trip_project_map:
-            menu = QMenu()
-            open_action = menu.addAction("Open Trip Folder")
-            action = menu.exec(QCursor.pos())
-            if action == open_action:
-                folder = self.trip_project_map[trip_key]
-                if os.path.isdir(folder):
-                    open_path(folder)
+        trip_dir = item.data(0, _PATH_ROLE)
+        if not trip_dir:
+            return  # a day row or the "(No trips found)" placeholder
+
+        menu = QMenu()
+        open_action = menu.addAction("Open Trip Folder")
+        retire_action = menu.addAction("Retire trip (delete data)…")
+        action = menu.exec(QCursor.pos())
+        if action == open_action:
+            if os.path.isdir(str(trip_dir)):
+                open_path(str(trip_dir))
+        elif action == retire_action:
+            from gui.trip_retire import retire_trip_dialog
+            retire_trip_dialog(self.main_window, str(trip_dir))
+
+    def remove_trip(self, trip_dir):
+        """Drop a retired trip's row from the tree (called after a delete)."""
+        target = os.path.normcase(os.path.normpath(str(trip_dir)))
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            path = item.data(0, _PATH_ROLE)
+            if path and os.path.normcase(os.path.normpath(str(path))) == target:
+                self.tree.takeTopLevelItem(i)
+                return
