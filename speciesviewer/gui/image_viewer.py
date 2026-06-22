@@ -189,6 +189,12 @@ class ImagePreviewDialog(QDialog):
         self._start_species = start_species
         self._find_query = ""
         self._findfile_query = ""
+        self._color_filter = set()          # colour overlay (combines with the rest)
+        self._find_timer = QTimer(self)     # debounce typing on big sets
+        self._find_timer.setSingleShot(True)
+        self._find_timer.timeout.connect(self._fire_pending_find)
+        self._pending_find = None
+        self._find_min_chars = 2            # don't search on a single character
         # Multi-select state
         self._selected_keys: set[str] = set()
         self._bracket_left: str | None = None
@@ -464,35 +470,72 @@ class ImagePreviewDialog(QDialog):
         return sorted(files, key=lambda p: p.name)
 
     # ── Filters ─────────────────────────────────────────────────────────────
-    def on_warnings_toggled(self):
-        if not self.warnings_btn.isChecked():
-            return  # exclusive group; defensive
-        self._clear_find_silently()
-        self._active_filter = "warnings"
-        self.warnings_only, self.no_gps_only, self.show_all, self.species_only = True, False, False, False
-        self._update_title_for_filter()
-        base = set(self._base_keys())
-        self._rebuild_grid_from_keys([k for k in self._collection.warning_keys() if k in base])
-
-    def on_no_gps_toggled(self):
-        if not self.no_gps_btn.isChecked():
-            return
-        self._clear_find_silently()
-        self._active_filter = "no_gps"
-        self.warnings_only, self.no_gps_only, self.show_all, self.species_only = False, True, False, False
-        self._update_title_for_filter()
-        base = set(self._base_keys())
-        self._rebuild_grid_from_keys([k for k in self._collection.no_gps_keys() if k in base])
-
     # Find boxes: ("filter mode", QLineEdit attr, query attr, collection method).
     _FIND_BOXES = (
         ("find",     "find_edit",     "_find_query",     "find_keys"),
         ("findfile", "findfile_edit", "_findfile_query", "file_keys"),
     )
 
+    # ── One combined filter: radio button AND colour AND find all apply ───────
+    def _visible_keys(self) -> list[str]:
+        """Intersect every active filter dimension — the radio button (subset),
+        the colour overlay and the find box all combine. Order follows the base
+        so the contact sheet keeps capture order."""
+        base = self._base_keys()
+        keys = set(base)
+        coll = self._collection
+        overlays_on = bool(self._color_filter or self._find_query or self._findfile_query)
+        f = self._active_filter
+        if f is None and not overlays_on:
+            return []  # clean day, nothing until a radio or a search is chosen
+        if f == "species" and hasattr(coll, "species_keys"):
+            keys &= set(coll.species_keys())
+        elif f == "warnings":
+            keys &= set(coll.warning_keys())
+        elif f == "no_gps":
+            keys &= set(coll.no_gps_keys())
+        # else "all"/None → keep the whole base, then narrow by overlays below
+        if self._color_filter and hasattr(coll, "color_keys"):
+            keys &= set(coll.color_keys(self._color_filter))
+        if self._find_query and hasattr(coll, "find_keys"):
+            keys &= set(coll.find_keys(self._find_query))
+        elif self._findfile_query and hasattr(coll, "file_keys"):
+            keys &= set(coll.file_keys(self._findfile_query))
+        return [k for k in base if k in keys]
+
+    def _apply_filters(self):
+        self._update_title_for_filter()
+        self._rebuild_grid_from_keys(self._visible_keys())
+
+    def _set_radio(self, name):
+        """Record the active radio subset (flags kept for the no-GPS refresh and
+        the empty-grid messages) and re-apply the combined filter."""
+        self._active_filter = name
+        self.warnings_only = (name == "warnings")
+        self.no_gps_only = (name == "no_gps")
+        self.species_only = (name == "species")
+        self.show_all = (name == "all")
+        self._apply_filters()
+
+    def on_warnings_toggled(self):
+        if self.warnings_btn.isChecked():
+            self._set_radio("warnings")
+
+    def on_no_gps_toggled(self):
+        if self.no_gps_btn.isChecked():
+            self._set_radio("no_gps")
+
+    def on_species_toggled(self):
+        if self.species_btn.isChecked():
+            self._set_radio("species")
+
+    def on_all_toggled(self):
+        if self.all_btn.isChecked():
+            self._set_radio("all")
+
     def _clear_find_silently(self, except_mode=None):
-        """Clear the Find boxes without re-triggering their handlers (used when a
-        filter button or the other find box takes over)."""
+        """Clear the Find boxes without re-triggering their handlers (used when
+        the other find box takes over — only one search dimension at a time)."""
         for mode, edit_attr, query_attr, _ in self._FIND_BOXES:
             if mode == except_mode:
                 continue
@@ -503,68 +546,35 @@ class ImagePreviewDialog(QDialog):
                 edit.blockSignals(False)
             setattr(self, query_attr, "")
 
-    def _revert_to_active_radio(self):
-        if self.species_btn.isChecked():
-            self.on_species_toggled()
-        elif self.warnings_btn.isChecked():
-            self.on_warnings_toggled()
-        elif self.no_gps_btn.isChecked():
-            self.on_no_gps_toggled()
-        else:
-            self.all_btn.setChecked(True)
-            self.on_all_toggled()
-
     def _on_find_changed(self, text):
-        self._apply_find("find", text)
+        self._pending_find = ("find", text)
+        self._find_timer.start(250)          # debounce — big sets are slow to rebuild
 
     def _on_findfile_changed(self, text):
-        self._apply_find("findfile", text)
+        self._pending_find = ("findfile", text)
+        self._find_timer.start(250)
+
+    def _fire_pending_find(self):
+        if self._pending_find is not None:
+            mode, text = self._pending_find
+            self._apply_find(mode, text)
 
     def _apply_find(self, mode, text):
         spec = next(s for s in self._FIND_BOXES if s[0] == mode)
         _, _, query_attr, method = spec
         q = text.strip()
-        setattr(self, query_attr, q)
-        if not q:
-            self._revert_to_active_radio()
-            return
-        if not hasattr(self._collection, method):
-            return
-        self._clear_find_silently(except_mode=mode)  # only one find active at a time
-        self._active_filter = mode
-        self.warnings_only = self.no_gps_only = self.show_all = self.species_only = False
-        base = set(self._base_keys())
-        self._update_title_for_filter()
-        keys = getattr(self._collection, method)(q)
-        self._rebuild_grid_from_keys([k for k in keys if k in base])
-
-    def on_species_toggled(self):
-        if not self.species_btn.isChecked():
-            return
-        self._clear_find_silently()
-        self._active_filter = "species"
-        self.warnings_only, self.no_gps_only, self.show_all, self.species_only = False, False, False, True
-        self._update_title_for_filter()
-        base = set(self._base_keys())
-        self._rebuild_grid_from_keys([k for k in self._collection.species_keys() if k in base])
-
-    def on_all_toggled(self):
-        if not self.all_btn.isChecked():
-            return
-        self._clear_find_silently()
-        self._active_filter = "all"
-        self.warnings_only, self.no_gps_only, self.show_all, self.species_only = False, False, True, False
-        self._update_title_for_filter()
-        self._rebuild_grid_from_keys(self._base_keys())
+        # Below the minimum length the search is ignored (too broad / slow); the
+        # box keeps the typed text, the filter just doesn't engage yet.
+        use = q if (len(q) >= self._find_min_chars and hasattr(self._collection, method)) else ""
+        setattr(self, query_attr, use)
+        if use:
+            self._clear_find_silently(except_mode=mode)  # only one search dimension
+        self._apply_filters()
 
     def on_filter_changed(self, selected_colors):
-        if selected_colors is None or self.fpr is None:
-            # Cleared colour filter → fall back to the active filter's set.
-            self._reapply_filter()
-            return
-        base = set(self._base_keys())
-        keys = [k for k in self._collection.color_keys(selected_colors) if k in base]
-        self._rebuild_grid_from_keys(keys)
+        # Colour overlay changed (None = cleared). Combines with the radio + find.
+        self._color_filter = set(selected_colors) if selected_colors else set()
+        self._apply_filters()
 
     def _warnings_count(self) -> int:
         if not self.fpr:
@@ -599,34 +609,46 @@ class ImagePreviewDialog(QDialog):
             return f"all {total} pictures ({present} with files, {total - present} missing)"
         return f"all {total} pictures"
 
+    def _overlay_title_parts(self) -> list[str]:
+        """Colour + find descriptors appended to the radio's label so the title
+        reflects every active filter dimension."""
+        parts = []
+        if self._color_filter:
+            parts.append("colour " + "/".join(sorted(self._color_filter)))
+        if self._find_query:
+            parts.append(f"find '{self._find_query}'")
+        elif self._findfile_query:
+            parts.append(f"file '{self._findfile_query}'")
+        return parts
+
     def _update_title_for_filter(self):
         base = f"Species Image Preview ({self._viewer_label})"
         total = len(self._base_keys())
+        overlays = self._overlay_title_parts()
         if not self.fpr:
+            radio = ""
             if self._active_filter == "no_gps":
-                suffix = f"{self._no_gps_count()} missing GPS"
+                radio = f"{self._no_gps_count()} missing GPS"
             elif self._active_filter == "all":
-                suffix = f"all {total} pictures"
-            else:
-                suffix = ""
+                radio = f"all {total} pictures"
+            suffix = " · ".join(p for p in ([radio] + overlays) if p)
             self.setWindowTitle(f"{base} — {suffix}" if suffix else base)
             return
         if self._active_filter == "warnings":
             n = self._warnings_count()
-            suffix = f"{n} warning{'s' if n != 1 else ''}"
+            radio = f"{n} warning{'s' if n != 1 else ''}"
         elif self._active_filter == "no_gps":
-            suffix = f"{self._no_gps_count()} missing GPS"
+            radio = f"{self._no_gps_count()} missing GPS"
         elif self._active_filter == "species":
-            suffix = f"{self._species_count()} with a species"
-        elif self._active_filter == "find":
-            suffix = f"find '{self._find_query}'"
-        elif self._active_filter == "findfile":
-            suffix = f"file '{self._findfile_query}'"
+            radio = f"{self._species_count()} with a species"
         elif self._active_filter == "all":
-            suffix = self._all_pictures_suffix(total)
+            radio = self._all_pictures_suffix(total)
+        elif overlays:
+            radio = ""  # no radio chosen but a search/colour is on → show just that
         else:
-            suffix = f"clean day — click All to view {total} pictures"
-        self.setWindowTitle(f"{base} — {suffix}")
+            radio = f"clean day — click All to view {total} pictures"
+        suffix = " · ".join(p for p in ([radio] + overlays) if p)
+        self.setWindowTitle(f"{base} — {suffix}" if suffix else base)
 
     # ── Grid build (batched so a big day stays responsive) ──────────────────
     def _grid_placement(self, total: int):
@@ -668,14 +690,14 @@ class ImagePreviewDialog(QDialog):
         if n == 0:
             self.cancel_button.setEnabled(False)
             self.wait_dialog.close()
-            if self.warnings_only:
+            if self._color_filter or self._find_query or self._findfile_query:
+                pass  # a colour/find overlay narrowed it to nothing — empty grid, no popup
+            elif self.warnings_only:
                 QMessageBox.information(self, "No Warnings", "All provided species information is correct.")
             elif self.no_gps_only:
                 QMessageBox.information(self, "No Missing GPS", "All pictures have GPS coordinates.")
             elif self.species_only:
                 QMessageBox.information(self, "No Species", "No pictures have a species yet — tag them first.")
-            elif self._active_filter in ("find", "findfile"):
-                pass  # no match for the find text — just show an empty grid, no popup
             else:
                 QMessageBox.warning(self, "No Images", "No pictures found, or none selected.")
             return
@@ -724,7 +746,7 @@ class ImagePreviewDialog(QDialog):
         self.columns = value
         self._update_title_for_filter()
         # Rebuild with the currently-displayed keys at the new card width.
-        if self._active_filter is not None:
+        if self._cards:
             keys = [c.upn_key for c in self._cards]
             self._rebuild_grid_from_keys(keys)
 
@@ -1300,25 +1322,10 @@ class ImagePreviewDialog(QDialog):
         self._reapply_filter()
 
     def _reapply_filter(self):
-        """Rebuild the grid for the currently-active filter (after a batch
-        delete the displayed set must reflect the same filter, minus the
+        """Rebuild the grid for the current combined filter (after a batch delete
+        the displayed set must reflect the same radio + colour + find, minus the
         removed pictures)."""
-        base = set(self._base_keys())
-        f = self._active_filter
-        if f == "warnings":
-            keys = [k for k in self._collection.warning_keys() if k in base]
-        elif f == "no_gps":
-            keys = [k for k in self._collection.no_gps_keys() if k in base]
-        elif f == "species" and hasattr(self._collection, "species_keys"):
-            keys = [k for k in self._collection.species_keys() if k in base]
-        elif f == "find" and hasattr(self._collection, "find_keys"):
-            keys = [k for k in self._collection.find_keys(self._find_query) if k in base]
-        elif f == "findfile" and hasattr(self._collection, "file_keys"):
-            keys = [k for k in self._collection.file_keys(self._findfile_query) if k in base]
-        else:
-            keys = self._base_keys()
-        self._update_title_for_filter()
-        self._rebuild_grid_from_keys(keys)
+        self._apply_filters()
 
     # ── Close ───────────────────────────────────────────────────────────────
     def closeEvent(self, event):
