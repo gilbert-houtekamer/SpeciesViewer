@@ -129,14 +129,16 @@ def scan(trip_db, virttrips_root, active_trip_db=""):
             "can_retire": can_retire, "has_warnings": has_warnings}
 
 
-def execute_retire(trip_db):
+def execute_retire(trip_db, attempts=10):
     """Permanently delete the trip repo. Returns (ok, error). The caller must
     have confirmed the scan blockers passed and the user acknowledged warnings.
 
     Robust against the common Windows failure modes: read-only files (cleared and
     retried) and transient sharing-violations (WinError 32 — most often Dropbox
-    mid-sync). Retries a few times; on a persistent lock it stops early (so it
-    doesn't gut the tree) and returns an actionable hint."""
+    syncing, which releases one file as it grabs the next). Each pass deletes
+    everything that isn't locked right now and collects the rest; it retries the
+    whole thing several times, so a moving set of transient locks clears in a few
+    passes rather than one-lock-at-a-time."""
     import stat
     import time
 
@@ -144,30 +146,37 @@ def execute_retire(trip_db):
     if not os.path.isdir(trip_db):
         return (False, f"trip folder not found: {trip_db}")
 
-    def _onerror(func, path, _exc_info):
-        # Clear a read-only flag and retry. A real lock raises again here, which
-        # propagates out of rmtree and stops it early (minimises partial delete).
-        os.chmod(path, stat.S_IWRITE)
-        func(path)
+    locked = []
 
-    last = ""
-    for attempt in range(3):
+    def _onerror(func, path, _exc_info):
+        # Clear a read-only flag and retry; if it's still locked, record it and
+        # keep going so this pass removes everything that CAN be removed.
+        try:
+            os.chmod(path, stat.S_IWRITE)
+            func(path)
+        except Exception:
+            locked.append(path)
+
+    for attempt in range(attempts):
+        locked.clear()
         try:
             shutil.rmtree(trip_db, onerror=_onerror)
-            logger.info(f"Retire trip: deleted {trip_db}")
-            return (True, "")
         except Exception as e:
-            last = str(e)
-            logger.warning(f"Retire trip: attempt {attempt + 1} failed for {trip_db}: {e}")
-            time.sleep(0.8)
+            locked.append(str(e))
+        if not os.path.isdir(trip_db):
+            logger.info(f"Retire trip: deleted {trip_db}"
+                        + (f" (after {attempt + 1} passes)" if attempt else ""))
+            return (True, "")
+        logger.warning(f"Retire trip: pass {attempt + 1}/{attempts}: "
+                       f"{len(locked)} file(s) still locked, retrying…")
+        time.sleep(0.8)
 
-    hint = ""
-    if "WinError 32" in last or "used by another process" in last:
-        hint = ("\n\nA file in the trip is locked by another process — most often "
-                "Dropbox syncing this folder, or an open Explorer/app window. "
-                "Pause Dropbox syncing (or close whatever is using the trip), "
-                "then retire again. The trip data is otherwise untouched.")
-    return (False, last + hint)
+    return (False,
+            f"{len(locked)} file(s) are still locked after {attempts} passes — most "
+            f"often Dropbox syncing this folder, or an open Explorer/app window. "
+            f"Pause Dropbox syncing (or close whatever is using the trip), then "
+            f"retire again to finish. Most of the trip was already removed; "
+            f"re-running clears the rest.")
 
 
 def _fmt_size(n):
