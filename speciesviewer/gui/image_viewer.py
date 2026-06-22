@@ -188,6 +188,7 @@ class ImagePreviewDialog(QDialog):
         self.species_only = False
         self._start_species = start_species
         self._find_query = ""
+        self._findfile_query = ""
         # Multi-select state
         self._selected_keys: set[str] = set()
         self._bracket_left: str | None = None
@@ -279,6 +280,17 @@ class ImagePreviewDialog(QDialog):
         self.find_edit.setEnabled(hasattr(self._collection, "find_keys"))
         self.find_edit.textChanged.connect(self._on_find_changed)
         controls_layout.addWidget(self.find_edit)
+
+        # Find file — substring of the picture name (UPN). Works even when the
+        # species is unrecognized, so it finds problem pictures by filename.
+        self.findfile_edit = QLineEdit()
+        self.findfile_edit.setPlaceholderText("Find file…")
+        self.findfile_edit.setClearButtonEnabled(True)
+        self.findfile_edit.setFixedWidth(130)
+        self.findfile_edit.setToolTip("Show only pictures whose file name contains this text (e.g. 309)")
+        self.findfile_edit.setEnabled(hasattr(self._collection, "file_keys"))
+        self.findfile_edit.textChanged.connect(self._on_findfile_changed)
+        controls_layout.addWidget(self.findfile_edit)
 
         # Radio-style: exactly one of these is active.
         self._filter_group = QButtonGroup(self)
@@ -472,37 +484,59 @@ class ImagePreviewDialog(QDialog):
         base = set(self._base_keys())
         self._rebuild_grid_from_keys([k for k in self._collection.no_gps_keys() if k in base])
 
-    def _clear_find_silently(self):
-        """Clear the Find box without re-triggering its handler (used when a
-        filter button takes over)."""
-        if hasattr(self, "find_edit") and self.find_edit.text():
-            self.find_edit.blockSignals(True)
-            self.find_edit.clear()
-            self.find_edit.blockSignals(False)
-        self._find_query = ""
+    # Find boxes: ("filter mode", QLineEdit attr, query attr, collection method).
+    _FIND_BOXES = (
+        ("find",     "find_edit",     "_find_query",     "find_keys"),
+        ("findfile", "findfile_edit", "_findfile_query", "file_keys"),
+    )
+
+    def _clear_find_silently(self, except_mode=None):
+        """Clear the Find boxes without re-triggering their handlers (used when a
+        filter button or the other find box takes over)."""
+        for mode, edit_attr, query_attr, _ in self._FIND_BOXES:
+            if mode == except_mode:
+                continue
+            edit = getattr(self, edit_attr, None)
+            if edit is not None and edit.text():
+                edit.blockSignals(True)
+                edit.clear()
+                edit.blockSignals(False)
+            setattr(self, query_attr, "")
+
+    def _revert_to_active_radio(self):
+        if self.species_btn.isChecked():
+            self.on_species_toggled()
+        elif self.warnings_btn.isChecked():
+            self.on_warnings_toggled()
+        elif self.no_gps_btn.isChecked():
+            self.on_no_gps_toggled()
+        else:
+            self.all_btn.setChecked(True)
+            self.on_all_toggled()
 
     def _on_find_changed(self, text):
-        if not hasattr(self._collection, "find_keys"):
-            return
+        self._apply_find("find", text)
+
+    def _on_findfile_changed(self, text):
+        self._apply_find("findfile", text)
+
+    def _apply_find(self, mode, text):
+        spec = next(s for s in self._FIND_BOXES if s[0] == mode)
+        _, _, query_attr, method = spec
         q = text.strip()
-        self._find_query = q
+        setattr(self, query_attr, q)
         if not q:
-            # Back to the active filter button's set (or All).
-            if self.species_btn.isChecked():
-                self.on_species_toggled()
-            elif self.warnings_btn.isChecked():
-                self.on_warnings_toggled()
-            elif self.no_gps_btn.isChecked():
-                self.on_no_gps_toggled()
-            else:
-                self.all_btn.setChecked(True)
-                self.on_all_toggled()
+            self._revert_to_active_radio()
             return
-        self._active_filter = "find"
+        if not hasattr(self._collection, method):
+            return
+        self._clear_find_silently(except_mode=mode)  # only one find active at a time
+        self._active_filter = mode
         self.warnings_only = self.no_gps_only = self.show_all = self.species_only = False
         base = set(self._base_keys())
         self._update_title_for_filter()
-        self._rebuild_grid_from_keys([k for k in self._collection.find_keys(q) if k in base])
+        keys = getattr(self._collection, method)(q)
+        self._rebuild_grid_from_keys([k for k in keys if k in base])
 
     def on_species_toggled(self):
         if not self.species_btn.isChecked():
@@ -586,6 +620,8 @@ class ImagePreviewDialog(QDialog):
             suffix = f"{self._species_count()} with a species"
         elif self._active_filter == "find":
             suffix = f"find '{self._find_query}'"
+        elif self._active_filter == "findfile":
+            suffix = f"file '{self._findfile_query}'"
         elif self._active_filter == "all":
             suffix = self._all_pictures_suffix(total)
         else:
@@ -638,7 +674,7 @@ class ImagePreviewDialog(QDialog):
                 QMessageBox.information(self, "No Missing GPS", "All pictures have GPS coordinates.")
             elif self.species_only:
                 QMessageBox.information(self, "No Species", "No pictures have a species yet — tag them first.")
-            elif self._active_filter == "find":
+            elif self._active_filter in ("find", "findfile"):
                 pass  # no match for the find text — just show an empty grid, no popup
             else:
                 QMessageBox.warning(self, "No Images", "No pictures found, or none selected.")
@@ -1277,6 +1313,8 @@ class ImagePreviewDialog(QDialog):
             keys = [k for k in self._collection.species_keys() if k in base]
         elif f == "find" and hasattr(self._collection, "find_keys"):
             keys = [k for k in self._collection.find_keys(self._find_query) if k in base]
+        elif f == "findfile" and hasattr(self._collection, "file_keys"):
+            keys = [k for k in self._collection.file_keys(self._findfile_query) if k in base]
         else:
             keys = self._base_keys()
         self._update_title_for_filter()

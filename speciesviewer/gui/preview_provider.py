@@ -236,13 +236,29 @@ class PreviewCollection(PictureCollection):
                 if (self.fpr.getColor(self.rep_filename(k)) or "grey").lower() in wanted]
 
     def find_keys(self, query: str) -> list[str]:
-        """UPNs whose species name contains `query` (case-insensitive substring) —
-        the 'find species' box. Plain string match, nothing fancy."""
+        """UPNs whose species name OR raw tagged subject contains `query` (case-
+        insensitive substring) — the 'find species' box. Matching the raw subject
+        too means a typo'd/unresolved name (e.g. 'paraque') is still findable."""
         q = (query or "").strip().lower()
         if not q:
             return self.all_keys()
-        return [k for k in self.all_keys()
-                if q in (self.fpr.getSpeciesName(self.rep_filename(k)) or "").lower()]
+        out = []
+        for k in self.all_keys():
+            rep = self.rep_filename(k)
+            name = (self.fpr.getSpeciesName(rep) or "").lower()
+            subj = (self.fpr.getSubject(rep) or "").lower()
+            if q in name or q in subj:
+                out.append(k)
+        return out
+
+    def file_keys(self, query: str) -> list[str]:
+        """UPNs whose name (the picture key, e.g. '2024 costa rica-nb188309')
+        contains `query` — the 'find file' box. Works regardless of species
+        recognition, so it finds problem pictures by filename fragment."""
+        q = (query or "").strip().lower()
+        if not q:
+            return self.all_keys()
+        return [k for k in self.all_keys() if q in k.lower()]
 
     def species_keys(self) -> list[str]:
         """UPNs that the user TRIED to identify: a resolved species OR a species
