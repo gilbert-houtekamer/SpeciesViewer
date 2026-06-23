@@ -1215,12 +1215,24 @@ def writeOneSpecies(MyProject, leaf, temptextfile):
     #print(f"working {species['ScientificName']} {species['EnglishName']}")
     language = MyProject.getLanguage()
     BiotaWebRoot = MyProject.getBiotaWebRoot()
+    # When the best-pick JPG is not among this build's local files — e.g. a
+    # virtual-trip per-day extract carries the master data row (so BestJPG is set)
+    # but not the actual JPG file — link the species page and image to the shared
+    # master biota web tree, where the page and -small JPG already exist, instead
+    # of the local trip tree (which has nothing to copy/render). Mirrors how the
+    # blog renders shared master pictures. For a normal/master build the file IS
+    # local, so this stays BiotaWebRoot unchanged.
+    species_web_root = BiotaWebRoot
+    if species['BestJPG'] and species['BestJPG'] not in MyProject.files_dict:
+        master_web = getattr(MyProject, "master_biota_web_root", "") or ""
+        if master_web:
+            species_web_root = master_web
     try:
         print('                <div>\n			        <a href="' + \
-            BiotaWebRoot + species["TargetPath"] + species["ScientificName"] +  '-' + language + '.html' + '">\n', file=temptextfile)
+            species_web_root + species["TargetPath"] + species["ScientificName"] +  '-' + language + '.html' + '">\n', file=temptextfile)
         if species['BestJPG'] != "" and species['BestJPGPathName'] != "":
-            print('			            <img src="' + BiotaWebRoot + \
-            species['TargetPath'] + getSmallJPG(species['BestJPG']) + '" style=\"width:100%\">\n			        </a>', file=temptextfile)            
+            print('			            <img src="' + species_web_root + \
+            species['TargetPath'] + getSmallJPG(species['BestJPG']) + '" style=\"width:100%\">\n			        </a>', file=temptextfile)
         # texts for 3 languages in 3 lines
         print('<p>' + species['ScientificName'].strip('0123456789 ').capitalize() + '</p>', file=temptextfile)
         print('<p>' + species['EnglishName'].capitalize() + '</p>', file=temptextfile)

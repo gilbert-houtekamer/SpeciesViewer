@@ -97,6 +97,56 @@ def read_virttrip_days(project, virttrip_root: str) -> int:
     return loaded
 
 
+def _read_species_best_picks(species_csv: str) -> dict:
+    """Map ScientificName -> {BestJPG, BestUPN, BestJPGPathName, TargetPath} from a
+    species.csv. Used to restore the master's per-species best-pick after the
+    reset-load blanks it, so the all-biota grid can still show species whose JPG
+    file is not in the virtual-trip per-day extract (the image is then referenced
+    from the shared master web tree by writeOneSpecies)."""
+    best = {}
+    if not os.path.isfile(species_csv):
+        return best
+    with open(species_csv, "r", encoding="utf-8", errors="replace", newline="") as fh:
+        for r in csv.DictReader(fh, delimiter=";"):
+            if r.get("Level") != "Level.SPECIES":
+                continue
+            name = (r.get("ScientificName") or "").strip()
+            if name and (r.get("BestJPG") or "").strip():
+                best[name] = {
+                    "BestJPG": r["BestJPG"].strip(),
+                    "BestUPN": (r.get("BestUPN") or "").strip(),
+                    "BestJPGPathName": (r.get("BestJPGPathName") or "").strip(),
+                    "TargetPath": (r.get("TargetPath") or "").strip(),
+                }
+    return best
+
+
+def _restore_master_best_picks(sp, master_best: dict) -> int:
+    """For species the recompute left without a best-pick (their JPG file was not
+    in the virtual-trip extract) but which DO have pictures this run, restore the
+    master's best-pick. Without this the all-biota grid suppresses the card
+    (counter > 0 but BestJPG empty). The image then resolves against the shared
+    master web tree in writeOneSpecies. Returns the number restored."""
+    restored = 0
+    for name, spec in sp.species_dict.items():
+        if spec.get("BestJPG"):
+            continue
+        mb = master_best.get(name)
+        if not mb:
+            continue
+        thisrun = int(spec.get("iPicturesWithJPGsThisRun", 0) or 0)
+        coll = int(spec.get("iPicturesWithJPGsCollection", 0) or 0)
+        if (thisrun + coll) <= 0:
+            continue
+        spec["BestJPG"] = mb["BestJPG"]
+        spec["BestUPN"] = mb["BestUPN"]
+        spec["BestJPGPathName"] = mb["BestJPGPathName"]
+        if not spec.get("TargetPath"):
+            spec["TargetPath"] = mb["TargetPath"]
+        restored += 1
+    return restored
+
+
 def main(args, config):
     virttrip_root = config.get("repository", "BiotaDatabase")
     web_root      = config.get("repository", "BiotaWebRoot")
@@ -122,6 +172,10 @@ def main(args, config):
     master_sc_csv      = os.path.join(master_db, "metadata", "active", "speciescollection.csv")
     master_species_csv = os.path.join(master_db, "metadata", "active", "species.csv")
     sc.readSpeciesCollection(master_sc_csv, False)
+    # Capture the master's per-species best-pick BEFORE the reset-load below
+    # blanks BestJPG (reset_all_counters=True), so RAW-only-in-extract species
+    # can be restored after the recompute (see _restore_master_best_picks).
+    master_best = _read_species_best_picks(master_species_csv)
     sp.readSpeciesInfo(master_species_csv, True)
 
     # Load all per-day data from the virtual trip
@@ -134,6 +188,12 @@ def main(args, config):
     # Derive species per picture
     project.addSpeciesInformation(sp, 0)
     project.addPicturesToSpecies(sp, 0, 0)
+
+    # Restore master best-picks for species whose JPG file was not in the extract
+    # (writeOneSpecies will reference these from the shared master web tree).
+    restored = _restore_master_best_picks(sp, master_best)
+    if restored:
+        logger.info(f"  Restored master best-pick for {restored} species not in the local extract.")
 
     # Reset the all-species file tracking before building (class-level dict)
     project.resetAllSpeciesFiles()
