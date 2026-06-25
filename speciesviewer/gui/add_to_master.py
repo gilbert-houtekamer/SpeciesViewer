@@ -158,13 +158,28 @@ class MicroTripReviewDialog(ImagePreviewDialog):
             msg = f"\nDeleted {npx} original picture(s) ({nf} files) now safe in the master."
             held = plan["totals"].get("held_files", 0) + plan["totals"].get("keep_files", 0)
             if held:
-                msg += f" Kept {held} not byte-confirmed in the master."
+                msg += (f" Kept {held} file(s) the master doesn't hold an exact copy of "
+                        f"(see log).")
+                self._log_kept_files(plan)
             if errs:
                 msg += f" {len(errs)} could not be deleted (see log)."
             return msg
         except Exception as e:
             logger.warning(f"add_to_master: delete originals failed: {e}")
             return f"\nOriginals kept — delete failed: {e}"
+
+    def _log_kept_files(self, plan):
+        """List every file the scan kept (the master has no exact copy) so the
+        user can see what — and why. 'held' = the picture is in the master but
+        not this exact file/rendition; 'keep' = the picture isn't in the master
+        at all. Both are left on disk untouched."""
+        why = {"held": "picture in master, but not this exact file",
+               "keep": "picture not in master"}
+        for verdict in ("held", "keep"):
+            for d in plan.get("days", []):
+                for it in d.get(verdict, []):
+                    logger.info(f"add_to_master: kept {os.path.basename(it['path'])}"
+                                f" — {why[verdict]}  ({it['path']})")
 
 
 class AddToMasterDialog(QDialog):

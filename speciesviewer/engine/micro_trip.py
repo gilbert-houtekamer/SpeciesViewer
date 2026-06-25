@@ -161,12 +161,17 @@ class MicroTrip:
         pictures = identified = no_species = 0
         species = {}
         unrecognized = {}            # tagged name -> count (name didn't resolve)
+        date_lo = date_hi = ""       # YYYY:MM:DD span of the scanned pictures
         try:
             with open(pic_csv, "r", encoding="utf-8", errors="replace", newline="") as fh:
                 for row in csv.DictReader(fh, delimiter=";"):
                     if not (row.get("UniquePictureName") or "").strip():
                         continue
                     pictures += 1
+                    day = (row.get("DateTimeOriginal") or "")[:10].strip()
+                    if day:
+                        date_lo = day if not date_lo else min(date_lo, day)
+                        date_hi = day if not date_hi else max(date_hi, day)
                     sp = (row.get("WetSoortNaam") or "").strip()
                     err = (row.get("errormessage") or "").strip()
                     if not sp and err:
@@ -197,19 +202,25 @@ class MicroTrip:
         # species the master is rich in makes the trip's extra copies expendable
         # (cull blue); a near-absent one is worth keeping. Counted from the
         # master's real pictures (NOT the drift-prone species.csv counters).
-        master_counts = self._master_species_counts()
+        master_counts = self._master_species_counts(date_lo, date_hi)
         for sp, rec in species.items():
-            mp, mj = master_counts.get(sp.lower(), (0, 0))
+            mp, mj, rp, rj = master_counts.get(sp.lower(), (0, 0, 0, 0))
             rec["master_pics"], rec["master_jpgs"] = mp, mj
+            rec["range_pics"], rec["range_jpgs"] = rp, rj
         with_jpg = sum(r["jpgs"] for r in species.values())
         return {"ok": True, "pictures": pictures, "identified": identified,
                 "no_species": no_species, "species": species,
                 "unrecognized": unrecognized,
                 "identified_with_jpg": with_jpg, "identified_no_jpg": identified - with_jpg,
+                "date_lo": date_lo, "date_hi": date_hi,
                 "review_dir": self.review_dir}
 
-    def _master_species_counts(self):
-        """{species_lower: (pictures, jpgs)} from the master's real pictures."""
+    def _master_species_counts(self, date_lo="", date_hi=""):
+        """{species_lower: (pictures, jpgs, range_pictures, range_jpgs)} from the
+        master's real pictures. The range_* pair counts only master rows whose
+        DateTimeOriginal day falls within [date_lo, date_hi] (the scanned trip's
+        own date span) — a "are these already in the master?" cue. With no span
+        given the range_* pair is left at 0."""
         counts = {}
         pic_csv = os.path.join(self.master_root, "metadata", "active", "data_pictures.csv")
         if not os.path.isfile(pic_csv):
@@ -220,8 +231,16 @@ class MicroTrip:
                     sp = (row.get("WetSoortNaam") or "").strip().lower()
                     if not sp:
                         continue
-                    p, j = counts.get(sp, (0, 0))
-                    counts[sp] = (p + 1, j + (1 if _row_has_jpg(row) else 0))
+                    has_jpg = 1 if _row_has_jpg(row) else 0
+                    p, j, rp, rj = counts.get(sp, (0, 0, 0, 0))
+                    p += 1
+                    j += has_jpg
+                    if date_lo and date_hi:
+                        day = (row.get("DateTimeOriginal") or "")[:10].strip()
+                        if day and date_lo <= day <= date_hi:
+                            rp += 1
+                            rj += has_jpg
+                    counts[sp] = (p, j, rp, rj)
         except Exception as e:
             logger.warning(f"micro_trip: could not read master species counts: {e}")
         return counts
@@ -252,8 +271,11 @@ def format_summary(rep):
         for name in sorted(unrec):
             lines.append(f"        {unrec[name]:>4}  {name}")
     lines.append("")
-    lines.append(f"    {'this trip':>14}   {'in master':>14}")
-    lines.append(f"    {'#':>6} {'JPG':>6}   {'#':>6} {'JPG':>6}   species  (master rich = trip copies expendable)")
+    lo, hi = rep.get("date_lo", ""), rep.get("date_hi", "")
+    span = f"{lo}..{hi}" if lo and hi else "this date range"
+    lines.append(f"    {'this trip':>14}   {'in master (all)':>14}   {'in master (' + span + ')':>20}")
+    lines.append(f"    {'#':>6} {'JPG':>6}   {'#':>6} {'JPG':>6}   {'#':>6} {'JPG':>6}   "
+                 f"species  (all = rarity cue; date range = likely already added)")
     for sp in sorted(rep["species"]):
         rec = rep["species"][sp]
         names = " / ".join(x for x in (rec["nl"], rec["eng"]) if x)
@@ -261,6 +283,7 @@ def format_summary(rep):
         flag = "" if rec["jpgs"] else "  <- no JPG"
         lines.append(f"    {rec['n']:>6} {rec['jpgs']:>6}   "
                      f"{rec.get('master_pics', 0):>6} {rec.get('master_jpgs', 0):>6}   "
+                     f"{rec.get('range_pics', 0):>6} {rec.get('range_jpgs', 0):>6}   "
                      f"{sp}{suffix}{flag}")
     return "\n".join(lines)
 
