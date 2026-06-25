@@ -109,6 +109,15 @@ class Trip:
     def addTrip(self, row):
         self.trip_dict[row['trip_name']] = row
         return
+    def removeTrip(self, trip_name):
+        """Drop one trip from the in-memory admin dict (by trip_name). Returns
+        True when a row was actually removed. Used by Manage Trips to un-advertise
+        a trip — the trip's own web pages are left untouched, only its row in
+        trip_admin.csv (and thus the tripindex) goes away."""
+        if trip_name in self.trip_dict:
+            del self.trip_dict[trip_name]
+            return True
+        return False
     def setTripHeader(self, headers):
         self.trip_csv_headers = self.new_trip_row.keys()
         return
@@ -151,7 +160,12 @@ class Trip:
             # create a separete config instance
             with open(tripinifile, 'r', encoding='utf-8') as _tf:
                 tripconfig.read_string(_coerce_orphan_continuations(_tf.read()))
-            tripconfig['trip_config']['created'] = datetime.today().strftime('%Y-%m-%d %H:%M')
+            # 'created' records when the trip's web link was first set up — set it
+            # only once. (Previously this clobbered it on every read, so the date
+            # never reflected the original setup.)
+            if not tripconfig.has_option('trip_config', 'created') or \
+                    not tripconfig['trip_config']['created'].strip():
+                tripconfig['trip_config']['created'] = datetime.today().strftime('%Y-%m-%d %H:%M')
         else:
             # Ensure the sections exist before setting values
             if not tripconfig.has_section('trip_config'):
@@ -231,6 +245,11 @@ class Trip:
     def write_TripAdmin(self):
         # Write Picture CSV file
         logger.info(f'Write all trip data in CSV file "{self.getTripAdminFile()}".')
+        # Canonical column order — also the fallback when no trips remain, so an
+        # emptied admin still writes a valid header-only CSV instead of crashing.
+        headers = ['master_repository_web', 'master_repository_disk', 'trip_banner',
+                   'trip_picture', 'created', 'trip_name', 'fromdate', 'todate',
+                   'oneblog', 'title_nl', 'message_nl', 'title_en', 'message_en']
         for tripitem in self.trip_dict:
             headers = self.trip_dict[tripitem].keys()
             break
@@ -248,7 +267,10 @@ class Trip:
                     'title_en': trip_object.get('title_en', ''),
                     'message_nl': trip_object.get('message_nl', ''),
                     'message_en': trip_object.get('message_en', ''),
-                    'created': datetime.today().strftime('%Y-%m-%d %H:%M'),
+                    # Preserve the original setup date; only stamp today for a
+                    # trip that has none yet (a freshly created one).
+                    'created': trip_object.get('created', '').strip()
+                               or datetime.today().strftime('%Y-%m-%d %H:%M'),
                     'master_repository_disk': trip_object.get('master_repository_disk', ''), 
                     'master_repository_web': trip_object.get('master_repository_web', ''),                 
                     'trip_banner': trip_object.get('trip_banner', ''),

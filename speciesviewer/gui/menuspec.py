@@ -7,7 +7,7 @@ from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDial
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
         AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
-        TestbedDialog, BlogAdminDialog, PhotoMechanicDialog,
+        TestbedDialog, BlogAdminDialog, ManageTripsDialog, PhotoMechanicDialog,
         RescanMasterCacheDialog, SmallMasterDialog, InstallSmallMasterDialog, TripMasterDashboard)
 from gui.virttrip_process import (VirtualTripCreationDialog, ExtractDaysDialog,
                                    VirttripWriteBlogDialog, VirttripBuildWebsiteDialog,
@@ -321,6 +321,12 @@ def build_menu_spec(main_window):
     )
     add_trip_to_master.callback = lambda: AddTripToMasterDialog(main_window, add_trip_to_master).exec()
 
+    manage_trips = MenuSpec(
+        callback=lambda: ManageTripsDialog(main_window).exec(),
+        title="Manage Trip Publication",
+        showsubdirectory=False,
+    )
+
     # ── Master pipeline: ingest a trip's pictures into master itself ──
     # Three sequential steps wrapped in MasterPipelineDialog. Each
     # step's MenuSpec sets master_mode=True so generate_svconfig_ini
@@ -541,7 +547,12 @@ def build_menu_spec(main_window):
             'statusname': "",
             'module_called': batch.svv2ExtractDays.main,
             'before_msg': "Extracting per-day CSVs from master...",
-            'after_msg': "✅ Day extraction complete. Check metadata/review/ for results."
+            'after_msg': "✅ Day extraction complete. Check metadata/review/ for results.",
+            # Without this the batch writes svconfig with [repository] BiotaDatabase
+            # taken from the active REGULAR trip, so svv2ExtractDays reads the wrong
+            # root (e.g. trips/<active>) and finds no virttrip.ini. virttrip_mode
+            # points BiotaDatabase at [virttrip] virttripbiotadatabase instead.
+            'virttrip_mode': True,
         }
     )
     extract_days.callback = lambda: ExtractDaysDialog(main_window, extract_days).exec()
@@ -1030,6 +1041,7 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_master_0": None,
             "Merge Species": merge_trip_species,
             "Add trip website to master": add_trip_to_master,
+            "Manage Trip Publication…": manage_trips,
             f"{MenuSpec.separator()}_master_1": None,
             "Add Trip Pictures to Master": add_trip_pictures,
             "Add Pictures to Master…": add_pictures_to_master_item,
