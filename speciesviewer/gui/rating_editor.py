@@ -597,8 +597,13 @@ class RatingEditorDialog(QDialog):
         # there is no Trip+Master compare (the pictures already ARE the master).
         self._day_radio = QRadioButton("Day")
         self._trip_radio = QRadioButton(self._scope_label)
-        self._tm_radio = QRadioButton("Trip+Master")
+        # In the read-only Album viewer the third scope is "Master" = the
+        # species' COMPLETE master set (every date). In a normal trip it is the
+        # "Trip+Master" side-by-side compare.
+        self._tm_radio = QRadioButton("Master" if self._read_only else "Trip+Master")
         self._tm_radio.setToolTip(
+            "Show this species' complete master collection (every date), read-only"
+            if self._read_only else
             "Also show this species' existing master pictures (read-only, greyed) "
             "alongside the trip's, to judge whether a new shot is website-worthy")
         self._scope_grp = QButtonGroup(self)
@@ -611,8 +616,6 @@ class RatingEditorDialog(QDialog):
         top.addWidget(self._day_radio)
         top.addWidget(self._trip_radio)
         top.addWidget(self._tm_radio)
-        if self._read_only:
-            self._tm_radio.hide()
         top.addSpacing(8)
 
         # Day picker (visible only in Day scope)
@@ -904,15 +907,20 @@ class RatingEditorDialog(QDialog):
         # laptop without the full master). See Repository Settings.
         read_only = _config.get(
             "master", "readonly", fallback="yes").strip().lower() != "no"
+        # Album viewer's "Master" scope: show the species' complete master set
+        # (full=True) and force read-only regardless of the master toggle.
+        full = self._read_only
         self._collection.set_master(
-            db, self._master_root, include=True, read_only=read_only)
-        ro_note = " — master is read-only" if read_only else " — master editable"
+            db, self._master_root, include=True,
+            read_only=read_only or full, full=full)
+        ro_note = " — master is read-only" if (read_only or full) else " — master editable"
         if self._species_combo.currentData() is not None:
             self._rebuild_cards()
         else:
             n_master = db.picture_count()
+            label = "Master" if full else "Trip + master"
             self._status.setText(
-                f"Trip + master ready ({n_master} master pictures{ro_note}) "
+                f"{label} ready ({n_master} master pictures{ro_note}) "
                 f"— select a species.")
 
     def _load_trip_scope(self):

@@ -173,6 +173,11 @@ class RatingEditorCollection(PictureCollection):
         self._master_root: Path | None = None
         self._include_master = False
         self._master_read_only = True        # Phase 2: master writes opt-in
+        # master_full (Album viewer "Master" scope): show the species' COMPLETE
+        # master set — every picture, including the album's own in-range ones,
+        # and NO trip/album cards (so nothing is shown twice). Plain Trip+Master
+        # keeps False (trip cards + master-minus-trip reference).
+        self._master_full = False
         self._master_keys: set[str] = set()  # keys currently shown from master
         # Lazy: don't scan all trip pictures (each jpg_path() does several
         # Path.exists() calls — thousands of filesystem stats over D:/E: and
@@ -182,7 +187,7 @@ class RatingEditorCollection(PictureCollection):
 
     # ── master reference wiring ───────────────────────────────────────────
     def set_master(self, master_db, master_root, *, include: bool = True,
-                   read_only: bool = True) -> None:
+                   read_only: bool = True, full: bool = False) -> None:
         """Attach the master SQLite cache so rebuild() can append reference
         cards for the selected species. include=False keeps it attached but
         hidden (e.g. when scope is not Trip+Master).
@@ -199,6 +204,7 @@ class RatingEditorCollection(PictureCollection):
         self._master_root = Path(master_root) if master_root else None
         self._include_master = bool(include and master_db is not None)
         self._master_read_only = bool(read_only)
+        self._master_full = bool(full)
         self._master_upn = {}
         self._master_files = {}
         self._master_keys = set()
@@ -279,8 +285,12 @@ class RatingEditorCollection(PictureCollection):
         self._master_files = {}
         if sci:
             pics = self._master_db.pictures_for_species(sci)
-            trip_keys = self.fpr.upn.UniquePictureName_dict
-            pics = [p for p in pics if p["UniquePictureName"] not in trip_keys]
+            # "Master" (full) scope keeps every master picture of the species;
+            # Trip+Master drops the ones the trip already owns to avoid showing
+            # a picture twice.
+            if not self._master_full:
+                trip_keys = self.fpr.upn.UniquePictureName_dict
+                pics = [p for p in pics if p["UniquePictureName"] not in trip_keys]
             self._master_upn = {p["UniquePictureName"]: p for p in pics}
             if self._master_upn:
                 self._master_files = self._master_db.files_for_upns(
@@ -288,12 +298,15 @@ class RatingEditorCollection(PictureCollection):
             self._master_keys = set(self._master_upn.keys())
 
         rows = []
-        for key, row in self.fpr.upn.UniquePictureName_dict.items():
-            if filter_name and self.species_name(row) != filter_name:
-                continue
-            if self._jpg_only and self.jpg_path(key) is None:
-                continue
-            rows.append((_safe_int(row.get("Rate", 0) or 0), key))
+        # In full-master scope the master set already contains the album's own
+        # pictures, so don't also add the trip/album rows (no duplicates).
+        if not self._master_full:
+            for key, row in self.fpr.upn.UniquePictureName_dict.items():
+                if filter_name and self.species_name(row) != filter_name:
+                    continue
+                if self._jpg_only and self.jpg_path(key) is None:
+                    continue
+                rows.append((_safe_int(row.get("Rate", 0) or 0), key))
         for key in list(self._master_keys):
             if self._jpg_only and self.jpg_path(key) is None:
                 self._master_keys.discard(key)   # not shown → not a master key
