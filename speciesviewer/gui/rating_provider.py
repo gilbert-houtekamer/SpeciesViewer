@@ -47,15 +47,19 @@ class RatingEditorItem(PictureItem):
         self._c = collection
         self._key = upn_key
         self._master = collection.is_master(upn_key)
-        # Trip pictures are always editable. Master reference pictures are
-        # editable only when the master is not in read-only mode (Phase 2).
-        editable = (not self._master) or (not collection.master_read_only)
+        # A whole collection can be view-only (e.g. the Album / virtual-trip
+        # viewer, whose pictures ARE the master's shared files — editing would
+        # be a master write-back, deferred). Otherwise trip pictures are always
+        # editable; master reference pictures only when the master is not in
+        # read-only mode (Phase 2).
+        editable = (not collection.view_read_only) and \
+                   ((not self._master) or (not collection.master_read_only))
         self.can_edit_rating = editable
         self.can_edit_color = editable
         # Description write-back uses the same per-day CSV routing as
         # rating/colour, so it works for trip pictures. Master description
         # write-back is not yet implemented.
-        self.can_edit_description = not self._master
+        self.can_edit_description = (not collection.view_read_only) and not self._master
 
     @property
     def from_master(self) -> bool:
@@ -119,14 +123,22 @@ class RatingEditorItem(PictureItem):
     def exif(self) -> ExifSummary:
         return self._c.exif_for(self._key)
 
-    # write ops
+    # write ops — no-op when this item isn't editable, so a bulk-apply or
+    # keyboard path can never write past a read-only (Album) viewer or a
+    # read-only master reference card.
     def set_rating(self, value: int) -> None:
+        if not self.can_edit_rating:
+            return
         self._c.apply(self._key, new_stars=value)
 
     def set_color(self, value: str) -> None:
+        if not self.can_edit_color:
+            return
         self._c.apply(self._key, new_color=value)
 
     def set_description(self, value: str) -> None:
+        if not self.can_edit_description:
+            return
         self._c.apply_description(self._key, value)
 
     # async image
@@ -140,13 +152,16 @@ class RatingEditorItem(PictureItem):
 class RatingEditorCollection(PictureCollection):
     def __init__(self, fpr, day_objects, upn_day_map, *,
                  jpg_only: bool = True, species_lang: str = "NL",
-                 loader: AsyncImageLoader | None = None):
+                 loader: AsyncImageLoader | None = None,
+                 view_read_only: bool = False):
         self.fpr = fpr
         self._day_objects = day_objects      # dict day->(Files,Pictures), or None in Day scope
         self._upn_day_map = upn_day_map      # upn_key -> day
         self._jpg_only = jpg_only
         self._species_lang = species_lang
         self._loader = loader or AsyncImageLoader()
+        # Whole-collection view-only: every card non-editable (Album viewer).
+        self._view_read_only = bool(view_read_only)
         # Master reference state (Trip+Master scope) — read-only pictures pulled
         # from the master DB for the selected species. Empty until set_master().
         # With the SQLite-backed MasterDB (Plan B) we no longer preload the 85k
@@ -191,6 +206,10 @@ class RatingEditorCollection(PictureCollection):
     @property
     def master_read_only(self) -> bool:
         return getattr(self, "_master_read_only", True)
+
+    @property
+    def view_read_only(self) -> bool:
+        return getattr(self, "_view_read_only", False)
 
     def is_master(self, key: str) -> bool:
         return key in self._master_keys

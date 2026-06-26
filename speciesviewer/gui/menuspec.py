@@ -1070,6 +1070,12 @@ def build_menu_spec(main_window):
                 title="Build Virtual Trip Website",
             ),
             f"{MenuSpec.separator()}_vt3": None,
+            "Rating Editor": MenuSpec(
+                callback=lambda: main_window.open_virttrip_rating_editor(),
+                title="Rating Editor",
+                showsubdirectory=False,
+            ),
+            f"{MenuSpec.separator()}_vt4": None,
             "Add Virtual Trip to Master": MenuSpec(
                 callback=lambda: VirttripAddToMasterDialog(main_window).exec(),
                 title="Add Virtual Trip to Master",

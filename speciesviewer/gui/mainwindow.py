@@ -902,6 +902,21 @@ class MainWindow(QMainWindow):
         self._rating_editor_dlg = RatingEditorDialog(self, trip_root, day_str)
         self._rating_editor_dlg.show()
 
+    def open_virttrip_rating_editor(self):
+        """Read-only Rating Editor over the active virtual trip (Album). Its
+        pictures are the master's shared files, so editing is off for now —
+        this is a viewer (cards, ratings, best-picks, species filter)."""
+        from gui.rating_editor import RatingEditorDialog
+        virttrip_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
+        if not virttrip_root:
+            QMessageBox.warning(self, "Rating Editor",
+                                "No virtual trip (Album) is active.")
+            return
+        # Strong ref on the main window — see open_rating_editor for the why.
+        self._virttrip_rating_editor_dlg = RatingEditorDialog(
+            self, virttrip_root, day_str=None, read_only=True, scope_label="Album")
+        self._virttrip_rating_editor_dlg.show()
+
     def open_translation_validator(self, day_str):
         from gui.translation_validate import TranslationValidateDialog
         trip_root = _config.get("trip", "tripbiotadatabase", fallback="")

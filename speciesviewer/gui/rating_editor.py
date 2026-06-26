@@ -542,9 +542,16 @@ class RatingEditorDialog(QDialog):
     computed Rate descending.
     """
 
-    def __init__(self, parent, trip_root_dir: str, day_str: str = None):
+    def __init__(self, parent, trip_root_dir: str, day_str: str = None,
+                 read_only: bool = False, scope_label: str = "Trip"):
         super().__init__(parent)
-        self.setWindowTitle("Rating Editor")
+        # read_only: a whole-collection viewer (no rating/colour edits, no
+        # delete, no Trip+Master compare). Used by the Album (virtual-trip)
+        # variant, whose pictures are the master's shared files — editing them
+        # would be a master write-back, deliberately deferred.
+        self._read_only = bool(read_only)
+        self._scope_label = scope_label
+        self.setWindowTitle("Rating Editor — " + scope_label if read_only else "Rating Editor")
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
                             | Qt.WindowType.WindowMaximizeButtonHint)
@@ -586,9 +593,10 @@ class RatingEditorDialog(QDialog):
         # ── Top bar ──────────────────────────────────────────────────────────
         top = QHBoxLayout()
 
-        # Scope radio
+        # Scope radio. In read-only (Album) mode the scope is "Day / Album" and
+        # there is no Trip+Master compare (the pictures already ARE the master).
         self._day_radio = QRadioButton("Day")
-        self._trip_radio = QRadioButton("Trip")
+        self._trip_radio = QRadioButton(self._scope_label)
         self._tm_radio = QRadioButton("Trip+Master")
         self._tm_radio.setToolTip(
             "Also show this species' existing master pictures (read-only, greyed) "
@@ -603,6 +611,8 @@ class RatingEditorDialog(QDialog):
         top.addWidget(self._day_radio)
         top.addWidget(self._trip_radio)
         top.addWidget(self._tm_radio)
+        if self._read_only:
+            self._tm_radio.hide()
         top.addSpacing(8)
 
         # Day picker (visible only in Day scope)
@@ -668,6 +678,12 @@ class RatingEditorDialog(QDialog):
         """)
         self._del_purple_btn.clicked.connect(lambda: self._batch_delete_color("Purple"))
         top.addWidget(self._del_purple_btn)
+
+        # Album (read-only) viewer never deletes — the files are shared master
+        # files. Hide the cull buttons entirely.
+        if self._read_only:
+            self._del_blue_btn.hide()
+            self._del_purple_btn.hide()
 
         main_layout.addLayout(top)
 
@@ -843,7 +859,7 @@ class RatingEditorDialog(QDialog):
         self._collection = RatingEditorCollection(
             self.fpr, self._day_objects, self._upn_day_map,
             jpg_only=self._jpg_only, species_lang=self._species_lang,
-            loader=self._loader,
+            loader=self._loader, view_read_only=self._read_only,
         )
         self._populate_species_combo(restore_selection=saved_species)
         if tripmaster:
