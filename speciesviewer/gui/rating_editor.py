@@ -327,13 +327,21 @@ class PictureCard(QFrame):
         # since they're read-only references; trip cards get a matching
         # "— from trip (2000x1500) —" only in Trip+Master scope where the two
         # kinds share the grid and the user is comparing quality side-by-side.
-        if self._from_master or self._show_kind_tag:
+        from_album = getattr(item, "from_album", False)
+        if self._from_master or self._show_kind_tag or from_album:
             res = item.exif.jpg_dimensions or item.exif.dimensions
-            origin = "master" if self._from_master else "trip"
+            # In full-master scope, the master pictures that belong to this
+            # album are called out ("— from Album —", green/bold) so they stand
+            # out among the plain grey "— from master —" references.
+            origin = "Album" if from_album else ("master" if self._from_master else "trip")
             tag = QLabel(f"— from {origin} ({res}) —" if res
                          else f"— from {origin} —")
             tag.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            tag.setStyleSheet("color: #888; font-size: 8px; font-style: italic;")
+            if from_album:
+                tag.setStyleSheet("color: #2e7d32; font-size: 8px; "
+                                  "font-style: italic; font-weight: bold;")
+            else:
+                tag.setStyleSheet("color: #888; font-size: 8px; font-style: italic;")
             vbox.addWidget(tag)
 
         # Stars row + date + rate

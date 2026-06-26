@@ -66,6 +66,14 @@ class RatingEditorItem(PictureItem):
         return self._master
 
     @property
+    def from_album(self) -> bool:
+        """In the Album viewer's full-master scope, a master picture that also
+        belongs to the album (its UPN is one of the album's extracted pictures)
+        is tagged 'from Album' instead of 'from master', so the user can see
+        which of the species' master pictures came from this trip's range."""
+        return self._c.is_album_member(self._key)
+
+    @property
     def _row(self) -> dict:
         return self._c._upn_row(self._key)
 
@@ -219,6 +227,11 @@ class RatingEditorCollection(PictureCollection):
 
     def is_master(self, key: str) -> bool:
         return key in self._master_keys
+
+    def is_album_member(self, key: str) -> bool:
+        """Full-master scope only: True when this master picture's UPN is also
+        one of the album's own (extracted) pictures."""
+        return self._master_full and key in self.fpr.upn.UniquePictureName_dict
 
     # ── master add/delete (Phase 3 of the master cache) ───────────────────────
     def _master_file_is_jpg(self, fname: str) -> bool:
