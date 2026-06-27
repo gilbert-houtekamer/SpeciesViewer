@@ -210,6 +210,74 @@ def write_location(path, fields, overwrite=True):
         return False
 
 
+def read_location_fields_batch(paths):
+    """{normcase(normpath): location-fields} read for MANY files in ONE exiftool
+    call — the batched twin of read_location_fields, used so a fill-empties-only
+    write doesn't pay a per-file exiftool spawn just to check what's already there."""
+    import os
+    from engine.exif_writer import run_exiftool_files
+    paths = [str(p) for p in paths if p]
+    if not paths:
+        return {}
+    out = run_exiftool_files(
+        ["-j", "-location", "-city", "-state", "-country", "-countrycode",
+         "-XMP-sv:Municipality"], paths, pre_args=["-config", _exiftool_config()]).stdout
+    rows = json.loads(out) if out.strip() else []
+    res = {}
+    for d in rows:
+        key = os.path.normcase(os.path.normpath(d.get("SourceFile", "")))
+        res[key] = {
+            "Location": d.get("Location", "") or "",
+            "City": d.get("City", "") or "",
+            "Municipality": d.get("Municipality", "") or "",
+            "State": d.get("State", "") or "",
+            "Country": d.get("Country", "") or "",
+            "CountryCode": d.get("CountryCode", "") or "",
+        }
+    return res
+
+
+def write_location_batch(files, fields, *, overwrite=True):
+    """Write the non-empty location `fields` (one place) to MANY files in as few
+    exiftool calls as possible — one call per distinct set of tags-to-write,
+    rather than one spawn per file. All files at a given place share the same
+    fields, so this collapses hundreds of per-file writes into ~one call. Returns
+    the number of files written.
+
+    overwrite=False → only fill fields that are currently empty; files are grouped
+    by which subset is empty (freshly-ingested sidecars are all empty, so this is
+    still a single call), keeping the arg set consistent within each call."""
+    import os
+    from engine.exif_writer import run_exiftool_files
+    base = {k: _LOCATION_TAGS[k] for k in _LOCATION_TAGS if fields.get(k)}
+    files = [str(f) for f in files if f]
+    if not base or not files:
+        return 0
+    if overwrite:
+        groups = {tuple(base): files}
+    else:
+        current = read_location_fields_batch(files)
+        groups = {}
+        for f in files:
+            cur = current.get(os.path.normcase(os.path.normpath(f)), {})
+            keys = tuple(k for k in base if not cur.get(k))
+            if keys:
+                groups.setdefault(keys, []).append(f)
+    written = 0
+    for keys, group_files in groups.items():
+        args = [f"-{_LOCATION_TAGS[k]}={fields[k]}" for k in keys]
+        try:
+            r = run_exiftool_files(args + ["-overwrite_original"], group_files,
+                                   pre_args=["-config", _exiftool_config()])
+            if r.returncode == 0:
+                written += len(group_files)
+            else:
+                logger.warning(f"Batched location write returned {r.returncode}: {r.stderr.strip()}")
+        except Exception as e:
+            logger.warning(f"Batched location write failed for {len(group_files)} files: {e}")
+    return written
+
+
 # ── THROWAWAY: safe-compare dry run ───────────────────────────────────────────
 # While True, 'l' / run_geolocate_batch does NOT touch any file — it writes a CSV
 # comparing the CURRENT vs PROPOSED location for each picture, so the override
@@ -294,7 +362,18 @@ def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttl
             # All GPS in one batched exiftool call (off the GUI thread).
             self.progress.emit(0, "Reading GPS…")
             gps_map = batch_gps([gsrc for (_, gsrc, _) in targets if gsrc])
-            last_pt = last_fields = last_addr = None
+            # Every place already looked up this batch: (pt, fields, addr). A new
+            # fix within min_move_m of ANY of these reuses it (not just the
+            # previous one), so a card whose shots are all near the same spot —
+            # even interleaved with shots elsewhere — costs one query per place,
+            # not one per picture. The throttled online query is the slow part.
+            # cache: distinct places looked up this batch, indexed by position.
+            # place_files[idx] accumulates every file to write for that place, so
+            # the XMP writes happen ONCE PER PLACE after the query loop (one
+            # exiftool call per place) instead of one spawn per picture — the
+            # slow part of a big card was hundreds of per-file exiftool launches.
+            cache = []                                      # [(latlon, fields, addr)]
+            place_files = {}                                # idx -> [files]
             queried = written = 0
             compare_rows = []
             for i, (label, gps_source, files) in enumerate(targets, 1):
@@ -304,9 +383,10 @@ def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttl
                 latlon = gps_map.get(os.path.normcase(os.path.normpath(gps_source))) if gps_source else None
                 if not latlon or not files:
                     continue
-                if (last_pt is not None and last_fields is not None
-                        and haversine_m(last_pt, latlon) < min_move_m):
-                    fields, addr = last_fields, last_addr   # reuse — same place
+                idx = next((j for j, (pt, _f, _a) in enumerate(cache)
+                            if haversine_m(pt, latlon) < min_move_m), None)
+                if idx is not None:
+                    fields, addr = cache[idx][1], cache[idx][2]   # reuse — same place
                 else:
                     if queried > 0:
                         time.sleep(throttle_s)              # honour ≤1 req/s
@@ -314,16 +394,20 @@ def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttl
                     fields = place_fields(res)
                     addr = (res or {}).get("address", {})
                     queried += 1
-                    last_pt, last_fields, last_addr = latlon, fields, addr
+                    cache.append((latlon, fields, addr))
+                    idx = len(cache) - 1
                 if not fields:
                     continue
                 if dry_run:
                     # Safe compare — read current, record, touch nothing.
                     compare_rows.append((label, latlon, read_location_fields(files[0]), fields, addr))
                 elif any(fields.get(k) for k in _LOCATION_TAGS):
-                    for f in files:
-                        write_location(f, fields, overwrite=overwrite)
-                    written += 1
+                    place_files.setdefault(idx, []).extend(files)
+            # Batched writes: one place at a time, each in (about) one exiftool call.
+            if not dry_run and place_files:
+                self.progress.emit(len(targets), "Writing location names…")
+                for idx, files in place_files.items():
+                    written += write_location_batch(files, cache[idx][1], overwrite=overwrite)
             csv_path = _write_compare_csv(compare_rows) if (dry_run and compare_rows) else ""
             self.finished.emit(queried, written, len(targets), csv_path)
 

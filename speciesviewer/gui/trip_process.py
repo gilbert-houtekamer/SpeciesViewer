@@ -570,6 +570,7 @@ class ReadSDCardDialog(QDialog):
         self._last_dest = ""        # destination root (used as preview cache dir)
         self._thread = None
         self._worker = None
+        self._preview_dlg = None    # the open culling grid (single instance)
 
         self.read_btn.clicked.connect(self.on_read)
         self.view_btn.clicked.connect(self.on_view)
@@ -723,6 +724,13 @@ class ReadSDCardDialog(QDialog):
         """Open the picture grid over the just-copied files. Uses an explicit
         file list (not folder discovery) so it works regardless of date
         bucketing; RAW cards render via the embedded preview (cached_jpg_for)."""
+        # Single instance: a second click while the grid is already up should just
+        # raise it, not stack a second (and, with the modal parent, unresponsive)
+        # grid on top — which is what made earlier views impossible to close.
+        if self._preview_dlg is not None and self._preview_dlg.isVisible():
+            self._preview_dlg.raise_()
+            self._preview_dlg.activateWindow()
+            return
         from gui.image_viewer import ImagePreviewDialog
         from gui.sidecar_provider import SidecarCollection
         from gui.preview_provider import preview_cache_dir_for
@@ -741,6 +749,14 @@ class ReadSDCardDialog(QDialog):
         collection = SidecarCollection(paths, cache_root=cache_root)
         dlg = ImagePreviewDialog(self.passed_parent, collection=collection,
                                  cache_root=cache_root, source_label="SD-card read — culling")
+        # This dialog is launched from the Read SD-cards dialog, which runs
+        # application-modal (.exec()). A modal window blocks input to every other
+        # window EXCEPT one that is itself modal and higher on the modal stack —
+        # so without this the grid appears but can't be scrolled or closed. Making
+        # it modal puts it on top and lets it receive input.
+        dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
+        dlg.finished.connect(lambda *_: setattr(self, "_preview_dlg", None))
+        self._preview_dlg = dlg
         dlg.show()
 
 
