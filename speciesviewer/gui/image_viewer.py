@@ -899,6 +899,18 @@ class ImagePreviewDialog(QDialog):
         act_rate = menu.addAction(f"Set rating…  ({lbl})")
         act_fullres = menu.addAction(f"Full resolution  ({lbl})")
         act_geo = menu.addAction(f"Get location  ({lbl})")
+        menu.addSeparator()
+        # Copy GPS + place from THIS one picture; paste into the selection. Lets a
+        # no-GPS shot inherit a neighbour's location when the sv2 backfill can't
+        # reach it (no GPS frame within its time/distance window).
+        try:
+            item = self._collection.item_for_key(key)
+        except (ValueError, KeyError):
+            item = None
+        act_copy_gps = menu.addAction("Copy GPS + place  (this picture)")
+        act_copy_gps.setEnabled(bool(item and getattr(item, "has_gps", False)))
+        act_paste_gps = menu.addAction(f"Paste GPS + place  ({lbl})")
+        act_paste_gps.setEnabled(getattr(self, "_gps_clipboard", None) is not None)
         chosen = menu.exec(QCursor.pos())
         if chosen == act_species:
             self._open_species_dialog_for_keys(keys_for_action)
@@ -908,6 +920,10 @@ class ImagePreviewDialog(QDialog):
             self._cull_full_res(keys_for_action)
         elif chosen == act_geo:
             self._cull_geolocate(keys_for_action)
+        elif chosen == act_copy_gps:
+            self._copy_gps(key)
+        elif chosen == act_paste_gps:
+            self._paste_gps(keys_for_action)
 
     def _culling_sc(self):
         """Lazily load (and cache) the standalone species collection for the
@@ -1115,6 +1131,57 @@ class ImagePreviewDialog(QDialog):
             return
         from gui.geolocate import run_geolocate_batch
         run_geolocate_batch(self, targets)
+
+    # ── Copy / paste GPS + place ──────────────────────────────────────────────
+    _PLACE_FIELDS = ("Location", "City", "State", "Country", "CountryCode", "Municipality")
+
+    def _copy_gps(self, key):
+        """Copy GPS coordinates + location text from one picture to a clipboard,
+        so it can be pasted onto isolated no-GPS shots nearby."""
+        latlon = self._collection.gps(key)
+        if not latlon:
+            logger.info("Copy GPS: this picture has no GPS to copy.")
+            return
+        try:
+            fields = self._collection.read_location(key) or {}
+        except Exception:
+            fields = {}
+        self._gps_clipboard = {"lat": latlon[0], "lon": latlon[1], "fields": fields}
+        try:
+            name = self._collection.item_for_key(key).display_name or key
+        except (ValueError, KeyError):
+            name = key
+        place = fields.get("Location") or fields.get("City") or ""
+        logger.info(f"Copied GPS {latlon[0]:.6f}, {latlon[1]:.6f}"
+                    f"{(' + ' + place) if place else ''} from {name} — "
+                    f"right-click another picture to Paste GPS + place.")
+
+    def _paste_gps(self, keys):
+        """Write the copied GPS + place into each target picture's XMP (RAW
+        untouched), refresh the cards, and clear their missing-GPS flag."""
+        clip = getattr(self, "_gps_clipboard", None)
+        if not clip:
+            logger.info("Paste GPS: nothing copied yet — Copy GPS from a picture first.")
+            return
+        from gui.geolocate import write_gps, write_location_batch
+        fields = clip.get("fields") or {}
+        has_place = any(fields.get(f) for f in self._PLACE_FIELDS)
+        n = 0
+        for k in keys:
+            files = self._collection.location_targets(k)
+            if not files:
+                continue
+            write_gps(files, clip["lat"], clip["lon"])
+            if has_place:
+                write_location_batch(files, fields, overwrite=True)
+            self._collection.note_gps_written(k)
+            card = self._cards_by_key.get(k)
+            if card:
+                card.refresh()
+            self._notify_large_view(k)
+            n += 1
+        logger.info(f"Pasted GPS {clip['lat']:.6f}, {clip['lon']:.6f}"
+                    f"{' + place' if has_place else ''} into {n} picture(s).")
 
     def keyPressEvent(self, event):
         from gui.viewer_keys import handle_cull_key, handle_grid_arrows, text_input_focused

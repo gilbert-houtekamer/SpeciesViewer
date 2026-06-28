@@ -240,3 +240,9 @@ class PictureCollection(ABC):
         """Location text currently in the picture's XMP (Location/City/State/
         Country/CountryCode), for display without the CSV. {} if none."""
         return {}
+
+    def note_gps_written(self, key: str) -> None:
+        """Tell the collection that `key` just had GPS written to its XMP (e.g. a
+        paste-GPS), so any cached has-GPS state updates without a full rescan.
+        No-op by default; overridden where has_gps is cached."""
+        return None

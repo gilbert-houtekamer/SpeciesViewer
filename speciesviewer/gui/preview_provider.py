@@ -393,11 +393,21 @@ class PreviewCollection(PictureCollection):
         return None
 
     def has_gps(self, upn_key: str) -> bool:
+        if upn_key in getattr(self, "_pasted_gps", ()):   # GPS just pasted into the XMP
+            return True
         for fname in self._files(upn_key):
             frow = self.fpr.fi.files_dict.get(fname)
             if frow and (frow.get("Composite:GPSPosition") or frow.get("EXIF:GPSLatitude")):
                 return True
         return False
+
+    def note_gps_written(self, upn_key: str) -> None:
+        """A paste-GPS wrote GPS into this UPN's XMP — remember it so the
+        missing-GPS badge clears without a rescan. Kept in a side set rather than
+        poked into the pipeline's in-memory file rows (which feed Write Summary)."""
+        if not hasattr(self, "_pasted_gps"):
+            self._pasted_gps = set()
+        self._pasted_gps.add(upn_key)
 
     def has_writable_sidecar(self, upn_key: str) -> bool:
         """True if rating/colour can be persisted for this picture — either an

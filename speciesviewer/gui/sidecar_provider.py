@@ -340,6 +340,12 @@ class SidecarCollection(PictureCollection):
         src = self._groups.get(key, {}).get("xmp") or self._source_file(key)
         return read_location_fields(src) if src else {}
 
+    def note_gps_written(self, key: str) -> None:
+        """A paste-GPS just wrote GPS into this key's XMP — add it to the cached
+        GPS set so has_gps / the missing-GPS badge clear without a rescan."""
+        if key in self._groups and key not in self._gps_stems:
+            self._gps_stems = self._gps_stems | {key}
+
     # ── image + write helpers ───────────────────────────────────────────────
     def _source_file(self, stem: str):
         """Best display source: JPG (fast) if present, else the RAW (embedded preview)."""

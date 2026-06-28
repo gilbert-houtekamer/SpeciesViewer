@@ -278,6 +278,27 @@ def write_location_batch(files, fields, *, overwrite=True):
     return written
 
 
+def write_gps(files, lat, lon):
+    """Write signed-decimal GPS (lat, lon) into the XMP of one or more files —
+    used by the viewer's copy/paste-GPS for shots the sv2 sibling/time/bracket
+    backfill can't reach. RAW is never touched; the pipeline + viewer read it back
+    via Composite/XMP:GPSLatitude. Returns the number of files written."""
+    from engine.exif_writer import run_exiftool_files
+    files = [str(f) for f in files if f]
+    if not files or lat is None or lon is None:
+        return 0
+    args = [f"-XMP:GPSLatitude={lat}", f"-XMP:GPSLongitude={lon}", "-overwrite_original"]
+    try:
+        r = run_exiftool_files(args, files)
+        if r.returncode != 0:
+            logger.warning(f"GPS write returned {r.returncode}: {r.stderr.strip()}")
+            return 0
+        return len(files)
+    except Exception as e:
+        logger.warning(f"GPS write failed: {e}")
+        return 0
+
+
 # ── THROWAWAY: safe-compare dry run ───────────────────────────────────────────
 # While True, 'l' / run_geolocate_batch does NOT touch any file — it writes a CSV
 # comparing the CURRENT vs PROPOSED location for each picture, so the override
