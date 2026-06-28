@@ -448,7 +448,7 @@ class _SDCardCopyWorker(QObject):
     finished = pyqtSignal(dict, str)       # summary, errorstring ("" == clean)
 
     def __init__(self, source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0,
-                 write_sidecars=True):
+                 write_sidecars=True, include_dates=None):
         super().__init__()
         self._source = source
         self._dest = dest
@@ -456,6 +456,7 @@ class _SDCardCopyWorker(QObject):
         self._bucket_by_date = bucket_by_date
         self._tz_offset_hours = tz_offset_hours
         self._write_sidecars = write_sidecars
+        self._include_dates = include_dates
         self._cancel = False
 
     def cancel(self):
@@ -467,13 +468,32 @@ class _SDCardCopyWorker(QObject):
             summary = copy_card(
                 self._source, self._dest, prefix=self._prefix,
                 bucket_by_date=self._bucket_by_date, tz_offset_hours=self._tz_offset_hours,
-                write_sidecars=self._write_sidecars,
+                write_sidecars=self._write_sidecars, include_dates=self._include_dates,
                 progress=lambda done, total, name: self.progress.emit(done, total, name),
                 should_cancel=lambda: self._cancel,
             )
             self.finished.emit(summary, "")
         except Exception as e:
             self.finished.emit({}, str(e))
+
+
+class _SDCardScanWorker(QObject):
+    """Groups the card's pictures by capture day (no copy) on a worker thread so
+    the dialog stays responsive while the card is walked / dates are read."""
+    finished = pyqtSignal(list, int, str)   # days [(date, count)], total, error
+
+    def __init__(self, source, tz_offset_hours=0.0):
+        super().__init__()
+        self._source = source
+        self._tz_offset_hours = tz_offset_hours
+
+    def run(self):
+        try:
+            from batch.sv0ReadSDCard import scan_days
+            days, total = scan_days(self._source, tz_offset_hours=self._tz_offset_hours)
+            self.finished.emit(days, total, "")
+        except Exception as e:
+            self.finished.emit([], 0, str(e))
 
 
 class ReadSDCardDialog(QDialog):
@@ -490,6 +510,7 @@ class ReadSDCardDialog(QDialog):
         self.resize(700, 320)
 
         layout = QVBoxLayout(self)
+        layout.setSpacing(14)
         layout.addWidget(HTMLLabel(
             "<p><b>Read SD-cards</b><br>"
             "Copy pictures from a folder — typically a mounted SD-card — into the "
@@ -499,20 +520,28 @@ class ReadSDCardDialog(QDialog):
             "pictures already copied are skipped, so you can re-run this safely.</p>"
         ))
 
+        # ── Source & options (framed, so it reads as one block separate from the
+        # day selection below) ────────────────────────────────────────────────
+        self.input_frame = QFrame()
+        self.input_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        input_layout = QVBoxLayout(self.input_frame)
+        input_layout.setContentsMargins(12, 12, 12, 12)
+        input_layout.setSpacing(10)
+
         # Card source + prefix are remembered between runs (usually the same card
         # and the same trip), so the dialog reopens pre-filled.
         saved_source = get_cache_gui_section("sdcard_ingest", "source")
         saved_prefix = get_cache_gui_section("sdcard_ingest", "prefix")
 
         self.source_field = DirectoryFieldQt("Card / source folder", saved_source)
-        layout.addWidget(self.source_field)
+        input_layout.addWidget(self.source_field)
 
         # picturedirectory points at a day folder (.../<project>/YYYY-MM-DD) for
         # historic reasons; the card target is the project root, so strip a
         # trailing date component for the default.
         dest_default = _strip_to_project_root(_config.get("project", "picturedirectory", fallback=""))
         self.dest_field = DirectoryFieldQt("Project pictures", dest_default)
-        layout.addWidget(self.dest_field)
+        input_layout.addWidget(self.dest_field)
 
         # Prefix default = the year (e.g. '2026') unless a previous run saved one;
         # the user typically extends it to '2026 Zeeland'. Year is taken from the
@@ -520,7 +549,7 @@ class ReadSDCardDialog(QDialog):
         self.prefix_field = LabeledTextFieldQt(
             "Filename prefix", saved_prefix or _default_year(dest_default), inline=True
         )
-        layout.addWidget(self.prefix_field)
+        input_layout.addWidget(self.prefix_field)
 
         # Date bucketing: copy into dest/<YYYY-MM-DD>/ using EXIF capture time,
         # shifted by the timezone offset BEFORE the date is taken so near-midnight
@@ -537,19 +566,63 @@ class ReadSDCardDialog(QDialog):
         self.tz_offset_field.field.setMaximumWidth(60)
         date_row.addWidget(self.tz_offset_field)
         date_row.addStretch()
-        layout.addLayout(date_row)
+        input_layout.addLayout(date_row)
 
         # XMP sidecars: the durable, RAW-immutable carrier for culling metadata
         # the grid reads/edits. Default ON, remembered between runs.
         self.sidecar_checkbox = QCheckBox("Write XMP sidecars for RAWs (date, GPS, EXIF — for culling)")
         self.sidecar_checkbox.setChecked(get_cache_gui_section("sdcard_ingest", "write_sidecars") != "0")
-        layout.addWidget(self.sidecar_checkbox)
+        input_layout.addWidget(self.sidecar_checkbox)
 
         # Reverse-geocode the copied pictures' GPS → write place names into the
         # sidecars (online; dedup-by-distance + throttle). Default off.
         self.location_checkbox = QCheckBox("Add location names (reverse-geocode GPS — needs internet)")
         self.location_checkbox.setChecked(get_cache_gui_section("sdcard_ingest", "add_location") == "1")
-        layout.addWidget(self.location_checkbox)
+        input_layout.addWidget(self.location_checkbox)
+
+        # Live progress log inside this (green) block, so a long copy is visible at
+        # a glance — "running while you fetch a cup of tea". Hidden when idle; the
+        # one-line result still lands in the status line at the very bottom.
+        self.progress_label = QLabel("")
+        self.progress_label.setWordWrap(True)
+        self.progress_label.setStyleSheet("font-style: italic;")
+        self.progress_label.setVisible(False)
+        input_layout.addWidget(self.progress_label)
+        layout.addWidget(self.input_frame)
+
+        # ── Day picker: "Scan days" lists each capture-day on the card with its
+        # file count so you can untick days you don't want before copying. Its own
+        # framed block; hidden until you scan (if you never scan, Read copies every
+        # day as before). Greyed after a completed run to show it's done. ───────
+        self.days_container = QFrame()
+        self.days_container.setFrameShape(QFrame.Shape.StyledPanel)
+        days_layout = QVBoxLayout(self.days_container)
+        days_layout.setContentsMargins(12, 10, 12, 10)
+        days_layout.setSpacing(6)
+        days_title = QLabel("Days on the card — tick the ones to copy")
+        _tf = days_title.font(); _tf.setBold(True); days_title.setFont(_tf)
+        days_layout.addWidget(days_title)
+        self.all_days_checkbox = QCheckBox("All days")
+        self.all_days_checkbox.setTristate(True)
+        self.all_days_checkbox.setChecked(True)
+        self.all_days_checkbox.clicked.connect(self._on_all_days_clicked)
+        days_layout.addWidget(self.all_days_checkbox)
+        self.days_table = QTableWidget(0, 2)
+        self.days_table.setHorizontalHeaderLabels(["Day", "Files"])
+        self.days_table.verticalHeader().setVisible(False)
+        self.days_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.days_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.days_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.days_table.horizontalHeader().setStretchLastSection(True)
+        self.days_table.itemChanged.connect(self._on_day_item_changed)
+        days_layout.addWidget(self.days_table)
+        self.days_container.setVisible(False)
+        layout.addWidget(self.days_container)
+
+        # Extra vertical space (when the dialog is enlarged) collects here, so the
+        # blocks stay compact at the top and the buttons stay at the bottom rather
+        # than the widgets spreading apart.
+        layout.addStretch(1)
 
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
@@ -557,10 +630,12 @@ class ReadSDCardDialog(QDialog):
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
+        self.scan_btn = QPushButton("Scan days")
         self.read_btn = QPushButton("Read")
         self.view_btn = QPushButton("View pictures")
         self.view_btn.setEnabled(False)  # enabled once a read produced files
         self.close_btn = QPushButton("Close")
+        btn_row.addWidget(self.scan_btn)
         btn_row.addWidget(self.read_btn)
         btn_row.addWidget(self.view_btn)
         btn_row.addWidget(self.close_btn)
@@ -570,8 +645,12 @@ class ReadSDCardDialog(QDialog):
         self._last_dest = ""        # destination root (used as preview cache dir)
         self._thread = None
         self._worker = None
+        self._scan_thread = None
+        self._scan_worker = None
+        self._scanned_source = ""   # source the day table was built from
         self._preview_dlg = None    # the open culling grid (single instance)
 
+        self.scan_btn.clicked.connect(self.on_scan)
         self.read_btn.clicked.connect(self.on_read)
         self.view_btn.clicked.connect(self.on_view)
         self.close_btn.clicked.connect(self.reject)
@@ -600,6 +679,11 @@ class ReadSDCardDialog(QDialog):
                 self._worker.cancel()
             self._thread.quit()
             self._thread.wait(5000)
+        # The day-scan thread is short-lived but must also finish cleanly before
+        # the dialog (and its QThread) is destroyed.
+        if self._scan_thread is not None and self._scan_thread.isRunning():
+            self._scan_thread.quit()
+            self._scan_thread.wait(5000)
 
     def closeEvent(self, event):
         self._stop_worker()
@@ -610,6 +694,141 @@ class ReadSDCardDialog(QDialog):
         # the dialog is dropped right after, so wait here too.
         self._stop_worker()
         super().reject()
+
+    def _tz_offset(self):
+        try:
+            return float(self.tz_offset_field.get_text() or "0")
+        except ValueError:
+            return 0.0
+
+    def _set_progress(self, text):
+        """Live progress in the green block (shown only while something runs)."""
+        self.progress_label.setText(text)
+        self.progress_label.setVisible(bool(text))
+
+    def on_scan(self):
+        """Group the card by capture-day and fill the day table — no copying."""
+        source = self.source_field.get_path()
+        if not source or not os.path.isdir(source):
+            self.source_field.show_hint("Please select a valid source folder.")
+            return
+        self.scan_btn.setEnabled(False)
+        self.read_btn.setEnabled(False)
+        self._set_progress("Scanning days on the card…")
+        self._scanned_source = os.path.normpath(source)
+        self._scan_thread = QThread()
+        self._scan_worker = _SDCardScanWorker(source, self._tz_offset())
+        self._scan_worker.moveToThread(self._scan_thread)
+        self._scan_thread.started.connect(self._scan_worker.run)
+        self._scan_worker.finished.connect(self.on_scan_finished)
+        self._scan_thread.start()
+
+    def on_scan_finished(self, days, total, error):
+        self._scan_thread.quit()
+        self._scan_thread.wait()
+        self.scan_btn.setEnabled(True)
+        self.read_btn.setEnabled(True)
+        self._set_progress("")
+        if error:
+            self.logger.warning(f"❌ Day scan failed: {error}")
+            self.status_label.setText(f"❌ {error}")
+            return
+        self._populate_days(days)
+        self.status_label.setText(
+            f"Found {total} picture(s) across {len(days)} day(s). "
+            f"Tick the days to copy, then Read.")
+
+    def _populate_days(self, days):
+        """Fill the day table with one checkable row per (date, count), all ticked."""
+        self.days_table.blockSignals(True)
+        self.days_table.setRowCount(0)
+        for date_str, count in days:
+            r = self.days_table.rowCount()
+            self.days_table.insertRow(r)
+            day_item = QTableWidgetItem(date_str)
+            day_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+            day_item.setCheckState(Qt.CheckState.Checked)
+            self.days_table.setItem(r, 0, day_item)
+            cnt_item = QTableWidgetItem(str(count))
+            cnt_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            cnt_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self.days_table.setItem(r, 1, cnt_item)
+        self.days_table.blockSignals(False)
+        self.days_container.setVisible(bool(days))
+        self.days_container.setEnabled(True)   # a fresh scan re-enables a greyed block
+        self._refresh_all_days_checkbox()
+        self._size_days_table()
+        # Grow the dialog so the (now visible) day table fits without the user
+        # having to drag it taller; keep the current width.
+        self.layout().activate()
+        self.resize(self.width(), self.sizeHint().height())
+
+    def _size_days_table(self):
+        """Make the day table exactly tall enough for its rows, up to a cap (then
+        it scrolls), so the dialog sizes itself to fit the days found. Heights are
+        measured (resizeRowsToContents), not estimated — styled rows can be much
+        taller than the default section size, which previously clipped the table."""
+        rows = self.days_table.rowCount()
+        if rows == 0:
+            return
+        self.days_table.resizeRowsToContents()
+        header = self.days_table.horizontalHeader()
+        header_h = max(header.height(), header.sizeHint().height())
+        frame = 2 * self.days_table.frameWidth()
+        visible = min(rows, 8)                        # show up to 8 days, then scroll
+        body = sum(self.days_table.rowHeight(i) for i in range(visible))
+        self.days_table.setFixedHeight(header_h + body + frame + 2)
+
+    def _on_all_days_clicked(self):
+        """Master checkbox: tick all days unless they're all ticked (then clear)."""
+        n = self.days_table.rowCount()
+        all_on = n > 0 and all(
+            self.days_table.item(r, 0).checkState() == Qt.CheckState.Checked
+            for r in range(n))
+        target = Qt.CheckState.Unchecked if all_on else Qt.CheckState.Checked
+        self.days_table.blockSignals(True)
+        for r in range(n):
+            self.days_table.item(r, 0).setCheckState(target)
+        self.days_table.blockSignals(False)
+        self._refresh_all_days_checkbox()
+
+    def _on_day_item_changed(self, _item):
+        self._refresh_all_days_checkbox()
+
+    def _refresh_all_days_checkbox(self):
+        """Reflect the rows in the master checkbox (checked / partial / unchecked)."""
+        n = self.days_table.rowCount()
+        checked = sum(1 for r in range(n)
+                      if self.days_table.item(r, 0).checkState() == Qt.CheckState.Checked)
+        if checked == 0:
+            state = Qt.CheckState.Unchecked
+        elif checked == n:
+            state = Qt.CheckState.Checked
+        else:
+            state = Qt.CheckState.PartiallyChecked
+        self.all_days_checkbox.blockSignals(True)
+        self.all_days_checkbox.setCheckState(state)
+        self.all_days_checkbox.blockSignals(False)
+
+    def _selected_days(self):
+        """Set of ticked 'YYYY-MM-DD' strings, or None when no scan was done
+        (→ copy every day, the original behaviour)."""
+        n = self.days_table.rowCount()
+        if n == 0:
+            return None
+        return {self.days_table.item(r, 0).text() for r in range(n)
+                if self.days_table.item(r, 0).checkState() == Qt.CheckState.Checked}
+
+    def _selected_file_count(self):
+        """Sum the file counts of the ticked day rows."""
+        total = 0
+        for r in range(self.days_table.rowCount()):
+            if self.days_table.item(r, 0).checkState() == Qt.CheckState.Checked:
+                try:
+                    total += int(self.days_table.item(r, 1).text())
+                except ValueError:
+                    pass
+        return total
 
     def on_read(self):
         source = self.source_field.get_path()
@@ -653,23 +872,56 @@ class ReadSDCardDialog(QDialog):
         update_cache_gui_section("sdcard_ingest", "add_location",
                                  "1" if self.location_checkbox.isChecked() else "0")
 
+        # Day selection (None = no scan done → copy every day). Guard against a
+        # stale scan from a different source folder, and against ticking nothing.
+        include_dates = self._selected_days()
+        if include_dates is not None and self._scanned_source \
+                and self._scanned_source != os.path.normpath(source):
+            QMessageBox.information(
+                self, "Re-scan needed",
+                "The day list was scanned for a different source folder.\n"
+                "Please press “Scan days” again before reading.")
+            return
+        if include_dates is not None and not include_dates:
+            QMessageBox.information(self, "No days selected",
+                                    "Tick at least one day to copy, or press “Scan days”.")
+            return
+
+        # Confirm what will happen — destination + filename prefix + scope.
+        if include_dates is None:
+            scope = "all pictures on the card"
+        else:
+            scope = f"{self._selected_file_count()} picture(s) from {len(include_dates)} day(s)"
+        confirm = (f"Copy {scope} to:\n\n    {dest}\n\n"
+                   f'Filenames prefixed with "{prefix}".' if prefix
+                   else f"Copy {scope} to:\n\n    {dest}\n\nFilenames kept as-is (no prefix).")
+        if bucket_by_date:
+            confirm += "\nSorted into YYYY-MM-DD subfolders."
+        if QMessageBox.question(self, "Read SD-card", confirm + "\n\nProceed?") \
+                != QMessageBox.StandardButton.Yes:
+            return
+
         self._last_dest = dest
+        self._include_dates = include_dates
         self.read_btn.setEnabled(False)
         self.view_btn.setEnabled(False)
-        self.status_label.setText("Scanning…")
+        self.status_label.setText("")
+        self._set_progress("Reading card…")
         if self._close_connected:
             self.close_btn.clicked.disconnect(self.reject)
             self.close_btn.clicked.connect(self._on_cancel)
             self.close_btn.setText("Cancel")
             self._close_connected = False
+        days_note = "all days" if include_dates is None else f"{len(include_dates)} selected day(s)"
         self.logger.info(
             f"Reading SD-card from {source} → {dest} (prefix: {prefix or '(none)'}, "
-            f"by-date: {bucket_by_date}, tz-offset: {tz_offset}h, sidecars: {write_sidecars})"
+            f"by-date: {bucket_by_date}, tz-offset: {tz_offset}h, sidecars: {write_sidecars}, "
+            f"days: {days_note})"
         )
 
         self._thread = QThread()
         self._worker = _SDCardCopyWorker(source, dest, prefix, bucket_by_date, tz_offset,
-                                         write_sidecars)
+                                         write_sidecars, include_dates=include_dates)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.progress.connect(self.on_progress)
@@ -677,7 +929,7 @@ class ReadSDCardDialog(QDialog):
         self._thread.start()
 
     def on_progress(self, done, total, name):
-        self.status_label.setText(f"Copying {done}/{total}: {name}")
+        self._set_progress(f"Copying {done}/{total}: {name}")
 
     def on_finished(self, summary, error):
         self._thread.quit()
@@ -690,16 +942,29 @@ class ReadSDCardDialog(QDialog):
             return
         renamed = summary.get("renamed", 0)
         renamed_txt = f" ({renamed} renamed)" if renamed else ""
+        deselected = summary.get("deselected", 0)
+        deselected_txt = f", {deselected} day-deselected" if deselected else ""
         msg = (f"Copied {summary.get('copied', 0)}{renamed_txt}, "
-               f"skipped {summary.get('skipped', 0)}, failed {summary.get('failed', 0)} "
+               f"skipped {summary.get('skipped', 0)}{deselected_txt}, "
+               f"failed {summary.get('failed', 0)} "
                f"of {summary.get('total', 0)} pictures; {summary.get('sidecars', 0)} sidecar(s).")
         self.logger.info(f"✅ Card read complete. {msg}")
-        self.status_label.setText(f"✅ {msg}")
+        self._read_summary_msg = msg
+        self._set_progress("")
+        self.status_label.setText(f"✅ Done — {msg}")
         self._last_targets = summary.get("targets", [])
         self.view_btn.setEnabled(bool(self._last_targets))
 
         if self.location_checkbox.isChecked() and self._last_targets:
             self._add_location_names()
+        self._mark_run_done()
+
+    def _mark_run_done(self):
+        """Grey the day selection after a completed run, as a visible 'done' cue.
+        Re-scanning (or reopening the dialog) brings it back, possibly with a
+        different selection."""
+        if self.days_container.isVisible():
+            self.days_container.setEnabled(False)
 
     def _add_location_names(self):
         """Reverse-geocode the just-copied RAWs and write place names into their
@@ -716,9 +981,13 @@ class ReadSDCardDialog(QDialog):
                 targets.append((p.stem, str(xmp), [str(xmp)]))  # GPS + write both in the sidecar
         if not targets:
             return
-        self.status_label.setText("Looking up location names…")
+        self._set_progress("Looking up location names…")
         run_geolocate_batch(self, targets, dry_run=False, overwrite=False)
-        self.status_label.setText(self.status_label.text() + "  + location names added.")
+        self._set_progress("")
+        base = getattr(self, "_read_summary_msg", "")
+        self.status_label.setText(
+            f"✅ Done — {base} Location names added." if base
+            else "✅ Done — location names added.")
 
     def on_view(self):
         """Open the picture grid over the just-copied files. Uses an explicit

@@ -408,6 +408,48 @@ def _build_buckets(files, tz_offset_hours, cache: "_CardCache | None", log) -> d
     return buckets, cached_dt
 
 
+def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None):
+    """Group the card's pictures by capture day WITHOUT copying anything.
+
+    Returns (days, total) where `days` is a sorted list of (date_str, count) and
+    `total` is the picture count. Dates come from the card cache where available
+    so a re-scan — or a scan right before a read — is instant; only cache-miss
+    files go through one batched exiftool call, whose results are persisted to the
+    card cache so the copy that follows doesn't repeat them. Cheap on top of the
+    file walk we'd do anyway: the per-day counts are just a tally of the buckets."""
+    from collections import Counter
+    log = logger or logging.getLogger("speciesviewer")
+    source = Path(source)
+    files = sorted(
+        p for p in source.rglob("*")
+        if p.is_file()
+        and p.suffix.lower() in PICTURE_EXTENSIONS
+        and p.name != _CardCache._FILENAME
+    )
+    total = len(files)
+    if not total:
+        log.info(f"No pictures found under {source}")
+        return [], 0
+
+    cache = _CardCache(source) if use_card_cache else None
+    buckets, _ = _build_buckets(files, tz_offset_hours, cache, log)
+
+    # Persist freshly read dates (date-only, preserving any known sha) so the
+    # copy that follows is warm and doesn't re-run exiftool for the same files.
+    if cache:
+        for f in files:
+            date = buckets.get(_norm(f))
+            existing = cache.get(f)
+            if date and (existing is None or not existing.get("capture_date")):
+                cache.put(f, (existing or {}).get("sha256"), date)
+        cache.save()
+
+    counts = Counter(buckets.get(_norm(f), UNKNOWN_DATE_DIR) for f in files)
+    days = sorted(counts.items())
+    log.info(f"Scanned {total} picture(s) across {len(days)} day(s) on the card.")
+    return days, total
+
+
 # ── XMP sidecars ─────────────────────────────────────────────────────────────
 
 def _write_sidecars(raw_paths, log, progress_cb=None) -> int:
@@ -506,7 +548,7 @@ def _next_free_name(target: Path, reserved: set | None = None) -> Path:
 
 def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0,
               skip_if_on_disk=True, write_sidecars=True, use_card_cache=True,
-              logger=None, progress=None, should_cancel=None):
+              include_dates=None, logger=None, progress=None, should_cancel=None):
     """Copy picture files from `source` (recursively) into `dest`.
 
     prefix            - optional filename prefix (see target_name).
@@ -520,6 +562,9 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     use_card_cache    - when True (default), read/write .sv_ingest_cache.json on
                         the card to cache SHA256 + capture dates across runs.
                         Set False to ignore the cache (forces full re-scan).
+    include_dates     - optional set of 'YYYY-MM-DD' strings; when given, files
+                        whose capture-day is not in the set are skipped entirely
+                        (see scan_days). Independent of bucket_by_date.
     progress(done, total, name) - optional callback, called per file before copy.
     should_cancel()             - optional callable; return True to stop early.
 
@@ -536,7 +581,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
         and p.name != _CardCache._FILENAME   # never copy the cache file itself
     )
     total = len(files)
-    summary = {"total": total, "copied": 0, "skipped": 0,
+    summary = {"total": total, "copied": 0, "skipped": 0, "deselected": 0,
                "renamed": 0, "conflict": 0, "failed": 0, "bytes": 0}
     targets = []   # destination paths now present (copied or already-there)
 
@@ -545,8 +590,9 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     cache = _CardCache(source) if use_card_cache else None
 
     # ── Resolve date buckets ──────────────────────────────────────────────
+    # Needed for the subfolder layout AND for an include_dates day filter.
     # Cache reduces exiftool to only new/changed files; updated below after copy.
-    if bucket_by_date:
+    if bucket_by_date or include_dates is not None:
         buckets, cached_dates_for_new = _build_buckets(
             files, tz_offset_hours, cache, log)
     else:
@@ -571,6 +617,13 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
             break
         if progress:
             progress(i, total, src.name)
+
+        # Day filter: skip files whose capture-day wasn't selected — before any
+        # dedup/hash/copy work, so deselected days cost nothing.
+        if include_dates is not None and \
+                buckets.get(_norm(src), UNKNOWN_DATE_DIR) not in include_dates:
+            summary["deselected"] += 1
+            continue
 
         try:
             cached = cache.get(src) if cache else None
@@ -633,7 +686,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                     if dest_index is not None:
                         dest_index.add(target, sha256=src_hash)
                     if cache:
-                        date_str = buckets.get(_norm(src)) if bucket_by_date else None
+                        date_str = buckets.get(_norm(src)) or None
                         cache.put(src, src_hash, date_str, last_copied=now_str)
                 except OSError as e:
                     log.warning(f"❌ Failed to copy {src.name}: {e}")
@@ -682,8 +735,8 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
 
     log.info(
         f"Card read summary — copied {summary['copied']} (of which {summary['renamed']} renamed), "
-        f"skipped {summary['skipped']}, failed {summary['failed']} of {total}; "
-        f"{summary['sidecars']} sidecar(s)."
+        f"skipped {summary['skipped']}, deselected {summary['deselected']}, "
+        f"failed {summary['failed']} of {total}; {summary['sidecars']} sidecar(s)."
     )
     summary["targets"] = targets
     return summary
