@@ -17,11 +17,13 @@ import logging
 import os
 
 from PyQt6.QtWidgets import (
-    QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QCompleter)
+    QApplication, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
+    QPushButton, QCompleter, QFrame)
 from PyQt6.QtCore import Qt
 
 from engine.speciesclassification import SpeciesClassification, Level
 from utils.config import _config
+from utils.gui_config import get_cache_gui_section, update_cache_gui_section
 
 logger = logging.getLogger("speciesviewer")
 
@@ -89,6 +91,31 @@ def species_name_candidates(sc) -> list[str]:
     return sorted(names)
 
 
+# Recently-applied species names, most-recent first, persisted in the GUI cache so
+# the common "shot a gull, then a heron, now back to the gull" loop is one click —
+# and so it survives an app restart (you often shoot the same species across days).
+_RECENT_SECTION = "culling_species"
+_RECENT_KEY = "recent_names"
+_RECENT_MAX = 20
+
+
+def load_recent_species() -> list[str]:
+    val = get_cache_gui_section(_RECENT_SECTION, _RECENT_KEY)
+    return [s for s in val if isinstance(s, str) and s.strip()] if isinstance(val, list) else []
+
+
+def remember_recent_species(name: str):
+    """LRU bump: move `name` to the front of the recents (case-insensitive dedup),
+    capped at _RECENT_MAX — so a re-used species rises to the top and the
+    least-recently-used drops off the end."""
+    name = (name or "").strip()
+    if not name:
+        return
+    recent = [r for r in load_recent_species() if r.lower() != name.lower()]
+    recent.insert(0, name)
+    update_cache_gui_section(_RECENT_SECTION, _RECENT_KEY, recent[:_RECENT_MAX])
+
+
 class CullingSpeciesDialog(QDialog):
     """Assign a species name to one or more pictures during culling. Accepts
     NL / EN / scientific input with contains-match auto-complete and live
@@ -107,6 +134,9 @@ class CullingSpeciesDialog(QDialog):
         layout.addWidget(title)
         layout.addWidget(QLabel("Type a Dutch, English or scientific name:"))
 
+        # Typed entry + its own "Set species" button on one row: the button commits
+        # exactly what's in the field. "Check online" and the resolution feedback
+        # below it also act on this typed name only.
         self.field = QLineEdit(current_name)
         if sc is not None:
             completer = QCompleter(species_name_candidates(sc), self)
@@ -117,24 +147,52 @@ class CullingSpeciesDialog(QDialog):
             self._completer = completer
         else:
             self._completer = None
-        layout.addWidget(self.field)
+
+        entry_row = QHBoxLayout()
+        entry_row.addWidget(self.field, 1)
+        self.ok_btn = QPushButton("Set species")
+        entry_row.addWidget(self.ok_btn)
+        layout.addLayout(entry_row)
 
         self.feedback = QLabel("")
         self.feedback.setWordWrap(True)
         layout.addWidget(self.feedback)
 
-        btn_row = QHBoxLayout()
+        gbif_row = QHBoxLayout()
         self.gbif_btn = QPushButton("Check online (GBIF)")
-        self.gbif_btn.setToolTip("Look the name up in GBIF (needs internet)")
-        btn_row.addWidget(self.gbif_btn)
+        self.gbif_btn.setToolTip("Look the typed name up in GBIF (needs internet)")
+        gbif_row.addWidget(self.gbif_btn)
+        gbif_row.addStretch()
+        layout.addLayout(gbif_row)
+
+        # Recent species — one click re-applies a recently used name to the
+        # selected pictures (no typing). Two columns, most-recent first.
+        recent = load_recent_species()
+        if recent:
+            sep = QFrame()
+            sep.setFrameShape(QFrame.Shape.HLine)
+            sep.setFrameShadow(QFrame.Shadow.Sunken)
+            layout.addWidget(sep)
+            layout.addWidget(QLabel("Recent species — click to apply:"))
+            grid = QGridLayout()
+            grid.setHorizontalSpacing(6)
+            grid.setVerticalSpacing(4)
+            for i, name in enumerate(recent):
+                b = QPushButton(name)
+                b.setToolTip(f"Set “{name}” for these picture(s)")
+                b.clicked.connect(lambda _=False, nm=name: self._commit(nm))
+                grid.addWidget(b, i // 2, i % 2)
+            layout.addLayout(grid)
+
+        # Cancel only — "Set species" now lives next to the field above.
+        btn_row = QHBoxLayout()
         btn_row.addStretch()
-        self.ok_btn = QPushButton("Set species")
         self.cancel_btn = QPushButton("Cancel")
-        btn_row.addWidget(self.ok_btn)
         btn_row.addWidget(self.cancel_btn)
         layout.addLayout(btn_row)
 
         self.field.textChanged.connect(lambda: self._resolve(use_gbif=False))
+        self.field.returnPressed.connect(self._on_ok)
         self.gbif_btn.clicked.connect(lambda: self._resolve(use_gbif=True))
         self.ok_btn.clicked.connect(self._on_ok)
         self.cancel_btn.clicked.connect(self.reject)
@@ -226,9 +284,18 @@ class CullingSpeciesDialog(QDialog):
     def _on_ok(self):
         name = self.field.text().strip()
         if not name:
-            self.feedback.setText("⚠️ Enter a name, or Cancel.")
+            self.feedback.setText("⚠️ Type a name, click a recent one, or Cancel.")
+            return
+        self._commit(name)
+
+    def _commit(self, name: str):
+        """Accept with `name` as the chosen species (from the field or a recent
+        button) and bump it to the front of the recents list."""
+        name = (name or "").strip()
+        if not name:
             return
         self._chosen = name
+        remember_recent_species(name)
         self.accept()
 
     def chosen_name(self) -> str:
