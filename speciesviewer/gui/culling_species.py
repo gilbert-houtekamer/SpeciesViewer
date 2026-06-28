@@ -18,8 +18,9 @@ import os
 
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
-    QPushButton, QCompleter, QFrame)
+    QPushButton, QCompleter, QFrame, QWidget, QMenu, QMessageBox)
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QCursor
 
 from engine.speciesclassification import SpeciesClassification, Level
 from utils.config import _config
@@ -116,6 +117,15 @@ def remember_recent_species(name: str):
     update_cache_gui_section(_RECENT_SECTION, _RECENT_KEY, recent[:_RECENT_MAX])
 
 
+def forget_recent_species(name: str):
+    """Drop `name` from the recents (e.g. a wrong/untested name typed by mistake)."""
+    name = (name or "").strip()
+    if not name:
+        return
+    recent = [r for r in load_recent_species() if r.lower() != name.lower()]
+    update_cache_gui_section(_RECENT_SECTION, _RECENT_KEY, recent[:_RECENT_MAX])
+
+
 class CullingSpeciesDialog(QDialog):
     """Assign a species name to one or more pictures during culling. Accepts
     NL / EN / scientific input with contains-match auto-complete and live
@@ -165,41 +175,72 @@ class CullingSpeciesDialog(QDialog):
         gbif_row.addStretch()
         layout.addLayout(gbif_row)
 
-        # Recent species — one click re-applies a recently used name to the
-        # selected pictures (no typing). Two columns, most-recent first.
-        recent = load_recent_species()
-        if recent:
-            sep = QFrame()
-            sep.setFrameShape(QFrame.Shape.HLine)
-            sep.setFrameShadow(QFrame.Shadow.Sunken)
-            layout.addWidget(sep)
-            layout.addWidget(QLabel("Recent species — click to apply:"))
-            grid = QGridLayout()
-            grid.setHorizontalSpacing(6)
-            grid.setVerticalSpacing(4)
-            for i, name in enumerate(recent):
-                b = QPushButton(name)
-                b.setToolTip(f"Set “{name}” for these picture(s)")
-                b.clicked.connect(lambda _=False, nm=name: self._commit(nm))
-                grid.addWidget(b, i // 2, i % 2)
-            layout.addLayout(grid)
+        # Recent species — left-click re-applies a name in one go; right-click
+        # removes a name from the list (e.g. an untested one typed by mistake).
+        # Built into a container so it can be rebuilt in place after a removal.
+        self._recent_sep = QFrame()
+        self._recent_sep.setFrameShape(QFrame.Shape.HLine)
+        self._recent_sep.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(self._recent_sep)
+        self._recent_label = QLabel("Recent species — click to apply, right-click to remove:")
+        layout.addWidget(self._recent_label)
+        self._recent_container = QWidget()
+        self._recent_grid = QGridLayout(self._recent_container)
+        self._recent_grid.setContentsMargins(0, 0, 0, 0)
+        self._recent_grid.setHorizontalSpacing(6)
+        self._recent_grid.setVerticalSpacing(4)
+        layout.addWidget(self._recent_container)
+        self._build_recent_buttons()
 
-        # Cancel only — "Set species" now lives next to the field above.
+        # Close only — "Set species" lives next to the field above. Named "Close"
+        # (not "Cancel"): any recents you removed are already gone, so this button
+        # doesn't undo them — it just leaves without assigning a species.
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        self.cancel_btn = QPushButton("Cancel")
-        btn_row.addWidget(self.cancel_btn)
+        self.close_btn = QPushButton("Close")
+        self.close_btn.setToolTip("Leave without setting a species (removed recents stay removed)")
+        btn_row.addWidget(self.close_btn)
         layout.addLayout(btn_row)
 
         self.field.textChanged.connect(lambda: self._resolve(use_gbif=False))
         self.field.returnPressed.connect(self._on_ok)
         self.gbif_btn.clicked.connect(lambda: self._resolve(use_gbif=True))
         self.ok_btn.clicked.connect(self._on_ok)
-        self.cancel_btn.clicked.connect(self.reject)
+        self.close_btn.clicked.connect(self.reject)
 
         self._chosen = ""
+        self._is_known = False   # does the current field text resolve to a real species?
         self._resolve(use_gbif=False)
         self.field.setFocus()
+
+    def _build_recent_buttons(self):
+        """(Re)fill the recent-species grid from the persisted list. Two columns,
+        most-recent first; hidden entirely when there are no recents."""
+        while self._recent_grid.count():
+            item = self._recent_grid.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        recent = load_recent_species()
+        for widget in (self._recent_sep, self._recent_label, self._recent_container):
+            widget.setVisible(bool(recent))
+        for i, name in enumerate(recent):
+            b = QPushButton(name)
+            b.setToolTip(f"Click to set “{name}”; right-click to remove from recents")
+            b.clicked.connect(lambda _=False, nm=name: self._commit(nm))
+            b.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            b.customContextMenuRequested.connect(
+                lambda _pos, nm=name: self._remove_recent(nm))
+            self._recent_grid.addWidget(b, i // 2, i % 2)
+        self.adjustSize()   # shrink/grow the dialog to the new row count
+
+    def _remove_recent(self, name: str):
+        """Right-click menu on a recent button → forget that name."""
+        menu = QMenu(self)
+        act = menu.addAction(f"Remove “{name}” from recents")
+        if menu.exec(QCursor.pos()) == act:
+            forget_recent_species(name)
+            self._build_recent_buttons()
 
     def _resolve(self, use_gbif: bool):
         """Show how the typed name resolves against the species collection.
@@ -207,6 +248,7 @@ class CullingSpeciesDialog(QDialog):
         text = self.field.text().strip()
         if not text or self._sc is None:
             self.feedback.setText("")
+            self._is_known = False
             return
         # Local lookup first (no network) — runs on every keystroke.
         try:
@@ -219,15 +261,18 @@ class CullingSpeciesDialog(QDialog):
             nl = props.get("DutchName", "") or "—"
             en = props.get("EnglishName", "") or "—"
             self.feedback.setText(f"✓ <b>{sci}</b>  (NL: {nl} / EN: {en})")
+            self._is_known = True
             return
         if sci:
             self.feedback.setText(f"✓ recognised as <b>{sci}</b>")
+            self._is_known = True
             return
         # Not local. Only hit GBIF on explicit request, with a real HTTP call so
         # we can tell 'no match' from 'couldn't connect'.
         if not use_gbif:
             self.feedback.setText("⚠️ not in your species list — "
                                   "will be stored as typed  (try Check online)")
+            self._is_known = False
             return
         self.feedback.setText("⏳ checking GBIF…")
         QApplication.processEvents()
@@ -245,12 +290,15 @@ class CullingSpeciesDialog(QDialog):
             else:
                 self.feedback.setText(f"✓ found in GBIF: <b>{gname}</b> "
                                       f"(couldn't add locally) — will be stored")
+            self._is_known = True
         elif status == "unreachable":
             self.feedback.setText("⚠️ couldn't reach GBIF (no internet?) — "
                                   "will be stored as typed")
+            self._is_known = False
         else:
             self.feedback.setText("⚠️ not a known species (not in your list, "
                                   "not in GBIF) — will be stored as typed")
+            self._is_known = False
 
     def _add_to_collection(self, name):
         """Resolve `name` via the species infrastructure (GBIF backbone +
@@ -286,6 +334,27 @@ class CullingSpeciesDialog(QDialog):
         if not name:
             self.feedback.setText("⚠️ Type a name, click a recent one, or Cancel.")
             return
+        # Guard against committing a typo / unverified name to the pictures (and
+        # into the recents). Only the typed field is checked — recent buttons are
+        # already-trusted names and commit straight away.
+        if not self._is_known:
+            resp = QMessageBox.question(
+                self, "Unknown species name",
+                f"“{name}” isn’t in your species list and hasn’t been confirmed "
+                f"online.\n\n"
+                f"Yes — store it as typed.\n"
+                f"No — go back and correct the name (or use “Check online (GBIF)”).\n"
+                f"Cancel — close without setting a species.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.No)
+            if resp == QMessageBox.StandardButton.Cancel:
+                self.reject()
+                return
+            if resp != QMessageBox.StandardButton.Yes:   # No → fix the name, stay open
+                self.field.setFocus()
+                self.field.selectAll()
+                return
         self._commit(name)
 
     def _commit(self, name: str):
