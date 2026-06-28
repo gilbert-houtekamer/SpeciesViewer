@@ -836,6 +836,25 @@ class LargeImageView(QDialog):
         self._filmstrip_left.refresh_item(key)
         self._filmstrip_bottom.refresh_item(key)
 
+    def refresh_external(self, key: str):
+        """Reflect an edit made elsewhere (e.g. a picture culled from the grid)
+        while this viewer is open: refresh the filmstrips, and — if the edited
+        picture is the one on screen — its rating/colour widgets and frame colour.
+        Re-reads the item from the (shared) collection so the values are current.
+        Does NOT re-emit picture_changed, so there's no echo back to the host."""
+        self._refresh_strip_items(key)
+        if self._item is None or self._item.key != key:
+            return
+        try:
+            item = self._collection.item_for_key(key)
+        except (ValueError, KeyError):
+            return
+        self._item = item
+        self._stars.set_rating(item.rating)
+        self._color_sel.set_color(item.color)
+        self._rate_lbl.setText(f"Rate: {item.rate}" if item.rate is not None else "")
+        self._apply_frame_color(item.color or "")
+
     def _load_fullres(self):
         if getattr(self, "_view_tabs", None) is None or self._view_tabs.currentIndex() != 1:
             return

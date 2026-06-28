@@ -1025,6 +1025,7 @@ class ImagePreviewDialog(QDialog):
                     card = self._cards_by_key.get(k)
                     if card:
                         card.refresh()
+                    self._notify_large_view(k)
                 except (ValueError, IndexError):
                     pass
             progress.setValue(len(key_list))
@@ -1043,6 +1044,18 @@ class ImagePreviewDialog(QDialog):
         c = self._cards_by_key.get(key)
         if c:
             c.refresh()
+        self._notify_large_view(key)
+
+    def _notify_large_view(self, key):
+        """Push a grid-side edit (cull colour/rating) into the open large view so
+        the two windows stay in sync. The reverse direction (large → grid) already
+        flows through the large view's picture_changed signal."""
+        lv = getattr(self, "_large_view", None)
+        if lv is not None:
+            try:
+                lv.refresh_external(key)
+            except RuntimeError:
+                pass   # large view was closed/destroyed
 
     def _cull_keys_target(self):
         """Selection if any, else the focused picture — what 's'/'c' act on."""
