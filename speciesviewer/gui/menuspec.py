@@ -19,6 +19,7 @@ from settings.reposettings import RepoSettingsDialog
 from settings.speciessettings import SpeciesSettingsDialog
 from settings.dbsettings import DatabaseSettingsDialog
 from settings.rawsettings import RawProcessingDialog
+from settings.locationsettings import LocationSettingsDialog
 from dialogs.setting import AboutDialog
 from utils.batch_config import generate_svconfig_ini
 from engine.statemachine import StateMachine
@@ -1105,6 +1106,9 @@ def build_menu_spec(main_window):
             ),
             "Decode Quality…": MenuSpec(
                 callback=lambda: RawProcessingDialog(main_window).exec(),
+            ),
+            "Location Settings…": MenuSpec(
+                callback=lambda: LocationSettingsDialog(main_window).exec(),
             ),
             f"{MenuSpec.separator()}_settings_caches": None,
             "Manage Caches…": manage_caches,

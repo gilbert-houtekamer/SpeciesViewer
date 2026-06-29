@@ -21,6 +21,33 @@ logger = logging.getLogger("speciesviewer")
 # Nominatim requires a descriptive User-Agent identifying the app + a contact.
 _USER_AGENT = "SpeciesViewer/1.0 (gilbert@houtekamer.com)"
 
+# Machine-config home for the user-tunable lookup options (Settings ▸ Location
+# Settings). Read live so a change takes effect on the next 'Get location'. Kept
+# here (not in the PyQt settings module) so this file stays import-light + the
+# standalone probe can read them too.
+_CONFIG_SECTION = "geolocate"
+_CONFIG_DEFAULTS = {"lang": "en", "zoom": 14, "overwrite": False}
+
+
+def load_geolocate_config() -> dict:
+    """{'lang', 'zoom', 'overwrite'} from the machine config, with defaults."""
+    from utils.config import _config
+    return {
+        "lang": _config.get(_CONFIG_SECTION, "lang", fallback=_CONFIG_DEFAULTS["lang"]),
+        "zoom": _config.getint(_CONFIG_SECTION, "zoom", fallback=_CONFIG_DEFAULTS["zoom"]),
+        "overwrite": _config.getboolean(_CONFIG_SECTION, "overwrite",
+                                        fallback=_CONFIG_DEFAULTS["overwrite"]),
+    }
+
+
+def save_geolocate_config(cfg: dict) -> None:
+    from utils.config import _config, persist_config
+    if not _config.has_section(_CONFIG_SECTION):
+        _config.add_section(_CONFIG_SECTION)
+    for k, v in cfg.items():
+        _config.set(_CONFIG_SECTION, k, str(v))
+    persist_config()
+
 
 def gps_decimal(path):
     """Signed decimal (lat, lon) read from a file's GPS (via exiftool's Composite,
@@ -342,8 +369,8 @@ def _write_compare_csv(rows):
     return str(path)
 
 
-def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttle_s=1.1,
-                        dry_run=None, overwrite=False, on_done=None):
+def run_geolocate_batch(parent, targets, *, lang=None, zoom=None, min_move_m=100.0,
+                        throttle_s=1.1, dry_run=None, overwrite=None, on_done=None):
     """Reverse-geocode and write location for an ordered list of targets, on a
     worker thread behind a modal progress dialog with Cancel.
 
@@ -352,8 +379,11 @@ def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttl
     (so the dialog shows immediately instead of the UI freezing while ~hundreds of
     per-file reads run). Dedup-by-distance: consecutive shots within `min_move_m`
     of the last queried fix reuse its result. Nominatim queries are throttled.
+    lang / zoom / overwrite default to the user's Location Settings (the
+    [geolocate] config) when left None, so a settings change takes effect on the
+    next run; callers can still pass explicit values.
     dry_run (default DRY_RUN_COMPARE): write a comparison CSV instead of the XMP.
-    overwrite=False: only fill empty location fields, never replace existing.
+    overwrite False: only fill empty location fields, never replace existing.
     on_done(): called after writes complete but BEFORE dlg.close() — use this to
     refresh UI from the just-written XMP while still inside the exec() loop so
     Qt repaints the caller's window on dialog close."""
@@ -362,6 +392,13 @@ def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttl
     import os
     import time
 
+    cfg = load_geolocate_config()
+    if lang is None:
+        lang = cfg["lang"]
+    if zoom is None:
+        zoom = cfg["zoom"]
+    if overwrite is None:
+        overwrite = cfg["overwrite"]
     if dry_run is None:
         dry_run = DRY_RUN_COMPARE
     targets = list(targets)
@@ -411,7 +448,7 @@ def run_geolocate_batch(parent, targets, *, lang="en", min_move_m=100.0, throttl
                 else:
                     if queried > 0:
                         time.sleep(throttle_s)              # honour ≤1 req/s
-                    res = reverse_geocode(*latlon, lang=lang)
+                    res = reverse_geocode(*latlon, lang=lang, zoom=zoom)
                     fields = place_fields(res)
                     addr = (res or {}).get("address", {})
                     queried += 1
