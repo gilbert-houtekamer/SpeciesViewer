@@ -1236,6 +1236,7 @@ class ImagePreviewDialog(QDialog):
             write_gps(files, clip["lat"], clip["lon"])
             if has_place:
                 write_location_batch(files, fields, overwrite=True)
+                self._collection.note_location_written(k, fields)
             self._collection.note_gps_written(k)
             card = self._cards_by_key.get(k)
             if card:

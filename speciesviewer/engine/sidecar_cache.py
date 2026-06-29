@@ -12,7 +12,8 @@ from pathlib import Path
 logger = logging.getLogger("speciesviewer")
 
 _FILENAME = ".sv_sidecar_cache.json"
-_VERSION = 2   # v2 adds the location text tags (Location/City/Municipality/State/Country)
+_VERSION = 3   # v2 added location text; v3 adds CountryCode so the cached row is a
+               # complete substitute for a read_location() exiftool spawn
 
 # Tags exiftool reads from each XMP — must stay in sync with usage in sidecar_provider.
 _CACHE_TAGS = [
@@ -20,9 +21,10 @@ _CACHE_TAGS = [
     "-DateTimeOriginal", "-ISO", "-FNumber", "-ExposureTime", "-FocalLength",
     "-Make", "-Model", "-LensModel", "-SubjectDistance", "-ImageWidth", "-ImageHeight",
     "-GPSPosition", "-GPSLatitude", "-GPSLongitude",
-    # Reverse-geocoded place text, so the grid card's location line costs no extra
-    # I/O (rides the one batched read). Municipality reads fine without -config.
-    "-Location", "-City", "-Municipality", "-State", "-Country",
+    # Reverse-geocoded place text, so the grid card's location line AND the large
+    # viewer's per-step read_location() cost no exiftool spawn (they ride this one
+    # batched read). Municipality reads fine without -config.
+    "-Location", "-City", "-Municipality", "-State", "-Country", "-CountryCode",
 ]
 
 

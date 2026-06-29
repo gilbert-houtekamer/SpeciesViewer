@@ -922,7 +922,16 @@ class LargeImageView(QDialog):
         # panel there means Qt repaints the labels when the dialog closes —
         # the normal post-exec() call site is too late for an immediate repaint.
         run_geolocate_batch(self, [(label, src, files)],
-                            on_done=lambda: self._show_location(key))
+                            on_done=lambda: self._after_geocode(key, src))
+
+    def _after_geocode(self, key, src):
+        """Refresh the row + panel after a single Get-location write. read_location
+        is row-served, so re-read this one file once (its mtime just changed) and
+        push it into the cached row before showing it."""
+        from gui.geolocate import read_location_fields
+        if src:
+            self._collection.note_location_written(key, read_location_fields(src))
+        self._show_location(key)
 
     def _edit_location_current(self):
         """Manually type the location for the picture on screen — for places
@@ -948,6 +957,7 @@ class LargeImageView(QDialog):
             return
         from gui.geolocate import write_location_batch
         n = write_location_batch(files, changed, overwrite=True)
+        self._collection.note_location_written(key, changed)   # keep cached row fresh
         self._show_location(key)
         place = changed.get("Location") or changed.get("City") or ""
         logger.info(f"Edit location: wrote {place!r} to {n} file(s) for this picture.")

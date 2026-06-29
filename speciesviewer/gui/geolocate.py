@@ -71,9 +71,28 @@ def gps_decimal(path):
         return None
 
 
+# Per-step read memo: {normpath: (mtime_ns, fields)}. Keyed on the file's mtime so
+# any write (exiftool replaces the file, bumping mtime) auto-invalidates the entry
+# on the next read — a self-invalidating cache, no manual eviction needed. Spares
+# the trip/preview large viewer an exiftool spawn when you step back to a picture
+# (the sidecar viewer serves this from its row cache and never reaches here).
+_LOCATION_READ_CACHE: dict = {}
+
+
 def read_location_fields(path):
     """Read the location text already in a file's XMP (the same tags we write),
-    so the viewer can show it without the CSV. Empty strings when absent."""
+    so the viewer can show it without the CSV. Empty strings when absent.
+    Memoised by path+mtime so repeated reads of an unchanged file are free."""
+    import os
+    key = os.path.normcase(os.path.normpath(str(path)))
+    try:
+        mtime = os.stat(path).st_mtime_ns
+    except OSError:
+        mtime = None
+    if mtime is not None:
+        hit = _LOCATION_READ_CACHE.get(key)
+        if hit is not None and hit[0] == mtime:
+            return dict(hit[1])     # copy — callers must not mutate the cached dict
     out = subprocess.run(
         ["exiftool", "-config", _exiftool_config(), "-charset", "utf8", "-j",
          "-location", "-city", "-state", "-country", "-countrycode",
@@ -81,7 +100,7 @@ def read_location_fields(path):
         capture_output=True, text=True, encoding="utf-8").stdout
     rows = json.loads(out) if out.strip() else []
     d = rows[0] if rows else {}
-    return {
+    fields = {
         "Location": d.get("Location", "") or "",
         "City": d.get("City", "") or "",
         "Municipality": d.get("Municipality", "") or "",
@@ -89,6 +108,9 @@ def read_location_fields(path):
         "Country": d.get("Country", "") or "",
         "CountryCode": d.get("CountryCode", "") or "",
     }
+    if mtime is not None:
+        _LOCATION_READ_CACHE[key] = (mtime, dict(fields))
+    return fields
 
 
 def reverse_geocode(lat, lon, *, lang="en", zoom=14, timeout=10):

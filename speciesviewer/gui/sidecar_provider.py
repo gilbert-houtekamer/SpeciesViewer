@@ -350,9 +350,20 @@ class SidecarCollection(PictureCollection):
         g = self._groups.get(key, {})
         return [g[k] for k in ("xmp", "jpg") if g.get(k)]
 
+    _LOC_KEYS = ("Location", "City", "Municipality", "State", "Country", "CountryCode")
+
     def read_location(self, key: str) -> dict:
+        """Location text from the in-memory (cache-backed) row — NO exiftool spawn
+        per navigation step. The row carries every location tag from the one
+        batched sidecar-cache read; writes keep it fresh via note_location_written.
+        Falls back to a direct read only for a JPG-only group with no sidecar."""
+        g = self._groups.get(key, {})
+        xmp = g.get("xmp")
+        if xmp:
+            r = self._rows.get(_norm(xmp), {})
+            return {k: str(r.get(k, "") or "") for k in self._LOC_KEYS}
         from gui.geolocate import read_location_fields
-        src = self._groups.get(key, {}).get("xmp") or self._source_file(key)
+        src = self._source_file(key)
         return read_location_fields(src) if src else {}
 
     def note_gps_written(self, key: str) -> None:
