@@ -854,6 +854,7 @@ class LargeImageView(QDialog):
         self._color_sel.set_color(item.color)
         self._rate_lbl.setText(f"Rate: {item.rate}" if item.rate is not None else "")
         self._apply_frame_color(item.color or "")
+        self._show_location(key)   # a grid-side Edit location / Paste GPS changed the XMP
 
     def _load_fullres(self):
         if getattr(self, "_view_tabs", None) is None or self._view_tabs.currentIndex() != 1:
@@ -922,6 +923,50 @@ class LargeImageView(QDialog):
         # the normal post-exec() call site is too late for an immediate repaint.
         run_geolocate_batch(self, [(label, src, files)],
                             on_done=lambda: self._show_location(key))
+
+    def _edit_location_current(self):
+        """Manually type the location for the picture on screen — for places
+        Nominatim can't supply. Writes only changed, non-empty fields to its XMP."""
+        if not self._keys:
+            return
+        key = self._keys[self._index]
+        files = self._collection.location_targets(key)
+        if not files:
+            logger.info("Edit location: no writable files for this picture.")
+            return
+        try:
+            current = self._collection.read_location(key) or {}
+        except Exception:
+            current = {}
+        from gui.location_edit import edit_location_dialog
+        edited = edit_location_dialog(self, current, 1)
+        if edited is None:
+            return
+        changed = {k: v for k, v in edited.items() if v and v != (current.get(k) or "")}
+        if not changed:
+            logger.info("Edit location: nothing changed.")
+            return
+        from gui.geolocate import write_location_batch
+        n = write_location_batch(files, changed, overwrite=True)
+        self._show_location(key)
+        place = changed.get("Location") or changed.get("City") or ""
+        logger.info(f"Edit location: wrote {place!r} to {n} file(s) for this picture.")
+
+    def contextMenuEvent(self, event):
+        """Right-click anywhere in the viewer → location actions ('L' still does
+        Get location). Child widgets with their own menu (the description box)
+        keep theirs; this only fires for clicks they don't consume."""
+        from PyQt6.QtWidgets import QMenu
+        if not self._keys:
+            return
+        menu = QMenu(self)
+        act_geo = menu.addAction("Get location  (from GPS)")
+        act_edit = menu.addAction("Edit location…  (type a place name)")
+        chosen = menu.exec(event.globalPos())
+        if chosen == act_geo:
+            self._geolocate_current()
+        elif chosen == act_edit:
+            self._edit_location_current()
 
     def _cull_open_rating(self):
         # 'c' with no selection → act on the picture being viewed.

@@ -105,6 +105,7 @@ class SidecarItem(PictureItem):
     can_edit_description = True
     can_edit_headline = False
     can_edit_species = True
+    show_location_line = True   # culling grid: place line under the species name
 
     def __init__(self, collection: "SidecarCollection", stem: str):
         self._c = collection
@@ -166,7 +167,18 @@ class SidecarItem(PictureItem):
 
     @property
     def has_gps(self) -> bool:
-        return self._stem in self._c._gps_stems
+        return self._stem in self._c._gps_by_stem
+
+    @property
+    def place_fields(self) -> dict:
+        r = self._row
+        return {k: str(r.get(k, "") or "")
+                for k in ("Location", "City", "Municipality", "State")}
+
+    @property
+    def gps_text(self) -> str:
+        ll = self._c._gps_by_stem.get(self._stem)
+        return f"{ll[0]:.5f}, {ll[1]:.5f}" if ll else ""
 
     @property
     def file_exts(self) -> list[str]:
@@ -251,13 +263,14 @@ class SidecarCollection(PictureCollection):
             [g["xmp"] for g in self._groups.values() if g.get("xmp")])
         # Batch-read GPS from each picture's best source (XMP if present, else
         # RAW). At the culling stage GPS lives in the RAW's EXIF, not the XMP
-        # sidecar, so the sidecar cache alone can't populate the GPS badge.
-        # One exiftool call covers all files.
-        self._gps_stems: frozenset[str] = self._build_gps_stems()
+        # sidecar, so the sidecar cache alone can't populate the GPS badge. One
+        # exiftool call covers all files; we keep the coordinates (not just
+        # presence) so the card's location line can show them with no extra I/O.
+        self._gps_by_stem: dict[str, tuple] = self._build_gps_map()
         self.rebuild()
 
-    def _build_gps_stems(self) -> frozenset[str]:
-        """Return the set of stems that have GPS in any source file.
+    def _build_gps_map(self) -> dict[str, tuple]:
+        """{stem: (lat, lon)} for every stem with GPS in any source file.
         Uses gps_source() (XMP preferred, else RAW) so the RAW's EXIF GPS is
         found even when the XMP sidecar has none (common before geocoding)."""
         from gui.geolocate import batch_gps
@@ -267,12 +280,14 @@ class SidecarCollection(PictureCollection):
         }
         src_by_stem = {s: p for s, p in src_by_stem.items() if p}
         if not src_by_stem:
-            return frozenset()
+            return {}
         gps_result = batch_gps([str(p) for p in src_by_stem.values()])
-        return frozenset(
-            s for s, p in src_by_stem.items()
-            if os.path.normcase(os.path.normpath(str(p))) in gps_result
-        )
+        out = {}
+        for s, p in src_by_stem.items():
+            ll = gps_result.get(os.path.normcase(os.path.normpath(str(p))))
+            if ll:
+                out[s] = ll
+        return out
 
     # ── ordering ──────────────────────────────────────────────────────────
     def rebuild(self, keys: list[str] | None = None) -> None:
@@ -292,7 +307,7 @@ class SidecarCollection(PictureCollection):
         return []
 
     def no_gps_keys(self) -> list[str]:
-        return [s for s in self.all_keys() if not SidecarItem(self, s).has_gps]
+        return [s for s in self.all_keys() if s not in self._gps_by_stem]
 
     def color_keys(self, colors: set[str]) -> list[str]:
         wanted = {c.lower() for c in colors}
@@ -341,10 +356,34 @@ class SidecarCollection(PictureCollection):
         return read_location_fields(src) if src else {}
 
     def note_gps_written(self, key: str) -> None:
-        """A paste-GPS just wrote GPS into this key's XMP — add it to the cached
-        GPS set so has_gps / the missing-GPS badge clear without a rescan."""
-        if key in self._groups and key not in self._gps_stems:
-            self._gps_stems = self._gps_stems | {key}
+        """A paste-GPS just wrote GPS into this key's XMP — record its coordinates
+        so has_gps / the missing-GPS badge / the card's GPS line update without a
+        rescan. Re-reads just this one file's GPS (the paste didn't return it)."""
+        if key in self._groups and key not in self._gps_by_stem:
+            from gui.geolocate import gps_decimal
+            ll = gps_decimal(self.gps_source(key))
+            if ll:
+                self._gps_by_stem[key] = ll
+
+    def note_location_written(self, key: str, fields: dict) -> None:
+        """An Edit/Get-location write just put these place fields into the key's
+        XMP — patch the in-memory row + the on-disk cache so the card's location
+        line updates with no re-read (the write already changed the file)."""
+        g = self._groups.get(key, {})
+        xmp = g.get("xmp")
+        if not xmp:
+            return
+        xmp = Path(xmp)
+        row = self._rows.setdefault(_norm(xmp), {"SourceFile": str(xmp)})
+        folder = xmp.parent
+        if folder not in self._caches:
+            from engine.sidecar_cache import SidecarCache
+            self._caches[folder] = SidecarCache(folder)
+        for k, v in fields.items():
+            if v:
+                row[k] = v
+                self._caches[folder].put_field(xmp, k, v)
+        self._caches[folder].save()
 
     # ── image + write helpers ───────────────────────────────────────────────
     def _source_file(self, stem: str):

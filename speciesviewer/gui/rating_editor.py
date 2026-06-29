@@ -323,6 +323,17 @@ class PictureCard(QFrame):
         self._lbl_name.setWordWrap(True)
         vbox.addWidget(self._lbl_name)
 
+        # Location line (place name / coordinates / "No GPS data available") —
+        # only for providers that carry the data for free (the culling grid).
+        self._lbl_location = None
+        if getattr(item, "show_location_line", False):
+            self._lbl_location = QLabel()
+            self._lbl_location.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._lbl_location.setWordWrap(True)
+            self._lbl_location.setStyleSheet("font-size: 9px; color: #2e7d32;")
+            vbox.addWidget(self._lbl_location)
+            self._refresh_location_line()
+
         # Origin tag. Master cards always carry one ("— from master (800x599) —")
         # since they're read-only references; trip cards get a matching
         # "— from trip (2000x1500) —" only in Trip+Master scope where the two
@@ -459,7 +470,20 @@ class PictureCard(QFrame):
         self._stars.set_rating(self._item.rating)
         self._color_sel.set_color(self._item.color)
         self.update_rate_display(self._item.rate)
+        self._refresh_location_line()
         self._refresh_status_badges()
+
+    def _refresh_location_line(self):
+        """Set the location line from the live item; muted grey when there's no
+        place/GPS, normal green when there is."""
+        if self._lbl_location is None:
+            return
+        text = self._item.location_line()
+        muted = text == "No GPS data available"
+        self._lbl_location.setText(text)
+        self._lbl_location.setStyleSheet(
+            "font-size: 9px; color: #999; font-style: italic;" if muted
+            else "font-size: 9px; color: #2e7d32;")
 
     def _on_rating_changed(self, n: int):
         self._item.set_rating(n)             # writes + recomputes Rate via provider

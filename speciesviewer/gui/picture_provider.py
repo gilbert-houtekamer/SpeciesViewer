@@ -142,6 +142,37 @@ class PictureItem(ABC):
     def has_gps(self) -> bool:          # False → preview shows the missing-GPS badge
         return True
 
+    # ── location line (grid card, opt-in) ────────────────────────────────────
+    # show_location_line → the card draws a place line under the species name.
+    # The data must be free (already loaded), so only providers that carry it
+    # cheaply turn it on (e.g. the sidecar/culling collection from its cache).
+    show_location_line: bool = False
+
+    @property
+    def place_fields(self) -> dict:     # {Location, City, Municipality, State}
+        return {}                       # already-read place text; {} = none
+
+    @property
+    def gps_text(self) -> str:          # compact coordinates, e.g. "51.32989, 3.72910"
+        return ""
+
+    def location_line(self) -> str:
+        """One line for the card, by preference: Location → 'City · Municipality ·
+        State' → GPS coordinates → 'No GPS data available'. (Country is left off —
+        too long for the caption, and the species grid is usually one country.)"""
+        f = self.place_fields
+        loc = (f.get("Location") or "").strip()
+        if loc:
+            return loc
+        admin = " · ".join(p for p in (f.get("City"), f.get("Municipality"),
+                                       f.get("State")) if p and str(p).strip())
+        if admin:
+            return admin
+        gps = (self.gps_text or "").strip()
+        if gps:
+            return gps
+        return "No GPS data available"
+
     @property
     def error_msg(self) -> str:         # species/headline warning (preview only)
         return ""
@@ -245,4 +276,10 @@ class PictureCollection(ABC):
         """Tell the collection that `key` just had GPS written to its XMP (e.g. a
         paste-GPS), so any cached has-GPS state updates without a full rescan.
         No-op by default; overridden where has_gps is cached."""
+        return None
+
+    def note_location_written(self, key: str, fields: dict) -> None:
+        """Tell the collection that `key` just had these location fields written
+        to its XMP, so the cached row (and the card's location line) updates
+        without re-reading. No-op by default; overridden where rows are cached."""
         return None

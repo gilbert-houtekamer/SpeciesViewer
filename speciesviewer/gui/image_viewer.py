@@ -899,6 +899,7 @@ class ImagePreviewDialog(QDialog):
         act_rate = menu.addAction(f"Set rating…  ({lbl})")
         act_fullres = menu.addAction(f"Full resolution  ({lbl})")
         act_geo = menu.addAction(f"Get location  ({lbl})")
+        act_editloc = menu.addAction(f"Edit location…  ({lbl})")
         menu.addSeparator()
         # Copy GPS + place from THIS one picture; paste into the selection. Lets a
         # no-GPS shot inherit a neighbour's location when the sv2 backfill can't
@@ -920,6 +921,8 @@ class ImagePreviewDialog(QDialog):
             self._cull_full_res(keys_for_action)
         elif chosen == act_geo:
             self._cull_geolocate(keys_for_action)
+        elif chosen == act_editloc:
+            self._edit_location(keys_for_action)
         elif chosen == act_copy_gps:
             self._copy_gps(key)
         elif chosen == act_paste_gps:
@@ -1130,7 +1133,66 @@ class ImagePreviewDialog(QDialog):
             logger.info("Get location: no GPS / writable files in the selection.")
             return
         from gui.geolocate import run_geolocate_batch
-        run_geolocate_batch(self, targets)
+        run_geolocate_batch(self, targets,
+                            on_done=lambda: self._refresh_location_after_geocode(ordered))
+
+    def _refresh_location_after_geocode(self, keys):
+        """After 'Get location' wrote place text into the XMP, refresh the cards'
+        location lines from the just-written files in ONE batched read (so the
+        new place name shows live without re-opening the viewer)."""
+        import os
+        from gui.geolocate import read_location_fields_batch
+        src_by_key = {k: self._collection.gps_source(k) for k in keys}
+        src_by_key = {k: s for k, s in src_by_key.items() if s}
+        if not src_by_key:
+            return
+        read = read_location_fields_batch(list(src_by_key.values()))
+        for k, src in src_by_key.items():
+            fields = read.get(os.path.normcase(os.path.normpath(str(src))), {})
+            if fields:
+                self._collection.note_location_written(k, fields)
+            card = self._cards_by_key.get(k)
+            if card:
+                card.refresh()
+            self._notify_large_view(k)
+
+    def _edit_location(self, keys):
+        """Manually type a Location (and City/State/Country) into the XMP for the
+        selected pictures — for places Nominatim can't supply (an unmapped
+        reserve, so 'Get location' only finds the village/road). Writes only the
+        fields the user changed; blank fields leave the existing value as-is."""
+        keys = [k for k in keys if k]
+        if not keys:
+            return
+        try:
+            current = self._collection.read_location(keys[0]) or {}
+        except Exception:
+            current = {}
+        from gui.location_edit import edit_location_dialog
+        edited = edit_location_dialog(self, current, len(keys))
+        if edited is None:
+            return
+        changed = {k: v for k, v in edited.items() if v and v != (current.get(k) or "")}
+        if not changed:
+            logger.info("Edit location: nothing changed.")
+            return
+        files = []
+        for k in keys:
+            files.extend(self._collection.location_targets(k))
+        if not files:
+            logger.info("Edit location: no writable files in the selection.")
+            return
+        from gui.geolocate import write_location_batch
+        n = write_location_batch(files, changed, overwrite=True)
+        for k in keys:
+            self._collection.note_location_written(k, changed)
+            card = self._cards_by_key.get(k)
+            if card:
+                card.refresh()
+            self._notify_large_view(k)
+        place = changed.get("Location") or changed.get("City") or ""
+        logger.info(f"Edit location: wrote {place!r} to {n} file(s) "
+                    f"across {len(keys)} picture(s).")
 
     # ── Copy / paste GPS + place ──────────────────────────────────────────────
     _PLACE_FIELDS = ("Location", "City", "State", "Country", "CountryCode", "Municipality")
