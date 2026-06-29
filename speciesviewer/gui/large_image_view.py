@@ -531,15 +531,17 @@ class LargeImageView(QDialog):
         stage_v.addLayout(stage_h)
         stage_v.addStretch(1)
 
-        # Tabbed centre: "Fit" (the scaled preview) + "100%" (full-res from the
-        # RAW, decoded lazily and cached). The 1:1 point persists across the group.
+        # Tabbed centre: "Fit" (the scaled preview) + the full-res tab (decoded
+        # from the RAW, lazily, and cached). The full-res tab is labelled with the
+        # configured Render scale (e.g. "80%"), since that is the fraction of the
+        # full sensor it decodes to. The 1:1 point persists across the group.
         self._fullres_point = (0.5, 0.5)
         self._fr_loader = AsyncImageLoader(self)
         self._fullres_view = _FullResView()
         self._fullres_view.point_changed.connect(self._on_fullres_point_changed)
         self._view_tabs = QTabWidget()
         self._view_tabs.addTab(self._stage, "Fit")
-        self._view_tabs.addTab(self._fullres_view, "100%")
+        self._view_tabs.addTab(self._fullres_view, self._fullres_scale_label())
         self._view_tabs.currentChanged.connect(self._on_view_tab_changed)
 
         self._splitter.addWidget(self._view_tabs)
@@ -856,9 +858,18 @@ class LargeImageView(QDialog):
         self._apply_frame_color(item.color or "")
         self._show_location(key)   # a grid-side Edit location / Paste GPS changed the XMP
 
+    def _fullres_scale_label(self):
+        """Label for the full-res tab — the configured Render scale (% of sensor)."""
+        try:
+            from utils.config import _config
+            return f"{_config.getint('fullres', 'scale', fallback=80)}%"
+        except Exception:
+            return "100%"
+
     def _load_fullres(self):
         if getattr(self, "_view_tabs", None) is None or self._view_tabs.currentIndex() != 1:
             return
+        self._view_tabs.setTabText(1, self._fullres_scale_label())  # reflect a changed setting
         if not self._keys or self._item is None:
             return
         key = self._keys[self._index]

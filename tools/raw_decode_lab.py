@@ -51,9 +51,20 @@ def _decode(path, params, denoise):
         rgb = raw.postprocess(**params)
     info = f"{rgb.shape[1]}x{rgb.shape[0]}  |  decode {time.time() - t:.1f}s"
 
+    scale = denoise.get("scale", 100)
+    if scale and scale != 100:  # downscale the FULL decode before crop/denoise
+        import cv2
+        t2 = time.time()
+        h, w = rgb.shape[:2]
+        nw, nh = max(1, round(w * scale / 100)), max(1, round(h * scale / 100))
+        rgb = cv2.resize(rgb, (nw, nh), interpolation=cv2.INTER_AREA)
+        info += f"  |  scale {scale}% → {nw}x{nh} {time.time() - t2:.1f}s"
+
     if denoise["crop"]:  # center crop so OpenCV/BM3D iterate fast
         h, w = rgb.shape[:2]
-        c = denoise["crop"]
+        # crop size is expressed in ORIGINAL pixels, so scale it to the (already
+        # downscaled) image — same source region is framed regardless of scale %
+        c = max(1, round(denoise["crop"] * scale / 100))
         y0, x0 = max(0, h // 2 - c // 2), max(0, w // 2 - c // 2)
         rgb = rgb[y0:y0 + c, x0:x0 + c].copy()
         info += f"  |  crop {rgb.shape[1]}x{rgb.shape[0]}"
@@ -133,6 +144,9 @@ class RecipePane(QWidget):
 
         # denoise knobs
         dn = QHBoxLayout()
+        self.scale = QSpinBox(); self.scale.setRange(10, 100); self.scale.setSingleStep(5)
+        self.scale.setSuffix("%"); self.scale.setValue(defaults["scale"])
+        dn.addWidget(QLabel("scale")); dn.addWidget(self.scale)
         self.denoise_mode = QComboBox()
         self.denoise_mode.addItems(["None", "OpenCV NL"] + (["BM3D"] if _HAS_BM3D else []))
         self.denoise_mode.setCurrentText(defaults["denoise"])
@@ -183,7 +197,8 @@ class RecipePane(QWidget):
 
     def denoise(self, crop):
         return dict(mode=self.denoise_mode.currentText(), h=self.h.value(),
-                    hColor=self.hColor.value(), sigma=self.sigma.value(), crop=crop)
+                    hColor=self.hColor.value(), sigma=self.sigma.value(),
+                    scale=self.scale.value(), crop=crop)
 
     def recipe_str(self):
         algo = self.demosaic.currentText()
@@ -191,6 +206,8 @@ class RecipePane(QWidget):
         thr_str = f"{thr}⚠broken" if thr > 0 and algo in self._NOISE_THR_BROKEN else str(thr)
         s = (f"{algo} | FBDD={self.fbdd.currentText()} | "
              f"noise_thr={thr_str} | median={self.median.value()}")
+        if self.scale.value() != 100:
+            s += f" | scale={self.scale.value()}%"
         m = self.denoise_mode.currentText()
         if m == "OpenCV NL":
             s += f" | NL-means h={self.h.value()} hC={self.hColor.value()}"
@@ -240,7 +257,7 @@ class Lab(QWidget):
 
         # Two panes
         a_def = dict(demosaic="DHT", fbdd="Full", noise_thr=150, median=0, bright=1.0,
-                     no_auto_bright=True, denoise="None", h=6, hColor=6, sigma=15)
+                     no_auto_bright=True, denoise="None", h=6, hColor=6, sigma=15, scale=80)
         b_def = dict(a_def, denoise="OpenCV NL" if not _HAS_BM3D else "BM3D")
         self.paneA = RecipePane("A", a_def)
         self.paneB = RecipePane("B", b_def)

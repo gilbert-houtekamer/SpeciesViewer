@@ -31,15 +31,18 @@ def _read_fullres_config() -> dict:
         from utils.config import _config
         sec = "fullres"
         return {
-            "algorithm":  _config.get    (sec, "algorithm",  fallback="DHT"),
-            "fbdd":       _config.get    (sec, "fbdd",       fallback="Off"),
-            "bright":     _config.getfloat(sec, "bright",   fallback=1.0),
-            "denoise":    _config.get    (sec, "denoise",    fallback="Off"),
-            "denoise_h":  _config.getint (sec, "denoise_h",  fallback=3),
-            "denoise_hc": _config.getint (sec, "denoise_hc", fallback=3),
+            "algorithm":   _config.get       (sec, "algorithm",   fallback="DHT"),
+            "fbdd":        _config.get       (sec, "fbdd",        fallback="Off"),
+            "bright":      _config.getfloat  (sec, "bright",      fallback=1.0),
+            "auto_bright": _config.getboolean(sec, "auto_bright", fallback=True),
+            "scale":       _config.getint    (sec, "scale",       fallback=80),
+            "denoise":     _config.get       (sec, "denoise",     fallback="Off"),
+            "denoise_h":   _config.getint    (sec, "denoise_h",   fallback=3),
+            "denoise_hc":  _config.getint    (sec, "denoise_hc",  fallback=3),
         }
     except Exception:
         return {"algorithm": "DHT", "fbdd": "Off", "bright": 1.0,
+                "auto_bright": True, "scale": 80,
                 "denoise": "Off", "denoise_h": 3, "denoise_hc": 3}
 
 
@@ -50,7 +53,7 @@ def _postprocess_params():
     return dict(
         use_camera_wb=True,
         output_color=rawpy.ColorSpace.sRGB,
-        no_auto_bright=True,
+        no_auto_bright=not cfg["auto_bright"],
         bright=cfg["bright"],
         median_filter_passes=0,
         demosaic_algorithm=getattr(rawpy.DemosaicAlgorithm, cfg["algorithm"],
@@ -58,6 +61,24 @@ def _postprocess_params():
         fbdd_noise_reduction=getattr(rawpy.FBDDNoiseReductionMode, cfg["fbdd"],
                                      rawpy.FBDDNoiseReductionMode.Off),
     )
+
+
+def _apply_scale(rgb):
+    """Downscale the decoded image to the configured percentage (default 80%).
+    Decoding/denoising the result at <100% is both faster and visibly cleaner —
+    the demosaic and noise-reduction algorithms cope better with a slight
+    downsample than with the full sensor grid."""
+    try:
+        from utils.config import _config
+        scale = _config.getint("fullres", "scale", fallback=80)
+        if scale and scale != 100:
+            import cv2
+            h, w = rgb.shape[:2]
+            nw, nh = max(1, round(w * scale / 100)), max(1, round(h * scale / 100))
+            return cv2.resize(rgb, (nw, nh), interpolation=cv2.INTER_AREA)
+    except Exception as e:
+        logger.debug(f"Full-res scale skipped: {e}")
+    return rgb
 
 
 def _apply_denoise(rgb):
@@ -271,6 +292,7 @@ def ensure_fullres_jpeg(raw_path, cache_root, quality=90):
         out.parent.mkdir(parents=True, exist_ok=True)
         with rawpy.imread(str(raw_path)) as raw:
             rgb = raw.postprocess(**_postprocess_params())
+        rgb = _apply_scale(rgb)
         rgb = _apply_denoise(rgb)
         Image.fromarray(rgb).save(str(out), "JPEG", quality=quality)
         return out

@@ -7,7 +7,7 @@ live by qt/gui/fullres.py each time a RAW is decoded.
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QLabel,
     QComboBox, QDoubleSpinBox, QSpinBox, QRadioButton, QPushButton,
-    QButtonGroup, QDialogButtonBox, QFrame, QMessageBox,
+    QButtonGroup, QDialogButtonBox, QFrame, QMessageBox, QCheckBox,
 )
 from utils.config import _config, persist_config
 
@@ -17,26 +17,28 @@ _ALGORITHMS = ["DHT", "AHD", "VNG", "PPG", "LINEAR"]
 _FBDD      = ["Off", "Light", "Full"]
 _DENOISE   = ["Off", "OpenCV NL"]
 
-# (display_name, time_hint, algorithm, fbdd, denoise, h, hC, bright)
+# (display_name, time_hint, algorithm, fbdd, denoise, h, hC, bright, auto_bright)
 _PRESETS = [
-    ("Fast, basic",         "≈1 s/photo",   "DHT", "Off",   "Off",             3, 3, 1.0),
-    ("Fast with denoise",   "≈2 s/photo",   "DHT", "Off",   "OpenCV NL", 3, 6, 1.0),
-    ("More detail, slower", "≈3–4 s/photo", "DHT", "Light", "Off",             3, 3, 1.0),
-    ("Sharp and smoothest", "≈8 s/photo",   "DHT", "Full",  "OpenCV NL", 3, 6, 1.0),
+    ("Fast, basic",         "≈1 s/photo",   "DHT", "Off",   "Off",       3, 3, 1.0, True),
+    ("Fast with denoise",   "≈2 s/photo",   "DHT", "Off",   "OpenCV NL", 3, 6, 1.0, True),
+    ("More detail, slower", "≈3–4 s/photo", "DHT", "Light", "Off",       3, 3, 1.0, True),
+    ("Sharp and smoothest", "≈8 s/photo",   "DHT", "Full",  "OpenCV NL", 3, 6, 1.0, True),
 ]
 
 _DEFAULTS = dict(algorithm="DHT", fbdd="Off", denoise="Off",
-                 denoise_h=3, denoise_hc=3, bright=1.0)
+                 denoise_h=3, denoise_hc=3, bright=1.0, auto_bright=True, scale=80)
 
 
 def load_fullres_config() -> dict:
     return {
-        "algorithm":  _config.get    (_SECTION, "algorithm",  fallback=_DEFAULTS["algorithm"]),
-        "fbdd":       _config.get    (_SECTION, "fbdd",       fallback=_DEFAULTS["fbdd"]),
-        "denoise":    _config.get    (_SECTION, "denoise",    fallback=_DEFAULTS["denoise"]),
-        "denoise_h":  _config.getint (_SECTION, "denoise_h",  fallback=_DEFAULTS["denoise_h"]),
-        "denoise_hc": _config.getint (_SECTION, "denoise_hc", fallback=_DEFAULTS["denoise_hc"]),
-        "bright":     _config.getfloat(_SECTION, "bright",   fallback=_DEFAULTS["bright"]),
+        "algorithm":   _config.get       (_SECTION, "algorithm",   fallback=_DEFAULTS["algorithm"]),
+        "fbdd":        _config.get       (_SECTION, "fbdd",        fallback=_DEFAULTS["fbdd"]),
+        "denoise":     _config.get       (_SECTION, "denoise",     fallback=_DEFAULTS["denoise"]),
+        "denoise_h":   _config.getint    (_SECTION, "denoise_h",   fallback=_DEFAULTS["denoise_h"]),
+        "denoise_hc":  _config.getint    (_SECTION, "denoise_hc",  fallback=_DEFAULTS["denoise_hc"]),
+        "bright":      _config.getfloat  (_SECTION, "bright",      fallback=_DEFAULTS["bright"]),
+        "auto_bright": _config.getboolean(_SECTION, "auto_bright", fallback=_DEFAULTS["auto_bright"]),
+        "scale":       _config.getint    (_SECTION, "scale",       fallback=_DEFAULTS["scale"]),
     }
 
 
@@ -106,6 +108,21 @@ class RawProcessingDialog(QDialog):
         self._bright.setValue(cfg["bright"])
         g.addWidget(self._bright, r, 1); r += 1
 
+        g.addWidget(QLabel("Auto brightness:"), r, 0)
+        self._auto_bright = QCheckBox("Let the decoder set exposure automatically")
+        self._auto_bright.setChecked(cfg["auto_bright"])
+        g.addWidget(self._auto_bright, r, 1); r += 1
+
+        g.addWidget(QLabel("Render scale:"), r, 0)
+        self._scale = QSpinBox()
+        self._scale.setRange(10, 100)
+        self._scale.setSingleStep(5)
+        self._scale.setSuffix(" %")
+        self._scale.setValue(cfg["scale"])
+        self._scale.setToolTip("Decode to this fraction of full sensor resolution. "
+                               "80% is faster and usually looks cleaner than 100%.")
+        g.addWidget(self._scale, r, 1); r += 1
+
         g.addWidget(QLabel("Denoise resulting image (OpenCV NL):"), r, 0)
         self._denoise = QComboBox()
         self._denoise.addItems(_DENOISE)
@@ -155,6 +172,7 @@ class RawProcessingDialog(QDialog):
             w.currentTextChanged.connect(self._on_user_edit)
         for w in (self._bright, self._h, self._hc):
             w.valueChanged.connect(self._on_user_edit)
+        self._auto_bright.toggled.connect(self._on_user_edit)
         self._denoise.currentTextChanged.connect(self._update_denoise_visibility)
         self._preset_grp.idClicked.connect(self._on_preset_clicked)
 
@@ -174,12 +192,12 @@ class RawProcessingDialog(QDialog):
     def _current_values(self):
         return (self._algo.currentText(), self._fbdd.currentText(),
                 self._denoise.currentText(), self._h.value(), self._hc.value(),
-                round(self._bright.value(), 1))
+                round(self._bright.value(), 1), self._auto_bright.isChecked())
 
     def _sync_preset_radio(self):
         vals = self._current_values()
-        for i, (_, _, algo, fbdd, denoise, h, hc, bright) in enumerate(_PRESETS):
-            if vals == (algo, fbdd, denoise, h, hc, round(bright, 1)):
+        for i, (_, _, algo, fbdd, denoise, h, hc, bright, auto_bright) in enumerate(_PRESETS):
+            if vals == (algo, fbdd, denoise, h, hc, round(bright, 1), auto_bright):
                 self._preset_grp.button(i).setChecked(True)
                 return
         self._custom_rb.setChecked(True)
@@ -191,7 +209,7 @@ class RawProcessingDialog(QDialog):
     def _on_preset_clicked(self, i):
         if i >= len(_PRESETS):
             return  # "Select your preferences" — leave the form fields alone
-        _, _, algo, fbdd, denoise, h, hc, bright = _PRESETS[i]
+        _, _, algo, fbdd, denoise, h, hc, bright, auto_bright = _PRESETS[i]
         self._blocking = True
         self._algo.setCurrentText(algo)
         self._fbdd.setCurrentText(fbdd)
@@ -199,6 +217,7 @@ class RawProcessingDialog(QDialog):
         self._h.setValue(h)
         self._hc.setValue(hc)
         self._bright.setValue(bright)
+        self._auto_bright.setChecked(auto_bright)
         self._blocking = False
         self._update_denoise_visibility()
 
@@ -224,11 +243,13 @@ class RawProcessingDialog(QDialog):
 
     def _save(self):
         save_fullres_config({
-            "algorithm":  self._algo.currentText(),
-            "fbdd":       self._fbdd.currentText(),
-            "denoise":    self._denoise.currentText(),
-            "denoise_h":  self._h.value(),
-            "denoise_hc": self._hc.value(),
-            "bright":     round(self._bright.value(), 1),
+            "algorithm":   self._algo.currentText(),
+            "fbdd":        self._fbdd.currentText(),
+            "denoise":     self._denoise.currentText(),
+            "denoise_h":   self._h.value(),
+            "denoise_hc":  self._hc.value(),
+            "bright":      round(self._bright.value(), 1),
+            "auto_bright": self._auto_bright.isChecked(),
+            "scale":       self._scale.value(),
         })
         self.accept()
