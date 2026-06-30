@@ -259,6 +259,7 @@ class SidecarCollection(PictureCollection):
                     grp["xmp"] = xmp
         # Drop groups that ended up with no image file (e.g. a stray .xmp passed in).
         self._groups = {s: g for s, g in self._groups.items() if g.get("raw") or g.get("jpg")}
+        self._attach_sibling_jpgs()
         self._rows, self._caches = _read_sidecar_rows(
             [g["xmp"] for g in self._groups.values() if g.get("xmp")])
         # Batch-read GPS from each picture's best source (XMP if present, else
@@ -268,6 +269,33 @@ class SidecarCollection(PictureCollection):
         # presence) so the card's location line can show them with no extra I/O.
         self._gps_by_stem: dict[str, tuple] = self._build_gps_map()
         self.rebuild()
+
+    def _attach_sibling_jpgs(self) -> set:
+        """Fold any *.jpg/*.jpeg in the picture folders onto its UPN group — a DxO
+        _DxO.jpg render, or a Lightroom / v5 export — so the card's file-type note
+        shows JPG even when the render only appeared after the folder was first
+        listed (e.g. PhotoLab rendered it during a side-by-side session). Attaches
+        to EXISTING groups only (a stray JPG never becomes its own card here);
+        returns the stems that gained a JPG."""
+        folders = set()
+        for g in self._groups.values():
+            src = g.get("raw") or g.get("xmp") or g.get("jpg")
+            if src:
+                folders.add(Path(src).parent)
+        gained = set()
+        for folder in folders:
+            try:
+                entries = list(folder.iterdir())
+            except OSError:
+                continue
+            for p in entries:
+                if p.suffix.lower() not in _JPG_EXTS or p.name.lower().endswith("-small.jpg"):
+                    continue
+                g = self._groups.get(deriveUniquePictureName(p.name))
+                if g is not None and "jpg" not in g:
+                    g["jpg"] = p
+                    gained.add(deriveUniquePictureName(p.name))
+        return gained
 
     def _build_gps_map(self) -> dict[str, tuple]:
         """{stem: (lat, lon)} for every stem with GPS in any source file.
@@ -404,7 +432,11 @@ class SidecarCollection(PictureCollection):
         from gui import geolocate
         geolocate._LOCATION_READ_CACHE.clear()
         after = snapshot()
-        return {stem for stem in after if after[stem] != before.get(stem)}
+        changed = {stem for stem in after if after[stem] != before.get(stem)}
+        # A render (PhotoLab _DxO.jpg, LR/v5 export) may have appeared since the
+        # last read — fold it in so the file-type note gains "JPG" live.
+        changed |= self._attach_sibling_jpgs()
+        return changed
 
     def sidecar_paths(self) -> list:
         return [str(g["xmp"]) for g in self._groups.values() if g.get("xmp")]

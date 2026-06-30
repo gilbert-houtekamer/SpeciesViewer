@@ -385,14 +385,12 @@ class PictureCard(QFrame):
             self._color_sel.set_disabled_colors(("Blue", "Purple"), _DISCARD_GREYED_TIP)
         vbox.addWidget(self._color_sel)
 
-        # key + file types (small)
-        exts = item.file_exts
-        key_line = item.key if not exts else f"{item.key}  {' · '.join(exts)}"
-        lbl_key = QLabel(key_line)
-        lbl_key.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_key.setStyleSheet("font-size: 9px; color: #aaa;")
-        lbl_key.setToolTip(item.key)
-        vbox.addWidget(lbl_key)
+        # key + file types (small) — refreshed when a render (JPG) appears later
+        self._lbl_key = QLabel(self._key_line_text())
+        self._lbl_key.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._lbl_key.setStyleSheet("font-size: 9px; color: #aaa;")
+        self._lbl_key.setToolTip(item.key)
+        vbox.addWidget(self._lbl_key)
 
         # Preview-only badge row: clickable status icon (species warning / OK /
         # none → SpeciesInfoDialog), a 📝 description badge, and a 📍/❓ GPS badge.
@@ -470,8 +468,13 @@ class PictureCard(QFrame):
         self._stars.set_rating(self._item.rating)
         self._color_sel.set_color(self._item.color)
         self.update_rate_display(self._item.rate)
+        self._lbl_key.setText(self._key_line_text())
         self._refresh_location_line()
         self._refresh_status_badges()
+
+    def _key_line_text(self) -> str:
+        exts = self._item.file_exts
+        return self._item.key if not exts else f"{self._item.key}  {' · '.join(exts)}"
 
     def _refresh_location_line(self):
         """Set the location line from the live item; muted grey when there's no
