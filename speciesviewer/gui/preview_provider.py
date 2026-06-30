@@ -16,7 +16,9 @@ next step). The virtual-trip file_list mode (no fpr) is not covered here.
 
 from __future__ import annotations
 
+import json
 import logging
+import subprocess
 from pathlib import Path
 
 from PyQt6.QtGui import QImage
@@ -200,11 +202,22 @@ class PreviewItem(PictureItem):
 
 
 class PreviewCollection(PictureCollection):
+    # The day-folder XMPs are the same files PhotoLab/Lightroom write, so the
+    # post-Read&Summarize viewer can pick up external colour/rating edits live —
+    # same machinery (watcher + app-active + F5) as the culling viewer.
+    supports_external_refresh = True
+
     def __init__(self, fpr, *, loader: AsyncImageLoader | None = None):
         self.fpr = fpr
         self._loader = loader or AsyncImageLoader()
         self._order: list[str] = []
         self.rebuild()
+        # Baseline the colour/rating sidecar mtimes NOW (the fpr matches disk at
+        # load), so the first refresh detects only what an external tool changes
+        # afterwards — not the whole day.
+        self._xmp_mtimes: dict = {}
+        self._image_changed: set = set()
+        self._baseline_xmp_mtimes()
 
     # ── ordering ──────────────────────────────────────────────────────────
     def rebuild(self, keys: list[str] | None = None) -> None:
@@ -408,6 +421,97 @@ class PreviewCollection(PictureCollection):
         if not hasattr(self, "_pasted_gps"):
             self._pasted_gps = set()
         self._pasted_gps.add(upn_key)
+
+    # ── external-edit refresh (PhotoLab / Lightroom colour + rating) ──────────
+    def _xmp_for(self, upn_key: str):
+        """The .xmp sidecar carrying this picture's colour/rating, or None."""
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if frow and frow.get("WindowsExtension", "").lower() == "xmp":
+                p = Path(frow.get("WindowsFileName", ""))
+                if p.exists():
+                    return p
+        p = self.rep_full_path(upn_key)
+        if p:
+            for xmp in (Path(p).with_suffix(".xmp"), Path(p).with_suffix(".XMP")):
+                if xmp.exists():
+                    return xmp
+        return None
+
+    def _baseline_xmp_mtimes(self):
+        import os
+        for key in self.all_keys():
+            xmp = self._xmp_for(key)
+            if xmp:
+                try:
+                    self._xmp_mtimes[str(xmp)] = os.stat(xmp).st_mtime_ns
+                except OSError:
+                    pass
+
+    def sidecar_paths(self) -> list:
+        out = []
+        for key in self.all_keys():
+            xmp = self._xmp_for(key)
+            if xmp:
+                out.append(str(xmp))
+        return out
+
+    def refresh(self) -> set:
+        """Re-read XMP:Label / XMP:Rating that an external tool (PhotoLab,
+        Lightroom) wrote, and update the in-memory fpr rows so the open viewer
+        reflects them. Only sidecars whose mtime changed since the baseline are
+        re-read via exiftool. Returns the changed UPN keys; persists the summary
+        CSV so the change survives close + reaches downstream steps."""
+        import os
+        self._image_changed = set()
+        to_read = []
+        for key in self.all_keys():
+            xmp = self._xmp_for(key)
+            if not xmp:
+                continue
+            try:
+                mt = os.stat(xmp).st_mtime_ns
+            except OSError:
+                continue
+            if self._xmp_mtimes.get(str(xmp)) != mt:
+                to_read.append((key, xmp, mt))
+        if not to_read:
+            return set()
+        try:
+            out = subprocess.run(
+                ["exiftool", "-j", "-q", "-XMP:Label", "-XMP:Rating"]
+                + [str(xmp) for _k, xmp, _mt in to_read],
+                capture_output=True, text=True, encoding="utf-8", timeout=60).stdout
+            rows = json.loads(out) if out.strip() else []
+        except Exception as e:
+            logger.warning(f"External-edit refresh: exiftool failed: {e}")
+            return set()
+        by_src = {os.path.normcase(os.path.normpath(r.get("SourceFile", ""))): r for r in rows}
+        changed = set()
+        for key, xmp, mt in to_read:
+            self._xmp_mtimes[str(xmp)] = mt
+            r = by_src.get(os.path.normcase(os.path.normpath(str(xmp))))
+            upn_row = self.fpr.upn.UniquePictureName_dict.get(key)
+            if r is None or upn_row is None:
+                continue
+            diff = False
+            new_label = str(r.get("Label", "") or "")
+            if new_label != str(upn_row.get("Label", "") or ""):
+                upn_row["Label"] = new_label
+                diff = True
+            new_rating = r.get("Rating", None)
+            if new_rating not in (None, "") and str(new_rating) != str(upn_row.get("Rating", "") or ""):
+                upn_row["Rating"] = str(new_rating)
+                diff = True
+            if diff:
+                changed.add(key)
+        if changed:
+            try:
+                self.fpr.upn.write_project_summary()
+            except Exception as e:
+                logger.warning(f"External-edit refresh: could not persist summary: {e}")
+            logger.info(f"External-edit refresh: {len(changed)} picture(s) updated from disk (colour/rating).")
+        return changed
 
     def has_writable_sidecar(self, upn_key: str) -> bool:
         """True if rating/colour can be persisted for this picture — either an
