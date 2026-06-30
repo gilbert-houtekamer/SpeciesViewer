@@ -1094,11 +1094,14 @@ class ImagePreviewDialog(QDialog):
         self._rearm_sidecar_watch()   # always: an atomic write drops the file watch
         if not changed:
             return
+        image_changed = getattr(coll, "_image_changed", set())
         for k in changed:
             card = self._cards_by_key.get(k)
             if card:
                 card.refresh()
-            self._notify_large_view(k)
+                if k in image_changed:
+                    card.reload_thumbnail()   # re-decode: new render / re-crop
+            self._notify_large_view(k, reload_image=(k in image_changed))
         logger.info(f"Refreshed {len(changed)} picture(s) from disk (external edits).")
 
     def _setup_sidecar_watch(self, image_dir):
@@ -1137,14 +1140,15 @@ class ImagePreviewDialog(QDialog):
             if p not in watched and Path(p).exists():
                 w.addPath(p)
 
-    def _notify_large_view(self, key):
+    def _notify_large_view(self, key, reload_image=False):
         """Push a grid-side edit (cull colour/rating) into the open large view so
-        the two windows stay in sync. The reverse direction (large → grid) already
-        flows through the large view's picture_changed signal."""
+        the two windows stay in sync. reload_image=True also re-decodes the large
+        image + FILE note (an external re-crop or new render). The reverse
+        direction (large → grid) flows through the large view's picture_changed."""
         lv = getattr(self, "_large_view", None)
         if lv is not None:
             try:
-                lv.refresh_external(key)
+                lv.refresh_external(key, reload_image=reload_image)
             except RuntimeError:
                 pass   # large view was closed/destroyed
 

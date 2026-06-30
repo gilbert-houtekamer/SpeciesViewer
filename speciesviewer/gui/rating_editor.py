@@ -476,6 +476,12 @@ class PictureCard(QFrame):
         exts = self._item.file_exts
         return self._item.key if not exts else f"{self._item.key}  {' · '.join(exts)}"
 
+    def reload_thumbnail(self):
+        """Re-request the thumbnail — used when the underlying image changed (a new
+        render switched the source to a JPG, or a re-crop), unlike refresh() which
+        only repaints text/widgets."""
+        self._item.request_thumbnail(self._thumb_target_w, self.set_thumbnail)
+
     def _refresh_location_line(self):
         """Set the location line from the live item; muted grey when there's no
         place/GPS, normal green when there is."""

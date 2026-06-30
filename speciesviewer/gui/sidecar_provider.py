@@ -274,7 +274,11 @@ class SidecarCollection(PictureCollection):
         # Drop groups that ended up with no image file (e.g. a stray .xmp passed in).
         self._groups = {s: g for s, g in self._groups.items() if g.get("raw") or g.get("jpg")}
         self._crop_cache: dict = {}      # stem -> normalised crop | None (cleared on refresh)
+        self._image_changed: set = set() # stems whose IMAGE changed at last refresh()
         self._attach_sibling_jpgs()
+        # Baseline image signatures (source file + mtime + .dop mtime) so refresh()
+        # can tell a re-crop / new render (re-decode needed) from a text-only edit.
+        self._image_sigs: dict = {s: self._image_sig(s) for s in self._groups}
         self._rows, self._caches = _read_sidecar_rows(
             [g["xmp"] for g in self._groups.values() if g.get("xmp")])
         # Batch-read GPS from each picture's best source (XMP if present, else
@@ -425,21 +429,40 @@ class SidecarCollection(PictureCollection):
     _REFRESH_FIELDS = ("Subject", "Rating", "Label", "Description", "Headline",
                        "Location", "City", "Municipality", "State", "Country")
 
+    def _row_snapshot(self) -> dict:
+        snap = {}
+        for stem, g in self._groups.items():
+            xmp = g.get("xmp")
+            if xmp:
+                r = self._rows.get(_norm(xmp), {})
+                snap[stem] = tuple(str(r.get(k, "") or "") for k in self._REFRESH_FIELDS)
+        return snap
+
+    def _image_sig(self, stem: str):
+        """A signature of what the displayed image depends on: the source file
+        (RAW vs a render JPG) + its mtime + the .dop mtime (the crop lives there).
+        A change here means the picture must be RE-DECODED — a new/re-rendered
+        _DxO.jpg, or a re-crop — as opposed to a mere colour/rating text change."""
+        g = self._groups.get(stem, {})
+        src = g.get("jpg") or g.get("raw")
+        raw = g.get("raw")
+        dop = Path(str(raw) + ".dop") if raw else None
+
+        def _mt(p):
+            try:
+                return Path(p).stat().st_mtime_ns
+            except OSError:
+                return None
+        return (str(src) if src else None, _mt(src) if src else None,
+                _mt(dop) if dop else None)
+
     def refresh(self) -> set:
         """Re-read the sidecars from disk to pick up external edits (PhotoLab /
-        Lightroom colour, rating, etc. — which bump the .xmp mtime). Only files
-        whose mtime changed are re-read via exiftool; the rest are served from the
-        cache. Returns the stems whose displayed fields changed."""
-        def snapshot():
-            snap = {}
-            for stem, g in self._groups.items():
-                xmp = g.get("xmp")
-                if xmp:
-                    r = self._rows.get(_norm(xmp), {})
-                    snap[stem] = tuple(str(r.get(k, "") or "") for k in self._REFRESH_FIELDS)
-            return snap
-
-        before = snapshot()
+        Lightroom colour, rating, crop, a new render — which bump the file mtime).
+        Only files whose mtime changed are re-read via exiftool. Returns the stems
+        whose DISPLAY changed; `self._image_changed` is the subset whose IMAGE
+        changed (so the host re-decodes those, not every refreshed card)."""
+        text_before = self._row_snapshot()
         self._rows, self._caches = _read_sidecar_rows(
             [g["xmp"] for g in self._groups.values() if g.get("xmp")])
         # A row-served read_location now reflects the new rows; drop the per-file
@@ -447,15 +470,34 @@ class SidecarCollection(PictureCollection):
         from gui import geolocate
         geolocate._LOCATION_READ_CACHE.clear()
         self._crop_cache.clear()         # a re-crop in PhotoLab/LR must re-read
-        after = snapshot()
-        changed = {stem for stem in after if after[stem] != before.get(stem)}
-        # A render (PhotoLab _DxO.jpg, LR/v5 export) may have appeared since the
-        # last read — fold it in so the file-type note gains "JPG" live.
-        changed |= self._attach_sibling_jpgs()
-        return changed
+        # A render (PhotoLab _DxO.jpg, LR/v5 export) may have appeared — fold it in
+        # (switches the display source RAW→JPG, caught by the image signature too).
+        self._attach_sibling_jpgs()
+
+        text_after = self._row_snapshot()
+        text_changed = {s for s in text_after if text_after[s] != text_before.get(s)}
+        # Image change is vs the STORED signature from the last refresh/build — an
+        # external re-crop only touches the .dop (not self._rows), so a within-call
+        # before/after would miss it (the rows re-read doesn't move image mtimes).
+        new_sigs = {s: self._image_sig(s) for s in self._groups}
+        self._image_changed = {s for s in new_sigs if new_sigs[s] != self._image_sigs.get(s)}
+        self._image_sigs = new_sigs
+        return text_changed | self._image_changed
 
     def sidecar_paths(self) -> list:
-        return [str(g["xmp"]) for g in self._groups.values() if g.get("xmp")]
+        """Files to watch for external edits: each .xmp (colour/rating/location)
+        AND each .dop (the crop). Watching the .dop too catches an in-place re-crop
+        that doesn't go through a temp+rename (which the folder watch would miss)."""
+        out = []
+        for g in self._groups.values():
+            if g.get("xmp"):
+                out.append(str(g["xmp"]))
+            raw = g.get("raw")
+            if raw:
+                dop = Path(str(raw) + ".dop")
+                if dop.exists():
+                    out.append(str(dop))
+        return out
 
     def note_location_written(self, key: str, fields: dict) -> None:
         """An Edit/Get-location write just put these place fields into the key's

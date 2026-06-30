@@ -218,6 +218,12 @@ class _StripItem(QWidget):
         self._star_lbl.setText("★" * r + "☆" * (5 - r))
         self._repaint_border()  # also updates the star-bar colour
 
+    def reload_thumbnail(self):
+        """Re-decode the thumbnail — used when the image itself changed (a re-crop
+        or a new render), unlike refresh_from() which only repaints stars/border."""
+        self._requested = True
+        self._item.request_thumbnail(_THUMB_W, self._on_pixmap)
+
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.tapped.emit(self._key)
@@ -319,8 +325,9 @@ class FilmstripWidget(QWidget):
             QTimer.singleShot(0, lambda: self._sa.ensureWidgetVisible(cell))
         self._pos_lbl.setText(f"{index + 1} of {total}")
 
-    def refresh_item(self, key: str):
-        """Repaint a cell's stars + colour border after an edit."""
+    def refresh_item(self, key: str, reload_image: bool = False):
+        """Repaint a cell's stars + colour border after an edit; reload_image=True
+        also re-decodes its thumbnail (an external re-crop / new render)."""
         if key not in self._cells:
             return
         try:
@@ -328,6 +335,8 @@ class FilmstripWidget(QWidget):
         except (ValueError, KeyError):
             return
         self._cells[key].refresh_from(item)
+        if reload_image:
+            self._cells[key].reload_thumbnail()
 
     def set_selected(self, keys: set):
         """Update selection highlight on all cells."""
@@ -834,18 +843,23 @@ class LargeImageView(QDialog):
             self._last_vsplit = self._v_splitter.sizes()
         self._fit_pixmap()
 
-    def _refresh_strip_items(self, key: str):
-        self._filmstrip_left.refresh_item(key)
-        self._filmstrip_bottom.refresh_item(key)
+    def _refresh_strip_items(self, key: str, reload_image: bool = False):
+        self._filmstrip_left.refresh_item(key, reload_image=reload_image)
+        self._filmstrip_bottom.refresh_item(key, reload_image=reload_image)
 
-    def refresh_external(self, key: str):
-        """Reflect an edit made elsewhere (e.g. a picture culled from the grid)
-        while this viewer is open: refresh the filmstrips, and — if the edited
-        picture is the one on screen — its rating/colour widgets and frame colour.
-        Re-reads the item from the (shared) collection so the values are current.
-        Does NOT re-emit picture_changed, so there's no echo back to the host."""
-        self._refresh_strip_items(key)
+    def refresh_external(self, key: str, reload_image: bool = False):
+        """Reflect an edit made elsewhere (e.g. a picture culled from the grid, or
+        an external PhotoLab/LR write) while this viewer is open: refresh the
+        filmstrips, and — if the edited picture is on screen — its widgets. With
+        reload_image=True the image is RE-DECODED and the FILE note rebuilt too (a
+        re-crop or a new render changed the picture itself), via _load_current.
+        Re-reads the item from the (shared) collection so values are current; does
+        NOT re-emit picture_changed, so there's no echo back to the host."""
+        self._refresh_strip_items(key, reload_image=reload_image)
         if self._item is None or self._item.key != key:
+            return
+        if reload_image:
+            self._load_current()   # full reload: image + FILE note (JPG) + everything
             return
         try:
             item = self._collection.item_for_key(key)
