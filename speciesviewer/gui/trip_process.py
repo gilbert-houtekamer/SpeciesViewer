@@ -564,6 +564,13 @@ class ReadSDCardDialog(QDialog):
             "Timezone offset (hours)",
             get_cache_gui_section("sdcard_ingest", "tz_offset") or "0", inline=True)
         self.tz_offset_field.field.setMaximumWidth(60)
+        _tz_tip = ("Added to the camera's clock only when choosing each photo's date "
+                   "folder. Set it when the camera time is on a different timezone than "
+                   "where you shot (e.g. left on home time, or not switched to summer "
+                   "time). It changes which day a photo is filed under — not the time "
+                   "stored in the photo.")
+        for _w in (self.tz_offset_field, self.tz_offset_field.label, self.tz_offset_field.field):
+            _w.setToolTip(_tz_tip)
         date_row.addWidget(self.tz_offset_field)
         date_row.addStretch()
         input_layout.addLayout(date_row)
