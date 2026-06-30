@@ -657,9 +657,9 @@ class ReadSDCardDialog(QDialog):
         self._close_connected = True   # True = Close, False = Cancel
 
     def _on_cancel(self):
+        self._cancelled = True   # on_finished still fires with the partial summary
         self.status_label.setText("Cancelling…")
         self._stop_worker()
-        self.status_label.setText("Cancelled.")
         self.read_btn.setEnabled(True)
         self._restore_close_btn()
 
@@ -903,6 +903,7 @@ class ReadSDCardDialog(QDialog):
 
         self._last_dest = dest
         self._include_dates = include_dates
+        self._cancelled = False
         self.read_btn.setEnabled(False)
         self.view_btn.setEnabled(False)
         self.status_label.setText("")
@@ -944,20 +945,34 @@ class ReadSDCardDialog(QDialog):
         renamed_txt = f" ({renamed} renamed)" if renamed else ""
         deselected = summary.get("deselected", 0)
         deselected_txt = f", {deselected} day-deselected" if deselected else ""
-        msg = (f"Copied {summary.get('copied', 0)}{renamed_txt}, "
-               f"skipped {summary.get('skipped', 0)}{deselected_txt}, "
-               f"failed {summary.get('failed', 0)} "
-               f"of {summary.get('total', 0)} pictures; {summary.get('sidecars', 0)} sidecar(s).")
-        self.logger.info(f"✅ Card read complete. {msg}")
+        copied = summary.get("copied", 0)
+        # Shared tail — what was kept is reported the same whether the run finished
+        # or was aborted (the files already copied are verified and kept).
+        tail = (f"skipped {summary.get('skipped', 0)}{deselected_txt}, "
+                f"failed {summary.get('failed', 0)} "
+                f"of {summary.get('total', 0)} pictures; {summary.get('sidecars', 0)} sidecar(s).")
+        cancelled = getattr(self, "_cancelled", False)
+        if cancelled:
+            # "Done" + a green check would read as success — flag the abort, but
+            # still show that the partial copy was kept.
+            msg = f"Aborted after {copied}{renamed_txt}, {tail}"
+            self.logger.warning(f"⏹ Card read aborted. {msg}")
+            self.status_label.setText(f"⚠️ {msg}")
+        else:
+            msg = f"Copied {copied}{renamed_txt}, {tail}"
+            self.logger.info(f"✅ Card read complete. {msg}")
+            self.status_label.setText(f"✅ Done — {msg}")
         self._read_summary_msg = msg
         self._set_progress("")
-        self.status_label.setText(f"✅ Done — {msg}")
         self._last_targets = summary.get("targets", [])
         self.view_btn.setEnabled(bool(self._last_targets))
 
-        if self.location_checkbox.isChecked() and self._last_targets:
-            self._add_location_names()
-        self._mark_run_done()
+        # On an abort, don't auto-run the network geocode or grey the day list —
+        # leave it ready for a re-read to finish the rest.
+        if not cancelled:
+            if self.location_checkbox.isChecked() and self._last_targets:
+                self._add_location_names()
+            self._mark_run_done()
 
     def _mark_run_done(self):
         """Grey the day selection after a completed run, as a visible 'done' cue.
