@@ -283,3 +283,22 @@ class PictureCollection(ABC):
         to its XMP, so the cached row (and the card's location line) updates
         without re-reading. No-op by default; overridden where rows are cached."""
         return None
+
+    # ── external-edit refresh ─────────────────────────────────────────────────
+    # True → the host offers a Refresh action + auto-refreshes on window focus, so
+    # colour/rating/etc. changed by another tool (PhotoLab, Lightroom) writing the
+    # same sidecars show up without reopening. Only collections backed by on-disk
+    # sidecars set this.
+    supports_external_refresh: bool = False
+
+    def refresh(self) -> set:
+        """Re-read metadata from disk for files an external tool changed, and
+        return the set of keys whose displayed values changed (so the host
+        refreshes just those cards). Default: no-op."""
+        return set()
+
+    def sidecar_paths(self) -> list:
+        """On-disk sidecar files to watch for external edits (so the host can
+        refresh the instant another tool writes). Only sidecar-backed
+        collections return any; default empty."""
+        return []

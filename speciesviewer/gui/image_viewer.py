@@ -214,6 +214,18 @@ class ImagePreviewDialog(QDialog):
             self.dir_field = DirectoryFieldQt("Image Directory", initial_path=image_dir)
             self.dir_field.field.setReadOnly(True)
             dir_layout.addWidget(self.dir_field)
+        # Refresh — re-read sidecars an external tool changed (PhotoLab / LR
+        # colour, rating). Only shown for sidecar-backed (culling) collections;
+        # also bound to F5 and fired automatically when the window regains focus.
+        self.refresh_button = None
+        if getattr(self._collection, "supports_external_refresh", False):
+            self.refresh_button = QPushButton("🔄 Refresh")
+            self.refresh_button.setToolTip(
+                "Re-read colours, ratings and metadata changed by another tool "
+                "(PhotoLab, Lightroom) — also F5, and automatic when this window "
+                "regains focus.")
+            self.refresh_button.clicked.connect(self.refresh_from_disk)
+            dir_layout.addWidget(self.refresh_button)
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setEnabled(False)
         self.cancel_button.clicked.connect(self.cancel_scan)
@@ -438,6 +450,7 @@ class ImagePreviewDialog(QDialog):
 
         QApplication.instance().applicationStateChanged.connect(
             self._on_application_state_changed)
+        self._setup_sidecar_watch(image_dir)
 
     # ── Mode / key helpers ─────────────────────────────────────────────────
     def _base_keys(self) -> list[str]:
@@ -1065,6 +1078,65 @@ class ImagePreviewDialog(QDialog):
             c.refresh()
         self._notify_large_view(key)
 
+    def refresh_from_disk(self):
+        """Re-read sidecar metadata an external tool changed (PhotoLab / LR colour,
+        rating, …) and repaint just the affected cards — keeps scroll + selection.
+        Cheap: only files whose mtime changed are re-read. No-op for collections
+        without on-disk sidecars."""
+        coll = self._collection
+        if coll is None or not getattr(coll, "supports_external_refresh", False):
+            return
+        try:
+            changed = coll.refresh()
+        except Exception as e:
+            logger.warning(f"Refresh from disk failed: {e}")
+            return
+        self._rearm_sidecar_watch()   # always: an atomic write drops the file watch
+        if not changed:
+            return
+        for k in changed:
+            card = self._cards_by_key.get(k)
+            if card:
+                card.refresh()
+            self._notify_large_view(k)
+        logger.info(f"Refreshed {len(changed)} picture(s) from disk (external edits).")
+
+    def _setup_sidecar_watch(self, image_dir):
+        """Watch the day folder + its .xmp sidecars so an external colour/rating
+        write (PhotoLab, Lightroom) refreshes the grid the moment it lands —
+        PhotoLab flushes the XMP lazily, so waiting for window focus alone misses
+        it. Debounced (a save can emit several events); only on the culling
+        viewer."""
+        self._fs_watcher = None
+        self._fs_debounce = None
+        if not getattr(self._collection, "supports_external_refresh", False):
+            return
+        from PyQt6.QtCore import QFileSystemWatcher
+        self._fs_debounce = QTimer(self)
+        self._fs_debounce.setSingleShot(True)
+        self._fs_debounce.setInterval(400)
+        self._fs_debounce.timeout.connect(self.refresh_from_disk)
+        self._fs_watcher = QFileSystemWatcher(self)
+        paths = list(self._collection.sidecar_paths())
+        if image_dir and Path(image_dir).is_dir():
+            paths.append(str(image_dir))      # catches new sidecars + atomic renames
+        if paths:
+            self._fs_watcher.addPaths(paths)
+        self._fs_watcher.directoryChanged.connect(lambda _p: self._fs_debounce.start())
+        self._fs_watcher.fileChanged.connect(lambda _p: self._fs_debounce.start())
+
+    def _rearm_sidecar_watch(self):
+        """Re-add sidecar paths the watcher drops after an atomic write (exiftool /
+        PhotoLab write a temp file and rename, which removes the original from the
+        watch list)."""
+        w = getattr(self, "_fs_watcher", None)
+        if w is None:
+            return
+        watched = set(w.files())
+        for p in self._collection.sidecar_paths():
+            if p not in watched and Path(p).exists():
+                w.addPath(p)
+
     def _notify_large_view(self, key):
         """Push a grid-side edit (cull colour/rating) into the open large view so
         the two windows stay in sync. The reverse direction (large → grid) already
@@ -1248,6 +1320,10 @@ class ImagePreviewDialog(QDialog):
 
     def keyPressEvent(self, event):
         from gui.viewer_keys import handle_cull_key, handle_grid_arrows, text_input_focused
+        if event.key() == Qt.Key.Key_F5:
+            self.refresh_from_disk()
+            event.accept()
+            return
         if handle_cull_key(event, order=[c.upn_key for c in self._cards],
                            current_key=self._last_clicked_key,
                            item_for_key=self._collection.item_for_key,
@@ -1421,6 +1497,7 @@ class ImagePreviewDialog(QDialog):
     def _on_application_state_changed(self, state):
         if state == Qt.ApplicationState.ApplicationActive:
             self._refresh_no_gps_from_disk()
+            self.refresh_from_disk()   # culling viewer: pick up PhotoLab/LR colour edits
 
     # ── Batch delete by colour ───────────────────────────────────────────────
     def _color_delete_trash_root(self):

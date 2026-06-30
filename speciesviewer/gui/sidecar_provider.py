@@ -376,6 +376,39 @@ class SidecarCollection(PictureCollection):
             if ll:
                 self._gps_by_stem[key] = ll
 
+    supports_external_refresh = True
+
+    # Fields whose change should re-paint a card (what another tool may edit).
+    _REFRESH_FIELDS = ("Subject", "Rating", "Label", "Description", "Headline",
+                       "Location", "City", "Municipality", "State", "Country")
+
+    def refresh(self) -> set:
+        """Re-read the sidecars from disk to pick up external edits (PhotoLab /
+        Lightroom colour, rating, etc. — which bump the .xmp mtime). Only files
+        whose mtime changed are re-read via exiftool; the rest are served from the
+        cache. Returns the stems whose displayed fields changed."""
+        def snapshot():
+            snap = {}
+            for stem, g in self._groups.items():
+                xmp = g.get("xmp")
+                if xmp:
+                    r = self._rows.get(_norm(xmp), {})
+                    snap[stem] = tuple(str(r.get(k, "") or "") for k in self._REFRESH_FIELDS)
+            return snap
+
+        before = snapshot()
+        self._rows, self._caches = _read_sidecar_rows(
+            [g["xmp"] for g in self._groups.values() if g.get("xmp")])
+        # A row-served read_location now reflects the new rows; drop the per-file
+        # memo so the large viewer / copy-GPS re-read fresh too.
+        from gui import geolocate
+        geolocate._LOCATION_READ_CACHE.clear()
+        after = snapshot()
+        return {stem for stem in after if after[stem] != before.get(stem)}
+
+    def sidecar_paths(self) -> list:
+        return [str(g["xmp"]) for g in self._groups.values() if g.get("xmp")]
+
     def note_location_written(self, key: str, fields: dict) -> None:
         """An Edit/Get-location write just put these place fields into the key's
         XMP — patch the in-memory row + the on-disk cache so the card's location
