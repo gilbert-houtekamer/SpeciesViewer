@@ -23,7 +23,7 @@ from pathlib import Path
 
 from PyQt6.QtGui import QImage
 
-from gui.picture_provider import PictureItem, PictureCollection, ExifSummary, PixmapCallback
+from gui.picture_provider import PictureItem, PictureCollection, ExifSummary, PixmapCallback, sweep_dop
 from gui.image_loader import AsyncImageLoader
 from gui.preview_provider import cached_jpg_for, preview_cache_dir_for
 from engine.exif_writer import exiftool_write
@@ -600,20 +600,16 @@ class SidecarCollection(PictureCollection):
                 continue
             upn_dir = trash_root / stem
             upn_dir.mkdir(parents=True, exist_ok=True)
-            to_trash = [grp.get(kind) for kind in ("raw", "xmp")]
-            # Sweep the DxO recipe too (named <rawname>.dop) — else a lone .dop is
-            # left behind and Read & Summarize (sv2) synthesises a phantom, image-
-            # less picture from it. A _DxO.jpg can't be here: a JPG protects the
-            # picture from deletion (skipped above).
-            raw = grp.get("raw")
-            if raw:
-                to_trash.append(Path(str(raw) + ".dop"))
-            for src in to_trash:
+            for kind in ("raw", "xmp"):
+                src = grp.get(kind)
                 if src and Path(src).exists():
                     try:
                         shutil.move(str(src), str(upn_dir / Path(src).name))
                     except Exception as e:
                         logger.error(f"Trash move failed for {Path(src).name}: {e}")
+            # Sweep the DxO recipe too (else a lone .dop becomes a phantom picture).
+            # A _DxO.jpg can't be here: a JPG protects the picture from deletion.
+            sweep_dop(grp.get("raw"), upn_dir)
             self._groups.pop(stem, None)
             if grp.get("xmp"):
                 self._rows.pop(_norm(grp["xmp"]), None)

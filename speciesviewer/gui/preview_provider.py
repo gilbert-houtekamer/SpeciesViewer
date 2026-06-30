@@ -22,7 +22,7 @@ from pathlib import Path
 from PyQt6.QtGui import QImage
 
 from gui.picture_provider import (
-    PictureItem, PictureCollection, ExifSummary, PixmapCallback, exif_from_rows)
+    PictureItem, PictureCollection, ExifSummary, PixmapCallback, exif_from_rows, sweep_dop)
 from gui.image_loader import AsyncImageLoader
 from gui.rating_editor import _compute_rate
 from engine.exif_writer import exiftool_write
@@ -480,17 +480,21 @@ class PreviewCollection(PictureCollection):
                 continue
             upn_dir = trash_root / key
             upn_dir.mkdir(parents=True, exist_ok=True)
+            raw_src = None
             for fname in self._files(key):
                 frow = self.fpr.fi.files_dict.get(fname)
                 if not frow:
                     continue
                 src = Path(frow.get("WindowsFileName", ""))
+                if src.suffix.lower() in _RAW_EXTS:
+                    raw_src = src
                 if src.exists():
                     try:
                         shutil.move(str(src), str(upn_dir / src.name))
                     except Exception as e:
                         logger.error(f"Trash move failed for {src.name}: {e}")
                 self.fpr.fi.files_dict.pop(fname, None)
+            sweep_dop(raw_src, upn_dir)
             self.fpr.upn.UniquePictureName_dict.pop(key, None)
             deleted += 1
         if deleted:

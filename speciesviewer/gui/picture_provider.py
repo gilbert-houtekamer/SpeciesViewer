@@ -21,15 +21,36 @@ EXIF set is deliberately small (DxO-style), not the full PhotoMechanic dump.
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable
 
 from PyQt6.QtGui import QPixmap
 
+logger = logging.getLogger("speciesviewer")
+
 # Async image delivery: providers call this on the GUI thread when a pixmap is
 # ready. Loading is cancellable via PictureCollection.cancel_pending_loads().
 PixmapCallback = Callable[[QPixmap], None]
+
+
+def sweep_dop(raw_src, dest_dir) -> None:
+    """Move a RAW's DxO recipe (``<rawname>.dop``) into dest_dir when the picture
+    is deleted, so no orphan recipe is left behind — Read & Summarize would
+    otherwise synthesise a phantom, image-less picture from a lone .dop. No-op
+    without a RAW or a .dop; idempotent (a .dop already trashed with the files is
+    simply gone). Shared by every delete path so they stay consistent."""
+    if not raw_src:
+        return
+    import shutil
+    from pathlib import Path
+    dop = Path(str(raw_src) + ".dop")
+    if dop.exists():
+        try:
+            shutil.move(str(dop), str(Path(dest_dir) / dop.name))
+        except Exception as e:
+            logger.warning(f"Trash move failed for {dop.name}: {e}")
 
 
 @dataclass
