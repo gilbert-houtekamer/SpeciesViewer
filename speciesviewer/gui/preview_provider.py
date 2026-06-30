@@ -174,9 +174,11 @@ class PreviewItem(PictureItem):
     @property
     def file_exts(self) -> list[str]:
         files = self._row.get("Files", [])
-        if not isinstance(files, list):
-            return []
-        return sorted({Path(f).suffix.lstrip(".").upper() for f in files if f})
+        exts = ({Path(f).suffix.lstrip(".").upper() for f in files if f}
+                if isinstance(files, list) else set())
+        if self._key in getattr(self._c, "_extra_jpgs", {}):
+            exts.add("JPG")   # a render found on disk but not yet in the file list
+        return sorted(exts)
 
     @property
     def exif(self) -> ExifSummary:
@@ -218,6 +220,11 @@ class PreviewCollection(PictureCollection):
         self._xmp_mtimes: dict = {}
         self._image_changed: set = set()
         self._baseline_xmp_mtimes()
+        # Renders (DxO _DxO.jpg / LR exports) found on disk that aren't in the
+        # pipeline file list yet (created after Read & Summarize). Side-channel so
+        # the card note can show JPG without touching the fpr's file rows.
+        self._extra_jpgs: dict = {}
+        self._scan_extra_jpgs()
 
     # ── ordering ──────────────────────────────────────────────────────────
     def rebuild(self, keys: list[str] | None = None) -> None:
@@ -448,6 +455,43 @@ class PreviewCollection(PictureCollection):
                 except OSError:
                     pass
 
+    def _pic_folder_set(self) -> set:
+        if getattr(self, "_pic_folders", None) is None:
+            folders = set()
+            for key in self.all_keys():
+                p = self.rep_full_path(key)
+                if p:
+                    folders.add(Path(p).parent)
+            self._pic_folders = folders
+        return self._pic_folders
+
+    def _scan_extra_jpgs(self) -> set:
+        """Find *.jpg renders (DxO _DxO.jpg, LR/v5 exports) in the picture folders
+        that aren't already in a UPN's pipeline file list — created after Read &
+        Summarize — so the card's file-type note can show JPG. Side-channel only:
+        does NOT touch the fpr file rows (pipeline data). Returns the keys that
+        gained a render."""
+        from engine.handling import deriveUniquePictureName
+        gained = set()
+        for folder in self._pic_folder_set():
+            try:
+                entries = list(folder.iterdir())
+            except OSError:
+                continue
+            for p in entries:
+                if p.suffix.lower() not in (".jpg", ".jpeg") or p.name.lower().endswith("-small.jpg"):
+                    continue
+                key = deriveUniquePictureName(p.name)
+                if (key not in self.fpr.upn.UniquePictureName_dict
+                        or key in self._extra_jpgs):
+                    continue
+                files = self.fpr.upn.UniquePictureName_dict.get(key, {}).get("Files", []) or []
+                if any(str(f).lower() == p.name.lower() for f in files):
+                    continue   # the render is already a tracked file → note shows it
+                self._extra_jpgs[key] = p
+                gained.add(key)
+        return gained
+
     def sidecar_paths(self) -> list:
         out = []
         for key in self.all_keys():
@@ -464,6 +508,7 @@ class PreviewCollection(PictureCollection):
         CSV so the change survives close + reaches downstream steps."""
         import os
         self._image_changed = set()
+        changed = set()
         to_read = []
         for key in self.all_keys():
             xmp = self._xmp_for(key)
@@ -475,19 +520,18 @@ class PreviewCollection(PictureCollection):
                 continue
             if self._xmp_mtimes.get(str(xmp)) != mt:
                 to_read.append((key, xmp, mt))
-        if not to_read:
-            return set()
-        try:
-            out = subprocess.run(
-                ["exiftool", "-j", "-q", "-XMP:Label", "-XMP:Rating"]
-                + [str(xmp) for _k, xmp, _mt in to_read],
-                capture_output=True, text=True, encoding="utf-8", timeout=60).stdout
-            rows = json.loads(out) if out.strip() else []
-        except Exception as e:
-            logger.warning(f"External-edit refresh: exiftool failed: {e}")
-            return set()
-        by_src = {os.path.normcase(os.path.normpath(r.get("SourceFile", ""))): r for r in rows}
-        changed = set()
+        by_src = {}
+        if to_read:
+            try:
+                out = subprocess.run(
+                    ["exiftool", "-j", "-q", "-XMP:Label", "-XMP:Rating"]
+                    + [str(xmp) for _k, xmp, _mt in to_read],
+                    capture_output=True, text=True, encoding="utf-8", timeout=60).stdout
+                rows = json.loads(out) if out.strip() else []
+                by_src = {os.path.normcase(os.path.normpath(r.get("SourceFile", ""))): r for r in rows}
+            except Exception as e:
+                logger.warning(f"External-edit refresh: exiftool failed: {e}")
+                to_read = []
         for key, xmp, mt in to_read:
             self._xmp_mtimes[str(xmp)] = mt
             r = by_src.get(os.path.normcase(os.path.normpath(str(xmp))))
@@ -511,6 +555,9 @@ class PreviewCollection(PictureCollection):
             except Exception as e:
                 logger.warning(f"External-edit refresh: could not persist summary: {e}")
             logger.info(f"External-edit refresh: {len(changed)} picture(s) updated from disk (colour/rating).")
+        # A render may have appeared since the last scan — fold it in so the
+        # file-type note gains JPG (no exiftool, just a folder listing).
+        changed |= self._scan_extra_jpgs()
         return changed
 
     def has_writable_sidecar(self, upn_key: str) -> bool:
