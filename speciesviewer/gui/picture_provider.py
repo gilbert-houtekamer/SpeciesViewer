@@ -35,6 +35,43 @@ logger = logging.getLogger("speciesviewer")
 PixmapCallback = Callable[[QPixmap], None]
 
 
+def apply_crop(img, crop):
+    """Return the sub-rectangle of a QImage for a normalised crop
+    {left,top,width,height} (fractions 0–1). Rect only — crop straighten (the
+    angle field) is not applied. Shared by every viewer that shows the edit crop."""
+    w, h = img.width(), img.height()
+    if not w or not h:
+        return img
+    x = max(0, min(w - 1, round(crop["left"] * w)))
+    y = max(0, min(h - 1, round(crop["top"] * h)))
+    cw = max(1, min(w - x, round(crop["width"] * w)))
+    ch = max(1, min(h - y, round(crop["height"] * h)))
+    return img.copy(int(x), int(y), int(cw), int(ch))
+
+
+def crop_for(raw_path, xmp_path=None):
+    """Normalised crop {left,top,width,height} (0–1) from a RAW's DxO .dop
+    (preferred — the cropping tool) else the Lightroom .xmp, or None. Uses
+    engine/sidecarlib (the same reader the DOP↔XMP transfer uses)."""
+    from pathlib import Path
+    crop = None
+    if raw_path:
+        dop = Path(str(raw_path) + ".dop")     # DxO names the recipe <rawname>.dop
+        if dop.exists():
+            try:
+                from engine.sidecarlib import read_dop_overrides
+                crop = read_dop_overrides(str(dop)).get("crop")
+            except Exception:
+                crop = None
+    if crop is None and xmp_path and Path(xmp_path).exists():
+        try:
+            from engine.sidecarlib import read_xmp_edits
+            crop = read_xmp_edits(str(xmp_path)).get("crop")
+        except Exception:
+            crop = None
+    return crop
+
+
 def sweep_dop(raw_src, dest_dir) -> None:
     """Move a RAW's DxO recipe (``<rawname>.dop``) into dest_dir when the picture
     is deleted, so no orphan recipe is left behind — Read & Summarize would

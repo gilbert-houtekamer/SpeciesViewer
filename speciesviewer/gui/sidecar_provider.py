@@ -23,7 +23,8 @@ from pathlib import Path
 
 from PyQt6.QtGui import QImage
 
-from gui.picture_provider import PictureItem, PictureCollection, ExifSummary, PixmapCallback, sweep_dop
+from gui.picture_provider import (PictureItem, PictureCollection, ExifSummary,
+                                  PixmapCallback, sweep_dop, apply_crop, crop_for)
 from gui.image_loader import AsyncImageLoader
 from gui.preview_provider import cached_jpg_for, preview_cache_dir_for
 from engine.exif_writer import exiftool_write
@@ -86,20 +87,6 @@ def _read_sidecar_rows(xmp_paths: list) -> tuple[dict, dict]:
         caches[folder].save()
 
     return rows, caches
-
-
-def _apply_crop(img, crop):
-    """Return the sub-rectangle of a QImage for a normalised crop
-    {left,top,width,height} (fractions 0–1). Rect only — crop rotation/straighten
-    (the angle field) is not applied yet."""
-    w, h = img.width(), img.height()
-    if not w or not h:
-        return img
-    x = max(0, min(w - 1, round(crop["left"] * w)))
-    y = max(0, min(h - 1, round(crop["top"] * h)))
-    cw = max(1, min(w - x, round(crop["width"] * w)))
-    ch = max(1, min(h - y, round(crop["height"] * h)))
-    return img.copy(int(x), int(y), int(cw), int(ch))
 
 
 def _subject_to_text(subject) -> str:
@@ -536,22 +523,7 @@ class SidecarCollection(PictureCollection):
         if stem in self._crop_cache:
             return self._crop_cache[stem]
         g = self._groups.get(stem, {})
-        crop = None
-        raw = g.get("raw")
-        if raw:
-            dop = Path(str(raw) + ".dop")    # DxO names the recipe <rawname>.dop
-            if dop.exists():
-                try:
-                    from engine.sidecarlib import read_dop_overrides
-                    crop = read_dop_overrides(str(dop)).get("crop")
-                except Exception:
-                    crop = None
-        if crop is None and g.get("xmp"):
-            try:
-                from engine.sidecarlib import read_xmp_edits
-                crop = read_xmp_edits(str(g["xmp"])).get("crop")
-            except Exception:
-                crop = None
+        crop = crop_for(g.get("raw"), g.get("xmp"))
         self._crop_cache[stem] = crop
         return crop
 
@@ -571,7 +543,7 @@ class SidecarCollection(PictureCollection):
                 img = QImage(str(p))
                 if img.isNull():
                     return None
-                return _apply_crop(img, crop) if crop else img
+                return apply_crop(img, crop) if crop else img
             return None
         self._loader.request(produce, on_ready, target_w=target_w)
 

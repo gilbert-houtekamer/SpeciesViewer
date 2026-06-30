@@ -24,7 +24,8 @@ from pathlib import Path
 from PyQt6.QtGui import QImage
 
 from gui.picture_provider import (
-    PictureItem, PictureCollection, ExifSummary, PixmapCallback, exif_from_rows, sweep_dop)
+    PictureItem, PictureCollection, ExifSummary, PixmapCallback, exif_from_rows,
+    sweep_dop, apply_crop, crop_for)
 from gui.image_loader import AsyncImageLoader
 from gui.rating_editor import _compute_rate
 from engine.exif_writer import exiftool_write
@@ -225,6 +226,9 @@ class PreviewCollection(PictureCollection):
         # the card note can show JPG without touching the fpr's file rows.
         self._extra_jpgs: dict = {}
         self._scan_extra_jpgs()
+        # Baseline image signatures so refresh can tell a re-crop / new render
+        # (re-decode) from a colour/rating text edit.
+        self._img_sigs: dict = {k: self._img_sig(k) for k in self.all_keys()}
 
     # ── ordering ──────────────────────────────────────────────────────────
     def rebuild(self, keys: list[str] | None = None) -> None:
@@ -455,6 +459,23 @@ class PreviewCollection(PictureCollection):
                 except OSError:
                     pass
 
+    def _img_sig(self, upn_key: str):
+        """Signature of what the displayed image depends on — the source (a render
+        switches it RAW→JPG) + its mtime + the .dop mtime (crop). A change means
+        re-decode, vs a colour/rating text edit."""
+        import os
+        src = self._display_source(upn_key)
+        raw = self._raw_path(upn_key)
+        dop = Path(str(raw) + ".dop") if raw else None
+
+        def _mt(p):
+            try:
+                return os.stat(p).st_mtime_ns
+            except OSError:
+                return None
+        return (str(src) if src else None, _mt(src) if src else None,
+                _mt(dop) if dop else None)
+
     def _pic_folder_set(self) -> set:
         if getattr(self, "_pic_folders", None) is None:
             folders = set()
@@ -498,6 +519,11 @@ class PreviewCollection(PictureCollection):
             xmp = self._xmp_for(key)
             if xmp:
                 out.append(str(xmp))
+            raw = self._raw_path(key)
+            if raw:
+                dop = Path(str(raw) + ".dop")   # watch the crop recipe too
+                if dop.exists():
+                    out.append(str(dop))
         return out
 
     def refresh(self) -> set:
@@ -558,6 +584,12 @@ class PreviewCollection(PictureCollection):
         # A render may have appeared since the last scan — fold it in so the
         # file-type note gains JPG (no exiftool, just a folder listing).
         changed |= self._scan_extra_jpgs()
+        # Image-change detection (new render switches the source, a re-crop bumps
+        # the .dop) → the host re-decodes only those; a colour edit isn't here.
+        new_sigs = {k: self._img_sig(k) for k in self.all_keys()}
+        self._image_changed = {k for k in new_sigs if new_sigs[k] != self._img_sigs.get(k)}
+        self._img_sigs = new_sigs
+        changed |= self._image_changed
         return changed
 
     def has_writable_sidecar(self, upn_key: str) -> bool:
@@ -595,20 +627,48 @@ class PreviewCollection(PictureCollection):
                 heic = p
         return jpg or raw or heic
 
+    def _raw_path(self, upn_key: str) -> Path | None:
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if frow and ("." + frow.get("WindowsExtension", "").lower()) in _RAW_EXTS:
+                p = Path(frow.get("WindowsFileName", ""))
+                if p.exists():
+                    return p
+        return None
+
+    def _display_source(self, upn_key: str) -> Path | None:
+        """Best display source. A render found on disk (DxO _DxO.jpg — already
+        cropped + processed) wins, so the viewer matches what PhotoLab shows;
+        else the tracked JPG > RAW > HEIC."""
+        extra = self._extra_jpgs.get(upn_key)
+        if extra and extra.exists():
+            return extra
+        return self._source_file(upn_key)
+
     def display_path(self, upn_key: str) -> Path | None:
         """Synchronous loadable path (JPG direct, or a cached preview for
         RAW/HEIC, extracting/decoding if needed). Used by the large view."""
-        src = self._source_file(upn_key)
+        src = self._display_source(upn_key)
         if src is None:
             return None
         return cached_jpg_for(src, preview_cache_dir_for(src.parent))
 
     def request_image(self, upn_key: str, target_w, on_ready: PixmapCallback) -> None:
+        src = self._display_source(upn_key)
+        # Crop the RAW preview to the PhotoLab/LR crop so the composition matches
+        # the edit. A render source is already cropped, so it's shown as-is.
+        crop = (crop_for(src, self._xmp_for(upn_key))
+                if src and src.suffix.lower() in _RAW_EXTS else None)
+
         def produce():
-            p = self.display_path(upn_key)  # extraction/decode off the GUI thread
+            if src is None:
+                return None
+            p = cached_jpg_for(src, preview_cache_dir_for(src.parent))
             if p and p.exists():
                 img = QImage(str(p))
-                return img if not img.isNull() else None
+                if img.isNull():
+                    return None
+                return apply_crop(img, crop) if crop else img
             return None
         self._loader.request(produce, on_ready, target_w=target_w)
 
