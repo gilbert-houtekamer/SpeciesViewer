@@ -88,6 +88,20 @@ def _read_sidecar_rows(xmp_paths: list) -> tuple[dict, dict]:
     return rows, caches
 
 
+def _apply_crop(img, crop):
+    """Return the sub-rectangle of a QImage for a normalised crop
+    {left,top,width,height} (fractions 0–1). Rect only — crop rotation/straighten
+    (the angle field) is not applied yet."""
+    w, h = img.width(), img.height()
+    if not w or not h:
+        return img
+    x = max(0, min(w - 1, round(crop["left"] * w)))
+    y = max(0, min(h - 1, round(crop["top"] * h)))
+    cw = max(1, min(w - x, round(crop["width"] * w)))
+    ch = max(1, min(h - y, round(crop["height"] * h)))
+    return img.copy(int(x), int(y), int(cw), int(ch))
+
+
 def _subject_to_text(subject) -> str:
     """dc:Subject can be a list (bag) or a string; render a display name."""
     if isinstance(subject, list):
@@ -259,6 +273,7 @@ class SidecarCollection(PictureCollection):
                     grp["xmp"] = xmp
         # Drop groups that ended up with no image file (e.g. a stray .xmp passed in).
         self._groups = {s: g for s, g in self._groups.items() if g.get("raw") or g.get("jpg")}
+        self._crop_cache: dict = {}      # stem -> normalised crop | None (cleared on refresh)
         self._attach_sibling_jpgs()
         self._rows, self._caches = _read_sidecar_rows(
             [g["xmp"] for g in self._groups.values() if g.get("xmp")])
@@ -431,6 +446,7 @@ class SidecarCollection(PictureCollection):
         # memo so the large viewer / copy-GPS re-read fresh too.
         from gui import geolocate
         geolocate._LOCATION_READ_CACHE.clear()
+        self._crop_cache.clear()         # a re-crop in PhotoLab/LR must re-read
         after = snapshot()
         changed = {stem for stem in after if after[stem] != before.get(stem)}
         # A render (PhotoLab _DxO.jpg, LR/v5 export) may have appeared since the
@@ -470,8 +486,40 @@ class SidecarCollection(PictureCollection):
     def _cache_dir_for(self, src: Path) -> Path:
         return self._cache_root if self._cache_root else preview_cache_dir_for(src.parent)
 
+    def _crop_for(self, stem: str):
+        """Normalised crop {left,top,width,height} (0–1) from the PhotoLab .dop
+        (preferred — it's the cropping tool) or the Lightroom .xmp, else None.
+        Uses engine/sidecarlib (the same reader the DOP↔XMP transfer uses).
+        Cached per stem; the cache is cleared on refresh()."""
+        if stem in self._crop_cache:
+            return self._crop_cache[stem]
+        g = self._groups.get(stem, {})
+        crop = None
+        raw = g.get("raw")
+        if raw:
+            dop = Path(str(raw) + ".dop")    # DxO names the recipe <rawname>.dop
+            if dop.exists():
+                try:
+                    from engine.sidecarlib import read_dop_overrides
+                    crop = read_dop_overrides(str(dop)).get("crop")
+                except Exception:
+                    crop = None
+        if crop is None and g.get("xmp"):
+            try:
+                from engine.sidecarlib import read_xmp_edits
+                crop = read_xmp_edits(str(g["xmp"])).get("crop")
+            except Exception:
+                crop = None
+        self._crop_cache[stem] = crop
+        return crop
+
     def request_image(self, stem: str, target_w, on_ready: PixmapCallback) -> None:
         src = self._source_file(stem)
+        # Crop the RAW embedded preview to the PhotoLab/Lightroom crop so the cull
+        # composition matches the edit. A JPG source (a DxO/LR render) is already
+        # cropped, so it's shown as-is.
+        crop = (self._crop_for(stem)
+                if src and Path(src).suffix.lower() in _RAW_EXTS else None)
 
         def produce():
             if not src:
@@ -479,7 +527,9 @@ class SidecarCollection(PictureCollection):
             p = cached_jpg_for(Path(src), self._cache_dir_for(Path(src)))
             if p and p.exists():
                 img = QImage(str(p))
-                return img if not img.isNull() else None
+                if img.isNull():
+                    return None
+                return _apply_crop(img, crop) if crop else img
             return None
         self._loader.request(produce, on_ready, target_w=target_w)
 
