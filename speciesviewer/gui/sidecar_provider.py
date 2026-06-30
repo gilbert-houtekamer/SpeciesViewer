@@ -600,8 +600,15 @@ class SidecarCollection(PictureCollection):
                 continue
             upn_dir = trash_root / stem
             upn_dir.mkdir(parents=True, exist_ok=True)
-            for kind in ("raw", "xmp"):
-                src = grp.get(kind)
+            to_trash = [grp.get(kind) for kind in ("raw", "xmp")]
+            # Sweep the DxO recipe too (named <rawname>.dop) — else a lone .dop is
+            # left behind and Read & Summarize (sv2) synthesises a phantom, image-
+            # less picture from it. A _DxO.jpg can't be here: a JPG protects the
+            # picture from deletion (skipped above).
+            raw = grp.get("raw")
+            if raw:
+                to_trash.append(Path(str(raw) + ".dop"))
+            for src in to_trash:
                 if src and Path(src).exists():
                     try:
                         shutil.move(str(src), str(upn_dir / Path(src).name))
