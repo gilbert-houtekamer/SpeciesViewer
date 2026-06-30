@@ -881,7 +881,7 @@ class LargeImageView(QDialog):
         if not raw:
             self._fullres_view.set_message("No RAW file for this picture.")
             return
-        self._fullres_view.set_message("Decoding full resolution…")
+        self._fullres_view.set_message("Decoding high resolution…")
         cache_root = str(self._fullres_cache_dir())
         raw_s = str(raw)
         self._fr_loader.cancel_all()  # drop a decode still running for a previous picture
