@@ -9,7 +9,7 @@ class GlobalSettingsDialog(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
         self.setWindowTitle("Global Settings")
-        self.setFixedSize(400, 380)
+        self.setFixedSize(400, 420)
 
         layout = QVBoxLayout(self)
 
@@ -17,6 +17,15 @@ class GlobalSettingsDialog(QDialog):
         splash_enabled = _config.get("Global", "splash_enabled", fallback="yes") == "yes"
         self.splash_switch.setChecked(splash_enabled)
         layout.addWidget(self.splash_switch)
+
+        self.debug_switch = QCheckBox("Enable debug functionality")
+        self.debug_switch.setToolTip(
+            "Shows the diagnostic tools under File ▸ Admin (status consoles, "
+            "audits, rebuild, clean orphans, testbed).\nTakes effect after a "
+            "restart.")
+        self.debug_switch.setChecked(
+            _config.get("Global", "debug_tools", fallback="no") == "yes")
+        layout.addWidget(self.debug_switch)
 
         self.width_field = self._labeled_field(layout, "Window width", _config.get("Global", "default_window_width", fallback="1600"))
         self.height_field = self._labeled_field(layout, "Window height", _config.get("Global", "default_window_height", fallback="1200"))
@@ -41,6 +50,7 @@ class GlobalSettingsDialog(QDialog):
 
     def save_settings(self):
         _config.set("Global", "splash_enabled", "yes" if self.splash_switch.isChecked() else "no")
+        _config.set("Global", "debug_tools", "yes" if self.debug_switch.isChecked() else "no")
         _config.set("Global", "default_window_width", self.width_field.text())
         _config.set("Global", "default_window_height", self.height_field.text())
         _config.set("websettings", "sftppwd", self.webpassword_field.text())

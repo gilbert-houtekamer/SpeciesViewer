@@ -13,7 +13,7 @@ from gui.virttrip_process import (VirtualTripCreationDialog, ExtractDaysDialog,
                                    VirttripWriteBlogDialog, VirttripRedoBlogDialog,
                                    VirttripBuildWebsiteDialog,
                                    VirttripAddToMasterDialog, retire_trip_to_virttrip)
-from utils.config import _config
+from utils.config import _config, debug_enabled
 import os
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
@@ -999,6 +999,24 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # File ▸ Admin. Heal Admin is a real fix and always shown; the diagnostics
+    # are gated behind the "Enable debug functionality" flag (Global Settings).
+    # Read at build time — toggling the flag takes effect on restart.
+    admin_menu = {"Heal Admin (apply fixes)…": heal_admin_item}
+    if debug_enabled():
+        admin_menu = {
+            "Trip Status Console…": trip_status_console,
+            "Merged Status (all machines)…": merged_status_console,
+            f"{MenuSpec.separator()}_admin_0": None,
+            "Audit Admin (find ghost records)…": audit_admin_item,
+            "Audit Species Counters (dry-run)…": audit_species_item,
+            "Rebuild Admin (dry-run compare)…": rebuild_admin_item,
+            "Heal Admin (apply fixes)…": heal_admin_item,
+            "Clean Orphan Sidecars (move to trash)…": clean_orphans_item,
+            f"{MenuSpec.separator()}_admin_1": None,
+            "Call Testbed for trip day": testbed,
+        }
+
     return {
         "File": {
             "Settings": {
@@ -1025,18 +1043,7 @@ def build_menu_spec(main_window):
                 "Manage Caches…": manage_caches,
                 "Rescan master EXIF cache": rescan_master_cache,
             },
-            "Admin": {
-                "Trip Status Console…": trip_status_console,
-                "Merged Status (all machines)…": merged_status_console,
-                f"{MenuSpec.separator()}_admin_0": None,
-                "Audit Admin (find ghost records)…": audit_admin_item,
-                "Audit Species Counters (dry-run)…": audit_species_item,
-                "Rebuild Admin (dry-run compare)…": rebuild_admin_item,
-                "Heal Admin (apply fixes)…": heal_admin_item,
-                "Clean Orphan Sidecars (move to trash)…": clean_orphans_item,
-                f"{MenuSpec.separator()}_admin_1": None,
-                "Call Testbed for trip day": testbed,
-            },
+            "Admin": admin_menu,
             f"{MenuSpec.separator()}_file": None,
             "Quit": MenuSpec(
                 callback=main_window.close,

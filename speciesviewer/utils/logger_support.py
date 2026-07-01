@@ -72,8 +72,9 @@ class WarningCounter(logging.Filter):
 
 # Logger initializer
 def init_logger(log_widget):
+    from utils.config import debug_enabled
     logger = logging.getLogger("speciesviewer")
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.DEBUG if debug_enabled() else logging.INFO)
     logger.propagate = False
     logger.handlers.clear()
     # access to global counter

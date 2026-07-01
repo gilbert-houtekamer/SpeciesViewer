@@ -47,7 +47,13 @@ def _diag(msg: str) -> None:
     """Diagnostic print straight to stderr. Bypasses the speciesviewer logger
     so we still see what happens during splash-time warming, BEFORE
     init_logger() attaches the file handler at t≈2s. Visible in the VS Code
-    debug console / terminal."""
+    debug console / terminal. Only when 'Enable debug functionality' is on."""
+    try:
+        from utils.config import debug_enabled
+        if not debug_enabled():
+            return
+    except Exception:
+        return
     print(f"[master_db] {msg}", file=sys.stderr, flush=True)
 
 

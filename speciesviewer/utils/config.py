@@ -35,6 +35,11 @@ def get_repo_settings():
 def get_setting(section, key, fallback=None):
     return _config.get(section, key, fallback=fallback)
 
+def debug_enabled():
+    """True when 'Enable debug functionality' is on (Global Settings). Gates the
+    File ▸ Admin diagnostics, verbose DEBUG logging, and the splash/DB diag prints."""
+    return _config.get("Global", "debug_tools", fallback="no") == "yes"
+
 def get_int_setting(section, key, fallback=0):
     return _config.getint(section, key, fallback=fallback)
 

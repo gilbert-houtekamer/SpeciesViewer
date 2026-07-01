@@ -37,7 +37,8 @@ def _warm_master_db_in_background() -> None:
         # init_logger()'s handler.clear() + mode="w" reset at t=2s; the
         # post-init logger.info also writes to studio.log.
         def diag(msg):
-            print(f"[splash-warm] {msg}", file=sys.stderr, flush=True)
+            if _config.get("Global", "debug_tools", fallback="no") == "yes":
+                print(f"[splash-warm] {msg}", file=sys.stderr, flush=True)
         logger = logging.getLogger("speciesviewer")
         try:
             master_root = _config.get(
@@ -112,7 +113,8 @@ def start_main():
         _main_window = MainWindow()
         main_window = _main_window
         main_window.logger = init_logger(main_window.green_log_box)           # ✅ Set up logging
-        print(f"✅ Logging configured, logger assigned: {main_window.logger}")
+        if _config.get("Global", "debug_tools", fallback="no") == "yes":
+            print(f"✅ Logging configured, logger assigned: {main_window.logger}")
 
         populate_trip_overview(main_window)  # ✅ Now logger is ready
         splash.finish(main_window)
