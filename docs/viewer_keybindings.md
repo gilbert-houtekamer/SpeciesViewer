@@ -59,6 +59,30 @@ While the 100% tab is active, **navigation steps over Blue/Purple** pictures
 (→ / ← / Space / wheel) — you flip only through the live candidates. The Fit tab
 and the grids keep normal navigation, so a reject is still reachable to re-judge.
 
+## Crop suggestion — Large Image View
+
+The **✂ Crop** button (top-right) rough-cuts a crop to hand to DxO PhotoLab /
+Lightroom as a starting point — SpeciesViewer isn't a precise editor, it just
+seeds the recipe. Click it and the viewer swaps to the **uncropped** frame with
+an overlay:
+
+- **Left-drag** to draw; drag a **corner** to resize; drag **inside** to move.
+- The aspect is **locked to the camera's nominal ratio** (4:3, 3:2, …) so a 4:3
+  body gives true 4:3 crops (not the sensor's 1.3344 → e.g. 1200×900, not
+  1200×899). The crop's approximate size in RAW pixels shows under the rectangle.
+- **⤢ Snap size** resizes the crop so its long side is the nearest standard —
+  **1000 · 1200 · 1500 · 2000** px — keeping the aspect and centre. A long side
+  within 5 % above a preset rounds **down** to it, otherwise it ceilings up; a
+  long side past 2000 (+5 %) is left free with a note.
+- **Enter** applies · **Esc** cancels · double-click also applies.
+
+Applying writes the crop to **both** the DxO `.dop` and the Lightroom `.xmp`
+(creating the sidecar if none exists), then the grid, filmstrip, and large image
+re-decode to show it. Note: PhotoLab reads a sibling `.dop` on **first
+discovery** of a RAW — write the crop before the folder is opened in PhotoLab, or
+force a "read from sidecar" there. The tool is offered for RAW pictures during
+culling.
+
 ## Dialogs (apply to the selection, else the focused picture)
 
 | Key | Action |

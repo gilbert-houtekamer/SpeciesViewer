@@ -809,6 +809,7 @@ class ImagePreviewDialog(QDialog):
                              settings_key="SpeciesPreview", auto_advance=True,
                              initial_selection=set(self._selected_keys))
         dlg.picture_changed.connect(self._on_large_view_changed)
+        dlg.picture_image_changed.connect(self._on_large_view_image_changed)
         dlg.picture_navigated.connect(self._on_large_view_navigated)
         dlg.selection_changed.connect(self._on_large_view_selection_changed)
         dlg.species_committed.connect(self.refresh_after_species_change)
@@ -834,6 +835,16 @@ class ImagePreviewDialog(QDialog):
         card = self._cards_by_key.get(key)
         if card:
             card.refresh()
+
+    def _on_large_view_image_changed(self, key):
+        # A crop was applied in the large view — the card must RE-DECODE, not just
+        # repaint its frame (which is all _on_large_view_changed does).
+        card = self._cards_by_key.get(key)
+        if card:
+            try:
+                card.reload_thumbnail()
+            except RuntimeError:
+                pass
 
     def _on_large_view_navigated(self, key):
         # Sync the grid cursor to the large view's current picture so the user

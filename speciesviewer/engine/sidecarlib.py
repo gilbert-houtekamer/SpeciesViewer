@@ -2,6 +2,8 @@
 
 import os
 import re
+import uuid
+import datetime
 import xml.etree.ElementTree as ET
 import logging
 
@@ -199,6 +201,127 @@ def write_dop_edits(dop_path, exposure=None, crop=None, angle=None):
         f.write(text)
 
     return True
+
+
+# ── Sidecar creation (seed a suggestion before PhotoLab/Lightroom touch it) ──────
+#
+# The surgical writers above edit an *existing* sidecar. To suggest a crop on a
+# RAW straight off the card — before DxO or Lightroom have created their recipe —
+# we must first lay down a minimal, valid sidecar. In our flow the .xmp usually
+# already exists (SpeciesViewer writes it for GPS/rating/species), so it's the
+# .dop that typically has to be created.
+
+_XMP_SKELETON = (
+    "<x:xmpmeta xmlns:x='adobe:ns:meta/' x:xmptk='SpeciesViewer'>\n"
+    "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>\n"
+    " <rdf:Description rdf:about=''\n"
+    "  xmlns:crs='http://ns.adobe.com/camera-raw-settings/1.0/'>\n"
+    "  <crs:RawFileName>{name}</crs:RawFileName>\n"
+    " </rdf:Description>\n"
+    "</rdf:RDF>\n"
+    "</x:xmpmeta>\n"
+)
+
+# Minimal DxO recipe. The crop goes in Overrides (the user-delta block DxO reads
+# on top of the applied preset's Base); write_dop_edits fills it in. Base is left
+# empty so PhotoLab regenerates it from its default preset.
+# NOTE: whether PhotoLab accepts a from-scratch .dop it didn't author is the one
+# unverified assumption in this path — needs a live check in PL.
+_DOP_SKELETON = """Sidecar = {{
+Date = "{date}",
+Software = "SpeciesViewer",
+Source = {{
+Items = {{
+{{
+Name = "{name}",
+Orientation = 1,
+Settings = {{
+Base = {{
+}}
+,
+Overrides = {{
+}}
+,
+Version = "19.5",
+}}
+,
+ShouldProcess = 2,
+Uuid = "{item_uuid}",
+}}
+,
+}}
+,
+Uuid = "{source_uuid}",
+}}
+,
+Version = "19.0",
+}}
+"""
+
+
+def ensure_xmp(raw_path):
+    """Return the .xmp sidecar path for a RAW, creating a minimal one if missing.
+    Returns None if creation failed."""
+    xmp_path = os.path.splitext(str(raw_path))[0] + ".xmp"
+    if os.path.exists(xmp_path):
+        return xmp_path
+    try:
+        with open(xmp_path, "w", encoding="utf-8") as f:
+            f.write(_XMP_SKELETON.format(name=os.path.basename(str(raw_path))))
+        return xmp_path
+    except Exception as e:
+        logger.warning(f"Could not create XMP {xmp_path}: {e}")
+        return None
+
+
+def ensure_dop(raw_path):
+    """Return the .dop sidecar path for a RAW, creating a minimal one if missing.
+    Returns None if creation failed."""
+    dop_path = str(raw_path) + ".dop"
+    if os.path.exists(dop_path):
+        return dop_path
+    try:
+        text = _DOP_SKELETON.format(
+            date=datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.0000000Z"),
+            name=os.path.basename(str(raw_path)),
+            item_uuid=str(uuid.uuid4()).upper(),
+            source_uuid=str(uuid.uuid4()).upper(),
+        )
+        with open(dop_path, "w", encoding="utf-8") as f:
+            f.write(text)
+        return dop_path
+    except Exception as e:
+        logger.warning(f"Could not create DOP {dop_path}: {e}")
+        return None
+
+
+def suggest_crop(raw_path, crop, angle=None):
+    """Write a suggested crop to BOTH the DxO .dop and the Lightroom .xmp so the
+    next edit in PhotoLab or Lightroom opens with it. Creates a sidecar when it's
+    missing (so a fresh off-the-card RAW still gets the suggestion). `crop` is the
+    normalised {left,top,width,height} (0-1). Returns a dict describing what was
+    written/created."""
+    res = {"dop": False, "xmp": False, "dop_created": False, "xmp_created": False}
+
+    dop_before = os.path.exists(str(raw_path) + ".dop")
+    dop_path = ensure_dop(raw_path)
+    res["dop_created"] = bool(dop_path) and not dop_before
+    if dop_path:
+        try:
+            res["dop"] = write_dop_edits(dop_path, crop=crop, angle=angle)
+        except Exception as e:
+            logger.warning(f"suggest_crop: DOP write failed for {dop_path}: {e}")
+
+    xmp_before = os.path.exists(os.path.splitext(str(raw_path))[0] + ".xmp")
+    xmp_path = ensure_xmp(raw_path)
+    res["xmp_created"] = bool(xmp_path) and not xmp_before
+    if xmp_path:
+        try:
+            res["xmp"] = write_xmp_edits(xmp_path, crop=crop, angle=angle)
+        except Exception as e:
+            logger.warning(f"suggest_crop: XMP write failed for {xmp_path}: {e}")
+
+    return res
 
 
 def _has_edits(data):

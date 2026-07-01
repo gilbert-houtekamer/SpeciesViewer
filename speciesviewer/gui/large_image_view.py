@@ -445,6 +445,7 @@ class _FullResView(QScrollArea):
 
 class LargeImageView(QDialog):
     picture_changed   = pyqtSignal(str)  # key — emitted after rating/colour/desc edit
+    picture_image_changed = pyqtSignal(str)  # key — the IMAGE changed (a crop) → host re-decodes the card
     picture_navigated = pyqtSignal(str)  # key — emitted when ←/→ moves to a new picture
     species_committed = pyqtSignal(set)  # upns — emitted after a species commit in the panel
     selection_changed = pyqtSignal(set)  # keys — emitted whenever filmstrip selection changes
@@ -471,6 +472,8 @@ class LargeImageView(QDialog):
         self._selected_keys: set[str] = set(initial_selection) if initial_selection else set()
         self._bracket_left:  str | None = None
         self._bracket_right: str | None = None
+        self._crop_mode = False
+        self._crop_overlay = None
 
         # ── Root layout ───────────────────────────────────────────────────────
         root = QVBoxLayout(self)
@@ -488,6 +491,29 @@ class LargeImageView(QDialog):
         top_bar_row.setContentsMargins(0, 0, 4, 0)
         top_bar_row.setSpacing(0)
         top_bar_row.addStretch()
+        # Crop tool — draw a suggested crop on the full frame for PhotoLab/LR.
+        self._crop_btn = QToolButton()
+        self._crop_btn.setAutoRaise(True)
+        self._crop_btn.setCheckable(True)
+        self._crop_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._crop_btn.setStyleSheet("font-size: 10px; padding: 1px 5px;")
+        self._crop_btn.clicked.connect(self._toggle_crop_mode)
+        top_bar_row.addWidget(self._crop_btn)
+        # Snap the drawn crop to the nearest standard long-side size — only useful
+        # (and only visible) while cropping.
+        self._snap_btn = QToolButton()
+        self._snap_btn.setAutoRaise(True)
+        self._snap_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._snap_btn.setStyleSheet("font-size: 10px; padding: 1px 5px;")
+        self._snap_btn.setText("⤢ Snap size")
+        from gui.crop_overlay import _SIZE_PRESETS
+        self._snap_btn.setToolTip(
+            "Resize the crop so its long side is the nearest standard size "
+            f"({', '.join(str(s) for s in _SIZE_PRESETS)} px).")
+        self._snap_btn.clicked.connect(self._on_snap_crop)
+        self._snap_btn.setVisible(False)
+        top_bar_row.addWidget(self._snap_btn)
+        self._update_crop_btn()
         self._filmstrip_btn = QToolButton()
         self._filmstrip_btn.setAutoRaise(True)
         self._filmstrip_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -796,6 +822,8 @@ class LargeImageView(QDialog):
 
     def _on_view_tab_changed(self, idx):
         if idx == 1:
+            if self._crop_mode:
+                self._exit_crop_mode(reload=True)  # crop is a Fit-tab tool
             self._load_fullres()
 
     def _on_fullres_point_changed(self, fx, fy):
@@ -915,6 +943,155 @@ class LargeImageView(QDialog):
             self._fullres_view.set_message("Could not decode full resolution.")
             return
         self._fullres_view.set_image(px, self._fullres_point)
+
+    # ── Crop tool ─────────────────────────────────────────────────────────────
+    def _update_crop_btn(self):
+        if getattr(self, "_crop_mode", False):
+            self._crop_btn.setText("✂ Cropping…")
+            self._crop_btn.setToolTip("Drawing a crop — Enter applies, Esc cancels.")
+        else:
+            self._crop_btn.setText("✂ Crop")
+            self._crop_btn.setToolTip(
+                "Suggest a crop for PhotoLab / Lightroom — draw a rectangle on the "
+                "full frame (aspect locked to the camera's), then press Enter.")
+
+    def _toggle_crop_mode(self):
+        if self._crop_mode:
+            self._exit_crop_mode(reload=True)
+        else:
+            self._enter_crop_mode()
+
+    def _on_snap_crop(self):
+        if self._crop_mode and self._crop_overlay is not None:
+            self._crop_overlay.snap_to_standard()
+            self._crop_overlay.setFocus()
+
+    def _enter_crop_mode(self):
+        if self._item is None or not getattr(self._item, "can_set_crop", False):
+            logger.info("Crop: not available for this picture (no RAW / read-only).")
+            self._crop_btn.setChecked(False)
+            return
+        # Crop is a Fit-tab tool; the 100% tab pans instead.
+        self._view_tabs.setCurrentIndex(0)
+        self._crop_mode = True
+        self._crop_btn.setChecked(True)
+        self._snap_btn.setVisible(True)
+        self._update_crop_btn()
+        # Show the UNCROPPED frame so a fresh rectangle can be drawn over it.
+        self._load_token += 1
+        tok = self._load_token
+        self._image_label.setText("Loading full frame…")
+        self._item.request_uncropped_pixmap(
+            lambda px, t=tok: self._on_uncropped_for_crop(t, px))
+
+    def _on_uncropped_for_crop(self, token, px):
+        if token != self._load_token or not self._crop_mode:
+            return
+        self._pixmap = px if (px is not None and not px.isNull()) else QPixmap()
+        if self._pixmap.isNull():
+            self._image_label.setText("(no image)")
+            return
+        self._image_label.setText("")
+        self._fit_pixmap()
+        self._show_crop_overlay()
+
+    def _show_crop_overlay(self):
+        if self._crop_overlay is None:
+            from gui.crop_overlay import CropOverlay
+            self._crop_overlay = CropOverlay(self._image_label)
+            self._crop_overlay.committed.connect(self._on_crop_committed)
+            self._crop_overlay.cancelled.connect(
+                lambda: self._exit_crop_mode(reload=True))
+        self._sync_crop_overlay_geom()
+        # Lock to the camera's NOMINAL ratio (4:3 / 3:2) so standard sizes come out
+        # round (1200×900, not 1200×899); fall back to the shown frame's ratio.
+        fw, fh = self._full_frame_size()
+        from gui.crop_overlay import nominal_aspect
+        aspect = nominal_aspect(fw, fh)
+        if aspect is None:
+            pm = self._image_label.pixmap()
+            if pm is not None and not pm.isNull() and pm.height() > 0:
+                aspect = pm.width() / pm.height()
+        if aspect:
+            self._crop_overlay.set_aspect(aspect)
+        self._crop_overlay.set_full_size(fw, fh)
+        self._crop_overlay.set_normalized(self._existing_crop())
+        self._crop_overlay.show()
+        self._crop_overlay.raise_()
+        self._crop_overlay.setFocus()
+        # The label may still be re-laying out after the frame swap; re-glue once
+        # it settles so the overlay lands exactly on the pixmap.
+        QTimer.singleShot(0, self._sync_crop_overlay_geom)
+
+    def _sync_crop_overlay_geom(self):
+        """Keep the overlay exactly over the displayed pixmap (centred in the
+        label), preserving the drawn rectangle across a resize."""
+        if self._crop_overlay is None or not self._crop_mode:
+            return
+        pm = self._image_label.pixmap()
+        if pm is None or pm.isNull():
+            return
+        lw, lh = self._image_label.width(), self._image_label.height()
+        pw, ph = pm.width(), pm.height()
+        prev = (self._crop_overlay.normalized()
+                if self._crop_overlay.has_crop() else None)
+        self._crop_overlay.setGeometry(max(0, (lw - pw) // 2),
+                                       max(0, (lh - ph) // 2), pw, ph)
+        if prev is not None:
+            self._crop_overlay.set_normalized(prev)
+
+    def _full_frame_size(self):
+        """Full-frame pixel dimensions (w, h) from the RAW's EXIF, for the crop
+        size readout. (0, 0) when unknown."""
+        try:
+            dims = (self._item.exif.dimensions or "") if self._item else ""
+            w, h = dims.lower().split("x")
+            return int(w), int(h)
+        except (ValueError, AttributeError):
+            return 0, 0
+
+    def _existing_crop(self):
+        """Any crop already in the sidecars, so a re-crop starts from it. Usually
+        None in our flow (the tool targets uncropped shots)."""
+        try:
+            from gui.picture_provider import crop_for
+            raw = self._collection.raw_path(self._keys[self._index])
+            return crop_for(raw) if raw else None
+        except Exception:
+            return None
+
+    def _on_crop_committed(self, crop: dict):
+        if self._item is None:
+            return
+        key = self._item.key
+        try:
+            res = self._item.set_crop(crop)
+        except Exception as e:
+            logger.warning(f"Crop: could not write suggestion: {e}")
+            res = None
+        self._exit_crop_mode(reload=False)
+        # Re-decode with the new crop applied + refresh strips and the host grid.
+        self.refresh_external(key, reload_image=True)
+        self.picture_changed.emit(key)
+        self.picture_image_changed.emit(key)   # the grid card must re-decode too
+        if res:
+            created = [k.upper() for k in ("dop", "xmp") if res.get(f"{k}_created")]
+            extra = f"  (created {', '.join(created)})" if created else ""
+            logger.info("Crop suggestion written to PhotoLab + Lightroom "
+                        f"sidecars.{extra}")
+
+    def _exit_crop_mode(self, reload: bool = True):
+        if not self._crop_mode and self._crop_overlay is None:
+            return
+        self._crop_mode = False
+        self._crop_btn.setChecked(False)
+        self._snap_btn.setVisible(False)
+        self._update_crop_btn()
+        if self._crop_overlay is not None:
+            self._crop_overlay.hide()
+        if reload:
+            self._load_current()   # back to the normal cropped cull view
+        self.setFocus()
 
     def _cull_set_cursor(self, key):
         if key in self._keys:
@@ -1094,6 +1271,7 @@ class LargeImageView(QDialog):
         self._dxo_btn.setEnabled(raw is not None)
         self._dxo_btn.setToolTip("Open the RAW file in the associated viewer" if raw
                                  else "No RAW file for this picture")
+        self._crop_btn.setEnabled(getattr(item, "can_set_crop", False))
 
         # EXIF
         exif = item.exif
@@ -1243,6 +1421,8 @@ class LargeImageView(QDialog):
     def _go(self, delta: int):
         if not self._keys:
             return
+        if self._crop_mode:
+            self._exit_crop_mode(reload=False)  # _load_current below restores the view
         self._save_description()
         n = len(self._keys)
         step = 1 if delta >= 0 else -1
@@ -1273,6 +1453,8 @@ class LargeImageView(QDialog):
         new = self._keys.index(key)
         if new == self._index:
             return
+        if self._crop_mode:
+            self._exit_crop_mode(reload=False)
         self._save_description()
         self._index = new
         self._load_current()
@@ -1657,6 +1839,8 @@ class LargeImageView(QDialog):
                                          Qt.TransformationMode.SmoothTransformation)
         self._image_label.setPixmap(scaled)
         self._image_label.setMaximumSize(scaled.size())
+        if self._crop_mode:
+            self._sync_crop_overlay_geom()
 
     def showEvent(self, event):
         super().showEvent(event)

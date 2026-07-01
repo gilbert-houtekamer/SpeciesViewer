@@ -259,6 +259,17 @@ class PictureItem(ABC):
     def set_color(self, value: str) -> None:
         raise NotImplementedError
 
+    # ── crop suggestion (RAW only; seeds PhotoLab/Lightroom) ─────────────────
+    # The large viewer's crop tool draws on the UNCROPPED frame, so it asks for
+    # an uncropped pixmap; engines that don't apply a crop on display just return
+    # the normal full image. set_crop writes the normalised {left,top,width,
+    # height} to the sidecar(s). Gated by can_set_crop.
+    def request_uncropped_pixmap(self, on_ready: PixmapCallback) -> None:
+        self.request_full_pixmap(on_ready)
+
+    def set_crop(self, crop: dict) -> None:
+        raise NotImplementedError
+
     # ── capability flags (UI greys unsupported ops) ──────────────────────────
     # Instances override these; class defaults are the safe read-only case.
     can_edit_species: bool = False
@@ -266,6 +277,7 @@ class PictureItem(ABC):
     can_edit_description: bool = False
     can_edit_rating: bool = False
     can_edit_color: bool = False
+    can_set_crop: bool = False
 
 
 class PictureCollection(ABC):

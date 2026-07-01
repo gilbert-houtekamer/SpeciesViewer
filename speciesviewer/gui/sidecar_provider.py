@@ -111,6 +111,10 @@ class SidecarItem(PictureItem):
     def __init__(self, collection: "SidecarCollection", stem: str):
         self._c = collection
         self._stem = stem
+        # Crop suggestion applies to RAW pictures only (a JPG-only group has no
+        # RAW to re-develop, and its preview is already the crop).
+        self.can_set_crop = (not collection.readonly
+                             and bool(collection._groups.get(stem, {}).get("raw")))
         if collection.readonly:
             self.can_edit_rating = False
             self.can_edit_color = False
@@ -213,6 +217,15 @@ class SidecarItem(PictureItem):
 
     def request_full_pixmap(self, on_ready: PixmapCallback) -> None:
         self._c.request_image(self._stem, None, on_ready)
+
+    def request_uncropped_pixmap(self, on_ready: PixmapCallback) -> None:
+        # The crop tool draws on the full frame, so bypass the edit-crop that
+        # request_full_pixmap applies for the normal cull view.
+        self._c.request_image(self._stem, None, on_ready, crop=False)
+
+    def set_crop(self, crop: dict):
+        """Write the suggested crop to this picture's sidecars (see collection)."""
+        return self._c.set_crop(self._stem, crop)
 
     # write ops → the sidecar
     def set_rating(self, value: int) -> None:
@@ -527,13 +540,37 @@ class SidecarCollection(PictureCollection):
         self._crop_cache[stem] = crop
         return crop
 
-    def request_image(self, stem: str, target_w, on_ready: PixmapCallback) -> None:
+    def set_crop(self, stem: str, crop: dict):
+        """Write a suggested crop to the picture's DxO .dop and Lightroom .xmp so
+        the next edit in either app opens with it (creating a sidecar if missing).
+        Invalidates the cached crop + image signature so the next decode shows the
+        new crop and refresh() doesn't re-report our own write. Returns the
+        sidecarlib result dict, or None if there's no RAW."""
+        raw = self.raw_path(stem)
+        if not raw:
+            return None
+        from engine.sidecarlib import suggest_crop
+        res = suggest_crop(str(raw), crop)
+        # A newly-created .xmp isn't in the group yet — attach it so later reads
+        # (file_exts, location, rows on rescan) find it.
+        g = self._groups.get(stem, {})
+        if res and res.get("xmp_created") and "xmp" not in g:
+            xmp = Path(raw).with_suffix(".xmp")
+            if xmp.exists():
+                g["xmp"] = xmp
+        self._crop_cache.pop(stem, None)
+        self._image_sigs[stem] = self._image_sig(stem)
+        return res
+
+    def request_image(self, stem: str, target_w, on_ready: PixmapCallback,
+                      crop: bool = True) -> None:
         src = self._source_file(stem)
         # Crop the RAW embedded preview to the PhotoLab/Lightroom crop so the cull
         # composition matches the edit. A JPG source (a DxO/LR render) is already
-        # cropped, so it's shown as-is.
+        # cropped, so it's shown as-is. crop=False (the crop tool) shows the full
+        # uncropped frame so the user can draw a fresh rectangle.
         crop = (self._crop_for(stem)
-                if src and Path(src).suffix.lower() in _RAW_EXTS else None)
+                if crop and src and Path(src).suffix.lower() in _RAW_EXTS else None)
 
         def produce():
             if not src:
