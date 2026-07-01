@@ -16,6 +16,7 @@ import batch.svv2ExtractDays
 import batch.svv3WriteBlog
 import batch.svv4BuildWebsite
 import batch.svv5AddToMaster
+import batch.svv6RedoBlog
 from gui.menu import MenuSpec
 from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt,
@@ -478,7 +479,10 @@ class VirtualTripCreationDialog(QDialog):
         self.root_field.set_text(str(new_trip_path))
         self.topbar_img_field.field.setText("tripbanner.jpg")
         self.trip_img_field.field.setText("tripimage.jpg")
-        self.trip_web.set_text(f"/virttrips/{folder_name}")
+        # Web namespace matches regular trips — to a visitor a virtual trip is
+        # just a trip (and it typically continues a retired trip at the same
+        # /trips/<name>/ URL, where its blog + pictures already live).
+        self.trip_web.set_text(f"/trips/{folder_name}")
         self.status_label.setText(f"✅ Created: {new_trip_path}")
         self.logger.info(f"Created new virtual trip folder: {new_trip_path}")
 
@@ -488,7 +492,7 @@ class VirtualTripCreationDialog(QDialog):
             return
         trip_name = trip_data["trip_name"]
         if "trips" not in trip_name:
-            trip_name = "/virttrips/" + trip_name
+            trip_name = "/trips/" + trip_name
         self.trip_web.set_text(trip_name)
         self.trip_img_field.field.setText(trip_data["trip_picture"])
         self.topbar_img_field.field.setText(trip_data["trip_banner"])
@@ -754,6 +758,94 @@ class VirttripWriteBlogDialog(QDialog):
 
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(menu_spec, on_success=on_success)
+
+
+class VirttripRedoBlogDialog(QDialog):
+    """Run svv6RedoBlog: recreate blog HTML (species links + complete Previous/Next
+    navigation) for every published day — no JPGs are moved or re-uploaded."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.logger        = parent.logger
+        self.passed_parent = parent
+        self.setWindowTitle("Recreate Virtual Trip Blogs")
+        self.resize(580, 300)
+
+        layout = QVBoxLayout(self)
+
+        virttrip_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
+        trip_data  = read_virttrip_ini(virttrip_root) if virttrip_root else {}
+        trip_name  = (trip_data or {}).get("trip_name", Path(virttrip_root).name if virttrip_root else "?")
+        # Count days that will be recreated: extracted day dirs with a blog ini
+        # (the same set svv6 targets — not blog_admin.csv, which may be absent).
+        blog_count = 0
+        if virttrip_root:
+            review_root = Path(virttrip_root) / "metadata" / "review"
+            blog_dir    = Path(virttrip_root) / "metadata" / "blog"
+            if review_root.is_dir():
+                blog_count = sum(
+                    1 for d in review_root.iterdir()
+                    if d.is_dir() and (d / "data_files.csv").exists()
+                    and (blog_dir / f"blog_{d.name}.ini").exists()
+                )
+
+        layout.addWidget(HTMLLabel(
+            "<p><b>Recreate Virtual Trip Blogs</b></p>"
+            "<p>Re-renders the blog pages that <i>Write Virtual Trip Blogs</i> already "
+            "published, rewriting only the HTML:</p>"
+            "<ul>"
+            "<li>Adds the full <b>Previous / Next</b> navigation between days "
+            "(the initial write can only link backwards).</li>"
+            "<li>Refreshes the species-reference hyperlinks on every card.</li>"
+            "</ul>"
+            "<p><b>No pictures are moved or re-uploaded</b> — the day thumbnails already "
+            "on the web are left untouched. Run this after all days have been written.</p>"
+        ))
+
+        layout.addWidget(QLabel(f"Virtual trip:  {virttrip_root or '(not set)'}"))
+        layout.addWidget(QLabel(f"Trip name:     {trip_name}"))
+        layout.addWidget(QLabel(f"Day blogs:     {blog_count}"))
+
+        self.status_label = QLabel("")
+        layout.addWidget(self.status_label)
+
+        self.open_after_checkbox = QCheckBox("Open trip blog in browser after recreating")
+        self.open_after_checkbox.setChecked(True)
+        layout.addWidget(self.open_after_checkbox)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        run_btn   = QPushButton("Recreate Blogs")
+        close_btn = QPushButton("Close")
+        btn_layout.addWidget(run_btn)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+        self.menu_spec = _virttrip_spec(
+            batch.svv6RedoBlog.main,
+            "Recreating virtual trip blogs (HTML only)...",
+            "✅ Blogs recreated with species links and Previous/Next navigation.",
+        )
+        run_btn.clicked.connect(self.on_run)
+        close_btn.clicked.connect(self.close)
+
+    def get_blog_url(self) -> str:
+        base_url = _config.get("websettings", "base_url", fallback="https://houtekamer.com/")
+        try:
+            with open("last_blog_url.txt", "r") as f:
+                relative_url = f.read().strip()
+            return base_url.rstrip("/") + relative_url
+        except FileNotFoundError:
+            return base_url
+
+    def on_run(self):
+        def on_success():
+            populate_virttrip_overview(self.passed_parent)
+            if self.open_after_checkbox.isChecked():
+                webbrowser.open(self.get_blog_url())
+
+        runner = BatchModuleRunner(self, self.passed_parent)
+        runner.run(self.menu_spec, on_success=on_success)
 
 
 class VirttripBuildWebsiteDialog(QDialog):

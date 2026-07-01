@@ -10,7 +10,8 @@ from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDial
         TestbedDialog, BlogAdminDialog, ManageTripsDialog, PhotoMechanicDialog,
         RescanMasterCacheDialog, SmallMasterDialog, InstallSmallMasterDialog, TripMasterDashboard)
 from gui.virttrip_process import (VirtualTripCreationDialog, ExtractDaysDialog,
-                                   VirttripWriteBlogDialog, VirttripBuildWebsiteDialog,
+                                   VirttripWriteBlogDialog, VirttripRedoBlogDialog,
+                                   VirttripBuildWebsiteDialog,
                                    VirttripAddToMasterDialog, retire_trip_to_virttrip)
 from utils.config import _config
 import os
@@ -1065,6 +1066,10 @@ def build_menu_spec(main_window):
             "Write Virtual Trip Blogs": MenuSpec(
                 callback=lambda: VirttripWriteBlogDialog(main_window).exec(),
                 title="Write Virtual Trip Blogs",
+            ),
+            "Recreate Virtual Trip Blogs": MenuSpec(
+                callback=lambda: VirttripRedoBlogDialog(main_window).exec(),
+                title="Recreate Virtual Trip Blogs",
             ),
             "Build Virtual Trip Website": MenuSpec(
                 callback=lambda: VirttripBuildWebsiteDialog(main_window).exec(),
