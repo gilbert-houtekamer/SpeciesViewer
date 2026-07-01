@@ -1001,6 +1001,43 @@ def build_menu_spec(main_window):
 
     return {
         "File": {
+            "Settings": {
+                "Global Settings": MenuSpec(
+                    callback=lambda: GlobalSettingsDialog(main_window).exec(),
+                    shortcut="Ctrl+G",
+                ),
+                "Repository Settings": MenuSpec(
+                    callback=lambda: RepoSettingsDialog(main_window).exec(),
+                ),
+                "Species Settings": MenuSpec(
+                    callback=lambda: SpeciesSettingsDialog(main_window).exec(),
+                ),
+                "Database Settings": MenuSpec(
+                    callback=lambda: DatabaseSettingsDialog(main_window).exec(),
+                ),
+                "Decode Quality…": MenuSpec(
+                    callback=lambda: RawProcessingDialog(main_window).exec(),
+                ),
+                "Location Settings…": MenuSpec(
+                    callback=lambda: LocationSettingsDialog(main_window).exec(),
+                ),
+                f"{MenuSpec.separator()}_settings_caches": None,
+                "Manage Caches…": manage_caches,
+                "Rescan master EXIF cache": rescan_master_cache,
+            },
+            "Admin": {
+                "Trip Status Console…": trip_status_console,
+                "Merged Status (all machines)…": merged_status_console,
+                f"{MenuSpec.separator()}_admin_0": None,
+                "Audit Admin (find ghost records)…": audit_admin_item,
+                "Audit Species Counters (dry-run)…": audit_species_item,
+                "Rebuild Admin (dry-run compare)…": rebuild_admin_item,
+                "Heal Admin (apply fixes)…": heal_admin_item,
+                "Clean Orphan Sidecars (move to trash)…": clean_orphans_item,
+                f"{MenuSpec.separator()}_admin_1": None,
+                "Call Testbed for trip day": testbed,
+            },
+            f"{MenuSpec.separator()}_file": None,
             "Quit": MenuSpec(
                 callback=main_window.close,
                 shortcut="Ctrl+Q"
@@ -1048,15 +1085,7 @@ def build_menu_spec(main_window):
             "Add Trip Pictures to Master": add_trip_pictures,
             "Add Pictures to Master…": add_pictures_to_master_item,
             f"{MenuSpec.separator()}_master_2": None,
-            "Trip Status Console…": trip_status_console,
-            "Merged Status (all machines)…": merged_status_console,
-            f"{MenuSpec.separator()}_master_3": None,
-            "Audit Admin (find ghost records)…": audit_admin_item,
-            "Audit Species Counters (dry-run)…": audit_species_item,
             "Species Without a Website Picture…": no_display_item,
-            "Rebuild Admin (dry-run compare)…": rebuild_admin_item,
-            "Heal Admin (apply fixes)…": heal_admin_item,
-            "Clean Orphan Sidecars (move to trash)…": clean_orphans_item,
         },
         "Virtual Trips": {
             "Create Virtual Trip": virttrip_create,
@@ -1093,31 +1122,6 @@ def build_menu_spec(main_window):
              "PhotoMechanic": photo_mechanic,
              "Small Master Database": small_master,
              "Install Small Master": install_small_master,
-             "Call Testbed for trip day": testbed,
-        },
-        "Settings": {
-            "Global Settings": MenuSpec(
-                callback=lambda: GlobalSettingsDialog(main_window).exec(),
-                shortcut="Ctrl+G",
-            ),
-            "Repository Settings": MenuSpec(
-                callback=lambda: RepoSettingsDialog(main_window).exec(),
-            ),
-            "Species Settings": MenuSpec(
-                callback=lambda: SpeciesSettingsDialog(main_window).exec(),
-            ),
-            "Database Settings": MenuSpec(
-                callback=lambda: DatabaseSettingsDialog(main_window).exec(),
-            ),
-            "Decode Quality…": MenuSpec(
-                callback=lambda: RawProcessingDialog(main_window).exec(),
-            ),
-            "Location Settings…": MenuSpec(
-                callback=lambda: LocationSettingsDialog(main_window).exec(),
-            ),
-            f"{MenuSpec.separator()}_settings_caches": None,
-            "Manage Caches…": manage_caches,
-            "Rescan master EXIF cache": rescan_master_cache,
         },
         "Help": {
             "About": MenuSpec(

@@ -14,27 +14,40 @@ class AppMenuBar(QMenuBar):
                     act.triggered.connect(callback)
                     menu.addAction(act)
 
+def _populate_menu(menu, actions, parent, separator_marker):
+    """Fill a QMenu from an ordered {label: MenuSpec | dict | None} mapping.
+
+    A dict value becomes a nested submenu (recursively), so the menu spec can
+    express groupings like File ▸ Settings and File ▸ Admin. A label starting
+    with the separator marker (value None) inserts a divider."""
+    for label, spec_obj in actions.items():
+        if label.startswith(separator_marker):
+            menu.addSeparator()
+        elif isinstance(spec_obj, dict):
+            submenu = QMenu(label, parent)
+            _populate_menu(submenu, spec_obj, parent, separator_marker)
+            menu.addMenu(submenu)
+        elif spec_obj is None:
+            continue                      # non-separator placeholder — skip
+        else:
+            action = QAction(spec_obj.get_title(label), parent)
+            action.triggered.connect(spec_obj.callback)
+            action.setEnabled(spec_obj.is_enabled())
+            tooltip = spec_obj.get_tooltip()
+            if tooltip:
+                action.setToolTip(tooltip)
+            if spec_obj.shortcut:
+                action.setShortcut(spec_obj.shortcut)
+            menu.addAction(action)
+
+
 def create_menubar(parent, spec):
     menubar = QMenuBar(parent)
-    separator_marker = MenuSpec.separator()    
+    separator_marker = MenuSpec.separator()
 
     for menu_name, actions in spec.items():
         menu = QMenu(menu_name, parent)
-        for label, spec_obj in actions.items():
-            if label.startswith(separator_marker):
-                menu.addSeparator()
-            else:
-                action = QAction(spec_obj.get_title(label), parent)
-                action.triggered.connect(spec_obj.callback)
-                action.setEnabled(spec_obj.is_enabled())
-                tooltip = spec_obj.get_tooltip()
-                if tooltip:
-                    action.setToolTip(tooltip)
-                if spec_obj.shortcut:
-                    action.setShortcut(spec_obj.shortcut)
-
-                menu.addAction(action)
-
+        _populate_menu(menu, actions, parent, separator_marker)
         menubar.addMenu(menu)
 
     return menubar
