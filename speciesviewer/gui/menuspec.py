@@ -84,7 +84,7 @@ def build_menu_spec(main_window):
 
     trip_create = MenuSpec(
         callback=None,
-        title="Start New Trip",
+        title="Create or Select Trip",
         batch_parms={
             'statusname': "MakeRepository",
             'module_called': batch.sv1MakeReposity.main,
@@ -96,7 +96,7 @@ def build_menu_spec(main_window):
 
     sync_sidecars = MenuSpec(
         callback=None,
-        title="Sync Sidecars",
+        title="Sync Lightroom & PhotoLab metadata",
         batch_parms={
             'statusname': "SyncSidecars",
             'module_called': batch.svu5SyncSidecars.main,
@@ -148,7 +148,7 @@ def build_menu_spec(main_window):
 
     read_summarize = MenuSpec(
         callback=None,
-        title="Read & Summarize",
+        title="1. Read & Summarize",
         shortcut="Ctrl+D",
         enabled=make_enabled_checker("ReadDirExif"),
         tooltip=make_tooltip("ReadDirExif"),
@@ -163,7 +163,7 @@ def build_menu_spec(main_window):
 
     write_blog = MenuSpec(
         callback=None,
-        title="Write Blog",
+        title="2. Write Blog",
         enabled=make_enabled_checker("WriteBlog"),
         tooltip=make_tooltip("WriteBlog"),        
         batch_parms={
@@ -177,7 +177,7 @@ def build_menu_spec(main_window):
 
     build_website = MenuSpec(
         callback=None,
-        title="Build Website",
+        title="3. Build Website",
         enabled=make_enabled_checker("BuildWebsite"),
         tooltip=make_tooltip("BuildWebsite"),        
         batch_parms={
@@ -191,7 +191,7 @@ def build_menu_spec(main_window):
     
     freeze_data = MenuSpec(
         callback=None,
-        title="Freeze Data",
+        title="4. Freeze Data",
         enabled=make_enabled_checker("Freeze"),
         tooltip=make_tooltip("Freeze"),        
         batch_parms={
@@ -205,7 +205,7 @@ def build_menu_spec(main_window):
 
     commit_website = MenuSpec(
         callback=None,
-        title="Write Website Commit",
+        title="5. Write Website Commit",
         enabled=make_enabled_checker("WriteCommit"),
         tooltip=make_tooltip("WriteCommit"),        
         batch_parms={
@@ -561,7 +561,7 @@ def build_menu_spec(main_window):
 
     rating_editor = MenuSpec(
         callback=lambda: main_window.open_rating_editor(),
-        title="Rating Editor",
+        title="Trip Species Viewer",
         showsubdirectory=False,
     )
 
@@ -1051,11 +1051,13 @@ def build_menu_spec(main_window):
             ),
         },
         "Trip": {
-            "Read SD-cards": read_sdcard,
-            f"{MenuSpec.separator()}_sd": None,
             "Create Trip": trip_create,
-            f"{MenuSpec.separator()}_1": None,
+            f"{MenuSpec.separator()}_setup0": None,
+            "Read SD-cards": read_sdcard,
+            f"{MenuSpec.separator()}_setup": None,
             "Sync Sidecars": sync_sidecars,
+            f"{MenuSpec.separator()}_pipeline": None,
+            # Numbered day pipeline (titles carry the 1.–5. prefixes).
             "Read & Summarize": read_summarize,
             "Write Blog": write_blog,
             "Build Website": build_website,
@@ -1063,22 +1065,24 @@ def build_menu_spec(main_window):
             "Write Commit": commit_website,
             f"{MenuSpec.separator()}_advanced": None,
             # Demoted: Read & Summarize runs both in one step. These remain for a
-            # read-only CSV refresh (Rating Editor / translation panel) or debugging.
+            # read-only CSV refresh (Trip Species Viewer / translation panel) or debugging.
             "Read Directory": read_dir,
             "Write Summary": write_summary,
             f"{MenuSpec.separator()}_2": None,
+            # Review & edit
+            "Rating Editor": rating_editor,
             "Edit Trip Species List": edit_trip_species,
             "Count Species": count_species,
-            "Manage Blogs": manage_blogs,
             "Redo Blogs": redo_trip_blogs,
-            f"{MenuSpec.separator()}_3": None,
+            f"{MenuSpec.separator()}_maint": None,
+            # Maintenance
+            "Manage Blogs": manage_blogs,
             "Empty Trip Data": empty_trip_data,
             "Recreate Trip": recreate_trip,
             f"{MenuSpec.separator()}_retire": None,
+            # Retire
             "Retire Trip to Virtual Trip": retire_trip_item,
             "Delete Local Files Backed Up in Master…": delete_trip_item,
-            f"{MenuSpec.separator()}_4": None,
-            "Rating Editor": rating_editor,
         },
         "Master": {
             "Trip to Master Dashboard…": trip_master_dashboard,
