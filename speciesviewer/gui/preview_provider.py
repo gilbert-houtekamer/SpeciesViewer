@@ -203,6 +203,18 @@ class PreviewItem(PictureItem):
     def request_full_pixmap(self, on_ready: PixmapCallback) -> None:
         self._c.request_image(self._key, None, on_ready)
 
+    # crop suggestion — RAW pictures only (a render/HEIC-only UPN has no RAW to
+    # re-develop). Post-cull the crop still seeds PhotoLab/Lightroom.
+    @property
+    def can_set_crop(self) -> bool:
+        return self._c.raw_path(self._key) is not None
+
+    def request_uncropped_pixmap(self, on_ready: PixmapCallback) -> None:
+        self._c.request_raw_uncropped(self._key, on_ready)
+
+    def set_crop(self, crop: dict):
+        return self._c.set_crop(self._key, crop)
+
 
 class PreviewCollection(PictureCollection):
     # The day-folder XMPs are the same files PhotoLab/Lightroom write, so the
@@ -671,6 +683,34 @@ class PreviewCollection(PictureCollection):
                 return apply_crop(img, crop) if crop else img
             return None
         self._loader.request(produce, on_ready, target_w=target_w)
+
+    def request_raw_uncropped(self, upn_key: str, on_ready: PixmapCallback) -> None:
+        """The RAW's full uncropped frame — the canvas the crop tool draws on
+        (bypasses _display_source, which would prefer an already-cropped render)."""
+        raw = self.raw_path(upn_key)
+        if raw is None:
+            on_ready(None)
+            return
+
+        def produce():
+            p = cached_jpg_for(raw, preview_cache_dir_for(raw.parent))
+            if p and p.exists():
+                img = QImage(str(p))
+                return img if not img.isNull() else None
+            return None
+        self._loader.request(produce, on_ready, target_w=None)
+
+    def set_crop(self, upn_key: str, crop: dict):
+        """Write a suggested crop to the UPN's RAW sidecars (.dop + .xmp), creating
+        one if missing. Refreshes the image signature so refresh() doesn't
+        re-report our own write. Returns the sidecarlib result, or None."""
+        raw = self.raw_path(upn_key)
+        if not raw:
+            return None
+        from engine.sidecarlib import suggest_crop
+        res = suggest_crop(str(raw), crop)
+        self._img_sigs[upn_key] = self._img_sig(upn_key)
+        return res
 
     def delete_by_color(self, color: str, trash_root: Path) -> tuple[int, int, int]:
         """Move all UPNs with the given color label to trash.
