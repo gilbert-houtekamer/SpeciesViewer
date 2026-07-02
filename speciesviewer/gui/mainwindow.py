@@ -354,7 +354,14 @@ class MainWindow(QMainWindow):
         # Batch action
         else:
             trip_menu = self.menu_spec.get("Trip", {})
-            spec_obj = trip_menu.get(action_label)
+            # Map the column to its Trip-menu action by the stable dict key
+            # (STATE_COLUMNS["menu"]) — the header text carries a numbered,
+            # newline-formatted label that does not match the dict key.
+            if 0 <= step_index < len(STATE_COLUMNS):
+                lookup_key = STATE_COLUMNS[step_index]["menu"]
+            else:
+                lookup_key = action_label
+            spec_obj = trip_menu.get(lookup_key)
 
             if spec_obj and spec_obj.callback:
                 spec_obj.callback()

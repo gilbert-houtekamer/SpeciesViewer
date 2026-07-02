@@ -24,25 +24,28 @@ STATE_COL_START = 4
 #   - "gate" is the key used for eligibility (stateOKtorun / explainAbort) and
 #     the WriteBlog no-JPGs special case; a multi-key column is ✅ only when ALL
 #     its run_keys are done.
-#   - "menu" is the Trip-menu action label (header text with newlines→spaces).
+#   - "menu" is the Trip-menu DICT KEY used to look up the action to run when a
+#     column header/cell is double-clicked. It must match the key in the Trip
+#     menu spec (which stays unnumbered even though the display titles carry the
+#     1.–5. prefixes), so it is NOT the same as the numbered "label" shown here.
 STATE_COLUMNS = [
-    {"label": "1 Read &\nSummarize", "menu": "1. Read & Summarize",
+    {"label": "1 Read &\nSummarize", "menu": "Read & Summarize",
      "gate": "ReadDirExif", "run_keys": ["ReadDirExif", "WritePictures"],
      "before": "Reading and summarizing picture directory...",
      "after": "✅ Read & Summarize complete."},
-    {"label": "2 Write\nBlog", "menu": "2. Write Blog",
+    {"label": "2 Write\nBlog", "menu": "Write Blog",
      "gate": "WriteBlog", "run_keys": ["WriteBlog"],
      "before": "Create a blog entry ...",
      "after": "✅ Blog successfully created."},
-    {"label": "3 Build\nWebsite", "menu": "3. Build Website",
+    {"label": "3 Build\nWebsite", "menu": "Build Website",
      "gate": "BuildWebsite", "run_keys": ["BuildWebsite"],
      "before": "Build updates for later publication ...",
      "after": "✅ Website updates prepared."},
-    {"label": "4 Freeze", "menu": "4. Freeze",
+    {"label": "4 Freeze", "menu": "Freeze",
      "gate": "Freeze", "run_keys": ["Freeze"],
      "before": "Freeze all collected data ...",
      "after": "✅ Data frozen."},
-    {"label": "5 Write\nCommit", "menu": "5. Write Commit",
+    {"label": "5 Write\nCommit", "menu": "Write Commit",
      "gate": "WriteCommit", "run_keys": ["WriteCommit"],
      "before": "Update the trip website ...",
      "after": "✅ Please review updated Website."},
@@ -251,30 +254,30 @@ def refresh_day_health(main_window, day_name):
     logger = logging.getLogger("speciesviewer")
     table = getattr(main_window, "trip_table", None)
     if table is None:
-        logger.info(f"refresh_day_health: no trip_table on main_window for {day_name}")
+        logger.debug(f"refresh_day_health: no trip_table on main_window for {day_name}")
         return
     try:
         image_root = Path(_config.get("project", "picturedirectory")).parent
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
     except Exception as e:
-        logger.info(f"refresh_day_health: config lookup failed: {e}")
+        logger.debug(f"refresh_day_health: config lookup failed: {e}")
         return
     review_root = trip_root / "metadata" / "review"
     day_path = image_root / day_name
     if not day_path.exists():
-        logger.info(f"refresh_day_health: day folder doesn't exist: {day_path}")
+        logger.debug(f"refresh_day_health: day folder doesn't exist: {day_path}")
         return
     for row in range(table.rowCount()):
         cell = table.item(row, 0)
         if cell and cell.text() == day_name:
             new_item = _format_total_files_item(day_path, review_root)
             table.setItem(row, 1, new_item)
-            logger.info(
+            logger.debug(
                 f"refresh_day_health: row {row} for {day_name} → "
                 f"{new_item.text()!r}"
             )
             return
-    logger.info(f"refresh_day_health: no matching row for {day_name}")
+    logger.debug(f"refresh_day_health: no matching row for {day_name}")
 
 
 def _day_health(review_day_path):
