@@ -158,6 +158,16 @@ class StateMachine:
     
     # we know that the step will fail, explain why and abort
     def explainAbort(self, statetotest, raiseSV=True):
+        # Blocked because the day is already committed: after WriteCommit every
+        # step except WriteBlog is locked (see stateOKtorun), and WriteCommit
+        # itself can't be re-run. Say that, instead of the bogus empty-list
+        # "the steps  need to be run first" message this produced otherwise.
+        if statetotest != "WriteBlog" and self.Taskstate.get("WriteCommit", [False])[0]:
+            msg = (f"Task {statetotest} cannot be run: this day is already "
+                   f"committed (frozen after Write Commit).")
+            if raiseSV:
+                raise SVException(msg)
+            return msg
         prereq = ""
         missingcount = 0
         # run through all pre-reqs
