@@ -403,9 +403,9 @@ class SpeciesInfoPanel(QWidget):
             orig = fpr.getSubject(f.name)
             upn_object, files_written = fpr.updateSubject(f.name, orig, corrected_subject)
             if files_written:
-                logger.info(f"✅ Updated {f.name}: {files_written} file(s) on disk.")
+                logger.debug(f"✅ Updated {f.name}: {files_written} file(s) on disk.")
             else:
-                logger.warning(f"⚠️ {f.name}: no XMP files rewritten (CSV cache updated).")
+                logger.debug(f"⚠️ {f.name}: no XMP files rewritten (CSV cache updated).")
             upn_name = fpr.fi.files_dict.get(f.name, {}).get("UniquePictureName")
             if upn_name:
                 updated_upns.add(upn_name)

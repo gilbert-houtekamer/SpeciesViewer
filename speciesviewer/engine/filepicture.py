@@ -36,6 +36,14 @@ def ensure_list(subject):
         raise TypeError(f"Unexpected subject type: {type(subject)}")
     
 
+# File types the species keyword is written to: the XMP sidecar (canonical),
+# JPGs (so shared/exported copies carry the name for friends) and sidecar-less
+# images (HEIC/PNG). RAW files are skipped — their XMP sidecar holds the keyword,
+# so embedding in the raw is redundant — and the DxO .dop is skipped because it
+# is a database with no XMP:Subject (writing there only produced a warning).
+_SUBJECT_WRITE_EXT = {"xmp", "jpg", "jpeg", "heic", "heif", "png"}
+
+
 def format_subject_for_xmp(subject_text):
     try:
         parts = ast.literal_eval(subject_text)
@@ -308,7 +316,7 @@ class FilePicture:
                 exiftool_write(filepath, [f'-XMP:Subject={correct_subject_for_xmp}'])
                 wrote = True
             else:
-                logger.warning(
+                logger.debug(
                     f"Original subject '{original_subject_for_xmp}' not found in {filepath.name}; "
                     f"on-disk value is {current_subjects}."
                 )
@@ -347,7 +355,7 @@ class FilePicture:
     # only when files_written_count > 0; the CSV is always updated either way.
     def updateSubject(self, filename, original_subject, corrected_subject):
         if original_subject == corrected_subject:
-            logger.info(f"There are no changes for {filename}, no updates done.")
+            logger.debug(f"There are no changes for {filename}, no updates done.")
 
         try:
             parts = ast.literal_eval(corrected_subject)
@@ -364,10 +372,15 @@ class FilePicture:
         upn_name = self.fi.files_dict[Path(filename).name]["UniquePictureName"]
         files_written = 0
         for f in self.fi.files_dict:
-            if self.fi.files_dict[f]["UniquePictureName"] == upn_name:
-                if self.fi.files_dict[f]["XMP:Subject"] == original_subject:
-                    if self.replaceFileSubject(f, original_subject, corrected_subject):
-                        files_written += 1
+            frow = self.fi.files_dict[f]
+            if frow["UniquePictureName"] != upn_name:
+                continue
+            # Only files that should carry the keyword — skip RAW and .dop.
+            if frow.get("WindowsExtension", "").lower() not in _SUBJECT_WRITE_EXT:
+                continue
+            if frow["XMP:Subject"] == original_subject:
+                if self.replaceFileSubject(f, original_subject, corrected_subject):
+                    files_written += 1
 
         # update external CSV file (internal done on a per file basis)
         self.fi.write_project_files()
