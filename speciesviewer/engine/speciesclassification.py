@@ -90,9 +90,18 @@ class SpeciesClassification:
 
 
     def __init__(self, MyProject):
+        # Per-instance state. These were declared at class level above, so in the
+        # long-lived GUI process they were shared across every batch run and
+        # persisted stale species/counters (fine pre-GUI, one process per job).
+        # Reset per instance; DUMMYSPECIES / LANDSCAPE_KEYWORDS stay class-level
+        # (they are constants).
+        self.sc_dict = {}
+        self.dutch_dict = {}
+        self.english_dict = {}
+        self.names_not_found_list = []
         if MyProject != None:
             MyProject.registerSpeciesClassification(self)
-        return 
+        return
     
     def clearDict(self):
         self.sc_dict = {}

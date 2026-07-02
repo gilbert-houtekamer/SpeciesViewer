@@ -28,6 +28,13 @@ class Species:
     mp = None
 
     def __init__(self, MyProject):
+        # Per-instance state. species_dict is declared at class level above, which
+        # (pre-GUI, one process per batch job) was harmless — but in the long-lived
+        # GUI process that shared dict leaked counters across runs (a newly added
+        # species kept accumulating iPictureThisRunCount). Reset it per instance.
+        self.species_dict = {}
+        self.sc = None
+        self.mp = None
         if MyProject != None:
             MyProject.registerSpecies(self)
             self.mp = MyProject
