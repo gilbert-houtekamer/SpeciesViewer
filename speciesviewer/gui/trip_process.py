@@ -501,12 +501,13 @@ class ReadSDCardDialog(QDialog):
     SD-card) into the project pictures directory. No rename, no date-bucketing,
     no deletion from the card — pictures already copied are skipped so re-runs
     are safe."""
-    def __init__(self, parent, menu_spec):
+    def __init__(self, parent, menu_spec, days_mode=False):
         super().__init__(parent)
         self.menu_spec = menu_spec
         self.passed_parent = parent
+        self.days_mode = days_mode   # Days lane: copy into a YYYY-MM-DD folder + register
         self.logger = parent.logger
-        self.setWindowTitle("Read SD-cards")
+        self.setWindowTitle("Copy day from card" if days_mode else "Read SD-cards")
         self.resize(700, 320)
 
         layout = QVBoxLayout(self)
@@ -540,7 +541,11 @@ class ReadSDCardDialog(QDialog):
         # historic reasons; the card target is the project root, so strip a
         # trailing date component for the default.
         dest_default = _strip_to_project_root(_config.get("project", "picturedirectory", fallback=""))
-        self.dest_field = DirectoryFieldQt("Project pictures", dest_default)
+        if days_mode:
+            dest_default = _config.get("days", "location", fallback="") or dest_default
+        self.dest_field = DirectoryFieldQt(
+            "Days location (a YYYY-MM-DD folder is created here)" if days_mode else "Project pictures",
+            dest_default)
         input_layout.addWidget(self.dest_field)
 
         # Prefix default = the year (e.g. '2026') unless a previous run saved one;
@@ -558,6 +563,10 @@ class ReadSDCardDialog(QDialog):
         self.bucket_checkbox = QCheckBox("Sort into date subfolders (YYYY-MM-DD)")
         # Remembered between runs; defaults ON (date-per-day is the normal layout).
         self.bucket_checkbox.setChecked(get_cache_gui_section("sdcard_ingest", "by_date") != "0")
+        if days_mode:
+            # A Day is a YYYY-MM-DD folder, so date-bucketing is required here.
+            self.bucket_checkbox.setChecked(True)
+            self.bucket_checkbox.setEnabled(False)
         date_row.addWidget(self.bucket_checkbox)
         date_row.addSpacing(20)
         self.tz_offset_field = LabeledTextFieldQt(
@@ -909,6 +918,9 @@ class ReadSDCardDialog(QDialog):
             return
 
         self._last_dest = dest
+        if self.days_mode:
+            from utils.config import set_setting
+            set_setting("days", "location", dest)   # remember the Days location
         self._include_dates = include_dates
         self._cancelled = False
         self.read_btn.setEnabled(False)
@@ -980,6 +992,31 @@ class ReadSDCardDialog(QDialog):
             if self.location_checkbox.isChecked() and self._last_targets:
                 self._add_location_names()
             self._mark_run_done()
+            if self.days_mode:
+                self._register_ingested_days()
+
+    def _register_ingested_days(self):
+        """After a Days-lane card copy, register each YYYY-MM-DD folder the copy
+        created (derived from the copied file paths) so it appears in the Days
+        list; select the newest as the active day."""
+        from utils import days_registry
+        folders = []
+        for t in self._last_targets:
+            parent = Path(t).parent
+            if days_registry.is_day_folder_name(parent.name):
+                key = str(parent)
+                if key not in folders:
+                    folders.append(key)
+        for folder in folders:
+            days_registry.add_day(folder)
+        panel = getattr(self.passed_parent, "days_panel", None)
+        if folders:
+            self.passed_parent.active_day_folder = sorted(folders)[-1]
+        if panel is not None:
+            panel.rebuild()
+        if folders:
+            self.status_label.setText(
+                self.status_label.text() + f"  ·  {len(folders)} day(s) added to the Days list.")
 
     def _mark_run_done(self):
         """Grey the day selection after a completed run, as a visible 'done' cue.

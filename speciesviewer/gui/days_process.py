@@ -57,6 +57,14 @@ def register_existing_day(main_window):
         QMessageBox.warning(main_window, "Register day", msg)
 
 
+def copy_day_from_card(main_window):
+    """Copy pictures off a card into YYYY-MM-DD folder(s) and register them as
+    Days. Reuses the SD-card ingest dialog in 'days mode' (date-bucketing on;
+    registers the created date folders when the copy finishes)."""
+    from gui.trip_process import ReadSDCardDialog
+    ReadSDCardDialog(main_window, None, days_mode=True).exec()
+
+
 def _config_lastdir(main_window):
     try:
         from utils.config import _config

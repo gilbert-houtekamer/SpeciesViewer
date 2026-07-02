@@ -1080,6 +1080,9 @@ def build_menu_spec(main_window):
             "Register existing day…": MenuSpec(
                 callback=lambda: days_process.register_existing_day(main_window),
                 title="Register existing day…", showsubdirectory=False),
+            "Copy day from card…": MenuSpec(
+                callback=lambda: days_process.copy_day_from_card(main_window),
+                title="Copy day from card…", showsubdirectory=False),
             f"{MenuSpec.separator()}_days0": None,
             "Review & rate pictures…": MenuSpec(
                 callback=lambda: days_process.review_day(main_window),
