@@ -138,6 +138,17 @@ class MicroTripReviewDialog(ImagePreviewDialog):
                 self, "Add to Master",
                 f"Added {ident} picture(s) to the master and updated the website.{deleted_msg}")
             self.commit_btn.setText("Committed ✓")
+            # If this folder is a registered Day, mark it done automatically
+            # (it stays in the Days list; nothing is deleted). No-op otherwise.
+            try:
+                from utils import days_registry
+                if days_registry.find_day(folder):
+                    days_registry.set_status(folder, days_registry.STATUS_DONE)
+                    panel = getattr(self.main_window, "days_panel", None)
+                    if panel is not None:
+                        panel.rebuild()
+            except Exception as e:
+                logger.info(f"add_to_master: could not mark day done: {e}")
         except Exception as e:
             logger.warning(f"add_to_master: commit failed: {e}")
             QMessageBox.warning(self, "Add to Master", f"Commit failed:\n{e}")

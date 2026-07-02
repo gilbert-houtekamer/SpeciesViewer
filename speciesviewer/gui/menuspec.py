@@ -15,6 +15,7 @@ from gui.virttrip_process import (VirtualTripCreationDialog, ExtractDaysDialog,
                                    VirttripBuildWebsiteDialog,
                                    VirttripAddToMasterDialog, retire_trip_to_virttrip)
 from utils.config import _config, debug_enabled
+import gui.days_process as days_process
 import os
 from settings.globalsettings import GlobalSettingsDialog
 from settings.reposettings import RepoSettingsDialog
@@ -1074,6 +1075,22 @@ def build_menu_spec(main_window):
                 callback=main_window.close,
                 shortcut="Ctrl+Q"
             ),
+        },
+        "Days": {
+            "Register existing day…": MenuSpec(
+                callback=lambda: days_process.register_existing_day(main_window),
+                title="Register existing day…", showsubdirectory=False),
+            f"{MenuSpec.separator()}_days0": None,
+            "Review & rate pictures…": MenuSpec(
+                callback=lambda: days_process.review_day(main_window),
+                title="Review & rate pictures…", showsubdirectory=False),
+            "Add to Master": MenuSpec(
+                callback=lambda: days_process.add_day_to_master(main_window),
+                title="Add to Master", showsubdirectory=False),
+            f"{MenuSpec.separator()}_days1": None,
+            "Remove from list": MenuSpec(
+                callback=lambda: days_process.remove_day_from_list(main_window),
+                title="Remove from list", showsubdirectory=False),
         },
         "Trip": {
             "Create Trip": trip_create,

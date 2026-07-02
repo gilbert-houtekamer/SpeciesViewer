@@ -13,6 +13,7 @@ from gui.virttrip_overview import populate_virttrip_overview, TAB_TITLE as VIRTT
 from engine.translatelib import CachedTranslate
 from widgets.TripInfoPanel import TripInfoPanel
 from widgets.VirtTripInfoPanel import VirtTripInfoPanel
+from widgets.DaysPanel import DaysPanel
 from gui.trip_overview import populate_trip_overview
 from engine.statemachine import StateMachine
 from gui.image_viewer import ImagePreviewDialog
@@ -53,7 +54,10 @@ class MainWindow(QMainWindow):
         # Keep a reference so populate_trip_overview can refresh the active-trip
         # ▶ marker after any trip switch (panel click, create/select dialog, …).
         self.trip_panel = TripInfoPanel(self, trip_project_map, populate_trip_overview)
-        red_layout.addWidget(self.trip_panel)
+        red_layout.addWidget(self.trip_panel, 3)
+        # Days list (ad-hoc single-date folders → Master) below the trips.
+        self.days_panel = DaysPanel(self)
+        red_layout.addWidget(self.days_panel, 1)
         self.hsplitter.addWidget(red_panel)
 
         # Yellow panel

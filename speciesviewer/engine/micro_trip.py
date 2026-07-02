@@ -271,11 +271,9 @@ def format_summary(rep):
         for name in sorted(unrec):
             lines.append(f"        {unrec[name]:>4}  {name}")
     lines.append("")
-    lo, hi = rep.get("date_lo", ""), rep.get("date_hi", "")
-    span = f"{lo}..{hi}" if lo and hi else "this date range"
-    lines.append(f"    {'this trip':>14}   {'in master (all)':>14}   {'in master (' + span + ')':>20}")
-    lines.append(f"    {'#':>6} {'JPG':>6}   {'#':>6} {'JPG':>6}   {'#':>6} {'JPG':>6}   "
-                 f"species  (all = rarity cue; date range = likely already added)")
+    lines.append(f"    {'this folder':>14}   {'in master (all)':>14}")
+    lines.append(f"    {'#':>6} {'JPG':>6}   {'#':>6} {'JPG':>6}   "
+                 f"species  (in master = rarity cue: rich = expendable, near-absent = keep)")
     for sp in sorted(rep["species"]):
         rec = rep["species"][sp]
         names = " / ".join(x for x in (rec["nl"], rec["eng"]) if x)
@@ -283,7 +281,6 @@ def format_summary(rep):
         flag = "" if rec["jpgs"] else "  <- no JPG"
         lines.append(f"    {rec['n']:>6} {rec['jpgs']:>6}   "
                      f"{rec.get('master_pics', 0):>6} {rec.get('master_jpgs', 0):>6}   "
-                     f"{rec.get('range_pics', 0):>6} {rec.get('range_jpgs', 0):>6}   "
                      f"{sp}{suffix}{flag}")
     return "\n".join(lines)
 
