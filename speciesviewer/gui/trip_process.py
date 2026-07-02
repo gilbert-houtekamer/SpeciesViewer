@@ -1263,6 +1263,126 @@ class ReadSummarizeDialog(QDialog):
         self.close()
 
 
+class PublishDayDialog(QDialog):
+    """Publish a day: run Freeze (sv6) + Write Website Commit (sv7) as one step.
+    Freeze builds the frozen snapshot and copies pictures into the repository;
+    Write Commit promotes it to active, uploads the website and copies the tree
+    into the master. Uses ChainedBatchRunner so the two statemachine keys
+    (Freeze first, then WriteCommit) are set in order — mirrors Read & Summarize.
+    The individual Freeze / Write Website Commit items remain under
+    Trip ▸ Advanced (legacy)."""
+
+    def __init__(self, parent, menu_spec):
+        super().__init__(parent)
+        self.setWindowTitle("Publish Day")
+        self.resize(600, 320)
+
+        self.logger = logging.getLogger("speciesviewer")
+        self.menu_spec = menu_spec
+        self.passed_parent = parent
+
+        full_path = Path(_config["project"]["picturedirectory"])
+        self.base_path = full_path.parent
+        self.subdir_name = full_path.name
+
+        layout = QVBoxLayout(self)
+
+        info_html = HTMLLabel(
+            "<p><b>Publish a day</b><br>"
+            "This runs <b>Freeze</b> and <b>Write Website Commit</b> back to back. "
+            "Freeze locks down the collected data and copies the pictures into the "
+            "repository; Write Website Commit promotes the frozen data to active, "
+            "uploads the website, and copies the tree into the master.<br>"
+            "Run this once a day's blog and website look right — it requires an "
+            "internet connection.<br>"
+            "(The separate <b>Freeze</b> / <b>Write Website Commit</b> items remain "
+            "under Trip ▸ Advanced for the freeze-only edge case or debugging.)</p>"
+        )
+        layout.addWidget(info_html)
+
+        self.base_dir_field = DirectoryFieldQt("Project root folder", str(self.base_path))
+        layout.addWidget(self.base_dir_field)
+
+        self.subdir_dropdown = QComboBox()
+        self.subdir_dropdown.setEditable(False)
+        layout.addWidget(QLabel("Select subdirectory"))
+        layout.addWidget(self.subdir_dropdown)
+
+        self.status_label = QLabel("")
+        layout.addWidget(self.status_label)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        self.run_btn = QPushButton("Publish Day")
+        self.close_btn = QPushButton("Close")
+        btn_layout.addWidget(self.run_btn)
+        btn_layout.addWidget(self.close_btn)
+        layout.addLayout(btn_layout)
+
+        self.base_dir_field.field.textChanged.connect(self.update_subdirs)
+        self.run_btn.clicked.connect(self.on_run)
+        self.close_btn.clicked.connect(self.close)
+
+        self.update_subdirs()
+
+    def update_subdirs(self):
+        base_path = Path(self.base_dir_field.get_path())
+        if base_path.is_dir():
+            subdirs = [f.name for f in base_path.iterdir() if f.is_dir()]
+            self.subdir_dropdown.clear()
+            self.subdir_dropdown.addItems(subdirs)
+            if self.subdir_name in subdirs:
+                self.subdir_dropdown.setCurrentText(self.subdir_name)
+        else:
+            self.subdir_dropdown.clear()
+
+    def on_run(self):
+        import configparser
+        from gui.batch import ChainedBatchRunner
+        from engine.statemachine import StateMachine
+        from utils.batch_config import generate_svconfig_ini
+        import batch.sv6Freeze
+        import batch.sv7WriteCommit
+
+        selected_base = Path(self.base_dir_field.get_path())
+        selected_subdir = self.subdir_dropdown.currentText()
+        full_selected_path = selected_base / selected_subdir
+
+        if not selected_base.is_dir():
+            self.base_dir_field.show_hint("Invalid base directory.")
+            return
+        if not full_selected_path.is_dir():
+            self.base_dir_field.show_hint("Selected subdirectory does not exist.")
+            return
+
+        _config["project"]["picturedirectory"] = str(full_selected_path)
+        self.logger.info(f"📤 Publish Day: {full_selected_path}")
+
+        generate_svconfig_ini()
+        module_config = configparser.ConfigParser()
+        module_config.read("svconfig.ini")
+
+        trip_root = Path(_config.get("trip", "tripbiotadatabase"))
+        review_day = trip_root / "metadata" / "review" / selected_subdir
+        sm = StateMachine(str(trip_root), str(review_day), readState=True)
+
+        steps = [
+            (batch.sv6Freeze.main, "Freeze",
+             "Freezing all collected data ...", "✅ Data frozen."),
+            (batch.sv7WriteCommit.main, "WriteCommit",
+             "Publishing to the website ...", "✅ Website published."),
+        ]
+
+        def on_complete():
+            sm2 = StateMachine(str(trip_root), str(review_day), readState=True)
+            self.passed_parent.refresh_trip_row(sm2, selected_subdir)
+
+        runner = ChainedBatchRunner(self.passed_parent, self.passed_parent, steps,
+                                    module_config, sm, selected_subdir, on_complete)
+        runner.start()
+        self.close()
+
+
 class WritePicturesDialog(QDialog):
     def __init__(self, parent, menu_spec):
         super().__init__(parent)

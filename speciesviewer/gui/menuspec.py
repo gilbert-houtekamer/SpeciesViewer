@@ -3,6 +3,7 @@ import configparser
 from PyQt6.QtWidgets import QMessageBox
 from gui.menu import MenuSpec  # assuming class is defined elsewhere
 from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDialog, TripCreationDialog,
+        PublishDayDialog,
         WritePicturesDialog, CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog,
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
         AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
@@ -191,7 +192,7 @@ def build_menu_spec(main_window):
     
     freeze_data = MenuSpec(
         callback=None,
-        title="4. Freeze Data",
+        title="Freeze Data",
         enabled=make_enabled_checker("Freeze"),
         tooltip=make_tooltip("Freeze"),        
         batch_parms={
@@ -205,9 +206,9 @@ def build_menu_spec(main_window):
 
     commit_website = MenuSpec(
         callback=None,
-        title="5. Write Website Commit",
+        title="Write Website Commit",
         enabled=make_enabled_checker("WriteCommit"),
-        tooltip=make_tooltip("WriteCommit"),        
+        tooltip=make_tooltip("WriteCommit"),
         batch_parms={
             'statusname': "WriteCommit",
             'module_called': batch.sv7WriteCommit.main,
@@ -215,7 +216,31 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Please review updated Website."
         }
     )
-    commit_website.callback = lambda: WriteCommitDialog(main_window, commit_website).exec()    
+    commit_website.callback = lambda: WriteCommitDialog(main_window, commit_website).exec()
+
+    # ── Publish Day: Freeze (sv6) + Write Website Commit (sv7) in one step ──
+    # Mirrors Read & Summarize: the trip-overview column-run / context-menu reuse
+    # this chained module; the menu click opens PublishDayDialog, which runs both
+    # via ChainedBatchRunner so the two statemachine keys (Freeze, then
+    # WriteCommit) are set in order. statusname is informational — eligibility
+    # uses the STATE_COLUMNS gate (Freeze) and state is set per run_keys.
+    def _publish_day(args, _config):
+        batch.sv6Freeze.main(args, _config)
+        batch.sv7WriteCommit.main(args, _config)
+
+    publish_day = MenuSpec(
+        callback=None,
+        title="4. Publish Day",
+        enabled=make_enabled_checker("Freeze"),
+        tooltip=make_tooltip("Freeze"),
+        batch_parms={
+            'statusname': "WriteCommit",
+            'module_called': _publish_day,
+            'before_msg': "Publishing the day (freeze + website commit) ...",
+            'after_msg': "✅ Day published.",
+        }
+    )
+    publish_day.callback = lambda: PublishDayDialog(main_window, publish_day).exec()
 
     # Same SpeciesCollectionDialog the Write Summary flow exposes,
     # pointed at <tripbiotadatabase>/metadata/active/speciescollection.csv.
@@ -1057,17 +1082,13 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_setup": None,
             "Sync Sidecars": sync_sidecars,
             f"{MenuSpec.separator()}_pipeline": None,
-            # Numbered day pipeline (titles carry the 1.–5. prefixes).
+            # Numbered day pipeline (titles carry the 1.–4. prefixes). Publish Day
+            # merges Freeze + Write Commit (the individual steps live under
+            # Advanced ▸ below).
             "Read & Summarize": read_summarize,
             "Write Blog": write_blog,
             "Build Website": build_website,
-            "Freeze": freeze_data,
-            "Write Commit": commit_website,
-            f"{MenuSpec.separator()}_advanced": None,
-            # Demoted: Read & Summarize runs both in one step. These remain for a
-            # read-only CSV refresh (Trip Species Viewer / translation panel) or debugging.
-            "Read Directory": read_dir,
-            "Write Summary": write_summary,
+            "Publish Day": publish_day,
             f"{MenuSpec.separator()}_2": None,
             # Review & edit
             "Rating Editor": rating_editor,
@@ -1083,6 +1104,16 @@ def build_menu_spec(main_window):
             # Retire
             "Retire Trip to Virtual Trip": retire_trip_item,
             "Delete Local Files Backed Up in Master…": delete_trip_item,
+            f"{MenuSpec.separator()}_advanced": None,
+            # Advanced: the individual pipeline steps, for a read-only CSV refresh
+            # (Read Directory / Write Summary) or the freeze-only edge case.
+            "Advanced (legacy)": {
+                "Read Directory": read_dir,
+                "Write Summary": write_summary,
+                f"{MenuSpec.separator()}_adv1": None,
+                "Freeze Data": freeze_data,
+                "Write Website Commit": commit_website,
+            },
         },
         "Master": {
             "Trip to Master Dashboard…": trip_master_dashboard,

@@ -41,14 +41,13 @@ STATE_COLUMNS = [
      "gate": "BuildWebsite", "run_keys": ["BuildWebsite"],
      "before": "Build updates for later publication ...",
      "after": "✅ Website updates prepared."},
-    {"label": "4 Freeze", "menu": "Freeze",
-     "gate": "Freeze", "run_keys": ["Freeze"],
-     "before": "Freeze all collected data ...",
-     "after": "✅ Data frozen."},
-    {"label": "5 Write\nCommit", "menu": "Write Commit",
-     "gate": "WriteCommit", "run_keys": ["WriteCommit"],
-     "before": "Update the trip website ...",
-     "after": "✅ Please review updated Website."},
+    # Publish Day combines Freeze (sv6) + Write Commit (sv7) — ✅ only when BOTH
+    # keys are done; gate is Freeze (the first, for eligibility). Mirrors the
+    # combined "Read & Summarize" column.
+    {"label": "4 Publish\nDay", "menu": "Publish Day",
+     "gate": "Freeze", "run_keys": ["Freeze", "WriteCommit"],
+     "before": "Publishing the day (freeze + website commit) ...",
+     "after": "✅ Day published."},
 ]
 STATE_LABELS = [c["label"] for c in STATE_COLUMNS]
 

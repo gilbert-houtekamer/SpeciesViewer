@@ -397,8 +397,8 @@ class MainWindow(QMainWindow):
             ("WritePictures", "Write Summary",  "Reading meta data for all pictures ...", "✅ Writing Summary data."),
             ("WriteBlog",     "Write Blog",     "Create a blog entry ...",               "✅ Blog successfully created."),
             ("BuildWebsite",  "Build Website",  "Build updates for later publication ...", "✅ Website updates prepared."),
-            ("Freeze",        "Freeze",         "Freeze all collected data ...",          "✅ Data frozen."),
-            ("WriteCommit",   "Write Commit",   "Update the trip website ...",            "✅ Please review updated Website."),
+            ("Freeze",        "Freeze Data",    "Freeze all collected data ...",          "✅ Data frozen."),
+            ("WriteCommit",   "Write Website Commit", "Update the trip website ...",      "✅ Please review updated Website."),
         ]
 
         completed = [
@@ -432,9 +432,21 @@ class MainWindow(QMainWindow):
         module_config.read("svconfig.ini")
 
         trip_menu = self.menu_spec.get("Trip", {})
+
+        def _find_spec(menu, want):
+            # Descend into submenus (e.g. Advanced ▸ Freeze Data / Write Website Commit).
+            for k, v in menu.items():
+                if isinstance(v, dict):
+                    hit = _find_spec(v, want)
+                    if hit:
+                        return hit
+                elif k == want and v is not None:
+                    return v
+            return None
+
         steps_to_run = []
         for sname, label, bmsg, amsg in completed:
-            spec = trip_menu.get(label)
+            spec = _find_spec(trip_menu, label)
             if spec:
                 bp = spec.get_batch_parms()
                 if bp:
@@ -509,7 +521,8 @@ class MainWindow(QMainWindow):
                 continue
 
             trip_menu = self.menu_spec.get("Trip", {})
-            spec_obj = trip_menu.get(action_label)
+            # Look up by the stable STATE_COLUMNS key, not the numbered header text.
+            spec_obj = trip_menu.get(col["menu"])
             if not spec_obj:
                 continue
             bp = spec_obj.get_batch_parms()
