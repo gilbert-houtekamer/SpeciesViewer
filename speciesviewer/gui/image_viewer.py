@@ -190,6 +190,9 @@ class ImagePreviewDialog(QDialog):
         self._find_query = ""
         self._findfile_query = ""
         self._color_filter = set()          # colour overlay (combines with the rest)
+        # JPG-only overlay (combines with radio + colour + find). On by default
+        # when opened from the JPEG-Files cell (mode == "jpg").
+        self._jpg_only = (self.mode == "jpg")
         self._find_timer = QTimer(self)     # debounce typing on big sets
         self._find_timer.setSingleShot(True)
         self._find_timer.timeout.connect(self._fire_pending_find)
@@ -293,22 +296,41 @@ class ImagePreviewDialog(QDialog):
         self.find_edit = QLineEdit()
         self.find_edit.setPlaceholderText("Find species…")
         self.find_edit.setClearButtonEnabled(True)
-        self.find_edit.setFixedWidth(150)
+        self.find_edit.setMinimumWidth(120)
         self.find_edit.setToolTip("Show only pictures whose species name contains this text")
         self.find_edit.setEnabled(hasattr(self._collection, "find_keys"))
         self.find_edit.textChanged.connect(self._on_find_changed)
-        controls_layout.addWidget(self.find_edit)
+        controls_layout.addWidget(self.find_edit, 1)   # share free space with Find file
 
         # Find file — substring of the picture name (UPN). Works even when the
         # species is unrecognized, so it finds problem pictures by filename.
         self.findfile_edit = QLineEdit()
         self.findfile_edit.setPlaceholderText("Find file…")
         self.findfile_edit.setClearButtonEnabled(True)
-        self.findfile_edit.setFixedWidth(130)
+        self.findfile_edit.setMinimumWidth(120)
         self.findfile_edit.setToolTip("Show only pictures whose file name contains this text (e.g. 309)")
         self.findfile_edit.setEnabled(hasattr(self._collection, "file_keys"))
         self.findfile_edit.textChanged.connect(self._on_findfile_changed)
-        controls_layout.addWidget(self.findfile_edit)
+        controls_layout.addWidget(self.findfile_edit, 1)   # share free space with Find species
+
+        # JPG-only toggle — when on, restrict to pictures that have a JPG,
+        # combined with the active radio, colour and find filters. Disabled when
+        # the collection can't tell JPGs apart (the no-metadata culling path).
+        # Sized like All/Species so it doesn't crowd the search boxes.
+        self.jpg_btn = QPushButton("JPG")
+        self.jpg_btn.setFixedSize(44, 24)
+        self.jpg_btn.setCheckable(True)
+        self.jpg_btn.setChecked(self._jpg_only)
+        self.jpg_btn.setToolTip(
+            "Show only pictures that have a JPG — combines with All / Species and the colours")
+        self.jpg_btn.setEnabled(hasattr(self._collection, "jpg_keys"))
+        self.jpg_btn.setStyleSheet("""
+            QPushButton { border: 2px solid #16A085; border-radius: 4px; background: transparent; }
+            QPushButton:checked { background: #A3E4D7; }
+            QPushButton:disabled { border-color: #CCCCCC; color: #BBBBBB; }
+        """)
+        self.jpg_btn.toggled.connect(self._on_jpg_toggled)
+        controls_layout.addWidget(self.jpg_btn)
 
         # Radio-style: exactly one of these is active.
         self._filter_group = QButtonGroup(self)
@@ -356,7 +378,8 @@ class ImagePreviewDialog(QDialog):
         self.column_spinner = QSpinBox()
         self.column_spinner.setRange(1, 10)
         self.column_spinner.setValue(self.columns)
-        self.column_spinner.setPrefix("Images per row: ")
+        self.column_spinner.setPrefix("Per row: ")
+        self.column_spinner.setToolTip("Images per row")
         self.column_spinner.valueChanged.connect(self.on_column_changed)
         controls_layout.addWidget(self.column_spinner)
 
@@ -442,6 +465,15 @@ class ImagePreviewDialog(QDialog):
             self.show_all = True
             initial_keys = self._base_keys()
 
+        # Opened from the JPEG-Files cell: come up with All + JPG both selected
+        # (the JPG subset is a small, explicit set, so auto-loading it is fine
+        # even on an otherwise "don't auto-load" clean day).
+        if self._jpg_only and hasattr(self._collection, "jpg_keys"):
+            self._active_filter = "all"
+            self.all_btn.setChecked(True)
+            self.show_all = True
+            initial_keys = self._visible_keys()
+
         self._update_title_for_filter()
         if initial_keys is not None:
             QTimer.singleShot(0, lambda: self._rebuild_grid_from_keys(initial_keys))
@@ -454,14 +486,10 @@ class ImagePreviewDialog(QDialog):
 
     # ── Mode / key helpers ─────────────────────────────────────────────────
     def _base_keys(self) -> list[str]:
-        """All keys for the current mode. Column 2 ('jpg') restricts to pictures
-        that have a JPG; column 1 ('all') and the no-fpr modes show everything
-        the collection already discovered."""
-        keys = self._collection.all_keys()
-        if self.mode == "jpg" and self.fpr is not None:
-            jpg = set(self._collection.jpg_keys())
-            keys = [k for k in keys if k in jpg]
-        return keys
+        """All keys the collection discovered. JPG-only is applied as a toggle
+        overlay in _visible_keys (see self._jpg_only), not here, so it can be
+        turned off even when the viewer was opened from the JPEG-Files cell."""
+        return self._collection.all_keys()
 
     def discover_images(self, image_dir):
         """File discovery for the no-metadata day-folder mode (no fpr)."""
@@ -497,7 +525,8 @@ class ImagePreviewDialog(QDialog):
         base = self._base_keys()
         keys = set(base)
         coll = self._collection
-        overlays_on = bool(self._color_filter or self._find_query or self._findfile_query)
+        overlays_on = bool(self._color_filter or self._find_query
+                           or self._findfile_query or self._jpg_only)
         f = self._active_filter
         if f is None and not overlays_on:
             return []  # clean day, nothing until a radio or a search is chosen
@@ -508,6 +537,8 @@ class ImagePreviewDialog(QDialog):
         elif f == "no_gps":
             keys &= set(coll.no_gps_keys())
         # else "all"/None → keep the whole base, then narrow by overlays below
+        if self._jpg_only and hasattr(coll, "jpg_keys"):
+            keys &= set(coll.jpg_keys())
         if self._color_filter and hasattr(coll, "color_keys"):
             keys &= set(coll.color_keys(self._color_filter))
         if self._find_query and hasattr(coll, "find_keys"):
@@ -519,6 +550,10 @@ class ImagePreviewDialog(QDialog):
     def _apply_filters(self):
         self._update_title_for_filter()
         self._rebuild_grid_from_keys(self._visible_keys())
+
+    def _on_jpg_toggled(self, checked):
+        self._jpg_only = checked
+        self._apply_filters()
 
     def _set_radio(self, name):
         """Record the active radio subset (flags kept for the no-GPS refresh and
@@ -628,6 +663,8 @@ class ImagePreviewDialog(QDialog):
         """Colour + find descriptors appended to the radio's label so the title
         reflects every active filter dimension."""
         parts = []
+        if self._jpg_only:
+            parts.append("JPG only")
         if self._color_filter:
             parts.append("colour " + "/".join(sorted(self._color_filter)))
         if self._find_query:
