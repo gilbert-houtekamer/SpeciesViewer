@@ -15,15 +15,16 @@ from engine.statemachine import StateMachine
 # statusname → trip-overview cell header. ReadDirExif and WritePictures share
 # ONE cell now (the combined "Read & Summarize" column); surgical updates may
 # flicker mid-chain but refresh_trip_row recomputes the cell from both keys.
-_EXPECTED_CELLS = {
-    "SyncSidecars":  'Sync\nSidecars',
-    "ReadDirExif":   'Read &\nSummarize',
-    "WritePictures": 'Read &\nSummarize',
-    "WriteBlog":     'Write\nBlog',
-    "BuildWebsite":  'Build\nWebsite',
-    "Freeze":        'Freeze',
-    "WriteCommit":   'Write\nCommit',
-}
+# Statemachine step name → trip-overview column label (what update_trip_cell
+# looks up). Derived from STATE_COLUMNS so it can't drift when the column labels
+# change (e.g. the 1.–5. numbering). Sync Sidecars is not a pipeline state
+# column — it's the hardcoded SYNC_COL header — so it's added explicitly.
+from gui.trip_overview import STATE_COLUMNS
+
+_EXPECTED_CELLS = {"SyncSidecars": "Sync\nSidecars"}
+for _col in STATE_COLUMNS:
+    for _key in _col["run_keys"]:
+        _EXPECTED_CELLS[_key] = _col["label"]
 
 
 # Conditional-invalidation support (Phase 3 of the Read & Summarize merge).
