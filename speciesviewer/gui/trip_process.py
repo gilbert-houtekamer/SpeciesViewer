@@ -507,7 +507,7 @@ class ReadSDCardDialog(QDialog):
         self.passed_parent = parent
         self.days_mode = days_mode   # Days lane: copy into a YYYY-MM-DD folder + register
         self.logger = parent.logger
-        self.setWindowTitle("Copy day from card" if days_mode else "Read SD-cards")
+        self.setWindowTitle("Copy Day from Card" if days_mode else "Read SD-cards")
         self.resize(700, 320)
 
         layout = QVBoxLayout(self)
@@ -3262,7 +3262,7 @@ class RedoTripBlogsDialog(BaseTripModuleDialog):
         super().__init__(
             parent,
             menu_spec,
-            title="Make the blogs clickable",
+            title="Make the Blogs Clickable",
             info_text=("Adds species links & Previous/Next navigation to the "
                        "published day blogs (HTML only — no pictures moved). "
                        "Run once all days are committed."),

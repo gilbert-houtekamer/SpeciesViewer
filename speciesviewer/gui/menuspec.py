@@ -98,7 +98,7 @@ def build_menu_spec(main_window):
 
     sync_sidecars = MenuSpec(
         callback=None,
-        title="Sync Lightroom & PhotoLab metadata",
+        title="Sync Lightroom & PhotoLab Metadata",
         batch_parms={
             'statusname': "SyncSidecars",
             'module_called': batch.svu5SyncSidecars.main,
@@ -285,7 +285,7 @@ def build_menu_spec(main_window):
 
     redo_trip_blogs = MenuSpec(
         callback=None,
-        title="Make the blogs clickable",
+        title="Make the Blogs Clickable",
         tooltip="Add species links & navigation",
         showsubdirectory=False,
         batch_parms={
@@ -326,7 +326,8 @@ def build_menu_spec(main_window):
     # Master updates
     merge_trip_species = MenuSpec(
         callback=None,
-        title="1. Publish species names",
+        title="1. Publish Species Names",
+        tooltip="Merge the trip's species into the master",
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
@@ -339,7 +340,8 @@ def build_menu_spec(main_window):
 
     add_trip_to_master = MenuSpec(
         callback=None,
-        title="2. List trip on the site",
+        title="2. List Trip on the Site",
+        tooltip="Add the trip's website to the master trip index",
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
@@ -413,7 +415,8 @@ def build_menu_spec(main_window):
     ]
     add_trip_pictures = MenuSpec(
         callback=None,
-        title="3. Merge pictures into master",
+        title="3. Merge Pictures into Master",
+        tooltip="Copy the trip's pictures into the master",
         showsubdirectory=False,
     )
     add_trip_pictures.callback = lambda: MasterPipelineDialog(
@@ -434,7 +437,7 @@ def build_menu_spec(main_window):
         dlg.activateWindow()
     add_pictures_to_master_item = MenuSpec(
         callback=_add_pictures_to_master,
-        title="Add pictures (no trip)…",
+        title="Add Pictures (no trip)…",
         showsubdirectory=False,
     )
 
@@ -1080,21 +1083,21 @@ def build_menu_spec(main_window):
         "Days": {
             "Register existing day…": MenuSpec(
                 callback=lambda: days_process.register_existing_day(main_window),
-                title="Register existing day…", showsubdirectory=False),
+                title="Register Existing Day…", showsubdirectory=False),
             "Copy day from card…": MenuSpec(
                 callback=lambda: days_process.copy_day_from_card(main_window),
-                title="Copy day from card…", showsubdirectory=False),
+                title="Copy Day from Card…", showsubdirectory=False),
             f"{MenuSpec.separator()}_days0": None,
             "Review & rate pictures…": MenuSpec(
                 callback=lambda: days_process.review_day(main_window),
-                title="Review & rate pictures…", showsubdirectory=False),
+                title="Review & Rate Pictures…", showsubdirectory=False),
             "Add to Master": MenuSpec(
                 callback=lambda: days_process.add_day_to_master(main_window),
                 title="Add to Master", showsubdirectory=False),
             f"{MenuSpec.separator()}_days1": None,
             "Remove from list": MenuSpec(
                 callback=lambda: days_process.remove_day_from_list(main_window),
-                title="Remove from list", showsubdirectory=False),
+                title="Remove from List", showsubdirectory=False),
         },
         "Trip": {
             "Create Trip": trip_create,
@@ -1142,7 +1145,7 @@ def build_menu_spec(main_window):
             "Edit Species List": edit_master_species,
             f"{MenuSpec.separator()}_master_0": None,
             # Publish the active trip to the master, in order.
-            "Publish trip to master": {
+            "Publish Trip to Master": {
                 "1. Publish species names": merge_trip_species,
                 "2. List trip on the site": add_trip_to_master,
                 "3. Merge pictures into master": add_trip_pictures,
@@ -1163,7 +1166,7 @@ def build_menu_spec(main_window):
             ),
             "Recreate Virtual Trip Blogs": MenuSpec(
                 callback=lambda: VirttripRedoBlogDialog(main_window).exec(),
-                title="Make the blogs clickable",
+                title="Make the Blogs Clickable",
                 tooltip="Add species links & navigation",
             ),
             "Build Virtual Trip Website": MenuSpec(

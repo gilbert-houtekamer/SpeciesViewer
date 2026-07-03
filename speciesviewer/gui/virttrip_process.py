@@ -768,7 +768,7 @@ class VirttripRedoBlogDialog(QDialog):
         super().__init__(parent)
         self.logger        = parent.logger
         self.passed_parent = parent
-        self.setWindowTitle("Make the blogs clickable")
+        self.setWindowTitle("Make the Blogs Clickable")
         self.resize(580, 300)
 
         layout = QVBoxLayout(self)
@@ -790,7 +790,7 @@ class VirttripRedoBlogDialog(QDialog):
                 )
 
         layout.addWidget(HTMLLabel(
-            "<p><b>Make the blogs clickable</b> — add species links &amp; navigation</p>"
+            "<p><b>Make the Blogs Clickable</b> — add species links &amp; navigation</p>"
             "<p>Re-renders the blog pages that <i>Write Virtual Trip Blogs</i> already "
             "published, rewriting only the HTML:</p>"
             "<ul>"
@@ -815,7 +815,7 @@ class VirttripRedoBlogDialog(QDialog):
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        run_btn   = QPushButton("Make clickable")
+        run_btn   = QPushButton("Make Clickable")
         close_btn = QPushButton("Close")
         btn_layout.addWidget(run_btn)
         btn_layout.addWidget(close_btn)

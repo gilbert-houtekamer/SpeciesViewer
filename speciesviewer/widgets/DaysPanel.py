@@ -90,8 +90,8 @@ class DaysPanel(QWidget):
         if not folder:
             return
         menu = QMenu()
-        open_action = menu.addAction("Open folder")
-        remove_action = menu.addAction("Remove from list")
+        open_action = menu.addAction("Open Folder")
+        remove_action = menu.addAction("Remove from List")
         action = menu.exec(QCursor.pos())
         if action == open_action:
             if os.path.isdir(folder):
