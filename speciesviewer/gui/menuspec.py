@@ -326,7 +326,7 @@ def build_menu_spec(main_window):
     # Master updates
     merge_trip_species = MenuSpec(
         callback=None,
-        title="Merge trip species to master",
+        title="1. Publish species names",
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
@@ -339,7 +339,7 @@ def build_menu_spec(main_window):
 
     add_trip_to_master = MenuSpec(
         callback=None,
-        title="Add trip website to master",
+        title="2. List trip on the site",
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
@@ -413,7 +413,7 @@ def build_menu_spec(main_window):
     ]
     add_trip_pictures = MenuSpec(
         callback=None,
-        title="Add Trip Pictures to Master",
+        title="3. Merge pictures into master",
         showsubdirectory=False,
     )
     add_trip_pictures.callback = lambda: MasterPipelineDialog(
@@ -434,7 +434,7 @@ def build_menu_spec(main_window):
         dlg.activateWindow()
     add_pictures_to_master_item = MenuSpec(
         callback=_add_pictures_to_master,
-        title="Add Pictures to Master…",
+        title="Add pictures (no trip)…",
         showsubdirectory=False,
     )
 
@@ -1141,12 +1141,14 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_master_dash": None,
             "Edit Species List": edit_master_species,
             f"{MenuSpec.separator()}_master_0": None,
-            "Merge Species": merge_trip_species,
-            "Add trip website to master": add_trip_to_master,
+            # Publish the active trip to the master, in order.
+            "Publish trip to master": {
+                "1. Publish species names": merge_trip_species,
+                "2. List trip on the site": add_trip_to_master,
+                "3. Merge pictures into master": add_trip_pictures,
+            },
             "Manage Trip Publication…": manage_trips,
-            f"{MenuSpec.separator()}_master_1": None,
-            "Add Trip Pictures to Master": add_trip_pictures,
-            "Add Pictures to Master…": add_pictures_to_master_item,
+            "Add pictures (no trip)…": add_pictures_to_master_item,
             f"{MenuSpec.separator()}_master_2": None,
             "Species Without a Website Picture…": no_display_item,
         },
