@@ -285,13 +285,14 @@ def build_menu_spec(main_window):
 
     redo_trip_blogs = MenuSpec(
         callback=None,
-        title="Recreate Trip Blogs",
+        title="Make the blogs clickable",
+        tooltip="Add species links & navigation",
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
             'module_called': batch.svr9RedoBlog.main,
-            'before_msg': "Recreating blogs that have JPG pictures ...",
-            'after_msg': "✅ Valid Blogs recreated."
+            'before_msg': "Adding species links & navigation to the blogs ...",
+            'after_msg': "✅ Blogs are now clickable (species links + navigation)."
         }
     )
     redo_trip_blogs.callback = lambda: RedoTripBlogsDialog(main_window, redo_trip_blogs).exec()
@@ -1160,7 +1161,8 @@ def build_menu_spec(main_window):
             ),
             "Recreate Virtual Trip Blogs": MenuSpec(
                 callback=lambda: VirttripRedoBlogDialog(main_window).exec(),
-                title="Recreate Virtual Trip Blogs",
+                title="Make the blogs clickable",
+                tooltip="Add species links & navigation",
             ),
             "Build Virtual Trip Website": MenuSpec(
                 callback=lambda: VirttripBuildWebsiteDialog(main_window).exec(),

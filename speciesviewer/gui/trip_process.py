@@ -3262,8 +3262,10 @@ class RedoTripBlogsDialog(BaseTripModuleDialog):
         super().__init__(
             parent,
             menu_spec,
-            title="Recreate Blogs for trip",
-            info_text="Recreate Blogs for trip for all committed days.",
+            title="Make the blogs clickable",
+            info_text=("Adds species links & Previous/Next navigation to the "
+                       "published day blogs (HTML only — no pictures moved). "
+                       "Run once all days are committed."),
             subdirectory=False
         )
 

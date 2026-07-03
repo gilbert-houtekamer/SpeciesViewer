@@ -27,6 +27,7 @@ def _populate_menu(menu, actions, parent, separator_marker):
     A dict value becomes a nested submenu (recursively), so the menu spec can
     express groupings like File ▸ Settings and File ▸ Admin. A label starting
     with the separator marker (value None) inserts a divider."""
+    menu.setToolTipsVisible(True)   # Qt hides action tooltips in menus otherwise
     for label, spec_obj in actions.items():
         if label.startswith(separator_marker):
             menu.addSeparator()
