@@ -155,6 +155,32 @@ class CropOverlay(QWidget):
         self.update()
         return target
 
+    def toggle_orientation(self):
+        """Swap the locked aspect between portrait and landscape (w/h ↔ h/w), so
+        an upright frame can still yield a horizontal crop (and vice-versa). Any
+        current rectangle is rotated 90° around its centre, then shrunk to fit
+        inside the frame."""
+        if not self._aspect:
+            return
+        self._aspect = 1.0 / self._aspect
+        if self._rect:
+            r = self._rect.normalized()
+            c = r.center()
+            long_side = max(r.width(), r.height())
+            if self._aspect >= 1:            # landscape now: width is the long side
+                w = long_side
+                h = w / self._aspect
+            else:                            # portrait now: height is the long side
+                h = long_side
+                w = h * self._aspect
+            fit = min(1.0, self.width() / w if w else 1.0,
+                      self.height() / h if h else 1.0)
+            w, h = w * fit, h * fit
+            left = min(max(0.0, c.x() - w / 2), max(0.0, self.width() - w))
+            top = min(max(0.0, c.y() - h / 2), max(0.0, self.height() - h))
+            self._rect = QRectF(left, top, w, h)
+        self.update()
+
     def flash(self, msg: str, ms: int = 1800):
         self._flash_msg = msg
         self.update()

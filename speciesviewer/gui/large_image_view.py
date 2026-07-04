@@ -513,6 +513,19 @@ class LargeImageView(QDialog):
         self._snap_btn.clicked.connect(self._on_snap_crop)
         self._snap_btn.setVisible(False)
         top_bar_row.addWidget(self._snap_btn)
+        # Swap the crop between portrait and landscape — lets an upright photo be
+        # cropped horizontally. Only useful (and visible) while cropping.
+        self._rotate_btn = QToolButton()
+        self._rotate_btn.setAutoRaise(True)
+        self._rotate_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._rotate_btn.setStyleSheet("font-size: 10px; padding: 1px 5px;")
+        self._rotate_btn.setText("⟳ Rotate crop")
+        self._rotate_btn.setToolTip(
+            "Swap the crop between portrait and landscape — e.g. a horizontal "
+            "crop from an upright photo.")
+        self._rotate_btn.clicked.connect(self._on_rotate_crop)
+        self._rotate_btn.setVisible(False)
+        top_bar_row.addWidget(self._rotate_btn)
         self._update_crop_btn()
         self._filmstrip_btn = QToolButton()
         self._filmstrip_btn.setAutoRaise(True)
@@ -961,6 +974,11 @@ class LargeImageView(QDialog):
         else:
             self._enter_crop_mode()
 
+    def _on_rotate_crop(self):
+        if self._crop_mode and self._crop_overlay is not None:
+            self._crop_overlay.toggle_orientation()
+            self._crop_overlay.setFocus()
+
     def _on_snap_crop(self):
         if self._crop_mode and self._crop_overlay is not None:
             self._crop_overlay.snap_to_standard()
@@ -976,6 +994,7 @@ class LargeImageView(QDialog):
         self._crop_mode = True
         self._crop_btn.setChecked(True)
         self._snap_btn.setVisible(True)
+        self._rotate_btn.setVisible(True)
         self._update_crop_btn()
         # Show the UNCROPPED frame so a fresh rectangle can be drawn over it.
         self._load_token += 1
@@ -1086,6 +1105,7 @@ class LargeImageView(QDialog):
         self._crop_mode = False
         self._crop_btn.setChecked(False)
         self._snap_btn.setVisible(False)
+        self._rotate_btn.setVisible(False)
         self._update_crop_btn()
         if self._crop_overlay is not None:
             self._crop_overlay.hide()
