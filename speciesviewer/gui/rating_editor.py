@@ -1483,9 +1483,12 @@ class RatingEditorDialog(QDialog):
             progress.setMinimumDuration(0)
             progress.show()
             for i, key in enumerate(key_list):
-                progress.setValue(i)
-                progress.setLabelText(f"Updating {i + 1} of {len(key_list)}…")
-                QApplication.processEvents()
+                # Throttle UI refresh: repainting the progress dialog every
+                # iteration costs more than the work itself for large batches.
+                if i % 10 == 0:
+                    progress.setValue(i)
+                    progress.setLabelText(f"Updating {i + 1} of {len(key_list)}…")
+                    QApplication.processEvents()
                 try:
                     item = self._collection.item(self._collection.index_of(key))
                     item.set_rating(stars)
