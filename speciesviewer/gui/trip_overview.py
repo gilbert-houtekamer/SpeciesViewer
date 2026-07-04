@@ -318,7 +318,7 @@ def _day_health(review_day_path):
     if no_gps:
         logger = logging.getLogger("speciesviewer")
         sample = [upn for upn, has in upn_has_gps.items() if not has][:5]
-        logger.info(
+        logger.debug(
             f"_day_health: {review_day_path.name} has {no_gps} UPN(s) "
             f"without GPS in data_files.csv. Sample: {sample}"
         )
