@@ -711,10 +711,18 @@ class PreviewCollection(PictureCollection):
 
     def request_image(self, upn_key: str, target_w, on_ready: PixmapCallback) -> None:
         src = self._display_source(upn_key)
-        # Crop the RAW preview to the PhotoLab/LR crop so the composition matches
-        # the edit. A render source is already cropped, so it's shown as-is.
-        crop = (crop_for(src, self._xmp_for(upn_key))
-                if src and src.suffix.lower() in _RAW_EXTS else None)
+        # Crop the preview to the PhotoLab/LR crop so the composition matches the
+        # edit. Applies to a RAW preview OR an ORIGINAL camera JPG (reads its crop
+        # from <source>.dop — what our crop tool wrote). An already-cropped render
+        # (_DxO/-small) is shown as-is, so we never double-crop.
+        crop = None
+        if src:
+            ext = src.suffix.lower()
+            is_render = "dxo" in src.name.lower() or "-small" in src.name.lower()
+            if ext in _RAW_EXTS:
+                crop = crop_for(src, self._xmp_for(upn_key))
+            elif ext in (".jpg", ".jpeg") and not is_render:
+                crop = crop_for(src)   # <jpg>.dop, written by suggest_crop
 
         def produce():
             if src is None:
