@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 from pathlib import Path
 
@@ -203,11 +204,12 @@ class PreviewItem(PictureItem):
     def request_full_pixmap(self, on_ready: PixmapCallback) -> None:
         self._c.request_image(self._key, None, on_ready)
 
-    # crop suggestion — RAW pictures only (a render/HEIC-only UPN has no RAW to
-    # re-develop). Post-cull the crop still seeds PhotoLab/Lightroom.
+    # crop suggestion — a picture with a RAW or an original camera JPG to
+    # re-develop (a HEIC-only / render-only UPN has nothing to seed). Post-cull
+    # the crop still seeds PhotoLab/Lightroom.
     @property
     def can_set_crop(self) -> bool:
-        return self._c.raw_path(self._key) is not None
+        return self._c._crop_source(self._key) is not None
 
     def request_uncropped_pixmap(self, on_ready: PixmapCallback) -> None:
         self._c.request_raw_uncropped(self._key, on_ready)
@@ -621,8 +623,13 @@ class PreviewCollection(PictureCollection):
         return False
 
     def _source_file(self, upn_key: str) -> Path | None:
-        """Best display source: JPG > RAW > HEIC."""
-        jpg = raw = heic = None
+        """Best display source: the BestJPG render (the DxO `_DxO.jpg` crop) >
+        any JPG > RAW > HEIC. Honours the pipeline's already-computed BestJPG so
+        the card shows the processed crop, not the untouched original that merely
+        happens to come first in the Files list."""
+        best_name = (self.fpr.upn.UniquePictureName_dict
+                     .get(upn_key, {}).get("BestJPG") or "").strip().lower()
+        best = jpg = raw = heic = None
         for fname in self._files(upn_key):
             frow = self.fpr.fi.files_dict.get(fname)
             if not frow:
@@ -631,13 +638,16 @@ class PreviewCollection(PictureCollection):
             p = Path(frow.get("WindowsFileName", ""))
             if not p.exists():
                 continue
-            if ext in ("jpg", "jpeg") and jpg is None:
-                jpg = p
+            if ext in ("jpg", "jpeg"):
+                if jpg is None:
+                    jpg = p
+                if best_name and p.name.lower() == best_name:
+                    best = p
             elif ("." + ext) in _RAW_EXTS and raw is None:
                 raw = p
             elif ext == "heic" and heic is None:
                 heic = p
-        return jpg or raw or heic
+        return best or jpg or raw or heic
 
     def _raw_path(self, upn_key: str) -> Path | None:
         for fname in self._files(upn_key):
@@ -647,6 +657,40 @@ class PreviewCollection(PictureCollection):
                 if p.exists():
                     return p
         return None
+
+    def _crop_source(self, upn_key: str) -> Path | None:
+        """The image the crop tool draws on: the RAW if there is one, else the
+        original camera JPG — the LARGEST tracked JPG that is not itself a DxO/LR
+        render (`_DxO`/`-small`). Lets a phone JPG be cropped too: the recipe
+        lands in <jpg>.dop + <jpg-stem>.xmp, exactly what PhotoLab/Lightroom read.
+        The render (_DxO.jpg) is skipped so we never crop an already-cropped file."""
+        raw = self.raw_path(upn_key)
+        if raw is not None:
+            return raw
+        best = None
+        best_area = -1
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            if frow.get("WindowsExtension", "").lower() not in ("jpg", "jpeg"):
+                continue
+            name = (frow.get("File:FileName", "")
+                    or Path(frow.get("WindowsFileName", "")).name).lower()
+            if "dxo" in name or "-small" in name:
+                continue   # a render/derivative, not the original to re-crop
+            p = Path(frow.get("WindowsFileName", ""))
+            if not p.exists():
+                continue
+            try:
+                width, height = map(int, re.split(r"[x ]", frow.get("ImageSize", "")))
+                area = width * height
+            except (ValueError, TypeError):
+                area = 0
+            if area > best_area:
+                best_area = area
+                best = p
+        return best
 
     def _display_source(self, upn_key: str) -> Path | None:
         """Best display source. A render found on disk (DxO _DxO.jpg — already
@@ -685,9 +729,10 @@ class PreviewCollection(PictureCollection):
         self._loader.request(produce, on_ready, target_w=target_w)
 
     def request_raw_uncropped(self, upn_key: str, on_ready: PixmapCallback) -> None:
-        """The RAW's full uncropped frame — the canvas the crop tool draws on
-        (bypasses _display_source, which would prefer an already-cropped render)."""
-        raw = self.raw_path(upn_key)
+        """The full uncropped frame — the canvas the crop tool draws on (bypasses
+        _display_source, which would prefer an already-cropped render). RAW when
+        present, else the original camera JPG (so phone JPGs are croppable too)."""
+        raw = self._crop_source(upn_key)
         if raw is None:
             on_ready(None)
             return
@@ -701,10 +746,12 @@ class PreviewCollection(PictureCollection):
         self._loader.request(produce, on_ready, target_w=None)
 
     def set_crop(self, upn_key: str, crop: dict):
-        """Write a suggested crop to the UPN's RAW sidecars (.dop + .xmp), creating
-        one if missing. Refreshes the image signature so refresh() doesn't
-        re-report our own write. Returns the sidecarlib result, or None."""
-        raw = self.raw_path(upn_key)
+        """Write a suggested crop to the UPN's source sidecars (.dop + .xmp),
+        creating one if missing. Uses the RAW when present, else the original
+        camera JPG (writing <jpg>.dop, exactly what PhotoLab reads). Refreshes the
+        image signature so refresh() doesn't re-report our own write. Returns the
+        sidecarlib result, or None."""
+        raw = self._crop_source(upn_key)
         if not raw:
             return None
         from engine.sidecarlib import suggest_crop

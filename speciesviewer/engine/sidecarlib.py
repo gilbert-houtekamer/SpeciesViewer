@@ -296,11 +296,15 @@ def ensure_dop(raw_path):
 
 
 def suggest_crop(raw_path, crop, angle=None):
-    """Write a suggested crop to BOTH the DxO .dop and the Lightroom .xmp so the
-    next edit in PhotoLab or Lightroom opens with it. Creates a sidecar when it's
-    missing (so a fresh off-the-card RAW still gets the suggestion). `crop` is the
-    normalised {left,top,width,height} (0-1). Returns a dict describing what was
-    written/created."""
+    """Write a suggested crop to the DxO .dop (and, for a RAW source, the
+    Lightroom .xmp) so the next edit in PhotoLab or Lightroom opens with it.
+    Creates a sidecar when it's missing (so a fresh off-the-card RAW still gets
+    the suggestion). `crop` is the normalised {left,top,width,height} (0-1).
+
+    For a JPG/JPEG source only the .dop is written: PhotoLab reads <jpg>.dop, but
+    a `<stem>.xmp` sidecar is not a JPG convention (Lightroom stores JPG metadata
+    in-file) and would just be clutter the pipeline then picks up. Returns a dict
+    describing what was written/created."""
     res = {"dop": False, "xmp": False, "dop_created": False, "xmp_created": False}
 
     dop_before = os.path.exists(str(raw_path) + ".dop")
@@ -311,6 +315,9 @@ def suggest_crop(raw_path, crop, angle=None):
             res["dop"] = write_dop_edits(dop_path, crop=crop, angle=angle)
         except Exception as e:
             logger.warning(f"suggest_crop: DOP write failed for {dop_path}: {e}")
+
+    if os.path.splitext(str(raw_path))[1].lower() in (".jpg", ".jpeg"):
+        return res   # JPG source: .dop only, no spurious .xmp sidecar
 
     xmp_before = os.path.exists(os.path.splitext(str(raw_path))[0] + ".xmp")
     xmp_path = ensure_xmp(raw_path)

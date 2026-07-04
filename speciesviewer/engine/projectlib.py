@@ -598,7 +598,34 @@ class Project:
     # should look at best JPG first!
     def findJPGItem(self, filelist, column):
         return self.findBestItem(filelist, column, ("JPG", "JPEG"))
-    
+
+    # ImageSize of the JPG with the MOST pixels (the camera original, not a
+    # smaller DxO/Lightroom crop). Used as the picture's size when there is no
+    # RAW/HEIC/XMP source (e.g. a phone JPG), so the "better crop" reward in
+    # computeRating can still recognise a cropped render as a real crop.
+    def findLargestJPGSize(self, filelist):
+        best_size = ""
+        best_area = -1
+        for file in filelist:
+            filedata = self.files_dict.get(file)
+            if filedata is None:
+                continue
+            if filedata['WindowsExtension'] not in ('jpg', 'jpeg'):
+                continue
+            size = filedata.get('ImageSize', '')
+            if not size:
+                continue
+            try:
+                width, height = map(int, re.split('[x ]', size))
+            except (ValueError, TypeError):
+                continue
+            area = width * height
+            if area > best_area:
+                best_area = area
+                best_size = size
+        return best_size
+
+
     def CreatePicture(self, upn):
         PictureRecord = {
             "UniquePictureName": upn,
@@ -656,6 +683,11 @@ class Project:
         if upn["Rating"] == "" and upn["Label"] == "":  # for waarneming.nl
             upn["Label"] = "Green"
         if upn["ImageSize"] == "": upn["ImageSize"] = self.findCameraOrXMPItem(files, "ImageSize")
+        # Phone/compact JPGs have no RAW/HEIC/XMP source, so ImageSize stayed
+        # empty and the "better crop" ×1.5 reward below could never fire. Fall
+        # back to the LARGEST JPG (the original, not a smaller DxO crop) so a
+        # cropped render still scores as a genuine crop.
+        if upn["ImageSize"] == "": upn["ImageSize"] = self.findLargestJPGSize(files)
         upn["JPGSize"] =           self.findJPGItem(files, "ImageSize")
         if upn["GPSAltitude"] == "": upn["GPSAltitude"] =       self.findAnySourceItem(files, "EXIF:GPSAltitude")
         if upn["GPSPosition"] == "": upn["GPSPosition"] =       self.findAnySourceItem(files, "Composite:GPSPosition")
