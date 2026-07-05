@@ -287,6 +287,7 @@ class PictureCard(QFrame):
         # it off (its data is already validated).
         self._show_status = show_status
         self._status_icon = None
+        self._crop_badge = None
         self._desc_badge = None
         self._gps_badge = None
 
@@ -409,6 +410,15 @@ class PictureCard(QFrame):
             badge_row.addWidget(self._status_icon)
             badge_row.addStretch()
 
+            # ⌗ = this picture carries a crop (ours or PhotoLab/LR). Sits left of
+            # the 📝/📍 badges. "Potentially" cropped — the recipe exists even if a
+            # cropped JPG render hasn't been generated yet.
+            self._crop_badge = QLabel()
+            self._crop_badge.setStyleSheet("font-size: 14px; color: #555;")
+            self._crop_badge.setFixedSize(20, 20)
+            self._crop_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge_row.addWidget(self._crop_badge)
+
             self._desc_badge = QLabel()
             self._desc_badge.setStyleSheet("font-size: 14px;")
             self._desc_badge.setFixedSize(20, 20)
@@ -448,6 +458,12 @@ class PictureCard(QFrame):
             self._status_icon.setText("❔")
             self._status_icon.setToolTip("No species set — picture will be skipped by the pipeline.")
 
+        has_crop = getattr(item, "has_crop", False)
+        self._crop_badge.setText("⌗" if has_crop else "")
+        self._crop_badge.setToolTip(
+            "This picture has a crop (SpeciesViewer / PhotoLab / Lightroom)"
+            if has_crop else "")
+
         desc = item.description
         self._desc_badge.setText("📝" if desc else "")
         self._desc_badge.setToolTip(desc or "")
@@ -474,7 +490,15 @@ class PictureCard(QFrame):
 
     def _key_line_text(self) -> str:
         exts = self._item.file_exts
-        return self._item.key if not exts else f"{self._item.key}  {' · '.join(exts)}"
+        if not exts:
+            return self._item.key
+        # Bold + green the JPG token so "this picture has a JPG render" reads at a
+        # glance. Cards without a JPG stay plain text, so use real spaces (not
+        # &nbsp;, which shows literally in plain-text mode) — the double space
+        # collapses to one only on the rich-text (JPG) cards, which is fine.
+        shown = [f"<b style='color:#2e7d32'>{e}</b>" if e.upper() == "JPG" else e
+                 for e in exts]
+        return f"{self._item.key}  {' · '.join(shown)}"
 
     def reload_thumbnail(self):
         """Re-request the thumbnail — used when the underlying image changed (a new

@@ -763,7 +763,9 @@ class ImagePreviewDialog(QDialog):
 
     def _build_next_batch(self):
         BATCH = 20
-        show_status = self.fpr is not None
+        # Preview (fpr) hosts always show the status/📝/📍 row; a collection can
+        # opt in too (the culling grid does — it carries species/desc/GPS itself).
+        show_status = self.fpr is not None or getattr(self._collection, "show_status_badges", False)
         n = len(self._collection)
         for _ in range(BATCH):
             if self.cancelled or self._build_index >= n:

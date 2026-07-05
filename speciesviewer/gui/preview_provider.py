@@ -178,6 +178,10 @@ class PreviewItem(PictureItem):
         return self._c.has_gps(self._key)
 
     @property
+    def has_crop(self) -> bool:
+        return self._c.crop_present(self._key)
+
+    @property
     def file_exts(self) -> list[str]:
         files = self._row.get("Files", [])
         exts = ({Path(f).suffix.lstrip(".").upper() for f in files if f}
@@ -713,19 +717,50 @@ class PreviewCollection(PictureCollection):
             return None
         return cached_jpg_for(src, preview_cache_dir_for(src.parent))
 
+    def _stale_render_fallback(self, upn_key: str, render_src: Path):
+        """A render (_DxO/-small) is normally trusted as already-cropped. But if our
+        crop is NEWER than the render, the render predates the crop (DxO hasn't
+        re-exported yet) and is full-frame — so fall back to the RAW/original + the
+        crop, so the thumbnail matches the edit. Returns (base, crop) to switch to,
+        or (None, None) to keep trusting the render."""
+        base = self._crop_source(upn_key)          # RAW / original JPG (never a render)
+        if base is None:
+            return None, None
+        crop = crop_for(base, self._xmp_for(upn_key))
+        if not crop:
+            return None, None                      # no crop → nothing to apply
+        # mtime of whichever sidecar holds the crop (.dop preferred, else .xmp).
+        dop = Path(str(base) + ".dop")
+        crop_mtime = dop.stat().st_mtime if dop.exists() else None
+        if crop_mtime is None:
+            xmp = self._xmp_for(upn_key)
+            crop_mtime = Path(xmp).stat().st_mtime if xmp and Path(xmp).exists() else None
+        try:
+            render_mtime = Path(render_src).stat().st_mtime
+        except OSError:
+            return None, None
+        if crop_mtime is not None and crop_mtime > render_mtime:
+            return base, crop                      # render is stale → show base + crop
+        return None, None
+
     def request_image(self, upn_key: str, target_w, on_ready: PixmapCallback) -> None:
         src = self._display_source(upn_key)
         # Crop the preview to the PhotoLab/LR crop so the composition matches the
         # edit. Applies to a RAW preview OR an ORIGINAL camera JPG (reads its crop
-        # from <source>.dop — what our crop tool wrote). An already-cropped render
-        # (_DxO/-small) is shown as-is, so we never double-crop.
+        # from <source>.dop — what our crop tool wrote). A render (_DxO/-small) is
+        # normally shown as-is (already cropped) — unless it's older than our crop,
+        # in which case it's stale and we show the RAW/original + crop instead.
         crop = None
         if src:
             ext = src.suffix.lower()
             is_render = "dxo" in src.name.lower() or "-small" in src.name.lower()
-            if ext in _RAW_EXTS:
+            if is_render:
+                base, base_crop = self._stale_render_fallback(upn_key, src)
+                if base is not None:
+                    src, crop = base, base_crop
+            elif ext in _RAW_EXTS:
                 crop = crop_for(src, self._xmp_for(upn_key))
-            elif ext in (".jpg", ".jpeg") and not is_render:
+            elif ext in (".jpg", ".jpeg"):
                 crop = crop_for(src)   # <jpg>.dop, written by suggest_crop
 
         def produce():
@@ -739,6 +774,16 @@ class PreviewCollection(PictureCollection):
                 return apply_crop(img, crop) if crop else img
             return None
         self._loader.request(produce, on_ready, target_w=target_w)
+
+    def crop_present(self, upn_key: str) -> bool:
+        """True if this picture carries a crop recipe (ours or PhotoLab/LR), for the
+        card's ⌗ badge. Checks the croppable BASE (RAW / original JPG), not the
+        display source, so a picture whose render exists still shows ⌗. One small
+        .dop/.xmp read per call."""
+        base = self._crop_source(upn_key)
+        if base is None:
+            return False
+        return crop_for(base, self._xmp_for(upn_key)) is not None
 
     def request_raw_uncropped(self, upn_key: str, on_ready: PixmapCallback) -> None:
         """The full uncropped frame — the canvas the crop tool draws on (bypasses

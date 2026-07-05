@@ -200,6 +200,10 @@ class PictureItem(ABC):
     def has_gps(self) -> bool:          # False → preview shows the missing-GPS badge
         return True
 
+    @property
+    def has_crop(self) -> bool:         # True → card shows a ⌗ (crop present: ours or PhotoLab/LR)
+        return False
+
     # ── location line (grid card, opt-in) ────────────────────────────────────
     # show_location_line → the card draws a place line under the species name.
     # The data must be free (already loaded), so only providers that carry it

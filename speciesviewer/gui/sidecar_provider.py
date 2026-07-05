@@ -179,6 +179,12 @@ class SidecarItem(PictureItem):
         return self._stem in self._c._gps_by_stem
 
     @property
+    def has_crop(self) -> bool:
+        # Reuses the collection's per-stem crop cache (also used for the thumbnail
+        # crop), so this is free after the first read. Covers our crops and PL/LR's.
+        return self._c._crop_for(self._stem) is not None
+
+    @property
     def place_fields(self) -> dict:
         r = self._row
         return {k: str(r.get(k, "") or "")
@@ -250,6 +256,11 @@ class SidecarItem(PictureItem):
 class SidecarCollection(PictureCollection):
     """Pictures discovered from RAW(+JPG)+XMP sidecar groups in a folder or an
     explicit RAW list. Reads metadata from the sidecars; edits write back to them."""
+
+    # The culling grid carries species/description/GPS per card, so it can show the
+    # PictureCard status/📝/📍 badge row even without an fpr project (the no-fpr
+    # virtual-trip preview can't, so it leaves this False).
+    show_status_badges = True
 
     def __init__(self, paths, *, readonly=False, cache_root=None, loader: AsyncImageLoader | None = None):
         self.readonly = readonly
