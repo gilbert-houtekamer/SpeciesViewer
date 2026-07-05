@@ -162,27 +162,78 @@ def write_xmp_edits(xmp_path, exposure=None, crop=None, angle=None):
     return changed
 
 
+def _dop_block_span(text, start):
+    """Return (open_idx, close_idx) of the brace block whose opening '{' is at or
+    after `start`, matched with balanced-brace counting. None if unbalanced."""
+    open_idx = text.index('{', start)
+    depth = 0
+    for i in range(open_idx, len(text)):
+        if text[i] == '{':
+            depth += 1
+        elif text[i] == '}':
+            depth -= 1
+            if depth == 0:
+                return open_idx, i
+    return None
+
+
+def _strip_dop_keys(inner, keys):
+    """Remove `Key = value,` entries (scalar OR braced value) for each key in
+    `keys` from an Overrides inner-body string, so repeated writes don't duplicate
+    them. Everything else (e.g. GridWarpingGrids) is preserved verbatim."""
+    for k in keys:
+        # Braced value first: `k = { ...balanced... } ,`
+        m = re.search(rf'\b{re.escape(k)}\s*=\s*\{{', inner)
+        if m:
+            span = _dop_block_span(inner, m.start())
+            if span:
+                end = span[1] + 1
+                tail = re.match(r'\s*,', inner[end:])   # eat the trailing comma
+                if tail:
+                    end += tail.end()
+                inner = inner[:m.start()] + inner[end:]
+                continue
+        # Scalar value: `k = value,`
+        inner = re.sub(rf'\b{re.escape(k)}\s*=\s*[^,\n{{}}]*,\s*', '', inner)
+    return inner
+
+
 def write_dop_edits(dop_path, exposure=None, crop=None, angle=None):
-    """Surgically update exposure, crop, and/or angle in a DOP file's Overrides section."""
-    with open(dop_path, "r", encoding="utf-8") as f:
+    """Surgically MERGE exposure / crop / angle into a DOP's Overrides block.
+
+    The Overrides block is located by balanced-brace matching (a PhotoLab recipe
+    always seeds it with a non-empty GridWarpingGrids block, so the old non-greedy
+    regex truncated it at the first inner '},' and corrupted the file). We strip
+    only the keys we manage and append fresh ones, leaving everything else intact,
+    so the write is idempotent and never mangles a PhotoLab-authored recipe."""
+    # newline="" preserves DxO's LF endings; text mode would CRLF-ify every line.
+    with open(dop_path, "r", encoding="utf-8", newline="") as f:
         text = f.read()
 
-    # Find or create Overrides block
-    overrides_match = re.search(r'(Overrides\s*=\s*\{)(.*?)(\}\s*,)', text, re.DOTALL)
-    if not overrides_match:
+    key = re.search(r'Overrides\s*=\s*\{', text)
+    if not key:
         logger.warning(f"No Overrides section found in {dop_path}")
         return False
+    span = _dop_block_span(text, key.start())
+    if not span:
+        logger.warning(f"Unbalanced Overrides block in {dop_path}; not writing")
+        return False
+    open_idx, close_idx = span
+    inner = text[open_idx + 1:close_idx]
 
     new_entries = []
+    managed = set()
 
     if exposure is not None:
         new_entries.append(f'ExposureBias = {exposure},')
         new_entries.append('ExposureActive = true,')
+        managed |= {'ExposureBias', 'ExposureActive'}
 
     if crop is not None:
         new_entries.append('CropAuto = false,')
         new_entries.append('CropActive = true,')
         new_entries.append(f'CropRect = {{\n{crop["left"]},\n{crop["top"]},\n{crop["width"]},\n{crop["height"]},\n}}\n,')
+        managed |= {'CropAuto', 'CropActive', 'CropRect'}
 
     if angle is not None:
         # LR angle is negative clockwise, DxO is positive clockwise
@@ -190,17 +241,93 @@ def write_dop_edits(dop_path, exposure=None, crop=None, angle=None):
         new_entries.append(f'KeystoningHorizon = {dop_angle},')
         new_entries.append('KeystoningHorizonActive = true,')
         new_entries.append('KeystoningHorizonAuto = false,')
+        managed |= {'KeystoningHorizon', 'KeystoningHorizonActive', 'KeystoningHorizonAuto'}
 
     if not new_entries:
         return False
 
-    new_block = overrides_match.group(1) + '\n' + '\n'.join(new_entries) + '\n' + overrides_match.group(3)
-    text = text[:overrides_match.start()] + new_block + text[overrides_match.end():]
+    # Drop any prior copies of the keys we set (idempotent), keep the rest.
+    inner = _strip_dop_keys(inner, managed).rstrip()
+    sep = '\n' if inner else ''
+    new_inner = inner + sep + '\n' + '\n'.join(new_entries) + '\n'
+    text = text[:open_idx] + '{' + new_inner + '}' + text[close_idx + 1:]
 
-    with open(dop_path, "w", encoding="utf-8") as f:
+    with open(dop_path, "w", encoding="utf-8", newline="") as f:
         f.write(text)
 
     return True
+
+
+def write_dop_metadata(dop_path, color=None, rating=None):
+    """Surgically set the Item-level ColorLabel and/or Rating in a DxO .dop —
+    PhotoLab's own colour label and star rating. Unlike the crop (which lives in
+    the item's Settings→Overrides block), these sit at the picture-item level,
+    beside `Name`. This is the native channel PhotoLab reads, so it avoids the
+    .xmp round-trip where PL ignores/clobbers our colour label.
+
+    color: a DxO colour name ("Red"/"Green"/"Yellow"/"Blue"/"Purple"), or ""/None
+           value "None" to clear (case-insensitive in; normalised to DxO's
+           capitalised vocabulary). rating: int 0-5.
+    Returns True if the file changed.
+
+    Each PL-authored .dop carries exactly one `ColorLabel` and one `Rating`, so a
+    single anchored replace is unambiguous; if a field is somehow absent (a
+    from-scratch recipe) it's inserted at item scope.
+
+    newline="" preserves DxO's LF line endings byte-for-byte (text-mode write
+    would CRLF-ify every line on Windows, rewriting the whole file)."""
+    with open(dop_path, "r", encoding="utf-8", newline="") as f:
+        text = f.read()
+    changed = False
+
+    if color is not None:
+        dxo_color = (color or "None").strip().capitalize()  # DxO clears to "None"
+        if re.search(r'ColorLabel\s*=\s*"[^"]*"', text):
+            text, n = re.subn(r'ColorLabel\s*=\s*"[^"]*"',
+                              f'ColorLabel = "{dxo_color}"', text, count=1)
+            changed = changed or bool(n)
+        else:
+            m = re.search(r'\n(\s*)Name\s*=\s*"', text)  # insert just before Name
+            if m:
+                text = text[:m.start()] + f'\n{m.group(1)}ColorLabel = "{dxo_color}",' + text[m.start():]
+                changed = True
+
+    if rating is not None:
+        r = int(rating)
+        if re.search(r'\bRating\s*=\s*-?\d+', text):
+            text, n = re.subn(r'\bRating\s*=\s*-?\d+', f'Rating = {r}', text, count=1)
+            changed = changed or bool(n)
+        else:
+            m = re.search(r'\n(\s*)Settings\s*=\s*\{', text)  # insert just before Settings
+            if m:
+                text = text[:m.start()] + f'\n{m.group(1)}Rating = {r},' + text[m.start():]
+                changed = True
+
+    if changed:
+        with open(dop_path, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+    return changed
+
+
+def push_metadata_to_dop(raw_path, color=None, rating=None):
+    """Convenience: ensure the RAW's .dop exists, then set its Item-level
+    ColorLabel / Rating so PhotoLab picks them up on 'import sidecars'. This is
+    the PL-friendly channel for colour/rating (the .xmp is not — PL clobbers it).
+
+    `raw_path` is the source RAW (the .dop lives at '<raw>.dop'). A JPG source
+    has no meaningful Item-level colour/rating recipe of its own here, but PL does
+    read '<jpg>.dop', so it's written too. Returns True if the .dop changed.
+    Policy gating (whether to call this at all) is the caller's job."""
+    if not raw_path:
+        return False
+    dop = ensure_dop(raw_path)
+    if not dop:
+        return False
+    try:
+        return write_dop_metadata(dop, color=color, rating=rating)
+    except Exception as e:
+        logger.warning(f"push_metadata_to_dop failed for {dop}: {e}")
+        return False
 
 
 # ── Sidecar creation (seed a suggestion before PhotoLab/Lightroom touch it) ──────
@@ -304,20 +431,30 @@ def suggest_crop(raw_path, crop, angle=None):
     For a JPG/JPEG source only the .dop is written: PhotoLab reads <jpg>.dop, but
     a `<stem>.xmp` sidecar is not a JPG convention (Lightroom stores JPG metadata
     in-file) and would just be clutter the pipeline then picks up. Returns a dict
-    describing what was written/created."""
+    describing what was written/created.
+
+    Which sidecars are written is gated by the Sidecar Behaviour settings: the
+    .dop is PhotoLab's crop recipe (on by default), while the .xmp crop is off by
+    default because PhotoLab watches the .xmp and, on our write, re-derives from
+    its own reading and discards the .dop crop (see utils/sidecar_policy.py)."""
+    from utils.sidecar_policy import crop_to_dop_enabled, crop_to_xmp_enabled
     res = {"dop": False, "xmp": False, "dop_created": False, "xmp_created": False}
 
-    dop_before = os.path.exists(str(raw_path) + ".dop")
-    dop_path = ensure_dop(raw_path)
-    res["dop_created"] = bool(dop_path) and not dop_before
-    if dop_path:
-        try:
-            res["dop"] = write_dop_edits(dop_path, crop=crop, angle=angle)
-        except Exception as e:
-            logger.warning(f"suggest_crop: DOP write failed for {dop_path}: {e}")
+    if crop_to_dop_enabled():
+        dop_before = os.path.exists(str(raw_path) + ".dop")
+        dop_path = ensure_dop(raw_path)
+        res["dop_created"] = bool(dop_path) and not dop_before
+        if dop_path:
+            try:
+                res["dop"] = write_dop_edits(dop_path, crop=crop, angle=angle)
+            except Exception as e:
+                logger.warning(f"suggest_crop: DOP write failed for {dop_path}: {e}")
 
     if os.path.splitext(str(raw_path))[1].lower() in (".jpg", ".jpeg"):
         return res   # JPG source: .dop only, no spurious .xmp sidecar
+
+    if not crop_to_xmp_enabled():
+        return res   # crop-to-XMP disabled (default): don't poke PhotoLab's monitor
 
     xmp_before = os.path.exists(os.path.splitext(str(raw_path))[0] + ".xmp")
     xmp_path = ensure_xmp(raw_path)

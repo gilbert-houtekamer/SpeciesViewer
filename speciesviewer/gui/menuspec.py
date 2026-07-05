@@ -23,6 +23,7 @@ from settings.speciessettings import SpeciesSettingsDialog
 from settings.dbsettings import DatabaseSettingsDialog
 from settings.rawsettings import RawProcessingDialog
 from settings.locationsettings import LocationSettingsDialog
+from settings.sidecarsettings import SidecarSettingsDialog
 from dialogs.setting import AboutDialog
 from utils.batch_config import generate_svconfig_ini
 from engine.statemachine import StateMachine
@@ -1068,6 +1069,9 @@ def build_menu_spec(main_window):
                 ),
                 "Location Settings…": MenuSpec(
                     callback=lambda: LocationSettingsDialog(main_window).exec(),
+                ),
+                "Sidecar Behaviour…": MenuSpec(
+                    callback=lambda: SidecarSettingsDialog(main_window).exec(),
                 ),
                 f"{MenuSpec.separator()}_settings_caches": None,
                 "Manage Caches…": manage_caches,

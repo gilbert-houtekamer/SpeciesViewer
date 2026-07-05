@@ -3,6 +3,10 @@ from engine.speciesclassification import SpeciesClassification
 from engine.filecsv import Files
 from engine.picturecsv import Pictures
 from engine.exif_writer import exiftool_write
+from engine.sidecarlib import push_metadata_to_dop
+from utils.sidecar_policy import (
+    color_rating_to_xmp_enabled, color_rating_to_dop_enabled,
+)
 import logging
 import time
 import os
@@ -197,14 +201,20 @@ class FilePicture:
             logger.warning(f"updateLabel: no CSV row for {filename}")
             return 0
         raw_exts = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng", "heic"}
+        dxo_raw_exts = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng"}
         files_written = 0
+        raw_path = None
         for f_key, f_row in self.fi.files_dict.items():
             if f_row.get("UniquePictureName") != upn_name:
                 continue
             f_row["XMP:Label"] = new_label
             ext = f_row.get("WindowsExtension", "").lower()
             if ext in raw_exts:
+                if ext in dxo_raw_exts and raw_path is None:
+                    raw_path = f_row.get("WindowsFileName", "")  # for the .dop colour write
                 continue  # RAW files stay immutable
+            if ext == "xmp" and not color_rating_to_xmp_enabled():
+                continue  # colour in .xmp suppressed (PhotoLab mistreats it); JPGs still written
             filepath = Path(f_row.get("WindowsFileName", ""))
             if not filepath.exists():
                 continue
@@ -215,6 +225,9 @@ class FilePicture:
                 logger.warning(
                     f"updateLabel: failed to write {filepath.name}: {e.stderr}"
                 )
+        # Colour into the DxO .dop (PhotoLab's native store, read on 'import sidecars').
+        if raw_path and color_rating_to_dop_enabled():
+            push_metadata_to_dop(raw_path, color=new_label)
         self.fi.write_project_files()
         upn_obj = self.upn.UniquePictureName_dict.get(upn_name)
         if upn_obj is not None:

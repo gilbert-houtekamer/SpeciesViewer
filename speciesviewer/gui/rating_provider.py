@@ -27,6 +27,12 @@ from gui.image_loader import AsyncImageLoader
 from gui.preview_provider import preview_cache_dir_for
 from gui.rating_editor import _compute_rate, _safe_int
 from engine.exif_writer import exiftool_write
+from engine.sidecarlib import push_metadata_to_dop
+from utils.sidecar_policy import (
+    color_rating_to_xmp_enabled, color_rating_to_dop_enabled,
+)
+
+_DXO_RAW_EXTS = ("orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng")
 
 logger = logging.getLogger("speciesviewer")
 
@@ -545,11 +551,15 @@ class RatingEditorCollection(PictureCollection):
             files = []
 
         wrote_file = False
+        raw_path = None
         for fname in files:
             frow = self.fpr.fi.files_dict.get(fname)
             if not frow:
                 continue
-            if frow.get("WindowsExtension", "").lower() not in ("xmp", "jpg", "jpeg"):
+            ext = frow.get("WindowsExtension", "").lower()
+            if ext in _DXO_RAW_EXTS and raw_path is None:
+                raw_path = frow.get("WindowsFileName", "")  # for the .dop write
+            if ext not in ("xmp", "jpg", "jpeg"):
                 continue
             fpath = Path(frow.get("WindowsFileName", ""))
             if not fpath.exists():
@@ -559,7 +569,10 @@ class RatingEditorCollection(PictureCollection):
                 args.append(f"-XMP:Rating={new_stars}")
             if new_color is not None:
                 args.append(f"-XMP:Label={new_color}")
-            if args:
+            # Colour/rating in the .xmp can be suppressed (Sidecar Behaviour) since
+            # PhotoLab mistreats it; internal state below still updates.
+            suppress = ext == "xmp" and not color_rating_to_xmp_enabled()
+            if args and not suppress:
                 try:
                     exiftool_write(fpath, args)
                     wrote_file = True
@@ -569,6 +582,9 @@ class RatingEditorCollection(PictureCollection):
                 frow["XMP:Rating"] = str(new_stars)
             if new_color is not None:
                 frow["XMP:Label"] = new_color
+        # Colour/rating into the DxO .dop (PhotoLab reads it on 'import sidecars').
+        if raw_path and color_rating_to_dop_enabled():
+            push_metadata_to_dop(raw_path, color=new_color, rating=new_stars)
 
         if new_stars is not None:
             upn_row["Rating"] = str(new_stars)
@@ -723,11 +739,15 @@ class RatingEditorCollection(PictureCollection):
             files = []
 
         file_updates: dict[str, dict] = {}
+        raw_path = None
         for fname in files:
             frow = self._master_files.get(fname)
             if not frow:
                 continue
-            if frow.get("WindowsExtension", "").lower() not in ("xmp", "jpg", "jpeg"):
+            ext = frow.get("WindowsExtension", "").lower()
+            if ext in _DXO_RAW_EXTS and raw_path is None and rel_dir:
+                raw_path = str(self._master_root / rel_dir / fname)  # for the .dop write
+            if ext not in ("xmp", "jpg", "jpeg"):
                 continue
             if not rel_dir:
                 continue
@@ -741,11 +761,15 @@ class RatingEditorCollection(PictureCollection):
                 args.append(f"-XMP:Label={new_color}")
             if not args:
                 continue
-            try:
-                exiftool_write(fpath, args)
-            except Exception as e:
-                logger.error(f"master exiftool write failed for {fpath.name}: {e}")
-                continue
+            # Colour/rating in the .xmp can be suppressed (Sidecar Behaviour) since
+            # PhotoLab mistreats it; the CSV/DB update below still records the value.
+            suppress = ext == "xmp" and not color_rating_to_xmp_enabled()
+            if not suppress:
+                try:
+                    exiftool_write(fpath, args)
+                except Exception as e:
+                    logger.error(f"master exiftool write failed for {fpath.name}: {e}")
+                    continue
             upd: dict = {}
             if new_stars is not None:
                 frow["XMP:Rating"] = str(new_stars)
@@ -754,6 +778,9 @@ class RatingEditorCollection(PictureCollection):
                 frow["XMP:Label"] = new_color
                 upd["XMP:Label"] = new_color
             file_updates[fname] = upd
+        # Colour/rating into the DxO .dop (PhotoLab reads it on 'import sidecars').
+        if raw_path and color_rating_to_dop_enabled():
+            push_metadata_to_dop(raw_path, color=new_color, rating=new_stars)
 
         if new_stars is not None:
             upn_row["Rating"] = str(new_stars)

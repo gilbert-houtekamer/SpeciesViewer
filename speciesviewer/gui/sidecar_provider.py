@@ -28,6 +28,10 @@ from gui.picture_provider import (PictureItem, PictureCollection, ExifSummary,
 from gui.image_loader import AsyncImageLoader
 from gui.preview_provider import cached_jpg_for, preview_cache_dir_for
 from engine.exif_writer import exiftool_write
+from engine.sidecarlib import push_metadata_to_dop
+from utils.sidecar_policy import (
+    color_rating_to_xmp_enabled, color_rating_to_dop_enabled,
+)
 from engine.handling import deriveUniquePictureName
 
 logger = logging.getLogger("speciesviewer")
@@ -626,9 +630,30 @@ class SidecarCollection(PictureCollection):
         return len(matching), protected, deleted
 
     def write_tag(self, stem: str, tag: str, value: str, row_key: str) -> None:
-        """Write one XMP tag into the stem's sidecar (creating it if needed),
-        update the in-memory row, and patch the on-disk cache so the next
-        culling session opens without re-running exiftool for this file."""
+        """Write one metadata tag for the stem, honouring Sidecar Behaviour.
+
+        Colour/rating (XMP:Label / XMP:Rating) go to PhotoLab's .dop (its native
+        store, read on 'import sidecars') and only optionally to the .xmp, since PL
+        mistreats them there. Keywords/description always go to the .xmp. Updates
+        the in-memory row and patches the on-disk cache so the next culling session
+        opens without re-running exiftool."""
+        is_colorrating = tag in ("XMP:Rating", "XMP:Label")
+
+        # Colour/rating → the DxO .dop (preferred PhotoLab channel).
+        if is_colorrating and color_rating_to_dop_enabled():
+            raw = self.raw_path(stem)
+            if raw:
+                if tag == "XMP:Label":
+                    push_metadata_to_dop(str(raw), color=value)
+                else:  # XMP:Rating
+                    try:
+                        push_metadata_to_dop(str(raw), rating=int(value))
+                    except ValueError:
+                        pass
+
+        # .xmp sidecar: colour/rating is gated (default off); text always writes.
+        suppress = is_colorrating and not color_rating_to_xmp_enabled()
+
         grp = self._groups.get(stem, {})
         xmp = grp.get("xmp")
         if xmp is None:
@@ -637,7 +662,13 @@ class SidecarCollection(PictureCollection):
             if not src:
                 return
             xmp = Path(src).with_suffix(".xmp")
-            grp["xmp"] = xmp
+            if not suppress:
+                grp["xmp"] = xmp
+        if suppress:
+            # Colour/rating in .xmp suppressed: keep the value in memory so the
+            # current culling session still shows it (it's live in the .dop).
+            self._rows.setdefault(_norm(xmp), {"SourceFile": str(xmp)})[row_key] = value
+            return
         try:
             exiftool_write(Path(xmp), [f"-{tag}={value}"])
         except Exception as e:
