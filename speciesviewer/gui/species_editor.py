@@ -8,8 +8,9 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton,
     QSizePolicy, QTextEdit, QComboBox, QDialogButtonBox,
-    QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog)
+    QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog, QFrame, QMenu)
 from PyQt6.QtCore import Qt, QTimer, QSize, pyqtSignal
+from PyQt6.QtGui import QCursor
 
 from widgets.trip_widgets import LabeledTextFieldQt
 from engine.filepicture import FilePicture, format_subject_for_xmp
@@ -107,15 +108,24 @@ class SpeciesInfoPanel(QWidget):
     committed = pyqtSignal(set)   # set of updated UPN keys
 
     def __init__(self, fpr, file_paths: list, species_names: list, error_msgs: list, *,
-                 parent=None, collapsible_error: bool = False):
+                 parent=None, collapsible_error: bool = False,
+                 scope_correction: bool = False):
         """
         collapsible_error  When True the error-message text is hidden behind a
                            ⚠ toggle button — useful when the panel is embedded
                            in a narrow sidebar rather than a standalone dialog.
+        scope_correction   When True a single-file commit fans out to every file
+                           in the configured correction scope that shares the same
+                           (erroneous) species name — the legacy "fix this typo
+                           everywhere" behaviour of the ⚠ error popup. When False
+                           (the default) a commit touches EXACTLY the selected
+                           file(s); an explicit one-picture selection updates only
+                           that picture.
         """
         super().__init__(parent)
         self._fpr = fpr
         self._file_paths = list(file_paths)   # list[Path]
+        self._scope_correction = scope_correction
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -197,6 +207,24 @@ class SpeciesInfoPanel(QWidget):
         button_row.addWidget(commit_btn)
 
         layout.addLayout(button_row)
+
+        # ── Recent species quick-pick ─────────────────────────────────────────
+        # Shared LRU with the culling dialog: left-click applies a name to the
+        # selected picture(s) in one go, right-click removes it from the list.
+        self._recent_sep = QFrame()
+        self._recent_sep.setFrameShape(QFrame.Shape.HLine)
+        self._recent_sep.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(self._recent_sep)
+        self._recent_label = QLabel("Recent species — click to apply, right-click to remove:")
+        self._recent_label.setWordWrap(True)
+        layout.addWidget(self._recent_label)
+        self._recent_container = QWidget()
+        self._recent_grid = QGridLayout(self._recent_container)
+        self._recent_grid.setContentsMargins(0, 0, 0, 0)
+        self._recent_grid.setHorizontalSpacing(6)
+        self._recent_grid.setVerticalSpacing(4)
+        layout.addWidget(self._recent_container)
+        self._build_recent_buttons()
 
     # ── Suggest ───────────────────────────────────────────────────────────────
 
@@ -349,41 +377,40 @@ class SpeciesInfoPanel(QWidget):
                     return
 
         # Build the list of files to update
-        if len(self._file_paths) == 1:
-            # Single-file: keep the legacy scope-based batch (fixes all files
-            # in the folder that share the same erroneous name).
+        if self._scope_correction and len(self._file_paths) == 1 and not clearing:
+            # Legacy scope-based batch — ONLY the ⚠ error-correction popup opts in.
+            # Fixes all files in the configured scope that share the same erroneous
+            # name. NB: an explicit one-picture selection does NOT reach this branch,
+            # so it updates only that picture (see scope_correction docstring).
             full_path = self._file_paths[0]
             original_subject = fpr.getSubject(full_path.name)
-            if clearing:
-                if _is_empty(original_subject):
-                    self.status_label.setText("⚠️ This picture has no species to clear.")
-                    return
-                reply = QMessageBox.question(
-                    self, "Clear species name",
-                    f"Remove the species name from this picture only?\n\n{full_path.name}",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                if reply != QMessageBox.StandardButton.Yes:
-                    self.status_label.setText("Clear cancelled.")
-                    return
+            if _is_empty(original_subject):
                 matching_files = [full_path]
             else:
-                if _is_empty(original_subject):
-                    matching_files = [full_path]
-                else:
-                    saved_scope = _config.get(
-                        "Species", "correction_scope",
-                        fallback="All files with same name error in day folder")
-                    selected_files = getCorrectionScopeOptions(full_path).get(saved_scope, [])
-                    matching_files = [f for f in selected_files
-                                      if fpr.getSubject(f.name) == original_subject]
-                    if full_path not in matching_files:
-                        matching_files = [full_path] + matching_files
+                saved_scope = _config.get(
+                    "Species", "correction_scope",
+                    fallback="All files with same name error in day folder")
+                selected_files = getCorrectionScopeOptions(full_path).get(saved_scope, [])
+                matching_files = [f for f in selected_files
+                                  if fpr.getSubject(f.name) == original_subject]
+                if full_path not in matching_files:
+                    matching_files = [full_path] + matching_files
         else:
-            # Multi-file: commit to exactly the selected pictures.
+            # Default: commit to EXACTLY the selected picture(s).
             if clearing:
+                n = len(self._file_paths)
+                if n == 1:
+                    if _is_empty(fpr.getSubject(self._file_paths[0].name)):
+                        self.status_label.setText("⚠️ This picture has no species to clear.")
+                        return
+                    title = "Clear species name"
+                    prompt = (f"Remove the species name from this picture only?"
+                              f"\n\n{self._file_paths[0].name}")
+                else:
+                    title = "Clear species names"
+                    prompt = f"Remove the species name from all {n} selected pictures?"
                 reply = QMessageBox.question(
-                    self, "Clear species names",
-                    f"Remove the species name from all {len(self._file_paths)} selected pictures?",
+                    self, title, prompt,
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
                 if reply != QMessageBox.StandardButton.Yes:
                     self.status_label.setText("Clear cancelled.")
@@ -412,7 +439,59 @@ class SpeciesInfoPanel(QWidget):
 
         self._safe_status(f"✅ Done — {n} file{'s' if n != 1 else ''} updated.")
         QApplication.processEvents()
+
+        # Bump the committed species to the front of the shared recents so the
+        # quick-pick loop works across this panel and the culling dialog.
+        if not clearing:
+            try:
+                _committed = ast.literal_eval(corrected_subject)
+                _names = _committed if isinstance(_committed, list) else [corrected_subject]
+            except Exception:
+                _names = [corrected_subject]
+            from gui.culling_species import remember_recent_species
+            for nm in _names:
+                if isinstance(nm, str) and nm.strip():
+                    remember_recent_species(nm.strip())
+
         self.committed.emit(updated_upns)
+
+    # ── Recent species quick-pick ───────────────────────────────────────────────
+
+    def _build_recent_buttons(self):
+        """(Re)fill the recent-species grid from the shared persisted list. Two
+        columns, most-recent first; hidden entirely when there are no recents."""
+        from gui.culling_species import load_recent_species
+        while self._recent_grid.count():
+            item = self._recent_grid.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        recent = load_recent_species()
+        for widget in (self._recent_sep, self._recent_label, self._recent_container):
+            widget.setVisible(bool(recent))
+        for i, name in enumerate(recent):
+            b = QPushButton(name)
+            b.setToolTip(f"Click to set “{name}”; right-click to remove from recents")
+            b.clicked.connect(lambda _=False, nm=name: self._apply_recent(nm))
+            b.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            b.customContextMenuRequested.connect(
+                lambda _pos, nm=name: self._remove_recent(nm))
+            self._recent_grid.addWidget(b, i // 2, i % 2)
+
+    def _remove_recent(self, name: str):
+        """Right-click a recent button → forget that name (e.g. a mistyped one)."""
+        from gui.culling_species import forget_recent_species
+        menu = QMenu(self)
+        act = menu.addAction(f"Remove “{name}” from recents")
+        if menu.exec(QCursor.pos()) == act:
+            forget_recent_species(name)
+            self._build_recent_buttons()
+
+    def _apply_recent(self, name: str):
+        """Left-click a recent button → set it as the species and commit in one go
+        (applies to exactly the selected picture(s), like a typed Commit)."""
+        self.subject_field.set_text(f"['{name}']")
+        self._on_commit_clicked()
 
 
 # ── Dialog wrapper (unchanged call-site API) ────────────────────────────────────
@@ -436,6 +515,7 @@ class SpeciesInfoDialog(QDialog):
             species_names=[species_name or ""],
             error_msgs=[error_msg or ""],
             parent=self,
+            scope_correction=True,   # ⚠ popup: fix this name error across the folder
         )
         self._panel.committed.connect(lambda upns: self._on_committed(upns))
         layout.addWidget(self._panel)
