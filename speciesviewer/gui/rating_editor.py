@@ -23,6 +23,7 @@ from PyQt6.QtCore import (Qt, QTimer, QSize, pyqtSignal, QObject, QRunnable,
                           QThreadPool)
 
 from engine.filepicture import FilePicture
+from engine.speciesclassification import SpeciesClassification
 from engine.filecsv import Files
 from engine.picturecsv import Pictures
 from engine.exif_writer import exiftool_write
@@ -920,6 +921,17 @@ class RatingEditorDialog(QDialog):
             self._status.setText(f"Load error: {e}")
             logger.error(f"RatingEditorDialog load error: {e}", exc_info=True)
             return
+
+        # Species editing (SpeciesInfoPanel: Suggest / Validate / Commit) needs a
+        # real SpeciesClassification on fpr.sc — readTripDay / _load_trip_scope
+        # leave it as the bare {} placeholder. Load the trip's collection once.
+        if not isinstance(self.fpr.sc, SpeciesClassification):
+            try:
+                speccoll = self._trip_root / "metadata" / "active" / "speciescollection.csv"
+                self.fpr.sc = SpeciesClassification(None)
+                self.fpr.sc.readSpeciesCollection(str(speccoll), False)
+            except Exception as e:
+                logger.warning(f"Could not load species collection for editing: {e}")
 
         # Build the provider collection over the freshly-loaded data. Local
         # import avoids a circular import (rating_provider imports helpers here).

@@ -36,6 +36,15 @@ def is_widget_alive(widget):
 raw_exts = [".nef", ".orf", ".cr2", ".arw", ".rw2", ".heic"]
 
 
+def _sc_usable(sc) -> bool:
+    """True when fpr.sc is a real SpeciesClassification (has the lookup API),
+    not the empty ``{}`` placeholder a bare FilePicture starts with. Some hosts
+    (e.g. the Rating Editor's day/trip load) don't populate the collection, so
+    Suggest/Validate/the unknown-species guard must degrade instead of crashing
+    on ``dict.getSpecies`` / ``dict.sc_dict``."""
+    return hasattr(sc, "getSpecies") and hasattr(sc, "sc_dict")
+
+
 def getCorrectionScopeOptions(file_path: Path) -> dict[str, list[Path]]:
     folder = file_path.parent
     trip_root = folder.parent
@@ -236,8 +245,8 @@ class SpeciesInfoPanel(QWidget):
             return
 
         fpr = self._fpr
-        if fpr is None:
-            self.status_label.setText("⚠️ Species data not loaded; cannot suggest.")
+        if fpr is None or not _sc_usable(fpr.sc):
+            self.status_label.setText("⚠️ Species list not loaded here; type the name and Commit.")
             self.suggestion_dropdown.setVisible(False)
             return
 
@@ -305,6 +314,9 @@ class SpeciesInfoPanel(QWidget):
             self.status_label.setText("⚠️ Please enter a species name.")
             return
         fpr = self._fpr
+        if fpr is None or not _sc_usable(fpr.sc):
+            self.status_label.setText("⚠️ Species list not loaded here; can't validate — Commit stores as typed.")
+            return
         try:
             try:
                 parts = ast.literal_eval(raw_input)
@@ -358,8 +370,9 @@ class SpeciesInfoPanel(QWidget):
 
         clearing = (corrected_subject == "")
 
-        # Unknown-species guard (skip for clearing)
-        if not clearing:
+        # Unknown-species guard (skip for clearing, and skip when the species
+        # collection isn't loaded on this fpr — then we just store as typed).
+        if not clearing and _sc_usable(fpr.sc):
             try:
                 _parts = ast.literal_eval(corrected_subject)
                 _lookup = max(_parts, key=len) if isinstance(_parts, list) and _parts else corrected_subject
