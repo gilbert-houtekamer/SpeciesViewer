@@ -148,6 +148,10 @@ def main(args, config):
     # back into the master trip_admin.csv (corrupting the real row).
     if project.Trip is not None:
         project.Trip.read_TripAdmin()
+        # Fallback for a retroactive virttrip not yet added to master: seed its
+        # own banner/picture from virttrip.ini so the banner still resolves.
+        from utils.virttrip_config import read_virttrip_ini
+        project.Trip.ensureTripRegistered(read_virttrip_ini(virttrip_root))
     master_web = config.get("master", "MasterBiotaWebRoot", fallback="/nature/")
     project.master_biota_web_root = master_web
     if project.Trip is not None:

@@ -109,6 +109,21 @@ class Trip:
     def addTrip(self, row):
         self.trip_dict[row['trip_name']] = row
         return
+
+    def ensureTripRegistered(self, fallback_row):
+        """Seed this trip's registry entry from its own config (e.g. virttrip.ini)
+        when it is not already present in trip_dict — i.e. a retroactive virtual
+        trip that has not yet been added to the master trip_admin.csv. Without
+        this, getTripBanner()/getTripPicture() throw and the page falls back to
+        the keerkringvogel default. An existing (authoritative master-registry)
+        row is never overwritten. Keyed on self.tripname so the banner lookup,
+        which uses trip_dict[self.tripname], is guaranteed to resolve."""
+        if not fallback_row or not self.tripname:
+            return
+        if self.tripname not in self.trip_dict:
+            row = dict(fallback_row)
+            row['trip_name'] = self.tripname
+            self.trip_dict[self.tripname] = row
     def removeTrip(self, trip_name):
         """Drop one trip from the in-memory admin dict (by trip_name). Returns
         True when a row was actually removed. Used by Manage Trips to un-advertise
