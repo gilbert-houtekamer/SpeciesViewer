@@ -287,6 +287,24 @@ def retire_trip_to_virttrip(parent):
         set_setting("virttrip", "virttripbiotawebroot",
                     web_root if web_root.endswith("/") else web_root + "/")
         os.makedirs(virttrip_root, exist_ok=True)
+        # The trip's banner + picture live as named files in the trip root
+        # (e.g. <trip>/bannermeeuw.jpg). virttrip.ini only stores their names,
+        # so copy the actual files across — otherwise svv5AddToMaster can't find
+        # them under the virttrip root and the site falls back to a default
+        # banner. Don't clobber an image already present (hand-edited / restored).
+        for fname in (banner, picture):
+            if not fname:
+                continue
+            src = os.path.join(trip_db, fname)
+            dst = os.path.join(virttrip_root, fname)
+            if os.path.isfile(src) and not os.path.exists(dst):
+                shutil.copy2(src, dst)
+                logger.info(f"retire: copied trip image {fname} → {virttrip_root}")
+            elif not os.path.isfile(src) and not os.path.exists(dst):
+                logger.warning(
+                    f"retire: trip image '{fname}' not found in the trip root "
+                    f"({trip_db}); copy it into {virttrip_root} manually or the "
+                    f"website will use a default banner.")
         generate_virttrip_ini(virttrip_root, web_root, banner, picture, fromdate, todate,
                               title_nl, message_nl, title_en, message_en, logger)
         generate_svconfig_ini(virttrip_mode=True)
