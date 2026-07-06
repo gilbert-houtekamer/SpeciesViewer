@@ -234,14 +234,25 @@ class MainWindow(QMainWindow):
     def refresh_trip_row(self, sm, day_name):
         from gui.trip_overview import (STATE_COL_START, STATE_COLUMNS,
                                        state_cell_symbol, _verified_crc_set,
-                                       _format_translations_item)
+                                       _format_translations_item,
+                                       _format_total_files_item)
 
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
-        review_day = trip_root / "metadata" / "review" / day_name
+        review_root = trip_root / "metadata" / "review"
+        review_day = review_root / day_name
 
         row = next((r for r in range(self.trip_table.rowCount())
                     if self.trip_table.item(r, 0).text() == day_name), None)
         jpgs = int(self.trip_table.item(row, 2).text()) if row is not None else 0
+
+        # Pictures cell (col 1): its species/GPS health badges come from the
+        # day's freshly written data_files.csv / data_pictures.csv, so recompute
+        # it here too — otherwise a Read & Summarize flips the checkmarks green
+        # but leaves the badges stale until the next full repopulate.
+        if row is not None:
+            image_root = Path(_config.get("project", "picturedirectory")).parent
+            self.trip_table.setItem(
+                row, 1, _format_total_files_item(image_root / day_name, review_root))
 
         # Note: Sync Sidecars column is intentionally NOT refreshed here
         # (it is not tracked in the statemachine). state_cell_symbol applies the
