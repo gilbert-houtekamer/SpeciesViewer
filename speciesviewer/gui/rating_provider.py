@@ -420,6 +420,38 @@ class RatingEditorCollection(PictureCollection):
                     return p
         return None
 
+    def rep_full_path(self, upn_key: str) -> Path | None:
+        """Representative RAW (else first non-XMP, else XMP) file Path for a TRIP
+        UPN — the file SpeciesInfoPanel edits. None for master keys (read-only)."""
+        if upn_key in self._master_keys:
+            return None
+        row = self.fpr.upn.UniquePictureName_dict.get(upn_key, {})
+        files = row.get("Files", [])
+        if not isinstance(files, list):
+            return None
+        fallback = None
+        for fname in files:
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            p = Path(frow.get("WindowsFileName", ""))
+            if not p.exists():
+                continue
+            if ("." + frow.get("WindowsExtension", "").lower()) in _RAW_EXTS:
+                return p
+            if fallback is None:
+                fallback = p
+        return fallback
+
+    def species_editor_context(self, key: str):
+        """Enable the large viewer's embedded species editor for TRIP pictures.
+        Master reference pictures and whole-collection view-only mode (Album
+        viewer) stay read-only, matching the grid's edit rules."""
+        if self._view_read_only or key in self._master_keys:
+            return None
+        p = self.rep_full_path(key)
+        return (self.fpr, [p]) if p else None
+
     def _raw_thumb_path(self, upn_key: str) -> Path | None:
         """Cached JPEG preview for the first RAW in the UPN, extracting it (via
         exiftool) if absent. Runs on a worker thread — keep it self-contained."""
