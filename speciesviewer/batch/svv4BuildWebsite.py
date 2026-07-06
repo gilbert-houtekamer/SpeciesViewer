@@ -159,6 +159,13 @@ def main(args, config):
 
     project = engine.projectlib.Project(virttrip_root, "", web_root)
     project.initMasterAndTrip(config, inittrip=False)
+    # Load the trip registry (trip_banner/trip_picture) read-only from the master
+    # trip_admin.csv so the banner token resolves to the trip's own banner instead
+    # of the keerkringvogel default. inittrip=True is unsafe for a virttrip: it has
+    # no trip.ini, so readTrip() fabricates keerkringvogel defaults and writes them
+    # back into the master trip_admin.csv (corrupting the real row).
+    if project.Trip is not None:
+        project.Trip.read_TripAdmin()
     master_web = config.get("master", "MasterBiotaWebRoot", fallback="/nature/")
     project.master_biota_web_root = master_web
     if project.Trip is not None:

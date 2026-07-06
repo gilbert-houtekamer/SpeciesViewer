@@ -133,7 +133,12 @@ class VirtTripInfoPanel(QWidget):
         if trip_data:
             trip_name = trip_data.get("trip_name", "").strip()
             if trip_name:
-                _config.set("virttrip", "virttripbiotawebroot", f"/virttrips/{trip_name}")
+                # Virtual trips publish under /trips/<name>/ — to a visitor a
+                # virttrip is just a trip, and it continues a retired trip at
+                # the same /trips/ URL where its blog + pictures already live.
+                # (The Create dialog and the Retire flow already use /trips/;
+                # this panel-click handler must not revert it to /virttrips/.)
+                _config.set("virttrip", "virttripbiotawebroot", f"/trips/{trip_name}")
         persist_config()
         self._refresh_highlights()
         self.on_virttrip_selected(self.main_window)
