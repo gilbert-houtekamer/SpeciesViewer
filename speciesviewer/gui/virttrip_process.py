@@ -1,8 +1,10 @@
 import webbrowser
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QCheckBox, QSpinBox, QTabWidget, QWidget, QLineEdit)
+from PyQt6.QtCore import QThread, QObject, pyqtSignal
 import logging
 import os
+import re
 import shutil
 from datetime import datetime, timedelta
 from datetime import datetime
@@ -99,10 +101,42 @@ def _common_blog_min_score(virttrip_root):
     return scores.pop() if len(scores) == 1 else None
 
 
+_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _has_day_subdirs(base):
+    """True if `base` is a directory that directly contains YYYY-MM-DD folders
+    (i.e. it is a trip's CurrentPictures root, where each day's blog.ini lives)."""
+    try:
+        return os.path.isdir(base) and any(
+            _DAY_RE.match(d) and os.path.isdir(os.path.join(base, d))
+            for d in os.listdir(base))
+    except OSError:
+        return False
+
+
 def _trip_picture_root(trip_db):
-    """The CurrentPictures root of a trip (parent of its dated day folders),
-    derived from any WindowsFileName in the trip's per-day data_files.csv."""
+    """The CurrentPictures root of a trip — the folder that holds its dated day
+    folders, and thus each day's blog.ini.
+
+    Preferred source is the active trip's [project] picturedirectory (a day
+    folder), whose parent is the trip root. Since the master-relativization
+    change, the WindowsFileName column stores a path RELATIVE to that root
+    (e.g. /2026-06-26/foo.xmp), so the old parent.parent trick collapses to the
+    filesystem root — kept only as a legacy fallback for absolute paths."""
     import csv as _csv
+
+    # 1) Config-driven: picturedirectory is the active trip's day folder; its
+    #    parent is the trip root. Accept it directly if it already holds days.
+    pic_dir = (_config.get("project", "picturedirectory", fallback="")
+               .strip().strip('"').strip("'"))
+    if pic_dir:
+        cand = Path(pic_dir)
+        for base in (cand, cand.parent):
+            if _has_day_subdirs(str(base)):
+                return str(base)
+
+    # 2) Legacy: an ABSOLUTE WindowsFileName in the trip's data_files.csv.
     review = os.path.join(trip_db, "metadata", "review")
     if not os.path.isdir(review):
         return None
@@ -114,18 +148,63 @@ def _trip_picture_root(trip_db):
             with open(fp, encoding="utf-8", errors="replace", newline="") as fh:
                 for row in _csv.DictReader(fh, delimiter=";"):
                     wd = (row.get("WindowsFileName") or "").strip()
-                    if wd:
-                        return str(Path(wd).parent.parent)
+                    if wd and os.path.isabs(wd):
+                        root = str(Path(wd).parent.parent)
+                        if _has_day_subdirs(root):
+                            return root
         except Exception:
             pass
     return None
 
 
+class _RetireVirttripWorker(QObject):
+    """Runs the ordered retire→virttrip pipeline steps in a worker thread,
+    stopping on the first exception. Each step is a (label, callable); the
+    callable may return a short note string that is collected into the result.
+    `progress` fires before each step; `finished` reports ("" on success, or the
+    failing step's label) plus the collected notes."""
+
+    progress = pyqtSignal(int, int, str)   # index, total, label
+    finished = pyqtSignal(str, str)        # failed_label ("" = ok), result_notes
+
+    def __init__(self, steps):
+        super().__init__()
+        self._steps = steps
+
+    def run(self):
+        import traceback
+        notes = []
+        total = len(self._steps)
+        for idx, (label, fn) in enumerate(self._steps):
+            self.progress.emit(idx, total, label)
+            try:
+                note = fn()
+                if note:
+                    notes.append(note)
+            except Exception as err:
+                logging.getLogger("speciesviewer").warning(
+                    f"Retire step '{label}' failed: {err}\n{traceback.format_exc()}")
+                self.finished.emit(label, "\n".join(notes))
+                return
+        self.finished.emit("", "\n".join(notes))
+
+
 def retire_trip_to_virttrip(parent):
     """One action: create the successor virtual trip from the ACTIVE trip (same
-    name, date range and trip text), build its tree (svv1), extract its days
-    from the master (svv2), and migrate the day blogs — so the virtual-trip blog
-    comes out identical to the original trip blog. (svr7 delete stays separate.)"""
+    name, date range and trip text) and take it all the way to a complete,
+    published virtual trip:
+
+        svv1  make the virttrip tree
+        svv2  extract its days from the master
+        ----  migrate the day blogs (so the virttrip blog matches the trip blog)
+        svv3  write & upload the day blogs (NL + EN + pictures)
+        svv4  build the species website and upload the biota tree
+        svv6  make the blogs clickable (species links + Prev/Next navigation)
+        svv5  add / refresh the trip in the master trip index
+
+    Runs the steps back-to-back in a worker thread with one spinner, stopping on
+    the first error (completed steps are safe to repeat on a re-run). The svr7
+    local-file delete stays a separate, later action."""
     import re as _re
     import argparse as _argparse
     import configparser as _cp
@@ -188,18 +267,20 @@ def retire_trip_to_virttrip(parent):
     virttrip_root = os.path.join(virttrips_root, leaf)
 
     exists = os.path.isfile(os.path.join(virttrip_root, "virttrip.ini"))
-    prompt = (f"A virtual trip already exists at {virttrip_root}. Rebuild it?"
+    prompt = (f"A virtual trip already exists at {virttrip_root}. Rebuild it end-to-end?"
               if exists else
               f"Create successor virtual trip from '{trip_name}'?\n\n"
-              f"Virtual trip:  {virttrip_root}\nWeb:  {web_root}\nRange:  {fromdate} → {todate}\n\n"
-              f"Creates the virttrip, extracts its days from the master, and migrates the blogs.")
+              f"Virtual trip:  {virttrip_root}\nWeb:  {web_root}\nRange:  {fromdate} → {todate}\n\n")
+    prompt += ("\n\nRuns every step in one go — extract days, migrate & upload the blogs, "
+               "build the website, make the blogs clickable, and add the trip to the master "
+               "index. Stops automatically if a step fails.")
     if QMessageBox.question(parent, "Retire Trip to Virtual Trip", prompt,
                             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                             QMessageBox.StandardButton.Yes) != QMessageBox.StandardButton.Yes:
         return
 
-    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-    copied = no_blog = 0
+    # ── Config setup on the GUI thread (mutates shared _config / svconfig.ini),
+    # then the pipeline runs in a worker thread so the spinner stays live. ──
     try:
         set_setting("virttrip", "virttriprootdirectory", str(Path(virttrip_root).parent))
         set_setting("virttrip", "virttripbiotadatabase", virttrip_root)
@@ -211,33 +292,95 @@ def retire_trip_to_virttrip(parent):
         generate_svconfig_ini(virttrip_mode=True)
         mcfg = _cp.ConfigParser()
         mcfg.read("svconfig.ini")
-        args = _argparse.Namespace(config="svconfig.ini", dir="")
-        batch.svv1MakeVirtualRepository.main(args, mcfg)
-        batch.svv2ExtractDays.main(args, mcfg)
-        trip_pic_root = _trip_picture_root(trip_db)
-        if trip_pic_root:
-            copied, _kept, no_blog = blogmigrate.migrate_trip_blogs(trip_pic_root, virttrip_root)
-        else:
-            logger.warning("retire: could not locate the trip's picture folder; blogs not migrated")
-        generate_svconfig_ini()       # restore active-trip context
     except Exception as e:
-        QApplication.restoreOverrideCursor()
-        logger.warning(f"Retire trip failed: {e}")
-        QMessageBox.critical(parent, "Retire Trip", f"Failed: {e}")
+        logger.warning(f"Retire trip setup failed: {e}")
+        QMessageBox.critical(parent, "Retire Trip", f"Setup failed: {e}")
         return
-    finally:
-        QApplication.restoreOverrideCursor()
+    args = _argparse.Namespace(config="svconfig.ini", dir="")
+    trip_pic_root = _trip_picture_root(trip_db)
 
-    try:
-        populate_virttrip_overview(parent)
-        parent.virttrip_panel.rebuild()
-    except Exception:
-        pass
-    QMessageBox.information(
-        parent, "Retire Trip to Virtual Trip",
-        f"Successor virtual trip '{trip_name}' created and days extracted.\n"
-        f"Migrated {copied} day blog(s); {no_blog} day(s) had none (nothing fabricated).\n\n"
-        f"Next: Virtual Trips → Write Virtual Trip Blogs, then compare to the trip blog.")
+    def _migrate_blogs():
+        if not trip_pic_root:
+            logger.warning("retire: could not locate the trip's picture folder; blogs not migrated")
+            return "No trip picture folder found — blogs were not migrated."
+        copied, _kept, no_blog = blogmigrate.migrate_trip_blogs(trip_pic_root, virttrip_root)
+        return (f"Migrated {copied} day blog(s); "
+                f"{no_blog} day(s) had none (nothing fabricated).")
+
+    steps = [
+        ("Creating the virtual trip",          lambda: batch.svv1MakeVirtualRepository.main(args, mcfg)),
+        ("Extracting days from the master",    lambda: batch.svv2ExtractDays.main(args, mcfg)),
+        ("Migrating the trip blogs",           _migrate_blogs),
+        ("Writing and uploading the blogs",    lambda: batch.svv3WriteBlog.main(args, mcfg)),
+        ("Building the website",               lambda: batch.svv4BuildWebsite.main(args, mcfg)),
+        ("Making the blogs clickable",         lambda: batch.svv6RedoBlog.main(args, mcfg)),
+        ("Adding the trip to the master index", lambda: batch.svv5AddToMaster.main(args, mcfg)),
+    ]
+
+    from PyQt6.QtGui import QMovie
+    spinner = QDialog(parent)
+    spinner.setWindowTitle("Retiring trip to virtual trip…")
+    spinner.setModal(True)
+    spinner.setFixedSize(480, 180)
+    slayout = QVBoxLayout(spinner)
+    step_label = QLabel("Starting…")
+    step_label.setWordWrap(True)
+    slayout.addWidget(step_label, alignment=Qt.AlignmentFlag.AlignCenter)
+    progress_label = QLabel("")
+    slayout.addWidget(progress_label, alignment=Qt.AlignmentFlag.AlignCenter)
+    movie = QMovie("spinner.gif")
+    movie_label = QLabel()
+    movie_label.setMovie(movie)
+    slayout.addWidget(movie_label, alignment=Qt.AlignmentFlag.AlignCenter)
+    movie.start()
+
+    thread = QThread()
+    worker = _RetireVirttripWorker(steps)
+    worker.moveToThread(thread)
+    thread.started.connect(worker.run)
+
+    def _on_progress(idx, total, label):
+        step_label.setText(f"Step {idx + 1} of {total}: {label}…")
+        progress_label.setText(f"{idx + 1} / {total}")
+
+    def _on_finished(failed_label, result_notes):
+        thread.quit()
+        thread.wait()
+        movie.stop()
+        spinner.close()
+        try:
+            generate_svconfig_ini()       # restore active-trip context
+        except Exception:
+            pass
+        try:
+            populate_virttrip_overview(parent)
+            parent.virttrip_panel.rebuild()
+        except Exception:
+            pass
+        parent._retire_thread = None
+        parent._retire_worker = None
+        if failed_label:
+            logger.warning(f"Retire trip stopped at: {failed_label}")
+            QMessageBox.critical(
+                parent, "Retire Trip to Virtual Trip",
+                f"Stopped at “{failed_label}”.\n\n"
+                + (result_notes + "\n\n" if result_notes else "")
+                + "See the status log for details. Fix the problem and run again — "
+                  "the steps that already completed are safe to repeat.")
+        else:
+            logger.info(f"✅ Virtual trip '{trip_name}' fully retired and published.")
+            QMessageBox.information(
+                parent, "Retire Trip to Virtual Trip",
+                f"Virtual trip “{trip_name}” is complete.\n\n"
+                + (result_notes + "\n\n" if result_notes else "")
+                + "The blogs, website and master trip index have all been built and uploaded.")
+
+    worker.progress.connect(_on_progress)
+    worker.finished.connect(_on_finished)
+    parent._retire_thread = thread   # keep refs alive until finished
+    parent._retire_worker = worker
+    thread.start()
+    spinner.show()
 
 
 def _clear_virttrip_blogs(virttrip_root, web_root, pwd, logger):

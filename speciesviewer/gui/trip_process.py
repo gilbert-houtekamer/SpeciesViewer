@@ -3436,8 +3436,18 @@ class MasterPipelineDialog(QDialog):
         self.status_label.setMaximumHeight(80)
         layout.addWidget(self.status_label)
 
+        # When True the dialog is auto-advancing through every step (the
+        # "Run all" button). A step failure — or the user declining the
+        # re-commit confirm — stops the chain.
+        self._chaining = False
+
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
+        self.run_all_btn = QPushButton("Run all")
+        self.run_all_btn.setToolTip(
+            "Run every step in order, stopping automatically if one fails.")
+        self.run_all_btn.clicked.connect(self._run_all)
+        btn_layout.addWidget(self.run_all_btn)
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(self.close)
         btn_layout.addWidget(close_btn)
@@ -3613,6 +3623,17 @@ class MasterPipelineDialog(QDialog):
             self.logger.warning(f"Could not write master commit marker: {exc}")
 
     # ── Step execution ──────────────────────────────────────────────────
+    def _run_all(self):
+        """Run every step in order, auto-advancing on success and stopping on
+        the first failure (or a declined re-commit confirm)."""
+        self._chaining = True
+        self.run_all_btn.setEnabled(False)
+        self._run_step(0)
+
+    def _stop_chain(self):
+        self._chaining = False
+        self.run_all_btn.setEnabled(True)
+
     def _run_step(self, idx):
         # Step 3 (last) — confirm re-commit on a previously-committed
         # picture directory before letting sv7 append duplicates.
@@ -3626,9 +3647,13 @@ class MasterPipelineDialog(QDialog):
                 QMessageBox.StandardButton.No,
             )
             if ans != QMessageBox.StandardButton.Yes:
+                if self._chaining:
+                    self._stop_chain()
+                    self._refresh_buttons()
                 return
 
         self._set_pip(idx, 'running')
+        self.run_all_btn.setEnabled(False)
         for r in self.rows:
             r['button'].setEnabled(False)
 
@@ -3649,6 +3674,11 @@ class MasterPipelineDialog(QDialog):
                 self._record_commit()
                 self._refresh_warning()
             self._refresh_buttons()
+            # Auto-advance to the next step when running the whole chain.
+            if self._chaining and not is_last_step:
+                self._run_step(idx + 1)
+            else:
+                self._stop_chain()
 
         def on_failure(_err):
             # Failure didn't touch downstream artifacts — leave their
@@ -3658,6 +3688,7 @@ class MasterPipelineDialog(QDialog):
             mtime = self._artifact_mtime(idx)
             self._set_pip(idx, 'done' if mtime else 'failed')
             self._set_timestamp(idx, mtime)
+            self._stop_chain()  # a serious error stops the whole chain
             self._refresh_buttons()
             # On failure, keep current row's button enabled regardless.
             self.rows[idx]['button'].setEnabled(True)
