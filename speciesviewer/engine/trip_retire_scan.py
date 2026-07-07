@@ -18,6 +18,8 @@ import shutil
 import logging
 import configparser
 
+from utils.trip_identity import resolve, find_linked_virttrip
+
 logger = logging.getLogger("speciesviewer")
 
 
@@ -80,8 +82,19 @@ def scan(trip_db, virttrips_root, active_trip_db=""):
     if not os.path.isdir(trip_db):
         return {"ok": False, "error": f"trip folder not found: {trip_db}"}
 
-    name = os.path.basename(trip_db)                       # e.g. costa-ricadb
-    virttrip_db = os.path.join(virttrips_root, name) if virttrips_root else ""
+    # Match the virttrip via the explicit trip→virttrip link (source_trip_id),
+    # not the folder basename — so a trip whose id != web slug (the ebro case)
+    # still resolves. Fall back to the basename convention for legacy virttrips
+    # written before WP4 (no source_trip_id).
+    ident = resolve(trip_db, kind="trip")
+    name = ident.trip_id or os.path.basename(trip_db)      # e.g. costa-ricadb
+    linked = find_linked_virttrip(ident.trip_id, virttrips_root)
+    if linked:
+        virttrip_db = linked
+        match_method = "linked"
+    else:
+        virttrip_db = os.path.join(virttrips_root, name) if virttrips_root else ""
+        match_method = "name"
     vt_exists = bool(virttrip_db) and os.path.isfile(os.path.join(virttrip_db, "virttrip.ini"))
     vt_blogs = _blog_names(virttrip_db) if vt_exists else set()
     trip_blogs = _blog_names(trip_db)
@@ -97,7 +110,8 @@ def scan(trip_db, virttrips_root, active_trip_db=""):
     blockers = [
         {"id": "B1", "label": "Virtual trip exists",
          "passed": vt_exists,
-         "detail": virttrip_db if vt_exists else f"no virttrip at {virttrip_db or '(no virttrips root)'}"},
+         "detail": (f"{virttrip_db} ({'linked' if match_method == 'linked' else 'matched by name'})"
+                    if vt_exists else f"no virttrip at {virttrip_db or '(no virttrips root)'}")},
         {"id": "B2", "label": "Virtual trip has day blogs",
          "passed": len(vt_blogs) > 0,
          "detail": f"{len(vt_blogs)} blog(s)" if vt_blogs else "no blogs in the virtual trip"},
@@ -123,6 +137,7 @@ def scan(trip_db, virttrips_root, active_trip_db=""):
     can_retire = all(b["passed"] for b in blockers)
     has_warnings = any(not w["passed"] for w in warnings)
     return {"ok": True, "name": name, "trip_db": trip_db, "virttrip_db": virttrip_db,
+            "match_method": match_method,
             "size_bytes": _dir_size(trip_db), "n_pictures": _count_pictures(trip_db),
             "unmigrated_blogs": unmigrated,
             "blockers": blockers, "warnings": warnings,

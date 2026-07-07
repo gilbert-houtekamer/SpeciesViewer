@@ -1,7 +1,7 @@
 import webbrowser
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QCheckBox, QSpinBox, QTabWidget, QWidget, QLineEdit)
-from PyQt6.QtCore import QThread, QObject, pyqtSignal
+from PyQt6.QtCore import QThread, QObject, pyqtSignal, Qt
 import logging
 import os
 import re
@@ -38,13 +38,19 @@ def generate_virttrip_ini(
     message_nl: str,
     title_en: str,
     message_en: str,
-    logger
+    logger,
+    source_trip_id: str = "",
 ):
     ini_path = os.path.join(trip_root, "virttrip.ini")
 
     master_web  = _config.get("master", "masterbiotawebroot",  fallback="/nature/")
     master_disk = _config.get("master", "masterbiotadatabase", fallback="")
     trip_name   = Path(trip_name_path).name
+    # WP4: explicit identities. trip_id = the virttrip's own folder basename;
+    # web_slug = the URL/registry key; source_trip_id = the explicit link back
+    # to the origin trip (empty for a retroactive/hand-created virttrip).
+    trip_id  = os.path.basename(os.path.normpath(trip_root))
+    web_slug = trip_name
 
     def _ini_escape(text):
         if "\n" not in text:
@@ -62,6 +68,9 @@ trip_banner = {banner_filename}
 trip_picture = {picture_filename}
 created = {datetime.now().strftime('%Y-%m-%d %H:%M')}
 trip_name = {trip_name}
+trip_id = {trip_id}
+web_slug = {web_slug}
+source_trip_id = {source_trip_id}
 fromdate = {from_date}
 todate = {to_date}
 oneblog = day
@@ -189,6 +198,68 @@ class _RetireVirttripWorker(QObject):
         self.finished.emit("", "\n".join(notes))
 
 
+class RetireTripDialog(QDialog):
+    """Confirm + parametrise retiring a trip into its successor virtual trip.
+
+    The display title is editable (defaults from the trip's own titles); the web
+    address is shown read-only because the blog + pictures are already published
+    there — changing the slug would orphan live content. Also shows the explicit
+    source_trip_id link that will tie the new virttrip back to this trip, so the
+    retire matcher never has to guess from the folder basename again."""
+
+    def __init__(self, parent, *, trip_name, trip_id, web_root, virttrip_root,
+                 fromdate, todate, title_nl, title_en, exists):
+        super().__init__(parent)
+        self.setWindowTitle("Retire Trip to Virtual Trip")
+        self.setModal(True)
+        self.resize(580, 0)
+        layout = QVBoxLayout(self)
+
+        header = ("A virtual trip already exists — it will be rebuilt end-to-end."
+                  if exists else
+                  f"Create the successor virtual trip from “{trip_name}”.")
+        layout.addWidget(HTMLLabel(f"<p>{header}</p>"))
+
+        self.title_nl_field = LabeledTextFieldQt(
+            "Display title (Dutch)", title_nl, multiline=False, inline=True)
+        self.title_en_field = LabeledTextFieldQt(
+            "Display title (English)", title_en, multiline=False, inline=True)
+        layout.addWidget(self.title_nl_field)
+        layout.addWidget(self.title_en_field)
+
+        def ro(label, value):
+            row = QLabel(f"<b>{label}:</b> <code>{value}</code>")
+            row.setTextFormat(Qt.TextFormat.RichText)
+            row.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            layout.addWidget(row)
+
+        ro("Web address (fixed)", web_root)
+        ro("Virtual trip folder", virttrip_root)
+        ro("Link back to trip", f"source_trip_id = {trip_id}")
+        ro("Date range", f"{fromdate} → {todate}")
+
+        layout.addWidget(HTMLLabel(
+            "<p>Runs every step in one go — extract days, migrate &amp; upload the "
+            "blogs, build the website, make the blogs clickable, and add the trip to "
+            "the master index. Stops automatically if a step fails.</p>"
+            "<p>The web address is fixed: the blog and pictures are already published "
+            "there, so it can't be changed here.</p>"))
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        cancel_btn = QPushButton("Cancel")
+        ok_btn = QPushButton("Rebuild Virtual Trip" if exists else "Retire to Virtual Trip")
+        ok_btn.setDefault(True)
+        btn_row.addWidget(cancel_btn)
+        btn_row.addWidget(ok_btn)
+        layout.addLayout(btn_row)
+        cancel_btn.clicked.connect(self.reject)
+        ok_btn.clicked.connect(self.accept)
+
+    def edited_titles(self):
+        return self.title_nl_field.get_text(), self.title_en_field.get_text()
+
+
 def retire_trip_to_virttrip(parent):
     """One action: create the successor virtual trip from the ACTIVE trip (same
     name, date range and trip text) and take it all the way to a complete,
@@ -242,8 +313,14 @@ def retire_trip_to_virttrip(parent):
         except Exception:
             return fb
 
-    leaf = Path(trip_db).name
-    trip_name = (g("trip_config", "trip_name") or leaf).strip("/").rsplit("/", 1)[-1] or leaf
+    # Resolve the three explicit identities once (WP4). trip_id = the on-disk
+    # folder basename; web_slug = the URL/registry key. Both fall back to today's
+    # derivation for pre-WP4 trip.ini, so nothing changes for existing trips.
+    from utils.trip_identity import resolve as resolve_identity
+    ident = resolve_identity(trip_db, kind="trip")
+    leaf = ident.trip_id or Path(trip_db).name
+    trip_id = leaf
+    trip_name = ident.web_slug or leaf          # the web slug (may differ from leaf)
     fromdate = g("trip_config", "fromdate")
     todate = g("trip_config", "todate")
     if not (fromdate and todate):
@@ -267,17 +344,13 @@ def retire_trip_to_virttrip(parent):
     virttrip_root = os.path.join(virttrips_root, leaf)
 
     exists = os.path.isfile(os.path.join(virttrip_root, "virttrip.ini"))
-    prompt = (f"A virtual trip already exists at {virttrip_root}. Rebuild it end-to-end?"
-              if exists else
-              f"Create successor virtual trip from '{trip_name}'?\n\n"
-              f"Virtual trip:  {virttrip_root}\nWeb:  {web_root}\nRange:  {fromdate} → {todate}\n\n")
-    prompt += ("\n\nRuns every step in one go — extract days, migrate & upload the blogs, "
-               "build the website, make the blogs clickable, and add the trip to the master "
-               "index. Stops automatically if a step fails.")
-    if QMessageBox.question(parent, "Retire Trip to Virtual Trip", prompt,
-                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                            QMessageBox.StandardButton.Yes) != QMessageBox.StandardButton.Yes:
+    dlg = RetireTripDialog(
+        parent, trip_name=trip_name, trip_id=trip_id, web_root=web_root,
+        virttrip_root=virttrip_root, fromdate=fromdate, todate=todate,
+        title_nl=title_nl, title_en=title_en, exists=exists)
+    if dlg.exec() != QDialog.DialogCode.Accepted:
         return
+    title_nl, title_en = dlg.edited_titles()   # user may have edited the display title
 
     # ── Config setup on the GUI thread (mutates shared _config / svconfig.ini),
     # then the pipeline runs in a worker thread so the spinner stays live. ──
@@ -306,7 +379,8 @@ def retire_trip_to_virttrip(parent):
                     f"({trip_db}); copy it into {virttrip_root} manually or the "
                     f"website will use a default banner.")
         generate_virttrip_ini(virttrip_root, web_root, banner, picture, fromdate, todate,
-                              title_nl, message_nl, title_en, message_en, logger)
+                              title_nl, message_nl, title_en, message_en, logger,
+                              source_trip_id=trip_id)
         generate_svconfig_ini(virttrip_mode=True)
         mcfg = _cp.ConfigParser()
         mcfg.read("svconfig.ini")

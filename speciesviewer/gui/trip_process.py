@@ -40,6 +40,10 @@ def generate_trip_ini(
     master_web = _config.get("master", "masterbiotawebroot", fallback="/nature/")
     master_disk = _config.get("master", "masterbiotadatabase", fallback="E:\\Dropbox\\naturedb")
     trip_name = Path(trip_name_path).name
+    # WP4: the three identities, stored explicitly so nothing has to re-derive
+    # them. trip_id = on-disk folder basename; web_slug = URL/registry key.
+    trip_id = os.path.basename(os.path.normpath(trip_root))
+    web_slug = trip_name
 
     # Configparser only treats subsequent lines as part of a multi-line
     # value when they are indented. Without this escape, paragraph breaks
@@ -61,6 +65,8 @@ trip_banner = {banner_filename}
 trip_picture = {picture_filename}
 created = {datetime.now().strftime('%Y-%m-%d %H:%M')}
 trip_name = {trip_name}
+trip_id = {trip_id}
+web_slug = {web_slug}
 fromdate = {from_date}
 todate = {to_date}
 oneblog = day
