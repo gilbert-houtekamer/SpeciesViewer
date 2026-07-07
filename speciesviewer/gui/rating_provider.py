@@ -172,6 +172,7 @@ class RatingEditorCollection(PictureCollection):
         self._day_objects = day_objects      # dict day->(Files,Pictures), or None in Day scope
         self._upn_day_map = upn_day_map      # upn_key -> day
         self._jpg_only = jpg_only
+        self._color_filter: set[str] = set()   # lowercased colour names; empty = all
         self._species_lang = species_lang
         self._loader = loader or AsyncImageLoader()
         # Whole-collection view-only: every card non-editable (Album viewer).
@@ -325,11 +326,16 @@ class RatingEditorCollection(PictureCollection):
                     continue
                 if self._jpg_only and self.jpg_path(key) is None:
                     continue
+                if self._color_filter and self._row_color(row) not in self._color_filter:
+                    continue
                 rows.append((_safe_int(row.get("Rate", 0) or 0), key))
         for key in list(self._master_keys):
             if self._jpg_only and self.jpg_path(key) is None:
                 self._master_keys.discard(key)   # not shown → not a master key
                 continue
+            if (self._color_filter
+                    and self._row_color(self._master_upn[key]) not in self._color_filter):
+                continue  # view filter only — keep it a master key for routing
             rows.append((_safe_int(self._master_upn[key].get("Rate", 0) or 0), key))
 
         rows.sort(key=lambda x: x[0], reverse=True)
@@ -337,6 +343,16 @@ class RatingEditorCollection(PictureCollection):
 
     def set_jpg_only(self, value: bool) -> None:
         self._jpg_only = value
+
+    def set_color_filter(self, colors) -> None:
+        """Restrict the shown cards to these colour labels (empty = all).
+        'grey' matches uncoloured pictures — same convention as the culling
+        grid's ColorFilterBar."""
+        self._color_filter = {c.lower() for c in (colors or set())}
+
+    @staticmethod
+    def _row_color(row: dict) -> str:
+        return (row.get("Label", "") or "grey").lower()
 
     def set_species_lang(self, lang: str) -> None:
         self._species_lang = lang

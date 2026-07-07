@@ -15,7 +15,7 @@ _ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea, QGridLayout,
-    QLabel, QFrame, QPushButton, QSpinBox, QComboBox, QSizePolicy,
+    QLabel, QFrame, QPushButton, QSpinBox, QComboBox, QSizePolicy, QCheckBox,
     QProgressDialog, QRadioButton, QButtonGroup, QMessageBox, QStyle,
 )
 from PyQt6.QtGui import QPixmap, QImage, QGuiApplication, QIcon
@@ -30,7 +30,7 @@ from engine.exif_writer import exiftool_write
 from gui.window_state import restore_window, save_window
 from gui.image_loader import AsyncImageLoader
 from gui.picture_provider import PictureItem
-from utils.config import _config
+from utils.config import _config, set_setting
 
 logger = logging.getLogger("speciesviewer")
 
@@ -598,6 +598,87 @@ def _safe_int(s, default: int = 0) -> int:
         return default
 
 
+class DeletePreviewDialog(QDialog):
+    """Confirm a colour-delete. With thumbnails on, it shows exactly which
+    pictures will be moved to trash (trip = grey border, master = orange), so a
+    destructive trip/master delete is verifiable. The 'Preview pictures before
+    deletion' checkbox is shown in both states — untick to skip the thumbnails
+    next time, re-tick to bring them back."""
+
+    _THUMB_W = 130
+
+    def __init__(self, parent, collection, keys, *, color, scope, breakdown,
+                 show_thumbnails):
+        super().__init__(parent)
+        from gui.rating_provider import RatingEditorItem
+        self.setWindowTitle(f"Delete {color} pictures")
+        self.setModal(True)
+        self._items = []  # keep item refs alive for the async thumbnail callbacks
+
+        lay = QVBoxLayout(self)
+        n = len(keys)
+        header = QLabel(
+            f"<b>{n} {color.lower()} picture{'s' if n != 1 else ''}</b> "
+            f"will be moved to trash — {scope}.")
+        header.setTextFormat(Qt.TextFormat.RichText)
+        header.setWordWrap(True)
+        lay.addWidget(header)
+        if breakdown:
+            note = QLabel("    ".join(breakdown))
+            note.setStyleSheet("color:#666;")
+            lay.addWidget(note)
+
+        if show_thumbnails:
+            self.resize(760, 560)
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            grid_w = QWidget()
+            grid = QGridLayout(grid_w)
+            cols = 5
+            tw = self._THUMB_W
+            for i, key in enumerate(keys):
+                cell = QLabel("…")
+                cell.setFixedSize(tw, tw * 2 // 3)
+                cell.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                master = collection.is_master(key) if hasattr(collection, "is_master") else False
+                cell.setStyleSheet(
+                    "border:2px solid %s; background:#f4f4f4;"
+                    % ("#c07000" if master else "#cccccc"))
+                cell.setToolTip(("master · " if master else "trip · ") + key)
+                grid.addWidget(cell, i // cols, i % cols)
+                it = RatingEditorItem(collection, key)
+                self._items.append(it)
+                it.request_thumbnail(tw, self._make_cb(cell))
+            scroll.setWidget(grid_w)
+            lay.addWidget(scroll, 1)
+
+        self._pref = QCheckBox("Preview pictures before deletion")
+        self._pref.setChecked(show_thumbnails)
+        lay.addWidget(self._pref)
+
+        row = QHBoxLayout()
+        row.addStretch()
+        cancel = QPushButton("Cancel")
+        delete = QPushButton(f"Delete {n}")
+        delete.setDefault(True)
+        row.addWidget(cancel)
+        row.addWidget(delete)
+        lay.addLayout(row)
+        cancel.clicked.connect(self.reject)
+        delete.clicked.connect(self.accept)
+
+    @staticmethod
+    def _make_cb(cell):
+        def _cb(px):
+            if px is not None and not px.isNull():
+                cell.setText("")
+                cell.setPixmap(px)
+        return _cb
+
+    def show_preview_pref(self) -> bool:
+        return self._pref.isChecked()
+
+
 # ── Main dialog ────────────────────────────────────────────────────────────────
 
 class RatingEditorDialog(QDialog):
@@ -714,6 +795,15 @@ class RatingEditorDialog(QDialog):
         """)
         self._jpg_btn.toggled.connect(self._on_jpg_only_toggled)
         top.addWidget(self._jpg_btn)
+        top.addSpacing(8)
+
+        # Colour filter — the same selector row as the culling grid, so you can
+        # narrow the view to one colour (e.g. see exactly what a Blue-delete
+        # would target). Local import avoids a circular import with image_viewer.
+        from gui.image_viewer import ColorFilterBar
+        self._color_filter_bar = ColorFilterBar(
+            on_filter_changed=self._on_color_filter_changed)
+        top.addWidget(self._color_filter_bar)
         top.addSpacing(8)
 
         top.addWidget(QLabel("Columns:"))
@@ -861,11 +951,18 @@ class RatingEditorDialog(QDialog):
         if deletable == 0:
             QMessageBox.information(self, f"Delete {color}", msg)
             return
-        if QMessageBox.question(
-                self, f"Delete {color} pictures", msg,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
-        ) != QMessageBox.StandardButton.Yes:
+
+        deletable_keys = trip_deletable + master_deletable
+        show_thumbs = _config.get("ratingeditor", "delete_preview",
+                                  fallback="yes").strip().lower() != "no"
+        dlg = DeletePreviewDialog(
+            self, self._collection, deletable_keys,
+            color=color, scope=scope, breakdown=lines[1:], show_thumbnails=show_thumbs)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
+        if dlg.show_preview_pref() != show_thumbs:
+            set_setting("ratingeditor", "delete_preview",
+                        "yes" if dlg.show_preview_pref() else "no")
 
         deleted = 0
         if trip_deletable:
@@ -1167,6 +1264,9 @@ class RatingEditorDialog(QDialog):
             return
         self._collection.set_species_lang(self._species_lang)
         self._collection.set_jpg_only(self._jpg_only)
+        # Re-apply the colour filter from the bar — the collection is recreated
+        # on every load, so the bar is the durable source of truth.
+        self._collection.set_color_filter(self._color_filter_bar.selected_colors)
         self._collection.rebuild(filter_name)
         n = len(self._collection)
         placement = self._grid_placement(n)
@@ -1238,6 +1338,10 @@ class RatingEditorDialog(QDialog):
         # No pre-extraction needed: the provider loads RAW previews lazily and
         # off the GUI thread as each card requests its thumbnail.
         self._jpg_only = checked
+        self._rebuild_cards()
+
+    def _on_color_filter_changed(self, _colors):
+        # _rebuild_cards re-reads the bar's selection (durable across reloads).
         self._rebuild_cards()
 
     def _on_card_changed(self, upn_key: str):
