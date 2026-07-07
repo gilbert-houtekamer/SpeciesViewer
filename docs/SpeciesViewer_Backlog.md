@@ -1,0 +1,113 @@
+# SpeciesViewer — Project Backlog
+
+Updated: 2026-07-07 · Branch: ClaudeSpecies · (machine-readable mirror of `SpeciesViewer_Backlog.html`)
+
+Legend: **OPEN** to build · **NEW** newly raised · **BUG** defect · **NEEDS TEST** built/awaiting live run · **PARKED** deferred by design · **DONE** shipped.
+
+Since the 16-June edition most of the backlog shipped (WP4 identity decouple, WP8 picture-root, cross-platform path P1, retire→virttrip arc, Working Days, Trip Species Viewer delete rework). Focus below = the short remaining list.
+
+## Active shortlist
+1. **Master Species Viewer** — NEW (ch.3).
+2. **EXIFtool throughput** — NEW (ch.11).
+3. **Virtual Trips WP7** — retroactive builder + amber/green blog bubbles (ch.2).
+4. Smaller: Municipality→website (ch.1), EXIF-cache prune (ch.3), Trip→Master delete live test (ch.4).
+
+Parked by design: taxonomy/sequence (ch.6), rating-formula/HEIC (ch.7); master data relativization waits for the Mac (ch.10).
+
+---
+
+## 1. SD-card Ingest & Culling — CORE COMPLETE
+Feature-complete: M0–M4, sidecar cache, GPS place-names, 100% view, day-picker, batched location writes, recent-species buttons, GPM copy/paste GPS, manual location editor + on-card line, live external-edit refresh. Cancel-during-copy, LR-in-place, tz validated. [[project_sdcard_ingest]] [[project_location_editor]]
+
+**To do**
+- OPEN **Municipality → website output** — captured in viewer + sv_exiftool.config only; NOT in batch/pipeline/website. Wire freeze→CSV→website like Location/City/State/Country.
+- NEEDS TEST **GPM southern/western trip** — hemisphere sign on S/W coords.
+
+**Parked (by design)**
+- PARKED curated sidecar EXIF field set (blanket `-xmp:all<all` works today).
+- PARKED eBird regional most-likely-birds list; Nominatim zoom tuning; offline reverse-geocoder.
+- PARKED GPM keyboard shortcut. IDEA: LR-style map module (not planned).
+
+## 2. Virtual Trips — CORE + RETIRE COMPLETE
+Full arc live incl. retire-to-virttrip (verified Braakman). svv6 make-clickable + per-day blog editor done. [[project_menu_reorg]] WP7 [[project_virttrip_pending]]
+
+**To do**
+- OPEN/LARGER **WP7 scenario-2 retroactive builder** — Create asks "from existing trip" vs "retroactive from master dates" + fold Extract into Create; build day-by-day from template. Step code works; the guided *experience* is missing.
+- OPEN **amber/green blog-review bubbles** — auto/unreviewed=amber, reviewed=green.
+- OPEN **scenario-1 Add-to-Master no-op greying** (retire already ran it).
+
+**Parked**
+- FUTURE single-day blog re-upload. PARKED trips/virttrips panel visual alignment.
+
+## 3. Master Database, Editing & Viewer
+Phases 1–3 shipped+live. Trip Species Viewer Trip+Master scope works (scope-aware colour-delete incl master, preview, colour filter). [[project_master_db]] [[project_species_viewer_delete]]
+
+**To do**
+- NEW/OPEN **Master Species Viewer** — no standalone master viewer yet. Scope = Master only; species selector for ~2000 species driven by the **species dict** (master's own list), NOT a trip's SpeciesCollection; model on the species-dialog selector, scaled. Reuse card grid + master read path; master Read-Only rules for editing.
+- OPEN/minor **"Upgrade best JPG" workflow** — sort-by-rating surfaces 800×533 best-picks; render `_DxO.jpg` → master card "Add new files for this picture" re-distils BestJPG. Make the loop smoother + confirm website re-publish picks it up. [[project_dxo_pipeline]]
+- OPEN **EXIF-cache mutable-bucket prune** — grows unbounded; add size/time eviction. [[project_exif_cache_design]]
+
+**Parked (by design)**
+- PARKED **delete step 3 (JPG-bearing UPNs)** — blocked by never-trash-a-JPG; whether/how is open.
+- PARKED **Undo → Restore-from-trash** — engine exists headless (undo_delete/apply_restore); decided against a lone "Undo" (implies action-log we lack); build trash-restore if discoverability bites. [[feedback_no_misleading_affordances]]
+- DEFERRED trip-side SQLite.
+
+## 4. Trip-to-Master Pipeline
+"Add Trip Pictures to Master" 3-step + Run-all shipped; on-disk "Delete Local Files Backed Up in Master…" (trip_delete_scan) live. Older TripMasterDashboard+svr7 never run e2e. [[project_svr7_deletelist]] [[project_trip_delete_rethink]]
+
+**To do**
+- NEEDS TEST **svr7 / dashboard stage 7** — sv6 Freeze → inspect deletelist.csv (source;target); svr7 skip-warning; then wire or retire in favour of trip_delete_scan.
+- OPEN/small **converge two no-trip ingest paths** — Master "Add pictures (no trip)" micro-trip vs Days "Add to Master"; decide + re-test micro-trip. [[project_master_add_dialog]] [[project_working_days]]
+
+## 5. SmallMaster — COMPLETE ✓
+Shipped+live on SmallBoy; auto-locks read-only. No open items. [[project_small_master]]
+
+## 6. Taxonomy & Species — PARKED (by design)
+- PARKED sequence redesign (eBird TAXON_ORDER float col). [[project_taxonomy_sequence]]
+- PARKED auto-detect obscure flag (GBIF family). [[project_obscure_species]]
+- PARKED placeholder-species cleanup (`? <name>`). [[project_placeholder_species]]
+- PARKED regional most-likely-birds (eBird).
+
+## 7. Rating & Website — PARKED (by design)
+- DEFERRED rating-formula tuning (tune last, after viewer settles). [[project_rating_formula_tuning]]
+- NEEDS DECISION HEIC/PNG sidecar capture — (a) .xmp beside HEIC / (b) patch .dop / (c) write HEIC. [[project_heic_sidecar_capture]]
+
+## 8. Viewer Convergence — COMPLETE ✓
+All closed. [[project_viewer_convergence]]
+
+## 9. Usability & Polish
+**To do**
+- OPEN/minor **preview cards don't resize live** — fixed at build; add debounced resizeEvent if it grates.
+
+**Parked / watch**
+- WATCH translation edge cases (orphan CRC cache; competing HEIC Headline).
+- DEFERRED user-configurable cache locations.
+- PARKED align Virtual Trips menu's remaining "Rating Editor" entry with the rename.
+
+## 10. Cross-platform (Mac) Prep
+Path layer P1 DONE (utils/paths.py host-independent). [[project_portability_audit_todo]] `path_portability_plan.md`
+
+**To do (when Mac arrives)**
+- OPEN/until-Mac **master data relativization** — data_files.csv = 202,661 rows, 100% absolute drive-letter (E:/…); one-time reviewed migration (dry-run→apply w/ backup) via relativize_path.
+- OPEN/until-Mac **case-sensitivity + defaults** — strip full-path `.lower()` in engine/projectlib.py; DxO/default paths → blank/config.
+
+## 11. Performance & EXIFtool
+**To do**
+- NEW/OPEN/investigate **EXIFtool throughput**:
+  - Parallel workers — N exiftool procs each on 1/N of a big read, merge; measure vs I/O/Dropbox limits.
+  - Shared persistent server — one app-wide `-stay_open` exiftool. NOTE: per-operation stay_open already exists (gui/preview_extract.py; sv2 reads). Idea = widen to one server + worker pool vs per-run launch. [[project_preview_extraction]]
+  - Ties [[project_perf_optimizations]] (real value = write-contract + big reads, not micro-perf).
+
+**Parked**
+- PAUSED general micro-perf sweep (processEvents throttle shipped; rest non-winning/risky). Revisit with a measured bottleneck.
+
+---
+
+## Recently Completed (key commits)
+- WP4 naming decouple — b4871ae. WP8 picture-root — 8ddd7e1. Cross-platform paths P1 — 0af2d87.
+- Trip Species Viewer delete rework — ee5333e, 3aaa390, 454832d.
+- Menu reorg WP1–WP6 + retire arc — 6dde8ed, a0f6906, 6ad9893, 6042ae6. Recreate virttrip blogs — db27090.
+- Working Days — beee137, 3c679bf. Trip retire (delete) — 2942aad. Manage publication/rename — 3ad4bf9. Days viewer colour — 8431799.
+- Location editor + card line — 3b896d4, 178529f, 877ce6a, e127b5d. Crop tool — 2cce37f, e7676ef.
+- SD-card grid/picker/GPM — 51dbf38, 4a1ad2f, 25b8ac1, 286965a, e94b16f. Master no-display scan — e6dc5fd. File policy .dop/.dng — ce2e589.
+- Earlier (May–June): restructure, decode quality, geolocation, batch-delete, caches, blog extras, translation validation, global EXIF cache, Master SQLite P2/P3, SmallMaster, Mac first-pass.
