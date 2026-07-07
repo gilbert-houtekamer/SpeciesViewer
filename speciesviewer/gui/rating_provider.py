@@ -692,11 +692,47 @@ class RatingEditorCollection(PictureCollection):
         trash_root should be <trip_root>/.trash; files land at
         trash_root/<day>/<key>/<file> with day from _upn_day_map or day_hint.
         """
+        matching, _ = self.color_matches(color)
+        return self.delete_trip_keys(matching, trash_root, day_hint)
+
+    def color_matches(self, color: str, species: str | None = None,
+                      day: str | None = None) -> tuple[list[str], list[str]]:
+        """UPNs labelled `color`, split into (trip_keys, master_keys).
+
+        Scoping (WP: species-view delete): when `species` is given, only that
+        species' pictures match. `day` only gates master inclusion — the trip
+        set is already day-limited by what day scope loads (readTripDay loads a
+        single day and leaves _upn_day_map empty), so it must NOT be re-filtered
+        here. Master pictures are included only outside day scope, and are
+        already limited to the loaded species (see rebuild) — so a species view
+        can blue-delete master pictures too. With neither, it is trip-wide (the
+        culling default)."""
+        wanted = (color or "").lower()
+        trip_keys = []
+        for k, row in self.fpr.upn.UniquePictureName_dict.items():
+            if (row.get("Label", "") or "").lower() != wanted:
+                continue
+            if k in self._master_keys:
+                continue
+            if species and self.species_name(row) != species:
+                continue
+            trip_keys.append(k)
+        master_keys = []
+        if not day:
+            for k in self._master_keys:
+                row = self._master_upn.get(k, {})
+                if (row.get("Label", "") or "").lower() == wanted:
+                    master_keys.append(k)
+        return trip_keys, master_keys
+
+    def delete_trip_keys(self, keys, trash_root: Path,
+                         day_hint: str = "") -> tuple[int, int, int]:
+        """Move the given TRIP UPNs to the trip trash. Returns
+        (total, protected, deleted). JPG-bearing UPNs are skipped (HARD
+        INVARIANT). Master keys must NOT be passed here — delete those via
+        delete_master_picture."""
         import shutil
-        wanted = color.lower()
-        matching = [k for k, row in self.fpr.upn.UniquePictureName_dict.items()
-                    if (row.get("Label", "") or "").lower() == wanted
-                    and k not in self._master_keys]
+        matching = list(keys)
         protected = 0
         deleted = 0
         days_to_persist: set[str] = set()

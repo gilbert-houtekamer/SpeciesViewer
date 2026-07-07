@@ -810,30 +810,54 @@ class RatingEditorDialog(QDialog):
     def _batch_delete_color(self, color: str):
         if not self.fpr or self._collection is None:
             return
-        wanted = color.lower()
-        matching = [k for k, row in self.fpr.upn.UniquePictureName_dict.items()
-                    if (row.get("Label", "") or "").lower() == wanted
-                    and not self._collection.is_master(k)]
-        if not matching:
-            QMessageBox.information(self, f"No {color} pictures",
-                                    f"No {color.lower()} trip pictures found.")
+        from gui.rating_provider import RatingEditorCollection
+        if not isinstance(self._collection, RatingEditorCollection):
             return
-        protected = sum(1 for k in matching if self._collection.jpg_path(k))
-        deletable = len(matching) - protected
-        # Describe the scope clearly — trip-scope ignores the species filter, so
-        # the count may be higher than what is visible in the current grid.
-        if self._day_radio.isChecked():
-            scope = f"this day ({self._current_day() or '?'})"
-        elif self._species_combo.currentData():
-            scope = "this trip — all species"
+
+        # Scope the delete to what the user is actually looking at. If a species
+        # is selected it wins (species view → only that species' colour, across
+        # trip AND master), whether in day or trip scope. With no species, a day
+        # view culls the whole day and the trip view is trip-wide. `day` also
+        # gates master inclusion (no master in day scope). Master pictures are
+        # deleted via the master path (JPG-protected, master .trash, RO aware).
+        species = self._species_combo.currentData()
+        day = self._current_day() if self._day_radio.isChecked() else None
+        if species and day:
+            scope = f"{species} — this day ({day})"
+        elif species:
+            scope = f"{species} — this trip + master"
+        elif day:
+            scope = f"this day ({day}) — all species"
         else:
-            scope = "this trip"
-        n = len(matching)
-        lines = [f"{n} {color.lower()} picture{'s' if n != 1 else ''} in {scope}."]
-        if protected:
-            lines.append(f"Skipped (have JPG): {protected}")
-        lines.append(f"Will be moved to .trash: {deletable}")
+            scope = "this trip — all species"
+
+        trip_keys, master_keys = self._collection.color_matches(
+            color, species=species, day=day)
+        if not trip_keys and not master_keys:
+            QMessageBox.information(self, f"No {color} pictures",
+                                    f"No {color.lower()} pictures in {scope}.")
+            return
+
+        trip_deletable = [k for k in trip_keys if not self._collection.jpg_path(k)]
+        master_deletable = [k for k in master_keys
+                            if self._collection.master_upn_deletable(k)]
+        prot = ((len(trip_keys) - len(trip_deletable))
+                + (len(master_keys) - len(master_deletable)))
+        total = len(trip_keys) + len(master_keys)
+        deletable = len(trip_deletable) + len(master_deletable)
+
+        lines = [f"{total} {color.lower()} picture{'s' if total != 1 else ''} in {scope}."]
+        if trip_deletable:
+            lines.append(f"Trip → .trash: {len(trip_deletable)}")
+        if master_deletable:
+            lines.append(f"Master → master .trash: {len(master_deletable)}")
+        if prot:
+            why = "have a JPG"
+            if (len(master_keys) - len(master_deletable)) and self._collection.master_read_only:
+                why += " / master read-only"
+            lines.append(f"Skipped ({why}): {prot}")
         msg = "\n".join(lines)
+
         if deletable == 0:
             QMessageBox.information(self, f"Delete {color}", msg)
             return
@@ -842,16 +866,23 @@ class RatingEditorDialog(QDialog):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
         ) != QMessageBox.StandardButton.Yes:
             return
-        day_hint = self._current_day() or "" if self._day_radio.isChecked() else ""
-        from gui.rating_provider import RatingEditorCollection
-        if not isinstance(self._collection, RatingEditorCollection):
-            return
-        _total, _prot, deleted = self._collection.delete_by_color(
-            color, self._trip_root / ".trash", day_hint=day_hint)
-        logger.info(f"Batch delete {color}: {deleted} picture(s) moved to trash.")
+
+        deleted = 0
+        if trip_deletable:
+            _t, _p, deleted = self._collection.delete_trip_keys(
+                trip_deletable, self._trip_root / ".trash", day_hint=day or "")
+        m_deleted = 0
+        for k in list(master_deletable):
+            try:
+                self._collection.delete_master_picture(k)
+                m_deleted += 1
+            except Exception as e:
+                logger.error(f"Master delete {k} failed: {e}")
+        logger.info(f"Batch delete {color}: {deleted} trip + {m_deleted} master picture(s) removed.")
+        parts = [p for p in (f"{deleted} trip" if deleted else "",
+                             f"{m_deleted} master" if m_deleted else "") if p]
         self._status.setText(
-            f"Deleted {deleted} {color.lower()} picture{'s' if deleted != 1 else ''} "
-            f"(moved to .trash).")
+            f"Deleted {' + '.join(parts) or '0'} {color.lower()} picture(s).")
         self._rebuild_cards()
 
     # ── Initialisation helpers ────────────────────────────────────────────────
@@ -1212,7 +1243,7 @@ class RatingEditorDialog(QDialog):
     def _on_card_changed(self, upn_key: str):
         # The card already wrote the edit + refreshed its own Rate via the
         # provider; the host just re-sorts so the new Rate reorders the grid.
-        self._resort_if_needed()
+        self._resort_if_needed(focus_key=upn_key)
         self._status.setText(f"Saved {upn_key}")
 
     def _on_card_cursor(self, upn_key: str):
@@ -1267,7 +1298,7 @@ class RatingEditorDialog(QDialog):
         card = self._cards_by_key.get(key)
         if card:
             card.refresh()
-        self._resort_if_needed()
+        self._resort_if_needed(focus_key=key)
         self._status.setText(f"Saved {key}")
 
     def _on_large_view_navigated(self, key: str):
@@ -1690,9 +1721,11 @@ class RatingEditorDialog(QDialog):
 
     # ── Re-sort ─────────────────────────────────────────────────────────────
 
-    def _resort_if_needed(self):
+    def _resort_if_needed(self, focus_key: str | None = None):
         """Re-insert cards into the grid according to the collection's current
-        sort order (writes happen in the provider; this only reorders widgets)."""
+        sort order (writes happen in the provider; this only reorders widgets).
+        When `focus_key` is given, scroll that card back into view after the
+        re-sort so an edited card isn't lost when its new Rate moves it."""
         if self._collection is None:
             return
         filter_name = self._species_combo.currentData()
@@ -1719,4 +1752,8 @@ class RatingEditorDialog(QDialog):
             self._grid.addWidget(c, r, col, 1, span)
             self._cards.append(c)
 
-        QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
+        focus_card = cards_by_key.get(focus_key) if focus_key else None
+        if focus_card is not None:
+            QTimer.singleShot(0, lambda: self._scroll.ensureWidgetVisible(focus_card))
+        else:
+            QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
