@@ -28,7 +28,7 @@ from gui.picture_provider import (PictureItem, PictureCollection, ExifSummary,
 from gui.image_loader import AsyncImageLoader
 from gui.preview_provider import cached_jpg_for, preview_cache_dir_for
 from engine.exif_writer import exiftool_write
-from engine.sidecarlib import push_metadata_to_dop
+from engine.sidecarlib import push_metadata_to_dop, read_dop_metadata
 from utils.sidecar_policy import (
     color_rating_to_xmp_enabled, color_rating_to_dop_enabled,
 )
@@ -296,6 +296,11 @@ class SidecarCollection(PictureCollection):
         self._image_sigs: dict = {s: self._image_sig(s) for s in self._groups}
         self._rows, self._caches = _read_sidecar_rows(
             [g["xmp"] for g in self._groups.values() if g.get("xmp")])
+        # Colour/rating are stored in the DxO .dop (the write channel; the .xmp is
+        # off by default), so seed the display rows from there — else a colour set
+        # last session would silently read back as the sidecar's stale value.
+        self._dop_mtimes: dict = {}   # stem -> last-seen .dop mtime_ns (overlay gate)
+        self._overlay_dop_color_rating()
         # Batch-read GPS from each picture's best source (XMP if present, else
         # RAW). At the culling stage GPS lives in the RAW's EXIF, not the XMP
         # sidecar, so the sidecar cache alone can't populate the GPS badge. One
@@ -471,6 +476,50 @@ class SidecarCollection(PictureCollection):
         return (str(src) if src else None, _mt(src) if src else None,
                 _mt(dop) if dop else None)
 
+    def _overlay_dop_color_rating(self, only_changed: bool = False) -> set:
+        """Fold each picture's colour/rating from its DxO .dop into the display
+        rows. The .dop is the write channel (and PhotoLab's native store) when the
+        .xmp channel is off, so it — not the sidecar — is the source of truth for
+        Label/Rating there. No-op when the .xmp channel is on (the sidecar rows are
+        already authoritative) or the .dop channel is off. With only_changed, only
+        .dops whose mtime moved since last seen are re-read (near-free on refresh).
+        Returns the stems whose colour/rating changed."""
+        if color_rating_to_xmp_enabled() or not color_rating_to_dop_enabled():
+            return set()
+        changed = set()
+        for stem, g in self._groups.items():
+            raw = g.get("raw")
+            xmp = g.get("xmp")
+            if not raw or not xmp:
+                continue                     # need a .dop source and a row to hold it
+            dop = Path(str(raw) + ".dop")
+            try:
+                mt = dop.stat().st_mtime_ns
+            except OSError:
+                continue                     # no .dop yet → nothing to overlay
+            if only_changed and self._dop_mtimes.get(stem) == mt:
+                continue
+            self._dop_mtimes[stem] = mt
+            meta = read_dop_metadata(str(dop))
+            row = self._rows.setdefault(_norm(xmp), {"SourceFile": str(xmp)})
+            # Colour: DxO stores "None" for cleared, so absent/None is unambiguous —
+            # the .dop always wins.
+            if meta["color"] is not None and str(row.get("Label", "") or "") != meta["color"]:
+                row["Label"] = meta["color"]
+                changed.add(stem)
+            # Rating: a .dop written for a colour-only edit keeps the skeleton
+            # default Rating = 0, indistinguishable from an explicit 0 — so a .dop
+            # 0 must NOT override a real rating that lives in the .xmp (ingest /
+            # camera / Lightroom). A positive .dop rating is an explicit value and
+            # wins; a 0 only applies when there's no rating to protect.
+            if meta["rating"] is not None:
+                cur = str(row.get("Rating", "") or "")
+                dop_r = meta["rating"]
+                if (dop_r != 0 or cur in ("", "0")) and cur != str(dop_r):
+                    row["Rating"] = str(dop_r)
+                    changed.add(stem)
+        return changed
+
     def refresh(self) -> set:
         """Re-read the sidecars from disk to pick up external edits (PhotoLab /
         Lightroom colour, rating, crop, a new render — which bump the file mtime).
@@ -480,6 +529,13 @@ class SidecarCollection(PictureCollection):
         text_before = self._row_snapshot()
         self._rows, self._caches = _read_sidecar_rows(
             [g["xmp"] for g in self._groups.values() if g.get("xmp")])
+        # Colour/rating live in the DxO .dop (PhotoLab's channel), NOT the .xmp,
+        # unless the user opted into the .xmp channel — so the .xmp rows just read
+        # carry a STALE Label/Rating. Overlay the .dop's values (our write channel
+        # and PhotoLab's own store) so an edit here doesn't revert to the sidecar,
+        # and an external PhotoLab colour/rating change refreshes the grid live.
+        # Only .dops whose mtime moved are re-read, so this is near-free.
+        self._overlay_dop_color_rating(only_changed=True)
         # A row-served read_location now reflects the new rows; drop the per-file
         # memo so the large viewer / copy-GPS re-read fresh too.
         from gui import geolocate
@@ -661,6 +717,10 @@ class SidecarCollection(PictureCollection):
                         push_metadata_to_dop(str(raw), rating=int(value))
                     except ValueError:
                         pass
+                # Our own .dop write bumps its mtime; re-baseline the image
+                # signature so refresh() doesn't mistake it for an external
+                # re-crop and needlessly re-decode this card's thumbnail.
+                self._image_sigs[stem] = self._image_sig(stem)
 
         # .xmp sidecar: colour/rating is gated (default off); text always writes.
         suppress = is_colorrating and not color_rating_to_xmp_enabled()

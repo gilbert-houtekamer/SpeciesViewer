@@ -309,6 +309,31 @@ def write_dop_metadata(dop_path, color=None, rating=None):
     return changed
 
 
+def read_dop_metadata(dop_path):
+    """Read the Item-level ColorLabel / Rating from a DxO .dop — the inverse of
+    write_dop_metadata. This is PhotoLab's native colour/rating store and, under
+    the default policy, SpeciesViewer's source of truth for these fields (the
+    .xmp channel is off). Returns {"color": str|None, "rating": int|None}: a
+    field is None when absent; DxO's "None" colour maps to "" (cleared).
+
+    Colour is normalised to SpeciesViewer's capitalised vocabulary; unknown/blank
+    is returned as "". Never raises — a malformed/missing .dop yields all-None."""
+    result = {"color": None, "rating": None}
+    try:
+        with open(dop_path, "r", encoding="utf-8", newline="") as f:
+            text = f.read()
+    except OSError:
+        return result
+    m = re.search(r'ColorLabel\s*=\s*"([^"]*)"', text)
+    if m:
+        raw = m.group(1).strip()
+        result["color"] = "" if raw.lower() in ("", "none") else raw.capitalize()
+    m = re.search(r'\bRating\s*=\s*(-?\d+)', text)
+    if m:
+        result["rating"] = int(m.group(1))
+    return result
+
+
 def push_metadata_to_dop(raw_path, color=None, rating=None):
     """Convenience: ensure the RAW's .dop exists, then set its Item-level
     ColorLabel / Rating so PhotoLab picks them up on 'import sidecars'. This is
