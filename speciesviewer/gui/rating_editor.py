@@ -617,7 +617,7 @@ class RatingEditorDialog(QDialog):
         # would be a master write-back, deliberately deferred.
         self._read_only = bool(read_only)
         self._scope_label = scope_label
-        self.setWindowTitle("Rating Editor — " + scope_label if read_only else "Rating Editor")
+        self.setWindowTitle("Trip Species Viewer — " + scope_label if read_only else "Trip Species Viewer")
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
                             | Qt.WindowType.WindowMaximizeButtonHint)

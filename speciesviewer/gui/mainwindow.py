@@ -920,7 +920,7 @@ class MainWindow(QMainWindow):
         from gui.rating_editor import RatingEditorDialog
         trip_root = _config.get("trip", "tripbiotadatabase", fallback="")
         if not trip_root:
-            QMessageBox.warning(self, "Rating Editor", "No trip is configured.")
+            QMessageBox.warning(self, "Trip Species Viewer", "No trip is configured.")
             return
         day_str = None
         if self.trip_table:
@@ -944,7 +944,7 @@ class MainWindow(QMainWindow):
         from gui.rating_editor import RatingEditorDialog
         virttrip_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
         if not virttrip_root:
-            QMessageBox.warning(self, "Rating Editor",
+            QMessageBox.warning(self, "Trip Species Viewer",
                                 "No virtual trip (Album) is active.")
             return
         # Strong ref on the main window — see open_rating_editor for the why.
