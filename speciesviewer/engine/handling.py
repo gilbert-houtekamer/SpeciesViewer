@@ -1,32 +1,39 @@
 import os
 import csv
 import logging
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import engine
+from utils.paths import is_windows_absolute, to_fs_path
 
 logger = logging.getLogger("speciesviewer")
 
 
 def relativize_path(abs_path, root):
     """Convert a Windows absolute path to a /-prefixed path relative to root.
-    Returns abs_path unchanged when it is already relative, empty, or not under root."""
-    if not abs_path or not Path(abs_path).drive:
+    Returns abs_path unchanged when it is already relative, empty, or not under
+    root. Drive detection and the relative_to use PureWindowsPath so this behaves
+    the same on Windows and macOS (a Windows-authored path carries no drive when
+    parsed by the host Path on macOS)."""
+    if not abs_path or not is_windows_absolute(abs_path):
         return abs_path
     try:
-        return "/" + Path(abs_path).relative_to(Path(root)).as_posix()
+        return "/" + PureWindowsPath(abs_path).relative_to(PureWindowsPath(root)).as_posix()
     except ValueError:
         return abs_path
 
 
 def resolve_path(stored_path, root):
     """Resolve a stored path back to absolute.
-    Drive-letter paths (C:/…) are returned as-is; /-prefixed relative paths are
-    joined with root.  Returns stored_path unchanged when root is None/empty."""
+    Absolute Windows paths (drive letter / UNC) are returned as-is; /-prefixed
+    relative paths are joined with root. Returns stored_path unchanged when root
+    is None/empty. Host-independent: a '\\'-separated or drive-letter value from
+    a Windows-authored CSV is classified correctly on macOS too, instead of being
+    mis-joined onto root."""
     if not stored_path or not root:
         return stored_path
-    if Path(stored_path).drive:
+    if is_windows_absolute(stored_path):
         return stored_path
-    return str(Path(root) / stored_path.lstrip("/\\"))
+    return str(to_fs_path(stored_path, root))
 
 
 # strip all suffixes for files from Lightroom, DxO PureRaw, DxO Photolab, Capture etc

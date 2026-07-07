@@ -33,6 +33,8 @@ import time
 from datetime import date
 from pathlib import Path
 
+from utils.paths import to_fs_path
+
 logger = logging.getLogger("speciesviewer")
 
 _JPG_EXTS = {"jpg", "jpeg"}
@@ -59,12 +61,13 @@ def _abs_path(master_root: Path, picture: dict, file_row: dict) -> Path | None:
         if p.exists():
             return p
     win = file_row.get("WindowsFileName", "")
-    if win and Path(win).exists():
-        return Path(win)
+    win_path = to_fs_path(win) if win else None   # host-independent (Win-authored ok on macOS)
+    if win_path and win_path.exists():
+        return win_path
     # Return the relative-derived path even if missing, so callers can log it.
     if rel and fname:
         return master_root / rel / fname
-    return Path(win) if win else None
+    return win_path
 
 
 def _is_jpg(file_row: dict) -> bool:
