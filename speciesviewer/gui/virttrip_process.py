@@ -134,6 +134,16 @@ def _trip_picture_root(trip_db):
     (e.g. /2026-06-26/foo.xmp), so the old parent.parent trick collapses to the
     filesystem root — kept only as a legacy fallback for absolute paths."""
     import csv as _csv
+    from utils.trip_identity import resolve_trip_picture_root
+
+    # 0) WP8: the trip's own explicit picture_root (self-contained), resolved
+    #    against the per-machine CurrentPictures base. active_picturedirectory=""
+    #    disables the day-parent fallback here so this only fires on an explicit
+    #    picture_root; the config-driven path below stays the fallback.
+    explicit_root = resolve_trip_picture_root(trip_db, kind="trip",
+                                              active_picturedirectory="")
+    if explicit_root and _has_day_subdirs(explicit_root):
+        return explicit_root
 
     # 1) Config-driven: picturedirectory is the active trip's day folder; its
     #    parent is the trip root. Accept it directly if it already holds days.

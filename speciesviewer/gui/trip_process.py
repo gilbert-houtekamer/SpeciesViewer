@@ -30,10 +30,13 @@ def generate_trip_ini(
     message_nl: str,
     title_en: str,
     message_en: str,
-    logger
+    logger,
+    picture_root_abs: str = "",
 ):
     import os
     from datetime import datetime
+    from utils.config import get_currentpictures_root
+    from utils.trip_identity import to_stored_picture_root
 
     ini_path = os.path.join(trip_root, "trip.ini")
 
@@ -44,6 +47,16 @@ def generate_trip_ini(
     # them. trip_id = on-disk folder basename; web_slug = URL/registry key.
     trip_id = os.path.basename(os.path.normpath(trip_root))
     web_slug = trip_name
+    # WP8: the trip's picture root, stored RELATIVE to the per-machine
+    # CurrentPictures root so the shared trip.ini stays portable.
+    picture_root = ""
+    if picture_root_abs:
+        picture_root, is_rel = to_stored_picture_root(picture_root_abs, get_currentpictures_root())
+        if not is_rel:
+            logger.warning(
+                f"trip.ini picture_root stored as an absolute path ({picture_root}) — it is "
+                f"outside the CurrentPictures root, or that root isn't set. Configure "
+                f"[currentpictures] rootdirectory in Settings for a portable trip.ini.")
 
     # Configparser only treats subsequent lines as part of a multi-line
     # value when they are indented. Without this escape, paragraph breaks
@@ -67,6 +80,7 @@ created = {datetime.now().strftime('%Y-%m-%d %H:%M')}
 trip_name = {trip_name}
 trip_id = {trip_id}
 web_slug = {web_slug}
+picture_root = {picture_root}
 fromdate = {from_date}
 todate = {to_date}
 oneblog = day
@@ -147,7 +161,7 @@ class TripCreationDialog(QDialog):
         trip_web_layout.addWidget(self.trip_web)
         trip_web_layout.addStretch()
         layout1.addWidget(trip_web_row)
-        self.project_path = DirectoryFieldQt("Project pictures", _config.get("project", "picturedirectory", fallback=""))
+        self.project_path = DirectoryFieldQt("Trip pictures folder (contains the day subfolders)", _config.get("project", "picturedirectory", fallback=""))
         layout1.addWidget(self.project_path)
         tabs.addTab(tab1, "Select Trip Folder")
 
@@ -334,26 +348,38 @@ class TripCreationDialog(QDialog):
         self.logger.info("Trip.ini created or updated successfully!")
         self.passed_parent.status_bar.showMessage("Trip.ini created or updated successfully!")
 
+    def _picturedirectory_for_config(self) -> str:
+        """The value to store in [project] picturedirectory — always a DAY folder.
+        The 'Trip pictures folder' field may now hold the trip root, so keep it
+        only if it is already a day, otherwise map it to the first day under it
+        (falling back to the field value if no day exists yet). WP8."""
+        field = self.project_path.get_path()
+        if field and _DAY_RE.match(Path(field).name):
+            return field
+        return _first_day_under(field) or field
+
     def on_create_clicked(self):
         # Abort if trip root or project pictures folder is invalid — otherwise the
         # batch below would build a trip pointing at a non-existent picture dir.
         if not self.create_trip_ini():
             return
         # make sure new structure is created
+        pd = self._picturedirectory_for_config()
         _config.set("trip", "tripsrootdirectory", str(Path(self.root_field.get_text()).parent))
-        set_trip_settings(self.root_field.get_text(), self.trip_web.field.text(), self.project_path.field.text())
-        # Also save trip/project pair
-        update_cache_gui_section("trip_project_map", self.trip_web.field.text(), self.project_path.field.text() )
+        set_trip_settings(self.root_field.get_text(), self.trip_web.field.text(), pd)
+        # Also save trip/project pair (the per-machine day cache)
+        update_cache_gui_section("trip_project_map", self.trip_web.field.text(), pd)
         # now do the actual work
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec, on_success=lambda: populate_trip_overview(self.passed_parent))
 
     def on_select(self):
         # save settings
+        pd = self._picturedirectory_for_config()
         _config.set("trip", "tripsrootdirectory", str(Path(self.root_field.get_text()).parent))
-        set_trip_settings(self.root_field.get_text(), self.trip_web.field.text(), self.project_path.field.text())
-        update_cache_gui_section("trip_project_map", self.trip_web.field.text(), self.project_path.field.text() )   
-        populate_trip_overview(self.passed_parent)        
+        set_trip_settings(self.root_field.get_text(), self.trip_web.field.text(), pd)
+        update_cache_gui_section("trip_project_map", self.trip_web.field.text(), pd)
+        populate_trip_overview(self.passed_parent)
         self.accept()  # ✅ Actually closes the dialog
 
     def translate_dutch_to_english(self):
@@ -402,10 +428,15 @@ class TripCreationDialog(QDialog):
 
         project_dir = self.project_path.get_path()
         if not project_dir or not os.path.isdir(project_dir):
-            self.project_path.show_hint("Please select a valid project pictures folder.")
+            self.project_path.show_hint("Please select a valid trip pictures folder.")
             return False
         else:
             self.project_path.clear_hint()
+
+        # WP8: record the trip's picture ROOT in trip.ini. The field may point at
+        # a day folder (historic) or the root; strip a trailing day/cache segment
+        # so we always store the root that holds the YYYY-MM-DD subdirs.
+        picture_root_abs = _strip_to_project_root(project_dir)
 
         generate_trip_ini(
             trip_root,
@@ -418,7 +449,8 @@ class TripCreationDialog(QDialog):
             message_nl,
             title_en,
             message_en,
-            self.logger
+            self.logger,
+            picture_root_abs=picture_root_abs,
         )
         return True
 
@@ -437,6 +469,19 @@ def _strip_to_project_root(path: str) -> str:
             break
         p = p.parent
     return str(p)
+
+
+def _first_day_under(root: str) -> str:
+    """The first YYYY-MM-DD day folder directly under `root`, or '' if none.
+    WP8: [project] picturedirectory must stay a DAY (day-navigation relies on
+    parent()==trip root), so when the user selects a trip ROOT we map it to a
+    day here rather than storing the root itself."""
+    try:
+        days = sorted(d for d in os.listdir(root)
+                      if _DAY_RE.match(d) and os.path.isdir(os.path.join(root, d)))
+    except OSError:
+        return ""
+    return os.path.join(root, days[0]) if days else ""
 
 
 def _default_year(project_root: str) -> str:

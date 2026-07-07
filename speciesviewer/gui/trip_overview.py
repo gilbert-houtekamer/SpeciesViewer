@@ -256,7 +256,10 @@ def refresh_day_health(main_window, day_name):
         logger.debug(f"refresh_day_health: no trip_table on main_window for {day_name}")
         return
     try:
-        image_root = Path(_config.get("project", "picturedirectory")).parent
+        from utils.trip_identity import resolve_trip_picture_root
+        image_root = Path(resolve_trip_picture_root(
+            _config.get("trip", "tripbiotadatabase", fallback=""), kind="trip")
+            or Path(_config.get("project", "picturedirectory")).parent)
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
     except Exception as e:
         logger.debug(f"refresh_day_health: config lookup failed: {e}")
@@ -350,8 +353,12 @@ def populate_trip_overview(self):
         except Exception:
             pass
     self.remove_existing_overview_tab()
-    # Get image and statemachine directories
-    image_root = Path(_config.get("project", "picturedirectory")).parent
+    # Get image and statemachine directories. WP8: the trip's picture root comes
+    # from its explicit picture_root when present, else the active-day parent.
+    from utils.trip_identity import resolve_trip_picture_root
+    image_root = Path(resolve_trip_picture_root(
+        _config.get("trip", "tripbiotadatabase", fallback=""), kind="trip")
+        or Path(_config.get("project", "picturedirectory")).parent)
     trip_root = Path(_config.get("trip", "tripbiotadatabase"))
     review_root = trip_root / "metadata" / "review"
 

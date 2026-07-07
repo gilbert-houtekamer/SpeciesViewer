@@ -78,6 +78,8 @@ def read_trip_ini(trip_root: str):
         # WP4 explicit identities (absent in pre-WP4 trip.ini → "" → resolver falls back)
         "trip_id": parser.get("trip_config", "trip_id", fallback=""),
         "web_slug": parser.get("trip_config", "web_slug", fallback=""),
+        # WP8: trip's picture root, relative to per-machine CurrentPictures root
+        "picture_root": parser.get("trip_config", "picture_root", fallback=""),
         "fromdate": parser.get("trip_config", "fromdate", fallback=""),
         "todate": parser.get("trip_config", "todate", fallback=""),
         "title_nl": parser.get("trip_text", "title_nl", fallback=""),

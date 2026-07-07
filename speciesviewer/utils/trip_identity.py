@@ -23,11 +23,27 @@ from utils.trip_config import read_trip_ini
 from utils.virttrip_config import read_virttrip_ini
 
 
+import re as _re
+
+_DAY_RE = _re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
 def _slug_of(trip_name: str) -> str:
     """A bare web slug from a trip_name that may be a bare slug ('ebro') or,
     occasionally, carry a '/trips/' prefix. Mirrors the derivation in
     retire_trip_to_virttrip."""
     return (trip_name or "").strip("/").rsplit("/", 1)[-1]
+
+
+def _has_day_subdirs(base: str) -> bool:
+    """True if `base` directly contains YYYY-MM-DD folders — i.e. it is a trip's
+    picture root, where each day's blog.ini lives."""
+    try:
+        return os.path.isdir(base) and any(
+            _DAY_RE.match(d) and os.path.isdir(os.path.join(base, d))
+            for d in os.listdir(base))
+    except OSError:
+        return False
 
 
 @dataclass
@@ -39,6 +55,8 @@ class TripIdentity:
     title_nl: str = ""
     title_en: str = ""
     source_trip_id: str = ""  # virttrip → its origin trip's trip_id ("" if unknown)
+    picture_root: str = ""    # WP8: the trip's source-picture folder, RELATIVE to
+                              # the per-machine CurrentPictures root ("" if unset)
 
     @property
     def web_root(self) -> str:
@@ -59,6 +77,7 @@ def _resolve_from_dict(root: str, kind: str, data: dict) -> TripIdentity:
         title_nl=data.get("title_nl", ""),
         title_en=data.get("title_en", ""),
         source_trip_id=(data.get("source_trip_id") or "").strip(),
+        picture_root=(data.get("picture_root") or "").strip(),
     )
 
 
@@ -94,3 +113,60 @@ def find_linked_virttrip(trip_id: str, virttrips_root: str):
         if ident.source_trip_id and ident.source_trip_id == trip_id:
             return cand
     return None
+
+
+def resolve_trip_picture_root(root: str, kind: str = None,
+                              active_picturedirectory: str = None) -> str:
+    """Absolute path to the trip's picture root — the folder that holds its
+    YYYY-MM-DD day subdirs (WP8). This replaces the scattered
+    `Path(picturedirectory).parent` derivations with one explicit resolution:
+
+      1. trip.ini `picture_root`, joined onto the per-machine CurrentPictures
+         root when it is relative (the portable, stored-once case);
+      2. `picture_root` as-is if it was stored absolute (edge/back-compat);
+      3. FALLBACK — the parent of the active [project] picturedirectory (a day
+         folder), i.e. exactly today's behaviour, so un-migrated trips and
+         days-mode are unaffected.
+
+    Returns "" when nothing resolves."""
+    ident = resolve(root, kind) if root else None
+    pr = ident.picture_root if ident else ""
+    if pr:
+        if os.path.isabs(pr):
+            return os.path.normpath(pr)
+        from utils.config import get_currentpictures_root
+        base = get_currentpictures_root()
+        if base:
+            return os.path.normpath(os.path.join(base, pr.replace("/", os.sep)))
+        # relative but no base configured → fall through to the day-parent fallback
+
+    if active_picturedirectory is None:
+        from utils.config import _config
+        active_picturedirectory = _config.get("project", "picturedirectory", fallback="")
+    active_picturedirectory = (active_picturedirectory or "").strip().strip('"').strip("'")
+    if active_picturedirectory:
+        cand = os.path.normpath(active_picturedirectory)
+        for base_c in (cand, os.path.dirname(cand)):
+            if _has_day_subdirs(base_c):
+                return base_c
+        return os.path.dirname(cand)
+    return ""
+
+
+def to_stored_picture_root(abs_root: str, currentpictures_root: str):
+    """Turn an absolute trip picture root into the value to store in trip.ini.
+
+    Returns (stored_str, is_relative). Prefers a forward-slashed path RELATIVE
+    to the per-machine CurrentPictures root (portable across machines). Falls
+    back to the absolute path when the root is outside the configured base (or
+    no base is configured) — callers should warn in that case."""
+    abs_root = os.path.normpath(abs_root)
+    if currentpictures_root:
+        base = os.path.normpath(currentpictures_root)
+        try:
+            rel = os.path.relpath(abs_root, base)
+        except ValueError:
+            rel = None  # different drive on Windows
+        if rel is not None and not rel.startswith(".."):
+            return rel.replace(os.sep, "/"), True
+    return abs_root, False

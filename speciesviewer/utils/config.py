@@ -122,6 +122,14 @@ def get_virttrips_root() -> str:
     active = _config.get("virttrip", "virttripbiotadatabase", fallback="")
     return str(Path(active).parent) if active else ""
 
+def get_currentpictures_root() -> str:
+    """The per-machine base folder that holds every trip's source pictures
+    (e.g. D:\\CurrentPictures). A trip.ini stores its picture_root RELATIVE to
+    this, so the shared trip.ini stays portable across machines/OSes where the
+    absolute CurrentPictures path differs. Empty when not configured — callers
+    then fall back to the active day's parent (today's behaviour). See WP8."""
+    return _config.get("currentpictures", "rootdirectory", fallback="").strip()
+
 # 🔄 Optional: Upgrade logic
 def upgrade_config_if_needed(latest_version=1.1):
     current_version = float(_config.get("Global", "config_version", fallback="0.0"))

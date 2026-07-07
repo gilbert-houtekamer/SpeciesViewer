@@ -10,8 +10,10 @@ from utils.config import _config, persist_config, get_trips_root
 from utils.gui_config import load_gui_cache
 from utils.open_path import open_path
 
+import re as _re
 _PATH_ROLE      = Qt.ItemDataRole.UserRole + 1  # trip_dir for all items (highlight)
 _BASE_TEXT_ROLE = Qt.ItemDataRole.UserRole + 2  # base label text without ▶
+_DAY_RE         = _re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class TripInfoPanel(QWidget):
@@ -129,10 +131,33 @@ class TripInfoPanel(QWidget):
             _config["trip"]["tripbiotadatabase"] = str(trip_dir)
             _config["trip"]["tripbiotawebroot"] = "/trips/" + trip_name
             _config["trip"]["tripsrootdirectory"] = str(trip_dir.parent)
-            _config["project"]["picturedirectory"] = self.trip_project_map["/trips/" + trip_name]
+            pic = self._resolve_picturedirectory(trip_dir, trip_name)
+            if pic:
+                _config["project"]["picturedirectory"] = pic
             persist_config()
             self._refresh_highlights()
             self.on_trip_selected(self.main_window)
+
+    def _resolve_picturedirectory(self, trip_dir, trip_name):
+        """The day folder to make active when a trip is selected. WP8: prefer the
+        per-machine cache entry if it still points at a real folder (remembers the
+        last-used day), else derive from the trip's own picture_root (first day
+        subdir). Uses .get so a missing/slug-mismatched cache entry no longer
+        raises — it just falls back to the self-contained trip.ini value."""
+        cached = self.trip_project_map.get("/trips/" + trip_name, "")
+        # Only trust the cache if it is an existing DAY folder — a pre-WP8 cache
+        # entry could hold the trip root, which must never become picturedirectory.
+        if (cached and os.path.isdir(cached)
+                and _DAY_RE.match(os.path.basename(os.path.normpath(cached)))):
+            return cached
+        from utils.trip_identity import resolve_trip_picture_root
+        root = resolve_trip_picture_root(str(trip_dir), kind="trip",
+                                         active_picturedirectory="")
+        if root and os.path.isdir(root):
+            days = sorted(d for d in os.listdir(root)
+                          if _DAY_RE.match(d) and os.path.isdir(os.path.join(root, d)))
+            return os.path.join(root, days[0]) if days else root
+        return ""
 
     def show_context_menu(self, position):
         item = self.tree.itemAt(position)

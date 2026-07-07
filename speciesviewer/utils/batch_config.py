@@ -53,11 +53,15 @@ def generate_svconfig_ini(svconfig_path="svconfig.ini", master_mode=False,
         # Add-Pictures-to-Master: ingest exactly this one folder, no parent step.
         pic_dir = single_dir
     elif master_mode and pic_dir:
-        # The GUI's picturedirectory points at the active day inside a
-        # trip; for master ingest we want every day-subdir under the
-        # trip root, so step up one level. sv2 walks recursively from
-        # there.
-        pic_dir = str(Path(pic_dir).parent)
+        # The GUI's picturedirectory points at the active day inside a trip; for
+        # master ingest we want every day-subdir under the trip ROOT. WP8: get
+        # that root from the trip's explicit picture_root when present, else fall
+        # back to stepping up one level (today's behaviour).
+        from utils.trip_identity import resolve_trip_picture_root
+        trip_db = _config.get("trip", "tripbiotadatabase", fallback="")
+        pic_dir = (resolve_trip_picture_root(trip_db, kind="trip",
+                                             active_picturedirectory=pic_dir)
+                   or str(Path(pic_dir).parent))
     cfg["project"] = {"PictureDirectory": pic_dir}
     if single_dir:
         cfg["project"]["Recurse"] = "1" if recurse else "0"

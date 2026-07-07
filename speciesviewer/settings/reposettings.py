@@ -5,7 +5,8 @@ from PyQt6.QtWidgets import (
     QFileDialog, QMessageBox, QFrame, QCheckBox
 )
 import logging
-from utils.config import _config, persist_config, get_trips_root, get_virttrips_root
+from utils.config import (_config, persist_config, get_trips_root,
+                          get_virttrips_root, get_currentpictures_root)
 
 class RepoSettingsDialog(QDialog):
     def __init__(self, parent):
@@ -49,6 +50,14 @@ class RepoSettingsDialog(QDialog):
         browse_trips_root_btn = QPushButton("Browse Trips Root")
         browse_trips_root_btn.clicked.connect(self.browse_trips_root)
         layout.addWidget(browse_trips_root_btn)
+        # Per-machine base that holds every trip's source pictures (e.g.
+        # D:\CurrentPictures). trip.ini stores its picture_root RELATIVE to this,
+        # so the shared trip.ini stays portable across machines. WP8.
+        self.currentpictures_root_field = self._labeled_field(
+            layout, "CurrentPictures root directory (per machine)", get_currentpictures_root())
+        browse_currentpictures_btn = QPushButton("Browse CurrentPictures Root")
+        browse_currentpictures_btn.clicked.connect(self.browse_currentpictures_root)
+        layout.addWidget(browse_currentpictures_btn)
         layout.addWidget(self._divider())
 
         # Active Virtual Trip section
@@ -102,6 +111,12 @@ class RepoSettingsDialog(QDialog):
         if path:
             self.trips_root_field.setText(path)
 
+    def browse_currentpictures_root(self):
+        start = self.currentpictures_root_field.text() or ""
+        path = QFileDialog.getExistingDirectory(self, "Select CurrentPictures Root Directory", start)
+        if path:
+            self.currentpictures_root_field.setText(path)
+
     def browse_virttrip(self):
         start = self.virttrips_root_field.text() or self.virttrip_field.text() or ""
         path = QFileDialog.getExistingDirectory(self, "Select Virtual Trip Database Directory", start)
@@ -146,6 +161,10 @@ class RepoSettingsDialog(QDialog):
         _config.set("trip", "tripbiotawebroot", self.trip_web.text())
         if self.trips_root_field.text():
             _config.set("trip", "tripsrootdirectory", self.trips_root_field.text())
+        if self.currentpictures_root_field.text():
+            if not _config.has_section("currentpictures"):
+                _config.add_section("currentpictures")
+            _config.set("currentpictures", "rootdirectory", self.currentpictures_root_field.text())
         if not _config.has_section("virttrip"):
             _config.add_section("virttrip")
         _config.set("virttrip", "virttripbiotadatabase", self.virttrip_field.text())
