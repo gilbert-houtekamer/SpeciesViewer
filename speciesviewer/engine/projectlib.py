@@ -107,11 +107,22 @@ class Project:
         self.breadcrumb = engine.breadcrumb.Breadcrumb(self)
 
     def internet_connection(self):
-        try:
-            response = requests.get("https://houtekamer.com", timeout=75)
-            return True
-        except requests.ConnectionError:
-            return False         
+        """True if the network is reachable. Uses fast TCP connects (not a full
+        HTTPS GET, which a sluggish web server can stall for the whole timeout —
+        houtekamer.com's TCP port answers instantly while a GET can time out) to
+        the hosts blogging/publishing actually needs; any one reachable = online.
+        Catches every socket error (the old GET only caught ConnectionError, so a
+        ReadTimeout crashed instead of returning False)."""
+        import socket
+        for host, port in (("houtfp.ssh.transip.me", 22),   # SFTP publish target
+                           ("houtekamer.com", 443),          # the website itself
+                           ("api.gbif.org", 443)):           # species lookups
+            try:
+                socket.create_connection((host, port), timeout=6).close()
+                return True
+            except OSError:
+                continue
+        return False
         
     # custimazation for 
     def getRepositoryBanner(self):
