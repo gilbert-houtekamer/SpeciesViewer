@@ -100,15 +100,8 @@ def add_day_to_master(main_window):
     if dlg is None:
         dlg = AddToMasterDialog(main_window)
         main_window._add_to_master_dialog = dlg
-    dlg.dir_edit.setText(folder)
-    dlg.show()
-    dlg.raise_()
-    dlg.activateWindow()
-    # Scan immediately so the user lands on the review-ready summary.
-    try:
-        dlg._scan()
-    except Exception:
-        pass
+    # Days mode: path locked to this day's folder; scans on open.
+    dlg.open_session(fixed_dir=folder)
 
 
 def remove_day_from_list(main_window):

@@ -194,30 +194,30 @@ class MicroTripReviewDialog(ImagePreviewDialog):
 
 
 class AddToMasterDialog(QDialog):
-    def __init__(self, main_window):
+    def __init__(self, main_window, fixed_dir=None):
         super().__init__(main_window)
         self.main_window = main_window
-        self.setWindowTitle("Add Pictures to Master")
         self.resize(780, 520)
         self._mt = None                 # the live micro-trip (scratch on disk)
         self._report = None
         self._review_dlg = None
+        self._fixed_dir = None
         self._build_ui()
+        self._apply_mode(fixed_dir)
 
     # ── UI ───────────────────────────────────────────────────────────────────
     def _build_ui(self):
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel(
-            "Choose one folder of pictures to add to the master.\n"
-            "Pictures need a species (tag them in Lightroom first); untagged "
-            "ones are listed but not added."))
+        self.intro = QLabel()
+        self.intro.setWordWrap(True)
+        lay.addWidget(self.intro)
 
         row = QHBoxLayout()
-        self.dir_edit = QLineEdit(_config.get("addmaster", "lastdir", fallback=""))
-        browse = QPushButton("Browse…")
-        browse.clicked.connect(self._browse)
+        self.dir_edit = QLineEdit()
+        self.browse_btn = QPushButton("Browse…")
+        self.browse_btn.clicked.connect(self._browse)
         row.addWidget(self.dir_edit)
-        row.addWidget(browse)
+        row.addWidget(self.browse_btn)
         lay.addLayout(row)
 
         self.recurse_cb = QCheckBox("Include nested folders")
@@ -261,6 +261,57 @@ class AddToMasterDialog(QDialog):
         QShortcut(QKeySequence.StandardKey.Find, self).activated.connect(self._open_find)
         QShortcut(QKeySequence.StandardKey.FindNext, self).activated.connect(self._find_next)
         QShortcut(QKeySequence.StandardKey.FindPrevious, self).activated.connect(self._find_prev)
+
+    # ── mode / session ────────────────────────────────────────────────────────
+    def _apply_mode(self, fixed_dir):
+        """Configure for one of the two no-trip ingest contexts. The same dialog
+        (and the same micro-trip engine) serves both; only the folder field and
+        the wording differ. Re-applied on every open so the shared instance can
+        switch between them.
+
+        Master mode (fixed_dir=None): editable folder + Browse — add a loose
+        folder, e.g. what's left in a trip after it was moved to the master.
+        Days mode (fixed_dir set): the path is locked to that day's folder."""
+        self._fixed_dir = fixed_dir or None
+        if self._fixed_dir:
+            self.setWindowTitle(f"Add to Master — {Path(self._fixed_dir).name}")
+            self.intro.setText(
+                "Add this day's pictures to the master.\n"
+                "Pictures need a species (tag them in Lightroom first); untagged "
+                "ones are listed but not added.")
+            self.dir_edit.setText(self._fixed_dir)
+            self.dir_edit.setReadOnly(True)
+            self.dir_edit.setStyleSheet("color: gray;")
+            self.browse_btn.setVisible(False)
+        else:
+            self.setWindowTitle("Add Pictures to Master")
+            self.intro.setText(
+                "Add loose pictures to the master — e.g. what's left in a trip "
+                "folder after the trip was moved. Often there's something worth "
+                "keeping.\n"
+                "Pictures need a species (tag them in Lightroom first); untagged "
+                "ones are listed but not added.")
+            self.dir_edit.setReadOnly(False)
+            self.dir_edit.setStyleSheet("")
+            self.browse_btn.setVisible(True)
+            self.dir_edit.setText(_config.get("addmaster", "lastdir", fallback=""))
+
+    def open_session(self, fixed_dir=None):
+        """Show the dialog configured for Master (fixed_dir=None) or Days
+        (fixed_dir = the day folder) use. A fresh target invalidates any prior
+        scratch; Days mode scans immediately so the user lands on the summary."""
+        self._close_review()
+        self._cleanup_scratch()
+        self._apply_mode(fixed_dir)
+        self._reset_scan_state()
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        if self._fixed_dir:
+            try:
+                self._scan()
+            except Exception as e:
+                logger.info(f"add_to_master: initial scan failed: {e}")
 
     # ── Find-in-report bar (Ctrl+F) ───────────────────────────────────────────
     def _build_find_bar(self) -> QWidget:
@@ -361,13 +412,16 @@ class AddToMasterDialog(QDialog):
             self.out.setPlainText("No master database is configured.")
             return
 
-        if not _config.has_section("addmaster"):
-            _config.add_section("addmaster")
-        _config.set("addmaster", "lastdir", input_dir)
-        try:
-            persist_config()
-        except Exception as e:
-            logger.info(f"add_to_master: could not persist lastdir: {e}")
+        # Only Master mode remembers the folder; a locked Day path must not
+        # overwrite the Master "last folder" the user browses to.
+        if not self._fixed_dir:
+            if not _config.has_section("addmaster"):
+                _config.add_section("addmaster")
+            _config.set("addmaster", "lastdir", input_dir)
+            try:
+                persist_config()
+            except Exception as e:
+                logger.info(f"add_to_master: could not persist lastdir: {e}")
 
         # Drop any previous scratch (and its review window) before scanning again.
         self._close_review()

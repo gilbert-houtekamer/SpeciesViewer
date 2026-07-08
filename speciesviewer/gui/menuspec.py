@@ -433,12 +433,11 @@ def build_menu_spec(main_window):
         if dlg is None:
             dlg = AddToMasterDialog(main_window)
             main_window._add_to_master_dialog = dlg
-        dlg.show()
-        dlg.raise_()
-        dlg.activateWindow()
+        # Master mode: editable folder (e.g. leftovers from a moved trip).
+        dlg.open_session()
     add_pictures_to_master_item = MenuSpec(
         callback=_add_pictures_to_master,
-        title="Add Pictures (no trip)…",
+        title="Add Pictures to Master…",
         showsubdirectory=False,
     )
 
