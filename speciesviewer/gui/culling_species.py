@@ -126,6 +126,76 @@ def forget_recent_species(name: str):
     update_cache_gui_section(_RECENT_SECTION, _RECENT_KEY, recent[:_RECENT_MAX])
 
 
+# ── species qualifiers (sex / age / plumage) ──────────────────────────────────
+# A qualifier is a token stored alongside the species name in XMP:Subject, e.g.
+# "blauwborst, female". The pipeline's specieslib.getBirdInfo is the parser-of-
+# record; this table mirrors its vocabulary for the picker and MUST stay in sync
+# with it. Each option: (button label, canonical token WRITTEN, {aliases ACCEPTED
+# when parsing an existing subject}). One value max per group (they map to the
+# single-valued malefemale / ageintext / summerwinter picture fields).
+QUALIFIER_GROUPS = [
+    ("Sex", [
+        ("♂ male",   "male",   {"male", "man"}),
+        ("♀ female", "female", {"female", "vrouw"}),
+        ("pair",          "couple", {"couple", "paar", "paartje"}),
+    ]),
+    ("Age", [
+        ("juvenile", "juvenile", {"juvenile", "juv", "juv.", "jong"}),
+        ("immature", "immature", {"immature", "imm", "imm.", "onvolwassen"}),
+        ("adult",    "adult",    {"adult", "ad", "ad.", "volwassen"}),
+    ]),
+    # Plumage: only "breeding" (br.) is marked — non-breeding is the default, so
+    # it needs no token. "summer/winter" were hemisphere-specific (wrong for e.g.
+    # Gambia's wet/dry seasons), so they map into "breeding" for back-compat.
+    ("Plumage", [
+        ("breeding", "breeding", {"breeding", "br.", "br", "summer", "zomer"}),
+    ]),
+]
+
+# alias (lowercase) -> (group index, canonical token)
+_ALIAS_TO_GROUP = {
+    alias: (gi, canon)
+    for gi, (_cat, opts) in enumerate(QUALIFIER_GROUPS)
+    for _label, canon, aliases in opts
+    for alias in aliases
+}
+
+# Qualifier tokens we RECOGNISE (so they're stripped from the species name) but
+# do NOT offer a button for — non-breeding is the default plumage, nothing to show.
+_DROP_ALIASES = {"non-breeding", "non-br.", "non-br", "winter"}
+
+
+def split_species_qualifiers(subject: str):
+    """Split a subject like 'blauwborst, female' into ('blauwborst', {group: canon}).
+    Recognised qualifier tokens (any group) are pulled out; everything else is
+    kept as the species name. Comma-separated, matching how the pipeline stores
+    it (specieslib.getBirdInfo)."""
+    selected: dict[int, str] = {}
+    name_parts = []
+    for part in (subject or "").split(","):
+        p = part.strip()
+        if not p:
+            continue
+        hit = _ALIAS_TO_GROUP.get(p.lower())
+        if hit:
+            selected[hit[0]] = hit[1]
+        elif p.lower() in _DROP_ALIASES:
+            continue   # recognised default (non-breeding) — strip, no button
+        else:
+            name_parts.append(p)
+    return ", ".join(name_parts), selected
+
+
+def build_species_subject(species_name: str, selected: dict) -> str:
+    """Recombine a species name with the selected qualifier tokens (group order),
+    e.g. ('blauwborst', {0: 'female'}) -> 'blauwborst, female'."""
+    name = (species_name or "").strip()
+    if not name:
+        return name
+    quals = [selected[gi] for gi in range(len(QUALIFIER_GROUPS)) if gi in selected]
+    return ", ".join([name] + quals)
+
+
 class CullingSpeciesDialog(QDialog):
     """Assign a species name to one or more pictures during culling. Accepts
     NL / EN / scientific input with contains-match auto-complete and live
@@ -144,10 +214,14 @@ class CullingSpeciesDialog(QDialog):
         layout.addWidget(title)
         layout.addWidget(QLabel("Type a Dutch, English or scientific name:"))
 
+        # An incoming subject may already carry qualifiers ("blauwborst, female");
+        # keep only the species name in the field and pre-select the toggles below.
+        name_only, self._preset_qualifiers = split_species_qualifiers(current_name)
+
         # Typed entry + its own "Set species" button on one row: the button commits
         # exactly what's in the field. "Check online" and the resolution feedback
         # below it also act on this typed name only.
-        self.field = QLineEdit(current_name)
+        self.field = QLineEdit(name_only)
         if sc is not None:
             completer = QCompleter(species_name_candidates(sc), self)
             completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
@@ -174,6 +248,30 @@ class CullingSpeciesDialog(QDialog):
         gbif_row.addWidget(self.gbif_btn)
         gbif_row.addStretch()
         layout.addLayout(gbif_row)
+
+        # Optional qualifiers — sex / age / plumage. Stored in the keyword as
+        # "<species>, <token>"; the pipeline reads them to caption the picture and
+        # to show one best photo per age/sex/plumage on the species page. Single-
+        # select within each row; click again to clear.
+        layout.addWidget(QLabel("Optional — sex / age / plumage:"))
+        self._qual_buttons: dict[int, list[tuple[QPushButton, str]]] = {}
+        for gi, (cat, opts) in enumerate(QUALIFIER_GROUPS):
+            qrow = QHBoxLayout()
+            lbl = QLabel(cat + ":")
+            lbl.setMinimumWidth(60)
+            qrow.addWidget(lbl)
+            self._qual_buttons[gi] = []
+            preset = self._preset_qualifiers.get(gi)
+            for label, canon, _aliases in opts:
+                b = QPushButton(label)
+                b.setCheckable(True)
+                b.setChecked(canon == preset)
+                b.clicked.connect(
+                    lambda _checked, g=gi, bb=b: self._on_qualifier_clicked(g, bb))
+                qrow.addWidget(b)
+                self._qual_buttons[gi].append((b, canon))
+            qrow.addStretch()
+            layout.addLayout(qrow)
 
         # Recent species — left-click re-applies a name in one go; right-click
         # removes a name from the list (e.g. an untested one typed by mistake).
@@ -357,13 +455,31 @@ class CullingSpeciesDialog(QDialog):
                 return
         self._commit(name)
 
+    def _on_qualifier_clicked(self, group_index: int, clicked_btn):
+        """Single-select within a group: turning one on turns its siblings off.
+        (A second click on the active one leaves it unchecked — clears the group.)"""
+        for b, _canon in self._qual_buttons[group_index]:
+            if b is not clicked_btn:
+                b.setChecked(False)
+
+    def _selected_qualifiers(self) -> dict:
+        """{group index: canonical token} for every currently-checked qualifier."""
+        sel = {}
+        for gi, btns in self._qual_buttons.items():
+            for b, canon in btns:
+                if b.isChecked():
+                    sel[gi] = canon
+                    break
+        return sel
+
     def _commit(self, name: str):
         """Accept with `name` as the chosen species (from the field or a recent
-        button) and bump it to the front of the recents list."""
+        button), append any selected qualifiers, and bump the species (without
+        qualifiers) to the front of the recents list."""
         name = (name or "").strip()
         if not name:
             return
-        self._chosen = name
+        self._chosen = build_species_subject(name, self._selected_qualifiers())
         remember_recent_species(name)
         self.accept()
 

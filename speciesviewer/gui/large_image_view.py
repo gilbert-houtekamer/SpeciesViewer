@@ -599,7 +599,9 @@ class LargeImageView(QDialog):
         panel_scroll = QScrollArea()
         panel_scroll.setWidgetResizable(True)
         panel_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        panel_scroll.setMinimumWidth(220)
+        # Wide enough for the species editor's qualifier button rows (Sex / Age /
+        # Plumage) and the two-column recents without clipping (h-scroll is off).
+        panel_scroll.setMinimumWidth(300)
 
         self._panel_widget = QWidget()
         self._panel_widget.setSizePolicy(

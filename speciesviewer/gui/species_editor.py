@@ -36,6 +36,22 @@ def is_widget_alive(widget):
 raw_exts = [".nef", ".orf", ".cr2", ".arw", ".rw2", ".heic"]
 
 
+def _subject_name_and_quals(raw):
+    """Split any stored subject — a list-repr ("['fuut', 'juv']"), a scalar
+    compound ("fuut, juv") or a plain name — into (species_name, {group: canon})
+    using the shared qualifier vocabulary. Lets the panel keep the species name
+    in the field and the qualifiers in the toggle row."""
+    from gui.culling_species import split_species_qualifiers
+    s = (raw or "").strip()
+    try:
+        parts = ast.literal_eval(s)
+        if isinstance(parts, list):
+            s = ", ".join(str(p).strip("'\"") for p in parts)
+    except Exception:
+        pass
+    return split_species_qualifiers(s)
+
+
 def _sc_usable(sc) -> bool:
     """True when fpr.sc is a real SpeciesClassification (has the lookup API),
     not the empty ``{}`` placeholder a bare FilePicture starts with. Some hosts
@@ -184,7 +200,10 @@ class SpeciesInfoPanel(QWidget):
             initial = fpr.getSubject(file_paths[0].name) if fpr else ""
         else:
             initial = ""
-        self.subject_field = LabeledTextFieldQt("Suggested species name:", value=initial)
+        # Keep only the species name in the field; any qualifier already stored
+        # (juv / male / …) pre-selects the toggle row below.
+        name_only, self._preset_qualifiers = _subject_name_and_quals(initial)
+        self.subject_field = LabeledTextFieldQt("Suggested species name:", value=name_only)
         layout.addWidget(self.subject_field)
 
         # ── Suggestion dropdown ───────────────────────────────────────────────
@@ -195,6 +214,34 @@ class SpeciesInfoPanel(QWidget):
         self.suggestion_dropdown.setToolTip("Select a species name to apply manually")
         self.suggestion_dropdown.currentIndexChanged.connect(self._on_suggestion_selected)
         layout.addWidget(self.suggestion_dropdown)
+
+        # ── Qualifiers (sex / age / plumage) ──────────────────────────────────
+        # Stored in the keyword as "<species>, <token>"; the pipeline reads them
+        # to caption the picture and to show one best photo per age/sex/plumage.
+        # Single-select within each row; click again to clear.
+        from gui.culling_species import QUALIFIER_GROUPS
+        layout.addWidget(QLabel("Optional — sex / age / plumage:"))
+        self._qual_buttons: dict[int, list[tuple[QPushButton, str]]] = {}
+        for gi, (cat, opts) in enumerate(QUALIFIER_GROUPS):
+            qrow = QHBoxLayout()
+            qrow.setSpacing(4)
+            lbl = QLabel(cat + ":")
+            lbl.setMinimumWidth(56)
+            qrow.addWidget(lbl)
+            self._qual_buttons[gi] = []
+            preset = self._preset_qualifiers.get(gi)
+            for label, canon, _aliases in opts:
+                b = QPushButton(label)
+                b.setCheckable(True)
+                b.setChecked(canon == preset)
+                # Compact so all three fit the narrow embedded right-panel.
+                b.setStyleSheet("QPushButton { padding: 2px 6px; }")
+                b.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+                b.clicked.connect(
+                    lambda _checked, g=gi, bb=b: self._on_qualifier_clicked(g, bb))
+                qrow.addWidget(b)
+                self._qual_buttons[gi].append((b, canon))
+            layout.addLayout(qrow)
 
         # ── Status ────────────────────────────────────────────────────────────
         self.status_label = QLabel("")
@@ -358,8 +405,36 @@ class SpeciesInfoPanel(QWidget):
         finally:
             self._committing = False
 
+    def _on_qualifier_clicked(self, group_index: int, clicked_btn):
+        """Single-select within a group: turning one on turns its siblings off.
+        A second click leaves it off — clears the group."""
+        for b, _canon in self._qual_buttons[group_index]:
+            if b is not clicked_btn:
+                b.setChecked(False)
+
+    def _selected_qualifiers(self) -> dict:
+        """{group index: canonical token} for every currently-checked qualifier."""
+        sel = {}
+        for gi, btns in self._qual_buttons.items():
+            for b, canon in btns:
+                if b.isChecked():
+                    sel[gi] = canon
+                    break
+        return sel
+
+    def _compose_subject(self) -> str:
+        """The value to write: the field's species name + the picked qualifiers,
+        as a scalar compound ("fuut, juvenile"). Scalar (not a list) so the
+        pipeline resolves the species by comma-split, independent of token length
+        — 'juvenile' being longer than 'fuut' must not hijack the species name."""
+        from gui.culling_species import build_species_subject
+        name, field_quals = _subject_name_and_quals(self.subject_field.get_text())
+        selected = dict(field_quals)
+        selected.update(self._selected_qualifiers())   # toggles win over field text
+        return build_species_subject(name, selected)
+
     def _do_commit(self):
-        corrected_subject = self.subject_field.get_text().strip()
+        corrected_subject = self._compose_subject()
         fpr = self._fpr
         if not fpr:
             self._safe_status("❌ Cannot access FPR for update.")
@@ -453,18 +528,14 @@ class SpeciesInfoPanel(QWidget):
         self._safe_status(f"✅ Done — {n} file{'s' if n != 1 else ''} updated.")
         QApplication.processEvents()
 
-        # Bump the committed species to the front of the shared recents so the
-        # quick-pick loop works across this panel and the culling dialog.
+        # Bump the committed SPECIES (without qualifiers) to the front of the
+        # shared recents — so qualifier tokens like "juv" never leak into the
+        # quick-pick list shared with the culling dialog.
         if not clearing:
-            try:
-                _committed = ast.literal_eval(corrected_subject)
-                _names = _committed if isinstance(_committed, list) else [corrected_subject]
-            except Exception:
-                _names = [corrected_subject]
-            from gui.culling_species import remember_recent_species
-            for nm in _names:
-                if isinstance(nm, str) and nm.strip():
-                    remember_recent_species(nm.strip())
+            _name, _ = _subject_name_and_quals(corrected_subject)
+            if _name.strip():
+                from gui.culling_species import remember_recent_species
+                remember_recent_species(_name.strip())
 
         self.committed.emit(updated_upns)
 
