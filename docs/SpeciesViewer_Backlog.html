@@ -178,20 +178,21 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
 
 <p>The <strong>“Add Trip Pictures to Master”</strong> 3-step dialog + <strong>Run-all</strong>
 button are shipped, and the on-disk-truth <strong>“Delete Local Files Backed Up in Master…”</strong>
-report + red delete (<code>trip_delete_scan</code>) is live. The older
-<code>TripMasterDashboard</code> + <code>svr7DeleteFiles</code> path is committed but never
-run end-to-end.</p>
+report + red delete (<code>trip_delete_scan</code>) is live. <code>trip_delete_scan</code> is now the
+sole delete authority; the older <code>svr7DeleteFiles</code> / <code>deletelist.csv</code> path has
+been removed.</p>
 
-<h3>To do</h3>
+<h3>Done</h3>
 <ul>
-  <li><strong>Live end-to-end test of svr7 / dashboard stage 7</strong> <span class="tag-test">NEEDS TEST</span> —
-    run sv6 Freeze on a real trip → inspect <code>deletelist.csv</code> (<code>source;target</code>);
-    run svr7 → confirm the skip-warning fires when the master target is absent; then decide whether
-    to wire svr7 into dashboard stage 7 (Run button) or retire it in favour of the newer
-    <code>trip_delete_scan</code> approach.</li>
-  <li><strong>Converge the two no-trip ingest paths</strong> <span class="tag-open">OPEN / small</span> —
-    Master ▸ “Add pictures (no trip)” (micro-trip) vs Days ▸ “Add to Master” (Working Days). Decide
-    converge vs keep-separate, then re-test the micro-trip path.</li>
+  <li><strong>Retire svr7 / deletelist.csv</strong> <span class="tag-shipped">DONE</span> —
+    <code>deletelist.csv</code> removed end-to-end (<code>sv6</code> no longer writes it, the
+    <code>sv7</code> existence-gate is dropped, <code>svr7DeleteFiles</code> deleted);
+    <code>trip_delete_scan</code> confirms every delete against the clean master. Verified live via a
+    full freeze → commit → publish. (<code>0fb1695</code>)</li>
+  <li><strong>Converge the two no-trip ingest paths</strong> <span class="tag-shipped">DONE</span> —
+    one context-aware <code>AddToMasterDialog</code>: Master ▸ “Add Pictures to Master…” keeps an
+    editable folder and remembers it across sessions (leftover-rescue after a trip is moved); Days ▸
+    “Add to Master” locks the path to the day’s folder and stays stateless. (<code>9e2b233</code>)</li>
 </ul>
 
 <!-- ============================================================ -->

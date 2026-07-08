@@ -55,9 +55,9 @@ Phases 1–3 shipped+live. Trip Species Viewer Trip+Master scope works (scope-aw
 ## 4. Trip-to-Master Pipeline
 "Add Trip Pictures to Master" 3-step + Run-all shipped; on-disk "Delete Local Files Backed Up in Master…" (trip_delete_scan) live. Older TripMasterDashboard+svr7 never run e2e. [[project_svr7_deletelist]] [[project_trip_delete_rethink]]
 
-**To do**
-- NEEDS TEST **svr7 / dashboard stage 7** — sv6 Freeze → inspect deletelist.csv (source;target); svr7 skip-warning; then wire or retire in favour of trip_delete_scan.
-- OPEN/small **converge two no-trip ingest paths** — Master "Add pictures (no trip)" micro-trip vs Days "Add to Master"; decide + re-test micro-trip. [[project_master_add_dialog]] [[project_working_days]]
+**Done**
+- DONE **retire svr7 / deletelist.csv** (0fb1695) — deletelist.csv removed end-to-end (sv6 no longer writes it, sv7 gate dropped, svr7DeleteFiles deleted); trip_delete_scan is the sole delete authority. Verified live via a full freeze→commit→publish.
+- DONE **converge two no-trip ingest paths** (9e2b233) — one context-aware AddToMasterDialog: Master mode editable + remembers last folder (leftover-rescue wording); Days mode path locked to the day, stateless. Menu "(no trip)" → "Add Pictures to Master…". [[project_master_add_dialog]] [[project_working_days]]
 
 ## 5. SmallMaster — COMPLETE ✓
 Shipped+live on SmallBoy; auto-locks read-only. No open items. [[project_small_master]]
