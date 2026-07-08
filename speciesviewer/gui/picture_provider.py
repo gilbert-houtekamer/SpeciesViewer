@@ -145,6 +145,12 @@ class PictureItem(ABC):
     @abstractmethod
     def display_name(self) -> str: ...
 
+    @property
+    def qualifier_suffix(self) -> str:
+        """Compact sex/age/plumage suffix shown after the species name on the
+        card (' ♀ br.'). Empty by default; species-carrying providers override."""
+        return ""
+
     # ── display (async + cancellable) ────────────────────────────────────────
     # A trip can be hundreds of pictures; the user changes the view long before
     # all of them are drawn. So loading is asynchronous (off the GUI thread) and

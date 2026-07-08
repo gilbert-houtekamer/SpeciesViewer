@@ -168,11 +168,19 @@ _DROP_ALIASES = {"non-breeding", "non-br.", "non-br", "winter"}
 def split_species_qualifiers(subject: str):
     """Split a subject like 'blauwborst, female' into ('blauwborst', {group: canon}).
     Recognised qualifier tokens (any group) are pulled out; everything else is
-    kept as the species name. Comma-separated, matching how the pipeline stores
-    it (specieslib.getBirdInfo)."""
+    kept as the species name. Handles the two stored forms: a scalar compound
+    ('fuut, juv') and the fpr list-repr ("['fuut', 'juv']")."""
+    s = (subject or "").strip()
+    try:
+        import ast
+        parts = ast.literal_eval(s)
+        if isinstance(parts, list):
+            s = ", ".join(str(p).strip("'\"") for p in parts)
+    except Exception:
+        pass
     selected: dict[int, str] = {}
     name_parts = []
-    for part in (subject or "").split(","):
+    for part in s.split(","):
         p = part.strip()
         if not p:
             continue
@@ -194,6 +202,39 @@ def build_species_subject(species_name: str, selected: dict) -> str:
         return name
     quals = [selected[gi] for gi in range(len(QUALIFIER_GROUPS)) if gi in selected]
     return ", ".join([name] + quals)
+
+
+# Compact abbreviations shown after a species name in the viewers (grid + large).
+# Keyed by the canonical token the picker writes.
+_QUAL_ABBREV = {
+    "male": "♂", "female": "♀", "couple": "♂♀",
+    "juvenile": "juv.", "immature": "imm.", "adult": "ad.",
+    "breeding": "br.",
+}
+# Keyed by the picture-record field values getBirdInfo produces (malefemale /
+# ageintext / summerwinter). non-br. is the default plumage, so it has no mark.
+_FIELD_ABBREV = {
+    "male": "♂", "female": "♀", "couple": "♂♀",
+    "juv.": "juv.", "imm.": "imm.", "ad.": "ad.", "br.": "br.",
+}
+
+
+def qualifier_suffix_from_subject(subject: str) -> str:
+    """Compact qualifier suffix to append after a species name — e.g. ' ♀ br.' —
+    parsed from a stored subject ('fuut, female, breeding'). '' when none."""
+    _name, selected = split_species_qualifiers(subject)
+    parts = [_QUAL_ABBREV.get(selected[gi], "") for gi in sorted(selected)]
+    parts = [p for p in parts if p]
+    return (" " + " ".join(parts)) if parts else ""
+
+
+def qualifier_suffix_from_fields(malefemale="", ageintext="", summerwinter="") -> str:
+    """Same compact suffix, built from the picture record's already-derived
+    malefemale / ageintext / summerwinter fields (e.g. master rows)."""
+    parts = [_FIELD_ABBREV.get((v or "").strip().lower(), "")
+             for v in (malefemale, ageintext, summerwinter)]
+    parts = [p for p in parts if p]
+    return (" " + " ".join(parts)) if parts else ""
 
 
 class CullingSpeciesDialog(QDialog):

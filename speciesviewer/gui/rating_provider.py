@@ -92,6 +92,17 @@ class RatingEditorItem(PictureItem):
     def display_name(self) -> str:
         return self._c.species_name(self._row) or self._key
 
+    @property
+    def qualifier_suffix(self) -> str:
+        from gui.culling_species import (qualifier_suffix_from_fields,
+                                         qualifier_suffix_from_subject)
+        r = self._row
+        # Master/trip picture rows carry the derived fields; fall back to parsing
+        # the raw subject when they're absent.
+        suffix = qualifier_suffix_from_fields(
+            r.get("malefemale", ""), r.get("ageintext", ""), r.get("summerwinter", ""))
+        return suffix or qualifier_suffix_from_subject(r.get("subject", "") or "")
+
     # read fields
     @property
     def species(self) -> str:

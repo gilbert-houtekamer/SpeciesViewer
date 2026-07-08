@@ -599,8 +599,10 @@ class LargeImageView(QDialog):
         panel_scroll = QScrollArea()
         panel_scroll.setWidgetResizable(True)
         panel_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        # Wide enough for the species editor's qualifier button rows (Sex / Age /
-        # Plumage) and the two-column recents without clipping (h-scroll is off).
+        # Floor wide enough for the species editor's qualifier button rows (Sex /
+        # Age / Plumage) without clipping (h-scroll is off). No max: the user's
+        # dragged width is remembered (hsplit in the window state), so let them
+        # size it freely rather than capping their choice.
         panel_scroll.setMinimumWidth(300)
 
         self._panel_widget = QWidget()
@@ -1875,7 +1877,10 @@ class LargeImageView(QDialog):
             if st["hsplit"] and len(st["hsplit"]) == 2:
                 self._splitter.setSizes(st["hsplit"])
             else:
-                panel_w = 300
+                # First-open default — a bit above the 300 floor so the qualifier
+                # buttons and recents have breathing room; the user's own dragged
+                # width is remembered after that.
+                panel_w = 340
                 image_w = max(200, self.width() - panel_w - self._splitter.handleWidth())
                 self._splitter.setSizes([image_w, panel_w])
             # Load saved sizes for both positions; only apply the active one now.

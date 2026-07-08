@@ -140,7 +140,14 @@ class SidecarItem(PictureItem):
 
     @property
     def display_name(self) -> str:
-        return self.species or self._stem
+        from gui.culling_species import split_species_qualifiers
+        name, _ = split_species_qualifiers(self.species)
+        return name or self._stem
+
+    @property
+    def qualifier_suffix(self) -> str:
+        from gui.culling_species import qualifier_suffix_from_subject
+        return qualifier_suffix_from_subject(self.species)
 
     # read fields
     @property

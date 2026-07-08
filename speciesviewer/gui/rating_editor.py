@@ -318,8 +318,9 @@ class PictureCard(QFrame):
         vbox.addWidget(self._thumb)
         item.request_thumbnail(self._thumb_target_w, self.set_thumbnail)
 
-        # Species name
-        self._lbl_name = QLabel(item.display_name or item.key)
+        # Species name (+ compact sex/age/plumage suffix, e.g. "fuut ♀ br.")
+        self._lbl_name = QLabel((item.display_name or item.key)
+                                + getattr(item, "qualifier_suffix", ""))
         self._lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._lbl_name.setStyleSheet("font-weight: bold; font-size: 10px;")
         self._lbl_name.setWordWrap(True)

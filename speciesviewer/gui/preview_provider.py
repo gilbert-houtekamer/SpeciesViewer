@@ -135,6 +135,14 @@ class PreviewItem(PictureItem):
     def display_name(self) -> str:
         return self._c.fpr.getSpeciesName(self._rep) or self._key
 
+    @property
+    def qualifier_suffix(self) -> str:
+        from gui.culling_species import qualifier_suffix_from_subject
+        try:
+            return qualifier_suffix_from_subject(self._c.fpr.getSubject(self._rep))
+        except Exception:
+            return ""
+
     # read fields
     @property
     def species(self) -> str:

@@ -160,7 +160,10 @@ class SpeciesInfoPanel(QWidget):
         n = len(file_paths)
         if n == 1:
             layout.addWidget(QLabel(f"<b>Filename:</b> {file_paths[0].name}"))
-            layout.addWidget(QLabel(f"<b>Species:</b> {species_names[0] or '(unknown)'}"))
+            # Show the species with its qualifier abbreviations ("fuut ♀ br.").
+            from gui.culling_species import qualifier_suffix_from_subject
+            _suffix = qualifier_suffix_from_subject(fpr.getSubject(file_paths[0].name)) if fpr else ""
+            layout.addWidget(QLabel(f"<b>Species:</b> {(species_names[0] or '(unknown)')}{_suffix}"))
             if error_msgs[0]:
                 if collapsible_error:
                     # Compact toggle: ⚠ button reveals the error text on demand.
