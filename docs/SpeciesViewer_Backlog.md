@@ -1,16 +1,15 @@
 # SpeciesViewer — Project Backlog
 
-Updated: 2026-07-07 · Branch: ClaudeSpecies · (machine-readable mirror of `SpeciesViewer_Backlog.html`)
+Updated: 2026-07-08 · Branch: ClaudeSpecies · (machine-readable mirror of `SpeciesViewer_Backlog.html`)
 
 Legend: **OPEN** to build · **NEW** newly raised · **BUG** defect · **NEEDS TEST** built/awaiting live run · **PARKED** deferred by design · **DONE** shipped.
 
 Since the 16-June edition most of the backlog shipped (WP4 identity decouple, WP8 picture-root, cross-platform path P1, retire→virttrip arc, Working Days, Trip Species Viewer delete rework). Focus below = the short remaining list.
 
 ## Active shortlist
-1. **Master Species Viewer** — NEW (ch.3).
-2. **EXIFtool throughput** — NEW (ch.11).
-3. **Virtual Trips WP7** — retroactive builder + amber/green blog bubbles (ch.2).
-4. Smaller: Municipality→website (ch.1), EXIF-cache prune (ch.3), Trip→Master delete live test (ch.4).
+1. **EXIFtool throughput** — NEW (ch.11).
+2. **Virtual Trips WP7** — retroactive builder + amber/green blog bubbles (ch.2).
+3. Smaller: Municipality→website (ch.1), EXIF-cache prune (ch.3), Trip→Master delete live test (ch.4).
 
 Parked by design: taxonomy/sequence (ch.6), rating-formula/HEIC (ch.7); master data relativization waits for the Mac (ch.10).
 
@@ -40,10 +39,9 @@ Full arc live incl. retire-to-virttrip (verified Braakman). svv6 make-clickable 
 - FUTURE single-day blog re-upload. PARKED trips/virttrips panel visual alignment.
 
 ## 3. Master Database, Editing & Viewer
-Phases 1–3 shipped+live. Trip Species Viewer Trip+Master scope works (scope-aware colour-delete incl master, preview, colour filter). [[project_master_db]] [[project_species_viewer_delete]]
+Phases 1–3 shipped+live. Trip Species Viewer Trip+Master scope works (scope-aware colour-delete incl master, preview, colour filter). **Master Species Viewer SHIPPED** (standalone; Master → Master Species Viewer…): searchable ~2000-species field from the master's own list, full-master card grid, master read-only rules for editing. [[project_master_db]] [[project_species_viewer_delete]]
 
 **To do**
-- NEW/OPEN **Master Species Viewer** — no standalone master viewer yet. Scope = Master only; species selector for ~2000 species driven by the **species dict** (master's own list), NOT a trip's SpeciesCollection; model on the species-dialog selector, scaled. Reuse card grid + master read path; master Read-Only rules for editing.
 - OPEN/minor **"Upgrade best JPG" workflow** — sort-by-rating surfaces 800×533 best-picks; render `_DxO.jpg` → master card "Add new files for this picture" re-distils BestJPG. Make the loop smoother + confirm website re-publish picks it up. [[project_dxo_pipeline]]
 - OPEN **EXIF-cache mutable-bucket prune** — grows unbounded; add size/time eviction. [[project_exif_cache_design]]
 
@@ -104,6 +102,7 @@ Path layer P1 DONE (utils/paths.py host-independent). [[project_portability_audi
 ---
 
 ## Recently Completed (key commits)
+- Master Species Viewer — standalone master-only viewer (searchable species field + full-master card grid, reuses RatingEditorCollection full mode + MasterDB).
 - WP4 naming decouple — b4871ae. WP8 picture-root — 8ddd7e1. Cross-platform paths P1 — 0af2d87.
 - Trip Species Viewer delete rework — ee5333e, 3aaa390, 454832d.
 - Menu reorg WP1–WP6 + retire arc — 6dde8ed, a0f6906, 6ad9893, 6042ae6. Recreate virttrip blogs — db27090.

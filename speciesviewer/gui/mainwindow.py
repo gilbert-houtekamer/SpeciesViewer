@@ -937,6 +937,20 @@ class MainWindow(QMainWindow):
         self._rating_editor_dlg = RatingEditorDialog(self, trip_root, day_str)
         self._rating_editor_dlg.show()
 
+    def open_master_species_viewer(self):
+        """Standalone viewer over the master collection, one species at a time.
+        Needs no active trip — the species list + pictures come from the master
+        DB. Editing follows the machine's master read-only policy."""
+        from gui.master_species_viewer import MasterSpeciesViewerDialog
+        master_root = _config.get("master", "masterbiotadatabase", fallback="")
+        if not master_root:
+            QMessageBox.warning(self, "Master Species Viewer",
+                                "No master database is configured.")
+            return
+        # Strong ref on the main window — see open_rating_editor for the why.
+        self._master_species_viewer_dlg = MasterSpeciesViewerDialog(self)
+        self._master_species_viewer_dlg.show()
+
     def open_virttrip_rating_editor(self):
         """Read-only Rating Editor over the active virtual trip (Album). Its
         pictures are the master's shared files, so editing is off for now —

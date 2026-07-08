@@ -286,12 +286,14 @@ class RatingEditorCollection(PictureCollection):
         return self._master_files if key in self._master_keys else self.fpr.fi.files_dict
 
     # ── ordering / filtering ──────────────────────────────────────────────
-    def rebuild(self, filter_name: str | None = None) -> None:
+    def rebuild(self, filter_name: str | None = None, *,
+                forced_sci: str | None = None) -> None:
         # Resolve the scientific name of the selected species (from the trip
         # rows) so master pictures can be matched on WetSoortNaam — robust
-        # across the NL/Eng/Sci display languages.
-        sci = None
-        if filter_name and self._include_master and self._master_db is not None:
+        # across the NL/Eng/Sci display languages. The Master Species Viewer has
+        # no trip rows to resolve from, so it passes the sci in directly.
+        sci = (forced_sci or "").strip().casefold() or None
+        if sci is None and filter_name and self._include_master and self._master_db is not None:
             for row in self.fpr.upn.UniquePictureName_dict.values():
                 if self.species_name(row) == filter_name:
                     sci = (row.get("WetSoortNaam") or "").strip().casefold()

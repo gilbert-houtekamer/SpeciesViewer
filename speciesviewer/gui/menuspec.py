@@ -1157,6 +1157,10 @@ def build_menu_spec(main_window):
             "Manage Trip Publication…": manage_trips,
             "Add pictures (no trip)…": add_pictures_to_master_item,
             f"{MenuSpec.separator()}_master_2": None,
+            "Master Species Viewer…": MenuSpec(
+                callback=lambda: main_window.open_master_species_viewer(),
+                title="Master Species Viewer",
+                showsubdirectory=False),
             "Species Without a Website Picture…": no_display_item,
         },
         "Virtual Trips": {

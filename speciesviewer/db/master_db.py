@@ -482,6 +482,31 @@ class MasterDB:
             (wet_soort_naam.strip().lower(),)).fetchall()
         return [self._picture_row_to_dict(r) for r in rows]
 
+    def species_picker_rows(self) -> list[dict]:
+        """Distinct species that actually have master pictures, for the Master
+        Species Viewer's selector. Derived from the pictures table (always
+        present, so every listed species has viewable content) rather than the
+        optional species.csv mirror — and it is the master's own list, not a
+        trip's SpeciesCollection. Returns
+        [{"sci":.., "nl":.., "en":.., "n":..}] sorted by scientific name; nl/en
+        are a representative (MAX) value per species so a blank on one picture
+        doesn't win over a filled one."""
+        con = self._connect()
+        try:
+            rows = con.execute(
+                'SELECT TRIM("WetSoortNaam") AS sci, '
+                '       MAX("NLSoortNaam")  AS nl, '
+                '       MAX("EngSoortNaam") AS en, '
+                '       COUNT(*)            AS n '
+                'FROM pictures '
+                'WHERE TRIM("WetSoortNaam") <> "" '
+                'GROUP BY LOWER(TRIM("WetSoortNaam")) '
+                'ORDER BY sci COLLATE NOCASE').fetchall()
+        except sqlite3.OperationalError:
+            return []
+        return [{"sci": r["sci"], "nl": r["nl"] or "", "en": r["en"] or "",
+                 "n": r["n"]} for r in rows]
+
     def picture(self, upn: str) -> dict | None:
         con = self._connect()
         row = con.execute(
