@@ -39,8 +39,7 @@ def checkFrozenData(MyProject):
         # sanity checks - at least present
     if not os.path.exists(os.path.join(frozendir, "frozen_data_files.csv")) or \
         not os.path.exists(os.path.join(frozendir, "frozen_data_pictures.csv")) or \
-        not os.path.exists(os.path.join(frozendir, "species.csv")) or \
-        not os.path.exists(os.path.join(frozendir, "deletelist.csv")):
+        not os.path.exists(os.path.join(frozendir, "species.csv")):
         raise SVException(f'Make sure the frozen files (data_files.csv, data_pictures.csv and select.csv) are present in {frozendir}. ')
     return True
 
@@ -60,9 +59,6 @@ def commitProjectFiles(MyProject):
         shutil.copy(os.path.join(activedir, "data_pictures.csv"),     os.path.join(activebackupdir, today + "_data_pictures.csv"))
         shutil.copy(os.path.join(activedir, "species.csv"),           os.path.join(activebackupdir, today + "_species.csv"))
         shutil.copy(os.path.join(activedir, "speciescollection.csv"), os.path.join(activebackupdir, today + "_speciescollection.csv"))
-    # Always keep last one per project
-    shutil.copy(os.path.join(frozendir, "deletelist.csv"),
-                os.path.join(activebackupdir, today + "_" + MyProject.ProjectName() + "_deletelist.csv"))
 
     # now copy the frozen data
     logger.info(f"Copy frozen files in {frozendir} to {activedir}.")
@@ -144,10 +140,7 @@ def main(args, config):
         putRecursiveTreeDisk(MyProject)
         # TODO rewrite the Blog with active links to species
 
-        # remove files that are copied
-        #deleteCopiedFiles(MyProject.ReviewFrozen()+"deletelist.csv")
-
-    totaltime = time.time() - starttime      
+    totaltime = time.time() - starttime
     logger.info(f'sv7WriteCommit: Total time for all other work {totaltime:.1f} seconds.')
 
 if __name__ == "__main__":

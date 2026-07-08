@@ -28,7 +28,6 @@ import engine.statemachine
 import engine.triplib
 
 logger = logging.getLogger("speciesviewer")
-files_to_delete = []
 
 def getTemplateFileAsString():
     global soort_template_lines                     # will be re-read
@@ -91,7 +90,6 @@ def makeSpeciesDirectory(MyProject, leaf):
                     # first run still skips no-op copies.
                     if not _same_file_on_disk(sourcefile, targetfile):
                         shutil.copy(sourcefile, targetfile)
-                        files_to_delete.append((sourcefile, targetfile))
                     count += 1
                 except Exception as exc:
                     logger.info(
@@ -201,14 +199,6 @@ def AppendChangedPictureData(MyProject, firstNewPicture):
     logger.info(f'{written} picture records written to {picturename} (current-schema header).')
     return
 
-def writeDeleteList(deletelistfilename):
-    with open(deletelistfilename, 'w', newline='', encoding='utf-8') as deletecsv:
-        writer = csv.writer(deletecsv, delimiter=';')
-        writer.writerow(['source_path', 'target_path'])
-        for source, target in files_to_delete:
-            writer.writerow([source, target])
-    return
-
 def main(args, config):
     global starttime, species_dict, debugfile, count
     starttime = time.time()
@@ -248,10 +238,8 @@ def main(args, config):
     MyProject.setLanguage('nl')
     MyProject.makeWebDirectories('biota', 'New')
 
-    # write the list with files to delete
-    writeDeleteList(os.path.join(MyProject.ReviewFrozen(), "deletelist.csv"))
     #logger.info(f"{count} files copied to species picture repository in {time.time() - starttime:.1f} seconds.")
-    debugfile.close()   
+    debugfile.close()
     # simply append new files and pictures, based on the new files.
     sp.writeSpeciesInfo(os.path.join(MyProject.ReviewFrozen(), "species.csv"), commit_counters=True)
     sc.updateSpeciesCollection(os.path.join(MyProject.ReviewFrozen(),"speciescollection.csv")) 

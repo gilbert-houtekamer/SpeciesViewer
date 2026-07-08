@@ -13,10 +13,6 @@
 #     (the master stores the full RAW+XMP+JPG of every committed picture, so it
 #     IS the backup). We also report a stronger file-level signal: whether this
 #     exact basename is in the master's data_files list.
-#   - deletelist.csv: ADVISORY only. We cross-check it and report divergence,
-#     but it never vetoes a delete (it's the stale freeze-time artifact we're
-#     moving away from). A file that is in a deletelist but NOT in the master is
-#     flagged loudly - that is exactly the unsafe delete this rethink prevents.
 #   - No "keep unidentified" filter: if a file is backed up in the master it is
 #     deletable regardless of whether its picture carries a species.
 #
@@ -71,40 +67,6 @@ def load_master_inventory(master_root):
     return upns, filenames
 
 
-def load_trip_deletelist(trip_db):
-    """Collect every path mentioned in the trip's frozen deletelist.csv files
-    (advisory cross-check). Handles BOTH formats:
-      - legacy single-column quoted paths
-      - newer 'source_path;target_path' two-column form
-    Returns a set of lowercased basenames (we match on basename so the check is
-    robust to path drift)."""
-    basenames = set()
-    review = os.path.join(trip_db, "metadata", "review")
-    if not os.path.isdir(review):
-        return basenames
-    for root, _dirs, files in os.walk(review):
-        if "deletelist.csv" not in files:
-            continue
-        fp = os.path.join(root, "deletelist.csv")
-        try:
-            with open(fp, "r", encoding="utf-8", errors="replace", newline="") as fh:
-                sample = fh.read(200)
-                fh.seek(0)
-                has_header = "source_path" in sample
-                reader = csv.reader(fh, delimiter=";")
-                for i, row in enumerate(reader):
-                    if not row:
-                        continue
-                    if has_header and i == 0:
-                        continue  # header line
-                    src = row[0].strip().strip('"')
-                    if src:
-                        basenames.add(_basename_key(src))
-        except Exception as e:
-            logger.warning(f"trip_delete_scan: could not read {fp}: {e}")
-    return basenames
-
-
 def _trip_species_by_upn(trip_db):
     """UPN (lowercased) -> species from the trip's per-day data_pictures.csv.
     Lets the keep set be split into identified vs unidentified. Empty if the
@@ -155,14 +117,13 @@ def scan_trip(picture_root, master_root, trip_db):
     or {ok: False, error}.
 
     Per-day entry: {day, deletable:[...], keep:[...], other:[...], counts:{...}}.
-    Each deletable/keep item: {path, upn, file_in_master, in_deletelist, reason}."""
+    Each deletable/keep item: {path, upn, file_in_master, reason}."""
     if not os.path.isdir(picture_root):
         return {"ok": False, "error": f"Trip picture directory not found: {picture_root}"}
 
     upns, filenames = load_master_inventory(master_root)
     if upns is None:
         return {"ok": False, "error": "Could not read the master inventory."}
-    deletelist = load_trip_deletelist(trip_db)
     have_file_index = bool(filenames)
 
     from engine.filecsv import deriveUniquePictureName
@@ -170,9 +131,7 @@ def scan_trip(picture_root, master_root, trip_db):
     warnings = []
     tot = {"files": 0, "deletable_files": 0, "keep_files": 0, "held_files": 0,
            "other_files": 0,
-           "deletable_upns": set(), "keep_upns": set(), "held_upns": set(),
-           "unsafe_in_deletelist_not_master": 0,
-           "deletable_not_in_deletelist": 0}
+           "deletable_upns": set(), "keep_upns": set(), "held_upns": set()}
 
     for day, day_path in _iter_day_dirs(picture_root):
         d_deletable, d_keep, d_held, d_other = [], [], [], []
@@ -188,9 +147,7 @@ def scan_trip(picture_root, master_root, trip_db):
                 upn = (deriveUniquePictureName(fn) or "").strip()
                 upn_in_master = upn in upns
                 file_in_master = (_basename_key(fn) in filenames) if have_file_index else None
-                in_deletelist = _basename_key(fn) in deletelist
-                item = {"path": path, "upn": upn, "file_in_master": file_in_master,
-                        "in_deletelist": in_deletelist}
+                item = {"path": path, "upn": upn, "file_in_master": file_in_master}
 
                 # Deletion gate: a byte-identical copy must exist in the master.
                 # That means UPN in master AND (this exact file is in the master
@@ -205,8 +162,6 @@ def scan_trip(picture_root, master_root, trip_db):
                         item["reason"] = "recreatable DNG (RAW in master)"
                     else:
                         item["reason"] = "in master (file confirmed)" if have_file_index else "in master (UPN)"
-                    if not in_deletelist:
-                        tot["deletable_not_in_deletelist"] += 1
                     d_deletable.append(item)
                     tot["deletable_files"] += 1
                     tot["deletable_upns"].add(upn)
@@ -219,11 +174,6 @@ def scan_trip(picture_root, master_root, trip_db):
                     tot["held_upns"].add(upn)
                 else:
                     item["reason"] = "NOT in master - keep"
-                    if in_deletelist:
-                        item["reason"] = "in deletelist but NOT in master - UNSAFE, kept"
-                        tot["unsafe_in_deletelist_not_master"] += 1
-                        warnings.append(f"{path}: listed for delete but its UPN is "
-                                        f"absent from the master - kept.")
                     d_keep.append(item)
                     tot["keep_files"] += 1
                     tot["keep_upns"].add(upn)
@@ -249,8 +199,6 @@ def scan_trip(picture_root, master_root, trip_db):
         "held_files": tot["held_files"],
         "held_pictures": len(tot["held_upns"]),
         "other_files": tot["other_files"],
-        "unsafe_in_deletelist_not_master": tot["unsafe_in_deletelist_not_master"],
-        "deletable_not_in_deletelist": tot["deletable_not_in_deletelist"],
         "have_master_file_index": have_file_index,
     }
     return {"ok": True, "picture_root": picture_root, "master_root": master_root,
@@ -284,13 +232,6 @@ def format_report(report):
     lines.append(f"         other     : {t['other_files']} non-picture files (ignored)")
     if not t["have_master_file_index"]:
         lines.append("         (master file-level index unavailable - UPN-level check only)")
-    if t["deletable_not_in_deletelist"]:
-        lines.append(f"         note: {t['deletable_not_in_deletelist']} deletable files "
-                     f"are not in any freeze deletelist (advisory)")
-    if t["unsafe_in_deletelist_not_master"]:
-        lines.append(f"  WARNING: {t['unsafe_in_deletelist_not_master']} files are listed "
-                     f"in a deletelist but are NOT in the master - kept (would have been "
-                     f"an unsafe delete).")
     return "\n".join(lines)
 
 
@@ -329,7 +270,7 @@ def execute_scan_delete(report):
 
 def write_detail_csv(report, path):
     """Write one row per scanned picture file (deletable + held + keep) for
-    review. Columns: day;verdict;reason;upn;file_in_master;in_deletelist;path.
+    review. Columns: day;verdict;reason;upn;file_in_master;path.
     Returns the path written, or None on failure / empty report."""
     if not report.get("ok"):
         return None
@@ -338,13 +279,13 @@ def write_detail_csv(report, path):
         with open(path, "w", encoding="utf-8", newline="") as fh:
             w = csv.writer(fh, delimiter=";")
             w.writerow(["day", "verdict", "reason", "upn",
-                        "file_in_master", "in_deletelist", "path"])
+                        "file_in_master", "path"])
             for d in report["days"]:
                 for verdict, items in (("delete", d["deletable"]),
                                        ("held", d["held"]), ("keep", d["keep"])):
                     for it in items:
                         w.writerow([d["day"], verdict, it["reason"], it["upn"],
-                                    it["file_in_master"], it["in_deletelist"], it["path"]])
+                                    it["file_in_master"], it["path"]])
         return path
     except Exception as e:
         logger.warning(f"trip_delete_scan: could not write detail CSV {path}: {e}")
