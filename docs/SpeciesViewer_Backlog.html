@@ -34,7 +34,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 8 July 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 8 July 2026 (Municipality wired) &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Working task list for the SpeciesViewer nature-photo pipeline and GUI. Since the
 16 June version most of the backlog has shipped: the identity/​picture-root
@@ -58,7 +58,7 @@ design</em>.</p>
   <ul style="margin-bottom:0;">
     <li><strong>EXIFtool throughput</strong> <span class="tag-new">NEW</span> — parallel workers + a shared server (ch. 11).</li>
     <li><strong>Virtual Trips WP7</strong> — retroactive day-by-day builder + amber/green blog bubbles (ch. 2).</li>
-    <li>Smaller: Municipality→website wiring (ch. 1), EXIF-cache prune (ch. 3), live tests for Trip→Master delete (ch. 4).</li>
+    <li>Smaller: EXIF-cache prune (ch. 3), live tests for Trip→Master delete (ch. 4).</li>
   </ul>
   Deliberately parked: taxonomy/sequence (ch. 6) and rating-formula/HEIC (ch. 7); the master
   data relativization waits for the Mac (ch. 10).
@@ -75,10 +75,13 @@ Cancel-during-copy, Lightroom-in-place, and tz-offset are validated.</p>
 
 <h3>To do</h3>
 <ul>
-  <li><strong>Municipality → website output</strong> <span class="tag-open">OPEN</span> —
-    <code>Municipality</code> is captured in the viewer + <code>sv_exiftool.config</code>
-    but is <em>not</em> in any batch/pipeline/website code, so it never reaches the CSV or
-    the site. Wire it through freeze → CSV → website like Location/City/State/Country.</li>
+  <li><strong>Municipality → website output</strong> <span class="tag-shipped">SHIPPED</span> —
+    now wired end-to-end: read (sv2 <code>-Municipality</code>) → <code>data_files.csv</code>
+    / <code>data_pictures.csv</code> → picture row (<code>projectlib.UpdatePicture</code>) →
+    website (<code>getFormattedCityStateCountry</code> shows it between City and State, hidden
+    when it equals City). <code>master_db</code> SCHEMA_VERSION → 3. Verified live on the
+    Greece 2026-05-05 blog. Existing sites need a re-run to backfill (the XMP already carries
+    it via geolocate).</li>
   <li><strong>GPM on a southern/western trip</strong> <span class="tag-test">NEEDS TEST</span> —
     copy/paste GPS+place verified in the north; confirm the hemisphere sign handling on a
     trip with S/W coordinates.</li>

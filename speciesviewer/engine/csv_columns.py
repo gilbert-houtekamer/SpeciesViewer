@@ -47,6 +47,7 @@ COLUMN_NAMES = {
     "-gpslongitude": "EXIF:GPSLongitude",
     "-location": "XMP:Location",
     "-city": "XMP:City",
+    "-Municipality": "XMP:Municipality",
     "-state": "XMP:State",
     "-country": "XMP:Country",
     "-HistoryParameters": "XMP:HistoryParameters",
@@ -103,6 +104,7 @@ DATA_FILE_FIELDS = [
     "EXIF:GPSLongitude",
     "XMP:Location",
     "XMP:City",
+    "XMP:Municipality",
     "XMP:State",
     "XMP:Country",
     "XMP:HistoryParameters",
@@ -178,6 +180,10 @@ PICTURE_FIELDS = [
     "ageintext",
     "summerwinter",
     "errormessage",
+    # Municipality shows between City and State on the website (see websupport
+    # getFormattedCityStateCountry); added near the end per the "new columns at
+    # end" convention, but before Headline so Headline stays the sacrificial last.
+    "Municipality",
     # Headline LAST on purpose — so a trailing column drifts off a stale master header harmlessly.
     # Blog extras (the only Headline carriers) are excluded from the master,
     # so a trailing column drifts off the stale master header harmlessly

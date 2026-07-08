@@ -53,6 +53,7 @@ SELECTED_FIELDS = [
     "-gpslongitude",
     "-location",
     "-city",
+    "-Municipality",
     "-state",
     "-country",
     "-HistoryParameters",

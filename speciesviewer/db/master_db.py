@@ -59,7 +59,9 @@ def _diag(msg: str) -> None:
 
 # Bump this if the schema changes; mismatch triggers a full rebuild.
 # v2: added the `species` table (mirrors species.csv) for master add/delete.
-SCHEMA_VERSION = 2
+# v3: pictures/files tables gained the Municipality / XMP:Municipality columns
+#     (they're created from PICTURE_FIELDS / DATA_FILE_FIELDS).
+SCHEMA_VERSION = 3
 
 # Column that's typed as INTEGER (we sort on Rate; rest stay TEXT to mirror CSV).
 _INT_COLS_PICTURES = {"Rate"}

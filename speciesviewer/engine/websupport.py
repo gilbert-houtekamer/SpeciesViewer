@@ -77,8 +77,17 @@ def getFormattedCityStateCountry(picture):
 	# Join only the non-empty fields so missing components don't leave
 	# stray separators — e.g. ('', 'Arusha', 'Tanzania') used to render
 	# as ", Arusha, Tanzania" with a leading comma.
-	parts = [p for p in (picture['City'], picture['State'], picture['Country']) if p]
-	return ", ".join(parts)
+	# Municipality is the larger entity, so it sits between City and State; it is
+	# dropped when it equals City or is empty (then City stands alone in its slot,
+	# or Municipality takes City's slot when City itself is empty). .get() keeps
+	# older picture rows (read from a pre-Municipality CSV) working.
+	city = picture.get('City', '') or ''
+	muni = picture.get('Municipality', '') or ''
+	parts = [city]
+	if muni and muni != city:
+		parts.append(muni)
+	parts += [picture.get('State', '') or '', picture.get('Country', '') or '']
+	return ", ".join(p for p in parts if p)
 
 def isUnnamedRoad(locationname):
     if locationname in ['Vía Sin Nombre', 'Route sans nom', 'Unnamed Road']:   # , 'Onbekende weg' ?

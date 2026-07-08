@@ -9,7 +9,7 @@ Since the 16-June edition most of the backlog shipped (WP4 identity decouple, WP
 ## Active shortlist
 1. **EXIFtool throughput** — NEW (ch.11).
 2. **Virtual Trips WP7** — retroactive builder + amber/green blog bubbles (ch.2).
-3. Smaller: Municipality→website (ch.1), EXIF-cache prune (ch.3), Trip→Master delete live test (ch.4).
+3. Smaller: EXIF-cache prune (ch.3), Trip→Master delete live test (ch.4).
 
 Parked by design: taxonomy/sequence (ch.6), rating-formula/HEIC (ch.7); master data relativization waits for the Mac (ch.10).
 
@@ -19,8 +19,10 @@ Parked by design: taxonomy/sequence (ch.6), rating-formula/HEIC (ch.7); master d
 Feature-complete: M0–M4, sidecar cache, GPS place-names, 100% view, day-picker, batched location writes, recent-species buttons, GPM copy/paste GPS, manual location editor + on-card line, live external-edit refresh. Cancel-during-copy, LR-in-place, tz validated. [[project_sdcard_ingest]] [[project_location_editor]]
 
 **To do**
-- OPEN **Municipality → website output** — captured in viewer + sv_exiftool.config only; NOT in batch/pipeline/website. Wire freeze→CSV→website like Location/City/State/Country.
 - NEEDS TEST **GPM southern/western trip** — hemisphere sign on S/W coords.
+
+**Recently done**
+- DONE **Municipality → website output** — wired read (sv2 `-Municipality`)→CSV (COLUMN_NAMES/DATA_FILE_FIELDS + PICTURE_FIELDS)→picture row (projectlib UpdatePicture)→website (`getFormattedCityStateCountry`: shown between City and State, collapsed when equal to City). master_db SCHEMA_VERSION→3. Verified live on Greece 2026-05-05 blog. Existing sites need a re-run to backfill (XMP already carries it via geolocate). [[project_location_editor]]
 
 **Parked (by design)**
 - PARKED curated sidecar EXIF field set (blanket `-xmp:all<all` works today).

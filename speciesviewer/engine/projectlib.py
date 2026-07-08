@@ -643,8 +643,9 @@ class Project:
             "GPSPosition":      "",
             "Location":         "",
             "City":             "",
+            "Municipality":     "",
             "State":            "",
-            "Country":          "", 
+            "Country":          "",
             "CameraCreator":    "", 
             "JPGCreator":       "", 
             "CameraModel":      "", 
@@ -693,8 +694,9 @@ class Project:
         if upn["GPSPosition"] == "": upn["GPSPosition"] =       self.findAnySourceItem(files, "Composite:GPSPosition")
         upn["Location"] =          self.findXMPItem(files, "XMP:Location")
         upn["City"] =              self.findXMPItem(files, "XMP:City")
-        upn["State"] =             self.findXMPItem(files, "XMP:State") 
-        upn["Country"] =           self.findXMPItem(files, "XMP:Country") 
+        upn["Municipality"] =      self.findXMPItem(files, "XMP:Municipality")
+        upn["State"] =             self.findXMPItem(files, "XMP:State")
+        upn["Country"] =           self.findXMPItem(files, "XMP:Country")
         upn["CameraCreator"] =     self.readableCameraModel(self.findXMPItem(files, "CameraModel"))  + " Microcode " + self.findCameraItem(files, "EXIF:Software")
         upn["JPGCreator"] =        self.findJPGItem(files, "XMP:CreatorTool")
         upn["CameraModel"] =       self.readableCameraModel(self.findXMPItem(files, "CameraModel"))
