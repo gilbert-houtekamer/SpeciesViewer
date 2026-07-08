@@ -689,7 +689,12 @@ class Project:
         # back to the LARGEST JPG (the original, not a smaller DxO crop) so a
         # cropped render still scores as a genuine crop.
         if upn["ImageSize"] == "": upn["ImageSize"] = self.findLargestJPGSize(files)
-        upn["JPGSize"] =           self.findJPGItem(files, "ImageSize")
+        # JPGSize = the display JPG's size. findJPGItem returned the FIRST jpg in
+        # Files, which is often the derived '-small' web thumbnail (its 600x450
+        # then showed as "from master (600x450)" and fed the rating's size term).
+        # Take the LARGEST jpg instead — that's the real _DxO/Lightroom render,
+        # never the thumbnail.
+        upn["JPGSize"] =           self.findLargestJPGSize(files)
         if upn["GPSAltitude"] == "": upn["GPSAltitude"] =       self.findAnySourceItem(files, "EXIF:GPSAltitude")
         if upn["GPSPosition"] == "": upn["GPSPosition"] =       self.findAnySourceItem(files, "Composite:GPSPosition")
         upn["Location"] =          self.findXMPItem(files, "XMP:Location")
