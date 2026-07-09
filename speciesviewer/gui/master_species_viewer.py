@@ -78,10 +78,17 @@ class MasterSpeciesViewerDialog(QDialog):
 
         self._lang_combo = QComboBox()
         self._lang_combo.addItems(["NL", "EN", "Sci"])
-        self._lang_combo.setFixedWidth(55)
+        self._lang_combo.setFixedWidth(72)
         self._lang_combo.setToolTip("Species name language")
         self._lang_combo.currentIndexChanged.connect(self._on_lang_changed)
         top.addWidget(self._lang_combo)
+
+        self._regen_btn = QPushButton("Regenerate page…")
+        self._regen_btn.setToolTip(
+            "Rebuild this species' website page from the current master data "
+            "and upload it to the live site")
+        self._regen_btn.clicked.connect(self._on_regenerate)
+        top.addWidget(self._regen_btn)
         top.addStretch()
 
         self._jpg_btn = QPushButton("JPG only")
@@ -213,6 +220,9 @@ class MasterSpeciesViewerDialog(QDialog):
     def _set_editing_enabled(self, enabled: bool):
         self._del_blue_btn.setVisible(enabled)
         self._del_purple_btn.setVisible(enabled)
+        # Regenerate re-publishes to the live site from the full master — a
+        # writable-master (BigBoy) action; hide it on a read-only SmallMaster.
+        self._regen_btn.setVisible(enabled)
 
     def _load_species_list(self):
         self._species_rows = self._master_db.species_picker_rows()
@@ -275,6 +285,72 @@ class MasterSpeciesViewerDialog(QDialog):
     def _on_jpg_only_toggled(self, checked: bool):
         self._jpg_only = checked
         self._rebuild_cards()
+
+    # ── Regenerate this species' website page ──────────────────────────────
+    def _on_regenerate(self):
+        if not self._current_sci:
+            QMessageBox.information(self, "Regenerate page",
+                                    "Type a species name first, then regenerate its page.")
+            return
+        name = self._current_display or self._current_sci
+        if QMessageBox.question(
+                self, "Regenerate species page",
+                f"Rebuild the website page for “{name}” from the current master "
+                f"data and upload it to the live website?\n\n"
+                f"This re-picks the best photos (per age/sex/plumage) and "
+                f"republishes just this species' page. It does not change your "
+                f"master pictures.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+
+        from PyQt6.QtWidgets import QProgressDialog
+        prog = QProgressDialog("Regenerating…", None, 0, 0, self)
+        prog.setWindowTitle("Regenerate species page")
+        prog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        prog.setCancelButton(None)
+        prog.setMinimumDuration(0)
+        prog.show()
+        QApplication.processEvents()
+
+        def _cb(msg):
+            prog.setLabelText(msg)
+            QApplication.processEvents()
+
+        try:
+            from engine.regenerate_species import regenerate_species_page
+            res = regenerate_species_page(
+                self._current_sci, self._master_db, progress_cb=_cb)
+        except Exception as e:
+            logger.error(f"Regenerate species failed: {e}", exc_info=True)
+            res = {"ok": False, "error": str(e)}
+        finally:
+            prog.close()
+
+        if res.get("ok"):
+            self._status.setText(f"Regenerated and uploaded the page for {name}.")
+            from urllib.parse import quote
+            base = _config.get("websettings", "base_url", fallback="").strip().rstrip("/")
+            if not base:
+                base = "https://houtekamer.com"
+            elif not base.startswith("http"):
+                base = "https://" + base
+            links = []
+            for u in res.get("urls", []):
+                display = base + u
+                href = base + quote(u, safe="/")   # %20-encode spaces, keep slashes
+                links.append(f'<a href="{href}">{display}</a>')
+            box = QMessageBox(self)
+            box.setWindowTitle("Regenerate species page")
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setTextFormat(Qt.TextFormat.RichText)
+            box.setText(f"Done — the page for “{name}” was rebuilt and uploaded."
+                        f"<br><br>" + "<br>".join(links))
+            box.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+            box.exec()
+        else:
+            QMessageBox.warning(self, "Regenerate species page",
+                                res.get("error", "Regeneration failed — see the log."))
 
     def _on_columns_changed(self, value: int):
         self.columns = value
