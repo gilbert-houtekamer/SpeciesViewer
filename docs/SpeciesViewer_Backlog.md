@@ -43,6 +43,9 @@ Full arc live incl. retire-to-virttrip (verified Braakman). svv6 make-clickable 
 ## 3. Master Database, Editing & Viewer
 Phases 1–3 shipped+live. Trip Species Viewer Trip+Master scope works (scope-aware colour-delete incl master, preview, colour filter). **Master Species Viewer SHIPPED** (standalone; Master → Master Species Viewer…): searchable ~2000-species field from the master's own list, full-master card grid, master read-only rules for editing. [[project_master_db]] [[project_species_viewer_delete]]
 
+**Done**
+- DONE **Regenerate ONE species' website page** (c1a359d + afda800) — Master Species Viewer "Regenerate page…" button: re-renders + SFTP-uploads just this species' page from CURRENT master data (no re-read, no mutation). Fast — pulls this species' pictures/files from the MasterDB SQLite index (never the 127 MB data_files.csv), renders NL+EN via makeSpeciesWebDirectory, uploads its subtree; done dialog has clickable page URLs. Also fixed: getBirdInfo now recognises bare juv/imm/ad, and regenerate re-derives sex/age/plumage from the subject at render so token-101 captions ("jonge aasgier") + grouping work despite empty master ageintext columns. Caveat: parent index thumbnails need a full build; master ageintext columns still empty until a re-derive/re-commit pass. [[project_species_page_rating]]
+
 **To do**
 - OPEN/minor **"Upgrade best JPG" workflow** — sort-by-rating surfaces 800×533 best-picks; render `_DxO.jpg` → master card "Add new files for this picture" re-distils BestJPG. Make the loop smoother + confirm website re-publish picks it up. [[project_dxo_pipeline]]
 - OPEN **EXIF-cache mutable-bucket prune** — grows unbounded; add size/time eviction. [[project_exif_cache_design]]
