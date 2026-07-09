@@ -127,9 +127,9 @@ def main(args, config):
     MyProject.initMasterAndTrip(config, inittrip=True)
     
     logger.info(f"sv7WriteCommit: Commit project {MyProject.ProjectName()} on repository.")
-    if not MyProject.online:
-        print(f'Internet not online, you cannot commit without an internet connection.')
-        sys.exit(16)
+    import engine.connectivity as connectivity
+    if not connectivity.publish_reachable():
+        raise SVException(connectivity.PUBLISH_UNREACHABLE_MSG)
     
     if checkFrozenData(MyProject):
     # move "approved" files to the active directory

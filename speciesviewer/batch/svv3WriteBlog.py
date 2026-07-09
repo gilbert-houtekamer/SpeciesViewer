@@ -356,8 +356,9 @@ def main(args, config):
     if project.Trip is not None:
         project.Trip.master_repository_web = master_web
 
-    if not project.online:
-        raise SVException("svv3WriteBlog: blog cannot be created without internet access")
+    import engine.connectivity as connectivity
+    if not connectivity.publish_reachable():
+        raise SVException(connectivity.PUBLISH_UNREACHABLE_MSG)
 
     sc = engine.speciesclassification.SpeciesClassification(project)
     project.registerSpeciesClassification(sc)

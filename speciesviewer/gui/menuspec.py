@@ -1200,6 +1200,11 @@ def build_menu_spec(main_window):
              "Install Small Master": install_small_master,
         },
         "Help": {
+            "Connection status…": MenuSpec(
+                callback=lambda: __import__(
+                    "gui.connection_status", fromlist=["ConnectionStatusDialog"]
+                ).ConnectionStatusDialog(main_window).exec(),
+            ),
             "About": MenuSpec(
                 callback=lambda: AboutDialog(main_window).exec(),
             ),

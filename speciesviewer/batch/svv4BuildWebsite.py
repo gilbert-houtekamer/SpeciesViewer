@@ -224,8 +224,9 @@ def main(args, config):
     logger.info(f"svv4BuildWebsite: local build complete ({days} day(s)).")
 
     # --- SFTP upload ---
-    if not project.online:
-        logger.warning("Not online — local build only, nothing uploaded.")
+    import engine.connectivity as connectivity
+    if not connectivity.publish_reachable():
+        logger.warning("Publish server unreachable — local build only, nothing uploaded.")
         return
 
     password = config.get("websettings", "Sftppwd", fallback="").strip("'")

@@ -63,8 +63,9 @@ def main(args, config):
 
     logger.info(f"sv4WriteBlog: Create a blog for project {MyProject.ProjectName()}")
 
-    if not MyProject.online:
-        raise SVException(f"sv4WriteBlog: blog cannot be created without internet access")
+    import engine.connectivity as connectivity
+    if not connectivity.publish_reachable():
+        raise SVException(connectivity.PUBLISH_UNREACHABLE_MSG)
 
 
     files, pictures, from_time, last_time = MyProject.readProject()
