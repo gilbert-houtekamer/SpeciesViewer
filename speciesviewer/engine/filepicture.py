@@ -2,7 +2,7 @@ from engine.specieslib import Species
 from engine.speciesclassification import SpeciesClassification
 from engine.filecsv import Files
 from engine.picturecsv import Pictures
-from engine.exif_writer import exiftool_write
+from engine.exif_writer import exiftool_write, run_exiftool_files
 from engine.sidecarlib import push_metadata_to_dop
 from utils.sidecar_policy import (
     color_rating_to_xmp_enabled, color_rating_to_dop_enabled,
@@ -400,7 +400,124 @@ class FilePicture:
         # update internal and external data_pictures (just one per definition)
         upn_object = self.replaceUPNSubject(upn_name, original_subject, corrected_subject, sc_object)
         return upn_object, files_written
-   
+
+    def updateSubjects(self, filenames, corrected_subject):
+        """Batched multi-picture version of updateSubject: write the SAME
+        `corrected_subject` to many pictures with just TWO exiftool calls (one
+        batched read for the on-disk guard, one batched write) instead of a
+        read+write PER file, and rewrite data_files.csv / data_pictures.csv ONCE
+        at the end instead of once per picture. Semantics match updateSubject +
+        replaceFileSubject exactly — same species resolution, same write-target
+        filter (UPN + writable ext + CSV-subject == original), same on-disk
+        match guard — only the I/O is coalesced. Returns (updated_upns,
+        files_written). Used by the Set-species multi-selection commit.
+        """
+        # Resolve the species ONCE — every picture gets the identical subject.
+        try:
+            parts = ast.literal_eval(corrected_subject)
+            lookup_name = (max(parts, key=len) if isinstance(parts, list) and parts
+                           else corrected_subject)
+        except Exception:
+            lookup_name = corrected_subject
+        scientific_name = self.sc.getSpecies(lookup_name) if corrected_subject != "" else ""
+        sc_object = self.sc.sc_dict[scientific_name] if scientific_name else None
+        if corrected_subject != "" and scientific_name == "":
+            logger.warning("The species name is not recognized, but the updated "
+                           "keywords are stored in the files.")
+        correct_for_xmp = (format_subject_for_xmp(corrected_subject)
+                           if corrected_subject != "" else "")
+
+        # 1) Collect every write target across the selection, pre-filtered exactly
+        #    like updateSubject's loop (same UPN, writable type, on-CSV subject
+        #    equals this picture's original). Dedup by path.
+        targets = []            # (file_key, Path, original_subject)
+        seen = set()
+        updated_upns = set()
+        for fn in filenames:
+            name = Path(fn).name
+            if name not in self.fi.files_dict:
+                continue
+            upn_name = self.fi.files_dict[name]["UniquePictureName"]
+            orig = self.getSubject(name)
+            updated_upns.add(upn_name)
+            for f, frow in self.fi.files_dict.items():
+                if frow["UniquePictureName"] != upn_name:
+                    continue
+                if frow.get("WindowsExtension", "").lower() not in _SUBJECT_WRITE_EXT:
+                    continue
+                if frow["XMP:Subject"] != orig:
+                    continue
+                fp = Path(frow["WindowsFileName"])
+                key = os.path.normcase(os.path.normpath(str(fp)))
+                if key in seen:
+                    continue
+                seen.add(key)
+                targets.append((f, fp, orig))
+
+        files_written = 0
+        if targets:
+            # 2) ONE batched read of the on-disk XMP:Subject for the guard.
+            current_by_path = {}
+            try:
+                out = run_exiftool_files(
+                    ["-j", "-XMP:Subject"], [fp for _, fp, _ in targets]).stdout
+                for entry in (json.loads(out) if out else []):
+                    subj = entry.get("Subject", [])
+                    if isinstance(subj, str):
+                        subj = [subj]
+                    key = os.path.normcase(os.path.normpath(entry.get("SourceFile", "")))
+                    current_by_path[key] = subj
+            except Exception as e:
+                logger.warning(f"Batched subject read failed ({e}); on-disk guard "
+                               f"will skip unverified files, as the per-file path does.")
+
+            # 3) Apply the same match guard as replaceFileSubject, collecting the
+            #    files to actually write. The CSV cache is updated for every
+            #    pre-filtered target regardless (mirrors replaceFileSubject, which
+            #    sets files_dict[...] even when the on-disk write is skipped).
+            write_paths = []
+            for f, fp, orig in targets:
+                current = current_by_path.get(
+                    os.path.normcase(os.path.normpath(str(fp))), [])
+                try:
+                    orig_list = ast.literal_eval(orig)
+                    if not isinstance(orig_list, list):
+                        raise ValueError
+                except Exception:
+                    orig_list = [orig]
+                original_is_empty = (not orig_list) or all(
+                    (s is None or str(s).strip() in ("", "[]")) for s in orig_list)
+                if original_is_empty or orig_list == current:
+                    write_paths.append(fp)
+                self.fi.files_dict[f]['XMP:Subject'] = corrected_subject
+
+            # 4) ONE batched write of the identical new subject to the whole set.
+            if write_paths:
+                run_exiftool_files(
+                    [f"-XMP:Subject={correct_for_xmp}", "-overwrite_original"],
+                    write_paths)
+                files_written = len(write_paths)
+
+        # 5) Update each UPN object once (same fields replaceUPNSubject sets), then
+        #    persist the CSV + summary ONCE for the whole batch.
+        for upn_name in updated_upns:
+            upn_object = self.upn.UniquePictureName_dict.get(upn_name)
+            if upn_object is None:
+                continue
+            upn_object['subject'] = corrected_subject
+            upn_object['errormessage'] = ''
+            if sc_object is not None:
+                upn_object['NLSoortNaam'] = sc_object['DutchName']
+                upn_object['EngSoortNaam'] = sc_object['EnglishName']
+                upn_object['WetSoortNaam'] = sc_object['ScientificName']
+            elif corrected_subject == "":
+                upn_object['NLSoortNaam'] = ''
+                upn_object['EngSoortNaam'] = ''
+                upn_object['WetSoortNaam'] = ''
+        self.fi.write_project_files()
+        self.upn.write_project_summary()
+        return updated_upns, files_written
+
 
     # read all species
     def readMaster(self, trippath, projectdirectory, getEarlierDays = False, silent=False):

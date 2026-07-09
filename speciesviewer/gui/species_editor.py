@@ -514,19 +514,14 @@ class SpeciesInfoPanel(QWidget):
                   else f"Committing {format_subject_for_xmp(corrected_subject)} to")
         logger.info(f"📦 {action} {n} file{'s' if n != 1 else ''}")
 
-        updated_upns: set[str] = set()
-        for i, f in enumerate(matching_files):
-            self._safe_status(f"📦 {action} … {i + 1} of {n}")
-            QApplication.processEvents()
-            orig = fpr.getSubject(f.name)
-            upn_object, files_written = fpr.updateSubject(f.name, orig, corrected_subject)
-            if files_written:
-                logger.debug(f"✅ Updated {f.name}: {files_written} file(s) on disk.")
-            else:
-                logger.debug(f"⚠️ {f.name}: no XMP files rewritten (CSV cache updated).")
-            upn_name = fpr.fi.files_dict.get(f.name, {}).get("UniquePictureName")
-            if upn_name:
-                updated_upns.add(upn_name)
+        # Batched write: the whole selection gets the same subject in two
+        # exiftool calls (one guard-read, one write) + one CSV/summary rewrite,
+        # instead of read+write+CSV+summary per file (was ~0.6s/file → 23s@37).
+        self._safe_status(f"📦 {action} {n} file{'s' if n != 1 else ''}…")
+        QApplication.processEvents()
+        updated_upns, files_written = fpr.updateSubjects(matching_files, corrected_subject)
+        logger.info(f"✅ {files_written} file(s) rewritten on disk across "
+                    f"{len(updated_upns)} picture(s).")
 
         self._safe_status(f"✅ Done — {n} file{'s' if n != 1 else ''} updated.")
         QApplication.processEvents()
