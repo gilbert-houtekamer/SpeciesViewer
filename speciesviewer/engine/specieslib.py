@@ -86,11 +86,11 @@ class Species:
                 summerwinter = "br."
             elif token.lower() in ["non-breeding", "winter"]:
                 summerwinter = "non-br."
-            elif token.lower() in ["juvenile", "jong", "juv."]:
+            elif token.lower() in ["juvenile", "jong", "juv.", "juv"]:
                 ageintext = "juv."
-            elif token.lower() in ["immature", "onvolwassen", "imm."]:
+            elif token.lower() in ["immature", "onvolwassen", "imm.", "imm"]:
                 ageintext = "imm."
-            elif token.lower() in ["adult", "volwassen", "ad."]:
+            elif token.lower() in ["adult", "volwassen", "ad.", "ad"]:
                 ageintext = "ad."
         return malefemale, ageintext, summerwinter
 

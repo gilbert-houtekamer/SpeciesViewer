@@ -116,6 +116,15 @@ def regenerate_species_page(scientific_name, master_db, progress_cb=None, upload
         MyProject.UniquePictureName_dict[pic["UniquePictureName"]] = pic
     files = master_db.files_for_upns([p["UniquePictureName"] for p in pics])
     MyProject.files_dict.update(files)
+
+    # Re-derive sex/age/plumage from each picture's SUBJECT keyword. The master
+    # stores the qualifier in the keyword ("['aasgier', 'juv']") but historically
+    # never filled the malefemale/ageintext/summerwinter columns that token 101
+    # (the "jonge aasgier" caption) and the age/sex/plumage grouping read. This
+    # mirrors what the viewer does, so the website reflects the same qualifiers.
+    for pic in MyProject.UniquePictureName_dict.values():
+        mf, age, sw = sp.getBirdInfo(pic.get("subject", "") or "")
+        pic["malefemale"], pic["ageintext"], pic["summerwinter"] = mf, age, sw
     if not target_path:
         return {"ok": False,
                 "error": f"'{scientific_name}' has no target path in the master (nothing to render)."}
