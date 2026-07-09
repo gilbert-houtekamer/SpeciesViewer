@@ -3348,7 +3348,7 @@ class AddTripToMasterDialog(BaseTripModuleDialog):
 class _RescanWorker(QObject):
     """Runs exifcache.rescan (the long master EXIF scan) on a worker thread so
     the dialog stays responsive. rescan logs its own per-chunk progress."""
-    finished = pyqtSignal(str)   # error string, or "" on success
+    finished = pyqtSignal(str, str)   # (error or "", brag summary or "")
 
     def __init__(self, root, cache_path):
         super().__init__()
@@ -3358,12 +3358,12 @@ class _RescanWorker(QObject):
     def run(self):
         try:
             from engine import exifcache
-            exifcache.rescan(self._root, self._cache_path)
-            self.finished.emit("")
+            stats = exifcache.rescan(self._root, self._cache_path)
+            self.finished.emit("", stats.get("summary", ""))
         except Exception as e:
             logging.getLogger("speciesviewer").error(
                 f"Master EXIF rescan failed: {e}", exc_info=True)
-            self.finished.emit(str(e))
+            self.finished.emit(str(e), "")
 
 
 class RescanMasterCacheDialog(BaseTripModuleDialog):
@@ -3374,10 +3374,12 @@ class RescanMasterCacheDialog(BaseTripModuleDialog):
             title="Rescan master EXIF cache",
             info_text=("Read EXIF for every picture under the master "
                        "(<master>/biota) into the master EXIF cache "
-                       "(exif_cache_master.json). The first run is slow "
-                       "(~1 hour for the full master); afterwards only new or "
-                       "changed files are re-read. This cache is separate from "
-                       "the day/trip cache, so it never slows Read Directory."),
+                       "(exif_cache_master.json). The first run reads every file "
+                       "in parallel, using as many workers as this machine's "
+                       "cores allow — a full master (~160k files) takes a few "
+                       "minutes; afterwards only new or changed files are "
+                       "re-read. This cache is separate from the day/trip cache, "
+                       "so it never slows Read Directory."),
             subdirectory=False
         )
         # The base dialog defaults the path to the TRIP picture root, which is
@@ -3402,10 +3404,11 @@ class RescanMasterCacheDialog(BaseTripModuleDialog):
             return   # already running
         from engine import exifcache
         cache_path = exifcache.master_cache_path(_config)
+        max_workers = exifcache.auto_worker_count(10 ** 6)
         self.write_btn.setEnabled(False)
         self.status_label.setText(
-            "Scanning master EXIF into the cache… (progress in the log; "
-            "first run can take ~1 hour)")
+            f"Scanning master EXIF into the cache with up to {max_workers} "
+            f"parallel workers… (progress in the log)")
         self._rescan_thread = QThread(self)
         self._rescan_worker = _RescanWorker(root, cache_path)
         self._rescan_worker.moveToThread(self._rescan_thread)
@@ -3416,12 +3419,15 @@ class RescanMasterCacheDialog(BaseTripModuleDialog):
         self._rescan_thread.finished.connect(self._rescan_thread.deleteLater)
         self._rescan_thread.start()
 
-    def _on_rescan_done(self, err):
+    def _on_rescan_done(self, err, summary):
         self._rescan_thread = None
         self._rescan_worker = None
         self.write_btn.setEnabled(True)
-        self.status_label.setText(
-            f"❌ {err}" if err else "✅ Master EXIF cache updated.")
+        if err:
+            self.status_label.setText(f"❌ {err}")
+        else:
+            self.status_label.setText(
+                f"✅ {summary}" if summary else "✅ Master EXIF cache updated.")
 
 
 class MasterPipelineDialog(QDialog):

@@ -351,30 +351,41 @@ def read_metadata_parallel(paths, fields, workers, primary):
             yield fut.result()
 
 
+def _fmt_duration(seconds):
+    """'5 min 25 s' / '48 s' — plain, for logs and the GUI status line."""
+    seconds = int(round(seconds))
+    m, s = divmod(seconds, 60)
+    return f"{m} min {s} s" if m else f"{s} s"
+
+
 def rescan(root, cache_path, chunk=2000, workers="auto"):
     """Warm/refresh a cache file by reading `root` with exiftool: read only the
-    files not already cached (or changed), in chunks to bound memory, then save
-    once. No CSV, no XMP writes — a pure cache-population pass for the Master
-    menu's Rescan. Progress is logged so the GUI spinner has running feedback.
-    First full-master pass is slow (~1 h / 159k files); later passes re-read
-    only what changed."""
+    files not already cached (or changed), split across N parallel exiftool
+    workers (auto_worker_count), in super-chunks to bound memory, then save once.
+    No CSV, no XMP writes — a pure cache-population pass for the Master menu's
+    Rescan. Progress is logged for the GUI spinner. A full ~160k-file master
+    reads in a few minutes on a many-core machine (benchmarked ~500 files/s at
+    16 workers, 2026-07-09); later passes re-read only what changed.
+
+    Returns a stats dict that also carries the run's brag numbers
+    (read/workers/elapsed/rate/summary) so the caller can show them."""
     import exiftool
     from engine.selected_fields import SELECTED_FIELDS
+    start = time.time()
     fp = field_fingerprint(SELECTED_FIELDS)
     cache = load_cache(cache_path)
     hits, misses, stats = partition(root, cache, fp)
-    logger.info(f"EXIF cache rescan of {root}: "
-                f"{len(hits)} already cached, {len(misses)} to read.")
+    total = len(misses)
+    n_workers = auto_worker_count(total, workers) if misses else 0
     if misses:
-        total = len(misses)
-        n_workers = auto_worker_count(total, workers)
+        logger.info(f"EXIF cache rescan of {root}: {len(hits):,} already cached, "
+                    f"{total:,} to read with {n_workers} parallel workers.")
         # Read in super-chunks so peak memory stays bounded to one group even on
         # a 159k-file master scan; each group is split across n_workers parallel
         # exiftool processes (read_metadata_parallel). No logger= on the helper:
         # pyexiftool would echo every -stay_open command into the GUI log; the
         # per-group progress lines below are the feedback.
         group_size = max(chunk, n_workers * 1000)
-        done = 0
         with exiftool.ExifToolHelper(
                 common_args=COMMON_ARGS,
                 encoding="utf-8", check_execute=False) as et:
@@ -384,10 +395,28 @@ def rescan(root, cache_path, chunk=2000, workers="auto"):
                 for batch in read_metadata_parallel(group, SELECTED_FIELDS, gw, et):
                     update(cache, batch, fp)
                 done = min(i + group_size, total)
-                logger.info(f"EXIF cache rescan: read {done}/{total} files "
+                logger.info(f"EXIF cache rescan: read {done:,}/{total:,} files "
                             f"({n_workers} workers)")
         save_cache(cache_path, cache)
-    logger.info(f"EXIF cache rescan complete: {len(cache['immutable'])} immutable "
-                f"+ {len(cache['mutable'])} mutable entries in "
-                f"{os.path.basename(cache_path)}.")
+    else:
+        logger.info(f"EXIF cache rescan of {root}: all {len(hits):,} files "
+                    f"already cached — nothing to read.")
+
+    elapsed = time.time() - start
+    rate = total / elapsed if elapsed > 0 else 0.0
+    if total:
+        summary = (f"{total:,} files processed by {n_workers} workers in "
+                   f"{_fmt_duration(elapsed)} ({rate:,.0f} files/s sustained)")
+    else:
+        summary = (f"all {len(hits):,} files already up to date "
+                   f"({_fmt_duration(elapsed)})")
+    logger.info(f"EXIF cache rescan complete: {summary}. Cache now "
+                f"{len(cache['immutable']):,} immutable + "
+                f"{len(cache['mutable']):,} mutable entries.")
+    stats.update({
+        "read": total, "workers": n_workers, "elapsed": elapsed,
+        "rate": rate, "hits": len(hits),
+        "immutable": len(cache["immutable"]), "mutable": len(cache["mutable"]),
+        "summary": summary,
+    })
     return stats
