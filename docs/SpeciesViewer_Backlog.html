@@ -236,6 +236,18 @@ filmstrip position, inline master comparison (via Trip+Master scope), grid↔lar
 
 <!-- ============================================================ -->
 <h2>9. Usability &amp; Polish</h2>
+<h3>Done</h3>
+<ul>
+  <li><strong>Connectivity / publish reliability</strong> <span class="tag-shipped">DONE</span> —
+    publishing (blog / website / commit) now checks the <strong>SFTP publish server</strong>
+    (<code>engine.connectivity.publish_reachable</code>), not a website HTTP ping, so a sluggish
+    website no longer reads as “no internet”; the failure message is specific. Added
+    <strong>Help → Connection status</strong> lamps (publish / GBIF / place names / website, with
+    latency and an amber “slow” state). (<code>99547b5</code>)</li>
+  <li><strong>Species qualifier picker + abbreviations</strong> <span class="tag-shipped">DONE</span> —
+    sex / age / plumage toggles in both species editors; the qualifier shows on grid cards and the
+    large viewer as <code>fuut ♂♀ br.</code> (<code>9efab26</code> / <code>e69cbf8</code>)</li>
+</ul>
 <h3>To do</h3>
 <ul>
   <li><strong>Preview cards don't resize live</strong> <span class="tag-open">OPEN / minor</span> —

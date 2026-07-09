@@ -76,6 +76,10 @@ Shipped+live on SmallBoy; auto-locks read-only. No open items. [[project_small_m
 All closed. [[project_viewer_convergence]]
 
 ## 9. Usability & Polish
+**Done**
+- DONE **connectivity/publish reliability** (99547b5) — publish (blog/website/commit) now gates on the SFTP server (`engine.connectivity.publish_reachable`), not a website HTTP ping; specific message replaces the misleading "no internet"; Help → Connection status lamps (publish / GBIF / place names / website, latency + amber-if-slow).
+- DONE **species qualifier picker + abbreviations** (9efab26 / e69cbf8) — sex/age/plumage toggles in both species editors; `fuut ♂♀ br.` shown on cards + large viewer.
+
 **To do**
 - OPEN/minor **preview cards don't resize live** — fixed at build; add debounced resizeEvent if it grates.
 
