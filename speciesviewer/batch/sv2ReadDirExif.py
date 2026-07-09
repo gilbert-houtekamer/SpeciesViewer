@@ -153,10 +153,21 @@ def main(args, config):
         # read just the chosen folder's own pictures.
         recurse = config.getboolean("project", "Recurse", fallback=True)
         hits, misses, stats = exifcache.partition(root, cache, fingerprint, recurse)
+        # Split the uncached files across N parallel exiftool workers. N scales
+        # per-machine (physical-core count, capped) and down for small folders —
+        # see engine.exifcache.auto_worker_count. `et` is reused as the primary
+        # worker, so the single-worker case is byte-for-byte the old path.
+        workers = exifcache.auto_worker_count(
+            len(misses), config.get("performance", "exif_workers", fallback="auto"))
         try:
-            fresh = et.get_metadata(misses, params=SELECTED_FIELDS) if misses else []
+            fresh = []
+            for batch in exifcache.read_metadata_parallel(
+                    misses, SELECTED_FIELDS, workers, et):
+                fresh.extend(batch)
         except Exception as e:
             raise SVException(f"No files found in the directory {root}\nError {e}: {e.stderr}{e.stdout}.")
+        if misses and workers > 1:
+            logger.info(f"EXIF read split across {workers} parallel exiftool workers.")
         metadata = hits + fresh
         if persist:
             exifcache.update(cache, fresh, fingerprint)

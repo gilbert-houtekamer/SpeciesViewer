@@ -34,6 +34,7 @@ destroys data that cannot be reconstructed.
 | `[fullres]` | `algorithm`, `fbdd`, `bright`, `denoise` | RAW decode quality for the 100% view |
 | `[avibase]` | `source_format`, `phone_layout`, `first_column_lang` | Excel checklist export settings |
 | `[masterdb]` | `pending_warn_seconds`, `checkpoint_debounce_seconds` | SQLite write-queue behaviour |
+| `[performance]` | `exif_workers` | Parallel exiftool workers for reads. `auto` (default; ≈physical cores, capped 16, floored by file count) or an integer to pin this machine. Hardware-dependent, hence machine scope. |
 | `[WindowState]` | `<dialog>_x/_y/_w/_h`, `<dialog>_vsplit/_hsplit` | Per-dialog geometry — one entry per window |
 | `[PhotoSorter]` | `last_source_folder`, `last_dest_folder` | Last SD-card and destination paths |
 

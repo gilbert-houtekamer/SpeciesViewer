@@ -48,7 +48,9 @@ from pathlib import Path
 UNKNOWN_DATE_DIR = "unknown-date"
 
 _COPY_WORKERS = 4   # parallel copy threads; card I/O is the bottleneck, 4 keeps pipeline full
-_XMP_WORKERS  = 4   # parallel exiftool processes for XMP sidecar creation
+# XMP sidecar creation scales its exiftool workers per-machine via
+# engine.exifcache.auto_worker_count (≈physical-core count, capped, floored by
+# file count) instead of a hardcoded 4 — see project_exif_parallelism.
 
 # ── Platform-specific fast copy ───────────────────────────────────────────────
 # Windows: CopyFileEx (the same kernel call Explorer uses — internal async I/O,
@@ -455,19 +457,21 @@ def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None):
 def _write_sidecars(raw_paths, log, progress_cb=None) -> int:
     """Create one XMP sidecar per RAW that lacks one.
 
-    Splits the work across _XMP_WORKERS parallel exiftool processes.  Each
-    process is an independent subprocess so there is no shared state.
-    progress_cb is called from the calling thread (as_completed loop) so it
-    is safe to update Qt widgets from there."""
+    Splits the work across N parallel exiftool processes (N auto-scales per
+    machine via auto_worker_count).  Each process is an independent subprocess
+    so there is no shared state.  progress_cb is called from the calling thread
+    (as_completed loop) so it is safe to update Qt widgets from there."""
     todo = [p for p in raw_paths if not Path(p).with_suffix(".xmp").exists()]
     if not todo:
         return 0
     from engine.exif_writer import run_exiftool_files
+    from engine.exifcache import auto_worker_count
     opts = ["-tagsfromfile", "@", "-xmp:all<all",
             "-XMP-exif:SubjectDistance<Olympus:FocusDistance#", "-o", "%d%f.xmp"]
 
     n = len(todo)
-    chunk_size = max(1, (n + _XMP_WORKERS - 1) // _XMP_WORKERS)
+    workers = auto_worker_count(n)
+    chunk_size = max(1, (n + workers - 1) // workers)
     chunks = [todo[i:i + chunk_size] for i in range(0, n, chunk_size)]
 
     def _run_chunk(chunk):
@@ -479,7 +483,7 @@ def _write_sidecars(raw_paths, log, progress_cb=None) -> int:
 
     created = 0
     done_count = 0
-    with ThreadPoolExecutor(max_workers=_XMP_WORKERS) as pool:
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         future_map = {pool.submit(_run_chunk, chunk): chunk for chunk in chunks}
         for future in as_completed(future_map):
             try:

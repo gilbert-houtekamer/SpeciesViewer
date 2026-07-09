@@ -1,15 +1,16 @@
 # SpeciesViewer — Project Backlog
 
-Updated: 2026-07-08 · Branch: ClaudeSpecies · (machine-readable mirror of `SpeciesViewer_Backlog.html`)
+Updated: 2026-07-09 · Branch: ClaudeSpecies · (machine-readable mirror of `SpeciesViewer_Backlog.html`)
 
 Legend: **OPEN** to build · **NEW** newly raised · **BUG** defect · **NEEDS TEST** built/awaiting live run · **PARKED** deferred by design · **DONE** shipped.
 
 Since the 16-June edition most of the backlog shipped (WP4 identity decouple, WP8 picture-root, cross-platform path P1, retire→virttrip arc, Working Days, Trip Species Viewer delete rework). Focus below = the short remaining list.
 
 ## Active shortlist
-1. **EXIFtool throughput** — NEW (ch.11).
-2. **Virtual Trips WP7** — retroactive builder + amber/green blog bubbles (ch.2).
-3. Smaller: EXIF-cache prune (ch.3), Trip→Master delete live test (ch.4).
+1. **Virtual Trips WP7** — retroactive builder + amber/green blog bubbles (ch.2).
+2. Smaller: EXIF-cache prune (ch.3), Trip→Master delete live test (ch.4).
+
+Recently shipped: **EXIFtool parallel workers** (ch.11) — per-machine N-worker cold reads; see ch.11 below.
 
 Parked by design: taxonomy/sequence (ch.6), rating-formula/HEIC (ch.7); master data relativization waits for the Mac (ch.10).
 
@@ -99,11 +100,12 @@ Path layer P1 DONE (utils/paths.py host-independent). [[project_portability_audi
 - OPEN/until-Mac **case-sensitivity + defaults** — strip full-path `.lower()` in engine/projectlib.py; DxO/default paths → blank/config.
 
 ## 11. Performance & EXIFtool
+**Recently done**
+- DONE **EXIFtool parallel workers** — cold day reads (~20s Greece) now split the uncached `misses` list across N independent exiftool processes. `engine.exifcache.read_metadata_parallel` (generator, memory-bounded, reuses the caller's primary helper for chunk 0) + `auto_worker_count(n, configured, cap=16, per_worker=24)` = `min(cpu_count()//2, 16, n//24)`. Wired into sv2ReadDirExif (day/trip Read Directory), `exifcache.rescan` (master Rescan, super-chunked for memory), and SD-card XMP sidecar creation (retired the hardcoded `_XMP_WORKERS=4`). Config `[performance] exif_workers = auto` (per-machine; default `auto`, or pin an int). Benchmarked 2026-07-09: speedup peak tracks **physical** cores (BigBoy 32-logical → 16 workers ≈7.4×; SmallBoy 16-logical → 6–8 ≈2.5×); over-splitting small folders regresses (hence the file-count floor). Verified parallel output byte-identical to serial + real sv2 e2e. [[project_exif_parallelism]]
+
 **To do**
-- NEW/OPEN/investigate **EXIFtool throughput**:
-  - Parallel workers — N exiftool procs each on 1/N of a big read, merge; measure vs I/O/Dropbox limits.
-  - Shared persistent server — one app-wide `-stay_open` exiftool. NOTE: per-operation stay_open already exists (gui/preview_extract.py; sv2 reads). Idea = widen to one server + worker pool vs per-run launch. [[project_preview_extraction]]
-  - Ties [[project_perf_optimizations]] (real value = write-contract + big reads, not micro-perf).
+- OPEN **Shared persistent server** — one app-wide `-stay_open` exiftool. NOTE: per-operation stay_open already exists (gui/preview_extract.py; sv2 reads). Idea = widen to one server + worker pool vs per-run launch. [[project_preview_extraction]]
+- Ties [[project_perf_optimizations]] (real value = write-contract + big reads, not micro-perf).
 
 **Parked**
 - PAUSED general micro-perf sweep (processEvents throttle shipped; rest non-winning/risky). Revisit with a measured bottleneck.

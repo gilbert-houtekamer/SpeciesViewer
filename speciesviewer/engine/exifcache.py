@@ -31,11 +31,18 @@ import shutil
 import tempfile
 import time
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger("speciesviewer")
 
 CACHE_VERSION = 1
 CACHE_BACKUPS = 3
+
+# exiftool common args used by every read path (sv2ReadDirExif, rescan, and the
+# spawned parallel workers). Kept in ONE place so the parallel workers read
+# byte-identically to the primary helper. -G group names + UTF-8 for both file
+# contents and filenames (see sv2ReadDirExif for the full rationale).
+COMMON_ARGS = ["-G", "-charset", "utf8", "-charset", "filename=utf8"]
 
 # Bytes never change → name+size key (enables cross-folder / cross-copy reuse).
 # NOTE: dng is deliberately NOT here — DxO/PureRaw DeepPRIME DNGs are bulky and
@@ -274,7 +281,77 @@ def update(cache, fresh, fingerprint):
             }
 
 
-def rescan(root, cache_path, chunk=2000):
+def auto_worker_count(n_files, configured="auto", *, cap=16, per_worker=24):
+    """How many parallel exiftool workers to use for `n_files`.
+
+    Benchmarked 2026-07-09 (see project_exif_parallelism): a single -stay_open
+    exiftool parses files serially, so N independent processes give near-linear
+    speedup UP TO the machine's *physical* core count, then regress (per-worker
+    process startup + contention overtake the gains). Findings:
+      * the useful peak tracks PHYSICAL cores (SmallBoy ~6, BigBoy ~16), not the
+        LOGICAL count os.cpu_count() returns (16 / 32) — hyperthreads add no
+        parse throughput. cpu_count()//2 is the right approximation.
+      * small folders must scale DOWN: on 132 files, 16+ workers spend more time
+        launching exiftool than reading. `per_worker` enforces that floor.
+
+    `configured` is the [performance] exif_workers config value: "auto" (derive
+    from cores) or an explicit integer to pin a machine. `cap` bounds the top
+    end regardless (past the physical-core count every machine regressed).
+    """
+    text = str(configured or "auto").strip().lower()
+    if text in ("", "auto", "0"):
+        base = max(2, (os.cpu_count() or 4) // 2)
+    else:
+        try:
+            base = max(1, int(text))
+        except ValueError:
+            base = max(2, (os.cpu_count() or 4) // 2)
+    by_files = max(1, n_files // per_worker)
+    return max(1, min(base, cap, by_files))
+
+
+def _read_chunk(paths, fields):
+    """Read one chunk in its own short-lived exiftool subprocess. Used by the
+    worker threads in read_metadata_parallel; the primary helper handles the
+    first chunk on the calling thread, so no process is spawned needlessly."""
+    import exiftool
+    with exiftool.ExifToolHelper(
+            common_args=COMMON_ARGS, encoding="utf-8", check_execute=False) as et:
+        return et.get_metadata(paths, params=fields)
+
+
+def read_metadata_parallel(paths, fields, workers, primary):
+    """Yield exiftool metadata for `paths` in batches, split across `workers`
+    parallel exiftool processes.
+
+    A GENERATOR (not a list) so a huge scan (master rescan) can fold each batch
+    into the cache and free it before the next arrives — memory stays bounded by
+    the largest single batch, not the whole scan.
+
+    `primary` is the caller's already-open ExifToolHelper; it reads the first
+    chunk on THIS thread (so it is genuinely reused, never left idle), while the
+    remaining chunks each get a short-lived helper on a worker thread. Each
+    ExifToolHelper is its own subprocess, so the threads never share state and
+    the GIL is released while they block on their pipes. Batch order is not
+    preserved — callers build rows per-record, so order does not matter.
+    """
+    if not paths:
+        return
+    if workers <= 1 or len(paths) <= 1:
+        yield primary.get_metadata(paths, params=fields)
+        return
+    n = len(paths)
+    size = max(1, (n + workers - 1) // workers)
+    chunks = [paths[i:i + size] for i in range(0, n, size)]
+    # chunks[0] on this thread via `primary`; chunks[1:] on the pool.
+    with ThreadPoolExecutor(max_workers=max(1, len(chunks) - 1)) as pool:
+        futures = [pool.submit(_read_chunk, c, fields) for c in chunks[1:]]
+        yield primary.get_metadata(chunks[0], params=fields)
+        for fut in as_completed(futures):
+            yield fut.result()
+
+
+def rescan(root, cache_path, chunk=2000, workers="auto"):
     """Warm/refresh a cache file by reading `root` with exiftool: read only the
     files not already cached (or changed), in chunks to bound memory, then save
     once. No CSV, no XMP writes — a pure cache-population pass for the Master
@@ -289,16 +366,26 @@ def rescan(root, cache_path, chunk=2000):
     logger.info(f"EXIF cache rescan of {root}: "
                 f"{len(hits)} already cached, {len(misses)} to read.")
     if misses:
-        # No logger= here: pyexiftool would dump every -stay_open command into
-        # the GUI log; our own per-chunk progress lines below are the feedback.
+        total = len(misses)
+        n_workers = auto_worker_count(total, workers)
+        # Read in super-chunks so peak memory stays bounded to one group even on
+        # a 159k-file master scan; each group is split across n_workers parallel
+        # exiftool processes (read_metadata_parallel). No logger= on the helper:
+        # pyexiftool would echo every -stay_open command into the GUI log; the
+        # per-group progress lines below are the feedback.
+        group_size = max(chunk, n_workers * 1000)
+        done = 0
         with exiftool.ExifToolHelper(
-                common_args=["-G", "-charset", "utf8", "-charset", "filename=utf8"],
+                common_args=COMMON_ARGS,
                 encoding="utf-8", check_execute=False) as et:
-            for i in range(0, len(misses), chunk):
-                fresh = et.get_metadata(misses[i:i + chunk], params=SELECTED_FIELDS)
-                update(cache, fresh, fp)
-                logger.info(f"EXIF cache rescan: read "
-                            f"{min(i + chunk, len(misses))}/{len(misses)} files")
+            for i in range(0, total, group_size):
+                group = misses[i:i + group_size]
+                gw = auto_worker_count(len(group), workers)
+                for batch in read_metadata_parallel(group, SELECTED_FIELDS, gw, et):
+                    update(cache, batch, fp)
+                done = min(i + group_size, total)
+                logger.info(f"EXIF cache rescan: read {done}/{total} files "
+                            f"({n_workers} workers)")
         save_cache(cache_path, cache)
     logger.info(f"EXIF cache rescan complete: {len(cache['immutable'])} immutable "
                 f"+ {len(cache['mutable'])} mutable entries in "
