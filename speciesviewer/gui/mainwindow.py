@@ -951,6 +951,35 @@ class MainWindow(QMainWindow):
         self._master_species_viewer_dlg = MasterSpeciesViewerDialog(self)
         self._master_species_viewer_dlg.show()
 
+    def open_species_map(self):
+        """Standalone species distribution map — a peer of the Species Viewer
+        (grid): pick 1–4 species and see their GPS points on a map, click a
+        bubble for its pictures, and open large views straight from the map.
+        Opens empty; the user adds species."""
+        from gui.map_view import MapView
+        master_root = _config.get("master", "masterbiotadatabase", fallback="").strip()
+        if not master_root or not Path(master_root).exists():
+            QMessageBox.warning(self, "Species Map",
+                                "No master database is configured.")
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            from db.master_db import MasterDB
+            db = MasterDB(master_root)
+            db.ensure_fresh()
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            if self.logger:
+                self.logger.error(f"Species Map: master load failed: {e}", exc_info=True)
+            QMessageBox.warning(self, "Species Map",
+                                "Master database load failed — see the log.")
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        # Strong ref on the main window so the dialog isn't GC'd.
+        self._species_map_dlg = MapView(self, db)
+        self._species_map_dlg.show()
+
     def open_virttrip_rating_editor(self):
         """Read-only Rating Editor over the active virtual trip (Album). Its
         pictures are the master's shared files, so editing is off for now —

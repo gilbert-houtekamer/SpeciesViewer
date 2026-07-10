@@ -1156,9 +1156,14 @@ def build_menu_spec(main_window):
             "Manage Trip Publication…": manage_trips,
             "Add pictures (no trip)…": add_pictures_to_master_item,
             f"{MenuSpec.separator()}_master_2": None,
-            "Master Species Viewer…": MenuSpec(
+            "Species Viewer…": MenuSpec(
                 callback=lambda: main_window.open_master_species_viewer(),
-                title="Master Species Viewer",
+                title="Species Viewer",
+                showsubdirectory=False),
+            "Species Map…": MenuSpec(
+                callback=lambda: main_window.open_species_map(),
+                title="Species Map",
+                tooltip="Distribution map — pick 1–4 species and see their GPS points",
                 showsubdirectory=False),
             "Species Without a Website Picture…": no_display_item,
         },

@@ -24,7 +24,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
     QGraphicsSimpleTextItem, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QWidget, QMessageBox)
+    QWidget, QMessageBox, QSplitter, QComboBox)
 from PyQt6.QtGui import QPixmap, QPainter, QColor, QBrush, QPen, QFont
 from PyQt6.QtCore import Qt, QPointF, QUrl, QTimer, pyqtSignal
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
@@ -33,9 +33,23 @@ logger = logging.getLogger("speciesviewer")
 
 TILE = 256
 MIN_ZOOM, MAX_ZOOM = 2, 18
-_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 _USER_AGENT = b"SpeciesViewer/1.0 (gilbert@houtekamer.com)"
 _MERC_MAX_LAT = 85.05112878   # Web-Mercator clamp
+
+# Selectable basemaps. `url` is an XYZ tile template; `sub` is the per-provider
+# disk-cache folder; `max` is the provider's top zoom (we don't fetch beyond it);
+# `attr` is the required on-map attribution; `wash` is a white overlay opacity
+# that mutes over-saturated tiles (OpenTopoMap's relief is vivid). Both providers
+# are openly licensed (OSM / OpenTopoMap CC-BY-SA). Terrain gives the paper-atlas
+# relief the user wanted and is the default.
+_BASEMAPS = [
+    {"name": "Terrain", "sub": "opentopo", "max": 17, "wash": 0.35,
+     "url": "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
+     "attr": "© OpenTopoMap (CC-BY-SA) · © OpenStreetMap contributors"},
+    {"name": "Standard", "sub": "osm", "max": 19, "wash": 0.0,
+     "url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+     "attr": "© OpenStreetMap contributors"},
+]
 
 # Distinct, colour-blind-friendlier layer palette (up to 4 species overlaid).
 _PALETTE = ["#d32f2f", "#1565c0", "#2e7d32", "#8e24aa"]   # red, blue, green, purple
@@ -80,6 +94,7 @@ class TileMapView(QGraphicsView):
     """The map canvas: tiles + markers, hand-drag pan, wheel zoom-to-cursor."""
 
     resized = pyqtSignal()
+    bubble_activated = pyqtSignal(object)   # cluster dict on single-click
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -87,21 +102,29 @@ class TileMapView(QGraphicsView):
         self.setScene(self._scene)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        # Manual pan (not ScrollHandDrag) so the cursor is a normal pointer that
+        # turns into a hand only over a clickable bubble — the grab-hand implied
+        # "drag only" and hid that bubbles are clickable.
+        self.setDragMode(QGraphicsView.DragMode.NoDrag)
+        self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
         self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         self.setBackgroundBrush(QColor("#dfe6ea"))
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
 
         self._z = 3
         self._center = (5.0, 30.0)          # (lon, lat)
+        self._basemap = _BASEMAPS[0]        # current tile provider
         # Species layers: id -> {"color": QColor, "points": [agg], "items": []}.
         # Each aggregated point is {lat, lon, label, count} (same-spot merged).
         self._layers: dict[int, dict] = {}
         self._next_layer_id = 0
-        self._tiles: dict[tuple[int, int, int], object] = {}
+        self._tiles: dict = {}
+        self._wash = None                   # white overlay that mutes vivid tiles
         self._pending: set = set()
         self._syncing = False               # guard scrollContentsBy re-entry
         self._press_vp = None               # click-vs-drag detection
+        self._pan_last = None               # last pos during a manual pan drag
+        self._highlight = None              # transient ring around the active bubble
 
         self._nam = QNetworkAccessManager(self)
         self._nam.finished.connect(self._on_tile_reply)
@@ -110,22 +133,25 @@ class TileMapView(QGraphicsView):
     # ── layers ───────────────────────────────────────────────────────────────
     @staticmethod
     def _aggregate(points: list[dict]) -> list[dict]:
-        """Merge same-spot points (rounded to ~1 m) into one pin with a count."""
+        """Merge same-spot points (rounded to ~1 m) into one pin, keeping the
+        picture count and the member UPNs (so a bubble knows its photos)."""
         agg: dict[tuple, dict] = {}
         for p in points:
             k = (round(p["lat"], 5), round(p["lon"], 5))
-            if k in agg:
-                agg[k]["count"] += 1
-            else:
+            if k not in agg:
                 agg[k] = {"lat": p["lat"], "lon": p["lon"],
-                          "label": p.get("place", ""), "count": 1}
+                          "label": p.get("place", ""), "count": 0, "upns": []}
+            agg[k]["count"] += 1
+            if p.get("upn"):
+                agg[k]["upns"].append(p["upn"])
         return list(agg.values())
 
     def add_layer(self, color: str, points: list[dict],
-                  nl: str = "", en: str = "") -> int:
+                  nl: str = "", en: str = "", sci: str = "") -> int:
         """Add a coloured species layer; returns its id (for remove_layer).
-        `nl`/`en` are the species' Dutch/English names, shown in each pin's
-        tooltip together with the same-spot count."""
+        `nl`/`en` are the species' Dutch/English names (pin tooltip); `sci` is
+        the scientific name, carried on each bubble so a click can pull that
+        species' pictures."""
         lid = self._next_layer_id
         self._next_layer_id += 1
         # Rosette offset keyed to the colour's palette slot, so co-located
@@ -135,7 +161,7 @@ class TileMapView(QGraphicsView):
         except ValueError:
             offset = (0, 0)
         self._layers[lid] = {"color": QColor(color), "nl": nl, "en": en,
-                             "offset": offset,
+                             "sci": sci, "offset": offset,
                              "points": self._aggregate(points), "items": []}
         self._draw_layer(lid)
         return lid
@@ -180,7 +206,8 @@ class TileMapView(QGraphicsView):
             clusters.append({
                 "lat": sum(lats) / len(lats), "lon": sum(lons) / len(lons),
                 "count": sum(m["count"] for m in members), "n": len(members),
-                "bounds": (min(lats), max(lats), min(lons), max(lons))})
+                "bounds": (min(lats), max(lats), min(lons), max(lons)),
+                "upns": [u for m in members for u in m.get("upns", [])]})
         return clusters
 
     def _draw_layer(self, lid: int):
@@ -192,21 +219,25 @@ class TileMapView(QGraphicsView):
         pen.setWidth(2)
         brush = QBrush(lay["color"])
         nl, en = lay.get("nl", ""), lay.get("en", "")
+        sci = lay.get("sci", "")
         ox, oy = lay.get("offset", (0, 0))
         for c in self._cluster(lay["points"]):
             x, y = lonlat_to_world(c["lon"], c["lat"], self._z)
             total = c["count"]
             # Single-picture dot is small; multi grows gently with the count.
             r = 6 if total <= 1 else min(20, 8 + 3 * (len(str(total)) - 1) + 2)
-            # Click-zoom only makes sense when the bubble hides several DISTINCT
-            # spots; a lone spot (even with many photos) has nothing to split.
-            bounds = c["bounds"] if c["n"] > 1 else None
+            # Each marker carries its cluster: species + member UPNs (→ filmstrip
+            # / large view) + bounds (→ double-click zoom, only when it hides
+            # several DISTINCT spots).
+            data = {"sci": sci, "nl": nl, "en": en, "upns": c["upns"],
+                    "count": total, "n": c["n"],
+                    "bounds": c["bounds"] if c["n"] > 1 else None}
             dot = QGraphicsEllipseItem(x - r + ox, y - r + oy, 2 * r, 2 * r)
             dot.setBrush(brush)
             dot.setPen(pen)
             dot.setZValue(10)
             dot.setToolTip(self._pin_tip(total, nl, en))
-            dot.setData(0, bounds)
+            dot.setData(0, data)
             self._scene.addItem(dot)
             lay["items"].append(dot)
             if total > 1:
@@ -219,7 +250,7 @@ class TileMapView(QGraphicsView):
                 br = label.boundingRect()
                 label.setPos(x + ox - br.width() / 2, y + oy - br.height() / 2)
                 label.setZValue(11)
-                label.setData(0, bounds)   # clicking the number zooms too
+                label.setData(0, data)   # clicking the number acts on the bubble too
                 label.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
                 self._scene.addItem(label)
                 lay["items"].append(label)
@@ -266,6 +297,7 @@ class TileMapView(QGraphicsView):
         try:
             n = TILE * (2 ** self._z)
             self._scene.setSceneRect(0, 0, n, n)
+            self._apply_wash()
             self._reposition_markers()
             self._prune_other_zooms()
             cx, cy = lonlat_to_world(self._center[0], self._center[1], self._z)
@@ -273,6 +305,20 @@ class TileMapView(QGraphicsView):
         finally:
             self._syncing = False
         self._ensure_tiles()
+
+    def _apply_wash(self):
+        """A translucent white sheet over the tiles (below the markers) that mutes
+        an over-saturated basemap. Recreated per zoom since it covers the scene."""
+        if self._wash is not None:
+            self._scene.removeItem(self._wash)
+            self._wash = None
+        w = self._basemap.get("wash", 0.0)
+        if w > 0:
+            self._wash = self._scene.addRect(
+                self._scene.sceneRect(),
+                QPen(Qt.PenStyle.NoPen), QBrush(QColor("white")))
+            self._wash.setOpacity(w)
+            self._wash.setZValue(0)   # above tiles (-1), below markers (10)
 
     def _center_on_state(self):
         cx, cy = lonlat_to_world(self._center[0], self._center[1], self._z)
@@ -284,6 +330,10 @@ class TileMapView(QGraphicsView):
 
     # ── markers ──────────────────────────────────────────────────────────────
     def _reposition_markers(self):
+        # The highlight is anchored in old-zoom scene coords; drop it on redraw.
+        if self._highlight is not None:
+            self._scene.removeItem(self._highlight)
+            self._highlight = None
         for lid in self._layers:
             self._draw_layer(lid)
 
@@ -300,18 +350,22 @@ class TileMapView(QGraphicsView):
             for ty in range(ty0, ty1 + 1):
                 self._want_tile(self._z, tx, ty)
 
+    def _tile_cache(self, sub, z, tx, ty):
+        return _tiles_dir() / sub / str(z) / str(tx) / f"{ty}.png"
+
     def _want_tile(self, z, tx, ty):
-        key = (z, tx, ty)
+        sub = self._basemap["sub"]
+        key = (sub, z, tx, ty)
         if key in self._tiles or key in self._pending:
             return
-        cache = _tiles_dir() / str(z) / str(tx) / f"{ty}.png"
+        cache = self._tile_cache(sub, z, tx, ty)
         if cache.exists():
             pm = QPixmap(str(cache))
             if not pm.isNull():
-                self._place_tile(z, tx, ty, pm)
+                self._place_tile(key, pm)
                 return
         self._pending.add(key)
-        req = QNetworkRequest(QUrl(_TILE_URL.format(z=z, x=tx, y=ty)))
+        req = QNetworkRequest(QUrl(self._basemap["url"].format(z=z, x=tx, y=ty)))
         req.setRawHeader(b"User-Agent", _USER_AGENT)
         reply = self._nam.get(req)
         reply.setProperty("tilekey", key)
@@ -321,46 +375,73 @@ class TileMapView(QGraphicsView):
         reply.deleteLater()
         if key is None:
             return
-        z, tx, ty = key
+        sub, z, tx, ty = key
         self._pending.discard(key)
         if reply.error() != QNetworkReply.NetworkError.NoError:
-            logger.debug(f"map tile {z}/{tx}/{ty} failed: {reply.errorString()}")
+            logger.debug(f"map tile {sub} {z}/{tx}/{ty} failed: {reply.errorString()}")
             return
         data = reply.readAll()
         pm = QPixmap()
         if not pm.loadFromData(data):
             return
-        cache = _tiles_dir() / str(z) / str(tx) / f"{ty}.png"
+        cache = self._tile_cache(sub, z, tx, ty)
         try:
             cache.parent.mkdir(parents=True, exist_ok=True)
             cache.write_bytes(bytes(data))
         except OSError:
             pass
-        if z == self._z:
-            self._place_tile(z, tx, ty, pm)
+        # Only paint if it's still the current provider + zoom (a switch may have
+        # happened while this was in flight).
+        if sub == self._basemap["sub"] and z == self._z:
+            self._place_tile(key, pm)
 
-    def _place_tile(self, z, tx, ty, pm):
-        key = (z, tx, ty)
+    def _place_tile(self, key, pm):
         if key in self._tiles:
             return
+        _sub, _z, tx, ty = key
         item = self._scene.addPixmap(pm)
         item.setOffset(tx * TILE, ty * TILE)
         item.setZValue(-1)
         self._tiles[key] = item
 
     def _prune_other_zooms(self):
+        cur = (self._basemap["sub"], self._z)
         for key in list(self._tiles):
-            if key[0] != self._z:
+            if (key[0], key[1]) != cur:
                 self._scene.removeItem(self._tiles.pop(key))
+
+    def set_basemap(self, entry: dict):
+        """Switch tile provider: drop the old tiles, clamp zoom to the provider's
+        max, and refetch. Returns the provider's attribution for the host label."""
+        self._basemap = entry
+        self._z = min(self._z, entry.get("max", MAX_ZOOM))
+        self._refresh_all()
+        return entry["attr"]
 
     # ── interaction ──────────────────────────────────────────────────────────
     def mousePressEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton:
             self._press_vp = e.position()
-        super().mousePressEvent(e)   # ScrollHandDrag starts panning
+            self._pan_last = e.position()
+        super().mousePressEvent(e)
+
+    def mouseMoveEvent(self, e):
+        if self._pan_last is not None and (e.buttons() & Qt.MouseButton.LeftButton):
+            d = e.position() - self._pan_last
+            self._pan_last = e.position()
+            c = self.mapToScene(self.viewport().rect().center())
+            self.centerOn(c.x() - d.x(), c.y() - d.y())   # → scrollContentsBy syncs
+        else:
+            # Pointing hand over a clickable bubble, plain arrow elsewhere.
+            item = self.itemAt(int(e.position().x()), int(e.position().y()))
+            over = item is not None and isinstance(item.data(0), dict)
+            self.viewport().setCursor(Qt.CursorShape.PointingHandCursor if over
+                                      else Qt.CursorShape.ArrowCursor)
+        super().mouseMoveEvent(e)
 
     def mouseReleaseEvent(self, e):
         super().mouseReleaseEvent(e)
+        self._pan_last = None
         if self._press_vp is None or e.button() != Qt.MouseButton.LeftButton:
             return
         moved = (e.position() - self._press_vp).manhattanLength()
@@ -368,9 +449,31 @@ class TileMapView(QGraphicsView):
         if moved > 4:
             return   # it was a drag (pan), not a click
         item = self.itemAt(int(e.position().x()), int(e.position().y()))
-        bounds = item.data(0) if item is not None else None
-        if bounds:
-            self._zoom_to_bounds(bounds)
+        data = item.data(0) if item is not None else None
+        if isinstance(data, dict):
+            # Single-click = "show me these pictures": highlight + let the host
+            # populate the filmstrip. (Double-click zooms — see below.)
+            self._set_highlight(item.sceneBoundingRect())
+            self.bubble_activated.emit(data)
+
+    def mouseDoubleClickEvent(self, e):
+        item = self.itemAt(int(e.position().x()), int(e.position().y()))
+        data = item.data(0) if item is not None else None
+        if isinstance(data, dict) and data.get("bounds"):
+            self._zoom_to_bounds(data["bounds"])
+            e.accept()
+            return
+        super().mouseDoubleClickEvent(e)
+
+    def _set_highlight(self, rect):
+        """A transient ring around the clicked bubble (until the next redraw)."""
+        if self._highlight is not None:
+            self._scene.removeItem(self._highlight)
+        pad = 3
+        self._highlight = self._scene.addEllipse(
+            rect.adjusted(-pad, -pad, pad, pad),
+            QPen(QColor("#ffd54f"), 3), QBrush(Qt.BrushStyle.NoBrush))
+        self._highlight.setZValue(20)
 
     def _zoom_to_bounds(self, bounds):
         """Zoom so a clicked cluster's members fill most of the view — and always
@@ -386,7 +489,8 @@ class TileMapView(QGraphicsView):
             if (x1 - x0) <= vw * 0.7 and (y1 - y0) <= vh * 0.7:
                 fit_z = z
                 break
-        self._z = min(MAX_ZOOM, max(fit_z, self._z + 1))
+        top = min(MAX_ZOOM, self._basemap.get("max", MAX_ZOOM))
+        self._z = min(top, max(fit_z, self._z + 1))
         self._refresh_all()
 
     def scrollContentsBy(self, dx, dy):
@@ -399,7 +503,8 @@ class TileMapView(QGraphicsView):
 
     def wheelEvent(self, e):
         step = 1 if e.angleDelta().y() > 0 else -1
-        new_z = max(MIN_ZOOM, min(MAX_ZOOM, self._z + step))
+        top = min(MAX_ZOOM, self._basemap.get("max", MAX_ZOOM))
+        new_z = max(MIN_ZOOM, min(top, self._z + step))
         if new_z == self._z:
             return
         vp = e.position()
@@ -426,16 +531,21 @@ class MapView(QDialog):
     OSM attribution. `master_db` supplies both the picker list and each species'
     GPS points."""
 
-    def __init__(self, parent, master_db, initial_sci: str, initial_display: str,
-                 initial_points: list[dict]):
+    def __init__(self, parent, master_db, initial_sci: str = "",
+                 initial_display: str = "", initial_points: list[dict] | None = None):
         super().__init__(parent)
         self._db = master_db
-        self._used: dict[str, dict] = {}   # sci.casefold() -> {sci,display,color,lid}
-        self.setWindowTitle("Species distribution map")
+        self._used: dict[str, dict] = {}   # sci.casefold() -> {sci,display,color,lid,n}
+        from gui.image_loader import AsyncImageLoader
+        self._loader = AsyncImageLoader(self)
+        self._species_colls: dict[str, object] = {}   # sci.casefold() -> collection
+        self._strip = None                             # current FilmstripWidget
+        self._strip_coll = None                        # its collection (for large view)
+        self.setWindowTitle("Master species distribution map")
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
                             | Qt.WindowType.WindowMaximizeButtonHint)
-        self.resize(940, 680)
+        self.resize(1000, 760)
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -454,29 +564,64 @@ class MapView(QDialog):
         h.addSpacing(8)
         h.addLayout(self._legend)
         h.addStretch()
+        h.addWidget(QLabel("Basemap:"))
+        self._basemap_combo = QComboBox()
+        for bm in _BASEMAPS:
+            self._basemap_combo.addItem(bm["name"], bm)
+        self._basemap_combo.setToolTip(
+            "Map style — Standard (streets), Terrain (relief/contours), or Atlas")
+        self._basemap_combo.currentIndexChanged.connect(self._on_basemap_changed)
+        h.addWidget(self._basemap_combo)
+        h.addSpacing(8)
         fit_btn = QPushButton("Fit")
         fit_btn.setToolTip("Zoom to fit all points")
         fit_btn.clicked.connect(self._map_fit)
         h.addWidget(fit_btn)
         lay.addWidget(header)
 
+        # Map on top, filmstrip below, in a resizable/collapsible splitter.
+        self._splitter = QSplitter(Qt.Orientation.Vertical)
         self._map = TileMapView(self)
-        lay.addWidget(self._map, 1)
+        self._map.bubble_activated.connect(self._on_bubble)
+        self._splitter.addWidget(self._map)
+        self._strip_holder = QWidget()
+        self._strip_box = QVBoxLayout(self._strip_holder)
+        self._strip_box.setContentsMargins(0, 0, 0, 0)
+        self._strip_hint = QLabel("Click a bubble to see its pictures here.")
+        self._strip_hint.setStyleSheet("color:#888; padding:6px;")
+        self._strip_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._strip_box.addWidget(self._strip_hint)
+        self._splitter.addWidget(self._strip_holder)
+        self._splitter.setStretchFactor(0, 1)   # the map takes the extra space
+        self._splitter.setStretchFactor(1, 0)
+        self._splitter.setSizes([620, 150])
+        lay.addWidget(self._splitter, 1)
 
-        # OSM attribution, pinned bottom-right over the map (usage-policy required).
-        self._attr = QLabel("© OpenStreetMap contributors", self._map)
+        # Attribution, pinned bottom-right over the map (usage-policy required);
+        # updated when the basemap changes. Starts on the default provider.
+        self._attr = QLabel(_BASEMAPS[0]["attr"], self._map)
         self._attr.setStyleSheet(
             "background: rgba(255,255,255,0.75); color:#333; font-size:9px; "
             "padding:1px 5px; border-top-left-radius:3px;")
         self._attr.adjustSize()
         self._map.resized.connect(self._place_attribution)
 
-        self._add_layer(initial_sci, initial_display, initial_points)
+        if initial_sci and initial_points:
+            self._add_layer(initial_sci, initial_display, initial_points)
         QTimer.singleShot(0, self._map.fit_to_points)   # after first layout pass
 
     # ── layers / legend ────────────────────────────────────────────────────────
     def _map_fit(self):
         self._map.fit_to_points()
+
+    def _on_basemap_changed(self, _idx: int):
+        entry = self._basemap_combo.currentData()
+        if not entry:
+            return
+        attr = self._map.set_basemap(entry)
+        self._attr.setText(attr)
+        self._attr.adjustSize()
+        self._place_attribution()
 
     def _next_color(self) -> str:
         used = {m["color"] for m in self._used.values()}
@@ -497,10 +642,92 @@ class MapView(QDialog):
         row = (self._db.species_row(sci) if self._db else None) or {}
         nl = (row.get("nl") or display or "").strip()
         en = (row.get("en") or "").strip()
-        lid = self._map.add_layer(color, points, nl=nl, en=en)
+        lid = self._map.add_layer(color, points, nl=nl, en=en, sci=sci)
         self._used[key] = {"sci": sci, "display": display, "color": color,
                            "lid": lid, "n": len(points)}
         self._rebuild_legend()
+
+    # ── bubble → filmstrip → large viewer ────────────────────────────────────────
+    def _collection_for_species(self, sci: str, display: str):
+        """A full-master RatingEditorCollection for one species, built lazily and
+        cached. Reused as BOTH the filmstrip's and the large viewer's collection —
+        the same object the Master Species Viewer uses, so its master editing
+        rules + thumbnail/large-view paths come for free. Editing follows the
+        machine's master policy: stars/colour are writable when
+        `master.readonly = no` (read-only otherwise), exactly like the Master
+        Species Viewer. jpg_only=False so every GPS'd picture (JPG or RAW-only)
+        resolves."""
+        key = (sci or "").casefold()
+        coll = self._species_colls.get(key)
+        if coll is None:
+            from engine.filepicture import FilePicture
+            from engine.filecsv import Files
+            from engine.picturecsv import Pictures
+            from gui.rating_provider import RatingEditorCollection
+            from utils.config import _config
+            read_only = _config.get(
+                "master", "readonly", fallback="yes").strip().lower() != "no"
+            fpr = FilePicture(None)
+            fpr.fi = Files(None)
+            fpr.upn = Pictures(None)
+            coll = RatingEditorCollection(
+                fpr, day_objects=None, upn_day_map={}, jpg_only=False,
+                species_lang="NL", loader=self._loader, view_read_only=False)
+            coll.set_master(self._db, self._db.master_root, include=True,
+                            read_only=read_only, full=True)
+            coll.rebuild(display or sci, forced_sci=key)
+            self._species_colls[key] = coll
+        return coll
+
+    def _on_bubble(self, cluster: dict):
+        """Single-click on a bubble → fill the filmstrip with its pictures."""
+        upns = [u for u in cluster.get("upns", []) if u]
+        sci = cluster.get("sci", "")
+        display = self._used.get(sci.casefold(), {}).get("display", sci)
+        if not upns or not sci:
+            return
+        coll = self._collection_for_species(sci, display)
+        # Keep only UPNs the collection actually resolves (defensive).
+        keys = [u for u in upns if self._resolves(coll, u)]
+        if not keys:
+            return
+        from gui.large_image_view import FilmstripWidget
+        strip = FilmstripWidget(coll, keys)
+        strip.item_clicked.connect(lambda k, c=coll, ks=keys: self._open_large(c, ks, k))
+        # Swap it in below the map.
+        if self._strip is not None:
+            self._strip.deleteLater()
+        self._strip_hint.hide()
+        self._strip = strip
+        self._strip_coll = coll
+        self._strip_box.addWidget(strip)
+
+    @staticmethod
+    def _resolves(coll, upn: str) -> bool:
+        try:
+            coll.index_of(upn)
+            return True
+        except (ValueError, KeyError):
+            return False
+
+    def _open_large(self, coll, keys: list[str], key: str):
+        """Filmstrip thumbnail → master large viewer over this bubble's pictures.
+        Editable per the master policy (stars/colour when master is writable)."""
+        from gui.large_image_view import LargeImageView
+        if key not in keys:
+            return
+        dlg = LargeImageView(self, coll, keys, keys.index(key),
+                             settings_key="MapView", auto_advance=True)
+        # An edit in the large view must show up on the filmstrip cell too.
+        dlg.picture_changed.connect(self._refresh_strip_item)
+        dlg.show()
+
+    def _refresh_strip_item(self, key: str):
+        if self._strip is not None:
+            try:
+                self._strip.refresh_item(key)
+            except Exception:
+                pass
 
     def _remove_layer(self, key: str):
         m = self._used.pop(key, None)
