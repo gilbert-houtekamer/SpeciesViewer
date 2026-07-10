@@ -49,7 +49,9 @@ Phases 1–3 shipped+live. Trip Species Viewer Trip+Master scope works (scope-aw
 
 **To do**
 - OPEN/minor **"Upgrade best JPG" workflow** — sort-by-rating surfaces 800×533 best-picks; render `_DxO.jpg` → master card "Add new files for this picture" re-distils BestJPG. Make the loop smoother + confirm website re-publish picks it up. [[project_dxo_pipeline]]
-- OPEN **EXIF-cache mutable-bucket prune** — grows unbounded; add size/time eviction. [[project_exif_cache_design]]
+
+**Done (recent)**
+- DONE **EXIF-cache LRU retention** — the day/trip cache grew by distinct-path accumulation (the mutable bucket is keyed by PATH and updated in place, so NO edit-churn — an earlier note wrongly said path+mtime). Added a `seen` (epoch-day) stamp refreshed on every hit (`partition`) and write (`update`), and `exifcache.prune_expired(cache, ttl_days=90)` called before save on the day/trip scan only (the master cache is rebuilt wholesale by Rescan → left unpruned). LRU not FIFO: active paths never age out (only stopped-touching ones), and the usual "reads become writes" LRU cost is free here since the cache is fully re-serialized every scan anyway. Legacy entries (no `seen`) are migrated with a full-TTL grace, so the upgrade evicts nothing. A wrong eviction only ever costs one re-read (pure optimization, size/mtime/fingerprint-guarded). Measured before: day/trip 1.75 MB/1272 entries/15 ms load (master cache is the separate 205 MB one). [[project_exif_cache_design]]
 
 **Parked (by design)**
 - PARKED **delete step 3 (JPG-bearing UPNs)** — blocked by never-trash-a-JPG; whether/how is open.
