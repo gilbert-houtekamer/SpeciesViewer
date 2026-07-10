@@ -433,7 +433,8 @@ class MasterSpeciesViewerDialog(QDialog):
                 f"in-camera GPS. (Map-based backfill is a later phase.)")
             return
         from gui.map_view import MapView
-        dlg = MapView(self, self._current_display or self._current_sci, points)
+        dlg = MapView(self, self._master_db, self._current_sci,
+                      self._current_display or self._current_sci, points)
         dlg.show()
 
     # ── Grid management (mirrors RatingEditorDialog) ───────────────────────
