@@ -23,8 +23,9 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QDialog, QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
-    QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QWidget, QMessageBox)
-from PyQt6.QtGui import QPixmap, QPainter, QColor, QBrush, QPen
+    QGraphicsSimpleTextItem, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QWidget, QMessageBox)
+from PyQt6.QtGui import QPixmap, QPainter, QColor, QBrush, QPen, QFont
 from PyQt6.QtCore import Qt, QPointF, QUrl, QTimer, pyqtSignal
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
@@ -42,8 +43,10 @@ _MAX_LAYERS = 4
 # Fixed per-colour pixel offset (a rosette): where two species share a spot,
 # each fans out in its own diagonal instead of hiding the other. Constant screen
 # pixels (scene==view px at scale 1), so it's a tight cluster at any zoom and
-# imperceptible where species don't overlap. Indexed by palette position.
-_JITTER = [(-5, -5), (5, -5), (5, 5), (-5, 5)]           # NW, NE, SE, SW
+# imperceptible where species don't overlap. Indexed by palette position. Sized
+# so two overlapping COUNT BUBBLES (not just dots) keep their numbers legible —
+# the diagonal means the visible horizontal gap is ~1.4× smaller than this.
+_JITTER = [(-8, -8), (8, -8), (8, 8), (-8, 8)]           # NW, NE, SE, SW
 
 
 def _tiles_dir() -> Path:
@@ -98,6 +101,7 @@ class TileMapView(QGraphicsView):
         self._tiles: dict[tuple[int, int, int], object] = {}
         self._pending: set = set()
         self._syncing = False               # guard scrollContentsBy re-entry
+        self._press_vp = None               # click-vs-drag detection
 
         self._nam = QNetworkAccessManager(self)
         self._nam.finished.connect(self._on_tile_reply)
@@ -145,26 +149,80 @@ class TileMapView(QGraphicsView):
     def all_points(self) -> list[dict]:
         return [p for lay in self._layers.values() for p in lay["points"]]
 
+    # Cluster distinct spots within this many screen pixels at the current zoom
+    # into one bubble; zooming in shrinks the geographic span a pixel covers, so
+    # clusters split apart naturally.
+    _CLUSTER_PX = 46
+
+    def _cluster(self, points: list[dict]) -> list[dict]:
+        """Greedy pixel-distance clustering of the layer's distinct spots at the
+        current zoom. Each cluster carries the picture total, the member count,
+        a centroid, and the lat/lon bounds (for click-to-zoom). O(n²) but n is a
+        few dozen per species."""
+        proj = [(lonlat_to_world(p["lon"], p["lat"], self._z), p) for p in points]
+        used = [False] * len(proj)
+        r2 = self._CLUSTER_PX * self._CLUSTER_PX
+        clusters = []
+        for i, ((xi, yi), _pi) in enumerate(proj):
+            if used[i]:
+                continue
+            used[i] = True
+            members = [proj[i][1]]
+            for j in range(i + 1, len(proj)):
+                if used[j]:
+                    continue
+                (xj, yj), _pj = proj[j]
+                if (xj - xi) ** 2 + (yj - yi) ** 2 <= r2:
+                    used[j] = True
+                    members.append(proj[j][1])
+            lats = [m["lat"] for m in members]
+            lons = [m["lon"] for m in members]
+            clusters.append({
+                "lat": sum(lats) / len(lats), "lon": sum(lons) / len(lons),
+                "count": sum(m["count"] for m in members), "n": len(members),
+                "bounds": (min(lats), max(lats), min(lons), max(lons))})
+        return clusters
+
     def _draw_layer(self, lid: int):
         lay = self._layers[lid]
         for it in lay["items"]:
             self._scene.removeItem(it)
         lay["items"] = []
-        r = 6
         pen = QPen(QColor("white"))
         pen.setWidth(2)
         brush = QBrush(lay["color"])
         nl, en = lay.get("nl", ""), lay.get("en", "")
         ox, oy = lay.get("offset", (0, 0))
-        for p in lay["points"]:
-            x, y = lonlat_to_world(p["lon"], p["lat"], self._z)
+        for c in self._cluster(lay["points"]):
+            x, y = lonlat_to_world(c["lon"], c["lat"], self._z)
+            total = c["count"]
+            # Single-picture dot is small; multi grows gently with the count.
+            r = 6 if total <= 1 else min(20, 8 + 3 * (len(str(total)) - 1) + 2)
+            # Click-zoom only makes sense when the bubble hides several DISTINCT
+            # spots; a lone spot (even with many photos) has nothing to split.
+            bounds = c["bounds"] if c["n"] > 1 else None
             dot = QGraphicsEllipseItem(x - r + ox, y - r + oy, 2 * r, 2 * r)
             dot.setBrush(brush)
             dot.setPen(pen)
             dot.setZValue(10)
-            dot.setToolTip(self._pin_tip(p["count"], nl, en))
+            dot.setToolTip(self._pin_tip(total, nl, en))
+            dot.setData(0, bounds)
             self._scene.addItem(dot)
             lay["items"].append(dot)
+            if total > 1:
+                label = QGraphicsSimpleTextItem(str(total))
+                f = QFont()
+                f.setPixelSize(10)
+                f.setBold(True)
+                label.setFont(f)
+                label.setBrush(QBrush(QColor("white")))
+                br = label.boundingRect()
+                label.setPos(x + ox - br.width() / 2, y + oy - br.height() / 2)
+                label.setZValue(11)
+                label.setData(0, bounds)   # clicking the number zooms too
+                label.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+                self._scene.addItem(label)
+                lay["items"].append(label)
 
     @staticmethod
     def _pin_tip(count: int, nl: str, en: str) -> str:
@@ -296,6 +354,41 @@ class TileMapView(QGraphicsView):
                 self._scene.removeItem(self._tiles.pop(key))
 
     # ── interaction ──────────────────────────────────────────────────────────
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self._press_vp = e.position()
+        super().mousePressEvent(e)   # ScrollHandDrag starts panning
+
+    def mouseReleaseEvent(self, e):
+        super().mouseReleaseEvent(e)
+        if self._press_vp is None or e.button() != Qt.MouseButton.LeftButton:
+            return
+        moved = (e.position() - self._press_vp).manhattanLength()
+        self._press_vp = None
+        if moved > 4:
+            return   # it was a drag (pan), not a click
+        item = self.itemAt(int(e.position().x()), int(e.position().y()))
+        bounds = item.data(0) if item is not None else None
+        if bounds:
+            self._zoom_to_bounds(bounds)
+
+    def _zoom_to_bounds(self, bounds):
+        """Zoom so a clicked cluster's members fill most of the view — and always
+        at least one level deeper, so a click never feels stuck."""
+        minlat, maxlat, minlon, maxlon = bounds
+        self._center = ((minlon + maxlon) / 2.0, (minlat + maxlat) / 2.0)
+        vw = max(self.viewport().width(), 100)
+        vh = max(self.viewport().height(), 100)
+        fit_z = MIN_ZOOM
+        for z in range(MAX_ZOOM, MIN_ZOOM - 1, -1):
+            x0, y0 = lonlat_to_world(minlon, maxlat, z)
+            x1, y1 = lonlat_to_world(maxlon, minlat, z)
+            if (x1 - x0) <= vw * 0.7 and (y1 - y0) <= vh * 0.7:
+                fit_z = z
+                break
+        self._z = min(MAX_ZOOM, max(fit_z, self._z + 1))
+        self._refresh_all()
+
     def scrollContentsBy(self, dx, dy):
         super().scrollContentsBy(dx, dy)
         if self._syncing or self.scene() is None:
