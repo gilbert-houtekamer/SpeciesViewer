@@ -184,6 +184,11 @@ class RatingEditorCollection(PictureCollection):
         self._upn_day_map = upn_day_map      # upn_key -> day
         self._jpg_only = jpg_only
         self._color_filter: set[str] = set()   # lowercased colour names; empty = all
+        self._camera_filter: set[str] = set()  # exact CameraModel strings; empty = all
+        # Card ordering: "rate" (Rate high→low, the default), "time_asc"/"time_desc"
+        # (capture time — groups near-identical burst frames for culling), or
+        # "camera" (by body, then capture time).
+        self._sort_key = "rate"
         self._species_lang = species_lang
         self._loader = loader or AsyncImageLoader()
         # Whole-collection view-only: every card non-editable (Album viewer).
@@ -330,7 +335,7 @@ class RatingEditorCollection(PictureCollection):
                     self._master_upn.keys())
             self._master_keys = set(self._master_upn.keys())
 
-        rows = []
+        rows = []   # (key, row) — the sort key is derived in _sorted_keys
         # In full-master scope the master set already contains the album's own
         # pictures, so don't also add the trip/album rows (no duplicates).
         if not self._master_full:
@@ -341,7 +346,9 @@ class RatingEditorCollection(PictureCollection):
                     continue
                 if self._color_filter and self._row_color(row) not in self._color_filter:
                     continue
-                rows.append((_safe_int(row.get("Rate", 0) or 0), key))
+                if self._camera_filter and self._row_camera(row) not in self._camera_filter:
+                    continue
+                rows.append((key, row))
         for key in list(self._master_keys):
             if self._jpg_only and self.jpg_path(key) is None:
                 self._master_keys.discard(key)   # not shown → not a master key
@@ -349,10 +356,30 @@ class RatingEditorCollection(PictureCollection):
             if (self._color_filter
                     and self._row_color(self._master_upn[key]) not in self._color_filter):
                 continue  # view filter only — keep it a master key for routing
-            rows.append((_safe_int(self._master_upn[key].get("Rate", 0) or 0), key))
+            if (self._camera_filter
+                    and self._row_camera(self._master_upn[key]) not in self._camera_filter):
+                continue
+            rows.append((key, self._master_upn[key]))
 
-        rows.sort(key=lambda x: x[0], reverse=True)
-        self._order = [k for _, k in rows]
+        self._order = self._sorted_keys(rows)
+
+    def _sorted_keys(self, rows) -> list[str]:
+        """Order (key, row) pairs by the active sort key and return just the keys.
+        Capture time uses DateTimeOriginal, whose 'YYYY:MM:DD HH:MM:SS' form sorts
+        chronologically as a plain string; the UPN key is the stable tie-break."""
+        sk = self._sort_key
+        if sk == "time_asc":
+            rows.sort(key=lambda kr: ((kr[1].get("DateTimeOriginal", "") or ""), kr[0]))
+        elif sk == "time_desc":
+            rows.sort(key=lambda kr: ((kr[1].get("DateTimeOriginal", "") or ""), kr[0]),
+                      reverse=True)
+        elif sk == "camera":
+            # Unknown-camera pictures sort last ("~"), then by capture time.
+            rows.sort(key=lambda kr: ((self._row_camera(kr[1]) or "~~~").casefold(),
+                                      (kr[1].get("DateTimeOriginal", "") or ""), kr[0]))
+        else:   # "rate" — Rate high→low (default)
+            rows.sort(key=lambda kr: _safe_int(kr[1].get("Rate", 0) or 0), reverse=True)
+        return [k for k, _ in rows]
 
     def set_jpg_only(self, value: bool) -> None:
         self._jpg_only = value
@@ -366,6 +393,34 @@ class RatingEditorCollection(PictureCollection):
     @staticmethod
     def _row_color(row: dict) -> str:
         return (row.get("Label", "") or "grey").lower()
+
+    @staticmethod
+    def _row_camera(row: dict) -> str:
+        return (row.get("CameraModel", "") or "").strip()
+
+    def set_camera_filter(self, models) -> None:
+        """Restrict the shown cards to these camera bodies (empty = all).
+        Matched exactly against each picture's CameraModel field."""
+        self._camera_filter = {m for m in (models or set()) if m}
+
+    def set_sort(self, key: str) -> None:
+        self._sort_key = (key if key in ("rate", "time_asc", "time_desc", "camera")
+                          else "rate")
+
+    def available_cameras(self, filter_name: str | None = None) -> list[str]:
+        """Distinct camera bodies among the loaded TRIP pictures, for the filter
+        combo. Scoped to `filter_name` (the selected species) when given, so the
+        list only offers bodies actually present in what's on screen — a species
+        shot only on the OM-1 won't also list the phone. Trip-only (master
+        pictures are pulled lazily per species)."""
+        models = set()
+        for row in self.fpr.upn.UniquePictureName_dict.values():
+            if filter_name and self.species_name(row) != filter_name:
+                continue
+            m = self._row_camera(row)
+            if m:
+                models.add(m)
+        return sorted(models, key=str.casefold)
 
     def set_species_lang(self, lang: str) -> None:
         self._species_lang = lang
@@ -683,6 +738,33 @@ class RatingEditorCollection(PictureCollection):
                 fi_day.write_project_files()
             except Exception as e:
                 logger.error(f"Failed to write data_files.csv for {day}: {e}")
+
+    def persist_after_species_change(self, upn_keys) -> None:
+        """Write the CSVs for a set of UPNs after their species was changed via
+        fpr.updateSubjects (Set-species / Move-to-species). In Trip scope fpr.fi /
+        fpr.upn are merged, path-less objects, so updateSubjects' own CSV write is
+        a no-op there — the real files are the per-day objects, which share the
+        same row dicts (so they already reflect the edit). Persist each affected
+        day once. In Day scope fpr IS the single day's object with a real path, so
+        persist it directly."""
+        if self._day_objects is None:
+            try:
+                self.fpr.upn.write_project_summary()
+                self.fpr.fi.write_project_files()
+            except Exception as e:
+                logger.error(f"persist_after_species_change (day scope) failed: {e}")
+            return
+        days = {self._upn_day_map.get(k) for k in upn_keys}
+        days.discard(None)
+        for day in days:
+            if day not in self._day_objects:
+                continue
+            fi_day, upn_day = self._day_objects[day]
+            try:
+                upn_day.write_project_summary()
+                fi_day.write_project_files()
+            except Exception as e:
+                logger.error(f"persist_after_species_change failed for {day}: {e}")
 
     def apply_description(self, upn_key: str, value: str) -> None:
         if upn_key in self._master_keys:

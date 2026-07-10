@@ -784,6 +784,33 @@ class RatingEditorDialog(QDialog):
         self._lang_combo.setToolTip("Species name language")
         self._lang_combo.currentIndexChanged.connect(self._on_lang_changed)
         top.addWidget(self._lang_combo)
+        top.addSpacing(12)
+
+        # Camera filter — narrow the grid to one camera body (populated from the
+        # loaded pictures' CameraModel). Handy on trips shot with two bodies.
+        top.addWidget(QLabel("Camera:"))
+        self._camera_combo = QComboBox()
+        self._camera_combo.setMinimumWidth(130)
+        self._camera_combo.setToolTip("Show only pictures from this camera body")
+        self._camera_combo.currentIndexChanged.connect(self._on_camera_changed)
+        top.addWidget(self._camera_combo)
+        top.addSpacing(8)
+
+        # Sort order. Rate (best first) is the default; capture time groups
+        # near-identical burst frames next to each other so blue-delete culling
+        # of duplicates is easy; camera groups by body.
+        top.addWidget(QLabel("Sort:"))
+        self._sort_combo = QComboBox()
+        for label, data in (("Rate ↓", "rate"),
+                            ("Time ↑", "time_asc"),
+                            ("Time ↓", "time_desc"),
+                            ("Camera", "camera")):
+            self._sort_combo.addItem(label, data)
+        self._sort_combo.setToolTip(
+            "Card order — Rate (best first), capture time (old→new / new→old, "
+            "groups duplicate frames), or camera body")
+        self._sort_combo.currentIndexChanged.connect(self._on_sort_changed)
+        top.addWidget(self._sort_combo)
         top.addStretch()
 
         self._jpg_btn = QPushButton("JPG only")
@@ -864,6 +891,16 @@ class RatingEditorDialog(QDialog):
         _sel_species_btn = QPushButton("Set species…")
         _sel_species_btn.clicked.connect(self._open_species_dialog_for_selection)
         _sb_layout.addWidget(_sel_species_btn)
+        # Move the selection to a DIFFERENT species that already exists (the two
+        # swans mislabelled among the ducks). Target is constrained to the trip's
+        # species list — no new species, no GBIF.
+        self._sel_move_btn = QPushButton("Move to species…")
+        self._sel_move_btn.setToolTip(
+            "Reassign the selected pictures to an existing species")
+        self._sel_move_btn.clicked.connect(self._move_selection_to_species)
+        _sb_layout.addWidget(self._sel_move_btn)
+        if self._read_only:
+            self._sel_move_btn.hide()   # Album viewer is read-only
         _sb_layout.addStretch()
         _sel_clear_btn = QPushButton("Clear selection")
         _sel_clear_btn.clicked.connect(self._clear_selection)
@@ -1070,6 +1107,7 @@ class RatingEditorDialog(QDialog):
             jpg_only=self._jpg_only, species_lang=self._species_lang,
             loader=self._loader, view_read_only=self._read_only,
         )
+        self._populate_camera_combo()   # before species combo (its signal rebuilds cards)
         self._populate_species_combo(restore_selection=saved_species)
         if tripmaster:
             self._attach_master()
@@ -1268,6 +1306,9 @@ class RatingEditorDialog(QDialog):
         # Re-apply the colour filter from the bar — the collection is recreated
         # on every load, so the bar is the durable source of truth.
         self._collection.set_color_filter(self._color_filter_bar.selected_colors)
+        # Same for the camera filter and sort order (durable on the combos).
+        self._collection.set_camera_filter(self._selected_cameras())
+        self._collection.set_sort(self._sort_combo.currentData())
         self._collection.rebuild(filter_name)
         n = len(self._collection)
         placement = self._grid_placement(n)
@@ -1307,6 +1348,9 @@ class RatingEditorDialog(QDialog):
             self._load_data()
 
     def _on_species_changed(self):
+        # Refresh the camera list to this species' bodies before rebuilding
+        # (blockSignals inside keeps this from re-triggering a rebuild).
+        self._populate_camera_combo()
         self._rebuild_cards()
 
     def _on_lang_changed(self, _idx: int):
@@ -1334,6 +1378,36 @@ class RatingEditorDialog(QDialog):
     def _on_columns_changed(self, value: int):
         self.columns = value
         self._rebuild_cards()
+
+    def _on_camera_changed(self, _idx: int):
+        self._rebuild_cards()
+
+    def _on_sort_changed(self, _idx: int):
+        self._rebuild_cards()
+
+    def _selected_cameras(self) -> set:
+        """The camera filter as a set: {model} when one is picked, else empty."""
+        model = self._camera_combo.currentData()
+        return {model} if model else set()
+
+    def _populate_camera_combo(self):
+        """Fill the camera combo from the loaded collection, preserving the
+        current selection across a reload when that body is still present."""
+        if self._collection is None:
+            return
+        prev = self._camera_combo.currentData()
+        self._camera_combo.blockSignals(True)
+        self._camera_combo.clear()
+        self._camera_combo.addItem("All cameras", None)
+        # Scope to the selected species so only bodies actually present in the
+        # shown pictures are offered (None → all trip cameras before a pick).
+        species = self._species_combo.currentData()
+        for model in self._collection.available_cameras(species):
+            self._camera_combo.addItem(model, model)
+        if prev:
+            idx = self._camera_combo.findData(prev)
+            self._camera_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self._camera_combo.blockSignals(False)
 
     def _on_jpg_only_toggled(self, checked: bool):
         # No pre-extraction needed: the provider loads RAW previews lazily and
@@ -1483,12 +1557,15 @@ class RatingEditorDialog(QDialog):
         menu = QMenu(self)
         lbl = f"{n} picture{'s' if n != 1 else ''}"
         act_species = menu.addAction(f"Set species…  ({lbl})")
+        act_move = menu.addAction(f"Move to existing species…  ({lbl})")
         act_rate = menu.addAction(f"Set rating…  ({lbl})")
         act_fullres = menu.addAction(f"Full resolution  ({lbl})")
         act_geo = menu.addAction(f"Get location  ({lbl})")
         chosen = menu.exec(QCursor.pos())
         if chosen == act_species:
             self._open_species_dialog_for_keys(keys_for_action)
+        elif chosen == act_move:
+            self._move_keys_to_species(keys_for_action)
         elif chosen == act_rate:
             self._open_batch_rate_dialog(keys_for_action)
         elif chosen == act_fullres:
@@ -1607,7 +1684,13 @@ class RatingEditorDialog(QDialog):
         dlg.setMinimumWidth(600)
         dlg_layout = QVBoxLayout(dlg)
         panel = SpeciesInfoPanel(self.fpr, file_paths, species_names, error_msgs, parent=dlg)
-        panel.committed.connect(lambda upns: (self._clear_selection(), dlg.accept()))
+        # Same Trip-scope persistence caveat as Move-to-species: the panel's
+        # updateSubjects can't write the merged path-less CSVs, so route through
+        # the per-day objects here.
+        panel.committed.connect(lambda upns: (
+            self._collection.persist_after_species_change(upns)
+            if self._collection is not None else None,
+            self._clear_selection(), dlg.accept()))
         dlg_layout.addWidget(panel)
         cancel_btn = QPushButton("Cancel")
         cancel_btn.clicked.connect(dlg.reject)
@@ -1616,6 +1699,115 @@ class RatingEditorDialog(QDialog):
         row.addWidget(cancel_btn)
         dlg_layout.addLayout(row)
         dlg.show()
+
+    # ── Move a selection to an existing species ───────────────────────────────
+    def _move_selection_to_species(self):
+        keys = self._editable_keys(self._selected_keys)
+        if keys:
+            self._move_keys_to_species(keys)
+
+    def _move_keys_to_species(self, keys: set):
+        """Reassign the given pictures to a species that already exists in the
+        trip's species list (species.csv). Unlike 'Set species…' this offers no
+        new-species / GBIF path — the target is picked from the known list, which
+        is exactly the 'two swans mislabelled among the ducks' fix."""
+        if not self.fpr or not keys:
+            return
+        from gui.species_editor import _sc_usable
+        sc = self.fpr.sc
+        if not _sc_usable(sc):
+            QMessageBox.information(
+                self, "Move to species",
+                "The species list isn't loaded here, so I can't offer existing "
+                "species to move to. Use “Set species…” instead.")
+            return
+        names = self._trip_species_names()
+        if not names:
+            QMessageBox.information(self, "Move to species",
+                                    "No species are recorded on this trip yet.")
+            return
+
+        file_paths = [p for k in keys if (p := self._rep_file_path(k))]
+        if not file_paths:
+            return
+
+        chosen = self._ask_existing_species(names, len(file_paths))
+        if not chosen:
+            return
+        # Constrain to species already on THIS trip (the master viewer will later
+        # allow any species ever seen). A typed name that isn't a trip species is
+        # rejected rather than silently added — that's the "Set species…" path.
+        if chosen.casefold() not in {n.casefold() for n in names}:
+            QMessageBox.warning(
+                self, "Not a trip species",
+                f"“{chosen}” isn’t recorded on this trip, so I didn’t move "
+                f"anything.\n\nWithin a trip you can only move pictures to a "
+                f"species you already have here — use “Set species…” to introduce "
+                f"a new one.")
+            return
+        updated_upns, files_written = self.fpr.updateSubjects(file_paths, chosen)
+        # Trip scope: fpr.fi/upn are merged path-less objects, so updateSubjects
+        # can't persist itself — route through the per-day CSVs (shared rows).
+        if self._collection is not None:
+            self._collection.persist_after_species_change(updated_upns)
+        from gui.culling_species import remember_recent_species
+        remember_recent_species(chosen)
+        n = len(updated_upns)
+        self._status.setText(
+            f"Moved {n} picture{'s' if n != 1 else ''} to {chosen} "
+            f"({files_written} file{'s' if files_written != 1 else ''} rewritten).")
+        self._clear_selection()
+        self._rebuild_cards()
+
+    def _trip_species_names(self) -> list[str]:
+        """Every species name (NL / EN / scientific) referenced by pictures in the
+        loaded trip — the allowed Move-to targets. Within a trip you may only move
+        a picture to a species already recorded here; the master viewer (later)
+        will allow any species ever seen. All three languages are offered so the
+        picker's search works whatever the display language."""
+        names: set[str] = set()
+        for row in self.fpr.upn.UniquePictureName_dict.values():
+            for field in ("NLSoortNaam", "EngSoortNaam", "WetSoortNaam"):
+                v = (row.get(field) or "").strip()
+                if v:
+                    names.add(v)
+        return sorted(names, key=str.casefold)
+
+    def _ask_existing_species(self, names: list[str], n_pictures: int) -> str | None:
+        """Small modal picker: an editable, contains-match combo over existing
+        species names. Returns the chosen name, or None on cancel."""
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QDialogButtonBox, QCompleter
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Move to existing species")
+        dlg.setMinimumWidth(420)
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(QLabel(
+            f"Move {n_pictures} picture{'s' if n_pictures != 1 else ''} to:"))
+        combo = QComboBox()
+        combo.setEditable(True)
+        combo.addItems(names)
+        combo.setCurrentIndex(-1)
+        combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        combo.lineEdit().setPlaceholderText("Type a Dutch, English or scientific name…")
+        # A dedicated popup (dropdown) completer — NOT the combo's built-in inline
+        # one, whose inline completion garbles the field under MatchContains
+        # (it appends the match instead of replacing: "dwergaals" → "dwergaalse
+        # dwergaalscholver"). PopupCompletion shows a list and inserts cleanly.
+        completer = QCompleter(names, dlg)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        combo.setCompleter(completer)
+        lay.addWidget(combo)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
+                                   | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        lay.addWidget(buttons)
+        combo.setFocus()
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return combo.currentText().strip() or None
 
     def _open_batch_rate_dialog(self, keys: set):
         if not keys or self._collection is None:

@@ -85,6 +85,14 @@ class Files:
         return len(self.files_dict), from_time, last_time
     
     def write_project_files(self):
+        # No output path → nothing to persist here. This happens for the merged,
+        # in-memory Files object the Trip-scope viewers build (Files(None)): its
+        # per-day CSVs are written via their own day objects instead. Skip rather
+        # than open('') and crash. (write_project_summary already guards this.)
+        if not self.filename:
+            logger.warning("write_project_files: no filename set — skipping "
+                           "(merged in-memory Files object; persist per-day instead).")
+            return
         with open(self.filename, "w", newline="", encoding='utf-8') as csvfile:
             writer = csv.DictWriter(
                 csvfile, fieldnames=COLUMN_NAMES.values(), quoting=csv.QUOTE_MINIMAL, delimiter=';'

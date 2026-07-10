@@ -7,7 +7,7 @@ import weakref
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton,
-    QSizePolicy, QTextEdit, QComboBox, QDialogButtonBox,
+    QSizePolicy, QTextEdit, QComboBox, QDialogButtonBox, QCompleter,
     QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog, QFrame, QMenu)
 from PyQt6.QtCore import Qt, QTimer, QSize, pyqtSignal
 from PyQt6.QtGui import QCursor
@@ -209,6 +209,13 @@ class SpeciesInfoPanel(QWidget):
         self.subject_field = LabeledTextFieldQt("Suggested species name:", value=name_only)
         layout.addWidget(self.subject_field)
 
+        # Immediate as-you-type suggestions — a contains-match auto-complete over
+        # every NL / EN / scientific species name, mirroring the culling dialog
+        # (which felt much quicker than the older click-"Suggest" flow). It only
+        # offers names already in the collection; a genuinely new name is still
+        # typed freely and confirmed via Validate / GBIF on Commit.
+        self._attach_species_completer()
+
         # ── Suggestion dropdown ───────────────────────────────────────────────
         layout.addWidget(QLabel("Suggestions"))
         self.suggestion_dropdown = QComboBox()
@@ -284,6 +291,33 @@ class SpeciesInfoPanel(QWidget):
         self._recent_grid.setVerticalSpacing(4)
         layout.addWidget(self._recent_container)
         self._build_recent_buttons()
+
+    # ── Live auto-complete ──────────────────────────────────────────────────────
+
+    def _attach_species_completer(self):
+        """Wire a contains-match auto-complete popup onto the species field so
+        suggestions appear on every keystroke — the same behaviour as the culling
+        'Set species' dialog. No-op when the species collection isn't loaded on
+        this fpr (some hosts leave fpr.sc as the bare {} placeholder); the user
+        can still type freely and Commit stores as typed."""
+        fpr = self._fpr
+        if fpr is None or not _sc_usable(fpr.sc):
+            self._completer = None
+            return
+        try:
+            from gui.culling_species import species_name_candidates
+            names = species_name_candidates(fpr.sc)
+        except Exception as e:
+            logger.warning(f"Could not build species auto-complete list: {e}")
+            self._completer = None
+            return
+        completer = QCompleter(names, self)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        # subject_field.field is a QLineEdit (single-line, not multiline).
+        self.subject_field.field.setCompleter(completer)
+        self._completer = completer
 
     # ── Suggest ───────────────────────────────────────────────────────────────
 
