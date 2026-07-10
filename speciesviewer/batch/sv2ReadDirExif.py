@@ -171,6 +171,13 @@ def main(args, config):
         metadata = hits + fresh
         if persist:
             exifcache.update(cache, fresh, fingerprint)
+            # LRU sweep: drop entries not seen in the last 90 days (old trips /
+            # deleted files) so the day/trip cache stays trip-sized. Active paths
+            # were just stamped by partition()/update(), so they never age out.
+            evicted = exifcache.prune_expired(cache)
+            if evicted:
+                logger.info(f"EXIF cache: pruned {evicted:,} stale entries "
+                            f"(unused > {exifcache.CACHE_TTL_DAYS} days).")
             # The cache is a pure optimization — a failed save (e.g. a Dropbox/AV
             # lock that outlasts the retries) must NOT cost us the directory read.
             # Log and continue; the next scan re-reads the un-cached files.

@@ -38,6 +38,24 @@ logger = logging.getLogger("speciesviewer")
 CACHE_VERSION = 1
 CACHE_BACKUPS = 3
 
+# LRU retention for the day/trip cache: an entry not seen (hit OR re-written)
+# within this many days is evicted on the next scan. Because the mutable bucket
+# is keyed by path (updated in place, never version-churned), the only thing
+# that grows is the set of distinct paths ever scanned — old trips' files, plus
+# deleted ones — so a last-seen sweep keeps the cache trip-sized. 90 days is a
+# deliberately generous net: comfortably longer than a trip stays open, and the
+# only cost of a wrong eviction is one re-read (the cache is a pure optimization
+# with a size/mtime/fingerprint guard, so it can never serve a stale value).
+# Applied to the day/trip cache only; the master cache is rebuilt wholesale by
+# Rescan, so it is intentionally left unpruned.
+CACHE_TTL_DAYS = 90
+
+
+def _epoch_day():
+    """Whole days since the epoch — day-granularity is plenty for a 90-day TTL
+    and keeps the stamp small/stable across same-day re-scans."""
+    return int(time.time() // 86400)
+
 # exiftool common args used by every read path (sv2ReadDirExif, rescan, and the
 # spawned parallel workers). Kept in ONE place so the parallel workers read
 # byte-identically to the primary helper. -G group names + UTF-8 for both file
@@ -213,6 +231,7 @@ def partition(root, cache, fingerprint, recurse=True):
     hits, misses = [], []
     stats = {"imm_hit": 0, "imm_miss": 0, "mut_hit": 0, "mut_miss": 0,
              "skipped": 0}
+    now_day = _epoch_day()   # LRU: stamp every hit so live paths never age out
     for dirpath, dirs, files in os.walk(root):
         # Match exiftool -r: it does NOT recurse into directories whose names
         # begin with '.' (e.g. the GUI's .preview_cache). Prune in place so we
@@ -238,6 +257,7 @@ def partition(root, cache, fingerprint, recurse=True):
             if ext in IMMUTABLE_EXTENSIONS:
                 ent = imm.get(_imm_key(name, st.st_size))
                 if ent and ent.get("fp") == fingerprint:
+                    ent["seen"] = now_day
                     hits.append(_inject_paths(ent["exif"], full, dirpath, name))
                     stats["imm_hit"] += 1
                 else:
@@ -248,6 +268,7 @@ def partition(root, cache, fingerprint, recurse=True):
                 if (ent and ent.get("fp") == fingerprint
                         and ent.get("size") == st.st_size
                         and ent.get("mtime") == int(st.st_mtime)):
+                    ent["seen"] = now_day
                     hits.append(_inject_paths(ent["exif"], full, dirpath, name))
                     stats["mut_hit"] += 1
                 else:
@@ -261,6 +282,7 @@ def update(cache, fresh, fingerprint):
     mutable by path+size+mtime). Volatile path/time keys are stripped before
     storing; they're re-injected on the next hit."""
     imm, mut = cache["immutable"], cache["mutable"]
+    now_day = _epoch_day()
     for d in fresh:
         src = d.get("SourceFile") or ""
         name = d.get("File:FileName") or os.path.basename(src)
@@ -273,12 +295,39 @@ def update(cache, fresh, fingerprint):
             continue
         slim = {k: v for k, v in d.items() if k not in _VOLATILE_EXIF_KEYS}
         if ext in IMMUTABLE_EXTENSIONS:
-            imm[_imm_key(name, st.st_size)] = {"fp": fingerprint, "exif": slim}
+            imm[_imm_key(name, st.st_size)] = {
+                "fp": fingerprint, "exif": slim, "seen": now_day}
         else:
             mut[_mut_key(src)] = {
                 "fp": fingerprint, "size": st.st_size,
-                "mtime": int(st.st_mtime), "exif": slim,
+                "mtime": int(st.st_mtime), "exif": slim, "seen": now_day,
             }
+
+
+def prune_expired(cache, ttl_days=CACHE_TTL_DAYS):
+    """LRU sweep for the DAY/TRIP cache: drop entries not seen (hit or written)
+    within `ttl_days`. partition() stamps `seen` on every hit and update() on
+    every write, so an actively-scanned path never ages out — only paths you have
+    stopped touching (old trips, deleted files) expire. Legacy entries predating
+    the `seen` field are stamped now (a full-TTL grace) rather than dropped, so an
+    upgrade never evicts en masse. Returns the number removed.
+
+    Cheap (a dict walk, no I/O) — call right before save_cache on the day/trip
+    scan. Do NOT call it on the master cache: that one is rebuilt wholesale by
+    Rescan, and a 90-day gap between rescans must not trigger a full re-read."""
+    today = _epoch_day()
+    cutoff = today - ttl_days
+    removed = 0
+    for bucket in ("immutable", "mutable"):
+        d = cache.get(bucket, {})
+        for k in list(d.keys()):
+            seen = d[k].get("seen")
+            if seen is None:
+                d[k]["seen"] = today          # migrate legacy entry: grant grace
+            elif seen < cutoff:
+                del d[k]
+                removed += 1
+    return removed
 
 
 def auto_worker_count(n_files, configured="auto", *, cap=16, per_worker=24):
