@@ -288,6 +288,174 @@ def _read_exif_row(path: Path, master_root: Path, rel: str, upn: str) -> dict:
     return row
 
 
+# ── move to another species ─────────────────────────────────────────────────────
+
+def move_picture_to_species(db, master_root, upn: str, target: dict) -> dict:
+    """Reassign a no-JPG master picture to `target` species: relocate its files
+    into the target species folder, rewrite the species keyword on the XMP
+    sidecar, update the DB picture + file rows, and snapshot the pre-move state
+    for undo. Refuses JPG-bearing UPNs — the website best-pick JPG move isn't
+    implemented (mirrors the delete JPG-protection invariant).
+
+    `target` = {"sci","nl","en","target_path"} from the master species table
+    (db.species_row / db.all_species_rows). Species-count rollups are reconciled
+    by a subsequent Recount (like delete/add). Returns a summary dict.
+    """
+    master_root = Path(master_root)
+    picture, files = _collect_files(db, upn)
+    if any(_is_jpg(fr) for fr in files.values()):
+        raise MasterMutateError(
+            f"{upn!r} contains a JPG — JPG-bearing pictures can't be moved "
+            f"(the website best-pick move isn't implemented).")
+
+    target_sci = (target.get("sci") or "").strip()
+    target_rel = (target.get("target_path") or "").strip()
+    if not target_sci:
+        raise MasterMutateError("No target species given.")
+    if not target_rel:
+        raise MasterMutateError(
+            f"Target species {target_sci!r} has no folder (TargetPath) in the "
+            f"master yet — file a picture there via the pipeline first.")
+
+    def _norm(p: str) -> str:
+        return (p or "").strip().rstrip("/\\").replace("\\", "/").lower()
+
+    src_rel = _rel_dir(picture)
+    if _norm(src_rel) == _norm(target_rel):
+        raise MasterMutateError(f"This picture is already filed under {target_sci}.")
+
+    dest_dir = master_root / target_rel
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    day = date.today().isoformat()
+    batch = f"{day}_{int(time.time()*1000)}"
+    snapshot = {"op": "move_species", "upn": upn, "picture": picture,
+                "files": list(files.values()), "src_rel": src_rel,
+                "target_rel": target_rel}
+
+    from engine.exif_writer import exiftool_write
+    from engine.filepicture import format_subject_for_xmp
+    correct_for_xmp = format_subject_for_xmp(target_sci)
+
+    # Plan the per-file source→dest moves up front WITHOUT touching disk, so the
+    # DB write can go first (below). NB the files table has no TargetPath column —
+    # the species/folder lives on the picture row; files carry only path fields.
+    plan = []            # (fname, src, dest)
+    file_updates = {}
+    for fname, fr in files.items():
+        src = _abs_path(master_root, picture, fr)
+        dest = dest_dir / fname
+        if src and src.exists() and dest.exists() and _norm(str(dest)) != _norm(str(src)):
+            # Cross-species same-name collision is unlikely (names carry the UPN)
+            # but never overwrite: suffix the incoming file if the name is taken.
+            stem, suf = dest.stem, dest.suffix
+            n = 1
+            while dest.exists():
+                dest = dest.with_name(f"{stem}__{n}{suf}")
+                n += 1
+        plan.append((fname, src, dest))
+        file_updates[fname] = {
+            "File:FileName": dest.name,
+            "File:Directory": str(dest_dir),
+            "WindowsFileName": str(dest),
+        }
+
+    picture_fields = {
+        "WetSoortNaam": target_sci,
+        "NLSoortNaam": target.get("nl") or "",
+        "EngSoortNaam": target.get("en") or "",
+        "subject": target_sci,
+        "TargetPath": target_rel,
+        "BestJPGPathName": "",   # no JPG on a moveable picture
+    }
+
+    # DB-FIRST: apply the reassignment before moving any bytes. If the DB write
+    # fails (e.g. a bad column), it self-cleans its jsonl intent and raises here —
+    # and no files have been touched, so nothing is left inconsistent.
+    _write_snapshot(master_root, batch, snapshot)
+    db.apply_move_species(upn, picture_fields=picture_fields, file_updates=file_updates)
+
+    # Then relocate the files + rewrite the sidecar keyword. A failure here is
+    # rare (disk/permission); the snapshot + partial manifest keep it recoverable.
+    moved, manifest_rows = [], []
+    for fname, src, dest in plan:
+        if src and src.exists():
+            shutil.move(str(src), str(dest))
+            moved.append(str(dest))
+            manifest_rows.append({"ts": f"{time.time():.0f}", "op": "move_species",
+                                  "upn": upn, "rel_path": f"{target_rel}/{dest.name}",
+                                  "orig_abspath": str(src), "trashed_path": str(dest),
+                                  "batch": batch})
+        else:
+            logger.warning(f"move_picture_to_species: {fname} not on disk; DB path "
+                           f"updated anyway.")
+        # Keep the sidecar keyword in step (the DB WetSoortNaam stays the
+        # authority; this just avoids a stale subject if the file is re-read).
+        if dest.exists() and dest.suffix.lower() == ".xmp":
+            try:
+                exiftool_write(dest, [f"-XMP:Subject={correct_for_xmp}"])
+            except Exception as e:
+                logger.warning(f"move: subject rewrite failed for {dest.name}: {e}")
+
+    _append_manifest(master_root, manifest_rows)
+    logger.info(f"Moved master picture {upn} → {target_sci} "
+                f"({len(moved)} files relocated, batch {batch}).")
+    return {"upn": upn, "target": target_sci, "moved": moved, "batch": batch}
+
+
+def undo_move(db, master_root, batch: str) -> dict:
+    """Reverse a move batch: relocate the files back to their original folder and
+    restore the picture/file species fields from the snapshot. Best-effort like
+    undo_delete — a Recount reconciles species counts. (Not wired to a GUI button
+    yet; the snapshot + manifest make a move recoverable.)"""
+    import csv
+    master_root = Path(master_root)
+    sp = _snapshot_path(master_root, batch)
+    if not sp.exists():
+        raise MasterMutateError(f"No snapshot for batch {batch}.")
+    snap = json.loads(sp.read_text(encoding="utf-8"))
+    if snap.get("op") != "move_species":
+        raise MasterMutateError(f"Batch {batch} is not a move.")
+    upn = snap["upn"]
+    src_rel = snap.get("src_rel", "")
+    picture = snap.get("picture", {})
+    files = snap.get("files", [])
+
+    restored = []
+    mp = _manifest_path(master_root)
+    if mp.exists():
+        with open(mp, newline="", encoding="utf-8") as fh:
+            rows = [r for r in csv.DictReader(fh, delimiter=";")
+                    if r.get("batch") == batch and r.get("op") == "move_species"]
+        for r in rows:
+            cur = Path(r["trashed_path"])    # current (target) location
+            old = Path(r["orig_abspath"])    # original home
+            if cur.exists():
+                old.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(cur), str(old))
+                restored.append(str(old))
+
+    picture_fields = {
+        "WetSoortNaam": picture.get("WetSoortNaam", ""),
+        "NLSoortNaam": picture.get("NLSoortNaam", ""),
+        "EngSoortNaam": picture.get("EngSoortNaam", ""),
+        "subject": picture.get("subject", ""),
+        "TargetPath": picture.get("TargetPath", src_rel),
+        "BestJPGPathName": picture.get("BestJPGPathName", ""),
+    }
+    file_updates = {}
+    for fr in files:
+        fname = fr.get("File:FileName", "")
+        if fname:
+            file_updates[fname] = {
+                "File:Directory": fr.get("File:Directory", str(master_root / src_rel)),
+                "WindowsFileName": fr.get("WindowsFileName", ""),
+            }
+    db.apply_move_species(upn, picture_fields=picture_fields, file_updates=file_updates)
+    logger.info(f"Undid move batch {batch}: {len(restored)} files restored to {src_rel}.")
+    return {"batch": batch, "restored": restored}
+
+
 # ── undo / snapshots ───────────────────────────────────────────────────────────
 
 def _snapshot_path(master_root: Path, batch: str) -> Path:

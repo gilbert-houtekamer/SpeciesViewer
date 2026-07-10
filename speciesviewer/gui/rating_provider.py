@@ -283,6 +283,23 @@ class RatingEditorCollection(PictureCollection):
         from db.master_mutate import delete_picture
         return delete_picture(self._master_db, self._master_root, key)
 
+    def master_upn_moveable(self, key: str) -> bool:
+        """A master picture can be moved to another species only when master
+        writes are enabled and it has no JPG — same gate as delete (the JPG
+        best-pick move isn't implemented)."""
+        return self.master_upn_deletable(key)
+
+    def master_species_targets(self) -> list[dict]:
+        """Every species in the master (species.csv mirror) as a Move-to target:
+        [{"sci","nl","en","target_path"}]. Empty when no master DB is attached."""
+        if self._master_db is None:
+            return []
+        return self._master_db.all_species_rows()
+
+    def move_master_picture(self, key: str, target: dict) -> dict:
+        from db.master_mutate import move_picture_to_species
+        return move_picture_to_species(self._master_db, self._master_root, key, target)
+
     def delete_master_file(self, key: str, fname: str) -> dict:
         from db.master_mutate import delete_file
         return delete_file(self._master_db, self._master_root, key, fname)
@@ -408,18 +425,20 @@ class RatingEditorCollection(PictureCollection):
                           else "rate")
 
     def available_cameras(self, filter_name: str | None = None) -> list[str]:
-        """Distinct camera bodies among the loaded TRIP pictures, for the filter
-        combo. Scoped to `filter_name` (the selected species) when given, so the
-        list only offers bodies actually present in what's on screen — a species
-        shot only on the OM-1 won't also list the phone. Trip-only (master
-        pictures are pulled lazily per species)."""
+        """Distinct camera bodies among the loaded pictures, for the filter combo.
+        Scoped to `filter_name` (the selected species) when given, so the list
+        only offers bodies actually present in what's on screen — a species shot
+        only on the OM-1 won't also list the phone. Scans both the trip rows and
+        the currently-loaded master rows, so it serves the Master Species Viewer
+        (trip rows empty there) as well as the Trip viewer."""
         models = set()
-        for row in self.fpr.upn.UniquePictureName_dict.values():
-            if filter_name and self.species_name(row) != filter_name:
-                continue
-            m = self._row_camera(row)
-            if m:
-                models.add(m)
+        for source in (self.fpr.upn.UniquePictureName_dict, self._master_upn):
+            for row in source.values():
+                if filter_name and self.species_name(row) != filter_name:
+                    continue
+                m = self._row_camera(row)
+                if m:
+                    models.add(m)
         return sorted(models, key=str.casefold)
 
     def set_species_lang(self, lang: str) -> None:

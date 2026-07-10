@@ -1627,8 +1627,8 @@ class RatingEditorDialog(QDialog):
             QMessageBox.warning(self, "Delete blocked", str(e))
             return
         self._status.setText(
-            f"Deleted — {len(res['trashed'])} file(s) moved to .trash. "
-            f"Run Master → Recount species to refresh rollups.")
+            f"Deleted — {len(res['trashed'])} file(s) moved to .trash; "
+            f"species counts updated.")
         self._rebuild_cards()
 
     def _do_master_delete_file(self, upn_key: str, fname: str):

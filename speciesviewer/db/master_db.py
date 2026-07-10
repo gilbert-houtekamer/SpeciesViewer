@@ -509,6 +509,38 @@ class MasterDB:
         return [{"sci": r["sci"], "nl": r["nl"] or "", "en": r["en"] or "",
                  "n": r["n"]} for r in rows]
 
+    def all_species_rows(self) -> list[dict]:
+        """Every SPECIES-level taxon in the master species table (the species.csv
+        mirror) — the Move-to-species target universe: any species ever seen, not
+        only those that currently have pictures (that's species_picker_rows()).
+        Returns [{"sci","nl","en","target_path"}] sorted by scientific name."""
+        con = self._connect()
+        try:
+            rows = con.execute(
+                'SELECT "ScientificName" AS sci, "DutchName" AS nl, '
+                '"EnglishName" AS en, "TargetPath" AS target_path '
+                'FROM species WHERE "Level" = ? AND TRIM("ScientificName") <> "" '
+                'ORDER BY sci COLLATE NOCASE', ("Level.SPECIES",)).fetchall()
+        except sqlite3.OperationalError:
+            return []
+        return [{"sci": r["sci"], "nl": r["nl"] or "", "en": r["en"] or "",
+                 "target_path": r["target_path"] or ""} for r in rows]
+
+    def species_row(self, sci: str) -> dict | None:
+        """Resolve one species (case-insensitive scientific name) to
+        {"sci","nl","en","target_path"} — used to look up a Move-to-species
+        target's folder + canonical names."""
+        con = self._connect()
+        row = con.execute(
+            'SELECT "ScientificName" AS sci, "DutchName" AS nl, '
+            '"EnglishName" AS en, "TargetPath" AS target_path '
+            'FROM species WHERE LOWER("ScientificName") = ?',
+            ((sci or "").strip().lower(),)).fetchone()
+        if row is None:
+            return None
+        return {"sci": row["sci"], "nl": row["nl"] or "", "en": row["en"] or "",
+                "target_path": row["target_path"] or ""}
+
     def picture(self, upn: str) -> dict | None:
         con = self._connect()
         row = con.execute(
@@ -815,6 +847,124 @@ class MasterDB:
                 u["currentHighestRating"] = pic_rate
         return updates
 
+    def _species_chain(self, con: sqlite3.Connection, sci: str):
+        """[species row, …ancestor rows to the root] for a scientific name, or []
+        when the species isn't in the table. Shared shape with the delete/add
+        count helpers."""
+        sci = (sci or "").strip()
+        if not sci:
+            return []
+        row = con.execute(
+            'SELECT * FROM species WHERE LOWER("ScientificName")=?',
+            (sci.lower(),)).fetchone()
+        if row is None:
+            return []
+        chain = [row]
+        up = row["Up"]
+        seen = {row["ScientificName"]}
+        while up and up not in seen:
+            seen.add(up)
+            arow = con.execute(
+                'SELECT * FROM species WHERE "ScientificName"=?', (up,)).fetchone()
+            if arow is None:
+                break
+            chain.append(arow)
+            up = arow["Up"]
+        return chain
+
+    def _species_move_updates(self, con: sqlite3.Connection,
+                              source_sci: str, target_sci: str):
+        """Species-table changes for moving ONE no-JPG picture from `source_sci`
+        to `target_sci`. Returns (updates {ScientificName: {col: value}},
+        deleted [ScientificName]) as ABSOLUTE values so they're safe to replay.
+
+        Both taxonomy chains are diffed against the SAME pre-move snapshot and the
+        per-node deltas summed, so any ancestor the two chains share nets to zero
+        (the total picture count under, say, Aves doesn't change when a picture
+        moves between two birds). No JPG is involved (moves of JPG-bearing
+        pictures are refused), so BestJPG / …WithJPGs / currentHighestRating stay
+        invariant — only iPictureCollectionCount (all nodes) and, on a species
+        emptying/un-emptying, iSpeciesCollectionCount + the parent's Leaves.
+
+        MUST be called BEFORE the picture row is reassigned (it counts pictures
+        under each species to detect emptying)."""
+        source_sci = (source_sci or "").strip()
+        target_sci = (target_sci or "").strip()
+        updates: dict[str, dict] = {}
+        deleted: list[str] = []
+        tgt_chain = self._species_chain(con, target_sci)
+        if not tgt_chain:
+            return updates, deleted   # target not tracked → nothing to roll up
+        src_chain = self._species_chain(con, source_sci)
+
+        rows_by_name = {r["ScientificName"]: r for r in src_chain + tgt_chain}
+
+        # iPictureCollectionCount: −1 along the source chain, +1 along the target
+        # chain (shared ancestors cancel).
+        pic_delta: dict[str, int] = {}
+        for r in src_chain:
+            pic_delta[r["ScientificName"]] = pic_delta.get(r["ScientificName"], 0) - 1
+        for r in tgt_chain:
+            pic_delta[r["ScientificName"]] = pic_delta.get(r["ScientificName"], 0) + 1
+
+        def _pic_count(sci: str) -> int:
+            return con.execute(
+                'SELECT COUNT(*) FROM pictures WHERE LOWER(TRIM("WetSoortNaam"))=?',
+                (sci.lower(),)).fetchone()[0]
+
+        source_empties = bool(src_chain) and (_pic_count(source_sci) - 1 <= 0)
+        target_was_empty = (_pic_count(target_sci) == 0)
+
+        # iSpeciesCollectionCount changes only on the ANCESTORS when a species
+        # appears/disappears under them.
+        spec_delta: dict[str, int] = {}
+        if source_empties:
+            for r in src_chain[1:]:
+                spec_delta[r["ScientificName"]] = spec_delta.get(r["ScientificName"], 0) - 1
+        if target_was_empty:
+            for r in tgt_chain[1:]:
+                spec_delta[r["ScientificName"]] = spec_delta.get(r["ScientificName"], 0) + 1
+
+        for name, d in pic_delta.items():
+            if d:
+                cur = _coerce_int(rows_by_name[name]["iPictureCollectionCount"])
+                updates.setdefault(name, {})["iPictureCollectionCount"] = cur + d
+        for name, d in spec_delta.items():
+            if d:
+                cur = _coerce_int(rows_by_name[name]["iSpeciesCollectionCount"])
+                updates.setdefault(name, {})["iSpeciesCollectionCount"] = cur + d
+
+        # Parent Leaves: drop the emptied source, add the un-emptied target. Build
+        # incrementally so a shared parent (moving between two species of one
+        # genus) sees both edits.
+        def _parent_leaves(parent_name: str) -> list:
+            if parent_name in updates and "Leaves" in updates[parent_name]:
+                return list(updates[parent_name]["Leaves"])
+            praw = rows_by_name.get(parent_name)
+            return json.loads(praw["Leaves"]) if praw and praw["Leaves"] else []
+
+        if source_empties and len(src_chain) >= 2:
+            parent = src_chain[1]["ScientificName"]
+            leaves = [x for x in _parent_leaves(parent)
+                      if x != src_chain[0]["ScientificName"]]
+            updates.setdefault(parent, {})["Leaves"] = leaves
+        if target_was_empty and len(tgt_chain) >= 2:
+            parent = tgt_chain[1]["ScientificName"]
+            leaves = _parent_leaves(parent)
+            tname = tgt_chain[0]["ScientificName"]
+            if tname not in leaves:
+                leaves = leaves + [tname]
+            updates.setdefault(parent, {})["Leaves"] = leaves
+
+        # Mirror delete: an emptied source species row is removed (it re-creates on
+        # a future add). Don't also emit field updates for a row we delete.
+        if source_empties:
+            sname = src_chain[0]["ScientificName"]
+            deleted.append(sname)
+            updates.pop(sname, None)
+
+        return updates, deleted
+
     # ── master add/delete operations (durable; mirror apply_rating's discipline)
     def apply_delete_upn(self, upn: str) -> list[str] | None:
         """Delete a whole picture (UPN) + its file rows from the master, and
@@ -911,6 +1061,53 @@ class MasterDB:
                 self._set_species_fields(con, s, fields)
         MasterCheckpointWorker.get(self.master_root).notify()
         return True
+
+    def apply_move_species(self, upn: str, *, picture_fields: dict,
+                           file_updates: dict | None = None) -> None:
+        """Durably reassign a master picture to another species. This is a plain
+        generic field update — the picture's species names + TargetPath, and each
+        file's path fields — so the generic _replay_sections handles crash
+        recovery (no new replay op). Species-count rollups are DEFERRED to a
+        Recount, exactly like apply_add_file / apply_restore: the two taxonomy
+        chains and species row create/remove are the hard part and Recount
+        reconciles them exactly. jsonl intent first (fsync), then SQLite, then
+        nudge the checkpoint worker."""
+        file_updates = file_updates or {}
+        con = self._connect()
+        # Roll the species counts BEFORE the picture row is reassigned (the count
+        # helper detects a species emptying/un-emptying by counting its pictures).
+        prow = con.execute(
+            'SELECT "WetSoortNaam" FROM pictures WHERE "UniquePictureName"=?',
+            (upn,)).fetchone()
+        source_sci = (prow["WetSoortNaam"] if prow else "") or ""
+        target_sci = picture_fields.get("WetSoortNaam", "") or ""
+        spec_updates, spec_deleted = self._species_move_updates(
+            con, source_sci, target_sci)
+        entry = {"op": "move_species", "ts": time.time(), "upn": upn,
+                 "pictures": {upn: picture_fields},
+                 "files": file_updates,
+                 "species": spec_updates,
+                 "species_delete": spec_deleted}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        try:
+            with con:
+                self._set_picture_fields(con, upn, picture_fields)
+                for fn, fields in file_updates.items():
+                    self._set_file_fields(con, fn, fields)
+                for sci, fields in spec_updates.items():
+                    self._set_species_fields(con, sci, fields)
+                self._delete_species(con, spec_deleted)
+        except Exception:
+            # The SQLite write was rolled back (with con) but the jsonl intent is
+            # still on disk — and every checkpoint replays the whole log in one
+            # transaction, so a single bad entry would block ALL future
+            # checkpoints. Drop it before re-raising so a failed move stays
+            # local and recoverable.
+            self._drop_jsonl_seq(entry["seq"])
+            raise
+        MasterCheckpointWorker.get(self.master_root).notify()
 
     def apply_restore(self, picture: dict, files: list[dict]) -> None:
         """Undo support: re-insert a previously-deleted picture row + its file
@@ -1032,6 +1229,19 @@ class MasterDB:
                 logger.warning(f"master checkpoint: dropping stale species op "
                                f"{e.get('op')} for {e.get('upn')}")
         return dp, df, ds
+
+    def _drop_jsonl_seq(self, seq: int) -> None:
+        """Remove one entry (by seq) from the pending-writes log — used to undo a
+        jsonl intent whose SQLite write failed, so a bad entry can't poison every
+        future checkpoint."""
+        keep = [e for e in self._read_jsonl() if e.get("seq") != seq]
+        tmp = self._jsonl_path.with_suffix(self._jsonl_path.suffix + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            for e in keep:
+                fh.write(json.dumps(e) + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, self._jsonl_path)
 
     def _truncate_jsonl(self, processed_max_seq: int) -> None:
         """Drop entries up to processed_max_seq, preserving any appended during

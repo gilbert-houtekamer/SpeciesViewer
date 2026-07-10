@@ -82,6 +82,31 @@ class MasterSpeciesViewerDialog(QDialog):
         self._lang_combo.setToolTip("Species name language")
         self._lang_combo.currentIndexChanged.connect(self._on_lang_changed)
         top.addWidget(self._lang_combo)
+        top.addSpacing(12)
+
+        # Camera filter + sort order — mirror the Trip Species Viewer. The camera
+        # list is scoped to the species in view (populated after each rebuild).
+        top.addWidget(QLabel("Camera:"))
+        self._camera_combo = QComboBox()
+        self._camera_combo.setMinimumWidth(130)
+        self._camera_combo.setToolTip("Show only master pictures from this camera body")
+        self._camera_combo.currentIndexChanged.connect(self._on_camera_changed)
+        top.addWidget(self._camera_combo)
+        top.addSpacing(8)
+
+        top.addWidget(QLabel("Sort:"))
+        self._sort_combo = QComboBox()
+        for label, data in (("Rate ↓", "rate"),
+                            ("Time ↑", "time_asc"),
+                            ("Time ↓", "time_desc"),
+                            ("Camera", "camera")):
+            self._sort_combo.addItem(label, data)
+        self._sort_combo.setToolTip(
+            "Card order — Rate (best first), capture time (old→new / new→old), "
+            "or camera body")
+        self._sort_combo.currentIndexChanged.connect(self._on_sort_changed)
+        top.addWidget(self._sort_combo)
+        top.addSpacing(8)
 
         self._regen_btn = QPushButton("Regenerate page…")
         self._regen_btn.setToolTip(
@@ -273,6 +298,12 @@ class MasterSpeciesViewerDialog(QDialog):
         self._current_display = self._display_name_for(sci)
         # Keep the field showing the resolved name in the current language.
         self._species_field.setText(self._current_display)
+        # A new species starts unfiltered by camera — its bodies differ, and the
+        # list is only known after the rebuild below (avoids a stale filter that
+        # would show an empty grid). blockSignals: no extra rebuild.
+        self._camera_combo.blockSignals(True)
+        self._camera_combo.setCurrentIndex(0)
+        self._camera_combo.blockSignals(False)
         self._rebuild_cards()
 
     def _on_lang_changed(self, _idx: int):
@@ -285,6 +316,33 @@ class MasterSpeciesViewerDialog(QDialog):
     def _on_jpg_only_toggled(self, checked: bool):
         self._jpg_only = checked
         self._rebuild_cards()
+
+    def _on_camera_changed(self, _idx: int):
+        self._rebuild_cards()
+
+    def _on_sort_changed(self, _idx: int):
+        self._rebuild_cards()
+
+    def _selected_cameras(self) -> set:
+        model = self._camera_combo.currentData()
+        return {model} if model else set()
+
+    def _populate_camera_combo(self):
+        """Refill the camera combo from the species currently in view (its master
+        rows are loaded by the preceding rebuild). blockSignals keeps this from
+        re-triggering a rebuild; the current pick is preserved when still present."""
+        if self._collection is None:
+            return
+        prev = self._camera_combo.currentData()
+        self._camera_combo.blockSignals(True)
+        self._camera_combo.clear()
+        self._camera_combo.addItem("All cameras", None)
+        for model in self._collection.available_cameras(self._current_display):
+            self._camera_combo.addItem(model, model)
+        if prev:
+            idx = self._camera_combo.findData(prev)
+            self._camera_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self._camera_combo.blockSignals(False)
 
     # ── Regenerate this species' website page ──────────────────────────────
     def _on_regenerate(self):
@@ -391,7 +449,11 @@ class MasterSpeciesViewerDialog(QDialog):
         self._collection.set_species_lang(self._species_lang)
         self._collection.set_jpg_only(self._jpg_only)
         self._collection.set_color_filter(self._color_filter_bar.selected_colors)
+        self._collection.set_camera_filter(self._selected_cameras())
+        self._collection.set_sort(self._sort_combo.currentData())
         self._collection.rebuild(self._current_display, forced_sci=self._current_sci)
+        # Refresh the camera list now that this species' master rows are loaded.
+        self._populate_camera_combo()
         n = len(self._collection)
         placement = self._grid_placement(n)
         for c in range(self.columns):
@@ -479,6 +541,9 @@ class MasterSpeciesViewerDialog(QDialog):
             return
         menu = QMenu(self)
         act_add = menu.addAction("Add new files for this picture (scan folder)")
+        act_move = None
+        if col.master_upn_moveable(upn_key):
+            act_move = menu.addAction("Move to existing species…")
         act_del = None
         file_acts = {}
         if col.master_upn_deletable(upn_key):
@@ -491,13 +556,15 @@ class MasterSpeciesViewerDialog(QDialog):
                     file_acts[sub.addAction(fn)] = fn
         elif col.master_upn_has_jpg(upn_key):
             menu.addSeparator()
-            info = menu.addAction("Delete blocked — picture has a JPG (protected)")
+            info = menu.addAction("Delete / Move blocked — picture has a JPG (protected)")
             info.setEnabled(False)
         chosen = menu.exec(QCursor.pos())
         if chosen is None:
             return
         if chosen == act_add:
             self._do_master_add(upn_key)
+        elif act_move is not None and chosen == act_move:
+            self._do_master_move(upn_key)
         elif act_del is not None and chosen == act_del:
             self._do_master_delete(upn_key)
         elif chosen in file_acts:
@@ -518,8 +585,8 @@ class MasterSpeciesViewerDialog(QDialog):
             QMessageBox.warning(self, "Delete blocked", str(e))
             return
         self._status.setText(
-            f"Deleted — {len(res['trashed'])} file(s) moved to .trash. "
-            f"Run Master → Recount species to refresh rollups.")
+            f"Deleted — {len(res['trashed'])} file(s) moved to .trash; "
+            f"species counts updated.")
         self._rebuild_cards()
 
     def _do_master_delete_file(self, upn_key: str, fname: str):
@@ -536,6 +603,91 @@ class MasterSpeciesViewerDialog(QDialog):
             return
         self._status.setText(f"Deleted {fname} (moved to .trash).")
         self._rebuild_cards()
+
+    def _do_master_move(self, upn_key: str):
+        from db.master_mutate import MasterMutateError
+        targets = self._collection.master_species_targets()
+        if not targets:
+            QMessageBox.information(self, "Move to species",
+                                    "No master species list is available.")
+            return
+        target = self._ask_master_species(upn_key, targets)
+        if not target:
+            return
+        # Confirm before relocating real master files on disk.
+        n_files = len(self._collection.master_nonjpg_files(upn_key))
+        tname = target.get("nl") or target.get("sci")
+        src = self._current_display or "its current species"
+        if QMessageBox.question(
+                self, "Move to species",
+                f"Move this picture from “{src}” to “{tname}”?\n\n"
+                f"{n_files} file(s) will be relocated into the {tname} folder, the "
+                f"species keyword rewritten, and the master database updated. "
+                f"This is reversible (files are snapshotted).",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            res = self._collection.move_master_picture(upn_key, target)
+        except MasterMutateError as e:
+            QMessageBox.warning(self, "Move blocked", str(e))
+            return
+        except Exception as e:
+            logger.error(f"Master move {upn_key} failed: {e}", exc_info=True)
+            QMessageBox.warning(self, "Move failed", str(e))
+            return
+        self._status.setText(
+            f"Moved to {res['target']} — {len(res['moved'])} file(s) relocated; "
+            f"species counts updated.")
+        self._rebuild_cards()
+
+    def _ask_master_species(self, upn_key: str, targets: list[dict]) -> dict | None:
+        """Searchable picker over the whole master species list (species.csv) —
+        the master's Move targets are any species ever seen, not just those with
+        pictures. Returns the chosen {"sci","nl","en","target_path"} row, or None."""
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QDialogButtonBox
+        name_to_row: dict[str, dict] = {}
+        names: list[str] = []
+        for row in targets:
+            for k in ("nl", "en", "sci"):
+                v = (row.get(k) or "").strip()
+                if v:
+                    name_to_row.setdefault(v.casefold(), row)
+                    names.append(v)
+        names = sorted(set(names), key=str.casefold)
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Move to existing species")
+        dlg.setMinimumWidth(440)
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(QLabel("Move this picture to (any species ever seen):"))
+        combo = QComboBox()
+        combo.setEditable(True)
+        combo.addItems(names)
+        combo.setCurrentIndex(-1)
+        combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        combo.lineEdit().setPlaceholderText("Type a Dutch, English or scientific name…")
+        completer = QCompleter(names, dlg)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        combo.setCompleter(completer)
+        lay.addWidget(combo)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
+                                   | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        lay.addWidget(buttons)
+        combo.setFocus()
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        chosen = combo.currentText().strip()
+        row = name_to_row.get(chosen.casefold())
+        if row is None:
+            QMessageBox.warning(self, "Unknown species",
+                                f"“{chosen}” isn’t a master species — pick one "
+                                f"from the list.")
+            return None
+        return row
 
     def _do_master_add(self, upn_key: str):
         from db.master_mutate import MasterMutateError
@@ -602,8 +754,8 @@ class MasterSpeciesViewerDialog(QDialog):
             except Exception as e:
                 logger.error(f"Master delete {k} failed: {e}")
         self._status.setText(
-            f"Deleted {m_deleted} master {color.lower()} picture(s). "
-            f"Run Master → Recount species to refresh rollups.")
+            f"Deleted {m_deleted} master {color.lower()} picture(s); "
+            f"species counts updated.")
         self._rebuild_cards()
 
     # ── Re-sort after an edit ──────────────────────────────────────────────
