@@ -36,6 +36,15 @@ _TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 _USER_AGENT = b"SpeciesViewer/1.0 (gilbert@houtekamer.com)"
 _MERC_MAX_LAT = 85.05112878   # Web-Mercator clamp
 
+# Distinct, colour-blind-friendlier layer palette (up to 4 species overlaid).
+_PALETTE = ["#d32f2f", "#1565c0", "#2e7d32", "#8e24aa"]   # red, blue, green, purple
+_MAX_LAYERS = 4
+# Fixed per-colour pixel offset (a rosette): where two species share a spot,
+# each fans out in its own diagonal instead of hiding the other. Constant screen
+# pixels (scene==view px at scale 1), so it's a tight cluster at any zoom and
+# imperceptible where species don't overlap. Indexed by palette position.
+_JITTER = [(-5, -5), (5, -5), (5, 5), (-5, 5)]           # NW, NE, SE, SW
+
 
 def _tiles_dir() -> Path:
     from utils.cache_paths import app_data_dir
@@ -115,7 +124,14 @@ class TileMapView(QGraphicsView):
         tooltip together with the same-spot count."""
         lid = self._next_layer_id
         self._next_layer_id += 1
+        # Rosette offset keyed to the colour's palette slot, so co-located
+        # species fan out instead of hiding each other.
+        try:
+            offset = _JITTER[_PALETTE.index(color) % len(_JITTER)]
+        except ValueError:
+            offset = (0, 0)
         self._layers[lid] = {"color": QColor(color), "nl": nl, "en": en,
+                             "offset": offset,
                              "points": self._aggregate(points), "items": []}
         self._draw_layer(lid)
         return lid
@@ -139,9 +155,10 @@ class TileMapView(QGraphicsView):
         pen.setWidth(2)
         brush = QBrush(lay["color"])
         nl, en = lay.get("nl", ""), lay.get("en", "")
+        ox, oy = lay.get("offset", (0, 0))
         for p in lay["points"]:
             x, y = lonlat_to_world(p["lon"], p["lat"], self._z)
-            dot = QGraphicsEllipseItem(x - r, y - r, 2 * r, 2 * r)
+            dot = QGraphicsEllipseItem(x - r + ox, y - r + oy, 2 * r, 2 * r)
             dot.setBrush(brush)
             dot.setPen(pen)
             dot.setZValue(10)
@@ -308,11 +325,6 @@ class TileMapView(QGraphicsView):
         self._center_on_state()
         self._ensure_tiles()
         self.resized.emit()
-
-
-# Distinct, colour-blind-friendlier layer palette (up to 4 species overlaid).
-_PALETTE = ["#d32f2f", "#1565c0", "#2e7d32", "#8e24aa"]   # red, blue, green, purple
-_MAX_LAYERS = 4
 
 
 class MapView(QDialog):
