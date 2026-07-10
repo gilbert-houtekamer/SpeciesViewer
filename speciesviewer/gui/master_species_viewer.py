@@ -108,6 +108,11 @@ class MasterSpeciesViewerDialog(QDialog):
         top.addWidget(self._sort_combo)
         top.addSpacing(8)
 
+        self._map_btn = QPushButton("Map…")
+        self._map_btn.setToolTip("Show this species' GPS points on a map (distribution)")
+        self._map_btn.clicked.connect(self._on_show_map)
+        top.addWidget(self._map_btn)
+
         self._regen_btn = QPushButton("Regenerate page…")
         self._regen_btn.setToolTip(
             "Rebuild this species' website page from the current master data "
@@ -413,6 +418,23 @@ class MasterSpeciesViewerDialog(QDialog):
     def _on_columns_changed(self, value: int):
         self.columns = value
         self._rebuild_cards()
+
+    def _on_show_map(self):
+        if not self._current_sci or self._master_db is None:
+            QMessageBox.information(self, "Map",
+                                    "Type a species name first, then open the map.")
+            return
+        points = self._master_db.gps_points_for_species(self._current_sci)
+        if not points:
+            QMessageBox.information(
+                self, "Map",
+                f"No GPS points for {self._current_display}.\n\n"
+                f"About 40% of the master has no GPS — older material predates "
+                f"in-camera GPS. (Map-based backfill is a later phase.)")
+            return
+        from gui.map_view import MapView
+        dlg = MapView(self, self._current_display or self._current_sci, points)
+        dlg.show()
 
     # ── Grid management (mirrors RatingEditorDialog) ───────────────────────
     def _grid_placement(self, total: int):

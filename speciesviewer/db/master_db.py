@@ -526,6 +526,30 @@ class MasterDB:
         return [{"sci": r["sci"], "nl": r["nl"] or "", "en": r["en"] or "",
                  "target_path": r["target_path"] or ""} for r in rows]
 
+    def gps_points_for_species(self, sci: str) -> list[dict]:
+        """Signed-decimal GPS points for a species' master pictures, for the map
+        distribution view. Returns [{"lat","lon","upn","place"}] — one per picture
+        that has a parseable GPSPosition (DMS strings decoded via engine.geo).
+        Pictures without GPS are simply absent (~40% of the master has none)."""
+        from engine.geo import parse_gps_dms
+        con = self._connect()
+        rows = con.execute(
+            'SELECT "UniquePictureName" AS upn, "GPSPosition" AS gps, '
+            '       COALESCE(NULLIF(TRIM("Location"),""), '
+            '                NULLIF(TRIM("City"),""), '
+            '                NULLIF(TRIM("Country"),"")) AS place '
+            'FROM pictures '
+            'WHERE LOWER(TRIM("WetSoortNaam")) = ? '
+            '  AND TRIM(COALESCE("GPSPosition","")) <> ""',
+            ((sci or "").strip().lower(),)).fetchall()
+        out = []
+        for r in rows:
+            ll = parse_gps_dms(r["gps"])
+            if ll:
+                out.append({"lat": ll[0], "lon": ll[1],
+                            "upn": r["upn"], "place": r["place"] or ""})
+        return out
+
     def species_row(self, sci: str) -> dict | None:
         """Resolve one species (case-insensitive scientific name) to
         {"sci","nl","en","target_path"} — used to look up a Move-to-species
