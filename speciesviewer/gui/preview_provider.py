@@ -171,7 +171,21 @@ class PreviewItem(PictureItem):
 
     @property
     def date(self) -> str:
-        return self._row.get("DateTimeOriginal", "")
+        """Capture time. The UPN summary row often lacks it in the LIVE pipeline
+        fpr (only the per-file rows carry EXIF:DateTimeOriginal until a write), so
+        fall back to a file row — otherwise the map/travel-path/time-bracket and
+        the grid's shooting-order sort all see empty dates."""
+        dt = self._row.get("DateTimeOriginal", "")
+        if dt:
+            return dt
+        for fname in self._c._files(self._key):
+            frow = self._c.fpr.fi.files_dict.get(fname)
+            if frow:
+                d = (frow.get("EXIF:DateTimeOriginal")
+                     or frow.get("DateTimeOriginal") or "")
+                if d:
+                    return d
+        return ""
 
     @property
     def place_fields(self) -> dict:
@@ -356,6 +370,14 @@ class PreviewCollection(PictureCollection):
 
     def item(self, index: int) -> PreviewItem:
         return PreviewItem(self, self._order[index])
+
+    def item_for_key(self, key: str) -> PreviewItem:
+        """An item for ANY valid UPN — independent of the current filter/sort
+        (`_order` may be a filtered subset, e.g. the 📍 no-GPS filter; the map
+        plots all_keys and must still read a GPS'd picture's fields)."""
+        if key not in self.fpr.upn.UniquePictureName_dict:
+            raise KeyError(key)
+        return PreviewItem(self, key)
 
     def index_of(self, key: str) -> int:
         return self._order.index(key)
@@ -892,6 +914,37 @@ class PreviewCollection(PictureCollection):
             except Exception as e:
                 logger.error(f"delete_by_color: CSV write failed: {e}")
         return len(matching), protected, deleted
+
+    def trash_upn(self, key: str, trash_dir) -> list | None:
+        """Move ONE UPN's files to `trash_dir/<key>/` and drop it from the in-memory
+        fpr — WITHOUT writing any CSV (the caller edits the correct per-day CSV;
+        this collection's fpr may span many days, so its own writeback would go to
+        the wrong file). HARD INVARIANT: never trash a JPG-bearing picture → returns
+        None (protected). Returns the moved file names on success (possibly empty if
+        the files were already gone). Used by the map's right-click Delete."""
+        import shutil
+        if self.jpg_path(key):
+            return None                      # protected — the JPG is the finished asset
+        dest = Path(trash_dir) / key
+        dest.mkdir(parents=True, exist_ok=True)
+        moved, raw_src = [], None
+        for fname in list(self._files(key)):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            src = Path(frow.get("WindowsFileName", ""))
+            if src.suffix.lower() in _RAW_EXTS:
+                raw_src = src
+            if src.exists():
+                try:
+                    shutil.move(str(src), str(dest / src.name))
+                    moved.append(src.name)
+                except Exception as e:
+                    logger.error(f"trash_upn move failed for {src.name}: {e}")
+            self.fpr.fi.files_dict.pop(fname, None)
+        sweep_dop(raw_src, dest)
+        self.fpr.upn.UniquePictureName_dict.pop(key, None)
+        return moved
 
     # ── write-back (rating / colour) with Rate recompute ──────────────────
     def apply(self, upn_key: str, *, new_stars: int | None = None,

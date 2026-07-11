@@ -591,10 +591,10 @@ class ImagePreviewDialog(QDialog):
             self._set_radio("all")
 
     def _on_show_map(self):
-        """Open the trip/day map over the pictures currently displayed (the live
-        collection's filtered/sorted set — 'what the viewer shows'), all species,
-        with the travel path."""
-        keys = [self._collection.item(i).key for i in range(len(self._collection))]
+        """Open the trip/day map over ALL pictures in this view (not the current
+        filter — a no-GPS/species filter would otherwise gut the map, e.g. the 📍
+        filter leaves the map empty). GPS'd ones plot; no-GPS ones go to the tray."""
+        keys = list(self._collection.all_keys())
         if not keys:
             QMessageBox.information(self, "Map", "No pictures are shown to map.")
             return

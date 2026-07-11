@@ -25,10 +25,10 @@ from PyQt6.QtWidgets import (
     QDialog, QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
     QGraphicsSimpleTextItem, QGraphicsPathItem, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QCheckBox, QWidget, QMessageBox, QSplitter, QComboBox,
-    QMenu)
+    QMenu, QScrollArea, QApplication)
 from PyQt6.QtGui import (QPixmap, QPainter, QColor, QBrush, QPen, QFont,
-                         QPainterPath, QPolygonF)
-from PyQt6.QtCore import Qt, QPointF, QUrl, QTimer, pyqtSignal
+                         QPainterPath, QPolygonF, QDrag)
+from PyQt6.QtCore import Qt, QPointF, QUrl, QTimer, pyqtSignal, QMimeData, QEvent
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
 logger = logging.getLogger("speciesviewer")
@@ -80,6 +80,22 @@ def lonlat_to_world(lon: float, lat: float, z: int) -> tuple[float, float]:
     return x, y
 
 
+def _parse_capture_dt(s: str):
+    """EXIF DateTimeOriginal ('YYYY:MM:DD HH:MM:SS', maybe subsec/zone) → datetime,
+    or None. Used to time-bracket a no-GPS picture between GPS'd neighbours."""
+    import datetime
+    s = (s or "").strip()
+    if len(s) < 19:
+        return None
+    try:
+        return datetime.datetime.strptime(s[:19], "%Y:%m:%d %H:%M:%S")
+    except ValueError:
+        try:
+            return datetime.datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return None
+
+
 def world_to_lonlat(x: float, y: float, z: int) -> tuple[float, float]:
     n = TILE * (2 ** z)
     # Clamp into the valid world before projecting. Mid-zoom the view transform
@@ -98,6 +114,7 @@ class TileMapView(QGraphicsView):
     resized = pyqtSignal()
     bubble_activated = pyqtSignal(object)       # cluster dict on single-click
     bubble_hide_requested = pyqtSignal(object)  # cluster dict on right-click → Hide
+    pictures_dropped = pyqtSignal(list, float, float)  # (upns, lat, lon) drop-to-geotag
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -131,6 +148,8 @@ class TileMapView(QGraphicsView):
         self.allow_hide = False             # trip map: right-click a bubble to hide it
         self.trim_fit = False               # trip map: Fit ignores far outliers
                                             # (species map keeps exact range framing)
+        self.allow_drop = False             # trip map: accept no-GPS pics dragged on
+        self.setAcceptDrops(True)
         # Travel path (trip/day map): a time-ordered polyline through the points.
         self._path_lonlat: list = []        # [(lon, lat), …] in time order
         self._path_items: list = []         # polyline + arrowheads at current zoom
@@ -649,6 +668,33 @@ class TileMapView(QGraphicsView):
         self._z = min(top, max(fit_z, self._z + 1))
         self._refresh_all()
 
+    def focus_area(self, coords: list, max_z: int = 13):
+        """Center + zoom to frame `coords` [(lat, lon), …] at a sensible level
+        (capped at `max_z` so a single point lands at ~village zoom, not street).
+        Used to jump to the GPS neighbours around a no-GPS picture's capture time."""
+        if not coords:
+            return
+        lats = [c[0] for c in coords]
+        lons = [c[1] for c in coords]
+        cy, cx = (min(lats) + max(lats)) / 2, (min(lons) + max(lons)) / 2
+        # Pad so a single (or tight) bracket becomes a legible area (~9 km min).
+        dlat = max(max(lats) - min(lats), 0.08)
+        dlon = max(max(lons) - min(lons), 0.08)
+        minlat, maxlat = cy - dlat / 2, cy + dlat / 2
+        minlon, maxlon = cx - dlon / 2, cx + dlon / 2
+        self._center = (cx, cy)
+        vw = max(self.viewport().width(), 100)
+        vh = max(self.viewport().height(), 100)
+        fit_z = MIN_ZOOM
+        for z in range(MAX_ZOOM, MIN_ZOOM - 1, -1):
+            x0, y0 = lonlat_to_world(minlon, maxlat, z)
+            x1, y1 = lonlat_to_world(maxlon, minlat, z)
+            if (x1 - x0) <= vw * 0.8 and (y1 - y0) <= vh * 0.8:
+                fit_z = z
+                break
+        self._z = min(max_z, self._basemap.get("max", MAX_ZOOM), fit_z)
+        self._refresh_all()
+
     def scrollContentsBy(self, dx, dy):
         super().scrollContentsBy(dx, dy)
         if self._syncing or self.scene() is None:
@@ -679,6 +725,30 @@ class TileMapView(QGraphicsView):
         self._center_on_state()
         self._ensure_tiles()
         self.resized.emit()
+
+    # ── drop-to-geotag (trip map: drag no-GPS pictures onto the map) ─────────────
+    def dragEnterEvent(self, e):
+        if self.allow_drop and e.mimeData().hasFormat(_MIME_UPNS):
+            e.acceptProposedAction()
+        else:
+            super().dragEnterEvent(e)
+
+    def dragMoveEvent(self, e):
+        if self.allow_drop and e.mimeData().hasFormat(_MIME_UPNS):
+            e.acceptProposedAction()
+        else:
+            super().dragMoveEvent(e)
+
+    def dropEvent(self, e):
+        if not (self.allow_drop and e.mimeData().hasFormat(_MIME_UPNS)):
+            return super().dropEvent(e)
+        raw = bytes(e.mimeData().data(_MIME_UPNS)).decode("utf-8")
+        keys = [k for k in raw.split("\n") if k]
+        sp = self.mapToScene(e.position().toPoint())
+        lon, lat = world_to_lonlat(sp.x(), sp.y(), self._z)
+        e.acceptProposedAction()
+        if keys:
+            self.pictures_dropped.emit(keys, lat, lon)
 
 
 class MapView(QDialog):
@@ -991,6 +1061,200 @@ class MapView(QDialog):
 # so its markers sit dead-centre (no rosette — there's only one layer).
 _TRIP_COLOR = "#00838f"
 
+# Drag payload for the no-GPS tray → map drop (newline-joined UPN keys).
+_MIME_UPNS = "application/x-speciesviewer-upns"
+
+
+class NoGpsTray(QWidget):
+    """Collapsible top strip of the pictures WITHOUT GPS on a trip/day map — the
+    drag source for Phase 5b geotagging. Drag one or more thumbnails onto the map
+    to give them coordinates + a place. Default-collapsed to a thin bar (laptop
+    space is tight); the count line doubles as the expand toggle. Reuses the
+    filmstrip's `_StripItem` cell for the thumbnail + selection look."""
+
+    emptied = pyqtSignal()             # last picture placed → host hides the tray
+    context_requested = pyqtSignal(str, object)  # (key, global QPoint) on right-click
+
+    def __init__(self, collection, keys, parent=None):
+        super().__init__(parent)
+        self._coll = collection
+        self._keys = list(keys)
+        self._selected: set = set()
+        self._cells: dict = {}
+        self._obj_to_key: dict = {}
+        self._press = None
+        self._press_key = None
+        self._current_key = None       # last-clicked cell (bracket reference)
+        self._range_start = None       # '[' anchor for range select
+        from gui.large_image_view import _StripItem, _ITEM_W, _ITEM_H
+        self._cell_w, self._cell_h = _ITEM_W, _ITEM_H
+
+        v = QVBoxLayout(self)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(0)
+        self._toggle = QPushButton()
+        self._toggle.setCheckable(True)
+        self._toggle.setStyleSheet(
+            "QPushButton{border:none; text-align:left; padding:4px 8px; color:#333;}"
+            "QPushButton:hover{color:#000;}")
+        self._toggle.toggled.connect(self._on_toggle)
+        v.addWidget(self._toggle)
+
+        self._body = QScrollArea()
+        self._body.setWidgetResizable(False)
+        self._body.setFixedHeight(_ITEM_H + 16)
+        self._body.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._body.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._strip = QWidget()
+        self._hl = QHBoxLayout(self._strip)
+        self._hl.setContentsMargins(4, 2, 4, 2)
+        self._hl.setSpacing(6)
+        self._hl.addStretch()
+        for k in self._keys:
+            try:
+                item = collection.item_for_key(k)
+            except (ValueError, KeyError):
+                continue
+            cell = _StripItem(item, self._strip)
+            cell.request_load()
+            cell.setToolTip(self._tip(item, self._fname(collection, k)))
+            cell.setFocusPolicy(Qt.FocusPolicy.StrongFocus)   # receive [ ] keys
+            cell.installEventFilter(self)
+            self._hl.insertWidget(self._hl.count() - 1, cell)
+            self._cells[k] = cell
+            self._obj_to_key[cell] = k
+        self._resize_strip()
+        self._body.setWidget(self._strip)
+        v.addWidget(self._body)
+        self._body.setVisible(False)
+        self._refresh_header()
+
+    @staticmethod
+    def _fname(collection, key) -> str:
+        """The picture's actual file name (e.g. IMG_3728.PNG) — the surest ID for a
+        black screenshot whose thumbnail can't render."""
+        rp = getattr(collection, "rep_filename", None)
+        try:
+            return rp(key) if rp else ""
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _tip(item, fname: str = "") -> str:
+        """Hover tooltip so a black/render-less thumbnail is still identifiable."""
+        taken = (getattr(item, "date", "") or "").strip() or "—"
+        exts = ", ".join(getattr(item, "file_exts", []) or []) or "—"
+        name = getattr(item, "display_name", "") or getattr(item, "key", "")
+        lines = [name]
+        if fname and fname != name:
+            lines.append(f"File: {fname}")
+        lines += [f"Taken: {taken}", f"Files: {exts}",
+                  "(drag onto the map; right-click for details)"]
+        return "\n".join(lines)
+
+    # ── layout / header ──────────────────────────────────────────────────────
+    def _resize_strip(self):
+        n = len(self._cells)
+        self._strip.setFixedSize(max(1, n * (self._cell_w + 6) + 12), self._cell_h + 4)
+
+    def _refresh_header(self):
+        n = len(self._cells)
+        arrow = "▾" if self._body.isVisible() else "▸"
+        self._toggle.setText(
+            f"{arrow}  📍 {n} without GPS — drag onto the map to place them")
+
+    def _on_toggle(self, on: bool):
+        self._body.setVisible(on)
+        self._refresh_header()
+
+    # ── selection ────────────────────────────────────────────────────────────
+    def _select(self, key: str, additive: bool):
+        if additive:
+            self._selected ^= {key}
+        elif key not in self._selected:
+            self._selected = {key}
+        self._repaint_selection()
+
+    def _select_range(self, start: str, end: str):
+        """Select the contiguous run start..end (the '[' … ']' gesture)."""
+        order = [k for k in self._keys if k in self._cells]   # current visible order
+        if start not in order or end not in order:
+            if end in order:                                  # no anchor → just 'end'
+                self._select(end, additive=False)
+            return
+        i, j = sorted((order.index(start), order.index(end)))
+        self._selected = set(order[i:j + 1])
+        self._current_key = end
+        self._repaint_selection()
+
+    def _repaint_selection(self):
+        for k, cell in self._cells.items():
+            cell.set_selected(k in self._selected)
+
+    # ── drag ─────────────────────────────────────────────────────────────────
+    def eventFilter(self, obj, ev):
+        t = ev.type()
+        if t == QEvent.Type.ContextMenu:
+            key = self._obj_to_key.get(obj)
+            if key is not None:
+                self.context_requested.emit(key, ev.globalPos())
+                return True
+        if t == QEvent.Type.KeyPress:
+            key = self._obj_to_key.get(obj) or self._current_key
+            if ev.key() == Qt.Key.Key_BracketLeft:
+                self._range_start = key                    # '[' = start of a range
+                return True
+            if ev.key() == Qt.Key.Key_BracketRight:
+                self._select_range(self._range_start, key)  # ']' = end → select A..B
+                return True
+        if t == QEvent.Type.MouseButtonPress and ev.button() == Qt.MouseButton.LeftButton:
+            key = self._obj_to_key.get(obj)
+            if key is not None:
+                self._press = ev.position().toPoint()
+                self._press_key = key
+                self._current_key = key
+                additive = bool(ev.modifiers() & Qt.KeyboardModifier.ControlModifier)
+                self._select(key, additive)
+        elif t == QEvent.Type.MouseMove and self._press is not None \
+                and (ev.buttons() & Qt.MouseButton.LeftButton):
+            if (ev.position().toPoint() - self._press).manhattanLength() >= 6:
+                self._start_drag()
+                self._press = None
+        elif t == QEvent.Type.MouseButtonRelease:
+            self._press = None
+        return super().eventFilter(obj, ev)
+
+    def _start_drag(self):
+        keys = [k for k in self._keys if k in self._selected] or [self._press_key]
+        keys = [k for k in keys if k in self._cells]
+        if not keys:
+            return
+        md = QMimeData()
+        md.setData(_MIME_UPNS, ("\n".join(keys)).encode("utf-8"))
+        drag = QDrag(self)
+        drag.setMimeData(md)
+        lead = self._cells.get(keys[0])
+        if lead is not None:
+            pm = lead.grab()
+            drag.setPixmap(pm)
+            drag.setHotSpot(pm.rect().center())
+        drag.exec(Qt.DropAction.CopyAction)
+
+    # ── host API ─────────────────────────────────────────────────────────────
+    def remove_keys(self, keys):
+        """Drop placed pictures out of the tray (after a successful geotag)."""
+        for k in keys:
+            cell = self._cells.pop(k, None)
+            if cell is not None:
+                self._obj_to_key.pop(cell, None)
+                self._hl.removeWidget(cell)
+                cell.deleteLater()
+            self._selected.discard(k)
+        self._resize_strip()
+        self._refresh_header()
+        if not self._cells:
+            self.emptied.emit()
+
 
 class TripMapView(QDialog):
     """Trip / day map (maps_plan.md Phase 5a) — ALL species on the current viewer
@@ -1008,22 +1272,29 @@ class TripMapView(QDialog):
 
     def __init__(self, parent, collection, keys: list[str],
                  title: str = "Trip map", loader=None,
-                 default_path: bool = False, default_basemap: str = "Standard"):
+                 default_path: bool = False, default_basemap: str = "Standard",
+                 trip_root: str = ""):
         super().__init__(parent)
         self._coll = collection
         self._keys = list(keys or [])
         self._strip = None
+        # Set → the no-GPS tray offers Delete (move to <trip_root>/.trash/<day>);
+        # needs a collection that can trash a UPN + the per-day review CSVs here.
+        from pathlib import Path as _Path
+        self._trip_root = _Path(trip_root) if trip_root else None
+        self._can_delete = bool(self._trip_root) and hasattr(collection, "trash_upn")
         self.setWindowTitle(title)
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
                             | Qt.WindowType.WindowMaximizeButtonHint)
         self.resize(1000, 760)
 
-        points, no_gps = self._build_points()
+        points, nogps_keys = self._build_points()
         self._all_points = points          # full set (before any hide)
-        self._no_gps = no_gps
+        self._nogps_keys = nogps_keys      # pictures without GPS (drag-to-geotag)
         self._hidden: set = set()          # UPNs hidden via right-click
         self._lid = None                   # the single trip layer's id
+        self._tray = None
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -1062,12 +1333,22 @@ class TripMapView(QDialog):
         h.addWidget(fit_btn)
         lay.addWidget(header)
 
+        # Top tray of the no-GPS pictures (drag onto the map to geotag — Phase 5b).
+        # Collapsible + only present when there are any; laptop vertical space.
+        if self._nogps_keys:
+            self._tray = NoGpsTray(collection, self._nogps_keys)
+            self._tray.emptied.connect(self._on_tray_emptied)
+            self._tray.context_requested.connect(self._tray_context)
+            lay.addWidget(self._tray)
+
         self._splitter = QSplitter(Qt.Orientation.Vertical)
         self._map = TileMapView(self)
         self._map.trim_fit = True          # Fit frames the dense core, not outliers
         self._map.allow_hide = True        # right-click a bubble → hide it
+        self._map.allow_drop = True        # accept no-GPS pics dragged onto the map
         self._map.bubble_activated.connect(self._on_bubble)
         self._map.bubble_hide_requested.connect(self._on_hide)
+        self._map.pictures_dropped.connect(self._on_drop)
         self._splitter.addWidget(self._map)
         self._strip_holder = QWidget()
         self._strip_box = QVBoxLayout(self._strip_holder)
@@ -1116,8 +1397,8 @@ class TripMapView(QDialog):
         self._map.set_travel_path([(p["lon"], p["lat"]) for p in ordered])
         n = len(pts)
         parts = [f"{n} picture{'' if n == 1 else 's'} on the map"]
-        if self._no_gps:
-            parts.append(f"{self._no_gps} without GPS")
+        if self._nogps_keys:
+            parts.append(f"{len(self._nogps_keys)} without GPS")
         if self._hidden:
             parts.append(f"{len(self._hidden)} hidden")
         self._info.setText("  ·  ".join(parts))
@@ -1139,19 +1420,279 @@ class TripMapView(QDialog):
         self._hidden.clear()
         self._render(fit=True)
 
+    # ── drop-to-geotag (Phase 5b) ────────────────────────────────────────────
+    def _on_tray_emptied(self):
+        if self._tray is not None:
+            self._tray.setVisible(False)
+
+    def _cell_info(self, key: str) -> str:
+        """Identify a (often black / render-less) no-GPS picture: capture time,
+        file modified time, and which file types are present (reveals e.g. a
+        .dop-only or RAW-without-preview picture)."""
+        try:
+            item = self._coll.item_for_key(key)
+        except (ValueError, KeyError):
+            return key
+        taken = (getattr(item, "date", "") or "").strip() or "—"
+        exts = ", ".join(getattr(item, "file_exts", []) or []) or "—"
+        name = getattr(item, "display_name", "") or key
+        fname = NoGpsTray._fname(self._coll, key)
+        mtime = "—"
+        try:
+            import os
+            import datetime
+            from pathlib import Path
+            rp = getattr(self._coll, "rep_full_path", None)
+            p = rp(key) if rp else None
+            if p and Path(p).exists():
+                mtime = datetime.datetime.fromtimestamp(
+                    os.stat(p).st_mtime).strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            pass
+        lines = [name]
+        if fname and fname != name:
+            lines.append(f"File:  {fname}")
+        lines += [f"Taken:  {taken}", f"Modified:  {mtime}", f"Files:  {exts}"]
+        return "\n".join(lines)
+
+    def _tray_context(self, key: str, global_pos):
+        """Right-click a no-GPS thumbnail → its details + a jump to the map area
+        it was probably in (the GPS points bracketing its capture time)."""
+        try:
+            has_time = bool((self._coll.item_for_key(key).date or "").strip())
+        except (ValueError, KeyError):
+            has_time = False
+        menu = QMenu(self)
+        for line in self._cell_info(key).split("\n"):
+            act = menu.addAction(line)
+            act.setEnabled(False)
+        menu.addSeparator()
+        est = self._estimate_position(key) if has_time else None
+        place_act = None
+        if est is not None:
+            place_act = menu.addAction("📍 Place at estimated position (between "
+                                       "photos before/after)")
+        zoom_act = menu.addAction("Zoom map to around this time" if has_time
+                                  else "Zoom to around this time — no timestamp")
+        zoom_act.setEnabled(has_time)   # a screenshot with no capture time can't bracket
+        del_act = None
+        if self._can_delete:
+            menu.addSeparator()
+            del_act = menu.addAction("Delete… (move to trash)")
+        chosen = menu.exec(global_pos)
+        if place_act is not None and chosen == place_act:
+            self._map.focus_area([est])                  # show where the estimate lands
+            self._place_dropped([key], est[0], est[1])   # same confirm+write as a drop
+        elif chosen == zoom_act and has_time:
+            self._zoom_to_time(key)
+        elif del_act is not None and chosen == del_act:
+            self._delete_picture(key)
+
+    def _estimate_position(self, key: str):
+        """Estimate a no-GPS picture's location by TIME-interpolating between the
+        GPS'd photos taken just before and just after it (the trip's own photos as
+        a poor-man's tracklog). Returns (lat, lon) or None when it can't bracket."""
+        try:
+            dt = _parse_capture_dt(self._coll.item_for_key(key).date)
+        except (ValueError, KeyError):
+            dt = None
+        if dt is None:
+            return None
+        dated = [(p, _parse_capture_dt(p.get("date", ""))) for p in self._all_points]
+        dated = [(p, t) for p, t in dated if t is not None]
+        if not dated:
+            return None
+        before = [(p, t) for p, t in dated if t <= dt]
+        after = [(p, t) for p, t in dated if t >= dt]
+        if before and after:
+            pb, tb = max(before, key=lambda x: x[1])
+            pa, ta = min(after, key=lambda x: x[1])
+            span = (ta - tb).total_seconds()
+            f = (dt - tb).total_seconds() / span if span else 0.0
+            f = max(0.0, min(1.0, f))
+            return (pb["lat"] + f * (pa["lat"] - pb["lat"]),
+                    pb["lon"] + f * (pa["lon"] - pb["lon"]))
+        pool = before or after
+        p, _ = (max if before else min)(pool, key=lambda x: x[1])
+        return (p["lat"], p["lon"])
+
+    # ── delete (move to trash) ───────────────────────────────────────────────
+    def _day_of(self, key: str) -> str | None:
+        """The day folder a UPN's files live in (their parent dir name) — used to
+        target the right per-day .trash + review CSVs on the whole-trip map."""
+        try:
+            files = self._coll._files(key)
+        except Exception:
+            return None
+        for fname in files:
+            frow = self._coll.fpr.fi.files_dict.get(fname)
+            wf = frow.get("WindowsFileName", "") if frow else ""
+            if wf:
+                from pathlib import Path
+                return Path(wf).parent.name
+        return None
+
+    def _remove_from_day_csv(self, day: str, key: str):
+        """Drop a UPN's rows from that day's data_files/data_pictures CSVs with a
+        raw row-filter — preserves every other row VERBATIM (relative paths intact,
+        no resolve/re-relativise), unlike a full Files/Pictures rewrite."""
+        import csv
+        from pathlib import Path
+        review = self._trip_root / "metadata" / "review" / day
+        for name in ("data_files.csv", "data_pictures.csv"):
+            p = review / name
+            if not p.exists():
+                continue
+            try:
+                with open(p, "r", newline="", encoding="utf-8") as f:
+                    reader = csv.DictReader(f, delimiter=";")
+                    fields = reader.fieldnames
+                    rows = [r for r in reader
+                            if (r.get("UniquePictureName") or "") != key]
+                with open(p, "w", newline="", encoding="utf-8") as f:
+                    w = csv.DictWriter(f, fieldnames=fields, delimiter=";",
+                                       quoting=csv.QUOTE_MINIMAL)
+                    w.writeheader()
+                    w.writerows(rows)
+            except Exception as e:
+                logger.warning(f"Delete: CSV update failed for {p}: {e}")
+
+    def _delete_picture(self, key: str):
+        if not self._can_delete:
+            return
+        day = self._day_of(key)
+        if not day:
+            QMessageBox.warning(self, "Delete",
+                                "Could not determine this picture's day folder.")
+            return
+        if QMessageBox.question(
+                self, "Delete picture",
+                f"Move this picture to the trash?\n\n{self._cell_info(key)}\n\n"
+                f"→ {self._trip_root / '.trash' / day / key}",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        moved = self._coll.trash_upn(key, self._trip_root / ".trash" / day)
+        if moved is None:
+            QMessageBox.information(
+                self, "Protected",
+                "This picture has a JPG (the finished asset) and is not trashed "
+                "from the map. Delete JPG-bearing pictures from the culling view.")
+            return
+        self._remove_from_day_csv(day, key)
+        self._nogps_keys = [k for k in self._nogps_keys if k != key]
+        self._all_points = [p for p in self._all_points if p.get("upn") != key]
+        if self._tray is not None:
+            self._tray.remove_keys([key])
+        self._render(fit=False)
+
+    def _zoom_to_time(self, key: str):
+        """Zoom the map to the GPS'd pictures taken just before/after this one in
+        time — its likely neighbourhood, so a precise drop is a short drag away."""
+        try:
+            d = (self._coll.item_for_key(key).date or "").strip()
+        except (ValueError, KeyError):
+            d = ""
+        dated = [p for p in self._all_points if p.get("date")]
+        if not dated:
+            QMessageBox.information(self, "Zoom", "No dated GPS pictures to zoom to.")
+            return
+        neigh = []
+        if d:
+            before = [p for p in dated if p["date"] <= d]
+            after = [p for p in dated if p["date"] >= d]
+            if before:
+                neigh.append(max(before, key=lambda p: p["date"]))
+            if after:
+                neigh.append(min(after, key=lambda p: p["date"]))
+        if not neigh:
+            neigh = dated
+        self._map.focus_area([(p["lat"], p["lon"]) for p in neigh])
+
+    def _place_str(self, fields: dict, lat: float, lon: float) -> str:
+        loc = (fields.get("Location") or "").strip()
+        if loc:
+            return loc
+        admin = " · ".join(p for p in (fields.get("City"), fields.get("Municipality"),
+                                       fields.get("State"), fields.get("Country"))
+                           if p and str(p).strip())
+        return admin or f"{lat:.5f}, {lon:.5f}"
+
+    def _on_drop(self, keys: list[str], lat: float, lon: float):
+        # Defer so the source's drag.exec() stack fully unwinds before we open a
+        # modal confirm / run the reverse-geocode network call.
+        QTimer.singleShot(0, lambda: self._place_dropped(keys, lat, lon))
+
+    def _place_dropped(self, keys: list[str], lat: float, lon: float):
+        """A no-GPS picture (or selection) was dropped on the map at (lat, lon).
+        Reverse-geocode the place, confirm, then write GPS + location to each
+        picture's sidecar and move it from the tray onto the map as a dot."""
+        keys = [k for k in keys if k in self._nogps_keys]
+        if not keys:
+            return
+        from gui.geolocate import reverse_geocode, place_fields, write_gps, \
+            write_location_batch
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            fields = place_fields(reverse_geocode(lat, lon)) or {}
+        finally:
+            QApplication.restoreOverrideCursor()
+        place = self._place_str(fields, lat, lon)
+        n = len(keys)
+        if QMessageBox.question(
+                self, "Set location",
+                f"Place {n} picture{'' if n == 1 else 's'} here?\n\n"
+                f"{place}\n{lat:.5f}, {lon:.5f}",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        has_place = any(fields.values())
+        written, skipped = [], 0
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            for k in keys:
+                files = self._coll.location_targets(k)
+                if not files:
+                    skipped += 1          # HEIC-only / no writable sidecar
+                    continue
+                write_gps(files, lat, lon)
+                if has_place:
+                    write_location_batch(files, fields, overwrite=True)
+                    self._coll.note_location_written(k, fields)
+                self._coll.note_gps_written(k)
+                try:
+                    date = getattr(self._coll.item_for_key(k), "date", "") or ""
+                except (ValueError, KeyError):
+                    date = ""
+                self._all_points.append({"lat": lat, "lon": lon, "upn": k,
+                                         "place": place, "date": date.strip()})
+                written.append(k)
+        finally:
+            QApplication.restoreOverrideCursor()
+        if written:
+            self._nogps_keys = [k for k in self._nogps_keys if k not in written]
+            if self._tray is not None:
+                self._tray.remove_keys(written)
+            self._render(fit=False)        # keep the view; new dots appear in place
+        if skipped:
+            QMessageBox.information(
+                self, "Set location",
+                f"{skipped} picture{'' if skipped == 1 else 's'} had no writable "
+                f"sidecar (e.g. HEIC-only) and could not be geotagged.")
+
     # ── data ─────────────────────────────────────────────────────────────────
-    def _build_points(self) -> tuple[list[dict], int]:
-        """Walk the live collection's keys → map points for the GPS'd ones, and a
-        count of those without (the future drag-to-geotag tray, Phase 5b).
+    def _build_points(self) -> tuple[list[dict], list[str]]:
+        """Walk the live collection's keys → map points for the GPS'd ones, and the
+        keys of those without (the drag-to-geotag tray, Phase 5b).
 
         GPS comes from `gps_cached` (in-memory) — NOT `gps()`, which spawns an
         exiftool per file; plotting a day would otherwise be hundreds of spawns."""
         pts: list[dict] = []
-        no_gps = 0
+        no_gps: list[str] = []
         for k in self._keys:
             ll = self._coll.gps_cached(k)
             if not ll:
-                no_gps += 1
+                no_gps.append(k)
                 continue
             try:
                 item = self._coll.item_for_key(k)
@@ -1217,10 +1758,13 @@ class TripMapView(QDialog):
 
     # ── bubble → filmstrip → large view (over the live collection directly) ──────
     def _resolves(self, upn: str) -> bool:
+        # item_for_key (not index_of) — the live collection may be FILTERED (its
+        # _order is a subset), but the map plots all keys and must resolve any of
+        # them for the filmstrip / large view.
         try:
-            self._coll.index_of(upn)
+            self._coll.item_for_key(upn)
             return True
-        except (ValueError, KeyError):
+        except (ValueError, KeyError, IndexError):
             return False
 
     def _on_bubble(self, cluster: dict):

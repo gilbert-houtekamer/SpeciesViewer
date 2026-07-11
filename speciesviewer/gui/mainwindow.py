@@ -1035,7 +1035,7 @@ class MainWindow(QMainWindow):
         # Strong ref on the main window so the dialog isn't GC'd.
         self._trip_map_dlg = TripMapView(
             self, coll, keys, title=f"Map — {trip_name} (whole trip)",
-            loader=loader, default_path=True)
+            loader=loader, default_path=True, trip_root=trip_root)
         self._trip_map_dlg.show()
 
     def open_virttrip_rating_editor(self):

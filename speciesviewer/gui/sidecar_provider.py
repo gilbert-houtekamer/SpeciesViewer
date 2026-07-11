@@ -398,6 +398,14 @@ class SidecarCollection(PictureCollection):
     def item(self, index: int) -> SidecarItem:
         return SidecarItem(self, self._order[index])
 
+    def item_for_key(self, key: str) -> SidecarItem:
+        """An item for ANY stem — independent of the current filter/sort (`_order`
+        may be a filtered subset; the map plots all keys and must read a GPS'd
+        picture's fields even when the view is filtered to no-GPS)."""
+        if key not in self._groups:
+            raise KeyError(key)
+        return SidecarItem(self, key)
+
     def index_of(self, key: str) -> int:
         return self._order.index(key)
 
