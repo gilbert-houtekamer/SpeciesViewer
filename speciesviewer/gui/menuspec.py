@@ -979,6 +979,64 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # Non-destructive PREVIEW: write the SUGGESTED (healed) data_files.csv /
+    # data_pictures.csv to a timestamped folder under admin/status/, plus a
+    # per-picture display_status.csv (black-image suspects). The master is never
+    # touched, so the suggested CSVs can be diffed against the live ones in Excel
+    # before deciding to Heal. Folders are kept so runs can be compared over time.
+    def _rebuild_preview_for_excel():
+        import os
+        from datetime import datetime
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from PyQt6.QtCore import Qt, QUrl
+        from PyQt6.QtGui import QDesktopServices
+        import engine.admin_rebuild as admin_rebuild
+        master = _config.get("master", "masterbiotadatabase", fallback="").replace('"', "").replace("'", "")
+        if not master:
+            QMessageBox.warning(main_window, "Rebuild Preview", "No master is configured.")
+            return
+        out = os.path.join(master, "admin", "status",
+                           "preview_" + datetime.now().strftime("%Y%m%d-%H%M%S"))
+        disp = {}
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            plan = admin_rebuild.plan_rebuild(master, out_dir=out)
+            if plan.get("ok"):
+                heal = admin_rebuild.execute_heal(master, out_dir=out, report_dir=out)
+                disp = admin_rebuild.scan_display_status(
+                    master, out_csv=os.path.join(out, "display_status.csv"))
+        except Exception as e:
+            plan = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not plan.get("ok"):
+            QMessageBox.warning(main_window, "Rebuild Preview", plan.get("error", "Failed."))
+            return
+        if not heal.get("ok"):
+            QMessageBox.warning(main_window, "Rebuild Preview", heal.get("error", "Failed."))
+            return
+        bs = disp.get("by_status", {}) if disp.get("ok") else {}
+        active = os.path.join(master, "metadata", "active")
+        msg = (f"Wrote the SUGGESTED CSVs (master untouched):\n{out}\n\n"
+               f"  data_files.csv   : {heal['kept_files']} rows "
+               f"(−{heal['removed_files']} dead, {heal['repointed']} repointed)\n"
+               f"  data_pictures.csv: −{heal['pictures_dropped']} phantom pictures\n\n"
+               f"Black-image scan (display_status.csv):\n"
+               f"  black {bs.get('black', 0)} · shows-via-RAW {bs.get('no_bestjpg', 0)} · "
+               f"has-JPG {bs.get('jpg_ok', 0)}\n\n"
+               f"Compare in Excel against the live CSVs in:\n{active}\n\n"
+               f"Open the preview folder now?")
+        if QMessageBox.question(main_window, "Rebuild Preview — done", msg,
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                QMessageBox.StandardButton.Yes) == QMessageBox.StandardButton.Yes:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(out))
+
+    rebuild_preview_item = MenuSpec(
+        callback=_rebuild_preview_for_excel,
+        title="Rebuild Preview (suggested CSVs for Excel)…",
+        showsubdirectory=False,
+    )
+
     # Move orphan sidecars (XMP/DOP whose image was deleted) to a recoverable
     # trash; their now-dangling admin rows are swept by the next Heal Admin run.
     def _clean_orphan_sidecars():
@@ -1041,6 +1099,7 @@ def build_menu_spec(main_window):
             "Audit Admin (find ghost records)…": audit_admin_item,
             "Audit Species Counters (dry-run)…": audit_species_item,
             "Rebuild Admin (dry-run compare)…": rebuild_admin_item,
+            "Rebuild Preview (suggested CSVs for Excel)…": rebuild_preview_item,
             "Heal Admin (apply fixes)…": heal_admin_item,
             "Clean Orphan Sidecars (move to trash)…": clean_orphans_item,
             f"{MenuSpec.separator()}_admin_1": None,

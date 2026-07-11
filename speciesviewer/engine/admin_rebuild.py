@@ -170,7 +170,8 @@ def _atomic_write_csv(path, header, rows):
     os.replace(tmp, path)
 
 
-def execute_heal(master_repo, do_remove=True, do_repoint=True, do_species=True):
+def execute_heal(master_repo, do_remove=True, do_repoint=True, do_species=True,
+                 out_dir=None, report_dir=None):
     """Apply the reviewed rebuild_remove.csv / rebuild_repoint.csv /
     rebuild_species_change.csv to the master admin. Backs up data_files.csv +
     data_pictures.csv first. DESTRUCTIVE.
@@ -183,11 +184,20 @@ def execute_heal(master_repo, do_remove=True, do_repoint=True, do_species=True):
                  rewrite the old species path inside BestJPGPathName.
     data_pictures path fields are otherwise left for Build Website to recompute.
     rebuild_add.csv is NOT applied (see find/refine; mostly renders + junk).
-    Returns a counts dict."""
+    Returns a counts dict.
+
+    PREVIEW MODE: pass out_dir to write the healed data_files.csv /
+    data_pictures.csv into out_dir instead of over the master. The master is
+    left completely untouched (no backup taken), so the caller can diff the
+    suggested CSVs against the live ones (e.g. in Excel) before committing to a
+    real heal."""
     status = os.path.join(master_repo, "admin", "status")
-    remove_rows = _read_report(os.path.join(status, "rebuild_remove.csv")) if do_remove else []
-    repoint_rows = _read_report(os.path.join(status, "rebuild_repoint.csv")) if do_repoint else []
-    species_rows = _read_report(os.path.join(status, "rebuild_species_change.csv")) if do_species else []
+    # Reports are read from report_dir (default: the status dir). Must match
+    # where plan_rebuild wrote them, or a heal applies a stale/mismatched plan.
+    report_dir = report_dir or status
+    remove_rows = _read_report(os.path.join(report_dir, "rebuild_remove.csv")) if do_remove else []
+    repoint_rows = _read_report(os.path.join(report_dir, "rebuild_repoint.csv")) if do_repoint else []
+    species_rows = _read_report(os.path.join(report_dir, "rebuild_species_change.csv")) if do_species else []
     if not remove_rows and not repoint_rows and not species_rows:
         return {"ok": False, "error": "No rebuild_*.csv to apply — run the dry-run first."}
 
@@ -203,11 +213,19 @@ def execute_heal(master_repo, do_remove=True, do_repoint=True, do_species=True):
     if not (os.path.exists(files_csv) and os.path.exists(pics_csv)):
         return {"ok": False, "error": "master CSVs not found"}
 
-    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    backup_dir = os.path.join(status, "backup")
-    os.makedirs(backup_dir, exist_ok=True)
-    shutil.copy2(files_csv, os.path.join(backup_dir, f"data_files.{ts}.csv"))
-    shutil.copy2(pics_csv, os.path.join(backup_dir, f"data_pictures.{ts}.csv"))
+    # In preview mode the master is read-only: write healed copies into out_dir
+    # and take no backup. Otherwise heal in place, backing up first.
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+        files_out = os.path.join(out_dir, "data_files.csv")
+        pics_out = os.path.join(out_dir, "data_pictures.csv")
+    else:
+        files_out, pics_out = files_csv, pics_csv
+        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_dir = os.path.join(status, "backup")
+        os.makedirs(backup_dir, exist_ok=True)
+        shutil.copy2(files_csv, os.path.join(backup_dir, f"data_files.{ts}.csv"))
+        shutil.copy2(pics_csv, os.path.join(backup_dir, f"data_pictures.{ts}.csv"))
 
     # --- data_files.csv: remove + repoint ---
     removed = repointed = 0
@@ -233,7 +251,7 @@ def execute_heal(master_repo, do_remove=True, do_repoint=True, do_species=True):
                     row[di] = os.path.dirname(new)
                 repointed += 1
             out_files.append(row)
-    _atomic_write_csv(files_csv, header, out_files)
+    _atomic_write_csv(files_out, header, out_files)
 
     # --- data_pictures.csv: clean Files lists, drop empty pictures, reclassify ---
     pics_dropped = files_cleaned = species_changed = 0
@@ -291,12 +309,101 @@ def execute_heal(master_repo, do_remove=True, do_repoint=True, do_species=True):
             if tp_i is not None and tp_i < len(row):
                 row[tp_i] = t["tp"]
             species_changed += 1
-    _atomic_write_csv(pics_csv, pheader, out_pics)
+    _atomic_write_csv(pics_out, pheader, out_pics)
 
-    return {"ok": True, "removed_files": removed, "repointed": repointed,
+    return {"ok": True, "preview": bool(out_dir), "out_dir": out_dir,
+            "removed_files": removed, "repointed": repointed,
             "kept_files": len(out_files), "pictures_dropped": pics_dropped,
             "files_cleaned": files_cleaned, "species_changed": species_changed,
-            "backup_dir": backup_dir}
+            "backup_dir": None if out_dir else backup_dir}
+
+
+# ── Display-status scan ("black image" suspects) ────────────────────────────────
+
+# The GUI extracts a thumbnail from these when a picture's BestJPG is missing.
+_RAW_FALLBACK_EXTS = {".orf", ".nef", ".cr2", ".cr3", ".arw", ".rw2", ".raf",
+                      ".pef", ".dng", ".heic"}
+
+
+def scan_display_status(master_repo, out_csv=None):
+    """Resolve every master picture's display image the way the GUI does and
+    flag the "black image" suspects.
+
+    The master viewer shows  master_root / (TargetPath or BestJPGPathName) /
+    BestJPG ; if that JPG is absent it falls back to extracting a thumbnail from
+    a RAW in the picture's Files list. A picture renders BLACK when neither
+    resolves. This scan classifies every picture so black-image sightings can be
+    correlated with dead links -- open the CSV in Excel and filter on `status`.
+
+    status column:
+      jpg_ok        display JPG present  -> shows normally
+      raw_fallback  JPG gone but a RAW/HEIC in Files is present -> thumb (slow, usually shows)
+      black         JPG gone AND no displayable file left -> renders black/empty
+      no_bestjpg    row has no BestJPG at all
+    Read-only. Writes out_csv (default <master>/admin/status/display_status.csv)."""
+    pics_csv = os.path.join(master_repo, "metadata", "active", "data_pictures.csv")
+    if not os.path.exists(pics_csv):
+        return {"ok": False, "error": "master data_pictures.csv not found"}
+
+    _cache = {}
+
+    def _listing(directory):
+        key = os.path.normcase(os.path.normpath(directory))
+        s = _cache.get(key)
+        if s is None:
+            try:
+                s = frozenset(os.path.normcase(n) for n in os.listdir(directory))
+            except OSError:
+                s = frozenset()
+            _cache[key] = s
+        return s
+
+    def _here(directory, name):
+        return bool(name) and os.path.normcase(name) in _listing(directory)
+
+    from collections import Counter
+    counts = Counter()
+    rows_out = []
+    with open(pics_csv, "r", encoding="utf-8", errors="replace", newline="") as fh:
+        for row in csv.DictReader(fh, delimiter=";"):
+            upn = (row.get("UniquePictureName") or "").strip()
+            rel = (row.get("TargetPath") or row.get("BestJPGPathName") or "").strip().replace("\\", "/")
+            best = (row.get("BestJPG") or "").strip()
+            base = os.path.join(master_repo, rel)
+            try:
+                files = ast.literal_eval(row["Files"]) if (row.get("Files") or "").strip().startswith("[") else []
+            except Exception:
+                files = []
+            present = [f for f in files if _here(base, f)]
+            dead = [f for f in files if not _here(base, f)]
+            jpg_ok = _here(base, best) and best.lower().endswith((".jpg", ".jpeg"))
+            has_fallback = any(os.path.splitext(f)[1].lower() in _RAW_FALLBACK_EXTS
+                               for f in present)
+            if not best:
+                status = "no_bestjpg" if present else "black"
+            elif jpg_ok:
+                status = "jpg_ok"
+            elif has_fallback:
+                status = "raw_fallback"
+            else:
+                status = "black"
+            counts[status] += 1
+            rows_out.append([upn, row.get("WetSoortNaam", ""), status,
+                             best, rel, int(jpg_ok), len(present), len(dead),
+                             "|".join(sorted({os.path.splitext(f)[1].lower().lstrip('.') for f in present})),
+                             "|".join(sorted({os.path.splitext(f)[1].lower().lstrip('.') for f in dead}))])
+
+    out_csv = out_csv or os.path.join(master_repo, "admin", "status", "display_status.csv")
+    os.makedirs(os.path.dirname(out_csv), exist_ok=True)
+    with open(out_csv, "w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh, delimiter=";")
+        w.writerow(["UPN", "WetSoortNaam", "status", "BestJPG", "rel_dir",
+                    "jpg_exists", "present_files", "dead_files",
+                    "present_exts", "dead_exts"])
+        w.writerows(rows_out)
+
+    return {"ok": True, "report": out_csv, "total": sum(counts.values()),
+            "by_status": dict(counts)}
 
 
 # ── Orphan sidecars (XMP/DOP whose image was deleted) ───────────────────────────
