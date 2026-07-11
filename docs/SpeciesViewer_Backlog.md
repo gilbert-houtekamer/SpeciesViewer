@@ -1,16 +1,18 @@
 # SpeciesViewer — Project Backlog
 
-Updated: 2026-07-09 · Branch: ClaudeSpecies · (machine-readable mirror of `SpeciesViewer_Backlog.html`)
+Updated: 2026-07-11 · Branch: ClaudeSpecies · (machine-readable mirror of `SpeciesViewer_Backlog.html`)
 
 Legend: **OPEN** to build · **NEW** newly raised · **BUG** defect · **NEEDS TEST** built/awaiting live run · **PARKED** deferred by design · **DONE** shipped.
 
 Since the 16-June edition most of the backlog shipped (WP4 identity decouple, WP8 picture-root, cross-platform path P1, retire→virttrip arc, Working Days, Trip Species Viewer delete rework). Focus below = the short remaining list.
 
 ## Active shortlist
-1. **Virtual Trips WP7** — retroactive builder + amber/green blog bubbles (ch.2).
-2. Smaller: EXIF-cache prune (ch.3), Trip→Master delete live test (ch.4).
+1. **NEW Maps for the Day (micro-trip) + Virtual-trip** — extend the Phase-5 trip/day map to those two collection contexts (ch.3).
+2. **GPS / data-integrity umbrella** — tracklog geotag, GPS-from-addresses, location-from-GPS (ch.3; dead-link purge shipped as Refresh Master Database).
+3. **Virtual Trips WP7** — retroactive builder + amber/green blog bubbles (ch.2).
+4. Smaller: GBIF lookup disk-cache (ch.11), Trip→Master delete live test (ch.4).
 
-Recently shipped: **EXIFtool parallel workers** (ch.11) — per-machine N-worker cold reads; see ch.11 below.
+Recently shipped: **Refresh Master Database** (dead-link reconcile, ran live: cleared ~43k dead rows / ~15k phantom pictures) + **black-image fixes** (dead-link phantoms + Nikon D90 OtherImage preview) — bc4a060 / 3d0e490 / 4135c48; see ch.3. **EXIFtool parallel workers** (ch.11).
 
 Parked by design: taxonomy/sequence (ch.6), rating-formula/HEIC (ch.7); master data relativization waits for the Mac (ch.10).
 
@@ -48,7 +50,14 @@ Phases 1–3 shipped+live. Trip Species Viewer Trip+Master scope works (scope-aw
 - DONE **Regenerate ONE species' website page** (c1a359d + afda800) — Master Species Viewer "Regenerate page…" button: re-renders + SFTP-uploads just this species' page from CURRENT master data (no re-read, no mutation). Fast — pulls this species' pictures/files from the MasterDB SQLite index (never the 127 MB data_files.csv), renders NL+EN via makeSpeciesWebDirectory, uploads its subtree; done dialog has clickable page URLs. Also fixed: getBirdInfo now recognises bare juv/imm/ad, and regenerate re-derives sex/age/plumage from the subject at render so token-101 captions ("jonge aasgier") + grouping work despite empty master ageintext columns. Caveat: parent index thumbnails need a full build; master ageintext columns still empty until a re-derive/re-commit pass. [[project_species_page_rating]]
 
 **To do**
+- OPEN/NEW **Map for the Day (micro-trip) viewer** — extend the Phase-5 trip/day map to the Days lane / micro-trip so an ad-hoc working day plots + geotags exactly like a trip day. [[project_working_days]] [[project_trip_map]]
+- OPEN/NEW **Virtual-trip map** — bring the same map (bubbles→filmstrip→large view, travel path, drag-to-geotag) to a virtual trip's accumulated collection. [[project_trip_map]] [[project_virttrip_pending]]
+- OPEN **GPS / data-integrity umbrella** — remaining: tracklog geotag (2a), GPS-from-addresses, location-from-GPS. Purge dangling data_files/pictures now shipped as Refresh Master Database. [[project_gps_data_integrity]]
 - OPEN/minor **"Upgrade best JPG" workflow** — sort-by-rating surfaces 800×533 best-picks; render `_DxO.jpg` → master card "Add new files for this picture" re-distils BestJPG. Make the loop smoother + confirm website re-publish picks it up. NOTE (raised via the map, 2026-07-10): some bodies (e.g. Nikon **D500**) have only a SMALL embedded JPG preview, so their best-JPG stays tiny (800×534) with no larger render — flag these (by camera model or by best-JPG size) as "needs a bigger render for the species/fit page". [[project_dxo_pipeline]]
+
+**Done (Refresh Master Database + black images)**
+- DONE **Refresh Master Database** (bc4a060, ran live) — File ▸ Admin ▸ Review → Apply reconciles the master CSVs with disk (REMOVE/REPOINT/ADD/SPECIES); Review writes suggested CSVs for Excel + a `display_status.csv` black-image scan; Apply backs up both CSVs then rewrites (metadata only, never image files). Cleared ~43k dead file rows / ~15k phantom pictures. Doc: `docs/refresh_master_database.md` (4135c48). [[project_dead_link_prune]]
+- DONE **Black-image fix — Nikon D90** (3d0e490) — old D90 NEFs have no PreviewImage/ThumbnailImage; embedded JPEG is under OtherImage/JpgFromRaw. `gui/preview_extract.py` now tries those largest-first → ~627 D90 pictures no longer render black. Verified live (herons/gulls/vultures). [[project_dead_link_prune]]
 
 **Done (recent)**
 - DONE **Maps Phase 1a — native OSM slippy-map** (b90ceda) — first slice of `maps_plan.md`: a dependency-free interactive map (NO QtWebEngine) showing a species' GPS distribution, launched from the Master Species Viewer's "Map…" button. `gui/map_view.py` `TileMapView` (QGraphicsView) renders OSM XYZ tiles in Web-Mercator world-pixel scene coords; async fetch via QNetworkAccessManager + per-machine disk cache (`%LOCALAPPDATA%/SpeciesViewer/map_tiles`), honest User-Agent, visible-viewport-only (OSM policy); hand-drag pan, wheel zoom-to-cursor, Fit, on-map attribution; same-spot pins merged w/ count. `engine/geo.py parse_gps_dms` decodes stored GPSPosition DMS→signed decimal; `MasterDB.gps_points_for_species(sci)`. Per-species point counts small (herons 2–35) → plain pins read fine; clustering deferred to 1c (whole-master/common species). **1b SHIPPED 617c752**: up-to-4-species overlays (red/blue/green/purple) + legend chips (colour · GPS count · × remove) + searchable "Add species…"; pin tooltip = "<count>× <NL>\n<EN>"; fixed a wheel-zoom `world_to_lonlat` OverflowError (clamp x/y + guard the zoom rebuild under `_syncing`). **Occlusion fixed** ccee1cd (per-colour rosette offset so co-located species fan out, not hide). **1c SHIPPED 77ae39a**: zoom-dependent per-species clustering (`_cluster`, greedy ~46 px, recomputed each zoom — split apart on zoom-in) + white count bubbles (grow with count) + click-a-bubble-to-zoom-into-it (click vs pan-drag via <4 px threshold); rosette widened 5→8 px so overlapping bubbles keep legible numbers. **1d/1e SHIPPED e7c6012**: map is now a PEER of the grid — click a bubble → bottom filmstrip of its pictures → click a thumb → large viewer (master editing enabled per policy, edits reflect on the strip); double-click a bubble zooms; per-species lazy full-master collection feeds strip+large-view; "Species Map…" standalone launcher (add 1–4 species). Look: **Terrain (OpenTopoMap relief) default with a 35% white wash** + Standard (OSM); pointer cursor (pointing-hand over bubbles); Master menu items renamed "Species Viewer…"/"Species Map…". **Phase 1 COMPLETE.** Design + GPS-coverage in `maps_plan.md` (uncommitted).

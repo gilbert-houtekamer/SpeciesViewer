@@ -34,7 +34,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 8 July 2026 (Municipality wired) &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 11 July 2026 (Refresh Master Database + black-image fixes) &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Working task list for the SpeciesViewer nature-photo pipeline and GUI. Since the
 16 June version most of the backlog has shipped: the identity/​picture-root
@@ -56,9 +56,12 @@ design</em>.</p>
 <div class="next">
   <strong>What's next (the active shortlist):</strong>
   <ul style="margin-bottom:0;">
-    <li><strong>EXIFtool throughput</strong> <span class="tag-new">NEW</span> — parallel workers + a shared server (ch. 11).</li>
+    <li><strong>Maps for the Day (micro-trip) &amp; Virtual-trip</strong> <span class="tag-new">NEW</span> —
+      extend the trip/day map to those two collection contexts (ch. 3).</li>
+    <li><strong>GPS / data-integrity umbrella</strong> — tracklog geotag, GPS-from-addresses,
+      location-from-GPS (ch. 3; dead-link purge already shipped as Refresh Master Database).</li>
     <li><strong>Virtual Trips WP7</strong> — retroactive day-by-day builder + amber/green blog bubbles (ch. 2).</li>
-    <li>Smaller: EXIF-cache prune (ch. 3), live tests for Trip→Master delete (ch. 4).</li>
+    <li>Smaller: GBIF lookup disk-cache (ch. 11), live tests for Trip→Master delete (ch. 4).</li>
   </ul>
   Deliberately parked: taxonomy/sequence (ch. 6) and rating-formula/HEIC (ch. 7); the master
   data relativization waits for the Mac (ch. 10).
@@ -166,9 +169,50 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     (open PhotoLab on the folder → render <code>_DxO.jpg</code> → master card “Add new files for
     this picture” re-distils BestJPG to the higher-res file). Consider making this a smoother,
     more discoverable loop (and confirm the website re-publish picks up the new best-pick).</li>
-  <li><strong>EXIF-cache mutable-bucket prune</strong> <span class="tag-open">OPEN</span> — the
-    mutable bucket (XMP/JPG keyed by path+mtime) grows unbounded as master re-reads accumulate.
-    Add a size-capped or time-based eviction pass.</li>
+  <li><strong>EXIF-cache LRU retention</strong> <span class="tag-shipped">SHIPPED</span> — the
+    day/trip cache now stamps a <code>seen</code> epoch-day on every hit/write and
+    <code>prune_expired(ttl_days=90)</code> evicts only paths that stopped being touched (LRU, not
+    FIFO); the master cache is left unpruned (rebuilt wholesale by Rescan). A wrong eviction costs
+    at most one re-read.</li>
+</ul>
+
+<h3>Maps &amp; master data integrity</h3>
+<p><strong>Maps — Phase 1 + 5</strong> <span class="tag-complete">SHIPPED</span> — a dependency-free
+  native OSM slippy-map (no QtWebEngine; <code>gui/map_view.py</code>). <em>Phase 1</em> plots a
+  species' GPS distribution from the Master Species Viewer (“Species Map…”): up-to-4-species
+  overlays, zoom-dependent clustering with count bubbles, click-a-bubble → filmstrip → large
+  viewer, Terrain/Standard basemaps. <em>Phase 5</em> adds a trip/day map over the LIVE collection
+  (all species): a “🗺 Map” button in the day viewer and “🗺 Map whole trip” on the Trip Overview,
+  spatial clustering, a time-ordered travel path with direction arrows, Smart Fit, and
+  <strong>drag-to-geotag</strong> for no-GPS pictures (drag onto the map, or right-click → “Place at
+  estimated position” which time-interpolates between neighbours). Reads GPS from already-loaded
+  memory (<code>gps_cached</code>) so a whole trip plots with zero exiftool spawns. Live-confirmed
+  on 2026 North Greece (1846 pics) and Kreta.</p>
+<p><strong>Refresh Master Database (dead-link reconcile)</strong> <span class="tag-complete">SHIPPED
+  &amp; run live</span> — <em>File ▸ Admin ▸ Refresh Master Database — Review… / Apply…</em>
+  reconciles the master CSVs with what is actually on disk under <code>biota/</code>: Review reports
+  REMOVE / REPOINT / ADD / SPECIES and can write the full suggested CSVs (Excel diff) + a
+  <code>display_status.csv</code> black-image scan; Apply backs up both CSVs and rewrites them
+  (metadata only — never touches image files). Ran live on the master: cleared ~43k dead file rows
+  and ~15k phantom pictures. Fixed the two black-image causes — dead-link phantoms (removed) and
+  <strong>Nikon D90 NEFs</strong> whose embedded JPEG sits under <code>OtherImage</code>/<code>JpgFromRaw</code>
+  (the extractor only tried PreviewImage/ThumbnailImage, so ~627 D90 pictures rendered black; now
+  fixed). Doc: <code>docs/refresh_master_database.md</code>. (<code>bc4a060</code> / <code>3d0e490</code>
+  / <code>4135c48</code>)</p>
+
+<h3>Maps &amp; GPS — to do</h3>
+<ul>
+  <li><strong>Map for the Day (micro-trip) viewer</strong> <span class="tag-open">OPEN</span>
+    <span class="tag-new">NEW</span> — extend the Phase-5 trip/day map to the Days lane /
+    micro-trip so an ad-hoc working day plots + geotags exactly like a trip day.</li>
+  <li><strong>Virtual-trip map</strong> <span class="tag-open">OPEN</span> <span class="tag-new">NEW</span> —
+    bring the same map (bubbles → filmstrip → large view, travel path, drag-to-geotag) to a
+    virtual trip's accumulated collection.</li>
+  <li><strong>GPS / data-integrity umbrella</strong> <span class="tag-open">OPEN</span> — remaining
+    items: tracklog geotag (2a), GPS-from-addresses, location-from-GPS. (Purge dangling
+    data_files/pictures is now shipped as Refresh Master Database.)</li>
+  <li>Map cosmetic polish; extend map-delete to the day map; Phase 3 rectangle-select; Phase 4
+    published Leaflet.</li>
 </ul>
 
 <h3>Parked (by design)</h3>
@@ -298,22 +342,28 @@ Full design in <code>path_portability_plan.md</code>.</p>
 
 <!-- ============================================================ -->
 <h2>11. Performance &amp; EXIFtool</h2>
+<h3>Done</h3>
+<ul>
+  <li><strong>EXIFtool parallel workers</strong> <span class="tag-complete">SHIPPED</span> — cold
+    day/master reads split the uncached files across N independent exiftool processes
+    (<code>exifcache.read_metadata_parallel</code> + <code>auto_worker_count</code> = min(cpu//2, 16,
+    files//24)); wired into sv2 Read Directory, master Rescan, and SD-card XMP creation. Speedup peaks
+    at physical cores (BigBoy ≈7.4×; master rescan 159,973 files cold ~5m25s @16). Output byte-identical
+    to serial. Config <code>[performance] exif_workers = auto</code>. (<code>65e0c45</code>)</li>
+</ul>
 <h3>To do</h3>
 <ul>
-  <li><strong>EXIFtool throughput</strong> <span class="tag-new">NEW</span> <span class="tag-open">OPEN / investigate</span> —
-    two ideas to speed up the big directory reads:
-    <ul>
-      <li><strong>Parallel workers</strong> — split a large read into N shards (e.g. 4 exiftool
-        processes each on 1/4 of the files) and merge. Measure the real speedup vs I/O / Dropbox
-        limits before committing.</li>
-      <li><strong>Shared persistent server</strong> — a single long-lived <code>-stay_open</code>
-        exiftool reused across operations. Note: a persistent stay_open exiftool <em>already</em>
-        exists per-operation (preview extraction <code>gui/preview_extract.py</code>; sv2 reads
-        via one stay_open process). The idea is to widen that to one app-wide server (and/or the
-        N-worker pool) rather than launching per run.</li>
-    </ul>
-    Ties the paused micro-optimization notes (<code>project_perf_optimizations</code>): the real
-    value is the XMP/.dop/PhotoLab write-contract + big reads, not per-item micro-perf.</li>
+  <li><strong>GBIF lookup disk-cache</strong> <span class="tag-new">NEW</span> <span class="tag-open">OPEN</span> —
+    after the parallel EXIF read, species classification is the Read-Directory bottleneck (704 files read
+    in 2.0&nbsp;s, then GBIF dominates). GBIF results are cached only in memory for the run. Persist a
+    subject-string → backbone cache to disk (incl. not-found), and/or write GBIF-resolved species back
+    into <code>speciescollection</code> at session end, so lookups survive across sessions/machines.
+    Caching beats parallelizing (external API + rate limits).</li>
+  <li><strong>Shared persistent exiftool server</strong> <span class="tag-open">OPEN</span> — a
+    per-operation <code>-stay_open</code> exiftool already exists (<code>gui/preview_extract.py</code>;
+    sv2 reads). The idea is one app-wide server + worker pool rather than launching per run.
+    Ties the paused micro-optimization notes: the real value is the write-contract + big reads,
+    not per-item micro-perf.</li>
 </ul>
 <h3>Parked (by design)</h3>
 <ul>
@@ -329,6 +379,18 @@ Full design in <code>path_portability_plan.md</code>.</p>
 
 <table>
   <tr><th>Area</th><th>What was done</th><th>Key commit(s)</th></tr>
+
+  <tr><td>Refresh Master Database</td>
+    <td>Dead-link reconcile of the master CSVs (File ▸ Admin, Review → Apply); ran live, cleared
+      ~43k dead file rows / ~15k phantom pictures with backup. Black-image causes fixed: dead-link
+      phantoms + Nikon D90 NEFs (embedded JPEG under OtherImage/JpgFromRaw). Doc added.</td>
+    <td>bc4a060 · 3d0e490 · 4135c48</td></tr>
+
+  <tr><td>Maps (Phase 1 + 5)</td>
+    <td>Native OSM slippy-map (no QtWebEngine): per-species distribution from the Master Species
+      Viewer (overlays, clustering, bubble → filmstrip → large view) and a trip/day map over the
+      live collection with travel path + drag-to-geotag; GPS read from memory (zero exiftool spawns).</td>
+    <td>b90ceda · 77ae39a · e7c6012 · 67fd558 · d2cb49f</td></tr>
 
   <tr><td>Naming decouple (WP4)</td>
     <td>Explicit trip identities — <code>trip_id</code> / <code>web_slug</code> / display, resolved
