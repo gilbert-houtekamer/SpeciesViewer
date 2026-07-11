@@ -1,4 +1,7 @@
 import configparser
+import logging
+
+logger = logging.getLogger("speciesviewer")
 
 from PyQt6.QtWidgets import QMessageBox
 from gui.menu import MenuSpec  # assuming class is defined elsewhere
@@ -783,41 +786,6 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
-    # Audit the master admin for ghost records — data_files.csv rows whose file
-    # is not at the recorded path (dangling = nowhere; elsewhere = wrong path).
-    def _audit_admin():
-        import os
-        from PyQt6.QtWidgets import QApplication, QMessageBox
-        from PyQt6.QtCore import Qt
-        import engine.admin_audit as admin_audit
-        master = _config.get("master", "masterbiotadatabase", fallback="").replace('"', "").replace("'", "")
-        if not master:
-            QMessageBox.warning(main_window, "Audit Admin", "No master is configured.")
-            return
-        out = os.path.join(master, "admin", "status", "ghost_files.csv")
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            r = admin_audit.find_ghost_files(master, out_csv=out)
-        finally:
-            QApplication.restoreOverrideCursor()
-        if not r.get("ok"):
-            QMessageBox.warning(main_window, "Audit Admin", r.get("error", "Failed."))
-            return
-        pct = (r["ghosts"] / r["total"] * 100) if r["total"] else 0
-        QMessageBox.information(
-            main_window, "Audit Admin — ghost records",
-            f"Scanned {r['total']} admin file-records.\n\n"
-            f"Ghost records: {r['ghosts']} ({pct:.1f}%)\n"
-            f"  • {r['dangling']} dangling (file nowhere in the master)\n"
-            f"  • {r['elsewhere']} wrong-path (file exists elsewhere)\n\n"
-            f"Details written to:\n{out}")
-
-    audit_admin_item = MenuSpec(
-        callback=_audit_admin,
-        title="Audit Admin (find ghost records)…",
-        showsubdirectory=False,
-    )
-
     # Species-counter audit (QA, report only): species.csv counts vs the actual
     # pictures — lists ghosts (with recovered last-known file names), count
     # drift and orphaned best-picks. Never modifies anything.
@@ -879,55 +847,16 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
-    # Dry-run "what would a clean rebuild change?" — compares the current admin
-    # against the actual tree (paths + folder species). Non-destructive; writes
-    # rebuild_*.csv reports for review before any real rebuild.
-    def _rebuild_admin_dryrun():
-        import os
-        from PyQt6.QtWidgets import QApplication, QMessageBox
-        from PyQt6.QtCore import Qt
-        import engine.admin_rebuild as admin_rebuild
-        master = _config.get("master", "masterbiotadatabase", fallback="").replace('"', "").replace("'", "")
-        if not master:
-            QMessageBox.warning(main_window, "Rebuild Admin", "No master is configured.")
-            return
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            r = admin_rebuild.plan_rebuild(master)
-        finally:
-            QApplication.restoreOverrideCursor()
-        if not r.get("ok"):
-            QMessageBox.warning(main_window, "Rebuild Admin", r.get("error", "Failed."))
-            return
-        bd = r.get("add_breakdown", {})
-        add_detail = (" (" + ", ".join(f"{v} {k}" for k, v in sorted(bd.items())) + ")") if bd else ""
-        QMessageBox.information(
-            main_window, "Rebuild Admin — dry run (what would change)",
-            f"A clean rebuild from the current tree would:\n\n"
-            f"  • REMOVE {r['remove']} dead lines (file nowhere)\n"
-            f"  • REPOINT {r['repoint']} stale paths (file exists elsewhere)\n"
-            f"  • CHANGE species on {r['species_change']} pictures (folder ≠ admin)\n"
-            f"  • ADD {r['add']} files not in the admin{add_detail}\n"
-            f"        — report only, not applied: 'attach' belongs to an existing\n"
-            f"        picture, 'junk?' has no frame number, 'new?' looks real.\n\n"
-            f"Heal Admin applies remove + repoint + species. Nothing was changed.\n"
-            f"Details written to:\n{r['out_dir']}\\rebuild_*.csv")
-
-    rebuild_admin_item = MenuSpec(
-        callback=_rebuild_admin_dryrun,
-        title="Rebuild Admin (dry-run compare)…",
-        showsubdirectory=False,
-    )
-
-    # Apply the heal: remove dead rows + repoint stale paths in the master admin.
-    # Re-runs the dry-run first (fresh), confirms, backs up both CSVs, then writes.
+    # APPLY step of Refresh Master Database: remove dead rows + repoint stale
+    # paths + reclassify in the master admin. Re-runs the plan fresh, confirms,
+    # backs up both CSVs, then writes. This is the only destructive Admin action.
     def _heal_admin():
         from PyQt6.QtWidgets import QApplication, QMessageBox
         from PyQt6.QtCore import Qt
         import engine.admin_rebuild as admin_rebuild
         master = _config.get("master", "masterbiotadatabase", fallback="").replace('"', "").replace("'", "")
         if not master:
-            QMessageBox.warning(main_window, "Heal Admin", "No master is configured.")
+            QMessageBox.warning(main_window, "Refresh Master Database — Apply","No master is configured.")
             return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
@@ -935,10 +864,10 @@ def build_menu_spec(main_window):
         finally:
             QApplication.restoreOverrideCursor()
         if not plan.get("ok"):
-            QMessageBox.warning(main_window, "Heal Admin", plan.get("error", "Failed."))
+            QMessageBox.warning(main_window, "Refresh Master Database — Apply",plan.get("error", "Failed."))
             return
         if plan["remove"] == 0 and plan["repoint"] == 0 and plan["species_change"] == 0:
-            QMessageBox.information(main_window, "Heal Admin", "Nothing to heal.")
+            QMessageBox.information(main_window, "Refresh Master Database — Apply", "Nothing to refresh.")
             return
         msg = (f"Apply to the master admin (data_files.csv / data_pictures.csv)?\n\n"
                f"  • REMOVE {plan['remove']} dead file rows\n"
@@ -948,10 +877,11 @@ def build_menu_spec(main_window):
                f"(The {plan['add']} adds are NOT applied — mostly DxO renders + junk.)\n\n"
                f"Both CSVs are backed up first to admin/status/backup/.\n"
                f"This rewrites the master admin. Continue?")
-        if QMessageBox.question(main_window, "Heal Admin — apply (destructive)", msg,
+        if QMessageBox.question(main_window, "Refresh Master Database — Apply (destructive)", msg,
                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                 QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
+        logger.info("Refreshing the master database — saving a safety backup first, then tidying up…")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             r = admin_rebuild.execute_heal(master)
@@ -960,10 +890,15 @@ def build_menu_spec(main_window):
         finally:
             QApplication.restoreOverrideCursor()
         if not r.get("ok"):
-            QMessageBox.warning(main_window, "Heal Admin", r.get("error", "Failed."))
+            QMessageBox.warning(main_window, "Refresh Master Database — Apply",r.get("error", "Failed."))
             return
+        logger.info(
+            f"Master database refreshed and safely backed up. Cleared "
+            f"{r['removed_files']} stale entries, fixed {r['repointed']} moved pictures, "
+            f"and tidied {r['pictures_dropped']} empty ones. Tip: run Count Species to "
+            f"update the totals.")
         QMessageBox.information(
-            main_window, "Heal Admin — done",
+            main_window, "Refresh Master Database — Apply — done",
             f"Removed {r['removed_files']} dead file rows.\n"
             f"Repointed {r['repointed']} paths.\n"
             f"Reclassified {r.get('species_changed', 0)} pictures to their folder species.\n"
@@ -975,16 +910,18 @@ def build_menu_spec(main_window):
 
     heal_admin_item = MenuSpec(
         callback=_heal_admin,
-        title="Heal Admin (apply fixes)…",
+        title="Refresh Master Database — Apply…",
         showsubdirectory=False,
     )
 
-    # Non-destructive PREVIEW: write the SUGGESTED (healed) data_files.csv /
-    # data_pictures.csv to a timestamped folder under admin/status/, plus a
-    # per-picture display_status.csv (black-image suspects). The master is never
-    # touched, so the suggested CSVs can be diffed against the live ones in Excel
-    # before deciding to Heal. Folders are kept so runs can be compared over time.
-    def _rebuild_preview_for_excel():
+    # REVIEW step of Refresh Master Database. Non-destructive. Always shows the
+    # fast summary of what a refresh would change (compares the admin against the
+    # actual tree: remove / repoint / add / species). Then optionally writes the
+    # full SUGGESTED data_files.csv / data_pictures.csv (for a row-by-row Excel
+    # diff) plus a per-picture display_status.csv (black-image suspects) into a
+    # timestamped folder under admin/status/. The master is never touched; folders
+    # are kept so runs can be compared over time.
+    def _refresh_review():
         import os
         from datetime import datetime
         from PyQt6.QtWidgets import QApplication, QMessageBox
@@ -993,29 +930,60 @@ def build_menu_spec(main_window):
         import engine.admin_rebuild as admin_rebuild
         master = _config.get("master", "masterbiotadatabase", fallback="").replace('"', "").replace("'", "")
         if not master:
-            QMessageBox.warning(main_window, "Rebuild Preview", "No master is configured.")
+            QMessageBox.warning(main_window, "Refresh Master Database — Review", "No master is configured.")
             return
         out = os.path.join(master, "admin", "status",
-                           "preview_" + datetime.now().strftime("%Y%m%d-%H%M%S"))
-        disp = {}
+                           "review_" + datetime.now().strftime("%Y%m%d-%H%M%S"))
+        # Fast pass: plan only (one tree scan, small diff reports).
+        logger.info("Reviewing the master database — comparing it with the pictures on disk…")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             plan = admin_rebuild.plan_rebuild(master, out_dir=out)
-            if plan.get("ok"):
-                heal = admin_rebuild.execute_heal(master, out_dir=out, report_dir=out)
-                disp = admin_rebuild.scan_display_status(
-                    master, out_csv=os.path.join(out, "display_status.csv"))
         except Exception as e:
             plan = {"ok": False, "error": f"{type(e).__name__}: {e}"}
         finally:
             QApplication.restoreOverrideCursor()
         if not plan.get("ok"):
-            QMessageBox.warning(main_window, "Rebuild Preview", plan.get("error", "Failed."))
+            QMessageBox.warning(main_window, "Refresh Master Database — Review", plan.get("error", "Failed."))
             return
+        logger.info(
+            f"Review done — nothing has been changed. A refresh would clear "
+            f"{plan['remove']} entries for pictures no longer on disk and fix "
+            f"{plan['repoint']} that have moved.")
+        bd = plan.get("add_breakdown", {})
+        add_detail = (" (" + ", ".join(f"{v} {k}" for k, v in sorted(bd.items())) + ")") if bd else ""
+        summary = (f"A refresh would change the master database:\n\n"
+                   f"  • REMOVE {plan['remove']} dead file rows (file nowhere)\n"
+                   f"  • REPOINT {plan['repoint']} stale paths (file moved)\n"
+                   f"  • RECLASSIFY {plan['species_change']} pictures (folder ≠ admin)\n"
+                   f"  • ADD {plan['add']} files not in the admin{add_detail} — not applied\n\n"
+                   f"Nothing has changed. Diff reports written to:\n{out}\\rebuild_*.csv\n\n"
+                   f"Also write the full SUGGESTED data_files.csv / data_pictures.csv for an\n"
+                   f"Excel comparison, plus the black-image scan? (slower, a few minutes)")
+        if QMessageBox.question(main_window, "Refresh Master Database — Review", summary,
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        # Heavy pass: suggested CSVs + display-status scan.
+        disp = {}
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            heal = admin_rebuild.execute_heal(master, out_dir=out, report_dir=out)
+            if heal.get("ok"):
+                disp = admin_rebuild.scan_display_status(
+                    master, out_csv=os.path.join(out, "display_status.csv"))
+        except Exception as e:
+            heal = {"ok": False, "error": f"{type(e).__name__}: {e} (CSV open in Excel / Dropbox lock?)"}
+        finally:
+            QApplication.restoreOverrideCursor()
         if not heal.get("ok"):
-            QMessageBox.warning(main_window, "Rebuild Preview", heal.get("error", "Failed."))
+            QMessageBox.warning(main_window, "Refresh Master Database — Review", heal.get("error", "Failed."))
             return
         bs = disp.get("by_status", {}) if disp.get("ok") else {}
+        logger.info(f"Saved a suggested copy you can open in Excel to compare: {out}")
+        if disp.get("ok"):
+            logger.info(f"Picture check: {bs.get('black', 0)} still show no image "
+                        f"(these disappear once you Apply).")
         active = os.path.join(master, "metadata", "active")
         msg = (f"Wrote the SUGGESTED CSVs (master untouched):\n{out}\n\n"
                f"  data_files.csv   : {heal['kept_files']} rows "
@@ -1025,20 +993,20 @@ def build_menu_spec(main_window):
                f"  black {bs.get('black', 0)} · shows-via-RAW {bs.get('no_bestjpg', 0)} · "
                f"has-JPG {bs.get('jpg_ok', 0)}\n\n"
                f"Compare in Excel against the live CSVs in:\n{active}\n\n"
-               f"Open the preview folder now?")
-        if QMessageBox.question(main_window, "Rebuild Preview — done", msg,
+               f"Open the folder now?")
+        if QMessageBox.question(main_window, "Refresh Master Database — Review", msg,
                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                 QMessageBox.StandardButton.Yes) == QMessageBox.StandardButton.Yes:
             QDesktopServices.openUrl(QUrl.fromLocalFile(out))
 
-    rebuild_preview_item = MenuSpec(
-        callback=_rebuild_preview_for_excel,
-        title="Rebuild Preview (suggested CSVs for Excel)…",
+    refresh_review_item = MenuSpec(
+        callback=_refresh_review,
+        title="Refresh Master Database — Review…",
         showsubdirectory=False,
     )
 
     # Move orphan sidecars (XMP/DOP whose image was deleted) to a recoverable
-    # trash; their now-dangling admin rows are swept by the next Heal Admin run.
+    # trash; their now-dangling admin rows are swept by the next Apply run.
     def _clean_orphan_sidecars():
         from PyQt6.QtWidgets import QApplication, QMessageBox
         from PyQt6.QtCore import Qt
@@ -1062,7 +1030,7 @@ def build_menu_spec(main_window):
                 main_window, "Clean Orphan Sidecars",
                 f"Move {n} orphan sidecar(s) ({detail}) to a recoverable trash "
                 f"folder?\n\nThese have no image left in their picture group.\n"
-                f"Run Heal Admin afterward to clear their admin rows.",
+                f"Run Refresh Master Database — Apply afterward to clear their admin rows.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
@@ -1079,7 +1047,7 @@ def build_menu_spec(main_window):
         QMessageBox.information(
             main_window, "Clean Orphan Sidecars — done",
             f"Moved {r['moved']} orphan sidecar(s) to:\n{r['trash']}\n\n"
-            f"Run Heal Admin to clear their (now-dangling) admin rows.")
+            f"Run Refresh Master Database — Apply to clear their (now-dangling) admin rows.")
 
     clean_orphans_item = MenuSpec(
         callback=_clean_orphan_sidecars,
@@ -1087,20 +1055,24 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
-    # File ▸ Admin. Heal Admin is a real fix and always shown; the diagnostics
-    # are gated behind the "Enable debug functionality" flag (Global Settings).
-    # Read at build time — toggling the flag takes effect on restart.
-    admin_menu = {"Heal Admin (apply fixes)…": heal_admin_item}
+    # File ▸ Admin. The Refresh Master Database pair (Review → Apply) reconciles
+    # the master CSVs with what is on disk; Apply is the only destructive action
+    # and is always shown. The consoles/testbed diagnostics are gated behind the
+    # "Enable debug functionality" flag (Global Settings). Read at build time —
+    # toggling the flag takes effect on restart.
+    admin_menu = {
+        "Refresh Master Database — Review…": refresh_review_item,
+        "Refresh Master Database — Apply…": heal_admin_item,
+    }
     if debug_enabled():
         admin_menu = {
             "Trip Status Console…": trip_status_console,
             "Merged Status (all machines)…": merged_status_console,
             f"{MenuSpec.separator()}_admin_0": None,
-            "Audit Admin (find ghost records)…": audit_admin_item,
+            "Refresh Master Database — Review…": refresh_review_item,
+            "Refresh Master Database — Apply…": heal_admin_item,
+            f"{MenuSpec.separator()}_admin_maint": None,
             "Audit Species Counters (dry-run)…": audit_species_item,
-            "Rebuild Admin (dry-run compare)…": rebuild_admin_item,
-            "Rebuild Preview (suggested CSVs for Excel)…": rebuild_preview_item,
-            "Heal Admin (apply fixes)…": heal_admin_item,
             "Clean Orphan Sidecars (move to trash)…": clean_orphans_item,
             f"{MenuSpec.separator()}_admin_1": None,
             "Call Testbed for trip day": testbed,
