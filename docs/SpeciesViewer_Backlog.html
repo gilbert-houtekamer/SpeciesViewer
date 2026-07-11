@@ -233,21 +233,28 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
   <li><strong>Laptop GUI fit review</strong> <span class="tag-open">OPEN</span>
     <span class="tag-new">NEW</span> — walk every dialog on a laptop-sized screen and confirm each one
     fits (no clipped toolbars or off-screen buttons). Ties the toolbar compaction above.</li>
-  <li><strong>Size-aware preview extraction (measured 2026-07-11)</strong> <span class="tag-open">OPEN</span>
-    <span class="tag-new">NEW</span> — survey of the embedded JPEG each body ships in its RAW, and the
-    effect of the largest-first extractor:
+  <li><strong>Normalise cached preview size to the OM-1 long edge (~3200 px)</strong>
+    <span class="tag-open">OPEN</span> <span class="tag-new">NEW</span> — survey of the embedded JPEG each
+    body ships in its RAW (measured 2026-07-11):
     <ul>
-      <li><strong>OM-1 Mark II</strong> (ORF): PreviewImage 3200×2400 ~0.9&nbsp;MB — unchanged (current body).</li>
-      <li><strong>Nikon D7100 / D7500 / D500</strong> (NEF): PreviewImage is a tiny ~600&nbsp;px
-        (0.1–0.16&nbsp;MB); <code>JpgFromRaw</code> is <strong>full-res</strong> (5568–6000&nbsp;px,
-        1.5–2&nbsp;MB); <code>OtherImage</code> is a mid <strong>1620×1080 ~0.75&nbsp;MB</strong>.</li>
-      <li><strong>Nikon D90</strong> (NEF): no Preview/Thumbnail at all; only <code>OtherImage</code>
+      <li><strong>OM-1 Mark II</strong> (ORF): PreviewImage 3200×2400 ~0.9&nbsp;MB — current body, the
+        reference size.</li>
+      <li><strong>Nikon D7100 / D7500 / D500</strong> (NEF): PreviewImage a tiny ~600&nbsp;px
+        (0.1–0.16&nbsp;MB); <code>JpgFromRaw</code> <strong>full-res</strong> 5568–6000&nbsp;px
+        1.5–2&nbsp;MB; <code>OtherImage</code> mid 1620×1080 ~0.75&nbsp;MB.</li>
+      <li><strong>Nikon D90</strong> (NEF): no Preview/Thumbnail; only <code>OtherImage</code>
         4288×2848 ~9.9&nbsp;MB.</li>
+      <li><strong>Nikon Z8</strong> (research, from the web — not measured): 45&nbsp;MP / 8256×5504;
+        <code>JpgFromRaw</code> ~2.2&nbsp;MB (about the same as the D500 despite the resolution — more
+        compressed) + a smaller PreviewImage/thumbnail; exact mid-preview dims TBD on a real file.</li>
     </ul>
-    Consequence: the largest-first fix upgraded <em>all</em> Nikon previews from ~600&nbsp;px to full-res
-    (quality win) but at ~10× cache cost. <strong>Refinement to consider:</strong> a size-aware picker
-    — prefer a ~1080p <code>OtherImage</code> for the Nikons (good on screen, ~0.75&nbsp;MB) and fall to
-    full-res only where there is no mid-size (D90). Keeps the quality win without the cache blow-up.</li>
+    <strong>Plan:</strong> the largest-first extractor fix (needed so the D90 shows at all) means some
+    bodies now cache a multi-MB preview. Rather than per-body tag rules, <strong>downscale every cached
+    preview to the OM-1 long edge (~3200&nbsp;px)</strong> — extract the largest embedded JPEG, and if
+    it is bigger than ~3200&nbsp;px on the long side, resize it down before caching (keep as-is if
+    smaller). One reference size for all bodies: OM-1 unchanged, D90 9.9→~0.9&nbsp;MB, Nikon full-res
+    2→~0.9&nbsp;MB, Z8 likewise. Cache size is a secondary benefit here — the point is one predictable
+    preview size across cameras. Costs one decode+resize on first extract (Pillow).</li>
   <li><strong>Preview-cache hygiene</strong> <span class="tag-open">OPEN</span>
     <span class="tag-new">NEW</span> — the preview cache only grows (no TTL/LRU, no sweep on source
     delete), so it holds stale previews for culled / committed / retired trip RAWs. Two fixes:
