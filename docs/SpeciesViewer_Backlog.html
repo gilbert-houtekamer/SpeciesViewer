@@ -172,7 +172,11 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     sorting by rating surfaces best-picks still on a 10-year-old 800×533 render. The pieces exist
     (open PhotoLab on the folder → render <code>_DxO.jpg</code> → master card “Add new files for
     this picture” re-distils BestJPG to the higher-res file). Consider making this a smoother,
-    more discoverable loop (and confirm the website re-publish picks up the new best-pick).</li>
+    more discoverable loop (and confirm the website re-publish picks up the new best-pick).
+    Correction (2026-07-11 survey): the small best-JPG is an old small <em>DxO render</em>, NOT a
+    RAW-preview limit — the Nikon D500/D7100/D7500 NEFs actually embed a full-res <code>JpgFromRaw</code>
+    (see the size-aware item below), so where the RAW is still on disk a bigger picture can be pulled
+    straight from it.</li>
   <li><strong>EXIF-cache LRU retention</strong> <span class="tag-shipped">SHIPPED</span> — the
     day/trip cache now stamps a <code>seen</code> epoch-day on every hit/write and
     <code>prune_expired(ttl_days=90)</code> evicts only paths that stopped being touched (LRU, not
@@ -229,11 +233,21 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
   <li><strong>Laptop GUI fit review</strong> <span class="tag-open">OPEN</span>
     <span class="tag-new">NEW</span> — walk every dialog on a laptop-sized screen and confirm each one
     fits (no clipped toolbars or off-screen buttons). Ties the toolbar compaction above.</li>
-  <li><strong>Survey embedded-preview size by camera</strong> <span class="tag-open">OPEN</span>
-    <span class="tag-new">NEW</span> — measure the embedded JPEG each camera body ships inside its RAW
-    (small vs full-res). Informs two things: which bodies need a bigger render for the best-JPG (e.g.
-    Nikon D500's tiny preview) and how much the preview cache grows (D90 now caches full-res
-    <code>OtherImage</code> ~8&nbsp;MB each vs ~1&nbsp;MB elsewhere).</li>
+  <li><strong>Size-aware preview extraction (measured 2026-07-11)</strong> <span class="tag-open">OPEN</span>
+    <span class="tag-new">NEW</span> — survey of the embedded JPEG each body ships in its RAW, and the
+    effect of the largest-first extractor:
+    <ul>
+      <li><strong>OM-1 Mark II</strong> (ORF): PreviewImage 3200×2400 ~0.9&nbsp;MB — unchanged (current body).</li>
+      <li><strong>Nikon D7100 / D7500 / D500</strong> (NEF): PreviewImage is a tiny ~600&nbsp;px
+        (0.1–0.16&nbsp;MB); <code>JpgFromRaw</code> is <strong>full-res</strong> (5568–6000&nbsp;px,
+        1.5–2&nbsp;MB); <code>OtherImage</code> is a mid <strong>1620×1080 ~0.75&nbsp;MB</strong>.</li>
+      <li><strong>Nikon D90</strong> (NEF): no Preview/Thumbnail at all; only <code>OtherImage</code>
+        4288×2848 ~9.9&nbsp;MB.</li>
+    </ul>
+    Consequence: the largest-first fix upgraded <em>all</em> Nikon previews from ~600&nbsp;px to full-res
+    (quality win) but at ~10× cache cost. <strong>Refinement to consider:</strong> a size-aware picker
+    — prefer a ~1080p <code>OtherImage</code> for the Nikons (good on screen, ~0.75&nbsp;MB) and fall to
+    full-res only where there is no mid-size (D90). Keeps the quality win without the cache blow-up.</li>
   <li><strong>Preview-cache hygiene</strong> <span class="tag-open">OPEN</span>
     <span class="tag-new">NEW</span> — the preview cache only grows (no TTL/LRU, no sweep on source
     delete), so it holds stale previews for culled / committed / retired trip RAWs. Two fixes:
