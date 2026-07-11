@@ -66,8 +66,15 @@ def _drop_helper():
 
 
 def extract_preview_bytes(src: Path) -> bytes | None:
-    """The largest embedded JPEG preview for a RAW — PreviewImage, else the
-    small ThumbnailImage — as bytes, or None if the file has neither.
+    """The largest embedded JPEG preview for a RAW, as bytes, or None if the
+    file has none.
+
+    Tags are tried largest-first: JpgFromRaw / PreviewImage hold the full- or
+    near-full-size preview on most cameras; OtherImage is where old Nikon bodies
+    (e.g. the D90) put their embedded JPEG — they have NO PreviewImage or
+    ThumbnailImage at all, so without OtherImage those files extracted nothing
+    and rendered black; ThumbnailImage is the tiny 160x120 last resort. The
+    first non-empty tag wins, so working cameras keep their PreviewImage.
 
     Serialised through one persistent exiftool, so it is safe to call from many
     worker threads at once (they queue on the lock rather than each spawning a
@@ -76,7 +83,7 @@ def extract_preview_bytes(src: Path) -> bytes | None:
     with _lock:
         try:
             et = _get_helper()
-            for tag in ("-PreviewImage", "-ThumbnailImage"):
+            for tag in ("-JpgFromRaw", "-PreviewImage", "-OtherImage", "-ThumbnailImage"):
                 data = et.execute("-b", tag, src_s, raw_bytes=True)
                 if data:
                     return data
