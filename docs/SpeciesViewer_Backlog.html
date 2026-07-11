@@ -19,6 +19,7 @@
   .tag-test { background: #DEEAF1; color: #1F3864; padding: 1pt 5pt; border-radius: 3pt; font-size: 9pt; font-weight: bold; }
   .tag-bug { background: #FADBD8; color: #922B21; padding: 1pt 5pt; border-radius: 3pt; font-size: 9pt; font-weight: bold; }
   .tag-new { background: #E8DAEF; color: #5B2C6F; padding: 1pt 5pt; border-radius: 3pt; font-size: 9pt; font-weight: bold; }
+  .tag-rejected { background: #F2D7D5; color: #7B241C; padding: 1pt 5pt; border-radius: 3pt; font-size: 9pt; font-weight: bold; }
   .done { color: #888; }
   .note { font-size: 9.5pt; color: #555; margin-top: 6pt; padding-left: 10pt; border-left: 3px solid #D3D3D3; }
   .next { background: #F3F7FC; border: 1px solid #9DC3E6; border-radius: 5pt; padding: 8pt 14pt; margin: 12pt 0; }
@@ -49,6 +50,7 @@ focus is on that.</p>
 <span class="tag-bug">BUG</span> defect to fix ·
 <span class="tag-test">NEEDS TEST</span> built, awaiting a live run ·
 <span class="tag-parked">PARKED</span> deliberately deferred (“not now, by choice”) ·
+<span class="tag-rejected">REJECTED</span> decided against (won't build) ·
 <span class="tag-complete">DONE</span> shipped.
 Each chapter separates <em>things to do</em> from things that are <em>parked by
 design</em>.</p>
@@ -60,8 +62,10 @@ design</em>.</p>
       extend the trip/day map to those two collection contexts (ch. 3).</li>
     <li><strong>GPS / data-integrity umbrella</strong> — tracklog geotag, GPS-from-addresses,
       location-from-GPS (ch. 3; dead-link purge already shipped as Refresh Master Database).</li>
+    <li><strong>Compact the viewer toolbar + laptop-fit review</strong> <span class="tag-new">NEW</span> —
+      the wide filter/knob row and dialog sizing on small screens (ch. 3).</li>
     <li><strong>Virtual Trips WP7</strong> — retroactive day-by-day builder + amber/green blog bubbles (ch. 2).</li>
-    <li>Smaller: GBIF lookup disk-cache (ch. 11), live tests for Trip→Master delete (ch. 4).</li>
+    <li>Smaller: GBIF lookup disk-cache (ch. 11).</li>
   </ul>
   Deliberately parked: taxonomy/sequence (ch. 6) and rating-formula/HEIC (ch. 7); the master
   data relativization waits for the Mac (ch. 10).
@@ -215,28 +219,50 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     published Leaflet.</li>
 </ul>
 
+<h3>GUI &amp; cache — to do</h3>
+<ul>
+  <li><strong>Compact the filter/knob toolbar</strong> <span class="tag-open">OPEN</span>
+    <span class="tag-new">NEW</span> — the Species Viewer top row (Species · language · Camera · Sort ·
+    Map · Regenerate · JPG-only · colour swatches · Columns · Blue/Purple) is very wide. Redesign it to
+    be much more compact — group related knobs, move some behind an overflow/⋯ menu, or wrap to a second
+    row — so it stops running off narrow screens.</li>
+  <li><strong>Laptop GUI fit review</strong> <span class="tag-open">OPEN</span>
+    <span class="tag-new">NEW</span> — walk every dialog on a laptop-sized screen and confirm each one
+    fits (no clipped toolbars or off-screen buttons). Ties the toolbar compaction above.</li>
+  <li><strong>Survey embedded-preview size by camera</strong> <span class="tag-open">OPEN</span>
+    <span class="tag-new">NEW</span> — measure the embedded JPEG each camera body ships inside its RAW
+    (small vs full-res). Informs two things: which bodies need a bigger render for the best-JPG (e.g.
+    Nikon D500's tiny preview) and how much the preview cache grows (D90 now caches full-res
+    <code>OtherImage</code> ~8&nbsp;MB each vs ~1&nbsp;MB elsewhere).</li>
+  <li><strong>Preview-cache hygiene</strong> <span class="tag-open">OPEN</span>
+    <span class="tag-new">NEW</span> — the preview cache only grows (no TTL/LRU, no sweep on source
+    delete), so it holds stale previews for culled / committed / retired trip RAWs. Two fixes:
+    (a) give it the same 90-day LRU prune the EXIF cache got; (b) sweep a trip's preview subfolder when
+    it is retired or committed.</li>
+</ul>
+
 <h3>Parked (by design)</h3>
 <ul>
   <li><span class="tag-parked">PARKED</span> <strong>Delete step 3 — delete JPG-bearing UPNs.</strong>
     Blocked by the hard “never trash a JPG” invariant; whether/how to allow it (e.g. only if not
     referenced by any published page) is an open question, intentionally not built.</li>
-  <li><span class="tag-parked">PARKED</span> <strong>Undo → “Restore from trash”.</strong> The
-    engine capability (<code>undo_delete</code>/<code>apply_restore</code>) exists headless. We
-    decided against a lone “Undo” button (it implies a generic action-log we don’t have); if
-    recovery discoverability ever bites, add a <em>Restore-from-trash</em> browser instead. Data
-    is already safe in <code>.trash</code>.</li>
+  <li><span class="tag-rejected">REJECTED</span> <strong>Undo → “Restore from trash”.</strong> The
+    engine capability (<code>undo_delete</code>/<code>apply_restore</code>) exists headless, but a lone
+    “Undo” button implies a generic action-log we don't have, so this is decided against — not just
+    deferred. Data is already safe in <code>.trash</code>; if recovery ever needs to be user-facing,
+    it would be a deliberate <em>Restore-from-trash</em> browser, not an Undo.</li>
   <li><span class="tag-parked">DEFERRED</span> Trip-side SQLite DBs — same pattern, not urgent now
     the master design is proven.</li>
 </ul>
 
 <!-- ============================================================ -->
-<h2>4. Trip-to-Master Pipeline</h2>
+<h2>4. Trip-to-Master Pipeline <span class="tag-complete">COMPLETE ✓</span></h2>
 
 <p>The <strong>“Add Trip Pictures to Master”</strong> 3-step dialog + <strong>Run-all</strong>
 button are shipped, and the on-disk-truth <strong>“Delete Local Files Backed Up in Master…”</strong>
-report + red delete (<code>trip_delete_scan</code>) is live. <code>trip_delete_scan</code> is now the
-sole delete authority; the older <code>svr7DeleteFiles</code> / <code>deletelist.csv</code> path has
-been removed.</p>
+report + red delete (<code>trip_delete_scan</code>) is live and now the sole delete authority; the
+older <code>svr7DeleteFiles</code> / <code>deletelist.csv</code> path has been removed. Nothing open —
+the whole trip → master flow is in daily use.</p>
 
 <h3>Done</h3>
 <ul>

@@ -9,8 +9,9 @@ Since the 16-June edition most of the backlog shipped (WP4 identity decouple, WP
 ## Active shortlist
 1. **NEW Maps for the Day (micro-trip) + Virtual-trip** — extend the Phase-5 trip/day map to those two collection contexts (ch.3).
 2. **GPS / data-integrity umbrella** — tracklog geotag, GPS-from-addresses, location-from-GPS (ch.3; dead-link purge shipped as Refresh Master Database).
-3. **Virtual Trips WP7** — retroactive builder + amber/green blog bubbles (ch.2).
-4. Smaller: GBIF lookup disk-cache (ch.11), Trip→Master delete live test (ch.4).
+3. **NEW Compact the viewer toolbar + laptop-fit review** — wide filter/knob row + dialog sizing on small screens (ch.3).
+4. **Virtual Trips WP7** — retroactive builder + amber/green blog bubbles (ch.2).
+5. Smaller: GBIF lookup disk-cache (ch.11).
 
 Recently shipped: **Refresh Master Database** (dead-link reconcile, ran live: cleared ~43k dead rows / ~15k phantom pictures) + **black-image fixes** (dead-link phantoms + Nikon D90 OtherImage preview) — bc4a060 / 3d0e490 / 4135c48; see ch.3. **EXIFtool parallel workers** (ch.11).
 
@@ -53,6 +54,10 @@ Phases 1–3 shipped+live. Trip Species Viewer Trip+Master scope works (scope-aw
 - OPEN/NEW **Map for the Day (micro-trip) viewer** — extend the Phase-5 trip/day map to the Days lane / micro-trip so an ad-hoc working day plots + geotags exactly like a trip day. [[project_working_days]] [[project_trip_map]]
 - OPEN/NEW **Virtual-trip map** — bring the same map (bubbles→filmstrip→large view, travel path, drag-to-geotag) to a virtual trip's accumulated collection. [[project_trip_map]] [[project_virttrip_pending]]
 - OPEN **GPS / data-integrity umbrella** — remaining: tracklog geotag (2a), GPS-from-addresses, location-from-GPS. Purge dangling data_files/pictures now shipped as Refresh Master Database. [[project_gps_data_integrity]]
+- OPEN/NEW **Compact the filter/knob toolbar** — the Species Viewer top row (Species · lang · Camera · Sort · Map · Regenerate · JPG-only · colour swatches · Columns · Blue/Purple) is very wide; regroup / overflow-menu / second-row so it fits narrow screens.
+- OPEN/NEW **Laptop GUI fit review** — walk every dialog on a laptop screen, confirm each fits (no clipped toolbars / off-screen buttons); ties the toolbar compaction.
+- OPEN/NEW **Survey embedded-preview size by camera** — measure the embedded JPEG each body ships in its RAW (small vs full-res). Informs best-JPG upgrade flagging (e.g. Nikon D500 tiny preview) AND preview-cache growth (D90 now caches full-res OtherImage ~8 MB vs ~1 MB elsewhere).
+- OPEN/NEW **Preview-cache hygiene** — cache only grows (no TTL/LRU, no sweep on source delete) → holds stale previews for culled/committed/retired trip RAWs. (a) 90-day LRU prune like the EXIF cache; (b) sweep a trip's preview subfolder on retire/commit.
 - OPEN/minor **"Upgrade best JPG" workflow** — sort-by-rating surfaces 800×533 best-picks; render `_DxO.jpg` → master card "Add new files for this picture" re-distils BestJPG. Make the loop smoother + confirm website re-publish picks it up. NOTE (raised via the map, 2026-07-10): some bodies (e.g. Nikon **D500**) have only a SMALL embedded JPG preview, so their best-JPG stays tiny (800×534) with no larger render — flag these (by camera model or by best-JPG size) as "needs a bigger render for the species/fit page". [[project_dxo_pipeline]]
 
 **Done (Refresh Master Database + black images)**
@@ -66,11 +71,11 @@ Phases 1–3 shipped+live. Trip Species Viewer Trip+Master scope works (scope-aw
 
 **Parked (by design)**
 - PARKED **delete step 3 (JPG-bearing UPNs)** — blocked by never-trash-a-JPG; whether/how is open.
-- PARKED **Undo → Restore-from-trash** — engine exists headless (undo_delete/apply_restore); decided against a lone "Undo" (implies action-log we lack); build trash-restore if discoverability bites. [[feedback_no_misleading_affordances]]
+- REJECTED **Undo → Restore-from-trash** — decided against (not just deferred): a lone "Undo" implies an action-log we lack. Engine exists headless (undo_delete/apply_restore); data safe in `.trash`. If recovery ever needs to be user-facing it'd be a deliberate Restore-from-trash browser, never an Undo. [[feedback_no_misleading_affordances]]
 - DEFERRED trip-side SQLite.
 
-## 4. Trip-to-Master Pipeline
-"Add Trip Pictures to Master" 3-step + Run-all shipped; on-disk "Delete Local Files Backed Up in Master…" (trip_delete_scan) live. Older TripMasterDashboard+svr7 never run e2e. [[project_svr7_deletelist]] [[project_trip_delete_rethink]]
+## 4. Trip-to-Master Pipeline — COMPLETE ✓
+"Add Trip Pictures to Master" 3-step + Run-all shipped; on-disk "Delete Local Files Backed Up in Master…" (trip_delete_scan) live and sole delete authority (svr7/deletelist removed). Nothing open — whole trip→master flow in daily use. [[project_svr7_deletelist]] [[project_trip_delete_rethink]]
 
 **Done**
 - DONE **retire svr7 / deletelist.csv** (0fb1695) — deletelist.csv removed end-to-end (sv6 no longer writes it, sv7 gate dropped, svr7DeleteFiles deleted); trip_delete_scan is the sole delete authority. Verified live via a full freeze→commit→publish.
