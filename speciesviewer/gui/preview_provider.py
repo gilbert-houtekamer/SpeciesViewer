@@ -174,6 +174,15 @@ class PreviewItem(PictureItem):
         return self._row.get("DateTimeOriginal", "")
 
     @property
+    def place_fields(self) -> dict:
+        """Reverse-geocoded location text from the picture's data_pictures row —
+        drives the map tooltip's place name (falls back to coordinates when these
+        are empty). Mirrors the culling item's place_fields."""
+        r = self._row
+        return {k: str(r.get(k, "") or "")
+                for k in ("Location", "City", "Municipality", "State")}
+
+    @property
     def error_msg(self) -> str:
         return self._c.fpr.getErrorMsg(self._rep)
 
@@ -380,6 +389,22 @@ class PreviewCollection(PictureCollection):
         from gui.geolocate import gps_decimal
         p = self.gps_source(upn_key)
         return gps_decimal(p) if p else None
+
+    def gps_cached(self, upn_key: str):
+        """(lat, lon) parsed from the in-memory file rows' Composite:GPSPosition —
+        no file read — so the map plots a whole day without an exiftool spawn per
+        picture. Same DMS→decimal parse the master DB uses."""
+        from engine.geo import parse_gps_dms
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            pos = frow.get("Composite:GPSPosition") or ""
+            if pos:
+                ll = parse_gps_dms(pos)
+                if ll:
+                    return ll
+        return None
 
     def location_targets(self, upn_key: str):
         """The UPN's XMP/JPG files — where LR-style location text is written."""

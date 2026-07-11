@@ -980,6 +980,64 @@ class MainWindow(QMainWindow):
         self._species_map_dlg = MapView(self, db)
         self._species_map_dlg.show()
 
+    def open_trip_map(self):
+        """Whole-trip map: plot EVERY day of the active trip on one map (all
+        species) with the travel path. Reads each day's review CSVs into one
+        in-memory picture set (no exiftool — the GPS/date/place are already in the
+        CSVs) and opens the same map as the per-day 🗺 Map, so bubbles, filmstrip
+        and large view span the whole trip."""
+        from pathlib import Path
+        from utils.trip_identity import resolve_trip_picture_root
+        trip_root = _config.get("trip", "tripbiotadatabase", fallback="").strip()
+        if not trip_root:
+            QMessageBox.warning(self, "Trip Map", "No active trip is configured.")
+            return
+        review_root = Path(trip_root) / "metadata" / "review"
+        day_dirs = sorted(
+            [d for d in review_root.iterdir()
+             if d.is_dir() and (d / "data_files.csv").exists()],
+            key=lambda p: p.name) if review_root.exists() else []
+        if not day_dirs:
+            QMessageBox.warning(
+                self, "Trip Map",
+                "No days with review data were found — run Read & Summarize first.")
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            from engine.filepicture import FilePicture
+            from engine.filecsv import Files
+            from engine.picturecsv import Pictures
+            from gui.preview_provider import PreviewCollection
+            from gui.image_loader import AsyncImageLoader
+            from gui.map_view import TripMapView
+            fi, upn = Files(None), Pictures(None)
+            for d in day_dirs:
+                try:
+                    fi.read_file(str(d / "data_files.csv"), silent=True)
+                    p = d / "data_pictures.csv"
+                    if p.exists():
+                        upn.read_pictures(str(p))
+                except Exception as e:
+                    if self.logger:
+                        self.logger.warning(f"Trip Map: skipping {d.name}: {e}")
+            fpr = FilePicture(None)
+            fpr.fi, fpr.upn = fi, upn
+            loader = AsyncImageLoader(self)
+            coll = PreviewCollection(fpr, loader=loader)
+            keys = coll.all_keys()
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not keys:
+            QMessageBox.information(self, "Trip Map", "No pictures found for this trip.")
+            return
+        trip_name = Path(resolve_trip_picture_root(trip_root, kind="trip")
+                         or trip_root).name
+        # Strong ref on the main window so the dialog isn't GC'd.
+        self._trip_map_dlg = TripMapView(
+            self, coll, keys, title=f"Map — {trip_name} (whole trip)",
+            loader=loader, default_path=True)
+        self._trip_map_dlg.show()
+
     def open_virttrip_rating_editor(self):
         """Read-only Rating Editor over the active virtual trip (Album). Its
         pictures are the master's shared files, so editing is off for now —

@@ -265,6 +265,15 @@ class ImagePreviewDialog(QDialog):
         self.no_gps_btn.clicked.connect(self.on_no_gps_toggled)
         controls_layout.addWidget(self.no_gps_btn)
 
+        # Map — plot the currently shown pictures (all species) on a slippy map,
+        # with the travel path. Needs a collection that can report GPS.
+        self.map_btn = QPushButton("🗺 Map")
+        self.map_btn.setFixedHeight(24)
+        self.map_btn.setToolTip("Show the pictures now displayed on a map (all "
+                                "species), with the travel path")
+        self.map_btn.clicked.connect(self._on_show_map)
+        controls_layout.addWidget(self.map_btn)
+
         self.all_btn = QPushButton("All")
         self.all_btn.setFixedSize(40, 24)
         self.all_btn.setCheckable(True)
@@ -580,6 +589,20 @@ class ImagePreviewDialog(QDialog):
     def on_all_toggled(self):
         if self.all_btn.isChecked():
             self._set_radio("all")
+
+    def _on_show_map(self):
+        """Open the trip/day map over the pictures currently displayed (the live
+        collection's filtered/sorted set — 'what the viewer shows'), all species,
+        with the travel path."""
+        keys = [self._collection.item(i).key for i in range(len(self._collection))]
+        if not keys:
+            QMessageBox.information(self, "Map", "No pictures are shown to map.")
+            return
+        from gui.map_view import TripMapView
+        base = self.windowTitle().split(" — ")[0]
+        dlg = TripMapView(self, self._collection, keys,
+                          title=f"Map — {base}", loader=self._loader)
+        dlg.show()
 
     def _clear_find_silently(self, except_mode=None):
         """Clear the Find boxes without re-triggering their handlers (used when

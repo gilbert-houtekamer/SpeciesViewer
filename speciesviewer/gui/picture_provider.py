@@ -337,6 +337,15 @@ class PictureCollection(ABC):
         """Signed decimal (lat, lon) for the picture, or None if it has no GPS."""
         return None
 
+    def gps_cached(self, key: str):
+        """Signed decimal (lat, lon) from ALREADY-LOADED memory — no file read —
+        or None when this collection has no in-memory GPS for the key. The map
+        uses this to plot a whole day/trip without an exiftool spawn per picture
+        (gps() reads the file and is fine for a single lookup, ruinous for N).
+        Default falls through to the cheap-by-nature default of gps() (None);
+        collections that cache GPS override this."""
+        return None
+
     def gps_source(self, key: str):
         """The file to read GPS FROM (path only — no read), so a batch can read
         many at once off the GUI thread. None if there's no source."""

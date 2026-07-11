@@ -4,8 +4,8 @@ import logging
 from fastcrc import crc32
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem,
-    QHeaderView, QAbstractItemView, QAbstractItemView
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QTableWidget,
+    QTableWidgetItem, QHeaderView, QAbstractItemView, QAbstractItemView
 )
 from pathlib import Path
 from engine.statemachine import StateMachine
@@ -471,9 +471,17 @@ def populate_trip_overview(self):
     # Layout
     overview_widget = QWidget()
     layout = QVBoxLayout()
+    header_row = QHBoxLayout()
     header_label = QLabel(f"Trip Overview: {trip_name}")
     header_label.setStyleSheet("font-weight: bold; font-size: 16px;")
-    layout.addWidget(header_label)
+    header_row.addWidget(header_label)
+    header_row.addStretch()
+    trip_map_btn = QPushButton("🗺 Map whole trip")
+    trip_map_btn.setToolTip("Plot every day of this trip on one map (all species), "
+                            "with the travel path")
+    trip_map_btn.clicked.connect(self.open_trip_map)
+    header_row.addWidget(trip_map_btn)
+    layout.addLayout(header_row)
     layout.addWidget(self.trip_table)
     overview_widget.setLayout(layout)
 

@@ -420,6 +420,13 @@ class SidecarCollection(PictureCollection):
         src = self.gps_source(key)
         return gps_decimal(src) if src else None
 
+    def gps_cached(self, key: str):
+        """(lat, lon) straight from the pre-built in-memory GPS map (no file read).
+        The key IS the stem here, and `_gps_by_stem` is populated once at load, so
+        the map plots the whole day with zero exiftool spawns."""
+        ll = self._gps_by_stem.get(key)
+        return (ll[0], ll[1]) if ll else None
+
     def location_targets(self, key: str):
         g = self._groups.get(key, {})
         return [g[k] for k in ("xmp", "jpg") if g.get(k)]

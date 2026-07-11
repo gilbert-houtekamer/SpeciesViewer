@@ -23,9 +23,11 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QDialog, QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
-    QGraphicsSimpleTextItem, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QWidget, QMessageBox, QSplitter, QComboBox)
-from PyQt6.QtGui import QPixmap, QPainter, QColor, QBrush, QPen, QFont
+    QGraphicsSimpleTextItem, QGraphicsPathItem, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QCheckBox, QWidget, QMessageBox, QSplitter, QComboBox,
+    QMenu)
+from PyQt6.QtGui import (QPixmap, QPainter, QColor, QBrush, QPen, QFont,
+                         QPainterPath, QPolygonF)
 from PyQt6.QtCore import Qt, QPointF, QUrl, QTimer, pyqtSignal
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
@@ -94,7 +96,8 @@ class TileMapView(QGraphicsView):
     """The map canvas: tiles + markers, hand-drag pan, wheel zoom-to-cursor."""
 
     resized = pyqtSignal()
-    bubble_activated = pyqtSignal(object)   # cluster dict on single-click
+    bubble_activated = pyqtSignal(object)       # cluster dict on single-click
+    bubble_hide_requested = pyqtSignal(object)  # cluster dict on right-click → Hide
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -125,6 +128,13 @@ class TileMapView(QGraphicsView):
         self._press_vp = None               # click-vs-drag detection
         self._pan_last = None               # last pos during a manual pan drag
         self._highlight = None              # transient ring around the active bubble
+        self.allow_hide = False             # trip map: right-click a bubble to hide it
+        self.trim_fit = False               # trip map: Fit ignores far outliers
+                                            # (species map keeps exact range framing)
+        # Travel path (trip/day map): a time-ordered polyline through the points.
+        self._path_lonlat: list = []        # [(lon, lat), …] in time order
+        self._path_items: list = []         # polyline + arrowheads at current zoom
+        self._show_path = False
 
         self._nam = QNetworkAccessManager(self)
         self._nam.finished.connect(self._on_tile_reply)
@@ -134,34 +144,49 @@ class TileMapView(QGraphicsView):
     @staticmethod
     def _aggregate(points: list[dict]) -> list[dict]:
         """Merge same-spot points (rounded to ~1 m) into one pin, keeping the
-        picture count and the member UPNs (so a bubble knows its photos)."""
+        picture count and the member UPNs (so a bubble knows its photos). A
+        representative place name and the date range are carried too, for the
+        trip/day map's date+location tooltip (harmless for the species map)."""
         agg: dict[tuple, dict] = {}
         for p in points:
             k = (round(p["lat"], 5), round(p["lon"], 5))
             if k not in agg:
                 agg[k] = {"lat": p["lat"], "lon": p["lon"],
-                          "label": p.get("place", ""), "count": 0, "upns": []}
-            agg[k]["count"] += 1
+                          "label": p.get("place", ""), "count": 0, "upns": [],
+                          "place": p.get("place", ""), "date_min": "", "date_max": ""}
+            a = agg[k]
+            a["count"] += 1
             if p.get("upn"):
-                agg[k]["upns"].append(p["upn"])
+                a["upns"].append(p["upn"])
+            if not a["place"] and p.get("place"):
+                a["place"] = p["place"]
+            d = (p.get("date") or "").strip()
+            if d:
+                if not a["date_min"] or d < a["date_min"]:
+                    a["date_min"] = d
+                if not a["date_max"] or d > a["date_max"]:
+                    a["date_max"] = d
         return list(agg.values())
 
     def add_layer(self, color: str, points: list[dict],
-                  nl: str = "", en: str = "", sci: str = "") -> int:
-        """Add a coloured species layer; returns its id (for remove_layer).
-        `nl`/`en` are the species' Dutch/English names (pin tooltip); `sci` is
-        the scientific name, carried on each bubble so a click can pull that
-        species' pictures."""
+                  nl: str = "", en: str = "", sci: str = "",
+                  offset: tuple | None = None, tip=None) -> int:
+        """Add a coloured layer; returns its id (for remove_layer). `nl`/`en` are
+        the species' Dutch/English names (species pin tooltip); `sci` is carried
+        on each bubble so a click can pull that species' pictures. `offset` sets
+        the rosette shift (default = keyed to the palette slot, so co-located
+        species fan out); pass (0, 0) for a single all-species trip layer. `tip`
+        is an optional callable(cluster)->str for the tooltip (the trip/day map
+        passes a date+location builder); default is the species tooltip."""
         lid = self._next_layer_id
         self._next_layer_id += 1
-        # Rosette offset keyed to the colour's palette slot, so co-located
-        # species fan out instead of hiding each other.
-        try:
-            offset = _JITTER[_PALETTE.index(color) % len(_JITTER)]
-        except ValueError:
-            offset = (0, 0)
+        if offset is None:
+            try:
+                offset = _JITTER[_PALETTE.index(color) % len(_JITTER)]
+            except ValueError:
+                offset = (0, 0)
         self._layers[lid] = {"color": QColor(color), "nl": nl, "en": en,
-                             "sci": sci, "offset": offset,
+                             "sci": sci, "offset": offset, "tip": tip,
                              "points": self._aggregate(points), "items": []}
         self._draw_layer(lid)
         return lid
@@ -203,10 +228,15 @@ class TileMapView(QGraphicsView):
                     members.append(proj[j][1])
             lats = [m["lat"] for m in members]
             lons = [m["lon"] for m in members]
+            dmins = [m["date_min"] for m in members if m.get("date_min")]
+            dmaxs = [m["date_max"] for m in members if m.get("date_max")]
             clusters.append({
                 "lat": sum(lats) / len(lats), "lon": sum(lons) / len(lons),
                 "count": sum(m["count"] for m in members), "n": len(members),
                 "bounds": (min(lats), max(lats), min(lons), max(lons)),
+                "place": next((m.get("place") for m in members if m.get("place")), ""),
+                "date_min": min(dmins) if dmins else "",
+                "date_max": max(dmaxs) if dmaxs else "",
                 "upns": [u for m in members for u in m.get("upns", [])]})
         return clusters
 
@@ -220,6 +250,7 @@ class TileMapView(QGraphicsView):
         brush = QBrush(lay["color"])
         nl, en = lay.get("nl", ""), lay.get("en", "")
         sci = lay.get("sci", "")
+        tip = lay.get("tip")
         ox, oy = lay.get("offset", (0, 0))
         for c in self._cluster(lay["points"]):
             x, y = lonlat_to_world(c["lon"], c["lat"], self._z)
@@ -228,15 +259,17 @@ class TileMapView(QGraphicsView):
             r = 6 if total <= 1 else min(20, 8 + 3 * (len(str(total)) - 1) + 2)
             # Each marker carries its cluster: species + member UPNs (→ filmstrip
             # / large view) + bounds (→ double-click zoom, only when it hides
-            # several DISTINCT spots).
+            # several DISTINCT spots) + place/date (trip tooltip).
             data = {"sci": sci, "nl": nl, "en": en, "upns": c["upns"],
                     "count": total, "n": c["n"],
+                    "place": c.get("place", ""), "date_min": c.get("date_min", ""),
+                    "date_max": c.get("date_max", ""),
                     "bounds": c["bounds"] if c["n"] > 1 else None}
             dot = QGraphicsEllipseItem(x - r + ox, y - r + oy, 2 * r, 2 * r)
             dot.setBrush(brush)
             dot.setPen(pen)
             dot.setZValue(10)
-            dot.setToolTip(self._pin_tip(total, nl, en))
+            dot.setToolTip(tip(c) if tip else self._pin_tip(total, nl, en))
             dot.setData(0, data)
             self._scene.addItem(dot)
             lay["items"].append(dot)
@@ -263,9 +296,39 @@ class TileMapView(QGraphicsView):
         return f"{head}\n{en}" if (en and en.lower() != (nl or "").lower()) else head
 
     # ── view state ───────────────────────────────────────────────────────────
+    @staticmethod
+    def _weighted_pct(values_weights, q):
+        """Weighted percentile: q-fraction of total weight lies at or below the
+        returned value. Weight = pictures at the spot, so a photo-dense area holds
+        the frame and a handful of transit shots far away don't stretch it."""
+        vw = sorted(values_weights)
+        total = sum(w for _, w in vw) or 1
+        target = total * q
+        cum = 0.0
+        for v, w in vw:
+            cum += w
+            if cum >= target:
+                return v
+        return vw[-1][0]
+
+    def _fit_bounds(self):
+        """Bounds to frame on. With enough distinct spots, trim the far ~2% tails
+        (weighted by picture count) so an outlier like a departure airport doesn't
+        blow the frame out to a continent; the outlier is still on the map, a
+        zoom-out away. Few spots → exact min/max (nothing to trust as an outlier)."""
+        pts = self.all_points()
+        lats = [p["lat"] for p in pts]
+        lons = [p["lon"] for p in pts]
+        if not self.trim_fit or len(pts) < 10:
+            return min(lats), max(lats), min(lons), max(lons)
+        latw = [(p["lat"], p.get("count", 1)) for p in pts]
+        lonw = [(p["lon"], p.get("count", 1)) for p in pts]
+        return (self._weighted_pct(latw, 0.02), self._weighted_pct(latw, 0.98),
+                self._weighted_pct(lonw, 0.02), self._weighted_pct(lonw, 0.98))
+
     def fit_to_points(self):
-        """Choose zoom + center so every point is visible (world view when the
-        species spans continents; close-in when it's local)."""
+        """Choose zoom + center so the (core) points are visible (world view when
+        the species spans continents; close-in when it's local)."""
         pts = self.all_points()
         if not pts:
             self._z, self._center = 2, (5.0, 30.0)
@@ -273,9 +336,7 @@ class TileMapView(QGraphicsView):
             p = pts[0]
             self._z, self._center = 10, (p["lon"], p["lat"])
         else:
-            lats = [p["lat"] for p in pts]
-            lons = [p["lon"] for p in pts]
-            minlat, maxlat, minlon, maxlon = min(lats), max(lats), min(lons), max(lons)
+            minlat, maxlat, minlon, maxlon = self._fit_bounds()
             self._center = ((minlon + maxlon) / 2.0, (minlat + maxlat) / 2.0)
             vw = max(self.viewport().width(), 100)
             vh = max(self.viewport().height(), 100)
@@ -298,6 +359,7 @@ class TileMapView(QGraphicsView):
             n = TILE * (2 ** self._z)
             self._scene.setSceneRect(0, 0, n, n)
             self._apply_wash()
+            self._draw_path()
             self._reposition_markers()
             self._prune_other_zooms()
             cx, cy = lonlat_to_world(self._center[0], self._center[1], self._z)
@@ -327,6 +389,82 @@ class TileMapView(QGraphicsView):
             self.centerOn(cx, cy)
         finally:
             self._syncing = False
+
+    # ── travel path (trip/day map) ───────────────────────────────────────────
+    def set_travel_path(self, lonlat: list):
+        """Give the map a time-ordered [(lon, lat), …] to draw as a route line."""
+        self._path_lonlat = list(lonlat or [])
+        self._draw_path()
+
+    def set_path_visible(self, on: bool):
+        self._show_path = bool(on)
+        self._draw_path()
+
+    _PATH_COLOR = QColor(0, 90, 130, 190)
+    _PATH_MIN_SEP = 6      # px: collapse consecutive same-spot points into one node
+    _ARROW_MIN_LEG = 34    # px: only arrow legs long enough to read a direction
+
+    def _draw_path(self):
+        """Redraw the travel polyline in the current zoom's world coords (like the
+        markers, it lives in scene space so it's rebuilt each zoom). Sits above the
+        wash (z 0) and below the markers (z 10). Consecutive points at the same
+        spot are collapsed so the line is location-to-location (not a within-spot
+        scribble), and each leg carries a direction arrow (points are time-ordered)."""
+        for it in self._path_items:
+            self._scene.removeItem(it)
+        self._path_items = []
+        if not self._show_path or len(self._path_lonlat) < 2:
+            return
+        proj = [lonlat_to_world(lon, lat, self._z) for lon, lat in self._path_lonlat]
+        # Simplify: keep a node only when it's far enough from the last kept one
+        # (collapses the dense cluster of shots at one location to a single node;
+        # preserves revisits, which are non-consecutive).
+        sep2 = self._PATH_MIN_SEP * self._PATH_MIN_SEP
+        kept = [proj[0]]
+        for x, y in proj[1:]:
+            px, py = kept[-1]
+            if (x - px) ** 2 + (y - py) ** 2 >= sep2:
+                kept.append((x, y))
+        if len(kept) < 2:
+            return
+        path = QPainterPath()
+        path.moveTo(*kept[0])
+        for pt in kept[1:]:
+            path.lineTo(*pt)
+        pen = QPen(self._PATH_COLOR)
+        pen.setWidth(2)
+        pen.setCosmetic(True)          # constant 2 px regardless of view transform
+        line = QGraphicsPathItem(path)
+        line.setPen(pen)
+        line.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        line.setZValue(5)
+        self._scene.addItem(line)
+        self._path_items.append(line)
+        for a, b in zip(kept, kept[1:]):
+            self._add_direction_arrow(a, b)
+
+    def _add_direction_arrow(self, a, b):
+        """A small filled triangle at a leg's midpoint pointing a→b (travel
+        direction). Drawn only for legs long enough to read; scene units are view
+        pixels here, so a fixed size stays constant across zoom."""
+        (x0, y0), (x1, y1) = a, b
+        dx, dy = x1 - x0, y1 - y0
+        leg = math.hypot(dx, dy)
+        if leg < self._ARROW_MIN_LEG:
+            return
+        ux, uy = dx / leg, dy / leg          # unit direction
+        px, py = -uy, ux                      # unit perpendicular
+        mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+        s = 7                                 # arrow half-length (px)
+        tip = QPointF(mx + ux * s, my + uy * s)
+        back = (mx - ux * s, my - uy * s)
+        left = QPointF(back[0] + px * s * 0.66, back[1] + py * s * 0.66)
+        right = QPointF(back[0] - px * s * 0.66, back[1] - py * s * 0.66)
+        arrow = self._scene.addPolygon(
+            QPolygonF([tip, left, right]),
+            QPen(Qt.PenStyle.NoPen), QBrush(self._PATH_COLOR))
+        arrow.setZValue(6)
+        self._path_items.append(arrow)
 
     # ── markers ──────────────────────────────────────────────────────────────
     def _reposition_markers(self):
@@ -464,6 +602,24 @@ class TileMapView(QGraphicsView):
             e.accept()
             return
         super().mouseDoubleClickEvent(e)
+
+    def contextMenuEvent(self, e):
+        """Right-click a bubble → offer to hide it (trip map only). Lets the user
+        drop a stopover / home / airport cluster that would otherwise stretch the
+        frame; the host removes those pictures and its route leg. Left untouched on
+        the species map (allow_hide stays False there)."""
+        if not self.allow_hide:
+            return super().contextMenuEvent(e)
+        item = self.itemAt(e.pos())
+        data = item.data(0) if item is not None else None
+        if not isinstance(data, dict):
+            return super().contextMenuEvent(e)
+        n = data.get("count", 0)
+        menu = QMenu(self)
+        act = menu.addAction(f"Hide {n} picture{'' if n == 1 else 's'} from map")
+        if menu.exec(e.globalPos()) == act:
+            self.bubble_hide_requested.emit(data)
+        e.accept()
 
     def _set_highlight(self, rect):
         """A transient ring around the clicked bubble (until the next redraw)."""
@@ -828,3 +984,270 @@ class MapView(QDialog):
         self._attr.move(vp.width() - self._attr.width(),
                         vp.height() - self._attr.height())
         self._attr.raise_()
+
+
+# Single all-species trip layer colour (teal). Not in _PALETTE, so it never
+# collides with the species overlay palette; the trip map passes offset (0, 0)
+# so its markers sit dead-centre (no rosette — there's only one layer).
+_TRIP_COLOR = "#00838f"
+
+
+class TripMapView(QDialog):
+    """Trip / day map (maps_plan.md Phase 5a) — ALL species on the current viewer
+    selection, plotted over the host's LIVE `PictureCollection`. Shows where the
+    pictures were taken, clusters them spatially, and draws the travel path (how
+    you moved), with the same bubble → filmstrip → large-view drill-down as the
+    species map. Read-only for now; drag no-GPS pictures onto the map to geotag is
+    Phase 5b.
+
+    Unlike `MapView` (master + per-species, builds its own collection), this reads
+    the collection it's handed and points the filmstrip / large view straight at
+    it — no per-species rebuild. (The two dialogs share enough that a common base
+    is a fair later refactor; kept separate now to leave the shipped species map
+    untouched.)"""
+
+    def __init__(self, parent, collection, keys: list[str],
+                 title: str = "Trip map", loader=None,
+                 default_path: bool = False, default_basemap: str = "Standard"):
+        super().__init__(parent)
+        self._coll = collection
+        self._keys = list(keys or [])
+        self._strip = None
+        self.setWindowTitle(title)
+        self.setWindowFlags(self.windowFlags()
+                            | Qt.WindowType.WindowMinimizeButtonHint
+                            | Qt.WindowType.WindowMaximizeButtonHint)
+        self.resize(1000, 760)
+
+        points, no_gps = self._build_points()
+        self._all_points = points          # full set (before any hide)
+        self._no_gps = no_gps
+        self._hidden: set = set()          # UPNs hidden via right-click
+        self._lid = None                   # the single trip layer's id
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        header = QWidget()
+        h = QHBoxLayout(header)
+        h.setContentsMargins(8, 4, 8, 4)
+        self._info = QLabel()
+        self._info.setStyleSheet("color:#555;")
+        h.addWidget(self._info)
+        self._showall_btn = QPushButton("Show all")
+        self._showall_btn.setToolTip("Bring back the pictures you hid from the map")
+        self._showall_btn.clicked.connect(self._show_all_hidden)
+        self._showall_btn.setVisible(False)
+        h.addSpacing(8)
+        h.addWidget(self._showall_btn)
+        h.addStretch()
+        self._path_chk = QCheckBox("Travel path")
+        self._path_chk.setToolTip("Draw a line through the pictures in time order "
+                                  "(most useful across a whole trip)")
+        self._path_chk.setChecked(default_path)
+        self._path_chk.toggled.connect(self._map_set_path)
+        h.addWidget(self._path_chk)
+        h.addSpacing(8)
+        h.addWidget(QLabel("Basemap:"))
+        self._basemap_combo = QComboBox()
+        for bm in _BASEMAPS:
+            self._basemap_combo.addItem(bm["name"], bm)
+        self._basemap_combo.currentIndexChanged.connect(self._on_basemap_changed)
+        h.addWidget(self._basemap_combo)
+        h.addSpacing(8)
+        fit_btn = QPushButton("Fit")
+        fit_btn.setToolTip("Zoom to fit all points")
+        fit_btn.clicked.connect(lambda: self._map.fit_to_points())
+        h.addWidget(fit_btn)
+        lay.addWidget(header)
+
+        self._splitter = QSplitter(Qt.Orientation.Vertical)
+        self._map = TileMapView(self)
+        self._map.trim_fit = True          # Fit frames the dense core, not outliers
+        self._map.allow_hide = True        # right-click a bubble → hide it
+        self._map.bubble_activated.connect(self._on_bubble)
+        self._map.bubble_hide_requested.connect(self._on_hide)
+        self._splitter.addWidget(self._map)
+        self._strip_holder = QWidget()
+        self._strip_box = QVBoxLayout(self._strip_holder)
+        self._strip_box.setContentsMargins(0, 0, 0, 0)
+        self._strip_hint = QLabel("Click a bubble to see its pictures here.")
+        self._strip_hint.setStyleSheet("color:#888; padding:6px;")
+        self._strip_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._strip_box.addWidget(self._strip_hint)
+        self._splitter.addWidget(self._strip_holder)
+        self._splitter.setStretchFactor(0, 1)
+        self._splitter.setStretchFactor(1, 0)
+        self._splitter.setSizes([620, 150])
+        lay.addWidget(self._splitter, 1)
+
+        self._attr = QLabel(_BASEMAPS[0]["attr"], self._map)
+        self._attr.setStyleSheet(
+            "background: rgba(255,255,255,0.75); color:#333; font-size:9px; "
+            "padding:1px 5px; border-top-left-radius:3px;")
+        self._attr.adjustSize()
+        self._map.resized.connect(self._place_attribution)
+
+        # Default basemap (Standard reads nicer for day/trip photos than the vivid
+        # terrain relief); switching triggers _on_basemap_changed on the live map.
+        idx = next((i for i, bm in enumerate(_BASEMAPS)
+                    if bm["name"] == default_basemap), 0)
+        if idx != self._basemap_combo.currentIndex():
+            self._basemap_combo.setCurrentIndex(idx)
+        else:
+            self._on_basemap_changed(idx)
+
+        # One all-species layer + the time-ordered travel path.
+        self._render(fit=False)
+        self._map.set_path_visible(default_path)
+        QTimer.singleShot(0, self._map.fit_to_points)
+
+    # ── render / hide ────────────────────────────────────────────────────────
+    def _render(self, fit: bool = True):
+        """(Re)draw the single trip layer + travel path from the non-hidden points,
+        and refresh the header counts. Called on init and after a hide / show-all."""
+        pts = [p for p in self._all_points if p["upn"] not in self._hidden]
+        if self._lid is not None:
+            self._map.remove_layer(self._lid)
+        self._lid = self._map.add_layer(_TRIP_COLOR, pts, offset=(0, 0),
+                                        tip=self._trip_tip)
+        ordered = sorted((p for p in pts if p.get("date")), key=lambda p: p["date"])
+        self._map.set_travel_path([(p["lon"], p["lat"]) for p in ordered])
+        n = len(pts)
+        parts = [f"{n} picture{'' if n == 1 else 's'} on the map"]
+        if self._no_gps:
+            parts.append(f"{self._no_gps} without GPS")
+        if self._hidden:
+            parts.append(f"{len(self._hidden)} hidden")
+        self._info.setText("  ·  ".join(parts))
+        self._showall_btn.setVisible(bool(self._hidden))
+        if fit:
+            self._map.fit_to_points()
+
+    def _on_hide(self, cluster: dict):
+        """Right-click → Hide: drop this bubble's pictures from the map + route."""
+        upns = {u for u in cluster.get("upns", []) if u}
+        if not upns:
+            return
+        self._hidden |= upns
+        self._render(fit=False)          # keep the current view; user chose the frame
+
+    def _show_all_hidden(self):
+        if not self._hidden:
+            return
+        self._hidden.clear()
+        self._render(fit=True)
+
+    # ── data ─────────────────────────────────────────────────────────────────
+    def _build_points(self) -> tuple[list[dict], int]:
+        """Walk the live collection's keys → map points for the GPS'd ones, and a
+        count of those without (the future drag-to-geotag tray, Phase 5b).
+
+        GPS comes from `gps_cached` (in-memory) — NOT `gps()`, which spawns an
+        exiftool per file; plotting a day would otherwise be hundreds of spawns."""
+        pts: list[dict] = []
+        no_gps = 0
+        for k in self._keys:
+            ll = self._coll.gps_cached(k)
+            if not ll:
+                no_gps += 1
+                continue
+            try:
+                item = self._coll.item_for_key(k)
+                place = self._place_for(item, ll)
+                date = getattr(item, "date", "") or ""
+            except (ValueError, KeyError, IndexError):
+                place, date = f"{ll[0]:.4f}, {ll[1]:.4f}", ""
+            pts.append({"lat": ll[0], "lon": ll[1], "upn": k,
+                        "place": place, "date": date.strip()})
+        return pts, no_gps
+
+    @staticmethod
+    def _place_for(item, ll) -> str:
+        """A tooltip place for a PLOTTED point: reverse-geocoded Location, else
+        City·Municipality·State, else the coordinates. Never 'No GPS data
+        available' — the point is on the map, so it has GPS (item.location_line()
+        would wrongly say that when the place fields are empty and the provider
+        doesn't cache gps_text)."""
+        try:
+            pf = item.place_fields or {}
+        except Exception:
+            pf = {}
+        loc = (pf.get("Location") or "").strip()
+        if loc:
+            return loc
+        admin = " · ".join(p for p in (pf.get("City"), pf.get("Municipality"),
+                                       pf.get("State")) if p and str(p).strip())
+        return admin or f"{ll[0]:.4f}, {ll[1]:.4f}"
+
+    @staticmethod
+    def _trip_tip(cluster: dict) -> str:
+        """Bubble tooltip: place name, then the date (or date range), then the
+        picture count — the trip map's 'where + when' instead of a species name."""
+        place = (cluster.get("place") or "").strip() or "—"
+        n = cluster.get("count", 0)
+        d0 = (cluster.get("date_min") or "")[:10].replace(":", "-")
+        d1 = (cluster.get("date_max") or "")[:10].replace(":", "-")
+        date = d0 if (not d1 or d0 == d1) else f"{d0} → {d1}"
+        lines = [place]
+        if date:
+            lines.append(date)
+        lines.append(f"{n} picture" + ("" if n == 1 else "s"))
+        return "\n".join(lines)
+
+    # ── header actions ───────────────────────────────────────────────────────
+    def _map_set_path(self, on: bool):
+        self._map.set_path_visible(on)
+
+    def _on_basemap_changed(self, _idx: int):
+        entry = self._basemap_combo.currentData()
+        if not entry:
+            return
+        self._attr.setText(self._map.set_basemap(entry))
+        self._attr.adjustSize()
+        self._place_attribution()
+
+    def _place_attribution(self):
+        vp = self._map.viewport()
+        self._attr.adjustSize()
+        self._attr.move(vp.width() - self._attr.width(),
+                        vp.height() - self._attr.height())
+        self._attr.raise_()
+
+    # ── bubble → filmstrip → large view (over the live collection directly) ──────
+    def _resolves(self, upn: str) -> bool:
+        try:
+            self._coll.index_of(upn)
+            return True
+        except (ValueError, KeyError):
+            return False
+
+    def _on_bubble(self, cluster: dict):
+        keys = [u for u in cluster.get("upns", []) if u and self._resolves(u)]
+        if not keys:
+            return
+        from gui.large_image_view import FilmstripWidget
+        strip = FilmstripWidget(self._coll, keys)
+        strip.item_clicked.connect(lambda k, ks=keys: self._open_large(ks, k))
+        if self._strip is not None:
+            self._strip.deleteLater()
+        self._strip_hint.hide()
+        self._strip = strip
+        self._strip_box.addWidget(strip)
+
+    def _open_large(self, keys: list[str], key: str):
+        from gui.large_image_view import LargeImageView
+        if key not in keys:
+            return
+        dlg = LargeImageView(self, self._coll, keys, keys.index(key),
+                             settings_key="TripMapView", auto_advance=True)
+        dlg.picture_changed.connect(self._refresh_strip_item)
+        dlg.show()
+
+    def _refresh_strip_item(self, key: str):
+        if self._strip is not None:
+            try:
+                self._strip.refresh_item(key)
+            except Exception:
+                pass
