@@ -1028,10 +1028,73 @@ class MainWindow(QMainWindow):
                     self.logger.warning(f"{label}: skipping {d.name}: {e}")
         fpr = FilePicture(None)
         fpr.fi, fpr.upn = fi, upn
+        self._overlay_sidecar_gps(fpr, label=label)
         loader = AsyncImageLoader(self)
         coll = PreviewCollection(fpr, loader=loader, read_only=read_only,
                                  allow_geotag=allow_geotag)
         return coll, coll.all_keys(), loader
+
+    def _overlay_sidecar_gps(self, fpr, *, label: str = "Map") -> int:
+        """Patch coordinates written to the XMP SIDECARS into the freshly-loaded CSV
+        rows, for every picture the CSV thinks has no GPS.
+
+        The day CSVs are a SNAPSHOT — Extract Days copied them out of the master, and
+        the master's own CSV only changes on a re-read. Geotagging writes to the
+        sidecar. So without this the whole-trip map opens on an empty world map
+        saying "517 without GPS" while the day map, which reads the sidecars, shows 92
+        of them sitting on Helgoland.
+
+        GPSProcessingMethod is carried over too, not just the coordinate: it is what
+        tells the map a position was placed by hand and may therefore be dragged. Miss
+        it and a picture you placed would plot correctly and then refuse to move.
+
+        Cache-first (the same reader the day viewer uses), so an untouched trip costs
+        no exiftool call. Returns how many pictures gained a coordinate."""
+        import os
+        from gui.sidecar_provider import _read_sidecar_rows, _norm
+
+        has_gps: dict = {}          # UPN -> the CSV already knows a coordinate
+        xmp_of: dict = {}           # UPN -> (sidecar path, its file row)
+        for frow in fpr.fi.files_dict.values():
+            u = (frow.get("UniquePictureName") or "").strip()
+            if not u:
+                continue
+            if frow.get("Composite:GPSPosition") or frow.get("EXIF:GPSLatitude"):
+                has_gps[u] = True
+            if (frow.get("WindowsExtension") or "").lower() == "xmp":
+                p = (frow.get("WindowsFileName") or "").strip()
+                if p and u not in xmp_of:
+                    xmp_of[u] = (p, frow)
+
+        need = [u for u, (p, _r) in xmp_of.items()
+                if not has_gps.get(u) and os.path.isfile(p)]
+        if not need:
+            return 0
+
+        try:
+            rows, _c = _read_sidecar_rows([xmp_of[u][0] for u in need])
+        except Exception as e:
+            if self.logger:
+                self.logger.warning(f"{label}: could not read sidecars: {e}")
+            return 0
+
+        found = 0
+        for u in need:
+            path, frow = xmp_of[u]
+            srow = rows.get(_norm(path)) or {}
+            pos = str(srow.get("GPSPosition", "") or "").strip()
+            if not pos:
+                continue
+            frow["Composite:GPSPosition"] = pos
+            method = str(srow.get("GPSProcessingMethod", "") or "").strip()
+            if method:
+                frow["EXIF:GPSProcessingMethod"] = method
+            found += 1
+        if found and self.logger:
+            self.logger.info(
+                f"{label}: {found} picture(s) carry a coordinate written to their "
+                f"sidecar that the day CSVs predate.")
+        return found
 
     def open_trip_map(self):
         """Whole-trip map: plot EVERY day of the active trip on one map (all
