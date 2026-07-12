@@ -294,6 +294,13 @@ class PictureCollection(ABC):
     """The ordered, already-filtered/sorted sequence the host owns. The UI
     navigates by index (filmstrip + arrow keys + cull auto-advance)."""
 
+    # LOOK, don't touch: this collection's files belong to something else (a
+    # virtual trip points at the MASTER's originals, it does not copy them), so
+    # every viewer over it — grid, large view, map — must show and never write.
+    # Collections that can write set it False; anything that offers a write
+    # affordance is expected to consult it.
+    read_only: bool = False
+
     @abstractmethod
     def __len__(self) -> int: ...
 
@@ -353,7 +360,9 @@ class PictureCollection(ABC):
 
     def location_targets(self, key: str):
         """Writable files (XMP sidecar / JPG) to receive reverse-geocoded location
-        text. Empty when there's nowhere LR-style to write it."""
+        text. Empty when there's nowhere LR-style to write it — including when the
+        collection is read_only, which is what makes a viewer over someone else's
+        files (the master's, via a virtual trip) safe to hand to the map."""
         return []
 
     def read_location(self, key: str) -> dict:

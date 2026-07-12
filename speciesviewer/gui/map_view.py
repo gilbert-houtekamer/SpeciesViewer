@@ -1596,24 +1596,35 @@ class TripMapView(QDialog):
     def __init__(self, parent, collection, keys: list[str],
                  title: str = "Trip map", loader=None,
                  default_path: bool = False, default_basemap: str = "Standard",
-                 trip_root: str = ""):
+                 trip_root: str = "", read_only: bool = False,
+                 read_only_note: str = ""):
         super().__init__(parent)
         self._coll = collection
         self._src_keys = list(keys or [])   # everything the viewer handed over
         self._scope = "all"                 # "all" | "species" (header buttons)
         self._keys = list(self._src_keys)   # the scoped subset actually mapped
         self._strip = None
+        # Read-only: LOOK, don't touch. Used by the virtual-trip map, whose files
+        # are the MASTER's shared originals — geotagging, moving a bubble or
+        # deleting would write into master sidecars. Same call as the Album Rating
+        # Editor. Everything that writes is switched off here rather than merely
+        # hidden: no drop, no bubble-move, no delete, and no no-GPS tray at all
+        # (a tray you can't drag from is a misleading affordance).
+        self._read_only = bool(read_only)
         # Set → the no-GPS tray offers Delete (move to <trip_root>/.trash/<day>);
         # needs a collection that can trash a UPN + the per-day review CSVs here.
         from pathlib import Path as _Path
         self._trip_root = _Path(trip_root) if trip_root else None
-        self._can_delete = bool(self._trip_root) and hasattr(collection, "trash_upn")
+        self._can_delete = (not self._read_only
+                            and bool(self._trip_root)
+                            and hasattr(collection, "trash_upn"))
         self.setWindowTitle(title)
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
                             | Qt.WindowType.WindowMaximizeButtonHint)
         self.resize(1000, 760)
 
+        self._ghosts = 0                   # index rows whose files are gone
         points, nogps_keys = self._build_points()
         self._all_points = points          # full set (before any hide)
         self._nogps_keys = nogps_keys      # pictures without GPS (drag-to-geotag)
@@ -1632,6 +1643,13 @@ class TripMapView(QDialog):
         self._info = QLabel()
         self._info.setStyleSheet("color:#555;")
         h.addWidget(self._info)
+        if self._read_only:
+            note = QLabel("· view only")
+            note.setStyleSheet("color:#8a6d3b;")
+            note.setToolTip(read_only_note or
+                            "This map shows the pictures but does not change them.")
+            h.addSpacing(6)
+            h.addWidget(note)
         self._showall_btn = QPushButton("Show all")
         self._showall_btn.setToolTip("Bring back the pictures you hid from the map")
         self._showall_btn.clicked.connect(self._show_all_hidden)
@@ -1695,7 +1713,7 @@ class TripMapView(QDialog):
         # Collapsible + only present when there are any; laptop vertical space.
         self._lay = lay                    # kept: the tray is rebuilt on scope change
         self._tray_index = lay.count()     # tray slot = right after the header
-        if self._nogps_keys:
+        if self._nogps_keys and not self._read_only:
             self._tray = NoGpsTray(collection, self._nogps_keys)
             self._tray.emptied.connect(self._on_tray_emptied)
             self._tray.context_requested.connect(self._tray_context)
@@ -1726,9 +1744,9 @@ class TripMapView(QDialog):
         self._splitter = QSplitter(Qt.Orientation.Vertical)
         self._map = TileMapView(self)
         self._map.trim_fit = True          # Fit frames the dense core, not outliers
-        self._map.allow_hide = True        # right-click a bubble → hide it
-        self._map.allow_drop = True        # accept no-GPS pics dragged onto the map
-        self._map.allow_move = True        # drag a bubble to move its pictures
+        self._map.allow_hide = True        # right-click a bubble → hide it (view-only)
+        self._map.allow_drop = not self._read_only   # accept no-GPS pics dragged on
+        self._map.allow_move = not self._read_only   # drag a bubble to move its pics
         self._map.bubble_activated.connect(self._on_bubble)
         self._map.bubble_hide_requested.connect(self._on_hide)
         self._map.pictures_dropped.connect(self._on_drop)
@@ -1794,7 +1812,7 @@ class TripMapView(QDialog):
             self._lay.removeWidget(self._tray)
             self._tray.deleteLater()
             self._tray = None
-        if self._nogps_keys:
+        if self._nogps_keys and not self._read_only:
             self._tray = NoGpsTray(self._coll, self._nogps_keys)
             self._tray.emptied.connect(self._on_tray_emptied)
             self._tray.context_requested.connect(self._tray_context)
@@ -1820,7 +1838,13 @@ class TripMapView(QDialog):
             parts.append(f"{len(self._nogps_keys)} without GPS")
         if self._hidden:
             parts.append(f"{len(self._hidden)} hidden")
+        if self._ghosts:
+            parts.append(f"{self._ghosts} missing")
         self._info.setText("  ·  ".join(parts))
+        self._info.setToolTip(
+            f"{self._ghosts} picture(s) are listed for this trip but their files are "
+            f"not on disk, so they are not mapped. Re-run Extract Days to rebuild "
+            f"this trip's day data from the master." if self._ghosts else "")
         self._showall_btn.setVisible(bool(self._hidden))
         if fit:
             self._map.fit_to_points()
@@ -2253,10 +2277,29 @@ class TripMapView(QDialog):
         keys of those without (the drag-to-geotag tray, Phase 5b).
 
         GPS comes from `gps_cached` (in-memory) — NOT `gps()`, which spawns an
-        exiftool per file; plotting a day would otherwise be hundreds of spawns."""
+        exiftool per file; plotting a day would otherwise be hundreds of spawns.
+
+        GUARDRAIL: a picture whose files are GONE is not plotted. A CSV can hold
+        ghost rows (a stale virtual-trip extract carries master index rows for
+        pictures that were never filed under biota/ and never copied in) — they
+        have GPS, so they would draw bubbles for photos that do not exist and hand
+        you a blank filmstrip. `present_keys` is one cached existence pass over
+        the collection; `_ghosts` reports the count so the header can say so
+        instead of quietly under-counting."""
+        present = None
+        pk = getattr(self._coll, "present_keys", None)
+        if callable(pk):
+            try:
+                present = set(pk())
+            except Exception:
+                present = None
         pts: list[dict] = []
         no_gps: list[str] = []
+        ghosts = 0
         for k in self._keys:
+            if present is not None and k not in present:
+                ghosts += 1        # index row without files — not a place we were
+                continue
             ll = self._coll.gps_cached(k)
             if not ll:
                 if self._has_image(k):
@@ -2270,6 +2313,7 @@ class TripMapView(QDialog):
                 place, date = f"{ll[0]:.4f}, {ll[1]:.4f}", ""
             pts.append({"lat": ll[0], "lon": ll[1], "upn": k,
                         "place": place, "date": date.strip()})
+        self._ghosts = ghosts
         return pts, no_gps
 
     def _has_image(self, k: str) -> bool:

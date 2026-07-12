@@ -6,7 +6,7 @@ from pathlib import Path
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTableWidget, QTableWidgetItem,
+    QTableWidget, QTableWidgetItem, QMenu,
     QHeaderView, QAbstractItemView,
 )
 
@@ -191,6 +191,12 @@ def populate_virttrip_overview(self):
     header_row.addWidget(header_label)
     header_row.addStretch()
 
+    map_btn = QPushButton("🗺 Map whole trip")
+    map_btn.setToolTip("Plot every day of this virtual trip on one map (all species), "
+                       "with the travel path. The pictures come from the master, so "
+                       "the map only shows them — it does not change them.")
+    header_row.addWidget(map_btn)
+
     edit_blogs_btn = QPushButton("Edit Blogs")
     edit_blogs_btn.setToolTip("Open the tabbed blog editor to edit titles, text and settings for every day.")
     write_blog_btn = QPushButton("Write All Blogs")
@@ -221,6 +227,23 @@ def populate_virttrip_overview(self):
     edit_blogs_btn.clicked.connect(_on_edit_blogs)
     write_blog_btn.clicked.connect(_on_write_blog)
     build_web_btn.clicked.connect(_on_build_website)
+    map_btn.clicked.connect(lambda _=False: self.open_virttrip_map())
+
+    def _on_context_menu(pos):
+        row = self.virttrip_table.rowAt(pos.y())
+        if row < 0 or row >= len(day_dirs):
+            return
+        menu = QMenu(self.virttrip_table)
+        map_day = menu.addAction("🗺 Map this day")
+        map_all = menu.addAction("🗺 Map whole trip")
+        chosen = menu.exec(self.virttrip_table.viewport().mapToGlobal(pos))
+        if chosen == map_day:
+            self.open_virttrip_map([day_dirs[row]])
+        elif chosen == map_all:
+            self.open_virttrip_map()
+
+    self.virttrip_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+    self.virttrip_table.customContextMenuRequested.connect(_on_context_menu)
 
     def _on_cell_double_clicked(row, col):
         if row < 0 or row >= len(day_dirs):

@@ -96,9 +96,12 @@ def cached_jpg_for(src: Path | None, cache_dir: Path) -> Path | None:
 
 
 class PreviewItem(PictureItem):
-    can_edit_description = True
     can_edit_headline = False
     can_edit_species = False      # species edits go through SpeciesInfoDialog
+
+    @property
+    def can_edit_description(self) -> bool:
+        return not self._c.read_only
 
     def __init__(self, collection: "PreviewCollection", upn_key: str):
         self._c = collection
@@ -248,7 +251,8 @@ class PreviewItem(PictureItem):
     # the crop still seeds PhotoLab/Lightroom.
     @property
     def can_set_crop(self) -> bool:
-        return self._c._crop_source(self._key) is not None
+        return (not self._c.read_only
+                and self._c._crop_source(self._key) is not None)
 
     def request_uncropped_pixmap(self, on_ready: PixmapCallback) -> None:
         self._c.request_raw_uncropped(self._key, on_ready)
@@ -263,8 +267,16 @@ class PreviewCollection(PictureCollection):
     # same machinery (watcher + app-active + F5) as the culling viewer.
     supports_external_refresh = True
 
-    def __init__(self, fpr, *, loader: AsyncImageLoader | None = None):
+    # A viewer over pictures we must not touch (the virtual trip's files ARE the
+    # master's — see the Album Rating Editor, read-only for the same reason). The
+    # flag greys the edit affordances (rating / colour / description / crop) AND
+    # hard-refuses the write paths, so a stray caller can't slip past the UI.
+    read_only = False
+
+    def __init__(self, fpr, *, loader: AsyncImageLoader | None = None,
+                 read_only: bool = False):
         self.fpr = fpr
+        self.read_only = bool(read_only)
         self._loader = loader or AsyncImageLoader()
         self._order: list[str] = []
         self.rebuild()
@@ -361,7 +373,7 @@ class PreviewCollection(PictureCollection):
         per rebuild (one existence pass)."""
         if self._present_cache is None:
             self._present_cache = [k for k in self.all_keys()
-                                   if self.has_writable_sidecar(k)]
+                                   if self.has_disk_file(k)]
         return self._present_cache
 
     # ── PictureCollection ─────────────────────────────────────────────────
@@ -435,7 +447,12 @@ class PreviewCollection(PictureCollection):
         created after the last Read, or a stale/empty indexed path), fall back to
         the RAW's sibling `<stem>.xmp`: exiftool creates it, and it's the sidecar
         PhotoLab/Lightroom read. Only HEIC/PNG-only UPNs genuinely have nowhere to
-        write — raw_path is None there, so they still return []."""
+        write — raw_path is None there, so they still return [].
+
+        A read-only collection has NO write targets: that is what stops the map's
+        drag-to-geotag reaching the master's sidecars through a virtual trip."""
+        if self.read_only:
+            return []
         out = []
         for fname in self._files(upn_key):
             frow = self.fpr.fi.files_dict.get(fname)
@@ -691,12 +708,11 @@ class PreviewCollection(PictureCollection):
         changed |= self._image_changed
         return changed
 
-    def has_writable_sidecar(self, upn_key: str) -> bool:
-        """True if rating/colour can be persisted for this picture — either an
-        existing XMP/JPG to write, or a source image (HEIC/PNG/RAW) we can drop a
-        standard <stem>.xmp sidecar beside (see apply / _create_xmp_sidecar).
-        Only false for the degenerate case of a UPN with no on-disk image file
-        (e.g. a stray .dop), so the card greys nothing in practice."""
+    def has_disk_file(self, upn_key: str) -> bool:
+        """True if at least one of the UPN's real files (not a stray .dop) is
+        actually ON DISK. This is about EXISTENCE, not permission: a read-only
+        collection's pictures are still present. A UPN that fails this is a ghost
+        — an index row whose files were deleted, moved, or never copied here."""
         for fname in self._files(upn_key):
             frow = self.fpr.fi.files_dict.get(fname)
             if not frow:
@@ -706,6 +722,15 @@ class PreviewCollection(PictureCollection):
             if Path(frow.get("WindowsFileName", "")).exists():
                 return True
         return False
+
+    def has_writable_sidecar(self, upn_key: str) -> bool:
+        """True if rating/colour can be persisted for this picture — either an
+        existing XMP/JPG to write, or a source image (HEIC/PNG/RAW) we can drop a
+        standard <stem>.xmp sidecar beside (see apply / _create_xmp_sidecar).
+        Only false for the degenerate case of a UPN with no on-disk image file
+        (e.g. a stray .dop), so the card greys nothing in practice — and for a
+        read-only collection, which may look but not touch."""
+        return not self.read_only and self.has_disk_file(upn_key)
 
     def _source_file(self, upn_key: str) -> Path | None:
         """Best display source: the BestJPG render (the DxO `_DxO.jpg` crop) >
@@ -885,6 +910,9 @@ class PreviewCollection(PictureCollection):
         camera JPG (writing <jpg>.dop, exactly what PhotoLab reads). Refreshes the
         image signature so refresh() doesn't re-report our own write. Returns the
         sidecarlib result, or None."""
+        if self.read_only:
+            logger.warning(f"set_crop refused for {upn_key}: collection is read-only.")
+            return None
         raw = self._crop_source(upn_key)
         if not raw:
             return None
@@ -901,6 +929,9 @@ class PreviewCollection(PictureCollection):
         Caller supplies trash_root = <trip_root>/.trash/<day>; files land at trash_root/<key>/<file>.
         """
         import shutil
+        if self.read_only:
+            logger.warning(f"delete_by_color refused ({color}): collection is read-only.")
+            return 0, 0, 0
         wanted = color.lower()
         matching = [k for k in self.all_keys()
                     if (self.fpr.getColor(self.rep_filename(k)) or "").lower() == wanted]
@@ -945,6 +976,9 @@ class PreviewCollection(PictureCollection):
         None (protected). Returns the moved file names on success (possibly empty if
         the files were already gone). Used by the map's right-click Delete."""
         import shutil
+        if self.read_only:
+            logger.warning(f"trash_upn refused for {key}: collection is read-only.")
+            return None
         if self.jpg_path(key):
             return None                      # protected — the JPG is the finished asset
         dest = Path(trash_dir) / key
@@ -976,6 +1010,9 @@ class PreviewCollection(PictureCollection):
         on their sidecar/JPG (RAW stays immutable); HEIC/PNG-only pictures get
         the value written INTO the HEIC/PNG itself (the single source LR + DxO +
         our Read Directory share). Day scope only."""
+        if self.read_only:
+            logger.warning(f"apply refused for {upn_key}: collection is read-only.")
+            return None
         upn_row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
         if not upn_row:
             return None

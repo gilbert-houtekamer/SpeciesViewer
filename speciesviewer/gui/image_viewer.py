@@ -600,8 +600,16 @@ class ImagePreviewDialog(QDialog):
             return
         from gui.map_view import TripMapView
         base = self.windowTitle().split(" — ")[0]
+        # A read-only viewer stays read-only on the map. The virtual-trip day
+        # viewer shows the MASTER's own files (a virtual trip shares them rather
+        # than copying), so geotagging or deleting from its map would edit the
+        # master — the map must not offer it.
+        read_only = getattr(self._collection, "read_only", False)
         dlg = TripMapView(self, self._collection, keys,
-                          title=f"Map — {base}", loader=self._loader)
+                          title=f"Map — {base}" + (" (view only)" if read_only else ""),
+                          loader=self._loader, read_only=read_only,
+                          read_only_note="These pictures live in the master database — "
+                                         "this map shows them but does not change them.")
         dlg.pictures_geotagged.connect(self._on_map_geotagged)
         dlg.show()
 

@@ -111,14 +111,28 @@ def main(args, config):
 
     review_root = os.path.join(virttrip_root, "metadata", "review")
     days_written = 0
+    dropped_files = 0          # index rows whose file is not on disk
     current = from_date
     while current <= to_date:
         day_label = current.strftime("%Y-%m-%d")   # directory name
         exif_day  = current.strftime("%Y:%m:%d")   # prefix in EXIF:DateTimeOriginal
 
-        # Primary files: JPG/RAW that have a matching DateTimeOriginal
-        dated_files = [r for r in all_file_rows
-                       if r.get("EXIF:DateTimeOriginal", "").startswith(exif_day)]
+        # Primary files: JPG/RAW that have a matching DateTimeOriginal.
+        # GUARDRAIL: only rows whose file is ACTUALLY ON DISK. The master index
+        # can carry ghosts — rows for pictures that were never filed under biota/
+        # (no species, so no folder) and never copied in; their directory is the
+        # bare master root. Copying those into the day CSVs gives the virtual trip
+        # pictures it cannot show: inflated counts, blank thumbnails, and bubbles
+        # on the map for photos that do not exist. Stat only the date range, not
+        # the whole master.
+        dated_files = []
+        for r in all_file_rows:
+            if not r.get("EXIF:DateTimeOriginal", "").startswith(exif_day):
+                continue
+            if not os.path.isfile(r.get("WindowsFileName", "")):
+                dropped_files += 1
+                continue
+            dated_files.append(r)
 
         if dated_files:
             day_names = {r.get("UniquePictureName", "") for r in dated_files}
@@ -126,8 +140,13 @@ def main(args, config):
 
             # Also include XMP sidecars for those UPNs; they carry XMP:Rating
             # which computeRating reads when building the blog.
-            day_xmps = [xmp_row for upn in day_names
-                        for xmp_row in xmp_by_upn.get(upn, [])]
+            day_xmps = []
+            for upn in day_names:
+                for xmp_row in xmp_by_upn.get(upn, []):
+                    if os.path.isfile(xmp_row.get("WindowsFileName", "")):
+                        day_xmps.append(xmp_row)
+                    else:
+                        dropped_files += 1
             day_files = dated_files + day_xmps
 
             day_pictures = [pictures_by_name[n] for n in day_names if n in pictures_by_name]
@@ -143,6 +162,10 @@ def main(args, config):
             days_written += 1
         current += timedelta(days=1)
 
+    if dropped_files:
+        logger.warning(f"Skipped {dropped_files} master index row(s) in this date "
+                       f"range whose file is not on disk — they are not in the "
+                       f"master's biota tree and cannot be shown.")
     logger.info(f"✅ ExtractDays complete: {days_written} day(s) written to {review_root}")
 
 

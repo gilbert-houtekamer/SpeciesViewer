@@ -1,19 +1,20 @@
 # SpeciesViewer — Project Backlog
 
-Updated: 2026-07-11 · Branch: ClaudeSpecies · (machine-readable mirror of `SpeciesViewer_Backlog.html`)
+Updated: 2026-07-12 · Branch: ClaudeSpecies · (machine-readable mirror of `SpeciesViewer_Backlog.html`)
 
 Legend: **OPEN** to build · **NEW** newly raised · **BUG** defect · **NEEDS TEST** built/awaiting live run · **PARKED** deferred by design · **DONE** shipped.
 
 Since the 16-June edition most of the backlog shipped (WP4 identity decouple, WP8 picture-root, cross-platform path P1, retire→virttrip arc, Working Days, Trip Species Viewer delete rework). Focus below = the short remaining list.
 
 ## Active shortlist
-1. **NEW Maps for the Day (micro-trip) + Virtual-trip** — extend the Phase-5 trip/day map to those two collection contexts (ch.3).
-2. **GPS / data-integrity umbrella** — tracklog geotag, GPS-from-addresses, location-from-GPS (ch.3; dead-link purge shipped as Refresh Master Database).
-3. **NEW Compact the viewer toolbar + laptop-fit review** — wide filter/knob row + dialog sizing on small screens (ch.3).
-4. **Virtual Trips WP7** — retroactive builder + amber/green blog bubbles (ch.2).
-5. Smaller: GBIF lookup disk-cache (ch.11).
+1. **Re-extract the 9 stale virtual trips** — their day CSVs predate the Refresh-Master reconcile and still list ~33% ghost pictures (ch.2). One click each (Extract Days); the code now refuses to write or map them.
+2. **NEW Map for the Day (micro-trip)** — extend the Phase-5 trip/day map to that collection context (ch.3). *(Virtual-trip map: DONE, ch.2.)*
+3. **GPS / data-integrity umbrella** — tracklog geotag, GPS-from-addresses, location-from-GPS (ch.3; dead-link purge shipped as Refresh Master Database).
+4. **NEW Compact the viewer toolbar + laptop-fit review** — wide filter/knob row + dialog sizing on small screens (ch.3).
+5. **Virtual Trips WP7** — retroactive builder + amber/green blog bubbles (ch.2).
+6. Smaller: GBIF lookup disk-cache (ch.11).
 
-Recently shipped: **Refresh Master Database** (dead-link reconcile, ran live: cleared ~43k dead rows / ~15k phantom pictures) + **black-image fixes** (dead-link phantoms + Nikon D90 OtherImage preview) — bc4a060 / 3d0e490 / 4135c48; see ch.3. **EXIFtool parallel workers** (ch.11).
+Recently shipped: **Virtual-trip map (view only)** + the **ghost-row guardrail** it exposed (ch.2). **Refresh Master Database** (dead-link reconcile, ran live: cleared ~43k dead rows / ~15k phantom pictures) + **black-image fixes** (dead-link phantoms + Nikon D90 OtherImage preview) — bc4a060 / 3d0e490 / 4135c48; see ch.3. **EXIFtool parallel workers** (ch.11).
 
 Parked by design: taxonomy/sequence (ch.6), rating-formula/HEIC (ch.7); master data relativization waits for the Mac (ch.10).
 
@@ -37,9 +38,14 @@ Feature-complete: M0–M4, sidecar cache, GPS place-names, 100% view, day-picker
 Full arc live incl. retire-to-virttrip (verified Braakman). svv6 make-clickable + per-day blog editor done. [[project_menu_reorg]] WP7 [[project_virttrip_pending]]
 
 **To do**
+- OPEN/ACTION **Re-extract the stale virtual trips** — every virttrip except `extramaduradb` was extracted BEFORE the Refresh-Master reconcile, so its day CSVs still carry the master index rows that reconcile removed. Ghost file rows / total: safari 6356/25681, gambia 1991/20157, costa-rica 2174/12078, tanzania 2709/12876, spanjeebro 2267/7236, oman 1463/6118, marokko 934/4923, orlando 434/3240, braakman 70/675. Fix = re-run **Extract Days** per trip (now ghost-filtered); check the log line for the dropped count. Until then the tab's **Pictures** count stays inflated (the map guard doesn't rewrite the CSV).
 - OPEN/LARGER **WP7 scenario-2 retroactive builder** — Create asks "from existing trip" vs "retroactive from master dates" + fold Extract into Create; build day-by-day from template. Step code works; the guided *experience* is missing.
 - OPEN **amber/green blog-review bubbles** — auto/unreviewed=amber, reviewed=green.
 - OPEN **scenario-1 Add-to-Master no-op greying** (retire already ran it).
+
+**Done (virtual-trip map + the ghost rows it exposed)**
+- DONE **Virtual-trip map — VIEW ONLY** — "🗺 Map whole trip" on the Active Virtual Trip tab + right-click a day row → "Map this day" (`MainWindow.open_virttrip_map`). No new collection class: the virttrip's `metadata/review/<day>/` layout is identical to a trip's, so it reuses the whole-trip recipe (accumulate every day's two CSVs into one `Files`+`Pictures` → `FilePicture` → `PreviewCollection` → `TripMapView`); `open_trip_map` and this now share `_review_day_dirs` + `_collection_from_review_days`. **The design call: READ-ONLY.** A virtual trip does not copy pictures — it points at the MASTER's originals — so drag-to-geotag, drag-a-bubble-to-move and delete would write into master sidecars. Same call as the Album Rating Editor. `TripMapView(read_only=True)` drops the no-GPS tray entirely (a tray you can't drag from is a misleading affordance), turns off drop/move/delete, and shows a "· view only" header note; right-click→Hide and the bubble→filmstrip→large-view drill-down still work. **`read_only` is now one flag on the base `PictureCollection`**, and the write paths (`apply`, `set_crop`, `trash_upn`, `delete_by_color`, `location_targets`) hard-refuse + log rather than trusting the UI to have greyed the button. **Hole closed on the way:** the virtual-trip DAY viewer (`SidecarCollection(readonly=True)`) was read-only for the grid but its `location_targets()` was open — its 🗺 Map would have geotagged straight into the master's XMPs; `location_targets` is now THE gate every GPS write passes through, and it returns `[]` when read-only. Also split `has_disk_file` (existence) from `has_writable_sidecar` (permission) — `present_keys` had been built on the latter. [[project_virttrip_pending]] [[project_trip_map]] [[project_album_rating_editor]]
+- DONE/BUG **Ghost rows in the virtual-trip day CSVs** — the map immediately exposed a data bug: on safari, **All = 13048 bubbles but Species = 8586**. The master holds only species pictures, so the gap made no sense. The 4587 no-species rows turned out to be **ghosts**: `File:Directory` = the bare master root (never filed under `biota/` — no species, no folder), **0 of 200 sampled exist on disk**, yet 4452 carry GPS, so they plotted as bubbles for photos that do not exist (and would hand you a blank filmstrip). Traced braakman's 70 ghost rows by filename: **none are in the live master index** — today's master is clean (159,389 rows, 13 not under `biota/`, all `-small.jpg`). They are the rows **Refresh Master Database** reconciled away (~43k dead file rows), still frozen in day CSVs extracted before it ran. `extramaduradb` — extracted after — is the control: zero ghosts. **Two guardrails** ([[feedback_qa_as_guardrails]]): (1) `svv2ExtractDays` now only writes rows whose file is on disk and logs a warning naming the count it dropped (stats the date range only, not the 159k-row master); (2) `TripMapView._build_points` skips pictures with no files via one cached `present_keys` existence pass (0.52 s for 13,952 pictures) and the header says so — "8578 pictures on the map · 779 without GPS · **4595 missing**", tooltip pointing at Extract Days. Verified on safari: with the guard, **All and Species both plot 8578 — the gap collapses to 0**, which is what the master's species-only invariant predicts. [[project_dead_link_prune]]
 
 **Parked**
 - FUTURE single-day blog re-upload. PARKED trips/virttrips panel visual alignment.
@@ -52,7 +58,7 @@ Phases 1–3 shipped+live. Trip Species Viewer Trip+Master scope works (scope-aw
 
 **To do**
 - OPEN/NEW **Map for the Day (micro-trip) viewer** — extend the Phase-5 trip/day map to the Days lane / micro-trip so an ad-hoc working day plots + geotags exactly like a trip day. [[project_working_days]] [[project_trip_map]]
-- OPEN/NEW **Virtual-trip map** — bring the same map (bubbles→filmstrip→large view, travel path, drag-to-geotag) to a virtual trip's accumulated collection. [[project_trip_map]] [[project_virttrip_pending]]
+- DONE **Virtual-trip map** — shipped VIEW ONLY (the pictures are the master's); see ch.2 for the design call and the ghost-row bug it exposed. [[project_trip_map]] [[project_virttrip_pending]]
 - OPEN **GPS / data-integrity umbrella** — remaining: tracklog geotag (2a), GPS-from-addresses, location-from-GPS. Purge dangling data_files/pictures now shipped as Refresh Master Database. [[project_gps_data_integrity]]
 - OPEN/NEW **Compact the filter/knob toolbar** — the Species Viewer top row (Species · lang · Camera · Sort · Map · Regenerate · JPG-only · colour swatches · Columns · Blue/Purple) is very wide; regroup / overflow-menu / second-row so it fits narrow screens.
 - OPEN/NEW **Laptop GUI fit review** — walk every dialog on a laptop screen, confirm each fits (no clipped toolbars / off-screen buttons); ties the toolbar compaction.

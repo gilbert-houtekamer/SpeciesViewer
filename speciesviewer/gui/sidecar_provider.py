@@ -270,7 +270,10 @@ class SidecarCollection(PictureCollection):
     show_status_badges = True
 
     def __init__(self, paths, *, readonly=False, cache_root=None, loader: AsyncImageLoader | None = None):
+        # `read_only` is the name every viewer (grid, large view, map) asks for —
+        # keep the older `readonly` in step for this class's own callers.
         self.readonly = readonly
+        self.read_only = bool(readonly)
         self._cache_root = Path(cache_root) if cache_root else None
         self._loader = loader or AsyncImageLoader()
         # Group input picture files by their unique-picture name. Using
@@ -436,6 +439,8 @@ class SidecarCollection(PictureCollection):
         return (ll[0], ll[1]) if ll else None
 
     def location_targets(self, key: str):
+        if self.readonly:
+            return []          # virtual-trip viewer: these are the master's files
         g = self._groups.get(key, {})
         return [g[k] for k in ("xmp", "jpg") if g.get(k)]
 
