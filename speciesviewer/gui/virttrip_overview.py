@@ -1,7 +1,10 @@
 import csv
+import logging
 import re
 from datetime import date
 from pathlib import Path
+
+logger = logging.getLogger("speciesviewer")
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
@@ -80,15 +83,50 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
     dlg.exec()
 
 
+def _gps_from_sidecars(xmp_by_upn: dict) -> set:
+    """{UPN} for those whose XMP sidecar now carries a coordinate.
+
+    Reuses the day viewer's own cache-first reader, so this is the SAME answer the
+    map gives — no second opinion about what "has GPS" means. Unchanged sidecars are
+    served from the per-folder cache; only ones whose mtime moved cost an exiftool
+    read, and that is one batched call, not one per file."""
+    if not xmp_by_upn:
+        return set()
+    from gui.sidecar_provider import _read_sidecar_rows, _norm
+    paths = [p for p in xmp_by_upn.values() if p and Path(p).is_file()]
+    if not paths:
+        return set()
+    try:
+        rows, _caches = _read_sidecar_rows(paths)
+    except Exception as e:
+        logger.warning(f"No-GPS count: could not read sidecars: {e}")
+        return set()
+    out = set()
+    for upn, p in xmp_by_upn.items():
+        row = rows.get(_norm(p)) or {}
+        if str(row.get("GPSPosition", "") or "").strip() \
+                or str(row.get("GPSLatitude", "") or "").strip():
+            out.add(upn)
+    return out
+
+
 def _count_pictures_from_csv(csv_path: Path):
-    """Return (pictures, jpeg_files, no_gps) parsed from a data_files.csv.
+    """Return (pictures, jpeg_files, no_gps) for one day.
 
     pictures = distinct UniquePictureNames (a RAW and its sidecars share one UPN,
-    so they are one picture, not several files). no_gps = how many of those
-    pictures carry no coordinate on ANY of their photo files — the count that says
-    which days still need placing on the map. Sidecars and non-photo rows (.xmp,
-    .dop, PNG screenshots) are ignored for GPS, exactly as the trip overview does
-    it, or every picture would look GPS-less because its .xmp has no coordinate."""
+    so they are one picture, not several files).
+
+    no_gps is the count that says which days still need placing on the map, and it
+    CANNOT be answered from this CSV alone. The CSV is a SNAPSHOT that Extract Days
+    took from the master, and geotagging writes to the pictures' XMP SIDECARS — so a
+    day you have just placed still reads as 93-without-GPS here, while the map shows
+    them all on the island. (The master's own CSV is equally stale until a re-read;
+    the sidecar is the only thing that is current.)
+
+    So: the CSV answers "did the CAMERA record a coordinate" (that GPS lives in the
+    RAW, which we never touch), and for every picture it says has none we ask the
+    sidecar, which is where anything WE placed ended up. Cache-first — a day whose
+    sidecars have not changed costs no exiftool call at all."""
     from gui.trip_overview import PHOTO_EXTENSIONS
     try:
         with open(csv_path, newline="", encoding="utf-8") as f:
@@ -96,6 +134,7 @@ def _count_pictures_from_csv(csv_path: Path):
             upns = set()
             jpegs = 0
             upn_has_gps: dict = {}
+            xmp_by_upn: dict = {}
             for row in reader:
                 u = (row.get("UniquePictureName") or "").strip()
                 if u:
@@ -103,10 +142,24 @@ def _count_pictures_from_csv(csv_path: Path):
                 ext = (row.get("WindowsExtension") or "").lower()
                 if ext in JPEG_EXTS:
                     jpegs += 1
-                if u and ext in PHOTO_EXTENSIONS:
+                if not u:
+                    continue
+                if ext == "xmp":
+                    p = (row.get("WindowsFileName") or "").strip()
+                    if p:
+                        xmp_by_upn.setdefault(u, p)
+                elif ext in PHOTO_EXTENSIONS:
                     has_gps = bool((row.get("Composite:GPSPosition") or "").strip()) \
                            or bool((row.get("EXIF:GPSLatitude") or "").strip())
                     upn_has_gps[u] = upn_has_gps.get(u, False) or has_gps
+
+        missing = [u for u, has in upn_has_gps.items() if not has]
+        if missing:
+            placed = _gps_from_sidecars({u: xmp_by_upn[u] for u in missing
+                                         if u in xmp_by_upn})
+            for u in placed:
+                upn_has_gps[u] = True
+
         no_gps = sum(1 for has in upn_has_gps.values() if not has)
         return len(upns), jpegs, no_gps
     except (FileNotFoundError, KeyError, OSError):

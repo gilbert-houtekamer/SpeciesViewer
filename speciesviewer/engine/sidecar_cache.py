@@ -12,12 +12,17 @@ from pathlib import Path
 logger = logging.getLogger("speciesviewer")
 
 _FILENAME = ".sv_sidecar_cache.json"
-_VERSION = 4   # v2 added location text; v3 adds CountryCode so the cached row is a
+_VERSION = 5   # v2 added location text; v3 adds CountryCode so the cached row is a
                # complete substitute for a read_location() exiftool spawn; v4 adds
                # GPSProcessingMethod — WITHOUT the bump, an existing cache is only
                # re-read when a file's mtime changes, so a picture seeded from a place
                # name would come back after a restart with no provenance, and the map
                # would refuse to move the very point you seeded in order to refine it.
+               # v5 EVICTS caches poisoned by the put_field bug below: a geotag wrote
+               # GPS + place text but only the place text was patched in, and the
+               # re-stamped mtime made the row claim to be current — so the cache went
+               # on reporting "no GPS" for pictures that had been placed. Measured on
+               # Helgoland: 92 of 93 sidecars had GPS on disk, the cache admitted 25.
 
 # Tags exiftool reads from each XMP — must stay in sync with usage in sidecar_provider.
 _CACHE_TAGS = [
@@ -89,6 +94,15 @@ class SidecarCache:
         Updates the stored mtime_ns to the file's new mtime so the next
         open does not re-read this entry via exiftool unnecessarily.
         No-op if no entry exists yet (will be read fresh on next open).
+
+        ⚠ Re-stamping the mtime asserts THE WHOLE ROW IS NOW CURRENT. That is only
+        true when the write changed exactly the field being patched. If a single
+        write touched other tags too, patch them all — or call invalidate(), which
+        is always safe. Getting this wrong does not corrupt the file; it makes the
+        cache confidently return stale values, which is harder to notice. (It bit us
+        once: geotagging writes GPS *and* place text, only the place text was patched
+        here, and the re-stamped row then hid the new coordinate from everything that
+        trusted the cache.)
         """
         key = self._key(xmp_path)
         if key not in self._data:
@@ -99,6 +113,17 @@ class SidecarCache:
         except OSError:
             pass
         self._dirty = True
+
+    def invalidate(self, xmp_path: Path) -> None:
+        """Forget this file — the next open re-reads it from disk.
+
+        For a write that changed more of the row than the caller can restate (a
+        geotag writes coordinates, a processing method AND the reverse-geocoded
+        place). Dropping the entry costs one batched exiftool read later and is
+        always correct; guessing at the row's new contents is not."""
+        key = self._key(xmp_path)
+        if self._data.pop(key, None) is not None:
+            self._dirty = True
 
     def save(self) -> None:
         """Flush to disk atomically; silently skips if nothing changed."""

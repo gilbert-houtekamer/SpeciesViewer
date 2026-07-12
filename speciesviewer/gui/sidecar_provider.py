@@ -517,6 +517,24 @@ class SidecarCollection(PictureCollection):
         if not hasattr(self, "_pasted_gps"):
             self._pasted_gps = set()
         self._pasted_gps.add(key)
+
+        # The write changed coordinates, GPSProcessingMethod and (usually) the place
+        # text — more of the row than we can honestly restate here. Drop the cached
+        # entry so the next open re-reads it. Without this, note_location_written's
+        # put_field re-stamps the mtime for the place text alone, the row then claims
+        # to be current, and everything that trusts the cache keeps reporting the
+        # picture as having no GPS long after it does.
+        g = self._groups.get(key, {})
+        xmp = g.get("xmp")
+        if xmp:
+            xmp = Path(xmp)
+            cache = self._caches.get(xmp.parent)
+            if cache is None:
+                from engine.sidecar_cache import SidecarCache
+                cache = self._caches[xmp.parent] = SidecarCache(xmp.parent)
+            cache.invalidate(xmp)
+            cache.save()
+
         if key in self._groups and lat is not None and lon is not None:
             self._gps_by_stem[key] = (float(lat), float(lon))
             return
