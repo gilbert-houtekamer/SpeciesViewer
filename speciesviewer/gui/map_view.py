@@ -61,6 +61,13 @@ _BASEMAPS = [
 _NEIGHBOUR_COLOR = "#2e7d32"
 _CONF_COLOR = {"high": "#2e7d32", "medium": "#f9a825", "low": "#d32f2f"}
 
+# A UPN worth offering in the drag-to-geotag tray must have a real IMAGE file.
+# Sidecar-only records (orphan .dop/.xmp with no picture — e.g. an early
+# blue-delete that removed the RAW/JPG but left the .dop behind) can't be placed
+# anywhere meaningful and only clutter the "without GPS" tray.
+_IMAGE_EXTS = {"orf", "nef", "cr2", "arw", "rw2", "dng", "jpg", "jpeg",
+               "heic", "heif", "png", "tif", "tiff"}
+
 # Distinct, colour-blind-friendlier layer palette (up to 4 species overlaid).
 _PALETTE = ["#d32f2f", "#1565c0", "#2e7d32", "#8e24aa"]   # red, blue, green, purple
 _MAX_LAYERS = 4
@@ -149,6 +156,7 @@ class TileMapView(QGraphicsView):
     bubble_activated = pyqtSignal(object)       # cluster dict on single-click
     bubble_hide_requested = pyqtSignal(object)  # cluster dict on right-click → Hide
     pictures_dropped = pyqtSignal(list, float, float)  # (upns, lat, lon) drop-to-geotag
+    group_move_requested = pyqtSignal(object, float, float)  # (cluster, lat, lon) drag-move
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -181,6 +189,11 @@ class TileMapView(QGraphicsView):
         self._highlight = None              # transient ring around the active bubble
         self._geo_preview = None            # no-GPS placement preview (lonlat + colour)
         self._geo_items: list = []          # its scene items (rebuilt per zoom)
+        self._grab_data = None              # bubble grabbed for a drag-move (or None)
+        self._grab_press = None             # viewport pos where the grab started
+        self._moving = False                # past the threshold → dragging a group
+        self._ghost: list = []              # transient drag-ghost items (the moving pin)
+        self.allow_move = False             # trip map: drag a bubble to move its pictures
         self.allow_hide = False             # trip map: right-click a bubble to hide it
         self.trim_fit = False               # trip map: Fit ignores far outliers
                                             # (species map keeps exact range framing)
@@ -547,6 +560,41 @@ class TileMapView(QGraphicsView):
         self._geo_preview = None
         self._draw_geo_preview()
 
+    # ── drag-move ghost (dragging a placed group to a new spot) ───────────────
+    def _start_ghost(self, data: dict):
+        """A blue pin (with the group's picture count) that follows the cursor
+        while dragging a bubble to a new location. Neutral colour so it doesn't
+        read as the green/amber/red confidence of an estimate."""
+        self._clear_ghost()
+        r = 12
+        pen = QPen(QColor("white"), 2)
+        pen.setCosmetic(True)
+        fill = QColor("#1565c0")
+        fill.setAlpha(210)
+        dot = self._scene.addEllipse(-r, -r, 2 * r, 2 * r, pen, QBrush(fill))
+        dot.setZValue(30)
+        self._ghost.append((dot, 0.0, 0.0))
+        count = data.get("count", 1)
+        if count and count > 1:
+            lbl = self._scene.addSimpleText(str(count))
+            f = QFont()
+            f.setPixelSize(10)
+            f.setBold(True)
+            lbl.setFont(f)
+            lbl.setBrush(QBrush(QColor("white")))
+            br = lbl.boundingRect()
+            lbl.setZValue(31)
+            self._ghost.append((lbl, -br.width() / 2, -br.height() / 2))
+
+    def _move_ghost(self, scene_pt: QPointF):
+        for item, dx, dy in self._ghost:
+            item.setPos(scene_pt.x() + dx, scene_pt.y() + dy)
+
+    def _clear_ghost(self):
+        for item, _dx, _dy in self._ghost:
+            self._scene.removeItem(item)
+        self._ghost = []
+
     def _draw_geo_preview(self):
         for it in self._geo_items:
             self._scene.removeItem(it)
@@ -674,13 +722,56 @@ class TileMapView(QGraphicsView):
         return entry["attr"]
 
     # ── interaction ──────────────────────────────────────────────────────────
+    def _bubble_at(self, x: int, y: int):
+        """The topmost BUBBLE (marker carrying a cluster dict) at a viewport point,
+        as (item, data) — or (None, None).
+
+        Walks the z-ordered stack instead of using itemAt(): decorations sit ABOVE
+        the markers (the selection highlight ring at z=20, the drag ghost, the
+        geotag preview) and Qt's shape() for an ellipse covers its INTERIOR even
+        with no fill — so itemAt() would return the ring and hide the bubble
+        underneath it, silently killing grab/select/right-click on a selected
+        bubble."""
+        for item in self.items(x, y):
+            data = item.data(0)
+            if isinstance(data, dict):
+                return item, data
+        return None, None
+
     def mousePressEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton:
             self._press_vp = e.position()
             self._pan_last = e.position()
+            # Pressing on a bubble arms a possible drag-move (trip map only): a
+            # short move past the threshold grabs the group, a plain click still
+            # selects it. Empty-map drags keep panning.
+            if self.allow_move:
+                _item, data = self._bubble_at(int(e.position().x()),
+                                              int(e.position().y()))
+                if data is not None and data.get("upns"):
+                    self._grab_data = data
+                    self._grab_press = e.position()
         super().mousePressEvent(e)
 
     def mouseMoveEvent(self, e):
+        if self._grab_data is not None and (e.buttons() & Qt.MouseButton.LeftButton):
+            if not self._moving:
+                if (e.position() - self._grab_press).manhattanLength() > 4:
+                    self._moving = True
+                    # The ghost is cosmetic — never let it break the actual move.
+                    try:
+                        self._start_ghost(self._grab_data)
+                    except Exception as ex:
+                        logger.warning("map: drag ghost failed (move still on): %s",
+                                       ex)
+            if self._moving:
+                try:
+                    self._move_ghost(self.mapToScene(int(e.position().x()),
+                                                     int(e.position().y())))
+                except Exception:
+                    pass
+                self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
+            return   # a bubble is grabbed — never pan from it (click still selects)
         if self._pan_last is not None and (e.buttons() & Qt.MouseButton.LeftButton):
             d = e.position() - self._pan_last
             self._pan_last = e.position()
@@ -688,33 +779,44 @@ class TileMapView(QGraphicsView):
             self.centerOn(c.x() - d.x(), c.y() - d.y())   # → scrollContentsBy syncs
         else:
             # Pointing hand over a clickable bubble, plain arrow elsewhere.
-            item = self.itemAt(int(e.position().x()), int(e.position().y()))
-            over = item is not None and isinstance(item.data(0), dict)
-            self.viewport().setCursor(Qt.CursorShape.PointingHandCursor if over
+            _item, data = self._bubble_at(int(e.position().x()),
+                                          int(e.position().y()))
+            self.viewport().setCursor(Qt.CursorShape.PointingHandCursor
+                                      if data is not None
                                       else Qt.CursorShape.ArrowCursor)
         super().mouseMoveEvent(e)
 
     def mouseReleaseEvent(self, e):
         super().mouseReleaseEvent(e)
         self._pan_last = None
+        if e.button() == Qt.MouseButton.LeftButton and self._moving:
+            sp = self.mapToScene(int(e.position().x()), int(e.position().y()))
+            lon, lat = world_to_lonlat(sp.x(), sp.y(), self._z)
+            data = self._grab_data
+            self._clear_ghost()
+            self._grab_data = self._grab_press = None
+            self._moving = False
+            self._press_vp = None
+            self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+            self.group_move_requested.emit(data, lat, lon)
+            return
+        self._grab_data = self._grab_press = None
         if self._press_vp is None or e.button() != Qt.MouseButton.LeftButton:
             return
         moved = (e.position() - self._press_vp).manhattanLength()
         self._press_vp = None
         if moved > 4:
             return   # it was a drag (pan), not a click
-        item = self.itemAt(int(e.position().x()), int(e.position().y()))
-        data = item.data(0) if item is not None else None
-        if isinstance(data, dict):
+        item, data = self._bubble_at(int(e.position().x()), int(e.position().y()))
+        if data is not None:
             # Single-click = "show me these pictures": highlight + let the host
             # populate the filmstrip. (Double-click zooms — see below.)
             self._set_highlight(item.sceneBoundingRect())
             self.bubble_activated.emit(data)
 
     def mouseDoubleClickEvent(self, e):
-        item = self.itemAt(int(e.position().x()), int(e.position().y()))
-        data = item.data(0) if item is not None else None
-        if isinstance(data, dict) and data.get("bounds"):
+        _item, data = self._bubble_at(int(e.position().x()), int(e.position().y()))
+        if data is not None and data.get("bounds"):
             self._zoom_to_bounds(data["bounds"])
             e.accept()
             return
@@ -727,9 +829,8 @@ class TileMapView(QGraphicsView):
         the species map (allow_hide stays False there)."""
         if not self.allow_hide:
             return super().contextMenuEvent(e)
-        item = self.itemAt(e.pos())
-        data = item.data(0) if item is not None else None
-        if not isinstance(data, dict):
+        _item, data = self._bubble_at(e.pos().x(), e.pos().y())
+        if data is None:
             return super().contextMenuEvent(e)
         n = data.get("count", 0)
         menu = QMenu(self)
@@ -1391,6 +1492,7 @@ class TripMapView(QDialog):
         self._all_points = points          # full set (before any hide)
         self._nogps_keys = nogps_keys      # pictures without GPS (drag-to-geotag)
         self._hidden: set = set()          # UPNs hidden via right-click
+        self._placed: set = set()          # UPNs we (re)positioned by hand this session
         self._lid = None                   # the single trip layer's id
         self._tray = None
 
@@ -1444,9 +1546,11 @@ class TripMapView(QDialog):
         self._map.trim_fit = True          # Fit frames the dense core, not outliers
         self._map.allow_hide = True        # right-click a bubble → hide it
         self._map.allow_drop = True        # accept no-GPS pics dragged onto the map
+        self._map.allow_move = True        # drag a bubble to move its pictures
         self._map.bubble_activated.connect(self._on_bubble)
         self._map.bubble_hide_requested.connect(self._on_hide)
         self._map.pictures_dropped.connect(self._on_drop)
+        self._map.group_move_requested.connect(self._on_move)
         self._splitter.addWidget(self._map)
         self._strip_holder = QWidget()
         self._strip_box = QVBoxLayout(self._strip_holder)
@@ -1777,14 +1881,7 @@ class TripMapView(QDialog):
         keys = [k for k in keys if k in self._nogps_keys]
         if not keys:
             return False
-        from gui.geolocate import reverse_geocode, place_fields, write_gps, \
-            write_location_batch
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            fields = place_fields(reverse_geocode(lat, lon)) or {}
-        finally:
-            QApplication.restoreOverrideCursor()
-        place = self._place_str(fields, lat, lon)
+        place, fields = self._geocode(lat, lon)
         n = len(keys)
         msg = (f"Place {n} picture{'' if n == 1 else 's'} here?\n\n"
                f"{place}\n{lat:.5f}, {lon:.5f}")
@@ -1795,6 +1892,41 @@ class TripMapView(QDialog):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
         ) != QMessageBox.StandardButton.Yes:
             return False
+        written, skipped = self._write_gps_place(keys, lat, lon, fields)
+        for k in written:
+            try:
+                date = getattr(self._coll.item_for_key(k), "date", "") or ""
+            except (ValueError, KeyError):
+                date = ""
+            self._all_points.append({"lat": lat, "lon": lon, "upn": k,
+                                     "place": place, "date": date.strip()})
+        if written:
+            self._placed.update(written)
+            self._nogps_keys = [k for k in self._nogps_keys if k not in written]
+            if self._tray is not None:
+                self._tray.remove_keys(written)
+            self._map.clear_geotag_preview()   # placement landed — drop the preview
+            self._render(fit=False)        # keep the view; new dots appear in place
+        self._warn_skipped(skipped)
+        return bool(written)
+
+    def _geocode(self, lat: float, lon: float) -> tuple[str, dict]:
+        """Reverse-geocode (lat, lon) → (display place string, location fields),
+        under a wait cursor. Shared by place + move."""
+        from gui.geolocate import reverse_geocode, place_fields
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            fields = place_fields(reverse_geocode(lat, lon)) or {}
+        finally:
+            QApplication.restoreOverrideCursor()
+        return self._place_str(fields, lat, lon), fields
+
+    def _write_gps_place(self, keys: list[str], lat: float, lon: float,
+                         fields: dict) -> tuple[list[str], int]:
+        """Write GPS (+ location text when we have a place) into each UPN's sidecar
+        and refresh the in-memory caches. Returns (written_keys, skipped_count);
+        does NOT touch _all_points — callers append (place) or update (move)."""
+        from gui.geolocate import write_gps, write_location_batch
         has_place = any(fields.values())
         written, skipped = [], 0
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -1809,27 +1941,58 @@ class TripMapView(QDialog):
                     write_location_batch(files, fields, overwrite=True)
                     self._coll.note_location_written(k, fields)
                 self._coll.note_gps_written(k)
-                try:
-                    date = getattr(self._coll.item_for_key(k), "date", "") or ""
-                except (ValueError, KeyError):
-                    date = ""
-                self._all_points.append({"lat": lat, "lon": lon, "upn": k,
-                                         "place": place, "date": date.strip()})
                 written.append(k)
         finally:
             QApplication.restoreOverrideCursor()
-        if written:
-            self._nogps_keys = [k for k in self._nogps_keys if k not in written]
-            if self._tray is not None:
-                self._tray.remove_keys(written)
-            self._map.clear_geotag_preview()   # placement landed — drop the preview
-            self._render(fit=False)        # keep the view; new dots appear in place
+        return written, skipped
+
+    def _warn_skipped(self, skipped: int):
         if skipped:
             QMessageBox.information(
                 self, "Set location",
                 f"{skipped} picture{'' if skipped == 1 else 's'} had no writable "
                 f"sidecar (e.g. HEIC-only) and could not be geotagged.")
-        return bool(written)
+
+    def _on_move(self, data: dict, lat: float, lon: float):
+        # Defer so the mouse-release handler fully unwinds before the modal confirm.
+        QTimer.singleShot(0, lambda: self._move_group(data, lat, lon))
+
+    def _move_group(self, data: dict, lat: float, lon: float):
+        """A bubble was dragged to (lat, lon): re-place ALL its pictures there
+        (a bubble is a same-spot group). Overwrites their GPS + location. Warns
+        when the bubble spans several distinct spots (zoom in for just one) and
+        when it overwrites pictures that already carried GPS."""
+        present = {p["upn"] for p in self._all_points}
+        keys = [k for k in (data.get("upns") or [])
+                if k in present and k not in self._hidden]
+        if not keys:
+            return
+        place, fields = self._geocode(lat, lon)
+        n = len(keys)
+        spots = data.get("n", 1) or 1
+        had_gps = [k for k in keys if k not in self._placed]
+        msg = (f"Move {n} picture{'' if n == 1 else 's'} to a new spot?\n\n"
+               f"{place}\n{lat:.5f}, {lon:.5f}")
+        if spots > 1:
+            msg += (f"\n\nThis group covers {spots} different spots — zoom in "
+                    f"first if you only meant one.")
+        if had_gps:
+            msg += (f"\n\n{len(had_gps)} of these already have GPS; moving "
+                    f"overwrites it.")
+        if QMessageBox.question(
+                self, "Move pictures", msg,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        written, skipped = self._write_gps_place(keys, lat, lon, fields)
+        if written:
+            wset = set(written)
+            for p in self._all_points:
+                if p["upn"] in wset:
+                    p["lat"], p["lon"], p["place"] = lat, lon, place
+            self._placed.update(written)
+            self._render(fit=False)
+        self._warn_skipped(skipped)
 
     # ── data ─────────────────────────────────────────────────────────────────
     def _build_points(self) -> tuple[list[dict], list[str]]:
@@ -1843,7 +2006,8 @@ class TripMapView(QDialog):
         for k in self._keys:
             ll = self._coll.gps_cached(k)
             if not ll:
-                no_gps.append(k)
+                if self._has_image(k):
+                    no_gps.append(k)   # skip sidecar-only phantoms (orphan .dop)
                 continue
             try:
                 item = self._coll.item_for_key(k)
@@ -1854,6 +2018,21 @@ class TripMapView(QDialog):
             pts.append({"lat": ll[0], "lon": ll[1], "upn": k,
                         "place": place, "date": date.strip()})
         return pts, no_gps
+
+    def _has_image(self, k: str) -> bool:
+        """True when the UPN has a real image file (not just orphan sidecars)."""
+        try:
+            exts = {e.lower() for e in (self._coll.item_for_key(k).file_exts or [])}
+        except Exception:
+            exts = set()
+        if not exts:
+            from pathlib import Path
+            try:
+                exts = {Path(f).suffix.lstrip(".").lower()
+                        for f in self._coll._files(k)}
+            except Exception:
+                return True   # unknown → don't hide a possibly-real picture
+        return bool(exts & _IMAGE_EXTS)
 
     @staticmethod
     def _place_for(item, ll) -> str:
