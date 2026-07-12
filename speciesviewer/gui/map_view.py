@@ -2409,30 +2409,41 @@ class TripMapView(QDialog):
 
     def _write_gps_place(self, keys: list[str], lat: float, lon: float,
                          fields: dict) -> tuple[list[str], int]:
-        """Write GPS (+ location text when we have a place) into each UPN's sidecar
-        and refresh the in-memory caches. Returns (written_keys, skipped_count);
-        does NOT touch _all_points — callers append (place) or update (move)."""
+        """Write GPS (+ location text when we have a place) into the sidecars and
+        refresh the in-memory caches. Returns (written_keys, skipped_count); does NOT
+        touch _all_points — callers append (place) or update (move).
+
+        ONE exiftool call for the coordinate and ONE for the place text, however many
+        pictures are involved: every picture in a drop or a bubble-move lands on the
+        SAME spot, and both writers take a file list. Dragging 62 pictures onto the
+        map used to spawn exiftool 124 times (a GPS write and a location write EACH);
+        it is now 2 calls total."""
         from gui.geolocate import write_gps, write_location_batch
         has_place = any(fields.values())
-        written, skipped = [], 0
+        files, written, skipped = [], [], 0
+        for k in keys:
+            f = self._coll.location_targets(k)
+            if not f:
+                skipped += 1              # HEIC-only / no writable sidecar
+                continue
+            files.extend(f)
+            written.append(k)
+        if not files:
+            return [], skipped
+
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            for k in keys:
-                files = self._coll.location_targets(k)
-                if not files:
-                    skipped += 1          # HEIC-only / no writable sidecar
-                    continue
-                write_gps(files, lat, lon)
+            write_gps(files, lat, lon)
+            if has_place:
+                write_location_batch(files, fields, overwrite=True)
+            # In-memory only from here — no more spawns. Handing the coordinates over
+            # is also what makes a MOVE stick: the collection used to keep the
+            # pre-move value, so a moved picture snapped back to its old spot the
+            # moment the map was re-opened.
+            for k in written:
                 if has_place:
-                    write_location_batch(files, fields, overwrite=True)
                     self._coll.note_location_written(k, fields)
-                # Hand the coordinates over: the collection then has nothing to read
-                # back (one exiftool spawn saved per picture), and — the bug this
-                # fixes — a MOVE actually updates the stored coordinate instead of
-                # keeping the pre-move one, which used to make a moved picture snap
-                # back to its old spot the moment the map was re-opened.
                 self._coll.note_gps_written(k, lat, lon)
-                written.append(k)
         finally:
             QApplication.restoreOverrideCursor()
         return written, skipped
@@ -2483,11 +2494,18 @@ class TripMapView(QDialog):
             warn.append(f"⚠ This group covers {spots} different spots — cancel and "
                         f"zoom in first if you only meant one.")
         if had_gps:
-            # We can only tell "not placed by you in THIS session" — the existing
-            # GPS may be the camera's or from an earlier session. Say exactly that
-            # rather than claiming to know it was embedded.
-            warn.append(f"⚠ {len(had_gps)} of these already have GPS (from the "
-                        f"camera or an earlier session); moving overwrites it.")
+            if self._geotag:
+                # In geotag mode a camera's fix has ALREADY been refused above, so
+                # every coordinate here is one a person put there. Saying "from the
+                # camera" would be plainly false — and it is the sentence that would
+                # make you hesitate over a move that is perfectly safe.
+                warn.append(f"{len(had_gps)} of these already carry a position placed "
+                            f"by hand (this session or an earlier one); moving replaces it.")
+            else:
+                # Ordinary trip map: no provenance to consult, so we can only say
+                # "not placed by you in THIS session" — it may be the camera's.
+                warn.append(f"⚠ {len(had_gps)} of these already have GPS (from the "
+                            f"camera or an earlier session); moving overwrites it.")
         self._map.show_geotag_preview([], (lat, lon), "manual")
         self._begin_confirm("move", keys, lat, lon, warnings="<br>".join(warn))
 
