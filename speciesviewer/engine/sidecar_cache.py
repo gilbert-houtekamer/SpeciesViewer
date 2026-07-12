@@ -12,8 +12,12 @@ from pathlib import Path
 logger = logging.getLogger("speciesviewer")
 
 _FILENAME = ".sv_sidecar_cache.json"
-_VERSION = 3   # v2 added location text; v3 adds CountryCode so the cached row is a
-               # complete substitute for a read_location() exiftool spawn
+_VERSION = 4   # v2 added location text; v3 adds CountryCode so the cached row is a
+               # complete substitute for a read_location() exiftool spawn; v4 adds
+               # GPSProcessingMethod — WITHOUT the bump, an existing cache is only
+               # re-read when a file's mtime changes, so a picture seeded from a place
+               # name would come back after a restart with no provenance, and the map
+               # would refuse to move the very point you seeded in order to refine it.
 
 # Tags exiftool reads from each XMP — must stay in sync with usage in sidecar_provider.
 _CACHE_TAGS = [
@@ -21,6 +25,11 @@ _CACHE_TAGS = [
     "-DateTimeOriginal", "-ISO", "-FNumber", "-ExposureTime", "-FocalLength",
     "-Make", "-Model", "-LensModel", "-SubjectDistance", "-ImageWidth", "-ImageHeight",
     "-GPSPosition", "-GPSLatitude", "-GPSLongitude",
+    # HOW the fix was obtained. Blank = the camera measured it, and the map refuses
+    # to move it. "MANUAL" = a human placed it (map drag / place-name lookup), so it
+    # may still be dragged onto the exact spot. Cached because the map asks this of
+    # every bubble it is about to move.
+    "-GPSProcessingMethod",
     # Reverse-geocoded place text, so the grid card's location line AND the large
     # viewer's per-step read_location() cost no exiftool spawn (they ride this one
     # batched read). Municipality reads fine without -config.

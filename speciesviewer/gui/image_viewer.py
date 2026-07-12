@@ -602,14 +602,22 @@ class ImagePreviewDialog(QDialog):
             return
         from gui.map_view import TripMapView
         base = self.windowTitle().split(" — ")[0]
-        # A read-only viewer stays read-only on the map. The virtual-trip day
-        # viewer shows the MASTER's own files (a virtual trip shares them rather
-        # than copying), so geotagging or deleting from its map would edit the
-        # master — the map must not offer it.
+        # A read-only viewer stays read-only on the map for rating / colour / files:
+        # the virtual-trip day viewer shows the MASTER's own pictures (a virtual trip
+        # shares them rather than copying them).
+        #
+        # Geotagging is the ONE exception, and it must be carried through to the map,
+        # not just the grid — otherwise the map says "view only" while the grid's
+        # "Get GPS from location" is busy writing, AND the bubble you just seeded
+        # cannot be dragged onto the right spot, which is the entire point of seeding
+        # it. allow_move then still refuses any bubble holding a camera's own fix.
         read_only = getattr(self._collection, "read_only", False)
+        geotag = getattr(self._collection, "allow_geotag", False)
+        suffix = " (view only)" if (read_only and not geotag) else ""
         dlg = TripMapView(self, self._collection, keys,
-                          title=f"Map — {base}" + (" (view only)" if read_only else ""),
+                          title=f"Map — {base}{suffix}",
                           loader=self._loader, read_only=read_only,
+                          allow_geotag=geotag,
                           read_only_note="These pictures live in the master database — "
                                          "this map shows them but does not change them.")
         dlg.pictures_geotagged.connect(self._on_map_geotagged)
