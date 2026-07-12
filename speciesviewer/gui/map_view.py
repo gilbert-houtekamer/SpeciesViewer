@@ -53,6 +53,14 @@ _BASEMAPS = [
      "attr": "© OpenStreetMap contributors"},
 ]
 
+# Geotag-preview (no-GPS placement): the time-neighbours are drawn green, the
+# suggested spot is coloured by confidence — green when the neighbours cluster
+# tightly (a confident 'magnet'), amber when they're moderately apart, red when
+# the interpolation spans a big gap (or is a one-sided extrapolation) and really
+# needs a human to nudge it.
+_NEIGHBOUR_COLOR = "#2e7d32"
+_CONF_COLOR = {"high": "#2e7d32", "medium": "#f9a825", "low": "#d32f2f"}
+
 # Distinct, colour-blind-friendlier layer palette (up to 4 species overlaid).
 _PALETTE = ["#d32f2f", "#1565c0", "#2e7d32", "#8e24aa"]   # red, blue, green, purple
 _MAX_LAYERS = 4
@@ -94,6 +102,32 @@ def _parse_capture_dt(s: str):
             return datetime.datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
         except ValueError:
             return None
+
+
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in metres between two (lat, lon) points. Used to
+    judge how tightly a no-GPS picture's time-neighbours cluster — a tight cluster
+    is a confident 'magnet', a wide gap makes the interpolation a rough guess."""
+    r = 6371000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = (math.sin(dp / 2) ** 2
+         + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2)
+    return 2 * r * math.asin(min(1.0, math.sqrt(a)))
+
+
+def _fmt_dist(m: float) -> str:
+    return f"{m:.0f} m" if m < 1000 else f"{m / 1000:.1f} km"
+
+
+def _fmt_dur(seconds: float) -> str:
+    s = abs(int(seconds))
+    if s < 90:
+        return f"{s} s"
+    if s < 5400:
+        return f"{round(s / 60)} min"
+    return f"{s / 3600:.1f} h"
 
 
 def world_to_lonlat(x: float, y: float, z: int) -> tuple[float, float]:
@@ -145,6 +179,8 @@ class TileMapView(QGraphicsView):
         self._press_vp = None               # click-vs-drag detection
         self._pan_last = None               # last pos during a manual pan drag
         self._highlight = None              # transient ring around the active bubble
+        self._geo_preview = None            # no-GPS placement preview (lonlat + colour)
+        self._geo_items: list = []          # its scene items (rebuilt per zoom)
         self.allow_hide = False             # trip map: right-click a bubble to hide it
         self.trim_fit = False               # trip map: Fit ignores far outliers
                                             # (species map keeps exact range framing)
@@ -380,6 +416,7 @@ class TileMapView(QGraphicsView):
             self._apply_wash()
             self._draw_path()
             self._reposition_markers()
+            self._draw_geo_preview()
             self._prune_other_zooms()
             cx, cy = lonlat_to_world(self._center[0], self._center[1], self._z)
             self.centerOn(cx, cy)
@@ -493,6 +530,67 @@ class TileMapView(QGraphicsView):
             self._highlight = None
         for lid in self._layers:
             self._draw_layer(lid)
+
+    # ── geotag preview (no-GPS placement) ────────────────────────────────────
+    def show_geotag_preview(self, neighbours: list, suggestion, conf: str):
+        """Draw a placement preview: `neighbours` [(lat, lon), …] as green rings
+        (the GPS'd photos taken just before/after in time) and `suggestion`
+        (lat, lon) as a filled pin coloured by `conf` ('high'/'medium'/'low').
+        Persists across pan/zoom until cleared, so it stays visible behind the
+        confirm dialog and while the user pans to judge the estimate."""
+        self._geo_preview = {"neighbours": list(neighbours or []),
+                             "suggestion": suggestion,
+                             "color": _CONF_COLOR.get(conf, _CONF_COLOR["low"])}
+        self._draw_geo_preview()
+
+    def clear_geotag_preview(self):
+        self._geo_preview = None
+        self._draw_geo_preview()
+
+    def _draw_geo_preview(self):
+        for it in self._geo_items:
+            self._scene.removeItem(it)
+        self._geo_items = []
+        gp = self._geo_preview
+        if not gp or not gp.get("suggestion"):
+            return
+        z = self._z
+        slat, slon = gp["suggestion"]
+        sx, sy = lonlat_to_world(slon, slat, z)
+        # Dashed connectors from each neighbour to the suggested spot.
+        link = QPen(QColor(90, 90, 90, 170), 1, Qt.PenStyle.DashLine)
+        link.setCosmetic(True)
+        for nlat, nlon in gp["neighbours"]:
+            nx, ny = lonlat_to_world(nlon, nlat, z)
+            ln = self._scene.addLine(nx, ny, sx, sy, link)
+            ln.setZValue(21)
+            self._geo_items.append(ln)
+        # Neighbours: hollow green rings (they are the known GPS anchors).
+        npen = QPen(QColor(_NEIGHBOUR_COLOR), 2)
+        npen.setCosmetic(True)
+        nfill = QColor(_NEIGHBOUR_COLOR)
+        nfill.setAlpha(60)
+        for nlat, nlon in gp["neighbours"]:
+            nx, ny = lonlat_to_world(nlon, nlat, z)
+            r = 7
+            ring = self._scene.addEllipse(nx - r, ny - r, 2 * r, 2 * r,
+                                          npen, QBrush(nfill))
+            ring.setZValue(22)
+            self._geo_items.append(ring)
+        # Suggestion: a filled, white-bordered pin in the confidence colour.
+        spen = QPen(QColor("white"), 2)
+        spen.setCosmetic(True)
+        r = 10
+        dot = self._scene.addEllipse(sx - r, sy - r, 2 * r, 2 * r,
+                                     spen, QBrush(QColor(gp["color"])))
+        dot.setZValue(24)
+        self._geo_items.append(dot)
+        # A small white centre dot so the pin reads as a target, not just a blob.
+        c = 2
+        core = self._scene.addEllipse(sx - c, sy - c, 2 * c, 2 * c,
+                                      QPen(Qt.PenStyle.NoPen), QBrush(QColor("white")))
+        core.setZValue(25)
+        self._geo_items.append(core)
 
     # ── tiles ────────────────────────────────────────────────────────────────
     def _ensure_tiles(self):
@@ -1470,8 +1568,10 @@ class TripMapView(QDialog):
         est = self._estimate_position(key) if has_time else None
         place_act = None
         if est is not None:
-            place_act = menu.addAction("📍 Place at estimated position (between "
-                                       "photos before/after)")
+            label = {"high": "confident", "medium": "approximate",
+                     "low": "rough guess"}.get(est["conf"], "")
+            place_act = menu.addAction(
+                f"📍 Suggest a position — {label} (between photos before/after)")
         zoom_act = menu.addAction("Zoom map to around this time" if has_time
                                   else "Zoom to around this time — no timestamp")
         zoom_act.setEnabled(has_time)   # a screenshot with no capture time can't bracket
@@ -1481,17 +1581,35 @@ class TripMapView(QDialog):
             del_act = menu.addAction("Delete… (move to trash)")
         chosen = menu.exec(global_pos)
         if place_act is not None and chosen == place_act:
-            self._map.focus_area([est])                  # show where the estimate lands
-            self._place_dropped([key], est[0], est[1])   # same confirm+write as a drop
+            self._suggest_position(key, est)
         elif chosen == zoom_act and has_time:
             self._zoom_to_time(key)
         elif del_act is not None and chosen == del_act:
             self._delete_picture(key)
 
+    def _suggest_position(self, key: str, est: dict):
+        """Show the estimate as a coloured preview (green time-neighbours + a
+        confidence-coloured suggested pin), frame it, then run the same confirm +
+        write as a manual drop. The preview stays up behind the dialog so the user
+        can judge the estimate — and lingers after Cancel so a manual drag has the
+        neighbours as a visible target. Cleared once a placement actually lands."""
+        self._map.show_geotag_preview(est["neighbours"],
+                                      (est["lat"], est["lon"]), est["conf"])
+        self._map.focus_area(list(est["neighbours"]) + [(est["lat"], est["lon"])])
+        # Confirm + write (same path as a manual drop); on success it clears the
+        # preview, on Cancel it lingers so a manual drag has the neighbours to aim at.
+        self._place_dropped([key], est["lat"], est["lon"], note=est["detail"])
+
     def _estimate_position(self, key: str):
         """Estimate a no-GPS picture's location by TIME-interpolating between the
         GPS'd photos taken just before and just after it (the trip's own photos as
-        a poor-man's tracklog). Returns (lat, lon) or None when it can't bracket."""
+        a poor-man's tracklog).
+
+        Returns a dict {lat, lon, conf, neighbours, detail} or None when it can't
+        bracket. `conf` is 'high'/'medium'/'low': tightly clustered neighbours are
+        a confident 'magnet', a wide gap (or a one-sided extrapolation) is a rough
+        guess a human should nudge. `neighbours` are the (lat, lon) anchors used;
+        `detail` is a one-line explanation for the confirm dialog."""
         try:
             dt = _parse_capture_dt(self._coll.item_for_key(key).date)
         except (ValueError, KeyError):
@@ -1510,11 +1628,37 @@ class TripMapView(QDialog):
             span = (ta - tb).total_seconds()
             f = (dt - tb).total_seconds() / span if span else 0.0
             f = max(0.0, min(1.0, f))
-            return (pb["lat"] + f * (pa["lat"] - pb["lat"]),
-                    pb["lon"] + f * (pa["lon"] - pb["lon"]))
+            lat = pb["lat"] + f * (pa["lat"] - pb["lat"])
+            lon = pb["lon"] + f * (pa["lon"] - pb["lon"])
+            gap_m = _haversine_m(pb["lat"], pb["lon"], pa["lat"], pa["lon"])
+            # Distance between the brackets is the confidence: a tight cluster
+            # (the photos didn't move) makes the answer near-certain — the 'magnet'.
+            if gap_m <= 30:
+                conf = "high"
+            elif gap_m <= 300:
+                conf = "medium"
+            else:
+                conf = "low"
+            # A long time gap between fixes means we could have wandered anywhere
+            # in between, even if the endpoints happen to be close — soften by one.
+            if span > 1200 and conf == "high":
+                conf = "medium"
+            elif span > 3600 and conf == "medium":
+                conf = "low"
+            detail = (f"Between two photos {_fmt_dist(gap_m)} apart "
+                      f"({_fmt_dur(span)} between them).")
+            return {"lat": lat, "lon": lon, "conf": conf,
+                    "neighbours": [(pb["lat"], pb["lon"]), (pa["lat"], pa["lon"])],
+                    "detail": detail}
+        # One-sided: no photo on the other side of this capture time — assume it
+        # stayed at the last (or next) known spot. Always a rough guess.
         pool = before or after
         p, _ = (max if before else min)(pool, key=lambda x: x[1])
-        return (p["lat"], p["lon"])
+        side = "before" if before else "after"
+        detail = (f"No GPS'd photo {'after' if before else 'before'} this one; "
+                  f"placed at the nearest known position ({side} it).")
+        return {"lat": p["lat"], "lon": p["lon"], "conf": "low",
+                "neighbours": [(p["lat"], p["lon"])], "detail": detail}
 
     # ── delete (move to trash) ───────────────────────────────────────────────
     def _day_of(self, key: str) -> str | None:
@@ -1623,13 +1767,16 @@ class TripMapView(QDialog):
         # modal confirm / run the reverse-geocode network call.
         QTimer.singleShot(0, lambda: self._place_dropped(keys, lat, lon))
 
-    def _place_dropped(self, keys: list[str], lat: float, lon: float):
+    def _place_dropped(self, keys: list[str], lat: float, lon: float,
+                       note: str = "") -> bool:
         """A no-GPS picture (or selection) was dropped on the map at (lat, lon).
         Reverse-geocode the place, confirm, then write GPS + location to each
-        picture's sidecar and move it from the tray onto the map as a dot."""
+        picture's sidecar and move it from the tray onto the map as a dot. `note`
+        is an optional explanation (e.g. how a suggested position was estimated).
+        Returns True once at least one picture was actually placed."""
         keys = [k for k in keys if k in self._nogps_keys]
         if not keys:
-            return
+            return False
         from gui.geolocate import reverse_geocode, place_fields, write_gps, \
             write_location_batch
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -1639,13 +1786,15 @@ class TripMapView(QDialog):
             QApplication.restoreOverrideCursor()
         place = self._place_str(fields, lat, lon)
         n = len(keys)
+        msg = (f"Place {n} picture{'' if n == 1 else 's'} here?\n\n"
+               f"{place}\n{lat:.5f}, {lon:.5f}")
+        if note:
+            msg += f"\n\n{note}\n\nNot right? Cancel and drag it onto the exact spot."
         if QMessageBox.question(
-                self, "Set location",
-                f"Place {n} picture{'' if n == 1 else 's'} here?\n\n"
-                f"{place}\n{lat:.5f}, {lon:.5f}",
+                self, "Set location", msg,
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
         ) != QMessageBox.StandardButton.Yes:
-            return
+            return False
         has_place = any(fields.values())
         written, skipped = [], 0
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -1673,12 +1822,14 @@ class TripMapView(QDialog):
             self._nogps_keys = [k for k in self._nogps_keys if k not in written]
             if self._tray is not None:
                 self._tray.remove_keys(written)
+            self._map.clear_geotag_preview()   # placement landed — drop the preview
             self._render(fit=False)        # keep the view; new dots appear in place
         if skipped:
             QMessageBox.information(
                 self, "Set location",
                 f"{skipped} picture{'' if skipped == 1 else 's'} had no writable "
                 f"sidecar (e.g. HEIC-only) and could not be geotagged.")
+        return bool(written)
 
     # ── data ─────────────────────────────────────────────────────────────────
     def _build_points(self) -> tuple[list[dict], list[str]]:

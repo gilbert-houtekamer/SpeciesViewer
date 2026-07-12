@@ -429,7 +429,13 @@ class PreviewCollection(PictureCollection):
         return None
 
     def location_targets(self, upn_key: str):
-        """The UPN's XMP/JPG files — where LR-style location text is written."""
+        """The UPN's XMP/JPG files — where LR-style location text is written.
+
+        When the file index carries no existing sidecar/JPG (a RAW whose .xmp was
+        created after the last Read, or a stale/empty indexed path), fall back to
+        the RAW's sibling `<stem>.xmp`: exiftool creates it, and it's the sidecar
+        PhotoLab/Lightroom read. Only HEIC/PNG-only UPNs genuinely have nowhere to
+        write — raw_path is None there, so they still return []."""
         out = []
         for fname in self._files(upn_key):
             frow = self.fpr.fi.files_dict.get(fname)
@@ -439,7 +445,23 @@ class PreviewCollection(PictureCollection):
                 wf = frow.get("WindowsFileName", "")
                 if wf and Path(wf).exists():
                     out.append(wf)
-        return out
+        if out:
+            return out
+        raw = self.raw_path(upn_key)
+        if raw:
+            # Guardrail: the index named a sidecar/JPG but none resolved to a live
+            # path (dead/stale/mangled WindowsFileName — the trip-side twin of the
+            # master dead-link issue). Recompute from the RAW's real location and
+            # log it, so we can measure how widespread stale trip sidecars are.
+            named = [f for f in self._files(upn_key)
+                     if Path(f).suffix.lower() in (".xmp", ".jpg", ".jpeg")]
+            if named:
+                logger.warning(
+                    "location_targets: %s — indexed sidecar/JPG %s had no live path; "
+                    "falling back to sibling .xmp next to %s",
+                    upn_key, named, raw.name)
+            return [str(raw.with_suffix(".xmp"))]
+        return []
 
     def read_location(self, upn_key: str) -> dict:
         from gui.geolocate import read_location_fields
