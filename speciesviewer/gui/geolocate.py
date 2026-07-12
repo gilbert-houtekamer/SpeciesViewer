@@ -132,6 +132,33 @@ def reverse_geocode(lat, lon, *, lang="en", zoom=14, timeout=10):
         return None
 
 
+# How a coordinate we wrote was obtained. Empty (or anything else) means the
+# CAMERA recorded it — not ours to overwrite. This is the value the map's move rule
+# reads, and it is the ONLY thing that grants permission to move a picture.
+GPS_MANUAL = "MANUAL"
+
+# One arcsecond ~ 31 m. A place-name lookup is good to somewhere between tens and
+# hundreds of metres, so writing hundredths of an arcsecond (~0.3 m) would claim an
+# accuracy we simply do not have.
+_ARCSEC = 1.0 / 3600.0
+
+
+def coarse_coord(lat, lon, arcsec: int = 1):
+    """Round (lat, lon) to whole arcseconds — the honest precision of a coordinate
+    derived from a PLACE NAME rather than measured by a receiver.
+
+    This is a truthfulness device and a human-facing one: a coarse coordinate LOOKS
+    approximate ("7 deg 12' 52\" N" beside a camera's "…52.66\" N"), which is the
+    cue that it still wants refining. It is deliberately NOT the provenance flag —
+    permission to move lives in GPSProcessingMethod, because 1.9% of the master's
+    genuine camera fixes already print as whole arcseconds, and because any tool
+    that rewrites GPS can reformat a value and silently create or destroy a signal
+    carried in its decimals.
+    """
+    step = _ARCSEC * max(1, int(arcsec))
+    return (round(lat / step) * step, round(lon / step) * step)
+
+
 def search_places(query, *, lang="en", limit=8, timeout=10, viewbox=None):
     """FORWARD geocode — a place NAME → candidate coordinates. The mirror of
     reverse_geocode, and the answer to "I wrote down where I was, but the camera
@@ -375,16 +402,30 @@ def write_location_batch(files, fields, *, overwrite=True):
     return written
 
 
-def write_gps(files, lat, lon):
+def write_gps(files, lat, lon, *, method: str = GPS_MANUAL):
     """Write signed-decimal GPS (lat, lon) into the XMP of one or more files —
     used by the viewer's copy/paste-GPS for shots the sv2 sibling/time/bracket
     backfill can't reach. RAW is never touched; the pipeline + viewer read it back
-    via Composite/XMP:GPSLatitude. Returns the number of files written."""
+    via Composite/XMP:GPSLatitude. Returns the number of files written.
+
+    `method` stamps GPSProcessingMethod alongside the fix. It defaults to MANUAL
+    because EVERY coordinate this function writes is one a human caused — dragged
+    onto the map, copied from a neighbour, or derived from a place name. None of
+    them came from a receiver, and that is exactly what makes them safe to move and
+    refine later. A camera's own fix never passes through here, so it keeps whatever
+    (usually nothing) the camera recorded, and the map will refuse to move it.
+    """
     from engine.exif_writer import run_exiftool_files
     files = [str(f) for f in files if f]
     if not files or lat is None or lon is None:
         return 0
     args = [f"-XMP:GPSLatitude={lat}", f"-XMP:GPSLongitude={lon}", "-overwrite_original"]
+    if method:
+        # Written to BOTH namespaces: exiftool's Composite/EXIF read path is what
+        # the pipeline harvests, and the XMP copy is what survives in a sidecar
+        # beside a RAW we must not touch.
+        args[2:2] = [f"-EXIF:GPSProcessingMethod={method}",
+                     f"-XMP:GPSProcessingMethod={method}"]
     try:
         r = run_exiftool_files(args, files)
         if r.returncode != 0:

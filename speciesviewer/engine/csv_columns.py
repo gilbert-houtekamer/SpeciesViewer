@@ -45,6 +45,13 @@ COLUMN_NAMES = {
     "-gpsposition": "Composite:GPSPosition",
     "-gpslatitude": "EXIF:GPSLatitude",
     "-gpslongitude": "EXIF:GPSLongitude",
+    # HOW the fix was obtained. Empty (or anything else) = the camera recorded it,
+    # and it is not ours to overwrite. "MANUAL" = a human placed it — dragged onto
+    # the map, or derived from a place name — so it may be moved and refined. This
+    # is the PROVENANCE the map's move rule reads; the coordinate's precision is a
+    # separate, human-facing signal and must never be used to infer permission
+    # (1.9% of the master's real fixes already print as whole arcseconds).
+    "-gpsprocessingmethod": "EXIF:GPSProcessingMethod",
     "-location": "XMP:Location",
     "-city": "XMP:City",
     "-Municipality": "XMP:Municipality",
@@ -116,7 +123,10 @@ DATA_FILE_FIELDS = [
     "IPTC:Keywords",
     "EXIF:DateTimeOriginal",
     "XMP:Description",
-    "XMP:Headline"
+    "XMP:Headline",
+    # NEW COLUMNS GO AT THE END (a frozen CSV is re-headed against this list, so an
+    # insertion in the middle would shift every existing value one column left).
+    "EXIF:GPSProcessingMethod"
 ]
 
 SPECIES_FIELDS = [
@@ -184,6 +194,11 @@ PICTURE_FIELDS = [
     # getFormattedCityStateCountry); added near the end per the "new columns at
     # end" convention, but before Headline so Headline stays the sacrificial last.
     "Municipality",
+    # How this picture's GPS was obtained: "" = the camera recorded it (do not
+    # overwrite); "MANUAL" = a human placed it (map drag / place-name lookup), so
+    # it may be moved and refined. Placed here for the same reason as Municipality:
+    # near the end, but BEFORE the sacrificial Headline.
+    "GPSProcessingMethod",
     # Headline LAST on purpose — so a trailing column drifts off a stale master header harmlessly.
     # Blog extras (the only Headline carriers) are excluded from the master,
     # so a trailing column drifts off the stale master header harmlessly

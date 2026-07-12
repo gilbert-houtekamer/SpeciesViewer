@@ -642,6 +642,7 @@ class Project:
             "JPGSize":          "",
             "GPSAltitude":      "",
             "GPSPosition":      "",
+            "GPSProcessingMethod": "",
             "Location":         "",
             "City":             "",
             "Municipality":     "",
@@ -698,6 +699,9 @@ class Project:
         upn["JPGSize"] =           self.findLargestJPGSize(files)
         if upn["GPSAltitude"] == "": upn["GPSAltitude"] =       self.findAnySourceItem(files, "EXIF:GPSAltitude")
         if upn["GPSPosition"] == "": upn["GPSPosition"] =       self.findAnySourceItem(files, "Composite:GPSPosition")
+        # Travels with the coordinate: it is only meaningful about the fix above.
+        if upn["GPSProcessingMethod"] == "":
+            upn["GPSProcessingMethod"] = self.findAnySourceItem(files, "EXIF:GPSProcessingMethod")
         upn["Location"] =          self.findXMPItem(files, "XMP:Location")
         upn["City"] =              self.findXMPItem(files, "XMP:City")
         upn["Municipality"] =      self.findXMPItem(files, "XMP:Municipality")

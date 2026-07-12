@@ -1877,9 +1877,12 @@ class TripMapView(QDialog):
         self._map.allow_hide = True        # right-click a bubble → hide it (view-only)
         self._map.allow_drop = self._can_place       # accept no-GPS pics dragged on
         # Bubble-move OVERWRITES the GPS of every picture in the bubble. In geotag
-        # mode those coordinates are the MASTER's, recorded by the camera — so this
-        # stays off: we fill what is missing, we never overwrite what is there.
-        self._map.allow_move = not self._read_only
+        # mode the gesture is permitted, but _move_group then refuses any bubble
+        # holding a coordinate the CAMERA recorded — so you can refine a coordinate
+        # WE derived (that is the whole point of seeding from a place name) and
+        # still never overwrite evidence. "Fill, never overwrite" now reads more
+        # precisely: never overwrite what we did not put there ourselves.
+        self._map.allow_move = self._can_place
         self._map.bubble_activated.connect(self._on_bubble)
         self._map.bubble_hide_requested.connect(self._on_hide)
         self._map.pictures_dropped.connect(self._on_drop)
@@ -2103,13 +2106,19 @@ class TripMapView(QDialog):
         if dlg.exec() != QDialog.DialogCode.Accepted or not dlg.chosen:
             return
         r = dlg.chosen
+        # Round to whole arcseconds (~31 m). A place-name lookup is simply not
+        # accurate to the 0.3 m that hundredths of an arcsecond would claim, and a
+        # visibly coarse coordinate reads as "approximate — still to be refined".
+        from gui.geolocate import coarse_coord
+        lat, lon = coarse_coord(r["lat"], r["lon"])
         # A named place: zoom to its street, not its province.
-        self._map.focus_area([(r["lat"], r["lon"])], max_z=17, min_span=0.004)
+        self._map.focus_area([(lat, lon)], max_z=17, min_span=0.004)
         short = r["name"].split(",")[0]
         self._place_dropped(
-            keys, r["lat"], r["lon"],
-            note=f"Found “{short}”. That is where the <i>place</i> is — drag the pin "
-                 f"if the picture was taken somewhere else nearby.")
+            keys, lat, lon,
+            note=f"Found “{short}” (to the nearest ~30 m). That is where the "
+                 f"<i>place</i> is — drag the pin if the picture was taken somewhere "
+                 f"else nearby.")
 
     def _suggest_position(self, key: str, est: dict):
         """Show the estimate as a coloured preview (green time-neighbours + a
@@ -2435,6 +2444,24 @@ class TripMapView(QDialog):
                 if k in present and k not in self._hidden]
         if not keys:
             return
+
+        # In geotag mode the coordinates under this bubble are the MASTER's. Moving
+        # is allowed ONLY where a human placed them (map drag / place-name lookup) —
+        # refining our own guess is the point; overwriting what a camera recorded is
+        # not. Provenance comes from GPSProcessingMethod, never from how precise the
+        # number looks.
+        if self._geotag:
+            derived = getattr(self._coll, "gps_is_derived", None)
+            fixed = [k for k in keys if not (derived and derived(k))]
+            if fixed:
+                QMessageBox.information(
+                    self, "Cannot move these",
+                    f"{len(fixed)} of these {len(keys)} picture(s) carry GPS the "
+                    f"CAMERA recorded, and this map does not overwrite that.\n\n"
+                    f"Only coordinates a person placed — dragged onto the map, or "
+                    f"looked up from a place name — can be moved and refined.")
+                return
+
         spots = data.get("n", 1) or 1
         had_gps = [k for k in keys if k not in self._placed]
         warn = []

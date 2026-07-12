@@ -563,10 +563,37 @@ class PreviewCollection(PictureCollection):
     def note_gps_written(self, upn_key: str) -> None:
         """A paste-GPS wrote GPS into this UPN's XMP — remember it so the
         missing-GPS badge clears without a rescan. Kept in a side set rather than
-        poked into the pipeline's in-memory file rows (which feed Write Summary)."""
+        poked into the pipeline's in-memory file rows (which feed Write Summary).
+
+        Anything WE wrote is by definition human-placed, so it also becomes movable
+        immediately — without this a picture you just placed would be frozen until
+        the next master re-read populated its GPSProcessingMethod column."""
         if not hasattr(self, "_pasted_gps"):
             self._pasted_gps = set()
         self._pasted_gps.add(upn_key)
+
+    def gps_is_derived(self, upn_key: str) -> bool:
+        """True when this picture's coordinate was placed by a HUMAN — dragged onto
+        the map, copied from a neighbour, or looked up from a place name — rather
+        than recorded by the camera.
+
+        This is the one thing that grants permission to MOVE a picture: a camera's
+        fix is evidence and we do not overwrite it, but a coordinate we derived is a
+        guess and refining it is the whole point. Provenance is read from
+        GPSProcessingMethod, never inferred from how precise the number looks —
+        1.9% of the master's genuine fixes already print as whole arcseconds.
+        """
+        from gui.geolocate import GPS_MANUAL
+        if upn_key in getattr(self, "_pasted_gps", ()):   # we wrote it this session
+            return True
+        row = self.fpr.upn.UniquePictureName_dict.get(upn_key) or {}
+        if (row.get("GPSProcessingMethod") or "").strip().upper() == GPS_MANUAL:
+            return True
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname) or {}
+            if (frow.get("EXIF:GPSProcessingMethod") or "").strip().upper() == GPS_MANUAL:
+                return True
+        return False
 
     # ── external-edit refresh (PhotoLab / Lightroom colour + rating) ──────────
     def _xmp_for(self, upn_key: str):
