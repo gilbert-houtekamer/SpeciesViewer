@@ -59,7 +59,10 @@ _BASEMAPS = [
 # the interpolation spans a big gap (or is a one-sided extrapolation) and really
 # needs a human to nudge it.
 _NEIGHBOUR_COLOR = "#2e7d32"
-_CONF_COLOR = {"high": "#2e7d32", "medium": "#f9a825", "low": "#d32f2f"}
+# "manual" = a spot the user picked themselves (a drop or a drag-move) — blue, no
+# confidence claim; the others grade an ESTIMATE.
+_CONF_COLOR = {"high": "#2e7d32", "medium": "#f9a825", "low": "#d32f2f",
+               "manual": "#1565c0"}
 
 # A UPN worth offering in the drag-to-geotag tray must have a real IMAGE file.
 # Sidecar-only records (orphan .dop/.xmp with no picture — e.g. an early
@@ -157,6 +160,7 @@ class TileMapView(QGraphicsView):
     bubble_hide_requested = pyqtSignal(object)  # cluster dict on right-click → Hide
     pictures_dropped = pyqtSignal(list, float, float)  # (upns, lat, lon) drop-to-geotag
     group_move_requested = pyqtSignal(object, float, float)  # (cluster, lat, lon) drag-move
+    suggestion_moved = pyqtSignal(float, float)  # (lat, lon) — pending pin nudged
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -189,6 +193,9 @@ class TileMapView(QGraphicsView):
         self._highlight = None              # transient ring around the active bubble
         self._geo_preview = None            # no-GPS placement preview (lonlat + colour)
         self._geo_items: list = []          # its scene items (rebuilt per zoom)
+        self._geo_pin = None                # the suggested-pin item (draggable)
+        self._grab_pin = False              # dragging that pin to nudge the spot
+        self._pin_moved = False             # it actually moved (→ worth re-geocoding)
         self._grab_data = None              # bubble grabbed for a drag-move (or None)
         self._grab_press = None             # viewport pos where the grab started
         self._moving = False                # past the threshold → dragging a group
@@ -599,6 +606,7 @@ class TileMapView(QGraphicsView):
         for it in self._geo_items:
             self._scene.removeItem(it)
         self._geo_items = []
+        self._geo_pin = None
         gp = self._geo_preview
         if not gp or not gp.get("suggestion"):
             return
@@ -625,14 +633,17 @@ class TileMapView(QGraphicsView):
                                           npen, QBrush(nfill))
             ring.setZValue(22)
             self._geo_items.append(ring)
-        # Suggestion: a filled, white-bordered pin in the confidence colour.
+        # Suggestion: a filled, white-bordered pin in the confidence colour. This
+        # one is DRAGGABLE — grab it to nudge the spot before confirming.
         spen = QPen(QColor("white"), 2)
         spen.setCosmetic(True)
         r = 10
         dot = self._scene.addEllipse(sx - r, sy - r, 2 * r, 2 * r,
                                      spen, QBrush(QColor(gp["color"])))
         dot.setZValue(24)
+        dot.setToolTip("Drag me to adjust the spot")
         self._geo_items.append(dot)
+        self._geo_pin = dot
         # A small white centre dot so the pin reads as a target, not just a blob.
         c = 2
         core = self._scene.addEllipse(sx - c, sy - c, 2 * c, 2 * c,
@@ -742,10 +753,16 @@ class TileMapView(QGraphicsView):
         if e.button() == Qt.MouseButton.LeftButton:
             self._press_vp = e.position()
             self._pan_last = e.position()
+            # The pending-placement pin wins over everything: it sits on top and
+            # exists only while a confirm is open, so grabbing it means "nudge".
+            if self._geo_pin is not None and self._geo_pin in self.items(
+                    int(e.position().x()), int(e.position().y())):
+                self._grab_pin = True
+                self._pin_moved = False
             # Pressing on a bubble arms a possible drag-move (trip map only): a
             # short move past the threshold grabs the group, a plain click still
             # selects it. Empty-map drags keep panning.
-            if self.allow_move:
+            elif self.allow_move:
                 _item, data = self._bubble_at(int(e.position().x()),
                                               int(e.position().y()))
                 if data is not None and data.get("upns"):
@@ -754,6 +771,15 @@ class TileMapView(QGraphicsView):
         super().mousePressEvent(e)
 
     def mouseMoveEvent(self, e):
+        if (self._grab_pin and self._geo_preview
+                and (e.buttons() & Qt.MouseButton.LeftButton)):
+            sp = self.mapToScene(int(e.position().x()), int(e.position().y()))
+            lon, lat = world_to_lonlat(sp.x(), sp.y(), self._z)
+            self._geo_preview["suggestion"] = (lat, lon)
+            self._pin_moved = True
+            self._draw_geo_preview()          # follows the cursor, keeps the rings
+            self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
+            return   # nudging the pin — don't pan
         if self._grab_data is not None and (e.buttons() & Qt.MouseButton.LeftButton):
             if not self._moving:
                 if (e.position() - self._grab_press).manhattanLength() > 4:
@@ -789,6 +815,15 @@ class TileMapView(QGraphicsView):
     def mouseReleaseEvent(self, e):
         super().mouseReleaseEvent(e)
         self._pan_last = None
+        if e.button() == Qt.MouseButton.LeftButton and self._grab_pin:
+            self._grab_pin = False
+            self._press_vp = None
+            self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+            if self._geo_preview and self._pin_moved:
+                lat, lon = self._geo_preview["suggestion"]
+                self.suggestion_moved.emit(lat, lon)   # host re-geocodes + updates bar
+            self._pin_moved = False
+            return
         if e.button() == Qt.MouseButton.LeftButton and self._moving:
             sp = self.mapToScene(int(e.position().x()), int(e.position().y()))
             lon, lat = world_to_lonlat(sp.x(), sp.y(), self._z)
@@ -1469,13 +1504,19 @@ class TripMapView(QDialog):
     is a fair later refactor; kept separate now to leave the shipped species map
     untouched.)"""
 
+    # Pictures whose GPS/location we just wrote — the host viewer refreshes their
+    # cards and re-applies its filter, so one just placed leaves the 📍 subset.
+    pictures_geotagged = pyqtSignal(list)
+
     def __init__(self, parent, collection, keys: list[str],
                  title: str = "Trip map", loader=None,
                  default_path: bool = False, default_basemap: str = "Standard",
                  trip_root: str = ""):
         super().__init__(parent)
         self._coll = collection
-        self._keys = list(keys or [])
+        self._src_keys = list(keys or [])   # everything the viewer handed over
+        self._scope = "all"                 # "all" | "species" (header buttons)
+        self._keys = list(self._src_keys)   # the scoped subset actually mapped
         self._strip = None
         # Set → the no-GPS tray offers Delete (move to <trip_root>/.trash/<day>);
         # needs a collection that can trash a UPN + the per-day review CSVs here.
@@ -1513,6 +1554,21 @@ class TripMapView(QDialog):
         h.addSpacing(8)
         h.addWidget(self._showall_btn)
         h.addStretch()
+        # Scope: the whole handed-over set, or only pictures carrying a species
+        # (the real observations, without landscape/context shots). Mirrors the
+        # viewer's All / Species buttons; All by default.
+        self._all_btn = QPushButton("All")
+        self._all_btn.setCheckable(True)
+        self._all_btn.setChecked(True)
+        self._all_btn.setToolTip("Map every picture in this view")
+        self._all_btn.clicked.connect(lambda: self._set_scope("all"))
+        self._species_btn = QPushButton("Species")
+        self._species_btn.setCheckable(True)
+        self._species_btn.setToolTip("Map only the pictures that carry a species")
+        self._species_btn.clicked.connect(lambda: self._set_scope("species"))
+        h.addWidget(self._all_btn)
+        h.addWidget(self._species_btn)
+        h.addSpacing(8)
         self._path_chk = QCheckBox("Travel path")
         self._path_chk.setToolTip("Draw a line through the pictures in time order "
                                   "(most useful across a whole trip)")
@@ -1535,11 +1591,35 @@ class TripMapView(QDialog):
 
         # Top tray of the no-GPS pictures (drag onto the map to geotag — Phase 5b).
         # Collapsible + only present when there are any; laptop vertical space.
+        self._lay = lay                    # kept: the tray is rebuilt on scope change
+        self._tray_index = lay.count()     # tray slot = right after the header
         if self._nogps_keys:
             self._tray = NoGpsTray(collection, self._nogps_keys)
             self._tray.emptied.connect(self._on_tray_emptied)
             self._tray.context_requested.connect(self._tray_context)
             lay.addWidget(self._tray)
+
+        # Inline confirm bar for a pending placement/move. Deliberately NOT a modal
+        # dialog: a QMessageBox lands on top of the very spot you're judging, and it
+        # would also block dragging the pin to adjust it.
+        self._pending = None               # {mode, keys, lat, lon, fields, place}
+        self._bar = QWidget()
+        self._bar.setStyleSheet("background:#fff8e1; border-top:1px solid #e0c97f;")
+        b = QHBoxLayout(self._bar)
+        b.setContentsMargins(8, 5, 8, 5)
+        self._bar_label = QLabel()
+        self._bar_label.setWordWrap(True)
+        self._bar_label.setStyleSheet("color:#333; border:none;")
+        b.addWidget(self._bar_label, 1)
+        self._bar_ok = QPushButton("Place here")
+        self._bar_ok.setDefault(True)
+        self._bar_ok.clicked.connect(self._confirm_accept)
+        b.addWidget(self._bar_ok)
+        bar_cancel = QPushButton("Cancel")
+        bar_cancel.clicked.connect(self._confirm_cancel)
+        b.addWidget(bar_cancel)
+        self._bar.setVisible(False)
+        lay.addWidget(self._bar)
 
         self._splitter = QSplitter(Qt.Orientation.Vertical)
         self._map = TileMapView(self)
@@ -1551,6 +1631,7 @@ class TripMapView(QDialog):
         self._map.bubble_hide_requested.connect(self._on_hide)
         self._map.pictures_dropped.connect(self._on_drop)
         self._map.group_move_requested.connect(self._on_move)
+        self._map.suggestion_moved.connect(self._on_pin_nudged)
         self._splitter.addWidget(self._map)
         self._strip_holder = QWidget()
         self._strip_box = QVBoxLayout(self._strip_holder)
@@ -1585,6 +1666,37 @@ class TripMapView(QDialog):
         self._render(fit=False)
         self._map.set_path_visible(default_path)
         QTimer.singleShot(0, self._map.fit_to_points)
+
+    # ── scope (All / Species) ────────────────────────────────────────────────
+    def _set_scope(self, name: str):
+        """Switch the mapped subset. 'species' keeps only pictures that carry a
+        species (the real observations — drops landscape/context shots); 'all' is
+        everything the viewer handed over. Rebuilds points AND the no-GPS tray."""
+        self._all_btn.setChecked(name == "all")
+        self._species_btn.setChecked(name == "species")
+        if name == self._scope:
+            return
+        self._scope = name
+        self._end_confirm()            # a pending placement refers to the old set
+        if name == "species" and hasattr(self._coll, "species_keys"):
+            allowed = set(self._coll.species_keys())
+            self._keys = [k for k in self._src_keys if k in allowed]
+        else:
+            self._keys = list(self._src_keys)
+        self._all_points, self._nogps_keys = self._build_points()
+        self._rebuild_tray()
+        self._render(fit=False)        # keep the frame the user is looking at
+
+    def _rebuild_tray(self):
+        if self._tray is not None:
+            self._lay.removeWidget(self._tray)
+            self._tray.deleteLater()
+            self._tray = None
+        if self._nogps_keys:
+            self._tray = NoGpsTray(self._coll, self._nogps_keys)
+            self._tray.emptied.connect(self._on_tray_emptied)
+            self._tray.context_requested.connect(self._tray_context)
+            self._lay.insertWidget(self._tray_index, self._tray)
 
     # ── render / hide ────────────────────────────────────────────────────────
     def _render(self, fit: bool = True):
@@ -1693,16 +1805,13 @@ class TripMapView(QDialog):
 
     def _suggest_position(self, key: str, est: dict):
         """Show the estimate as a coloured preview (green time-neighbours + a
-        confidence-coloured suggested pin), frame it, then run the same confirm +
-        write as a manual drop. The preview stays up behind the dialog so the user
-        can judge the estimate — and lingers after Cancel so a manual drag has the
-        neighbours as a visible target. Cleared once a placement actually lands."""
+        confidence-coloured DRAGGABLE pin), frame it, and open the inline confirm
+        bar. The pin can be nudged onto the exact spot before committing."""
         self._map.show_geotag_preview(est["neighbours"],
                                       (est["lat"], est["lon"]), est["conf"])
         self._map.focus_area(list(est["neighbours"]) + [(est["lat"], est["lon"])])
-        # Confirm + write (same path as a manual drop); on success it clears the
-        # preview, on Cancel it lingers so a manual drag has the neighbours to aim at.
-        self._place_dropped([key], est["lat"], est["lon"], note=est["detail"])
+        self._begin_confirm("place", [key], est["lat"], est["lon"],
+                            note=est["detail"])
 
     def _estimate_position(self, key: str):
         """Estimate a no-GPS picture's location by TIME-interpolating between the
@@ -1872,43 +1981,94 @@ class TripMapView(QDialog):
         QTimer.singleShot(0, lambda: self._place_dropped(keys, lat, lon))
 
     def _place_dropped(self, keys: list[str], lat: float, lon: float,
-                       note: str = "") -> bool:
-        """A no-GPS picture (or selection) was dropped on the map at (lat, lon).
-        Reverse-geocode the place, confirm, then write GPS + location to each
-        picture's sidecar and move it from the tray onto the map as a dot. `note`
-        is an optional explanation (e.g. how a suggested position was estimated).
-        Returns True once at least one picture was actually placed."""
+                       note: str = ""):
+        """A no-GPS picture (or selection) was dropped on the map at (lat, lon):
+        show a draggable pin there and open the inline confirm bar (nudge, then
+        commit). `note` explains a suggested position, when there is one."""
         keys = [k for k in keys if k in self._nogps_keys]
         if not keys:
-            return False
+            return
+        self._map.show_geotag_preview([], (lat, lon), "manual")   # you chose the spot
+        self._begin_confirm("place", keys, lat, lon, note=note)
+
+    # ── inline confirm bar (pending placement / move) ─────────────────────────
+    def _begin_confirm(self, mode: str, keys: list[str], lat: float, lon: float,
+                       note: str = "", warnings: str = ""):
+        """Open the non-modal confirm bar for a pending place/move. The map stays
+        fully visible and the pin stays draggable, so the spot can be nudged before
+        committing (a modal dialog would cover the very spot AND block the drag)."""
         place, fields = self._geocode(lat, lon)
-        n = len(keys)
-        msg = (f"Place {n} picture{'' if n == 1 else 's'} here?\n\n"
-               f"{place}\n{lat:.5f}, {lon:.5f}")
-        if note:
-            msg += f"\n\n{note}\n\nNot right? Cancel and drag it onto the exact spot."
-        if QMessageBox.question(
-                self, "Set location", msg,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
-        ) != QMessageBox.StandardButton.Yes:
-            return False
+        self._pending = {"mode": mode, "keys": keys, "lat": lat, "lon": lon,
+                         "fields": fields, "place": place,
+                         "note": note, "warnings": warnings}
+        self._bar_ok.setText("Place here" if mode == "place" else "Move here")
+        self._refresh_bar()
+        self._bar.setVisible(True)
+
+    def _refresh_bar(self):
+        p = self._pending
+        if not p:
+            return
+        n = len(p["keys"])
+        verb = "Place" if p["mode"] == "place" else "Move"
+        bits = [f"<b>{verb} {n} picture{'' if n == 1 else 's'} here?</b> "
+                f"{p['place']} · {p['lat']:.5f}, {p['lon']:.5f}"]
+        if p["note"]:
+            bits.append(p["note"])
+        if p["warnings"]:
+            bits.append(p["warnings"])
+        bits.append("Drag the pin on the map to adjust.")
+        self._bar_label.setText("<br>".join(bits))
+
+    def _on_pin_nudged(self, lat: float, lon: float):
+        """The pending pin was dragged: re-geocode the new spot and update the bar."""
+        if not self._pending:
+            return
+        place, fields = self._geocode(lat, lon)
+        self._pending.update({"lat": lat, "lon": lon,
+                              "place": place, "fields": fields})
+        self._refresh_bar()
+
+    def _end_confirm(self):
+        self._pending = None
+        self._bar.setVisible(False)
+        self._map.clear_geotag_preview()
+
+    def _confirm_cancel(self):
+        self._end_confirm()
+
+    def _confirm_accept(self):
+        p = self._pending
+        if not p:
+            return
+        keys, lat, lon = p["keys"], p["lat"], p["lon"]
+        place, fields, mode = p["place"], p["fields"], p["mode"]
         written, skipped = self._write_gps_place(keys, lat, lon, fields)
-        for k in written:
-            try:
-                date = getattr(self._coll.item_for_key(k), "date", "") or ""
-            except (ValueError, KeyError):
-                date = ""
-            self._all_points.append({"lat": lat, "lon": lon, "upn": k,
-                                     "place": place, "date": date.strip()})
+        if mode == "place":
+            for k in written:
+                try:
+                    date = getattr(self._coll.item_for_key(k), "date", "") or ""
+                except (ValueError, KeyError):
+                    date = ""
+                self._all_points.append({"lat": lat, "lon": lon, "upn": k,
+                                         "place": place, "date": date.strip()})
+            if written:
+                self._nogps_keys = [k for k in self._nogps_keys if k not in written]
+                if self._tray is not None:
+                    self._tray.remove_keys(written)
+        else:                                   # move: relocate the existing points
+            wset = set(written)
+            for pt in self._all_points:
+                if pt["upn"] in wset:
+                    pt["lat"], pt["lon"], pt["place"] = lat, lon, place
+        self._placed.update(written)
+        self._end_confirm()
         if written:
-            self._placed.update(written)
-            self._nogps_keys = [k for k in self._nogps_keys if k not in written]
-            if self._tray is not None:
-                self._tray.remove_keys(written)
-            self._map.clear_geotag_preview()   # placement landed — drop the preview
-            self._render(fit=False)        # keep the view; new dots appear in place
+            self._render(fit=False)      # keep the view; the dots land in place
+            # Let the host viewer refresh: a just-placed picture should drop out of
+            # its 📍 "missing GPS" subset instead of lingering in the grid.
+            self.pictures_geotagged.emit(list(written))
         self._warn_skipped(skipped)
-        return bool(written)
 
     def _geocode(self, lat: float, lon: float) -> tuple[str, dict]:
         """Reverse-geocode (lat, lon) → (display place string, location fields),
@@ -1954,45 +2114,33 @@ class TripMapView(QDialog):
                 f"sidecar (e.g. HEIC-only) and could not be geotagged.")
 
     def _on_move(self, data: dict, lat: float, lon: float):
-        # Defer so the mouse-release handler fully unwinds before the modal confirm.
+        # Defer so the mouse-release handler fully unwinds before we geocode.
         QTimer.singleShot(0, lambda: self._move_group(data, lat, lon))
 
     def _move_group(self, data: dict, lat: float, lon: float):
-        """A bubble was dragged to (lat, lon): re-place ALL its pictures there
-        (a bubble is a same-spot group). Overwrites their GPS + location. Warns
-        when the bubble spans several distinct spots (zoom in for just one) and
-        when it overwrites pictures that already carried GPS."""
+        """A bubble was dragged to (lat, lon): drop a draggable pin there and open
+        the confirm bar to re-place ALL its pictures (a bubble is a same-spot
+        group). Warns when the bubble spans several distinct spots (zoom in for
+        just one) and when it overwrites pictures that already carried GPS."""
         present = {p["upn"] for p in self._all_points}
         keys = [k for k in (data.get("upns") or [])
                 if k in present and k not in self._hidden]
         if not keys:
             return
-        place, fields = self._geocode(lat, lon)
-        n = len(keys)
         spots = data.get("n", 1) or 1
         had_gps = [k for k in keys if k not in self._placed]
-        msg = (f"Move {n} picture{'' if n == 1 else 's'} to a new spot?\n\n"
-               f"{place}\n{lat:.5f}, {lon:.5f}")
+        warn = []
         if spots > 1:
-            msg += (f"\n\nThis group covers {spots} different spots — zoom in "
-                    f"first if you only meant one.")
+            warn.append(f"⚠ This group covers {spots} different spots — cancel and "
+                        f"zoom in first if you only meant one.")
         if had_gps:
-            msg += (f"\n\n{len(had_gps)} of these already have GPS; moving "
-                    f"overwrites it.")
-        if QMessageBox.question(
-                self, "Move pictures", msg,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
-        ) != QMessageBox.StandardButton.Yes:
-            return
-        written, skipped = self._write_gps_place(keys, lat, lon, fields)
-        if written:
-            wset = set(written)
-            for p in self._all_points:
-                if p["upn"] in wset:
-                    p["lat"], p["lon"], p["place"] = lat, lon, place
-            self._placed.update(written)
-            self._render(fit=False)
-        self._warn_skipped(skipped)
+            # We can only tell "not placed by you in THIS session" — the existing
+            # GPS may be the camera's or from an earlier session. Say exactly that
+            # rather than claiming to know it was embedded.
+            warn.append(f"⚠ {len(had_gps)} of these already have GPS (from the "
+                        f"camera or an earlier session); moving overwrites it.")
+        self._map.show_geotag_preview([], (lat, lon), "manual")
+        self._begin_confirm("move", keys, lat, lon, warnings="<br>".join(warn))
 
     # ── data ─────────────────────────────────────────────────────────────────
     def _build_points(self) -> tuple[list[dict], list[str]]:

@@ -602,7 +602,19 @@ class ImagePreviewDialog(QDialog):
         base = self.windowTitle().split(" — ")[0]
         dlg = TripMapView(self, self._collection, keys,
                           title=f"Map — {base}", loader=self._loader)
+        dlg.pictures_geotagged.connect(self._on_map_geotagged)
         dlg.show()
+
+    def _on_map_geotagged(self, keys):
+        """The map just wrote GPS + location for these pictures. Refresh their
+        cards and re-apply the filter, so one placed from the map drops out of the
+        📍 'missing GPS' subset (and the title recounts) instead of lingering."""
+        for k in keys:
+            card = self._cards_by_key.get(k)
+            if card:
+                card.refresh()
+            self._notify_large_view(k)
+        self._apply_filters()
 
     def _clear_find_silently(self, except_mode=None):
         """Clear the Find boxes without re-triggering their handlers (used when
