@@ -116,25 +116,62 @@ now runs the entire chain from one confirm (verified end-to-end on BigBoy/Braakm
 and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. Blog re-render
 (svv6 “make clickable”) and the per-day blog editor are done.</p>
 
+<h3>Shipped — the retroactive trip (Sri Lanka is live)</h3>
+<ul>
+  <li><strong>WP7 — scenario-2 “retroactive” pipeline</strong> <span class="tag-shipped">SHIPPED</span> —
+    a virtual trip for a journey that never had a SpeciesViewer trip now runs end-to-end:
+    <strong>Sri Lanka 2018-11-17 → 12-07</strong>, 1766 pictures, 148 species, 21 days — created,
+    blogged, mapped and published. The blocker was not missing code. The auto-blog writer (day
+    title from the day's locations, opening sentence, species callouts) was complete but
+    <strong>had been unplugged</strong>: the day loop said <em>“never fabricate blog text — a day
+    gets a page only if it already has a blog ini.”</em> That is right for a <em>retired</em> trip,
+    whose blogs are migrated from the real trip, but it meant a retroactive trip — which has no
+    source trip and nothing to migrate — skipped <em>every</em> day and then failed outright. The
+    blog editor was no escape either: it only opens tabs for blogs that already exist, so you got
+    an empty dialog. Auto-create is now back, behind a gate.</li>
+  <li><strong>The gate is “this trip has no blogs at all”, not “no source trip”</strong>
+    <span class="tag-shipped">SHIPPED</span> — the obvious rule (auto-create when
+    <code>source_trip_id</code> is empty) would have been a bug: <em>every</em> virtual trip made
+    before that key existed carries an empty one, gaps and all — safari has 28 blogs across 30 days,
+    costa-rica 23 of 25, gambia 26 of 29. Keying off it would have fabricated drafts into exactly
+    the deliberate gaps the original block existed to protect. Checked against all eleven virtual
+    trips on disk: ten default <em>off</em>, only Sri Lanka <em>on</em>. A checkbox in Write Blogs
+    overrides it either way.</li>
+  <li><strong>Amber / green blog-review bubbles</strong> <span class="tag-shipped">SHIPPED</span> —
+    the same piece of work: auto-generation was disabled because it fabricated <em>silently</em>, and
+    amber/green is what makes it visible — so it is what earns back the right to generate at all. A
+    day blog is now 🟠 <em>draft</em> (written automatically, nobody has read it) or 🟢
+    <em>reviewed</em> (your words), with the count in the trip header. In the editor a draft page
+    carries an amber banner and a <strong>Reviewed</strong> checkbox — and editing the text counts as
+    reviewing it, so <em>Save All</em> deliberately does not bless every draft at once, which would
+    make the flag meaningless. Old hand-written blogs stay green; a blog left by the <em>old</em>
+    auto-writer is still recognised (by its marker) and correctly shows amber.</li>
+  <li><strong>Single-day blog re-upload</strong> <span class="tag-shipped">SHIPPED</span> (was parked
+    as “future”) — <strong>“Save &amp; Upload this day”</strong> on each editor page republishes only
+    that day. The trap: the blog step opens every run by clearing the blog index so stale entries
+    vanish — doing that for a single day would have dropped the other twenty out of the index and
+    orphaned their live pages. Single-day mode skips the wipe and updates just that day in place.</li>
+</ul>
+
 <h3>To do</h3>
 <ul>
-  <li><strong>WP7 — scenario-2 “retroactive” builder</strong> <span class="tag-open">OPEN</span>
-    <span class="tag-big">LARGER</span> — the one real remaining virttrip feature. Create Virtual
-    Trip should ask <em>“from an existing trip”</em> vs <em>“retroactive from master dates”</em>
-    and branch; fold <em>Extract Days</em> into Create. Build a retroactive (e.g. Sri Lanka)
-    virttrip day-by-day from a template, reviewing each day. The step code already works and
-    produces correct banners/links; the missing part is the guided <em>experience</em>.</li>
-  <li><strong>Amber/green blog-review bubbles</strong> <span class="tag-open">OPEN</span> —
-    auto-created/unreviewed = amber, reviewed/has-text = green (mirrors the translation-validation
-    spheres). Scenario-1 (retire) blogs land green; scenario-2 start amber until edited.</li>
+  <li><strong>Geotag the master's pictures without GPS</strong> <span class="tag-open">OPEN / NEW</span> —
+    raised by Sri Lanka: 285 of its pictures have no GPS, and <strong>two whole days</strong>
+    (2018-11-20 and 11-25) are nothing but those, which is why they auto-titled “onbekend”. They
+    cannot be placed from the virtual-trip map, which is read-only by design — a virtual trip's files
+    <em>are</em> the master's. So placing them needs a <strong>master-side</strong> geotag path. The
+    drag-to-geotag and suggest-a-position machinery already exists on the trip map; what it lacks is
+    permission to write into the master.</li>
+  <li><strong>WP7 — the guided <em>Create</em> experience</strong> <span class="tag-open">OPEN</span> —
+    the pipeline is done, but Create still doesn't <em>ask</em> “from an existing trip” vs
+    “retroactive from master dates”, and Extract Days is still a separate step rather than folded in.
+    You have to know the date range and type it yourself. Everything after that point works.</li>
   <li><strong>Scenario-1 “Add to Master” no-op greying</strong> <span class="tag-open">OPEN</span> —
     a retired trip already ran Add-to-Master in its arc; detect and grey the standalone action.</li>
 </ul>
 
 <h3>Parked (by design)</h3>
 <ul>
-  <li><span class="tag-parked">FUTURE</span> Single-day blog re-upload (today “Save All &amp;
-    Re-upload” re-runs all days).</li>
   <li><span class="tag-parked">PARKED</span> Trips vs Virtual-Trips panel visual alignment (tree
     vs date-table) — some differences are valid; cosmetic convergence only.</li>
 </ul>
@@ -168,15 +205,26 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     grouping work. Caveats: parent index thumbnails still need a full build; the master's stored
     <code>ageintext</code> columns stay empty until a separate re-derive/re-commit pass.
     (<code>c1a359d</code> / <code>afda800</code>)</li>
-  <li><strong>“Upgrade the best JPG” workflow</strong> <span class="tag-open">OPEN / minor</span> —
-    sorting by rating surfaces best-picks still on a 10-year-old 800×533 render. The pieces exist
-    (open PhotoLab on the folder → render <code>_DxO.jpg</code> → master card “Add new files for
-    this picture” re-distils BestJPG to the higher-res file). Consider making this a smoother,
-    more discoverable loop (and confirm the website re-publish picks up the new best-pick).
-    Correction (2026-07-11 survey): the small best-JPG is an old small <em>DxO render</em>, NOT a
-    RAW-preview limit — the Nikon D500/D7100/D7500 NEFs actually embed a full-res <code>JpgFromRaw</code>
-    (see the size-aware item below), so where the RAW is still on disk a bigger picture can be pulled
-    straight from it.</li>
+  <li><strong>“Upgrade the best JPG” workflow</strong> <span class="tag-shipped">SHIPPED</span> —
+    the whole per-picture loop is built; the old “open” note was stale (it predated Regenerate-page,
+    which closed its last clause). Sort by rating in the Master Species Viewer and the small
+    best-picks surface; the large viewer's <strong>PL badge</strong> opens the RAW straight in DxO
+    PhotoLab (with the Explorer reveal beside it); render the <code>_DxO.jpg</code>; right-click the
+    master card → <strong>“Add new files for this picture (scan folder)”</strong> ingests the new JPG
+    + <code>.dop</code> and <strong>re-distils BestJPG</strong>; <strong>“Regenerate page…”</strong>
+    re-renders and re-uploads that one species page — which <em>is</em> the “confirm the website
+    re-publish picks it up” step. Best-pick size also stopped reporting the <code>-small</code>
+    thumbnail (<code>f0d7e69</code>: largest JPG, not the first one found). What is left is not the
+    workflow but the <em>scale</em> — see the next item.</li>
+  <li><strong>Find the pages that could show a bigger picture (bulk)</strong>
+    <span class="tag-open">OPEN / boring</span> — of the order of <strong>1000 species pages</strong>
+    still show an old small DxO render (e.g. 800×533) where the RAW on disk could give far more: the
+    Nikon D500/D7100/D7500 NEFs embed a full-res <code>JpgFromRaw</code> (survey 2026-07-11), so this
+    was never a RAW-preview limit. What's missing is the <strong>worklist</strong>: a scan that flags
+    every species whose best-JPG is small relative to what its RAW could yield, as a report (and ideally
+    a filter in the Master Species Viewer). Walking ~1000 of these one at a time through the shipped
+    loop is a lot of tedious work, so the value is in the list plus any batching (a bulk PhotoLab render
+    queue). Deliberately not now.</li>
   <li><strong>EXIF-cache LRU retention</strong> <span class="tag-shipped">SHIPPED</span> — the
     day/trip cache now stamps a <code>seen</code> epoch-day on every hit/write and
     <code>prune_expired(ttl_days=90)</code> evicts only paths that stopped being touched (LRU, not
