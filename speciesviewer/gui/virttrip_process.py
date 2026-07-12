@@ -893,24 +893,33 @@ class VirttripWriteBlogDialog(QDialog):
         trip_data  = read_virttrip_ini(virttrip_root) if virttrip_root else {}
         trip_name  = (trip_data or {}).get("trip_name", Path(virttrip_root).name if virttrip_root else "?")
         day_count  = 0
+        blog_count = 0
         if virttrip_root:
             review_root = Path(virttrip_root) / "metadata" / "review"
+            blog_root   = Path(virttrip_root) / "metadata" / "blog"
             if review_root.is_dir():
-                day_count = sum(
-                    1 for d in review_root.iterdir()
-                    if d.is_dir() and (d / "data_files.csv").exists()
-                )
+                days = [d for d in review_root.iterdir()
+                        if d.is_dir() and (d / "data_files.csv").exists()]
+                day_count  = len(days)
+                blog_count = sum(1 for d in days
+                                 if (blog_root / f"blog_{d.name}.ini").exists())
 
         common_score = _common_blog_min_score(virttrip_root) if virttrip_root else None
 
+        # Offer to write the missing day blogs only for a trip that has none at
+        # all — a retroactive trip on its first run. Once a trip HAS blogs, a day
+        # without one is a deliberate gap (a day never blogged, or a migration
+        # that skipped it), and filling it would invent a day that never existed.
+        # source_trip_id alone can't decide this: every virttrip made before that
+        # key existed has an empty one, gaps included.
+        source_trip  = (trip_data or {}).get("source_trip_id", "").strip()
+        self._fresh  = blog_count == 0 and not source_trip
+
         layout.addWidget(HTMLLabel(
             "<p><b>Write Virtual Trip Blogs</b></p>"
-            "<p>For every day that has extracted data:</p>"
-            "<ul>"
-            "<li>Reads each day's <code>metadata/blog/blog_YYYY-MM-DD.ini</code> "
-            "(migrated from the trip or hand-edited) and uploads NL + EN blog HTML pages.</li>"
-            "<li>A day with no blog ini is skipped — nothing is fabricated.</li>"
-            "</ul>"
+            "<p>For every day that has extracted data, reads that day's "
+            "<code>metadata/blog/blog_YYYY-MM-DD.ini</code> and uploads NL + EN blog "
+            "HTML pages.</p>"
             "<p>Re-running is safe — existing ini files are preserved; "
             "HTML is always regenerated and re-uploaded.</p>"
         ))
@@ -918,6 +927,11 @@ class VirttripWriteBlogDialog(QDialog):
         layout.addWidget(QLabel(f"Virtual trip:   {virttrip_root or '(not set)'}"))
         layout.addWidget(QLabel(f"Trip name:      {trip_name}"))
         layout.addWidget(QLabel(f"Days with data: {day_count}"))
+        layout.addWidget(QLabel(
+            f"Days with a blog: {blog_count}"
+            + ("   — none yet, so the drafts below are this trip's first blogs"
+               if self._fresh else
+               f" of {day_count}   — the rest are days with no blog")))
 
         self.status_label = QLabel("")
         layout.addWidget(self.status_label)
@@ -942,6 +956,18 @@ class VirttripWriteBlogDialog(QDialog):
             score_row.addWidget(note)
         score_row.addStretch()
         layout.addLayout(score_row)
+
+        self.auto_create_checkbox = QCheckBox(
+            "Write a first draft for days that have no blog yet")
+        self.auto_create_checkbox.setChecked(self._fresh)
+        self.auto_create_checkbox.setToolTip(
+            "Writes a day title and a short text from the day's locations and best "
+            "species, marked as a draft (amber) until you accept it in the blog editor.\n\n"
+            "On by default for a trip with no blogs at all — a retroactive trip, which has "
+            "no original trip to take blogs from, so this is the only way it gets any.\n\n"
+            "Off by default once the trip HAS blogs: a day without one is then a day you "
+            "never blogged, and writing text there would invent a day that never happened.")
+        layout.addWidget(self.auto_create_checkbox)
 
         self.clear_first_checkbox = QCheckBox(
             "Clear old blog pages first (wipes biotablog + blog_admin.csv, "
@@ -994,6 +1020,7 @@ class VirttripWriteBlogDialog(QDialog):
         )
         menu_spec.batch_parms["extra_config"] = [
             ("blogconfig", "minimum_score", self.min_score_spin.value()),
+            ("blogconfig", "auto_create_blogs", self.auto_create_checkbox.isChecked()),
         ]
 
         def on_success():

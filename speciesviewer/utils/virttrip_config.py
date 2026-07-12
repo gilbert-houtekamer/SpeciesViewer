@@ -1,9 +1,56 @@
 import configparser
 import os
 import re
+from pathlib import Path
 
 _SECTION_RE = re.compile(r'^\s*\[.+\]\s*$')
 _KEYVAL_RE  = re.compile(r'^[^\s\[;#][^=:]*[=:]')
+
+# Review state of one day's blog ini. A day blog is either absent, an
+# auto-generated draft nobody has looked at yet (amber), or text a human wrote
+# or blessed (green).
+BLOG_MISSING  = "missing"
+BLOG_DRAFT    = "draft"
+BLOG_REVIEWED = "reviewed"
+
+# Auto-generated text has always carried this marker in its message. It is the
+# only signal available for ini files written before `reviewed` existed.
+_AUTO_MARKERS = ("(auto-tekst)", "(auto-generated)")
+
+
+def blog_review_state(ini_path) -> str:
+    """Classify one day's blog ini as missing / draft / reviewed.
+
+    `[blog_config] reviewed` is authoritative when present: svv3WriteBlog writes
+    `false` on every blog it auto-generates, and the blog editor writes `true`
+    when you accept the text.
+
+    Older ini files predate the flag. A blog migrated from a real trip is
+    genuine hand-written text, so absence of the flag means reviewed — EXCEPT
+    when the message still carries the auto-generator's marker, which means the
+    old auto-writer produced it and nobody has been through it since.
+    """
+    path = Path(ini_path)
+    if not path.is_file():
+        return BLOG_MISSING
+
+    cfg = configparser.RawConfigParser()
+    try:
+        cfg.read(str(path), encoding="utf-8")
+    except (UnicodeDecodeError, configparser.Error):
+        cfg = None
+    if cfg is not None and cfg.has_option("blog_config", "reviewed"):
+        try:
+            return (BLOG_REVIEWED if cfg.getboolean("blog_config", "reviewed")
+                    else BLOG_DRAFT)
+        except ValueError:
+            pass
+
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return BLOG_REVIEWED
+    return BLOG_DRAFT if any(m in text for m in _AUTO_MARKERS) else BLOG_REVIEWED
 
 
 def _coerce_orphan_continuations(text: str) -> str:

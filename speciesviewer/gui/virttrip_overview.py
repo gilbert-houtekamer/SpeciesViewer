@@ -11,7 +11,8 @@ from PyQt6.QtWidgets import (
 )
 
 from utils.config import _config
-from utils.virttrip_config import read_virttrip_ini
+from utils.virttrip_config import (read_virttrip_ini, blog_review_state,
+                                   BLOG_DRAFT, BLOG_REVIEWED)
 
 JPEG_EXTS = {"jpg", "jpeg"}
 
@@ -155,14 +156,19 @@ def populate_virttrip_overview(self):
         self.virttrip_table.setItem(i, FILES_COL, QTableWidgetItem(str(total)))
         self.virttrip_table.setItem(i, JPGS_COL,  QTableWidgetItem(str(jpegs)))
 
-        # BLOG_COL: grey when no JPEGs; otherwise show ini-exists state
+        # BLOG_COL: grey when there is nothing to show; otherwise amber for an
+        # auto-written draft nobody has read, green once the text is yours.
         blog_ini = blog_dir / f"blog_{day_dir.name}.ini"
+        state = blog_review_state(blog_ini)
         if jpegs == 0:
             blog_icon, blog_tooltip = "○", "No JPEG files — blog page not generated"
-        elif blog_ini.exists():
-            blog_icon, blog_tooltip = "✅", "Blog ini exists — double-click to edit."
+        elif state == BLOG_DRAFT:
+            blog_icon, blog_tooltip = "🟠", ("Auto-written draft — nobody has reviewed it.\n"
+                                             "Double-click to read and edit it.")
+        elif state == BLOG_REVIEWED:
+            blog_icon, blog_tooltip = "🟢", "Blog text reviewed — double-click to edit."
         else:
-            blog_icon, blog_tooltip = "⚪", "No blog ini yet. Click 'Write All Blogs' to auto-create."
+            blog_icon, blog_tooltip = "⚪", "No blog yet. Click 'Write All Blogs' to write a draft."
         blog_item = QTableWidgetItem(blog_icon)
         blog_item.setToolTip(blog_tooltip)
         blog_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -189,6 +195,17 @@ def populate_virttrip_overview(self):
     header_label = QLabel(f"Virtual Trip: {trip_name}")
     header_label.setStyleSheet("font-weight: bold; font-size: 16px;")
     header_row.addWidget(header_label)
+
+    drafts = sum(1 for d in day_dirs
+                 if blog_review_state(blog_dir / f"blog_{d.name}.ini") == BLOG_DRAFT)
+    if drafts:
+        draft_label = QLabel(f"🟠 {drafts} draft blog{'s' if drafts != 1 else ''} to review")
+        draft_label.setStyleSheet("color:#e65100; margin-left:10px;")
+        draft_label.setToolTip(
+            "Day blogs written automatically that nobody has read yet. They will be "
+            "published as they are — double-click an amber row to review it.")
+        header_row.addWidget(draft_label)
+
     header_row.addStretch()
 
     map_btn = QPushButton("🗺 Map whole trip")

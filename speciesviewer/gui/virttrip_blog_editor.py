@@ -22,10 +22,14 @@ from PyQt6.QtWidgets import (
 )
 
 from utils.config import _config
+from utils.virttrip_config import blog_review_state, BLOG_DRAFT
 
 logger = logging.getLogger("speciesviewer")
 
 _GENERATED_DEFAULT_SCORE = 25   # value hardcoded by _generate_blog_ini
+
+DRAFT_DOT    = "🟠"
+REVIEWED_DOT = "🟢"
 
 
 class _DayTab(QWidget):
@@ -35,8 +39,10 @@ class _DayTab(QWidget):
                  translator, default_min_score: int):
         super().__init__()
         self.ini_path    = ini_path
+        self.day_num     = day_num
         self._translator = translator
         self._data       = self._load(ini_path)
+        self._draft      = blog_review_state(ini_path) == BLOG_DRAFT
 
         # If the ini still has the generic generated default, swap in the
         # globally-configured value so the editor is in sync with Write All Blogs.
@@ -93,6 +99,19 @@ class _DayTab(QWidget):
         layout.setSpacing(4)
         layout.setContentsMargins(8, 8, 8, 8)
 
+        # Draft banner — an auto-written day says so, in plain words, above the
+        # text it wrote.
+        if self._draft:
+            banner = QLabel(
+                f"{DRAFT_DOT}  This text was written automatically from the day's "
+                f"locations and best species. Read it, edit what you want, then tick "
+                f"<b>Reviewed</b> below.")
+            banner.setWordWrap(True)
+            banner.setStyleSheet(
+                "background:#fff3e0; border:1px solid #ffb74d; "
+                "border-radius:4px; padding:6px; margin-bottom:4px;")
+            layout.addWidget(banner)
+
         # Dutch
         layout.addWidget(self._section_label("Dutch"))
         layout.addWidget(QLabel("Title:"))
@@ -101,8 +120,13 @@ class _DayTab(QWidget):
         layout.addWidget(QLabel("Message:"))
         self.message_nl = QTextEdit()
         self.message_nl.setPlainText(self._data["message_nl"])
-        self.message_nl.setFixedHeight(90)
-        layout.addWidget(self.message_nl)
+        # A minimum, not a fixed height: pinned at 90 these two boxes could not
+        # give up a pixel, so once the banner + button row pushed the content past
+        # the window height the layout had nothing left to shrink and the widgets
+        # overlapped instead. As the stretchy items they now absorb the squeeze
+        # (and scroll internally) and grow into any spare room.
+        self.message_nl.setMinimumHeight(70)
+        layout.addWidget(self.message_nl, stretch=1)
 
         # Translate buttons (between the two language sections)
         trans_row = QHBoxLayout()
@@ -128,8 +152,8 @@ class _DayTab(QWidget):
         layout.addWidget(QLabel("Message:"))
         self.message_en = QTextEdit()
         self.message_en.setPlainText(self._data["message_en"])
-        self.message_en.setFixedHeight(90)
-        layout.addWidget(self.message_en)
+        self.message_en.setMinimumHeight(70)
+        layout.addWidget(self.message_en, stretch=1)
 
         # Settings
         layout.addWidget(self._section_label("Settings"))
@@ -150,7 +174,25 @@ class _DayTab(QWidget):
         row.addWidget(self.col_width)
         row.addStretch()
         layout.addLayout(row)
-        layout.addStretch()
+
+        review_row = QHBoxLayout()
+        self.reviewed_box = QCheckBox("Reviewed — the text is final (green in the trip overview)")
+        self.reviewed_box.setChecked(not self._draft)
+        self.reviewed_box.setToolTip(
+            "Tick this to accept the text as it stands. Editing any of the four text "
+            "fields counts as a review on its own, so you only need this to bless an "
+            "auto-written day you are happy with unchanged.")
+        review_row.addWidget(self.reviewed_box)
+        review_row.addStretch()
+
+        self.upload_btn = QPushButton("Save && Upload this day")
+        self.upload_btn.setToolTip(
+            "Save this day and re-publish only its blog pages. The other days keep "
+            "the pages already on the web — nothing else is re-uploaded.")
+        review_row.addWidget(self.upload_btn)
+        layout.addLayout(review_row)
+        # No trailing addStretch(): the two message boxes are the stretchy items
+        # now, so spare height goes into the text you are actually editing.
 
     # ------------------------------------------------------------------
     # Translate
@@ -179,8 +221,22 @@ class _DayTab(QWidget):
     # Save
     # ------------------------------------------------------------------
 
-    def save(self):
-        """Write the current field values back to the ini file."""
+    def _text_edited(self) -> bool:
+        """True when the blog TEXT differs from what was loaded. Changing the min
+        score or column width is not a review of the words, so it doesn't count."""
+        return (self.titel_nl.text()             != self._data["titel_nl"]
+                or self.message_nl.toPlainText() != self._data["message_nl"]
+                or self.titel_en.text()          != self._data["titel_en"]
+                or self.message_en.toPlainText() != self._data["message_en"])
+
+    def save(self) -> bool:
+        """Write the current field values back to the ini file. Returns the day's
+        reviewed state.
+
+        Editing the text counts as reviewing it, so a day you actually worked on
+        goes green whether or not you noticed the checkbox. A day you left alone
+        stays amber even though Save All wrote it — otherwise one click would
+        bless every draft in the trip and the amber flag would mean nothing."""
         cfg = configparser.RawConfigParser()
         try:
             cfg.read(str(self.ini_path), encoding="utf-8")
@@ -191,8 +247,11 @@ class _DayTab(QWidget):
             if not cfg.has_section(section):
                 cfg.add_section(section)
 
+        reviewed = self.reviewed_box.isChecked() or self._text_edited()
+
         cfg.set("blog_config", "minimum_score", str(self.min_score.value()))
         cfg.set("blog_config", "column_width",  str(self.col_width.value()))
+        cfg.set("blog_config", "reviewed",      "true" if reviewed else "false")
         cfg.set("blog_text",   "titel_nl",      self.titel_nl.text())
         cfg.set("blog_text",   "message_nl",    self.message_nl.toPlainText())
         cfg.set("blog_text",   "titel_en",      self.titel_en.text())
@@ -200,7 +259,20 @@ class _DayTab(QWidget):
 
         with open(self.ini_path, "w", encoding="utf-8") as f:
             cfg.write(f)
-        logger.info(f"Blog editor: saved {self.ini_path.name}")
+
+        # Re-baseline so a second Save in the same session doesn't re-report the
+        # first one's edits as fresh ones.
+        self._data.update({
+            "titel_nl":   self.titel_nl.text(),
+            "message_nl": self.message_nl.toPlainText(),
+            "titel_en":   self.titel_en.text(),
+            "message_en": self.message_en.toPlainText(),
+        })
+        self._draft = not reviewed
+        self.reviewed_box.setChecked(reviewed)
+        logger.info(f"Blog editor: saved {self.ini_path.name} "
+                    f"({'reviewed' if reviewed else 'still a draft'})")
+        return reviewed
 
 
 # ---------------------------------------------------------------------------
@@ -213,8 +285,19 @@ class VirtTripBlogEditorDialog(QDialog):
     def __init__(self, parent, blog_dir: Path, day_dirs: list, first_date: date):
         super().__init__(parent)
         self.setWindowTitle("Blog Editor")
-        self.setMinimumSize(740, 560)
-        self.resize(860, 620)
+        # Tall enough for the draft banner, both message boxes at their 70 px
+        # minimum, the Reviewed/upload row and the status line — the old 560 was
+        # sized for a page that had none of those.
+        self.setMinimumSize(740, 640)
+        self.resize(880, 760)
+
+        # BatchModuleRunner drives its host dialog through these three: it writes
+        # progress into status_label, logs through logger, and reaches the status
+        # bar via passed_parent. "Save & Upload this day" runs svv3, so this dialog
+        # has to look like the other batch-running dialogs.
+        self.passed_parent = parent
+        self.logger        = getattr(parent, "logger", logger)
+        self.status_label  = QLabel("")
 
         self._tabs: list[_DayTab] = []
 
@@ -236,7 +319,10 @@ class VirtTripBlogEditorDialog(QDialog):
                 continue
             day_num = (date.fromisoformat(day_dir.name) - first_date).days + 1
             tab = _DayTab(ini_path, day_num, translator, config_score)
-            idx = self.tab_widget.addTab(tab, f"Day {day_num}")
+            tab.day_name = day_dir.name          # YYYY-MM-DD — what svv3 filters on
+            tab.upload_btn.clicked.connect(
+                lambda _checked=False, t=tab: self._save_and_upload_day(t))
+            idx = self.tab_widget.addTab(tab, self._tab_label(tab, day_num))
             self.tab_widget.setTabToolTip(idx,
                 f"{day_dir.name}\n{tab._data['titel_nl']}")
             self._tabs.append(tab)
@@ -253,12 +339,13 @@ class VirtTripBlogEditorDialog(QDialog):
             return
 
         layout.addWidget(self.tab_widget)
+        layout.addWidget(self.status_label)
 
         btn_row = QHBoxLayout()
         save_btn   = QPushButton("Save All")
         upload_btn = QPushButton("Save All && Re-upload All")
         close_btn  = QPushButton("Close")
-        save_btn.clicked.connect(self._save_all)
+        save_btn.clicked.connect(self._save_all_clicked)
         upload_btn.clicked.connect(self._save_and_upload)
         close_btn.clicked.connect(self.close)
         btn_row.addWidget(save_btn)
@@ -270,6 +357,14 @@ class VirtTripBlogEditorDialog(QDialog):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _tab_label(tab: _DayTab, day_num: int) -> str:
+        return f"{DRAFT_DOT if tab._draft else REVIEWED_DOT} Day {day_num}"
+
+    def _refresh_tab_labels(self):
+        for i, tab in enumerate(self._tabs):
+            self.tab_widget.setTabText(i, self._tab_label(tab, tab.day_num))
 
     @staticmethod
     def _make_translator():
@@ -288,8 +383,8 @@ class VirtTripBlogEditorDialog(QDialog):
 
     def jump_to_day(self, day_num: int):
         """Switch to the tab for the given calendar day number."""
-        for i in range(self.tab_widget.count()):
-            if self.tab_widget.tabText(i) == f"Day {day_num}":
+        for i, tab in enumerate(self._tabs):
+            if tab.day_num == day_num:
                 self.tab_widget.setCurrentIndex(i)
                 return
 
@@ -297,15 +392,57 @@ class VirtTripBlogEditorDialog(QDialog):
     # Actions
     # ------------------------------------------------------------------
 
-    def _save_all(self):
-        for tab in self._tabs:
-            tab.save()
-        QMessageBox.information(self, "Saved",
-                                f"Saved {len(self._tabs)} blog ini file(s).")
+    def _save_all(self) -> int:
+        """Save every tab; returns how many days are still drafts."""
+        drafts = sum(0 if tab.save() else 1 for tab in self._tabs)
+        self._refresh_tab_labels()
+        return drafts
+
+    def _refresh_overview(self):
+        """Repaint the trip's day table so the amber/green bubbles reflect what
+        was just saved — without it a day stays amber on screen until the tab is
+        rebuilt for some other reason."""
+        try:
+            from gui.virttrip_overview import populate_virttrip_overview
+            populate_virttrip_overview(self.passed_parent)
+        except Exception as e:
+            logger.warning(f"Blog editor: could not refresh the trip overview: {e}")
+
+    def _save_all_clicked(self):
+        drafts = self._save_all()
+        self._refresh_overview()
+        msg = f"Saved {len(self._tabs)} blog ini file(s)."
+        if drafts:
+            msg += (f"\n\n{drafts} day(s) are still auto-written drafts "
+                    f"({DRAFT_DOT}). They will be published as they are — edit them, "
+                    f"or tick 'Reviewed', to clear the flag.")
+        QMessageBox.information(self, "Saved", msg)
+
+    def _save_and_upload_day(self, tab: _DayTab):
+        """Save one day and re-publish only that day's blog pages."""
+        from gui.batch import BatchModuleRunner
+        from gui.virttrip_process import _virttrip_spec
+        import batch.svv3WriteBlog
+
+        tab.save()
+        self._refresh_tab_labels()
+        self._refresh_overview()
+
+        menu_spec = _virttrip_spec(
+            batch.svv3WriteBlog.main,
+            f"Publishing day {tab.day_num} ({tab.day_name})...",
+            f"✅ Day {tab.day_num} published — the other days were left untouched.",
+        )
+        # Only this day is rendered and uploaded; svv3 keeps every other day's
+        # entry in blog_admin.csv and the blog index intact.
+        menu_spec.batch_parms["extra_config"] = [
+            ("blogconfig", "only_day", tab.day_name),
+        ]
+        BatchModuleRunner(self, self.passed_parent).run(
+            menu_spec, on_success=self._refresh_overview)
 
     def _save_and_upload(self):
-        for tab in self._tabs:
-            tab.save()
+        self._save_all()
         from gui.virttrip_process import VirttripWriteBlogDialog
         self.close()
-        VirttripWriteBlogDialog(self.parent()).exec()
+        VirttripWriteBlogDialog(self.passed_parent).exec()

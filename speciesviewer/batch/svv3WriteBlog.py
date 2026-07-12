@@ -3,13 +3,21 @@
 svv3WriteBlog — Virtual Trip: write blog posts for every day that has data.
 
 For each day directory in <virttrip>/metadata/review/<YYYY-MM-DD>/:
-  1. Auto-creates <virttrip>/metadata/blog/blog_YYYY-MM-DD.ini if absent
-     (title + auto-text from species/location in that day's data_pictures.csv).
+  1. Auto-creates <virttrip>/metadata/blog/blog_YYYY-MM-DD.ini if absent AND
+     auto-create is on (title + auto-text from species/location in that day's
+     data_pictures.csv), marked `reviewed = false` so it reads as a draft.
   2. Reads the (auto-created or hand-edited) ini.
   3. Loads only that day's CSVs into the project, rebuilds species counters,
      and generates + uploads blog HTML (nl + en) and slider pages.
 
 After all days: writes blog_admin.csv, regenerates blog index, uploads both.
+
+Auto-create defaults by trip kind, and the dialog can override it either way:
+  - RETROACTIVE virttrip (no source_trip_id): ON. There is no origin trip and
+    so no blogs to migrate — without it the trip gets no blog at all.
+  - RETIRED virttrip (source_trip_id set): OFF. Its blogs are migrated from the
+    real trip; inventing text for a day the trip never blogged would silently
+    fabricate history.
 
 Re-running: skips ini creation if the file exists (preserving edits);
 always regenerates and re-uploads HTML.
@@ -40,6 +48,7 @@ import engine.bloglib
 import engine.triplib
 from engine import SVException
 from engine.handling import read_file, read_pictures
+from utils.virttrip_config import read_virttrip_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -218,11 +227,16 @@ def _generate_blog_ini(ini_path: Path, day_num: int, rows: list,
     except Exception:
         default_score = 25
 
+    # reviewed = false marks this as a draft nobody has read: the day shows
+    # amber in the trip overview and the editor until it is accepted. It is what
+    # lets us auto-write text at all — the text is never silently passed off as
+    # authored.
     text = (
         "[blog_config]\n"
         "only_new = False\n"
         f"minimum_score = {default_score}\n"
         "column_width = 300\n"
+        "reviewed = false\n"
         "\n"
         "[blog_selection]\n"
         "species = biota\n"
@@ -349,7 +363,6 @@ def main(args, config):
         project.Trip.read_TripAdmin()
         # Fallback for a retroactive virttrip not yet added to master: seed its
         # own banner/picture from virttrip.ini so the banner still resolves.
-        from utils.virttrip_config import read_virttrip_ini
         project.Trip.ensureTripRegistered(read_virttrip_ini(virttrip_root))
     master_web = config.get("master", "MasterBiotaWebRoot", fallback="/nature/")
     project.master_biota_web_root = master_web
@@ -374,35 +387,88 @@ def main(args, config):
     if not review_root.is_dir():
         raise SVException("No review directory found — run 'Extract Days from Master' first.")
 
-    day_dirs = sorted(d for d in review_root.iterdir() if d.is_dir()
-                      and (d / "data_files.csv").exists())
-    if not day_dirs:
+    all_day_dirs = sorted(d for d in review_root.iterdir() if d.is_dir()
+                          and (d / "data_files.csv").exists())
+    if not all_day_dirs:
         raise SVException("No day data found — run 'Extract Days from Master' first.")
 
     # --- ensure blog directory and auto-create missing ini files ---
     blog_dir = Path(virttrip_root) / "metadata" / "blog"
     blog_dir.mkdir(parents=True, exist_ok=True)
 
-    first_date = date.fromisoformat(day_dirs[0].name)
+    # Day numbering ("Dag 3: …") is always relative to the trip's FIRST day, so it
+    # is taken from the full set even when only one day is being republished.
+    first_date = date.fromisoformat(all_day_dirs[0].name)
 
+    # Single-day republish (the blog editor's "Save & Upload this day"): render and
+    # upload just this day, leaving the other days' pages on the web untouched.
+    only_day = config.get("blogconfig", "only_day", fallback="").strip()
+    if only_day:
+        day_dirs = [d for d in all_day_dirs if d.name == only_day]
+        if not day_dirs:
+            raise SVException(f"Day {only_day} has no extracted data to publish.")
+        logger.info(f"Single-day republish: {only_day} "
+                    f"(the other {len(all_day_dirs) - 1} day(s) are left alone)")
+    else:
+        day_dirs = all_day_dirs
+
+    # Whether a day with no blog ini gets one written for it.
+    #
+    # Default ON only for a trip that has NO blogs at all — a retroactive trip on
+    # its first run, where there is no origin trip, nothing to migrate, and so no
+    # blog unless we write one.
+    #
+    # Default OFF the moment the trip has ANY blog, because then a day WITHOUT one
+    # is a deliberate gap: a day the trip never blogged, or one whose migration was
+    # skipped. Filling those in would fabricate history. Note this cannot be
+    # decided on source_trip_id alone — every virttrip created before that key
+    # existed carries an empty one, gaps and all (safari has 28 blogs over 30 days).
+    #
+    # Whatever is written is marked reviewed=false, so it reads as a draft until
+    # accepted. The dialog checkbox overrides this either way.
+    trip_data      = read_virttrip_ini(virttrip_root) or {}
+    source_trip_id = (trip_data.get("source_trip_id") or "").strip()
+    existing_blogs = sum(1 for d in all_day_dirs
+                         if (blog_dir / f"blog_{d.name}.ini").exists())
+    auto_create    = config.getboolean(
+        "blogconfig", "auto_create_blogs",
+        fallback=not source_trip_id and existing_blogs == 0)
+
+    if existing_blogs:
+        why = (f"the trip already has {existing_blogs} blog(s) over {len(all_day_dirs)} "
+               f"day(s) — days without one are treated as deliberate gaps")
+    elif source_trip_id:
+        why = f"retired from trip '{source_trip_id}' — its blogs are migrated, not written"
+    else:
+        why = "retroactive trip with no blogs yet — nothing to migrate from"
+    logger.info(f"Auto-create day blogs: {'ON' if auto_create else 'OFF'} ({why})")
+
+    created = 0
     for day_dir in day_dirs:
         ini_path = blog_dir / f"blog_{day_dir.name}.ini"
-        # Never fabricate blog text: a day gets a page only if it already has a
-        # blog ini — migrated from the trip (retirement) or authored in the
-        # editor. Days without one are left alone and skipped by the build loop
-        # below, so a virtual-trip blog matches the original trip blog exactly.
-        if not ini_path.exists():
-            continue
-        day_num  = (date.fromisoformat(day_dir.name) - first_date).days + 1
         rows     = _read_day_pictures_raw(day_dir)
+        day_num  = (date.fromisoformat(day_dir.name) - first_date).days + 1
         loc_nl, loc_en = _day_location_label(rows)
-        _patch_ini_titles(ini_path, day_num, loc_nl, loc_en)
+        if ini_path.exists():
+            _patch_ini_titles(ini_path, day_num, loc_nl, loc_en)
+        elif auto_create:
+            _generate_blog_ini(ini_path, day_num, rows, loc_nl, loc_en)
+            created += ini_path.exists()
+
+    if created:
+        logger.info(f"Auto-created {created} draft blog(s) — review them in the "
+                    f"blog editor; they show amber until accepted.")
 
     # --- set up blog object and read existing admin once ---
     password = config.get("websettings", "Sftppwd", fallback="").strip("'")
     blog = engine.bloglib.Blog(project)
     blog.read_BlogAdmin()
-    blog.blog_dict = {}          # discard stale entries — rebuild fully from this run
+    if not only_day:
+        # Full run: rebuild the index from scratch so stale entries vanish.
+        # A single-day republish must NOT do this — it would drop every other day
+        # from blog_admin.csv and the blog index, leaving their pages orphaned on
+        # the web. _register_day_blog updates this day's entry in place instead.
+        blog.blog_dict = {}
     sftp = blog.openSFTP(password)
 
     # Open FTP cache BEFORE the day loop — uploadBlog → put_r_portable →
@@ -545,6 +611,18 @@ def main(args, config):
         processed += 1
 
     if processed == 0:
+        if only_day:
+            raise SVException(
+                f"Day {only_day} was not published — it has no blog text, no "
+                f"recognised species, no JPEG, or every species scored below its "
+                f"minimum. See the status log for which.")
+        if not auto_create and not any(
+                (blog_dir / f"blog_{d.name}.ini").exists() for d in day_dirs):
+            raise SVException(
+                "No day has a blog to publish, and auto-create is off. This "
+                "virtual trip was retired from a trip, so its blogs are expected "
+                "to come from that trip's day folders — check the migration step, "
+                "or tick 'Create missing day blogs' to write drafts instead.")
         raise SVException("No days were successfully processed.")
 
     # --- finalize ---
