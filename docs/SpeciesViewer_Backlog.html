@@ -181,6 +181,28 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
     still wants attention. It never decides what you are allowed to do.
     <br>The map's rule therefore sharpens from “fill, never overwrite” to
     <strong>“never overwrite what we did not put there ourselves”</strong>.</li>
+  <li><strong>Get GPS from location</strong> <span class="tag-shipped">SHIPPED</span> — the mirror of
+    <em>Get location</em>, sitting right under it in the same menu. That one turns a coordinate into a
+    place name; this turns the place name a picture <em>already carries</em> into a coordinate. It is
+    the answer for the older trips, whose camera had no GPS but whose files say “Helgoland”.
+    <br>All 93 pictures of a day share one written place, so it is <strong>one look-up, not 93</strong>.
+    Nothing is written until you have seen it: a review table shows the written place, what OpenStreetMap
+    found, the coordinate and how many pictures would get it — untick anything you don't trust. The
+    result is deliberately rough (~30 m) and marked as placed by hand, so the next step is to open the
+    day's map and drag the clusters onto the right cliffs. <strong>Seed, then refine.</strong></li>
+  <li><strong>The Helgoland bug hunt</strong> <span class="tag-shipped">SHIPPED</span> — running the
+    feature for real turned up six defects, and they were all the same shape:
+    <strong>one truth on disk (the picture's sidecar) and several things reading a stale copy of it.</strong>
+    A moved picture snapped back when the map was re-opened (the data was never lost — the map was
+    reading its own out-of-date list). The day table said 93 pictures had no GPS when the true answer
+    was 1. “Map whole trip” opened on an empty world map while the day map showed 92 of them on the
+    island. Underneath, the metadata cache had been <em>poisoned</em>: a geotag writes a coordinate, a
+    method and a place name, but only the place name was recorded — so the cache went on insisting the
+    coordinate wasn't there. And an unexplained three-second delay turned out to be the cache being kept
+    <em>inside Dropbox</em>, where the sync client locked it just as we saved, so the save was lost and
+    that folder re-read every file from scratch, every time. It now lives with all the other caches,
+    outside the synced folder. Placing pictures also got far quicker: dragging 62 of them used to launch
+    the metadata tool 124 times, and now does it twice.</li>
   <li><strong>Find a place by name</strong> <span class="tag-shipped">SHIPPED</span> — we had
     OpenStreetMap look-up in one direction only (coordinates → place name). This adds the mirror: type
     <em>“Jetwing St. Andrews, Nuwara Eliya”</em> and get the coordinate. It sits in the right-click
@@ -193,16 +215,11 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
 
 <h3>To do</h3>
 <ul>
-  <li><strong>Seed GPS from the location text already in the file (the 2014–2016 trips)</strong>
-    <span class="tag-open">OPEN / NEXT</span> — the <em>other</em> half of the missing-GPS problem, and
-    a different shape from Sri Lanka. There you remembered the hotel and <em>typed</em> it (shipped).
-    The 2014–2016 trips instead already carry a <strong>crude place name in the file</strong> and no
-    coordinate. So the flow is <strong>batch, then refine</strong>: read each picture's existing
-    location text, look it up, get a rough coordinate, review the table, write — and <em>then</em>
-    nudge them to the real spot on the map. Both halves now exist (the look-up, and the provenance
-    that makes the nudge legal); what's missing is the <strong>batch wrapper and its review step</strong>.
-    First live case: <strong>Helgoland 2014</strong> — a small island, so if every seeded coordinate
-    lands on the same rock you will see it at a glance.</li>
+  <li><strong>Finish Helgoland</strong> <span class="tag-open">OPEN / NEXT</span> — 2014-06-23 is done
+    (92 of its 93 pictures placed). The other three days still hold <strong>424 pictures</strong> with
+    no coordinate. The loop now works end to end: select a day, <em>Get GPS from location</em> puts the
+    whole island on the map in one lookup, then open the day's map and drag the clusters onto the right
+    cliffs.</li>
   <li><strong>Look at the 791 already-coarse coordinates</strong> <span class="tag-open">OPEN / NEW</span> —
     pictures whose GPS looks hand-entered but carries no record of it. Report first, decide later.
     The scan already turned up two real errors worth a look: a South Africa photo tagged
