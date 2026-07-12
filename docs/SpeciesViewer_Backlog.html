@@ -163,6 +163,24 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
     <br>To see where the work is, each day now shows a <strong>No&nbsp;GPS</strong> count; double-click
     it to open that day's map. Sri Lanka: 285 of 2060 pictures, with two days consisting of
     <em>nothing but</em> those — which is precisely why they auto-titled “onbekend”.</li>
+  <li><strong>GPS provenance — telling <em>our</em> coordinates from the camera's</strong>
+    <span class="tag-shipped">SHIPPED</span> — needed before any batch can seed coordinates from a
+    place name, because a seeded picture <em>has</em> GPS and would otherwise be frozen: moving it is
+    exactly what the map forbids. The idea of marking a derived coordinate by making it
+    <em>less precise</em> (whole arcseconds) was tested against the master and <strong>791 of 41,246
+    GPS'd pictures (1.9%) already look like that</strong> — Galapagos 2015 repeating one coordinate
+    across many photos, a South Africa shot at a suspiciously round position. The instinct was right
+    that something is there, but as a <em>permission</em> signal it fails, and it rides on a number
+    that any tool may reformat. So the idea was split into its two true jobs:
+    <br><strong>Permission</strong> now lives in <code>GPSProcessingMethod</code>, the field whose
+    actual purpose is recording how a fix was obtained. Blank means the camera measured it and we do
+    not touch it; “manual” means a person placed it, so it may be moved and refined.
+    <br><strong>Precision</strong> is about telling the truth: a place-name look-up is accurate to
+    tens of metres, so its coordinate is rounded to match — and it visibly reads as approximate
+    (<code>47.00&quot;</code> beside a camera's <code>46.52&quot;</code>), which is the cue that it
+    still wants attention. It never decides what you are allowed to do.
+    <br>The map's rule therefore sharpens from “fill, never overwrite” to
+    <strong>“never overwrite what we did not put there ourselves”</strong>.</li>
   <li><strong>Find a place by name</strong> <span class="tag-shipped">SHIPPED</span> — we had
     OpenStreetMap look-up in one direction only (coordinates → place name). This adds the mirror: type
     <em>“Jetwing St. Andrews, Nuwara Eliya”</em> and get the coordinate. It sits in the right-click
@@ -176,19 +194,19 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
 <h3>To do</h3>
 <ul>
   <li><strong>Seed GPS from the location text already in the file (the 2014–2016 trips)</strong>
-    <span class="tag-open">OPEN / NEW</span> — the <em>other</em> half of the missing-GPS problem, and
-    a genuinely different shape from Sri Lanka. There you remembered the hotel and
-    <em>typed</em> it (shipped — see below). The 2014–2016 trips instead already carry a
-    <strong>crude place name in the file</strong> and no coordinate. So the flow is
-    <strong>batch, then refine</strong>: read each picture's existing location text, look it up, get a
-    rough coordinate, review the table, write — and <em>then</em> nudge them to the real spot on the
-    map. The look-up half now exists; what's missing is the batch wrapper and its review step.
-    <br>⚠ It collides with a rule we just shipped: once seeded, those pictures <em>have</em> GPS, so
-    they leave the no-GPS tray and become ordinary bubbles — and moving a bubble is exactly what
-    geotag mode forbids, because that would overwrite what a camera recorded. Refining a seeded
-    coordinate therefore needs <strong>provenance</strong>: remember which coordinates <em>we</em>
-    derived, and allow moving only those. That has to be decided before the batch is built, or the
-    refine step is unreachable. First live case: <strong>Helgoland 2014</strong>.</li>
+    <span class="tag-open">OPEN / NEXT</span> — the <em>other</em> half of the missing-GPS problem, and
+    a different shape from Sri Lanka. There you remembered the hotel and <em>typed</em> it (shipped).
+    The 2014–2016 trips instead already carry a <strong>crude place name in the file</strong> and no
+    coordinate. So the flow is <strong>batch, then refine</strong>: read each picture's existing
+    location text, look it up, get a rough coordinate, review the table, write — and <em>then</em>
+    nudge them to the real spot on the map. Both halves now exist (the look-up, and the provenance
+    that makes the nudge legal); what's missing is the <strong>batch wrapper and its review step</strong>.
+    First live case: <strong>Helgoland 2014</strong> — a small island, so if every seeded coordinate
+    lands on the same rock you will see it at a glance.</li>
+  <li><strong>Look at the 791 already-coarse coordinates</strong> <span class="tag-open">OPEN / NEW</span> —
+    pictures whose GPS looks hand-entered but carries no record of it. Report first, decide later.
+    The scan already turned up two real errors worth a look: a South Africa photo tagged
+    <em>Country = Spain</em>, and Galapagos 2015 reusing a single coordinate across many pictures.</li>
   <li><strong>WP7 — the guided <em>Create</em> experience</strong> <span class="tag-open">OPEN</span> —
     the pipeline is done, but Create still doesn't <em>ask</em> “from an existing trip” vs
     “retroactive from master dates”, and Extract Days is still a separate step rather than folded in.
