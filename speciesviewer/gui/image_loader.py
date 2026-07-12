@@ -11,14 +11,25 @@ A `producer` is any callable that returns a QImage (or None) and runs on a
 worker thread — so even slow work like exiftool RAW-preview extraction stays
 off the GUI thread. The optional target width is applied (downscale) on the
 worker too. on_ready is always invoked on the GUI thread.
+
+The generation counter is not enough on its own: a widget can be DESTROYED while
+its image is still loading, without anything bumping the generation (the map
+rebuilds its filmstrip and no-GPS tray on every refresh, and a dialog can be closed
+mid-load). Delivering into a deleted C++ object raises
+"RuntimeError: wrapped C/C++ object of type QLabel has been deleted", so _deliver
+checks the callback's owner is still alive — see below.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Callable, Optional
 
+from PyQt6 import sip
 from PyQt6.QtCore import QObject, QRunnable, QThreadPool, Qt, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
+
+logger = logging.getLogger("speciesviewer")
 
 ImageProducer = Callable[[], Optional[QImage]]
 PixmapCallback = Callable[[QPixmap], None]
@@ -71,5 +82,22 @@ class AsyncImageLoader(QObject):
     def _deliver(self, on_ready, qimage, gen):
         if gen != self._gen:
             return  # stale — the view moved on
+
+        # The widget that asked for this image may be GONE by now: the map rebuilds
+        # its filmstrip and no-GPS tray on every refresh, and closing a dialog
+        # destroys its cards mid-load. Neither bumps the generation, so the guard
+        # above does not catch it, and painting into a deleted C++ object raises
+        # RuntimeError. Drop the result instead — the widget it was for no longer
+        # exists, so there is nothing to show and nothing to fix.
+        owner = getattr(on_ready, "__self__", None)
+        if isinstance(owner, QObject) and sip.isdeleted(owner):
+            return
+
         px = QPixmap.fromImage(qimage) if (qimage is not None and not qimage.isNull()) else QPixmap()
-        on_ready(px)
+        try:
+            on_ready(px)
+        except RuntimeError as e:
+            # Same race, lost between the check above and the call (or a callback
+            # that is not a bound method of a QObject). Not actionable: log at debug
+            # and carry on rather than taking the whole loader down.
+            logger.debug(f"Image delivery skipped — target widget went away: {e}")
