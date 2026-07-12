@@ -88,7 +88,13 @@ def _read_sidecar_rows(xmp_paths: list) -> tuple[dict, dict]:
                 xmp = Path(src)
                 caches[folder].put(xmp, row)
                 rows[_norm(xmp)] = row
-        caches[folder].save()
+
+    # Flush EVERY cache, not only the ones that had stale rows. A cache adopted from
+    # the old in-folder location is dirty with nothing stale in it, and would
+    # otherwise never be written to its new home — it would be re-migrated from
+    # Dropbox on every single open. save() is a no-op when nothing changed.
+    for cache in caches.values():
+        cache.save()
 
     return rows, caches
 

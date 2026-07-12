@@ -31,6 +31,14 @@ _DEFAULT_SUBDIR = {
     "fullres": "fullres_cache",
     "preview": "preview_cache",
     "exif": "exif_cache",
+    # The XMP sidecar cache made the SAME move the EXIF cache did, and for the same
+    # reason (see the module note above): it used to be written beside the pictures,
+    # which for the master means inside Dropbox. A sync client opens each file the
+    # moment we write it, so the next atomic replace onto it failed with Access
+    # Denied — the save was lost and that folder then re-read every XMP through
+    # exiftool on every open. A per-machine throwaway cache does not belong in
+    # synced storage.
+    "sidecar": "sidecar_cache",
 }
 
 # Logical cache kinds → [caches] ini key holding a user override (absolute path).
@@ -38,6 +46,7 @@ _CONFIG_KEY = {
     "fullres": "fullres_dir",
     "preview": "preview_dir",
     "exif": "exif_dir",
+    "sidecar": "sidecar_dir",
 }
 
 

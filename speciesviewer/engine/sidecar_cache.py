@@ -42,12 +42,58 @@ _CACHE_TAGS = [
 ]
 
 
+def cache_file_for(folder: Path) -> Path:
+    """Where this folder's sidecar cache lives: under the per-machine app-data root,
+    keyed by a hash of the folder path — the same scheme the preview cache uses.
+
+    It used to sit IN the folder, beside the pictures. For the master that means
+    inside Dropbox, and a derived, disposable, per-machine READ cache has no business
+    in synced storage:
+
+      * Dropbox opens the file to upload it the moment we write it, and the next
+        atomic replace onto it fails with Access Denied. The save is then LOST, so
+        that folder re-reads every XMP through exiftool on every open — a permanent
+        3-second stall that looks random, because it only hits the folders you have
+        just edited (the ones Dropbox is busiest with).
+      * Two machines synced their caches over each other — including, until it was
+        fixed, a poisoned one.
+      * 113 files / 1 MB of pure churn in the master.
+    """
+    import hashlib
+    import os
+    from utils.cache_paths import cache_root
+    h = hashlib.sha1(os.path.normcase(str(folder)).encode()).hexdigest()[:16]
+    return cache_root("sidecar") / f"{h}.json"
+
+
+def _replace_with_retry(tmp: Path, dest: Path, attempts: int = 5) -> None:
+    """os.replace, retried briefly.
+
+    On Windows the replace fails with Access Denied whenever ANY process holds the
+    destination open without FILE_SHARE_DELETE — a sync client or an indexer that
+    grabbed the file the instant we last wrote it. It is transient: a few tens of
+    milliseconds later the same call succeeds. The app-data cache should not be
+    touched by such tools, but the culling day folders can still live in synced
+    storage, so this stays as a seatbelt rather than trusting the new location alone.
+    """
+    import time
+    for i in range(attempts):
+        try:
+            tmp.replace(dest)
+            return
+        except PermissionError:
+            if i == attempts - 1:
+                raise
+            time.sleep(0.05 * (i + 1))
+
+
 class SidecarCache:
     """Load / query / update the per-folder XMP metadata cache."""
 
     def __init__(self, folder: Path):
         self._folder = Path(folder)
-        self._path = self._folder / _FILENAME
+        self._path = cache_file_for(self._folder)
+        self._legacy = self._folder / _FILENAME     # the old in-folder location
         self._dirty = False
         self._data: dict[str, dict] = {}
         self._load()
@@ -59,6 +105,21 @@ class SidecarCache:
                     raw = json.load(f)
                 if raw.get("version") == _VERSION:
                     self._data = raw.get("files", {})
+                    return
+        except Exception:
+            self._data = {}
+        # Not in the new home — adopt the old in-folder cache rather than re-reading
+        # every XMP through exiftool. Marked dirty so the next save() writes it to
+        # app-data and retires the old file.
+        try:
+            if self._legacy.exists():
+                with open(self._legacy, encoding="utf-8") as f:
+                    raw = json.load(f)
+                if raw.get("version") == _VERSION:
+                    self._data = raw.get("files", {})
+                    self._dirty = True
+                    logger.info(f"Sidecar cache: migrating {self._folder.name} out of "
+                                f"the picture folder into the app-data cache.")
         except Exception:
             self._data = {}
 
@@ -130,13 +191,25 @@ class SidecarCache:
         if not self._dirty:
             return
         try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._path.with_suffix(".tmp")
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump({"version": _VERSION, "files": self._data},
                           f, separators=(",", ":"))
-            tmp.replace(self._path)
+            _replace_with_retry(tmp, self._path)
         except OSError as e:
             logger.warning(f"Could not save sidecar cache {self._path}: {e}")
+            return
+        self._dirty = False
+        # The cache now lives in app-data; drop the copy that was sitting among the
+        # pictures (ours, regenerable, and only ever a liability inside Dropbox).
+        try:
+            if self._legacy.exists():
+                self._legacy.unlink()
+                logger.info(f"Sidecar cache: removed the old in-folder copy at "
+                            f"{self._legacy}")
+        except OSError as e:
+            logger.debug(f"Could not remove the old sidecar cache {self._legacy}: {e}")
 
 
 def read_xmp_rows(xmp_paths: list[Path]) -> list[dict]:
