@@ -151,17 +151,44 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
     that day. The trap: the blog step opens every run by clearing the blog index so stale entries
     vanish — doing that for a single day would have dropped the other twenty out of the index and
     orphaned their live pages. Single-day mode skips the wipe and updates just that day in place.</li>
+  <li><strong>Geotag the master from the virtual-trip map</strong> <span class="tag-shipped">SHIPPED</span> —
+    the map was flatly read-only because a virtual trip's files <em>are</em> the master's — which also
+    made it the best surface we have for <em>fixing</em> the master's missing coordinates. Geotagging
+    is now let through, and <em>only</em> geotagging: rating, colour, crop and delete stay refused, and
+    the permission is gated on the machine's existing master write policy, so a read-only master still
+    gets the view-only map. Two rules hold it honest. <strong>Fill, never overwrite</strong>: you can
+    place a picture that has no coordinate, but you cannot drag a bubble to <em>move</em> pictures
+    whose coordinates the camera recorded. And the map <strong>says what it does</strong> — where it
+    read “· view only” it now reads “· placing writes to the master”.
+    <br>To see where the work is, each day now shows a <strong>No&nbsp;GPS</strong> count; double-click
+    it to open that day's map. Sri Lanka: 285 of 2060 pictures, with two days consisting of
+    <em>nothing but</em> those — which is precisely why they auto-titled “onbekend”.</li>
+  <li><strong>Find a place by name</strong> <span class="tag-shipped">SHIPPED</span> — we had
+    OpenStreetMap look-up in one direction only (coordinates → place name). This adds the mirror: type
+    <em>“Jetwing St. Andrews, Nuwara Eliya”</em> and get the coordinate. It sits in the right-click
+    menu just after <em>Suggest a position</em> — for when the camera recorded nothing but you wrote
+    the place down. It doesn't place the picture for you: it drops the same draggable pin, because the
+    hotel's coordinate is where the <em>hotel</em> is, not where the bird was. The search prefers the
+    part of the world already on your screen (St. Andrews is also in Scotland), and it will place a
+    whole selection at once.</li>
 </ul>
 
 <h3>To do</h3>
 <ul>
-  <li><strong>Geotag the master's pictures without GPS</strong> <span class="tag-open">OPEN / NEW</span> —
-    raised by Sri Lanka: 285 of its pictures have no GPS, and <strong>two whole days</strong>
-    (2018-11-20 and 11-25) are nothing but those, which is why they auto-titled “onbekend”. They
-    cannot be placed from the virtual-trip map, which is read-only by design — a virtual trip's files
-    <em>are</em> the master's. So placing them needs a <strong>master-side</strong> geotag path. The
-    drag-to-geotag and suggest-a-position machinery already exists on the trip map; what it lacks is
-    permission to write into the master.</li>
+  <li><strong>Seed GPS from the location text already in the file (the 2014–2016 trips)</strong>
+    <span class="tag-open">OPEN / NEW</span> — the <em>other</em> half of the missing-GPS problem, and
+    a genuinely different shape from Sri Lanka. There you remembered the hotel and
+    <em>typed</em> it (shipped — see below). The 2014–2016 trips instead already carry a
+    <strong>crude place name in the file</strong> and no coordinate. So the flow is
+    <strong>batch, then refine</strong>: read each picture's existing location text, look it up, get a
+    rough coordinate, review the table, write — and <em>then</em> nudge them to the real spot on the
+    map. The look-up half now exists; what's missing is the batch wrapper and its review step.
+    <br>⚠ It collides with a rule we just shipped: once seeded, those pictures <em>have</em> GPS, so
+    they leave the no-GPS tray and become ordinary bubbles — and moving a bubble is exactly what
+    geotag mode forbids, because that would overwrite what a camera recorded. Refining a seeded
+    coordinate therefore needs <strong>provenance</strong>: remember which coordinates <em>we</em>
+    derived, and allow moving only those. That has to be decided before the batch is built, or the
+    refine step is unreachable. First live case: <strong>Helgoland 2014</strong>.</li>
   <li><strong>WP7 — the guided <em>Create</em> experience</strong> <span class="tag-open">OPEN</span> —
     the pipeline is done, but Create still doesn't <em>ask</em> “from an existing trip” vs
     “retroactive from master dates”, and Extract Days is still a separate step rather than folded in.
