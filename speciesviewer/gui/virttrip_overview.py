@@ -67,11 +67,15 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
     file_list = _build_file_list(day_dir / "data_files.csv", jpeg_only)
     if not file_list:
         return
+    # Read-only for rating/colour/species/files — these are the master's pictures.
+    # The one exception is geotagging: "Get GPS from location" is how a picture that
+    # only ever had a written place ("Helgoland") gets a coordinate at all.
     dlg = ImagePreviewDialog(
         parent=parent,
         file_list=file_list,
         source_label=str(day_dir),
         readonly=True,
+        allow_geotag=parent._master_is_editable(),
     )
     dlg.exec()
 

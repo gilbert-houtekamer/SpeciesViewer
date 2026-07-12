@@ -269,11 +269,21 @@ class SidecarCollection(PictureCollection):
     # virtual-trip preview can't, so it leaves this False).
     show_status_badges = True
 
-    def __init__(self, paths, *, readonly=False, cache_root=None, loader: AsyncImageLoader | None = None):
+    # Class-level defaults, mirroring PreviewCollection, so the flags can be read off
+    # the class and never come back missing on an instance built by an older caller.
+    read_only = False
+    allow_geotag = False
+
+    def __init__(self, paths, *, readonly=False, cache_root=None,
+                 loader: AsyncImageLoader | None = None, allow_geotag=False):
         # `read_only` is the name every viewer (grid, large view, map) asks for —
         # keep the older `readonly` in step for this class's own callers.
         self.readonly = readonly
         self.read_only = bool(readonly)
+        # Same carve-out as PreviewCollection: GPS + place may still be written on
+        # an otherwise read-only collection, so the virtual-trip DAY viewer can fix
+        # the master's missing coordinates. Everything else stays refused.
+        self.allow_geotag = bool(allow_geotag)
         self._cache_root = Path(cache_root) if cache_root else None
         self._loader = loader or AsyncImageLoader()
         # Group input picture files by their unique-picture name. Using
@@ -386,6 +396,12 @@ class SidecarCollection(PictureCollection):
     def no_gps_keys(self) -> list[str]:
         return [s for s in self.all_keys() if s not in self._gps_by_stem]
 
+    def has_gps(self, key: str) -> bool:
+        """Collection-level GPS test, matching PreviewCollection's. `_gps_by_stem` is
+        the same source no_gps_keys trusts, and note_gps_written keeps it current, so
+        a picture just given a coordinate reads as having one immediately."""
+        return key in self._gps_by_stem
+
     def color_keys(self, colors: set[str]) -> list[str]:
         wanted = {c.lower() for c in colors}
         return [s for s in self.all_keys()
@@ -439,10 +455,30 @@ class SidecarCollection(PictureCollection):
         return (ll[0], ll[1]) if ll else None
 
     def location_targets(self, key: str):
-        if self.readonly:
-            return []          # virtual-trip viewer: these are the master's files
+        # THE gate every GPS/place write passes through. Read-only means these are
+        # the master's files — look, don't touch — UNLESS allow_geotag, the
+        # deliberate exception for fixing the master's missing coordinates.
+        if self.readonly and not self.allow_geotag:
+            return []
         g = self._groups.get(key, {})
         return [g[k] for k in ("xmp", "jpg") if g.get(k)]
+
+    def gps_is_derived(self, key: str) -> bool:
+        """True when a HUMAN placed this coordinate (map drag / copy-paste-GPS /
+        place-name lookup) rather than the camera recording it — the only kind we
+        allow moving. Read from GPSProcessingMethod, never inferred from precision."""
+        from gui.geolocate import GPS_MANUAL
+        if key in getattr(self, "_pasted_gps", ()):
+            return True
+        g = self._groups.get(key, {})
+        xmp = g.get("xmp")
+        if xmp:
+            row = self._rows.get(_norm(xmp), {})
+            for k in ("GPSProcessingMethod", "EXIF:GPSProcessingMethod",
+                      "XMP:GPSProcessingMethod"):
+                if str(row.get(k, "") or "").strip().upper() == GPS_MANUAL:
+                    return True
+        return False
 
     _LOC_KEYS = ("Location", "City", "Municipality", "State", "Country", "CountryCode")
 
@@ -463,7 +499,14 @@ class SidecarCollection(PictureCollection):
     def note_gps_written(self, key: str) -> None:
         """A paste-GPS just wrote GPS into this key's XMP — record its coordinates
         so has_gps / the missing-GPS badge / the card's GPS line update without a
-        rescan. Re-reads just this one file's GPS (the paste didn't return it)."""
+        rescan. Re-reads just this one file's GPS (the paste didn't return it).
+
+        Anything WE wrote is human-placed by definition, so it is refinable at once —
+        without this it would stay frozen until the next re-read populated its
+        GPSProcessingMethod."""
+        if not hasattr(self, "_pasted_gps"):
+            self._pasted_gps = set()
+        self._pasted_gps.add(key)
         if key in self._groups and key not in self._gps_by_stem:
             from gui.geolocate import gps_decimal
             ll = gps_decimal(self.gps_source(key))

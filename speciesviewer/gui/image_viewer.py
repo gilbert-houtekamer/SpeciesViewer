@@ -87,7 +87,7 @@ class ImagePreviewDialog(QDialog):
 
     def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg",
                  file_list=None, cache_root=None, source_label=None, collection=None,
-                 readonly=False, start_species=False):
+                 readonly=False, start_species=False, allow_geotag=False):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
@@ -168,9 +168,11 @@ class ImagePreviewDialog(QDialog):
             # (virtual-trip viewer — master files must never be edited here).
             if paths and any(Path(p).with_suffix(".xmp").exists() for p in paths):
                 from gui.sidecar_provider import SidecarCollection
+                # allow_geotag: the ONE write a read-only (virtual-trip) viewer may
+                # still make — giving the master's pictures the coordinates they lack.
                 self._collection = SidecarCollection(
                     paths, cache_root=self.cache_dir, loader=self._loader,
-                    readonly=readonly)
+                    readonly=readonly, allow_geotag=allow_geotag)
             else:
                 self._collection = FileListPreviewCollection(
                     paths, cache_root=self.cache_dir, loader=self._loader)
@@ -1005,6 +1007,15 @@ class ImagePreviewDialog(QDialog):
         act_rate = menu.addAction(f"Set rating…  ({lbl})")
         act_fullres = menu.addAction(f"Full resolution  ({lbl})")
         act_geo = menu.addAction(f"Get location  ({lbl})")
+        # The mirror of "Get location": that one turns GPS into a place name, this
+        # one turns the place name a picture ALREADY carries into GPS. For the older
+        # trips, whose camera had no receiver but whose files say "Helgoland".
+        act_gps_from_loc = menu.addAction(f"Get GPS from location  ({lbl})")
+        act_gps_from_loc.setEnabled(self._can_gps_from_location(keys_for_action))
+        act_gps_from_loc.setToolTip(
+            "Look up the written place and give these pictures an approximate "
+            "coordinate (~30 m), so they appear on the map. Marked as placed by hand, "
+            "so you can then drag them to the exact spot.")
         act_editloc = menu.addAction(f"Edit location…  ({lbl})")
         menu.addSeparator()
         # Copy GPS + place from THIS one picture; paste into the selection. Lets a
@@ -1027,6 +1038,8 @@ class ImagePreviewDialog(QDialog):
             self._cull_full_res(keys_for_action)
         elif chosen == act_geo:
             self._cull_geolocate(keys_for_action)
+        elif chosen == act_gps_from_loc:
+            self._gps_from_location(keys_for_action)
         elif chosen == act_editloc:
             self._edit_location(keys_for_action)
         elif chosen == act_copy_gps:
@@ -1304,6 +1317,42 @@ class ImagePreviewDialog(QDialog):
         from gui.geolocate import run_geolocate_batch
         run_geolocate_batch(self, targets,
                             on_done=lambda: self._refresh_location_after_geocode(ordered))
+
+    def _can_gps_from_location(self, keys) -> bool:
+        """Enabled only when there is actually something to do: a picture with NO
+        GPS, some written place to look up, and a sidecar we may write to. Greys out
+        on a fully-geotagged day, so the menu never offers a no-op."""
+        from gui.gps_from_location import location_query
+        coll = self._collection
+        for k in keys:
+            try:
+                if coll.has_gps(k):
+                    continue
+                if not coll.location_targets(k):
+                    continue
+                if location_query(coll.read_location(k) or {}):
+                    return True
+            except (ValueError, KeyError, AttributeError):
+                continue
+        return False
+
+    def _gps_from_location(self, keys):
+        """Turn the place text these pictures already carry into an approximate
+        coordinate — the mirror of 'Get location'. One lookup per distinct place (93
+        Helgoland pictures = 1 query), reviewed in a table before anything is written,
+        stamped MANUAL so the map will let you drag them to the exact spot after."""
+        from gui.gps_from_location import run_gps_from_location
+        written = run_gps_from_location(self, self._collection, list(keys))
+        if not written:
+            return
+        for k in written:
+            card = self._cards_by_key.get(k)
+            if card:
+                card.refresh()
+            self._notify_large_view(k)
+        # A picture that just gained GPS leaves the "missing GPS" filter.
+        if self.no_gps_only:
+            self._apply_filters()
 
     def _refresh_location_after_geocode(self, keys):
         """After 'Get location' wrote place text into the XMP, refresh the cards'
