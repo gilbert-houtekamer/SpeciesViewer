@@ -4,6 +4,7 @@ from datetime import date
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QMenu,
@@ -19,8 +20,9 @@ JPEG_EXTS = {"jpg", "jpeg"}
 DATE_COL  = 0
 FILES_COL = 1
 JPGS_COL  = 2
-BLOG_COL  = 3
-WEB_COL   = 4
+GPS_COL   = 3
+BLOG_COL  = 4
+WEB_COL   = 5
 
 TAB_TITLE = "Active Virtual Trip"
 
@@ -75,23 +77,36 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
 
 
 def _count_pictures_from_csv(csv_path: Path):
-    """Return (pictures, jpeg_files) parsed from a data_files.csv: distinct
-    UniquePictureNames (pictures) and JPEG file rows. A RAW and its sidecars
-    share one UPN, so they count as one picture, not several files."""
+    """Return (pictures, jpeg_files, no_gps) parsed from a data_files.csv.
+
+    pictures = distinct UniquePictureNames (a RAW and its sidecars share one UPN,
+    so they are one picture, not several files). no_gps = how many of those
+    pictures carry no coordinate on ANY of their photo files — the count that says
+    which days still need placing on the map. Sidecars and non-photo rows (.xmp,
+    .dop, PNG screenshots) are ignored for GPS, exactly as the trip overview does
+    it, or every picture would look GPS-less because its .xmp has no coordinate."""
+    from gui.trip_overview import PHOTO_EXTENSIONS
     try:
         with open(csv_path, newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f, delimiter=";")
             upns = set()
             jpegs = 0
+            upn_has_gps: dict = {}
             for row in reader:
                 u = (row.get("UniquePictureName") or "").strip()
                 if u:
                     upns.add(u)
-                if row.get("WindowsExtension", "").lower() in ("jpg", "jpeg"):
+                ext = (row.get("WindowsExtension") or "").lower()
+                if ext in JPEG_EXTS:
                     jpegs += 1
-        return len(upns), jpegs
+                if u and ext in PHOTO_EXTENSIONS:
+                    has_gps = bool((row.get("Composite:GPSPosition") or "").strip()) \
+                           or bool((row.get("EXIF:GPSLatitude") or "").strip())
+                    upn_has_gps[u] = upn_has_gps.get(u, False) or has_gps
+        no_gps = sum(1 for has in upn_has_gps.values() if not has)
+        return len(upns), jpegs, no_gps
     except (FileNotFoundError, KeyError, OSError):
-        return 0, 0
+        return 0, 0, 0
 
 
 def populate_virttrip_overview(self):
@@ -123,10 +138,10 @@ def populate_virttrip_overview(self):
     trip_name = trip_data.get("trip_name", virttrip_path.name) if trip_data else virttrip_path.name
 
     self.virttrip_table = QTableWidget()
-    self.virttrip_table.setColumnCount(5)
+    self.virttrip_table.setColumnCount(6)
     self.virttrip_table.setRowCount(len(day_dirs))
     self.virttrip_table.setHorizontalHeaderLabels(
-        ["Date", "Pictures", "JPEG\nFiles", "Write\nBlog", "Build\nWebsite"]
+        ["Date", "Pictures", "JPEG\nFiles", "No\nGPS", "Write\nBlog", "Build\nWebsite"]
     )
     self.virttrip_table.setSortingEnabled(False)
     self.virttrip_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -149,12 +164,35 @@ def populate_virttrip_overview(self):
     # Website is built trip-wide (not per-day); detect from the all-species summary page.
     web_built = (virttrip_path / "web" / "summaries" / "all biota species-nl.html").exists()
 
+    no_gps_by_day: dict = {}
     for i, day_dir in enumerate(day_dirs):
-        total, jpegs = _count_pictures_from_csv(day_dir / "data_files.csv")
+        total, jpegs, no_gps = _count_pictures_from_csv(day_dir / "data_files.csv")
+        no_gps_by_day[day_dir.name] = no_gps
 
         self.virttrip_table.setItem(i, DATE_COL,  QTableWidgetItem(day_dir.name))
         self.virttrip_table.setItem(i, FILES_COL, QTableWidgetItem(str(total)))
         self.virttrip_table.setItem(i, JPGS_COL,  QTableWidgetItem(str(jpegs)))
+
+        # GPS_COL: how many of the day's pictures still have no coordinate. A day
+        # where EVERY picture is missing GPS is the one that ends up titled
+        # "onbekend", because the blog takes its title from the day's places.
+        if no_gps == 0:
+            gps_item = QTableWidgetItem("✅")
+            gps_item.setToolTip("Every picture of this day has GPS.")
+        else:
+            all_missing = (no_gps == total)
+            gps_item = QTableWidgetItem(f"📍 {no_gps}")
+            gps_item.setForeground(QColor("#b26500"))
+            gps_item.setToolTip(
+                (f"ALL {no_gps} pictures of this day are missing GPS — this is why the "
+                 f"day has no place name.\n" if all_missing else
+                 f"{no_gps} of {total} pictures have no GPS.\n")
+                + "Double-click to open this day's map and place them: drag them from "
+                  "the tray onto the spot, or right-click one to have a position "
+                  "suggested from the photos taken just before and after it.")
+        gps_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        gps_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+        self.virttrip_table.setItem(i, GPS_COL, gps_item)
 
         # BLOG_COL: grey when there is nothing to show; otherwise amber for an
         # auto-written draft nobody has read, green once the text is yours.
@@ -205,6 +243,16 @@ def populate_virttrip_overview(self):
             "Day blogs written automatically that nobody has read yet. They will be "
             "published as they are — double-click an amber row to review it.")
         header_row.addWidget(draft_label)
+
+    missing_gps = sum(no_gps_by_day.values())
+    if missing_gps:
+        gps_label = QLabel(f"📍 {missing_gps} without GPS")
+        gps_label.setStyleSheet("color:#b26500; margin-left:10px;")
+        gps_label.setToolTip(
+            "Pictures in the master with no coordinate. Double-click a day's No-GPS "
+            "cell to open that day's map and place them — the write goes into the "
+            "master's own sidecar, which is how the master gets cleaned up.")
+        header_row.addWidget(gps_label)
 
     header_row.addStretch()
 
@@ -268,6 +316,9 @@ def populate_virttrip_overview(self):
         if col <= JPGS_COL:
             jpeg_only = (col == JPGS_COL)
             _open_day_viewer(self, day_dirs[row], jpeg_only, virttrip_path)
+        elif col == GPS_COL:
+            # Straight to the tool that fixes it — the day's own map.
+            self.open_virttrip_map([day_dirs[row]])
         elif col == BLOG_COL:
             day_num = (date.fromisoformat(day_dirs[row].name) - first_date).days + 1
             _open_blog_editor(self, day_dirs, first_date, virttrip_path,

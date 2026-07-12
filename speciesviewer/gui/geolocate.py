@@ -132,6 +132,54 @@ def reverse_geocode(lat, lon, *, lang="en", zoom=14, timeout=10):
         return None
 
 
+def search_places(query, *, lang="en", limit=8, timeout=10, viewbox=None):
+    """FORWARD geocode — a place NAME → candidate coordinates. The mirror of
+    reverse_geocode, and the answer to "I wrote down where I was, but the camera
+    recorded no GPS": you type "Jetwing St. Andrews, Nuwara Eliya" and get the
+    coordinate to place the picture on.
+
+    Returns [{name, lat, lon, kind}, …] best-match first, or [] on failure /
+    no match. `viewbox` (minlon, minlat, maxlon, maxlat) softly prefers results
+    inside the area you are already looking at — the same hotel name can exist in
+    three countries, and the trip's own map is the best hint we have about which
+    one you mean. It is a preference, not a filter: an exact match outside the box
+    is still returned rather than silently dropped.
+    """
+    q = (query or "").strip()
+    if not q:
+        return []
+    params = {"format": "jsonv2", "q": q, "limit": limit,
+              "addressdetails": 1, "accept-language": lang}
+    if viewbox:
+        params["viewbox"] = ",".join(f"{v:.6f}" for v in viewbox)
+        params["bounded"] = 0          # prefer, don't restrict
+    try:
+        import requests
+        r = requests.get("https://nominatim.openstreetmap.org/search",
+                         params=params,
+                         headers={"User-Agent": _USER_AGENT}, timeout=timeout)
+        r.raise_for_status()
+        rows = r.json() or []
+    except Exception as e:
+        logger.warning(f"Nominatim place search failed for {q!r}: {e}")
+        return []
+
+    out = []
+    for row in rows:
+        try:
+            out.append({
+                "name": row.get("display_name", "") or q,
+                "lat":  float(row["lat"]),
+                "lon":  float(row["lon"]),
+                # e.g. "hotel", "peak", "nature_reserve" — tells a lake from a town
+                "kind": (row.get("type") or row.get("category") or "").replace("_", " "),
+            })
+        except (KeyError, TypeError, ValueError):
+            continue
+    logger.info(f"Place search {q!r}: {len(out)} candidate(s).")
+    return out
+
+
 # Address keys, most-to-least descriptive, that make a good caption "Location"
 # (a named natural/leisure feature reads better than an administrative unit).
 _LOCATION_KEYS = (

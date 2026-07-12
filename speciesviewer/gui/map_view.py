@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (
     QDialog, QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
     QGraphicsSimpleTextItem, QGraphicsPathItem, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QCheckBox, QWidget, QMessageBox, QSplitter, QComboBox,
-    QMenu, QScrollArea, QApplication)
+    QMenu, QScrollArea, QApplication, QLineEdit, QListWidget, QListWidgetItem)
 from PyQt6.QtGui import (QPixmap, QPainter, QColor, QBrush, QPen, QFont,
                          QPainterPath, QPolygonF, QDrag, QLinearGradient)
 from PyQt6.QtCore import Qt, QPointF, QUrl, QTimer, pyqtSignal, QMimeData, QEvent
@@ -987,18 +987,34 @@ class TileMapView(QGraphicsView):
         self._z = min(top, max(fit_z, self._z + 1))
         self._refresh_all()
 
-    def focus_area(self, coords: list, max_z: int = 13):
+    def visible_bounds(self):
+        """(minlon, minlat, maxlon, maxlat) of what is on screen, or None. Used to
+        bias a place-name search toward the region you are already looking at."""
+        try:
+            r = self.mapToScene(self.viewport().rect()).boundingRect()
+            lon1, lat1 = world_to_lonlat(r.left(),  r.top(),    self._z)
+            lon2, lat2 = world_to_lonlat(r.right(), r.bottom(), self._z)
+        except (OverflowError, ValueError, ZeroDivisionError):
+            return None      # world_to_lonlat can overflow at extreme scene coords
+        return (min(lon1, lon2), min(lat1, lat2), max(lon1, lon2), max(lat1, lat2))
+
+    def focus_area(self, coords: list, max_z: int = 13, min_span: float = 0.08):
         """Center + zoom to frame `coords` [(lat, lon), …] at a sensible level
         (capped at `max_z` so a single point lands at ~village zoom, not street).
-        Used to jump to the GPS neighbours around a no-GPS picture's capture time."""
+        Used to jump to the GPS neighbours around a no-GPS picture's capture time.
+
+        `min_span` is the smallest area (in degrees) a single point is padded out
+        to. The default keeps a time-bracket legible (~9 km). A place SEARCH passes
+        a much smaller span with a higher max_z: you looked up a named hotel, so you
+        want its street, not its province."""
         if not coords:
             return
         lats = [c[0] for c in coords]
         lons = [c[1] for c in coords]
         cy, cx = (min(lats) + max(lats)) / 2, (min(lons) + max(lons)) / 2
-        # Pad so a single (or tight) bracket becomes a legible area (~9 km min).
-        dlat = max(max(lats) - min(lats), 0.08)
-        dlon = max(max(lons) - min(lons), 0.08)
+        # Pad so a single (or tight) bracket becomes a legible area.
+        dlat = max(max(lats) - min(lats), min_span)
+        dlon = max(max(lons) - min(lons), min_span)
         minlat, maxlat = cy - dlat / 2, cy + dlat / 2
         minlon, maxlon = cx - dlon / 2, cx + dlon / 2
         self._center = (cx, cy)
@@ -1384,6 +1400,93 @@ _TRIP_COLOR = "#00838f"
 _MIME_UPNS = "application/x-speciesviewer-upns"
 
 
+class PlaceSearchDialog(QDialog):
+    """Look a place up BY NAME and get its coordinate — forward geocoding.
+
+    The counterpart to "Suggest a position": that one guesses from the photos taken
+    around it in time, this one is for when the camera recorded nothing but YOU
+    know where you were ("Jetwing St. Andrews, Nuwara Eliya"). The trip's own map
+    area is passed as a soft preference, so the same hotel name in another country
+    doesn't win over the one you actually stayed in."""
+
+    def __init__(self, parent, *, viewbox=None, initial: str = ""):
+        super().__init__(parent)
+        self.setWindowTitle("Find a place by name")
+        self.resize(620, 380)
+        self._viewbox = viewbox
+        self._results: list = []
+        self.chosen: dict | None = None
+
+        lay = QVBoxLayout(self)
+        lay.addWidget(QLabel(
+            "Type the name of the place — a hotel, a reserve, a village, a lake.\n"
+            "Pick a result to drop a pin there; you can still drag the pin to the "
+            "exact spot before placing."))
+
+        row = QHBoxLayout()
+        self._field = QLineEdit(initial)
+        self._field.setPlaceholderText("e.g. Jetwing St. Andrews, Nuwara Eliya")
+        self._field.returnPressed.connect(self._search)
+        row.addWidget(self._field)
+        self._search_btn = QPushButton("Search")
+        self._search_btn.setDefault(True)
+        self._search_btn.clicked.connect(self._search)
+        row.addWidget(self._search_btn)
+        lay.addLayout(row)
+
+        self._list = QListWidget()
+        self._list.itemDoubleClicked.connect(lambda _i: self._accept())
+        lay.addWidget(self._list, 1)
+
+        self._status = QLabel("")
+        self._status.setStyleSheet("color:#666;")
+        lay.addWidget(self._status)
+
+        btns = QHBoxLayout()
+        btns.addStretch()
+        cancel = QPushButton("Cancel")
+        cancel.clicked.connect(self.reject)
+        self._ok = QPushButton("Show on the map")
+        self._ok.setEnabled(False)
+        self._ok.clicked.connect(self._accept)
+        btns.addWidget(cancel)
+        btns.addWidget(self._ok)
+        lay.addLayout(btns)
+
+        self._list.itemSelectionChanged.connect(
+            lambda: self._ok.setEnabled(self._list.currentRow() >= 0))
+
+    def _search(self):
+        from gui.geolocate import search_places
+        q = self._field.text().strip()
+        if not q:
+            return
+        self._status.setText("Searching…")
+        self._list.clear()
+        self._ok.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            self._results = search_places(q, viewbox=self._viewbox)
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not self._results:
+            self._status.setText(
+                "Nothing found. Try a simpler name, or add the town or country — "
+                "OpenStreetMap may not know a small lodge by its full name.")
+            return
+        for r in self._results:
+            kind = f"[{r['kind']}] " if r["kind"] else ""
+            self._list.addItem(QListWidgetItem(f"{kind}{r['name']}"))
+        self._list.setCurrentRow(0)
+        self._status.setText(f"{len(self._results)} result(s) — best match first.")
+
+    def _accept(self):
+        row = self._list.currentRow()
+        if 0 <= row < len(self._results):
+            self.chosen = self._results[row]
+            self.accept()
+
+
 class NoGpsTray(QWidget):
     """Collapsible top strip of the pictures WITHOUT GPS on a trip/day map — the
     drag source for Phase 5b geotagging. Drag one or more thumbnails onto the map
@@ -1560,6 +1663,11 @@ class NoGpsTray(QWidget):
         drag.exec(Qt.DropAction.CopyAction)
 
     # ── host API ─────────────────────────────────────────────────────────────
+    def selected_keys(self) -> list:
+        """The currently selected tray pictures, in tray order (the same set a drag
+        would carry). Lets a context-menu action apply to the whole selection."""
+        return [k for k in self._keys if k in self._selected]
+
     def remove_keys(self, keys):
         """Drop placed pictures out of the tray (after a successful geotag)."""
         for k in keys:
@@ -1597,7 +1705,7 @@ class TripMapView(QDialog):
                  title: str = "Trip map", loader=None,
                  default_path: bool = False, default_basemap: str = "Standard",
                  trip_root: str = "", read_only: bool = False,
-                 read_only_note: str = ""):
+                 read_only_note: str = "", allow_geotag: bool = False):
         super().__init__(parent)
         self._coll = collection
         self._src_keys = list(keys or [])   # everything the viewer handed over
@@ -1605,12 +1713,20 @@ class TripMapView(QDialog):
         self._keys = list(self._src_keys)   # the scoped subset actually mapped
         self._strip = None
         # Read-only: LOOK, don't touch. Used by the virtual-trip map, whose files
-        # are the MASTER's shared originals — geotagging, moving a bubble or
-        # deleting would write into master sidecars. Same call as the Album Rating
-        # Editor. Everything that writes is switched off here rather than merely
-        # hidden: no drop, no bubble-move, no delete, and no no-GPS tray at all
+        # are the MASTER's shared originals — moving a bubble or deleting would
+        # write into master sidecars. Same call as the Album Rating Editor.
+        # Everything that writes is switched off here rather than merely hidden
         # (a tray you can't drag from is a misleading affordance).
         self._read_only = bool(read_only)
+        # GEOTAG mode: read-only EXCEPT for placing pictures that have no GPS —
+        # the deliberate carve-out that lets this map clean up the master's missing
+        # coordinates (PreviewCollection.allow_geotag is the gate that actually
+        # permits the write). The no-GPS tray and drag-to-geotag come back; bubble
+        # MOVE stays off, because moving OVERWRITES coordinates the camera
+        # recorded, and cleanup means filling gaps, never overwriting.
+        self._geotag = bool(allow_geotag) and getattr(
+            collection, "allow_geotag", False)
+        self._can_place = (not self._read_only) or self._geotag
         # Set → the no-GPS tray offers Delete (move to <trip_root>/.trash/<day>);
         # needs a collection that can trash a UPN + the per-day review CSVs here.
         from pathlib import Path as _Path
@@ -1643,7 +1759,21 @@ class TripMapView(QDialog):
         self._info = QLabel()
         self._info.setStyleSheet("color:#555;")
         h.addWidget(self._info)
-        if self._read_only:
+        if self._geotag:
+            # Never say "view only" on a map that writes. Placing a picture here
+            # edits the MASTER's sidecar, and the header says so plainly.
+            note = QLabel("· placing writes to the master")
+            note.setStyleSheet("color:#b26500; font-weight:bold;")
+            note.setToolTip(
+                "These pictures live in the master database. Dragging one from the "
+                "tray onto the map writes its GPS + place into the master's own "
+                "sidecar — that is the point here: it fixes the master.\n\n"
+                "Only pictures WITHOUT GPS can be placed. Nothing else is editable: "
+                "you cannot move a picture that already has coordinates, nor change "
+                "a rating, colour or file.")
+            h.addSpacing(6)
+            h.addWidget(note)
+        elif self._read_only:
             note = QLabel("· view only")
             note.setStyleSheet("color:#8a6d3b;")
             note.setToolTip(read_only_note or
@@ -1713,7 +1843,7 @@ class TripMapView(QDialog):
         # Collapsible + only present when there are any; laptop vertical space.
         self._lay = lay                    # kept: the tray is rebuilt on scope change
         self._tray_index = lay.count()     # tray slot = right after the header
-        if self._nogps_keys and not self._read_only:
+        if self._nogps_keys and self._can_place:
             self._tray = NoGpsTray(collection, self._nogps_keys)
             self._tray.emptied.connect(self._on_tray_emptied)
             self._tray.context_requested.connect(self._tray_context)
@@ -1745,8 +1875,11 @@ class TripMapView(QDialog):
         self._map = TileMapView(self)
         self._map.trim_fit = True          # Fit frames the dense core, not outliers
         self._map.allow_hide = True        # right-click a bubble → hide it (view-only)
-        self._map.allow_drop = not self._read_only   # accept no-GPS pics dragged on
-        self._map.allow_move = not self._read_only   # drag a bubble to move its pics
+        self._map.allow_drop = self._can_place       # accept no-GPS pics dragged on
+        # Bubble-move OVERWRITES the GPS of every picture in the bubble. In geotag
+        # mode those coordinates are the MASTER's, recorded by the camera — so this
+        # stays off: we fill what is missing, we never overwrite what is there.
+        self._map.allow_move = not self._read_only
         self._map.bubble_activated.connect(self._on_bubble)
         self._map.bubble_hide_requested.connect(self._on_hide)
         self._map.pictures_dropped.connect(self._on_drop)
@@ -1812,7 +1945,7 @@ class TripMapView(QDialog):
             self._lay.removeWidget(self._tray)
             self._tray.deleteLater()
             self._tray = None
-        if self._nogps_keys and not self._read_only:
+        if self._nogps_keys and self._can_place:
             self._tray = NoGpsTray(self._coll, self._nogps_keys)
             self._tray.emptied.connect(self._on_tray_emptied)
             self._tray.context_requested.connect(self._tray_context)
@@ -1917,6 +2050,12 @@ class TripMapView(QDialog):
                      "low": "rough guess"}.get(est["conf"], "")
             place_act = menu.addAction(
                 f"📍 Suggest a position — {label} (between photos before/after)")
+        # The other half of the problem: no timestamp to interpolate from, or no
+        # neighbours — but you WROTE DOWN where you were. Name it and we look it up.
+        sel = self._tray_selection(key)
+        find_act = menu.addAction(
+            "🔎 Find a place by name…" if len(sel) == 1 else
+            f"🔎 Find a place by name… (place all {len(sel)} selected)")
         zoom_act = menu.addAction("Zoom map to around this time" if has_time
                                   else "Zoom to around this time — no timestamp")
         zoom_act.setEnabled(has_time)   # a screenshot with no capture time can't bracket
@@ -1927,10 +2066,50 @@ class TripMapView(QDialog):
         chosen = menu.exec(global_pos)
         if place_act is not None and chosen == place_act:
             self._suggest_position(key, est)
+        elif chosen == find_act:
+            self._find_place(sel)
         elif chosen == zoom_act and has_time:
             self._zoom_to_time(key)
         elif del_act is not None and chosen == del_act:
             self._delete_picture(key)
+
+    def _tray_selection(self, key: str) -> list[str]:
+        """The tray pictures a menu action should act on: the whole current
+        selection when the right-clicked one is part of it (you ctrl-clicked five
+        shots of the same bird at the same hotel), otherwise just that one."""
+        sel = []
+        if self._tray is not None:
+            try:
+                sel = [k for k in self._tray.selected_keys() if k in self._nogps_keys]
+            except AttributeError:
+                sel = []
+        return sel if key in sel and len(sel) > 1 else [key]
+
+    def _find_place(self, keys: list[str]):
+        """Look a place up by NAME and drop the pending pin on it.
+
+        The complement of _suggest_position: that infers a spot from the photos
+        taken around it in time, this one is for when you know the place and the
+        camera didn't. The result is not committed — it lands as the same draggable
+        pin + confirm bar as every other placement, because the hotel's own
+        coordinate is where the HOTEL is, not necessarily where the bird was."""
+        # Bias the search toward the area already on screen: the same hotel name can
+        # exist in three countries, and the trip map knows which one you mean.
+        try:
+            vb = self._map.visible_bounds()
+        except Exception:
+            vb = None
+        dlg = PlaceSearchDialog(self, viewbox=vb)
+        if dlg.exec() != QDialog.DialogCode.Accepted or not dlg.chosen:
+            return
+        r = dlg.chosen
+        # A named place: zoom to its street, not its province.
+        self._map.focus_area([(r["lat"], r["lon"])], max_z=17, min_span=0.004)
+        short = r["name"].split(",")[0]
+        self._place_dropped(
+            keys, r["lat"], r["lon"],
+            note=f"Found “{short}”. That is where the <i>place</i> is — drag the pin "
+                 f"if the picture was taken somewhere else nearby.")
 
     def _suggest_position(self, key: str, est: dict):
         """Show the estimate as a coloured preview (green time-neighbours + a

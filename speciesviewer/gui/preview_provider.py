@@ -273,10 +273,25 @@ class PreviewCollection(PictureCollection):
     # hard-refuses the write paths, so a stray caller can't slip past the UI.
     read_only = False
 
+    # THE ONE CARVE-OUT from read_only: GPS + place may still be written.
+    #
+    # A virtual trip's pictures ARE the master's, which is exactly why the map is
+    # otherwise look-don't-touch. But it is also the best surface we have for
+    # FIXING the master's missing coordinates — the day map, the no-GPS tray and
+    # the time-interpolated position suggestion already exist and are proven. So
+    # geotagging is allowed through deliberately, and only from a caller that opts
+    # in; rating, colour, crop, description and delete stay refused.
+    #
+    # Fill-empties only: the map's drag-a-bubble-to-MOVE (which overwrites GPS the
+    # camera recorded) is switched off in this mode. Cleaning up the master means
+    # adding what is missing, never overwriting what is already there.
+    allow_geotag = False
+
     def __init__(self, fpr, *, loader: AsyncImageLoader | None = None,
-                 read_only: bool = False):
+                 read_only: bool = False, allow_geotag: bool = False):
         self.fpr = fpr
         self.read_only = bool(read_only)
+        self.allow_geotag = bool(allow_geotag)
         self._loader = loader or AsyncImageLoader()
         self._order: list[str] = []
         self.rebuild()
@@ -450,8 +465,12 @@ class PreviewCollection(PictureCollection):
         write — raw_path is None there, so they still return [].
 
         A read-only collection has NO write targets: that is what stops the map's
-        drag-to-geotag reaching the master's sidecars through a virtual trip."""
-        if self.read_only:
+        drag-to-geotag reaching the master's sidecars through a virtual trip —
+        UNLESS allow_geotag is set, the deliberate exception for cleaning up the
+        master's missing coordinates (see the class comment). This method is THE
+        gate every GPS/place write passes through, so the exception is made here,
+        once, rather than at each call site."""
+        if self.read_only and not self.allow_geotag:
             return []
         out = []
         for fname in self._files(upn_key):

@@ -996,8 +996,15 @@ class MainWindow(QMainWindow):
              if d.is_dir() and is_day(d.name) and (d / "data_files.csv").exists()],
             key=lambda p: p.name)
 
+    def _master_is_editable(self) -> bool:
+        """The machine's master write policy — the same switch the Master Species
+        Viewer honours. SmallBoy locks this to read-only, so no master geotagging
+        can happen there."""
+        return _config.get("master", "readonly",
+                           fallback="yes").strip().lower() == "no"
+
     def _collection_from_review_days(self, day_dirs: list, *, read_only: bool = False,
-                                     label: str = "Map"):
+                                     allow_geotag: bool = False, label: str = "Map"):
         """Accumulate the given days' review CSVs into ONE in-memory picture set →
         (collection, keys, loader). No exiftool: the GPS / date / place are already
         in the CSVs. `Files` and `Pictures` both accumulate across reads, and
@@ -1022,7 +1029,8 @@ class MainWindow(QMainWindow):
         fpr = FilePicture(None)
         fpr.fi, fpr.upn = fi, upn
         loader = AsyncImageLoader(self)
-        coll = PreviewCollection(fpr, loader=loader, read_only=read_only)
+        coll = PreviewCollection(fpr, loader=loader, read_only=read_only,
+                                 allow_geotag=allow_geotag)
         return coll, coll.all_keys(), loader
 
     def open_trip_map(self):
@@ -1061,10 +1069,18 @@ class MainWindow(QMainWindow):
 
     def open_virttrip_map(self, day_dirs: list | None = None):
         """Map the active virtual trip — the whole trip, or one day when the caller
-        passes its review folder. Same map as the trip's, but VIEW ONLY: a virtual
-        trip does not copy pictures, it points at the master's originals, so
-        geotagging / moving / deleting here would write into master sidecars. Same
-        call as the Album Rating Editor, which is read-only for the same reason."""
+        passes its review folder.
+
+        A virtual trip does not copy pictures, it points at the master's originals,
+        so this map is read-only for rating / colour / files / delete, and a bubble
+        cannot be dragged to MOVE pictures that already have coordinates.
+
+        The ONE exception is geotagging: a picture with NO GPS may be placed, and
+        the write lands in the master's own sidecar. That is deliberate — it is how
+        the master's missing coordinates get cleaned up, and this map (with its
+        no-GPS tray, its neighbours and its time-interpolated position suggestion)
+        is the best surface we have for it. Gated on the machine's master write
+        policy, so a read-only master (SmallBoy) still gets the view-only map."""
         from pathlib import Path
         from gui.map_view import TripMapView
         from utils.virttrip_config import read_virttrip_ini
@@ -1080,10 +1096,12 @@ class MainWindow(QMainWindow):
                 self, "Virtual Trip Map",
                 "No days with picture data were found — extract the days first.")
             return
+        geotag = self._master_is_editable()
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             coll, keys, loader = self._collection_from_review_days(
-                day_dirs, read_only=True, label="Virtual Trip Map")
+                day_dirs, read_only=True, allow_geotag=geotag,
+                label="Virtual Trip Map")
         finally:
             QApplication.restoreOverrideCursor()
         if not keys:
@@ -1093,10 +1111,12 @@ class MainWindow(QMainWindow):
         info = read_virttrip_ini(root) or {}
         name = info.get("trip_name") or Path(root).name
         scope = day_dirs[0].name if one_day else "whole trip"
+        suffix = "" if geotag else ", view only"
         # Strong ref on the main window so the dialog isn't GC'd.
         self._virttrip_map_dlg = TripMapView(
-            self, coll, keys, title=f"Map — {name} ({scope}, view only)",
+            self, coll, keys, title=f"Map — {name} ({scope}{suffix})",
             loader=loader, default_path=not one_day, read_only=True,
+            allow_geotag=geotag,
             read_only_note="A virtual trip shares the master's pictures instead of "
                            "copying them, so this map only shows them — it cannot "
                            "change their location, rating or files.")
