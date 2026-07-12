@@ -27,7 +27,7 @@ from PyQt6.QtWidgets import (
     QLabel, QPushButton, QCheckBox, QWidget, QMessageBox, QSplitter, QComboBox,
     QMenu, QScrollArea, QApplication)
 from PyQt6.QtGui import (QPixmap, QPainter, QColor, QBrush, QPen, QFont,
-                         QPainterPath, QPolygonF, QDrag)
+                         QPainterPath, QPolygonF, QDrag, QLinearGradient)
 from PyQt6.QtCore import Qt, QPointF, QUrl, QTimer, pyqtSignal, QMimeData, QEvent
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
@@ -70,6 +70,23 @@ _CONF_COLOR = {"high": "#2e7d32", "medium": "#f9a825", "low": "#d32f2f",
 # anywhere meaningful and only clutter the "without GPS" tray.
 _IMAGE_EXTS = {"orf", "nef", "cr2", "arw", "rw2", "dng", "jpg", "jpeg",
                "heic", "heif", "png", "tif", "tiff"}
+
+# Travel-path ramp. Days are ORDINAL (ordered), not categorical, so this is ONE hue
+# light→dark carrying the trip's PROGRESSION (day 1 light → last day dark) — not 20
+# invented hues, which is the categorical anti-pattern.
+#
+# Validated with the dataviz six-checks (ordinal mode) against a WHITE CASING, not
+# against the tiles: over the sea (#aad3df) the light steps fail even the 2:1
+# ordinal floor, so every leg is a 2px coloured line drawn on a 4px white casing —
+# the standard cartographic road trick, which decouples the palette from whatever
+# the basemap is doing. On the casing all ten steps clear 2:1.
+#
+# HONEST LIMIT: the ramp resolves ~8 distinguishable steps (OKLCH ΔL ≥ 0.06 over
+# L 0.338–0.764). A longer trip still reads early→late, but adjacent days are NOT
+# separable by colour — exact identity comes from the leg tooltip, never colour alone.
+_PATH_RAMP = ["#86b6ef", "#6da7ec", "#5598e7", "#3987e5", "#2a78d6",
+              "#256abf", "#1c5cab", "#184f95", "#104281", "#0d366b"]
+_PATH_CASING = "#ffffff"
 
 # Distinct, colour-blind-friendlier layer palette (up to 4 species overlaid).
 _PALETTE = ["#d32f2f", "#1565c0", "#2e7d32", "#8e24aa"]   # red, blue, green, purple
@@ -207,7 +224,7 @@ class TileMapView(QGraphicsView):
         self.allow_drop = False             # trip map: accept no-GPS pics dragged on
         self.setAcceptDrops(True)
         # Travel path (trip/day map): a time-ordered polyline through the points.
-        self._path_lonlat: list = []        # [(lon, lat), …] in time order
+        self._path_pts: list = []           # [(lon, lat, day), …] in time order
         self._path_items: list = []         # polyline + arrowheads at current zoom
         self._show_path = False
 
@@ -467,61 +484,125 @@ class TileMapView(QGraphicsView):
             self._syncing = False
 
     # ── travel path (trip/day map) ───────────────────────────────────────────
-    def set_travel_path(self, lonlat: list):
-        """Give the map a time-ordered [(lon, lat), …] to draw as a route line."""
-        self._path_lonlat = list(lonlat or [])
+    def set_travel_path(self, points: list):
+        """Give the map a time-ordered [(lon, lat, day), …] to draw as a route line,
+        coloured by day. `day` is a 'YYYY-MM-DD' string."""
+        self._path_pts = list(points or [])
         self._draw_path()
 
     def set_path_visible(self, on: bool):
         self._show_path = bool(on)
         self._draw_path()
 
-    _PATH_COLOR = QColor(0, 90, 130, 190)
+    def path_days(self) -> list:
+        """The trip's distinct days, in order — the host builds the ramp legend."""
+        days = []
+        for _lon, _lat, d in self._path_pts:
+            if d and (not days or days[-1] != d):
+                days.append(d)
+        return days
+
+    @staticmethod
+    def day_color(i: int, n: int) -> str:
+        """Ramp colour for day `i` of `n` — light (trip start) → dark (trip end).
+        A single-day map takes a mid step (no progression to show).
+
+        Interpolated between ramp steps rather than snapped to them: snapping made
+        two different days land on the SAME hex once n > 10 steps, which reads as a
+        bug. They stay perceptually close either way (the ramp only resolves ~8
+        steps) — that is why the leg tooltip, not the colour, carries identity."""
+        if n <= 1:
+            return _PATH_RAMP[len(_PATH_RAMP) // 2]
+        pos = (i / (n - 1)) * (len(_PATH_RAMP) - 1)
+        lo = int(pos)
+        hi = min(lo + 1, len(_PATH_RAMP) - 1)
+        t = pos - lo
+        c0, c1 = QColor(_PATH_RAMP[lo]), QColor(_PATH_RAMP[hi])
+        mix = QColor(round(c0.red() + (c1.red() - c0.red()) * t),
+                     round(c0.green() + (c1.green() - c0.green()) * t),
+                     round(c0.blue() + (c1.blue() - c0.blue()) * t))
+        return mix.name()
+
     _PATH_MIN_SEP = 6      # px: collapse consecutive same-spot points into one node
     _ARROW_MIN_LEG = 34    # px: only arrow legs long enough to read a direction
 
     def _draw_path(self):
         """Redraw the travel polyline in the current zoom's world coords (like the
         markers, it lives in scene space so it's rebuilt each zoom). Sits above the
-        wash (z 0) and below the markers (z 10). Consecutive points at the same
-        spot are collapsed so the line is location-to-location (not a within-spot
-        scribble), and each leg carries a direction arrow (points are time-ordered)."""
+        wash (z 0) and below the markers (z 10).
+
+        Drawn per DAY: each day's run gets its own ramp colour and its own tooltip,
+        and each run is PREFIXED with the previous day's last point — so the
+        overnight leg (the one that is a relocation, if you moved) is drawn in the
+        NEW day's colour and the route stays continuous."""
         for it in self._path_items:
             self._scene.removeItem(it)
         self._path_items = []
-        if not self._show_path or len(self._path_lonlat) < 2:
+        if not self._show_path or len(self._path_pts) < 2:
             return
-        proj = [lonlat_to_world(lon, lat, self._z) for lon, lat in self._path_lonlat]
-        # Simplify: keep a node only when it's far enough from the last kept one
-        # (collapses the dense cluster of shots at one location to a single node;
+        days = self.path_days()
+        n = len(days)
+        counts = {}
+        for _lon, _lat, d in self._path_pts:
+            counts[d] = counts.get(d, 0) + 1
+        color_of = {d: self.day_color(i, n) for i, d in enumerate(days)}
+
+        # Split the time-ordered points into consecutive per-day runs.
+        runs: list = []
+        for lon, lat, d in self._path_pts:
+            xy = lonlat_to_world(lon, lat, self._z)
+            if not runs or runs[-1][0] != d:
+                runs.append((d, [xy]))
+            else:
+                runs[-1][1].append(xy)
+
+        # Simplify each run: keep a node only when it's far enough from the last kept
+        # one (collapses the dense cluster of shots at one spot into a single node;
         # preserves revisits, which are non-consecutive).
         sep2 = self._PATH_MIN_SEP * self._PATH_MIN_SEP
-        kept = [proj[0]]
-        for x, y in proj[1:]:
-            px, py = kept[-1]
-            if (x - px) ** 2 + (y - py) ** 2 >= sep2:
-                kept.append((x, y))
-        if len(kept) < 2:
-            return
-        path = QPainterPath()
-        path.moveTo(*kept[0])
-        for pt in kept[1:]:
-            path.lineTo(*pt)
-        pen = QPen(self._PATH_COLOR)
-        pen.setWidth(2)
-        pen.setCosmetic(True)          # constant 2 px regardless of view transform
-        line = QGraphicsPathItem(path)
-        line.setPen(pen)
-        line.setBrush(QBrush(Qt.BrushStyle.NoBrush))
-        line.setZValue(5)
-        self._scene.addItem(line)
-        self._path_items.append(line)
-        for a, b in zip(kept, kept[1:]):
-            self._add_direction_arrow(a, b)
+        prev_last = None
+        for d, pts in runs:
+            kept = [pts[0]]
+            for x, y in pts[1:]:
+                px, py = kept[-1]
+                if (x - px) ** 2 + (y - py) ** 2 >= sep2:
+                    kept.append((x, y))
+            line_pts = ([prev_last] if prev_last is not None else []) + kept
+            prev_last = kept[-1]
+            if len(line_pts) < 2:
+                continue                       # a lone point draws no line
+            n_pics = counts.get(d, 0)
+            tip = f"{d} · {n_pics} picture{'' if n_pics == 1 else 's'}"
+            self._draw_day_run(line_pts, color_of[d], tip)
 
-    def _add_direction_arrow(self, a, b):
+    def _draw_day_run(self, pts: list, color: str, tip: str):
+        """One day's polyline: a 2px coloured line on a 4px WHITE CASING, so it
+        stays legible over both the beige land and the blue sea (the palette was
+        validated against the casing, not against the tiles)."""
+        path = QPainterPath()
+        path.moveTo(*pts[0])
+        for p in pts[1:]:
+            path.lineTo(*p)
+        for width, col, z in ((4, _PATH_CASING, 5), (2, color, 6)):
+            pen = QPen(QColor(col))
+            pen.setWidth(width)
+            pen.setCosmetic(True)      # constant px regardless of the view transform
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            item = QGraphicsPathItem(path)
+            item.setPen(pen)
+            item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+            item.setZValue(z)
+            item.setToolTip(tip)       # identity is NEVER colour-alone
+            self._scene.addItem(item)
+            self._path_items.append(item)
+        for a, b in zip(pts, pts[1:]):
+            self._add_direction_arrow(a, b, QColor(color), tip)
+
+    def _add_direction_arrow(self, a, b, color: QColor, tip: str = ""):
         """A small filled triangle at a leg's midpoint pointing a→b (travel
-        direction). Drawn only for legs long enough to read; scene units are view
+        direction), in that day's colour with a white edge so it reads on any
+        basemap. Drawn only for legs long enough to read; scene units are view
         pixels here, so a fixed size stays constant across zoom."""
         (x0, y0), (x1, y1) = a, b
         dx, dy = x1 - x0, y1 - y0
@@ -532,14 +613,18 @@ class TileMapView(QGraphicsView):
         px, py = -uy, ux                      # unit perpendicular
         mx, my = (x0 + x1) / 2, (y0 + y1) / 2
         s = 7                                 # arrow half-length (px)
-        tip = QPointF(mx + ux * s, my + uy * s)
+        tip_pt = QPointF(mx + ux * s, my + uy * s)
         back = (mx - ux * s, my - uy * s)
         left = QPointF(back[0] + px * s * 0.66, back[1] + py * s * 0.66)
         right = QPointF(back[0] - px * s * 0.66, back[1] - py * s * 0.66)
+        edge = QPen(QColor(_PATH_CASING))
+        edge.setWidth(1)
+        edge.setCosmetic(True)
         arrow = self._scene.addPolygon(
-            QPolygonF([tip, left, right]),
-            QPen(Qt.PenStyle.NoPen), QBrush(self._PATH_COLOR))
-        arrow.setZValue(6)
+            QPolygonF([tip_pt, left, right]), edge, QBrush(color))
+        arrow.setZValue(7)
+        if tip:
+            arrow.setToolTip(tip)
         self._path_items.append(arrow)
 
     # ── markers ──────────────────────────────────────────────────────────────
@@ -1575,6 +1660,23 @@ class TripMapView(QDialog):
         self._path_chk.setChecked(default_path)
         self._path_chk.toggled.connect(self._map_set_path)
         h.addWidget(self._path_chk)
+        # Ramp legend — the path is coloured by DAY (light = trip start → dark =
+        # end). A legend is mandatory for ≥2 series; colour carries progression
+        # only, so exact dates come from the leg tooltip.
+        self._legend = QWidget()
+        lg = QHBoxLayout(self._legend)
+        lg.setContentsMargins(6, 0, 0, 0)
+        lg.setSpacing(4)
+        self._legend_from = QLabel()
+        self._legend_bar = QLabel()
+        self._legend_to = QLabel()
+        for w in (self._legend_from, self._legend_to):
+            w.setStyleSheet("color:#52514e; font-size:9px;")   # muted ink, not series colour
+        lg.addWidget(self._legend_from)
+        lg.addWidget(self._legend_bar)
+        lg.addWidget(self._legend_to)
+        self._legend.setVisible(False)
+        h.addWidget(self._legend)
         h.addSpacing(8)
         h.addWidget(QLabel("Basemap:"))
         self._basemap_combo = QComboBox()
@@ -1708,7 +1810,10 @@ class TripMapView(QDialog):
         self._lid = self._map.add_layer(_TRIP_COLOR, pts, offset=(0, 0),
                                         tip=self._trip_tip)
         ordered = sorted((p for p in pts if p.get("date")), key=lambda p: p["date"])
-        self._map.set_travel_path([(p["lon"], p["lat"]) for p in ordered])
+        # EXIF dates are 'YYYY:MM:DD HH:MM:SS' → the day key is the first 10 chars.
+        self._map.set_travel_path(
+            [(p["lon"], p["lat"], p["date"][:10].replace(":", "-")) for p in ordered])
+        self._update_path_legend()
         n = len(pts)
         parts = [f"{n} picture{'' if n == 1 else 's'} on the map"]
         if self._nogps_keys:
@@ -2218,6 +2323,36 @@ class TripMapView(QDialog):
     # ── header actions ───────────────────────────────────────────────────────
     def _map_set_path(self, on: bool):
         self._map.set_path_visible(on)
+        self._update_path_legend()
+
+    def _update_path_legend(self):
+        """Gradient legend for the day-coloured travel path (light = first day →
+        dark = last). Hidden for a single day, or when the path is off — there is
+        no progression to show."""
+        days = self._map.path_days()
+        show = self._path_chk.isChecked() and len(days) > 1
+        self._legend.setVisible(show)
+        if not show:
+            return
+        n = len(days)
+        w, hgt = 90, 8
+        pm = QPixmap(w, hgt)
+        pm.fill(Qt.GlobalColor.transparent)
+        p = QPainter(pm)
+        grad = QLinearGradient(0, 0, w, 0)
+        for i in range(n):
+            grad.setColorAt(i / (n - 1), QColor(TileMapView.day_color(i, n)))
+        p.fillRect(0, 0, w, hgt, QBrush(grad))
+        p.setPen(QPen(QColor(0, 0, 0, 40)))         # hairline ring
+        p.drawRect(0, 0, w - 1, hgt - 1)
+        p.end()
+        self._legend_bar.setPixmap(pm)
+        self._legend_from.setText(days[0][5:])      # MM-DD
+        self._legend_to.setText(days[-1][5:])
+        self._legend.setToolTip(
+            f"Travel path coloured by day — {days[0]} (light) → {days[-1]} (dark), "
+            f"{n} days. Colour shows the trip's progression; hover a leg for its "
+            f"exact date.")
 
     def _on_basemap_changed(self, _idx: int):
         entry = self._basemap_combo.currentData()
