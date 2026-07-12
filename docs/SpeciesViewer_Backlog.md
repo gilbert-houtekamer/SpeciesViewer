@@ -161,6 +161,25 @@ Today a landscape / context photo is a **trip-only, second-class citizen**: it n
 
 **DIRECTION (user, 2026-07-12): a `topics/` branch beside `biota/`.** The master tree is rooted at the taxonomy (`biota/…` chain → species leaf). Add a **sibling top-level branch for non-biota subjects** — e.g. `topics/landscape/<year>/` — organised by year. This generalises: a topic can carry its own "species"-like leaf, so `topics/planes/F16/` works the same way (the user's example; not an actual interest, it shows the shape). The organising key stops being *species* and becomes **subject**, which resolves either down the **biota** chain (taxonomy → species) or down a **topics** chain (topic → leaf/year). That gives landscapes a real home, a backup path into the master, and a website home, without special-casing them everywhere. Fits the existing machinery: `TargetPath` is already built from a chain — a topics chain just yields a different root.
 
+**RECOVERY IS POSSIBLE — the data is all still on disk (user, 2026-07-12).** Nothing was deleted (see VERIFIED above), so every landscape ever shot is still in the picture root. Better: **the whole master record can be rebuilt from the files beside the RAW, without the trip repo** — which matters because a retired trip's metadata is gone:
+
+| What the master record needs | Where it survives on disk |
+|---|---|
+| subject (the `landscape` keyword) | the **`.xmp`** sidecar — keywords always go to XMP |
+| GPS + location | the **`.xmp`** |
+| rating + colour label | the **`.dop`** — NOT the XMP (PhotoLab mistreats colour/rating there) [[project_photolab_xmp_disappear]] |
+| date / camera / EXIF | the **RAW** itself |
+
+All three survive (the file policy already says *keep the `.dop`* [[project_file_policy_dop_dng]]), so a retired trip's landscapes are fully reconstructible from `RAW + .xmp + .dop`. This is an unplanned but real validation of sidecar-as-source-of-truth.
+**⚠ THE TRAP:** a scan that reads only the `.xmp` finds the landscapes but **silently loses every rating and colour label** (they live in the `.dop`). Get this right up front.
+
+**Cost is fine.** Identifying candidates only needs `XMP:Subject` / `IPTC:Keywords` — the same two fields `projectlib` already reads — i.e. a narrow-tag read over the tree, and the EXIF cache makes every pass after the first near-free. Scale reference: the master rescan did **159,973 files cold in ~5m25s at 16 workers** [[project_exif_parallelism]].
+
+**ORDER OF WORK (the scan cannot go first — there is no `TargetPath` until a topic has a rule):**
+1. **Topic registry** — declarative topic → leaf rule, so adding `planes/F16` is data, not a code change (today it's the hardcoded `LANDSCAPE_KEYWORDS`).
+2. **Scan → dry-run report** — walk the picture root with the parallel EXIF reader; list every topic picture found, with what was reconstructed from RAW + `.xmp` + `.dop`.
+3. **Reviewed ingest** into `topics/…`, with backup — dry-run → review → explicit apply, never an auto-fix. [[feedback_review_over_autofix]]
+
 [[project_blog_extras]] [[project_master_db]] [[project_trip_retire]]
 
 ---
