@@ -134,6 +134,30 @@ Path layer P1 DONE (utils/paths.py host-independent). [[project_portability_audi
 
 ---
 
+## 12. Landscapes in the Master — NEW, ARCHITECTURAL (raised 2026-07-12)
+Today a landscape / context photo is a **trip-only, second-class citizen**: it never reaches the master. Raised while adding the map's All/Species scope — "Species" drops exactly these pictures, which made their status visible.
+
+**How it works now (grounded):**
+- A picture is a **"blog extra"** when its subject carries a marker keyword: `LANDSCAPE_KEYWORDS = {'landscape', 'landschap'}` → `SpeciesClassification.isBlogExtra(subject)` (`engine/speciesclassification.py:69-89`).
+- It is deliberately **exempted from species resolution** so it doesn't warn as an unknown species (`engine/projectlib.py:799` clears `errormessage`).
+- It renders in the **day blog** as a card with no taxon, and is excluded from species groups ("aves excludes landscapes, which belong to no group") — `engine/websupport.py:328/491/820/1502`.
+- **It is SKIPPED when freezing to the master**, both its picture record and its file records: `batch/sv6Freeze.py:190` (`AppendChangedPictureData`) and `:147` (`AppendChangedFileData`), logging *"N blog-extra (landscape) pictures excluded from the master collection."*
+
+**Why this is architectural, not a small feature.** The master's whole organising principle is the species: the on-disk tree is species folders (`TargetPath` from the taxonomy chain), and species is the key for the MasterDB index, the species counters, "move to species", the website's per-species pages, the best-JPG/rating pick, and the audit/heal tooling. **A landscape has no taxon, so there is no answer today to "where does it live and how is it found."**
+
+**Open design questions (nothing decided):**
+1. **Where do the files go?** A landscape has no species folder. Options: a dedicated non-taxon branch (`landscapes/` or `context/`); organise by trip/date; or organise by **location** (they're inherently place-pictures, and they all carry GPS). Location feels the most natural key — it's the one thing a landscape *does* have.
+2. **How are they indexed?** MasterDB and the CSV schema assume a species per picture. Species-less records ripple into every species-keyed query, counter and audit.
+3. **What does the website do with them?** Stay blog-only (stored in master purely for safekeeping), or earn a home — a per-location / per-trip gallery? This is the "beyond the website" question again: storage and publication are separable. [[project_direction_beyond_website]]
+4. **What is "best" without a species?** The rating/best-JPG pick groups by species. Group landscapes by location, by trip, or not at all?
+5. **Migration.** Every trip committed so far has had its landscapes excluded. A backfill would have to re-ingest them from trips that still exist on disk.
+
+**⚠ VERIFY FIRST — possible data loss (the strongest reason to do this).** Retiring a trip permanently deletes the trip repo once its pictures are in the master + a virttrip ([[project_trip_retire]]). But landscapes **never enter the master** — so unless the retire scan blocks on them, retiring a trip may **destroy the landscape originals**, leaving only the published JPG in the blog output. **Check `trip_retire`'s blockers/warnings against blog-extra pictures before anything else** — if that hole is real it is a live risk on every retire, and it reframes this chapter from "nice feature" to "stop losing originals".
+
+[[project_blog_extras]] [[project_master_db]] [[project_trip_retire]]
+
+---
+
 ## Recently Completed (key commits)
 - Master Species Viewer — standalone master-only viewer (searchable species field + full-master card grid, reuses RatingEditorCollection full mode + MasterDB).
 - WP4 naming decouple — b4871ae. WP8 picture-root — 8ddd7e1. Cross-platform paths P1 — 0af2d87.
