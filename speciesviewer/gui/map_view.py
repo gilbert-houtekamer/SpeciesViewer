@@ -1923,6 +1923,15 @@ class TripMapView(QDialog):
         self._map.set_path_visible(default_path)
         QTimer.singleShot(0, self._map.fit_to_points)
 
+    def refresh_points(self):
+        """Re-read the collection and redraw. For when GPS changed OUTSIDE the map —
+        the grid's "Get GPS from location" seeds coordinates while the map is open,
+        and without this the new pictures only appear if you close and re-open it."""
+        self._end_confirm()          # a pending placement refers to the old point set
+        self._all_points, self._nogps_keys = self._build_points()
+        self._rebuild_tray()
+        self._render(fit=False)      # keep the frame the user is looking at
+
     # ── scope (All / Species) ────────────────────────────────────────────────
     def _set_scope(self, name: str):
         """Switch the mapped subset. 'species' keeps only pictures that carry a
@@ -2417,7 +2426,12 @@ class TripMapView(QDialog):
                 if has_place:
                     write_location_batch(files, fields, overwrite=True)
                     self._coll.note_location_written(k, fields)
-                self._coll.note_gps_written(k)
+                # Hand the coordinates over: the collection then has nothing to read
+                # back (one exiftool spawn saved per picture), and — the bug this
+                # fixes — a MOVE actually updates the stored coordinate instead of
+                # keeping the pre-move one, which used to make a moved picture snap
+                # back to its old spot the moment the map was re-opened.
+                self._coll.note_gps_written(k, lat, lon)
                 written.append(k)
         finally:
             QApplication.restoreOverrideCursor()

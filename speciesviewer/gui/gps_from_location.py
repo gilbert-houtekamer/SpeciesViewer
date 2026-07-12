@@ -200,14 +200,25 @@ def run_gps_from_location(parent, collection, keys, viewbox=None) -> list:
     try:
         for grp_keys, hit in dlg.accepted_rows():
             lat, lon = hit["lat"], hit["lon"]
+            # ONE exiftool call for the whole place, not one per picture: every
+            # picture in this row gets the SAME coordinate, and exiftool takes a file
+            # list. Placing 13 pictures used to launch exiftool 26 times (a write and
+            # a read-back each); it is now a single write.
+            files, keys_with_files = [], []
             for k in grp_keys:
-                files = collection.location_targets(k)
-                if not files:
-                    continue
-                # MANUAL: a human's place name, not a receiver. This is what lets the
-                # map move it later — and what stops it being mistaken for evidence.
-                if write_gps(files, lat, lon, method=GPS_MANUAL):
-                    collection.note_gps_written(k)
+                f = collection.location_targets(k)
+                if f:
+                    files.extend(f)
+                    keys_with_files.append(k)
+            if not files:
+                continue
+            # MANUAL: a human's place name, not a receiver. This is what lets the map
+            # move it later — and what stops it being mistaken for evidence.
+            if write_gps(files, lat, lon, method=GPS_MANUAL):
+                for k in keys_with_files:
+                    # Pass the coordinates we just wrote: no read-back spawn, and the
+                    # map sees the new position immediately.
+                    collection.note_gps_written(k, lat, lon)
                     written.append(k)
     finally:
         QApplication.restoreOverrideCursor()

@@ -614,6 +614,15 @@ class ImagePreviewDialog(QDialog):
         read_only = getattr(self._collection, "read_only", False)
         geotag = getattr(self._collection, "allow_geotag", False)
         suffix = " (view only)" if (read_only and not geotag) else ""
+        # One map per viewer. Opening a second over the same day gave two windows
+        # plotting the same pictures, each with its own stale copy of the points —
+        # place something on one and the other silently disagreed.
+        old = getattr(self, "_map_dlg", None)
+        if old is not None:
+            try:
+                old.close()
+            except RuntimeError:
+                pass                 # already destroyed by Qt
         dlg = TripMapView(self, self._collection, keys,
                           title=f"Map — {base}{suffix}",
                           loader=self._loader, read_only=read_only,
@@ -621,7 +630,20 @@ class ImagePreviewDialog(QDialog):
                           read_only_note="These pictures live in the master database — "
                                          "this map shows them but does not change them.")
         dlg.pictures_geotagged.connect(self._on_map_geotagged)
+        self._map_dlg = dlg
         dlg.show()
+
+    def _refresh_open_map(self):
+        """The grid just changed GPS (Get GPS from location) — tell an open map to
+        re-read, instead of making the user close and re-open it to see the result."""
+        m = getattr(self, "_map_dlg", None)
+        if m is None:
+            return
+        try:
+            if m.isVisible():
+                m.refresh_points()
+        except RuntimeError:
+            self._map_dlg = None     # the dialog was destroyed
 
     def _on_map_geotagged(self, keys):
         """The map just wrote GPS + location for these pictures. Refresh their
@@ -1361,6 +1383,7 @@ class ImagePreviewDialog(QDialog):
         # A picture that just gained GPS leaves the "missing GPS" filter.
         if self.no_gps_only:
             self._apply_filters()
+        self._refresh_open_map()     # the map shows them now, not on the next re-open
 
     def _refresh_location_after_geocode(self, keys):
         """After 'Get location' wrote place text into the XMP, refresh the cards'

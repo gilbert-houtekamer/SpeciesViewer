@@ -560,10 +560,14 @@ class PreviewCollection(PictureCollection):
                 return True
         return False
 
-    def note_gps_written(self, upn_key: str) -> None:
+    def note_gps_written(self, upn_key: str, lat=None, lon=None) -> None:
         """A paste-GPS wrote GPS into this UPN's XMP — remember it so the
         missing-GPS badge clears without a rescan. Kept in a side set rather than
         poked into the pipeline's in-memory file rows (which feed Write Summary).
+
+        (lat, lon) are accepted to match SidecarCollection's signature — this
+        collection has nothing extra to store, since gps_cached() reads the file rows
+        the map keeps in step.
 
         Anything WE wrote is by definition human-placed, so it also becomes movable
         immediately — without this a picture you just placed would be frozen until

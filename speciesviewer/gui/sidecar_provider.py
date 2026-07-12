@@ -496,18 +496,31 @@ class SidecarCollection(PictureCollection):
         src = self._source_file(key)
         return read_location_fields(src) if src else {}
 
-    def note_gps_written(self, key: str) -> None:
-        """A paste-GPS just wrote GPS into this key's XMP — record its coordinates
-        so has_gps / the missing-GPS badge / the card's GPS line update without a
-        rescan. Re-reads just this one file's GPS (the paste didn't return it).
+    def note_gps_written(self, key: str, lat=None, lon=None) -> None:
+        """We just wrote GPS into this key's XMP — record the coordinates so has_gps,
+        the missing-GPS badge, the card's GPS line and the MAP all see them without a
+        rescan.
 
-        Anything WE wrote is human-placed by definition, so it is refinable at once —
-        without this it would stay frozen until the next re-read populated its
-        GPSProcessingMethod."""
+        Pass (lat, lon) when the caller knows them: it saves an exiftool spawn PER
+        PICTURE (placing 13 pictures used to cost 26 launches — one to write, one to
+        read straight back what we had just written).
+
+        The coordinate is ALWAYS overwritten, never only filled when absent. A MOVE
+        changes the GPS of a picture that already had some, and the old
+        fill-if-missing behaviour silently kept the pre-move value: the map you had
+        open showed the new spot, but re-opening it rebuilt from this stale map and
+        the picture jumped back to where it started. The file on disk was right the
+        whole time — only this dict lied.
+
+        Anything WE wrote is human-placed by definition, so it also becomes refinable
+        at once, without waiting for a re-read to populate GPSProcessingMethod."""
         if not hasattr(self, "_pasted_gps"):
             self._pasted_gps = set()
         self._pasted_gps.add(key)
-        if key in self._groups and key not in self._gps_by_stem:
+        if key in self._groups and lat is not None and lon is not None:
+            self._gps_by_stem[key] = (float(lat), float(lon))
+            return
+        if key in self._groups:
             from gui.geolocate import gps_decimal
             ll = gps_decimal(self.gps_source(key))
             if ll:
