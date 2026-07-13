@@ -65,26 +65,60 @@ def _drop_helper():
     _helper = None
 
 
-def extract_preview_bytes(src: Path) -> bytes | None:
-    """The largest embedded JPEG preview for a RAW, as bytes, or None if the
-    file has none.
+# Where the different bodies hide their embedded JPEG. JpgFromRaw is the camera's
+# own FULL-SIZE render on the Nikons; PreviewImage is the OM-1's 3200px preview (and
+# a tiny ~600px one on Nikons); OtherImage is where the old D90 puts its embed (it has
+# no PreviewImage or ThumbnailImage at all, which is why those files used to render
+# black); ThumbnailImage is the 160x120 last resort.
+_EMBED_TAGS = ("JpgFromRaw", "PreviewImage", "OtherImage", "ThumbnailImage")
 
-    Tags are tried largest-first: JpgFromRaw / PreviewImage hold the full- or
-    near-full-size preview on most cameras; OtherImage is where old Nikon bodies
-    (e.g. the D90) put their embedded JPEG — they have NO PreviewImage or
-    ThumbnailImage at all, so without OtherImage those files extracted nothing
-    and rendered black; ThumbnailImage is the tiny 160x120 last resort. The
-    first non-empty tag wins, so working cameras keep their PreviewImage.
+
+def embed_lengths(src: Path) -> dict:
+    """{tag: byte length} for the embedded images this RAW actually carries. ONE
+    metadata call, no binary — cheap enough to ask before extracting."""
+    src_s = str(src)
+    with _lock:
+        try:
+            et = _get_helper()
+            res = et.get_tags([src_s], tags=[t + "Length" for t in _EMBED_TAGS])[0]
+        except Exception as e:
+            logger.warning(f"Could not read embed lengths for {src.name}: {e}")
+            _drop_helper()
+            return {}
+    out = {}
+    for k, v in res.items():
+        for t in _EMBED_TAGS:
+            if k.endswith(t + "Length"):
+                try:
+                    out[t] = int(v)
+                except (TypeError, ValueError):
+                    pass
+    return {t: n for t, n in out.items() if n > 0}
+
+
+def extract_preview_bytes(src: Path) -> bytes | None:
+    """The LARGEST embedded JPEG in a RAW, as bytes, or None if it has none.
+
+    Largest by actual byte length, not by tag order. The order used to decide it,
+    which quietly picked the wrong image whenever a body's tags did not happen to be
+    listed biggest-first: a NEF with a 70 KB PreviewImage and a 434 KB OtherImage
+    handed back the 70 KB one, and we cached a soft little preview while a far better
+    image sat in the same file. Asking exiftool for the lengths first is one extra
+    metadata call (no binary, through the same persistent process) and removes the
+    guesswork entirely.
 
     Serialised through one persistent exiftool, so it is safe to call from many
     worker threads at once (they queue on the lock rather than each spawning a
     process)."""
     src_s = str(src)
+    lengths = embed_lengths(src)
+    order = ([max(lengths, key=lengths.get)] if lengths else []) + \
+            [t for t in _EMBED_TAGS if t not in lengths]
     with _lock:
         try:
             et = _get_helper()
-            for tag in ("-JpgFromRaw", "-PreviewImage", "-OtherImage", "-ThumbnailImage"):
-                data = et.execute("-b", tag, src_s, raw_bytes=True)
+            for tag in order:
+                data = et.execute("-b", f"-{tag}", src_s, raw_bytes=True)
                 if data:
                     return data
             return None

@@ -587,9 +587,29 @@ class LargeImageView(QDialog):
         self._fr_loader = AsyncImageLoader(self)
         self._fullres_view = _FullResView()
         self._fullres_view.point_changed.connect(self._on_fullres_point_changed)
+        # Third tab: the CAMERA's own JPEG, lifted straight out of the RAW.
+        #
+        # Every Nikon from the D90 to the D500 embeds a FULL-SIZE JPEG (D7100:
+        # 6000x4000 against a 6036x4020 sensor) — that is ~34,000 pictures here, half
+        # the library. Extracting it takes ~30 ms; decoding the same RAW with rawpy
+        # takes SECONDS. It is also a different image, not merely a faster one: the
+        # camera's own rendering rather than ours, so it belongs in its own tab where
+        # you can compare the two, not silently swapped in behind the "80%" label.
+        # (The OM-1 embeds only a 3200px preview, so for those the tab says so and
+        # sends you to the decode tab.)
+        self._embed_view = _FullResView()
+        self._embed_view.point_changed.connect(self._on_fullres_point_changed)
+        self._embed_loader = AsyncImageLoader(self)
+        self._embed_key = None          # which picture the tab currently holds
         self._view_tabs = QTabWidget()
         self._view_tabs.addTab(self._stage, "Fit")
         self._view_tabs.addTab(self._fullres_view, self._fullres_scale_label())
+        self._view_tabs.addTab(self._embed_view, "Camera JPEG")
+        self._view_tabs.setTabToolTip(
+            2, "The JPEG the camera itself wrote inside the RAW. On the Nikons that "
+               "is the FULL-SIZE image and it appears instantly — no decoding. It is "
+               "the camera's rendering, not ours, so it is a fair comparison against "
+               "the decoded tab rather than a replacement for it.")
         self._view_tabs.currentChanged.connect(self._on_view_tab_changed)
 
         self._splitter.addWidget(self._view_tabs)
@@ -838,10 +858,76 @@ class LargeImageView(QDialog):
         self._view_tabs.setCurrentIndex(1)
 
     def _on_view_tab_changed(self, idx):
-        if idx == 1:
+        if idx in (1, 2):
             if self._crop_mode:
                 self._exit_crop_mode(reload=True)  # crop is a Fit-tab tool
+        if idx == 1:
             self._load_fullres()
+        elif idx == 2:
+            self._load_embedded()
+
+    def _load_embedded(self):
+        """Show the camera's own embedded JPEG at 1:1 — no decode, no cache.
+
+        The extract is ~30 ms and the JPEG decode a few hundred, so this is far
+        cheaper than the rawpy path and there is nothing worth caching: the bytes are
+        already sitting in the RAW. The tab label is rewritten with the REAL pixel
+        size once we know it, because a tab that claims a size it isn't showing is
+        exactly the lie we are trying to remove from the 80% tab."""
+        if getattr(self, "_view_tabs", None) is None or self._view_tabs.currentIndex() != 2:
+            return
+        if not self._keys or self._item is None:
+            return
+        key = self._keys[self._index]
+        if self._embed_key == key:
+            return                       # already showing this picture
+        raw = self._collection.raw_path(key)
+        if not raw:
+            self._view_tabs.setTabText(2, "Camera JPEG")
+            self._embed_view.set_message("No RAW file for this picture.")
+            return
+        self._embed_view.set_message("Reading the camera's JPEG…")
+        self._embed_loader.cancel_all()
+        raw_s = str(raw)
+        # The RAW's own pixel size, so we can say whether the embed is full-size.
+        sensor = getattr(getattr(self._item, "exif", None), "dimensions", "") or ""
+
+        def produce():
+            from pathlib import Path
+            from gui.preview_extract import extract_preview_bytes
+            data = extract_preview_bytes(Path(raw_s))
+            if not data:
+                return None
+            img = QImage.fromData(data)
+            return img if not img.isNull() else None
+
+        self._embed_key = key
+        self._embed_loader.request(
+            produce, lambda px, s=sensor: self._on_embedded_pixmap(px, s))
+
+    def _on_embedded_pixmap(self, px, sensor: str):
+        if px is None or px.isNull():
+            self._view_tabs.setTabText(2, "Camera JPEG")
+            self._embed_view.set_message("This RAW carries no embedded JPEG.")
+            return
+        w, h = px.width(), px.height()
+        self._view_tabs.setTabText(2, f"Camera JPEG {w}×{h}")
+        # Is it the full-size render, or just a preview? Say which, rather than
+        # letting the user squint at a soft image and wonder. (A D7100 NEF whose
+        # embed is 799x533 exists — it is a property of the FILE, not the body.)
+        long_edge = max(w, h)
+        sensor_long = 0
+        try:
+            sensor_long = max(int(n) for n in sensor.lower().split("x"))
+        except Exception:
+            pass
+        if sensor_long and long_edge < sensor_long * 0.9:
+            self._embed_view.set_message(
+                f"The camera embedded only a {w}×{h} preview in this RAW "
+                f"(the sensor is {sensor}).\n"
+                f"Use the {self._fullres_scale_label()} tab — it decodes the RAW itself.")
+            return
+        self._embed_view.set_image(px, self._fullres_point)
 
     def _on_fullres_point_changed(self, fx, fy):
         self._fullres_point = (fx, fy)
@@ -1276,6 +1362,13 @@ class LargeImageView(QDialog):
         except (ValueError, KeyError):
             return
         self._item = item
+        # The Camera-JPEG tab holds one picture at a time; flipping to another must
+        # re-read it (and re-label the tab) rather than leave the previous frame up.
+        if getattr(self, "_embed_key", None) != key:
+            self._embed_key = None
+            if getattr(self, "_view_tabs", None) is not None \
+                    and self._view_tabs.currentIndex() == 2:
+                self._load_embedded()
 
         pos = f"  ({self._index + 1} of {len(self._keys)})"
         self.setWindowTitle((item.display_name or key) + pos)
