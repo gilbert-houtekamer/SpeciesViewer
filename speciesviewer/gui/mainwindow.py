@@ -3,7 +3,7 @@ import os
 
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStatusBar, QApplication
 from PyQt6.QtWidgets import QPlainTextEdit, QLabel, QSizePolicy, QLineEdit, QTabWidget, QTableWidgetItem, QMessageBox
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 
 from utils.config import _config, persist_config
 from gui.menu import create_menubar
@@ -1096,6 +1096,21 @@ class MainWindow(QMainWindow):
                 f"sidecar that the day CSVs predate.")
         return found
 
+    def refresh_gps_counts(self, kind: str = "virttrip"):
+        """Repaint the yellow panel after something wrote GPS into the pictures it
+        counts (placing on the map, moving a bubble, Get GPS from location).
+
+        The No-GPS column is the one number in the panel that no longer holds once a
+        map is open: it is read from the sidecars, and placing a day writes exactly
+        those sidecars. Without this the count stood at its pre-placement value until
+        the app was restarted — the map showed the pictures on the island while the
+        panel still called them missing.
+
+        Deferred one event-loop turn on purpose: the caller can be a signal from the
+        very table that the repopulate destroys."""
+        fn = populate_trip_overview if kind == "trip" else populate_virttrip_overview
+        QTimer.singleShot(0, lambda: fn(self))
+
     def open_trip_map(self):
         """Whole-trip map: plot EVERY day of the active trip on one map (all
         species) with the travel path, with the same bubbles, filmstrip and large
@@ -1128,6 +1143,8 @@ class MainWindow(QMainWindow):
         self._trip_map_dlg = TripMapView(
             self, coll, keys, title=f"Map — {trip_name} (whole trip)",
             loader=loader, default_path=True, trip_root=trip_root)
+        self._trip_map_dlg.pictures_geotagged.connect(
+            lambda _keys: self.refresh_gps_counts("trip"))
         self._trip_map_dlg.show()
 
     def open_virttrip_map(self, day_dirs: list | None = None):
@@ -1183,6 +1200,8 @@ class MainWindow(QMainWindow):
             read_only_note="A virtual trip shares the master's pictures instead of "
                            "copying them, so this map only shows them — it cannot "
                            "change their location, rating or files.")
+        self._virttrip_map_dlg.pictures_geotagged.connect(
+            lambda _keys: self.refresh_gps_counts("virttrip"))
         self._virttrip_map_dlg.show()
 
     def open_virttrip_rating_editor(self):

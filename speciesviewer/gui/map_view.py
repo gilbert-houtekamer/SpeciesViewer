@@ -1708,7 +1708,14 @@ class TripMapView(QDialog):
                  read_only_note: str = "", allow_geotag: bool = False):
         super().__init__(parent)
         self._coll = collection
-        self._src_keys = list(keys or [])   # everything the viewer handed over
+        # CAPTURE ORDER, not the order the keys arrived in. The host hands us
+        # all_keys(), which is the UPN dict's insertion order — i.e. whatever order
+        # the rows happened to land in the CSV — while the grid the user is looking
+        # at renders the collection's `_order`, which is sorted by capture time. The
+        # tray of not-yet-placed pictures sat beside that grid in a different order,
+        # and so did every bubble's filmstrip. Sorting here fixes both at once: the
+        # tray, the filmstrip, and the neighbours a position suggestion reads.
+        self._src_keys = self._by_capture(keys or [])
         self._scope = "all"                 # "all" | "species" (header buttons)
         self._keys = list(self._src_keys)   # the scoped subset actually mapped
         self._strip = None
@@ -2510,6 +2517,22 @@ class TripMapView(QDialog):
         self._begin_confirm("move", keys, lat, lon, warnings="<br>".join(warn))
 
     # ── data ─────────────────────────────────────────────────────────────────
+    def _by_capture(self, keys) -> list[str]:
+        """Keys in shooting order — the SAME order (and the same tiebreak) the
+        collections use to lay out the grid: dated first by DateTimeOriginal, undated
+        last, ties broken by name. Reads the date off the in-memory item, so this
+        costs no exiftool call.
+
+        Sorting the map's keys here rather than in each consumer is what keeps the
+        tray, the bubble filmstrips and the grid telling one story."""
+        def key(k: str):
+            try:
+                dt = (getattr(self._coll.item_for_key(k), "date", "") or "").strip()
+            except Exception:
+                dt = ""
+            return (0, dt, k) if dt else (1, "", k)
+        return sorted(keys, key=key)
+
     def _build_points(self) -> tuple[list[dict], list[str]]:
         """Walk the live collection's keys → map points for the GPS'd ones, and the
         keys of those without (the drag-to-geotag tray, Phase 5b).

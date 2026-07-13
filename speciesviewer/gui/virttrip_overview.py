@@ -81,6 +81,10 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
         allow_geotag=parent._master_is_editable(),
     )
     dlg.exec()
+    # The viewer can geotag (Get GPS from location, and the map it opens), and that
+    # write lands in the sidecars the No-GPS column counts. Repaint on the way out so
+    # the panel does not keep quoting the count from before the viewer was opened.
+    parent.refresh_gps_counts("virttrip")
 
 
 def _gps_from_sidecars(xmp_by_upn: dict) -> set:
