@@ -989,6 +989,40 @@ class MasterDB:
 
         return updates, deleted
 
+    LOCATION_COLUMNS = ("Location", "City", "Municipality", "State", "Country")
+
+    def apply_location_fields(self, updates: dict) -> int:
+        """Set the place-name columns on MANY pictures at once: {upn: {field: val}}.
+
+        Used by the reverse-geocode backfill, which fills in the pictures that have
+        a coordinate but no place text at all. The sidecar is still the truth — the
+        caller writes the XMP first — but the website, the maps and the viewers all
+        read the master index, so without this the names would not appear anywhere
+        until a full master re-read.
+
+        ONE journal entry for the whole batch, deliberately: 2,415 separate entries
+        would rewrite data_pictures.csv 2,415 times. Only the five location columns
+        are writable here, so a caller cannot smuggle in a species or a rating."""
+        clean = {}
+        for upn, fields in (updates or {}).items():
+            keep = {k: v for k, v in (fields or {}).items()
+                    if k in self.LOCATION_COLUMNS}
+            if keep:
+                clean[upn] = keep
+        if not clean:
+            return 0
+        con = self._connect()
+        entry = {"op": "set_location", "ts": time.time(), "pictures": clean}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        with con:
+            for upn, fields in clean.items():
+                self._set_picture_fields(con, upn, fields)
+        MasterCheckpointWorker.get(self.master_root).notify()
+        logger.info(f"master: set place names on {len(clean)} picture(s).")
+        return len(clean)
+
     # ── master add/delete operations (durable; mirror apply_rating's discipline)
     def apply_delete_upn(self, upn: str) -> list[str] | None:
         """Delete a whole picture (UPN) + its file rows from the master, and

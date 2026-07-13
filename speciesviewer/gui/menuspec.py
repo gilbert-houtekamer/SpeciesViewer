@@ -1055,6 +1055,24 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    def _add_place_names():
+        from gui.master_geocode import open_master_geocode
+        open_master_geocode(main_window)
+
+    # A data REPAIR tool, so it belongs beside the other master-data maintenance
+    # (Refresh / Audit / Clean Orphans), not in the Master menu, which is about
+    # publishing and viewers. Shown to everyone, not gated behind debug: it is
+    # review-first (nothing is written until the table is confirmed) and it only
+    # touches pictures that have NO place name at all.
+    add_place_names_item = MenuSpec(
+        callback=_add_place_names,
+        title="Add Missing Place Names…",
+        tooltip="Look up the place for master pictures that have GPS but no "
+                "location, city or country — they show as bare coordinates on "
+                "the species map",
+        showsubdirectory=False,
+    )
+
     # File ▸ Admin. The Refresh Master Database pair (Review → Apply) reconciles
     # the master CSVs with what is on disk; Apply is the only destructive action
     # and is always shown. The consoles/testbed diagnostics are gated behind the
@@ -1063,6 +1081,8 @@ def build_menu_spec(main_window):
     admin_menu = {
         "Refresh Master Database — Review…": refresh_review_item,
         "Refresh Master Database — Apply…": heal_admin_item,
+        f"{MenuSpec.separator()}_admin_maint": None,
+        "Add Missing Place Names…": add_place_names_item,
     }
     if debug_enabled():
         admin_menu = {
@@ -1072,6 +1092,7 @@ def build_menu_spec(main_window):
             "Refresh Master Database — Review…": refresh_review_item,
             "Refresh Master Database — Apply…": heal_admin_item,
             f"{MenuSpec.separator()}_admin_maint": None,
+            "Add Missing Place Names…": add_place_names_item,
             "Audit Species Counters (dry-run)…": audit_species_item,
             "Clean Orphan Sidecars (move to trash)…": clean_orphans_item,
             f"{MenuSpec.separator()}_admin_1": None,
