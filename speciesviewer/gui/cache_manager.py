@@ -148,8 +148,19 @@ class ManageCachesDialog(QDialog):
                 stat_fn=self._preview_stats,
                 clear_fn=self._clear_preview,
                 warning=None,
-                extra=("Remove low-res", self._purge_small_previews,
-                       self._small_preview_stats),
+                extras=[
+                    dict(label="Remove low-res", handler=self._purge_small_previews,
+                         stat_fn=self._small_preview_stats,
+                         tooltip="Delete only the low-res (< ~50 KB) thumbnails, keeping "
+                                 "the full-size previews — they re-extract at full "
+                                 "resolution."),
+                    dict(label="Prune stale", handler=self._prune_previews,
+                         stat_fn=self._stale_preview_stats,
+                         tooltip="Delete previews whose pictures no longer exist (a "
+                                 "deleted or culled trip) and previews nobody has "
+                                 "looked at in 90 days. Runs by itself once a day — "
+                                 "this is the same sweep, on demand."),
+                ],
             ),
             dict(
                 kind="exif", pie_index=2,
@@ -186,16 +197,6 @@ class ManageCachesDialog(QDialog):
             size_lbl = QLabel()
             size_row.addWidget(size_lbl)
             size_row.addStretch()
-            extra_btn = None
-            if spec.get("extra"):
-                label, handler, _stat = spec["extra"]
-                extra_btn = QPushButton(label)
-                extra_btn.setFixedWidth(120)
-                extra_btn.setToolTip(
-                    "Delete only the low-res (< ~50 KB) thumbnails, keeping the "
-                    "full-size previews — they re-extract at full resolution.")
-                extra_btn.clicked.connect(lambda _, h=handler: h())
-                size_row.addWidget(extra_btn)
             edit_btn = None
             if spec.get("edit", True):
                 edit_btn = QPushButton("Edit…")
@@ -209,6 +210,25 @@ class ManageCachesDialog(QDialog):
             btn.setFixedWidth(80)
             size_row.addWidget(btn)
             gl.addLayout(size_row)
+
+            # Targeted actions (a row may have any number) get their OWN line,
+            # left-aligned under the size. They are the only buttons whose label
+            # GROWS — each carries a live count — so on the size row they were
+            # squeezed between the stretch and Edit/Clear and clipped their own
+            # text. Down here they can size to their content, and Edit/Clear stay
+            # aligned down every group.
+            extras = []
+            if spec.get("extras"):
+                extra_row = QHBoxLayout()
+                for e in spec["extras"]:
+                    eb = QPushButton(e["label"])
+                    eb.setMinimumWidth(130)
+                    eb.setToolTip(e["tooltip"])
+                    eb.clicked.connect(lambda _, h=e["handler"]: h())
+                    extra_row.addWidget(eb)
+                    extras.append(dict(btn=eb, label=e["label"], stat_fn=e["stat_fn"]))
+                extra_row.addStretch()
+                gl.addLayout(extra_row)
 
             path_lbl = QLabel()
             path_lbl.setStyleSheet("color: grey; font-size: 10px;")
@@ -226,8 +246,7 @@ class ManageCachesDialog(QDialog):
                        btn=btn, edit_btn=edit_btn,
                        stat_fn=spec["stat_fn"], clear_fn=spec["clear_fn"],
                        edit_stat_fn=spec.get("edit_stat_fn") or spec["stat_fn"],
-                       title=spec["title"], extra_btn=extra_btn,
-                       extra_stat_fn=spec["extra"][2] if spec.get("extra") else None)
+                       title=spec["title"], extras=extras)
             self._rows.append(row)
             btn.clicked.connect(lambda _, r=row: self._on_clear(r))
             if edit_btn is not None:
@@ -260,6 +279,10 @@ class ManageCachesDialog(QDialog):
     def _small_preview_stats(self) -> tuple[int, int]:
         from gui.fullres import small_preview_stats
         return small_preview_stats()
+
+    def _stale_preview_stats(self) -> tuple[int, int]:
+        from utils.preview_cache import stats
+        return stats()
 
     def _exif_file(self) -> str:
         """Live path to exif_cache.json (recomputed so it tracks relocations)."""
@@ -321,12 +344,12 @@ class ManageCachesDialog(QDialog):
             from utils.cache_paths import display_path
             row["path_lbl"].setText(display_path(path))
             row["btn"].setEnabled(count > 0)
-            if row.get("extra_btn") is not None and row.get("extra_stat_fn"):
-                small_count, small_total = row["extra_stat_fn"]()
-                row["extra_btn"].setEnabled(small_count > 0)
-                row["extra_btn"].setText(
-                    f"Remove low-res ({small_count})" if small_count
-                    else "Remove low-res")
+            # Each targeted action carries its own live count, so you can see what
+            # it would remove before pressing it.
+            for e in row.get("extras", []):
+                n, _bytes = e["stat_fn"]()
+                e["btn"].setEnabled(n > 0)
+                e["btn"].setText(f"{e['label']} ({n})" if n else e["label"])
             pie_sizes[row["pie_index"]] += float(total)
 
         total_all = sum(pie_sizes)
@@ -427,6 +450,37 @@ class ManageCachesDialog(QDialog):
             return
         from gui.fullres import purge_small_previews
         purge_small_previews()
+        self._refresh()
+
+    def _prune_previews(self) -> None:
+        """Drop the previews that are dead (their picture is gone) or cold (nobody
+        has looked at them in 90 days). Says WHICH of the two before deleting —
+        "your pictures were deleted" and "you haven't looked at these lately" are
+        very different things to be told."""
+        from utils.preview_cache import scan, prune, PREVIEW_TTL_DAYS
+        rep = scan()
+        n = len(rep["files"])
+        if n == 0:
+            QMessageBox.information(
+                self, "Prune stale previews",
+                "Nothing to prune — every cached preview belongs to a picture that "
+                "still exists and has been used recently.")
+            return
+        parts = []
+        if rep["orphaned"]:
+            parts.append(f"{rep['orphaned']} whose picture no longer exists "
+                         f"(deleted or culled)")
+        if rep["expired"]:
+            parts.append(f"{rep['expired']} not looked at in {PREVIEW_TTL_DAYS} days")
+        if QMessageBox.question(
+                self, "Prune stale previews",
+                f"Delete {n} cached preview(s) ({_fmt(rep['bytes'])})?\n\n"
+                + "\n".join(f"  • {p}" for p in parts)
+                + "\n\nPreviews are derived data — anything still wanted re-extracts "
+                  "the next time you view it."
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        prune()
         self._refresh()
 
     def _clear_exif_daytrip(self, row: dict) -> None:

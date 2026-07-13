@@ -97,6 +97,7 @@ def execute_trip_delete(plan):
     deleted_files = deleted_pics = 0
     errors = []
     touched_dirs = set()
+    removed_paths = []
     for _upn, paths in plan.get("deletable", {}).items():
         removed_one = False
         for p in paths:
@@ -105,11 +106,22 @@ def execute_trip_delete(plan):
                     os.remove(p)
                     deleted_files += 1
                     removed_one = True
+                    removed_paths.append(p)
                     touched_dirs.add(os.path.dirname(p))
             except Exception as e:
                 errors.append(f"{os.path.basename(p)}: {e}")
         if removed_one:
             deleted_pics += 1
+
+    # These pictures are gone for good (the master is the backup), so their
+    # extracted previews are now junk that nothing will ever ask for again. Drop
+    # them here rather than leaving them for the 90-day sweep — a deleted trip is
+    # the single biggest thing the preview cache ever holds.
+    try:
+        from utils.preview_cache import drop_for_files
+        drop_for_files(removed_paths)
+    except Exception as e:
+        logger.warning(f"preview cache: could not drop previews for deleted trip: {e}")
 
     # Drop now-empty day folders (deepest first); leaves folders that still
     # hold kept pictures or a blog.ini untouched.

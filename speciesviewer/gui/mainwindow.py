@@ -147,6 +147,45 @@ class MainWindow(QMainWindow):
             self._on_application_state_changed
         )
 
+        self._prune_preview_cache_daily()
+
+    def _prune_preview_cache_daily(self):
+        """Keep the preview cache bounded, once a day, without being asked.
+
+        The cache only ever grew: it kept the extracted previews of culled, deleted
+        and retired trip RAWs for ever. The sweep drops entries whose picture is
+        gone and entries nobody has opened in 90 days — the same net the EXIF cache
+        gets on every Read Directory, which is where this idea comes from.
+
+        In a plain daemon thread: it only stats and unlinks files (no Qt objects),
+        and a cache of a hundred thousand previews takes long enough to walk that
+        doing it on the UI thread would show as a stutter on startup. The day stamp
+        is written BEFORE the work, so a failure costs one skipped day rather than a
+        retry loop. Also available on demand — Manage Caches ▸ Prune stale."""
+        import threading
+        import time
+        today = int(time.time() // 86400)
+        try:
+            last = int(_config.get("caches", "preview_pruned_day", fallback="0") or 0)
+        except ValueError:
+            last = 0
+        if last == today:
+            return
+        if not _config.has_section("caches"):
+            _config.add_section("caches")
+        _config.set("caches", "preview_pruned_day", str(today))
+        persist_config()
+
+        def _work():
+            try:
+                from utils.preview_cache import prune
+                prune()
+            except Exception as e:
+                if self.logger:
+                    self.logger.warning(f"preview cache: daily prune failed: {e}")
+
+        threading.Thread(target=_work, daemon=True, name="preview-prune").start()
+
     def _current_trip_day_snapshot(self):
         pic_dir = _config.get("project", "picturedirectory", fallback="").strip()
         if not pic_dir:

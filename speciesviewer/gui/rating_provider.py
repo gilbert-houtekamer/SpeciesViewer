@@ -865,6 +865,7 @@ class RatingEditorCollection(PictureCollection):
         matching = list(keys)
         protected = 0
         deleted = 0
+        srcs = []
         days_to_persist: set[str] = set()
         for key in matching:
             if self.jpg_path(key):
@@ -888,6 +889,7 @@ class RatingEditorCollection(PictureCollection):
                 if src.exists():
                     try:
                         shutil.move(str(src), str(upn_dir / src.name))
+                        srcs.append(src)
                     except Exception as e:
                         logger.error(f"Trash move failed for {src.name}: {e}")
                 self.fpr.fi.files_dict.pop(fname, None)
@@ -901,6 +903,8 @@ class RatingEditorCollection(PictureCollection):
             if self._day_objects and day in self._day_objects:
                 days_to_persist.add(day)
             deleted += 1
+        from utils.preview_cache import drop_for_files
+        drop_for_files(srcs)     # the RAWs are gone; their cached previews are junk
         for day in days_to_persist:
             fi_day, upn_day = self._day_objects[day]
             try:

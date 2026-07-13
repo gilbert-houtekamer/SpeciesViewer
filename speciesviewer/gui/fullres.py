@@ -162,11 +162,13 @@ def preview_cache_stats() -> tuple[int, int]:
 def clear_preview_cache() -> int:
     """Delete the entire preview cache tree. Returns approximate file count."""
     import shutil
+    from utils.preview_cache import forget
     d = preview_cache_root()
     if not d.is_dir():
         return 0
     count, _ = preview_cache_stats()
     shutil.rmtree(d, ignore_errors=True)
+    forget()      # the folders will be recreated — they must be re-marked too
     logger.info(f"Cleared ~{count} preview cache file(s) from {d}.")
     return count
 

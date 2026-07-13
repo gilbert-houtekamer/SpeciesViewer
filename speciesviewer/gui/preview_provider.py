@@ -44,15 +44,12 @@ def preview_cache_dir_for(src_folder: Path) -> Path:
     """AppData-based preview cache directory for src_folder.
 
     Uses a short SHA-1 of the normalised folder path as a subdirectory so files
-    with identical stems from different trip days never collide.
+    with identical stems from different trip days never collide. The layout, the
+    LRU stamp and the hygiene sweep all live in utils.preview_cache — this is the
+    name the viewers already import.
     """
-    import hashlib
-    import os
-    from utils.cache_paths import cache_root
-    folder_hash = hashlib.sha1(
-        os.path.normcase(str(src_folder)).encode()
-    ).hexdigest()[:16]
-    return cache_root("preview") / folder_hash
+    from utils.preview_cache import cache_dir_for
+    return cache_dir_for(src_folder)
 
 
 def _safe_int(s, default=None):
@@ -71,9 +68,14 @@ def cached_jpg_for(src: Path | None, cache_dir: Path) -> Path | None:
         return None
     if src.suffix.lower() in (".jpg", ".jpeg"):
         return src
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    from utils import preview_cache
+    # Records WHICH source folder this cache folder belongs to (the hash is
+    # one-way), so the hygiene sweep can later tell a live entry from the leavings
+    # of a deleted trip.
+    preview_cache.ensure_dir(cache_dir, src.parent)
     cache = cache_dir / (src.stem + ".jpg")
     if cache.exists():
+        preview_cache.touch(cache)   # LRU: a preview you still look at never ages out
         return cache
     if src.suffix.lower() == ".heic":
         try:
@@ -987,6 +989,7 @@ class PreviewCollection(PictureCollection):
                     if (self.fpr.getColor(self.rep_filename(k)) or "").lower() == wanted]
         protected = 0
         deleted = 0
+        srcs = []
         for key in matching:
             if self.jpg_path(key):
                 protected += 1
@@ -1004,12 +1007,15 @@ class PreviewCollection(PictureCollection):
                 if src.exists():
                     try:
                         shutil.move(str(src), str(upn_dir / src.name))
+                        srcs.append(src)
                     except Exception as e:
                         logger.error(f"Trash move failed for {src.name}: {e}")
                 self.fpr.fi.files_dict.pop(fname, None)
             sweep_dop(raw_src, upn_dir)
             self.fpr.upn.UniquePictureName_dict.pop(key, None)
             deleted += 1
+        from utils.preview_cache import drop_for_files
+        drop_for_files(srcs)     # the RAWs are gone; their cached previews are junk
         if deleted:
             try:
                 self.fpr.upn.write_project_summary()
@@ -1033,7 +1039,7 @@ class PreviewCollection(PictureCollection):
             return None                      # protected — the JPG is the finished asset
         dest = Path(trash_dir) / key
         dest.mkdir(parents=True, exist_ok=True)
-        moved, raw_src = [], None
+        moved, raw_src, srcs = [], None, []
         for fname in list(self._files(key)):
             frow = self.fpr.fi.files_dict.get(fname)
             if not frow:
@@ -1045,11 +1051,14 @@ class PreviewCollection(PictureCollection):
                 try:
                     shutil.move(str(src), str(dest / src.name))
                     moved.append(src.name)
+                    srcs.append(src)
                 except Exception as e:
                     logger.error(f"trash_upn move failed for {src.name}: {e}")
             self.fpr.fi.files_dict.pop(fname, None)
         sweep_dop(raw_src, dest)
         self.fpr.upn.UniquePictureName_dict.pop(key, None)
+        from utils.preview_cache import drop_for_files
+        drop_for_files(srcs)     # the RAW is gone; its cached preview is now junk
         return moved
 
     # ── write-back (rating / colour) with Rate recompute ──────────────────

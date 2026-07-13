@@ -780,6 +780,7 @@ class SidecarCollection(PictureCollection):
                     if SidecarItem(self, s).color.lower() == wanted]
         protected = 0
         deleted = 0
+        srcs = []
         for stem in matching:
             grp = self._groups.get(stem, {})
             if grp.get("jpg"):
@@ -792,6 +793,7 @@ class SidecarCollection(PictureCollection):
                 if src and Path(src).exists():
                     try:
                         shutil.move(str(src), str(upn_dir / Path(src).name))
+                        srcs.append(Path(src))
                     except Exception as e:
                         logger.error(f"Trash move failed for {Path(src).name}: {e}")
             # Sweep the DxO recipe too (else a lone .dop becomes a phantom picture).
@@ -801,6 +803,8 @@ class SidecarCollection(PictureCollection):
             if grp.get("xmp"):
                 self._rows.pop(_norm(grp["xmp"]), None)
             deleted += 1
+        from utils.preview_cache import drop_for_files
+        drop_for_files(srcs)     # the RAWs are gone; their cached previews are junk
         return len(matching), protected, deleted
 
     def write_tag(self, stem: str, tag: str, value: str, row_key: str) -> None:
