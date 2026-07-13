@@ -297,26 +297,47 @@ def getJPGtime(JPGobject, MyProject):
 
 # make sure we do not do small twice
 def getSmallJPG(filename):
-    if filename.lower().endswith('-small.jpg'):
-        return filename
-    else:
-        return filename.replace('.jpg','-small.jpg')
+    """'x.jpg' / 'x.JPG' / 'x.jpeg' -> 'x-small.jpg'. Already-small names pass through.
+
+    This USED to be `filename.replace('.jpg', '-small.jpg')`, which is CASE-SENSITIVE:
+    an uppercase `X.JPG` came back UNCHANGED — the caller then treated the full-size
+    file as the thumbnail. In jpgResizeCopy that meant SAVING THE THUMBNAIL OVER THE
+    ORIGINAL: 142 master pictures were overwritten in place by their own 600x450
+    render (88 of them the species' BestJPG — the main image on the page). The master
+    holds 1,717 uppercase `.JPG` files, so this was live and ongoing, not historical.
+    Split the extension; never pattern-match it."""
+    stem, ext = os.path.splitext(filename)
+    if not ext or ext.lower() not in ('.jpg', '.jpeg'):
+        return filename                      # not a JPG — nothing to derive
+    if stem.lower().endswith('-small'):
+        return filename                      # only once needed
+    return stem + '-small.jpg'
 
 def jpgResizeCopy(targetstr, horizontalsize = 600):
     # resize, avoid rounding errors that are case by 499 vs 500
     try:
         if targetstr.lower().endswith('-small.jpg'): return                 # only once needed
+        small = getSmallJPG(targetstr)
+        # THE INVARIANT: a thumbnail is NEVER written over its source. Case was only
+        # how the bug got in; this guard is what makes the class of bug impossible.
+        # If the derived name ever equals the source again, we refuse and say so
+        # instead of quietly destroying a full-resolution picture.
+        if os.path.normcase(os.path.abspath(small)) == os.path.normcase(os.path.abspath(targetstr)):
+            logger.warning(f"jpgResizeCopy REFUSED: the thumbnail name for "
+                           f"{os.path.basename(targetstr)} is the file itself — "
+                           f"writing it would destroy the original.")
+            return
         image = Image.open(targetstr)
         if image.size[0] > image.size[1]:
             resized_image = image.resize((600, 450))
         elif image.size[0] == image.size[1]:
-            resized_image = image.resize((600, 600))            
+            resized_image = image.resize((600, 600))
         else:
             resized_image = image.resize((450, 600))
         # wpercent = (horizontalsize/float(image.size[0]))
         # hsize = int((float(image.size[1])*float(wpercent)))
         # resized_image = image.resize((horizontalsize, hsize))
-        resized_image.save(targetstr.replace('.jpg','-small.jpg'))
+        resized_image.save(small)
     except Exception as e:
         logger.info(f"Resizing {targetstr} failed, error: {e}")
     return
