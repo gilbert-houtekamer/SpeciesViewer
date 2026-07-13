@@ -151,9 +151,10 @@ class ManageCachesDialog(QDialog):
                 extras=[
                     dict(label="Remove low-res", handler=self._purge_small_previews,
                          stat_fn=self._small_preview_stats,
-                         tooltip="Delete only the low-res (< ~50 KB) thumbnails, keeping "
-                                 "the full-size previews — they re-extract at full "
-                                 "resolution."),
+                         tooltip="Delete only the degraded thumbnails (under ~50 KB) — "
+                                 "the ones a failed extraction left behind. The good "
+                                 "previews are kept, and a deleted one is re-extracted "
+                                 "next time you view the picture."),
                     dict(label="Prune stale", handler=self._prune_previews,
                          stat_fn=self._stale_preview_stats,
                          tooltip="Delete previews whose pictures no longer exist (a "

@@ -138,6 +138,42 @@ class RawProcessingDialog(QDialog):
 
         root.addWidget(settings_box)
 
+        # ── Preview cache ─────────────────────────────────────────────────
+        # The OTHER decode path. Everything above governs the 1:1 RAW decode; this
+        # governs the preview we lift out of the RAW for the grid and the Fit view.
+        # They belong in one dialog: two dialogs called "quality" would be a coin
+        # toss for the user.
+        from gui.preview_extract import preview_limits
+        pv_edge, pv_quality = preview_limits()
+        preview_box = QGroupBox("Preview images (grid and fitted view)")
+        pg = QGridLayout(preview_box)
+        pg.setColumnStretch(1, 1)
+
+        pg.addWidget(QLabel("Largest side:"), 0, 0)
+        self._pv_edge = QSpinBox()
+        self._pv_edge.setRange(0, 8000)
+        self._pv_edge.setSingleStep(200)
+        self._pv_edge.setSuffix(" px")
+        self._pv_edge.setSpecialValueText("Keep the camera's own size")
+        self._pv_edge.setValue(pv_edge)
+        self._pv_edge.setToolTip(
+            "Cameras embed wildly different previews in a RAW — the OM-1 about "
+            "3200 px, the Nikons a full-size 6000 px, the D90 a 9.9 MB monster. "
+            "Shrinking them all to one size keeps previews predictable and the "
+            "cache small. It does not touch the 1:1 view above, which always "
+            "decodes the RAW itself.\n\n0 = cache whatever the camera embedded.")
+        pg.addWidget(self._pv_edge, 0, 1)
+
+        pg.addWidget(QLabel("JPEG quality:"), 1, 0)
+        self._pv_quality = QSpinBox()
+        self._pv_quality.setRange(60, 100)
+        self._pv_quality.setValue(pv_quality)
+        self._pv_quality.setToolTip(
+            "Only used when a preview is actually shrunk. A preview already within "
+            "the limit is cached byte-for-byte, so it never loses quality.")
+        pg.addWidget(self._pv_quality, 1, 1)
+        root.addWidget(preview_box)
+
         # ── Cache note ────────────────────────────────────────────────────
         from gui.fullres import fullres_cache_stats
         n_files, n_bytes = fullres_cache_stats()
@@ -252,4 +288,12 @@ class RawProcessingDialog(QDialog):
             "auto_bright": self._auto_bright.isChecked(),
             "scale":       self._scale.value(),
         })
+        # The preview settings live in their own section: they govern a different
+        # decode (the embedded preview, not the RAW), and the two are cleared and
+        # rebuilt independently.
+        if not _config.has_section("preview"):
+            _config.add_section("preview")
+        _config.set("preview", "max_long_edge", str(self._pv_edge.value()))
+        _config.set("preview", "quality", str(self._pv_quality.value()))
+        persist_config()
         self.accept()

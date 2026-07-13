@@ -31,7 +31,8 @@ destroys data that cannot be reconstructed.
 | `[Trip]` | `tripbiotadatabase`, `tripbiotawebroot` | Active trip database path |
 | `[VirtTrip]` | `virttripbiotadatabase`, `virttripbiotawebroot` | Active virtual trip |
 | `[websettings]` | `Sftppwd`, `base_url` | SFTP credentials and website URL |
-| `[fullres]` | `algorithm`, `fbdd`, `bright`, `denoise` | RAW decode quality for the 100% view |
+| `[fullres]` | `algorithm`, `fbdd`, `bright`, `denoise`, `scale` | RAW decode quality for the 100% view |
+| `[preview]` | `max_long_edge` (default 3200), `quality` (90) | Size of the previews we lift out of a RAW for the grid and the fitted view. Cameras embed wildly different ones (OM-1 3200 px, Nikons a full-size 6000 px, the D90 up to 9.9 MB), so they are normalised to one reference size. `0` = cache whatever the camera embedded. Set in the Decode Quality dialog, beside the RAW-decode knobs. |
 | `[avibase]` | `source_format`, `phone_layout`, `first_column_lang` | Excel checklist export settings |
 | `[masterdb]` | `pending_warn_seconds`, `checkpoint_debounce_seconds` | SQLite write-queue behaviour |
 | `[performance]` | `exif_workers` | Parallel exiftool workers for reads. `auto` (default; ≈physical cores, capped 16, floored by file count) or an integer to pin this machine. Hardware-dependent, hence machine scope. |

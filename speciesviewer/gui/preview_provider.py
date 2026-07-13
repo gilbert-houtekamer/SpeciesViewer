@@ -82,9 +82,15 @@ def cached_jpg_for(src: Path | None, cache_dir: Path) -> Path | None:
             import pillow_heif
             pillow_heif.register_heif_opener()
             from PIL import Image
+            from gui.preview_extract import preview_limits
+            # Same size rule as a RAW's embedded preview. This used to be a
+            # hard-coded 1600, which made an iPhone picture the one thing in the
+            # cache that rendered softer than everything else for no stated reason.
+            max_edge, quality = preview_limits()
             im = Image.open(str(src))
-            im.thumbnail((1600, 1600))
-            im.save(str(cache), "JPEG")
+            if max_edge > 0:
+                im.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
+            im.convert("RGB").save(str(cache), "JPEG", quality=quality, optimize=True)
             return cache
         except Exception as e:
             logger.warning(f"HEIC decode failed for {src.name}: {e}")

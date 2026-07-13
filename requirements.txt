@@ -4,6 +4,10 @@
 exif
 opencv-python
 pyexiftool
+# Pillow: imported at module scope (engine/websupport.py, engine/statslib.py,
+# widgets/trip_widgets.py) and used to normalise cached previews. It was only ever
+# present as a transitive dependency of pillow-heif — declare what we actually use.
+Pillow
 pillow-heif
 # rawpy (libraw, LGPL-2.1/CDDL-1.0) — full-resolution RAW decode for the 100% view
 rawpy
