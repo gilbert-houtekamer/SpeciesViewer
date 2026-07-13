@@ -13,6 +13,7 @@
 # (family/order) still show their old best-pick thumbnail until a full build.
 
 import os
+import shutil
 import tempfile
 import configparser
 import logging
@@ -32,6 +33,35 @@ def _resolve_leaf(sp, scientific_name):
     return None
 
 
+WEB_ASSETS = ("leaflet.css", "leaflet.js")   # the occurrence map, self-hosted
+
+
+def _stage_web_assets(MyProject) -> str:
+    """Copy the shipped Leaflet files into the repository's `web/includes web/`,
+    so the site serves the map library itself rather than a CDN.
+
+    Self-hosting is the whole point (no third-party request from a visitor, and a
+    map that cannot break because a CDN did), but it means the two files have to
+    reach the server. They go in the shared includes folder, NOT the species
+    folder — one copy for all ~2000 species pages, and the browser caches it after
+    the first page. Returns the includes dir, or "" when there is nothing to do."""
+    src_dir = os.path.join(MyProject.modpath, "dist", "includes web")
+    dst_dir = os.path.join(MyProject.getBiotaDir(), "includes web")
+    if not os.path.isdir(src_dir):
+        return ""
+    os.makedirs(dst_dir, exist_ok=True)
+    for name in WEB_ASSETS:
+        src, dst = os.path.join(src_dir, name), os.path.join(dst_dir, name)
+        if not os.path.isfile(src):
+            logger.warning(f"web assets: {name} is missing from {src_dir}")
+            continue
+        if os.path.isfile(dst) and os.path.getsize(dst) == os.path.getsize(src):
+            continue                                  # already staged
+        shutil.copy2(src, dst)
+        logger.info(f"web assets: staged {name} into {dst_dir}")
+    return dst_dir
+
+
 def _upload_species(MyProject, config, target_path, progress_cb):
     """SFTP-upload the one species' web subtree (HTML + JPGs) to the live site.
     Mirrors sv7WriteCommit.putRecursiveTreeWeb, scoped to this species folder."""
@@ -40,6 +70,7 @@ def _upload_species(MyProject, config, target_path, progress_cb):
     fromdisk = os.path.join(MyProject.getBiotaDir(), tp)
     if not os.path.isdir(fromdisk):
         return 0
+    assets_dir = _stage_web_assets(MyProject)
     password = config.get("websettings", "Sftppwd", fallback="").strip("'")
     sftp = engine.sftplib.Sftp(
         hostname="houtfp.ssh.transip.me", username="houtekamercom", password=password)
@@ -51,6 +82,16 @@ def _upload_species(MyProject, config, target_path, progress_cb):
         if progress_cb:
             progress_cb("Uploading page and pictures…")
         sftp.put_r_portable(fromdisk, toweb, preserve_mtime=True)
+        # The shared includes folder carries leaflet.{css,js}. put_r_portable is
+        # cached (cachedUpload skips unchanged files), so this costs one upload the
+        # first time and nothing on every regenerate after it.
+        if assets_dir:
+            if progress_cb:
+                progress_cb("Checking the map library on the site…")
+            sftp.put_r_portable(
+                assets_dir,
+                sftp.remotePrefix() + MyProject.getBiotaWebRoot() + "includes web",
+                preserve_mtime=True)
     finally:
         sftp.closeFTPCache(location_cache)
         sftp.disconnect()

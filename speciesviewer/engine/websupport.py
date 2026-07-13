@@ -1208,6 +1208,14 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             return buildBlogNavSentence(MyProject)
         elif tokenno == 172:         # slider navigation (Previous / Next slider pages)
             return buildSliderNavSentence(MyProject)
+        elif tokenno == 180:         # published occurrence map (Maps Phase 4)
+            # "Where I have seen this species" — a Leaflet map over the species'
+            # own master pictures. Returns "" for an obscure family (a published
+            # map is exactly where a protected location leaks) and for a species
+            # with no usable coordinate, so the token is safe on every page.
+            from engine.webmap import speciesOccurrenceMap
+            return speciesOccurrenceMap(MyProject, species_local or species_param,
+                                        MyProject.getLanguage())
         else:
             return '<token ' + tokenno + '>'
     except Exception as e:
