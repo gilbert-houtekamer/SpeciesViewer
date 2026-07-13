@@ -58,10 +58,12 @@ design</em>.</p>
 <div class="next">
   <strong>What's next (the active shortlist):</strong>
   <ul style="margin-bottom:0;">
-    <li><strong>Maps for the Day (micro-trip) &amp; Virtual-trip</strong> <span class="tag-new">NEW</span> —
-      extend the trip/day map to those two collection contexts (ch. 3).</li>
-    <li><strong>GPS / data-integrity umbrella</strong> — tracklog geotag, GPS-from-addresses,
-      location-from-GPS (ch. 3; dead-link purge already shipped as Refresh Master Database).</li>
+    <li><strong>Map for the Day (micro-trip)</strong> <span class="tag-new">NEW</span> —
+      extend the trip/day map to that collection context (ch. 3).
+      <em>(Virtual-trip map: shipped.)</em></li>
+    <li><strong>GPS / data-integrity umbrella — down to one item: tracklog geotag (GPX)</strong>
+      (ch. 3). GPS-from-addresses and location-from-GPS are both shipped; the dead-link purge
+      shipped as Refresh Master Database.</li>
     <li><strong>Compact the viewer toolbar + laptop-fit review</strong> <span class="tag-new">NEW</span> —
       the wide filter/knob row and dialog sizing on small screens (ch. 3).</li>
     <li><strong>Virtual Trips WP7</strong> — retroactive day-by-day builder + amber/green blog bubbles (ch. 2).</li>
@@ -323,12 +325,18 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
   <li><strong>Map for the Day (micro-trip) viewer</strong> <span class="tag-open">OPEN</span>
     <span class="tag-new">NEW</span> — extend the Phase-5 trip/day map to the Days lane /
     micro-trip so an ad-hoc working day plots + geotags exactly like a trip day.</li>
-  <li><strong>Virtual-trip map</strong> <span class="tag-open">OPEN</span> <span class="tag-new">NEW</span> —
-    bring the same map (bubbles → filmstrip → large view, travel path, drag-to-geotag) to a
-    virtual trip's accumulated collection.</li>
-  <li><strong>GPS / data-integrity umbrella</strong> <span class="tag-open">OPEN</span> — remaining
-    items: tracklog geotag (2a), GPS-from-addresses, location-from-GPS. (Purge dangling
-    data_files/pictures is now shipped as Refresh Master Database.)</li>
+  <li><strong>Virtual-trip map</strong> <span class="tag-shipped">SHIPPED</span> —
+    the same map (bubbles → filmstrip → large view, travel path) over a virtual trip's
+    accumulated collection, read-only except for the geotag carve-out: a picture with NO
+    coordinate may be placed, and the write lands in the master's own sidecar.</li>
+  <li><strong>GPS / data-integrity umbrella</strong> <span class="tag-open">OPEN</span> —
+    <strong>one item left: tracklog geotag (2a)</strong>, i.e. a real GPX import (parse a
+    logger/phone track, match photos by timestamp, write GPS). The other three have shipped:
+    GPS-from-addresses = <em>Get GPS from location</em>; location-from-GPS = <em>Get
+    location</em>; purge dangling data_files/pictures = <em>Refresh Master Database</em>.
+    What exists today is not a substitute: the map interpolates between the photos taken just
+    before and after (your own pictures as a poor-man's tracklog), which cannot help a day
+    with no GPS'd photos at all.</li>
   <li>Map cosmetic polish; extend map-delete to the day map; Phase 3 rectangle-select; Phase 4
     published Leaflet.</li>
 </ul>
