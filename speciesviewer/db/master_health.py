@@ -115,13 +115,32 @@ def check(db, master_root) -> Report:
     CSV and does NOT hold this lock can see 0 rows and conclude the master is destroyed.
     That is the precise bug this module exists to catch; it would be absurd to reproduce
     it here — and this reader can REFUSE A BACKUP, so a false alarm has teeth."""
-    from db.master_db import MasterDB
+    from db.master_db import MasterDB, MasterCheckpointWorker
     t0 = time.time()
     rep = Report()
     act = _active(master_root)
+
+    # DRAIN FIRST. Master writes are debounced (~2 s) before they reach the CSVs, so a
+    # DB that is a few rows AHEAD of the CSV is the normal, healthy state of a master
+    # someone is working in — not a disagreement. Comparing without draining reported a
+    # 1-row difference as a structural ERROR, which would have REFUSED THE BACKUP because
+    # a picture had just been edited. A false alarm with teeth is worse than no alarm.
+    # "Do the two kings agree?" is only a meaningful question once the queue is empty.
+    try:
+        MasterCheckpointWorker.get(master_root).flush()
+    except Exception as e:                      # incl. MasterCsvGuard — say so, then check
+        logger.warning(f"master health: could not flush pending writes first: {e}")
+
     with MasterDB._checkpoint_lock:
         con = db._connect()
-        return _check_locked(db, con, act, rep, t0)
+        rep = _check_locked(db, con, act, rep, t0)
+
+    pending = db.pending_count()
+    if pending:
+        rep.findings.append(Finding(
+            "warn", f"{pending} master write(s) are still pending",
+            "the CSVs are behind the database; they could not be flushed"))
+    return rep
 
 
 def _check_locked(db, con, act, rep: "Report", t0: float) -> "Report":
@@ -169,9 +188,28 @@ def _check_locked(db, con, act, rep: "Report", t0: float) -> "Report":
         '  SELECT 1 FROM files f WHERE f."File:FileName" = p."BestJPG"'
         '    AND f."UniquePictureName" = p."UniquePictureName")').fetchone()[0]
     if dangling:
-        rep.findings.append(Finding(
-            "warn", f"{dangling} picture(s) name a BestJPG with no file row",
-            "use Refresh on the species, which re-scans the folder"))
+        # Split them: a picture that HAS a species is a real one whose file row went
+        # missing (a half-applied journal entry) and Refresh will heal it. A picture with
+        # NO species never belonged here at all — camels, goats, a driveway: blog extras
+        # that leaked in, carrying only a -small thumbnail. Different problems, different
+        # answers, so do not report them as one number.
+        speciesless = con.execute(
+            'SELECT COUNT(*) FROM pictures p'
+            ' WHERE p."BestJPG" != "" AND TRIM(p."WetSoortNaam") = ""'
+            '   AND NOT EXISTS (SELECT 1 FROM files f'
+            '                    WHERE f."File:FileName" = p."BestJPG"'
+            '                      AND f."UniquePictureName" = p."UniquePictureName")'
+        ).fetchone()[0]
+        real = dangling - speciesless
+        if real:
+            rep.findings.append(Finding(
+                "warn", f"{real} picture(s) name a BestJPG with no file row",
+                "use Refresh on the species — it re-scans the folder and heals this"))
+        if speciesless:
+            rep.findings.append(Finding(
+                "warn", f"{speciesless} picture(s) have NO species and a missing BestJPG",
+                "blog extras / landscapes that leaked into the master (a camel, a goat, "
+                "a driveway); they render nowhere — see the topics/ item in the backlog"))
 
     # 3. Orphan file rows — a file whose picture is gone.
     orphans = con.execute(

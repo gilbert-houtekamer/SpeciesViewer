@@ -1307,9 +1307,10 @@ class MasterDB:
         for r in rows:
             _offer_jpg(pick, upn, r["fname"], r["size"] or "", pinned)
             sizes[r["fname"]] = r["size"] or ""
-        if upn not in pick:
-            return None
-        fname = pick[upn][-1]
+        # No real JPG left → the picture HAS no best JPG, and saying so is the whole job.
+        # Returning None here (the old behaviour) left a stale BestJPG naming a file that
+        # no longer exists anywhere — "nothing to pick" is not the same as "nothing to do".
+        fname = pick[upn][-1] if upn in pick else ""
         size = sizes.get(fname, "")
         if prow is None or ((prow["b"] or "") == fname and (prow["j"] or "") == size):
             return None

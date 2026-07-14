@@ -451,6 +451,12 @@ class RatingEditorCollection(PictureCollection):
         from db.master_mutate import resync_jpg_sizes
         return resync_jpg_sizes(self._master_db, self._master_root, key)
 
+    def refresh_master_species(self, pictures: list[dict]) -> dict:
+        """Ingest new files + correct changed JPG sizes for a whole species — ONE folder
+        listing and ONE exiftool call, not one of each per picture."""
+        from db.master_mutate import refresh_species
+        return refresh_species(self._master_db, self._master_root, pictures)
+
     def master_jpgs(self, key: str) -> list[dict]:
         """The picture's real JPGs (thumbnails excluded), biggest first, each flagged
         `best` (publishes today) and `pinned` (a human chose it)."""

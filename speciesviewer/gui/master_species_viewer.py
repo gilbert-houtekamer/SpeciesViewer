@@ -341,25 +341,22 @@ class MasterSpeciesViewerDialog(QDialog):
         try:
             self._master_db.ensure_fresh()
             if not self._master_read_only:
-                keys = []
-                for pic in self._master_db.pictures_for_species(self._current_sci):
-                    upn = pic.get("UniquePictureName", "")
-                    if not upn:
-                        continue
-                    keys.append(upn)
-                    try:
-                        res = self._collection.add_master_files(upn)
-                        added.extend(res.get("added", []) or [])
-                        # …and a JPG re-exported over its OWN name is not a new file, so
-                        # the scan above will never look at it again. Re-read the sizes.
-                        resized.extend(self._collection.resync_master_jpgs(upn))
-                    except Exception as e:
-                        failed += 1
-                        logger.warning(f"refresh: scan failed for {upn}: {e}")
-                        continue
-                # Stars/colour an external tool wrote into the sidecar are neither a new
-                # file nor a changed pixel size, so nothing above sees them. ONE exiftool
-                # call for the whole species (an argfile), not one per picture.
+                pics = self._master_db.pictures_for_species(self._current_sci)
+                keys = [p["UniquePictureName"] for p in pics
+                        if p.get("UniquePictureName")]
+                # Whole species per call, never per picture: ONE folder listing + ONE
+                # exiftool call ingests whatever is new and corrects any JPG whose pixels
+                # moved under us (a PhotoLab re-export over its own name).
+                try:
+                    res = self._collection.refresh_master_species(pics)
+                    added = res.get("added", []) or []
+                    resized = res.get("resized", []) or []
+                except Exception as e:
+                    failed += 1
+                    logger.warning(f"refresh: species scan failed: {e}", exc_info=True)
+                # Stars/colour an external tool wrote into a sidecar are neither a new
+                # file nor a changed pixel size, so nothing above sees them. A second
+                # batched read — again ONE exiftool call for the whole species.
                 if keys:
                     self._collection.rebuild(self._current_display,
                                              forced_sci=self._current_sci)

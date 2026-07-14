@@ -385,6 +385,140 @@ def _norm_size(s: str) -> tuple:
     return tuple(int(n) for n in nums[:2])
 
 
+def _exif_batch(paths: list[Path]) -> dict:
+    """ONE exiftool call for many files. Returns {normcased abspath: meta}.
+
+    Via an argfile, not argv: a species folder holds hundreds of files and a
+    command line of that many long paths does not fit in a Windows argv at all."""
+    import os
+    import tempfile
+    if not paths:
+        return {}
+    af = None
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False,
+                                         encoding="utf-8") as fh:
+            af = fh.name
+            for p in paths:
+                fh.write(str(p) + "\n")
+        out = subprocess.run(
+            ["exiftool", "-j", "-q", "-charset", "filename=utf8", "-charset", "utf8",
+             "-ImageSize", "-XMP:Rating", "-XMP:Label", "-XMP:Subject",
+             "-EXIF:DateTimeOriginal", "-@", af],
+            capture_output=True, text=True, encoding="utf-8", timeout=600)
+        rows = json.loads(out.stdout) if (out.returncode == 0 and out.stdout.strip()) else []
+    except Exception as e:
+        logger.warning(f"exiftool batch read failed: {e}")
+        return {}
+    finally:
+        if af:
+            try:
+                os.unlink(af)
+            except OSError:
+                pass
+    return {os.path.normcase(os.path.normpath(r.get("SourceFile", ""))): r
+            for r in rows}
+
+
+def _row_from_meta(path: Path, upn: str, meta: dict) -> dict:
+    from engine.csv_columns import DATA_FILE_FIELDS
+    row = {c: "" for c in DATA_FILE_FIELDS}
+    row["File:FileName"] = path.name
+    row["WindowsExtension"] = path.suffix.lstrip(".").lower()
+    row["WindowsFileName"] = str(path)
+    row["File:Directory"] = str(path.parent)
+    row["UniquePictureName"] = upn
+    row["ImageSize"] = str(meta.get("ImageSize", "") or "")
+    row["XMP:Rating"] = str(meta.get("Rating", "") or "")
+    row["XMP:Label"] = str(meta.get("Label", "") or "")
+    row["EXIF:DateTimeOriginal"] = str(meta.get("DateTimeOriginal", "") or "")
+    return row
+
+
+def refresh_species(db, master_root, pictures: list[dict]) -> dict:
+    """Ingest new files and correct changed JPG sizes for a WHOLE SPECIES at once.
+
+    The per-picture version of this (add_upn_files + resync_jpg_sizes in a loop) listed
+    the species folder once PER PICTURE and spawned exiftool once PER NEW FILE. On a
+    species with 400 pictures that is 400 identical directory listings and a process per
+    file. Here it is one listing, one files-table query, and one exiftool call, whatever
+    the species costs.
+
+    Returns {"added": [...], "resized": [{fname, old, new}], "folder": Path|None}."""
+    import os
+    master_root = Path(master_root)
+    pictures = [p for p in pictures if p.get("UniquePictureName")]
+    if not pictures:
+        return {"added": [], "resized": [], "folder": None}
+
+    rel = next((_rel_dir(p) for p in pictures if _rel_dir(p)), "")
+    if not rel:
+        return {"added": [], "resized": [], "folder": None}
+    folder = master_root / rel
+    if not folder.exists():
+        raise MasterMutateError(f"Species folder not found: {folder}")
+
+    upns = [p["UniquePictureName"] for p in pictures]
+    by_upn = {p["UniquePictureName"]: p for p in pictures}
+    tracked = db.files_for_upns(upns)                      # ONE query
+    tracked_names = {f.lower() for f in tracked}
+    # Longest UPN first: 'dsc_0620' must not claim a file of 'dsc_06201'. (_belongs_to_upn
+    # already demands a separator, so this is belt and braces — but the cost is nil.)
+    upns_by_len = sorted(upns, key=len, reverse=True)
+
+    on_disk = [p for p in folder.iterdir() if p.is_file()]  # ONE listing
+    new_files: list[tuple[str, Path]] = []
+    for p in on_disk:
+        if p.name.lower() in tracked_names:
+            continue
+        for upn in upns_by_len:
+            if _belongs_to_upn(p.name, upn):
+                new_files.append((upn, p))
+                break
+
+    added: list[str] = []
+    if new_files:
+        metas = _exif_batch([p for _u, p in new_files])     # ONE exiftool call
+        for upn, p in new_files:
+            meta = metas.get(os.path.normcase(os.path.normpath(str(p))), {})
+            if db.apply_add_file(upn, _row_from_meta(p, upn, meta)):
+                added.append(p.name)
+
+    # Sizes of TRACKED jpgs that changed under us (a PhotoLab re-export over the same
+    # name). PIL reads the JPEG header only — local, no decode, no process.
+    resized: list[dict] = []
+    for fname, fr in tracked.items():
+        if not _is_jpg(fr):
+            continue
+        upn = fr.get("UniquePictureName", "")
+        pic = by_upn.get(upn)
+        if pic is None:
+            continue
+        p = _abs_path(master_root, pic, fr)
+        if not p or not p.exists():
+            continue
+        try:
+            from PIL import Image
+            with Image.open(p) as im:
+                w, h = im.size
+        except Exception as e:
+            logger.warning(f"refresh_species: cannot read {p}: {e}")
+            continue
+        new_size = f"{w}x{h}"
+        old_size = (fr.get("ImageSize") or "").strip()
+        if _norm_size(old_size) == _norm_size(new_size):
+            continue
+        if db.apply_jpg_replaced(upn, fname, new_size):
+            resized.append({"fname": fname, "old": old_size or "(none)", "new": new_size})
+            logger.info(f"resync: {fname} was {old_size or '(none)'} in the master, "
+                        f"is {new_size} on disk — corrected.")
+
+    logger.info(f"refresh_species: {folder.name} — {len(on_disk)} file(s) on disk, "
+                f"{len(added)} ingested, {len(resized)} size(s) corrected "
+                f"(1 listing, 1 exiftool call).")
+    return {"added": added, "resized": resized, "folder": folder}
+
+
 def _read_exif_row(path: Path, master_root: Path, rel: str, upn: str) -> dict:
     """Build a data_files row for a freshly added file. Reads a handful of EXIF
     fields with exiftool; the pipeline / a Recount fills the rest. Only the
