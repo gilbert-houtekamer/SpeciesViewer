@@ -185,6 +185,49 @@ class MainWindow(QMainWindow):
                     self.logger.warning(f"preview cache: daily prune failed: {e}")
 
         threading.Thread(target=_work, daemon=True, name="preview-prune").start()
+        self._backup_master_daily()
+
+    def _backup_master_daily(self):
+        """One gzipped snapshot of the master CSVs a day, without being asked.
+
+        The master has two kings — the CSVs are canonical, the SQLite DB is a derived
+        mirror that writes back to them — and on 2026-07-14 the mirror won an argument
+        it should have lost and destroyed 2718 species rows. A guardrail now refuses the
+        catastrophic write; this is the belt to that pair of braces.
+
+        NOT a Lightroom-style "shall I back up?" prompt: all three CSVs are 154 MB raw
+        but 7.3 MB gzipped, written in about a second. Asking permission for that would
+        imply a cost that is not there, and a prompt you always say yes to is one you
+        eventually click through without reading. It is visible in Database Settings
+        instead, which is where you would look for it.
+
+        The check GATES the backup: a snapshot of a corrupt master is not a backup, it
+        is a time bomb, because rotation would push the last good one out. Daemon thread
+        (it can wait on the rebuild lock), and the day stamp is the backup folder itself
+        rather than a config key, so it stays true per-master."""
+        import threading
+        master_root = _config.get("master", "masterbiotadatabase", fallback="").strip()
+        if not master_root:
+            return
+
+        def _work():
+            try:
+                from db.master_db import MasterDB
+                from db import master_health
+                if not master_health.backup_due(master_root):
+                    return
+                db = MasterDB(master_root)
+                db.ensure_fresh()
+                res = master_health.daily_backup(db, master_root)
+                if res and not res.get("ok") and self.logger:
+                    self.logger.error(
+                        f"master backup skipped — {res.get('error')} "
+                        f"Fix the master and use Database Settings ▸ Back up now.")
+            except Exception as e:
+                if self.logger:
+                    self.logger.warning(f"master: daily backup failed: {e}")
+
+        threading.Thread(target=_work, daemon=True, name="master-backup").start()
 
     def _current_trip_day_snapshot(self):
         pic_dir = _config.get("project", "picturedirectory", fallback="").strip()

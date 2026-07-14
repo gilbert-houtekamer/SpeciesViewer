@@ -12,8 +12,9 @@ import logging
 import time
 from pathlib import Path
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtWidgets import (
+    QApplication,
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QLineEdit,
     QPushButton, QMessageBox, QFrame
 )
@@ -39,6 +40,7 @@ class DatabaseSettingsDialog(QDialog):
 
         self._master_root = _config.get(
             "master", "masterbiotadatabase", fallback="").strip()
+        self._last_check = None      # the live check is ~1s — far too slow for the 1s timer
 
         layout = QVBoxLayout(self)
 
@@ -68,6 +70,46 @@ class DatabaseSettingsDialog(QDialog):
             self._values[key] = val
             form.addRow(QLabel(label + ":"), val)
         layout.addLayout(form)
+
+        layout.addWidget(self._divider())
+
+        # ── Health & backup ───────────────────────────────────────────────────
+        # The master has TWO KINGS: the CSVs are canonical, the DB is a derived mirror
+        # that writes back to them. On 2026-07-14 the mirror won an argument it should
+        # have lost and destroyed 2718 species rows. A guardrail now refuses that write;
+        # this panel is how you SEE that the pair still agree, and the way back if not.
+        layout.addWidget(self._section_label("Health and backup"))
+        hform = QFormLayout()
+        for key, label in (
+            ("health", "Consistency (CSV vs database)"),
+            ("backups", "Backups"),
+        ):
+            val = QLabel("—")
+            val.setWordWrap(True)
+            self._values[key] = val
+            hform.addRow(QLabel(label + ":"), val)
+        layout.addLayout(hform)
+
+        hrow = QHBoxLayout()
+        check_btn = QPushButton("Check now")
+        check_btn.setToolTip(
+            "Compare the master CSVs with the database, and the master with itself:\n"
+            "row counts, pictures naming a JPG that has no file row, orphan file rows,\n"
+            "and JPGmap entries that would publish as a broken image.")
+        check_btn.clicked.connect(self._check_now)
+        hrow.addWidget(check_btn)
+        backup_btn = QPushButton("Back up now")
+        backup_btn.setToolTip(
+            "Gzip the three master CSVs into metadata/active/backup/<date>/.\n"
+            "About 7 MB and a second. Refused if the consistency check fails —\n"
+            "a snapshot of a broken master would eventually push out the last good one.")
+        backup_btn.clicked.connect(self._backup_now)
+        hrow.addWidget(backup_btn)
+        restore_btn = QPushButton("Restore…")
+        restore_btn.clicked.connect(self._restore)
+        hrow.addWidget(restore_btn)
+        hrow.addStretch(1)
+        layout.addLayout(hrow)
 
         layout.addWidget(self._divider())
 
@@ -187,6 +229,37 @@ class DatabaseSettingsDialog(QDialog):
         else:
             v["trash"].setText("—")
 
+        # Backups + the last consistency verdict. Both cheap — a directory listing and
+        # a cached result. The check itself takes ~1s, far too slow for a 1s timer, so
+        # it runs on the daily backup (its verdict is in the manifest) or on demand.
+        if self._master_root:
+            try:
+                from db import master_health
+                backups = master_health.list_backups(self._master_root)
+                if backups:
+                    total = sum(b["bytes"] for b in backups)
+                    newest = backups[0]
+                    v["backups"].setText(
+                        f"{len(backups)} kept, {_fmt_size(total)} — newest {newest['day']}")
+                    if self._last_check is None:
+                        verdict = (newest["manifest"] or {}).get("check")
+                        v["health"].setText(
+                            f"{verdict} (as of the backup on {newest['day']})"
+                            if verdict else "not checked yet — press Check now")
+                else:
+                    v["backups"].setText("none yet — one is taken daily on startup")
+                    if self._last_check is None:
+                        v["health"].setText("not checked yet — press Check now")
+                if self._last_check is not None:
+                    rep = self._last_check
+                    v["health"].setText(
+                        f"{rep.summary()} (checked just now, {rep.seconds:.1f}s)")
+            except Exception as e:
+                v["backups"].setText(f"(error: {e})")
+        else:
+            v["backups"].setText("—")
+            v["health"].setText("—")
+
         if pending == 0:
             v["pending"].setText("0 (queue empty)")
             self._warn.hide()
@@ -214,6 +287,136 @@ class DatabaseSettingsDialog(QDialog):
             return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(float(raw)))
         except ValueError:
             return str(raw)
+
+    # ── health & backup ───────────────────────────────────────────────────
+    def _run_check(self):
+        from db.master_db import MasterDB
+        from db import master_health
+        db = MasterDB(self._master_root)
+        try:
+            db.ensure_fresh()
+            rep = master_health.check(db, self._master_root)
+        finally:
+            db.close()
+        self._last_check = rep
+        return rep
+
+    def _check_now(self):
+        if not self._master_root:
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            rep = self._run_check()
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(self, "Consistency check", f"The check failed:\n{e}")
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        lines = [f"Rows — {name}: {c['csv']} in the CSV, {c['db']} in the database"
+                 for name, c in rep.counts.items()]
+        if rep.findings:
+            lines.append("")
+            for f in rep.findings:
+                mark = "PROBLEM" if f.level == "error" else "warning"
+                lines.append(f"[{mark}] {f.what}" + (f"\n          {f.detail}"
+                                                     if f.detail else ""))
+        else:
+            lines.append("\nNo problems found.")
+        box = QMessageBox(self)
+        box.setWindowTitle("Consistency check")
+        box.setIcon(QMessageBox.Icon.Critical if rep.errors
+                    else QMessageBox.Icon.Information)
+        box.setText(f"The master is {rep.summary()}.")
+        box.setDetailedText("\n".join(lines))
+        box.exec()
+        self._refresh()
+
+    def _backup_now(self):
+        if not self._master_root:
+            return
+        from db.master_db import MasterDB
+        from db import master_health
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        db = MasterDB(self._master_root)
+        try:
+            db.ensure_fresh()
+            res = master_health.make_backup(db, self._master_root)
+        except Exception as e:
+            QMessageBox.warning(self, "Back up", f"The backup failed:\n{e}")
+            return
+        finally:
+            db.close()
+            QApplication.restoreOverrideCursor()
+
+        if not res.get("ok"):
+            self._last_check = res.get("report")
+            QMessageBox.critical(
+                self, "Back up — refused",
+                "No backup was taken: the master failed its consistency check.\n\n"
+                "A snapshot of a broken master is not a backup — keeping it would "
+                "eventually push the last good one out of the rotation.\n\n"
+                "Press Check now to see what is wrong.")
+        else:
+            self._last_check = res.get("report")
+            QMessageBox.information(
+                self, "Back up",
+                f"Backed up to {res['path'].name} — {_fmt_size(res['bytes'])} "
+                f"in {res['seconds']:.1f}s.\n\nThe master is {res['report'].summary()}.")
+        self._refresh()
+
+    def _restore(self):
+        if not self._master_root:
+            return
+        from PyQt6.QtWidgets import QInputDialog
+        from db import master_health
+        backups = master_health.list_backups(self._master_root)
+        backups = [b for b in backups if not b["day"].startswith("pre-restore")]
+        if not backups:
+            QMessageBox.information(self, "Restore", "There are no backups yet.")
+            return
+        items = [f"{b['day']}  —  {_fmt_size(b['bytes'])}  "
+                 f"({(b['manifest'] or {}).get('check', 'not checked')})"
+                 for b in backups]
+        pick, ok = QInputDialog.getItem(
+            self, "Restore the master CSVs",
+            "Restoring REPLACES the three master CSVs and rebuilds the database.\n"
+            "The current CSVs are snapshotted first, so this is reversible.\n\n"
+            "Restore from:", items, 0, False)
+        if not ok:
+            return
+        day = backups[items.index(pick)]["day"]
+        if QMessageBox.question(
+                self, "Restore the master CSVs",
+                f"Replace data_pictures.csv, data_files.csv and species.csv with the "
+                f"backup from {day}?\n\nAnything added to the master since then will be "
+                f"lost. The current CSVs are kept (gzipped) under backup/pre-restore-*, "
+                f"so you can come back.") != QMessageBox.StandardButton.Yes:
+            return
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            res = master_health.restore(self._master_root, day)
+            from db.master_db import MasterDB
+            db = MasterDB(self._master_root)
+            try:
+                db.rebuild()          # the DB is stale by construction after a restore
+            finally:
+                db.close()
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(self, "Restore", f"The restore failed:\n{e}")
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        self._last_check = None
+        QMessageBox.information(
+            self, "Restore",
+            f"Restored {len(res['restored'])} CSV(s) from {day} and rebuilt the "
+            f"database.\n\nThe CSVs you replaced are in {res['kept'].name}.\n\n"
+            f"Restart SpeciesViewer — it caches the master in memory.")
+        self._refresh()
 
     # ── actions ───────────────────────────────────────────────────────────
     def _flush_now(self):
