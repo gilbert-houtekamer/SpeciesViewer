@@ -76,6 +76,40 @@ _SPEC_NUM_COLS = {
 _SPEC_LIST_COLS = {"Leaves", "JPGmap"}  # stored as JSON, written back as ['a', 'b']
 
 
+class MasterCsvGuard(Exception):
+    """A master CSV rewrite was refused because it would have destroyed the file."""
+
+
+def _guard_not_emptying(target: Path, n_rows: int, what: str) -> None:
+    """Refuse to write a master CSV with NO rows over one that currently has some.
+
+    This is the invariant that would have saved species.csv. The DB is a derived
+    mirror, so every rewrite trusts it completely — and on 2026-07-14 a checkpoint read
+    the species table during a rebuild's DDL window, saw 0 rows, and dutifully wrote a
+    species.csv containing only a header. 2718 species destroyed by a write that was
+    doing exactly what it was told.
+
+    A master CSV going from many rows to zero is never a legitimate edit. It is always
+    a bug upstream, and the only safe response is to refuse the write and shout, so the
+    good file on disk survives to be the thing we recover from. [[feedback_qa_as_guardrails]]
+    """
+    if n_rows > 0 or not target.exists():
+        return
+    try:                                  # >1 line means it has real rows, not just a header
+        with open(target, "r", encoding="utf-8") as fh:
+            fh.readline()                 # header
+            has_rows = bool(fh.readline().strip())
+    except OSError:
+        return
+    if not has_rows:
+        return                            # already empty; nothing to protect
+    msg = (f"REFUSING to overwrite {target.name} with 0 {what} rows — the file on disk "
+           f"has data and the database does not. This is a bug upstream (the DB was "
+           f"read while it was being rebuilt); the CSV has been left untouched.")
+    logger.error(msg)
+    raise MasterCsvGuard(msg)
+
+
 def _offer_jpg(best: dict, upn: str, fname: str, size: str,
                pinned: str = "") -> None:
     """Keep the BEST jpg per picture in `best`. ONE rule, used by every derivation —
@@ -371,9 +405,24 @@ class MasterDB:
 
     # ── rebuild ───────────────────────────────────────────────────────────
     def rebuild(self, *, progress_cb: Callable[[str], None] | None = None) -> None:
-        """Drop and repopulate every table from the master CSVs. Wrapped in a
-        single transaction — a crash mid-rebuild leaves the previous DB
-        intact."""
+        """Drop and repopulate every table from the master CSVs.
+
+        HOLDS THE CHECKPOINT LOCK FOR THE WHOLE REBUILD. This is not belt-and-braces,
+        it is the fix for a bug that destroyed species.csv (2026-07-14):
+
+        `with con:` does NOT wrap the DDL below. Python's sqlite3 commits any open
+        transaction before a DROP/CREATE and runs it in autocommit — so the instant
+        this method drops the tables, EVERY OTHER CONNECTION SEES THEM EMPTY, and goes
+        on seeing them empty for the ~13 seconds the reload takes. The checkpoint
+        worker is a separate thread with its own connection: it woke up inside that
+        window, read `SELECT * FROM species` (0 rows), and wrote a species.csv with a
+        header and nothing else. `ensure_fresh` then rebuilt the empty table from the
+        empty file — self-sustaining. 2718 species, gone.
+
+        _build_lock only serialised rebuilds against rebuilds; _checkpoint_lock only
+        serialised checkpoints against checkpoints. NOTHING serialised a checkpoint
+        against a rebuild — the one pair that shares mutable state. Note the lock order
+        (build → checkpoint) is safe: checkpoint() never takes _build_lock."""
         import csv
 
         def note(msg: str) -> None:
@@ -385,7 +434,7 @@ class MasterDB:
         con = self._connect()
         t0 = time.time()
         note("Rebuilding master DB from CSVs…")
-        with con:  # implicit transaction
+        with MasterDB._checkpoint_lock, con:
             con.execute("DROP TABLE IF EXISTS pictures")
             con.execute("DROP TABLE IF EXISTS files")
             con.execute("DROP TABLE IF EXISTS species")
@@ -1153,7 +1202,8 @@ class MasterDB:
                         override: dict | None = None,
                         exclude: set | None = None,
                         exclude_files: set | None = None,
-                        pin_override: dict | None = None) -> list:
+                        pin_override: dict | None = None,
+                        size_override: dict | None = None) -> list:
         """DERIVE a species' JPGmap: ONE entry per picture — its LARGEST real JPG.
 
         NOT the picture's BestJPG, which is what I first used and which the user
@@ -1204,13 +1254,21 @@ class MasterDB:
 
         exf = {(f or "").lower() for f in (exclude_files or ())}
         pino = pin_override or {}
+        # A JPG re-exported over its own name has a NEW pixel size that the row does
+        # not carry yet (the journal entry is built before the write lands). Correcting
+        # the SIZE and re-deriving beats handing in a pre-picked winner: the rule stays
+        # the only thing that decides, so it still honours the pin and still compares
+        # against the picture's other renders.
+        szo = {(k or "").lower(): v for k, v in (size_override or {}).items()}
         best: dict = {}          # upn -> sort key + filename
         for r in rows:
-            if (r["fname"] or "").lower() in exf:
+            fname_r = r["fname"] or ""
+            if fname_r.lower() in exf:
                 continue
             upn_r = r["upn"]
             pin = pino[upn_r] if upn_r in pino else (r["pinned"] or "")
-            _offer_jpg(best, upn_r, r["fname"], r["size"], pin)
+            size = szo.get(fname_r.lower(), r["size"])
+            _offer_jpg(best, upn_r, fname_r, size, pin)
         for upn, (fname, size) in (override or {}).items():
             _offer_jpg(best, upn, fname, size)
         for upn in (exclude or ()):
@@ -1282,15 +1340,18 @@ class MasterDB:
         return jpgmap
 
     def apply_jpg_replaced(self, upn: str, fname: str, image_size: str) -> bool:
-        """The SAME published JPG was replaced on disk by a better render of the same
-        picture — same name, same path, more pixels.
+        """A tracked JPG was replaced on disk, under its own name, with a DIFFERENT
+        number of pixels.
 
-        This is the whole point of replacing in place rather than adding a second
-        file: nothing about the picture's identity changes, so there is no new file
-        row, no UPN to derive, no JPGmap to edit and no best-pick to re-distil. The
-        only thing that went stale is the recorded pixel size, and that is what this
-        fixes (plus the picture's JPGSize when the replaced file IS the BestJPG, so
-        the two cannot disagree).
+        This used to assume the replacement was always BIGGER — the crop upgrade's
+        case, "same picture, better render" — and concluded there was no JPGmap to edit
+        and no best-pick to re-distil. That assumption is dead: PhotoLab re-exports a
+        TIGHTER crop over the same name, and a JPG that shrinks may no longer be its
+        picture's best one. So the size change is re-derived through the same single
+        rule as everything else (`_offer_jpg`, pin included): the picture's
+        BestJPG/JPGSize, the species' JPGmap, and the BestJPG filename of any
+        species/ancestor whose best-pick IS this picture. The rating never moves —
+        it is the same photograph.
 
         Journalled like every other master write, so the CSVs follow."""
         con = self._connect()
@@ -1298,19 +1359,42 @@ class MasterDB:
             'SELECT * FROM pictures WHERE "UniquePictureName"=?', (upn,)).fetchone()
         if prow is None:
             return False
-        pic_fields = {}
-        if (prow["BestJPG"] or "") == fname:
-            pic_fields["JPGSize"] = image_size
+        sci = (prow["WetSoortNaam"] or "").strip()
+        pinned = (prow["BestJPGPinned"] or "")
+
+        # Re-distil from what the files table will hold once this write lands (the
+        # journal entry is built before the row is updated, so a plain read still sees
+        # the OLD size — the same reason the delete path needs its overrides).
+        rows = con.execute(
+            'SELECT "File:FileName" AS f, "ImageSize" AS s FROM files'
+            ' WHERE "UniquePictureName"=? AND LOWER("WindowsExtension") IN ("jpg","jpeg")',
+            (upn,)).fetchall()
+        pick, sizes = {}, {}
+        for r in rows:
+            size = image_size if r["f"] == fname else (r["s"] or "")
+            sizes[r["f"]] = size
+            _offer_jpg(pick, upn, r["f"], size, pinned)
+        new_best = pick[upn][-1] if upn in pick else (prow["BestJPG"] or "")
+
+        pic_fields = {"BestJPG": new_best, "JPGSize": sizes.get(new_best, "")}
+        spec_updates = self._jpgmap_update(
+            con, sci, size_override={fname: image_size})
+        for a in self._species_chain(con, sci):
+            if (a["BestUPN"] or "") == upn and (a["BestJPG"] or "") != new_best:
+                spec_updates.setdefault(a["ScientificName"], {})["BestJPG"] = new_best
+
         entry = {"op": "jpg_replaced", "ts": time.time(), "upn": upn,
                  "files": {fname: {"ImageSize": image_size}},
-                 "pictures": {upn: pic_fields} if pic_fields else {}}
+                 "pictures": {upn: pic_fields},
+                 "species": spec_updates}
         with self._append_lock:
             entry["seq"] = self._next_seq()
             self._append_jsonl(entry)
         with con:
             self._set_file_fields(con, fname, {"ImageSize": image_size})
-            if pic_fields:
-                self._set_picture_fields(con, upn, pic_fields)
+            self._set_picture_fields(con, upn, pic_fields)
+            for s, fields in spec_updates.items():
+                self._set_species_fields(con, s, fields)
         MasterCheckpointWorker.get(self.master_root).notify()
         return True
 
@@ -1705,6 +1789,10 @@ class MasterDB:
         for r in con.execute("SELECT * FROM pictures ORDER BY rowid"):
             d = self._picture_row_to_dict(r)
             p.UniquePictureName_dict[d["UniquePictureName"]] = d
+        # Same guard as species. Pictures/files survived 2026-07-14 only because their
+        # inserts happened to have committed before the checkpoint read them — they were
+        # one thread-scheduling accident away from the identical fate.
+        _guard_not_emptying(target, len(p.UniquePictureName_dict), "picture")
         tmp = target.with_suffix(target.suffix + ".tmp")
         p.picturefile = str(tmp)
         p.write_project_summary()
@@ -1716,6 +1804,7 @@ class MasterDB:
         for r in con.execute("SELECT * FROM files ORDER BY rowid"):
             d = {k: r[k] for k in r.keys()}
             f.files_dict[d["File:FileName"]] = d
+        _guard_not_emptying(target, len(f.files_dict), "file")
         tmp = target.with_suffix(target.suffix + ".tmp")
         f.filename = str(tmp)
         f.write_project_files()
@@ -1739,14 +1828,33 @@ class MasterDB:
 
     def _rewrite_species_csv(self, con: sqlite3.Connection, target: Path) -> None:
         import csv
+        rows = con.execute("SELECT * FROM species ORDER BY rowid").fetchall()
+        _guard_not_emptying(target, len(rows), "species")
         tmp = target.with_suffix(target.suffix + ".tmp")
         with open(tmp, "w", newline="", encoding="utf-8") as fh:
             writer = csv.DictWriter(
                 fh, fieldnames=SPECIES_FIELDS, quoting=csv.QUOTE_MINIMAL, delimiter=";")
             writer.writeheader()
-            for r in con.execute("SELECT * FROM species ORDER BY rowid"):
+            for r in rows:
                 writer.writerow(self._species_row_to_dict(r))
         os.replace(tmp, target)
+
+    @staticmethod
+    def _entry_is_stale(e: dict, pics_mtime: float, files_mtime: float,
+                        spec_mtime: float) -> bool:
+        """True when ANY section of this entry targets a CSV that has been rewritten
+        past it. The entry is one logical write, so one stale section voids all of it —
+        applying the rest is what leaves a picture naming a file that does not exist."""
+        ts = e.get("ts", 0.0)
+        if (e.get("pictures") or e.get("pictures_insert") or e.get("pictures_delete")) \
+                and ts <= pics_mtime:
+            return True
+        if (e.get("files") or e.get("files_insert") or e.get("files_delete")) \
+                and ts <= files_mtime:
+            return True
+        if (e.get("species") or e.get("species_delete")) and ts <= spec_mtime:
+            return True
+        return False
 
     def _replay_sections(self, con: sqlite3.Connection, e: dict,
                          pics_mtime: float, files_mtime: float,
@@ -1868,7 +1976,19 @@ class MasterDB:
                                     f"master checkpoint: dropping stale files entry "
                                     f"for {e.get('upn')} (older than {files_csv.name})")
                     else:
-                        # add/delete op (generic, keyed sections)
+                        # add/delete op (generic, keyed sections). ALL-OR-NOTHING:
+                        # an entry is ONE logical write, and the per-section stale
+                        # gate used to drop its sections independently. On 2026-07-14
+                        # that dropped the files_insert of an ingested DxO render while
+                        # applying the picture update that named it — leaving BestJPG
+                        # pointing at a file with no row anywhere. If any part of an
+                        # entry is stale, the whole write is void.
+                        if self._entry_is_stale(e, pics_mtime, files_mtime, spec_mtime):
+                            logger.warning(
+                                f"master checkpoint: dropping the WHOLE stale entry "
+                                f"{e.get('op')} for {e.get('upn')} (a CSV was rewritten "
+                                f"past it) — a partial replay would corrupt the master.")
+                            continue
                         dp, df, ds = self._replay_sections(
                             con, e, pics_mtime, files_mtime, spec_mtime)
                         dirty_pics |= dp

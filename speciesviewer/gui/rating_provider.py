@@ -316,6 +316,12 @@ class RatingEditorCollection(PictureCollection):
         from db.master_mutate import add_upn_files
         return add_upn_files(self._master_db, self._master_root, key)
 
+    def resync_master_jpgs(self, key: str) -> list[dict]:
+        """Correct the master where a tracked JPG changed size on disk (a PhotoLab
+        re-export over the same name). Returns [{fname, old, new}, …]."""
+        from db.master_mutate import resync_jpg_sizes
+        return resync_jpg_sizes(self._master_db, self._master_root, key)
+
     def master_jpgs(self, key: str) -> list[dict]:
         """The picture's real JPGs (thumbnails excluded), biggest first, each flagged
         `best` (publishes today) and `pinned` (a human chose it)."""

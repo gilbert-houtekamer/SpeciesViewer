@@ -312,7 +312,12 @@ def add_upn_files(db, master_root, upn: str) -> dict:
     folder = master_root / rel
     if not folder.exists():
         raise MasterMutateError(f"Species folder not found: {folder}")
-    existing = {f.lower() for f in (picture.get("Files") or [])}
+    # "Already tracked" means A ROW EXISTS, not "the picture's Files list mentions it".
+    # Files is a cached opinion and it can drift: a half-applied journal entry updated
+    # it with a DxO render whose file row was dropped as stale, so the scan skipped the
+    # very file that was missing and the picture went on naming a row that did not
+    # exist. The files table is the truth about what is tracked.
+    existing = {f.lower() for f in db.files_for_upns([upn])}
     added: list[str] = []
     for p in sorted(folder.iterdir()):
         if not p.is_file():
@@ -329,6 +334,55 @@ def add_upn_files(db, master_root, upn: str) -> dict:
     logger.info(f"Added {len(jpgs)} JPG(s) + {len(metas)} metafile(s) to master "
                 f"UPN {upn}: {added}")
     return {"upn": upn, "added": added, "jpg": len(jpgs), "meta": len(metas)}
+
+
+def resync_jpg_sizes(db, master_root, upn: str) -> list[dict]:
+    """Re-read the pixel size of every TRACKED JPG of this picture, and correct the
+    master where the file on disk has changed underneath it.
+
+    add_upn_files only ever ADDS files it has never seen. Re-export a JPG from PhotoLab
+    over its own name — which is the whole point of replacing in place, and what the
+    crop upgrade relies on — and the master keeps the OLD ImageSize forever: it has a
+    row for that filename, so nothing looks at the file again. The picture then lies
+    about itself to everything downstream (the "use this JPG" picker, BestJPG, and any
+    future decision that compares sizes).
+
+    Cheap: PIL reads only the JPEG header, no decode. Returns what changed."""
+    from PIL import Image
+    master_root = Path(master_root)
+    picture = db.picture(upn)
+    if picture is None:
+        raise MasterMutateError(f"Picture {upn!r} not found in master.")
+    files = db.files_for_upns([upn])
+    changed = []
+    for fname, fr in files.items():
+        if not _is_jpg(fr):
+            continue
+        p = _abs_path(master_root, picture, fr)
+        if not p or not p.exists():
+            continue
+        try:
+            with Image.open(p) as im:
+                w, h = im.size
+        except Exception as e:
+            logger.warning(f"resync_jpg_sizes: cannot read {p}: {e}")
+            continue
+        new_size = f"{w}x{h}"
+        old_size = (fr.get("ImageSize") or "").strip()
+        if _norm_size(old_size) == _norm_size(new_size):
+            continue
+        if db.apply_jpg_replaced(upn, fname, new_size):
+            changed.append({"fname": fname, "old": old_size or "(none)", "new": new_size})
+            logger.info(f"resync: {fname} was {old_size or '(none)'} in the master, "
+                        f"is {new_size} on disk — corrected.")
+    return changed
+
+
+def _norm_size(s: str) -> tuple:
+    """'2000x1334' / '2000 1334' → (2000, 1334); unparseable → ()."""
+    import re
+    nums = re.findall(r"\d+", s or "")
+    return tuple(int(n) for n in nums[:2])
 
 
 def _read_exif_row(path: Path, master_root: Path, rel: str, upn: str) -> dict:

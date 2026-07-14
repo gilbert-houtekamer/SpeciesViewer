@@ -337,7 +337,7 @@ class MasterSpeciesViewerDialog(QDialog):
         if self._collection is None or not self._current_sci:
             return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        added, failed = [], 0
+        added, resized, failed = [], [], 0
         try:
             self._master_db.ensure_fresh()
             if not self._master_read_only:
@@ -347,26 +347,36 @@ class MasterSpeciesViewerDialog(QDialog):
                         continue
                     try:
                         res = self._collection.add_master_files(upn)
+                        added.extend(res.get("added", []) or [])
+                        # …and a JPG re-exported over its OWN name is not a new file, so
+                        # the scan above will never look at it again. Re-read the sizes.
+                        resized.extend(self._collection.resync_master_jpgs(upn))
                     except Exception as e:
                         failed += 1
                         logger.warning(f"refresh: scan failed for {upn}: {e}")
                         continue
-                    added.extend(res.get("added", []) or [])
         finally:
             QApplication.restoreOverrideCursor()
 
         self._rebuild_cards()
+        bits = []
         if added:
             names = ", ".join(added[:3]) + (f" +{len(added) - 3} more"
                                             if len(added) > 3 else "")
-            self._status.setText(
-                f"Refreshed — ingested {len(added)} new file(s): {names}. "
-                f"Right-click a card to choose which JPG the website uses.")
+            bits.append(f"ingested {len(added)} new file(s): {names}")
+        if resized:
+            r = resized[0]
+            more = f" +{len(resized) - 1} more" if len(resized) > 1 else ""
+            bits.append(f"corrected {len(resized)} changed JPG(s): "
+                        f"{r['fname']} {r['old']} → {r['new']}{more}")
+        if bits:
+            self._status.setText("Refreshed — " + "; ".join(bits) +
+                                 ". Right-click a card to choose which JPG publishes.")
         elif failed:
             self._status.setText(
                 f"Refreshed — {failed} picture(s) could not be scanned (see the log).")
         else:
-            self._status.setText("Refreshed — no new files in the species folder.")
+            self._status.setText("Refreshed — nothing new or changed in the folder.")
 
     def _on_jpg_only_toggled(self, checked: bool):
         self._jpg_only = checked
