@@ -14,9 +14,20 @@ that performs a *reversible* master mutation, coordinating three layers:
      thanks to the no-JPG invariant, only shifts plain picture counts). Add's
      species-level rollups are left to the Recount backstop.
 
-Hard invariant — **a JPG is never trashed.** A UPN that contains any `.jpg`/
+Default invariant — **a JPG is never trashed.** A UPN that contains any `.jpg`/
 `.jpeg` is not deletable (the JPG may be referenced elsewhere, e.g. a blog).
 Deletes therefore target redundant RAW-only pictures and stray non-JPG files.
+
+The one carve-out is `delete_jpg()`, which exists because a JPG can be in the
+master that is *not a photograph of the species at all* — a banner strip cropped
+for a web header (2000x270), swept in with the rest of a trip. Nothing else can
+remove one: it is a JPG, so the invariant protects it, and it therefore keeps
+representing its species. The carve-out is opt-in (`allow_jpg=True`), never the
+default, and it still trashes rather than deletes, so the bytes remain
+recoverable. The reason the invariant exists — "the JPG may be referenced
+elsewhere" — is met head-on rather than dodged: `apply_delete_jpg` re-derives
+every reference (the species' JPGmap, the picture's BestJPG, the species and
+ancestor best-picks) as part of the same durable write.
 
 Order of operations: **DB-first, then trash** for delete (a crash in between
 leaves harmless on-disk orphans rather than a CSV that dangles at missing
@@ -144,13 +155,13 @@ def _collect_files(db, upn: str) -> tuple[dict, dict]:
     return picture, files
 
 
-def delete_picture(db, master_root, upn: str) -> dict:
-    """Delete a whole no-JPG picture (UPN). Trashes its RAW/XMP/DOP files, drops
-    the DB rows, decrements species counts. Refuses if the UPN has any JPG.
+def delete_picture(db, master_root, upn: str, *, allow_jpg: bool = False) -> dict:
+    """Delete a whole picture (UPN). Trashes its files, drops the DB rows, decrements
+    species counts. Refuses a JPG-bearing UPN unless `allow_jpg` — see delete_jpg().
     Returns a summary dict (trashed paths, batch id)."""
     master_root = Path(master_root)
     picture, files = _collect_files(db, upn)
-    if any(_is_jpg(fr) for fr in files.values()):
+    if not allow_jpg and any(_is_jpg(fr) for fr in files.values()):
         raise MasterMutateError(
             f"{upn!r} contains a JPG — JPG-bearing pictures are protected and "
             f"cannot be deleted.")
@@ -220,6 +231,66 @@ def delete_file(db, master_root, upn: str, fname: str) -> dict:
                                         "trashed_path": str(dest), "batch": batch}])
     _write_snapshot(master_root, batch, snapshot)
     logger.info(f"Deleted file {fname} from master UPN {upn} (batch {batch}).")
+    return {"upn": upn, "fname": fname, "trashed": trashed, "batch": batch}
+
+
+def delete_jpg(db, master_root, upn: str, fname: str) -> dict:
+    """Trash ONE JPG — the deliberate carve-out from the never-trash-a-JPG rule.
+
+    Its `-small` thumbnail goes with it: a thumbnail whose source no longer exists is
+    an orphan, and it is the file the index page would still try to render.
+
+    If the JPG turns out to be the picture's ONLY file, this becomes a whole-picture
+    delete (a banner export often has no RAW behind it — it is a second crop of a
+    frame that is already in the master under its own name).
+
+    Everything the JPG was referenced by is re-derived inside the DB write, not here.
+    """
+    master_root = Path(master_root)
+    picture, files = _collect_files(db, upn)
+    fr = files.get(fname)
+    if fr is None:
+        raise MasterMutateError(f"File {fname!r} not in UPN {upn!r}.")
+    if not _is_jpg(fr):
+        raise MasterMutateError(
+            f"{fname!r} is not a JPG — use delete_file() for RAW/XMP/DOP.")
+
+    # the thumbnail derived from THIS jpg (…-small.jpg), if the master tracks one
+    stem = Path(fname).stem
+    small = [f for f in files
+             if f.lower().startswith(stem.lower() + "-small") and _is_jpg(files[f])]
+    victims = [fname] + small
+
+    remaining = [f for f in files if f not in victims]
+    if not remaining:
+        return delete_picture(db, master_root, upn, allow_jpg=True)
+
+    day = date.today().isoformat()
+    batch = f"{day}_{int(time.time()*1000)}"
+    snapshot = {"upn": upn, "picture": picture,
+                "files": [files[f] for f in victims], "single_file": fname}
+    if not db.apply_delete_jpg(upn, victims):
+        raise MasterMutateError(f"DB delete_jpg failed for {fname!r}.")
+
+    trashed, manifest_rows = [], []
+    for v in victims:
+        p = _abs_path(master_root, picture, files[v])
+        if p and p.exists():
+            dest = _move_to_trash(master_root, p, day, upn)
+            trashed.append(str(dest))
+            try:
+                rel = str(p.relative_to(master_root))
+            except ValueError:
+                rel = p.name
+            manifest_rows.append({"ts": f"{time.time():.0f}", "op": "delete_jpg",
+                                  "upn": upn, "rel_path": rel, "orig_abspath": str(p),
+                                  "trashed_path": str(dest), "batch": batch})
+        else:
+            logger.warning(f"delete_jpg: not on disk, only DB row removed: {v}")
+    _append_manifest(master_root, manifest_rows)
+    _write_snapshot(master_root, batch, snapshot)
+    logger.info(f"Trashed JPG {fname} from master UPN {upn} "
+                f"({len(trashed)} file(s), batch {batch}).")
     return {"upn": upn, "fname": fname, "trashed": trashed, "batch": batch}
 
 

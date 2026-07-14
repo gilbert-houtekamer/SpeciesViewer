@@ -914,6 +914,132 @@ class MasterDB:
             up = arow["Up"]
         return chain
 
+    def _species_subtree(self, con: sqlite3.Connection, sciname: str) -> list[str]:
+        """[sciname, …every descendant] via the Leaves adjacency list. The best-pick
+        of a non-leaf node is the best of everything BELOW it, so a recompute has to
+        see the whole subtree, not just the node's own pictures."""
+        out: list[str] = []
+        stack, seen = [sciname], {sciname}
+        while stack:
+            cur = stack.pop()
+            out.append(cur)
+            row = con.execute(
+                'SELECT "Leaves" FROM species WHERE "ScientificName"=?',
+                (cur,)).fetchone()
+            if row is None:
+                continue
+            try:
+                leaves = json.loads(row["Leaves"]) if row["Leaves"] else []
+            except (ValueError, TypeError):
+                leaves = []
+            for lf in leaves:
+                if lf and lf not in seen:
+                    seen.add(lf)
+                    stack.append(lf)
+        return out
+
+    def _recompute_best_pick(self, con: sqlite3.Connection, sciname: str, *,
+                             exclude_upns=(), exclude_files=(),
+                             prefer_upn: str = "") -> dict | None:
+        """A species node's best-pick, recomputed across its whole subtree.
+
+        Mirrors specieslib's bubble-up definition (specieslib.py:305-310):
+        currentHighestRating is the best Rate among pictures that HAVE a JPG, and
+        BestJPG/BestUPN/BestJPGPathName name that picture. Note specieslib only ever
+        ratchets the value UP — `if BestJPG == "" or new > current` — so nothing in
+        the engine can LOWER it when a JPG goes away. That is exactly what a delete
+        does, which is why the delete path has to recompute rather than adjust.
+
+        `prefer_upn` keeps the recompute STABLE. Top ratings tie (both 'aves' and
+        'animalia' have several pictures at their maximum), and specieslib's ratchet
+        breaks the tie by bubble-up ORDER, which a from-scratch max cannot reproduce.
+        Without this, recomputing a node would swap its representative picture for a
+        different, equally-rated one — a silent change to the site for no reason. So
+        the incumbent wins any tie it is still part of; the pick moves only when it
+        has to.
+
+        Returns the four fields, or None when nothing under the node has a JPG left."""
+        names = [n.lower() for n in self._species_subtree(con, sciname)]
+        if not names:
+            return None
+        ex_upns = {(u or "").lower() for u in exclude_upns}
+        ex_files = {(f or "").lower() for f in exclude_files}
+        best: dict = {}      # upn -> _offer_jpg sort key (…, filename)
+        meta: dict = {}      # upn -> (rate, relative species folder)
+        CHUNK = 400          # an ancestor like 'aves' spans thousands of species
+        for i in range(0, len(names), CHUNK):
+            part = names[i:i + CHUNK]
+            qs = ",".join("?" * len(part))
+            rows = con.execute(
+                'SELECT p."UniquePictureName" AS upn, p."Rate" AS rate,'
+                '       p."TargetPath" AS rel, f."File:FileName" AS fname,'
+                '       f."ImageSize" AS size'
+                '  FROM pictures p JOIN files f'
+                '    ON f."UniquePictureName" = p."UniquePictureName"'
+                f' WHERE LOWER(TRIM(p."WetSoortNaam")) IN ({qs})'
+                '   AND LOWER(f."WindowsExtension") IN ("jpg","jpeg")', part).fetchall()
+            for r in rows:
+                upn = r["upn"] or ""
+                if upn.lower() in ex_upns or (r["fname"] or "").lower() in ex_files:
+                    continue
+                _offer_jpg(best, upn, r["fname"], r["size"] or "")
+                meta[upn] = (_coerce_rate(r["rate"]) or 0, r["rel"] or "")
+        if not best:
+            return None
+        top = max(meta[u][0] for u in best)
+        if prefer_upn in best and meta[prefer_upn][0] == top:
+            winner = prefer_upn                  # incumbent still ties at the top
+        else:
+            winner = max((u for u in best if meta[u][0] == top), key=str)
+        return {"BestJPG": best[winner][-1], "BestUPN": winner,
+                "BestJPGPathName": meta[winner][1],
+                "currentHighestRating": top}
+
+    def _species_dropjpg_updates(self, con: sqlite3.Connection, sci: str, upn: str,
+                                 fnames, *, lost_last_jpg: bool, upn_gone: bool,
+                                 new_best_fname: str = "") -> dict:
+        """Species rollups when a picture LOSES JPGs — the exact reverse of
+        _species_addjpg_updates, and a thing the master never needed until now,
+        because a JPG was never deleted.
+
+        Two shapes, and they are genuinely different:
+
+        * The picture KEEPS a real JPG (a redundant render was dropped). The best
+          PICTURE of every node is unchanged and so is its rating — only the best
+          FILE NAME needs re-pointing. No counter moves.
+        * The picture loses its LAST JPG, or goes entirely. Now
+          iPicturesWithJPGsCollection drops on the species and every ancestor, and
+          any node whose best-pick named this picture has to find a new one.
+
+        Only nodes that actually POINT at this picture are recomputed. An ancestor's
+        currentHighestRating is the max over its subtree, so removing one picture can
+        only disturb it when that picture WAS the max — and then the node names it."""
+        updates: dict[str, dict] = {}
+        fset = {(f or "").lower() for f in fnames}
+        for a in self._species_chain(con, sci):
+            name = a["ScientificName"]
+            u: dict = {}
+            if lost_last_jpg:
+                u["iPicturesWithJPGsCollection"] = max(
+                    _coerce_int(a["iPicturesWithJPGsCollection"]) - 1, 0)
+            points_here = ((a["BestUPN"] or "") == upn
+                           or (a["BestJPG"] or "").lower() in fset)
+            if points_here:
+                if not lost_last_jpg and new_best_fname:
+                    u["BestJPG"] = new_best_fname     # same picture, same rating
+                else:
+                    pick = self._recompute_best_pick(
+                        con, name,
+                        exclude_upns={upn} if (upn_gone or lost_last_jpg) else (),
+                        exclude_files=fset,
+                        prefer_upn=(a["BestUPN"] or ""))
+                    u.update(pick or {"BestJPG": "", "BestUPN": "",
+                                      "BestJPGPathName": "",
+                                      "currentHighestRating": 0})
+            if u:
+                updates[name] = u
+        return updates
+
     def _species_move_updates(self, con: sqlite3.Connection,
                               source_sci: str, target_sci: str):
         """Species-table changes for moving ONE no-JPG picture from `source_sci`
@@ -1010,7 +1136,8 @@ class MasterDB:
     @staticmethod
     def _species_jpgmap(con: sqlite3.Connection, sci: str, *,
                         override: dict | None = None,
-                        exclude: set | None = None) -> list:
+                        exclude: set | None = None,
+                        exclude_files: set | None = None) -> list:
         """DERIVE a species' JPGmap: ONE entry per picture — its LARGEST real JPG.
 
         NOT the picture's BestJPG, which is what I first used and which the user
@@ -1041,10 +1168,15 @@ class MasterDB:
         Costs one query — no folder scan: the DB already knows every picture of the
         species and which of its JPGs is best.
 
-        `override` (upn -> (filename, ImageSize)) / `exclude` let a caller derive the
-        list for the state it is ABOUT to write: the journal entry is built before the
-        DB is touched (crash safety), so a plain read cannot see a file still being
-        inserted, or a picture on its way out."""
+        `override` (upn -> (filename, ImageSize)) / `exclude` (whole pictures) /
+        `exclude_files` (individual filenames) let a caller derive the list for the
+        state it is ABOUT to write: the journal entry is built before the DB is
+        touched (crash safety), so a plain read cannot see a file still being
+        inserted, or a picture — or a JPG — on its way out.
+
+        `exclude_files` matters for a JPG delete specifically: dropping the picture
+        would be wrong (it may keep other JPGs, and one of them becomes the page's
+        entry), so the file has to leave the derivation on its own."""
         rows = con.execute(
             'SELECT f."UniquePictureName" AS upn, f."File:FileName" AS fname,'
             '       f."ImageSize" AS size'
@@ -1054,8 +1186,11 @@ class MasterDB:
             '   AND LOWER(f."WindowsExtension") IN ("jpg","jpeg")',
             ((sci or "").strip().lower(),)).fetchall()
 
+        exf = {(f or "").lower() for f in (exclude_files or ())}
         best: dict = {}          # upn -> sort key + filename
         for r in rows:
+            if (r["fname"] or "").lower() in exf:
+                continue
             _offer_jpg(best, r["upn"], r["fname"], r["size"])
         for upn, (fname, size) in (override or {}).items():
             _offer_jpg(best, upn, fname, size)
@@ -1206,11 +1341,22 @@ class MasterDB:
         sci = prow["WetSoortNaam"] or ""
         fnames = [r["File:FileName"] for r in con.execute(
             'SELECT "File:FileName" FROM files WHERE "UniquePictureName"=?', (upn,))]
+        had_jpg = self._upn_has_jpg(con, upn)     # snapshot BEFORE the rows go
         spec_updates, spec_deleted = self._species_delete_updates(con, sci)
         # The deleted picture's BestJPG must leave the species' JPGmap, or the page
         # keeps trying to render a file that is gone. Derived for the post-delete
         # state (exclude), and skipped when the species row itself is being removed.
         if sci and sci not in spec_deleted:
+            # _species_delete_updates deliberately moves only iPictureCollectionCount,
+            # because it was written when "a JPG is never deleted" made every other
+            # rollup invariant. A JPG-bearing picture CAN now be deleted (a banner
+            # export whose only file is the JPG), and then the JPG counters and the
+            # best-pick move too. Different columns, so the two merge cleanly.
+            if had_jpg:
+                for s, fields in self._species_dropjpg_updates(
+                        con, sci, upn, fnames,
+                        lost_last_jpg=True, upn_gone=True).items():
+                    spec_updates.setdefault(s, {}).update(fields)
             for s, fields in self._jpgmap_update(
                     con, sci, exclude={upn}).items():
                 spec_updates.setdefault(s, {}).update(fields)
@@ -1228,6 +1374,71 @@ class MasterDB:
             self._delete_species(con, spec_deleted)
         MasterCheckpointWorker.get(self.master_root).notify()
         return fnames
+
+    def apply_delete_jpg(self, upn: str, fnames: list[str]) -> bool:
+        """Delete one or more JPGs from a picture that SURVIVES the delete.
+
+        NOT apply_delete_file, which was written for the no-JPG case and touches
+        neither the picture's BestJPG, nor the species' JPGmap, nor the species
+        counters — none of which a RAW delete can move, and every one of which a JPG
+        delete does. Doing only some of them is how a species page ends up rendering
+        a file that is no longer on disk.
+
+        So all four move together, in one journal entry:
+          * the picture's Files, BestJPG and JPGSize (re-distilled from what remains);
+          * the species' JPGmap (re-derived, the deleted files excluded by name);
+          * iPicturesWithJPGsCollection, when this was the picture's last JPG;
+          * the best-pick of any species/ancestor that named the departing file."""
+        con = self._connect()
+        prow = con.execute(
+            'SELECT * FROM pictures WHERE "UniquePictureName"=?', (upn,)).fetchone()
+        if prow is None:
+            return False
+        sci = (prow["WetSoortNaam"] or "").strip()
+        gone = {(f or "").lower() for f in fnames}
+
+        cur = json.loads(prow["Files"]) if prow["Files"] else []
+        new_files = [f for f in cur if (f or "").lower() not in gone]
+
+        rows = con.execute(
+            'SELECT "File:FileName" AS fname, "ImageSize" AS size FROM files'
+            ' WHERE "UniquePictureName"=? AND LOWER("WindowsExtension") IN ("jpg","jpeg")',
+            (upn,)).fetchall()
+        keep: dict = {}
+        sizes: dict = {}
+        any_jpg_left = False
+        for r in rows:
+            if (r["fname"] or "").lower() in gone:
+                continue
+            any_jpg_left = True                       # counts -small too, so that
+            sizes[r["fname"]] = r["size"] or ""       # iPicturesWithJPGs* stays the
+            _offer_jpg(keep, upn, r["fname"], r["size"] or "")   # mirror of add_file
+        new_best = keep[upn][-1] if upn in keep else ""
+        lost_last = not any_jpg_left
+
+        pic_updates = {"Files": new_files, "BestJPG": new_best,
+                       "JPGSize": sizes.get(new_best, "")}
+        spec_updates = self._species_dropjpg_updates(
+            con, sci, upn, fnames, lost_last_jpg=lost_last, upn_gone=False,
+            new_best_fname=new_best)
+        for s, fields in self._jpgmap_update(
+                con, sci, exclude_files=gone).items():
+            spec_updates.setdefault(s, {}).update(fields)
+
+        entry = {"op": "delete_jpg", "ts": time.time(), "upn": upn,
+                 "files_delete": list(fnames),
+                 "pictures": {upn: pic_updates},
+                 "species": spec_updates}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        with con:
+            self._delete_files(con, list(fnames))
+            self._set_picture_fields(con, upn, pic_updates)
+            for s, fields in spec_updates.items():
+                self._set_species_fields(con, s, fields)
+        MasterCheckpointWorker.get(self.master_root).notify()
+        return True
 
     def apply_delete_file(self, upn: str, fname: str) -> bool:
         """Delete ONE non-JPG file from a UPN that survives (keeps other files).
