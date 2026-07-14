@@ -177,14 +177,9 @@ _GROUP_REQUIRES = {
 }
 
 
-def taxon_lineage(sc, sciname: str) -> dict:
-    """{'kingdom': 'animalia', 'phylum': 'chordata', 'class': 'aves', …} by walking Up
-    from the species to the root. {} when the name is not in the collection."""
-    if not sc or not sciname:
-        return {}
+def _walk_up(sc, start: str) -> dict:
     out: dict[str, str] = {}
-    cur = sciname
-    seen = set()
+    cur, seen = start, set()
     while cur and cur not in seen:
         seen.add(cur)
         rec = sc.sc_dict.get(cur)
@@ -195,6 +190,36 @@ def taxon_lineage(sc, sciname: str) -> dict:
             out[lvl] = str(rec.get("ScientificName", "") or "").lower()
         cur = rec.get("Up", "")
     return out
+
+
+def taxon_lineage(sc, sciname: str) -> dict:
+    """{'kingdom': 'animalia', 'phylum': 'chordata', 'class': 'aves', …} by walking Up
+    from the species to the root.
+
+    Falls back to a CONGENER when the species itself is unknown. A name new to the
+    collection ('orchis anatolica', typed fresh on a trip and not yet validated against
+    GBIF) resolves to nothing, and an unresolved taxon shows every qualifier — which is
+    how an orchid ended up being offered breeding plumage. But two species of the same
+    genus cannot be in different kingdoms: if ANY 'orchis …' is known, this one is a plant
+    too. Only the ranks ABOVE genus are borrowed, and never the species itself.
+
+    Still {} for a genus we have never seen either — then only GBIF (the Validate button)
+    can teach us what it is, and until it does, hiding anything would be a guess."""
+    if not sc or not sciname:
+        return {}
+    out = _walk_up(sc, sciname)
+    if out:
+        return out
+    genus = sciname.split()[0].lower() if " " in sciname.strip() else ""
+    if not genus:
+        return {}
+    prefix = genus + " "
+    sib = next((k for k in sc.sc_dict if k.startswith(prefix) and k != sciname), None)
+    if not sib:
+        return {}
+    lin = _walk_up(sc, sib)
+    lin.pop("species", None)          # the congener is NOT this species
+    return lin
 
 
 def groups_for_lineage(lin: dict) -> set:

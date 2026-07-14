@@ -206,6 +206,9 @@ class SpeciesInfoPanel(QWidget):
         # Keep only the species name in the field; any qualifier already stored
         # (juv / male / …) pre-selects the toggle row below.
         name_only, self._preset_qualifiers = _subject_name_and_quals(initial)
+        # Kept so the qualifier rows can be filtered by TAXON even when the field is
+        # empty: the picture may already have a species the field is not showing.
+        self._initial_species_name = name_only
         self.subject_field = LabeledTextFieldQt("Suggested species name:", value=name_only)
         layout.addWidget(self.subject_field)
 
@@ -230,10 +233,17 @@ class SpeciesInfoPanel(QWidget):
         # to caption the picture and to show one best photo per age/sex/plumage.
         # Single-select within each row; click again to clear.
         from gui.culling_species import QUALIFIER_GROUPS
-        layout.addWidget(QLabel("Optional — sex / age / plumage:"))
+        self._qual_header = QLabel("Optional — sex / age / plumage:")
+        layout.addWidget(self._qual_header)
         self._qual_buttons: dict[int, list[tuple[QPushButton, str]]] = {}
+        self._qual_rows: dict[int, QWidget] = {}
+        self._qual_shown_last = None      # for the debug line: only log when it changes
         for gi, (cat, opts) in enumerate(QUALIFIER_GROUPS):
-            qrow = QHBoxLayout()
+            # Each row in its own widget so it can be hidden when it does not apply to
+            # the taxon (no breeding plumage on an orchid).
+            holder = QWidget()
+            qrow = QHBoxLayout(holder)
+            qrow.setContentsMargins(0, 0, 0, 0)
             qrow.setSpacing(4)
             lbl = QLabel(cat + ":")
             lbl.setMinimumWidth(56)
@@ -251,7 +261,8 @@ class SpeciesInfoPanel(QWidget):
                     lambda _checked, g=gi, bb=b: self._on_qualifier_clicked(g, bb))
                 qrow.addWidget(b)
                 self._qual_buttons[gi].append((b, canon))
-            layout.addLayout(qrow)
+            self._qual_rows[gi] = holder
+            layout.addWidget(holder)
 
         # ── Status ────────────────────────────────────────────────────────────
         self.status_label = QLabel("")
@@ -291,6 +302,19 @@ class SpeciesInfoPanel(QWidget):
         self._recent_grid.setVerticalSpacing(4)
         layout.addWidget(self._recent_container)
         self._build_recent_buttons()
+
+        # Re-filter the qualifier rows whenever the name changes (typing, a suggestion,
+        # a recent-species click all land in this field), and once now for the picture
+        # the panel opened on.
+        try:
+            # QLineEdit.textChanged carries the text, QTextEdit's carries nothing —
+            # accept either, so this cannot break if the field type ever changes.
+            self.subject_field.field.textChanged.connect(
+                lambda *_: self._update_qualifier_visibility())
+        except AttributeError:
+            logger.warning("species editor: no field signal — qualifier rows will not "
+                           "re-filter as you type.")
+        self._update_qualifier_visibility()
 
     # ── Live auto-complete ──────────────────────────────────────────────────────
 
@@ -413,6 +437,11 @@ class SpeciesInfoPanel(QWidget):
             if validated:
                 self.status_label.setText(f"✅ Validated: {input_name} ({validated})")
                 logger.info(f"Validated species name: {input_name} → {validated}")
+                # Validate is what TEACHES us the taxon: GBIF adds the species to the
+                # collection with its whole lineage. Until it runs, a brand-new orchid is
+                # just an unknown string and the picker has no honest reason to hide
+                # anything. Re-filter now that we finally know what it is.
+                self._update_qualifier_visibility()
             else:
                 self.status_label.setText(f"❌ Unknown species: {input_name}")
                 logger.info(f"❌ Unknown species: {input_name}")
@@ -441,6 +470,57 @@ class SpeciesInfoPanel(QWidget):
             self._do_commit()
         finally:
             self._committing = False
+
+    # ── qualifier visibility (taxon-aware) ────────────────────────────────────
+
+    def _resolve_sci_local(self) -> str:
+        """The scientific name the field currently resolves to — LOCAL LOOKUP ONLY.
+
+        NOT sc.getSpecies(), which falls back to a GBIF network call: this runs on every
+        keystroke."""
+        fpr = self._fpr
+        if fpr is None or not _sc_usable(fpr.sc):
+            return ""
+        text = self.subject_field.get_text().strip()
+        if not text:
+            text = (self._initial_species_name or "").strip()
+        if not text:
+            return ""
+        try:
+            return fpr.sc.getKnownSpecies(text.lower(), False, LookUpInGBIF=False) or ""
+        except Exception:
+            return ""
+
+    def _update_qualifier_visibility(self):
+        """Offer only the qualifiers that mean something for whatever the field resolves
+        to. A row that does NOT apply but ALREADY HAS a value stays visible — the picture
+        carries that token whether we approve of it or not, and hiding the row would drop
+        it silently on the next Commit."""
+        from gui.culling_species import (groups_for_lineage, taxon_lineage,
+                                         QUALIFIER_GROUPS)
+        sci = self._resolve_sci_local()
+        fpr = self._fpr
+        sc = fpr.sc if (fpr is not None and _sc_usable(fpr.sc)) else None
+        lin = taxon_lineage(sc, sci) if sc else {}
+        applicable = groups_for_lineage(lin)
+
+        any_shown = False
+        for gi, holder in self._qual_rows.items():
+            has_value = any(b.isChecked() for b, _c in self._qual_buttons[gi])
+            show = (gi in applicable) or has_value
+            holder.setVisible(show)
+            any_shown |= show
+        self._qual_header.setVisible(any_shown)
+
+        shown = tuple(sorted(QUALIFIER_GROUPS[gi][0] for gi, h in self._qual_rows.items()
+                             if h.isVisible()))
+        if shown != self._qual_shown_last:
+            self._qual_shown_last = shown
+            logger.info(
+                f"[qualifiers] {self.subject_field.get_text().strip()!r} -> "
+                f"species={sci or '(unresolved)'} "
+                f"kingdom={lin.get('kingdom', '?')} phylum={lin.get('phylum', '?')} "
+                f"-> showing {list(shown) or 'none (not applicable to this taxon)'}")
 
     def _on_qualifier_clicked(self, group_index: int, clicked_btn):
         """Single-select within a group: turning one on turns its siblings off.
