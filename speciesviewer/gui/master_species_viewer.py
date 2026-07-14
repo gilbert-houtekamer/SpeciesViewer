@@ -337,14 +337,16 @@ class MasterSpeciesViewerDialog(QDialog):
         if self._collection is None or not self._current_sci:
             return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        added, resized, failed = [], [], 0
+        added, resized, rerated, failed = [], [], [], 0
         try:
             self._master_db.ensure_fresh()
             if not self._master_read_only:
+                keys = []
                 for pic in self._master_db.pictures_for_species(self._current_sci):
                     upn = pic.get("UniquePictureName", "")
                     if not upn:
                         continue
+                    keys.append(upn)
                     try:
                         res = self._collection.add_master_files(upn)
                         added.extend(res.get("added", []) or [])
@@ -355,6 +357,16 @@ class MasterSpeciesViewerDialog(QDialog):
                         failed += 1
                         logger.warning(f"refresh: scan failed for {upn}: {e}")
                         continue
+                # Stars/colour an external tool wrote into the sidecar are neither a new
+                # file nor a changed pixel size, so nothing above sees them. ONE exiftool
+                # call for the whole species (an argfile), not one per picture.
+                if keys:
+                    self._collection.rebuild(self._current_display,
+                                             forced_sci=self._current_sci)
+                    try:
+                        rerated = self._collection.resync_master_metadata(keys)
+                    except Exception as e:
+                        logger.warning(f"refresh: metadata resync failed: {e}")
         finally:
             QApplication.restoreOverrideCursor()
 
@@ -369,6 +381,11 @@ class MasterSpeciesViewerDialog(QDialog):
             more = f" +{len(resized) - 1} more" if len(resized) > 1 else ""
             bits.append(f"corrected {len(resized)} changed JPG(s): "
                         f"{r['fname']} {r['old']} → {r['new']}{more}")
+        if rerated:
+            c = rerated[0]
+            more = f" +{len(rerated) - 1} more" if len(rerated) > 1 else ""
+            bits.append(f"picked up {len(rerated)} rating/colour change(s) from disk: "
+                        f"{c['key']} {c['rating'][0] or '0'}→{c['rating'][1]} stars{more}")
         if bits:
             self._status.setText("Refreshed — " + "; ".join(bits) +
                                  ". Right-click a card to choose which JPG publishes.")
@@ -376,7 +393,7 @@ class MasterSpeciesViewerDialog(QDialog):
             self._status.setText(
                 f"Refreshed — {failed} picture(s) could not be scanned (see the log).")
         else:
-            self._status.setText("Refreshed — nothing new or changed in the folder.")
+            self._status.setText("Refreshed — nothing new or changed on disk.")
 
     def _on_jpg_only_toggled(self, checked: bool):
         self._jpg_only = checked

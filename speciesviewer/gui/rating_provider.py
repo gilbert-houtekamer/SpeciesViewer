@@ -306,6 +306,135 @@ class RatingEditorCollection(PictureCollection):
         from db.master_mutate import move_picture_to_species
         return move_picture_to_species(self._master_db, self._master_root, key, target)
 
+    def resync_master_metadata(self, keys) -> list[dict]:
+        """Re-read XMP:Rating / XMP:Label from disk for these master pictures.
+
+        The master only ever hears about a rating that SpeciesViewer itself wrote. Set
+        two stars in PhotoLab or Lightroom and it lands in the .xmp — and Refresh does
+        not notice, because Refresh looks for NEW files and for JPGs whose pixels moved,
+        and an already-tracked sidecar with a new star inside it is neither.
+
+        The picture's rating is the MAX of XMP:Rating across its files and its label is
+        the XMP's (else the JPG's) — mirroring the pipeline (projectlib.py:1052-1055,
+        findBestItem), so a re-read here and a full master re-read cannot disagree.
+
+        ONE exiftool call for the whole set, via an argfile: a species can carry 800
+        sidecars and JPGs, and per-file spawns would make this unusable. Returns what
+        changed."""
+        import json as _json
+        import os
+        import subprocess
+        import tempfile
+        from gui.rating_editor import _compute_rate, _safe_int
+
+        if self._master_db is None or self._master_root is None:
+            return []
+        targets: list[tuple[str, str, str]] = []      # (key, fname, abspath)
+        for key in keys:
+            row = self._master_upn.get(key)
+            if not row:
+                continue
+            rel = (row.get("TargetPath") or row.get("BestJPGPathName") or "").strip()
+            if not rel:
+                continue
+            for fname in (row.get("Files") or []):
+                frow = self._master_files.get(fname)
+                if not frow:
+                    continue
+                if frow.get("WindowsExtension", "").lower() not in ("xmp", "jpg", "jpeg"):
+                    continue
+                p = self._master_root / rel / fname
+                if p.exists():
+                    targets.append((key, fname, str(p)))
+        if not targets:
+            return []
+
+        by_src: dict = {}
+        af = None
+        try:
+            with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False,
+                                             encoding="utf-8") as fh:
+                af = fh.name
+                for _k, _f, p in targets:
+                    fh.write(p + "\n")
+            out = subprocess.run(
+                ["exiftool", "-j", "-q", "-charset", "filename=utf8",
+                 "-XMP:Rating", "-XMP:Label", "-@", af],
+                capture_output=True, text=True, encoding="utf-8", timeout=300).stdout
+            for r in (_json.loads(out) if out.strip() else []):
+                by_src[os.path.normcase(os.path.normpath(r.get("SourceFile", "")))] = r
+        except Exception as e:
+            logger.warning(f"master metadata resync: exiftool failed: {e}")
+            return []
+        finally:
+            if af:
+                try:
+                    os.unlink(af)
+                except OSError:
+                    pass
+
+        # group the fresh values per picture
+        per_key: dict = {}
+        for key, fname, p in targets:
+            r = by_src.get(os.path.normcase(os.path.normpath(p)))
+            if r is None:
+                continue
+            per_key.setdefault(key, []).append((fname, r))
+
+        changed = []
+        for key, items in per_key.items():
+            row = self._master_upn.get(key)
+            file_updates: dict = {}
+            for fname, r in items:
+                frow = self._master_files.get(fname) or {}
+                upd = {}
+                disk_rating = r.get("Rating", None)
+                if disk_rating not in (None, "") and \
+                        str(disk_rating) != str(frow.get("XMP:Rating", "") or ""):
+                    upd["XMP:Rating"] = str(disk_rating)
+                disk_label = str(r.get("Label", "") or "")
+                if disk_label != str(frow.get("XMP:Label", "") or ""):
+                    upd["XMP:Label"] = disk_label
+                if upd:
+                    frow.update(upd)
+                    self._master_files[fname] = frow
+                    file_updates[fname] = upd
+            if not file_updates:
+                continue
+
+            # Picture rating = MAX over its files (projectlib.computeRating); label
+            # prefers the XMP over the JPG (findBestItem).
+            best = 0
+            label = ""
+            for fname in (row.get("Files") or []):
+                frow = self._master_files.get(fname) or {}
+                ext = frow.get("WindowsExtension", "").lower()
+                if ext not in ("xmp", "jpg", "jpeg"):
+                    continue
+                best = max(best, _safe_int(frow.get("XMP:Rating", "0") or 0))
+                lab = str(frow.get("XMP:Label", "") or "")
+                if lab and (not label or ext == "xmp"):
+                    label = lab
+            old_rating, old_label = (str(row.get("Rating", "") or ""),
+                                     str(row.get("Label", "") or ""))
+            row["Rating"] = str(best)
+            row["Label"] = label
+            new_rate = _compute_rate(row, self._master_files)
+            row["Rate"] = str(new_rate)
+            try:
+                self._master_db.apply_rating(
+                    key, rating=best, label=label, rate=new_rate,
+                    file_updates=file_updates)
+            except Exception as e:
+                logger.error(f"master metadata resync: DB write failed for {key}: {e}",
+                             exc_info=True)
+                continue
+            changed.append({"key": key, "rating": (old_rating, str(best)),
+                            "label": (old_label, label), "rate": new_rate})
+            logger.info(f"metadata resync: {key} rating {old_rating or '0'} -> {best}, "
+                        f"label {old_label or '-'} -> {label or '-'}, rate {new_rate}")
+        return changed
+
     def delete_master_file(self, key: str, fname: str) -> dict:
         from db.master_mutate import delete_file
         return delete_file(self._master_db, self._master_root, key, fname)
