@@ -86,7 +86,6 @@ class MasterSpeciesViewerDialog(QDialog):
 
         # Camera filter + sort order — mirror the Trip Species Viewer. The camera
         # list is scoped to the species in view (populated after each rebuild).
-        top.addWidget(QLabel("Camera:"))
         self._camera_combo = QComboBox()
         self._camera_combo.setMinimumWidth(130)
         self._camera_combo.setToolTip("Show only master pictures from this camera body")
@@ -94,7 +93,6 @@ class MasterSpeciesViewerDialog(QDialog):
         top.addWidget(self._camera_combo)
         top.addSpacing(8)
 
-        top.addWidget(QLabel("Sort:"))
         self._sort_combo = QComboBox()
         for label, data in (("Rate ↓", "rate"),
                             ("Time ↑", "time_asc"),
@@ -113,10 +111,20 @@ class MasterSpeciesViewerDialog(QDialog):
         self._map_btn.clicked.connect(self._on_show_map)
         top.addWidget(self._map_btn)
 
-        self._regen_btn = QPushButton("Regenerate page…")
+        self._refresh_btn = QPushButton("↻")
+        self._refresh_btn.setToolTip(
+            "Re-read this species from the master and repaint.\n"
+            "Also ingests any new file rendered into the species folder since the "
+            "last look — a fresh DxO JPG is invisible to the master until something "
+            "scans for it, which is why a regenerated page can come back unchanged.")
+        self._refresh_btn.setMaximumWidth(32)
+        self._refresh_btn.clicked.connect(self._on_refresh)
+        top.addWidget(self._refresh_btn)
+
+        self._regen_btn = QPushButton("↻ Web")
         self._regen_btn.setToolTip(
-            "Rebuild this species' website page from the current master data "
-            "and upload it to the live site")
+            "Rebuild this species' website page from the current master data and "
+            "upload it — page AND the pictures it links to — to the live site")
         self._regen_btn.clicked.connect(self._on_regenerate)
         top.addWidget(self._regen_btn)
         top.addStretch()
@@ -318,6 +326,48 @@ class MasterSpeciesViewerDialog(QDialog):
             self._species_field.setText(self._current_display)
             self._rebuild_cards()
 
+    def _on_refresh(self):
+        """Re-read this species from the master, ingesting anything new on disk.
+
+        The master learns about a file only when something scans for it. Render a
+        tighter crop in PhotoLab and the species folder gains a `_DxO.jpg` that no
+        row anywhere mentions — so "Regenerate page" faithfully rebuilds the page
+        from the files it knows, and the page comes back unchanged. This is the
+        button that closes that gap."""
+        if self._collection is None or not self._current_sci:
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        added, failed = [], 0
+        try:
+            self._master_db.ensure_fresh()
+            if not self._master_read_only:
+                for pic in self._master_db.pictures_for_species(self._current_sci):
+                    upn = pic.get("UniquePictureName", "")
+                    if not upn:
+                        continue
+                    try:
+                        res = self._collection.add_master_files(upn)
+                    except Exception as e:
+                        failed += 1
+                        logger.warning(f"refresh: scan failed for {upn}: {e}")
+                        continue
+                    added.extend(res.get("added", []) or [])
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        self._rebuild_cards()
+        if added:
+            names = ", ".join(added[:3]) + (f" +{len(added) - 3} more"
+                                            if len(added) > 3 else "")
+            self._status.setText(
+                f"Refreshed — ingested {len(added)} new file(s): {names}. "
+                f"Right-click a card to choose which JPG the website uses.")
+        elif failed:
+            self._status.setText(
+                f"Refreshed — {failed} picture(s) could not be scanned (see the log).")
+        else:
+            self._status.setText("Refreshed — no new files in the species folder.")
+
     def _on_jpg_only_toggled(self, checked: bool):
         self._jpg_only = checked
         self._rebuild_cards()
@@ -338,12 +388,17 @@ class MasterSpeciesViewerDialog(QDialog):
         re-triggering a rebuild; the current pick is preserved when still present."""
         if self._collection is None:
             return
+        from gui.rating_provider import NO_CAMERA
         prev = self._camera_combo.currentData()
         self._camera_combo.blockSignals(True)
         self._camera_combo.clear()
         self._camera_combo.addItem("All cameras", None)
         for model in self._collection.available_cameras(self._current_display):
-            self._camera_combo.addItem(model, model)
+            # The no-camera bucket is a real, selectable group — the waarneming.nl
+            # imports never recorded a body — so give it a name instead of a blank row.
+            # Reads as a camera name in a list of camera names, which is what it is.
+            label = "Unknown" if model == NO_CAMERA else model
+            self._camera_combo.addItem(label, model)
         if prev:
             idx = self._camera_combo.findData(prev)
             self._camera_combo.setCurrentIndex(idx if idx >= 0 else 0)
@@ -564,6 +619,29 @@ class MasterSpeciesViewerDialog(QDialog):
             return
         menu = QMenu(self)
         act_add = menu.addAction("Add new files for this picture (scan folder)")
+
+        # Which JPG is the picture's public face. Only worth asking when there is
+        # more than one to choose between — with a single render the code and the
+        # human cannot disagree.
+        pin_acts, unpin_act, jpgdel_acts = {}, None, {}
+        jpgs = col.master_jpgs(upn_key)
+        if len(jpgs) > 1:
+            menu.addSeparator()
+            sub = menu.addMenu("Use this JPG on the website")
+            for j in jpgs:
+                mark = " ✓ shown now" if j["best"] else ""
+                pin = " 📌" if j["pinned"] else ""
+                a = sub.addAction(f"{j['fname']}   ({j['size']}){mark}{pin}")
+                a.setCheckable(True)
+                a.setChecked(bool(j["pinned"]))
+                pin_acts[a] = j["fname"]
+            if any(j["pinned"] for j in jpgs):
+                sub.addSeparator()
+                unpin_act = sub.addAction("Let the code choose (biggest wins)")
+            dsub = menu.addMenu("Delete a JPG (move to trash)")
+            for j in jpgs:
+                jpgdel_acts[dsub.addAction(f"{j['fname']}   ({j['size']})")] = j["fname"]
+
         act_move = None
         if col.master_upn_moveable(upn_key):
             act_move = menu.addAction("Move to existing species…")
@@ -586,12 +664,54 @@ class MasterSpeciesViewerDialog(QDialog):
             return
         if chosen == act_add:
             self._do_master_add(upn_key)
+        elif chosen in pin_acts:
+            self._do_pin_jpg(upn_key, pin_acts[chosen])
+        elif unpin_act is not None and chosen == unpin_act:
+            self._do_pin_jpg(upn_key, "")
+        elif chosen in jpgdel_acts:
+            self._do_master_delete_jpg(upn_key, jpgdel_acts[chosen])
         elif act_move is not None and chosen == act_move:
             self._do_master_move(upn_key)
         elif act_del is not None and chosen == act_del:
             self._do_master_delete(upn_key)
         elif chosen in file_acts:
             self._do_master_delete_file(upn_key, file_acts[chosen])
+
+    def _do_pin_jpg(self, upn_key: str, fname: str):
+        if not self._collection.pin_master_jpg(upn_key, fname):
+            QMessageBox.warning(self, "Choose JPG", "Could not set the picture's JPG.")
+            return
+        if fname:
+            self._status.setText(
+                f"{fname} is now this picture's website JPG. "
+                f"Regenerate the page to publish it.")
+        else:
+            self._status.setText(
+                "Back to the code's choice (biggest JPG wins). "
+                "Regenerate the page to publish it.")
+        self._rebuild_cards()
+
+    def _do_master_delete_jpg(self, upn_key: str, fname: str):
+        from db.master_mutate import MasterMutateError
+        jpgs = self._collection.master_jpgs(upn_key)
+        last = len([j for j in jpgs if j["fname"] != fname]) == 0
+        extra = ("\n\nThis is the picture's LAST JPG — it will have no website "
+                 "picture until you render a new one." if last else "")
+        if QMessageBox.question(
+                self, "Delete JPG",
+                f"Move {fname} to the master trash?\n\nThe picture keeps its RAW and "
+                f"its other renders. Restorable from .trash until purged.{extra}"
+                ) != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            res = self._collection.delete_master_jpg(upn_key, fname)
+        except MasterMutateError as e:
+            QMessageBox.warning(self, "Delete blocked", str(e))
+            return
+        self._status.setText(
+            f"Deleted {fname} — {len(res['trashed'])} file(s) moved to .trash. "
+            f"Regenerate the page to publish the change.")
+        self._rebuild_cards()
 
     def _do_master_delete(self, upn_key: str):
         from db.master_mutate import MasterMutateError

@@ -199,6 +199,15 @@ PICTURE_FIELDS = [
     # it may be moved and refined. Placed here for the same reason as Municipality:
     # near the end, but BEFORE the sacrificial Headline.
     "GPSProcessingMethod",
+    # The JPG a HUMAN chose as this picture's public face, or "" to let the code
+    # decide. Everything that picks a JPG picks the BIGGEST one — but more pixels is
+    # not always better: a tighter crop of a warbler in reed can beat a wider frame
+    # with more of them, and that is a subjective call no rule can make. Without this
+    # there is nowhere for that call to LIVE, so re-deriving would always overrule it.
+    # BestJPG stays fully derived — from the pin when set, from area when not — so
+    # there is still exactly one rule, and one place a human can lean on it.
+    # Same placement reason as Municipality: near the end, but BEFORE Headline.
+    "BestJPGPinned",
     # Headline LAST on purpose — so a trailing column drifts off a stale master header harmlessly.
     # Blog extras (the only Headline carriers) are excluded from the master,
     # so a trailing column drifts off the stale master header harmlessly

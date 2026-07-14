@@ -61,7 +61,8 @@ def _diag(msg: str) -> None:
 # v2: added the `species` table (mirrors species.csv) for master add/delete.
 # v3: pictures/files tables gained the Municipality / XMP:Municipality columns
 #     (they're created from PICTURE_FIELDS / DATA_FILE_FIELDS).
-SCHEMA_VERSION = 3
+# v4: pictures gained BestJPGPinned — the human's choice of a picture's public JPG.
+SCHEMA_VERSION = 4
 
 # Column that's typed as INTEGER (we sort on Rate; rest stay TEXT to mirror CSV).
 _INT_COLS_PICTURES = {"Rate"}
@@ -75,19 +76,33 @@ _SPEC_NUM_COLS = {
 _SPEC_LIST_COLS = {"Leaves", "JPGmap"}  # stored as JSON, written back as ['a', 'b']
 
 
-def _offer_jpg(best: dict, upn: str, fname: str, size: str) -> None:
-    """Keep the BEST jpg per picture in `best`: biggest wins, and AT EQUAL SIZE the
-    PROCESSED render wins over the straight camera JPG.
+def _offer_jpg(best: dict, upn: str, fname: str, size: str,
+               pinned: str = "") -> None:
+    """Keep the BEST jpg per picture in `best`. ONE rule, used by every derivation —
+    the picture's BestJPG, the species' JPGmap, the species/ancestor best-pick — so
+    they cannot drift apart about which file is a picture's public face.
 
-    The tie is real, not hypothetical — `2021 mei nl-DS5_5120.jpg` and its
-    `..._DxO.jpg` are both 1200x800 — and leaving it to fall out of string ordering
-    is a coin toss dressed up as a rule. At the same pixel count the DxO render is
-    the better image, so say so. `-small` files are the website's thumbnails and are
-    never a page picture.
+    In priority order:
+
+    1. **A HUMAN'S PIN outranks everything.** More pixels is not always better: a
+       tighter crop of a warbler in reed can beat a wider frame that shows more reed,
+       and which is better is a subjective call no rule can make. Before the pin
+       existed, a deliberately tighter re-crop (1096x731) silently LOST to the older,
+       wider file (1200x798) it was meant to replace — the code overruled the
+       photographer. `BestJPGPinned` is where that judgement lives.
+    2. Otherwise the biggest wins.
+    3. AT EQUAL SIZE the PROCESSED render wins over the straight camera JPG. The tie
+       is real — `2021 mei nl-DS5_5120.jpg` and its `..._DxO.jpg` are both 1200x800 —
+       and leaving it to fall out of string ordering is a coin toss dressed up as a
+       rule.
+
+    `-small` files are the website's thumbnails and are never a page picture, pinned
+    or not.
     """
     if not upn or not fname or "-small" in fname.lower():
         return
-    key = (_area(size or ""), 1 if "dxo" in fname.lower() else 0, fname)
+    is_pinned = 1 if (pinned and fname.lower() == pinned.lower()) else 0
+    key = (is_pinned, _area(size or ""), 1 if "dxo" in fname.lower() else 0, fname)
     cur = best.get(upn)
     if cur is None or key > cur:
         best[upn] = key
@@ -972,8 +987,8 @@ class MasterDB:
             qs = ",".join("?" * len(part))
             rows = con.execute(
                 'SELECT p."UniquePictureName" AS upn, p."Rate" AS rate,'
-                '       p."TargetPath" AS rel, f."File:FileName" AS fname,'
-                '       f."ImageSize" AS size'
+                '       p."TargetPath" AS rel, p."BestJPGPinned" AS pinned,'
+                '       f."File:FileName" AS fname, f."ImageSize" AS size'
                 '  FROM pictures p JOIN files f'
                 '    ON f."UniquePictureName" = p."UniquePictureName"'
                 f' WHERE LOWER(TRIM(p."WetSoortNaam")) IN ({qs})'
@@ -982,7 +997,7 @@ class MasterDB:
                 upn = r["upn"] or ""
                 if upn.lower() in ex_upns or (r["fname"] or "").lower() in ex_files:
                     continue
-                _offer_jpg(best, upn, r["fname"], r["size"] or "")
+                _offer_jpg(best, upn, r["fname"], r["size"] or "", r["pinned"] or "")
                 meta[upn] = (_coerce_rate(r["rate"]) or 0, r["rel"] or "")
         if not best:
             return None
@@ -1137,7 +1152,8 @@ class MasterDB:
     def _species_jpgmap(con: sqlite3.Connection, sci: str, *,
                         override: dict | None = None,
                         exclude: set | None = None,
-                        exclude_files: set | None = None) -> list:
+                        exclude_files: set | None = None,
+                        pin_override: dict | None = None) -> list:
         """DERIVE a species' JPGmap: ONE entry per picture — its LARGEST real JPG.
 
         NOT the picture's BestJPG, which is what I first used and which the user
@@ -1179,7 +1195,7 @@ class MasterDB:
         entry), so the file has to leave the derivation on its own."""
         rows = con.execute(
             'SELECT f."UniquePictureName" AS upn, f."File:FileName" AS fname,'
-            '       f."ImageSize" AS size'
+            '       f."ImageSize" AS size, p."BestJPGPinned" AS pinned'
             '  FROM files f JOIN pictures p'
             '    ON p."UniquePictureName" = f."UniquePictureName"'
             ' WHERE LOWER(TRIM(p."WetSoortNaam"))=?'
@@ -1187,11 +1203,14 @@ class MasterDB:
             ((sci or "").strip().lower(),)).fetchall()
 
         exf = {(f or "").lower() for f in (exclude_files or ())}
+        pino = pin_override or {}
         best: dict = {}          # upn -> sort key + filename
         for r in rows:
             if (r["fname"] or "").lower() in exf:
                 continue
-            _offer_jpg(best, r["upn"], r["fname"], r["size"])
+            upn_r = r["upn"]
+            pin = pino[upn_r] if upn_r in pino else (r["pinned"] or "")
+            _offer_jpg(best, upn_r, r["fname"], r["size"], pin)
         for upn, (fname, size) in (override or {}).items():
             _offer_jpg(best, upn, fname, size)
         for upn in (exclude or ()):
@@ -1215,24 +1234,25 @@ class MasterDB:
         "upgrade the best JPG" worklist) was being lied to. Returns (fname, size) when
         it changed, else None."""
         con = self._connect()
+        prow = con.execute(
+            'SELECT "BestJPG" b, "JPGSize" j, "BestJPGPinned" p FROM pictures'
+            ' WHERE "UniquePictureName"=?', (upn,)).fetchone()
+        pinned = (prow["p"] or "") if prow else ""
         rows = con.execute(
             'SELECT "File:FileName" AS fname, "ImageSize" AS size FROM files'
             ' WHERE "UniquePictureName"=? AND LOWER("WindowsExtension") IN ("jpg","jpeg")',
             (upn,)).fetchall()
         # The SAME rule the JPGmap derivation uses, so the two can never disagree
-        # about which file is a picture's best.
+        # about which file is a picture's best — including which one a human pinned.
         pick: dict = {}
         sizes: dict = {}
         for r in rows:
-            _offer_jpg(pick, upn, r["fname"], r["size"] or "")
+            _offer_jpg(pick, upn, r["fname"], r["size"] or "", pinned)
             sizes[r["fname"]] = r["size"] or ""
         if upn not in pick:
             return None
         fname = pick[upn][-1]
         size = sizes.get(fname, "")
-        prow = con.execute(
-            'SELECT "BestJPG" b, "JPGSize" j FROM pictures WHERE "UniquePictureName"=?',
-            (upn,)).fetchone()
         if prow is None or ((prow["b"] or "") == fname and (prow["j"] or "") == size):
             return None
         fields = {"BestJPG": fname, "JPGSize": size}
@@ -1375,6 +1395,86 @@ class MasterDB:
         MasterCheckpointWorker.get(self.master_root).notify()
         return fnames
 
+    def jpgs_for_upn(self, upn: str) -> list[dict]:
+        """The picture's real JPGs (thumbnails excluded), biggest first, each flagged
+        `best` (what publishes today) and `pinned` (what a human chose). What the
+        'use this JPG' picker shows."""
+        con = self._connect()
+        prow = con.execute(
+            'SELECT "BestJPG" b, "BestJPGPinned" p FROM pictures'
+            ' WHERE "UniquePictureName"=?', (upn,)).fetchone()
+        if prow is None:
+            return []
+        best, pinned = (prow["b"] or ""), (prow["p"] or "")
+        out = []
+        for r in con.execute(
+                'SELECT "File:FileName" AS fname, "ImageSize" AS size FROM files'
+                ' WHERE "UniquePictureName"=?'
+                '   AND LOWER("WindowsExtension") IN ("jpg","jpeg")', (upn,)):
+            fn = r["fname"] or ""
+            if "-small" in fn.lower():
+                continue
+            out.append({"fname": fn, "size": r["size"] or "",
+                        "area": _area(r["size"] or ""),
+                        "best": fn == best, "pinned": fn.lower() == pinned.lower()})
+        out.sort(key=lambda d: -d["area"])
+        return out
+
+    def apply_pin_jpg(self, upn: str, fname: str) -> bool:
+        """Pin (or, with fname="", un-pin) the JPG a human chose as this picture's
+        public face.
+
+        The pin is the ONLY thing a human writes here. BestJPG stays derived — from
+        the pin when set, from area when not — so there is still exactly one rule
+        (`_offer_jpg`) and no second opinion to go stale. Everything the choice can
+        move is re-derived in the same durable write: the picture's BestJPG/JPGSize,
+        the species' JPGmap (the page renders from it), and the BestJPG filename of
+        any species/ancestor whose best-pick IS this picture — same picture, same
+        rating, different file, so the rating never moves."""
+        con = self._connect()
+        prow = con.execute(
+            'SELECT * FROM pictures WHERE "UniquePictureName"=?', (upn,)).fetchone()
+        if prow is None:
+            return False
+        sci = (prow["WetSoortNaam"] or "").strip()
+
+        rows = con.execute(
+            'SELECT "File:FileName" AS fname, "ImageSize" AS size FROM files'
+            ' WHERE "UniquePictureName"=? AND LOWER("WindowsExtension") IN ("jpg","jpeg")',
+            (upn,)).fetchall()
+        names = {(r["fname"] or "").lower(): r for r in rows}
+        if fname and fname.lower() not in names:
+            logger.warning(f"apply_pin_jpg: {fname!r} is not a file of {upn!r}.")
+            return False
+
+        pick: dict = {}
+        sizes: dict = {}
+        for r in rows:
+            _offer_jpg(pick, upn, r["fname"], r["size"] or "", fname)
+            sizes[r["fname"]] = r["size"] or ""
+        new_best = pick[upn][-1] if upn in pick else ""
+
+        pic_updates = {"BestJPGPinned": fname, "BestJPG": new_best,
+                       "JPGSize": sizes.get(new_best, "")}
+        # pin_override, because the journal entry is built BEFORE the pin is written —
+        # a plain read here would derive the page from the pin we are replacing.
+        spec_updates = self._jpgmap_update(con, sci, pin_override={upn: fname})
+        for a in self._species_chain(con, sci):
+            if (a["BestUPN"] or "") == upn and (a["BestJPG"] or "") != new_best:
+                spec_updates.setdefault(a["ScientificName"], {})["BestJPG"] = new_best
+
+        entry = {"op": "pin_jpg", "ts": time.time(), "upn": upn,
+                 "pictures": {upn: pic_updates}, "species": spec_updates}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        with con:
+            self._set_picture_fields(con, upn, pic_updates)
+            for s, fields in spec_updates.items():
+                self._set_species_fields(con, s, fields)
+        MasterCheckpointWorker.get(self.master_root).notify()
+        return True
+
     def apply_delete_jpg(self, upn: str, fnames: list[str]) -> bool:
         """Delete one or more JPGs from a picture that SURVIVES the delete.
 
@@ -1400,6 +1500,13 @@ class MasterDB:
         cur = json.loads(prow["Files"]) if prow["Files"] else []
         new_files = [f for f in cur if (f or "").lower() not in gone]
 
+        # Deleting the very file a human pinned RELEASES the pin — otherwise the
+        # picture keeps naming a file that is no longer there, and every derivation
+        # would quietly fall back to area anyway while the CSV still claimed a choice.
+        pinned = (prow["BestJPGPinned"] or "")
+        if pinned.lower() in gone:
+            pinned = ""
+
         rows = con.execute(
             'SELECT "File:FileName" AS fname, "ImageSize" AS size FROM files'
             ' WHERE "UniquePictureName"=? AND LOWER("WindowsExtension") IN ("jpg","jpeg")',
@@ -1412,17 +1519,19 @@ class MasterDB:
                 continue
             any_jpg_left = True                       # counts -small too, so that
             sizes[r["fname"]] = r["size"] or ""       # iPicturesWithJPGs* stays the
-            _offer_jpg(keep, upn, r["fname"], r["size"] or "")   # mirror of add_file
+            _offer_jpg(keep, upn, r["fname"], r["size"] or "", pinned)  # mirror add
         new_best = keep[upn][-1] if upn in keep else ""
         lost_last = not any_jpg_left
 
         pic_updates = {"Files": new_files, "BestJPG": new_best,
-                       "JPGSize": sizes.get(new_best, "")}
+                       "JPGSize": sizes.get(new_best, ""),
+                       "BestJPGPinned": pinned}
         spec_updates = self._species_dropjpg_updates(
             con, sci, upn, fnames, lost_last_jpg=lost_last, upn_gone=False,
             new_best_fname=new_best)
         for s, fields in self._jpgmap_update(
-                con, sci, exclude_files=gone).items():
+                con, sci, exclude_files=gone,
+                pin_override={upn: pinned}).items():   # the pin may have been released
             spec_updates.setdefault(s, {}).update(fields)
 
         entry = {"op": "delete_jpg", "ts": time.time(), "upn": upn,
@@ -1482,7 +1591,10 @@ class MasterDB:
         pic_updates: dict = {"Files": new_files}
         is_jpg = file_row.get("WindowsExtension", "").lower() in ("jpg", "jpeg")
         had_jpg = self._upn_has_jpg(con, upn)   # pre-insert snapshot
-        if is_jpg:
+        pinned = (prow["BestJPGPinned"] or "")
+        if is_jpg and not pinned:
+            # A pinned picture keeps the JPG the human chose — a newly ingested render
+            # being BIGGER is exactly the case the pin exists to overrule.
             new_size = file_row.get("ImageSize", "")
             if _area(new_size) >= _area(prow["JPGSize"] or ""):
                 pic_updates["JPGSize"] = new_size

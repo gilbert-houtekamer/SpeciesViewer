@@ -34,6 +34,12 @@ from utils.sidecar_policy import (
 
 _DXO_RAW_EXTS = ("orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng")
 
+# The camera filter's value for a picture that never had a camera. NOT "" — an empty
+# string was silently dropped by both the combo and the filter set, so the 1,421 master
+# pictures whose source recorded no body (the waarneming.nl imports) could not be
+# selected at all. A real sentinel makes them a bucket you can actually pick.
+NO_CAMERA = "\x00no-camera"
+
 logger = logging.getLogger("speciesviewer")
 
 _RAW_EXTS = {".nef", ".orf", ".cr2", ".arw", ".rw2"}
@@ -310,6 +316,34 @@ class RatingEditorCollection(PictureCollection):
         from db.master_mutate import add_upn_files
         return add_upn_files(self._master_db, self._master_root, key)
 
+    def master_jpgs(self, key: str) -> list[dict]:
+        """The picture's real JPGs (thumbnails excluded), biggest first, each flagged
+        `best` (publishes today) and `pinned` (a human chose it)."""
+        if self._master_db is None or key not in self._master_keys:
+            return []
+        return self._master_db.jpgs_for_upn(key)
+
+    def pin_master_jpg(self, key: str, fname: str) -> bool:
+        """Choose which JPG is this picture's public face — or fname="" to hand the
+        choice back to the code (biggest wins)."""
+        if self._master_db is None:
+            return False
+        ok = self._master_db.apply_pin_jpg(key, fname)
+        if ok:                      # keep the in-memory row the cards render from in step
+            row = self._master_upn.get(key)
+            if row is not None:
+                fresh = self._master_db.picture(key) or {}
+                row["BestJPG"] = fresh.get("BestJPG", "")
+                row["JPGSize"] = fresh.get("JPGSize", "")
+                row["BestJPGPinned"] = fresh.get("BestJPGPinned", "")
+        return ok
+
+    def delete_master_jpg(self, key: str, fname: str) -> dict:
+        """Trash ONE JPG (the never-trash-a-JPG carve-out); the picture survives on
+        its RAW or its other renders."""
+        from db.master_mutate import delete_jpg
+        return delete_jpg(self._master_db, self._master_root, key, fname)
+
     def _upn_row(self, key: str) -> dict:
         if key in self._master_keys:
             return self._master_upn.get(key, {})
@@ -363,7 +397,7 @@ class RatingEditorCollection(PictureCollection):
                     continue
                 if self._color_filter and self._row_color(row) not in self._color_filter:
                     continue
-                if self._camera_filter and self._row_camera(row) not in self._camera_filter:
+                if self._camera_filter and self._camera_key(row) not in self._camera_filter:
                     continue
                 rows.append((key, row))
         for key in list(self._master_keys):
@@ -374,7 +408,7 @@ class RatingEditorCollection(PictureCollection):
                     and self._row_color(self._master_upn[key]) not in self._color_filter):
                 continue  # view filter only — keep it a master key for routing
             if (self._camera_filter
-                    and self._row_camera(self._master_upn[key]) not in self._camera_filter):
+                    and self._camera_key(self._master_upn[key]) not in self._camera_filter):
                 continue
             rows.append((key, self._master_upn[key]))
 
@@ -415,9 +449,19 @@ class RatingEditorCollection(PictureCollection):
     def _row_camera(row: dict) -> str:
         return (row.get("CameraModel", "") or "").strip()
 
+    @staticmethod
+    def _camera_key(row: dict) -> str:
+        """The value the camera FILTER matches on. A picture with no CameraModel gets
+        the NO_CAMERA sentinel rather than "", so it can be selected — 1,421 master
+        pictures (the waarneming.nl imports, whose source never recorded a body) have
+        no camera, and with "" they matched nothing and the filter could not reach
+        them at all."""
+        return RatingEditorCollection._row_camera(row) or NO_CAMERA
+
     def set_camera_filter(self, models) -> None:
         """Restrict the shown cards to these camera bodies (empty = all).
-        Matched exactly against each picture's CameraModel field."""
+        Matched exactly against each picture's CameraModel field, or NO_CAMERA for
+        the pictures that never had one."""
         self._camera_filter = {m for m in (models or set()) if m}
 
     def set_sort(self, key: str) -> None:
@@ -432,6 +476,7 @@ class RatingEditorCollection(PictureCollection):
         the currently-loaded master rows, so it serves the Master Species Viewer
         (trip rows empty there) as well as the Trip viewer."""
         models = set()
+        cameraless = False
         for source in (self.fpr.upn.UniquePictureName_dict, self._master_upn):
             for row in source.values():
                 if filter_name and self.species_name(row) != filter_name:
@@ -439,7 +484,12 @@ class RatingEditorCollection(PictureCollection):
                 m = self._row_camera(row)
                 if m:
                     models.add(m)
-        return sorted(models, key=str.casefold)
+                else:
+                    cameraless = True
+        out = sorted(models, key=str.casefold)
+        if cameraless:
+            out.append(NO_CAMERA)     # last: it is the leftovers bucket, not a body
+        return out
 
     def set_species_lang(self, lang: str) -> None:
         self._species_lang = lang

@@ -13,6 +13,7 @@
 # (family/order) still show their old best-pick thumbnail until a full build.
 
 import os
+import re
 import shutil
 import tempfile
 import configparser
@@ -62,6 +63,103 @@ def _stage_web_assets(MyProject) -> str:
     return dst_dir
 
 
+_LINK_RE = re.compile(r'(?:src|href)="([^"]+)"', re.IGNORECASE)
+_PICTURE_EXTS = (".jpg", ".jpeg", ".png")
+
+
+def _pictures_the_page_links(web_dir, target_path) -> list[str]:
+    """The picture filenames the RENDERED page actually references.
+
+    Read out of the HTML we just wrote, not derived from JPGmap — because the page
+    shows only a SUBSET of it. addOneSpeciesPage drops any picture taken within 15
+    minutes of one already shown (websupport.py:1427) and caps how many it takes per
+    age/sex/plumage group, so the reed warbler publishes 2 of its 6, and the Galapagos
+    penguins would publish a handful of ~50 TG-3 frames. Uploading JPGmap would push
+    every one of them to serve four.
+
+    Reading the links back is also the honest definition of the job — "ship what the
+    page asks for" — and it cannot fall out of step with the selection rules the way a
+    second guess at them would."""
+    want = "/" + (target_path or "").strip("/").replace("\\", "/").lower() + "/"
+    names, seen = [], set()
+    for fn in sorted(os.listdir(web_dir)):
+        if not fn.lower().endswith(".html"):
+            continue
+        try:
+            with open(os.path.join(web_dir, fn), encoding="utf-8") as fh:
+                html = fh.read()
+        except OSError as e:
+            logger.warning(f"regenerate: cannot read {fn}: {e}")
+            continue
+        for link in _LINK_RE.findall(html):
+            u = link.replace("\\", "/")
+            if want not in u.lower():
+                continue                      # banner, stylesheet, another species
+            base = u.rsplit("/", 1)[-1]
+            # The page also links its own SIBLING (the EN/NL language switch lives in
+            # this same folder), so match on the extension, not just the folder.
+            if not base.lower().endswith(_PICTURE_EXTS):
+                continue
+            if base.lower() not in seen:
+                seen.add(base.lower())
+                names.append(base)
+    return names
+
+
+def _master_source(MyProject, config, target_path, basename) -> str:
+    """Where a picture the page links to actually LIVES.
+
+    NOT under getBiotaAllorNewDir() — that is the web STAGING tree, which holds only
+    the rendered HTML. In master mode websupport deliberately skips the staging copy
+    (`_src_already_at_final`) because the JPG is already at its final place in
+    master/biota, and the server mirrors that tree. So the file rows are the truth:
+    WindowsFileName is the same source websupport itself copies from."""
+    from utils.paths import to_fs_path
+    row = MyProject.files_dict.get(basename)
+    if row:
+        win = row.get("WindowsFileName", "")
+        if win:
+            p = to_fs_path(win)               # host-independent (Win-authored ok on Mac)
+            if p and p.exists():
+                return str(p)
+    root = config.get("master", "masterbiotadatabase", fallback="").strip()
+    if root:
+        p = os.path.join(root, (target_path or "").replace("/", os.sep), basename)
+        if os.path.isfile(p):
+            return p
+    return ""
+
+
+def _upload_species_pictures(MyProject, config, sftp, toweb, target_path, progress_cb):
+    """Upload the pictures the page links to.
+
+    The page links them straight out of `/nature/biota/…` — the same tree the master
+    keeps them in — while the regenerate only ever uploaded the rendered HTML. That was
+    invisible for as long as a page could only name a JPG some earlier FULL build had
+    already shipped. The moment a picture's public face can CHANGE — a pinned re-crop,
+    a freshly ingested DxO render — the page names a file the server has never seen,
+    and it renders as a broken image.
+
+    So the pictures go up with the page that references them, and only those.
+    cachedUpload makes the unchanged ones free."""
+    web_dir = os.path.join(MyProject.getBiotaDir(), target_path)
+    wanted = _pictures_the_page_links(web_dir, target_path)
+    before = sftp.FTPmisses
+    for base in wanted:
+        src = _master_source(MyProject, config, target_path, base)
+        if not src:
+            logger.warning(f"regenerate: the page links {base!r} but it is nowhere on "
+                           f"disk — it will render as a broken image.")
+            continue
+        sftp.cachedUpload(src, toweb.rstrip("/") + "/" + base, preserve_mtime=True)
+    sent = sftp.FTPmisses - before
+    logger.info(f"regenerate: page links {len(wanted)} picture(s); uploaded {sent} "
+                f"new/changed, the rest already on the server.")
+    if progress_cb and sent:
+        progress_cb(f"Uploaded {sent} new/changed picture(s)…")
+    return sent
+
+
 def _upload_species(MyProject, config, target_path, progress_cb):
     """SFTP-upload the one species' web subtree (HTML + JPGs) to the live site.
     Mirrors sv7WriteCommit.putRecursiveTreeWeb, scoped to this species folder."""
@@ -82,6 +180,7 @@ def _upload_species(MyProject, config, target_path, progress_cb):
         if progress_cb:
             progress_cb("Uploading page and pictures…")
         sftp.put_r_portable(fromdisk, toweb, preserve_mtime=True)
+        _upload_species_pictures(MyProject, config, sftp, toweb, tp, progress_cb)
         # The shared includes folder carries leaflet.{css,js}. put_r_portable is
         # cached (cachedUpload skips unchanged files), so this costs one upload the
         # first time and nothing on every regenerate after it.
