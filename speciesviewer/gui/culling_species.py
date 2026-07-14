@@ -197,10 +197,14 @@ def taxon_lineage(sc, sciname: str) -> dict:
     return out
 
 
-def applicable_qualifier_groups(sc, sciname: str) -> set:
-    """The indices of QUALIFIER_GROUPS that make sense for this taxon.
-    Unknown taxon → all of them (hide what is wrong, not what is merely unresolved)."""
-    lin = taxon_lineage(sc, sciname)
+def groups_for_lineage(lin: dict) -> set:
+    """The indices of QUALIFIER_GROUPS that make sense for this lineage.
+
+    Takes the LINEAGE, not a species name and a lookup table — because the two viewers
+    resolve a taxon from different places (the culling picker from speciescollection.csv,
+    the master from its own species tree) and there must be exactly one copy of the rule
+    they both obey. Unknown taxon → all groups: hide what is wrong, never what is merely
+    unresolved."""
     if not lin:
         return set(range(len(QUALIFIER_GROUPS)))
     out = set()
@@ -209,6 +213,111 @@ def applicable_qualifier_groups(sc, sciname: str) -> set:
         if rank is None or lin.get(rank, "") == want:
             out.add(gi)
     return out
+
+
+def applicable_qualifier_groups(sc, sciname: str) -> set:
+    """groups_for_lineage, for a caller holding a SpeciesClassification."""
+    return groups_for_lineage(taxon_lineage(sc, sciname))
+
+
+def qualifier_fields(subject: str) -> tuple:
+    """(malefemale, ageintext, summerwinter) for a composed subject.
+
+    Delegates to specieslib.getBirdInfo — the PARSER OF RECORD. The picture columns must
+    be exactly what a full master re-read would produce, and the one way to guarantee that
+    is to run the same code, not a second copy of its vocabulary. (getBirdInfo touches no
+    instance state; calling it unbound is deliberate, not a trick.)"""
+    from engine.specieslib import Species
+    return Species.getBirdInfo(None, subject or "")
+
+
+class QualifierDialog(QDialog):
+    """Sex / age / plumage for a picture whose species is already settled.
+
+    The qualifier is a PROPERTY, not a determination — it exists so the website can show
+    the different forms of a species (a juvenile gull beside an adult), which is exactly
+    why it belongs on a master picture too. So this dialog deliberately does NOT offer the
+    species field: changing what a picture IS and changing which form of it you photographed
+    are different acts, and merging them into one dialog invites the wrong one."""
+
+    def __init__(self, lineage: dict, preset: dict, n_pictures: int, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Sex / age / plumage")
+        layout = QVBoxLayout(self)
+
+        what = "this picture" if n_pictures == 1 else f"these {n_pictures} pictures"
+        layout.addWidget(QLabel(f"Which form of the species is in {what}?"))
+        hint = QLabel("The website shows one best photo per form, so this changes what "
+                      "gets published.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #666;")
+        layout.addWidget(hint)
+
+        applicable = groups_for_lineage(lineage)
+        self._buttons: dict[int, list] = {}
+        shown = 0
+        for gi, (cat, opts) in enumerate(QUALIFIER_GROUPS):
+            has_value = gi in preset
+            # Not applicable AND not already set → do not offer it (no plumage on a
+            # plant). Not applicable but ALREADY SET → show it, so the value the picture
+            # carries can be seen and removed rather than silently dropped.
+            if gi not in applicable and not has_value:
+                self._buttons[gi] = []
+                continue
+            row = QHBoxLayout()
+            lbl = QLabel(cat + ":")
+            lbl.setMinimumWidth(60)
+            row.addWidget(lbl)
+            self._buttons[gi] = []
+            for label, canon, _aliases in opts:
+                b = QPushButton(label)
+                b.setCheckable(True)
+                b.setChecked(canon == preset.get(gi))
+                b.clicked.connect(
+                    lambda _c, g=gi, bb=b: self._single_select(g, bb))
+                row.addWidget(b)
+                self._buttons[gi].append((b, canon))
+            row.addStretch()
+            layout.addLayout(row)
+            shown += 1
+
+        if not shown:
+            none_lbl = QLabel("None of sex, age or plumage applies to this taxon.")
+            none_lbl.setStyleSheet("color: #666;")
+            layout.addWidget(none_lbl)
+
+        btns = QHBoxLayout()
+        btns.addStretch()
+        clear = QPushButton("Clear all")
+        clear.clicked.connect(self._clear_all)
+        btns.addWidget(clear)
+        ok = QPushButton("Apply")
+        ok.setDefault(True)
+        ok.clicked.connect(self.accept)
+        btns.addWidget(ok)
+        cancel = QPushButton("Cancel")
+        cancel.clicked.connect(self.reject)
+        btns.addWidget(cancel)
+        layout.addLayout(btns)
+
+    def _single_select(self, gi: int, clicked):
+        for b, _c in self._buttons.get(gi, []):
+            if b is not clicked:
+                b.setChecked(False)
+
+    def _clear_all(self):
+        for btns in self._buttons.values():
+            for b, _c in btns:
+                b.setChecked(False)
+
+    def selected(self) -> dict:
+        out = {}
+        for gi, btns in self._buttons.items():
+            for b, canon in btns:
+                if b.isChecked():
+                    out[gi] = canon
+                    break
+        return out
 
 
 # alias (lowercase) -> (group index, canonical token)

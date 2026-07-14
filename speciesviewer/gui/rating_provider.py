@@ -457,6 +457,81 @@ class RatingEditorCollection(PictureCollection):
         from db.master_mutate import refresh_species
         return refresh_species(self._master_db, self._master_root, pictures)
 
+    def master_taxon_lineage(self, key: str) -> dict:
+        """{'kingdom': …, 'phylum': …} for this master picture's species — so the picker
+        offers only the qualifiers that mean something for it."""
+        if self._master_db is None:
+            return {}
+        row = self._master_upn.get(key) or {}
+        sci = (row.get("WetSoortNaam") or "").strip()
+        return self._master_db.taxon_lineage(sci) if sci else {}
+
+    def master_qualifiers(self, key: str) -> dict:
+        """{group index: canonical token} currently on this master picture."""
+        from gui.culling_species import split_species_qualifiers
+        row = self._master_upn.get(key) or {}
+        _name, selected = split_species_qualifiers(row.get("subject", "") or "")
+        return selected
+
+    def apply_master_qualifiers(self, key: str, selected: dict) -> bool:
+        """Write sex / age / plumage onto a master picture.
+
+        The SPECIES NAME IS NEVER TOUCHED. The subject is split, the qualifier tokens are
+        replaced, and the same name is put back — so this cannot silently re-determine a
+        picture, which is a different act with different consequences.
+
+        The three derived columns come from specieslib.getBirdInfo, the parser of record,
+        rather than a second copy of its vocabulary: what we store must be exactly what a
+        full master re-read would produce."""
+        from gui.culling_species import (split_species_qualifiers,
+                                         build_species_subject, qualifier_fields)
+        row = self._master_upn.get(key)
+        if not row or self._master_db is None or self._master_root is None:
+            return False
+        name, _old = split_species_qualifiers(row.get("subject", "") or "")
+        if not name:
+            # No subject stored (older master rows) — fall back to the species name, so
+            # the keyword we write still resolves to the right taxon on a re-read.
+            name = (row.get("WetSoortNaam") or "").strip()
+        if not name:
+            logger.warning(f"master qualifiers: {key} has no species to attach them to.")
+            return False
+        subject = build_species_subject(name, selected)
+        mf, age, sw = qualifier_fields(subject)
+
+        rel = (row.get("TargetPath") or row.get("BestJPGPathName") or "").strip()
+        file_updates: dict = {}
+        for fname in (row.get("Files") or []):
+            frow = self._master_files.get(fname)
+            if not frow or not rel:
+                continue
+            if frow.get("WindowsExtension", "").lower() not in ("xmp", "jpg", "jpeg"):
+                continue
+            fpath = self._master_root / rel / fname
+            if not fpath.exists():
+                continue
+            try:
+                # A list-type XMP tag is REPLACED by assignment, so the sidecar ends up
+                # carrying exactly this keyword — the same contract as the culling picker.
+                exiftool_write(fpath, [f"-XMP:Subject={subject}"])
+            except Exception as e:
+                logger.error(f"master qualifiers: exiftool write failed for "
+                             f"{fpath.name}: {e}")
+                continue
+            frow["XMP:Subject"] = subject
+            file_updates[fname] = {"XMP:Subject": subject}
+
+        row["subject"] = subject
+        row["malefemale"], row["ageintext"], row["summerwinter"] = mf, age, sw
+        try:
+            return self._master_db.apply_qualifiers(
+                key, subject=subject, malefemale=mf, ageintext=age, summerwinter=sw,
+                file_updates=file_updates)
+        except Exception as e:
+            logger.error(f"master qualifiers: DB write failed for {key}: {e}",
+                         exc_info=True)
+            return False
+
     def master_jpgs(self, key: str) -> list[dict]:
         """The picture's real JPGs (thumbnails excluded), biggest first, each flagged
         `best` (publishes today) and `pinned` (a human chose it)."""

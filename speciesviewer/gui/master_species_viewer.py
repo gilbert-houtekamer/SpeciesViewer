@@ -642,6 +642,7 @@ class MasterSpeciesViewerDialog(QDialog):
             menu.exec(QCursor.pos())
             return
         menu = QMenu(self)
+        act_qual = menu.addAction("Sex / age / plumage…")
         act_add = menu.addAction("Add new files for this picture (scan folder)")
 
         # Which JPG is the picture's public face. Only worth asking when there is
@@ -686,7 +687,9 @@ class MasterSpeciesViewerDialog(QDialog):
         chosen = menu.exec(QCursor.pos())
         if chosen is None:
             return
-        if chosen == act_add:
+        if chosen == act_qual:
+            self._do_master_qualifiers(upn_key)
+        elif chosen == act_add:
             self._do_master_add(upn_key)
         elif chosen in pin_acts:
             self._do_pin_jpg(upn_key, pin_acts[chosen])
@@ -700,6 +703,36 @@ class MasterSpeciesViewerDialog(QDialog):
             self._do_master_delete(upn_key)
         elif chosen in file_acts:
             self._do_master_delete_file(upn_key, file_acts[chosen])
+
+    def _do_master_qualifiers(self, upn_key: str):
+        """Set which FORM of the species this master picture shows.
+
+        The qualifier is a property of the photograph, not of the determination — it is
+        precisely how the website shows a juvenile gull beside an adult. It was editable
+        only at culling time, which meant a master picture's form could never be corrected
+        after the fact. Now it can."""
+        from gui.culling_species import QualifierDialog
+        col = self._collection
+        lineage = col.master_taxon_lineage(upn_key)
+        preset = col.master_qualifiers(upn_key)
+        dlg = QualifierDialog(lineage, preset, 1, self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        selected = dlg.selected()
+        if selected == preset:
+            self._status.setText("Sex / age / plumage unchanged.")
+            return
+        if not col.apply_master_qualifiers(upn_key, selected):
+            QMessageBox.warning(self, "Sex / age / plumage",
+                                "Could not write the qualifiers — see the log.")
+            return
+        from gui.culling_species import qualifier_suffix_from_subject
+        row = col._master_upn.get(upn_key) or {}
+        suffix = qualifier_suffix_from_subject(row.get("subject", "")) or " (none)"
+        self._status.setText(
+            f"Set to{suffix}. The page shows one best photo per form, so this can change "
+            f"what is published — press ↻ Web to republish.")
+        self._rebuild_cards()
 
     def _do_pin_jpg(self, upn_key: str, fname: str):
         if not self._collection.pin_master_jpg(upn_key, fname):

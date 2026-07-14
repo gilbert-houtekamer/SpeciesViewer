@@ -1434,6 +1434,65 @@ class MasterDB:
         return len(clean)
 
     # ── master add/delete operations (durable; mirror apply_rating's discipline)
+    def taxon_lineage(self, sci: str) -> dict:
+        """{'kingdom': 'animalia', 'phylum': 'chordata', …} for a master species.
+
+        Walks the Up chain — the number of steps from a species to its kingdom VARIES
+        (some taxa carry an order, some don't), so this cannot be a fixed number of hops.
+        Higher taxa in the master carry a sequence prefix ('040 passeriformes'), but
+        kingdom and phylum do not, and the Level column says what each rung is."""
+        out: dict[str, str] = {}
+        con = self._connect()
+        cur, seen = (sci or "").strip(), set()
+        while cur and cur not in seen:
+            seen.add(cur)
+            row = con.execute(
+                'SELECT "Level" l, "ScientificName" s, "Up" u FROM species'
+                ' WHERE LOWER("ScientificName")=?', (cur.lower(),)).fetchone()
+            if row is None:
+                break
+            lvl = str(row["l"] or "").rsplit(".", 1)[-1].lower()   # Level.PHYLUM -> phylum
+            if lvl and lvl not in out:
+                out[lvl] = str(row["s"] or "").lower()
+            cur = row["u"] or ""
+        return out
+
+    QUALIFIER_COLUMNS = ("subject", "malefemale", "ageintext", "summerwinter")
+
+    def apply_qualifiers(self, upn: str, *, subject: str, malefemale: str,
+                         ageintext: str, summerwinter: str,
+                         file_updates: dict | None = None) -> bool:
+        """Set a master picture's sex / age / plumage.
+
+        The qualifier is a property of the PHOTOGRAPH, not of the determination — it is
+        how the website shows the different forms of a species (a juvenile gull beside an
+        adult). It moves the picture between the page's age/sex/plumage groups, and the
+        page publishes one best photo per group, so this genuinely changes what is
+        published — but it re-derives nothing here: the grouping is computed at render
+        time, so there is no rollup to keep in step.
+
+        Only the four qualifier columns are writable, so a caller cannot smuggle a species
+        change in through this door."""
+        con = self._connect()
+        prow = con.execute(
+            'SELECT 1 FROM pictures WHERE "UniquePictureName"=?', (upn,)).fetchone()
+        if prow is None:
+            return False
+        fields = {"subject": subject, "malefemale": malefemale,
+                  "ageintext": ageintext, "summerwinter": summerwinter}
+        entry = {"op": "qualifiers", "ts": time.time(), "upn": upn,
+                 "pictures": {upn: fields},
+                 "files": dict(file_updates or {})}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        with con:
+            self._set_picture_fields(con, upn, fields)
+            for fname, upd in (file_updates or {}).items():
+                self._set_file_fields(con, fname, upd)
+        MasterCheckpointWorker.get(self.master_root).notify()
+        return True
+
     def empty_taxa(self) -> list[str]:
         """Taxon rows with NO leaves and NO pictures anywhere beneath them.
 
