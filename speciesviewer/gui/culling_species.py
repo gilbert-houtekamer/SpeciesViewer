@@ -177,44 +177,144 @@ _GROUP_REQUIRES = {
 }
 
 
+# ── the taxon index: EVERY species tree we have, concatenated ─────────────────
+#
+# speciescollection.csv is the RECOGNITION table (name -> name). The species TREES —
+# <repo>/metadata/active/species.csv and every <repo>/metadata/review/<day>/species.csv,
+# for the trip AND the master — are where the Up chains live, and they are where the
+# PIPELINE writes what it learned from GBIF. Crete's orchids and camomiles are not in the
+# recognition table and never will be until a full run, but sv2/sv3 already resolved them
+# and wrote the whole lineage into the day's species.csv:
+#
+#   anthemis arvensis -> asteraceae -> asterales -> magnoliopsida -> tracheophyta -> plantae
+#
+# Reading only the recognition table was why a flower was still offered breeding plumage:
+# the answer was already on disk. sv4/sv5 concatenate the master and trip inventories for
+# exactly this reason; so does this now.
+_TAXON_INDEX: dict = {"key": None, "up": {}, "level": {}, "alias": {}, "checked": 0.0}
+_TAXON_RECHECK_SECONDS = 2.0   # do not stat 30 files on every keystroke
+
+
+def _taxon_sources() -> list:
+    from pathlib import Path
+    out = []
+    for base in (_config.get("trip", "tripbiotadatabase", fallback=""),
+                 _config.get("master", "masterbiotadatabase", fallback="")):
+        if not base:
+            continue
+        md = Path(base) / "metadata"
+        p = md / "active" / "species.csv"
+        if p.is_file():
+            out.append(p)
+        rev = md / "review"
+        if rev.is_dir():
+            out.extend(sorted(rev.glob("*/species.csv")))
+    return out
+
+
+def _taxon_index() -> dict:
+    """Name -> (level, up), merged over every species tree, rebuilt when one changes.
+
+    Keyed on the sources' mtimes: the day trees grow AS HE CULLS, so an index built once
+    per session would go stale exactly when it started to matter."""
+    import csv as _csv
+    import time as _time
+    now = _time.monotonic()
+    if _TAXON_INDEX["key"] is not None and \
+            (now - _TAXON_INDEX["checked"]) < _TAXON_RECHECK_SECONDS:
+        return _TAXON_INDEX                      # stat'ing 30 files per keystroke is silly
+    srcs = _taxon_sources()
+    try:
+        key = tuple((str(p), p.stat().st_mtime_ns) for p in srcs)
+    except OSError:
+        key = None
+    _TAXON_INDEX["checked"] = now
+    if key is not None and _TAXON_INDEX["key"] == key:
+        return _TAXON_INDEX
+    up, lvl, alias = {}, {}, {}
+    for p in srcs:
+        try:
+            with open(p, newline="", encoding="utf-8") as fh:
+                for r in _csv.DictReader(fh, delimiter=";"):
+                    n = (r.get("ScientificName") or "").strip().lower()
+                    if not n:
+                        continue
+                    # Trip trees are read before the master's, and a day the user is
+                    # working in is the freshest thing we have — so first write wins.
+                    up.setdefault(n, (r.get("Up") or "").strip().lower())
+                    lvl.setdefault(n, str(r.get("Level") or "").rsplit(".", 1)[-1].lower())
+                    # The trees carry the vernacular names too, and the field often holds
+                    # one ("valse kamille"), so index them or the lookup misses the very
+                    # name the user is looking at.
+                    for col in ("DutchName", "EnglishName"):
+                        v = (r.get(col) or "").strip().lower()
+                        if v:
+                            alias.setdefault(v, n)
+        except OSError as e:
+            logger.warning(f"taxon index: cannot read {p}: {e}")
+    _TAXON_INDEX.update(key=key, up=up, level=lvl, alias=alias)
+    logger.info(f"[qualifiers] taxon index rebuilt: {len(up)} taxa "
+                f"(+{len(alias)} vernacular names) from {len(srcs)} species tree(s)")
+    return _TAXON_INDEX
+
+
+def _node(sc, name: str):
+    """(level, up_name) for a taxon — the collection first, then every species tree."""
+    if sc is not None:
+        rec = sc.sc_dict.get(name)
+        if rec is not None:
+            return (str(rec.get("Level", "")).rsplit(".", 1)[-1].lower(),
+                    str(rec.get("Up", "") or "").lower())
+    idx = _taxon_index()
+    if name in idx["up"]:
+        return idx["level"].get(name, ""), idx["up"][name]
+    return None
+
+
 def _walk_up(sc, start: str) -> dict:
     out: dict[str, str] = {}
     cur, seen = start, set()
     while cur and cur not in seen:
         seen.add(cur)
-        rec = sc.sc_dict.get(cur)
-        if rec is None:
+        node = _node(sc, cur)
+        if node is None:
             break
-        lvl = str(rec.get("Level", "")).rsplit(".", 1)[-1].lower()   # Level.PHYLUM -> phylum
+        lvl, up = node
         if lvl and lvl not in out:
-            out[lvl] = str(rec.get("ScientificName", "") or "").lower()
-        cur = rec.get("Up", "")
+            out[lvl] = cur
+        cur = up
     return out
 
 
 def taxon_lineage(sc, sciname: str) -> dict:
-    """{'kingdom': 'animalia', 'phylum': 'chordata', 'class': 'aves', …} by walking Up
-    from the species to the root.
+    """{'kingdom': 'animalia', 'phylum': 'chordata', 'class': 'aves', …} by walking Up.
 
-    Falls back to a CONGENER when the species itself is unknown. A name new to the
-    collection ('orchis anatolica', typed fresh on a trip and not yet validated against
-    GBIF) resolves to nothing, and an unresolved taxon shows every qualifier — which is
-    how an orchid ended up being offered breeding plumage. But two species of the same
-    genus cannot be in different kingdoms: if ANY 'orchis …' is known, this one is a plant
-    too. Only the ranks ABOVE genus are borrowed, and never the species itself.
+    Consults the recognition table AND every species tree on disk (trip + master, active
+    + per-day review) — the trees are where the pipeline records what GBIF told it, so a
+    plant identified during this very trip is already fully classified there.
 
-    Still {} for a genus we have never seen either — then only GBIF (the Validate button)
-    can teach us what it is, and until it does, hiding anything would be a guess."""
-    if not sc or not sciname:
+    Falls back to a CONGENER when the species itself is unknown anywhere: two species of
+    one genus cannot be in different kingdoms, so if any 'orchis …' is known, this one is
+    a plant too. Only the ranks ABOVE genus are borrowed, never the species itself.
+
+    Still {} for a genus nothing has ever seen — then only GBIF (Validate) can say, and
+    until it does, hiding a row would be a guess."""
+    if not sciname:
         return {}
+    sciname = sciname.strip().lower()
+    # The field often holds a vernacular name ("valse kamille"); the trees index those too.
+    if _node(sc, sciname) is None:
+        sciname = _taxon_index()["alias"].get(sciname, sciname)
     out = _walk_up(sc, sciname)
     if out:
         return out
-    genus = sciname.split()[0].lower() if " " in sciname.strip() else ""
+    genus = sciname.split()[0] if " " in sciname else ""
     if not genus:
         return {}
     prefix = genus + " "
-    sib = next((k for k in sc.sc_dict if k.startswith(prefix) and k != sciname), None)
+    pool = list(sc.sc_dict) if sc is not None else []
+    pool += list(_taxon_index()["up"])
+    sib = next((k for k in pool if k.startswith(prefix) and k != sciname), None)
     if not sib:
         return {}
     lin = _walk_up(sc, sib)
