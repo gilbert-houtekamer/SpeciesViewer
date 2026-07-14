@@ -75,6 +75,24 @@ _SPEC_NUM_COLS = {
 _SPEC_LIST_COLS = {"Leaves", "JPGmap"}  # stored as JSON, written back as ['a', 'b']
 
 
+def _offer_jpg(best: dict, upn: str, fname: str, size: str) -> None:
+    """Keep the BEST jpg per picture in `best`: biggest wins, and AT EQUAL SIZE the
+    PROCESSED render wins over the straight camera JPG.
+
+    The tie is real, not hypothetical — `2021 mei nl-DS5_5120.jpg` and its
+    `..._DxO.jpg` are both 1200x800 — and leaving it to fall out of string ordering
+    is a coin toss dressed up as a rule. At the same pixel count the DxO render is
+    the better image, so say so. `-small` files are the website's thumbnails and are
+    never a page picture.
+    """
+    if not upn or not fname or "-small" in fname.lower():
+        return
+    key = (_area(size or ""), 1 if "dxo" in fname.lower() else 0, fname)
+    cur = best.get(upn)
+    if cur is None or key > cur:
+        best[upn] = key
+
+
 # ── DB path resolution ─────────────────────────────────────────────────────────
 
 def _app_data_dir() -> Path:
@@ -993,7 +1011,18 @@ class MasterDB:
     def _species_jpgmap(con: sqlite3.Connection, sci: str, *,
                         override: dict | None = None,
                         exclude: set | None = None) -> list:
-        """DERIVE a species' JPGmap: ONE entry per picture — that picture's BestJPG.
+        """DERIVE a species' JPGmap: ONE entry per picture — its LARGEST real JPG.
+
+        NOT the picture's BestJPG, which is what I first used and which the user
+        caught: 87 pictures carry a BestJPG that is not their biggest JPG, and 23 of
+        those point at the 600x450 THUMBNAIL. Deriving from BestJPG faithfully
+        propagated that error into JPGmap — it dropped 52 good _DxO renders (up to
+        3000x2250) and left the page pointing at a thumbnail. The files table is the
+        ground truth about what a picture actually has; BestJPG is a cached opinion
+        about it, and a stale one. Derive from the truth.
+
+        `-small` files are excluded: they are the website's thumbnails, never a page
+        picture.
 
         The species page renders from this list, and until now it was only ever
         APPENDED to, by exactly one code path (the full pipeline read,
@@ -1012,21 +1041,27 @@ class MasterDB:
         Costs one query — no folder scan: the DB already knows every picture of the
         species and which of its JPGs is best.
 
-        `override` / `exclude` let a caller derive the list for the state it is ABOUT
-        to write: the journal entry is built before the DB is touched (crash safety),
-        so a plain read would still see the old BestJPG, or a picture that is on its
-        way out."""
+        `override` (upn -> (filename, ImageSize)) / `exclude` let a caller derive the
+        list for the state it is ABOUT to write: the journal entry is built before the
+        DB is touched (crash safety), so a plain read cannot see a file still being
+        inserted, or a picture on its way out."""
         rows = con.execute(
-            'SELECT "UniquePictureName" AS upn, "BestJPG" AS best FROM pictures'
-            ' WHERE LOWER(TRIM("WetSoortNaam"))=?',
+            'SELECT f."UniquePictureName" AS upn, f."File:FileName" AS fname,'
+            '       f."ImageSize" AS size'
+            '  FROM files f JOIN pictures p'
+            '    ON p."UniquePictureName" = f."UniquePictureName"'
+            ' WHERE LOWER(TRIM(p."WetSoortNaam"))=?'
+            '   AND LOWER(f."WindowsExtension") IN ("jpg","jpeg")',
             ((sci or "").strip().lower(),)).fetchall()
-        best = {r["upn"]: (r["best"] or "") for r in rows}
+
+        best: dict = {}          # upn -> sort key + filename
+        for r in rows:
+            _offer_jpg(best, r["upn"], r["fname"], r["size"])
+        for upn, (fname, size) in (override or {}).items():
+            _offer_jpg(best, upn, fname, size)
         for upn in (exclude or ()):
             best.pop(upn, None)
-        for upn, fname in (override or {}).items():
-            if fname:
-                best[upn] = fname
-        return sorted({f for f in best.values() if (f or "").strip()})
+        return sorted({v[-1] for v in best.values() if v[-1]})
 
     def _jpgmap_update(self, con: sqlite3.Connection, sci: str, **kw) -> dict:
         """{sci: {"JPGmap": [...]}} for the journal, or {} when there is nothing to
@@ -1035,6 +1070,46 @@ class MasterDB:
         if not sci:
             return {}
         return {sci: {"JPGmap": self._species_jpgmap(con, sci, **kw)}}
+
+    def redistil_best_jpg(self, upn: str) -> tuple[str, str] | None:
+        """Re-point a picture's BestJPG / JPGSize at its LARGEST real JPG.
+
+        BestJPG is a cached opinion, and for 87 pictures it had gone stale — 23 of
+        them naming the 600x450 THUMBNAIL as the picture's best image. Anything that
+        trusts it (the website best-pick, the Species Viewer's rating sort, the
+        "upgrade the best JPG" worklist) was being lied to. Returns (fname, size) when
+        it changed, else None."""
+        con = self._connect()
+        rows = con.execute(
+            'SELECT "File:FileName" AS fname, "ImageSize" AS size FROM files'
+            ' WHERE "UniquePictureName"=? AND LOWER("WindowsExtension") IN ("jpg","jpeg")',
+            (upn,)).fetchall()
+        # The SAME rule the JPGmap derivation uses, so the two can never disagree
+        # about which file is a picture's best.
+        pick: dict = {}
+        sizes: dict = {}
+        for r in rows:
+            _offer_jpg(pick, upn, r["fname"], r["size"] or "")
+            sizes[r["fname"]] = r["size"] or ""
+        if upn not in pick:
+            return None
+        fname = pick[upn][-1]
+        size = sizes.get(fname, "")
+        prow = con.execute(
+            'SELECT "BestJPG" b, "JPGSize" j FROM pictures WHERE "UniquePictureName"=?',
+            (upn,)).fetchone()
+        if prow is None or ((prow["b"] or "") == fname and (prow["j"] or "") == size):
+            return None
+        fields = {"BestJPG": fname, "JPGSize": size}
+        entry = {"op": "redistil_bestjpg", "ts": time.time(), "upn": upn,
+                 "pictures": {upn: fields}}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        with con:
+            self._set_picture_fields(con, upn, fields)
+        MasterCheckpointWorker.get(self.master_root).notify()
+        return fname, size
 
     def rebuild_species_jpgmap(self, sci: str) -> list:
         """Re-derive one species' JPGmap and persist it. Standalone entry point —
@@ -1215,9 +1290,9 @@ class MasterDB:
             # is built before the row is updated). This is the whole "upgrade the best
             # JPG" loop, which was quietly half-broken.
             sci = prow["WetSoortNaam"] or ""
-            new_best = pic_updates.get("BestJPG", prow["BestJPG"] or "")
             for s, fields in self._jpgmap_update(
-                    con, sci, override={upn: new_best}).items():
+                    con, sci,
+                    override={upn: (fname, file_row.get("ImageSize", ""))}).items():
                 spec_updates.setdefault(s, {}).update(fields)
         entry = {"op": "add_file", "ts": time.time(), "upn": upn,
                  "files_insert": {fname: file_row},
