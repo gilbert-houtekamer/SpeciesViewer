@@ -37,7 +37,16 @@ from pathlib import Path
 logger = logging.getLogger("speciesviewer")
 
 KEEP_BACKUPS = 14                      # ~100 MB of history
-_CSVS = ("data_pictures.csv", "data_files.csv", "species.csv")
+
+# MIRRORED in master.db, so the CSV and the DB can be compared row for row.
+_MIRRORED = ("data_pictures.csv", "data_files.csv", "species.csv")
+
+# BACKED UP. speciescollection.csv is not mirrored — it is the 19,247-name recognition
+# table, read by everything and written by speciesclassification.writeSpeciesCollection,
+# which puts it in reach of exactly the accident that emptied species.csv. It is ~2 MB
+# (0.3 MB gzipped), and it is the one file here you could not reconstruct from the
+# pictures on disk. Cheap to keep, expensive to lose.
+_CSVS = _MIRRORED + ("speciescollection.csv",)
 
 # csv.field_size_limit default is too small for the Files column on some rows.
 csv.field_size_limit(10_000_000)
@@ -139,6 +148,19 @@ def _check_locked(db, con, act, rep: "Report", t0: float) -> "Report":
         rep.findings.append(Finding(
             "error", "species.csv is empty but there are pictures",
             "this is the 2026-07-14 failure — do not let a backup be taken from it"))
+
+    # 1b. speciescollection.csv has no DB mirror to be compared against, so the only
+    #     question worth asking is the one that mattered: is it still there, and does it
+    #     still have rows? It is written by writeSpeciesCollection, so it is reachable by
+    #     the same accident — and unlike the others it cannot be rebuilt from the photos.
+    n_sc = _csv_rows(act / "speciescollection.csv")
+    rep.counts["speciescollection.csv"] = {"csv": n_sc, "db": None}
+    if n_sc < 0:
+        rep.findings.append(Finding("error", "speciescollection.csv is missing"))
+    elif n_sc == 0:
+        rep.findings.append(Finding(
+            "error", "speciescollection.csv is EMPTY",
+            "the species recognition table — nothing can be named without it"))
 
     # 2. A picture must not name a JPG that has no file row. This is the half-applied
     #    journal entry: the pictures section landed, the files_insert was dropped.

@@ -314,8 +314,13 @@ class DatabaseSettingsDialog(QDialog):
         finally:
             QApplication.restoreOverrideCursor()
 
-        lines = [f"Rows — {name}: {c['csv']} in the CSV, {c['db']} in the database"
-                 for name, c in rep.counts.items()]
+        lines = []
+        for name, c in rep.counts.items():
+            if c.get("db") is None:      # not mirrored in the DB — nothing to compare to
+                lines.append(f"Rows — {name}: {c['csv']} (not mirrored in the database)")
+            else:
+                lines.append(
+                    f"Rows — {name}: {c['csv']} in the CSV, {c['db']} in the database")
         if rep.findings:
             lines.append("")
             for f in rep.findings:
