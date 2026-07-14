@@ -989,6 +989,39 @@ class MasterDB:
 
         return updates, deleted
 
+    def apply_jpg_replaced(self, upn: str, fname: str, image_size: str) -> bool:
+        """The SAME published JPG was replaced on disk by a better render of the same
+        picture — same name, same path, more pixels.
+
+        This is the whole point of replacing in place rather than adding a second
+        file: nothing about the picture's identity changes, so there is no new file
+        row, no UPN to derive, no JPGmap to edit and no best-pick to re-distil. The
+        only thing that went stale is the recorded pixel size, and that is what this
+        fixes (plus the picture's JPGSize when the replaced file IS the BestJPG, so
+        the two cannot disagree).
+
+        Journalled like every other master write, so the CSVs follow."""
+        con = self._connect()
+        prow = con.execute(
+            'SELECT * FROM pictures WHERE "UniquePictureName"=?', (upn,)).fetchone()
+        if prow is None:
+            return False
+        pic_fields = {}
+        if (prow["BestJPG"] or "") == fname:
+            pic_fields["JPGSize"] = image_size
+        entry = {"op": "jpg_replaced", "ts": time.time(), "upn": upn,
+                 "files": {fname: {"ImageSize": image_size}},
+                 "pictures": {upn: pic_fields} if pic_fields else {}}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        with con:
+            self._set_file_fields(con, fname, {"ImageSize": image_size})
+            if pic_fields:
+                self._set_picture_fields(con, upn, pic_fields)
+        MasterCheckpointWorker.get(self.master_root).notify()
+        return True
+
     LOCATION_COLUMNS = ("Location", "City", "Municipality", "State", "Country")
 
     def apply_location_fields(self, updates: dict) -> int:
