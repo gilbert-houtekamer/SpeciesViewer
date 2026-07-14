@@ -989,6 +989,68 @@ class MasterDB:
 
         return updates, deleted
 
+    @staticmethod
+    def _species_jpgmap(con: sqlite3.Connection, sci: str, *,
+                        override: dict | None = None,
+                        exclude: set | None = None) -> list:
+        """DERIVE a species' JPGmap: ONE entry per picture — that picture's BestJPG.
+
+        The species page renders from this list, and until now it was only ever
+        APPENDED to, by exactly one code path (the full pipeline read,
+        projectlib.py:872). So a JPG added any other way — "Add new files for this
+        picture", a fresh DxO render — became the picture's BestJPG and then never
+        appeared on the page, because nothing put it in this list. Four such JPGs were
+        invisible in the master. An append that fires from only one path is a fact
+        waiting to go stale; deriving it cannot.
+
+        ONE ENTRY PER PICTURE, deliberately. The old list held every JPG a picture
+        had, so a picture with both an 800px original and a 2000px re-render offered
+        the page two entries for the SAME photo — which is how you end up publishing
+        the same bird twice, and how the pictures-with-JPGs counters get inflated. The
+        page wants the best render of each picture, which is exactly BestJPG.
+
+        Costs one query — no folder scan: the DB already knows every picture of the
+        species and which of its JPGs is best.
+
+        `override` / `exclude` let a caller derive the list for the state it is ABOUT
+        to write: the journal entry is built before the DB is touched (crash safety),
+        so a plain read would still see the old BestJPG, or a picture that is on its
+        way out."""
+        rows = con.execute(
+            'SELECT "UniquePictureName" AS upn, "BestJPG" AS best FROM pictures'
+            ' WHERE LOWER(TRIM("WetSoortNaam"))=?',
+            ((sci or "").strip().lower(),)).fetchall()
+        best = {r["upn"]: (r["best"] or "") for r in rows}
+        for upn in (exclude or ()):
+            best.pop(upn, None)
+        for upn, fname in (override or {}).items():
+            if fname:
+                best[upn] = fname
+        return sorted({f for f in best.values() if (f or "").strip()})
+
+    def _jpgmap_update(self, con: sqlite3.Connection, sci: str, **kw) -> dict:
+        """{sci: {"JPGmap": [...]}} for the journal, or {} when there is nothing to
+        say. Folded into whichever write is already happening, so the CSV follows."""
+        sci = (sci or "").strip()
+        if not sci:
+            return {}
+        return {sci: {"JPGmap": self._species_jpgmap(con, sci, **kw)}}
+
+    def rebuild_species_jpgmap(self, sci: str) -> list:
+        """Re-derive one species' JPGmap and persist it. Standalone entry point —
+        used to heal the species whose list drifted before this was derived."""
+        con = self._connect()
+        jpgmap = self._species_jpgmap(con, sci)
+        entry = {"op": "jpgmap", "ts": time.time(), "upn": "",
+                 "species": {sci: {"JPGmap": jpgmap}}}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        with con:
+            self._set_species_fields(con, sci, {"JPGmap": jpgmap})
+        MasterCheckpointWorker.get(self.master_root).notify()
+        return jpgmap
+
     def apply_jpg_replaced(self, upn: str, fname: str, image_size: str) -> bool:
         """The SAME published JPG was replaced on disk by a better render of the same
         picture — same name, same path, more pixels.
@@ -1070,6 +1132,13 @@ class MasterDB:
         fnames = [r["File:FileName"] for r in con.execute(
             'SELECT "File:FileName" FROM files WHERE "UniquePictureName"=?', (upn,))]
         spec_updates, spec_deleted = self._species_delete_updates(con, sci)
+        # The deleted picture's BestJPG must leave the species' JPGmap, or the page
+        # keeps trying to render a file that is gone. Derived for the post-delete
+        # state (exclude), and skipped when the species row itself is being removed.
+        if sci and sci not in spec_deleted:
+            for s, fields in self._jpgmap_update(
+                    con, sci, exclude={upn}).items():
+                spec_updates.setdefault(s, {}).update(fields)
         entry = {"op": "delete_upn", "ts": time.time(), "upn": upn,
                  "pictures_delete": [upn], "files_delete": fnames,
                  "species": spec_updates, "species_delete": spec_deleted}
@@ -1138,6 +1207,18 @@ class MasterDB:
             spec_updates = self._species_addjpg_updates(
                 con, prow["WetSoortNaam"] or "", upn, fname, rel,
                 _coerce_rate(prow["Rate"]) or 0)
+        if is_jpg:
+            # THE PAGE RENDERS FROM JPGmap, and nothing but the full pipeline read
+            # ever appended to it — so a JPG added here became the picture's BestJPG
+            # and was then never shown. Re-derive the species' list from what the DB
+            # will hold once this write lands (hence the override: the journal entry
+            # is built before the row is updated). This is the whole "upgrade the best
+            # JPG" loop, which was quietly half-broken.
+            sci = prow["WetSoortNaam"] or ""
+            new_best = pic_updates.get("BestJPG", prow["BestJPG"] or "")
+            for s, fields in self._jpgmap_update(
+                    con, sci, override={upn: new_best}).items():
+                spec_updates.setdefault(s, {}).update(fields)
         entry = {"op": "add_file", "ts": time.time(), "upn": upn,
                  "files_insert": {fname: file_row},
                  "pictures": {upn: pic_updates},
