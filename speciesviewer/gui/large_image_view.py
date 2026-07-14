@@ -1503,7 +1503,10 @@ class LargeImageView(QDialog):
             self._species_cl.addWidget(panel)
         else:
             if item.species:
-                lbl = _field_lbl(item.species)
+                # Show the FORM the picture carries ("roodborst juv."), not just the name —
+                # otherwise the one thing this panel can edit is the one thing it hides.
+                suffix = getattr(item, "qualifier_suffix", "") or ""
+                lbl = _field_lbl(item.species + suffix)
                 lbl.setStyleSheet("font-size: 11px; font-weight: bold;")
                 self._species_cl.addWidget(lbl)
             if item.headline:
@@ -1516,6 +1519,28 @@ class LargeImageView(QDialog):
                 ph = _small_lbl("(no species)")
                 ph.setStyleSheet("font-size: 10px; color: #999; font-style: italic;")
                 self._species_cl.addWidget(ph)
+            # A master picture has no species EDITOR here (its determination is settled),
+            # but its FORM is a property of the photograph and remains editable — which is
+            # the whole reason the qualifier exists. Same flow as the card's right-click.
+            if (getattr(item, "from_master", False)
+                    and hasattr(self._collection, "apply_master_qualifiers")
+                    and not getattr(self._collection, "master_read_only", True)):
+                from PyQt6.QtWidgets import QPushButton
+                qbtn = QPushButton("Sex / age / plumage…")
+                qbtn.setToolTip(
+                    "Which form of the species this photo shows. The website publishes "
+                    "one best photo per form, so this changes what appears.")
+                qbtn.clicked.connect(lambda _c, k=key: self._edit_master_qualifiers(k))
+                self._species_cl.addWidget(qbtn)
+
+    def _edit_master_qualifiers(self, key: str):
+        from gui.culling_species import edit_master_qualifiers
+        if not edit_master_qualifiers(self, self._collection, key):
+            return
+        if self._item is not None:
+            self._rebuild_species_section(self._item, self._item.key)
+        self._refresh_strip_items(key)
+        self.picture_changed.emit(key)
 
     def _on_species_committed(self, upns: set):
         if self._item is not None:

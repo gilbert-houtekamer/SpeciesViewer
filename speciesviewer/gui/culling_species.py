@@ -430,6 +430,46 @@ def qualifier_suffix_from_fields(malefemale="", ageintext="", summerwinter="") -
     return (" " + " ".join(parts)) if parts else ""
 
 
+def edit_master_qualifiers(parent, collection, key: str) -> bool:
+    """The master's sex / age / plumage flow, in ONE place.
+
+    Called from both the Master Species Viewer's card menu and the large viewer's species
+    panel. Two copies of this would drift — and one of them would be the copy that forgets
+    that plants have no plumage.
+
+    Returns True when the picture changed."""
+    lineage = collection.master_taxon_lineage(key)
+    preset = collection.master_qualifiers(key)
+
+    # Decide BEFORE opening. A dialog that opens only to announce that nothing in it
+    # applies has wasted a click and made the user prove a negative.
+    if not groups_for_lineage(lineage) and not preset:
+        kingdom = lineage.get("kingdom", "")
+        what = {"plantae": "Plants", "fungi": "Fungi"}.get(
+            kingdom, kingdom.capitalize() if kingdom else "This taxon")
+        QMessageBox.information(
+            parent, "Sex / age / plumage",
+            f"{what} have no sex, age or plumage form to record.\n\n"
+            f"These properties exist so the website can show the different forms of an "
+            f"animal — a juvenile robin beside an adult. Age and plumage are vertebrate "
+            f"life stages, and 'pair' means nothing for a plant.\n\n"
+            f"A vocabulary that does fit (seedling, flowering, fruiting) can be added "
+            f"later; offering the wrong words would only look right.")
+        return False
+
+    dlg = QualifierDialog(lineage, preset, 1, parent)
+    if dlg.exec() != QDialog.DialogCode.Accepted:
+        return False
+    selected = dlg.selected()
+    if selected == preset:
+        return False
+    if not collection.apply_master_qualifiers(key, selected):
+        QMessageBox.warning(parent, "Sex / age / plumage",
+                            "Could not write the qualifiers — see the log.")
+        return False
+    return True
+
+
 class CullingSpeciesDialog(QDialog):
     """Assign a species name to one or more pictures during culling. Accepts
     NL / EN / scientific input with contains-match auto-complete and live
@@ -587,9 +627,13 @@ class CullingSpeciesDialog(QDialog):
 
         The visibility update happens HERE, once, on the name this actually resolved to —
         not at each of the seven exits below, where it would eventually be forgotten at
-        one of them and the picker would go on offering breeding plumage on a buttercup."""
+        one of them and the picker would go on offering breeding plumage on a buttercup.
+
+        On a MISS we hand taxon_lineage the TYPED name rather than "", so it can still
+        reach the taxon through a congener. An unknown species in a known genus is the
+        common case on a trip — every new orchid and anemone starts life that way."""
         sci = self._resolve_name(use_gbif)
-        self._update_qualifier_visibility(sci)
+        self._update_qualifier_visibility(sci or self.field.text().strip().lower())
 
     def _resolve_name(self, use_gbif: bool) -> str:
         """Resolve the typed name against the species collection and report how it went.

@@ -487,9 +487,15 @@ class SpeciesInfoPanel(QWidget):
         if not text:
             return ""
         try:
-            return fpr.sc.getKnownSpecies(text.lower(), False, LookUpInGBIF=False) or ""
+            resolved = fpr.sc.getKnownSpecies(text.lower(), False, LookUpInGBIF=False)
         except Exception:
-            return ""
+            resolved = ""
+        # On a miss, hand back the TYPED name, not "". taxon_lineage can still reach the
+        # taxon through a congener ('anemone hortensis ssp heldreichii' is unknown, but
+        # 'anemone blanda' is in the table, and two anemones are not in different
+        # kingdoms). Returning "" threw that away and was why an orchid and an anemone
+        # were still being offered breeding plumage.
+        return (resolved or text).lower()
 
     def _update_qualifier_visibility(self):
         """Offer only the qualifiers that mean something for whatever the field resolves

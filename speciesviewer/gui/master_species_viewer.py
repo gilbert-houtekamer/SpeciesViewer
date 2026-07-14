@@ -711,22 +711,11 @@ class MasterSpeciesViewerDialog(QDialog):
         precisely how the website shows a juvenile gull beside an adult. It was editable
         only at culling time, which meant a master picture's form could never be corrected
         after the fact. Now it can."""
-        from gui.culling_species import QualifierDialog
+        from gui.culling_species import (edit_master_qualifiers,
+                                         qualifier_suffix_from_subject)
         col = self._collection
-        lineage = col.master_taxon_lineage(upn_key)
-        preset = col.master_qualifiers(upn_key)
-        dlg = QualifierDialog(lineage, preset, 1, self)
-        if dlg.exec() != QDialog.DialogCode.Accepted:
+        if not edit_master_qualifiers(self, col, upn_key):
             return
-        selected = dlg.selected()
-        if selected == preset:
-            self._status.setText("Sex / age / plumage unchanged.")
-            return
-        if not col.apply_master_qualifiers(upn_key, selected):
-            QMessageBox.warning(self, "Sex / age / plumage",
-                                "Could not write the qualifiers — see the log.")
-            return
-        from gui.culling_species import qualifier_suffix_from_subject
         row = col._master_upn.get(upn_key) or {}
         suffix = qualifier_suffix_from_subject(row.get("subject", "")) or " (none)"
         self._status.setText(
