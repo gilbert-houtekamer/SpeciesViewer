@@ -1434,6 +1434,83 @@ class MasterDB:
         return len(clean)
 
     # ── master add/delete operations (durable; mirror apply_rating's discipline)
+    def empty_taxa(self) -> list[str]:
+        """Taxon rows with NO leaves and NO pictures anywhere beneath them.
+
+        Deleting the last picture of a species removes the species row, but not the
+        family that existed only to hold it — so `? phacelia` left behind an aphididae
+        with no aphids in it, still claiming a picture count of 1. Residue like that is
+        what turns up in a report months later and costs an evening."""
+        con = self._connect()
+        out = []
+        for r in con.execute('SELECT "ScientificName" s, "Leaves" l FROM species'):
+            try:
+                leaves = json.loads(r["l"]) if r["l"] else []
+            except (ValueError, TypeError):
+                leaves = []
+            if leaves:
+                continue
+            name = r["s"]
+            n = con.execute(
+                'SELECT COUNT(*) FROM pictures WHERE LOWER(TRIM("WetSoortNaam"))=?',
+                (name.lower(),)).fetchone()[0]
+            if n == 0:
+                out.append(name)
+        return out
+
+    def prune_empty_taxon(self, sciname: str) -> bool:
+        """Remove a taxon that holds nothing, and unhook it from its parent's Leaves.
+
+        REFUSES if it has any leaf or any picture — a node that still holds something is
+        not empty, and this is not a delete operator. Counts on the ancestors are left
+        alone: they already carry pre-existing drift, and adjusting them here would be
+        guessing at which of the two wrongs to correct."""
+        con = self._connect()
+        row = con.execute(
+            'SELECT * FROM species WHERE "ScientificName"=?', (sciname,)).fetchone()
+        if row is None:
+            return False
+        try:
+            leaves = json.loads(row["Leaves"]) if row["Leaves"] else []
+        except (ValueError, TypeError):
+            leaves = []
+        n = con.execute(
+            'SELECT COUNT(*) FROM pictures WHERE LOWER(TRIM("WetSoortNaam"))=?',
+            (sciname.lower(),)).fetchone()[0]
+        if leaves or n:
+            logger.warning(f"prune_empty_taxon: {sciname!r} is NOT empty "
+                           f"({len(leaves)} leaf/leaves, {n} picture(s)) — refused.")
+            return False
+
+        spec_updates: dict = {}
+        parent = row["Up"]
+        if parent:
+            prow = con.execute(
+                'SELECT "Leaves" l FROM species WHERE "ScientificName"=?',
+                (parent,)).fetchone()
+            if prow is not None:
+                try:
+                    plv = json.loads(prow["l"]) if prow["l"] else []
+                except (ValueError, TypeError):
+                    plv = []
+                if sciname in plv:
+                    spec_updates[parent] = {
+                        "Leaves": [x for x in plv if x != sciname]}
+
+        entry = {"op": "prune_taxon", "ts": time.time(), "upn": "",
+                 "species": spec_updates, "species_delete": [sciname]}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        with con:
+            for s, fields in spec_updates.items():
+                self._set_species_fields(con, s, fields)
+            self._delete_species(con, [sciname])
+        MasterCheckpointWorker.get(self.master_root).notify()
+        logger.info(f"prune_empty_taxon: removed {sciname!r} (empty) and unhooked it "
+                    f"from {parent!r}.")
+        return True
+
     def apply_delete_upn(self, upn: str) -> list[str] | None:
         """Delete a whole picture (UPN) + its file rows from the master, and
         decrement species counts. Caller MUST have verified the UPN has no JPG
