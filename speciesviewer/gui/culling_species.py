@@ -152,6 +152,65 @@ QUALIFIER_GROUPS = [
     ]),
 ]
 
+# Which qualifier groups actually MEAN anything for a given taxon.
+#
+# We offered sex / age / plumage on everything, so the picker cheerfully invited
+# "breeding plumage" on a scarlet pimpernel. A UI that offers a nonsense value is not
+# neutral — it is a suggestion, and sooner or later someone takes it.
+#
+#   Plumage -> Chordata. Feathers and breeding coats. Nothing else has one.
+#   Age     -> Chordata. juvenile/immature/adult are VERTEBRATE life stages. An insect
+#              has instars and a larva/pupa/imago; a plant has seedling/rosette/flowering.
+#              Those are real vocabularies and they are NOT these words, so offering these
+#              words would just be wrong in a way that looks right.
+#   Sex     -> Animalia. Many plants do have sexes, but the useful photographic
+#              distinction is not male/female-the-individual, and "pair" is meaningless
+#              for them. Skip it for plants until there is a vocabulary worth having.
+#
+# An UNKNOWN taxon shows everything: we hide what we know is wrong, never what we merely
+# cannot resolve. More life-cycle vocabularies (instar, larva, …) can be added over time.
+_GROUP_SEX, _GROUP_AGE, _GROUP_PLUMAGE = 0, 1, 2
+_GROUP_REQUIRES = {
+    _GROUP_SEX:     ("kingdom", "animalia"),
+    _GROUP_AGE:     ("phylum",  "chordata"),
+    _GROUP_PLUMAGE: ("phylum",  "chordata"),
+}
+
+
+def taxon_lineage(sc, sciname: str) -> dict:
+    """{'kingdom': 'animalia', 'phylum': 'chordata', 'class': 'aves', …} by walking Up
+    from the species to the root. {} when the name is not in the collection."""
+    if not sc or not sciname:
+        return {}
+    out: dict[str, str] = {}
+    cur = sciname
+    seen = set()
+    while cur and cur not in seen:
+        seen.add(cur)
+        rec = sc.sc_dict.get(cur)
+        if rec is None:
+            break
+        lvl = str(rec.get("Level", "")).rsplit(".", 1)[-1].lower()   # Level.PHYLUM -> phylum
+        if lvl and lvl not in out:
+            out[lvl] = str(rec.get("ScientificName", "") or "").lower()
+        cur = rec.get("Up", "")
+    return out
+
+
+def applicable_qualifier_groups(sc, sciname: str) -> set:
+    """The indices of QUALIFIER_GROUPS that make sense for this taxon.
+    Unknown taxon → all of them (hide what is wrong, not what is merely unresolved)."""
+    lin = taxon_lineage(sc, sciname)
+    if not lin:
+        return set(range(len(QUALIFIER_GROUPS)))
+    out = set()
+    for gi in range(len(QUALIFIER_GROUPS)):
+        rank, want = _GROUP_REQUIRES.get(gi, (None, None))
+        if rank is None or lin.get(rank, "") == want:
+            out.add(gi)
+    return out
+
+
 # alias (lowercase) -> (group index, canonical token)
 _ALIAS_TO_GROUP = {
     alias: (gi, canon)
@@ -294,10 +353,16 @@ class CullingSpeciesDialog(QDialog):
         # "<species>, <token>"; the pipeline reads them to caption the picture and
         # to show one best photo per age/sex/plumage on the species page. Single-
         # select within each row; click again to clear.
-        layout.addWidget(QLabel("Optional — sex / age / plumage:"))
+        self._qual_header = QLabel("Optional — sex / age / plumage:")
+        layout.addWidget(self._qual_header)
         self._qual_buttons: dict[int, list[tuple[QPushButton, str]]] = {}
+        self._qual_rows: dict[int, QWidget] = {}
         for gi, (cat, opts) in enumerate(QUALIFIER_GROUPS):
-            qrow = QHBoxLayout()
+            # Each group in its own widget, so a whole row can be hidden when it does not
+            # apply to the taxon (no plumage on a plant).
+            holder = QWidget()
+            qrow = QHBoxLayout(holder)
+            qrow.setContentsMargins(0, 0, 0, 0)
             lbl = QLabel(cat + ":")
             lbl.setMinimumWidth(60)
             qrow.addWidget(lbl)
@@ -312,7 +377,8 @@ class CullingSpeciesDialog(QDialog):
                 qrow.addWidget(b)
                 self._qual_buttons[gi].append((b, canon))
             qrow.addStretch()
-            layout.addLayout(qrow)
+            self._qual_rows[gi] = holder
+            layout.addWidget(holder)
 
         # Recent species — left-click re-applies a name in one go; right-click
         # removes a name from the list (e.g. an untested one typed by mistake).
@@ -382,13 +448,24 @@ class CullingSpeciesDialog(QDialog):
             self._build_recent_buttons()
 
     def _resolve(self, use_gbif: bool):
-        """Show how the typed name resolves against the species collection.
-        Local-only on each keystroke; GBIF only on explicit request (it blocks)."""
+        """Show how the typed name resolves, and offer only the qualifiers that mean
+        something for whatever it resolved to.
+
+        The visibility update happens HERE, once, on the name this actually resolved to —
+        not at each of the seven exits below, where it would eventually be forgotten at
+        one of them and the picker would go on offering breeding plumage on a buttercup."""
+        sci = self._resolve_name(use_gbif)
+        self._update_qualifier_visibility(sci)
+
+    def _resolve_name(self, use_gbif: bool) -> str:
+        """Resolve the typed name against the species collection and report how it went.
+        Local-only on each keystroke; GBIF only on explicit request (it blocks).
+        Returns the resolved scientific name, or "" when it resolves to nothing."""
         text = self.field.text().strip()
         if not text or self._sc is None:
             self.feedback.setText("")
             self._is_known = False
-            return
+            return ""
         # Local lookup first (no network) — runs on every keystroke.
         try:
             sci = self._sc.getKnownSpecies(text.lower(), False, LookUpInGBIF=False)
@@ -401,18 +478,18 @@ class CullingSpeciesDialog(QDialog):
             en = props.get("EnglishName", "") or "—"
             self.feedback.setText(f"✓ <b>{sci}</b>  (NL: {nl} / EN: {en})")
             self._is_known = True
-            return
+            return sci
         if sci:
             self.feedback.setText(f"✓ recognised as <b>{sci}</b>")
             self._is_known = True
-            return
+            return sci
         # Not local. Only hit GBIF on explicit request, with a real HTTP call so
         # we can tell 'no match' from 'couldn't connect'.
         if not use_gbif:
             self.feedback.setText("⚠️ not in your species list — "
                                   "will be stored as typed  (try Check online)")
             self._is_known = False
-            return
+            return ""
         self.feedback.setText("⏳ checking GBIF…")
         QApplication.processEvents()
         status, gname = gbif_match(text)
@@ -430,14 +507,16 @@ class CullingSpeciesDialog(QDialog):
                 self.feedback.setText(f"✓ found in GBIF: <b>{gname}</b> "
                                       f"(couldn't add locally) — will be stored")
             self._is_known = True
-        elif status == "unreachable":
+            return sci or ""
+        if status == "unreachable":
             self.feedback.setText("⚠️ couldn't reach GBIF (no internet?) — "
                                   "will be stored as typed")
             self._is_known = False
-        else:
-            self.feedback.setText("⚠️ not a known species (not in your list, "
-                                  "not in GBIF) — will be stored as typed")
-            self._is_known = False
+            return ""
+        self.feedback.setText("⚠️ not a known species (not in your list, "
+                              "not in GBIF) — will be stored as typed")
+        self._is_known = False
+        return ""
 
     def _add_to_collection(self, name):
         """Resolve `name` via the species infrastructure (GBIF backbone +
@@ -495,6 +574,22 @@ class CullingSpeciesDialog(QDialog):
                 self.field.selectAll()
                 return
         self._commit(name)
+
+    def _update_qualifier_visibility(self, sciname: str):
+        """Show only the qualifier rows that mean something for this taxon.
+
+        ONE EXCEPTION, and it matters: a row that does NOT apply but ALREADY HAS a value
+        selected stays visible. The picture is carrying that token whether we approve of
+        it or not, and hiding the row would delete it silently on the next Commit — an
+        edit the user never made and could not see. Show it; let them remove it."""
+        applicable = applicable_qualifier_groups(self._sc, sciname)
+        any_shown = False
+        for gi, holder in self._qual_rows.items():
+            has_value = any(b.isChecked() for b, _c in self._qual_buttons[gi])
+            show = (gi in applicable) or has_value
+            holder.setVisible(show)
+            any_shown |= show
+        self._qual_header.setVisible(any_shown)
 
     def _on_qualifier_clicked(self, group_index: int, clicked_btn):
         """Single-select within a group: turning one on turns its siblings off.
