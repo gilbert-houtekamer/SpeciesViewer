@@ -1,18 +1,23 @@
 {
   "permissions": {
     "allow": [
+      "Bash(*)",
       "Bash(git status *)",
       "Bash(git log *)",
       "Bash(git diff *)",
       "Bash(git show *)",
       "Bash(git branch *)",
+      "Bash(git add *)",
+      "Bash(python -c)",
       "Bash(grep *)",
       "Bash(find *)",
       "Bash(head *)",
       "Bash(tail *)",
       "Bash(wc *)",
       "Bash(diff *)",
-      "Bash(ls *)"
+      "Bash(ls *)",
+      "Bash(awk *)",      
+      "Bash(echo *)"
     ]
   }
 }
