@@ -573,6 +573,15 @@ class PreviewCollection(PictureCollection):
                     return p
         return None
 
+    def _heic_path(self, upn_key: str) -> Path | None:
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if frow and frow.get("WindowsExtension", "").lower() in ("heic", "heif"):
+                p = Path(frow.get("WindowsFileName", ""))
+                if p.exists():
+                    return p
+        return None
+
     def jpg_names(self, upn_key: str) -> set:
         """Basenames of every JPG/JPEG this UPN carries (a _DxO.jpg render, a camera
         JPG). Used to test a picture against a blog's BestJPGs list when deciding
@@ -858,10 +867,17 @@ class PreviewCollection(PictureCollection):
         original camera JPG — the LARGEST tracked JPG that is not itself a DxO/LR
         render (`_DxO`/`-small`). Lets a phone JPG be cropped too: the recipe
         lands in <jpg>.dop + <jpg-stem>.xmp, exactly what PhotoLab/Lightroom read.
-        The render (_DxO.jpg) is skipped so we never crop an already-cropped file."""
+        The render (_DxO.jpg) is skipped so we never crop an already-cropped file.
+        A HEIC has no RAW/recipe pipeline but is croppable by baking the rectangle
+        into a JPG (set_crop does that) — so it is a valid crop source, preferred
+        over any sibling <stem>.jpg, which IS that previous bake (cropping it again
+        would crop an already-cropped image)."""
         raw = self.raw_path(upn_key)
         if raw is not None:
             return raw
+        heic = self._heic_path(upn_key)
+        if heic is not None:
+            return heic
         best = None
         best_area = -1
         for fname in self._files(upn_key):
@@ -1001,10 +1017,42 @@ class PreviewCollection(PictureCollection):
         raw = self._crop_source(upn_key)
         if not raw:
             return None
+        if raw.suffix.lower() in (".heic", ".heif"):
+            return self._bake_heic_crop(upn_key, raw, crop)
         from engine.sidecarlib import suggest_crop
         res = suggest_crop(str(raw), crop)
         self._img_sigs[upn_key] = self._img_sig(upn_key)
         return res
+
+    def _bake_heic_crop(self, upn_key: str, heic: Path, crop: dict):
+        """Crop a HEIC by baking the rectangle into a FULL-RES JPG beside it — a HEIC
+        has no RAW-style develop step, so the crop is applied directly (the user's
+        'crop by writing a JPG, just like RAWs'). The JPG shares the HEIC's stem, so
+        it folds onto the same picture and becomes its usable image; a re-crop
+        re-bakes from the HEIC (never from this JPG — see _crop_source)."""
+        out = heic.with_suffix(".jpg")   # <stem>.jpg — same stem folds onto the UPN
+        try:
+            import pillow_heif
+            pillow_heif.register_heif_opener()
+            from PIL import Image
+            im = Image.open(str(heic)).convert("RGB")   # FULL resolution, not the capped preview
+            w, h = im.size
+            x  = max(0, min(w - 1, round(crop.get("left", 0.0)   * w)))
+            y  = max(0, min(h - 1, round(crop.get("top", 0.0)    * h)))
+            cw = max(1, min(w - x, round(crop.get("width", 1.0)  * w)))
+            ch = max(1, min(h - y, round(crop.get("height", 1.0) * h)))
+            im.crop((x, y, x + cw, y + ch)).save(str(out), "JPEG", quality=92, optimize=True)
+        except Exception as e:
+            logger.warning(f"HEIC crop bake failed for {heic.name}: {e}")
+            return None
+        # Show the crop at once: fold the new JPG in as this UPN's display source and
+        # bump the image signature so refresh_external re-decodes to the cropped JPG.
+        self._extra_jpgs[upn_key] = out
+        if getattr(self, "_pic_folders", None) is not None:
+            self._pic_folders.add(out.parent)
+        self._img_sigs[upn_key] = self._img_sig(upn_key)
+        logger.info(f"HEIC crop baked → {out.name} (full-res JPG).")
+        return {"jpg_created": True, "baked_jpg": True, "jpg": str(out)}
 
     def delete_keys(self, keys, trash_root: Path,
                     allow_jpg_keys: frozenset = frozenset()) -> tuple[int, int]:

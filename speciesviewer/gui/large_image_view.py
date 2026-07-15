@@ -1218,7 +1218,9 @@ class LargeImageView(QDialog):
         self.refresh_external(key, reload_image=True)
         self.picture_changed.emit(key)
         self.picture_image_changed.emit(key)   # the grid card must re-decode too
-        if res:
+        if res and res.get("baked_jpg"):
+            logger.info("Crop baked into a full-res JPG (a HEIC has no develop step).")
+        elif res:
             created = [k.upper() for k in ("dop", "xmp") if res.get(f"{k}_created")]
             extra = f"  (created {', '.join(created)})" if created else ""
             logger.info("Crop suggestion written to PhotoLab + Lightroom "
