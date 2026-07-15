@@ -5,10 +5,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: Current File with Arguments",
+            "name": "SpeciesViewer",
             "type": "debugpy",
             "request": "launch",
-            "program": "${file}",
+            "program": "${workspaceFolder}/speciesviewer/SpeciesViewer.py",
             "console": "integratedTerminal",
             "env": {
                 "CONFIG": "~/sys/ghconfig.ini",
@@ -16,10 +16,10 @@
             }
         },
         {
-            "name": "specview",
+            "name": "Python Debugger: Current File with Arguments",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/bin/specview.py",
+            "program": "${file}",
             "console": "integratedTerminal",
             "env": {
                 "CONFIG": "~/sys/ghconfig.ini",
