@@ -35,7 +35,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 11 July 2026 (Refresh Master Database + black-image fixes) &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 15 July 2026 (JPG-only GPS read-back + sidecar-viewer search) &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Working task list for the SpeciesViewer nature-photo pipeline and GUI. Since the
 16 June version most of the backlog has shipped: the identity/​picture-root
@@ -94,6 +94,14 @@ Cancel-during-copy, Lightroom-in-place, and tz-offset are validated.</p>
   <li><strong>GPM on a southern/western trip</strong> <span class="tag-test">NEEDS TEST</span> —
     copy/paste GPS+place verified in the north; confirm the hemisphere sign handling on a
     trip with S/W coordinates.</li>
+  <li><strong>Search boxes work in the culling / virtual-trip day viewer</strong>
+    <span class="tag-shipped">SHIPPED</span> — <em>Find species</em>, <em>Find file</em> and the
+    <em>Species</em> filter used to sit greyed-out whenever a day was opened without a full pipeline
+    behind it (a virtual-trip day, or a freshly-ingested folder). The boxes were real but the
+    underlying collection had never been taught to answer them, so only <em>JPG-only</em> stayed
+    live. They now search the same way the pipeline-backed viewer does — species name from the
+    sidecar, file search on the picture name — and light up in both the culling grid and the
+    virtual-trip day viewer. Confirmed live on Tucson 2023-04-03.</li>
 </ul>
 
 <h3>Parked (by design)</h3>
@@ -205,6 +213,16 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
     that folder re-read every file from scratch, every time. It now lives with all the other caches,
     outside the synced folder. Placing pictures also got far quicker: dragging 62 of them used to launch
     the metadata tool 124 times, and now does it twice.</li>
+  <li><strong>A placed JPG-only picture wouldn't stay placed</strong> <span class="tag-shipped">SHIPPED</span> —
+    same shape as the bug hunt above, one more stale copy. On the Tucson 2023 map two birds
+    kept coming back to the “without GPS” tray on every re-open, and the trip's no-GPS count never
+    dropped, even though the coordinate had in fact been written to the file and was sitting there on
+    disk. The catch: those two were <em>JPG-only</em> pictures — a phone or a friend's camera, no RAW
+    and no separate sidecar — so their GPS lives inside the JPG itself. Both things that re-read a
+    placed coordinate only ever looked at the <code>.xmp</code> sidecar and never at the JPG, so a
+    JPG-only picture was invisible to them. They now fall back to the JPG when there's no sidecar.
+    Nothing was ever lost — the placement had always saved; only the reading-back was blind. Confirmed
+    live: the two caracaras drop out of the tray and the day count goes 2 → 0.</li>
   <li><strong>Find a place by name</strong> <span class="tag-shipped">SHIPPED</span> — we had
     OpenStreetMap look-up in one direction only (coordinates → place name). This adds the mirror: type
     <em>“Jetwing St. Andrews, Nuwara Eliya”</em> and get the coordinate. It sits in the right-click
@@ -217,11 +235,9 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
 
 <h3>To do</h3>
 <ul>
-  <li><strong>Finish Helgoland</strong> <span class="tag-open">OPEN / NEXT</span> — 2014-06-23 is done
-    (92 of its 93 pictures placed). The other three days still hold <strong>424 pictures</strong> with
-    no coordinate. The loop now works end to end: select a day, <em>Get GPS from location</em> puts the
-    whole island on the map in one lookup, then open the day's map and drag the clusters onto the right
-    cliffs.</li>
+  <li><strong>Finish Helgoland</strong> <span class="tag-complete">DONE</span> — all four days are
+    placed; the whole 2014 trip is geotagged (2026-07-13). This was the live run that exposed the
+    stale-copy bug hunt above.</li>
   <li><strong>Look at the 791 already-coarse coordinates</strong> <span class="tag-open">OPEN / NEW</span> —
     pictures whose GPS looks hand-entered but carries no record of it. Report first, decide later.
     The scan already turned up two real errors worth a look: a South Africa photo tagged
@@ -230,8 +246,10 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
     the pipeline is done, but Create still doesn't <em>ask</em> “from an existing trip” vs
     “retroactive from master dates”, and Extract Days is still a separate step rather than folded in.
     You have to know the date range and type it yourself. Everything after that point works.</li>
-  <li><strong>Scenario-1 “Add to Master” no-op greying</strong> <span class="tag-open">OPEN</span> —
-    a retired trip already ran Add-to-Master in its arc; detect and grey the standalone action.</li>
+  <li><strong>Scenario-1 “Add to Master” no-op greying</strong> <span class="tag-parked">PARKED</span> —
+    a retired trip already ran Add-to-Master in its arc, so the standalone action would be a no-op.
+    Greying it is pure cosmetic and low-value (unlike the greyed <em>search</em> boxes, which actively
+    misled). Parked 2026-07-15.</li>
 </ul>
 
 <h3>Parked (by design)</h3>
@@ -281,14 +299,10 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     thumbnail (<code>f0d7e69</code>: largest JPG, not the first one found). What is left is not the
     workflow but the <em>scale</em> — see the next item.</li>
   <li><strong>Find the pages that could show a bigger picture (bulk)</strong>
-    <span class="tag-open">OPEN / boring</span> — of the order of <strong>1000 species pages</strong>
-    still show an old small DxO render (e.g. 800×533) where the RAW on disk could give far more: the
-    Nikon D500/D7100/D7500 NEFs embed a full-res <code>JpgFromRaw</code> (survey 2026-07-11), so this
-    was never a RAW-preview limit. What's missing is the <strong>worklist</strong>: a scan that flags
-    every species whose best-JPG is small relative to what its RAW could yield, as a report (and ideally
-    a filter in the Master Species Viewer). Walking ~1000 of these one at a time through the shipped
-    loop is a lot of tedious work, so the value is in the list plus any batching (a bulk PhotoLab render
-    queue). Deliberately not now.</li>
+    <span class="tag-complete">DONE</span> — the worklist and the crop-recovery batch shipped:
+    <strong>811 small website JPGs upgraded in place across 410 species</strong> (864 proposed, 53 set
+    aside). Of those 53 — a DxO/exposure job, not ours — <strong>47 still await review</strong>, which
+    the user works through at leisure (2026-07-15).</li>
   <li><strong>EXIF-cache LRU retention</strong> <span class="tag-shipped">SHIPPED</span> — the
     day/trip cache now stamps a <code>seen</code> epoch-day on every hit/write and
     <code>prune_expired(ttl_days=90)</code> evicts only paths that stopped being touched (LRU, not
@@ -343,41 +357,27 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
 
 <h3>GUI &amp; cache — to do</h3>
 <ul>
-  <li><strong>Compact the filter/knob toolbar</strong> <span class="tag-open">OPEN</span>
-    <span class="tag-new">NEW</span> — the Species Viewer top row (Species · language · Camera · Sort ·
-    Map · Regenerate · JPG-only · colour swatches · Columns · Blue/Purple) is very wide. Redesign it to
-    be much more compact — group related knobs, move some behind an overflow/⋯ menu, or wrap to a second
-    row — so it stops running off narrow screens.</li>
-  <li><strong>Laptop GUI fit review</strong> <span class="tag-open">OPEN</span>
-    <span class="tag-new">NEW</span> — walk every dialog on a laptop-sized screen and confirm each one
-    fits (no clipped toolbars or off-screen buttons). Ties the toolbar compaction above.</li>
+  <li><strong>Compact the filter/knob toolbar</strong> <span class="tag-complete">DONE</span> —
+    the wide Species Viewer top row (Species · language · Camera · Sort · Map · Regenerate · JPG-only ·
+    colour swatches · Columns · Blue/Purple) was reworked to fit narrow screens; done on the laptop
+    (2026-07-15), hardly any issues.</li>
+  <li><strong>Laptop GUI fit review</strong> <span class="tag-complete">DONE</span> —
+    walked every dialog on a laptop-sized screen (2026-07-15); each fits, hardly any issues.</li>
   <li><strong>Normalise cached preview size to the OM-1 long edge (~3200 px)</strong>
-    <span class="tag-open">OPEN</span> <span class="tag-new">NEW</span> — survey of the embedded JPEG each
-    body ships in its RAW (measured 2026-07-11):
-    <ul>
-      <li><strong>OM-1 Mark II</strong> (ORF): PreviewImage 3200×2400 ~0.9&nbsp;MB — current body, the
-        reference size.</li>
-      <li><strong>Nikon D7100 / D7500 / D500</strong> (NEF): PreviewImage a tiny ~600&nbsp;px
-        (0.1–0.16&nbsp;MB); <code>JpgFromRaw</code> <strong>full-res</strong> 5568–6000&nbsp;px
-        1.5–2&nbsp;MB; <code>OtherImage</code> mid 1620×1080 ~0.75&nbsp;MB.</li>
-      <li><strong>Nikon D90</strong> (NEF): no Preview/Thumbnail; only <code>OtherImage</code>
-        4288×2848 ~9.9&nbsp;MB.</li>
-      <li><strong>Nikon Z8</strong> (research, from the web — not measured): 45&nbsp;MP / 8256×5504;
-        <code>JpgFromRaw</code> ~2.2&nbsp;MB (about the same as the D500 despite the resolution — more
-        compressed) + a smaller PreviewImage/thumbnail; exact mid-preview dims TBD on a real file.</li>
-    </ul>
-    <strong>Plan:</strong> the largest-first extractor fix (needed so the D90 shows at all) means some
-    bodies now cache a multi-MB preview. Rather than per-body tag rules, <strong>downscale every cached
-    preview to the OM-1 long edge (~3200&nbsp;px)</strong> — extract the largest embedded JPEG, and if
-    it is bigger than ~3200&nbsp;px on the long side, resize it down before caching (keep as-is if
-    smaller). One reference size for all bodies: OM-1 unchanged, D90 9.9→~0.9&nbsp;MB, Nikon full-res
-    2→~0.9&nbsp;MB, Z8 likewise. Cache size is a secondary benefit here — the point is one predictable
-    preview size across cameras. Costs one decode+resize on first extract (Pillow).</li>
-  <li><strong>Preview-cache hygiene</strong> <span class="tag-open">OPEN</span>
-    <span class="tag-new">NEW</span> — the preview cache only grows (no TTL/LRU, no sweep on source
-    delete), so it holds stale previews for culled / committed / retired trip RAWs. Two fixes:
-    (a) give it the same 90-day LRU prune the EXIF cache got; (b) sweep a trip's preview subfolder when
-    it is retired or committed.</li>
+    <span class="tag-complete">DONE</span> (shipped 2026-07-13) — the largest-first extractor fix
+    (needed so the D90 shows at all) had started caching multi-MB previews. The extractor now downscales
+    anything past ~3200&nbsp;px on the long edge to one reference size, and also re-encodes near-lossless
+    embeds that stay <em>within</em> the pixel cap but are still fat (the D90's 2.3&nbsp;MB case). A
+    preview that is already fine is cached byte-for-byte (the OM-1, most of the library) — no decode, no
+    generation loss. New <code>[preview]</code> config + a knob in the Decode Quality dialog.</li>
+  <li><strong>Preview-cache hygiene</strong> <span class="tag-complete">DONE</span>
+    (<code>cf4c13f</code>) — the cache now has the same 90-day LRU prune as the EXIF cache, an orphan
+    sweep (source folder or file gone → drop it — the only thing that catches deletions made outside the
+    app), and delete hooks on retire / trash / colour-delete; each cache folder is self-describing (a
+    <code>source.txt</code> naming its source). A live clean found <strong>17.65 of 24.35&nbsp;GB was
+    dead</strong>. Surfaced via a daily startup prune + <em>Manage Caches ▸ Prune stale</em>. Guardrail:
+    an unplugged drive looks like a deleted trip, so the sweep concludes nothing when the volume isn't
+    mounted.</li>
 </ul>
 
 <h3>Parked (by design)</h3>
@@ -469,14 +469,14 @@ filmstrip position, inline master comparison (via Trip+Master scope), grid↔lar
     sex / age / plumage toggles in both species editors; the qualifier shows on grid cards and the
     large viewer as <code>fuut ♂♀ br.</code> (<code>9efab26</code> / <code>e69cbf8</code>)</li>
 </ul>
-<h3>To do</h3>
-<ul>
-  <li><strong>Preview cards don't resize live</strong> <span class="tag-open">OPEN / minor</span> —
-    card width is fixed at build and recomputed only on the column spinner. If it grates in daily
-    use, add a debounced <code>resizeEvent</code> that rebuilds at the new width.</li>
-</ul>
 <h3>Parked / watch</h3>
 <ul>
+  <li><strong>Preview cards don't resize live</strong> <span class="tag-parked">PARKED</span> —
+    card width is fixed at build, recomputed only on the Per-row spinner. A debounced
+    <code>resizeEvent</code> → the existing grid rebuild is small, but live resize hammers the
+    card-rebuild / async-reload path (the one behind the earlier destroyed-widget crash), so it isn't
+    free. Not worth it now; if revisited, reflow the column <em>count</em> only, not thumbnail re-decode.
+    (Parked 2026-07-15.)</li>
   <li><span class="tag-parked">WATCH</span> Translation edge cases — editing a source text orphans
     its old CRC cache entry (no crash, entries accumulate); a competing HEIC Headline/Description
     could re-resolve to stale text after a re-read (not observed).</li>
@@ -518,17 +518,25 @@ Full design in <code>path_portability_plan.md</code>.</p>
 </ul>
 <h3>To do</h3>
 <ul>
-  <li><strong>GBIF lookup disk-cache</strong> <span class="tag-new">NEW</span> <span class="tag-open">OPEN</span> —
-    after the parallel EXIF read, species classification is the Read-Directory bottleneck (704 files read
-    in 2.0&nbsp;s, then GBIF dominates). GBIF results are cached only in memory for the run. Persist a
-    subject-string → backbone cache to disk (incl. not-found), and/or write GBIF-resolved species back
-    into <code>speciescollection</code> at session end, so lookups survive across sessions/machines.
-    Caching beats parallelizing (external API + rate limits).</li>
-  <li><strong>Shared persistent exiftool server</strong> <span class="tag-open">OPEN</span> — a
-    per-operation <code>-stay_open</code> exiftool already exists (<code>gui/preview_extract.py</code>;
-    sv2 reads). The idea is one app-wide server + worker pool rather than launching per run.
-    Ties the paused micro-optimization notes: the real value is the write-contract + big reads,
-    not per-item micro-perf.</li>
+  <li><strong>GBIF lookup disk-cache</strong> <span class="tag-open">OPEN</span> — after the parallel
+    EXIF read, species classification is the Read-Directory bottleneck (704 files read in 2.0&nbsp;s, then
+    GBIF dominates). GBIF results are cached only in memory for the run. Persist a subject-string →
+    backbone cache to disk (incl. not-found, with a TTL — a name unknown today may resolve later), and/or
+    write GBIF-resolved species back into <code>speciescollection</code> at session end (the more valuable
+    half: the name then resolves locally with no lookup at all). Caching beats parallelizing (external API
+    + rate limits). <strong>Low priority (2026-07-15) — does not hurt badly</strong>: the in-memory cache
+    already short-circuits within a session, so it only costs on a fresh session / new machine.
+    Estimate ~0.5–1 day, low risk (reuses the EXIF/sidecar/preview disk-cache pattern).</li>
+  <li><strong>Shared persistent (global) exiftool server</strong> <span class="tag-rejected">REJECTED</span> —
+    one app-wide <code>-stay_open</code> exiftool + worker pool. Decided against as the <em>wrong shape</em>,
+    not merely deprioritised: the value was already captured by targeted fixes (parallel workers for the
+    cold bulk read; batched writers + batched preview extract + per-op <code>-stay_open</code> for the
+    write/read storms; map GPS from memory). What a global server adds now is launch-overhead elimination
+    on scattered small ops, none on a hot path — and a single serialized server <strong>conflicts with the
+    parallel-worker model</strong> that owns the hot path (which wants N processes, not one), so it can't
+    replace the pool, only add lifecycle / crash-recovery / thread-safety cost. Escape hatch: if launch
+    overhead ever shows on an interactive path, use a narrow <em>per-surface</em> <code>-stay_open</code>
+    (the existing pattern), never a global server. (2026-07-15)</li>
 </ul>
 <h3>Parked (by design)</h3>
 <ul>
@@ -536,6 +544,74 @@ Full design in <code>path_portability_plan.md</code>.</p>
     throttle shipped; the rest was non-winning or bordered risky metadata paths. Revisit only with
     a measured bottleneck.</li>
 </ul>
+
+<!-- ============================================================ -->
+<h2>12. Landscapes in the Master <span class="tag-new">NEW</span> <span class="tag-big">ARCHITECTURAL</span></h2>
+<p>Raised 2026-07-12 while adding the map's All/Species scope — “Species” drops exactly these
+  pictures, which made their status visible. Today a landscape / context photo is a
+  <strong>trip-only, second-class citizen</strong>: it never reaches the master.</p>
+
+<h3>How it works now</h3>
+<ul>
+  <li>A picture is a <strong>“blog extra”</strong> when its subject carries a marker keyword
+    (<code>landscape</code> / <code>landschap</code> → <code>isBlogExtra</code>). It is deliberately
+    <strong>exempted from species resolution</strong> (so it doesn't warn as an unknown species), renders
+    in the day blog as a card with no taxon, and is excluded from species groups.</li>
+  <li>It is <strong>SKIPPED when freezing to the master</strong> — both its picture record and its file
+    records (<code>sv6Freeze</code>), logging “N blog-extra (landscape) pictures excluded”.</li>
+</ul>
+
+<h3>Why it is architectural, not a small feature</h3>
+<p>The master's whole organising principle is the <strong>species</strong>: the on-disk tree is species
+  folders (<code>TargetPath</code> from the taxonomy chain), and species is the key for the MasterDB
+  index, the counters, “move to species”, the per-species website pages, the best-JPG/rating pick, and
+  the audit/heal tooling. <strong>A landscape has no taxon, so there is no answer today to “where does it
+  live and how is it found.”</strong></p>
+
+<h3>The real problem (and the reason to do this)</h3>
+<p>Nothing is lost <em>today</em> — verified: neither delete path touches landscape originals (retire
+  removes the trip's <em>metadata repo</em>, not the picture files; the delete tool only removes a file
+  whose UPN is in the master, and a landscape never is). But landscapes have <strong>no path into the
+  master at all, so they are never backed up.</strong> After a retire, a landscape survives only as a
+  loose file in the picture root — no master copy, no trip index, and permanently un-cleanable (the
+  cleanup tool reports it “keep — not in master” forever). They <strong>accumulate as un-backed-up
+  orphans</strong>, one disk failure or one manual cleanup away from being gone.</p>
+
+<h3>Direction (user, 2026-07-12): a <code>topics/</code> branch beside <code>biota/</code></h3>
+<p>Add a sibling top-level branch for non-biota subjects — e.g. <code>topics/landscape/&lt;year&gt;/</code>.
+  The organising key stops being <em>species</em> and becomes <strong>subject</strong>, which resolves
+  either down the <strong>biota</strong> chain (taxonomy → species) or down a <strong>topics</strong>
+  chain (topic → leaf/year). <code>TargetPath</code> is already built from a chain, so a topics chain
+  just yields a different root — it gives landscapes a real home, a backup path into the master, and a
+  website home without special-casing them everywhere.</p>
+<p>The record is fully reconstructible from disk even for an already-retired trip: subject + GPS/location
+  from the <code>.xmp</code>, rating + colour from the <code>.dop</code>, date/camera/EXIF from the RAW.</p>
+<p class="note"><strong>⚠ The trap:</strong> a scan that reads only the <code>.xmp</code> finds the
+  landscapes but <strong>silently loses every rating and colour label</strong> — those live in the
+  <code>.dop</code>, not the XMP. Get this right up front.</p>
+
+<h3>Open design questions</h3>
+<ul>
+  <li><strong>Indexing</strong> — MasterDB and the CSV schema assume a species per picture; the
+    generalisation is <em>subject = species OR topic leaf</em>, or species-less records ripple into every
+    species-keyed query, counter, audit and the “move to species” tool.</li>
+  <li><strong>Website</strong> — stay blog-only (stored purely for safekeeping) or earn a home (topic
+    pages / a per-year landscape gallery)? Storage and publication are separable.</li>
+  <li><strong>“Best” without a species</strong> — the rating/best-JPG pick groups by species; group by
+    topic leaf (year/place), or not at all?</li>
+  <li><strong>Migration</strong> — every trip committed so far excluded its landscapes; a backfill would
+    re-ingest them from the picture root.</li>
+  <li><strong>Declaring a topic</strong> — today the marker is a hardcoded keyword set; a topics branch
+    needs a small registry (topic → leaf rule) so <code>planes/F16</code> isn't a code change.</li>
+</ul>
+
+<h3>Order of work</h3>
+<p>The scan cannot go first — there is no <code>TargetPath</code> until a topic has a rule.
+  (1) <strong>Topic registry</strong> — declarative topic → leaf rule. (2) <strong>Scan → dry-run
+  report</strong> — walk the picture root with the parallel EXIF reader, listing every topic picture and
+  what was reconstructed from RAW + <code>.xmp</code> + <code>.dop</code>. (3) <strong>Reviewed
+  ingest</strong> into <code>topics/…</code>, with backup — dry-run → review → explicit apply, never an
+  auto-fix.</p>
 
 <!-- ============================================================ -->
 <hr class="section-divider">
