@@ -79,6 +79,10 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
         source_label=str(day_dir),
         readonly=True,
         allow_geotag=parent._master_is_editable(),
+        # A suggested crop is written to the master RAW's sidecar for PhotoLab to
+        # act on — a real, useful write even though this read-only viewer changes
+        # nothing itself. Same carve-out as geotag, gated on the same editable check.
+        allow_crop=parent._master_is_editable(),
     )
     dlg.exec()
     # The viewer can geotag (Get GPS from location, and the map it opens), and that

@@ -130,8 +130,12 @@ class SidecarItem(PictureItem):
         self._c = collection
         self._stem = stem
         # Crop suggestion applies to RAW pictures only (a JPG-only group has no
-        # RAW to re-develop, and its preview is already the crop).
-        self.can_set_crop = (not collection.readonly
+        # RAW to re-develop, and its preview is already the crop). Allowed on an
+        # otherwise read-only viewer when allow_crop is set — the same carve-out as
+        # geotag: a suggested crop is written to the master RAW's .dop/.xmp, which
+        # PhotoLab reads on its next open, so it is a real, useful write even though
+        # the viewer changes nothing itself (the virtual-trip case).
+        self.can_set_crop = ((not collection.readonly or collection.allow_crop)
                              and bool(collection._groups.get(stem, {}).get("raw")))
         if collection.readonly:
             self.can_edit_rating = False
@@ -287,9 +291,11 @@ class SidecarCollection(PictureCollection):
     # the class and never come back missing on an instance built by an older caller.
     read_only = False
     allow_geotag = False
+    allow_crop = False
 
     def __init__(self, paths, *, readonly=False, cache_root=None,
-                 loader: AsyncImageLoader | None = None, allow_geotag=False):
+                 loader: AsyncImageLoader | None = None, allow_geotag=False,
+                 allow_crop=False):
         # `read_only` is the name every viewer (grid, large view, map) asks for —
         # keep the older `readonly` in step for this class's own callers.
         self.readonly = readonly
@@ -298,6 +304,9 @@ class SidecarCollection(PictureCollection):
         # an otherwise read-only collection, so the virtual-trip DAY viewer can fix
         # the master's missing coordinates. Everything else stays refused.
         self.allow_geotag = bool(allow_geotag)
+        # A second carve-out, same spirit: a suggested crop lands in the master RAW's
+        # .dop/.xmp for PhotoLab to pick up, so it is allowed on a read-only viewer too.
+        self.allow_crop = bool(allow_crop)
         self._cache_root = Path(cache_root) if cache_root else None
         self._loader = loader or AsyncImageLoader()
         # Group input picture files by their unique-picture name. Using

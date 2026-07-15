@@ -92,7 +92,8 @@ class ImagePreviewDialog(QDialog):
 
     def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg",
                  file_list=None, cache_root=None, source_label=None, collection=None,
-                 readonly=False, start_species=False, allow_geotag=False):
+                 readonly=False, start_species=False, allow_geotag=False,
+                 allow_crop=False):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
@@ -177,7 +178,8 @@ class ImagePreviewDialog(QDialog):
                 # still make — giving the master's pictures the coordinates they lack.
                 self._collection = SidecarCollection(
                     paths, cache_root=self.cache_dir, loader=self._loader,
-                    readonly=readonly, allow_geotag=allow_geotag)
+                    readonly=readonly, allow_geotag=allow_geotag,
+                    allow_crop=allow_crop)
             else:
                 self._collection = FileListPreviewCollection(
                     paths, cache_root=self.cache_dir, loader=self._loader)
