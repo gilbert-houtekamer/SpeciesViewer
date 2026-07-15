@@ -102,6 +102,17 @@ Cancel-during-copy, Lightroom-in-place, and tz-offset are validated.</p>
     live. They now search the same way the pipeline-backed viewer does — species name from the
     sidecar, file search on the picture name — and light up in both the culling grid and the
     virtual-trip day viewer. Confirmed live on Tucson 2023-04-03.</li>
+  <li><strong>Delete plant/context JPGs while culling a trip</strong>
+    <span class="tag-shipped">SHIPPED</span> — the hard “never trash a JPG” rule protects the
+    website's finished pictures, but a JPG-only plant or context shot in a trip cull is throwaway
+    working material. In a real trip cull you can now delete a JPG-bearing picture <em>unless it is
+    published in a blog</em> (those are kept, with a warning). Two ways: Blue/Purple are no longer
+    greyed on trip JPG cards (so blue/purple-delete reaches them), <em>and</em> a new
+    <strong>right-click → 🗑 Delete</strong> on grid cards and the large-viewer filmstrip — the more
+    intuitive per-picture path. It acts on the clicked picture (or the whole selection when it's part
+    of one), moves straight to <code>.trash</code> (recoverable), and only stops to ask when something
+    is protected. The master, plain SD-card culling and virtual-trip viewers keep the strict rule.
+    A delete no longer bounces the grid to the top (it keeps your place). Confirmed live on Kreta.</li>
 </ul>
 
 <h3>Parked (by design)</h3>
