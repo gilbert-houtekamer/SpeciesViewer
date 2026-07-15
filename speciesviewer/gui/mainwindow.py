@@ -782,8 +782,13 @@ class MainWindow(QMainWindow):
                     skipped += 1
                     continue
 
-                action_label = self.trip_table.horizontalHeaderItem(col).text().replace("\n", " ")
-                spec_obj = trip_menu.get(action_label)
+                # Look up the Trip-menu action by the STABLE dict key, NOT the
+                # header text: the headers are numbered ("2 Write Blog") and never
+                # match the menu key ("Write Blog"), so header-text lookup returned
+                # None and skipped every selected cell (the "run selection" feature
+                # looked broken). Same fix as the single-cell double-click path.
+                lookup_key = STATE_COLUMNS[c["step_index"]]["menu"]
+                spec_obj = trip_menu.get(lookup_key)
                 if not spec_obj:
                     skipped += 1
                     continue
