@@ -4,6 +4,19 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+            {
+            // F5 launches SpeciesViewer regardless of the active editor tab.
+            "name": "SpeciesViewer",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/speciesviewer/SpeciesViewer.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "CONFIG": "~/sys/ghconfig.ini",
+                "PYTHONPATH": "${workspaceFolder}${pathSeparator}${env:PYTHONPATH}"
+            }
+        },
         {
             "name": "SpeciesViewer",
             "type": "debugpy",
