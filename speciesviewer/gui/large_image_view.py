@@ -130,7 +130,8 @@ def _clear_layout(layout):
 
 class _StripItem(QWidget):
     """One thumbnail cell in the filmstrip — compact, colour-bordered."""
-    tapped = pyqtSignal(str)  # emits key on left click
+    tapped = pyqtSignal(str)         # emits key on left click
+    right_clicked = pyqtSignal(str)  # emits key on right click (context menu)
 
     def __init__(self, item, parent=None):
         super().__init__(parent)
@@ -227,6 +228,8 @@ class _StripItem(QWidget):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.tapped.emit(self._key)
+        elif event.button() == Qt.MouseButton.RightButton:
+            self.right_clicked.emit(self._key)
         super().mousePressEvent(event)
 
 
@@ -235,7 +238,8 @@ class FilmstripWidget(QWidget):
 
     orientation: Horizontal (default) = bottom strip; Vertical = left strip.
     """
-    item_clicked = pyqtSignal(str)  # key — host navigates on click
+    item_clicked = pyqtSignal(str)        # key — host navigates on click
+    item_right_clicked = pyqtSignal(str)  # key — host shows a context menu
 
     def __init__(self, collection, keys, parent=None,
                  orientation=Qt.Orientation.Horizontal):
@@ -299,6 +303,7 @@ class FilmstripWidget(QWidget):
                 continue
             cell = _StripItem(item, self._strip)
             cell.tapped.connect(self.item_clicked)
+            cell.right_clicked.connect(self.item_right_clicked)
             strip_layout.addWidget(cell)
             self._cells[key] = cell
 
@@ -313,6 +318,29 @@ class FilmstripWidget(QWidget):
 
         # Load initially-visible cells once the layout has settled.
         QTimer.singleShot(0, self._load_visible)
+
+    def remove_keys(self, keys):
+        """Drop the cells for `keys` (deleted pictures) and shrink the strip."""
+        removed = False
+        for key in keys:
+            cell = self._cells.pop(key, None)
+            if cell is not None:
+                self._strip.layout().removeWidget(cell)
+                cell.deleteLater()
+                removed = True
+            if key in self._keys:
+                self._keys.remove(key)
+            if self._current_key == key:
+                self._current_key = None
+        if not removed:
+            return
+        n = len(self._cells)
+        if self._orientation == Qt.Orientation.Vertical:
+            total_h = n * _ITEM_H + max(0, n - 1) * _ITEM_GAP + 4
+            self._strip.setFixedSize(_ITEM_W, max(total_h, 1))
+        else:
+            total_w = n * _ITEM_W + max(0, n - 1) * _ITEM_GAP + 4
+            self._strip.setFixedSize(max(total_w, 1), _ITEM_H)
 
     def set_current(self, key: str, index: int, total: int):
         """Highlight `key`, scroll it into view, update the counter."""
@@ -449,11 +477,16 @@ class LargeImageView(QDialog):
     picture_navigated = pyqtSignal(str)  # key — emitted when ←/→ moves to a new picture
     species_committed = pyqtSignal(set)  # upns — emitted after a species commit in the panel
     selection_changed = pyqtSignal(set)  # keys — emitted whenever filmstrip selection changes
+    delete_requested  = pyqtSignal(set)  # keys — right-click Delete on a filmstrip cell
 
     def __init__(self, parent, collection, keys, index, *,
                  settings_key="LargeImageView", auto_advance=True,
-                 initial_selection: set | None = None):
+                 initial_selection: set | None = None, allow_delete: bool = False):
         super().__init__(parent)
+        # Whether the filmstrip offers a right-click Delete (the host must handle
+        # delete_requested). Off for read-only / non-culling hosts, so there is no
+        # menu item that does nothing.
+        self._allow_delete = bool(allow_delete)
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
                             | Qt.WindowType.WindowMaximizeButtonHint)
@@ -773,10 +806,12 @@ class LargeImageView(QDialog):
                                                orientation=Qt.Orientation.Vertical)
         self._filmstrip_left.setMinimumWidth(0)
         self._filmstrip_left.item_clicked.connect(self._on_filmstrip_click)
+        self._filmstrip_left.item_right_clicked.connect(self._on_filmstrip_context)
 
         self._filmstrip_bottom = FilmstripWidget(collection, self._keys, self)
         self._filmstrip_bottom.setMinimumHeight(0)
         self._filmstrip_bottom.item_clicked.connect(self._on_filmstrip_click)
+        self._filmstrip_bottom.item_right_clicked.connect(self._on_filmstrip_context)
 
         # Content wrapper: image+panel splitter + sel-bar + sep
         # (top pane of _v_splitter in both modes)
@@ -1603,6 +1638,50 @@ class LargeImageView(QDialog):
         self._index = new
         self._load_current()
         self.picture_navigated.emit(key)
+
+    def _on_filmstrip_context(self, key: str):
+        """Right-click a filmstrip cell → a small menu with Delete. Acts on the
+        current selection when the clicked cell is part of it, else on that one
+        picture. The host does the actual trashing (same protection as the grid)
+        and calls drop_keys() with what it removed."""
+        from PyQt6.QtWidgets import QMenu
+        from PyQt6.QtGui import QCursor
+        if not self._allow_delete or key not in self._keys:
+            return
+        keys = (set(self._selected_keys)
+                if key in self._selected_keys and self._selected_keys else {key})
+        n = len(keys)
+        menu = QMenu(self)
+        act_del = menu.addAction(f"🗑 Delete  ({n} picture{'s' if n != 1 else ''})")
+        if menu.exec(QCursor.pos()) is act_del:
+            self.delete_requested.emit(keys)
+
+    def drop_keys(self, deleted):
+        """Remove trashed pictures from this viewer: drop them from the key list and
+        both filmstrips, land on a surviving neighbour (or close if none remain), and
+        re-render. Called by the host after it has actually trashed them."""
+        deleted = {k for k in deleted if k in self._keys}
+        if not deleted:
+            return
+        old_order = list(self._keys)
+        cur_key = self._keys[self._index] if self._keys else None
+        self._keys = [k for k in self._keys if k not in deleted]
+        self._selected_keys -= deleted
+        for _fs in (self._filmstrip_left, self._filmstrip_bottom):
+            _fs.remove_keys(deleted)
+        if not self._keys:
+            self.close()
+            return
+        if cur_key in deleted:
+            old_i = old_order.index(cur_key)
+            nxt = next((k for k in old_order[old_i + 1:] if k in self._keys), None)
+            if nxt is None:
+                nxt = next((k for k in reversed(old_order[:old_i]) if k in self._keys), None)
+            self._index = self._keys.index(nxt) if nxt in self._keys else 0
+        else:
+            self._index = self._keys.index(cur_key)
+        self._load_current()
+        self.picture_navigated.emit(self._keys[self._index])
 
     # ── Selection ─────────────────────────────────────────────────────────────
 

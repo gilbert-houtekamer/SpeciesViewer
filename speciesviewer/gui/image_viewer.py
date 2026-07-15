@@ -944,12 +944,15 @@ class ImagePreviewDialog(QDialog):
             self._large_view = None
         dlg = LargeImageView(self, self._collection, keys, keys.index(key),
                              settings_key="SpeciesPreview", auto_advance=True,
-                             initial_selection=set(self._selected_keys))
+                             initial_selection=set(self._selected_keys),
+                             allow_delete=hasattr(self._collection, "delete_keys"))
         dlg.picture_changed.connect(self._on_large_view_changed)
         dlg.picture_image_changed.connect(self._on_large_view_image_changed)
         dlg.picture_navigated.connect(self._on_large_view_navigated)
         dlg.selection_changed.connect(self._on_large_view_selection_changed)
         dlg.species_committed.connect(self.refresh_after_species_change)
+        dlg.delete_requested.connect(
+            lambda ks, d=dlg: self._on_large_view_delete(d, ks))
         self._large_view = dlg
         dlg.finished.connect(lambda _=0: self._on_large_view_closed())
         dlg.show()
@@ -1000,6 +1003,14 @@ class ImagePreviewDialog(QDialog):
         self._bracket_left = None
         self._bracket_right = None
         self._update_selection_display()
+
+    def _on_large_view_delete(self, dlg, keys: set):
+        """Right-click Delete from the large viewer's filmstrip: trash the keys (same
+        protection + confirm-only-when-protected as the grid), refresh the grid, then
+        tell the viewer to drop the removed cells and land on a neighbour."""
+        deleted = self._delete_keys_ui(set(keys))
+        if deleted:
+            dlg.drop_keys(deleted)
 
     def refresh_after_species_change(self, updated_upns):
         """Called by SpeciesInfoDialog after a commit: repaint affected cards
@@ -1820,10 +1831,10 @@ class ImagePreviewDialog(QDialog):
         blue-delete. Per the user's choice, this CONFIRMS ONLY when something is
         protected — a deletable picture goes straight to .trash (recoverable)."""
         if not hasattr(self._collection, "delete_keys"):
-            return
+            return set()
         keys = {k for k in keys if k}
         if not keys:
-            return
+            return set()
         allow_jpg_keys, blogged, strict = self._jpg_protection_plan(keys)
         protected = blogged | strict
         deletable = [k for k in keys if k not in protected]
@@ -1836,25 +1847,25 @@ class ImagePreviewDialog(QDialog):
                 lines.append(f"{len(strict)} kept — a JPG is the finished asset here.")
             if not deletable:
                 QMessageBox.information(self, "Delete", "\n".join(lines))
-                return
+                return set()
             lines.append("")
             lines.append(f"Move the other {len(deletable)} to .trash?")
             if QMessageBox.question(
                     self, "Delete", "\n".join(lines),
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
             ) != QMessageBox.StandardButton.Yes:
-                return
+                return set()
 
         if not deletable:
-            return
+            return set()
         trash_root = self._color_delete_trash_root()
         _prot, deleted = self._collection.delete_keys(
             deletable, trash_root, allow_jpg_keys=frozenset(allow_jpg_keys))
         logger.info(f"Right-click delete: {deleted} picture(s) moved to trash "
                     f"({len(blogged)} kept — in a blog).")
+        # Stay on the filter the user was using (e.g. Species), minus the removed.
         self._reapply_filter()
-        # Stay on the filter the user was using (e.g. Species), not jump to All.
-        self._reapply_filter()
+        return set(deletable)   # the keys the large viewer should drop
 
     def _reapply_filter(self):
         """Rebuild the grid for the current combined filter (after a delete the
