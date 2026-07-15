@@ -880,6 +880,15 @@ class ImagePreviewDialog(QDialog):
     def _finalize_load(self):
         self.cancel_button.setEnabled(False)
         self.wait_dialog.close()
+        # Restore the scroll position after a rebuild meant to keep the user's place
+        # (a delete): the grid rebuilds from the top, so without this it snaps up and
+        # the app looks like it 'lost its location'. Deferred one tick so the final
+        # layout geometry (and the scrollbar range) is settled before we clamp.
+        pos = getattr(self, "_restore_scroll", None)
+        if pos is not None:
+            self._restore_scroll = None
+            sb = self.scroll_area.verticalScrollBar()
+            QTimer.singleShot(0, lambda: sb.setValue(min(pos, sb.maximum())))
 
     def cancel_scan(self):
         self.cancelled = True
@@ -1073,6 +1082,12 @@ class ImagePreviewDialog(QDialog):
         act_copy_gps.setEnabled(bool(item and getattr(item, "has_gps", False)))
         act_paste_gps = menu.addAction(f"Paste GPS + place  ({lbl})")
         act_paste_gps.setEnabled(getattr(self, "_gps_clipboard", None) is not None)
+        # Delete straight to .trash (recoverable) — the intuitive per-picture cull,
+        # beside the batch blue/purple-delete. Same JPG protection as blue-delete.
+        act_delete = None
+        if hasattr(self._collection, "delete_keys"):
+            menu.addSeparator()
+            act_delete = menu.addAction(f"🗑 Delete  ({lbl})")
         chosen = menu.exec(QCursor.pos())
         if chosen == act_species:
             self._open_species_dialog_for_keys(keys_for_action)
@@ -1090,6 +1105,8 @@ class ImagePreviewDialog(QDialog):
             self._copy_gps(key)
         elif chosen == act_paste_gps:
             self._paste_gps(keys_for_action)
+        elif act_delete is not None and chosen == act_delete:
+            self._delete_keys_ui(keys_for_action)
 
     def _culling_sc(self):
         """Lazily load (and cache) the standalone species collection for the
@@ -1732,6 +1749,31 @@ class ImagePreviewDialog(QDialog):
             return None                # unknown → be safe, protect every JPG
         return out
 
+    def _jpg_protection_plan(self, keys):
+        """Split `keys` by JPG-delete policy → (allow_jpg_keys, blogged, strict).
+
+        allow_jpg_keys — JPG-bearing keys that MAY be trashed (a trip cull where the
+          JPG is not published in a blog). Pass these to delete_keys/delete_by_color.
+        blogged — JPG-bearing keys kept because the JPG is in a blog (warn, don't delete).
+        strict  — JPG-bearing keys kept by the hard rule (not a relaxed trip cull).
+        Non-JPG keys never appear here — they are always deletable."""
+        if not hasattr(self._collection, "jpg_keys"):
+            return set(), set(), set()
+        jpg_set = set(self._collection.jpg_keys())
+        jpg_keys = [k for k in keys if k in jpg_set]
+        if not jpg_keys:
+            return set(), set(), set()
+        relax = (self.fpr is not None and bool(self.trip_root_dir)
+                 and getattr(self, "_allow_trip_jpg_delete", True)
+                 and hasattr(self._collection, "jpg_names"))
+        blog_jpgs = self._blog_protected_jpgs() if relax else None
+        if not relax or blog_jpgs is None:      # not a trip cull / unreadable → strict
+            return set(), set(), set(jpg_keys)
+        allow, blogged = set(), set()
+        for k in jpg_keys:
+            (blogged if (self._collection.jpg_names(k) & blog_jpgs) else allow).add(k)
+        return allow, blogged, set()
+
     def _batch_delete_color(self, color: str):
         if not hasattr(self._collection, 'delete_by_color'):
             return
@@ -1740,38 +1782,16 @@ class ImagePreviewDialog(QDialog):
             QMessageBox.information(self, f"No {color} pictures",
                                     f"No {color.lower()} pictures found here.")
             return
-        jpg_set = set(self._collection.jpg_keys())
-        jpg_matching = [k for k in matching if k in jpg_set]
-
-        # JPG protection. By default a JPG-bearing picture is never trashed. In a
-        # real trip cull we relax that (user request): a trip JPG may be culled
-        # UNLESS it is published in a blog (blog_admin.csv BestJPGs) — those stay
-        # protected, with a warning. The master and the Add-to-Master scratch trip
-        # keep the hard rule (relax stays off).
-        allow_jpg_keys: set = set()
-        blogged = 0
-        relax = (self.fpr is not None and bool(self.trip_root_dir)
-                 and getattr(self, "_allow_trip_jpg_delete", True)
-                 and hasattr(self._collection, "jpg_names"))
-        if relax and jpg_matching:
-            blog_jpgs = self._blog_protected_jpgs()
-            if blog_jpgs is not None:      # None = couldn't read → stay strict
-                for k in jpg_matching:
-                    if self._collection.jpg_names(k) & blog_jpgs:
-                        blogged += 1
-                    else:
-                        allow_jpg_keys.add(k)
-
-        protected = len(jpg_matching) - len(allow_jpg_keys)   # JPGs we will NOT trash
+        allow_jpg_keys, blogged, strict = self._jpg_protection_plan(matching)
+        protected = len(blogged) + len(strict)
         deletable = len(matching) - protected
 
         n = len(matching)
         lines = [f"{n} {color.lower()} picture{'s' if n != 1 else ''} found."]
         if blogged:
-            lines.append(f"Kept (JPG published in a blog): {blogged}")
-        strict = protected - blogged
+            lines.append(f"Kept (JPG published in a blog): {len(blogged)}")
         if strict:
-            lines.append(f"Skipped (have JPG): {strict}")
+            lines.append(f"Skipped (have JPG): {len(strict)}")
         lines.append(f"Will be moved to .trash: {deletable}")
         msg = "\n".join(lines)
 
@@ -1791,14 +1811,57 @@ class ImagePreviewDialog(QDialog):
         else:
             _total, _prot, deleted = self._collection.delete_by_color(color, trash_root)
         logger.info(f"Batch delete {color}: {deleted} picture(s) moved to trash "
-                    f"({blogged} kept — in a blog).")
+                    f"({len(blogged)} kept — in a blog).")
+        self._reapply_filter()
+
+    def _delete_keys_ui(self, keys):
+        """Right-click Delete: trash the given keys (the clicked picture, or the whole
+        selection when it is part of one), honouring the same JPG protection as
+        blue-delete. Per the user's choice, this CONFIRMS ONLY when something is
+        protected — a deletable picture goes straight to .trash (recoverable)."""
+        if not hasattr(self._collection, "delete_keys"):
+            return
+        keys = {k for k in keys if k}
+        if not keys:
+            return
+        allow_jpg_keys, blogged, strict = self._jpg_protection_plan(keys)
+        protected = blogged | strict
+        deletable = [k for k in keys if k not in protected]
+
+        if protected:      # confirm-only-when-protected: say what is kept and why
+            lines = []
+            if blogged:
+                lines.append(f"{len(blogged)} kept — the JPG is published in a blog.")
+            if strict:
+                lines.append(f"{len(strict)} kept — a JPG is the finished asset here.")
+            if not deletable:
+                QMessageBox.information(self, "Delete", "\n".join(lines))
+                return
+            lines.append("")
+            lines.append(f"Move the other {len(deletable)} to .trash?")
+            if QMessageBox.question(
+                    self, "Delete", "\n".join(lines),
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
+            ) != QMessageBox.StandardButton.Yes:
+                return
+
+        if not deletable:
+            return
+        trash_root = self._color_delete_trash_root()
+        _prot, deleted = self._collection.delete_keys(
+            deletable, trash_root, allow_jpg_keys=frozenset(allow_jpg_keys))
+        logger.info(f"Right-click delete: {deleted} picture(s) moved to trash "
+                    f"({len(blogged)} kept — in a blog).")
+        self._reapply_filter()
         # Stay on the filter the user was using (e.g. Species), not jump to All.
         self._reapply_filter()
 
     def _reapply_filter(self):
-        """Rebuild the grid for the current combined filter (after a batch delete
-        the displayed set must reflect the same radio + colour + find, minus the
-        removed pictures)."""
+        """Rebuild the grid for the current combined filter (after a delete the
+        displayed set must reflect the same radio + colour + find, minus the removed
+        pictures). Remembers the scroll position so the grid keeps the user's place
+        instead of snapping to the top (restored in _finalize_load)."""
+        self._restore_scroll = self.scroll_area.verticalScrollBar().value()
         self._apply_filters()
 
     # ── Close ───────────────────────────────────────────────────────────────
