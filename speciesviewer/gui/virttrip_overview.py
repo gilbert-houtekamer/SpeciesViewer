@@ -87,7 +87,7 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
     parent.refresh_gps_counts("virttrip")
 
 
-def _gps_from_sidecars(xmp_by_upn: dict) -> set:
+def _gps_from_sidecars(xmp_by_upn: dict, stats: dict | None = None) -> set:
     """{UPN} for those whose XMP sidecar now carries a coordinate.
 
     Reuses the day viewer's own cache-first reader, so this is the SAME answer the
@@ -101,7 +101,7 @@ def _gps_from_sidecars(xmp_by_upn: dict) -> set:
     if not paths:
         return set()
     try:
-        rows, _caches = _read_sidecar_rows(paths)
+        rows, _caches = _read_sidecar_rows(paths, quiet_stats=stats)
     except Exception as e:
         logger.warning(f"No-GPS count: could not read sidecars: {e}")
         return set()
@@ -114,7 +114,7 @@ def _gps_from_sidecars(xmp_by_upn: dict) -> set:
     return out
 
 
-def _count_pictures_from_csv(csv_path: Path):
+def _count_pictures_from_csv(csv_path: Path, stats: dict | None = None):
     """Return (pictures, jpeg_files, no_gps) for one day.
 
     pictures = distinct UniquePictureNames (a RAW and its sidecars share one UPN,
@@ -160,7 +160,7 @@ def _count_pictures_from_csv(csv_path: Path):
         missing = [u for u, has in upn_has_gps.items() if not has]
         if missing:
             placed = _gps_from_sidecars({u: xmp_by_upn[u] for u in missing
-                                         if u in xmp_by_upn})
+                                         if u in xmp_by_upn}, stats=stats)
             for u in placed:
                 upn_has_gps[u] = True
 
@@ -202,7 +202,7 @@ def populate_virttrip_overview(self):
     self.virttrip_table.setColumnCount(6)
     self.virttrip_table.setRowCount(len(day_dirs))
     self.virttrip_table.setHorizontalHeaderLabels(
-        ["Date", "Pictures", "JPEG\nFiles", "No\nGPS", "Write\nBlog", "Build\nWebsite"]
+        ["Date", "Pictures", "JPEG\nFiles", "GPS", "Write\nBlog", "Build\nWebsite"]
     )
     self.virttrip_table.setSortingEnabled(False)
     self.virttrip_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -226,8 +226,10 @@ def populate_virttrip_overview(self):
     web_built = (virttrip_path / "web" / "summaries" / "all biota species-nl.html").exists()
 
     no_gps_by_day: dict = {}
+    logger.info(f"Checking GPS status for {len(day_dirs)} day(s)...")
+    sidecar_stats: dict = {}
     for i, day_dir in enumerate(day_dirs):
-        total, jpegs, no_gps = _count_pictures_from_csv(day_dir / "data_files.csv")
+        total, jpegs, no_gps = _count_pictures_from_csv(day_dir / "data_files.csv", stats=sidecar_stats)
         no_gps_by_day[day_dir.name] = no_gps
 
         self.virttrip_table.setItem(i, DATE_COL,  QTableWidgetItem(day_dir.name))
@@ -286,6 +288,13 @@ def populate_virttrip_overview(self):
         web_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         web_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
         self.virttrip_table.setItem(i, WEB_COL, web_item)
+
+    if sidecar_stats.get("stale"):
+        logger.info(f"✅ GPS status checked for {len(day_dirs)} day(s): "
+                    f"{sidecar_stats.get('cached', 0)} sidecar(s) cached, "
+                    f"{sidecar_stats['stale']} read via exiftool.")
+    else:
+        logger.info(f"✅ GPS status checked for {len(day_dirs)} day(s) (all cached).")
 
     overview_widget = QWidget()
     layout = QVBoxLayout(overview_widget)

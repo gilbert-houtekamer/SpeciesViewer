@@ -44,7 +44,7 @@ def _norm(p) -> str:
     return os.path.normcase(os.path.normpath(str(p)))
 
 
-def _read_sidecar_rows(xmp_paths: list) -> tuple[dict, dict]:
+def _read_sidecar_rows(xmp_paths: list, *, quiet_stats: dict | None = None) -> tuple[dict, dict]:
     """Cache-first metadata load.
 
     Returns (rows, caches):
@@ -55,6 +55,11 @@ def _read_sidecar_rows(xmp_paths: list) -> tuple[dict, dict]:
     Hit path: O(stat()) per file — no exiftool call.
     Miss path: exiftool via argfile (no command-line length limit) for
                stale/missing entries only; cache is updated and flushed.
+
+    quiet_stats: pass a dict to accumulate {"cached", "stale"} into instead of
+    logging this call on its own — for a caller looping over many folders
+    (e.g. one call per trip day) that wants a single combined summary rather
+    than one "Sidecar cache: ..." line per folder.
     """
     from engine.sidecar_cache import SidecarCache, read_xmp_rows
 
@@ -77,7 +82,10 @@ def _read_sidecar_rows(xmp_paths: list) -> tuple[dict, dict]:
             stale_by_folder.setdefault(folder, []).append(p)
 
     stale_count = sum(len(v) for v in stale_by_folder.values())
-    if stale_count:
+    if quiet_stats is not None:
+        quiet_stats["cached"] = quiet_stats.get("cached", 0) + len(rows)
+        quiet_stats["stale"] = quiet_stats.get("stale", 0) + stale_count
+    elif stale_count:
         logger.info(f"Sidecar cache: {len(rows)} cached, {stale_count} stale/missing — reading via exiftool")
 
     for folder, stale in stale_by_folder.items():
