@@ -400,7 +400,7 @@ class SidecarCollection(PictureCollection):
         dt = row.get("DateTimeOriginal", "")
         return (0, dt, stem) if dt else (1, "", stem)
 
-    # ── filter helpers (host wires these; only GPS/all are meaningful here) ──
+    # ── filter helpers (host wires these) ────────────────────────────────────
     def all_keys(self) -> list[str]:
         return list(self._groups.keys())
 
@@ -423,6 +423,36 @@ class SidecarCollection(PictureCollection):
 
     def jpg_keys(self) -> list[str]:
         return [s for s, g in self._groups.items() if g.get("jpg")]
+
+    def _species_of(self, stem: str) -> str:
+        """The sidecar's Subject text for this stem (the card's species line), or ''
+        when the group has no XMP / no tag."""
+        xmp = self._groups.get(stem, {}).get("xmp")
+        if not xmp:
+            return ""
+        return _subject_to_text(self._rows.get(_norm(xmp), {}).get("Subject"))
+
+    def find_keys(self, query: str) -> list[str]:
+        """UPNs whose species/subject text contains `query` (case-insensitive
+        substring) — the 'find species' box. Mirrors PreviewCollection so the
+        virtual-trip / culling viewer searches the same way the pipeline-backed one
+        does; the species text comes from the sidecar we already read."""
+        q = (query or "").strip().lower()
+        if not q:
+            return self.all_keys()
+        return [s for s in self.all_keys() if q in self._species_of(s).lower()]
+
+    def file_keys(self, query: str) -> list[str]:
+        """UPNs whose name (the picture key, e.g. '2023 tucson-dspt6421') contains
+        `query` — the 'find file' box. Works regardless of species tagging."""
+        q = (query or "").strip().lower()
+        if not q:
+            return self.all_keys()
+        return [s for s in self.all_keys() if q in s.lower()]
+
+    def species_keys(self) -> list[str]:
+        """UPNs that carry a species/subject tag — the 'Species' filter."""
+        return [s for s in self.all_keys() if self._species_of(s).strip()]
 
     # ── PictureCollection ─────────────────────────────────────────────────
     def __len__(self) -> int:
