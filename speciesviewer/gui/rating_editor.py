@@ -480,7 +480,10 @@ class PictureCard(QFrame):
     def refresh(self):
         """Re-read every field from the (live) item and repaint — used after an
         external edit such as a species commit or a GPS backfill."""
-        self._lbl_name.setText(self._item.display_name or self._item.key)
+        # Include the sex/age/plumage suffix, exactly as the constructor does —
+        # else committing "pair" repaints the card WITHOUT the ♂♀ it just gained.
+        self._lbl_name.setText((self._item.display_name or self._item.key)
+                               + getattr(self._item, "qualifier_suffix", ""))
         self._frame_color = self._item.color
         self._update_thumb_style()
         self._stars.set_rating(self._item.rating)
