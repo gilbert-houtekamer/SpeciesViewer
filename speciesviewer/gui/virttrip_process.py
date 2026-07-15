@@ -1,6 +1,6 @@
 import webbrowser
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QCheckBox, QSpinBox, QTabWidget, QWidget, QLineEdit)
+    QCheckBox, QSpinBox, QTabWidget, QWidget, QLineEdit, QFileDialog, QApplication)
 from PyQt6.QtCore import QThread, QObject, pyqtSignal, Qt
 import logging
 import os
@@ -22,7 +22,7 @@ import batch.svv6RedoBlog
 from gui.menu import MenuSpec
 from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt,
-                                   RecentDirectoryFieldQt, ImageFileFieldQt)
+                                   RecentDirectoryFieldQt, DirectoryFieldQt, ImageFileFieldQt)
 
 import batch.svv1MakeVirtualRepository
 
@@ -875,6 +875,231 @@ def _virttrip_spec(module_fn, before_msg, after_msg):
             "virttrip_mode": True,
         },
     )
+
+
+class ExportVirtualTripDialog(QDialog):
+    """Zip the active virtual trip's authored content (recipe, blog drafts,
+    extracted day CSVs) for transfer to another machine.
+
+    No picture files are included — a virtual trip references the master's
+    biota/ tree by path rather than duplicating it, so the ZIP stays small
+    and the transfer is fast. Use Import Virtual Trip on the target machine
+    to unpack it and re-extract day data against its own master."""
+
+    def __init__(self, parent, menu_spec):
+        super().__init__(parent)
+        self.setWindowTitle("Export Virtual Trip")
+        self.resize(650, 320)
+        self.menu_spec = menu_spec
+        self.logger = parent.logger
+        self.passed_parent = parent
+
+        virttrip_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
+        trip_data = read_virttrip_ini(virttrip_root) if virttrip_root else {}
+        trip_name = (trip_data or {}).get("trip_name", Path(virttrip_root).name if virttrip_root else "?")
+
+        layout = QVBoxLayout(self)
+
+        info = QLabel(
+            "<b>Export Virtual Trip</b><br>"
+            "Writes <tt>&lt;trip folder&gt;.zip</tt> into the selected directory. "
+            "The ZIP contains <tt>virttrip.ini</tt> and everything under <tt>metadata/</tt> "
+            "(blog drafts, extracted day CSVs, seeded species lists). "
+            "No picture files are included and web output is excluded — "
+            "a virtual trip references the master's biota tree by path, "
+            "it never duplicates it. "
+            "Use <i>Import Virtual Trip</i> on the target machine to unpack it."
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        layout.addWidget(QLabel(f"Virtual trip:  {virttrip_root or '(not set)'}"))
+        layout.addWidget(QLabel(f"Trip name:     {trip_name}"))
+
+        self.target_field = DirectoryFieldQt("Output directory (ZIP saved here)", "")
+        layout.addWidget(self.target_field)
+
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        self.export_btn = QPushButton("Export ZIP")
+        self.close_btn = QPushButton("Close")
+        btn_layout.addWidget(self.export_btn)
+        btn_layout.addWidget(self.close_btn)
+        layout.addLayout(btn_layout)
+
+        self.export_btn.clicked.connect(self.on_export)
+        self.close_btn.clicked.connect(self.close)
+
+    def on_export(self):
+        target = self.target_field.get_path()
+        if not target or not os.path.isdir(target):
+            self.status_label.setText("Select a valid output directory first.")
+            return
+        if not _config.has_section("utilities"):
+            _config.add_section("utilities")
+        _config["utilities"]["virttrip_export_target"] = target
+        runner = BatchModuleRunner(self, self.passed_parent)
+        runner.run(self.menu_spec)
+
+
+class ImportVirtualTripDialog(QDialog):
+    """Unpack a virtual trip ZIP (from Export Virtual Trip) into this
+    machine's Virtual Trips root, register it in [virttrip], and optionally
+    re-extract day data so picture paths resolve against this machine's own
+    master rather than whatever machine the ZIP was built on."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setWindowTitle("Import Virtual Trip")
+        self.resize(680, 420)
+        self.logger = parent.logger
+        self.passed_parent = parent
+
+        layout = QVBoxLayout(self)
+
+        info = QLabel(
+            "<b>Import a Virtual Trip from a ZIP file</b><br>"
+            "Extracts <tt>virttrip.ini</tt> and <tt>metadata/</tt> (blog drafts, "
+            "day CSVs, seeded species lists) into a new folder under the Virtual "
+            "Trips root, and registers it as the active virtual trip. "
+            "Existing files are overwritten; nothing else is removed."
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        # ZIP file picker
+        zip_row = QHBoxLayout()
+        zip_row.addWidget(QLabel("ZIP file:"))
+        self.zip_field = QLineEdit()
+        self.zip_field.setPlaceholderText("Select a virtual trip ZIP…")
+        zip_row.addWidget(self.zip_field)
+        browse_btn = QPushButton("Browse…")
+        browse_btn.clicked.connect(self._browse_zip)
+        zip_row.addWidget(browse_btn)
+        layout.addLayout(zip_row)
+
+        # Destination: <virttriprootdirectory>/<folder name from the ZIP>
+        vt_root = _config.get("virttrip", "virttriprootdirectory", fallback="")
+        layout.addWidget(QLabel("Virtual Trips root:"))
+        self.root_edit = QLineEdit(vt_root or "(not configured — set it in Settings → Config)")
+        self.root_edit.setReadOnly(bool(vt_root))
+        layout.addWidget(self.root_edit)
+
+        self.dest_label = QLabel("Select a ZIP file to see the destination folder.")
+        self.dest_label.setWordWrap(True)
+        self.dest_label.setStyleSheet("color: #555; font-style: italic;")
+        layout.addWidget(self.dest_label)
+
+        self.reextract_check = QCheckBox(
+            "Re-run \"Extract Days from Master\" after import (recommended — "
+            "regenerates picture paths and current data for this machine's master)")
+        self.reextract_check.setChecked(True)
+        layout.addWidget(self.reextract_check)
+
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        self.import_btn = QPushButton("Import")
+        self.close_btn = QPushButton("Close")
+        btn_layout.addWidget(self.import_btn)
+        btn_layout.addWidget(self.close_btn)
+        layout.addLayout(btn_layout)
+
+        self.import_btn.clicked.connect(self._on_import)
+        self.close_btn.clicked.connect(self.close)
+        self.zip_field.textChanged.connect(self._update_destination)
+
+    def _browse_zip(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Virtual Trip ZIP", "", "ZIP files (*.zip);;All files (*)")
+        if path:
+            self.zip_field.setText(path)
+
+    def _dest_path(self):
+        vt_root = _config.get("virttrip", "virttriprootdirectory", fallback="")
+        zip_path = self.zip_field.text().strip()
+        if not vt_root or not zip_path:
+            return None
+        return str(Path(vt_root) / Path(zip_path).stem)
+
+    def _update_destination(self):
+        dest = self._dest_path()
+        if not dest:
+            self.dest_label.setText("Select a ZIP file to see the destination folder.")
+            return
+        exists = " (already exists — files will be overwritten)" if os.path.isdir(dest) else ""
+        self.dest_label.setText(f"Will extract to: {dest}{exists}")
+
+    def _on_import(self):
+        zip_path = self.zip_field.text().strip()
+        if not zip_path or not os.path.isfile(zip_path):
+            self.status_label.setText("Select a valid ZIP file first.")
+            return
+        dest = self._dest_path()
+        if not dest:
+            self.status_label.setText(
+                "Virtual Trips root is not configured. Set it in Settings → Config first.")
+            return
+
+        import zipfile as _zf
+        import time as _time
+        os.makedirs(dest, exist_ok=True)
+
+        t0 = _time.time()
+        try:
+            with _zf.ZipFile(zip_path, "r") as zf:
+                members = zf.namelist()
+                total = len(members)
+                last_ui = t0
+                for i, member in enumerate(members):
+                    zf.extract(member, dest)
+                    now = _time.time()
+                    if now - last_ui >= 0.5:
+                        pct = 100 * i // total
+                        self.status_label.setText(f"Extracting… {i:,} / {total:,} files ({pct}%)")
+                        QApplication.processEvents()
+                        last_ui = now
+        except Exception as e:
+            self.status_label.setText(f"Extract failed: {e}")
+            return
+
+        if not os.path.isfile(os.path.join(dest, "virttrip.ini")):
+            self.status_label.setText(
+                f"Extracted, but no virttrip.ini found under {dest} — is this a valid export?")
+            return
+
+        trip_data = read_virttrip_ini(dest) or {}
+        trip_name = trip_data.get("trip_name", Path(dest).name)
+        set_setting("virttrip", "virttripbiotadatabase", dest)
+        web_slug = trip_name if trip_name.startswith("/trips/") else f"/trips/{trip_name}"
+        set_setting("virttrip", "virttripbiotawebroot", web_slug)
+
+        elapsed = _time.time() - t0
+        self.logger.info(f"Virtual trip imported to {dest} in {elapsed:.1f}s.")
+
+        populate_virttrip_overview(self.passed_parent)
+        self.passed_parent.virttrip_panel.rebuild()
+
+        if self.reextract_check.isChecked():
+            self.status_label.setText(f"✅ Imported in {elapsed:.1f}s. Extracting days from master…")
+            spec = _virttrip_spec(
+                batch.svv2ExtractDays.main,
+                "Extracting per-day CSVs from master...",
+                "✅ Import complete — day data refreshed from this machine's master.",
+            )
+            runner = BatchModuleRunner(self, self.passed_parent)
+            runner.run(spec, on_success=lambda: populate_virttrip_overview(self.passed_parent))
+        else:
+            self.status_label.setText(
+                f"✅ Imported in {elapsed:.1f}s. Picture paths still point at the source "
+                "machine's master — run Extract Days from Master before viewing pictures.")
 
 
 class VirttripWriteBlogDialog(QDialog):

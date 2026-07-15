@@ -107,6 +107,7 @@ def start_main():
     # 🪄 Launch main app window after splash
     def launch_main_window():
         from gui.mainwindow import MainWindow
+        from gui.window_state import clamp_to_visible_screen
         from utils.logger_support import init_logger
         from gui.trip_overview import populate_trip_overview
         global _main_window
@@ -119,6 +120,11 @@ def start_main():
         populate_trip_overview(main_window)  # ✅ Now logger is ready
         splash.finish(main_window)
         main_window.show()
+        # Content-driven splitter sizes (restored from [layout] in the per-machine
+        # .ini) can ask for a wider/taller window than the current screen offers —
+        # e.g. this machine's config carrying sizes saved on a bigger monitor.
+        # Same off-screen guard the per-dialog geometry already gets.
+        clamp_to_visible_screen(main_window)
        
         # main_window.init_panels()  # ✅ Safe moment — QApplication fully live        
 
