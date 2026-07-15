@@ -77,6 +77,7 @@ def generate_svconfig_ini(svconfig_path="svconfig.ini", master_mode=False,
     }
     cfg["utilities"] = {
         "smallmaster_target": _config.get("utilities", "smallmaster_target", fallback=""),
+        "virttrip_export_target": _config.get("utilities", "virttrip_export_target", fallback=""),
     }
 
     try:

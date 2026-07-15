@@ -16,7 +16,8 @@ from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDial
 from gui.virttrip_process import (VirtualTripCreationDialog, ExtractDaysDialog,
                                    VirttripWriteBlogDialog, VirttripRedoBlogDialog,
                                    VirttripBuildWebsiteDialog,
-                                   VirttripAddToMasterDialog, retire_trip_to_virttrip)
+                                   VirttripAddToMasterDialog, retire_trip_to_virttrip,
+                                   ExportVirtualTripDialog, ImportVirtualTripDialog)
 from utils.config import _config, debug_enabled
 import gui.days_process as days_process
 import os
@@ -53,6 +54,7 @@ import batch.svv1MakeVirtualRepository
 import batch.svv2ExtractDays
 import batch.svv3WriteBlog
 import batch.svv4BuildWebsite
+import batch.svv7ExportVirtualTrip
 import engine.exifcache as exifcache
 
 
@@ -549,6 +551,25 @@ def build_menu_spec(main_window):
     install_small_master = MenuSpec(
         callback=lambda: InstallSmallMasterDialog(main_window).exec(),
         title="Install Small Master Database",
+    )
+
+    export_virttrip = MenuSpec(
+        callback=None,
+        title="Export Virtual Trip",
+        showsubdirectory=False,
+        batch_parms={
+            'statusname': "",
+            'module_called': batch.svv7ExportVirtualTrip.main,
+            'before_msg': "Zipping virtual trip (recipe + blog drafts + day data)...",
+            'after_msg': "✅ Virtual trip export complete.",
+            'virttrip_mode': True,
+        }
+    )
+    export_virttrip.callback = lambda: ExportVirtualTripDialog(main_window, export_virttrip).exec()
+
+    import_virttrip = MenuSpec(
+        callback=lambda: ImportVirtualTripDialog(main_window).exec(),
+        title="Import Virtual Trip",
     )
 
     testbed = MenuSpec(
@@ -1248,6 +1269,9 @@ def build_menu_spec(main_window):
                 callback=lambda: VirttripAddToMasterDialog(main_window).exec(),
                 title="Add Virtual Trip to Master",
             ),
+            f"{MenuSpec.separator()}_vt5": None,
+            "Export Virtual Trip": export_virttrip,
+            "Import Virtual Trip": import_virttrip,
         },
         "Utilities": {
         #     "BirdingBreaks": None, # PROCESS BIRDING BREAK FILES
