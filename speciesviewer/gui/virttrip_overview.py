@@ -87,17 +87,19 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
     parent.refresh_gps_counts("virttrip")
 
 
-def _gps_from_sidecars(xmp_by_upn: dict, stats: dict | None = None) -> set:
-    """{UPN} for those whose XMP sidecar now carries a coordinate.
+def _gps_from_sidecars(src_by_upn: dict, stats: dict | None = None) -> set:
+    """{UPN} for those whose GPS source now carries a coordinate. The source is the
+    XMP sidecar where there is one, else the JPG itself (a JPG-only picture keeps its
+    GPS in the file, not in a sidecar we never made).
 
     Reuses the day viewer's own cache-first reader, so this is the SAME answer the
-    map gives — no second opinion about what "has GPS" means. Unchanged sidecars are
+    map gives — no second opinion about what "has GPS" means. Unchanged sources are
     served from the per-folder cache; only ones whose mtime moved cost an exiftool
     read, and that is one batched call, not one per file."""
-    if not xmp_by_upn:
+    if not src_by_upn:
         return set()
     from gui.sidecar_provider import _read_sidecar_rows, _norm
-    paths = [p for p in xmp_by_upn.values() if p and Path(p).is_file()]
+    paths = [p for p in src_by_upn.values() if p and Path(p).is_file()]
     if not paths:
         return set()
     try:
@@ -106,7 +108,7 @@ def _gps_from_sidecars(xmp_by_upn: dict, stats: dict | None = None) -> set:
         logger.warning(f"No-GPS count: could not read sidecars: {e}")
         return set()
     out = set()
-    for upn, p in xmp_by_upn.items():
+    for upn, p in src_by_upn.items():
         row = rows.get(_norm(p)) or {}
         if str(row.get("GPSPosition", "") or "").strip() \
                 or str(row.get("GPSLatitude", "") or "").strip():
@@ -138,7 +140,8 @@ def _count_pictures_from_csv(csv_path: Path, stats: dict | None = None):
             upns = set()
             jpegs = 0
             upn_has_gps: dict = {}
-            xmp_by_upn: dict = {}
+            xmp_by_upn: dict = {}   # UPN -> XMP sidecar path (preferred GPS source)
+            jpg_by_upn: dict = {}   # UPN -> JPG path (fallback for a JPG-only picture)
             for row in reader:
                 u = (row.get("UniquePictureName") or "").strip()
                 if u:
@@ -156,11 +159,20 @@ def _count_pictures_from_csv(csv_path: Path, stats: dict | None = None):
                     has_gps = bool((row.get("Composite:GPSPosition") or "").strip()) \
                            or bool((row.get("EXIF:GPSLatitude") or "").strip())
                     upn_has_gps[u] = upn_has_gps.get(u, False) or has_gps
+                    if ext in JPEG_EXTS:
+                        p = (row.get("WindowsFileName") or "").strip()
+                        if p:
+                            jpg_by_upn.setdefault(u, p)
 
+        # A geotag writes to the XMP sidecar, or — for a JPG-only picture (a phone
+        # shot with no RAW, no sidecar) — straight into the JPG. Re-read from the XMP
+        # when there is one, else from the JPG, so a placed JPG-only picture stops
+        # being counted as missing.
         missing = [u for u, has in upn_has_gps.items() if not has]
         if missing:
-            placed = _gps_from_sidecars({u: xmp_by_upn[u] for u in missing
-                                         if u in xmp_by_upn}, stats=stats)
+            src_by_upn = {u: xmp_by_upn.get(u) or jpg_by_upn.get(u)
+                          for u in missing if u in xmp_by_upn or u in jpg_by_upn}
+            placed = _gps_from_sidecars(src_by_upn, stats=stats)
             for u in placed:
                 upn_has_gps[u] = True
 

@@ -1117,8 +1117,9 @@ class MainWindow(QMainWindow):
         return coll, coll.all_keys(), loader
 
     def _overlay_sidecar_gps(self, fpr, *, label: str = "Map") -> int:
-        """Patch coordinates written to the XMP SIDECARS into the freshly-loaded CSV
-        rows, for every picture the CSV thinks has no GPS.
+        """Patch coordinates written to the sidecars (an XMP, or the JPG itself for a
+        JPG-only picture) into the freshly-loaded CSV rows, for every picture the CSV
+        thinks has no GPS.
 
         The day CSVs are a SNAPSHOT — Extract Days copied them out of the master, and
         the master's own CSV only changes on a re-read. Geotagging writes to the
@@ -1136,25 +1137,38 @@ class MainWindow(QMainWindow):
         from gui.sidecar_provider import _read_sidecar_rows, _norm
 
         has_gps: dict = {}          # UPN -> the CSV already knows a coordinate
-        xmp_of: dict = {}           # UPN -> (sidecar path, its file row)
+        xmp_of: dict = {}           # UPN -> (xmp path, its file row) — preferred source
+        jpg_of: dict = {}           # UPN -> (jpg path, its file row) — JPG-only fallback
         for frow in fpr.fi.files_dict.values():
             u = (frow.get("UniquePictureName") or "").strip()
             if not u:
                 continue
             if frow.get("Composite:GPSPosition") or frow.get("EXIF:GPSLatitude"):
                 has_gps[u] = True
-            if (frow.get("WindowsExtension") or "").lower() == "xmp":
-                p = (frow.get("WindowsFileName") or "").strip()
-                if p and u not in xmp_of:
-                    xmp_of[u] = (p, frow)
+            ext = (frow.get("WindowsExtension") or "").lower()
+            p = (frow.get("WindowsFileName") or "").strip()
+            if not p:
+                continue
+            if ext == "xmp" and u not in xmp_of:
+                xmp_of[u] = (p, frow)
+            elif ext in ("jpg", "jpeg") and u not in jpg_of:
+                jpg_of[u] = (p, frow)
 
-        need = [u for u, (p, _r) in xmp_of.items()
+        # Where WE re-read a placed coordinate from: the XMP sidecar if there is one,
+        # else the JPG itself. A JPG-only picture (a phone shot, a friend's camera —
+        # no RAW, no sidecar) carries its GPS IN the file, and geotagging writes it
+        # there. Without the fallback those pictures stayed "without GPS" on every
+        # re-open even though the coordinate was on disk the whole time.
+        src_of = {u: xmp_of.get(u) or jpg_of[u]
+                  for u in (set(xmp_of) | set(jpg_of))}
+
+        need = [u for u, (p, _r) in src_of.items()
                 if not has_gps.get(u) and os.path.isfile(p)]
         if not need:
             return 0
 
         try:
-            rows, _c = _read_sidecar_rows([xmp_of[u][0] for u in need])
+            rows, _c = _read_sidecar_rows([src_of[u][0] for u in need])
         except Exception as e:
             if self.logger:
                 self.logger.warning(f"{label}: could not read sidecars: {e}")
@@ -1162,7 +1176,7 @@ class MainWindow(QMainWindow):
 
         found = 0
         for u in need:
-            path, frow = xmp_of[u]
+            path, frow = src_of[u]
             srow = rows.get(_norm(path)) or {}
             pos = str(srow.get("GPSPosition", "") or "").strip()
             if not pos:
