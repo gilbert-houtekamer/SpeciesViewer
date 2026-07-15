@@ -33,6 +33,10 @@ class MicroTripReviewDialog(ImagePreviewDialog):
     it shows ONLY the folder's clean, freshly-recognised pictures, and carries
     the add-to-master chrome (title + a commit bar)."""
 
+    # The trip_root here is a throwaway scratch with no blogs — never relax the
+    # never-trash-a-JPG rule from this window.
+    _allow_trip_jpg_delete = False
+
     def __init__(self, parent, micro_trip, report):
         self._micro_trip = micro_trip
         self._report = report or {}

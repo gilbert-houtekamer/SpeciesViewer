@@ -1446,7 +1446,9 @@ class LargeImageView(QDialog):
         if item.can_edit_color:
             self._color_sel.setEnabled(True)
             self._color_sel.set_disabled_colors(
-                _DISCARD_COLORS if item.has_jpg else (), _DISCARD_GREYED_TIP)
+                _DISCARD_COLORS if (item.has_jpg
+                                    and not getattr(item, "discard_allowed", False))
+                else (), _DISCARD_GREYED_TIP)
         else:
             self._color_sel.setEnabled(False)
         self._rate_lbl.setText(f"Rate: {item.rate}" if item.rate is not None else "")

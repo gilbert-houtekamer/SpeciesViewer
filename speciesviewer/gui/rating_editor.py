@@ -384,7 +384,7 @@ class PictureCard(QFrame):
             self._color_sel.color_changed.connect(self._on_color_changed)
         else:
             self._color_sel.setEnabled(False)
-        if item.has_jpg:
+        if item.has_jpg and not getattr(item, "discard_allowed", False):
             self._color_sel.set_disabled_colors(("Blue", "Purple"), _DISCARD_GREYED_TIP)
         vbox.addWidget(self._color_sel)
 

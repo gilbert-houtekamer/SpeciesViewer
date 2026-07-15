@@ -85,6 +85,11 @@ class ImagePreviewDialog(QDialog):
     warnings / missing-GPS filters only apply in the fpr mode.
     """
 
+    # A real trip cull may trash a JPG that isn't published in a blog
+    # (_batch_delete_color relaxes the never-trash-a-JPG rule). Subclasses over a
+    # scratch/ephemeral trip turn this off.
+    _allow_trip_jpg_delete = True
+
     def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg",
                  file_list=None, cache_root=None, source_label=None, collection=None,
                  readonly=False, start_species=False, allow_geotag=False):
@@ -176,6 +181,15 @@ class ImagePreviewDialog(QDialog):
             else:
                 self._collection = FileListPreviewCollection(
                     paths, cache_root=self.cache_dir, loader=self._loader)
+
+        # In a real trip cull, Blue/Purple (discard) may be set on a JPG-bearing
+        # picture — the JPG can be culled unless published in a blog (enforced at
+        # delete). Off elsewhere (master / plain culling / the Add-to-Master
+        # scratch), where a JPG stays the finished asset.
+        if isinstance(self._collection, PreviewCollection):
+            self._collection.allow_jpg_discard = (
+                self.fpr is not None and bool(self.trip_root_dir)
+                and getattr(self, "_allow_trip_jpg_delete", True))
 
         # Grid state
         self._cards: list[PictureCard] = []
@@ -1686,6 +1700,38 @@ class ImagePreviewDialog(QDialog):
             return Path(self.trip_root_dir) / ".trash" / Path(self.image_dir).name
         return Path(self.image_dir) / ".trash"
 
+    def _blog_protected_jpgs(self):
+        """The set of JPG filenames published in this trip's blogs (every row's
+        BestJPGs in <trip_root>/admin/blog_admin.csv). A trip JPG in this set stays
+        protected from blue/purple delete — it is live on the website.
+
+        Returns an empty set when the trip simply has no blogs yet (delete freely),
+        but None when the file exists and could NOT be parsed — the caller then
+        keeps the strict never-trash-a-JPG rule rather than guess it is safe."""
+        import csv
+        import ast
+        if not self.trip_root_dir:
+            return set()
+        path = Path(self.trip_root_dir) / "admin" / "blog_admin.csv"
+        if not path.exists():
+            return set()               # blogged nothing yet → nothing to protect
+        out = set()
+        try:
+            with open(path, newline="", encoding="utf-8") as f:
+                for row in csv.DictReader(f, delimiter=";"):
+                    raw = (row.get("BestJPGs", "") or "").strip()
+                    if not raw:
+                        continue
+                    names = ast.literal_eval(raw)
+                    for name in (names if isinstance(names, (list, tuple)) else []):
+                        if isinstance(name, str) and name.strip():
+                            out.add(name.strip())
+        except Exception as e:
+            logger.warning(f"Could not read {path.name} ({e}); keeping all JPGs "
+                           f"protected from delete.")
+            return None                # unknown → be safe, protect every JPG
+        return out
+
     def _batch_delete_color(self, color: str):
         if not hasattr(self._collection, 'delete_by_color'):
             return
@@ -1695,13 +1741,37 @@ class ImagePreviewDialog(QDialog):
                                     f"No {color.lower()} pictures found here.")
             return
         jpg_set = set(self._collection.jpg_keys())
-        protected = sum(1 for k in matching if k in jpg_set)
+        jpg_matching = [k for k in matching if k in jpg_set]
+
+        # JPG protection. By default a JPG-bearing picture is never trashed. In a
+        # real trip cull we relax that (user request): a trip JPG may be culled
+        # UNLESS it is published in a blog (blog_admin.csv BestJPGs) — those stay
+        # protected, with a warning. The master and the Add-to-Master scratch trip
+        # keep the hard rule (relax stays off).
+        allow_jpg_keys: set = set()
+        blogged = 0
+        relax = (self.fpr is not None and bool(self.trip_root_dir)
+                 and getattr(self, "_allow_trip_jpg_delete", True)
+                 and hasattr(self._collection, "jpg_names"))
+        if relax and jpg_matching:
+            blog_jpgs = self._blog_protected_jpgs()
+            if blog_jpgs is not None:      # None = couldn't read → stay strict
+                for k in jpg_matching:
+                    if self._collection.jpg_names(k) & blog_jpgs:
+                        blogged += 1
+                    else:
+                        allow_jpg_keys.add(k)
+
+        protected = len(jpg_matching) - len(allow_jpg_keys)   # JPGs we will NOT trash
         deletable = len(matching) - protected
 
         n = len(matching)
         lines = [f"{n} {color.lower()} picture{'s' if n != 1 else ''} found."]
-        if protected:
-            lines.append(f"Skipped (have JPG): {protected}")
+        if blogged:
+            lines.append(f"Kept (JPG published in a blog): {blogged}")
+        strict = protected - blogged
+        if strict:
+            lines.append(f"Skipped (have JPG): {strict}")
         lines.append(f"Will be moved to .trash: {deletable}")
         msg = "\n".join(lines)
 
@@ -1715,8 +1785,13 @@ class ImagePreviewDialog(QDialog):
             return
 
         trash_root = self._color_delete_trash_root()
-        _total, _prot, deleted = self._collection.delete_by_color(color, trash_root)
-        logger.info(f"Batch delete {color}: {deleted} picture(s) moved to trash.")
+        if allow_jpg_keys:
+            _total, _prot, deleted = self._collection.delete_by_color(
+                color, trash_root, allow_jpg_keys=frozenset(allow_jpg_keys))
+        else:
+            _total, _prot, deleted = self._collection.delete_by_color(color, trash_root)
+        logger.info(f"Batch delete {color}: {deleted} picture(s) moved to trash "
+                    f"({blogged} kept — in a blog).")
         # Stay on the filter the user was using (e.g. Species), not jump to All.
         self._reapply_filter()
 

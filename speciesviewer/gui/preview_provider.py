@@ -216,6 +216,15 @@ class PreviewItem(PictureItem):
         return self._c.jpg_path(self._key) is not None
 
     @property
+    def discard_allowed(self) -> bool:
+        """Whether Blue/Purple (the discard labels) may be set on this picture even
+        though it has a JPG. Normally a JPG-bearing picture can't be discarded (the
+        JPG is the finished asset), so those labels are greyed. In a trip cull we
+        allow it — the JPG can be culled unless it is published in a blog, which the
+        delete step enforces with a warning."""
+        return getattr(self._c, "allow_jpg_discard", False)
+
+    @property
     def has_gps(self) -> bool:
         return self._c.has_gps(self._key)
 
@@ -294,6 +303,11 @@ class PreviewCollection(PictureCollection):
     # camera recorded) is switched off in this mode. Cleaning up the master means
     # adding what is missing, never overwriting what is already there.
     allow_geotag = False
+
+    # Whether Blue/Purple (discard labels) may be set on a JPG-bearing picture. Off
+    # by default (a JPG is the finished asset); the trip-cull viewer turns it on so
+    # a JPG that isn't published in a blog can be marked for delete.
+    allow_jpg_discard = False
 
     def __init__(self, fpr, *, loader: AsyncImageLoader | None = None,
                  read_only: bool = False, allow_geotag: bool = False):
@@ -558,6 +572,19 @@ class PreviewCollection(PictureCollection):
                 if p.exists():
                     return p
         return None
+
+    def jpg_names(self, upn_key: str) -> set:
+        """Basenames of every JPG/JPEG this UPN carries (a _DxO.jpg render, a camera
+        JPG). Used to test a picture against a blog's BestJPGs list when deciding
+        whether a trip JPG may be blue/purple-deleted."""
+        out = set()
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if frow and frow.get("WindowsExtension", "").lower() in ("jpg", "jpeg"):
+                name = Path(frow.get("WindowsFileName", "")).name
+                if name:
+                    out.add(name)
+        return out
 
     def has_gps(self, upn_key: str) -> bool:
         if upn_key in getattr(self, "_pasted_gps", ()):   # GPS just pasted into the XMP
@@ -979,11 +1006,15 @@ class PreviewCollection(PictureCollection):
         self._img_sigs[upn_key] = self._img_sig(upn_key)
         return res
 
-    def delete_by_color(self, color: str, trash_root: Path) -> tuple[int, int, int]:
+    def delete_by_color(self, color: str, trash_root: Path,
+                        allow_jpg_keys: frozenset = frozenset()) -> tuple[int, int, int]:
         """Move all UPNs with the given color label to trash.
 
         Returns (total_matching, protected_count, deleted_count).
-        UPNs that have a JPG are skipped (HARD INVARIANT: never trash a JPG-bearing picture).
+        UPNs that have a JPG are skipped (default HARD INVARIANT: never trash a
+        JPG-bearing picture) — EXCEPT those in `allow_jpg_keys`, the deliberate
+        trip-culling carve-out (a JPG not published in a blog may be culled). The
+        default empty set keeps every other caller (master, plain culling) strict.
         Caller supplies trash_root = <trip_root>/.trash/<day>; files land at trash_root/<key>/<file>.
         """
         import shutil
@@ -997,7 +1028,7 @@ class PreviewCollection(PictureCollection):
         deleted = 0
         srcs = []
         for key in matching:
-            if self.jpg_path(key):
+            if self.jpg_path(key) and key not in allow_jpg_keys:
                 protected += 1
                 continue
             upn_dir = trash_root / key
