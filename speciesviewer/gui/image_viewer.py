@@ -93,8 +93,12 @@ class ImagePreviewDialog(QDialog):
     def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg",
                  file_list=None, cache_root=None, source_label=None, collection=None,
                  readonly=False, start_species=False, allow_geotag=False,
-                 allow_crop=False):
+                 allow_crop=False, crop_hints=None):
         super().__init__(parent)
+        # {full JPG path -> True} for the "#" crop marker in the metadata-less
+        # (file-list) mode, precomputed by the caller from the day CSV sizes since
+        # a flat path list carries no RAW-vs-JPG dimensions of its own.
+        self._crop_hints = crop_hints or {}
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
                             | Qt.WindowType.WindowMaximizeButtonHint)
@@ -183,6 +187,11 @@ class ImagePreviewDialog(QDialog):
             else:
                 self._collection = FileListPreviewCollection(
                     paths, cache_root=self.cache_dir, loader=self._loader)
+
+        # Hand the precomputed "#" crop flags to a collection that can use them
+        # (the metadata-less file-list mode). No-op for the others.
+        if hasattr(self._collection, "set_crop_hints"):
+            self._collection.set_crop_hints(self._crop_hints)
 
         # In a real trip cull, Blue/Purple (discard) may be set on a JPG-bearing
         # picture — the JPG can be culled unless published in a blog (enforced at

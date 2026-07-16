@@ -54,6 +54,42 @@ def _build_file_list(csv_path: Path, jpeg_only: bool) -> list:
     return paths
 
 
+def _build_crop_hints(csv_path: Path) -> dict:
+    """Map each JPG file's full path -> True when it's (probably) a crop: its
+    ImageSize is much smaller than the biggest (RAW) ImageSize sharing its UPN.
+    These are baked DxO renders — the crop lives in the pixels, not a readable
+    sidecar — so size is the only cue (see gui.picture_provider.jpg_is_crop_by_size).
+    data_files.csv already carries every file's size, so this needs no per-card
+    disk read. A JPG-only UPN (no RAW to compare against) stays False."""
+    from gui.picture_provider import jpg_is_crop_by_size
+
+    def area(dims: str) -> int:
+        try:
+            w, h = re.split(r"[x ]+", (dims or "").strip())[:2]
+            return int(w) * int(h)
+        except (ValueError, IndexError):
+            return 0
+
+    native: dict[str, str] = {}                # upn -> biggest ImageSize seen (the RAW)
+    jpgs: list[tuple[str, str, str]] = []       # (full path, upn, this JPG's ImageSize)
+    try:
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f, delimiter=";"):
+                upn = (row.get("UniquePictureName") or "").strip()
+                dims = row.get("ImageSize", "")
+                if area(dims) > area(native.get(upn, "")):
+                    native[upn] = dims
+                if row.get("WindowsExtension", "").lower() in JPEG_EXTS:
+                    directory = row.get("File:Directory", "")
+                    filename  = row.get("File:FileName",  "")
+                    if directory and filename:
+                        jpgs.append((str(Path(directory) / filename), upn, dims))
+    except (FileNotFoundError, OSError, csv.Error):
+        return {}
+    return {path: jpg_is_crop_by_size(native.get(upn, ""), jpg_dims)
+            for path, upn, jpg_dims in jpgs}
+
+
 def _open_blog_editor(parent, day_dirs: list, first_date: date,
                       virttrip_root: Path, jump_to_day_num: int = 0):
     """Open the tabbed blog editor, optionally jumping to a specific day's tab."""
@@ -70,6 +106,9 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
     file_list = _build_file_list(day_dir / "data_files.csv", jpeg_only)
     if not file_list:
         return
+    # Precompute the "#" crop marker per JPG from the day CSV's sizes (no per-card
+    # disk read) — these baked DxO renders keep no readable crop rectangle.
+    crop_hints = _build_crop_hints(day_dir / "data_files.csv")
     # Read-only for rating/colour/species/files — these are the master's pictures.
     # The one exception is geotagging: "Get GPS from location" is how a picture that
     # only ever had a written place ("Helgoland") gets a coordinate at all.
@@ -83,6 +122,7 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
         # act on — a real, useful write even though this read-only viewer changes
         # nothing itself. Same carve-out as geotag, gated on the same editable check.
         allow_crop=parent._master_is_editable(),
+        crop_hints=crop_hints,
     )
     dlg.exec()
     # The viewer can geotag (Get GPS from location, and the map it opens), and that

@@ -414,10 +414,13 @@ class PictureCard(QFrame):
             self._color_sel.set_disabled_colors(("Blue", "Purple"), _DISCARD_GREYED_TIP)
         vbox.addWidget(self._color_sel)
 
-        # key + file types (small) — refreshed when a render (JPG) appears later
+        # key + file types (small) — refreshed when a render (JPG) appears later.
+        # Word-wrap so a long key (a full file path, in the metadata-less viewer)
+        # wraps instead of stretching the whole column and shrinking every image.
         self._lbl_key = QLabel(self._key_line_text())
         self._lbl_key.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._lbl_key.setStyleSheet("font-size: 9px; color: #aaa;")
+        self._lbl_key.setWordWrap(True)
         self._lbl_key.setToolTip(item.key)
         vbox.addWidget(self._lbl_key)
 
@@ -520,16 +523,20 @@ class PictureCard(QFrame):
         self._refresh_status_badges()
 
     def _key_line_text(self) -> str:
+        # The key line shows a short identifier: the UPN in the trip/master viewer,
+        # or (metadata-less file-list mode) just the filename — never the whole
+        # path, whose length would blow out the column. Full path is in the tooltip.
+        key = getattr(self._item, "key_label", None) or self._item.key
         exts = self._item.file_exts
         if not exts:
-            return self._item.key
+            return key
         # Bold + green the JPG token so "this picture has a JPG render" reads at a
         # glance. Cards without a JPG stay plain text, so use real spaces (not
         # &nbsp;, which shows literally in plain-text mode) — the double space
         # collapses to one only on the rich-text (JPG) cards, which is fine.
         shown = [f"<b style='color:#2e7d32'>{e}</b>" if e.upper() == "JPG" else e
                  for e in exts]
-        return f"{self._item.key}  {' · '.join(shown)}"
+        return f"{key}  {' · '.join(shown)}"
 
     def reload_thumbnail(self):
         """Re-request the thumbnail — used when the underlying image changed (a new

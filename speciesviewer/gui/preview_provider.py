@@ -1313,6 +1313,16 @@ class FilePreviewItem(PictureItem):
 
     @property
     def display_name(self) -> str:
+        # These files live under biota/…/<scientific species>/<file>, so the parent
+        # folder IS the species — show that as the card title, not the bare
+        # filename (which is what the trip/master viewers would otherwise lose).
+        p = Path(self._key)
+        return p.parent.name or p.name
+
+    @property
+    def key_label(self) -> str:
+        # The card's small key line: filename only. The full path is long enough to
+        # blow out the grid column, and it's already in the card's tooltip.
         return Path(self._key).name
 
     @property
@@ -1339,6 +1349,10 @@ class FilePreviewItem(PictureItem):
     def file_exts(self) -> list[str]:
         return [Path(self._key).suffix.lstrip(".").upper()] if Path(self._key).suffix else []
 
+    @property
+    def has_crop(self) -> bool:
+        return self._c.crop_present(self._key)
+
     def request_thumbnail(self, target_w: int, on_ready: PixmapCallback) -> None:
         self._c.request_image(self._key, target_w, on_ready)
 
@@ -1356,6 +1370,15 @@ class FileListPreviewCollection(PictureCollection):
         self._cache_root = Path(cache_root) if cache_root else None
         self._loader = loader or AsyncImageLoader()
         self._order: list[str] = [str(p) for p in self._paths]
+        # {key (=str path) -> has a crop}, precomputed by the host from the day CSV
+        # sizes: a flat path list carries no RAW-vs-JPG dimensions to judge it from.
+        self._crop_hints: dict[str, bool] = {}
+
+    def set_crop_hints(self, hints: dict) -> None:
+        self._crop_hints = hints or {}
+
+    def crop_present(self, key: str) -> bool:
+        return bool(self._crop_hints.get(key, False))
 
     # ── ordering / filter helpers (host wires these; no fpr → no real filters)
     def rebuild(self, keys: list[str] | None = None) -> None:
