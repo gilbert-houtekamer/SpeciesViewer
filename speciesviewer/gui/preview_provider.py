@@ -1316,9 +1316,16 @@ class FilePreviewItem(PictureItem):
 
     @property
     def display_name(self) -> str:
-        # These files live under biota/…/<scientific species>/<file>, so the parent
-        # folder IS the species — show that as the card title, not the bare
-        # filename (which is what the trip/master viewers would otherwise lose).
+        # Prefer the species name in the host's chosen language profile (built from
+        # the day CSV, keyed by path). Falls back to the parent folder, which under
+        # biota/…/<scientific species>/<file> IS the scientific name — all a bare
+        # path can give.
+        hint = self._c._name_hints.get(self._key)
+        if hint:
+            from utils.name_profile import name_for
+            n = name_for(hint, self._c._name_profile)
+            if n:
+                return n
         p = Path(self._key)
         return p.parent.name or p.name
 
@@ -1376,9 +1383,18 @@ class FileListPreviewCollection(PictureCollection):
         # {key (=str path) -> has a crop}, precomputed by the host from the day CSV
         # sizes: a flat path list carries no RAW-vs-JPG dimensions to judge it from.
         self._crop_hints: dict[str, bool] = {}
+        # {key (=str path) -> {NLSoortNaam, EngSoortNaam, WetSoortNaam}} from the
+        # day CSV, so the caption can honour the name-language profile instead of
+        # falling back to the scientific folder name. Empty → folder name.
+        self._name_hints: dict[str, dict] = {}
+        self._name_profile: str = ""
 
     def set_crop_hints(self, hints: dict) -> None:
         self._crop_hints = hints or {}
+
+    def set_name_hints(self, hints: dict, profile: str) -> None:
+        self._name_hints = hints or {}
+        self._name_profile = profile or ""
 
     def crop_present(self, key: str) -> bool:
         return bool(self._crop_hints.get(key, False))

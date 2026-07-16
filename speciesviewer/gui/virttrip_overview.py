@@ -90,6 +90,36 @@ def _build_crop_hints(csv_path: Path) -> dict:
             for path, upn, jpg_dims in jpgs}
 
 
+def _build_name_hints(day_dir: Path) -> dict:
+    """Map each file's full path -> its species-name row {NLSoortNaam,
+    EngSoortNaam, WetSoortNaam}, so the metadata-less virtual-trip viewer can show
+    the caption in the chosen language instead of the scientific folder name.
+    Names come from data_pictures.csv (per UPN); the path->UPN link from
+    data_files.csv. Empty on any read error → the folder name is used."""
+    pics: dict[str, dict] = {}       # upn -> name row
+    try:
+        with open(day_dir / "data_pictures.csv", newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f, delimiter=";"):
+                upn = (row.get("UniquePictureName") or "").strip()
+                if upn:
+                    pics[upn] = {k: row.get(k, "") for k in
+                                 ("NLSoortNaam", "EngSoortNaam", "WetSoortNaam")}
+    except (FileNotFoundError, OSError, csv.Error):
+        return {}
+    hints: dict[str, dict] = {}
+    try:
+        with open(day_dir / "data_files.csv", newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f, delimiter=";"):
+                upn = (row.get("UniquePictureName") or "").strip()
+                directory = row.get("File:Directory", "")
+                filename  = row.get("File:FileName",  "")
+                if upn in pics and directory and filename:
+                    hints[str(Path(directory) / filename)] = pics[upn]
+    except (FileNotFoundError, OSError, csv.Error):
+        return {}
+    return hints
+
+
 def _open_blog_editor(parent, day_dirs: list, first_date: date,
                       virttrip_root: Path, jump_to_day_num: int = 0):
     """Open the tabbed blog editor, optionally jumping to a specific day's tab."""
@@ -109,6 +139,10 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
     # Precompute the "#" crop marker per JPG from the day CSV's sizes (no per-card
     # disk read) — these baked DxO renders keep no readable crop rectangle.
     crop_hints = _build_crop_hints(day_dir / "data_files.csv")
+    # And the species names per JPG, so the caption follows the name-language
+    # profile instead of the metadata-less viewer's scientific folder name.
+    from utils.name_profile import effective_profile
+    name_hints = _build_name_hints(day_dir)
     # Read-only for rating/colour/species/files — these are the master's pictures.
     # The one exception is geotagging: "Get GPS from location" is how a picture that
     # only ever had a written place ("Helgoland") gets a coordinate at all.
@@ -123,6 +157,8 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
         # nothing itself. Same carve-out as geotag, gated on the same editable check.
         allow_crop=parent._master_is_editable(),
         crop_hints=crop_hints,
+        name_hints=name_hints,
+        name_profile=effective_profile(),
     )
     dlg.exec()
     # The viewer can geotag (Get GPS from location, and the map it opens), and that

@@ -93,12 +93,17 @@ class ImagePreviewDialog(QDialog):
     def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg",
                  file_list=None, cache_root=None, source_label=None, collection=None,
                  readonly=False, start_species=False, allow_geotag=False,
-                 allow_crop=False, crop_hints=None):
+                 allow_crop=False, crop_hints=None, name_hints=None,
+                 name_profile=""):
         super().__init__(parent)
         # {full JPG path -> True} for the "#" crop marker in the metadata-less
         # (file-list) mode, precomputed by the caller from the day CSV sizes since
         # a flat path list carries no RAW-vs-JPG dimensions of its own.
         self._crop_hints = crop_hints or {}
+        # {full JPG path -> {NLSoortNaam,...}} + the name-language profile, so the
+        # metadata-less caption can follow the preference instead of the sci folder.
+        self._name_hints = name_hints or {}
+        self._name_profile = name_profile or ""
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
                             | Qt.WindowType.WindowMaximizeButtonHint)
@@ -192,6 +197,8 @@ class ImagePreviewDialog(QDialog):
         # (the metadata-less file-list mode). No-op for the others.
         if hasattr(self._collection, "set_crop_hints"):
             self._collection.set_crop_hints(self._crop_hints)
+        if hasattr(self._collection, "set_name_hints"):
+            self._collection.set_name_hints(self._name_hints, self._name_profile)
 
         # In a real trip cull, Blue/Purple (discard) may be set on a JPG-bearing
         # picture — the JPG can be culled unless published in a blog (enforced at
