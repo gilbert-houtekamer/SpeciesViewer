@@ -1237,13 +1237,28 @@ class RatingEditorDialog(QDialog):
         self._species_combo.clear()
         self._species_combo.addItem("— Select a species —", None)
 
+        # Per species: does any TRIP picture have a real JPG on disk yet? A
+        # species whose trip pictures are all RAW/HEIC won't appear on the
+        # website until a JPG is rendered, so flag it "(only RAW)" — the
+        # publication to-do is then visible at a glance (no flags left ⇒ done).
+        # Master pictures never count: this is about the trip's own readiness.
         names: set[str] = set()
-        for upn_row in self.fpr.upn.UniquePictureName_dict.values():
+        trip_has_jpg: dict[str, bool] = {}   # species name → ≥1 trip JPG on disk
+        col = self._collection
+        for upn_key, upn_row in self.fpr.upn.UniquePictureName_dict.items():
             name = self._species_name(upn_row)
-            if name:
-                names.add(name)
+            if not name:
+                continue
+            names.add(name)
+            if col is not None and not col.is_master(upn_key):
+                if not trip_has_jpg.get(name) and col.jpg_path(upn_key) is not None:
+                    trip_has_jpg[name] = True
+                else:
+                    trip_has_jpg.setdefault(name, False)
         for name in sorted(names, key=str.casefold):
-            self._species_combo.addItem(name, name)
+            # Flag species that HAVE trip pictures but no trip JPG yet.
+            label = name if trip_has_jpg.get(name, True) else f"{name} (only RAW)"
+            self._species_combo.addItem(label, name)
 
         self._species_combo.blockSignals(False)
         if restore_selection:
