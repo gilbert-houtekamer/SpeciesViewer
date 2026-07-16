@@ -32,6 +32,7 @@ def generate_trip_ini(
     message_en: str,
     logger,
     picture_root_abs: str = "",
+    name_profile: str = "",
 ):
     import os
     from datetime import datetime
@@ -83,6 +84,7 @@ web_slug = {web_slug}
 picture_root = {picture_root}
 fromdate = {from_date}
 todate = {to_date}
+name_profile = {name_profile}
 oneblog = day
 
 [trip_text]
@@ -198,10 +200,27 @@ class TripCreationDialog(QDialog):
             "You can adjust this range later to include additional days or refine the trip timeline.</p>"
         )
 
-        layout2.addWidget(info_label23)           
+        layout2.addWidget(info_label23)
         self.date_field = DateRangeFieldQt()
         self.date_field.set_dates(trip_data.get("fromdate", ""), trip_data.get("todate", ""))
         layout2.addWidget(self.date_field)
+
+        info_label24 = HTMLLabel(
+            "<p><b>Preferred names</b><br>"
+            "Which of Dutch / English / Scientific reads out as the label under each "
+            "picture in this trip's viewers (a fallback chain). Leave on "
+            "<i>Default</i> to follow the global setting — handy to pick "
+            "<i>English / Scientific</i> for a trip outside Europe.</p>")
+        layout2.addWidget(info_label24)
+        from utils.name_profile import profile_keys, profile_label
+        self.name_profile_combo = QComboBox()
+        self.name_profile_combo.addItem("Default (global setting)", "")
+        for _k in profile_keys():
+            self.name_profile_combo.addItem(profile_label(_k), _k)
+        _np = (trip_data.get("name_profile") or "").strip()
+        _npi = self.name_profile_combo.findData(_np)
+        self.name_profile_combo.setCurrentIndex(_npi if _npi >= 0 else 0)
+        layout2.addWidget(self.name_profile_combo)
 
         tabs.addTab(tab2, "Images && Dates")
 
@@ -265,13 +284,19 @@ class TripCreationDialog(QDialog):
         # Action buttons
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        write_tripini_button = QPushButton("Write trip.ini")
+        write_tripini_button = QPushButton("Update Trip Settings")
+        write_tripini_button.setToolTip(
+            "Save this trip's settings AND text (both this page and Trip Text) to "
+            "trip.ini — WITHOUT rebuilding the repository. Use this to update an "
+            "existing trip (e.g. its Preferred names). 'Create Trip' is only for "
+            "building a brand-new trip's structure.")
         create_button = QPushButton("Create Trip")
         select_button = QPushButton("Select")
 
-        # ✅ Add buttons to layout
-        btn_layout.addWidget(write_tripini_button)
+        # Create (build a brand-new trip's structure) comes first; Update Trip
+        # Settings (the everyday save for an existing trip) sits after it.
         btn_layout.addWidget(create_button)
+        btn_layout.addWidget(write_tripini_button)
         btn_layout.addWidget(select_button)
 
         main_layout.addLayout(btn_layout)
@@ -345,8 +370,8 @@ class TripCreationDialog(QDialog):
     def on_write_tripini_clicked(self):
         if not self.create_trip_ini():
             return
-        self.logger.info("Trip.ini created or updated successfully!")
-        self.passed_parent.status_bar.showMessage("Trip.ini created or updated successfully!")
+        self.logger.info("Trip settings updated (trip.ini written; repository not rebuilt).")
+        self.passed_parent.status_bar.showMessage("Trip settings updated.")
 
     def _picturedirectory_for_config(self) -> str:
         """The value to store in [project] picturedirectory — always a DAY folder.
@@ -451,6 +476,7 @@ class TripCreationDialog(QDialog):
             message_en,
             self.logger,
             picture_root_abs=picture_root_abs,
+            name_profile=self.name_profile_combo.currentData() or "",
         )
         return True
 

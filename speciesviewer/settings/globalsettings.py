@@ -1,15 +1,17 @@
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QLineEdit, QCheckBox,
+    QDialog, QVBoxLayout, QLabel, QLineEdit, QCheckBox, QComboBox,
     QPushButton, QMessageBox
 )
 from utils.config import _config, persist_config
+from utils.name_profile import (profile_keys, profile_label, global_profile,
+                                set_global_profile)
 import logging
 
 class GlobalSettingsDialog(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
         self.setWindowTitle("Global Settings")
-        self.setFixedSize(400, 420)
+        self.setFixedSize(400, 380)
 
         layout = QVBoxLayout(self)
 
@@ -27,8 +29,21 @@ class GlobalSettingsDialog(QDialog):
             _config.get("Global", "debug_tools", fallback="no") == "yes")
         layout.addWidget(self.debug_switch)
 
-        self.width_field = self._labeled_field(layout, "Window width", _config.get("Global", "default_window_width", fallback="1600"))
-        self.height_field = self._labeled_field(layout, "Window height", _config.get("Global", "default_window_height", fallback="1200"))
+        # Preferred names — which of NL/EN/Sci reads out under each picture (a
+        # fallback chain). Per-trip overrides live in Create Trip ▸ Images & dates.
+        layout.addWidget(QLabel("Preferred names (shown under each picture)"))
+        self.names_combo = QComboBox()
+        for key in profile_keys():
+            self.names_combo.addItem(profile_label(key), key)
+        _ni = self.names_combo.findData(global_profile())
+        if _ni >= 0:
+            self.names_combo.setCurrentIndex(_ni)
+        self.names_combo.setToolTip(
+            "Which of Dutch / English / Scientific reads out as the label under "
+            "each picture, tried in order — so 'English / Scientific' never shows "
+            "Dutch. The window size is not set here: the app remembers it.")
+        layout.addWidget(self.names_combo)
+
         self.webpassword_field = self._labeled_field(layout, "Website password", _config.get("websettings", "sftppwd", fallback="? still needed"), password=True)
         self.base_url_field = self._labeled_field(layout, "Base URL for web address", _config.get("websettings", "base_url", fallback="https://houtekamer.com"))
         self.dxo_path_field = self._labeled_field(
@@ -51,8 +66,7 @@ class GlobalSettingsDialog(QDialog):
     def save_settings(self):
         _config.set("Global", "splash_enabled", "yes" if self.splash_switch.isChecked() else "no")
         _config.set("Global", "debug_tools", "yes" if self.debug_switch.isChecked() else "no")
-        _config.set("Global", "default_window_width", self.width_field.text())
-        _config.set("Global", "default_window_height", self.height_field.text())
+        set_global_profile(self.names_combo.currentData())
         _config.set("websettings", "sftppwd", self.webpassword_field.text())
         _config.set("websettings", "base_url", self.base_url_field.text())
         _config.set("Global", "dxo_path", self.dxo_path_field.text())
