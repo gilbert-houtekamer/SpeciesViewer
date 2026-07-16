@@ -22,6 +22,7 @@ EXIF set is deliberately small (DxO-style), not the full PhotoMechanic dump.
 from __future__ import annotations
 
 import logging
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable
@@ -29,6 +30,31 @@ from typing import Callable
 from PyQt6.QtGui import QPixmap
 
 logger = logging.getLogger("speciesviewer")
+
+
+def _parse_dims(s: str):
+    """('5220x3912' | '5220 3912' | '') → (5220, 3912) or None."""
+    parts = re.split(r"[x× ]+", (s or "").strip())
+    try:
+        return int(parts[0]), int(parts[1])
+    except (IndexError, ValueError):
+        return None
+
+
+def jpg_is_crop_by_size(raw_dims: str, jpg_dims: str, frac: float = 0.75) -> bool:
+    """Heuristic 'this picture is (probably) cropped' for the card's # marker, used
+    when no .dop/.xmp crop rectangle can be read — a baked DxO/Lightroom render or
+    an old master JPG keeps its crop only in the pixels. True when the JPG's long
+    edge is ≤ frac of the RAW's long edge (default 25% smaller). A downscaled full
+    frame trips it too, but in this workflow almost every developed JPG is a crop,
+    so it's a good-enough cue (and doubles as a 'has a developed JPG' hint). Needs
+    both sizes; returns False if either is missing/unparseable."""
+    r = _parse_dims(raw_dims)
+    j = _parse_dims(jpg_dims)
+    if not r or not j:
+        return False
+    rl, jl = max(r), max(j)
+    return rl > 0 and 0 < jl <= frac * rl
 
 # Async image delivery: providers call this on the GUI thread when a pixmap is
 # ready. Loading is cancellable via PictureCollection.cancel_pending_loads().

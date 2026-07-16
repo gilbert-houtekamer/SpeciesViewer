@@ -210,6 +210,9 @@ class _StripItem(QWidget):
                 _THUMB_W, _THUMB_H,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation)
+            if getattr(self._item, "has_crop", False):
+                from gui.rating_editor import stamp_crop_marker
+                scaled = stamp_crop_marker(scaled)
             self._thumb_lbl.setPixmap(scaled)
 
     def refresh_from(self, item):

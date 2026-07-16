@@ -86,6 +86,13 @@ class RatingEditorItem(PictureItem):
         return self._c.is_album_member(self._key)
 
     @property
+    def has_crop(self) -> bool:
+        """This picture carries a crop (ours / PhotoLab / Lightroom) — the card and
+        filmstrip stamp a small marker for it. True even when the displayed image
+        is the already-cropped JPG render (the crop lives in the RAW's sidecar)."""
+        return self._c.crop_recorded(self._key)
+
+    @property
     def can_set_crop(self) -> bool:
         """A crop suggestion is written to the RAW's DxO .dop / Lightroom .xmp for
         PhotoLab to open with, so it needs a writable trip picture that has a RAW.
@@ -245,6 +252,10 @@ class RatingEditorCollection(PictureCollection):
         # Dropbox) until a species is actually selected. The dialog shows
         # "select a species" first; _rebuild_cards calls rebuild(filter) then.
         self._order: list[str] = []
+        # Per-UPN "has a crop recorded" flag (one .dop/.xmp read each) — cached so
+        # a species' whole grid isn't re-reading sidecars; cleared on rebuild and
+        # invalidated per key on set_crop.
+        self._crop_flag_cache: dict[str, bool] = {}
 
     # ── master reference wiring ───────────────────────────────────────────
     def set_master(self, master_db, master_root, *, include: bool = True,
@@ -599,6 +610,7 @@ class RatingEditorCollection(PictureCollection):
         # rows) so master pictures can be matched on WetSoortNaam — robust
         # across the NL/Eng/Sci display languages. The Master Species Viewer has
         # no trip rows to resolve from, so it passes the sci in directly.
+        self._crop_flag_cache.clear()   # sidecars may have changed since last build
         sci = (forced_sci or "").strip().casefold() or None
         if sci is None and filter_name and self._include_master and self._master_db is not None:
             for row in self.fpr.upn.UniquePictureName_dict.values():
@@ -989,7 +1001,28 @@ class RatingEditorCollection(PictureCollection):
         if not raw:
             return None
         from engine.sidecarlib import suggest_crop
-        return suggest_crop(str(raw), crop)
+        res = suggest_crop(str(raw), crop)
+        self._crop_flag_cache.pop(upn_key, None)   # crop marker must re-evaluate
+        return res
+
+    def crop_recorded(self, upn_key: str) -> bool:
+        """True when this picture has a crop rectangle in its RAW's DxO .dop /
+        Lightroom .xmp — the same crop request_image overlays, and the flag the
+        card/filmstrip stamp a marker from. Known even when the card is showing
+        the baked JPG (the crop lives in the RAW's sidecar, which the UPN still
+        references). Cached per UPN; rebuild() and set_crop() invalidate it."""
+        cache = self._crop_flag_cache
+        if upn_key not in cache:
+            from gui.picture_provider import crop_for, jpg_is_crop_by_size
+            real = crop_for(self.raw_path(upn_key)) is not None
+            if real:
+                cache[upn_key] = True
+            else:
+                # No readable crop rectangle (a baked DxO render or an old master
+                # JPG) — fall back to the size cue: a JPG much smaller than its RAW.
+                ex = self.exif_for(upn_key)
+                cache[upn_key] = jpg_is_crop_by_size(ex.dimensions, ex.jpg_dimensions)
+        return cache[upn_key]
 
     def exif_for(self, upn_key: str) -> ExifSummary:
         upn = self._upn_row(upn_key)

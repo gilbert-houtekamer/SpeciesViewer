@@ -18,8 +18,8 @@ from PyQt6.QtWidgets import (
     QLabel, QFrame, QPushButton, QSpinBox, QComboBox, QSizePolicy, QCheckBox,
     QProgressDialog, QRadioButton, QButtonGroup, QMessageBox, QStyle,
 )
-from PyQt6.QtGui import QPixmap, QImage, QGuiApplication, QIcon
-from PyQt6.QtCore import (Qt, QTimer, QSize, pyqtSignal, QObject, QRunnable,
+from PyQt6.QtGui import QPixmap, QImage, QGuiApplication, QIcon, QPainter, QColor
+from PyQt6.QtCore import (Qt, QTimer, QSize, QRect, pyqtSignal, QObject, QRunnable,
                           QThreadPool)
 
 from engine.filepicture import FilePicture
@@ -255,6 +255,32 @@ class ColorSelector(QWidget):
 
 _DISCARD_GREYED_TIP = ("Has a JPG — kept for the website and a future DxO "
                        "re-export, so it can't be a deletion candidate.")
+
+
+def stamp_crop_marker(px: QPixmap) -> QPixmap:
+    """Return a copy of the thumbnail with a small '#' chip in the top-left corner
+    — the visual cue that this picture carries a crop (ours / PhotoLab / Lightroom).
+    Shown over both the RAW's preview and a baked JPG render: even though a JPG's
+    pixels don't reveal the crop, the crop is recorded in the RAW's sidecar and
+    this is the picture that goes to the website. Subtle: a faint dark chip so the
+    white glyph stays legible over any image."""
+    if px.isNull():
+        return px
+    out = QPixmap(px)   # detach (COW) so the loader's cached pixmap isn't scribbled on
+    p = QPainter(out)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    s = 12
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(0, 0, 0, 110))
+    p.drawRoundedRect(3, 3, s, s, 2, 2)
+    f = p.font()
+    f.setPixelSize(10)
+    f.setBold(True)
+    p.setFont(f)
+    p.setPen(QColor(255, 255, 255))
+    p.drawText(QRect(3, 3, s, s), Qt.AlignmentFlag.AlignCenter, "#")
+    p.end()
+    return out
 
 
 class PictureCard(QFrame):
@@ -591,6 +617,8 @@ class PictureCard(QFrame):
         else:
             # +6 leaves room for the 3px frame border so the pixmap isn't clipped
             self._thumb.setFixedHeight(px.height() + 6)
+            if getattr(self._item, "has_crop", False):
+                px = stamp_crop_marker(px)
             self._thumb.setPixmap(px)
         self._update_thumb_style()
 
@@ -1481,6 +1509,7 @@ class RatingEditorDialog(QDialog):
                              settings_key="RatingEditor", auto_advance=True,
                              initial_selection=set(self._selected_keys))
         dlg.picture_changed.connect(self._on_large_view_changed)
+        dlg.picture_image_changed.connect(self._on_large_view_image_changed)
         dlg.picture_navigated.connect(self._on_large_view_navigated)
         dlg.selection_changed.connect(self._on_large_view_selection_changed)
         self._large_view = dlg
@@ -1495,6 +1524,13 @@ class RatingEditorDialog(QDialog):
             card.refresh()
         self._resort_if_needed(focus_key=key)
         self._status.setText(f"Saved {key}")
+
+    def _on_large_view_image_changed(self, key: str):
+        # The picture's IMAGE changed (a crop was written), not just its metadata —
+        # re-decode the grid card so it shows the applied crop and its '#' marker.
+        card = self._cards_by_key.get(key)
+        if card:
+            card.reload_thumbnail()
 
     def _on_large_view_navigated(self, key: str):
         prev = self._cards_by_key.get(self._last_clicked_key) if self._last_clicked_key else None
