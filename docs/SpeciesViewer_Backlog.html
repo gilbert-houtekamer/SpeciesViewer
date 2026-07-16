@@ -377,7 +377,19 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
   <li><strong>Compact the filter/knob toolbar</strong> <span class="tag-complete">DONE</span> —
     the wide Species Viewer top row (Species · language · Camera · Sort · Map · Regenerate · JPG-only ·
     colour swatches · Columns · Blue/Purple) was reworked to fit narrow screens; done on the laptop
-    (2026-07-15), hardly any issues.</li>
+    (2026-07-15), hardly any issues. Follow-up (d9a3a83): the redundant <em>Species / Camera / Sort</em>
+    text labels were dropped from the Trip Species Viewer too (the combos carry tooltips), mirroring the
+    Master viewer.</li>
+  <li><strong>&ldquo;(only RAW)&rdquo; species flag — publication to-do at a glance</strong>
+    <span class="tag-complete">DONE</span> (d9a3a83) — while getting the Kreta trip ready the user
+    reached for the old <em>Count Species</em> batch to see which species still needed a JPG. Now the
+    <strong>Trip Species Viewer</strong> picker does it inline: any species whose <em>trip</em> pictures
+    are all RAW/HEIC (no JPG on disk yet — so it won&rsquo;t appear on the website) reads
+    &ldquo;<strong>alpenkraai (only RAW)</strong>&rdquo;. When no &ldquo;(only RAW)&rdquo; entries remain,
+    the trip is done. Uses the same JPG-on-disk test as the JPG-only filter (HEIC counts as RAW);
+    <strong>master pictures never count</strong> — it&rsquo;s the trip&rsquo;s own readiness, so it&rsquo;s
+    a trip-only feature. The combo&rsquo;s stored value stays the plain name, so filter/sort/language are
+    unaffected; it short-circuits per species after the first JPG, so it&rsquo;s cheap on a big trip.</li>
   <li><strong>Laptop GUI fit review</strong> <span class="tag-complete">DONE</span> —
     walked every dialog on a laptop-sized screen (2026-07-15); each fits, hardly any issues.</li>
   <li><strong>Normalise cached preview size to the OM-1 long edge (~3200 px)</strong>
