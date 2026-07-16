@@ -159,6 +159,12 @@ class SidecarItem(PictureItem):
 
     @property
     def display_name(self) -> str:
+        # Prefer the species name in the host's language profile (from the day CSV);
+        # this also names a picture whose sidecar subject is empty (a DxO render
+        # whose .xmp didn't pair). Else fall back to the sidecar subject, then stem.
+        hinted = self._c._name_for_stem(self._stem)
+        if hinted:
+            return hinted
         from gui.culling_species import split_species_qualifiers
         name, _ = split_species_qualifiers(self.species)
         return name or self._stem
@@ -338,6 +344,11 @@ class SidecarCollection(PictureCollection):
         self._groups = {s: g for s, g in self._groups.items() if g.get("raw") or g.get("jpg")}
         self._crop_cache: dict = {}      # stem -> normalised crop | None (cleared on refresh)
         self._jpg_dims_cache: dict = {}  # jpg path -> "WxH" (header read, for the crop size cue)
+        # {file path -> {NLSoortNaam,...}} + profile, so the caption follows the
+        # name-language profile from the day CSV — and shows a name even when the
+        # sidecar subject is empty (a DxO render whose .xmp didn't pair by stem).
+        self._name_hints: dict = {}
+        self._name_profile: str = ""
         self._image_changed: set = set() # stems whose IMAGE changed at last refresh()
         self._attach_sibling_jpgs()
         # Baseline image signatures (source file + mtime + .dop mtime) so refresh()
@@ -770,6 +781,25 @@ class SidecarCollection(PictureCollection):
         crop = crop_for(g.get("raw"), g.get("xmp"))
         self._crop_cache[stem] = crop
         return crop
+
+    def set_name_hints(self, hints: dict, profile: str) -> None:
+        self._name_hints = hints or {}
+        self._name_profile = profile or ""
+
+    def _name_for_stem(self, stem: str) -> str:
+        """The species name for a group in the chosen language profile, from the
+        day-CSV hints (keyed by any of the group's file paths). '' when unhinted."""
+        if not self._name_hints:
+            return ""
+        g = self._groups.get(stem, {})
+        from utils.name_profile import name_for
+        for kind in ("jpg", "raw", "xmp"):
+            p = g.get(kind)
+            if p is not None:
+                hint = self._name_hints.get(str(p))
+                if hint:
+                    return name_for(hint, self._name_profile)
+        return ""
 
     def _jpg_dims(self, path) -> str:
         """"WxH" of a JPG, read from its header only (no full decode). Cached."""
