@@ -339,7 +339,12 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     A <strong>per-virttrip override</strong> followed (<code>19984bb</code>) in the existing Create Virtual
     Trip dialog's Images &amp; Dates tab (&rarr; <code>virttrip.ini</code>) — the &ldquo;guided-Create
     dialog&rdquo; first called a blocker already exists; that backlog item is about the creation
-    <em>flow</em>, not a missing dialog. Precedence: per-virttrip override &rarr; global default.</li>
+    <em>flow</em>, not a missing dialog. Precedence: per-virttrip override &rarr; global default. Two
+    follow-up fixes the Orlando virttrip exposed: the preview uses <code>SidecarCollection</code> when any
+    JPG has a paired <code>.xmp</code>, and there the caption ignored the profile &mdash; wired
+    <code>name_hints</code> in too (<code>f54a4ec</code>); and a DxO DeepPRIME render's <code>.xmp</code> is
+    named after the <em>source</em>, so the group read no rating/colour/subject &mdash;
+    <code>_source_xmp_for</code> now reconstructs the source stem and pairs it (<code>33bb3a2</code>).</li>
   <li><strong>Closed three viewer-capability-matrix gaps</strong> <span class="tag-shipped">SHIPPED</span>
     (2026-07-16) — a scan of what each grid viewer (Culling/Day, Virtual-Trip, Trip Species Viewer, Master)
     can do turned up gaps that were unwired rather than deliberate. Fixed: (1) <strong>&ldquo;#&rdquo; crop
