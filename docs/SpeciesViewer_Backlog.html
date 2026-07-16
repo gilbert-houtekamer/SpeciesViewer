@@ -119,6 +119,17 @@ Cancel-during-copy, Lightroom-in-place, and tz-offset are validated.</p>
     JPG</strong>: draw the crop in the large viewer and it writes <code>&lt;stem&gt;.jpg</code> beside
     the HEIC, which becomes the picture's usable image (and reaches the website like any other JPG). A
     re-crop always works from the original HEIC. Confirmed live on Kreta.</li>
+  <li><strong>Crop tool enabled in the Trip Species Viewer</strong> <span class="tag-shipped">SHIPPED</span>
+    (9e53a9b) — cropping had only ever been wired to the culling viewer and the read-only virtual-trip
+    carve-out; here the large viewer's <strong>&#9986; Crop</strong> button greyed out because the trip
+    item never exposed <code>can_set_crop</code>/<code>set_crop</code>. Now wired, reusing the SAME shared
+    machinery (no new crop logic). It's allowed only for a <strong>writable trip picture with a RAW</strong>
+    (master reference cards and the read-only Album viewer stay look-only), writes the crop to the RAW's
+    <code>.dop</code>/<code>.xmp</code>, and draws over the RAW's full uncropped preview. The card/large
+    view now also <strong>overlays an existing crop when showing a RAW's own preview</strong> (no JPG render
+    yet), so a drawn crop shows up afterward — matching the culling viewer; a JPG render is already cropped
+    and shown as-is. Confirmed live on Kreta. Open idea: a subtle top-left marker on a JPG card to signal a
+    crop is present (and whether to surface LR/PL crops from their metadata).</li>
 </ul>
 
 <h3>Parked (by design)</h3>
