@@ -1395,6 +1395,10 @@ class MapView(QDialog):
 # collides with the species overlay palette; the trip map passes offset (0, 0)
 # so its markers sit dead-centre (no rosette — there's only one layer).
 _TRIP_COLOR = "#00838f"
+# When the collection separates own-trip pictures from master reference pictures
+# (Trip Species Viewer), the trip's own points are drawn in this pink — well clear
+# of the teal master bubbles — so trip vs master reads at a glance.
+_TRIP_OWN_COLOR = "#d81b60"
 
 # Drag payload for the no-GPS tray → map drop (newline-joined UPN keys).
 _MIME_UPNS = "application/x-speciesviewer-upns"
@@ -1753,7 +1757,7 @@ class TripMapView(QDialog):
         self._nogps_keys = nogps_keys      # pictures without GPS (drag-to-geotag)
         self._hidden: set = set()          # UPNs hidden via right-click
         self._placed: set = set()          # UPNs we (re)positioned by hand this session
-        self._lid = None                   # the single trip layer's id
+        self._lids: list[int] = []         # trip layer ids (1, or 2 when split by trip/master)
         self._tray = None
 
         lay = QVBoxLayout(self)
@@ -1975,10 +1979,28 @@ class TripMapView(QDialog):
         """(Re)draw the single trip layer + travel path from the non-hidden points,
         and refresh the header counts. Called on init and after a hide / show-all."""
         pts = [p for p in self._all_points if p["upn"] not in self._hidden]
-        if self._lid is not None:
-            self._map.remove_layer(self._lid)
-        self._lid = self._map.add_layer(_TRIP_COLOR, pts, offset=(0, 0),
-                                        tip=self._trip_tip)
+        for lid in self._lids:
+            self._map.remove_layer(lid)
+        self._lids = []
+        # When the collection tells trip pictures from master reference ones
+        # (Trip Species Viewer), draw the trip's own points green and the master
+        # ones teal — two layers, since a bubble's colour is per-layer. The trip
+        # layer is added SECOND (drawn on top) with a small rosette shift so a
+        # spot with both stays legible. Collections without is_master (the culling
+        # map) keep the single teal layer exactly as before.
+        is_master = getattr(self._coll, "is_master", None)
+        if callable(is_master):
+            master_pts = [p for p in pts if is_master(p["upn"])]
+            trip_pts = [p for p in pts if not is_master(p["upn"])]
+            if master_pts:
+                self._lids.append(self._map.add_layer(
+                    _TRIP_COLOR, master_pts, offset=(0, 0), tip=self._trip_tip))
+            self._lids.append(self._map.add_layer(
+                _TRIP_OWN_COLOR, trip_pts,
+                offset=((7, -7) if master_pts else (0, 0)), tip=self._trip_tip))
+        else:
+            self._lids.append(self._map.add_layer(
+                _TRIP_COLOR, pts, offset=(0, 0), tip=self._trip_tip))
         ordered = sorted((p for p in pts if p.get("date")), key=lambda p: p["date"])
         # EXIF dates are 'YYYY:MM:DD HH:MM:SS' → the day key is the first 10 chars.
         self._map.set_travel_path(
@@ -1992,6 +2014,12 @@ class TripMapView(QDialog):
             parts.append(f"{len(self._hidden)} hidden")
         if self._ghosts:
             parts.append(f"{self._ghosts} missing")
+        if callable(is_master):
+            trip_n = sum(1 for p in pts if not is_master(p["upn"]))
+            if 0 < trip_n < len(pts):     # both trip and master on the map
+                # Colour the word "pink" pink so the legend explains itself.
+                parts.append(f'<span style="color:{_TRIP_OWN_COLOR}; '
+                             f'font-weight:600">pink</span> = this trip')
         self._info.setText("  ·  ".join(parts))
         self._info.setToolTip(
             f"{self._ghosts} picture(s) are listed for this trip but their files are "
