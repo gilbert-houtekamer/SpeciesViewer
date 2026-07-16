@@ -26,7 +26,7 @@ from PyQt6.QtGui import QImage
 
 from gui.picture_provider import (
     PictureItem, PictureCollection, ExifSummary, PixmapCallback, exif_from_rows,
-    sweep_dop, apply_crop, crop_for)
+    sweep_dop, apply_crop, crop_for, jpg_is_crop_by_size)
 from gui.image_loader import AsyncImageLoader
 from gui.rating_editor import _compute_rate
 from engine.exif_writer import exiftool_write
@@ -979,14 +979,17 @@ class PreviewCollection(PictureCollection):
         self._loader.request(produce, on_ready, target_w=target_w)
 
     def crop_present(self, upn_key: str) -> bool:
-        """True if this picture carries a crop recipe (ours or PhotoLab/LR), for the
-        card's ⌗ badge. Checks the croppable BASE (RAW / original JPG), not the
-        display source, so a picture whose render exists still shows ⌗. One small
-        .dop/.xmp read per call."""
+        """True if this picture carries a crop, for the card's "#" marker. Checks
+        the croppable BASE (RAW / original JPG), not the display source, so a
+        picture whose render exists still shows it. One small .dop/.xmp read per
+        call, then a free size-cue fallback: a baked DxO/LR render keeps no
+        readable rectangle, so a JPG much smaller than its RAW is taken as a crop
+        (jpg_is_crop_by_size) — the same rule the trip/master viewers use."""
         base = self._crop_source(upn_key)
-        if base is None:
-            return False
-        return crop_for(base, self._xmp_for(upn_key)) is not None
+        if base is not None and crop_for(base, self._xmp_for(upn_key)) is not None:
+            return True
+        row = self.fpr.upn.UniquePictureName_dict.get(upn_key, {})
+        return jpg_is_crop_by_size(row.get("ImageSize", ""), row.get("JPGSize", ""))
 
     def request_raw_uncropped(self, upn_key: str, on_ready: PixmapCallback) -> None:
         """The full uncropped frame — the canvas the crop tool draws on (bypasses

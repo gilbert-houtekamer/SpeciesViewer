@@ -24,7 +24,8 @@ from pathlib import Path
 from PyQt6.QtGui import QImage
 
 from gui.picture_provider import (PictureItem, PictureCollection, ExifSummary,
-                                  PixmapCallback, sweep_dop, apply_crop, crop_for)
+                                  PixmapCallback, sweep_dop, apply_crop, crop_for,
+                                  jpg_is_crop_by_size)
 from gui.image_loader import AsyncImageLoader
 from gui.preview_provider import cached_jpg_for, preview_cache_dir_for
 from engine.exif_writer import exiftool_write
@@ -207,7 +208,11 @@ class SidecarItem(PictureItem):
     def has_crop(self) -> bool:
         # Reuses the collection's per-stem crop cache (also used for the thumbnail
         # crop), so this is free after the first read. Covers our crops and PL/LR's.
-        return self._c._crop_for(self._stem) is not None
+        # Fallback: a baked DxO render (folded onto this RAW group) keeps no
+        # readable rectangle, so a JPG much smaller than the RAW is taken as a crop.
+        if self._c._crop_for(self._stem) is not None:
+            return True
+        return self._c._crop_by_size(self._stem)
 
     @property
     def place_fields(self) -> dict:
@@ -332,6 +337,7 @@ class SidecarCollection(PictureCollection):
         # Drop groups that ended up with no image file (e.g. a stray .xmp passed in).
         self._groups = {s: g for s, g in self._groups.items() if g.get("raw") or g.get("jpg")}
         self._crop_cache: dict = {}      # stem -> normalised crop | None (cleared on refresh)
+        self._jpg_dims_cache: dict = {}  # jpg path -> "WxH" (header read, for the crop size cue)
         self._image_changed: set = set() # stems whose IMAGE changed at last refresh()
         self._attach_sibling_jpgs()
         # Baseline image signatures (source file + mtime + .dop mtime) so refresh()
@@ -764,6 +770,31 @@ class SidecarCollection(PictureCollection):
         crop = crop_for(g.get("raw"), g.get("xmp"))
         self._crop_cache[stem] = crop
         return crop
+
+    def _jpg_dims(self, path) -> str:
+        """"WxH" of a JPG, read from its header only (no full decode). Cached."""
+        key = str(path)
+        if key not in self._jpg_dims_cache:
+            from PyQt6.QtGui import QImageReader
+            sz = QImageReader(key).size()
+            self._jpg_dims_cache[key] = (f"{sz.width()}x{sz.height()}"
+                                         if sz.isValid() else "")
+        return self._jpg_dims_cache[key]
+
+    def _crop_by_size(self, stem: str) -> bool:
+        """Size cue for the "#" marker when no crop rectangle is readable: the
+        group's JPG (a baked DxO/LR render, folded onto its RAW) is much smaller
+        than the RAW. RAW dims come from the sidecar row (ImageWidth/Height); the
+        JPG dims are read from its header once. False without both a JPG and RAW."""
+        g = self._groups.get(stem, {})
+        jpg = g.get("jpg")
+        if not jpg:
+            return False
+        xmp = g.get("xmp")
+        row = self._rows.get(_norm(xmp), {}) if xmp else {}
+        w, h = row.get("ImageWidth"), row.get("ImageHeight")
+        raw_dims = f"{w}x{h}" if w and h else ""
+        return jpg_is_crop_by_size(raw_dims, self._jpg_dims(jpg))
 
     def set_crop(self, stem: str, crop: dict):
         """Write a suggested crop to the picture's DxO .dop and Lightroom .xmp so
