@@ -88,8 +88,17 @@ def init_logger(log_widget):
     fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s]: %(message)s"))
     logger.addHandler(fh)
 
-    # Console output
-    sh = logging.StreamHandler()
+    # Console output. The default console encoding on Windows is cp1252, which
+    # raises on any emoji in a log message and prints a whole "--- Logging error
+    # ---" traceback (the file handler above is already utf-8). Make the stream
+    # escape un-encodable characters instead of crashing.
+    import sys
+    console_stream = sys.stderr
+    try:
+        console_stream.reconfigure(errors="backslashreplace")
+    except (AttributeError, ValueError):
+        pass
+    sh = logging.StreamHandler(console_stream)
     sh.setFormatter(ConsoleFormatter("%(message)s"))
     logger.addHandler(sh)
 

@@ -346,11 +346,11 @@ def populate_virttrip_overview(self):
         self.virttrip_table.setItem(i, WEB_COL, web_item)
 
     if sidecar_stats.get("stale"):
-        logger.info(f"✅ GPS status checked for {len(day_dirs)} day(s): "
+        logger.info(f"GPS status checked for {len(day_dirs)} day(s): "
                     f"{sidecar_stats.get('cached', 0)} sidecar(s) cached, "
                     f"{sidecar_stats['stale']} read via exiftool.")
     else:
-        logger.info(f"✅ GPS status checked for {len(day_dirs)} day(s) (all cached).")
+        logger.info(f"GPS status checked for {len(day_dirs)} day(s) (all cached).")
 
     overview_widget = QWidget()
     layout = QVBoxLayout(overview_widget)
