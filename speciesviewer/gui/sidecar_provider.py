@@ -40,6 +40,28 @@ logger = logging.getLogger("speciesviewer")
 _RAW_EXTS = {".cr3", ".cr2", ".nef", ".arw", ".raf", ".dng", ".orf", ".rw2"}
 _JPG_EXTS = {".jpg", ".jpeg"}
 
+# Render-suffix markers (lowercased) that deriveUniquePictureName strips. Used to
+# rebuild the SOURCE stem so a render's sidecar — named after the source, not the
+# render (…-ORF-DxO_DeepPRIME XD2.jpg vs …N3080498.xmp) — can still be found.
+_RENDER_MARKERS = ("-small", "-nef", "-orf", "-dxo", "_dxo", "-jpg", " - copy")
+
+
+def _source_xmp_for(jpg_path: Path):
+    """The .xmp of a render JPG's SOURCE picture: strip the render suffix from the
+    (case-preserving) stem and look for <source>.xmp beside it. None when the name
+    carries no render suffix or the source .xmp isn't there. One stat, no listdir."""
+    stem = jpg_path.stem
+    low = stem.lower()
+    cut = len(stem)
+    for m in _RENDER_MARKERS:
+        i = low.find(m)
+        if i != -1:
+            cut = min(cut, i)
+    if cut == len(stem):
+        return None
+    cand = jpg_path.with_name(stem[:cut] + ".xmp")
+    return cand if cand.exists() else None
+
 
 def _norm(p) -> str:
     return os.path.normcase(os.path.normpath(str(p)))
@@ -340,6 +362,12 @@ class SidecarCollection(PictureCollection):
                 xmp = p.with_suffix(".xmp")
                 if xmp.exists():
                     grp["xmp"] = xmp
+                elif ext in _JPG_EXTS:
+                    # A DxO/render JPG's .xmp is named after the SOURCE, not the
+                    # render — so its rating/colour/subject were coming up empty.
+                    src = _source_xmp_for(p)
+                    if src is not None:
+                        grp["xmp"] = src
         # Drop groups that ended up with no image file (e.g. a stray .xmp passed in).
         self._groups = {s: g for s, g in self._groups.items() if g.get("raw") or g.get("jpg")}
         self._crop_cache: dict = {}      # stem -> normalised crop | None (cleared on refresh)
