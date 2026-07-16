@@ -336,8 +336,10 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     The metadata-less virtual-trip Species Image Preview now follows the profile too (<code>e2aa0f7</code>):
     names come from the day's <code>data_pictures.csv</code> (NL/EN/Sci per UPN, keyed by path — the crop-#
     hint pattern), resolved through <code>name_for</code>, falling back to the sci folder name where missing.
-    It uses the <strong>global</strong> default; a per-virttrip override still awaits the virttrip
-    guided-Create dialog.</li>
+    A <strong>per-virttrip override</strong> followed (<code>19984bb</code>) in the existing Create Virtual
+    Trip dialog's Images &amp; Dates tab (&rarr; <code>virttrip.ini</code>) — the &ldquo;guided-Create
+    dialog&rdquo; first called a blocker already exists; that backlog item is about the creation
+    <em>flow</em>, not a missing dialog. Precedence: per-virttrip override &rarr; global default.</li>
   <li><strong>Closed three viewer-capability-matrix gaps</strong> <span class="tag-shipped">SHIPPED</span>
     (2026-07-16) — a scan of what each grid viewer (Culling/Day, Virtual-Trip, Trip Species Viewer, Master)
     can do turned up gaps that were unwired rather than deliberate. Fixed: (1) <strong>&ldquo;#&rdquo; crop
