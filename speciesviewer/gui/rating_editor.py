@@ -753,7 +753,11 @@ class RatingEditorDialog(QDialog):
         self._cards: list[PictureCard] = []
         self._cards_by_key: dict[str, PictureCard] = {}
         self._jpg_only = True
-        self._species_lang = "NL"
+        # Which name-language profile the captions use. Starts at the effective
+        # default (a per-trip override wins over the global setting); the combo is
+        # a per-session override on top.
+        from utils.name_profile import effective_profile
+        self._species_lang = effective_profile(self._trip_name_profile_override())
         # One async image loader for the dialog's lifetime; each collection
         # shares it so cancel_pending_loads() always targets the live loader.
         self._loader = AsyncImageLoader(self)
@@ -816,10 +820,19 @@ class RatingEditorDialog(QDialog):
         self._species_combo.setToolTip("Species to view")
         self._species_combo.currentIndexChanged.connect(self._on_species_changed)
         top.addWidget(self._species_combo)
+        # Name-language profile — which of NL/EN/Sci reads out under each picture
+        # (a fallback chain, so e.g. EN/Sci never shows Dutch). Seeded from the
+        # effective profile; this combo is a per-session override.
+        from utils.name_profile import profile_keys, profile_short_label
         self._lang_combo = QComboBox()
-        self._lang_combo.addItems(["NL", "EN", "Sci"])
-        self._lang_combo.setFixedWidth(55)
-        self._lang_combo.setToolTip("Species name language")
+        for _key in profile_keys():
+            self._lang_combo.addItem(profile_short_label(_key), _key)
+        self._lang_combo.setFixedWidth(92)
+        self._lang_combo.setToolTip("Which name shows under each picture "
+                                    "(name-language profile)")
+        _li = self._lang_combo.findData(self._species_lang)
+        if _li >= 0:
+            self._lang_combo.setCurrentIndex(_li)
         self._lang_combo.currentIndexChanged.connect(self._on_lang_changed)
         top.addWidget(self._lang_combo)
         top.addSpacing(12)
@@ -1264,16 +1277,24 @@ class RatingEditorDialog(QDialog):
         n_pics = len(self.fpr.upn.UniquePictureName_dict)
         self._status.setText(f"Trip — {n_days} day{'s' if n_days != 1 else ''}, {n_pics} pictures total")
 
+    def _trip_name_profile_override(self) -> str | None:
+        """The per-trip / per-virttrip name-profile override (from trip.ini's
+        name_profile), or None to fall back to the global default. Set in Create
+        Trip ▸ Images & dates."""
+        root = str(getattr(self, "_trip_root", "") or "")
+        if not root:
+            return None
+        from utils.name_profile import NAME_PROFILES
+        try:
+            from utils.trip_config import read_trip_ini
+            key = ((read_trip_ini(root) or {}).get("name_profile") or "").strip()
+        except Exception:
+            key = ""
+        return key if key in NAME_PROFILES else None
+
     def _species_name(self, upn_row: dict) -> str:
-        lang = self._species_lang
-        if lang == "EN":
-            return (upn_row.get("EngSoortNaam") or upn_row.get("NLSoortNaam")
-                    or upn_row.get("WetSoortNaam") or "").strip()
-        if lang == "Sci":
-            return (upn_row.get("WetSoortNaam") or upn_row.get("NLSoortNaam")
-                    or upn_row.get("EngSoortNaam") or "").strip()
-        return (upn_row.get("NLSoortNaam") or upn_row.get("EngSoortNaam")
-                or upn_row.get("WetSoortNaam") or "").strip()
+        from utils.name_profile import name_for
+        return name_for(upn_row, self._species_lang)
 
     def _populate_species_combo(self, restore_selection=None):
         self._species_combo.blockSignals(True)
@@ -1414,7 +1435,7 @@ class RatingEditorDialog(QDialog):
 
     def _on_lang_changed(self, _idx: int):
         old_selection = self._species_combo.currentData()  # name in old language, or None
-        self._species_lang = self._lang_combo.currentText()
+        self._species_lang = self._lang_combo.currentData()   # profile key
         self._populate_species_combo()  # rebuilds cards showing All species
 
         if old_selection is None or not self.fpr:

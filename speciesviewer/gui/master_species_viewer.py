@@ -52,7 +52,10 @@ class MasterSpeciesViewerDialog(QDialog):
         self._master_db = None
         self._master_root = None
         self._master_read_only = True
-        self._species_lang = "NL"
+        # Name-language profile for the captions (global default; the combo is a
+        # per-session override). The master has no per-trip scope.
+        from utils.name_profile import effective_profile
+        self._species_lang = effective_profile()
         self._jpg_only = True
         self._cards = []
         self._cards_by_key = {}
@@ -76,10 +79,17 @@ class MasterSpeciesViewerDialog(QDialog):
         self._species_field.returnPressed.connect(self._on_species_entered)
         top.addWidget(self._species_field)
 
+        # Name-language profile — which of NL/EN/Sci reads out (a fallback chain).
+        from utils.name_profile import profile_keys, profile_short_label
         self._lang_combo = QComboBox()
-        self._lang_combo.addItems(["NL", "EN", "Sci"])
-        self._lang_combo.setFixedWidth(72)
-        self._lang_combo.setToolTip("Species name language")
+        for _key in profile_keys():
+            self._lang_combo.addItem(profile_short_label(_key), _key)
+        self._lang_combo.setFixedWidth(92)
+        self._lang_combo.setToolTip("Which name shows under each picture "
+                                    "(name-language profile)")
+        _li = self._lang_combo.findData(self._species_lang)
+        if _li >= 0:
+            self._lang_combo.setCurrentIndex(_li)
         self._lang_combo.currentIndexChanged.connect(self._on_lang_changed)
         top.addWidget(self._lang_combo)
         top.addSpacing(12)
@@ -290,12 +300,12 @@ class MasterSpeciesViewerDialog(QDialog):
 
     # ── Species selection ──────────────────────────────────────────────────
     def _display_name_for(self, sci: str) -> str:
+        from utils.name_profile import name_for
         row = self._sci_to_row.get((sci or "").casefold(), {})
-        if self._species_lang == "EN":
-            return (row.get("en") or row.get("nl") or sci or "").strip()
-        if self._species_lang == "Sci":
-            return (sci or row.get("nl") or "").strip()
-        return (row.get("nl") or row.get("en") or sci or "").strip()
+        # Ensure the scientific name is available to the resolver even when the row
+        # doesn't carry it (the sci arg is authoritative here).
+        return name_for({**row, "sci": sci or row.get("sci", "")},
+                        self._species_lang) or (sci or "").strip()
 
     def _on_species_entered(self):
         if self._collection is None:
@@ -320,7 +330,7 @@ class MasterSpeciesViewerDialog(QDialog):
         self._rebuild_cards()
 
     def _on_lang_changed(self, _idx: int):
-        self._species_lang = self._lang_combo.currentText()
+        self._species_lang = self._lang_combo.currentData()   # profile key
         if self._current_sci:
             self._current_display = self._display_name_for(self._current_sci)
             self._species_field.setText(self._current_display)

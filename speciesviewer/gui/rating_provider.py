@@ -220,7 +220,7 @@ class RatingEditorItem(PictureItem):
 
 class RatingEditorCollection(PictureCollection):
     def __init__(self, fpr, day_objects, upn_day_map, *,
-                 jpg_only: bool = True, species_lang: str = "NL",
+                 jpg_only: bool = True, species_lang: str = "nl_en_sci",
                  loader: AsyncImageLoader | None = None,
                  view_read_only: bool = False):
         self.fpr = fpr
@@ -804,15 +804,8 @@ class RatingEditorCollection(PictureCollection):
 
     # ── helpers shared with items ─────────────────────────────────────────
     def species_name(self, row: dict) -> str:
-        lang = self._species_lang
-        if lang == "EN":
-            return (row.get("EngSoortNaam") or row.get("NLSoortNaam")
-                    or row.get("WetSoortNaam") or "").strip()
-        if lang == "Sci":
-            return (row.get("WetSoortNaam") or row.get("NLSoortNaam")
-                    or row.get("EngSoortNaam") or "").strip()
-        return (row.get("NLSoortNaam") or row.get("EngSoortNaam")
-                or row.get("WetSoortNaam") or "").strip()
+        from utils.name_profile import name_for
+        return name_for(row, self._species_lang)
 
     def _rep_file_row(self, upn_key: str) -> dict:
         """The representative (non-XMP) file row for EXIF — prefer a real
