@@ -318,6 +318,23 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
 
 <h3>To do</h3>
 <ul>
+  <li><strong>Name-language profiles for the caption under each picture</strong>
+    <span class="tag-shipped">SHIPPED</span> (<code>15bd3d1</code>, <code>a3c9075</code>) — which of NL/EN/Sci
+    reads out as the label under each picture is now a <strong>profile</strong> (an ordered fallback chain),
+    not a single language. Four presets: <strong>Dutch/English/Scientific</strong>,
+    <strong>English/Scientific</strong>, <strong>Dutch/Scientific</strong>, <strong>Scientific only</strong>.
+    The chains are chosen so <em>English/Scientific NEVER falls back to Dutch</em> (an American never sees a
+    Dutch name), and an African bird with no Dutch name simply lands on English/Sci — the Europe-vs-Africa
+    case, handled for free by the fallback. <strong>Precedence: per-trip override &rarr; global default.</strong>
+    The global default lives in <em>Global Settings &blacktriangleright; Preferred names</em> (where the
+    orphaned Window width/height fields, read by nothing, were removed — the app remembers its size); a
+    per-trip override lives in <em>Create Trip &blacktriangleright; Images &amp; Dates</em> (written to
+    <code>trip.ini</code>). Each viewer's combo is repurposed to the profiles as a per-session override.
+    <strong>Display only</strong> — website output and all species suggestion/editing untouched. The Create
+    Trip dialog's cryptic &ldquo;Write trip.ini&rdquo; button became <strong>&ldquo;Update Trip
+    Settings&rdquo;</strong> (writes trip.ini incl. Trip Text, no repository rebuild), now placed after Create.
+    Still open: the metadata-less virtual-trip Species Image Preview derives its caption from the folder name
+    (scientific), so it doesn't follow the profile yet.</li>
   <li><strong>Closed three viewer-capability-matrix gaps</strong> <span class="tag-shipped">SHIPPED</span>
     (2026-07-16) — a scan of what each grid viewer (Culling/Day, Virtual-Trip, Trip Species Viewer, Master)
     can do turned up gaps that were unwired rather than deliberate. Fixed: (1) <strong>&ldquo;#&rdquo; crop
