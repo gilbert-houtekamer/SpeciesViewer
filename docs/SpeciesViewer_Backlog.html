@@ -128,8 +128,20 @@ Cancel-during-copy, Lightroom-in-place, and tz-offset are validated.</p>
     <code>.dop</code>/<code>.xmp</code>, and draws over the RAW's full uncropped preview. The card/large
     view now also <strong>overlays an existing crop when showing a RAW's own preview</strong> (no JPG render
     yet), so a drawn crop shows up afterward — matching the culling viewer; a JPG render is already cropped
-    and shown as-is. Confirmed live on Kreta. Open idea: a subtle top-left marker on a JPG card to signal a
-    crop is present (and whether to surface LR/PL crops from their metadata).</li>
+    and shown as-is. Confirmed live on Kreta.</li>
+  <li><strong>&ldquo;#&rdquo; crop marker on the cards + filmstrip</strong> <span class="tag-shipped">SHIPPED</span>
+    (dab8dad) &mdash; a small <code>#</code> chip in a thumbnail&rsquo;s top-left signals the picture carries
+    a crop, over <strong>both</strong> the RAW preview and a baked JPG render (the crop lives in the RAW&rsquo;s
+    sidecar or is inferred, so it&rsquo;s known even though the JPG&rsquo;s pixels don&rsquo;t reveal it &mdash;
+    and that JPG is the website pick). Detection = a readable <code>.dop</code>/<code>.xmp</code> crop
+    <strong>OR</strong> a size cue (JPG long edge &le; 75% of the RAW&rsquo;s). The size cue matters because
+    DxO/LR renders and old master JPGs bake the crop into the pixels with <strong>no recoverable
+    rectangle</strong> &mdash; verified on a Gambia DxO XMP: only a vignette setting, no crop geometry, no
+    <code>.dop</code>. And since the user crops <strong>retaining aspect ratio</strong> (keeps the site
+    &ldquo;quieter&rdquo;), an aspect test would never fire &mdash; size is the signal. Covers trip and master
+    cards; it doubles as a &ldquo;has a developed JPG&rdquo; hint, which the user accepts. Style chosen from a
+    4-variant mock-up (small dark chip + white <code>#</code>). Still to wire: the virtual-trip Species Image
+    Preview (same baked-crop case; its rows carry the RAW size but not a JPG size).</li>
 </ul>
 
 <h3>Parked (by design)</h3>
