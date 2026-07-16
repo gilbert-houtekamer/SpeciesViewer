@@ -140,8 +140,17 @@ Cancel-during-copy, Lightroom-in-place, and tz-offset are validated.</p>
     <code>.dop</code>. And since the user crops <strong>retaining aspect ratio</strong> (keeps the site
     &ldquo;quieter&rdquo;), an aspect test would never fire &mdash; size is the signal. Covers trip and master
     cards; it doubles as a &ldquo;has a developed JPG&rdquo; hint, which the user accepts. Style chosen from a
-    4-variant mock-up (small dark chip + white <code>#</code>). Still to wire: the virtual-trip Species Image
-    Preview (same baked-crop case; its rows carry the RAW size but not a JPG size).</li>
+    4-variant mock-up (small dark chip + white <code>#</code>).</li>
+  <li><strong>&ldquo;#&rdquo; marker in the virtual-trip Species Image Preview too</strong>
+    <span class="tag-shipped">SHIPPED</span> (2125914) &mdash; the metadata-less file-list viewer had no
+    crop signal. Its flags are precomputed from the day&rsquo;s <code>data_files.csv</code> (already read for
+    the file list): each UPN&rsquo;s biggest <code>ImageSize</code> is the RAW, every JPG is scored by
+    <code>jpg_is_crop_by_size</code>. On the Gambia day this correctly marks the <code>_DxO.jpg</code> crops
+    (2000&times;1500) and leaves the <strong>full-frame <code>.JPG</code> exports</strong>
+    (5184&times;3888 &asymp; the RAW) unmarked. Two card fixes it exposed: the card now titles on the
+    <strong>species</strong> (the parent folder is the scientific name) instead of the bare filename; and the
+    key line shows the filename only, word-wrapped, so a long path can no longer blow out the grid column and
+    shrink every image (full path in the tooltip).</li>
 </ul>
 
 <h3>Parked (by design)</h3>
