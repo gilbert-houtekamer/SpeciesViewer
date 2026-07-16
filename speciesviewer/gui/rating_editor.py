@@ -847,6 +847,14 @@ class RatingEditorDialog(QDialog):
             "groups duplicate frames), or camera body")
         self._sort_combo.currentIndexChanged.connect(self._on_sort_changed)
         top.addWidget(self._sort_combo)
+        top.addSpacing(8)
+
+        # Map of where the SHOWN pictures of this species were photographed — the
+        # trip's own GPS points (plus the master reference points in Trip+Master).
+        self._map_btn = QPushButton("Map…")
+        self._map_btn.setToolTip("Plot the shown pictures of this species on a map")
+        self._map_btn.clicked.connect(self._on_show_map)
+        top.addWidget(self._map_btn)
         top.addStretch()
 
         self._jpg_btn = QPushButton("JPG only")
@@ -1435,6 +1443,36 @@ class RatingEditorDialog(QDialog):
 
     def _on_sort_changed(self, _idx: int):
         self._rebuild_cards()
+
+    def _on_show_map(self):
+        """Plot the SHOWN pictures of this species on a map — the trip's own GPS
+        points (and the master reference pictures' points in Trip+Master scope), so
+        it needs no master. Read-only for now: it shows where the species was
+        photographed; geotagging a no-GPS picture from here is a separate step (the
+        write path the culling map already has, to be ported to this collection)."""
+        if not self.fpr or self._collection is None:
+            return
+        keys = [c.upn_key for c in self._cards] or list(self._collection.all_keys())
+        if not keys:
+            QMessageBox.information(self, "Map",
+                                    "Select a species to plot its pictures.")
+            return
+        name = self._species_combo.currentData() or "this species"
+        old = getattr(self, "_map_dlg", None)
+        if old is not None:
+            try:
+                old.close()
+            except RuntimeError:
+                pass
+        from gui.map_view import TripMapView
+        dlg = TripMapView(
+            self, self._collection, keys,
+            title=f"Map — {name}", loader=self._collection._loader,
+            read_only=True,
+            read_only_note="Showing where this species was photographed. "
+                           "Geotagging a picture from the map is coming separately.")
+        self._map_dlg = dlg
+        dlg.show()
 
     def _selected_cameras(self) -> set:
         """The camera filter as a set: {model} when one is picked, else empty."""

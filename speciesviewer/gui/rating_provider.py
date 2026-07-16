@@ -68,10 +68,10 @@ class RatingEditorItem(PictureItem):
                    ((not self._master) or (not collection.master_read_only))
         self.can_edit_rating = editable
         self.can_edit_color = editable
-        # Description write-back uses the same per-day CSV routing as
-        # rating/colour, so it works for trip pictures. Master description
-        # write-back is not yet implemented.
-        self.can_edit_description = (not collection.view_read_only) and not self._master
+        # Description (the website story) writes back for trip pictures via the
+        # per-day CSV routing, and — like rating/colour — for master pictures when
+        # master writes are enabled on this machine (master.readonly = no).
+        self.can_edit_description = editable
 
     @property
     def from_master(self) -> bool:
@@ -115,6 +115,13 @@ class RatingEditorItem(PictureItem):
     @property
     def display_name(self) -> str:
         return self._c.species_name(self._row) or self._key
+
+    @property
+    def place_fields(self) -> dict:
+        """Place columns for a map bubble's tooltip (Location / City / …)."""
+        r = self._row
+        return {k: str(r.get(k, "") or "")
+                for k in ("Location", "City", "Municipality", "State")}
 
     @property
     def qualifier_suffix(self) -> str:
@@ -756,6 +763,42 @@ class RatingEditorCollection(PictureCollection):
     def index_of(self, key: str) -> int:
         return self._order.index(key)
 
+    # ── map support (read-only plotting) ──────────────────────────────────────
+    def all_keys(self) -> list[str]:
+        return list(self._order)
+
+    def species_keys(self) -> list[str]:
+        # The viewer shows one species at a time, so everything plotted is that
+        # species — the map's all/species scope buttons resolve to the same set.
+        return list(self._order)
+
+    def _files(self, upn_key: str) -> list[str]:
+        files = self._upn_row(upn_key).get("Files", [])
+        return files if isinstance(files, list) else []
+
+    def gps_cached(self, upn_key: str):
+        """(lat, lon) from ALREADY-LOADED rows — the UPN's GPSPosition, else a file
+        row's Composite:GPSPosition — so the map plots a whole species without an
+        exiftool spawn per picture. Master-aware (reads the master row for master
+        reference keys). None when there's no in-memory coordinate."""
+        from engine.geo import parse_gps_dms
+        row = self._upn_row(upn_key)
+        pos = (row.get("GPSPosition") or "").strip()
+        if pos:
+            ll = parse_gps_dms(pos)
+            if ll:
+                return ll
+        files_dict = self._files_dict_for(upn_key)
+        for fname in self._files(upn_key):
+            frow = files_dict.get(fname)
+            if frow:
+                pos = (frow.get("Composite:GPSPosition") or "").strip()
+                if pos:
+                    ll = parse_gps_dms(pos)
+                    if ll:
+                        return ll
+        return None
+
     def cancel_pending_loads(self) -> None:
         self._loader.cancel_all()
 
@@ -1145,7 +1188,9 @@ class RatingEditorCollection(PictureCollection):
 
     def apply_description(self, upn_key: str, value: str) -> None:
         if upn_key in self._master_keys:
-            return  # master description write-back not yet implemented
+            if not self._master_read_only:
+                self._apply_master_description(upn_key, value)
+            return
         upn_row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
         if not upn_row:
             return
@@ -1357,3 +1402,42 @@ class RatingEditorCollection(PictureCollection):
         except Exception as e:
             logger.error(f"master DB write failed for {upn_key}: {e}", exc_info=True)
         return new_rate
+
+    def _apply_master_description(self, upn_key: str, value: str) -> None:
+        """Write a master picture's website description to its XMP/JPG files, then
+        record it durably via MasterDB.apply_description. Mirrors
+        _apply_master_rating; master file paths are RELATIVE → rebuilt from
+        master_root. Publishing re-reads Description at render, so no rollup."""
+        upn_row = self._master_upn.get(upn_key)
+        if not upn_row or self._master_db is None or self._master_root is None:
+            return
+        rel_dir = (upn_row.get("TargetPath")
+                   or upn_row.get("BestJPGPathName") or "").strip()
+        files = upn_row.get("Files", [])
+        if not isinstance(files, list):
+            files = []
+        file_updates: dict[str, dict] = {}
+        for fname in files:
+            frow = self._master_files.get(fname)
+            if not frow:
+                continue
+            if frow.get("WindowsExtension", "").lower() not in ("xmp", "jpg", "jpeg"):
+                continue
+            if not rel_dir:
+                continue
+            fpath = self._master_root / rel_dir / fname
+            if not fpath.exists():
+                continue
+            try:
+                exiftool_write(fpath, [f"-XMP:Description={value}"])
+            except Exception as e:
+                logger.error(f"master description write failed for {fpath.name}: {e}")
+                continue
+            frow["XMP:Description"] = value
+            file_updates[fname] = {"XMP:Description": value}
+        upn_row["Description"] = value
+        try:
+            self._master_db.apply_description(upn_key, value, file_updates=file_updates)
+        except Exception as e:
+            logger.error(f"master DB description write failed for {upn_key}: {e}",
+                         exc_info=True)

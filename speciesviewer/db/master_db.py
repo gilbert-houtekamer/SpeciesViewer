@@ -1459,6 +1459,34 @@ class MasterDB:
 
     QUALIFIER_COLUMNS = ("subject", "malefemale", "ageintext", "summerwinter")
 
+    def apply_description(self, upn: str, description: str,
+                          file_updates: dict | None = None) -> bool:
+        """Set a master picture's website description (the 'story').
+
+        Writes the Description picture column and XMP:Description on its files,
+        journalled like every other master write. The species page reads
+        Description at render time, so this changes what is published but keeps no
+        rollup to re-derive here. Only the Description column is writable through
+        this door — a caller cannot smuggle another field in."""
+        con = self._connect()
+        prow = con.execute(
+            'SELECT 1 FROM pictures WHERE "UniquePictureName"=?', (upn,)).fetchone()
+        if prow is None:
+            return False
+        fields = {"Description": description}
+        entry = {"op": "description", "ts": time.time(), "upn": upn,
+                 "pictures": {upn: fields},
+                 "files": dict(file_updates or {})}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        with con:
+            self._set_picture_fields(con, upn, fields)
+            for fname, upd in (file_updates or {}).items():
+                self._set_file_fields(con, fname, upd)
+        MasterCheckpointWorker.get(self.master_root).notify()
+        return True
+
     def apply_qualifiers(self, upn: str, *, subject: str, malefemale: str,
                          ageintext: str, summerwinter: str,
                          file_updates: dict | None = None) -> bool:
