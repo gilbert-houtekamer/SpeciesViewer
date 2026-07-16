@@ -776,9 +776,9 @@ class RatingEditorDialog(QDialog):
         top.addWidget(self._day_combo)
         top.addSpacing(12)
 
-        top.addWidget(QLabel("Species:"))
         self._species_combo = QComboBox()
         self._species_combo.setMinimumWidth(200)
+        self._species_combo.setToolTip("Species to view")
         self._species_combo.currentIndexChanged.connect(self._on_species_changed)
         top.addWidget(self._species_combo)
         self._lang_combo = QComboBox()
@@ -791,7 +791,6 @@ class RatingEditorDialog(QDialog):
 
         # Camera filter — narrow the grid to one camera body (populated from the
         # loaded pictures' CameraModel). Handy on trips shot with two bodies.
-        top.addWidget(QLabel("Camera:"))
         self._camera_combo = QComboBox()
         self._camera_combo.setMinimumWidth(130)
         self._camera_combo.setToolTip("Show only pictures from this camera body")
@@ -802,7 +801,6 @@ class RatingEditorDialog(QDialog):
         # Sort order. Rate (best first) is the default; capture time groups
         # near-identical burst frames next to each other so blue-delete culling
         # of duplicates is easy; camera groups by body.
-        top.addWidget(QLabel("Sort:"))
         self._sort_combo = QComboBox()
         for label, data in (("Rate ↓", "rate"),
                             ("Time ↑", "time_asc"),
