@@ -86,6 +86,17 @@ class RatingEditorItem(PictureItem):
         return self._c.is_album_member(self._key)
 
     @property
+    def can_set_crop(self) -> bool:
+        """A crop suggestion is written to the RAW's DxO .dop / Lightroom .xmp for
+        PhotoLab to open with, so it needs a writable trip picture that has a RAW.
+        Master reference cards and the read-only Album viewer stay look-only.
+        Lazy (one disk stat) so building a species' grid pays nothing — only the
+        large viewer, which asks per shown picture, resolves it."""
+        if self._c.view_read_only or self._master:
+            return False
+        return self._c.raw_path(self._key) is not None
+
+    @property
     def _row(self) -> dict:
         return self._c._upn_row(self._key)
 
@@ -172,12 +183,25 @@ class RatingEditorItem(PictureItem):
             return
         self._c.apply_description(self._key, value)
 
+    def set_crop(self, crop: dict):
+        """Write the suggested crop to this trip picture's RAW sidecars (see the
+        collection). No-op past a read-only / master card."""
+        if not self.can_set_crop:
+            return None
+        return self._c.set_crop(self._key, crop)
+
     # async image
     def request_thumbnail(self, target_w: int, on_ready: PixmapCallback) -> None:
         self._c.request_image(self._key, target_w, on_ready)
 
     def request_full_pixmap(self, on_ready: PixmapCallback) -> None:
         self._c.request_image(self._key, None, on_ready)
+
+    def request_uncropped_pixmap(self, on_ready: PixmapCallback) -> None:
+        # The crop tool draws on the full frame, so it needs the RAW's uncropped
+        # embedded preview — not the (already-cropped) JPG render that
+        # request_full_pixmap would return.
+        self._c.request_uncropped_image(self._key, on_ready)
 
 
 class RatingEditorCollection(PictureCollection):
@@ -926,11 +950,46 @@ class RatingEditorCollection(PictureCollection):
     def request_image(self, upn_key: str, target_w, on_ready: PixmapCallback) -> None:
         def produce():
             p = self._image_path(upn_key)   # may extract RAW — off the GUI thread
+            if not (p and p.exists()):
+                return None
+            img = QImage(str(p))
+            if img.isNull():
+                return None
+            # When we're showing the RAW's own embedded preview (no JPG render
+            # yet), overlay any PhotoLab/Lightroom crop so the composition matches
+            # the edit — the same as the culling viewer. A JPG render is already
+            # cropped, so it's shown as-is.
+            if self.jpg_path(upn_key) is None:
+                from gui.picture_provider import crop_for, apply_crop
+                crop = crop_for(self.raw_path(upn_key))
+                if crop:
+                    img = apply_crop(img, crop)
+            return img
+        self._loader.request(produce, on_ready, target_w=target_w)
+
+    def request_uncropped_image(self, upn_key: str, on_ready: PixmapCallback) -> None:
+        """The RAW's full, UNCROPPED embedded preview — what the crop tool draws a
+        fresh rectangle over (request_image would hand back the cropped render)."""
+        def produce():
+            p = self._raw_thumb_path(upn_key)   # may extract RAW — off the GUI thread
             if p and p.exists():
                 img = QImage(str(p))
                 return img if not img.isNull() else None
             return None
-        self._loader.request(produce, on_ready, target_w=target_w)
+        self._loader.request(produce, on_ready, target_w=None)
+
+    def set_crop(self, upn_key: str, crop: dict):
+        """Write a suggested crop to a TRIP picture's DxO .dop / Lightroom .xmp so
+        the next PhotoLab/Lightroom edit opens with it (creating a sidecar if
+        missing). Returns sidecarlib's result dict, or None when there's no RAW.
+        Master cards are read-only here."""
+        if upn_key in self._master_keys:
+            return None
+        raw = self.raw_path(upn_key)
+        if not raw:
+            return None
+        from engine.sidecarlib import suggest_crop
+        return suggest_crop(str(raw), crop)
 
     def exif_for(self, upn_key: str) -> ExifSummary:
         upn = self._upn_row(upn_key)
