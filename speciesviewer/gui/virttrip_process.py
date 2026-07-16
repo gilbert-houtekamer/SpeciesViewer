@@ -1,6 +1,7 @@
 import webbrowser
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QCheckBox, QSpinBox, QTabWidget, QWidget, QLineEdit, QFileDialog, QApplication)
+    QCheckBox, QSpinBox, QTabWidget, QWidget, QLineEdit, QFileDialog, QApplication,
+    QComboBox)
 from PyQt6.QtCore import QThread, QObject, pyqtSignal, Qt
 import logging
 import os
@@ -40,6 +41,7 @@ def generate_virttrip_ini(
     message_en: str,
     logger,
     source_trip_id: str = "",
+    name_profile: str = "",
 ):
     ini_path = os.path.join(trip_root, "virttrip.ini")
 
@@ -73,6 +75,7 @@ web_slug = {web_slug}
 source_trip_id = {source_trip_id}
 fromdate = {from_date}
 todate = {to_date}
+name_profile = {name_profile}
 oneblog = day
 
 [trip_text]
@@ -612,6 +615,21 @@ class VirtualTripCreationDialog(QDialog):
         self.date_field.set_dates(trip_data.get("fromdate", ""), trip_data.get("todate", ""))
         layout2.addWidget(self.date_field)
 
+        layout2.addWidget(HTMLLabel(
+            "<p><b>Preferred names</b><br>"
+            "Which of Dutch / English / Scientific reads out as the label under each "
+            "picture in this virtual trip's viewers (a fallback chain). Leave on "
+            "<i>Default</i> to follow the global setting.</p>"))
+        from utils.name_profile import profile_keys, profile_label
+        self.name_profile_combo = QComboBox()
+        self.name_profile_combo.addItem("Default (global setting)", "")
+        for _k in profile_keys():
+            self.name_profile_combo.addItem(profile_label(_k), _k)
+        _np = (trip_data.get("name_profile") or "").strip()
+        _npi = self.name_profile_combo.findData(_np)
+        self.name_profile_combo.setCurrentIndex(_npi if _npi >= 0 else 0)
+        layout2.addWidget(self.name_profile_combo)
+
         tabs.addTab(tab2, "Images && Dates")
 
         # ── Tab 3: Trip Text ───────────────────────────────────────────────────
@@ -661,11 +679,18 @@ class VirtualTripCreationDialog(QDialog):
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        write_ini_btn = QPushButton("Write virttrip.ini")
+        write_ini_btn = QPushButton("Update Trip Settings")
+        write_ini_btn.setToolTip(
+            "Save this virtual trip's settings AND text (both this page and Trip "
+            "Text) to virttrip.ini — WITHOUT rebuilding. Use this to update an "
+            "existing virtual trip (e.g. its Preferred names). 'Create Virtual "
+            "Trip' is only for building a brand-new one.")
         create_btn    = QPushButton("Create Virtual Trip")
         select_btn    = QPushButton("Select")
-        btn_layout.addWidget(write_ini_btn)
+        # Create (build a brand-new virtual trip) first; Update Trip Settings (the
+        # everyday save for an existing one) after it.
         btn_layout.addWidget(create_btn)
+        btn_layout.addWidget(write_ini_btn)
         btn_layout.addWidget(select_btn)
         main_layout.addLayout(btn_layout)
 
@@ -749,7 +774,7 @@ class VirtualTripCreationDialog(QDialog):
 
     def on_write_ini_clicked(self):
         self._write_virttrip_ini()
-        self.passed_parent.status_bar.showMessage("virttrip.ini written.")
+        self.passed_parent.status_bar.showMessage("Virtual trip settings updated.")
 
     def on_create_clicked(self):
         self._write_virttrip_ini()
@@ -802,6 +827,7 @@ class VirtualTripCreationDialog(QDialog):
             self.title_en_field.get_text(),
             self.message_en_field.get_text(),
             self.logger,
+            name_profile=self.name_profile_combo.currentData() or "",
         )
 
 

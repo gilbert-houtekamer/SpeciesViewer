@@ -92,6 +92,8 @@ def read_virttrip_ini(trip_root: str):
         "source_trip_id": parser.get("trip_config", "source_trip_id", fallback=""),
         "fromdate":    parser.get("trip_config", "fromdate",    fallback=""),
         "todate":      parser.get("trip_config", "todate",      fallback=""),
+        # Per-virttrip name-language override (empty = follow the global default)
+        "name_profile":parser.get("trip_config", "name_profile",fallback=""),
         "title_nl":    parser.get("trip_text",   "title_nl",    fallback=""),
         "message_nl":  parser.get("trip_text",   "message_nl",  fallback=""),
         "title_en":    parser.get("trip_text",   "title_en",    fallback=""),

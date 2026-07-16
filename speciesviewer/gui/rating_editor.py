@@ -1285,11 +1285,18 @@ class RatingEditorDialog(QDialog):
         if not root:
             return None
         from utils.name_profile import NAME_PROFILES
+        key = ""
         try:
             from utils.trip_config import read_trip_ini
             key = ((read_trip_ini(root) or {}).get("name_profile") or "").strip()
         except Exception:
             key = ""
+        if not key:                       # a virtual trip has virttrip.ini instead
+            try:
+                from utils.virttrip_config import read_virttrip_ini
+                key = ((read_virttrip_ini(root) or {}).get("name_profile") or "").strip()
+            except Exception:
+                key = ""
         return key if key in NAME_PROFILES else None
 
     def _species_name(self, upn_row: dict) -> str:
