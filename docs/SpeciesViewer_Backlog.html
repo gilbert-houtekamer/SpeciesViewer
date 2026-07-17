@@ -433,7 +433,12 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     Denoise…&rdquo;</strong> with an editable Method→code table. &#9888; The <code>.dop</code> recipe schema
     <code>Version</code> is forward-incompatible (PL8&asymp;19.5 can&rsquo;t read a PL9 <code>20.6</code>
     <code>.dop</code> at all), so v8/v7 rows are best-effort; recipe downgrading is out of scope. FUTURE
-    (parked): map a virgin culling <code>.xmp</code> &rarr; a virgin <code>.dop</code>.</li>
+    <strong>Virgin culling <code>.xmp</code> &rarr; virgin <code>.dop</code> BUILT</strong> (<code>a2f0a05</code>,
+    &#9888; PL-honoring unverified): <code>sidecarlib.prepare_virgin_dop(raw)</code> seeds a from-scratch
+    <code>.dop</code> with the configured denoise method + maps any crop/exposure from the sibling culling
+    <code>.xmp</code> when a RAW opened in DxO has no <code>.dop</code>; no-op if the feature is off or a
+    <code>.dop</code> exists. Wired into <code>_open_in_dxo</code>. OPEN: does PL apply a <code>.dop</code> it
+    didn&rsquo;t author? &mdash; verify live.</li>
   <li><strong>A species-less blog day disappears (no crash, no empty post)</strong>
     <span class="tag-shipped">SHIPPED</span> (<code>8270aa8</code>, 2026-07-17) — a day with JPGs but no
     recognized species (and no landscape photo) used to crash WriteBlog with <code>KeyError: 'biota'</code>,
