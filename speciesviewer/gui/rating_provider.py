@@ -1296,6 +1296,20 @@ class RatingEditorCollection(PictureCollection):
                 upn_row["ImageSize"] = best_size
         upn_row["Rate"] = str(_compute_rate(upn_row, files_dict))
 
+    # ── large-viewer hook: right-click "Add new files (scan folder)" ──────────
+    def add_files_supported(self, key: str) -> bool:
+        """The large viewer offers "Add new files" only for an editable TRIP
+        picture — never a master reference card or a read-only (Album) view. The
+        Master Species Viewer keeps its own add on the card context menu."""
+        return (not self.view_read_only) and (key not in self._master_keys)
+
+    def add_files(self, key: str) -> dict:
+        """Large-viewer entry point → the trip-side folder scan/add. Returns
+        {"added", "jpg", "meta"}; "added" empty when nothing new was found."""
+        if key in self._master_keys:
+            return {"added": [], "jpg": 0, "meta": 0}
+        return self.add_trip_files(key)
+
     def apply_description(self, upn_key: str, value: str) -> None:
         if upn_key in self._master_keys:
             if not self._master_read_only:

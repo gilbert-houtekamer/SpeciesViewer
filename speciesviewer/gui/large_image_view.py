@@ -1468,11 +1468,62 @@ class LargeImageView(QDialog):
         menu = QMenu(self)
         act_geo = menu.addAction("Get location  (from GPS)")
         act_edit = menu.addAction("Edit location…  (type a place name)")
+        # "Add new files" only where the collection supports it (an editable trip
+        # picture) — the culling/album/master viewers won't advertise it.
+        act_add = None
+        key = self._item.key if self._item else None
+        supported = getattr(self._collection, "add_files_supported", None)
+        if key and callable(supported):
+            try:
+                if supported(key):
+                    menu.addSeparator()
+                    act_add = menu.addAction("Add new files (scan folder)…")
+            except Exception:
+                act_add = None
         chosen = menu.exec(event.globalPos())
         if chosen == act_geo:
             self._geolocate_current()
         elif chosen == act_edit:
             self._edit_location_current()
+        elif act_add is not None and chosen == act_add:
+            self._add_files_current()
+
+    def _add_files_current(self):
+        """Scan the current picture's folder for files that belong to its UPN but
+        aren't tracked yet (a freshly-rendered DxO JPG + its .dop) and pull them
+        in — the large-viewer twin of the grid card's right-click 'Add new files'."""
+        if self._item is None:
+            return
+        key = self._item.key
+        fn = getattr(self._collection, "add_files", None)
+        if not callable(fn):
+            return
+        try:
+            res = fn(key)
+        except Exception as e:
+            logger.error(f"Add files failed for {key}: {e}", exc_info=True)
+            QMessageBox.warning(self, "Add new files",
+                                f"Could not scan for new files:\n{e}")
+            return
+        added = res.get("added") if isinstance(res, dict) else None
+        if not added:
+            QMessageBox.information(
+                self, "Add new files",
+                "No new files found in the picture's folder.")
+            return
+        # A JPG (and maybe its .dop) joined the picture: refresh this viewer and
+        # tell the host to repaint + re-decode the grid card.
+        self._refresh_strip_items(key)
+        self._load_current()
+        self.picture_changed.emit(key)
+        self.picture_image_changed.emit(key)
+        parts = []
+        if res.get("jpg"):
+            parts.append(f"{res['jpg']} JPG" + ("s" if res["jpg"] != 1 else ""))
+        if res.get("meta"):
+            parts.append(f"{res['meta']} metafile" + ("s" if res["meta"] != 1 else ""))
+        QMessageBox.information(self, "Add new files",
+                                f"Added {' and '.join(parts)} to the picture.")
 
     def _cull_open_rating(self):
         # 'c' with no selection → act on the picture being viewed.
