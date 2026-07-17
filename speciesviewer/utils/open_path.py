@@ -53,20 +53,27 @@ def reveal_path(path) -> bool:
 
 
 def reveal_group(folder, query) -> bool:
-    """Open the OS file manager in `folder`, pre-filtered to `query` (typically
-    the UPN, e.g. "2015 juli nl dsc_6297") so only the picture's files show.
+    """Open the OS file manager in `folder`, pre-filtered to `query` (the UPN,
+    e.g. "2015 juli nl dsc_6297") so only the picture's files show.
 
-    Windows: launches Explorer with a `search-ms:` URI — the same search Explorer
-    runs when you type the UPN into its search box from inside the folder.
-    macOS/Linux: falls back to opening the folder unfiltered; Finder/xdg-open
-    don't take a search query on the command line.
+    Windows: launches Explorer with a `search-ms:` URI. We DON'T search for the
+    full UPN — Windows Search parses a multi-word, hyphenated string like
+    "2026 kreta-n3173237" as a natural-language query and returns nothing (user
+    confirmed: 0 hits). Instead we search the UPN's unique tail as a filename
+    wildcard, `*<last 8 chars>` (e.g. `*n3173237`), which is plain glob matching
+    and reliably returns the whole group (.ORF / .XMP / .dop / .jpg) — the exact
+    workaround the user verified in Explorer. macOS/Linux: fall back to opening
+    the folder unfiltered; Finder/xdg-open don't take a search query on argv.
     """
     if sys.platform.startswith("win"):
         import os
         from urllib.parse import quote
         try:
+            tail = str(query)[-8:]                 # camera file id, e.g. "n3173237"
+            search = f"*{tail}"
             folder_q = quote(str(folder), safe="")
-            query_q = quote(str(query), safe="")
+            # Keep the `*` literal — it's the wildcard that makes this match.
+            query_q = quote(search, safe="*")
             # Dispatch the URI via ShellExecuteEx (os.startfile) — passing it as
             # an explorer.exe argv made Windows split the URL on the `&` and try
             # to open the orphan `location:...` part as its own protocol, which
