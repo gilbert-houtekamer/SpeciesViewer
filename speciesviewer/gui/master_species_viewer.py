@@ -615,15 +615,32 @@ class MasterSpeciesViewerDialog(QDialog):
         dlg.picture_changed.connect(self._on_large_view_changed)
         dlg.picture_navigated.connect(self._on_large_view_navigated)
         self._large_view = dlg
-        dlg.finished.connect(lambda _=0: setattr(self, "_large_view", None))
+        dlg.finished.connect(self._on_large_view_finished)
         dlg.show()
 
+    def _sync_all_cards(self):
+        """Repaint every card from live data — cheap (text/widgets only, no
+        thumbnail re-decode). A card occluded by the large view can drop its
+        colour/Rate repaint; syncing them all closes that gap."""
+        for card in self._cards:
+            try:
+                card.refresh()
+            except RuntimeError:
+                pass
+
     def _on_large_view_changed(self, key: str):
-        card = self._cards_by_key.get(key)
-        if card:
-            card.refresh()
+        # Repaint EVERY card, not just `key`: one action can touch several
+        # pictures, and a card hidden behind the large view can miss its repaint.
+        self._sync_all_cards()
         self._resort_if_needed(focus_key=key)
         self._status.setText(f"Saved {key}")
+
+    def _on_large_view_finished(self, _=0):
+        # The grid is visible again — guarantee it matches the data even if the
+        # last edit's repaint was dropped while occluded.
+        self._large_view = None
+        self._sync_all_cards()
+        self._resort_if_needed(focus_key=self._last_clicked_key)
 
     def _on_large_view_navigated(self, key: str):
         self._on_card_cursor(key)

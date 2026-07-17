@@ -1586,17 +1586,32 @@ class RatingEditorDialog(QDialog):
         dlg.picture_navigated.connect(self._on_large_view_navigated)
         dlg.selection_changed.connect(self._on_large_view_selection_changed)
         self._large_view = dlg
-        dlg.finished.connect(lambda _=0: setattr(self, "_large_view", None))
+        dlg.finished.connect(self._on_large_view_finished)
         dlg.show()
 
-    def _on_large_view_changed(self, key: str):
-        # The viewer already wrote the edit via the provider; repaint that card
-        # and re-sort the grid so the new Rate reorders it.
-        card = self._cards_by_key.get(key)
-        if card:
+    def _sync_all_cards(self):
+        """Repaint every card from live data — cheap (text/widgets only, no
+        thumbnail re-decode)."""
+        for card in self._cards:
             card.refresh()
+
+    def _on_large_view_changed(self, key: str):
+        # The viewer already wrote the edit via the provider. Repaint EVERY card
+        # from live data, not just `key`: one action can change several pictures
+        # (auto-advance, Apply-to-selected, the batch dialog) and a single missed
+        # picture_changed emit used to leave a card showing a stale colour/Rate
+        # until a full rebuild. Refresh is text-only, so this is cheap. Then
+        # re-sort so the new Rates reorder the grid.
+        self._sync_all_cards()
         self._resort_if_needed(focus_key=key)
         self._status.setText(f"Saved {key}")
+
+    def _on_large_view_finished(self, _=0):
+        # Belt-and-braces: even if the very last edit's emit was missed, the grid
+        # matches the data once the large view closes.
+        self._large_view = None
+        self._sync_all_cards()
+        self._resort_if_needed(focus_key=self._last_clicked_key)
 
     def _on_large_view_image_changed(self, key: str):
         # The picture's IMAGE changed (a crop was written), not just its metadata —
