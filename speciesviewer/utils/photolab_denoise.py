@@ -31,12 +31,16 @@ logger = logging.getLogger("speciesviewer")
 
 INI_PATH = CONFIG_DIR / "photolab_denoise.ini"
 
-# label -> .dop code. "" = Standard (NoiseActive=true only; base method stays
-# "standard"). Insertion order is the order the GUI lists them.
-# v9 is fully CONFIRMED live in PL9 (before/after .dop diffs): Standard writes
-# NoiseActive only; DeepPRIME 3 = DeepRaw2RGBv6; DeepPRIME XD3 = DeepRaw2RGBv7.
-# v8/v7 codes are harvested-but-inferred; PL8's sidecar path did not even honour a
-# crop in the user's test, so treat them as a starting point and edit in the GUI.
+# label -> .dop code. "" = Standard / High Quality (NoiseActive=true only; base
+# method stays "standard"). Insertion order is the order the GUI lists them.
+# ALL THREE user-validated live (menu labels match each PhotoLab version's own UI;
+# PL7 still calls it "High Quality", PL8/PL9 renamed it "Standard"):
+#   v9: DeepPRIME 3 = DeepRaw2RGBv6, DeepPRIME XD3 = DeepRaw2RGBv7
+#   v8: PRIME = ultra, DeepPRIME XD2 = DeepRaw2RGBv4, DeepPRIME 3 = DeepRaw2RGBv6
+#   v7: PRIME = ultra, DeepPRIME = DeepRaw2RGB, DeepPRIME XD = DeepRaw2RGBv2
+# Caveat: the .dop recipe schema Version is forward-incompatible, so v8/v7 only
+# take on a .dop that PhotoLab of THAT version authored (delete the .dop, let PL
+# make a fresh one, then crop). Editable in the GUI if a menu ever changes.
 _DEFAULT_MAP = {
     "v9": {
         "Standard": "",
@@ -45,16 +49,15 @@ _DEFAULT_MAP = {
     },
     "v8": {
         "Standard": "",
-        "DeepPRIME": "DeepRaw2RGB",
-        "DeepPRIME XD": "DeepRaw2RGBv2",
+        "PRIME": "ultra",
         "DeepPRIME XD2": "DeepRaw2RGBv4",
         "DeepPRIME 3": "DeepRaw2RGBv6",
     },
     "v7": {
-        "Standard": "",
+        "High Quality": "",
+        "PRIME": "ultra",
         "DeepPRIME": "DeepRaw2RGB",
         "DeepPRIME XD": "DeepRaw2RGBv2",
-        "DeepPRIME XD2": "DeepRaw2RGBv4",
     },
 }
 _DEFAULT_SELECTION = {"version": "v9", "method": "DeepPRIME XD3", "enabled": "no"}
