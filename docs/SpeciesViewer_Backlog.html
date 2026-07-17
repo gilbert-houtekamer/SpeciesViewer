@@ -376,6 +376,22 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     <code>Files</code> list (the master&rsquo;s truth), so the scan is idempotent and case-insensitive.
     Verified against real <code>N3161031</code>: the resulting Rate equals a full re-read
     (<code>projectlib.computeRating == _compute_rate == 30</code>).</li>
+  <li><strong>Camera JPEG tab is a zoomable fit view — and now the primary zoom</strong>
+    <span class="tag-shipped">SHIPPED</span> (<code>03c66a2</code> + <code>2c9d27b</code>, 2026-07-17) — the
+    Camera JPEG tab used to refuse a sub-sensor embed (the OM-1 writes only a 3200&times;2400 preview; the odd
+    Nikon NEF a tiny one) and show a wall of text sending you to the decode tab. But that preview is usually
+    plenty, and zoomed to 1:1 it is already pixel-for-pixel. <code>_FullResView</code> gained a
+    <strong>zoomable mode</strong> (the Camera JPEG tab; the 80% decode tab keeps its 1:1-pan behaviour): the
+    image <strong>opens fit-to-window and the wheel zooms in to 1:1</strong> (capped there &mdash; no real
+    detail past it; fit never upscales a tiny embed), double-click toggles fit &hArr; 1:1, drag pans. Two corner
+    badges &mdash; bottom-left names the source (&ldquo;OM-1 Mark II &middot; camera JPEG 3200&times;2400
+    &middot; preview only&rdquo;), top-left is the interaction hint (&ldquo;Scroll to zoom &middot; double-click
+    for 1:1 &middot; drag to pan&rdquo;); both hide behind a message. <strong>Step 2</strong> made it the go-to
+    zoom: <strong>tab order &rarr; Fit &middot; Camera JPEG &middot; 80%</strong> (slow decode last),
+    <strong>double-click the Fit image &rarr; Camera JPEG</strong> (was 80%), <code>F</code> toggles Fit &hArr;
+    Camera JPEG. Every hard-coded view-tab index (~13 sites) became a named constant. Shared
+    <code>LargeImageView</code>, so <strong>all viewers</strong> (culling, Trip Species Viewer, virtual-trip,
+    master, map) get it.</li>
   <li><strong>Master Species Viewer</strong> <span class="tag-shipped">SHIPPED</span> —
     standalone viewer for the master itself (<em>Master → Master Species Viewer…</em>),
     <strong>scope = Master only</strong> with a searchable ~2000-species field driven by the
