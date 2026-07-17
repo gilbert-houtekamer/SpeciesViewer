@@ -119,20 +119,43 @@ def main(args, config):
 
     blog.prepareBlogCreation(sftp)
 
-    # make them
-    blog.makeRunSummaryPost('biota', 'nl')
-    MyProject.setSkipJPGs(True)
-    blog.makeRunSummaryPost('biota', 'en')
-    MyProject.setSkipJPGs(False)
+    # A day can hold JPGs but no recognized species (and no landscape photos) —
+    # that renders an EMPTY post. Rather than publish a placeholder, make the day
+    # disappear: drop it from the blog admin + index (and remove any post already
+    # published for it on the server).
+    empty = not blog.dayHasContent()
+    result_msg = None
+    if empty:
+        was_present = blog.removeEmptyDay()
+        logger.info(f"{blog.getBlogDay()}: no recognized species and no landscape "
+                    f"photos — day removed from the blog"
+                    f"{' (prior post pruned)' if was_present else ''}.")
+        # A distinct GUI message: nothing was created, so don't claim it was.
+        result_msg = "✅ No species this day — no blog created."
+    else:
+        # make them
+        blog.makeRunSummaryPost('biota', 'nl')
+        MyProject.setSkipJPGs(True)
+        blog.makeRunSummaryPost('biota', 'en')
+        MyProject.setSkipJPGs(False)
 
-    blog.write_BlogAdmin()
-    logger.info(f"""Created summary blog in "{MyProject.getBiotaBlogWeb() + blog.getBlogDay() + '/'}" in Dutch and English versions.""")
-    blog.updateIndexPage()
+        blog.write_BlogAdmin()
+        logger.info(f"""Created summary blog in "{MyProject.getBiotaBlogWeb() + blog.getBlogDay() + '/'}" in Dutch and English versions.""")
+        blog.updateIndexPage()
 
     if MyProject.online:
         location_cache = os.path.join(MyProject.getRepositoryPath(), 'admin/FTPcache.json')
         sftp.openFTPCache(location_cache)
-        blog.uploadBlog(sftp)
+        if empty:
+            # Remove any previously-published post for this now-empty day; harmless
+            # when it was never published (the removes just 404).
+            try:
+                blog.removeBlogArtifacts(sftp, blog.getBlogDay())
+            except Exception as e:
+                logger.info(f"removeBlogArtifacts (empty day; may not exist yet): {e}")
+        else:
+            blog.uploadBlog(sftp)
+        # Always push the rebuilt index + admin so the removed day drops off the site.
         blog.uploadBlogIndex(sftp)
         blog.uploadBlogAdmin(sftp)
         # Disconnect from SFTP
@@ -141,15 +164,23 @@ def main(args, config):
 
     # remember translations
     blog.mp.ct.writeTranslationCache()
-     
+
     totaltime = time.time() - starttime
     logger.info(f'Total time for all other work {totaltime:.1f} seconds.')
     blog.logExcludedSpecies()
 
-    # Write the blog post URL so the GUI can open it after completion
-    blog_url = MyProject.getBiotaBlogWeb() + blog.getBlogDay() + '-nl.html'
+    # Write a URL so the GUI can open something after completion: the day's post
+    # normally, or the blog index when the (empty) day was removed.
+    if empty:
+        blog_url = MyProject.getBiotaBlogWeb() + 'blog index-nl.html'
+    else:
+        blog_url = MyProject.getBiotaBlogWeb() + blog.getBlogDay() + '-nl.html'
     with open("last_blog_url.txt", "w") as f:
         f.write(blog_url)
+
+    # Overrides the step's static "✅ Blog successfully created." message in the GUI
+    # (None → the static message is used, for a normally-created blog).
+    return result_msg
 
 
 if __name__ == "__main__":

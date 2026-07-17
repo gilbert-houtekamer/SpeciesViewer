@@ -180,6 +180,45 @@ class Blog:
 
         return
 
+    def dayHasContent(self):
+        """True when THIS day's post would actually show something: at least one
+        picture IN THE DAY'S TIME WINDOW that carries a recognized species, or a
+        landscape 'blog extra' that has a JPG.
+
+        Deliberately checks the day's own pictures, NOT 'biota' in the species
+        tree — the tree also holds the master's committed species from other days,
+        so it is True even for a species-less day. Conservative: a day with a
+        species is kept even if its JPGs aren't rendered yet (it reappears fully
+        once they are); only a day with NEITHER a species NOR a landscape photo is
+        judged empty and dropped by the caller (removeEmptyDay)."""
+        MyProject = self.mp
+        from engine.speciesclassification import SpeciesClassification
+        try:
+            for upn in MyProject.UniquePictureName_dict.values():
+                dto = upn.get('DateTimeOriginal', '')
+                if not (self.from_time <= dto <= self.last_time):
+                    continue
+                if (upn.get('WetSoortNaam') or '').strip():
+                    return True
+                if upn.get('BestJPG') and SpeciesClassification.isBlogExtra(
+                        upn.get('subject', '')):
+                    return True
+        except Exception as e:
+            logger.warning(f"dayHasContent check failed: {e}")
+            return True   # on doubt, keep the day — never drop content on an error
+        return False
+
+    def removeEmptyDay(self):
+        """Drop the current content-less day from the blog admin and rebuild the
+        index so it no longer appears as an empty post. Server-side post/picture
+        artifacts are cleared by the caller via removeBlogArtifacts. Returns True
+        when the day was actually registered (this run or a prior one)."""
+        present = self.blogday in self.blog_dict
+        self.blog_dict.pop(self.blogday, None)
+        self.write_BlogAdmin()
+        self.updateIndexPage()
+        return present
+
     def read_BlogAdmin(self, filename=""):
         # 1. get the file from disk first
         if filename == "":
@@ -300,11 +339,25 @@ class Blog:
             MyProject.breadcrumb.addBCsimple(MyProject.Trip.web_prefix + MyProject.Trip.tripname + "/biotablog/blog index-en.html", "Blog Index")
             MyProject.breadcrumb.addBCsimple(MyProject.Trip.web_prefix + MyProject.Trip.tripname + "/biotablog/" +  self.getBlogDay() + "-en.html",  "Blog " + self.getBlogDay()[25:35] + ' - ' + MyProject.Blog.TitleNl)
           
-        self.CountJPG = 1                
+        self.CountJPG = 1
         speciesoftheday = MyProject.getTemplateLines(template)
+        # A day can have JPGs but no recognized species yet (culling-first, or a
+        # landscape-only day), so the species tree has no 'biota' root. The direct
+        # lookup used to crash the whole website build with KeyError: 'biota'. Fall
+        # back to a minimal root instead: the summary token still folds in the
+        # landscape "blog extras" (collectBlogExtras) and the species walk degrades
+        # gracefully, so the day renders — its landscape photos, or an empty grid —
+        # rather than killing the run. Mirrors projectlib's own 'biota'-missing guard.
+        species_node = MyProject.sp.species_dict.get(speciesname)
+        if species_node is None:
+            logger.warning(
+                f"makeRunSummaryPost: no '{speciesname}' in the species tree for "
+                f"{self.getBlogDay()} (JPG/landscape-only day) — rendering a "
+                f"species-less blog post.")
+            species_node = {"ScientificName": speciesname, "Leaves": []}
         with open((biotablog + self.getBlogDay() + '-' + language + '.html'), "w", encoding='UTF-8') as fileSummaryPost:
             for templateline in speciesoftheday:
-                line = getTemplateOutputString(MyProject, MyProject.sp.species_dict[speciesname], '', '', templateline.rstrip('\n'))
+                line = getTemplateOutputString(MyProject, species_node, '', '', templateline.rstrip('\n'))
                 print(line, file=fileSummaryPost)
             fileSummaryPost.close()
 
@@ -318,7 +371,7 @@ class Blog:
         sliders = MyProject.getTemplateLines(slidertemplate)
         with open((biotablog + self.getBlogDay() + '-slider-' + language + '.html'), "w", encoding='UTF-8') as fileSlider:
             for templateline in sliders:
-                line = getTemplateOutputString(MyProject, MyProject.sp.species_dict[speciesname], '', '', templateline.rstrip('\n'))
+                line = getTemplateOutputString(MyProject, species_node, '', '', templateline.rstrip('\n'))
                 print(line, file=fileSlider)
             fileSlider.close()
 

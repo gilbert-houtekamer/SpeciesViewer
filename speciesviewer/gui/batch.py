@@ -286,7 +286,7 @@ class ChainedBatchRunner:
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
 
-        def on_done(errorstring, _result_msg, idx=index, sname=statusname, amsg=after_msg,
+        def on_done(errorstring, result_msg, idx=index, sname=statusname, amsg=after_msg,
                     pre=pre_fingerprint):
             self._thread.quit()
             self._thread.wait()
@@ -300,7 +300,7 @@ class ChainedBatchRunner:
                 self._spinner.close()
                 self._on_complete()
             else:
-                self._logger.info(amsg)
+                self._logger.info(result_msg if result_msg else amsg)
                 post = _csv_fingerprint(self._sm.Directory, sname)
                 self._sm.updateState(sname, True, "Successfully run.",
                                      invalidate_downstream=_should_invalidate(pre, post))
@@ -454,7 +454,7 @@ class ColumnBatchRunner:
                     self._main_window.update_trip_cell(d_str, cell_key, "❌", f"{sname} failed: {errorstring}")
             else:
                 self._successes += 1
-                self._logger.info(f"{amsg} — {d_str}")
+                self._logger.info(f"{result_msg if result_msg else amsg} — {d_str}")
                 for key in (extras + [sname]):
                     post = _csv_fingerprint(sm_ref.Directory, key)
                     sm_ref.updateState(key, True, "Successfully run.",
