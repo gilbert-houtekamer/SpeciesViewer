@@ -51,7 +51,14 @@ class Blog:
     def __init__(self, MyProject):
         MyProject.registerBlog(self)
         self.mp = MyProject
-        return 
+        # blog_dict is declared as a CLASS attribute above, so without this every
+        # Blog instance shared ONE dict for the whole app session. read_BlogAdmin
+        # only ever ADDS (addBlog), never clears — so a blog pruned from
+        # blog_admin.csv (e.g. an empty day) lingered in the shared dict from an
+        # earlier instance and kept reappearing in every rebuilt index. Give each
+        # instance its own dict so a rebuild reflects exactly the current CSV.
+        self.blog_dict = {}
+        return
 
     def initBlog(self, 
                  title_nl, title_en, message_nl, message_en, blogjpg,
