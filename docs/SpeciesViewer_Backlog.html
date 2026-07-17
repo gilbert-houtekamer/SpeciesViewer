@@ -421,8 +421,10 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     Overrides block beside the crop: <code>NoiseActive = true</code> + <code>NoiseRemovalMethod = "&lt;code&gt;"</code>
     (omitted for Standard). Codes are <strong>PhotoLab-version specific</strong>, so they live in a per-version,
     per-machine <code>photolab_denoise.ini</code> (seeded from codes harvested from the user&rsquo;s own
-    <code>.dop</code> library, <strong>editable in the GUI</strong>). Confirmed in PL9: DeepPRIME&nbsp;3 =
-    <code>DeepRaw2RGBv6</code>, DeepPRIME&nbsp;XD3 = <code>DeepRaw2RGBv7</code>. New
+    <code>.dop</code> library, <strong>editable in the GUI</strong>). Validated live across PL7/PL8/PL9
+    (<code>b8f0173</code>): v9 DeepPRIME&nbsp;3 = <code>DeepRaw2RGBv6</code> / XD3 = <code>DeepRaw2RGBv7</code>;
+    v8 PRIME = <code>ultra</code> / XD2 = <code>DeepRaw2RGBv4</code>; v7 DeepPRIME = <code>DeepRaw2RGB</code> /
+    XD = <code>DeepRaw2RGBv2</code> (PL7 labels it &ldquo;High Quality&rdquo;, PL8/9 &ldquo;Standard&rdquo;). New
     <code>utils/photolab_denoise.py</code> + <code>sidecarlib.write_dop_edits(denoise=…)</code> (idempotent
     Overrides merge, wired into <code>suggest_crop</code> only) + <strong>File ▸ Settings ▸ &ldquo;PhotoLab
     Denoise…&rdquo;</strong> with an editable Method→code table. &#9888; The <code>.dop</code> recipe schema
