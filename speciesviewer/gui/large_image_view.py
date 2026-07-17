@@ -399,13 +399,19 @@ class FilmstripWidget(QWidget):
 
 
 class _FullResView(QScrollArea):
-    """1:1 viewport onto a full-resolution image. Drag with the left button to
-    pan; the viewport-centre position is reported (normalised) so the host can
-    keep the same spot when flipping through a group — the sharpest-of-similar
-    comparison. Messages (decoding / skipped / no-RAW) render in place of an image."""
+    """A viewport onto a full-resolution image. Drag with the left button to pan;
+    the viewport-centre position is reported (normalised) so the host can keep the
+    same spot when flipping through a group — the sharpest-of-similar comparison.
+    Messages (decoding / skipped / no-RAW) render in place of an image.
+
+    Default (the 80% decode tab): shown at 1:1, pan by drag. With ``zoomable=True``
+    (the Camera JPEG tab) the image opens FIT to the window and the wheel zooms it
+    in to 1:1 — an embedded camera JPEG (e.g. the OM-1's 3200×2400) is smaller than
+    the sensor, so 1:1 is already pixel-for-pixel and there is no reason to go past
+    it. Double-click toggles fit ⇄ 1:1; a small corner overlay names the source."""
     point_changed = pyqtSignal(float, float)  # normalised centre (fx, fy)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, zoomable: bool = False):
         super().__init__(parent)
         self.setWidgetResizable(False)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -419,36 +425,152 @@ class _FullResView(QScrollArea):
         self._label.mousePressEvent = self._on_press
         self._label.mouseMoveEvent = self._on_move
         self._label.mouseReleaseEvent = self._on_release
+        # Zoomable (Camera JPEG) mode.
+        self._zoomable = bool(zoomable)
+        self._scale = 1.0          # display px per image px
+        self._fit = False          # currently fit-to-window (track window resizes)
+        self._overlay = None
+        if self._zoomable:
+            self._label.mouseDoubleClickEvent = self._on_double_click
+            self._overlay = QLabel(self.viewport())
+            self._overlay.setStyleSheet(
+                "QLabel{background:rgba(0,0,0,150);color:#eee;"
+                "padding:2px 7px;border-radius:3px;font-size:11px;}")
+            self._overlay.hide()
 
     def set_message(self, text):
         self._pixmap = QPixmap()
         self._label.setPixmap(QPixmap())
         self._label.setText(text)
         self._label.resize(self.viewport().size())
+        if self._overlay is not None:
+            self._overlay.hide()
 
-    def set_image(self, pixmap, point):
+    def set_image(self, pixmap, point, *, overlay: str = ""):
         self._pixmap = pixmap
         self._label.setText("")
-        self._label.setPixmap(pixmap)
-        self._label.resize(pixmap.size())
-        self._center_on(point)
+        if self._zoomable:
+            self._fit = True
+            self._scale = self._fit_scale()
+            self._render_scaled()
+            self._center_on((0.5, 0.5))
+            if self._overlay is not None:
+                if overlay:
+                    self._overlay.setText(overlay)
+                    self._overlay.adjustSize()
+                    self._overlay.show()
+                    self._overlay.raise_()
+                    self._position_overlay()
+                else:
+                    self._overlay.hide()
+        else:
+            self._label.setPixmap(pixmap)
+            self._label.resize(pixmap.size())
+            self._center_on(point)
+
+    # ── zoom (zoomable mode only) ──────────────────────────────────────────
+    def _fit_scale(self) -> float:
+        """Scale that shows the whole image in the viewport — never above 1:1, so a
+        small embed fills at most its own pixels rather than upscaling to blur."""
+        if self._pixmap.isNull():
+            return 1.0
+        vw, vh = self.viewport().width(), self.viewport().height()
+        pw, ph = self._pixmap.width(), self._pixmap.height()
+        if pw <= 0 or ph <= 0:
+            return 1.0
+        return min(vw / pw, vh / ph, 1.0)
+
+    def _scaled_size(self):
+        if self._zoomable and not self._pixmap.isNull():
+            return (self._pixmap.width() * self._scale,
+                    self._pixmap.height() * self._scale)
+        return (self._pixmap.width(), self._pixmap.height())
+
+    def _render_scaled(self):
+        if self._pixmap.isNull():
+            return
+        w = max(1, int(round(self._pixmap.width() * self._scale)))
+        h = max(1, int(round(self._pixmap.height() * self._scale)))
+        scaled = self._pixmap.scaled(
+            w, h, Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation)
+        self._label.setPixmap(scaled)
+        self._label.resize(scaled.size())
+
+    def _set_scale(self, new_scale, anchor=None):
+        """Zoom to ``new_scale`` (clamped fit…1:1) keeping the image point under
+        ``anchor`` (a viewport point) stationary; anchor=None keeps the centre."""
+        new_scale = max(self._fit_scale(), min(1.0, new_scale))
+        if abs(new_scale - self._scale) < 1e-4:
+            return
+        if anchor is None:
+            ax, ay = self.viewport().width() / 2, self.viewport().height() / 2
+        else:
+            ax, ay = anchor.x(), anchor.y()
+        old_w = max(1.0, self._pixmap.width() * self._scale)
+        old_h = max(1.0, self._pixmap.height() * self._scale)
+        fx = (self.horizontalScrollBar().value() + ax) / old_w
+        fy = (self.verticalScrollBar().value() + ay) / old_h
+        self._scale = new_scale
+        self._fit = abs(new_scale - self._fit_scale()) < 1e-4
+        self._render_scaled()
+        new_w = max(1.0, self._pixmap.width() * self._scale)
+        new_h = max(1.0, self._pixmap.height() * self._scale)
+        self.horizontalScrollBar().setValue(int(fx * new_w - ax))
+        self.verticalScrollBar().setValue(int(fy * new_h - ay))
+        self._emit_point()
+
+    def wheelEvent(self, event):
+        if not self._zoomable or self._pixmap.isNull():
+            return super().wheelEvent(event)
+        dy = event.angleDelta().y()
+        if dy == 0:
+            return super().wheelEvent(event)
+        self._set_scale(self._scale * (1.25 if dy > 0 else 1 / 1.25),
+                        anchor=event.position().toPoint())
+        event.accept()
+
+    def _on_double_click(self, e):
+        if self._pixmap.isNull():
+            return
+        if self._fit:
+            self._set_scale(1.0, anchor=e.position().toPoint())   # inspect at 1:1
+        else:
+            self._scale = self._fit_scale()
+            self._fit = True
+            self._render_scaled()
+            self._center_on((0.5, 0.5))
+            self._emit_point()
+
+    def _position_overlay(self):
+        if self._overlay is None or self._overlay.isHidden():
+            return
+        m = 8
+        self._overlay.move(m, self.viewport().height() - self._overlay.height() - m)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if self._zoomable and self._fit and not self._pixmap.isNull():
+            self._scale = self._fit_scale()
+            self._render_scaled()
+            self._center_on((0.5, 0.5))
+        self._position_overlay()
 
     def _center_on(self, point):
         if self._pixmap.isNull():
             return
         fx, fy = point
-        self.horizontalScrollBar().setValue(
-            int(fx * self._pixmap.width()) - self.viewport().width() // 2)
-        self.verticalScrollBar().setValue(
-            int(fy * self._pixmap.height()) - self.viewport().height() // 2)
+        sw, sh = self._scaled_size()
+        self.horizontalScrollBar().setValue(int(fx * sw) - self.viewport().width() // 2)
+        self.verticalScrollBar().setValue(int(fy * sh) - self.viewport().height() // 2)
 
     def _emit_point(self):
         if self._pixmap.isNull():
             return
+        sw, sh = self._scaled_size()
         cx = self.horizontalScrollBar().value() + self.viewport().width() // 2
         cy = self.verticalScrollBar().value() + self.viewport().height() // 2
-        self.point_changed.emit(cx / max(1, self._pixmap.width()),
-                                cy / max(1, self._pixmap.height()))
+        self.point_changed.emit(cx / max(1.0, sw), cy / max(1.0, sh))
 
     def _on_press(self, e):
         if e.button() == Qt.MouseButton.LeftButton:
@@ -633,7 +755,7 @@ class LargeImageView(QDialog):
         # you can compare the two, not silently swapped in behind the "80%" label.
         # (The OM-1 embeds only a 3200px preview, so for those the tab says so and
         # sends you to the decode tab.)
-        self._embed_view = _FullResView()
+        self._embed_view = _FullResView(zoomable=True)
         self._embed_view.point_changed.connect(self._on_fullres_point_changed)
         self._embed_loader = AsyncImageLoader(self)
         self._embed_key = None          # which picture the tab currently holds
@@ -950,22 +1072,22 @@ class LargeImageView(QDialog):
             return
         w, h = px.width(), px.height()
         self._view_tabs.setTabText(2, f"Camera JPEG {w}×{h}")
-        # Is it the full-size render, or just a preview? Say which, rather than
-        # letting the user squint at a soft image and wonder. (A D7100 NEF whose
-        # embed is 799x533 exists — it is a property of the FILE, not the body.)
+        # Always show the camera's JPEG, zoomable: it opens fit-to-window and the
+        # wheel zooms it to 1:1. When the embed is smaller than the sensor (the
+        # OM-1 writes only a 3200×2400 preview, and the odd Nikon NEF a tiny one),
+        # the corner overlay says so and points at the decode tab for full detail —
+        # a note beside the picture, not a wall where the picture should be.
         long_edge = max(w, h)
         sensor_long = 0
         try:
             sensor_long = max(int(n) for n in sensor.lower().split("x"))
         except Exception:
             pass
+        model = (getattr(getattr(self._item, "exif", None), "model", "") or "").strip()
+        overlay = f"{model} · camera JPEG {w}×{h}" if model else f"Camera JPEG {w}×{h}"
         if sensor_long and long_edge < sensor_long * 0.9:
-            self._embed_view.set_message(
-                f"The camera embedded only a {w}×{h} preview in this RAW "
-                f"(the sensor is {sensor}).\n"
-                f"Use the {self._fullres_scale_label()} tab — it decodes the RAW itself.")
-            return
-        self._embed_view.set_image(px, self._fullres_point)
+            overlay += f"  ·  preview only — {self._fullres_scale_label()} tab decodes the full sensor"
+        self._embed_view.set_image(px, self._fullres_point, overlay=overlay)
 
     def _on_fullres_point_changed(self, fx, fy):
         self._fullres_point = (fx, fy)
