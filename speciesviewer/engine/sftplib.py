@@ -63,24 +63,40 @@ class Sftp:
         for attr in self.connection.listdir_attr(remote_path):
             yield attr
 
+    def _invalidate_cache(self, remote_path):
+        """Drop a remote path from the upload cache. MUST run whenever we delete a
+        remote file/dir: cachedUpload skips a path it believes is already on the
+        server, so a stale 'uploaded' entry for a file we just removed would make
+        a later re-upload a no-op — the file stays gone (a 404 that never heals).
+        (openFTPCache() shadows this attribute with the cache dict once opened;
+        before that it's still the bound method, hence the isinstance guard.)"""
+        cache = getattr(self, "openFTPCache", None)
+        if isinstance(cache, dict):
+            cache.pop(remote_path, None)
+
     def remove(self, remote_path):
         """Delete a single remote file. Missing files are logged as warnings,
         not raised — callers (cleanup flows) generally don't care if the
-        target was already gone."""
+        target was already gone. Always invalidates the upload-cache entry."""
         try:
             self.connection.remove(remote_path)
             logger.info(f"removed remote file: {remote_path}")
         except IOError as e:
             logger.warning(f"could not remove remote file {remote_path}: {e}")
+        # Invalidate whether or not the delete found the file: if it was already
+        # gone, a lingering cache entry is exactly what we must clear.
+        self._invalidate_cache(remote_path)
 
     def rmtree(self, remote_path):
         """Recursively delete a remote directory. Walks depth-first, logs
         but doesn't raise on individual failures. No-op if the path is
-        already absent on the server."""
+        already absent on the server. Invalidates the upload-cache entry for
+        every file/dir it removes."""
         try:
             entries = list(self.connection.listdir_attr(remote_path))
         except IOError:
             logger.info(f"rmtree no-op (no remote dir): {remote_path}")
+            self._invalidate_cache(remote_path)
             return
         for entry in entries:
             full = remote_path.rstrip('/') + '/' + entry.filename
@@ -91,11 +107,13 @@ class Sftp:
                     self.connection.remove(full)
                 except IOError as e:
                     logger.warning(f"could not remove remote file {full}: {e}")
+                self._invalidate_cache(full)
         try:
             self.connection.rmdir(remote_path)
             logger.info(f"removed remote dir: {remote_path}")
         except IOError as e:
             logger.warning(f"could not rmdir remote {remote_path}: {e}")
+        self._invalidate_cache(remote_path)
 
     # Downloads the file from remote sftp server to local.
     # Also, by default extracts the file to the specified target_local_path
