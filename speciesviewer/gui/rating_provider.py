@@ -17,6 +17,7 @@ own a RatingEditorCollection and drop its inline grid/write logic).
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from PyQt6.QtGui import QImage
@@ -1178,6 +1179,122 @@ class RatingEditorCollection(PictureCollection):
                 fi_day.write_project_files()
             except Exception as e:
                 logger.error(f"persist_after_species_change failed for {day}: {e}")
+
+    # ── add newly-rendered files to a trip picture (scan its folder) ──────────
+    def add_trip_files(self, upn_key: str) -> dict:
+        """Scan a TRIP picture's folder for files that belong to its UPN but the
+        trip doesn't track yet — the typical case being a DxO render dropped
+        beside the RAW (`..._DxO.jpg`, and its `.dop` if not already tracked) —
+        add them to the day's data_files / data_pictures, re-distil the picture's
+        BestJPG / JPGSize / Rate, and persist. This is the trip-side sibling of
+        the master's add_upn_files (which writes the master DB); here the day CSVs
+        are the store. Master reference cards go through add_master_files, so this
+        no-ops on a master key.
+
+        Returns {"added": [...], "jpg": n, "meta": n}; "added" empty when the
+        folder held nothing new.
+        """
+        if upn_key in self._master_keys:
+            return {"added": [], "jpg": 0, "meta": 0}
+        upn_row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
+        if not upn_row:
+            return {"added": [], "jpg": 0, "meta": 0}
+        folder = self.file_directory(upn_key)
+        if not folder:
+            return {"added": [], "jpg": 0, "meta": 0}
+        folder_p = Path(folder)
+        if not folder_p.exists():
+            return {"added": [], "jpg": 0, "meta": 0}
+
+        from db.master_mutate import _belongs_to_upn, _read_exif_row
+
+        files_list = upn_row.get("Files")
+        if not isinstance(files_list, list):
+            files_list = []
+            upn_row["Files"] = files_list
+        # "Tracked" = a file row already exists (case-insensitive) — the same
+        # truth the master's add uses; guards against re-adding the RAW/.xmp/.dop
+        # the day already has, whatever their disk casing.
+        tracked = {f.lower() for f in self.fpr.fi.files_dict}
+        tracked |= {f.lower() for f in files_list}
+
+        # Which day's CSV objects to write the new file rows into. In Day scope
+        # _day_objects is None and fpr.fi IS the single day — nothing extra to do.
+        day = self._upn_day_map.get(upn_key)
+        day_fi = (self._day_objects[day][0]
+                  if self._day_objects and day in self._day_objects else None)
+
+        added: list[str] = []
+        for p in sorted(folder_p.iterdir()):
+            if not p.is_file():
+                continue
+            if not _belongs_to_upn(p.name, upn_key):
+                continue
+            if p.name.lower() in tracked:
+                continue
+            # master_root / rel are unused by _read_exif_row (it stores the file's
+            # own absolute path); pass the folder / "" to satisfy the signature.
+            row = _read_exif_row(p, folder_p, "", upn_key)
+            self.fpr.fi.files_dict[p.name] = row
+            if day_fi is not None:
+                day_fi.files_dict[p.name] = row
+            files_list.append(p.name)
+            tracked.add(p.name.lower())
+            added.append(p.name)
+
+        if not added:
+            return {"added": [], "jpg": 0, "meta": 0}
+
+        self._redistill_upn(upn_key)
+        self._persist_upn(upn_key, wrote_file=True)
+        self._crop_flag_cache.pop(upn_key, None)   # a new render/crop may have arrived
+
+        jpgs = [n for n in added if n.rsplit(".", 1)[-1].lower() in ("jpg", "jpeg")]
+        metas = [n for n in added if n not in jpgs]
+        logger.info(f"trip add: {upn_key} gained {len(jpgs)} JPG(s) + "
+                    f"{len(metas)} metafile(s): {added}")
+        return {"added": added, "jpg": len(jpgs), "meta": len(metas)}
+
+    def _redistill_upn(self, upn_key: str) -> None:
+        """Recompute the fields a newly-added JPG affects: BestJPG /
+        BestJPGPathName (what the card displays), JPGSize, and Rate — the slice of
+        projectlib.UpdatePicture / computeRating the trip viewer reads. The RAW's
+        ImageSize is the crop-reward baseline, so it's only filled when absent (a
+        JPG-only picture), never overwritten with the smaller render's size."""
+        upn_row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
+        if not upn_row:
+            return
+        files_dict = self.fpr.fi.files_dict
+        files = upn_row.get("Files", [])
+        if not isinstance(files, list):
+            files = []
+
+        # Best JPG = the largest real render (never a '-small' web thumbnail);
+        # tie-break the longer filename — PureRaw/DxO output has the longer name
+        # and is preferred over a plain Lightroom export (mirrors upnBestJPG).
+        best_name, best_path, best_area, best_size = "", "", -1, ""
+        for fname in files:
+            frow = files_dict.get(fname)
+            if not frow or frow.get("WindowsExtension", "").lower() not in ("jpg", "jpeg"):
+                continue
+            if "-small" in fname.lower():
+                continue
+            size = frow.get("ImageSize", "") or ""
+            try:
+                w, h = re.split(r"[x ]", size)[:2]
+                area = int(w) * int(h)
+            except Exception:
+                area = -1
+            if area > best_area or (area == best_area and len(fname) > len(best_name)):
+                best_area, best_name, best_size = area, fname, size
+                best_path = frow.get("WindowsFileName", "")
+        if best_name:
+            upn_row["BestJPG"] = best_name
+            upn_row["BestJPGPathName"] = best_path
+            upn_row["JPGSize"] = best_size
+            if not (upn_row.get("ImageSize") or "").strip():
+                upn_row["ImageSize"] = best_size
+        upn_row["Rate"] = str(_compute_rate(upn_row, files_dict))
 
     def apply_description(self, upn_key: str, value: str) -> None:
         if upn_key in self._master_keys:

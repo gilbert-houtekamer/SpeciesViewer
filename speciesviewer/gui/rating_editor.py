@@ -1686,6 +1686,8 @@ class RatingEditorDialog(QDialog):
         act_rate = menu.addAction(f"Set rating…  ({lbl})")
         act_fullres = menu.addAction(f"Full resolution  ({lbl})")
         act_geo = menu.addAction(f"Get location  ({lbl})")
+        menu.addSeparator()
+        act_addfiles = menu.addAction(f"Add new files (scan folder)…  ({lbl})")
         chosen = menu.exec(QCursor.pos())
         if chosen == act_species:
             self._open_species_dialog_for_keys(keys_for_action)
@@ -1697,6 +1699,8 @@ class RatingEditorDialog(QDialog):
             self._cull_full_res(keys_for_action)
         elif chosen == act_geo:
             self._cull_geolocate(keys_for_action)
+        elif chosen == act_addfiles:
+            self._do_trip_add(keys_for_action)
 
     # ── master add/delete context menu ────────────────────────────────────────
     def _master_context_menu(self, upn_key: str):
@@ -1788,6 +1792,37 @@ class RatingEditorDialog(QDialog):
         if res["meta"]:
             parts.append(f"{res['meta']} metafile" + ("s" if res["meta"] != 1 else ""))
         self._status.setText(f"Added {' and '.join(parts)} to the picture.")
+        self._rebuild_cards()
+
+    def _do_trip_add(self, keys: set):
+        """Scan each selected TRIP picture's folder for files that belong to it
+        but aren't tracked yet (a freshly-rendered DxO JPG + its .dop) and pull
+        them into the day. The master equivalent is _do_master_add."""
+        if self._collection is None or not keys:
+            return
+        total_jpg = total_meta = 0
+        added_any = False
+        for key in keys:
+            try:
+                res = self._collection.add_trip_files(key)
+            except Exception as e:
+                logger.error(f"Add files failed for {key}: {e}", exc_info=True)
+                continue
+            if res.get("added"):
+                added_any = True
+            total_jpg += res.get("jpg", 0)
+            total_meta += res.get("meta", 0)
+        if not added_any:
+            self._status.setText(
+                "No new files found in the picture's folder — nothing to add.")
+            return
+        parts = []
+        if total_jpg:
+            parts.append(f"{total_jpg} JPG" + ("s" if total_jpg != 1 else ""))
+        if total_meta:
+            parts.append(f"{total_meta} metafile" + ("s" if total_meta != 1 else ""))
+        noun = "picture" if len(keys) == 1 else "pictures"
+        self._status.setText(f"Added {' and '.join(parts)} to the {noun}.")
         self._rebuild_cards()
 
     def _open_species_dialog_for_keys(self, keys: set):
