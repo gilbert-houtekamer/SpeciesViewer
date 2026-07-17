@@ -361,6 +361,21 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     <code>MasterDB.apply_description</code> modelled on <code>apply_qualifiers</code>. Also fixed a
     <strong>cp1252 console crash</strong> (<code>ecab7e3</code>): an emoji in any log line dumped a
     &ldquo;--- Logging error ---&rdquo; traceback at startup.</li>
+  <li><strong>Trip Species Viewer: &ldquo;Add new files (scan folder)&rdquo;</strong>
+    <span class="tag-shipped">SHIPPED</span> (<code>50511a6</code>, 2026-07-17) — a fourth
+    viewer-capability-matrix gap: the master viewer could pull a freshly-rendered DxO/PureRaw JPG into a
+    picture, the Trip Species Viewer could not, so a JPG rendered <em>after</em> the last Read &amp; Summarize
+    (to complete a RAW-only picture) never joined its UPN without re-reading the whole day. Right-click a trip
+    card → <strong>&ldquo;Add new files (scan folder)&hellip;&rdquo;</strong> scans the picture&rsquo;s folder
+    for files belonging to its UPN that aren&rsquo;t tracked yet (the <code>_DxO.jpg</code>, plus its
+    <code>.dop</code> if new), adds them to the day&rsquo;s <code>data_files</code>/<code>data_pictures</code>,
+    re-distils <code>BestJPG</code>/<code>BestJPGPathName</code>/<code>JPGSize</code>, recomputes
+    <code>Rate</code>, and persists. The trip-side sibling of <code>master_mutate.add_upn_files</code>
+    (<code>RatingEditorCollection.add_trip_files</code> + <code>_redistill_upn</code>); works on a
+    multi-selection, no-ops on master reference cards. &ldquo;Tracked&rdquo; is the files table not the
+    <code>Files</code> list (the master&rsquo;s truth), so the scan is idempotent and case-insensitive.
+    Verified against real <code>N3161031</code>: the resulting Rate equals a full re-read
+    (<code>projectlib.computeRating == _compute_rate == 30</code>).</li>
   <li><strong>Master Species Viewer</strong> <span class="tag-shipped">SHIPPED</span> —
     standalone viewer for the master itself (<em>Master → Master Species Viewer…</em>),
     <strong>scope = Master only</strong> with a searchable ~2000-species field driven by the
