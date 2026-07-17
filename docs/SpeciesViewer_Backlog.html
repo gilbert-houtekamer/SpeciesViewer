@@ -447,6 +447,19 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     JPGs still pending is kept; never drops content on doubt. <code>makeRunSummaryPost</code> keeps a defensive
     minimal-root guard for the virttrip/redo-blog paths. (A lingering empty day needs a WriteBlog re-run to
     clear; broken thumbnails on other days = an upload/FTP-cache 404, not this change.)</li>
+  <li><strong>Two blog bugs behind &ldquo;the pruned day won&rsquo;t disappear / pictures 404&rdquo;</strong>
+    <span class="tag-shipped">SHIPPED</span> (<code>c425eb3</code> + <code>cb0f5e0</code>, 2026-07-17) — two
+    classic-Python / cache traps. <strong>(1)</strong> <code>Blog.blog_dict</code> was a <strong>class-level
+    mutable attribute</strong> shared by every <code>Blog</code> instance for the whole app session, and
+    <code>read_BlogAdmin</code> only ever ADDS, never clears &mdash; so a blog pruned from
+    <code>blog_admin.csv</code> (empty day, or a Manage-Blogs delete) lingered from an earlier instance and
+    <strong>reappeared in every rebuilt index</strong> though the CSV was clean (also why restarting the app used
+    to &ldquo;fix&rdquo; blog glitches). Fixed: each <code>Blog</code> gets its own <code>blog_dict</code>.
+    <strong>(2)</strong> <code>sftp.remove</code>/<code>rmtree</code> deleted server files but <strong>left their
+    <code>FTPcache.json</code> entries</strong>, and <code>cachedUpload</code> skips a path it thinks is already
+    uploaded &mdash; so after a delete a later re-upload was a no-op and the file stayed a <strong>404 that never
+    heals</strong> (the 03-13 drift; user-diagnosed). Fixed with <code>Sftp._invalidate_cache</code> on every
+    remote delete.</li>
   <li><strong>Master Species Viewer</strong> <span class="tag-shipped">SHIPPED</span> —
     standalone viewer for the master itself (<em>Master → Master Species Viewer…</em>),
     <strong>scope = Master only</strong> with a searchable ~2000-species field driven by the
