@@ -429,14 +429,19 @@ class _FullResView(QScrollArea):
         self._zoomable = bool(zoomable)
         self._scale = 1.0          # display px per image px
         self._fit = False          # currently fit-to-window (track window resizes)
-        self._overlay = None
+        self._overlay = None       # bottom-left: source + size
+        self._hint = None          # top-left: how to zoom/pan
         if self._zoomable:
             self._label.mouseDoubleClickEvent = self._on_double_click
+            badge_css = ("QLabel{background:rgba(0,0,0,150);color:#eee;"
+                         "padding:2px 7px;border-radius:3px;font-size:11px;}")
             self._overlay = QLabel(self.viewport())
-            self._overlay.setStyleSheet(
-                "QLabel{background:rgba(0,0,0,150);color:#eee;"
-                "padding:2px 7px;border-radius:3px;font-size:11px;}")
+            self._overlay.setStyleSheet(badge_css)
             self._overlay.hide()
+            self._hint = QLabel(self.viewport())
+            self._hint.setStyleSheet(badge_css)
+            self._hint.setText("Scroll to zoom · double-click for 1:1 · drag to pan")
+            self._hint.hide()
 
     def set_message(self, text):
         self._pixmap = QPixmap()
@@ -445,6 +450,8 @@ class _FullResView(QScrollArea):
         self._label.resize(self.viewport().size())
         if self._overlay is not None:
             self._overlay.hide()
+        if self._hint is not None:
+            self._hint.hide()
 
     def set_image(self, pixmap, point, *, overlay: str = ""):
         self._pixmap = pixmap
@@ -454,15 +461,19 @@ class _FullResView(QScrollArea):
             self._scale = self._fit_scale()
             self._render_scaled()
             self._center_on((0.5, 0.5))
+            if self._hint is not None:
+                self._hint.adjustSize()
+                self._hint.show()
+                self._hint.raise_()
             if self._overlay is not None:
                 if overlay:
                     self._overlay.setText(overlay)
                     self._overlay.adjustSize()
                     self._overlay.show()
                     self._overlay.raise_()
-                    self._position_overlay()
                 else:
                     self._overlay.hide()
+            self._position_overlay()
         else:
             self._label.setPixmap(pixmap)
             self._label.resize(pixmap.size())
@@ -543,10 +554,12 @@ class _FullResView(QScrollArea):
             self._emit_point()
 
     def _position_overlay(self):
-        if self._overlay is None or self._overlay.isHidden():
-            return
         m = 8
-        self._overlay.move(m, self.viewport().height() - self._overlay.height() - m)
+        if self._hint is not None and not self._hint.isHidden():
+            self._hint.move(m, m)   # top-left: interaction hint
+        if self._overlay is not None and not self._overlay.isHidden():
+            self._overlay.move(     # bottom-left: source + size
+                m, self.viewport().height() - self._overlay.height() - m)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -760,11 +773,16 @@ class LargeImageView(QDialog):
         self._embed_loader = AsyncImageLoader(self)
         self._embed_key = None          # which picture the tab currently holds
         self._view_tabs = QTabWidget()
+        # Tab order: Fit, then the Camera JPEG (the quick zoom — where a Fit
+        # double-click lands), then the slower full-sensor decode last. Referenced
+        # by name everywhere so the order stays changeable in one place.
+        self._TAB_FIT, self._TAB_EMBED, self._TAB_FULLRES = 0, 1, 2
         self._view_tabs.addTab(self._stage, "Fit")
-        self._view_tabs.addTab(self._fullres_view, self._fullres_scale_label())
         self._view_tabs.addTab(self._embed_view, "Camera JPEG")
+        self._view_tabs.addTab(self._fullres_view, self._fullres_scale_label())
         self._view_tabs.setTabToolTip(
-            2, "The JPEG the camera itself wrote inside the RAW. On the Nikons that "
+            self._TAB_EMBED,
+            "The JPEG the camera itself wrote inside the RAW. On the Nikons that "
                "is the FULL-SIZE image and it appears instantly — no decoding. It is "
                "the camera's rendering, not ours, so it is a fair comparison against "
                "the decoded tab rather than a replacement for it.")
@@ -1013,17 +1031,18 @@ class LargeImageView(QDialog):
         return (min(1.0, max(0.0, fx)), min(1.0, max(0.0, fy)))
 
     def _on_fit_double_click(self, e):
-        # Double-click the photo → jump to 100% centred on that spot.
+        # Double-click the photo → the Camera JPEG tab (opens fit, wheel-zooms to
+        # 1:1). Remember the clicked spot so a later 80% visit centres there.
         self._fullres_point = self._fit_click_to_point(e.position())
-        self._view_tabs.setCurrentIndex(1)
+        self._view_tabs.setCurrentIndex(self._TAB_EMBED)
 
     def _on_view_tab_changed(self, idx):
-        if idx in (1, 2):
+        if idx in (self._TAB_EMBED, self._TAB_FULLRES):
             if self._crop_mode:
                 self._exit_crop_mode(reload=True)  # crop is a Fit-tab tool
-        if idx == 1:
+        if idx == self._TAB_FULLRES:
             self._load_fullres()
-        elif idx == 2:
+        elif idx == self._TAB_EMBED:
             self._load_embedded()
 
     def _load_embedded(self):
@@ -1034,7 +1053,8 @@ class LargeImageView(QDialog):
         already sitting in the RAW. The tab label is rewritten with the REAL pixel
         size once we know it, because a tab that claims a size it isn't showing is
         exactly the lie we are trying to remove from the 80% tab."""
-        if getattr(self, "_view_tabs", None) is None or self._view_tabs.currentIndex() != 2:
+        if getattr(self, "_view_tabs", None) is None \
+                or self._view_tabs.currentIndex() != self._TAB_EMBED:
             return
         if not self._keys or self._item is None:
             return
@@ -1043,7 +1063,7 @@ class LargeImageView(QDialog):
             return                       # already showing this picture
         raw = self._collection.raw_path(key)
         if not raw:
-            self._view_tabs.setTabText(2, "Camera JPEG")
+            self._view_tabs.setTabText(self._TAB_EMBED, "Camera JPEG")
             self._embed_view.set_message("No RAW file for this picture.")
             return
         self._embed_view.set_message("Reading the camera's JPEG…")
@@ -1067,11 +1087,11 @@ class LargeImageView(QDialog):
 
     def _on_embedded_pixmap(self, px, sensor: str):
         if px is None or px.isNull():
-            self._view_tabs.setTabText(2, "Camera JPEG")
+            self._view_tabs.setTabText(self._TAB_EMBED, "Camera JPEG")
             self._embed_view.set_message("This RAW carries no embedded JPEG.")
             return
         w, h = px.width(), px.height()
-        self._view_tabs.setTabText(2, f"Camera JPEG {w}×{h}")
+        self._view_tabs.setTabText(self._TAB_EMBED, f"Camera JPEG {w}×{h}")
         # Always show the camera's JPEG, zoomable: it opens fit-to-window and the
         # wheel zooms it to 1:1. When the embed is smaller than the sensor (the
         # OM-1 writes only a 3200×2400 preview, and the odd Nikon NEF a tiny one),
@@ -1172,9 +1192,11 @@ class LargeImageView(QDialog):
             return "100%"
 
     def _load_fullres(self):
-        if getattr(self, "_view_tabs", None) is None or self._view_tabs.currentIndex() != 1:
+        if getattr(self, "_view_tabs", None) is None \
+                or self._view_tabs.currentIndex() != self._TAB_FULLRES:
             return
-        self._view_tabs.setTabText(1, self._fullres_scale_label())  # reflect a changed setting
+        self._view_tabs.setTabText(
+            self._TAB_FULLRES, self._fullres_scale_label())  # reflect a changed setting
         if not self._keys or self._item is None:
             return
         key = self._keys[self._index]
@@ -1240,7 +1262,7 @@ class LargeImageView(QDialog):
             self._crop_btn.setChecked(False)
             return
         # Crop is a Fit-tab tool; the 100% tab pans instead.
-        self._view_tabs.setCurrentIndex(0)
+        self._view_tabs.setCurrentIndex(self._TAB_FIT)
         self._crop_mode = True
         self._crop_btn.setChecked(True)
         self._snap_btn.setVisible(True)
@@ -1480,7 +1502,10 @@ class LargeImageView(QDialog):
         k = event.key()
         desc_focused = self._desc_edit.hasFocus()
         if k == Qt.Key.Key_F and not desc_focused:
-            self._view_tabs.setCurrentIndex(0 if self._view_tabs.currentIndex() == 1 else 1)
+            # Toggle Fit ⇄ Camera JPEG (the quick zoom the double-click also uses).
+            self._view_tabs.setCurrentIndex(
+                self._TAB_FIT if self._view_tabs.currentIndex() == self._TAB_EMBED
+                else self._TAB_EMBED)
             event.accept()
             return
         if k == Qt.Key.Key_L and not desc_focused:
@@ -1529,7 +1554,7 @@ class LargeImageView(QDialog):
         if getattr(self, "_embed_key", None) != key:
             self._embed_key = None
             if getattr(self, "_view_tabs", None) is not None \
-                    and self._view_tabs.currentIndex() == 2:
+                    and self._view_tabs.currentIndex() == self._TAB_EMBED:
                 self._load_embedded()
 
         pos = f"  ({self._index + 1} of {len(self._keys)})"
@@ -1634,7 +1659,8 @@ class LargeImageView(QDialog):
 
         # If the 100% tab is showing, decode the new picture too — keeping the
         # same 1:1 point so a group of similars compares at the same crop.
-        if getattr(self, "_view_tabs", None) is not None and self._view_tabs.currentIndex() == 1:
+        if getattr(self, "_view_tabs", None) is not None \
+                and self._view_tabs.currentIndex() == self._TAB_FULLRES:
             self._load_fullres()
 
     def _on_pixmap(self, token, pixmap):
@@ -1736,7 +1762,7 @@ class LargeImageView(QDialog):
         # navigation steps over them to the next live candidate (Fit tab / grids
         # keep normal navigation, so a reject is still reachable to re-judge).
         skip = (getattr(self, "_view_tabs", None) is not None
-                and self._view_tabs.currentIndex() == 1)
+                and self._view_tabs.currentIndex() == self._TAB_FULLRES)
         new = self._index + step
         if skip:
             while 0 <= new < n and self._is_reject(self._keys[new]):
