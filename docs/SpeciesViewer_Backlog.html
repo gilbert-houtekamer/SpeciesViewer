@@ -392,6 +392,18 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     Camera JPEG. Every hard-coded view-tab index (~13 sites) became a named constant. Shared
     <code>LargeImageView</code>, so <strong>all viewers</strong> (culling, Trip Species Viewer, virtual-trip,
     master, map) get it.</li>
+  <li><strong>Two large-view&harr;grid glitches fixed (Trip + Master Species Viewers)</strong>
+    <span class="tag-shipped">SHIPPED</span> (<code>a4258e5</code> + <code>e4813f5</code>, 2026-07-17) —
+    (1) a <strong>colour/Rate set in the large view didn&rsquo;t reach the grid card</strong>, and stayed
+    wrong even after closing the large view (only a full rebuild fixed it). Cause: Qt drops a card&rsquo;s
+    repaint while it is <strong>occluded by the large-view window</strong>, so the single-card
+    <code>refresh()</code> no-oped. The culling viewer already worked around this on close; the Trip viewer had
+    none and the Master viewer had the same gap. Both now repaint <strong>every</strong> card on each large-view
+    edit and refresh-all + re-sort on close (grid visible again) &mdash; <code>refresh()</code> is text-only, so
+    it is cheap. (2) <strong>Changing the species left a stale large view</strong> drilling into the previous
+    species (its key list is snapshotted at open), so edits/navigation there acted on a set the grid no longer
+    showed &mdash; the species change now <strong>closes the open large view</strong>. Camera/colour/JPG filters
+    deliberately keep it open (same species).</li>
   <li><strong>Master Species Viewer</strong> <span class="tag-shipped">SHIPPED</span> —
     standalone viewer for the master itself (<em>Master → Master Species Viewer…</em>),
     <strong>scope = Master only</strong> with a searchable ~2000-species field driven by the
