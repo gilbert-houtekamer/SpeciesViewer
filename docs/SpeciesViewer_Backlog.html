@@ -404,6 +404,14 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     species (its key list is snapshotted at open), so edits/navigation there acted on a set the grid no longer
     showed &mdash; the species change now <strong>closes the open large view</strong>. Camera/colour/JPG filters
     deliberately keep it open (same species).</li>
+  <li><strong>Reveal-in-Explorer button now finds the group</strong>
+    <span class="tag-shipped">SHIPPED</span> (<code>5b33507</code>, 2026-07-17) — the large view&rsquo;s
+    Explorer icon searched the full UPN (<code>2026 kreta-n3173237</code>); Windows Search parses that
+    multi-word, hyphenated string as a natural-language query and returns <strong>nothing</strong> (a Microsoft
+    quirk the user diagnosed). <code>reveal_group</code> now searches the UPN&rsquo;s unique tail as a
+    <strong>filename wildcard</strong> &mdash; <code>*&lt;last 8 chars&gt;</code>, e.g. <code>*n3173237</code>
+    &mdash; which is plain globbing and reliably returns the whole group (.ORF/.XMP/.dop/.jpg), the exact
+    workaround the user verified by hand.</li>
   <li><strong>Master Species Viewer</strong> <span class="tag-shipped">SHIPPED</span> —
     standalone viewer for the master itself (<em>Master → Master Species Viewer…</em>),
     <strong>scope = Master only</strong> with a searchable ~2000-species field driven by the
