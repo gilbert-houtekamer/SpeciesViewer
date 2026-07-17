@@ -1434,7 +1434,26 @@ class RatingEditorDialog(QDialog):
         if self._day_radio.isChecked():
             self._load_data()
 
+    def _close_large_view(self):
+        """Close any open large view. Its key list is a fixed snapshot of the
+        grid at open time, so once the grid shows a different species the large
+        view is drilling into a set the grid no longer holds — navigation and
+        edits there act on stale keys. Disconnect the on-close resort first so it
+        doesn't fight the rebuild that's about to run."""
+        lv = getattr(self, "_large_view", None)
+        if lv is None:
+            return
+        self._large_view = None
+        try:
+            lv.finished.disconnect(self._on_large_view_finished)
+        except (TypeError, RuntimeError):
+            pass
+        lv.close()
+
     def _on_species_changed(self):
+        # The open large view belongs to the previous species — close it before
+        # switching (its snapshot would otherwise edit/navigate a stale set).
+        self._close_large_view()
         # Refresh the camera list to this species' bodies before rebuilding
         # (blockSignals inside keeps this from re-triggering a rebuild).
         self._populate_camera_combo()

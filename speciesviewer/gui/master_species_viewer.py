@@ -307,6 +307,24 @@ class MasterSpeciesViewerDialog(QDialog):
         return name_for({**row, "sci": sci or row.get("sci", "")},
                         self._species_lang) or (sci or "").strip()
 
+    def _close_large_view(self):
+        """Close any open large view — its key list is a snapshot of the grid at
+        open time, so once a different species is shown it drills into a set the
+        grid no longer holds. Disconnect the on-close resort first so it doesn't
+        fight the rebuild about to run."""
+        lv = getattr(self, "_large_view", None)
+        if lv is None:
+            return
+        self._large_view = None
+        try:
+            lv.finished.disconnect(self._on_large_view_finished)
+        except (TypeError, RuntimeError):
+            pass
+        try:
+            lv.close()
+        except RuntimeError:
+            pass
+
     def _on_species_entered(self):
         if self._collection is None:
             return
@@ -317,6 +335,8 @@ class MasterSpeciesViewerDialog(QDialog):
         if not sci:
             self._status.setText(f"“{text}” isn’t a master species — pick one from the list.")
             return
+        # The open large view belongs to the previous species — close it.
+        self._close_large_view()
         self._current_sci = sci.casefold()
         self._current_display = self._display_name_for(sci)
         # Keep the field showing the resolved name in the current language.
