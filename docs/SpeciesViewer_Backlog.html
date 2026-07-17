@@ -434,6 +434,19 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     <code>Version</code> is forward-incompatible (PL8&asymp;19.5 can&rsquo;t read a PL9 <code>20.6</code>
     <code>.dop</code> at all), so v8/v7 rows are best-effort; recipe downgrading is out of scope. FUTURE
     (parked): map a virgin culling <code>.xmp</code> &rarr; a virgin <code>.dop</code>.</li>
+  <li><strong>A species-less blog day disappears (no crash, no empty post)</strong>
+    <span class="tag-shipped">SHIPPED</span> (<code>8270aa8</code>, 2026-07-17) — a day with JPGs but no
+    recognized species (and no landscape photo) used to crash WriteBlog with <code>KeyError: 'biota'</code>,
+    and before that published an empty placeholder post. Now <code>Blog.dayHasContent()</code> checks THIS
+    day&rsquo;s own pictures (time window) for a species or a landscape blog-extra &mdash; deliberately NOT
+    &ldquo;<code>'biota'</code> in the species tree&rdquo;, which also holds the master&rsquo;s committed species
+    from <em>other</em> days. Empty &rarr; <code>Blog.removeEmptyDay()</code> drops it from the blog admin +
+    index, and sv4WriteBlog prunes any already-published post/pictures on the server, returning a distinct GUI
+    message (&ldquo;No species this day &mdash; no blog created&rdquo;). Needed <code>batch.py</code> to surface
+    a module&rsquo;s <code>result_msg</code> in the sequential + per-day runners. Conservative: a species day with
+    JPGs still pending is kept; never drops content on doubt. <code>makeRunSummaryPost</code> keeps a defensive
+    minimal-root guard for the virttrip/redo-blog paths. (A lingering empty day needs a WriteBlog re-run to
+    clear; broken thumbnails on other days = an upload/FTP-cache 404, not this change.)</li>
   <li><strong>Master Species Viewer</strong> <span class="tag-shipped">SHIPPED</span> —
     standalone viewer for the master itself (<em>Master → Master Species Viewer…</em>),
     <strong>scope = Master only</strong> with a searchable ~2000-species field driven by the
