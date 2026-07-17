@@ -13,6 +13,7 @@ data/repositories/repo*
 downloaded_images/*
 
 ghconfig.ini
+photolab_denoise.ini
 
 # python
 __pycache__

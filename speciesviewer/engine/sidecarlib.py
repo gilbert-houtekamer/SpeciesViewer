@@ -198,8 +198,16 @@ def _strip_dop_keys(inner, keys):
     return inner
 
 
-def write_dop_edits(dop_path, exposure=None, crop=None, angle=None):
-    """Surgically MERGE exposure / crop / angle into a DOP's Overrides block.
+def write_dop_edits(dop_path, exposure=None, crop=None, angle=None, denoise=None):
+    """Surgically MERGE exposure / crop / angle / denoise into a DOP's Overrides block.
+
+    `denoise` selects the DxO denoise method (see utils.photolab_denoise):
+      None      -> leave denoise untouched;
+      ""        -> Standard: write `NoiseActive = true` only (base method stays
+                   "standard");
+      "<code>"  -> write `NoiseActive = true` + `NoiseRemovalMethod = "<code>"`
+                   (e.g. "DeepRaw2RGBv7" = DeepPRIME XD3 in PL9).
+    Empty string and None are distinct — hence the `is not None` test below.
 
     The Overrides block is located by balanced-brace matching (a PhotoLab recipe
     always seeds it with a non-empty GridWarpingGrids block, so the old non-greedy
@@ -242,6 +250,16 @@ def write_dop_edits(dop_path, exposure=None, crop=None, angle=None):
         new_entries.append('KeystoningHorizonActive = true,')
         new_entries.append('KeystoningHorizonAuto = false,')
         managed |= {'KeystoningHorizon', 'KeystoningHorizonActive', 'KeystoningHorizonAuto'}
+
+    if denoise is not None:
+        # Denoise lives in Overrides too: NoiseActive turns it on, and a non-empty
+        # code names the method (Standard leaves the base "standard" method, so it
+        # writes NoiseActive only). Strip any prior copy so switching methods — or
+        # back to Standard — replaces cleanly rather than stacking.
+        new_entries.append('NoiseActive = true,')
+        if denoise:
+            new_entries.append(f'NoiseRemovalMethod = "{denoise}",')
+        managed |= {'NoiseActive', 'NoiseRemovalMethod'}
 
     if not new_entries:
         return False
@@ -471,7 +489,13 @@ def suggest_crop(raw_path, crop, angle=None):
         res["dop_created"] = bool(dop_path) and not dop_before
         if dop_path:
             try:
-                res["dop"] = write_dop_edits(dop_path, crop=crop, angle=angle)
+                # Preparing a JPG (this is the crop) is the one moment we also stamp
+                # the configured DxO denoise method into the .dop; returns None when
+                # the feature is off, so the write is unchanged then.
+                from utils.photolab_denoise import denoise_override_for_crop
+                res["dop"] = write_dop_edits(
+                    dop_path, crop=crop, angle=angle,
+                    denoise=denoise_override_for_crop())
             except Exception as e:
                 logger.warning(f"suggest_crop: DOP write failed for {dop_path}: {e}")
 
