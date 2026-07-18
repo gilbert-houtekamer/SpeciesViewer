@@ -58,9 +58,6 @@ design</em>.</p>
 <div class="next">
   <strong>What's next (the active shortlist):</strong>
   <ul style="margin-bottom:0;">
-    <li><strong>Map for the Day (micro-trip)</strong> <span class="tag-new">NEW</span> —
-      extend the trip/day map to that collection context (ch. 3).
-      <em>(Virtual-trip map: shipped.)</em></li>
     <li><strong>GPS / data-integrity umbrella — down to one item: tracklog geotag (GPX)</strong>
       (ch. 3). GPS-from-addresses and location-from-GPS are both shipped; the dead-link purge
       shipped as Refresh Master Database.</li>
@@ -68,6 +65,8 @@ design</em>.</p>
       the wide filter/knob row and dialog sizing on small screens (ch. 3).</li>
     <li><strong>Virtual Trips WP7</strong> — retroactive day-by-day builder + amber/green blog bubbles (ch. 2).</li>
     <li>Smaller: GBIF lookup disk-cache (ch. 11).</li>
+    <li><em>Dropped from the shortlist: Map for the Day (micro-trip) — verified already
+      working, see ch. 3.</em></li>
   </ul>
   Deliberately parked: taxonomy/sequence (ch. 6) and rating-formula/HEIC (ch. 7); the master
   data relativization waits for the Mac (ch. 10).
@@ -538,9 +537,28 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
 
 <h3>Maps &amp; GPS — to do</h3>
 <ul>
-  <li><strong>Map for the Day (micro-trip) viewer</strong> <span class="tag-open">OPEN</span>
-    <span class="tag-new">NEW</span> — extend the Phase-5 trip/day map to the Days lane /
-    micro-trip so an ad-hoc working day plots + geotags exactly like a trip day.</li>
+  <li><strong>Map for the Day (micro-trip) viewer</strong> <span class="tag-shipped">SHIPPED</span> —
+    verified live 2026-07-18 on the 2024-10-03 working day (76 pictures plotted).
+    <strong>No micro-trip-specific work was ever needed</strong>; the item stayed open only
+    because it was never checked off. The 🗺 Map button lives on <code>ImagePreviewDialog</code>
+    itself (<code>image_viewer.py</code>, <code>_on_show_map</code>) rather than on any
+    trip-specific host, and the Days lane opens that very dialog
+    (<code>days_process.py</code>) with <code>readonly</code> defaulting to <strong>False</strong>.
+    So a working day's folder gets a writable <code>SidecarCollection</code> →
+    <code>read_only=False</code> → the map's <code>_can_place</code> is true → the same
+    <code>TripMapView</code> a trip day gets: clustering, travel path, no-GPS tray,
+    drag-to-geotag, suggested position, drag-a-group-to-move. The geotag write path is fully
+    implemented on that collection (<code>location_targets</code> → <code>write_gps</code> →
+    <code>note_gps_written</code> → <code>note_location_written</code>).
+    <em>The lesson worth keeping:</em> Phase 5 was built against the <em>collection
+    interface</em> rather than against a trip, so every viewer reusing
+    <code>ImagePreviewDialog</code> inherits the map for free — a new collection context needs
+    no map work, only a collection that can report GPS and name its
+    <code>location_targets</code>. (A non-finding checked en route:
+    <code>note_location_written</code> is absent from <code>PreviewCollection</code> — the
+    <em>trip</em> path — but the base <code>PictureCollection</code> defines it as a deliberate
+    no-op for collections that don't cache location rows, so a trip-day geotag with a place
+    name does not crash.)</li>
   <li><strong>Virtual-trip map</strong> <span class="tag-shipped">SHIPPED</span> —
     the same map (bubbles → filmstrip → large view, travel path) over a virtual trip's
     accumulated collection, read-only except for the geotag carve-out: a picture with NO
