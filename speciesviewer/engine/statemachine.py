@@ -21,13 +21,40 @@ STATE_NAMES = [
     "WriteCommit"
 ]
 
+# A step can finish cleanly having produced nothing, because the day holds no
+# recognized species at all (JPGs but no determinations, and no landscape
+# extras). That is neither a success nor a failure: the state is stored done=True
+# — so downstream steps stay eligible — but with a message carrying this prefix,
+# which the trip overview renders as 🚫 instead of ✅. Modules signal it by
+# RETURNING such a message from main(); the GUI runners store it verbatim.
+NOTHING_TO_DO_PREFIX = "Nothing to do: "
+
+
+def nothing_to_do(reason):
+    """Build the state message a batch module returns when it had nothing to do."""
+    return NOTHING_TO_DO_PREFIX + reason
+
+
+def is_nothing_to_do(message):
+    """True for a state message written by a step that completed with nothing to do."""
+    return isinstance(message, str) and message.startswith(NOTHING_TO_DO_PREFIX)
+
+
 class StateMachine:
-    Directory = None
-    Projectname = None
-    Version = '0.0'
-    Taskstate = {}    
-    
+    # These MUST be per-instance. They used to be class attributes, and because
+    # readState() assigns INTO Taskstate rather than rebinding it, every
+    # StateMachine in the process shared one dict: reading day B's state
+    # silently overwrote day A's, and the next writeState() for day A persisted
+    # day B's values into day A's statemachine.ini. That is how a whole trip's
+    # Write Blog column reverted to "Invalidated due to rerun of WritePictures"
+    # — the value of the few days that had never been blogged, smeared over the
+    # days that had just succeeded.
     def __init__(self, biotadb, pictdir, readState=True):
+        self.Directory = None
+        self.Projectname = None
+        self.Version = '0.0'
+        self.Taskstate = {}
+        self.Project = None
         if biotadb != None and biotadb != '':
             # references to the Web
             self.Project = Path(pictdir.replace('"', "").replace("'", "").replace('*','')).stem

@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem, QHeaderView, QAbstractItemView, QAbstractItemView
 )
 from pathlib import Path
-from engine.statemachine import StateMachine
+from engine.statemachine import StateMachine, NOTHING_TO_DO_PREFIX, is_nothing_to_do
 from utils.config import _config
 
 SYNC_COL = 3
@@ -52,6 +52,17 @@ STATE_COLUMNS = [
 STATE_LABELS = [c["label"] for c in STATE_COLUMNS]
 
 
+# A day without JPGs can never grow a blog, so that 🚫 cell is dead (not
+# clickable). The other 🚫 — a step that ran but had nothing to build — MUST stay
+# clickable: add a species to the day and re-running it becomes meaningful.
+NO_JPG_TOOLTIP = "No JPGs available — blog step suppressed."
+
+
+def cell_is_inert(symbol, tooltip):
+    """True when a trip-overview cell must not react to a click."""
+    return symbol == "🚫" and tooltip == NO_JPG_TOOLTIP
+
+
 def state_cell_symbol(sm, col, jpgs):
     """(symbol, tooltip) for one trip-overview state column from a StateMachine.
 
@@ -66,18 +77,25 @@ def state_cell_symbol(sm, col, jpgs):
         return "⚪", "Unknown step."
 
     states = [sm.Taskstate[k] for k in keys]
-    all_done = all(done and msg == "Successfully run." for done, msg, *_ in states)
+    all_done = all(done and (msg == "Successfully run." or is_nothing_to_do(msg))
+                   for done, msg, *_ in states)
     failed = next(((done, msg) for done, msg, *_ in states
                    if (not done) and "failed" in msg.lower()), None)
 
     if all_done:
+        # A step that ran fine but had nothing to produce (a day without any
+        # recognized species) is not a ✅ — nothing was published. Show the
+        # suppressed sign with the module's own explanation.
+        nothing = next((msg for _done, msg, *_ in states if is_nothing_to_do(msg)), None)
+        if nothing:
+            return "🚫", nothing[len(NOTHING_TO_DO_PREFIX):].capitalize()
         if write_commit_done:
             return "⬜", "Step completed. Workflow is frozen after WriteCommit."
         return "✅", "Successfully run."
     if failed:
         return "❌", failed[1]
     if gate == "WriteBlog" and jpgs == 0:
-        return "🚫", "No JPGs available — blog step suppressed."
+        return "🚫", NO_JPG_TOOLTIP
     if sm.stateOKtorun(gate):
         return "🔘", "Click on the sphere to run this step."
     return "⚪", sm.explainAbort(gate, raiseSV=False)
@@ -89,7 +107,7 @@ def state_cell_item(sm, col, jpgs):
     item = QTableWidgetItem(symbol)
     item.setToolTip(tooltip)
     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-    if symbol == "🚫":
+    if cell_is_inert(symbol, tooltip):
         item.setFlags(Qt.ItemFlag.NoItemFlags)
     return item
 

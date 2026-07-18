@@ -10,7 +10,7 @@ from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
 from PyQt6.QtGui import QMovie
 
 from utils.batch_config import generate_svconfig_ini
-from engine.statemachine import StateMachine
+from engine.statemachine import StateMachine, NOTHING_TO_DO_PREFIX, is_nothing_to_do
 
 # statusname → trip-overview cell header. ReadDirExif and WritePictures share
 # ONE cell now (the combined "Read & Summarize" column); surgical updates may
@@ -56,6 +56,19 @@ def _csv_fingerprint(directory, statusname):
     except OSError:
         return None
     return h.hexdigest()
+
+
+def _completion(result_msg, warnings=0):
+    """(state_message, cell_symbol, cell_tooltip) for a step that finished cleanly.
+
+    A module that had nothing to produce (a day with no recognized species)
+    returns a NOTHING_TO_DO message: it is stored verbatim as the state message
+    and shown as 🚫, so the overview never claims a blog/website was built."""
+    if is_nothing_to_do(result_msg):
+        return result_msg, "🚫", result_msg[len(NOTHING_TO_DO_PREFIX):].capitalize()
+    cell = (f"Successfully run, but review {warnings} warning{'s' if warnings > 1 else ''}."
+            if warnings > 0 else "Successfully run.")
+    return "Successfully run.", "✅", cell
 
 
 def _should_invalidate(pre, post):
@@ -197,14 +210,14 @@ class BatchModuleRunner:
                 self.logger.info(f"{display_msg}{warn_suffix}")
                 if statusname and statusname != "MakeRepository":
                     post_fingerprint = _csv_fingerprint(sm.Directory, statusname)
-                    sm.updateState(statusname, True, "Successfully run.",
+                    state_msg, symbol, cell_msg = _completion(result_msg, new_warnings)
+                    sm.updateState(statusname, True, state_msg,
                                    invalidate_downstream=_should_invalidate(
                                        pre_fingerprint, post_fingerprint))
                     cell_key = expected_messages.get(statusname)
                     if cell_key:
                         try:
-                            cell_msg = f"Successfully run, but review {new_warnings} warning{'s' if new_warnings > 1 else ''}." if new_warnings > 0 else "Successfully run."
-                            self.main_window.update_trip_cell(directory_name, cell_key, "✅", cell_msg)
+                            self.main_window.update_trip_cell(directory_name, cell_key, symbol, cell_msg)
                         except Exception:
                             pass
                 self.status_label.setText(f"{display_msg}{warn_suffix}")
@@ -302,10 +315,11 @@ class ChainedBatchRunner:
             else:
                 self._logger.info(result_msg if result_msg else amsg)
                 post = _csv_fingerprint(self._sm.Directory, sname)
-                self._sm.updateState(sname, True, "Successfully run.",
+                state_msg, symbol, cell_msg = _completion(result_msg)
+                self._sm.updateState(sname, True, state_msg,
                                      invalidate_downstream=_should_invalidate(pre, post))
                 if cell_key:
-                    self._main_window.update_trip_cell(self._directory_name, cell_key, "✅", "Successfully run.")
+                    self._main_window.update_trip_cell(self._directory_name, cell_key, symbol, cell_msg)
                 self._run_step(idx + 1)
 
         self._worker.finished.connect(on_done)
@@ -455,14 +469,18 @@ class ColumnBatchRunner:
             else:
                 self._successes += 1
                 self._logger.info(f"{result_msg if result_msg else amsg} — {d_str}")
+                # Only the primary step can report "nothing to do"; the extras
+                # (ReadDirExif alongside WritePictures) always ran normally.
+                state_msg, symbol, cell_msg = _completion(result_msg)
                 for key in (extras + [sname]):
                     post = _csv_fingerprint(sm_ref.Directory, key)
-                    sm_ref.updateState(key, True, "Successfully run.",
+                    sm_ref.updateState(key, True,
+                                       state_msg if key == sname else "Successfully run.",
                                        invalidate_downstream=_should_invalidate(
                                            pre.get(key), post))
                 sm_ref.writeState()
                 if cell_key:
-                    self._main_window.update_trip_cell(d_str, cell_key, "✅", "Successfully run.")
+                    self._main_window.update_trip_cell(d_str, cell_key, symbol, cell_msg)
             # Refresh the full row so downstream steps update eligibility
             sm_ref2 = StateMachine(str(trip), str(review), readState=True)
             self._main_window.refresh_trip_row(sm_ref2, d_str)

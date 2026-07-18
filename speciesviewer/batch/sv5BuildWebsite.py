@@ -66,6 +66,14 @@ def main(args, config):
 
     totaltime = time.time() - starttime
     logger.info(f'Create Website updates for project in {totaltime:.1f} seconds.')
+
+    # A day can hold JPGs but no recognized species at all — then the species tree
+    # has no 'biota' root and every page builder below would raise KeyError: 'biota'.
+    # There is simply nothing to publish for such a day; say so and stop cleanly.
+    if 'biota' not in MyProject.sp.species_dict:
+        logger.info(f"{MyProject.ProjectName()}: no recognized species — no website pages built.")
+        return engine.statemachine.nothing_to_do("no species this day — no website pages built.")
+
     MyProject.setLanguage('nl')
     MyProject.makeWebDirectories('biota', 'New')
     # same code, but no JPG files needed

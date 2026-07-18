@@ -274,7 +274,7 @@ class MainWindow(QMainWindow):
         self.setMenuBar(new_menu_bar)
 
     def update_trip_cell(self, day_name, step_key, symbol, tooltip):
-        from gui.trip_overview import SYNC_COL, STATE_COL_START
+        from gui.trip_overview import SYNC_COL, STATE_COL_START, cell_is_inert
         for row in range(self.trip_table.rowCount()):
             if self.trip_table.item(row, 0).text() == day_name:
                 if step_key == "Sync\nSidecars":
@@ -284,7 +284,7 @@ class MainWindow(QMainWindow):
                 item = QTableWidgetItem(symbol)
                 item.setToolTip(tooltip)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                if symbol == "🚫":
+                if cell_is_inert(symbol, tooltip):
                     item.setFlags(Qt.ItemFlag.NoItemFlags)
                 self.trip_table.setItem(row, col_index, item)
                 break

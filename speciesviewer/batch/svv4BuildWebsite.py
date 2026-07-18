@@ -31,6 +31,7 @@ import engine.projectlib
 import engine.specieslib
 import engine.speciesclassification
 import engine.bloglib
+import engine.statemachine
 from engine import SVException
 from engine.handling import read_file, read_pictures
 from engine.websupport import jpgResizeCopy, getSmallJPG
@@ -205,6 +206,12 @@ def main(args, config):
     restored = _restore_master_best_picks(sp, master_best)
     if restored:
         logger.info(f"  Restored master best-pick for {restored} species not in the local extract.")
+
+    # No recognized species anywhere in the extract → no 'biota' root, and every
+    # page builder below would raise KeyError: 'biota'. Nothing to publish.
+    if "biota" not in sp.species_dict:
+        logger.info("No recognized species in this virtual trip — no website pages built.")
+        return engine.statemachine.nothing_to_do("no species — no website pages built.")
 
     # Reset the all-species file tracking before building (class-level dict)
     project.resetAllSpeciesFiles()

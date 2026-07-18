@@ -131,7 +131,8 @@ def main(args, config):
                     f"photos — day removed from the blog"
                     f"{' (prior post pruned)' if was_present else ''}.")
         # A distinct GUI message: nothing was created, so don't claim it was.
-        result_msg = "✅ No species this day — no blog created."
+        # The prefix makes the trip overview show 🚫 rather than ✅ for this day.
+        result_msg = engine.statemachine.nothing_to_do("no species this day — no blog created.")
     else:
         # make them
         blog.makeRunSummaryPost('biota', 'nl')
