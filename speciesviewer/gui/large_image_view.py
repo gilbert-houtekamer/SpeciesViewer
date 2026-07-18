@@ -2213,15 +2213,6 @@ class LargeImageView(QDialog):
         raw = self._collection.raw_path(self._item.key)
         if not raw:
             return
-        # Opening in DxO is a "preparing a JPG" moment, so seed a virgin .dop with
-        # this machine's defaults (the configured denoise method + any crop from
-        # the culling .xmp) when the RAW has no .dop yet — so PL opens it ready.
-        # No-op when the denoise feature is off or a .dop already exists.
-        try:
-            from engine.sidecarlib import prepare_virgin_dop
-            prepare_virgin_dop(raw)
-        except Exception as e:
-            logger.warning(f"prepare_virgin_dop failed for {raw}: {e}")
         if sys.platform.startswith("win"):
             if open_path(raw):
                 return

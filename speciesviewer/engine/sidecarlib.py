@@ -465,44 +465,6 @@ def ensure_dop(raw_path):
         return None
 
 
-def prepare_virgin_dop(raw_path):
-    """Ensure a RAW about to be processed in PhotoLab carries this machine's
-    defaults, so PL opens it already set up rather than on its generic preset.
-
-    "Virgin" = a from-scratch recipe seeded with the configured DxO denoise method
-    (utils.photolab_denoise) PLUS any crop / exposure sitting in the sibling
-    culling .xmp — the ".xmp → .dop" mapping. No-op when the picture already has a
-    .dop (never overwrite a PhotoLab-authored recipe) or when the denoise feature
-    is off. Returns the .dop path, or None.
-
-    ⚠ Whether PhotoLab applies a .dop it did NOT author is still the open question
-    (see ensure_dop and the crop path) — verify in PL before relying on it.
-    """
-    from utils.photolab_denoise import denoise_override_for_crop
-    denoise = denoise_override_for_crop()
-    if denoise is None:
-        return None                        # feature off — leave the RAW untouched
-    dop_path = str(raw_path) + ".dop"
-    if os.path.exists(dop_path):
-        return dop_path                    # PhotoLab / an earlier crop already owns it
-    dop_path = ensure_dop(raw_path)
-    if not dop_path:
-        return None
-    # Map any crop / exposure the culling .xmp holds across to the fresh .dop.
-    crop = exposure = angle = None
-    xmp = os.path.splitext(str(raw_path))[0] + ".xmp"
-    if os.path.exists(xmp):
-        try:
-            edits = read_xmp_edits(xmp)
-            crop, exposure, angle = (
-                edits.get("crop"), edits.get("exposure"), edits.get("angle"))
-        except Exception as e:
-            logger.warning(f"prepare_virgin_dop: could not read {xmp}: {e}")
-    write_dop_edits(dop_path, crop=crop, exposure=exposure, angle=angle,
-                    denoise=denoise)
-    return dop_path
-
-
 def suggest_crop(raw_path, crop, angle=None):
     """Write a suggested crop to the DxO .dop (and, for a RAW source, the
     Lightroom .xmp) so the next edit in PhotoLab or Lightroom opens with it.
