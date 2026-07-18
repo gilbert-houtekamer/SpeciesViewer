@@ -597,6 +597,20 @@ def build_menu_spec(main_window):
     )
     virttrip_create.callback = lambda: VirtualTripCreationDialog(main_window, virttrip_create).exec()
 
+    # Read-only companion to Create: the date range is the thing you cannot
+    # remember, and the master already knows it. Report only — see
+    # gui/trip_finder_view.py.
+    def _find_trips():
+        import gui.trip_finder_view as tf
+        tf.show(main_window, _config)
+
+    find_trips = MenuSpec(
+        callback=_find_trips,
+        title="Find Trips in the Master…",
+        tooltip="Report: date ranges that look like trips, to use when creating one",
+        showsubdirectory=False,
+    )
+
     extract_days = MenuSpec(
         callback=None,
         title="Extract Days from Master",
@@ -1245,6 +1259,7 @@ def build_menu_spec(main_window):
             "Species Without a Website Picture…": no_display_item,
         },
         "Virtual Trips": {
+            "Find Trips in the Master…": find_trips,
             "Create Virtual Trip": virttrip_create,
             f"{MenuSpec.separator()}_vt1": None,
             "Extract Days from Master": extract_days,

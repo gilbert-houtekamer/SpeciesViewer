@@ -1,0 +1,222 @@
+"""Virtual Trips ▸ "Find Trips in the Master…" — a read-only report.
+
+Answers the question the Create Virtual Trip dialog cannot: *what date range?*
+Creating a virtual trip means typing a from/to date you have to remember, so the
+Tucson trip got found by hand-searching filename prefixes and the range that was
+typed was padded two days either side of the pictures that actually exist.
+
+This lists what the master already knows, from two sources in ONE table — which
+is the point: it removes the "from an existing trip, or retroactive from master
+dates?" question, because the answer is just which row you are looking at.
+
+  KNOWN  a real trip out of the master's trip_admin.csv — dates recorded.
+  FOUND  a run of consecutive shooting days discovered in the master.
+
+REPORT ONLY. Nothing here writes. Feeding a row into Create Virtual Trip is the
+next step; for now a row can be copied to the clipboard so the dates can be
+pasted into Create by hand.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QAction, QBrush, QColor, QFont
+from PyQt6.QtWidgets import (
+    QAbstractItemView, QApplication, QDialog, QHBoxLayout, QHeaderView, QLabel,
+    QMenu, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout)
+
+logger = logging.getLogger("speciesviewer")
+
+(SRC_COL, RANGE_COL, DAYS_COL, PICS_COL, RATE_COL, PREFIX_COL, PLACE_COL,
+ NAME_COL, USED_COL) = range(9)
+HEADERS = ["Source", "Date range", "Days", "Pictures", "Per day",
+           "You called it", "Where", "Suggested name", "Already a virtual trip"]
+
+
+class TripFinderDialog(QDialog):
+    """Read-only candidate table. Sortable; right-click copies a row's details."""
+
+    def __init__(self, parent, rows: list[dict]):
+        super().__init__(parent)
+        self.setWindowTitle("Find Trips in the Master")
+        self.resize(1040, 620)
+        self._rows = rows
+
+        layout = QVBoxLayout(self)
+
+        known = sum(1 for r in rows if r["source"] == "known")
+        found = len(rows) - known
+        used = sum(1 for r in rows if r.get("existing"))
+        intro = QLabel(
+            f"<p><b>{len(rows)} candidate trips</b> — {known} known trips (dates from "
+            f"the master's trip list) and {found} found by looking for runs of "
+            f"consecutive shooting days. {used} already have a virtual trip.</p>"
+            "<p>This is a <b>report</b> — nothing is created or changed. "
+            "Right-click a row to copy its dates or its suggested name, so you can "
+            "paste them into <i>Create Virtual Trip</i>.</p>"
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        self._table = QTableWidget(0, len(HEADERS))
+        self._table.setHorizontalHeaderLabels(HEADERS)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._table.setAlternatingRowColors(True)
+        self._table.setSortingEnabled(False)          # fill first, then enable
+        self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._table.customContextMenuRequested.connect(self._on_context_menu)
+        layout.addWidget(self._table)
+
+        self._fill(rows)
+        self._table.setSortingEnabled(True)
+
+        note = QLabel(
+            "<p style='color:#666'>A trip with <b>0 pictures</b> is one whose photos are "
+            "not in the master yet (a trip still being worked on). "
+            "Low <b>per day</b> usually means time at home rather than a trip — those "
+            "rank last but are kept, because a close-to-home collection is still a "
+            "perfectly good virtual trip.</p>"
+        )
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        copy_btn = QPushButton("Copy selected row")
+        copy_btn.clicked.connect(self._copy_selected)
+        buttons.addWidget(copy_btn)
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        buttons.addWidget(close_btn)
+        layout.addLayout(buttons)
+
+    # ── table ──────────────────────────────────────────────────────────────
+    def _fill(self, rows: list[dict]) -> None:
+        from engine.trip_finder import suggested_name
+
+        self._table.setRowCount(len(rows))
+        grey = QBrush(QColor("#888888"))
+        for i, r in enumerate(rows):
+            used = bool(r.get("existing"))
+            cells = [
+                ("trip" if r["source"] == "known" else "found"),
+                f"{r['start']}  →  {r['end']}",
+                r["days"], r["pictures"], f"{r['per_day']:.0f}",
+                r.get("prefix") or "", r["place"], suggested_name(r),
+                r.get("existing") or "",
+            ]
+            for col, value in enumerate(cells):
+                item = QTableWidgetItem()
+                # Numbers must sort as numbers, not as text ("9" > "148").
+                if col in (DAYS_COL, PICS_COL):
+                    item.setData(Qt.ItemDataRole.DisplayRole, int(value))
+                elif col == RATE_COL:
+                    item.setData(Qt.ItemDataRole.DisplayRole, int(float(value)))
+                else:
+                    item.setText(str(value))
+                if col in (DAYS_COL, PICS_COL, RATE_COL):
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight
+                                          | Qt.AlignmentFlag.AlignVCenter)
+                # A row that is already a virtual trip is shown, not hidden — a
+                # hidden row makes the list lie, and rebuilding one is legitimate.
+                if used:
+                    item.setForeground(grey)
+                if col == SRC_COL and r["source"] == "known":
+                    f = QFont()
+                    f.setBold(True)
+                    item.setFont(f)
+                self._table.setItem(i, col, item)
+            self._table.item(i, SRC_COL).setData(Qt.ItemDataRole.UserRole, i)
+
+        header = self._table.horizontalHeader()
+        header.setSectionResizeMode(PLACE_COL, QHeaderView.ResizeMode.Stretch)
+        for col in (SRC_COL, RANGE_COL, DAYS_COL, PICS_COL, RATE_COL, PREFIX_COL,
+                    NAME_COL, USED_COL):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+
+    # ── copying ────────────────────────────────────────────────────────────
+    def _selected_row(self) -> dict | None:
+        items = self._table.selectedItems()
+        if not items:
+            return None
+        # The model index survives sorting; the row's position does not.
+        src = self._table.item(items[0].row(), SRC_COL)
+        idx = src.data(Qt.ItemDataRole.UserRole) if src else None
+        return self._rows[idx] if idx is not None else None
+
+    def _copy(self, text: str, what: str) -> None:
+        QApplication.clipboard().setText(text)
+        logger.info(f"Find Trips: copied {what} — {text}")
+
+    def _copy_selected(self) -> None:
+        row = self._selected_row()
+        if row is None:
+            QMessageBox.information(self, "Find Trips", "Select a row first.")
+            return
+        from engine.trip_finder import suggested_name
+        self._copy(f"{row['start']} {row['end']} {suggested_name(row)}", "row")
+
+    def _on_context_menu(self, pos) -> None:
+        row = self._selected_row()
+        if row is None:
+            item = self._table.itemAt(pos)
+            if item is None:
+                return
+            self._table.selectRow(item.row())
+            row = self._selected_row()
+            if row is None:
+                return
+        from engine.trip_finder import suggested_name
+
+        menu = QMenu(self)
+        menu.setStyleSheet("QMenu { background-color: white; color: black; }")
+        act_from = QAction(f"Copy start date  ({row['start']})", self)
+        act_to = QAction(f"Copy end date  ({row['end']})", self)
+        act_both = QAction(f"Copy date range  ({row['start']} → {row['end']})", self)
+        act_name = QAction(f"Copy suggested name  ({suggested_name(row)})", self)
+        for a in (act_from, act_to, act_both, act_name):
+            menu.addAction(a)
+        chosen = menu.exec(self._table.viewport().mapToGlobal(pos))
+        if chosen is act_from:
+            self._copy(row["start"], "start date")
+        elif chosen is act_to:
+            self._copy(row["end"], "end date")
+        elif chosen is act_both:
+            self._copy(f"{row['start']} {row['end']}", "date range")
+        elif chosen is act_name:
+            self._copy(suggested_name(row), "suggested name")
+
+
+def show(main_window, config) -> None:
+    """Menu entry point: scan the master, then show the report."""
+    from engine.trip_finder import find_candidates
+
+    master = (config.get("master", "masterbiotadatabase", fallback="")
+              .replace('"', "").replace("'", ""))
+    if not master:
+        QMessageBox.warning(main_window, "Find Trips in the Master",
+                            "No master database is configured.")
+        return
+    virttrips = (config.get("virttrip", "virttriprootdirectory", fallback="")
+                 .replace('"', "").replace("'", ""))
+
+    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+    try:
+        rows = find_candidates(master, virttrips)
+    except Exception as e:
+        logger.warning(f"Find Trips in the Master failed: {e}")
+        QMessageBox.warning(main_window, "Find Trips in the Master",
+                            f"Could not scan the master:\n\n{e}")
+        return
+    finally:
+        QApplication.restoreOverrideCursor()
+
+    if not rows:
+        QMessageBox.information(main_window, "Find Trips in the Master",
+                                "No candidate trips found in the master.")
+        return
+    logger.info(f"Find Trips in the Master: {len(rows)} candidate trip(s).")
+    TripFinderDialog(main_window, rows).exec()
