@@ -63,7 +63,7 @@ design</em>.</p>
       shipped as Refresh Master Database.</li>
     <li><strong>Compact the viewer toolbar + laptop-fit review</strong> <span class="tag-new">NEW</span> —
       the wide filter/knob row and dialog sizing on small screens (ch. 3).</li>
-    <li><strong>Albums WP7</strong> — retroactive day-by-day builder + amber/green blog bubbles (ch. 2).</li>
+    <li><strong>Albums WP7</strong> — only the last step left: fold Extract Days into Create (ch. 2). Date-range discovery shipped as <em>Find Trips in the Master</em>.</li>
     <li>Smaller: GBIF lookup disk-cache (ch. 11).</li>
     <li><em>Dropped from the shortlist: Map for the Day (micro-trip) — verified already
       working, see ch. 3.</em></li>
@@ -290,10 +290,55 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
     pictures whose GPS looks hand-entered but carries no record of it. Report first, decide later.
     The scan already turned up two real errors worth a look: a South Africa photo tagged
     <em>Country = Spain</em>, and Galapagos 2015 reusing a single coordinate across many pictures.</li>
-  <li><strong>WP7 — the guided <em>Create</em> experience</strong> <span class="tag-open">OPEN</span> —
-    the pipeline is done, but Create still doesn't <em>ask</em> “from an existing trip” vs
-    “retroactive from master dates”, and Extract Days is still a separate step rather than folded in.
-    You have to know the date range and type it yourself. Everything after that point works.</li>
+  <li><strong>Find Trips in the Master + “Make an album…”</strong> <span class="tag-shipped">SHIPPED</span> —
+    <code>ac2c0c1</code> / <code>718ec62</code> / <code>f72126a</code>, 2026-07-18. Kills the
+    “you must know the date range and type it yourself” half of WP7.
+    <strong>Albums ▸ Find Trips in the Master…</strong> is a read-only report listing candidates from
+    TWO sources in ONE table — which is what dissolves the “from an existing trip vs retroactive from
+    master dates?” question, because the answer is just which row you picked:
+    <strong>KNOWN</strong> (a real trip from <code>trip_admin.csv</code>, dates recorded) and
+    <strong>FOUND</strong> (a run of consecutive shooting days). Every row has a
+    <strong>Make an album…</strong> button that opens Create Album with the dates and a suggested name
+    prefilled — deliberately <em>not</em> one-click, because a row cannot know the title, description
+    or trip image.
+    <p>Signals were chosen from what the data actually supports (73,957 pictures):
+    <code>DateTimeOriginal</code> 100%, Country/State 85%, <strong>GPS only 56% — so cluster by DATE and
+    label by PLACE NAMES, not GPS</strong>. The strongest label is the dominant <strong>UPN prefix</strong>,
+    because it is not inferred at all: it is what you called the pictures when you filed them, and it is
+    the only thing that names the early years (2013 and earlier carry no Country/State, leaving ten
+    clusters as “(no place recorded)” while their UPNs say panama, florida, oostzee). Extracting it is
+    <em>not</em> a split on the last space or hyphen — the separator is a space on old UPNs and a hyphen
+    on new ones, and hyphens occur inside names (<code>2024 zomer zuid-afrika-n6240016</code>) and inside
+    filenames (<code>2013 december nl dsc_1975-v2</code>); recognising the camera filename instead works
+    for <strong>99%</strong> of UPNs. Pictures-per-day <em>ranks</em> away-trips above time at home
+    (Tucson 87/day, home 5.9/day) but never drops a row — Braakman and Helgoland are exactly what a home
+    filter would hide. Ranges already built are <strong>marked, not hidden</strong>: a hidden row makes
+    the list lie.</p>
+    <p>Validated live: it independently derives “Tucson_2023” (the name picked by hand) and dates it
+    <em>tighter</em> than the typed range (2023-03-25→2026-04-16 vs the padded 2023-03-23→2023-04-18),
+    and it finds the <strong>2013 Panama trip that started the hobby</strong> (12 days, 115 pictures →
+    <code>2013_panama</code>). The report is <strong>modeless</strong> — it is a list you work beside —
+    re-scans after a Create, and has a Refresh button. Performance: ONE table scan aggregated in Python =
+    <strong>0.19 s</strong>; a first version doing three scans per candidate took 7.1 s.</p></li>
+  <li><strong>GUI vocabulary: “Album” replaces “virtual trip”</strong> <span class="tag-shipped">SHIPPED</span> —
+    <code>961e5f8</code> / <code>f72126a</code>. <em>Virtual trip</em> describes how the thing is BUILT;
+    <em>album</em> describes what it IS. <strong>Labels only</strong>: menus, dialog titles, buttons,
+    table headers, tooltips, status messages, the sidebar, repo settings, and both backlog documents.
+    <strong>Deliberately unchanged</strong>: <code>virttrip.ini</code>, the <code>[virttrip]</code> config
+    section, <code>virttripbiotadatabase</code>, the <code>svv*</code> module names, folder names like
+    <code>Tucson_2023db</code>, and code identifiers — those are persisted on disk, in config and in
+    published URLs, and this project already knows renaming identity is expensive
+    (<code>trip_name</code> doubles as the website slug).
+    <p>⚠ <strong>Two traps for any future string sweep.</strong> (1) Menu <em>items</em> display
+    <code>MenuSpec.title</code> falling back to the dict key, so titles rename freely while lookup keys
+    stay — but the <em>top-level</em> menu name IS its key. (2) Under <strong>PEP 701 (Python 3.12) an
+    f-string is not a STRING token</strong> but FSTRING_START/MIDDLE/END, so a tokenize sweep filtering on
+    STRING silently skips every f-string — and a verification pass sharing that filter confirms its own
+    blind spot and reports success. <strong>A sweep and its check must not share a filter.</strong></p></li>
+  <li><strong>WP7 — fold Extract Days into <em>Create</em></strong> <span class="tag-open">OPEN</span> —
+    all that remains of the guided Create: the date-range problem is solved above, but
+    <em>Extract Days from Master</em> is still a separate menu step rather than folded into Create's
+    finish. Everything after that point works.</li>
   <li><strong>Scenario-1 “Add to Master” no-op greying</strong> <span class="tag-parked">PARKED</span> —
     a retired trip already ran Add-to-Master in its arc, so the standalone action would be a no-op.
     Greying it is pure cosmetic and low-value (unlike the greyed <em>search</em> boxes, which actively
