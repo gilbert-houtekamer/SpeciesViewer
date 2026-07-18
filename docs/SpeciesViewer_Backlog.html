@@ -433,12 +433,18 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     Denoise…&rdquo;</strong> with an editable Method→code table. &#9888; The <code>.dop</code> recipe schema
     <code>Version</code> is forward-incompatible (PL8&asymp;19.5 can&rsquo;t read a PL9 <code>20.6</code>
     <code>.dop</code> at all), so v8/v7 rows are best-effort; recipe downgrading is out of scope. FUTURE
-    <strong>Virgin culling <code>.xmp</code> &rarr; virgin <code>.dop</code> BUILT</strong> (<code>a2f0a05</code>,
-    &#9888; PL-honoring unverified): <code>sidecarlib.prepare_virgin_dop(raw)</code> seeds a from-scratch
-    <code>.dop</code> with the configured denoise method + maps any crop/exposure from the sibling culling
-    <code>.xmp</code> when a RAW opened in DxO has no <code>.dop</code>; no-op if the feature is off or a
-    <code>.dop</code> exists. Wired into <code>_open_in_dxo</code>. OPEN: does PL apply a <code>.dop</code> it
-    didn&rsquo;t author? &mdash; verify live.</li>
+    <strong>Virgin culling <code>.xmp</code> &rarr; virgin <code>.dop</code>: BUILT then REVERTED &mdash;
+    officially not possible</strong> (<code>a2f0a05</code> &rarr; reverted <code>c24df8a</code>, 2026-07-18). A
+    deep PL9 reverse-engineering session established that <strong>PhotoLab owns the master identity in its own
+    catalog</strong>: it assigns each RAW a random <strong>v4 UUID</strong> at import and matches
+    <code>.dop</code> items by it. A from-scratch <code>.dop</code> carries a UUID PL never registered, so PL
+    <strong>always adds it as a virtual copy</strong> &mdash; even in an unseen folder, even byte-faithful
+    (correct Name/Orientation/ShotDate, no CafId, empty OutputItems). UUIDs are random (not derived from the RAW),
+    so the &ldquo;right&rdquo; one can&rsquo;t be computed; there is no master/copy flag in the format. (Learned
+    en route: DxO <code>Orientation</code> = standard EXIF 1/3/6/8; <code>CafId</code> is a per-batch id,
+    omittable; the crash was empty <code>Base</code> + schema <code>19.5</code>.) <strong>Reliable path: PL
+    authors the <code>.dop</code> (Ctrl-A write sidecars), SpeciesViewer edits it</strong> &mdash;
+    <code>write_dop_edits</code> merges without touching UUIDs, so no copy. Denoise-on-crop unaffected.</li>
   <li><strong>A species-less blog day disappears (no crash, no empty post)</strong>
     <span class="tag-shipped">SHIPPED</span> (<code>8270aa8</code>, 2026-07-17) — a day with JPGs but no
     recognized species (and no landscape photo) used to crash WriteBlog with <code>KeyError: 'biota'</code>,
