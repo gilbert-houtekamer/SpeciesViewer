@@ -300,7 +300,7 @@ def _read_blog_ini(ini_path: Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Per-day blog entry helper (avoids the class-level new_blog_row alias bug)
+# Per-day blog entry helper (builds the row itself; see bloglib.new_blog_row)
 # ---------------------------------------------------------------------------
 
 def _register_day_blog(blog, project) -> None:
@@ -310,7 +310,9 @@ def _register_day_blog(blog, project) -> None:
     so that blog.BestJPGs is already populated.  blog.setBlogDay() must have
     been called before makeRunSummaryPost (it sets the day dir/filename names).
 
-    Avoids the class-level new_blog_row aliasing issue in prepareBlogCreation."""
+    Builds its own row rather than going through prepareBlogCreation, which
+    registers exactly one day (the class-level row-aliasing this used to dodge
+    is fixed at the root now — bloglib.new_blog_row())."""
     blogday = blog.getBlogDay()   # already set before makeRunSummaryPost was called
 
     entry = {

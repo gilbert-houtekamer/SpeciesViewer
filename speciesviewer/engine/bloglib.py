@@ -19,6 +19,40 @@ from engine.specieslib import Level
 
 logger = logging.getLogger("speciesviewer")
 
+
+# The blog_admin.csv row shape, in column order. This used to be a class-level
+# dict on Blog (`new_blog_row`) that prepareBlogCreation filled in and then
+# handed straight to addBlog — so every blog day registered in one process was
+# THE SAME dict object, and blog_dict held N aliases of one row. Writing
+# blog_admin.csv then emitted the last day's values for every line.
+# svv3WriteBlog._register_day_blog already worked around this by hand.
+# Build a fresh row per day with new_blog_row(); take the column order from
+# BLOG_CSV_FIELDS.
+_BLOG_ROW_DEFAULTS = {
+    'blog':           "",
+    'title_nl':       "Foto's van de laatste 12 jaar",
+    'title_en':       'Photos from the last 12 years',
+    'message_nl':     '',
+    'message_en':     '',
+    'blogjpg':        '',
+    'Project':        '',
+    'CreatedTime':    '',
+    'SelectedGroup':  '',
+    'OnlyNewSpecies': '',
+    'MinimumScore':   '',
+    'BestJPGs':       [],
+}
+
+BLOG_CSV_FIELDS = tuple(_BLOG_ROW_DEFAULTS)
+
+
+def new_blog_row():
+    """A fresh blog_admin row. Never share one row between blog days."""
+    row = dict(_BLOG_ROW_DEFAULTS)
+    row['BestJPGs'] = []          # own list, not the template's
+    return row
+
+
 class Blog:
     blog_dict = {} 
     blogday = ""
@@ -32,21 +66,6 @@ class Blog:
     CountJPG = 1
     blogjpg = ""
     column_width = 300
-
-    new_blog_row = {'blog':"", 
-                    'title_nl':"Foto's van de laatste 12 jaar", 
-                    'title_en':'Photos from the last 12 years', 
-                    'message_nl':'',
-                    'message_en':'',
-                    'blogjpg':'',
-                    'Project':'',
-                    'CreatedTime':'',
-                    'SelectedGroup':'',
-                    'OnlyNewSpecies':'',
-                    'MinimumScore':'',
-                    'BestJPGs':[]
-                    }
-
 
     def __init__(self, MyProject):
         MyProject.registerBlog(self)
@@ -117,7 +136,7 @@ class Blog:
         self.blog_dict[row['blog']] = row
         return
     def setBlogHeader(self, headers):
-        self.blog_csv_headers = self.new_blog_row.keys()
+        self.blog_csv_headers = BLOG_CSV_FIELDS
         return
     def getBlogHeader(self):
         return self.blog_csv_headers 
@@ -155,20 +174,28 @@ class Blog:
         self.read_BlogAdmin()
         # does it exist? do we want to update admin?
         if not self.existBlog(self.getBlogDay()):
-            self.new_blog_row['blog'] = self.blogday
-            self.new_blog_row['title_nl'] = self.TitleNl
-            self.new_blog_row['title_en'] = self.TitleEn
-            self.new_blog_row['message_nl'] = self.MessageNl
-            self.new_blog_row['message_en'] = self.MessageEn
-            self.new_blog_row['blogjpg'] = self.blogjpg
-            self.new_blog_row['Project'] = self.mp.ProjectName()
-            self.new_blog_row['CreatedTime'] = datetime.today().strftime('%Y-%m-%d %H-%M')
-            self.new_blog_row['SelectedGroup'] = self.SelectedSpeciesGroup
-            self.new_blog_row['OnlyNewSpecies'] = self.OnlyNewSpecies
-            self.new_blog_row['MinimumScore'] = self.MinimumScore
-            self.new_blog_row['BestJPGs'] = self.BestJPGs
+            # A FRESH row per blog day — see new_blog_row().
+            row = new_blog_row()
+            row['blog'] = self.blogday
+            row['title_nl'] = self.TitleNl
+            row['title_en'] = self.TitleEn
+            row['message_nl'] = self.MessageNl
+            row['message_en'] = self.MessageEn
+            row['blogjpg'] = self.blogjpg
+            row['Project'] = self.mp.ProjectName()
+            row['CreatedTime'] = datetime.today().strftime('%Y-%m-%d %H-%M')
+            row['SelectedGroup'] = self.SelectedSpeciesGroup
+            row['OnlyNewSpecies'] = self.OnlyNewSpecies
+            row['MinimumScore'] = self.MinimumScore
+            # ⚠ A LIVE REFERENCE, deliberately not a copy. prepareBlogCreation runs
+            # BEFORE makeRunSummaryPost, which is what fills BestJPGs (addBestJPG).
+            # The row must see those later appends or write_BlogAdmin stores [] and
+            # the blog index renders "(picture not found)". This is safe precisely
+            # because each day now gets its own row (new_blog_row) and each day is
+            # its own Blog instance — one list, one day.
+            row['BestJPGs'] = self.BestJPGs
             # add dictionary to dictionary
-            self.addBlog(self.new_blog_row)
+            self.addBlog(row)
             # remember, but likely redundant
             self.write_BlogAdmin()
         else:
@@ -183,7 +210,7 @@ class Blog:
             row['SelectedGroup'] = self.SelectedSpeciesGroup
             row['OnlyNewSpecies'] = self.OnlyNewSpecies
             row['MinimumScore'] = self.MinimumScore
-            row['BestJPGs'] = self.BestJPGs
+            row['BestJPGs'] = self.BestJPGs   # live reference — see above
 
         return
 
@@ -249,7 +276,7 @@ class Blog:
         logger.info(f'Write all blog data in CSV file "{self.getBlogAdminFile()}".')
         with open(self.getBlogAdminFile(), "w", newline="", encoding='utf-8') as csvfile:
             # needed to get column in order          
-            writer = csv.DictWriter(csvfile, fieldnames=self.new_blog_row.keys(), delimiter=';')
+            writer = csv.DictWriter(csvfile, fieldnames=BLOG_CSV_FIELDS, delimiter=';')
             writer.writeheader()
 
             for blogitem in self.blog_dict:
@@ -264,9 +291,15 @@ class Blog:
                     row['blogjpg'] = blog_object['blogjpg']
                 else:
                     row['blogjpg'] = ''
-                row['Project'] = self.mp.ProjectName()
-                row['CreatedTime'] = datetime.today().strftime('%Y-%m-%d %H-%M')
-                row['SelectedGroup'] = blog_object['SelectedGroup'] 
+                # Keep each row's OWN project and creation time. These used to be
+                # overwritten with the current project and "now" for every row on
+                # every write, so one write stamped the day being processed onto
+                # all the other days' rows (all of kretadb read "2026-03-21").
+                # Only a row that has never carried them falls back to current.
+                row['Project'] = blog_object.get('Project') or self.mp.ProjectName()
+                row['CreatedTime'] = (blog_object.get('CreatedTime')
+                                      or datetime.today().strftime('%Y-%m-%d %H-%M'))
+                row['SelectedGroup'] = blog_object['SelectedGroup']
                 row['OnlyNewSpecies'] = blog_object['OnlyNewSpecies']
                 row['MinimumScore'] = blog_object['MinimumScore']
                 row['BestJPGs'] = blog_object['BestJPGs']
