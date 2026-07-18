@@ -1220,7 +1220,7 @@ def build_menu_spec(main_window):
             "Recreate Trip": recreate_trip,
             f"{MenuSpec.separator()}_retire": None,
             # Retire
-            "Retire Trip to Virtual Trip": retire_trip_item,
+            "Retire Trip to Album": retire_trip_item,
             "Delete Local Files Backed Up in Master…": delete_trip_item,
             f"{MenuSpec.separator()}_advanced": None,
             # Advanced: the individual pipeline steps, for a read-only CSV refresh
@@ -1260,20 +1260,20 @@ def build_menu_spec(main_window):
         },
         "Albums": {
             "Find Trips in the Master…": find_trips,
-            "Create Virtual Trip": virttrip_create,
+            "Create Album": virttrip_create,
             f"{MenuSpec.separator()}_vt1": None,
             "Extract Days from Master": extract_days,
             f"{MenuSpec.separator()}_vt2": None,
-            "Write Virtual Trip Blogs": MenuSpec(
+            "Write Album Blogs": MenuSpec(
                 callback=lambda: VirttripWriteBlogDialog(main_window).exec(),
                 title="Write Album Blogs",
             ),
-            "Recreate Virtual Trip Blogs": MenuSpec(
+            "Recreate Album Blogs": MenuSpec(
                 callback=lambda: VirttripRedoBlogDialog(main_window).exec(),
                 title="Make the Blogs Clickable",
                 tooltip="Add species links & navigation",
             ),
-            "Build Virtual Trip Website": MenuSpec(
+            "Build Album Website": MenuSpec(
                 callback=lambda: VirttripBuildWebsiteDialog(main_window).exec(),
                 title="Build Album Website",
             ),
@@ -1284,13 +1284,13 @@ def build_menu_spec(main_window):
                 showsubdirectory=False,
             ),
             f"{MenuSpec.separator()}_vt4": None,
-            "Add Virtual Trip to Master": MenuSpec(
+            "Add Album to Master": MenuSpec(
                 callback=lambda: VirttripAddToMasterDialog(main_window).exec(),
                 title="Add Album to Master",
             ),
             f"{MenuSpec.separator()}_vt5": None,
-            "Export Virtual Trip": export_virttrip,
-            "Import Virtual Trip": import_virttrip,
+            "Export Album": export_virttrip,
+            "Import Album": import_virttrip,
         },
         "Utilities": {
         #     "BirdingBreaks": None, # PROCESS BIRDING BREAK FILES

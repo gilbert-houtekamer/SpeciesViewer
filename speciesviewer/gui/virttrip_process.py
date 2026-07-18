@@ -230,7 +230,7 @@ class RetireTripDialog(QDialog):
 
         header = ("An album already exists — it will be rebuilt end-to-end."
                   if exists else
-                  f"Create the successor virtual trip from “{trip_name}”.")
+                  f"Create the successor album from “{trip_name}”.")
         layout.addWidget(HTMLLabel(f"<p>{header}</p>"))
 
         self.title_nl_field = LabeledTextFieldQt(
@@ -473,10 +473,10 @@ def retire_trip_to_virttrip(parent):
                 + "See the status log for details. Fix the problem and run again — "
                   "the steps that already completed are safe to repeat.")
         else:
-            logger.info(f"✅ Virtual trip '{trip_name}' fully retired and published.")
+            logger.info(f"✅ Album '{trip_name}' fully retired and published.")
             QMessageBox.information(
                 parent, "Retire Trip to Album",
-                f"Virtual trip “{trip_name}” is complete.\n\n"
+                f"Album “{trip_name}” is complete.\n\n"
                 + (result_notes + "\n\n" if result_notes else "")
                 + "The blogs, website and master trip index have all been built and uploaded.")
 
@@ -548,13 +548,13 @@ class VirtualTripCreationDialog(QDialog):
         tab1 = QWidget()
         layout1 = QVBoxLayout(tab1)
         layout1.addWidget(HTMLLabel(
-            "<p><b>What is a virtual trip?</b><br>"
-            "A <b>virtual trip</b> is a curated collection of species and pictures drawn from an "
+            "<p><b>What is an album?</b><br>"
+            "A <b>album</b> is a curated collection of species and pictures drawn from an "
             "existing date range in the master database. Unlike a regular trip there is no picture "
             "directory to scan — pictures are selected by date range from the master.</p>"
-            "<p><b>Creating a new virtual trip</b><br>"
+            "<p><b>Creating a new album</b><br>"
             "Enter a folder name (e.g. <i>birds2024</i>) and click <b>Create Folder</b>. "
-            "Fill in the dates and description, then click <b>Create Virtual Trip</b>.</p>"
+            "Fill in the dates and description, then click <b>Create Album</b>.</p>"
         ))
 
         self.root_field = RecentDirectoryFieldQt("Album Root folder", trip_root)
@@ -624,7 +624,7 @@ class VirtualTripCreationDialog(QDialog):
         layout2.addWidget(HTMLLabel(
             "<p><b>Preferred names</b><br>"
             "Which of Dutch / English / Scientific reads out as the label under each "
-            "picture in this virtual trip's viewers (a fallback chain). Leave on "
+            "picture in this album's viewers (a fallback chain). Leave on "
             "<i>Default</i> to follow the global setting.</p>"))
         from utils.name_profile import profile_keys, profile_label
         self.name_profile_combo = QComboBox()
@@ -687,9 +687,9 @@ class VirtualTripCreationDialog(QDialog):
         btn_layout.addStretch()
         write_ini_btn = QPushButton("Update Trip Settings")
         write_ini_btn.setToolTip(
-            "Save this virtual trip's settings AND text (both this page and Trip "
+            "Save this album's settings AND text (both this page and Trip "
             "Text) to virttrip.ini — WITHOUT rebuilding. Use this to update an "
-            "existing virtual trip (e.g. its Preferred names). 'Create Virtual "
+            "existing album (e.g. its Preferred names). 'Create Virtual "
             "Trip' is only for building a brand-new one.")
         create_btn    = QPushButton("Create Album")
         select_btn    = QPushButton("Select")
@@ -752,7 +752,7 @@ class VirtualTripCreationDialog(QDialog):
         trips_parent_str = _config.get("virttrip", "virttriprootdirectory", fallback="")
         if not trips_parent_str:
             self.status_label.setText(
-                "❌ Virtual Trips root directory is not configured. "
+                "❌ Albums root directory is not configured. "
                 "Set it in Settings → Config before creating a trip folder."
             )
             return
@@ -783,7 +783,7 @@ class VirtualTripCreationDialog(QDialog):
         # /trips/<name>/ URL, where its blog + pictures already live).
         self.trip_web.set_text(f"/trips/{folder_name}")
         self.status_label.setText(f"✅ Created: {new_trip_path}")
-        self.logger.info(f"Created new virtual trip folder: {new_trip_path}")
+        self.logger.info(f"Created new album folder: {new_trip_path}")
 
     def on_trip_root_changed(self, new_path):
         trip_data = read_virttrip_ini(new_path)
@@ -895,7 +895,7 @@ class ExtractDaysDialog(QDialog):
             "<p>Days with no pictures in the master are skipped.</p>"
         ))
 
-        layout.addWidget(QLabel(f"Virtual trip:  {virttrip_root or '(not set)'}"))
+        layout.addWidget(QLabel(f"Album:  {virttrip_root or '(not set)'}"))
         layout.addWidget(QLabel(f"Date range:    {fromdate}  →  {todate}{day_count}"))
 
         self.status_label = QLabel("")
@@ -956,19 +956,19 @@ class ExportVirtualTripDialog(QDialog):
         layout = QVBoxLayout(self)
 
         info = QLabel(
-            "<b>Export Virtual Trip</b><br>"
+            "<b>Export Album</b><br>"
             "Writes <tt>&lt;trip folder&gt;.zip</tt> into the selected directory. "
             "The ZIP contains <tt>virttrip.ini</tt> and everything under <tt>metadata/</tt> "
             "(blog drafts, extracted day CSVs, seeded species lists). "
             "No picture files are included and web output is excluded — "
-            "a virtual trip references the master's biota tree by path, "
+            "an album references the master's biota tree by path, "
             "it never duplicates it. "
-            "Use <i>Import Virtual Trip</i> on the target machine to unpack it."
+            "Use <i>Import Album</i> on the target machine to unpack it."
         )
         info.setWordWrap(True)
         layout.addWidget(info)
 
-        layout.addWidget(QLabel(f"Virtual trip:  {virttrip_root or '(not set)'}"))
+        layout.addWidget(QLabel(f"Album:  {virttrip_root or '(not set)'}"))
         layout.addWidget(QLabel(f"Trip name:     {trip_name}"))
 
         self.target_field = DirectoryFieldQt("Output directory (ZIP saved here)", "")
@@ -1017,10 +1017,10 @@ class ImportVirtualTripDialog(QDialog):
         layout = QVBoxLayout(self)
 
         info = QLabel(
-            "<b>Import a Virtual Trip from a ZIP file</b><br>"
+            "<b>Import a Album from a ZIP file</b><br>"
             "Extracts <tt>virttrip.ini</tt> and <tt>metadata/</tt> (blog drafts, "
             "day CSVs, seeded species lists) into a new folder under the Virtual "
-            "Trips root, and registers it as the active virtual trip. "
+            "Trips root, and registers it as the active album. "
             "Existing files are overwritten; nothing else is removed."
         )
         info.setWordWrap(True)
@@ -1100,7 +1100,7 @@ class ImportVirtualTripDialog(QDialog):
         dest = self._dest_path()
         if not dest:
             self.status_label.setText(
-                "Virtual Trips root is not configured. Set it in Settings → Config first.")
+                "Albums root is not configured. Set it in Settings → Config first.")
             return
 
         import zipfile as _zf
@@ -1137,7 +1137,7 @@ class ImportVirtualTripDialog(QDialog):
         set_setting("virttrip", "virttripbiotawebroot", web_slug)
 
         elapsed = _time.time() - t0
-        self.logger.info(f"Virtual trip imported to {dest} in {elapsed:.1f}s.")
+        self.logger.info(f"Album imported to {dest} in {elapsed:.1f}s.")
 
         populate_virttrip_overview(self.passed_parent)
         self.passed_parent.virttrip_panel.rebuild()
@@ -1196,7 +1196,7 @@ class VirttripWriteBlogDialog(QDialog):
         self._fresh  = blog_count == 0 and not source_trip
 
         layout.addWidget(HTMLLabel(
-            "<p><b>Write Virtual Trip Blogs</b></p>"
+            "<p><b>Write Album Blogs</b></p>"
             "<p>For every day that has extracted data, reads that day's "
             "<code>metadata/blog/blog_YYYY-MM-DD.ini</code> and uploads NL + EN blog "
             "HTML pages.</p>"
@@ -1204,7 +1204,7 @@ class VirttripWriteBlogDialog(QDialog):
             "HTML is always regenerated and re-uploaded.</p>"
         ))
 
-        layout.addWidget(QLabel(f"Virtual trip:   {virttrip_root or '(not set)'}"))
+        layout.addWidget(QLabel(f"Album:   {virttrip_root or '(not set)'}"))
         layout.addWidget(QLabel(f"Trip name:      {trip_name}"))
         layout.addWidget(QLabel(f"Days with data: {day_count}"))
         layout.addWidget(QLabel(
@@ -1295,7 +1295,7 @@ class VirttripWriteBlogDialog(QDialog):
         # Build menu_spec dynamically so the current minimum_score is captured
         menu_spec = _virttrip_spec(
             batch.svv3WriteBlog.main,
-            "Writing virtual trip blogs...",
+            "Writing album blogs...",
             "✅ All blogs written and uploaded.",
         )
         menu_spec.batch_parms["extra_config"] = [
@@ -1343,7 +1343,7 @@ class VirttripRedoBlogDialog(QDialog):
 
         layout.addWidget(HTMLLabel(
             "<p><b>Make the Blogs Clickable</b> — add species links &amp; navigation</p>"
-            "<p>Re-renders the blog pages that <i>Write Virtual Trip Blogs</i> already "
+            "<p>Re-renders the blog pages that <i>Write Album Blogs</i> already "
             "published, rewriting only the HTML:</p>"
             "<ul>"
             "<li>Adds the full <b>Previous / Next</b> navigation between days "
@@ -1354,7 +1354,7 @@ class VirttripRedoBlogDialog(QDialog):
             "on the web are left untouched. Run this after all days have been written.</p>"
         ))
 
-        layout.addWidget(QLabel(f"Virtual trip:  {virttrip_root or '(not set)'}"))
+        layout.addWidget(QLabel(f"Album:  {virttrip_root or '(not set)'}"))
         layout.addWidget(QLabel(f"Trip name:     {trip_name}"))
         layout.addWidget(QLabel(f"Day blogs:     {blog_count}"))
 
@@ -1417,14 +1417,14 @@ class VirttripBuildWebsiteDialog(QDialog):
         trip_name = (trip_data or {}).get("trip_name", Path(virttrip_root).name if virttrip_root else "?")
 
         layout.addWidget(HTMLLabel(
-            "<p><b>Build Virtual Trip Website</b></p>"
-            "<p>Generates species HTML pages (NL + EN) for the virtual trip "
+            "<p><b>Build Album Website</b></p>"
+            "<p>Generates species HTML pages (NL + EN) for the album "
             "using pictures extracted from the master. No SFTP — local build only, "
             "identical to the regular trip's Build Website step.</p>"
             "<p>Requires 'Extract Days from Master' to have been run first.</p>"
         ))
 
-        layout.addWidget(QLabel(f"Virtual trip:  {virttrip_root or '(not set)'}"))
+        layout.addWidget(QLabel(f"Album:  {virttrip_root or '(not set)'}"))
         layout.addWidget(QLabel(f"Trip name:     {trip_name}"))
 
         self.status_label = QLabel("")
@@ -1440,8 +1440,8 @@ class VirttripBuildWebsiteDialog(QDialog):
 
         self.menu_spec = _virttrip_spec(
             batch.svv4BuildWebsite.main,
-            "Building virtual trip species pages...",
-            "✅ Virtual trip website built.",
+            "Building album species pages...",
+            "✅ Album website built.",
         )
         run_btn.clicked.connect(self.on_run)
         close_btn.clicked.connect(self.close)
@@ -1470,8 +1470,8 @@ class VirttripAddToMasterDialog(QDialog):
         master_db = _config.get("master", "masterbiotadatabase", fallback="")
 
         layout.addWidget(HTMLLabel(
-            "<p><b>Add Virtual Trip to Master</b></p>"
-            "<p>Registers this virtual trip in the master trip index so it appears "
+            "<p><b>Add Album to Master</b></p>"
+            "<p>Registers this album in the master trip index so it appears "
             "on the website alongside regular trips:</p>"
             "<ul>"
             "<li>Adds (or refreshes) the trip row in the master <code>trip_admin.csv</code>.</li>"
@@ -1483,7 +1483,7 @@ class VirttripAddToMasterDialog(QDialog):
             "Re-running is safe — the existing entry is replaced in place.</p>"
         ))
 
-        layout.addWidget(QLabel(f"Virtual trip:  {virttrip_root or '(not set)'}"))
+        layout.addWidget(QLabel(f"Album:  {virttrip_root or '(not set)'}"))
         layout.addWidget(QLabel(f"Trip name:     {trip_name}"))
         layout.addWidget(QLabel(f"Master:        {master_db or '(not set)'}"))
 
@@ -1513,8 +1513,8 @@ class VirttripAddToMasterDialog(QDialog):
     def on_run(self):
         menu_spec = _virttrip_spec(
             batch.svv5AddToMaster.main,
-            "Registering virtual trip in master trip index...",
-            "✅ Virtual trip added to master trip index and uploaded.",
+            "Registering album in master trip index...",
+            "✅ Album added to master trip index and uploaded.",
         )
         if self.local_checkbox.isChecked():
             menu_spec.batch_parms["extra_config"] = [

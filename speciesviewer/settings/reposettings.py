@@ -141,8 +141,8 @@ class RepoSettingsDialog(QDialog):
             return True  # not inside virttrips root — fine
         answer = QMessageBox.warning(
             self, "Possible configuration error",
-            f"The Active Trip path\n  {trip}\n\nis inside the Virtual Trips root\n  {vroot}\n\n"
-            "This looks like a virtual trip set as a regular trip by mistake.\n\n"
+            f"The Active Trip path\n  {trip}\n\nis inside the Albums root\n  {vroot}\n\n"
+            "This looks like an album set as a regular trip by mistake.\n\n"
             "Save anyway?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,

@@ -395,7 +395,7 @@ def populate_virttrip_overview(self):
     layout = QVBoxLayout(overview_widget)
 
     header_row = QHBoxLayout()
-    header_label = QLabel(f"Virtual Trip: {trip_name}")
+    header_label = QLabel(f"Album: {trip_name}")
     header_label.setStyleSheet("font-weight: bold; font-size: 16px;")
     header_row.addWidget(header_label)
 

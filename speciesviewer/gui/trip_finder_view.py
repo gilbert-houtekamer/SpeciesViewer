@@ -53,10 +53,10 @@ class TripFinderDialog(QDialog):
         intro = QLabel(
             f"<p><b>{len(rows)} candidate trips</b> — {known} known trips (dates from "
             f"the master's trip list) and {found} found by looking for runs of "
-            f"consecutive shooting days. {used} already have a virtual trip.</p>"
+            f"consecutive shooting days. {used} already have an album.</p>"
             "<p>This is a <b>report</b> — nothing is created or changed. "
             "Right-click a row to copy its dates or its suggested name, so you can "
-            "paste them into <i>Create Virtual Trip</i>.</p>"
+            "paste them into <i>Create Album</i>.</p>"
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)
@@ -79,13 +79,18 @@ class TripFinderDialog(QDialog):
             "not in the master yet (a trip still being worked on). "
             "Low <b>per day</b> usually means time at home rather than a trip — those "
             "rank last but are kept, because a close-to-home collection is still a "
-            "perfectly good virtual trip.</p>"
+            "perfectly good album.</p>"
         )
         note.setWordWrap(True)
         layout.addWidget(note)
 
         buttons = QHBoxLayout()
         buttons.addStretch()
+        refresh_btn = QPushButton("Refresh")
+        refresh_btn.setToolTip("Re-scan the master — picks up albums made since "
+                               "this report was opened")
+        refresh_btn.clicked.connect(self._reload)
+        buttons.addWidget(refresh_btn)
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(self.accept)
         buttons.addWidget(close_btn)
@@ -133,7 +138,7 @@ class TripFinderDialog(QDialog):
             # "which dates?" to a created album without typing anything.
             btn = QPushButton("Make an album…")
             btn.setToolTip(
-                f"Open Create Virtual Trip with {r['start']} → {r['end']} "
+                f"Open Create Album with {r['start']} → {r['end']} "
                 f"already filled in" + (f"\n\nAlready built as '{r['existing']}' — "
                                         "making another will not touch it."
                                         if r.get("existing") else ""))
@@ -200,19 +205,44 @@ class TripFinderDialog(QDialog):
             spec = (build_menu_spec(parent).get("Albums", {})
                     .get("Create Album"))
         except Exception as e:                       # keep the report usable
-            logger.warning(f"Find Trips: could not open Create Virtual Trip: {e}")
+            logger.warning(f"Find Trips: could not open Create Album: {e}")
             QMessageBox.warning(self, "Make an album",
-                                f"Could not open Create Virtual Trip:\n\n{e}")
+                                f"Could not open Create Album:\n\n{e}")
             return
         if spec is None:
             QMessageBox.warning(self, "Make an album",
-                                "Create Virtual Trip is not available from here.")
+                                "Create Album is not available from here.")
             return
-        # Close the report first: the Create dialog is modal, and leaving a stale
-        # candidate list behind it invites picking a second row into the same
-        # half-finished album.
-        self.accept()
+        # The report STAYS OPEN behind the modal Create dialog — it is a list you
+        # work through, and closing it after one album meant re-running the scan
+        # to make the next. Re-read afterwards so the "already an album" column
+        # reflects what was just created.
         VirtualTripCreationDialog(parent, spec, preset=preset).exec()
+        self._reload()
+
+    def _reload(self) -> None:
+        """Re-scan and repaint, so the report reflects albums made since it opened."""
+        from engine.trip_finder import find_candidates
+        from utils.config import _config
+
+        master = (_config.get("master", "masterbiotadatabase", fallback="")
+                  .replace('"', "").replace("'", ""))
+        if not master:
+            return
+        virttrips = (_config.get("virttrip", "virttriprootdirectory", fallback="")
+                     .replace('"', "").replace("'", ""))
+        try:
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            rows = find_candidates(master, virttrips)
+        except Exception as e:
+            logger.warning(f"Find Trips: refresh failed: {e}")
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        self._rows = rows
+        self._table.setSortingEnabled(False)
+        self._fill(rows)
+        self._table.setSortingEnabled(True)
 
     # ── copying ────────────────────────────────────────────────────────────
     def _selected_row(self) -> dict | None:
@@ -296,4 +326,15 @@ def show(main_window, config) -> None:
                                 "No candidate trips found in the master.")
         return
     logger.info(f"Find Trips in the Master: {len(rows)} candidate trip(s).")
-    TripFinderDialog(main_window, rows).exec()
+    # show(), not exec(): the report is something to keep open and work beside —
+    # exec() made it modal, which froze the main window and meant it could not
+    # stay on screen while anything else was done. The reference is parked on the
+    # main window because a modeless QDialog with no Python reference is garbage
+    # collected the moment this function returns, and the window vanishes.
+    dlg = TripFinderDialog(main_window, rows)
+    dlg.setModal(False)
+    dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+    main_window._trip_finder_dlg = dlg
+    dlg.show()
+    dlg.raise_()
+    dlg.activateWindow()

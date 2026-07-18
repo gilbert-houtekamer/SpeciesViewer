@@ -86,7 +86,7 @@ def retire_trip_dialog(main_window, trip_db):
                 f"Permanently delete the trip data for '{rep['name']}'?\n\n"
                 f"{rep['trip_db']}\n\n"
                 f"This cannot be undone. CurrentPictures, the master and the "
-                f"virtual trip are NOT touched.",
+                f"album are NOT touched.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
@@ -102,7 +102,7 @@ def retire_trip_dialog(main_window, trip_db):
         QMessageBox.information(
             dlg, "Retire trip",
             f"Retired '{rep['name']}'. Deleted {trs._fmt_size(rep['size_bytes'])} of trip data.\n"
-            f"CurrentPictures, the master and the virtual trip are intact.")
+            f"CurrentPictures, the master and the album are intact.")
         dlg.accept()
 
     del_btn.clicked.connect(_do_delete)

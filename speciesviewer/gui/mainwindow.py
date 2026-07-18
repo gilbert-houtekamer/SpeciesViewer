@@ -1268,7 +1268,7 @@ class MainWindow(QMainWindow):
         root = _config.get("virttrip", "virttripbiotadatabase", fallback="").strip()
         if not root:
             QMessageBox.warning(self, "Album Map",
-                                "No virtual trip is active.")
+                                "No album is active.")
             return
         one_day = day_dirs is not None
         day_dirs = list(day_dirs) if one_day else self._review_day_dirs(root)
@@ -1287,7 +1287,7 @@ class MainWindow(QMainWindow):
             QApplication.restoreOverrideCursor()
         if not keys:
             QMessageBox.information(self, "Album Map",
-                                    "No pictures found for this virtual trip.")
+                                    "No pictures found for this album.")
             return
         info = read_virttrip_ini(root) or {}
         name = info.get("trip_name") or Path(root).name
@@ -1313,7 +1313,7 @@ class MainWindow(QMainWindow):
         virttrip_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
         if not virttrip_root:
             QMessageBox.warning(self, "Trip Species Viewer",
-                                "No virtual trip (Album) is active.")
+                                "No album (Album) is active.")
             return
         # Strong ref on the main window — see open_rating_editor for the why.
         self._virttrip_rating_editor_dlg = RatingEditorDialog(
