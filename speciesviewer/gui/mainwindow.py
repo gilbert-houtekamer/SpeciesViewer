@@ -1267,14 +1267,14 @@ class MainWindow(QMainWindow):
         from utils.virttrip_config import read_virttrip_ini
         root = _config.get("virttrip", "virttripbiotadatabase", fallback="").strip()
         if not root:
-            QMessageBox.warning(self, "Virtual Trip Map",
+            QMessageBox.warning(self, "Album Map",
                                 "No virtual trip is active.")
             return
         one_day = day_dirs is not None
         day_dirs = list(day_dirs) if one_day else self._review_day_dirs(root)
         if not day_dirs:
             QMessageBox.warning(
-                self, "Virtual Trip Map",
+                self, "Album Map",
                 "No days with picture data were found — extract the days first.")
             return
         geotag = self._master_is_editable()
@@ -1282,11 +1282,11 @@ class MainWindow(QMainWindow):
         try:
             coll, keys, loader = self._collection_from_review_days(
                 day_dirs, read_only=True, allow_geotag=geotag,
-                label="Virtual Trip Map")
+                label="Album Map")
         finally:
             QApplication.restoreOverrideCursor()
         if not keys:
-            QMessageBox.information(self, "Virtual Trip Map",
+            QMessageBox.information(self, "Album Map",
                                     "No pictures found for this virtual trip.")
             return
         info = read_virttrip_ini(root) or {}
@@ -1298,7 +1298,7 @@ class MainWindow(QMainWindow):
             self, coll, keys, title=f"Map — {name} ({scope}{suffix})",
             loader=loader, default_path=not one_day, read_only=True,
             allow_geotag=geotag,
-            read_only_note="A virtual trip shares the master's pictures instead of "
+            read_only_note="An album shares the master's pictures instead of "
                            "copying them, so this map only shows them — it cannot "
                            "change their location, rating or files.")
         self._virttrip_map_dlg.pictures_geotagged.connect(

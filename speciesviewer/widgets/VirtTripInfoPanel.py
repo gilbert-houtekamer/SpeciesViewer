@@ -24,12 +24,12 @@ class VirtTripInfoPanel(QWidget):
         font_style = "font-size: 10pt; font-family: Consolas, monospace;"
         self.setStyleSheet(f"{font_style} background-color: #f9f9f9;")
 
-        layout.addWidget(self._header_label("Virtual Trip Root:"))
+        layout.addWidget(self._header_label("Album Root:"))
         self.root_label = self._header_label(get_virttrips_root() or "(not configured)")
         layout.addWidget(self.root_label)
 
         layout.addSpacing(10)
-        layout.addWidget(self._header_label("Virtual Trips:"))
+        layout.addWidget(self._header_label("Albums:"))
 
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
@@ -92,7 +92,7 @@ class VirtTripInfoPanel(QWidget):
                 item.setToolTip(0, tooltip_html)
                 self.tree.addTopLevelItem(item)
         else:
-            self.tree.addTopLevelItem(QTreeWidgetItem(["(No virtual trips found)"]))
+            self.tree.addTopLevelItem(QTreeWidgetItem(["(No albums found)"]))
 
         self._refresh_highlights()
 
@@ -151,7 +151,7 @@ class VirtTripInfoPanel(QWidget):
         if not trip_dir:
             return
         menu = QMenu()
-        open_action = menu.addAction("Open Virtual Trip Folder")
+        open_action = menu.addAction("Open Album Folder")
         action = menu.exec(QCursor.pos())
         if action == open_action and os.path.isdir(trip_dir):
             open_path(trip_dir)

@@ -556,13 +556,13 @@ def build_menu_spec(main_window):
 
     export_virttrip = MenuSpec(
         callback=None,
-        title="Export Virtual Trip",
+        title="Export Album",
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
             'module_called': batch.svv7ExportVirtualTrip.main,
-            'before_msg': "Zipping virtual trip (recipe + blog drafts + day data)...",
-            'after_msg': "✅ Virtual trip export complete.",
+            'before_msg': "Zipping album (recipe + blog drafts + day data)...",
+            'after_msg': "✅ Album export complete.",
             'virttrip_mode': True,
         }
     )
@@ -570,7 +570,7 @@ def build_menu_spec(main_window):
 
     import_virttrip = MenuSpec(
         callback=lambda: ImportVirtualTripDialog(main_window).exec(),
-        title="Import Virtual Trip",
+        title="Import Album",
     )
 
     testbed = MenuSpec(
@@ -587,12 +587,12 @@ def build_menu_spec(main_window):
 
     virttrip_create = MenuSpec(
         callback=None,
-        title="Create Virtual Trip",
+        title="Create Album",
         batch_parms={
             'statusname': "",
             'module_called': batch.svv1MakeVirtualRepository.main,
-            'before_msg': "Creating virtual trip directory structure...",
-            'after_msg': "✅ Virtual trip created. Fill in virttrip.ini details and select a date range."
+            'before_msg': "Creating album directory structure...",
+            'after_msg': "✅ Album created. Fill in the album details and select a date range."
         }
     )
     virttrip_create.callback = lambda: VirtualTripCreationDialog(main_window, virttrip_create).exec()
@@ -639,7 +639,7 @@ def build_menu_spec(main_window):
     # and migrate the day blogs — one action. The svr7 delete stays separate.
     retire_trip_item = MenuSpec(
         callback=lambda: retire_trip_to_virttrip(main_window),
-        title="Retire Trip to Virtual Trip",
+        title="Retire Trip to Album",
         showsubdirectory=False,
     )
 
@@ -1258,7 +1258,7 @@ def build_menu_spec(main_window):
                 showsubdirectory=False),
             "Species Without a Website Picture…": no_display_item,
         },
-        "Virtual Trips": {
+        "Albums": {
             "Find Trips in the Master…": find_trips,
             "Create Virtual Trip": virttrip_create,
             f"{MenuSpec.separator()}_vt1": None,
@@ -1266,7 +1266,7 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_vt2": None,
             "Write Virtual Trip Blogs": MenuSpec(
                 callback=lambda: VirttripWriteBlogDialog(main_window).exec(),
-                title="Write Virtual Trip Blogs",
+                title="Write Album Blogs",
             ),
             "Recreate Virtual Trip Blogs": MenuSpec(
                 callback=lambda: VirttripRedoBlogDialog(main_window).exec(),
@@ -1275,7 +1275,7 @@ def build_menu_spec(main_window):
             ),
             "Build Virtual Trip Website": MenuSpec(
                 callback=lambda: VirttripBuildWebsiteDialog(main_window).exec(),
-                title="Build Virtual Trip Website",
+                title="Build Album Website",
             ),
             f"{MenuSpec.separator()}_vt3": None,
             "Rating Editor": MenuSpec(
@@ -1286,7 +1286,7 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_vt4": None,
             "Add Virtual Trip to Master": MenuSpec(
                 callback=lambda: VirttripAddToMasterDialog(main_window).exec(),
-                title="Add Virtual Trip to Master",
+                title="Add Album to Master",
             ),
             f"{MenuSpec.separator()}_vt5": None,
             "Export Virtual Trip": export_virttrip,

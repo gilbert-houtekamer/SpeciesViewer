@@ -1,4 +1,4 @@
-"""Virtual Trips ▸ "Find Trips in the Master…" — a read-only report.
+"""Albums ▸ "Find Trips in the Master…" — a read-only report.
 
 Answers the question the Create Virtual Trip dialog cannot: *what date range?*
 Creating a virtual trip means typing a from/to date you have to remember, so the
@@ -32,7 +32,7 @@ logger = logging.getLogger("speciesviewer")
 (SRC_COL, RANGE_COL, DAYS_COL, PICS_COL, RATE_COL, PREFIX_COL, PLACE_COL,
  NAME_COL, USED_COL, MAKE_COL) = range(10)
 HEADERS = ["Source", "Date range", "Days", "Pictures", "Per day",
-           "You called it", "Where", "Suggested name", "Already a virtual trip",
+           "You called it", "Where", "Suggested name", "Already an album",
            ""]
 
 
@@ -86,9 +86,6 @@ class TripFinderDialog(QDialog):
 
         buttons = QHBoxLayout()
         buttons.addStretch()
-        copy_btn = QPushButton("Copy selected row")
-        copy_btn.clicked.connect(self._copy_selected)
-        buttons.addWidget(copy_btn)
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(self.accept)
         buttons.addWidget(close_btn)
@@ -200,8 +197,8 @@ class TripFinderDialog(QDialog):
         try:
             from gui.virttrip_process import VirtualTripCreationDialog
             from gui.menuspec import build_menu_spec
-            spec = (build_menu_spec(parent).get("Virtual Trips", {})
-                    .get("Create Virtual Trip"))
+            spec = (build_menu_spec(parent).get("Albums", {})
+                    .get("Create Album"))
         except Exception as e:                       # keep the report usable
             logger.warning(f"Find Trips: could not open Create Virtual Trip: {e}")
             QMessageBox.warning(self, "Make an album",

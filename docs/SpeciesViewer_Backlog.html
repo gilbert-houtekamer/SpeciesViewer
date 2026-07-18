@@ -63,7 +63,7 @@ design</em>.</p>
       shipped as Refresh Master Database.</li>
     <li><strong>Compact the viewer toolbar + laptop-fit review</strong> <span class="tag-new">NEW</span> —
       the wide filter/knob row and dialog sizing on small screens (ch. 3).</li>
-    <li><strong>Virtual Trips WP7</strong> — retroactive day-by-day builder + amber/green blog bubbles (ch. 2).</li>
+    <li><strong>Albums WP7</strong> — retroactive day-by-day builder + amber/green blog bubbles (ch. 2).</li>
     <li>Smaller: GBIF lookup disk-cache (ch. 11).</li>
     <li><em>Dropped from the shortlist: Map for the Day (micro-trip) — verified already
       working, see ch. 3.</em></li>
@@ -166,7 +166,7 @@ Cancel-during-copy, Lightroom-in-place, and tz-offset are validated.</p>
 </ul>
 
 <!-- ============================================================ -->
-<h2>2. Virtual Trips <span class="tag-complete">CORE + RETIRE COMPLETE</span></h2>
+<h2>2. Albums <span class="tag-complete">CORE + RETIRE COMPLETE</span></h2>
 
 <p>The whole arc is shipped and live: create → extract days → migrate &amp; upload blogs →
 build website → make blogs clickable → add to master. <strong>Retire-a-trip-to-a-virtual-trip</strong>
@@ -177,7 +177,7 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
 <h3>Shipped — the retroactive trip (Sri Lanka is live)</h3>
 <ul>
   <li><strong>WP7 — scenario-2 “retroactive” pipeline</strong> <span class="tag-shipped">SHIPPED</span> —
-    a virtual trip for a journey that never had a SpeciesViewer trip now runs end-to-end:
+    an album for a journey that never had a SpeciesViewer trip now runs end-to-end:
     <strong>Sri Lanka 2018-11-17 → 12-07</strong>, 1766 pictures, 148 species, 21 days — created,
     blogged, mapped and published. The blocker was not missing code. The auto-blog writer (day
     title from the day's locations, opening sentence, species callouts) was complete but
@@ -189,7 +189,7 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
     an empty dialog. Auto-create is now back, behind a gate.</li>
   <li><strong>The gate is “this trip has no blogs at all”, not “no source trip”</strong>
     <span class="tag-shipped">SHIPPED</span> — the obvious rule (auto-create when
-    <code>source_trip_id</code> is empty) would have been a bug: <em>every</em> virtual trip made
+    <code>source_trip_id</code> is empty) would have been a bug: <em>every</em> album made
     before that key existed carries an empty one, gaps and all — safari has 28 blogs across 30 days,
     costa-rica 23 of 25, gambia 26 of 29. Keying off it would have fabricated drafts into exactly
     the deliberate gaps the original block existed to protect. Checked against all eleven virtual
@@ -210,7 +210,7 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
     vanish — doing that for a single day would have dropped the other twenty out of the index and
     orphaned their live pages. Single-day mode skips the wipe and updates just that day in place.</li>
   <li><strong>Geotag the master from the virtual-trip map</strong> <span class="tag-shipped">SHIPPED</span> —
-    the map was flatly read-only because a virtual trip's files <em>are</em> the master's — which also
+    the map was flatly read-only because an album's files <em>are</em> the master's — which also
     made it the best surface we have for <em>fixing</em> the master's missing coordinates. Geotagging
     is now let through, and <em>only</em> geotagging: rating, colour, crop and delete stay refused, and
     the permission is gated on the machine's existing master write policy, so a read-only master still
@@ -560,7 +560,7 @@ now with scope-aware colour-delete (incl. master), a delete-preview, and a colou
     no-op for collections that don't cache location rows, so a trip-day geotag with a place
     name does not crash.)</li>
   <li><strong>Virtual-trip map</strong> <span class="tag-shipped">SHIPPED</span> —
-    the same map (bubbles → filmstrip → large view, travel path) over a virtual trip's
+    the same map (bubbles → filmstrip → large view, travel path) over an album's
     accumulated collection, read-only except for the geotag carve-out: a picture with NO
     coordinate may be placed, and the write lands in the master's own sidecar.</li>
   <li><strong>GPS / data-integrity umbrella</strong> <span class="tag-open">OPEN</span> —
@@ -714,7 +714,7 @@ filmstrip position, inline master comparison (via Trip+Master scope), grid↔lar
     could re-resolve to stale text after a re-read (not observed).</li>
   <li><span class="tag-parked">DEFERRED</span> User-configurable cache locations (all under
     <code>%LOCALAPPDATA%</code> today).</li>
-  <li><span class="tag-parked">PARKED</span> Align the Virtual Trips menu’s remaining “Rating Editor”
+  <li><span class="tag-parked">PARKED</span> Align the Albums menu’s remaining “Rating Editor”
     entry with the “Trip Species Viewer” rename (or an Album-specific name).</li>
 </ul>
 
@@ -895,7 +895,7 @@ Full design in <code>path_portability_plan.md</code>.</p>
       submenu + Run-all; unified Retire runs the whole arc.</td>
     <td>6dde8ed (+ series)</td></tr>
 
-  <tr><td>Retire → Virtual Trip (full arc)</td>
+  <tr><td>Retire → Album (full arc)</td>
     <td>One confirm runs svv1→svv2→migrate blogs→svv3→svv4→svv6→svv5 in a worker thread; banner/
       picture copied into the virttrip; publishing fixes (/trips root, read-only trip_dict, banner
       fallback). Verified end-to-end on Braakman.</td>

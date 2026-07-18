@@ -27,7 +27,7 @@ GPS_COL   = 3
 BLOG_COL  = 4
 WEB_COL   = 5
 
-TAB_TITLE = "Active Virtual Trip"
+TAB_TITLE = "Active Album"
 
 
 def _build_file_list(csv_path: Path, jpeg_only: bool) -> list:
@@ -422,7 +422,7 @@ def populate_virttrip_overview(self):
     header_row.addStretch()
 
     map_btn = QPushButton("🗺 Map whole trip")
-    map_btn.setToolTip("Plot every day of this virtual trip on one map (all species), "
+    map_btn.setToolTip("Plot every day of this album on one map (all species), "
                        "with the travel path. The pictures come from the master, so "
                        "the map only shows them — it does not change them.")
     header_row.addWidget(map_btn)
@@ -432,7 +432,7 @@ def populate_virttrip_overview(self):
     write_blog_btn = QPushButton("Write All Blogs")
     write_blog_btn.setToolTip("Auto-create blog ini files and upload all day blogs.")
     build_web_btn  = QPushButton("Build Website")
-    build_web_btn.setToolTip("Generate species HTML pages for this virtual trip.")
+    build_web_btn.setToolTip("Generate species HTML pages for this album.")
     header_row.addWidget(edit_blogs_btn)
     header_row.addWidget(write_blog_btn)
     header_row.addWidget(build_web_btn)

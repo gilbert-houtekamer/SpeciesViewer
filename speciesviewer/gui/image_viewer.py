@@ -244,7 +244,7 @@ class ImagePreviewDialog(QDialog):
         dir_layout = QHBoxLayout()
         self.dir_field = None
         if self._file_list is not None or self._injected_collection is not None:
-            path_label = QLabel(source_label or "Virtual trip — files from master database")
+            path_label = QLabel(source_label or "Album — files from master database")
             path_label.setStyleSheet("color: #444; font-style: italic;")
             dir_layout.addWidget(path_label)
         else:

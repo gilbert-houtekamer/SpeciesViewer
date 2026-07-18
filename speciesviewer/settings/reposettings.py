@@ -61,14 +61,14 @@ class RepoSettingsDialog(QDialog):
         layout.addWidget(self._divider())
 
         # Active Virtual Trip section
-        layout.addWidget(self._section_label("Active Virtual Trip"))
+        layout.addWidget(self._section_label("Active Album"))
         self.virttrip_field = self._labeled_field(layout, "Database", _config.get("virttrip", "virttripbiotadatabase", fallback=""))
-        browse_virttrip_btn = QPushButton("Browse Virtual Trip Database")
+        browse_virttrip_btn = QPushButton("Browse Album Database")
         browse_virttrip_btn.clicked.connect(self.browse_virttrip)
         layout.addWidget(browse_virttrip_btn)
         self.virttrip_web = self._labeled_field(layout, "Web root", _config.get("virttrip", "virttripbiotawebroot", fallback=""))
-        self.virttrips_root_field = self._labeled_field(layout, "Virtual trips root directory", get_virttrips_root())
-        browse_virttrips_root_btn = QPushButton("Browse Virtual Trips Root")
+        self.virttrips_root_field = self._labeled_field(layout, "Albums root directory", get_virttrips_root())
+        browse_virttrips_root_btn = QPushButton("Browse Albums Root")
         browse_virttrips_root_btn.clicked.connect(self.browse_virttrips_root)
         layout.addWidget(browse_virttrips_root_btn)
 
@@ -119,13 +119,13 @@ class RepoSettingsDialog(QDialog):
 
     def browse_virttrip(self):
         start = self.virttrips_root_field.text() or self.virttrip_field.text() or ""
-        path = QFileDialog.getExistingDirectory(self, "Select Virtual Trip Database Directory", start)
+        path = QFileDialog.getExistingDirectory(self, "Select Album Database Directory", start)
         if path:
             self.virttrip_field.setText(path)
 
     def browse_virttrips_root(self):
         start = self.virttrips_root_field.text() or ""
-        path = QFileDialog.getExistingDirectory(self, "Select Virtual Trips Root Directory", start)
+        path = QFileDialog.getExistingDirectory(self, "Select Albums Root Directory", start)
         if path:
             self.virttrips_root_field.setText(path)
 

@@ -223,12 +223,12 @@ class RetireTripDialog(QDialog):
     def __init__(self, parent, *, trip_name, trip_id, web_root, virttrip_root,
                  fromdate, todate, title_nl, title_en, exists):
         super().__init__(parent)
-        self.setWindowTitle("Retire Trip to Virtual Trip")
+        self.setWindowTitle("Retire Trip to Album")
         self.setModal(True)
         self.resize(580, 0)
         layout = QVBoxLayout(self)
 
-        header = ("A virtual trip already exists — it will be rebuilt end-to-end."
+        header = ("An album already exists — it will be rebuilt end-to-end."
                   if exists else
                   f"Create the successor virtual trip from “{trip_name}”.")
         layout.addWidget(HTMLLabel(f"<p>{header}</p>"))
@@ -247,7 +247,7 @@ class RetireTripDialog(QDialog):
             layout.addWidget(row)
 
         ro("Web address (fixed)", web_root)
-        ro("Virtual trip folder", virttrip_root)
+        ro("Album folder", virttrip_root)
         ro("Link back to trip", f"source_trip_id = {trip_id}")
         ro("Date range", f"{fromdate} → {todate}")
 
@@ -261,7 +261,7 @@ class RetireTripDialog(QDialog):
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         cancel_btn = QPushButton("Cancel")
-        ok_btn = QPushButton("Rebuild Virtual Trip" if exists else "Retire to Virtual Trip")
+        ok_btn = QPushButton("Rebuild Album" if exists else "Retire to Album")
         ok_btn.setDefault(True)
         btn_row.addWidget(cancel_btn)
         btn_row.addWidget(ok_btn)
@@ -413,7 +413,7 @@ def retire_trip_to_virttrip(parent):
                 f"{no_blog} day(s) had none (nothing fabricated).")
 
     steps = [
-        ("Creating the virtual trip",          lambda: batch.svv1MakeVirtualRepository.main(args, mcfg)),
+        ("Creating the album",          lambda: batch.svv1MakeVirtualRepository.main(args, mcfg)),
         ("Extracting days from the master",    lambda: batch.svv2ExtractDays.main(args, mcfg)),
         ("Migrating the trip blogs",           _migrate_blogs),
         ("Writing and uploading the blogs",    lambda: batch.svv3WriteBlog.main(args, mcfg)),
@@ -424,7 +424,7 @@ def retire_trip_to_virttrip(parent):
 
     from PyQt6.QtGui import QMovie
     spinner = QDialog(parent)
-    spinner.setWindowTitle("Retiring trip to virtual trip…")
+    spinner.setWindowTitle("Retiring trip to album…")
     spinner.setModal(True)
     spinner.setFixedSize(480, 180)
     slayout = QVBoxLayout(spinner)
@@ -467,7 +467,7 @@ def retire_trip_to_virttrip(parent):
         if failed_label:
             logger.warning(f"Retire trip stopped at: {failed_label}")
             QMessageBox.critical(
-                parent, "Retire Trip to Virtual Trip",
+                parent, "Retire Trip to Album",
                 f"Stopped at “{failed_label}”.\n\n"
                 + (result_notes + "\n\n" if result_notes else "")
                 + "See the status log for details. Fix the problem and run again — "
@@ -475,7 +475,7 @@ def retire_trip_to_virttrip(parent):
         else:
             logger.info(f"✅ Virtual trip '{trip_name}' fully retired and published.")
             QMessageBox.information(
-                parent, "Retire Trip to Virtual Trip",
+                parent, "Retire Trip to Album",
                 f"Virtual trip “{trip_name}” is complete.\n\n"
                 + (result_notes + "\n\n" if result_notes else "")
                 + "The blogs, website and master trip index have all been built and uploaded.")
@@ -535,7 +535,7 @@ class VirtualTripCreationDialog(QDialog):
         self._preset = preset or {}
         self.logger = parent.logger
         self.passed_parent = parent
-        self.setWindowTitle("Create Virtual Trip")
+        self.setWindowTitle("Create Album")
         self.resize(800, 600)
 
         trip_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
@@ -557,7 +557,7 @@ class VirtualTripCreationDialog(QDialog):
             "Fill in the dates and description, then click <b>Create Virtual Trip</b>.</p>"
         ))
 
-        self.root_field = RecentDirectoryFieldQt("Virtual Trip Root folder", trip_root)
+        self.root_field = RecentDirectoryFieldQt("Album Root folder", trip_root)
         self.root_field.textChanged(self.on_trip_root_changed)
         layout1.addWidget(self.root_field)
 
@@ -691,7 +691,7 @@ class VirtualTripCreationDialog(QDialog):
             "Text) to virttrip.ini — WITHOUT rebuilding. Use this to update an "
             "existing virtual trip (e.g. its Preferred names). 'Create Virtual "
             "Trip' is only for building a brand-new one.")
-        create_btn    = QPushButton("Create Virtual Trip")
+        create_btn    = QPushButton("Create Album")
         select_btn    = QPushButton("Select")
         # Create (build a brand-new virtual trip) first; Update Trip Settings (the
         # everyday save for an existing one) after it.
@@ -736,7 +736,7 @@ class VirtualTripCreationDialog(QDialog):
         if not folder_name:
             self.status_label.setText("")
         elif not root:
-            self.status_label.setText("⚠ Virtual Trips root not configured — set it in Settings → Config first.")
+            self.status_label.setText("⚠ Albums root not configured — set it in Settings → Config first.")
         else:
             self.status_label.setText(f"Will create: {Path(root) / folder_name}")
 
@@ -803,7 +803,7 @@ class VirtualTripCreationDialog(QDialog):
 
     def on_write_ini_clicked(self):
         self._write_virttrip_ini()
-        self.passed_parent.status_bar.showMessage("Virtual trip settings updated.")
+        self.passed_parent.status_bar.showMessage("Album settings updated.")
 
     def on_create_clicked(self):
         self._write_virttrip_ini()
@@ -943,7 +943,7 @@ class ExportVirtualTripDialog(QDialog):
 
     def __init__(self, parent, menu_spec):
         super().__init__(parent)
-        self.setWindowTitle("Export Virtual Trip")
+        self.setWindowTitle("Export Album")
         self.resize(650, 320)
         self.menu_spec = menu_spec
         self.logger = parent.logger
@@ -1009,7 +1009,7 @@ class ImportVirtualTripDialog(QDialog):
 
     def __init__(self, parent):
         super().__init__(parent)
-        self.setWindowTitle("Import Virtual Trip")
+        self.setWindowTitle("Import Album")
         self.resize(680, 420)
         self.logger = parent.logger
         self.passed_parent = parent
@@ -1030,7 +1030,7 @@ class ImportVirtualTripDialog(QDialog):
         zip_row = QHBoxLayout()
         zip_row.addWidget(QLabel("ZIP file:"))
         self.zip_field = QLineEdit()
-        self.zip_field.setPlaceholderText("Select a virtual trip ZIP…")
+        self.zip_field.setPlaceholderText("Select an album ZIP…")
         zip_row.addWidget(self.zip_field)
         browse_btn = QPushButton("Browse…")
         browse_btn.clicked.connect(self._browse_zip)
@@ -1039,7 +1039,7 @@ class ImportVirtualTripDialog(QDialog):
 
         # Destination: <virttriprootdirectory>/<folder name from the ZIP>
         vt_root = _config.get("virttrip", "virttriprootdirectory", fallback="")
-        layout.addWidget(QLabel("Virtual Trips root:"))
+        layout.addWidget(QLabel("Albums root:"))
         self.root_edit = QLineEdit(vt_root or "(not configured — set it in Settings → Config)")
         self.root_edit.setReadOnly(bool(vt_root))
         layout.addWidget(self.root_edit)
@@ -1073,7 +1073,7 @@ class ImportVirtualTripDialog(QDialog):
 
     def _browse_zip(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select Virtual Trip ZIP", "", "ZIP files (*.zip);;All files (*)")
+            self, "Select Album ZIP", "", "ZIP files (*.zip);;All files (*)")
         if path:
             self.zip_field.setText(path)
 
@@ -1164,7 +1164,7 @@ class VirttripWriteBlogDialog(QDialog):
         super().__init__(parent)
         self.logger       = parent.logger
         self.passed_parent = parent
-        self.setWindowTitle("Write Virtual Trip Blogs")
+        self.setWindowTitle("Write Album Blogs")
         self.resize(580, 300)
 
         layout = QVBoxLayout(self)
@@ -1407,7 +1407,7 @@ class VirttripBuildWebsiteDialog(QDialog):
         super().__init__(parent)
         self.logger        = parent.logger
         self.passed_parent = parent
-        self.setWindowTitle("Build Virtual Trip Website")
+        self.setWindowTitle("Build Album Website")
         self.resize(560, 260)
 
         layout = QVBoxLayout(self)
@@ -1459,7 +1459,7 @@ class VirttripAddToMasterDialog(QDialog):
         super().__init__(parent)
         self.logger        = parent.logger
         self.passed_parent = parent
-        self.setWindowTitle("Add Virtual Trip to Master")
+        self.setWindowTitle("Add Album to Master")
         self.resize(580, 280)
 
         layout = QVBoxLayout(self)
