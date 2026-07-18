@@ -266,18 +266,30 @@ class StateMachine:
 def getAllProjectStatus(MyProject, directory, silent=False):
     days_dict = {}
     directory = os.path.normpath(directory)
-    for root, dirs, files in os.walk(directory):
-        for file in files:
-            if file.endswith('.ini'):
-                # Day name is the first subdirectory under `directory`
-                rel = os.path.relpath(root, directory)
-                if rel == '.':
-                    continue
-                name = rel.split(os.sep)[0]
-                if name in days_dict:
-                    continue
-                statemachine = StateMachine(MyProject.getRepositoryPath(), name)
-                days_dict[name] = statemachine.Taskstate.copy()
+    # A day's state lives at <review>/<day>/statemachine.ini — always exactly one
+    # level deep, because writeState() writes it to the day directory. This used
+    # to os.walk() the whole review tree, which descends every day's frozen/
+    # website output (5,512 dirs / 5,897 files in the largest trip) to find a
+    # handful of .ini files one level down: ~285 ms per call, and growing with
+    # the size of the PUBLISHED SITE rather than the number of days. Scan one
+    # level instead. readProject(getEarlierDays=True) calls this on every batch
+    # step, so it is on the hot path of the whole pipeline.
+    try:
+        day_dirs = [e for e in os.scandir(directory) if e.is_dir()]
+    except OSError:
+        day_dirs = []
+    for entry in day_dirs:
+        try:
+            # Keep the old "any .ini in the day directory" test rather than
+            # requiring statemachine.ini: a day with some other .ini but no
+            # state file still gets a default (all-False) entry, so readProject
+            # keeps treating it as uncommitted and reads its CSVs.
+            if not any(f.endswith('.ini') for f in os.listdir(entry.path)):
+                continue
+        except OSError:
+            continue
+        statemachine = StateMachine(MyProject.getRepositoryPath(), entry.name)
+        days_dict[entry.name] = statemachine.Taskstate.copy()
     # Sort by day name so iteration is chronological
     days_dict = dict(sorted(days_dict.items()))
 
