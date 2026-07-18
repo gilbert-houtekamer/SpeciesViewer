@@ -524,9 +524,15 @@ def _clear_virttrip_blogs(virttrip_root, web_root, pwd, logger):
 
 
 class VirtualTripCreationDialog(QDialog):
-    def __init__(self, parent, menu_spec):
+    def __init__(self, parent, menu_spec, preset: dict | None = None):
+        """preset (optional): {"folder", "fromdate", "todate", "title_nl", "note"}
+        — prefills the dialog from a picked row of the "Find Trips in the Master"
+        report, so the date range is not typed from memory. Purely additive: with
+        no preset the dialog behaves exactly as before, and every prefilled field
+        stays editable. Nothing is created until the usual buttons are pressed."""
         super().__init__(parent)
         self.menu_spec = menu_spec
+        self._preset = preset or {}
         self.logger = parent.logger
         self.passed_parent = parent
         self.setWindowTitle("Create Virtual Trip")
@@ -698,9 +704,32 @@ class VirtualTripCreationDialog(QDialog):
         create_btn.clicked.connect(self.on_create_clicked)
         select_btn.clicked.connect(self.on_select)
 
+        self._apply_preset()
+
     def closeEvent(self, event):
         self.passed_parent.translator.writeTranslationCache()
         super().closeEvent(event)
+
+    def _apply_preset(self):
+        """Fill the dialog from a picked report row, then say so on screen.
+
+        The dates come from the pictures that actually exist, which is the whole
+        point — a typed range gets padded "to be safe" and then the album spans
+        days that hold nothing. Everything stays editable; the folder still has
+        to be created and Create still has to be pressed, so this only removes
+        the remembering, not the deciding.
+        """
+        p = self._preset
+        if not p:
+            return
+        if p.get("folder"):
+            self.new_folder_name.setText(p["folder"])
+        if p.get("fromdate") and p.get("todate"):
+            self.date_field.set_dates(p["fromdate"], p["todate"])
+        if p.get("title_nl") and not self.title_nl_field.get_text().strip():
+            self.title_nl_field.set_text(p["title_nl"])
+        if p.get("note"):
+            self.status_label.setText(p["note"])
 
     def _update_folder_preview(self, folder_name):
         root = _config.get("virttrip", "virttriprootdirectory", fallback="")

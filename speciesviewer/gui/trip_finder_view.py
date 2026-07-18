@@ -30,9 +30,10 @@ from PyQt6.QtWidgets import (
 logger = logging.getLogger("speciesviewer")
 
 (SRC_COL, RANGE_COL, DAYS_COL, PICS_COL, RATE_COL, PREFIX_COL, PLACE_COL,
- NAME_COL, USED_COL) = range(9)
+ NAME_COL, USED_COL, MAKE_COL) = range(10)
 HEADERS = ["Source", "Date range", "Days", "Pictures", "Per day",
-           "You called it", "Where", "Suggested name", "Already a virtual trip"]
+           "You called it", "Where", "Suggested name", "Already a virtual trip",
+           ""]
 
 
 class TripFinderDialog(QDialog):
@@ -131,11 +132,90 @@ class TripFinderDialog(QDialog):
                 self._table.setItem(i, col, item)
             self._table.item(i, SRC_COL).setData(Qt.ItemDataRole.UserRole, i)
 
+            # One button per row — the whole point of the report is to get from
+            # "which dates?" to a created album without typing anything.
+            btn = QPushButton("Make an album…")
+            btn.setToolTip(
+                f"Open Create Virtual Trip with {r['start']} → {r['end']} "
+                f"already filled in" + (f"\n\nAlready built as '{r['existing']}' — "
+                                        "making another will not touch it."
+                                        if r.get("existing") else ""))
+            # No lambda-over-loop-variable: bind the row by default argument, or
+            # every button would create the last row's album.
+            btn.clicked.connect(lambda _checked, row=r: self._make_album(row))
+            if r["pictures"] == 0:
+                # Nothing to extract — the trip's pictures are not in the master yet.
+                btn.setEnabled(False)
+                btn.setToolTip("These pictures are not in the master yet, so an "
+                               "album would come out empty.")
+            self._table.setCellWidget(i, MAKE_COL, btn)
+
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(PLACE_COL, QHeaderView.ResizeMode.Stretch)
         for col in (SRC_COL, RANGE_COL, DAYS_COL, PICS_COL, RATE_COL, PREFIX_COL,
-                    NAME_COL, USED_COL):
+                    NAME_COL, USED_COL, MAKE_COL):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+
+    # ── make an album ──────────────────────────────────────────────────────
+    def _make_album(self, row: dict) -> None:
+        """Hand this candidate to Create Virtual Trip, prefilled.
+
+        Deliberately NOT a one-click build. It opens the existing, tested Create
+        dialog with the dates and a suggested folder name filled in, because a
+        row cannot know the things only you can supply — the title, the
+        description, the trip image. What it removes is the part you cannot
+        remember: the date range.
+
+        Nothing is written here. Creating the folder and pressing Create are
+        still explicit, and an album references the master's pictures rather
+        than copying them, so an album you don't like is just a folder to delete.
+        """
+        from engine.trip_finder import suggested_name
+
+        name = suggested_name(row)
+        if row.get("existing"):
+            answer = QMessageBox.question(
+                self, "Already an album",
+                f"This date range is already covered by <b>{row['existing']}</b>.\n\n"
+                f"Create another album for {row['start']} → {row['end']} anyway?\n\n"
+                "The existing one is not touched.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+
+        where = row.get("place", "")
+        note = (f"From the report: {row['pictures']} pictures over {row['days']} days"
+                + (f" — {where}" if where and not where.startswith("(no place") else ""))
+        preset = {
+            "folder": name,
+            "fromdate": row["start"],
+            "todate": row["end"],
+            "title_nl": row.get("title") or (row.get("prefix") or "").strip(),
+            "note": note,
+        }
+        logger.info(f"Find Trips: creating an album from {row['start']} → "
+                    f"{row['end']} ({row['pictures']} pictures), suggested name '{name}'.")
+        parent = self.parent()
+        try:
+            from gui.virttrip_process import VirtualTripCreationDialog
+            from gui.menuspec import build_menu_spec
+            spec = (build_menu_spec(parent).get("Virtual Trips", {})
+                    .get("Create Virtual Trip"))
+        except Exception as e:                       # keep the report usable
+            logger.warning(f"Find Trips: could not open Create Virtual Trip: {e}")
+            QMessageBox.warning(self, "Make an album",
+                                f"Could not open Create Virtual Trip:\n\n{e}")
+            return
+        if spec is None:
+            QMessageBox.warning(self, "Make an album",
+                                "Create Virtual Trip is not available from here.")
+            return
+        # Close the report first: the Create dialog is modal, and leaving a stale
+        # candidate list behind it invites picking a second row into the same
+        # half-finished album.
+        self.accept()
+        VirtualTripCreationDialog(parent, spec, preset=preset).exec()
 
     # ── copying ────────────────────────────────────────────────────────────
     def _selected_row(self) -> dict | None:
