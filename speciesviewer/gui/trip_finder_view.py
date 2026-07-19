@@ -39,11 +39,17 @@ HEADERS = ["Source", "Date range", "Days", "Pictures", "Per day",
 class TripFinderDialog(QDialog):
     """Read-only candidate table. Sortable; right-click copies a row's details."""
 
-    def __init__(self, parent, rows: list[dict]):
+    def __init__(self, parent, rows: list[dict], *, picker: bool = False):
         super().__init__(parent)
-        self.setWindowTitle("Find Trips in the Master")
+        self.setWindowTitle("Pick a trip from the master" if picker
+                            else "Find Trips in the Master")
         self.resize(1040, 620)
         self._rows = rows
+        # picker mode: opened FROM Create Album. Each row's button just RETURNS
+        # that row for Create to fill itself from — it must NOT open Create
+        # again, which is the recursion this mode exists to avoid.
+        self._picker = picker
+        self.picked: dict | None = None
 
         layout = QVBoxLayout(self)
 
@@ -136,15 +142,17 @@ class TripFinderDialog(QDialog):
 
             # One button per row — the whole point of the report is to get from
             # "which dates?" to a created album without typing anything.
-            btn = QPushButton("Make an album…")
+            btn = QPushButton("Use this one" if self._picker else "Make an album…")
             btn.setToolTip(
-                f"Open Create Album with {r['start']} → {r['end']} "
-                f"already filled in" + (f"\n\nAlready built as '{r['existing']}' — "
-                                        "making another will not touch it."
-                                        if r.get("existing") else ""))
+                (f"Fill Create Album in with {r['start']} → {r['end']}"
+                 if self._picker else
+                 f"Open Create Album with {r['start']} → {r['end']} already filled in")
+                + (f"\n\nAlready built as '{r['existing']}' — "
+                   "making another will not touch it."
+                   if r.get("existing") else ""))
             # No lambda-over-loop-variable: bind the row by default argument, or
             # every button would create the last row's album.
-            btn.clicked.connect(lambda _checked, row=r: self._make_album(row))
+            btn.clicked.connect(lambda _checked, row=r: self._choose(row))
             if r["pictures"] == 0:
                 # Nothing to extract — the trip's pictures are not in the master yet.
                 btn.setEnabled(False)
@@ -159,6 +167,14 @@ class TripFinderDialog(QDialog):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
 
     # ── make an album ──────────────────────────────────────────────────────
+    def _choose(self, row: dict) -> None:
+        """Row button. Picker mode hands the row back; report mode opens Create."""
+        if self._picker:
+            self.picked = row
+            self.accept()
+            return
+        self._make_album(row)
+
     def _make_album(self, row: dict) -> None:
         """Hand this candidate to Create Virtual Trip, prefilled.
 
@@ -295,6 +311,39 @@ class TripFinderDialog(QDialog):
             self._copy(f"{row['start']} {row['end']}", "date range")
         elif chosen is act_name:
             self._copy(suggested_name(row), "suggested name")
+
+
+def pick(parent, config) -> dict | None:
+    """Modal picker for Create Album's "Pick from the master…". Returns the chosen
+    candidate row, or None if the user cancelled. Scans the master the same way
+    the report does — one implementation, two entry points."""
+    from engine.trip_finder import find_candidates
+
+    master = (config.get("master", "masterbiotadatabase", fallback="")
+              .replace('"', "").replace("'", ""))
+    if not master:
+        QMessageBox.warning(parent, "Pick a trip",
+                            "No master database is configured.")
+        return None
+    virttrips = (config.get("virttrip", "virttriprootdirectory", fallback="")
+                 .replace('"', "").replace("'", ""))
+    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+    try:
+        rows = find_candidates(master, virttrips)
+    except Exception as e:
+        logger.warning(f"Pick a trip: scan failed: {e}")
+        QMessageBox.warning(parent, "Pick a trip",
+                            f"Could not scan the master:\n\n{e}")
+        return None
+    finally:
+        QApplication.restoreOverrideCursor()
+    if not rows:
+        QMessageBox.information(parent, "Pick a trip",
+                                "No candidate trips found in the master.")
+        return None
+    dlg = TripFinderDialog(parent, rows, picker=True)
+    dlg.exec()
+    return dlg.picked
 
 
 def show(main_window, config) -> None:

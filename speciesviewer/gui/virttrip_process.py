@@ -549,7 +549,7 @@ class VirtualTripCreationDialog(QDialog):
         layout1 = QVBoxLayout(tab1)
         layout1.addWidget(HTMLLabel(
             "<p><b>What is an album?</b><br>"
-            "A <b>album</b> is a curated collection of species and pictures drawn from an "
+            "An <b>album</b> is a curated collection of species and pictures drawn from an "
             "existing date range in the master database. Unlike a regular trip there is no picture "
             "directory to scan — pictures are selected by date range from the master.</p>"
             "<p><b>Creating a new album</b><br>"
@@ -564,7 +564,25 @@ class VirtualTripCreationDialog(QDialog):
         new_folder_widget = QWidget()
         new_folder_row = QHBoxLayout(new_folder_widget)
         new_folder_row.setContentsMargins(0, 0, 0, 0)
-        new_folder_row.addWidget(QLabel("New trip folder"))
+        # "Pick from the master…" — the album equivalent of remembering a date
+        # range. Opens the candidate table as a modal picker and fills this whole
+        # dialog from the chosen row. The report (Albums ▸ Find Trips) reaches the
+        # same table from the other side; one implementation, two entry points.
+        pick_row = QWidget()
+        pick_layout = QHBoxLayout(pick_row)
+        pick_layout.setContentsMargins(0, 0, 0, 0)
+        pick_btn = QPushButton("Pick from the master…")
+        pick_btn.setToolTip("Find the trips already in the master and fill this "
+                            "dialog in from the one you pick")
+        pick_btn.clicked.connect(self.on_pick_from_master)
+        pick_layout.addWidget(pick_btn)
+        self.pick_hint = QLabel("")
+        self.pick_hint.setStyleSheet("color: #555;")
+        pick_layout.addWidget(self.pick_hint)
+        pick_layout.addStretch()
+        layout1.addWidget(pick_row)
+
+        new_folder_row.addWidget(QLabel("New album folder"))
         self.new_folder_name = QLineEdit()
         self.new_folder_name.setPlaceholderText("e.g. birds2024")
         self.new_folder_name.setMaximumWidth(300)
@@ -578,7 +596,7 @@ class VirtualTripCreationDialog(QDialog):
         layout1.addWidget(new_folder_widget)
 
         self.trip_web = LabeledTextFieldQt(
-            "Trip Web root",
+            "Album Web root",
             _config.get("virttrip", "virttripbiotawebroot", fallback=""),
             multiline=False, inline=True
         )
@@ -590,7 +608,7 @@ class VirtualTripCreationDialog(QDialog):
         trip_web_layout.addStretch()
         layout1.addWidget(trip_web_row)
 
-        tabs.addTab(tab1, "Select Trip Folder")
+        tabs.addTab(tab1, "Select Album Folder")
 
         # ── Tab 2: Images & Dates ──────────────────────────────────────────────
         tab2 = QWidget()
@@ -685,7 +703,7 @@ class VirtualTripCreationDialog(QDialog):
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        write_ini_btn = QPushButton("Update Trip Settings")
+        write_ini_btn = QPushButton("Update Album Settings")
         write_ini_btn.setToolTip(
             "Save this album's settings AND text (both this page and Trip "
             "Text) to virttrip.ini — WITHOUT rebuilding. Use this to update an "
@@ -710,6 +728,83 @@ class VirtualTripCreationDialog(QDialog):
         self.passed_parent.translator.writeTranslationCache()
         super().closeEvent(event)
 
+    def on_pick_from_master(self):
+        """Open the candidate picker and fill this dialog from the chosen trip."""
+        from gui.trip_finder_view import pick
+        from engine.trip_finder import suggested_name
+
+        row = pick(self, _config)
+        if row is None:
+            return                                   # cancelled — change nothing
+        name = self._unique_album_name(suggested_name(row))
+        self.new_folder_name.setText(name)
+        self.date_field.set_dates(row["start"], row["end"])
+        # Default text: wanted, so the album is publishable while it is being
+        # worked on. Only the TITLE is generated — the description is left to the
+        # user, whose blog text is personal ("na een beroerte…"); a plausible but
+        # invented paragraph would be worse than an empty box waiting to be filled.
+        if not self.title_nl_field.get_text().strip():
+            self.title_nl_field.set_text(self._default_title(row))
+        where = row.get("place", "")
+        self.pick_hint.setText(
+            f"{row['pictures']} pictures over {row['days']} days"
+            + (f" — {where}" if where and not where.startswith("(no place") else ""))
+        self._update_folder_preview(name)
+        # self.logger — this module has NO module-level logger; the bare `logger`
+        # calls elsewhere in the file are function PARAMETERS, not a global.
+        self.logger.info(f"Create Album: picked {row['start']} → {row['end']} "
+                         f"({row['pictures']} pictures) as '{name}'.")
+
+    def _existing_album_names(self) -> set:
+        """Folder names already taken under the albums root, lowercased."""
+        root = _config.get("virttrip", "virttriprootdirectory", fallback="")
+        if not root or not Path(root).is_dir():
+            return set()
+        try:
+            return {p.name.lower() for p in Path(root).iterdir() if p.is_dir()}
+        except OSError:
+            return set()
+
+    def _unique_album_name(self, base: str) -> str:
+        """A suggestion that does not collide. The user may still edit it — the
+        field validates live — but the first offer should be usable as-is."""
+        taken = self._existing_album_names()
+        if base.lower() not in taken:
+            return base
+        n = 2
+        while f"{base}_{n}".lower() in taken:
+            n += 1
+        return f"{base}_{n}"
+
+    def _default_title(self, row: dict) -> str:
+        """A title worth publishing during development, from what we know."""
+        from engine.trip_finder import upn_prefix   # noqa: F401  (documents the source)
+        place = (row.get("city") or "").strip()
+        if not place:
+            p = row.get("place", "")
+            place = "" if p.startswith("(no place") else p.split(",")[0].strip()
+        year = (row.get("start") or "")[:4]
+        if not place:
+            # No geocoding at all (the pre-2014 pictures) — fall back to the name
+            # the user filed them under, which is the whole point of the prefix.
+            # It arrives as a filing key ("2013 panama"), so make it read as a
+            # title: drop the leading year, capitalise, put the year at the end.
+            raw = (row.get("prefix") or "").strip()
+            raw = re.sub(r"^\s*(19|20)\d{2}\s+", "", raw)
+            place = raw.title() if raw else "Reis"
+        return f"{place} {year}".strip()
+
+    def _validate_album_name(self, text: str):
+        """Live uniqueness check — the suggestion is editable, but a name that
+        collides with an existing album must not reach Create."""
+        name = (text or "").strip()
+        if name and name.lower() in self._existing_album_names():
+            self.new_folder_name.setStyleSheet("border: 1px solid #c0392b;")
+            self.status_label.setText(f"⚠ '{name}' already exists — pick another name.")
+            return False
+        self.new_folder_name.setStyleSheet("")
+        return True
+
     def _apply_preset(self):
         """Fill the dialog from a picked report row, then say so on screen.
 
@@ -733,6 +828,10 @@ class VirtualTripCreationDialog(QDialog):
 
     def _update_folder_preview(self, folder_name):
         root = _config.get("virttrip", "virttriprootdirectory", fallback="")
+        # A colliding name is the more useful thing to say, so it wins over the
+        # "will create:" preview.
+        if folder_name and not self._validate_album_name(folder_name):
+            return
         if not folder_name:
             self.status_label.setText("")
         elif not root:
@@ -743,7 +842,7 @@ class VirtualTripCreationDialog(QDialog):
     def create_new_trip_folder(self):
         folder_name = self.new_folder_name.text().strip()
         if not folder_name:
-            self.status_label.setText("❌ Enter a folder name first.")
+            self.status_label.setText("❌ Enter an album folder name first.")
             return
 
         # Use only the explicit root key — the get_virttrips_root() fallback

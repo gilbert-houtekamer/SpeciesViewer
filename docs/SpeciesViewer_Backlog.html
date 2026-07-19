@@ -335,6 +335,48 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
     f-string is not a STRING token</strong> but FSTRING_START/MIDDLE/END, so a tokenize sweep filtering on
     STRING silently skips every f-string — and a verification pass sharing that filter confirms its own
     blind spot and reports success. <strong>A sweep and its check must not share a filter.</strong></p></li>
+  <li><strong>Albums — the smart <em>Create</em> arc</strong> <span class="tag-open">OPEN</span>
+    <span class="tag-new">PLAN</span> — agreed 2026-07-19, replaces the old “guided Create” item.
+    The order is the user's and it is deliberate: nothing exists to delete yet, and every step is
+    hand-driven, so building Delete first would be building against a hypothetical. Guinea pig
+    throughout: <strong>2013 Panama</strong> — the trip that started the hobby (12 days, 115 pictures),
+    and the oldest, thinnest data in the master (no Country/State, no GPS), so it is both a good test
+    and a plausible source of surprises unrelated to the new code.
+    <ol>
+      <li><strong>Smart Create Album</strong> — a <em>Pick from the master…</em> button opens the
+        candidate table (one picker, two entry points: from Create, and from Albums ▸ Find Trips).
+        Picking fills the folder name (<strong>suggested but editable, live-validated unique</strong>),
+        the dates, the web root and default text. No loading yet. Optionally split: (a) without a
+        generated trip image, (b) with one.</li>
+      <li><strong>Extract</strong> the pictures — “the extract will extract; what it can do is a
+        different story”.</li>
+      <li><strong>Build Web + Web Publish</strong> — try them on the album.</li>
+      <li><strong>Integrate 1–3</strong> into one flow.</li>
+      <li><strong>Delete Album</strong>, proven by deleting the album just made. Safer than trip delete
+        <em>by construction</em>: an album owns only metadata; the master's pictures are referenced and
+        never touched. Scope = album folder + published <code>/trips/&lt;name&gt;/</code> tree + blog
+        artifacts + tripindex entry. ⚠ every remote delete MUST invalidate the FTP cache, or re-uploads
+        no-op into permanent 404s.</li>
+      <li><strong>Album publish function</strong> — its own <strong>Albums-menu</strong> action.
+        ⚠ <strong>Rule (user, 2026-07-19): an album must never be reached through a door marked
+        Trip</strong>, even when the underlying batch is identical — it may delegate to
+        <code>svr4UpdateTrips</code> internally, the boundary is the GUI. Braakman, extramadura,
+        tanzania and costa-rica are listed on the site only for a <em>historical</em> reason (published
+        as trips, later turned into virttrips silently keeping the URL), not because any album flow
+        lists them. Currently unlisted: <code>helgolanddb</code>, <code>spanjeebrodb</code>,
+        <code>srilanka</code>, <code>Tucson_2023db</code>.</li>
+      <li><strong>Test and celebrate.</strong></li>
+    </ol>
+    <p>Notes: publishing before advertising is fine — the URL works, the web menu does not link it, and
+    “no secrets are involved”. Default <em>text</em> is wanted (something publishable during
+    development; the real words come after working with the images). Default <em>images</em> already
+    seed from <code>dist/includes web/</code> at the right sizes (banner 2000×270, image 600×450) but
+    the CONTENT is the user's Crete artwork — a Panama album would ship looking like Crete, which is
+    worse than looking blank. The trip image can be generated (highest-rated picture in range, scaled,
+    centre-cropped 3:2→4:3 — ⚠ never write a derived file over its source); the BANNER cannot (hand-widened
+    in Photoshop), so it needs a neutral house default. The user's own printed photo books record each
+    trip's route and locations — that plus the gap function is expected to carry the old trips a long
+    way.</p></li>
   <li><strong>WP7 — fold Extract Days into <em>Create</em></strong> <span class="tag-open">OPEN</span> —
     all that remains of the guided Create: the date-range problem is solved above, but
     <em>Extract Days from Master</em> is still a separate menu step rather than folded into Create's
