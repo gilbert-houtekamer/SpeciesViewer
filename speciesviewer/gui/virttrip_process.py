@@ -564,24 +564,6 @@ class VirtualTripCreationDialog(QDialog):
         new_folder_widget = QWidget()
         new_folder_row = QHBoxLayout(new_folder_widget)
         new_folder_row.setContentsMargins(0, 0, 0, 0)
-        # "Pick from the master…" — the album equivalent of remembering a date
-        # range. Opens the candidate table as a modal picker and fills this whole
-        # dialog from the chosen row. The report (Albums ▸ Find Trips) reaches the
-        # same table from the other side; one implementation, two entry points.
-        pick_row = QWidget()
-        pick_layout = QHBoxLayout(pick_row)
-        pick_layout.setContentsMargins(0, 0, 0, 0)
-        pick_btn = QPushButton("Pick from the master…")
-        pick_btn.setToolTip("Find the trips already in the master and fill this "
-                            "dialog in from the one you pick")
-        pick_btn.clicked.connect(self.on_pick_from_master)
-        pick_layout.addWidget(pick_btn)
-        self.pick_hint = QLabel("")
-        self.pick_hint.setStyleSheet("color: #555;")
-        pick_layout.addWidget(self.pick_hint)
-        pick_layout.addStretch()
-        layout1.addWidget(pick_row)
-
         new_folder_row.addWidget(QLabel("New album folder"))
         self.new_folder_name = QLineEdit()
         self.new_folder_name.setPlaceholderText("e.g. birds2024")
@@ -702,6 +684,18 @@ class VirtualTripCreationDialog(QDialog):
         main_layout.addWidget(self.status_label)
 
         btn_layout = QHBoxLayout()
+        # Bottom-LEFT, with the dialog's other actions rather than between two
+        # input fields: this button does far more than fill the field beside it
+        # (it creates the folder and rewrites every tab), and a field-level
+        # position promised something much smaller than it delivers.
+        pick_btn = QPushButton("Pick from the master…")
+        pick_btn.setToolTip("Find the trips already in the master, then create and "
+                            "fill in this album from the one you pick")
+        pick_btn.clicked.connect(self.on_pick_from_master)
+        btn_layout.addWidget(pick_btn)
+        self.pick_hint = QLabel("")
+        self.pick_hint.setStyleSheet("color: #555;")
+        btn_layout.addWidget(self.pick_hint)
         btn_layout.addStretch()
         write_ini_btn = QPushButton("Update Album Settings")
         write_ini_btn.setToolTip(
@@ -738,18 +732,30 @@ class VirtualTripCreationDialog(QDialog):
             return                                   # cancelled — change nothing
         name = self._unique_album_name(suggested_name(row))
         self.new_folder_name.setText(name)
+
+        # CREATE the folder now, and let create_new_trip_folder do the wiring it
+        # already does correctly: seed tripimage/tripbanner from dist, point
+        # Album Root folder at the new directory, set the image field names and
+        # the /trips/<name> web root. Picking used to fill only the name and the
+        # dates, which left the root, the web root, the images AND the text still
+        # belonging to whichever album was selected before — so a picked Panama
+        # showed Tucson's banner, Tucson's URL and Tucson's story.
+        self.create_new_trip_folder()
+
         self.date_field.set_dates(row["start"], row["end"])
-        # Default text: wanted, so the album is publishable while it is being
-        # worked on. Only the TITLE is generated — the description is left to the
-        # user, whose blog text is personal ("na een beroerte…"); a plausible but
-        # invented paragraph would be worse than an empty box waiting to be filled.
-        if not self.title_nl_field.get_text().strip():
-            self.title_nl_field.set_text(self._default_title(row))
+        # Default text — wanted, so the album is publishable while it is being
+        # worked on. Both fields are OVERWRITTEN, not filled-if-empty: picking a
+        # trip means "this album is now Panama", and inheriting the previous
+        # album's title and story is exactly the bug above. The description stays
+        # deliberately factual; the real words come after working with the images,
+        # and an invented personal paragraph would be worse than an obvious stub.
+        title = self._default_title(row)
+        self.title_nl_field.set_text(title)
+        self.message_nl_field.set_text(self._default_message(row, title))
         where = row.get("place", "")
         self.pick_hint.setText(
             f"{row['pictures']} pictures over {row['days']} days"
             + (f" — {where}" if where and not where.startswith("(no place") else ""))
-        self._update_folder_preview(name)
         # self.logger — this module has NO module-level logger; the bare `logger`
         # calls elsewhere in the file are function PARAMETERS, not a global.
         self.logger.info(f"Create Album: picked {row['start']} → {row['end']} "
@@ -793,6 +799,13 @@ class VirtualTripCreationDialog(QDialog):
             raw = re.sub(r"^\s*(19|20)\d{2}\s+", "", raw)
             place = raw.title() if raw else "Reis"
         return f"{place} {year}".strip()
+
+    def _default_message(self, row: dict, title: str) -> str:
+        """A factual Dutch stub — publishable during development, obviously a
+        placeholder, and containing nothing that was invented."""
+        place = title.rsplit(" ", 1)[0] if " " in title else title
+        year = (row.get("start") or "")[:4]
+        return f"Foto's van {place}, {year}." if year else f"Foto's van {place}."
 
     def _validate_album_name(self, text: str):
         """Live uniqueness check — the suggestion is editable, but a name that
