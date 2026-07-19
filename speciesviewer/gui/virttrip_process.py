@@ -752,6 +752,23 @@ class VirtualTripCreationDialog(QDialog):
         title = self._default_title(row)
         self.title_nl_field.set_text(title)
         self.message_nl_field.set_text(self._default_message(row, title))
+        # The English tab is a SEPARATE pair of fields; without this it kept the
+        # previous album's text, so a Panama album still read "Back to Tucson".
+        # Translating the Dutch we just wrote is exactly what the user would do
+        # by hand with the Translate button.
+        try:
+            self.translate_dutch_to_english()
+        except Exception as e:                       # network/translator hiccup
+            self.logger.warning(f"Create Album: could not translate the default "
+                                f"text to English ({e}) — fill the English tab in "
+                                f"by hand.")
+            self.title_en_field.set_text(title)      # never leave the OTHER trip's words
+            self.message_en_field.set_text("")
+        # A URL is not a title. Titles can be as verbose as they like ("Panama,
+        # our introduction to birding (2013)"); the web root stays a lowercase
+        # hyphenated slug so it never needs percent-encoding — the site already
+        # shows what that costs, e.g. "blog%20index-nl.html".
+        self.trip_web.set_text(f"/trips/{self._web_slug(row, title)}")
         where = row.get("place", "")
         self.pick_hint.setText(
             f"{row['pictures']} pictures over {row['days']} days"
@@ -799,6 +816,20 @@ class VirtualTripCreationDialog(QDialog):
             raw = re.sub(r"^\s*(19|20)\d{2}\s+", "", raw)
             place = raw.title() if raw else "Reis"
         return f"{place} {year}".strip()
+
+    def _web_slug(self, row: dict, title: str) -> str:
+        """'Panama 2013' → 'panama-2013'. Lowercase, ASCII-ish, hyphen-separated.
+
+        Kept deliberately separate from both the folder name and the title: the
+        folder is the user's filing name, the title is prose that may be long
+        ("Panama, our introduction to birding (2013)"), and the URL has to stay
+        boring forever because it is the one of the three that visitors bookmark.
+        """
+        import unicodedata
+        base = unicodedata.normalize("NFKD", title or "")
+        base = base.encode("ascii", "ignore").decode("ascii")
+        slug = re.sub(r"[^a-zA-Z0-9]+", "-", base).strip("-").lower()
+        return slug or (row.get("start") or "album")[:4]
 
     def _default_message(self, row: dict, title: str) -> str:
         """A factual Dutch stub — publishable during development, obviously a
@@ -890,6 +921,15 @@ class VirtualTripCreationDialog(QDialog):
         self.root_field.set_text(str(new_trip_path))
         self.topbar_img_field.field.setText("tripbanner.jpg")
         self.trip_img_field.field.setText("tripimage.jpg")
+        # Re-validate EXPLICITLY: ImageFileFieldQt only validates on textChanged,
+        # and the name it already held is usually the same ("tripbanner.jpg" is
+        # in every album's ini). Setting an identical string emits nothing, so the
+        # stale verdict — computed against the PREVIOUS album's root, before this
+        # folder existed — survived and the field showed "not a valid .JPG file"
+        # for a file that was sitting right there. The ROOT changed; validation
+        # has to be redone even when the filename did not.
+        self.trip_img_field.validate()
+        self.topbar_img_field.validate()
         # Web namespace matches regular trips — to a visitor a virtual trip is
         # just a trip (and it typically continues a retired trip at the same
         # /trips/<name>/ URL, where its blog + pictures already live).
