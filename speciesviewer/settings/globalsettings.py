@@ -46,10 +46,9 @@ class GlobalSettingsDialog(QDialog):
 
         self.webpassword_field = self._labeled_field(layout, "Website password", _config.get("websettings", "sftppwd", fallback="? still needed"), password=True)
         self.base_url_field = self._labeled_field(layout, "Base URL for web address", _config.get("websettings", "base_url", fallback="https://houtekamer.com"))
-        self.dxo_path_field = self._labeled_field(
-            layout, "DxO PhotoLab path",
-            _config.get("Global", "dxo_path",
-                        fallback=r"C:\Program Files\DxO\DxO PhotoLab 9\DxO.PhotoLab.exe"))
+        # The DxO PhotoLab path moved to File ▸ Settings ▸ Interfaces to Lightroom
+        # and PhotoLab ▸ PhotoLab Location, so the three DxO options sit together
+        # instead of one being stranded here. The [Global] dxo_path key is unchanged.
 
         save_button = QPushButton("Save")
         save_button.clicked.connect(self.save_settings)
@@ -69,7 +68,6 @@ class GlobalSettingsDialog(QDialog):
         set_global_profile(self.names_combo.currentData())
         _config.set("websettings", "sftppwd", self.webpassword_field.text())
         _config.set("websettings", "base_url", self.base_url_field.text())
-        _config.set("Global", "dxo_path", self.dxo_path_field.text())
 
         persist_config()
 

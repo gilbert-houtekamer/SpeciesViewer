@@ -721,16 +721,33 @@ class ReadSDCardDialog(QDialog):
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
+        self.pl_hint = QLabel("")
+        self.pl_hint.setWordWrap(True)
+        self.pl_hint.setVisible(False)
+        self.pl_hint.setStyleSheet(
+            "background:#eef4ff; border:1px solid #c7d8f5; border-radius:4px;"
+            "padding:6px; font-size:11px;")
+        layout.addWidget(self.pl_hint)
+
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         self.scan_btn = QPushButton("Scan days")
         self.read_btn = QPushButton("Read")
         self.view_btn = QPushButton("View pictures")
         self.view_btn.setEnabled(False)  # enabled once a read produced files
+        # A freshly ingested day has no .dop files, and SpeciesViewer will not
+        # invent them (PhotoLab only recognises recipes it authored itself). So
+        # the moment after a read is exactly when to say: let PhotoLab write them.
+        self.pl_btn = QPushButton("Open day in PhotoLab")
+        self.pl_btn.setEnabled(False)
+        self.pl_btn.setToolTip(
+            "Open this day in DxO PhotoLab so it can create the .dop recipes "
+            "(select all with Ctrl-A, then write sidecars)")
         self.close_btn = QPushButton("Close")
         btn_row.addWidget(self.scan_btn)
         btn_row.addWidget(self.read_btn)
         btn_row.addWidget(self.view_btn)
+        btn_row.addWidget(self.pl_btn)
         btn_row.addWidget(self.close_btn)
         layout.addLayout(btn_row)
 
@@ -746,8 +763,44 @@ class ReadSDCardDialog(QDialog):
         self.scan_btn.clicked.connect(self.on_scan)
         self.read_btn.clicked.connect(self.on_read)
         self.view_btn.clicked.connect(self.on_view)
+        self.pl_btn.clicked.connect(self.on_open_in_photolab)
         self.close_btn.clicked.connect(self.reject)
         self._close_connected = True   # True = Close, False = Cancel
+
+    def on_open_in_photolab(self):
+        """Open the day just read in DxO PhotoLab, so IT authors the .dop files.
+
+        This is the supported direction and the reason the button exists here:
+        SpeciesViewer edits a PhotoLab recipe but never creates one, because
+        PhotoLab matches recipes by a UUID from its own catalog and treats an
+        unknown one as a virtual copy. Until PhotoLab has written sidecars for a
+        day, colour and crop live in the .xmp alone.
+        """
+        from pathlib import Path
+        from gui.large_image_view import dxo_executable
+        from utils.open_path import launch_app_with_file
+
+        folder = self._last_dest
+        if not folder or not Path(folder).is_dir():
+            QMessageBox.information(self, "Open in PhotoLab",
+                                    "Read a day first — there is no folder to open yet.")
+            return
+        exe = dxo_executable()
+        if not Path(exe).exists():
+            QMessageBox.warning(
+                self, "DxO PhotoLab not found",
+                f"Could not find DxO PhotoLab at:\n\n{exe}\n\n"
+                "Set the correct path in Settings ▸ Interfaces to Lightroom "
+                "and PhotoLab ▸ PhotoLab Location.")
+            return
+        if not launch_app_with_file(exe, folder):
+            QMessageBox.warning(self, "DxO PhotoLab",
+                                f"Could not open PhotoLab for:\n{folder}")
+            return
+        self.logger.info(f"Opened day in DxO PhotoLab: {folder}")
+        self.status_label.setText(
+            "Opened in PhotoLab — select all (Ctrl-A) and write sidecars to create "
+            "the .dop recipes.")
 
     def _on_cancel(self):
         self._cancelled = True   # on_finished still fires with the partial summary
@@ -1062,6 +1115,15 @@ class ReadSDCardDialog(QDialog):
         self._set_progress("")
         self._last_targets = summary.get("targets", [])
         self.view_btn.setEnabled(bool(self._last_targets))
+        self.pl_btn.setEnabled(bool(self._last_targets) and bool(self._last_dest))
+        if self._last_targets and not cancelled:
+            self.pl_hint.setText(
+                "Next: open the day in <b>PhotoLab</b>, press <b>Ctrl-A</b> and "
+                "<b>write sidecars</b>. That creates the .dop recipes — "
+                "SpeciesViewer edits those but never creates them, so colours and "
+                "crops you set before that live in the .xmp only. "
+                "Best done with PhotoLab closed while you cull.")
+            self.pl_hint.setVisible(True)
 
         # On an abort, don't auto-run the network geocode or grey the day list —
         # leave it ready for a re-read to finish the rest.

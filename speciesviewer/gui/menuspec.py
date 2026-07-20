@@ -29,6 +29,7 @@ from settings.rawsettings import RawProcessingDialog
 from settings.locationsettings import LocationSettingsDialog
 from settings.sidecarsettings import SidecarSettingsDialog
 from settings.photolabdenoise import PhotoLabDenoiseDialog
+from settings.photolablocation import PhotoLabLocationDialog
 from dialogs.setting import AboutDialog
 from utils.batch_config import generate_svconfig_ini
 from engine.statemachine import StateMachine
@@ -1157,12 +1158,24 @@ def build_menu_spec(main_window):
                 "Location Settings…": MenuSpec(
                     callback=lambda: LocationSettingsDialog(main_window).exec(),
                 ),
-                "Sidecar Behaviour…": MenuSpec(
-                    callback=lambda: SidecarSettingsDialog(main_window).exec(),
-                ),
-                "PhotoLab Denoise…": MenuSpec(
-                    callback=lambda: PhotoLabDenoiseDialog(main_window).exec(),
-                ),
+                # The three DxO/Lightroom options were scattered (the program
+                # path sat in Global Settings, the other two loose in this menu).
+                # Grouped, because they are one subject: how we hand pictures to
+                # PhotoLab and Lightroom, and what those two read back.
+                "Interfaces to Lightroom and PhotoLab": {
+                    "PhotoLab Location…": MenuSpec(
+                        callback=lambda: PhotoLabLocationDialog(main_window).exec(),
+                        tooltip="Where DxO PhotoLab is installed",
+                    ),
+                    "PhotoLab Denoise…": MenuSpec(
+                        callback=lambda: PhotoLabDenoiseDialog(main_window).exec(),
+                        tooltip="Which denoise method to stamp into the .dop on a crop",
+                    ),
+                    "Sidecar Behaviour…": MenuSpec(
+                        callback=lambda: SidecarSettingsDialog(main_window).exec(),
+                        tooltip="What is written to the .dop and .xmp, and how to run PhotoLab",
+                    ),
+                },
                 f"{MenuSpec.separator()}_settings_caches": None,
                 "Manage Caches…": manage_caches,
                 "Rescan master EXIF cache": rescan_master_cache,
