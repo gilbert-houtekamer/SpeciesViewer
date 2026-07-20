@@ -596,20 +596,20 @@ class VirtualTripCreationDialog(QDialog):
         tab2 = QWidget()
         layout2 = QVBoxLayout(tab2)
         layout2.addWidget(HTMLLabel(
-            "<p><b>Trip image</b><br>"
-            "This image appears in trip listings and should visually represent the trip.<br>"
+            "<p><b>Album picture</b><br>"
+            "This picture represents the album in the trip listings on the website.<br>"
             "Required dimensions: <b>600×450 pixels</b>.</p>"
         ))
-        self.trip_img_field = ImageFileFieldQt("Trip Image", (600, 450), self.root_field)
+        self.trip_img_field = ImageFileFieldQt("Album picture", (600, 450), self.root_field)
         self.trip_img_field.field.setText(trip_data.get("trip_picture", ""))
         layout2.addWidget(self.trip_img_field)
 
         layout2.addWidget(HTMLLabel(
             "<p><b>Web banner</b><br>"
-            "This banner is displayed at the top of all blog and species pages for this trip.<br>"
+            "This banner runs across the top of every blog and species page of this album.<br>"
             "Required dimensions: <b>2000×270 pixels</b>.</p>"
         ))
-        self.topbar_img_field = ImageFileFieldQt("Top Web Bar", (2000, 270), self.root_field)
+        self.topbar_img_field = ImageFileFieldQt("Web banner", (2000, 270), self.root_field)
         self.topbar_img_field.field.setText(trip_data.get("trip_banner", ""))
         layout2.addWidget(self.topbar_img_field)
 
@@ -645,14 +645,14 @@ class VirtualTripCreationDialog(QDialog):
 
         dutch_tab = QWidget()
         dutch_layout = QVBoxLayout(dutch_tab)
-        self.title_nl_field = LabeledTextFieldQt("Trip title (Dutch)", trip_data.get("title_nl", ""))
+        self.title_nl_field = LabeledTextFieldQt("Album title (Dutch)", trip_data.get("title_nl", ""))
         self.message_nl_field = LabeledTextFieldQt(
-            "Trip description (Dutch)", trip_data.get("message_nl", ""), multiline=True)
+            "Album description (Dutch)", trip_data.get("message_nl", ""), multiline=True)
         translate_nl_btn = QPushButton("Translate to English")
         translate_nl_btn.clicked.connect(self.translate_dutch_to_english)
         dutch_layout.addWidget(translate_nl_btn)
         dutch_layout.addWidget(HTMLLabel(
-            "<p><b>Trip title and description (Dutch)</b><br>"
+            "<p><b>Album title and description (Dutch)</b><br>"
             "Use the <i>Translate</i> button to generate an English version automatically.</p>"
         ))
         dutch_layout.addWidget(self.title_nl_field)
@@ -661,14 +661,14 @@ class VirtualTripCreationDialog(QDialog):
 
         english_tab = QWidget()
         english_layout = QVBoxLayout(english_tab)
-        self.title_en_field = LabeledTextFieldQt("Trip title (English)", trip_data.get("title_en", ""))
+        self.title_en_field = LabeledTextFieldQt("Album title (English)", trip_data.get("title_en", ""))
         self.message_en_field = LabeledTextFieldQt(
-            "Trip description (English)", trip_data.get("message_en", ""), multiline=True)
+            "Album description (English)", trip_data.get("message_en", ""), multiline=True)
         translate_en_btn = QPushButton("Translate to Dutch")
         translate_en_btn.clicked.connect(self.translate_english_to_dutch)
         english_layout.addWidget(translate_en_btn)
         english_layout.addWidget(HTMLLabel(
-            "<p><b>Trip title and description (English)</b><br>"
+            "<p><b>Album title and description (English)</b><br>"
             "Use the <i>Translate</i> button to generate a Dutch version automatically.</p>"
         ))
         english_layout.addWidget(self.title_en_field)
@@ -676,7 +676,7 @@ class VirtualTripCreationDialog(QDialog):
         sub_tabs.addTab(english_tab, "English Text")
 
         layout3.addWidget(sub_tabs)
-        tabs.addTab(tab3, "Trip Text")
+        tabs.addTab(tab3, "Album Text")
 
         main_layout.addWidget(tabs)
 

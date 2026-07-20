@@ -1111,6 +1111,15 @@ class ImagePreviewDialog(QDialog):
         act_copy_gps.setEnabled(bool(item and getattr(item, "has_gps", False)))
         act_paste_gps = menu.addAction(f"Paste GPS + place  ({lbl})")
         act_paste_gps.setEnabled(getattr(self, "_gps_clipboard", None) is not None)
+        # Use ONE picture as the album's cover. Only offered when there is an
+        # album to update and this picture has a JPG to make it from — a menu
+        # entry that cannot do anything is worse than no entry.
+        act_album_pic = None
+        album_root = self._album_root_for_cover()
+        if album_root and n == 1 and self._collection.jpg_path(key):
+            menu.addSeparator()
+            act_album_pic = menu.addAction(
+                f"Use as album picture  ({Path(album_root).name})")
         # Delete straight to .trash (recoverable) — the intuitive per-picture cull,
         # beside the batch blue/purple-delete. Same JPG protection as blue-delete.
         act_delete = None
@@ -1134,8 +1143,41 @@ class ImagePreviewDialog(QDialog):
             self._copy_gps(key)
         elif chosen == act_paste_gps:
             self._paste_gps(keys_for_action)
+        elif act_album_pic is not None and chosen == act_album_pic:
+            self._set_album_picture(key)
         elif act_delete is not None and chosen == act_delete:
             self._delete_keys_ui(keys_for_action)
+
+    def _album_root_for_cover(self) -> str:
+        """The album whose cover 'Use as album picture' would set, or "".
+
+        The configured active album — the same one the Album tab and Create Album
+        act on. Returning "" hides the menu entry, which is why a culling folder
+        or a plain day never shows it.
+        """
+        from utils.config import _config
+        root = (_config.get("virttrip", "virttripbiotadatabase", fallback="")
+                or "").replace('"', "").replace("'", "").strip()
+        return root if root and Path(root).is_dir() else ""
+
+    def _set_album_picture(self, key: str):
+        """Confirm (with a preview of the crop), then write the album's cover."""
+        jpg = self._collection.jpg_path(key)
+        if not jpg:
+            return
+        album_root = self._album_root_for_cover()
+        if not album_root:
+            return
+        from gui.album_picture_dialog import AlbumPictureDialog
+        dlg = AlbumPictureDialog(self, jpg, album_root)
+        if getattr(dlg, "_failed", False):
+            return
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            try:
+                self.status_label.setText(
+                    f"Album picture set from {Path(jpg).name}.")
+            except Exception:
+                pass
 
     def _culling_sc(self):
         """Lazily load (and cache) the standalone species collection for the
