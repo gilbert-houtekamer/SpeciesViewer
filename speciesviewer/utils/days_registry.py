@@ -38,18 +38,50 @@ def date_of(folder):
     return name if is_day_folder_name(name) else ""
 
 
-def load_days():
-    """Return the list of registered days: [{folder, date, status}], newest date
-    first. Silently returns [] when the registry is absent or unreadable."""
+def _load_raw():
+    """The whole registry document, or {} — so every writer can preserve keys it
+    does not own. save_days() used to rewrite the file as {"days": ...}, which
+    would silently drop the active-day marker added below."""
     path = registry_path()
     if not path.is_file():
-        return []
+        return {}
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-        days = data.get("days", []) if isinstance(data, dict) else []
+        return data if isinstance(data, dict) else {}
     except Exception as e:
         logger.warning(f"days_registry: could not read {path}: {e}")
+        return {}
+
+
+def _save_raw(data):
+    path = registry_path()
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.warning(f"days_registry: could not write {path}: {e}")
+
+
+def get_active_day():
+    """The day folder last made active, or "". Persisted so the Days lane
+    remembers its selection across restarts, the way a trip and an album do —
+    it used to live only as an attribute on the main window."""
+    return _load_raw().get("active", "") or ""
+
+
+def set_active_day(folder):
+    """Remember (or, with "", forget) the active day."""
+    data = _load_raw()
+    data["active"] = str(folder or "")
+    _save_raw(data)
+
+
+def load_days():
+    """Return the list of registered days: [{folder, date, status}], newest date
+    first. Silently returns [] when the registry is absent or unreadable."""
+    days = _load_raw().get("days", [])
+    if not isinstance(days, list):
         return []
     # Drop malformed rows defensively.
     clean = [d for d in days if isinstance(d, dict) and d.get("folder")]
@@ -58,12 +90,11 @@ def load_days():
 
 
 def save_days(days):
-    path = registry_path()
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump({"days": days}, f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        logger.warning(f"days_registry: could not write {path}: {e}")
+    # Merge into the existing document — writing {"days": days} would drop the
+    # "active" marker every time a day was added, renamed or removed.
+    data = _load_raw()
+    data["days"] = days
+    _save_raw(data)
 
 
 def _norm(folder):

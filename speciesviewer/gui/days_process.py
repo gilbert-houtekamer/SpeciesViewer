@@ -48,6 +48,7 @@ def register_existing_day(main_window):
     ok, msg = days_registry.add_day(chosen)
     if ok:
         main_window.active_day_folder = str(chosen)
+        days_registry.set_active_day(str(chosen))
         _refresh_panel(main_window)
         try:
             main_window.status_bar.showMessage(msg)
@@ -120,4 +121,5 @@ def remove_day_from_list(main_window):
         return
     days_registry.remove_day(folder)
     main_window.active_day_folder = ""
+    days_registry.set_active_day("")
     _refresh_panel(main_window)

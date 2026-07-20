@@ -19,12 +19,25 @@ def _same(a, b):
     return os.path.normcase(os.path.normpath(str(a))) == os.path.normcase(os.path.normpath(str(b)))
 
 
+def _norm_reg(p):
+    """Registry-comparable form of a folder path (case- and separator-insensitive)."""
+    return os.path.normcase(os.path.normpath(str(p or "")))
+
+
 class DaysPanel(QWidget):
     def __init__(self, parent):
         super().__init__()
         self.main_window = parent
         if not hasattr(parent, "active_day_folder"):
-            parent.active_day_folder = ""
+            # Restore the day that was active last session — a trip and an album
+            # both come back selected, and the Days lane forgetting was the odd
+            # one out. Only restore a day still in the registry, so a removed or
+            # unplugged folder does not come back as a dead selection.
+            from utils import days_registry
+            remembered = days_registry.get_active_day()
+            known = {_norm_reg(d.get("folder", "")) for d in days_registry.load_days()}
+            parent.active_day_folder = (
+                remembered if remembered and _norm_reg(remembered) in known else "")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 0, 10, 10)
@@ -76,6 +89,8 @@ class DaysPanel(QWidget):
         if not folder:
             return
         self.main_window.active_day_folder = folder
+        from utils import days_registry
+        days_registry.set_active_day(folder)
         self.rebuild()
         try:
             self.main_window.status_bar.showMessage(f"Active day: {os.path.basename(folder)}")
