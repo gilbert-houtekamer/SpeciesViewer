@@ -99,24 +99,52 @@ def is_seeded_default(album_root, dist_dir=None, name=None) -> bool:
 
 
 def set_album_picture(source, album_root, *, backup: bool = True, name=None) -> Path:
-    """Write `source` as the album's cover. Returns the path written.
+    """Write `source` as the collection's cover. Returns the path written.
 
     Raises ValueError if the source IS the target — the rule that came out of the
     incident where 142 master JPGs were destroyed by their own thumbnail: a
     derived file must never be written over its source.
     """
+    import os
+    from datetime import datetime
+
     src = Path(source)
     target = target_path(album_root, name)
     if src.resolve() == target.resolve():
-        raise ValueError("refusing to write the album picture over its own source")
+        raise ValueError("refusing to write the cover picture over its own source")
     target.parent.mkdir(parents=True, exist_ok=True)
+
     if backup and target.is_file() and not is_seeded_default(album_root, name=name):
-        # Keep exactly one previous cover — enough to undo a wrong pick without
-        # accumulating clutter in a folder the user browses.
+        # Dated, and still a REAL .jpg — "tripimage.jpg.previous" could not be
+        # previewed in Explorer or picked in the file dialog, so restoring it
+        # meant renaming by hand. "tripimage-20260720-2102.jpg" can simply be
+        # chosen with Browse.
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        kept = target.with_name(f"{target.stem}-{stamp}{target.suffix}")
         try:
-            shutil.copy2(target, target.with_suffix(".jpg.previous"))
+            shutil.copy2(target, kept)
+            logger.info(f"Previous cover kept as {kept.name}")
         except OSError as e:
-            logger.warning(f"album picture: could not back up {target.name}: {e}")
-    render_cover(src).save(target, "JPEG", quality=90)
-    logger.info(f"Album picture set from {src.name} → {target}")
+            logger.warning(f"cover picture: could not back up {target.name}: {e}")
+
+    # Render first, then swap into place. Encoding straight onto the target holds
+    # it open for the whole write, which fails outright if anything else has the
+    # file (the app itself displays a trip's picture) — and a failure halfway
+    # through would leave a truncated cover. The temp file sits in the same
+    # folder so the replace stays on one filesystem.
+    tmp = target.with_name(f".{target.stem}.new{target.suffix}")
+    try:
+        render_cover(src).save(tmp, "JPEG", quality=90)
+    except Exception as e:
+        tmp.unlink(missing_ok=True)
+        raise OSError(f"could not render the cover from {src.name}: {e}") from e
+    try:
+        os.replace(tmp, target)
+    except OSError as e:
+        tmp.unlink(missing_ok=True)
+        raise OSError(
+            f"could not replace {target.name}: {e}. "
+            f"Close anything that has it open (PhotoLab, an image viewer) and retry."
+        ) from e
+    logger.info(f"Cover picture set from {src.name} -> {target}")
     return target

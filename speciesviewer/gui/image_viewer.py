@@ -116,6 +116,11 @@ class ImagePreviewDialog(QDialog):
         # backed culling collection). When set, it overrides the fpr/file_list
         # construction below and the dialog runs in metadata-less (fpr=None) mode.
         self._injected_collection = collection
+        # Keep the raw source label: for the ALBUM day viewer it is the day
+        # folder INSIDE the album, which is the only clue to which album this is
+        # (that viewer shows the master's files, so the pictures' own paths say
+        # nothing). _viewer_label is for display and becomes "68 files" here.
+        self._source_label = source_label or ""
         if collection is not None:
             self._viewer_label = source_label or "Culling"
         elif self._file_list is not None:
@@ -1165,7 +1170,9 @@ class ImagePreviewDialog(QDialog):
         trip_root = (getattr(self, "trip_root_dir", "") or "").strip()
         if trip_root and (Path(trip_root) / "trip.ini").is_file():
             return str(trip_root), "trip", Path(trip_root).name
-        start = (getattr(self, "_viewer_label", "") or "") or (self.image_dir or "")
+        start = ((getattr(self, "_source_label", "") or "")
+                 or (self.image_dir or "")
+                 or (getattr(self, "_viewer_label", "") or ""))
         try:
             here = Path(start)
         except (TypeError, ValueError):
