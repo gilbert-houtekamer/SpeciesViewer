@@ -573,6 +573,12 @@ class _SDCardScanWorker(QObject):
             self.finished.emit([], 0, str(e))
 
 
+# RAW extensions PhotoLab opens — used to pick a sensible file to hand it when
+# opening a freshly read day (a JPG would work too, but the RAW is the picture
+# that will get the .dop recipe).
+_PL_RAW_EXTS = {".orf", ".nef", ".cr2", ".cr3", ".arw", ".rw2", ".raf", ".dng"}
+
+
 class ReadSDCardDialog(QDialog):
     """Front-stage ingest (M0): copy pictures from a folder (e.g. a mounted
     SD-card) into the project pictures directory. No rename, no date-bucketing,
@@ -780,11 +786,22 @@ class ReadSDCardDialog(QDialog):
         from gui.large_image_view import dxo_executable
         from utils.open_path import launch_app_with_file
 
-        folder = self._last_dest
-        if not folder or not Path(folder).is_dir():
+        # Open a PICTURE, not a folder, and take it from what was actually
+        # copied. Two things went wrong with the folder:
+        #   * _last_dest is the DAYS LOCATION ("…/2026 Zomer"), the parent of the
+        #     dated day folders — not the day itself;
+        #   * PhotoLab is single-instance, so handing an already-running PL a
+        #     folder path just raised its existing window, still showing the SD
+        #     card it had open. Passing a file is the route the large view already
+        #     uses successfully, and it makes PL select that picture's folder.
+        targets = [t for t in (self._last_targets or []) if Path(t).is_file()]
+        if not targets:
             QMessageBox.information(self, "Open in PhotoLab",
-                                    "Read a day first — there is no folder to open yet.")
+                                    "Read a day first — there is nothing to open yet.")
             return
+        raws = [t for t in targets if Path(t).suffix.lower() in _PL_RAW_EXTS]
+        first = sorted(raws or targets)[0]
+        folder = str(Path(first).parent)
         exe = dxo_executable()
         if not Path(exe).exists():
             QMessageBox.warning(
@@ -793,14 +810,16 @@ class ReadSDCardDialog(QDialog):
                 "Set the correct path in Settings ▸ Interfaces to Lightroom "
                 "and PhotoLab ▸ PhotoLab Location.")
             return
-        if not launch_app_with_file(exe, folder):
+        if not launch_app_with_file(exe, first):
             QMessageBox.warning(self, "DxO PhotoLab",
-                                f"Could not open PhotoLab for:\n{folder}")
+                                f"Could not open PhotoLab for:\n{first}")
             return
-        self.logger.info(f"Opened day in DxO PhotoLab: {folder}")
+        self.logger.info(
+            f"Opened day in DxO PhotoLab: {folder} (via {Path(first).name})")
         self.status_label.setText(
-            "Opened in PhotoLab — select all (Ctrl-A) and write sidecars to create "
-            "the .dop recipes.")
+            f"Opened {Path(folder).name} in PhotoLab — select all (Ctrl-A) and write "
+            "sidecars to create the .dop recipes. If PhotoLab was already running it "
+            "may still show its previous folder; browse to this day.")
 
     def _on_cancel(self):
         self._cancelled = True   # on_finished still fires with the partial summary
@@ -852,6 +871,19 @@ class ReadSDCardDialog(QDialog):
         self.progress_label.setText(text)
         self.progress_label.setVisible(bool(text))
 
+    def _log_phase(self, text):
+        """Announce a long phase in the LOG as well as on the dialog.
+
+        Copying a card runs for minutes with nothing written to the log between
+        "Found N pictures" and "Created N sidecars", which reads as a hang. The
+        dialog's own progress line is not enough — the log is where the user
+        looks to see whether anything is happening."""
+        self._set_progress(text)
+        try:
+            self.logger.info(text)
+        except Exception:
+            pass
+
     def on_scan(self):
         """Group the card by capture-day and fill the day table — no copying."""
         source = self.source_field.get_path()
@@ -860,7 +892,8 @@ class ReadSDCardDialog(QDialog):
             return
         self.scan_btn.setEnabled(False)
         self.read_btn.setEnabled(False)
-        self._set_progress("Scanning days on the card…")
+        self._log_phase("Scanning the card for capture days — this reads every "
+                        "picture's date, so it can take a while on a full card…")
         self._scanned_source = os.path.normpath(source)
         self._scan_thread = QThread()
         self._scan_worker = _SDCardScanWorker(source, self._tz_offset())
@@ -907,7 +940,14 @@ class ReadSDCardDialog(QDialog):
         # Grow the dialog so the (now visible) day table fits without the user
         # having to drag it taller; keep the current width.
         self.layout().activate()
-        self.resize(self.width(), self.sizeHint().height())
+        # Never ask for less than the layout can actually take. sizeHint() alone
+        # produced "QWindowsWindow::setGeometry: Unable to set geometry … minimum
+        # size 543x614 … mintrack(837, 977)" — Qt clamped the request and warned,
+        # because the row of buttons and the PhotoLab hint make the real minimum
+        # taller than the hint suggested.
+        want_h = max(self.sizeHint().height(), self.minimumSizeHint().height())
+        want_w = max(self.width(), self.minimumSizeHint().width())
+        self.resize(want_w, want_h)
 
     def _size_days_table(self):
         """Make the day table exactly tall enough for its rows, up to a cap (then
@@ -1056,7 +1096,8 @@ class ReadSDCardDialog(QDialog):
         self.read_btn.setEnabled(False)
         self.view_btn.setEnabled(False)
         self.status_label.setText("")
-        self._set_progress("Reading card…")
+        self._log_phase("Copying pictures from the card — each copy is verified, "
+                        "so this is the slow part…")
         if self._close_connected:
             self.close_btn.clicked.disconnect(self.reject)
             self.close_btn.clicked.connect(self._on_cancel)
@@ -1179,7 +1220,8 @@ class ReadSDCardDialog(QDialog):
                 targets.append((p.stem, str(xmp), [str(xmp)]))  # GPS + write both in the sidecar
         if not targets:
             return
-        self._set_progress("Looking up location names…")
+        self._log_phase("Looking up location names (one online lookup per new "
+                        "place, the rest reuse nearby fixes)…")
         run_geolocate_batch(self, targets, dry_run=False, overwrite=False)
         self._set_progress("")
         base = getattr(self, "_read_summary_msg", "")
