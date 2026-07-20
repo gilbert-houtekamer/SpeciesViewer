@@ -81,6 +81,67 @@ GPM copy/paste GPS, the manual location editor + on-card location line, and live
 external-edit refresh are all <span class="tag-complete">SHIPPED &amp; live</span>.
 Cancel-during-copy, Lightroom-in-place, and tz-offset are validated.</p>
 
+<h3>Shipped 2026-07-20 — the <code>.dop</code> arc</h3>
+<ul>
+  <li><strong>.dop files were being INVENTED, and a day's colour work landed where
+    PhotoLab cannot read it</strong> <span class="tag-shipped">SHIPPED</span>
+    <code>763e5d5</code> + <code>cd7c059</code>, user-verified live.
+    Culling a day with the <code>.xmp</code> channel switched off wrote colour to the
+    <code>.dop</code>, and <code>sidecarlib.ensure_dop</code> <strong>created one when none
+    existed</strong>. One afternoon left <strong>647 SpeciesViewer-authored .dop files</strong>
+    (empty <code>Base</code>, schema <code>"19.5"</code>) holding 44 Green + 3 Yellow in a form
+    PhotoLab misreads. The skeleton's own comment had called this “the one unverified
+    assumption in this path”; it was later verified and is <strong>false</strong> — PhotoLab
+    assigns each RAW a random v4 UUID in its <em>own</em> catalog and matches items by it, so a
+    recipe we author is taken as a virtual copy; the UUIDs cannot be computed and the format has
+    no master/virtual flag.
+    <p><strong>Fixes.</strong> (1) <code>ensure_dop</code> <strong>never creates</strong> — it
+    returns an existing recipe or none, and the skeleton is <em>deleted</em>, not disabled, since
+    a dormant one invites a retry. (2) <strong>Write both channels</strong> — colour, rating and
+    crop go to the <code>.xmp</code> always and to the <code>.dop</code> whenever PhotoLab
+    authored one. The old 2×2 switch was a false choice: PhotoLab ignores the <code>.xmp</code>
+    when its metadata sync is off, Lightroom ignores the <code>.dop</code> always, and neither
+    reads the other's file under any setting — so writing both cannot conflict and is the only
+    way they stay in step. Changed in the <em>single gate</em>
+    (<code>utils/sidecar_policy</code>), not at the nine call sites.</p>
+    <p>The Sidecar Behaviour dialog <strong>lost its four checkboxes</strong> — switches that
+    decide nothing are worse than none — and explains the behaviour instead, with the PhotoLab
+    advice. <strong>The supported direction is: PhotoLab authors, we edit.</strong> Verified
+    live: a day went 36 files (ORF+XMP) → 54 (ORF+DOP+XMP) after <em>Ctrl-A → write
+    sidecars</em>, and our colour then merged into a genuine recipe
+    (<code>Software = "DxO PhotoLab 9.8"</code>, full <code>Base</code>, real <code>CafId</code>).
+    Recovery for files already invented: <code>tools/svr_dop_colour_scan.py</code> is read-only,
+    reports what each holds, and <strong>tells ours from PhotoLab's</strong> (our Software stamp
+    <em>and</em> an empty <code>Base</code>) so real recipes are never swept up with them.</p></li>
+  <li><strong>The DxO options are one subject, and now one menu</strong>
+    <span class="tag-shipped">SHIPPED</span> <code>99e5d61</code> — the PhotoLab path was a lone
+    field at the bottom of Global Settings while Denoise and Sidecar Behaviour sat loose in the
+    Settings menu. Now <strong>File ▸ Settings ▸ Interfaces to Lightroom and PhotoLab</strong>:
+    <em>PhotoLab Location…</em> (the path moved there; <code>[Global] dxo_path</code> unchanged,
+    and it now says at once whether the path is real — a PhotoLab upgrade renames the folder
+    9→10, which otherwise only surfaces later as a failure to open a picture),
+    <em>PhotoLab Denoise…</em>, <em>Sidecar Behaviour…</em>.</li>
+  <li><strong>After an ingest, offer PhotoLab — and say why</strong>
+    <span class="tag-shipped">SHIPPED</span> <code>99e5d61</code> + <code>cd7c059</code> — a
+    freshly read day has no <code>.dop</code>, and we no longer invent them, so colour and crop
+    set before PhotoLab has seen the day live in the <code>.xmp</code> alone. The ingest dialog
+    says so and offers <strong>Open day in PhotoLab</strong>. It hands PhotoLab a
+    <strong>RAW file, not a folder</strong>: <code>_last_dest</code> is the days-location parent
+    (“…/2026 Zomer”), never the day itself, and PhotoLab is single-instance so a folder argument
+    merely raised its existing window on the SD card it already had open. Also: the three long
+    phases (scanning capture days, copying, geocoding) now announce themselves <em>in the log</em>
+    and say why they are slow — minutes of silence read as a hang — and the post-scan resize asks
+    for at least <code>minimumSizeHint</code>, ending the
+    <code>QWindowsWindow::setGeometry … mintrack(837, 977)</code> warning.</li>
+  <li><strong>The Days lane remembers its selected day</strong>
+    <span class="tag-shipped">SHIPPED</span> <code>5d7b062</code> — a trip and an album both come
+    back selected; the Days lane forgot every restart. It now persists in the per-machine days
+    registry beside the day list. ⚠ The trap: <code>save_days()</code> rewrote the document as
+    <code>{"days": …}</code> and would have dropped the new key on every add, rename or remove —
+    reads and writes now <em>merge</em>. Restore is conservative: only a day still in the registry
+    comes back, so an unplugged drive cannot return as a dead selection.</li>
+</ul>
+
 <h3>To do</h3>
 <ul>
   <li><strong>Municipality → website output</strong> <span class="tag-shipped">SHIPPED</span> —
