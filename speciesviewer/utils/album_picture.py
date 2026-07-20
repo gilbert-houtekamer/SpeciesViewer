@@ -24,8 +24,32 @@ ALBUM_PICTURE_SIZE = (600, 450)          # 4:3, matches virttrip.ini trip_pictur
 ALBUM_BANNER_NAME = "tripbanner.jpg"
 
 
-def target_path(album_root) -> Path:
-    return Path(album_root) / ALBUM_PICTURE_NAME
+def cover_name_for(root) -> str:
+    """The cover FILENAME this collection uses, read from its own ini.
+
+    Albums ship "tripimage.jpg", but a trip names its own — kretadb has
+    `trip_picture = kretaimage.jpg`. Assuming the album name would have written a
+    second, ignored file into the trip folder.
+    """
+    import configparser
+    root = Path(root)
+    for ini_name in ("virttrip.ini", "trip.ini"):
+        ini = root / ini_name
+        if not ini.is_file():
+            continue
+        try:
+            cp = configparser.ConfigParser()
+            cp.read(ini, encoding="utf-8")
+            name = (cp.get("trip_config", "trip_picture", fallback="") or "").strip()
+            if name:
+                return name
+        except Exception as e:                      # a broken ini must not block
+            logger.info(f"cover_name_for: could not read {ini}: {e}")
+    return ALBUM_PICTURE_NAME
+
+
+def target_path(album_root, name=None) -> Path:
+    return Path(album_root) / (name or cover_name_for(album_root))
 
 
 def render_cover(source, size=ALBUM_PICTURE_SIZE) -> Image.Image:
@@ -52,14 +76,14 @@ def render_cover(source, size=ALBUM_PICTURE_SIZE) -> Image.Image:
     return img.crop(box).resize(size, Image.LANCZOS)
 
 
-def is_seeded_default(album_root, dist_dir=None) -> bool:
+def is_seeded_default(album_root, dist_dir=None, name=None) -> bool:
     """True when the album still carries the shipped placeholder cover.
 
     Used to decide whether replacing it needs a warning: overwriting the generic
     tern/egret placeholder is nothing, overwriting a picture the user chose (or
     made in Photoshop) deserves a question.
     """
-    target = target_path(album_root)
+    target = target_path(album_root, name)
     if not target.is_file():
         return True                        # nothing to lose
     if dist_dir is None:
@@ -74,7 +98,7 @@ def is_seeded_default(album_root, dist_dir=None) -> bool:
         return False
 
 
-def set_album_picture(source, album_root, *, backup: bool = True) -> Path:
+def set_album_picture(source, album_root, *, backup: bool = True, name=None) -> Path:
     """Write `source` as the album's cover. Returns the path written.
 
     Raises ValueError if the source IS the target — the rule that came out of the
@@ -82,11 +106,11 @@ def set_album_picture(source, album_root, *, backup: bool = True) -> Path:
     derived file must never be written over its source.
     """
     src = Path(source)
-    target = target_path(album_root)
+    target = target_path(album_root, name)
     if src.resolve() == target.resolve():
         raise ValueError("refusing to write the album picture over its own source")
     target.parent.mkdir(parents=True, exist_ok=True)
-    if backup and target.is_file() and not is_seeded_default(album_root):
+    if backup and target.is_file() and not is_seeded_default(album_root, name=name):
         # Keep exactly one previous cover — enough to undo a wrong pick without
         # accumulating clutter in a folder the user browses.
         try:

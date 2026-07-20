@@ -1115,11 +1115,11 @@ class ImagePreviewDialog(QDialog):
         # album to update and this picture has a JPG to make it from — a menu
         # entry that cannot do anything is worse than no entry.
         act_album_pic = None
-        album_root = self._album_root_for_cover()
-        if album_root and n == 1 and self._collection.jpg_path(key):
+        cover = self._cover_target()
+        if cover and n == 1 and self._collection.jpg_path(key):
+            _root, kind, owner = cover
             menu.addSeparator()
-            act_album_pic = menu.addAction(
-                f"Use as album picture  ({Path(album_root).name})")
+            act_album_pic = menu.addAction(f"Use as {kind} picture  ({owner})")
         # Delete straight to .trash (recoverable) — the intuitive per-picture cull,
         # beside the batch blue/purple-delete. Same JPG protection as blue-delete.
         act_delete = None
@@ -1148,28 +1148,46 @@ class ImagePreviewDialog(QDialog):
         elif act_delete is not None and chosen == act_delete:
             self._delete_keys_ui(keys_for_action)
 
-    def _album_root_for_cover(self) -> str:
-        """The album whose cover 'Use as album picture' would set, or "".
+    def _cover_target(self):
+        """(root, kind, name) whose cover this viewer would set, or None.
 
-        The configured active album — the same one the Album tab and Create Album
-        act on. Returning "" hides the menu entry, which is why a culling folder
-        or a plain day never shows it.
+        ⚠ Derived from THIS VIEWER's own collection, never from the configured
+        active album. Reading the global setting meant a picture opened from the
+        2026 Kreta TRIP was written as the cover of whichever album happened to be
+        selected — a Kreta orchid became the Gran Canaria album's picture. The
+        menu must act on the thing you are looking at.
+
+        trip_root_dir is set by the trip day viewer; the album day viewer instead
+        shows files from the master and identifies itself by a source label under
+        the album's own folder, so walk up from there looking for virttrip.ini.
+        A plain culling folder matches neither and gets no menu entry.
         """
-        from utils.config import _config
-        root = (_config.get("virttrip", "virttripbiotadatabase", fallback="")
-                or "").replace('"', "").replace("'", "").strip()
-        return root if root and Path(root).is_dir() else ""
+        trip_root = (getattr(self, "trip_root_dir", "") or "").strip()
+        if trip_root and (Path(trip_root) / "trip.ini").is_file():
+            return str(trip_root), "trip", Path(trip_root).name
+        start = (getattr(self, "_viewer_label", "") or "") or (self.image_dir or "")
+        try:
+            here = Path(start)
+        except (TypeError, ValueError):
+            return None
+        for folder in [here, *here.parents]:
+            if (folder / "virttrip.ini").is_file():
+                return str(folder), "album", folder.name
+            if (folder / "trip.ini").is_file():
+                return str(folder), "trip", folder.name
+        return None
 
     def _set_album_picture(self, key: str):
         """Confirm (with a preview of the crop), then write the album's cover."""
         jpg = self._collection.jpg_path(key)
         if not jpg:
             return
-        album_root = self._album_root_for_cover()
-        if not album_root:
+        cover = self._cover_target()
+        if not cover:
             return
+        root, kind, owner = cover
         from gui.album_picture_dialog import AlbumPictureDialog
-        dlg = AlbumPictureDialog(self, jpg, album_root)
+        dlg = AlbumPictureDialog(self, jpg, root, album_name=owner, kind=kind)
         if getattr(dlg, "_failed", False):
             return
         if dlg.exec() == QDialog.DialogCode.Accepted:

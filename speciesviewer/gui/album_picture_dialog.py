@@ -32,9 +32,10 @@ def _pil_to_pixmap(img) -> QPixmap:
 
 
 class AlbumPictureDialog(QDialog):
-    def __init__(self, parent, source, album_root, album_name=""):
+    def __init__(self, parent, source, album_root, album_name="", kind="album"):
         super().__init__(parent)
-        self.setWindowTitle("Use as album picture")
+        self._kind = kind
+        self.setWindowTitle(f"Use as {kind} picture")
         self._source = Path(source)
         self._album_root = Path(album_root)
 
@@ -43,7 +44,7 @@ class AlbumPictureDialog(QDialog):
 
         name = album_name or self._album_root.name
         root.addWidget(QLabel(
-            f"Use <b>{self._source.name}</b> as the picture for album <b>{name}</b>."))
+            f"Use <b>{self._source.name}</b> as the picture for {kind} <b>{name}</b>."))
 
         try:
             cover = render_cover(self._source)
