@@ -2,8 +2,6 @@
 
 import os
 import re
-import uuid
-import datetime
 import xml.etree.ElementTree as ET
 import logging
 
@@ -392,77 +390,34 @@ _XMP_SKELETON = (
     "</x:xmpmeta>\n"
 )
 
-# Minimal DxO recipe. The crop goes in Overrides (the user-delta block DxO reads
-# on top of the applied preset's Base); write_dop_edits fills it in. Base is left
-# empty so PhotoLab regenerates it from its default preset.
-# NOTE: whether PhotoLab accepts a from-scratch .dop it didn't author is the one
-# unverified assumption in this path — needs a live check in PL.
-_DOP_SKELETON = """Sidecar = {{
-Date = "{date}",
-Software = "SpeciesViewer",
-Source = {{
-Items = {{
-{{
-Name = "{name}",
-Orientation = 1,
-Settings = {{
-Base = {{
-}}
-,
-Overrides = {{
-}}
-,
-Version = "19.5",
-}}
-,
-ShouldProcess = 2,
-Uuid = "{item_uuid}",
-}}
-,
-}}
-,
-Uuid = "{source_uuid}",
-}}
-,
-Version = "19.0",
-}}
-"""
-
-
-def ensure_xmp(raw_path):
-    """Return the .xmp sidecar path for a RAW, creating a minimal one if missing.
-    Returns None if creation failed."""
-    xmp_path = os.path.splitext(str(raw_path))[0] + ".xmp"
-    if os.path.exists(xmp_path):
-        return xmp_path
-    try:
-        with open(xmp_path, "w", encoding="utf-8") as f:
-            f.write(_XMP_SKELETON.format(name=os.path.basename(str(raw_path))))
-        return xmp_path
-    except Exception as e:
-        logger.warning(f"Could not create XMP {xmp_path}: {e}")
-        return None
+# The from-scratch DxO recipe skeleton that used to live here has been REMOVED,
+# not merely disabled: PhotoLab owns the master UUID, so a .dop it did not author
+# is always taken as a virtual copy. Writing one is never the right answer, and a
+# dormant skeleton is an invitation to try again. See ensure_dop below.
 
 
 def ensure_dop(raw_path):
-    """Return the .dop sidecar path for a RAW, creating a minimal one if missing.
-    Returns None if creation failed."""
+    """Return the RAW's EXISTING .dop path, or None. NEVER creates one.
+
+    ⚠ This function used to create a minimal .dop when none existed, and the
+    skeleton's own comment called that "the one unverified assumption in this
+    path". It was then verified, and it is false: PhotoLab assigns every RAW a
+    random v4 UUID in its OWN catalog at import and matches .dop items by that
+    UUID, so a .dop we author carries a UUID PL never registered and PL adds it
+    as a VIRTUAL COPY rather than reading it. The UUIDs cannot be computed, and
+    the format has no master/virtual flag — so a from-scratch .dop is not merely
+    unreliable, it is impossible. (Empty Base + schema "19.5" was also implicated
+    in a PL crash.) A single afternoon of culling with the .xmp channel off left
+    647 such files behind, holding real colour work in a form PhotoLab misreads.
+
+    The supported route is the other way round: PhotoLab authors the .dop
+    (select all → write sidecars), and SpeciesViewer then EDITS that recipe with
+    the surgical writers above, which never touch the UUIDs. Callers must treat
+    None as "this picture has no PhotoLab recipe yet" and fall back to the .xmp,
+    which is exactly what write_metadata does.
+    """
     dop_path = str(raw_path) + ".dop"
-    if os.path.exists(dop_path):
-        return dop_path
-    try:
-        text = _DOP_SKELETON.format(
-            date=datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.0000000Z"),
-            name=os.path.basename(str(raw_path)),
-            item_uuid=str(uuid.uuid4()).upper(),
-            source_uuid=str(uuid.uuid4()).upper(),
-        )
-        with open(dop_path, "w", encoding="utf-8") as f:
-            f.write(text)
-        return dop_path
-    except Exception as e:
-        logger.warning(f"Could not create DOP {dop_path}: {e}")
-        return None
+    return dop_path if os.path.exists(dop_path) else None
 
 
 def suggest_crop(raw_path, crop, angle=None):

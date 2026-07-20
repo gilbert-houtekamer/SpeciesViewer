@@ -1,90 +1,79 @@
-"""Sidecar Behaviour settings dialog — controls what SpeciesViewer writes to a
-picture's DxO PhotoLab `.dop` and Lightroom `.xmp` sidecars.
+"""Sidecar Behaviour — what SpeciesViewer writes to a picture's DxO PhotoLab
+`.dop` and Lightroom `.xmp`, and what that means for how you run PhotoLab.
 
-Validated: PhotoLab reads colour label + rating from the `.dop` (Item-level
-ColorLabel/Rating) when you Ctrl-A → import sidecars, but mistreats them in the
-`.xmp` (ignores / loses them / filter-hides the image). Lightroom ignores `.dop`.
-So the choices are a 2×2 — {colour&rating, crop} × {.dop, .xmp}. Keywords and
-descriptions are not shown here: they always go to `.xmp` + JPG (the species
-pipeline and website need them, and they never caused the PL trouble).
+This dialog USED to be a 2x2 of switches ({colour&rating, crop} x {.dop, .xmp}).
+It no longer is, because the choice turned out to be a false one: PhotoLab
+ignores the `.xmp` when its metadata sync is off, Lightroom ignores the `.dop`
+always, and neither reads the other's file under any setting — so writing both
+cannot conflict, and it is the only way the two stay in step. Switches that no
+longer decide anything are worse than none at all, so the dialog now explains the
+behaviour instead of pretending to control it.
 
-Stored in machine config [sidecars]; read live at each write. See
-utils/sidecar_policy.py.
+See utils/sidecar_policy.py for the gate, and engine/sidecarlib.ensure_dop for
+the one hard rule: we never create a .dop that PhotoLab did not author.
 """
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QGridLayout, QGroupBox, QLabel, QCheckBox,
-    QDialogButtonBox, QFrame,
+    QDialog, QVBoxLayout, QGroupBox, QLabel, QDialogButtonBox, QFrame,
 )
-from utils.sidecar_policy import load_sidecar_config, save_sidecar_config
 
 
 class SidecarSettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Sidecar Behaviour")
-        self.setMinimumWidth(560)
+        self.setMinimumWidth(600)
 
-        cfg = load_sidecar_config()
         root = QVBoxLayout(self)
         root.setSpacing(8)
 
         intro = QLabel(
-            "Choose where SpeciesViewer writes colour labels, ratings and crops. "
-            "PhotoLab reads them from its own .dop file when you select all "
-            "(Ctrl-A) and import sidecars; it mistreats colour/rating in the .xmp, "
-            "so that channel is off by default. Lightroom reads the .xmp and "
-            "ignores .dop.")
+            "SpeciesViewer writes colour labels, ratings and crops to <b>both</b> "
+            "sidecars, so PhotoLab and Lightroom always see the same thing.")
         intro.setWordWrap(True)
-        intro.setStyleSheet("color: #888; font-size: 11px;")
         root.addWidget(intro)
 
-        grid_box = QGroupBox("What to write, and where")
-        g = QGridLayout(grid_box)
-        g.setHorizontalSpacing(24)
-        g.addWidget(QLabel("<b>PhotoLab .dop</b>"), 0, 1)
-        g.addWidget(QLabel("<b>Lightroom .xmp</b>"), 0, 2)
+        what = QGroupBox("What is written")
+        wl = QVBoxLayout(what)
+        for line in (
+            "<b>Lightroom .xmp</b> — always. It is the sidecar that always exists, "
+            "and it is what the species pipeline and the website read.",
+            "<b>PhotoLab .dop</b> — whenever PhotoLab has already written one for "
+            "that picture. SpeciesViewer <i>edits</i> a PhotoLab recipe; it never "
+            "creates one, because PhotoLab only recognises recipes it authored "
+            "itself (an invented .dop is read as a virtual copy).",
+            "<b>Keywords and descriptions</b> — always to the .xmp and to JPGs; "
+            "the species pipeline and the website need them.",
+        ):
+            lbl = QLabel(line)
+            lbl.setWordWrap(True)
+            wl.addWidget(lbl)
+        root.addWidget(what)
 
-        g.addWidget(QLabel("Colour label / rating"), 1, 0)
-        self._cr_dop = QCheckBox(); self._cr_dop.setChecked(cfg["colorrating_dop"])
-        self._cr_xmp = QCheckBox(); self._cr_xmp.setChecked(cfg["colorrating_xmp"])
-        g.addWidget(self._cr_dop, 1, 1)
-        g.addWidget(self._cr_xmp, 1, 2)
+        advice = QGroupBox("Working with DxO PhotoLab")
+        al = QVBoxLayout(advice)
+        tip = QLabel(
+            "XMP sidecars are always written during culling. If PhotoLab has "
+            "<i>Edit ▸ Preferences ▸ Metadata ▸ “Synchronize metadata with XMP "
+            "sidecar files”</i> switched <b>on</b>, it watches those files and can "
+            "write back over your changes — so it is best not to leave PhotoLab "
+            "running on the same pictures while you cull.<br><br>"
+            "If you change metadata in both programs, switching that option "
+            "<b>off</b> is recommended: PhotoLab then keeps to its own .dop, "
+            "SpeciesViewer keeps both files in step, and neither surprises the "
+            "other.<br><br>"
+            "A picture has no .dop until PhotoLab makes one. To create them for a "
+            "whole day, open the folder in PhotoLab, press <b>Ctrl-A</b> and choose "
+            "<b>write sidecars</b> — from then on SpeciesViewer can put colour, "
+            "rating and crop straight into the recipe.")
+        tip.setWordWrap(True)
+        al.addWidget(tip)
+        root.addWidget(advice)
 
-        g.addWidget(QLabel("Crop"), 2, 0)
-        self._crop_dop = QCheckBox(); self._crop_dop.setChecked(cfg["crop_dop"])
-        self._crop_xmp = QCheckBox(); self._crop_xmp.setChecked(cfg["crop_xmp"])
-        g.addWidget(self._crop_dop, 2, 1)
-        g.addWidget(self._crop_xmp, 2, 2)
-        g.setColumnStretch(3, 1)
-        root.addWidget(grid_box)
-
-        note = QLabel(
-            "Recommended (PhotoLab workflow): everything to the .dop, nothing to the "
-            ".xmp. Prepare in SpeciesViewer, then in PhotoLab press Ctrl-A and import "
-            "sidecars to pull colour, rating and crop in at once.<br>"
-            "The .xmp columns are for a Lightroom workflow only — PhotoLab mistreats "
-            "colour/rating there and ignores our crop.<br><br>"
-            "<i>Keywords and descriptions are always written to the .xmp and JPGs "
-            "(needed by the species pipeline and website); they are not affected by "
-            "these switches.</i>")
-        note.setWordWrap(True)
-        note.setStyleSheet("color: #888; font-size: 11px;")
-        root.addWidget(note)
-
-        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
         root.addWidget(sep)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(self._save)
-        buttons.rejected.connect(self.reject)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.accept)
+        buttons.accepted.connect(self.accept)
         root.addWidget(buttons)
-
-    def _save(self):
-        save_sidecar_config({
-            "colorrating_dop": self._cr_dop.isChecked(),
-            "colorrating_xmp": self._cr_xmp.isChecked(),
-            "crop_dop":        self._crop_dop.isChecked(),
-            "crop_xmp":        self._crop_xmp.isChecked(),
-        })
-        self.accept()
