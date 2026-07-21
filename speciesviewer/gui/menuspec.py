@@ -609,6 +609,10 @@ def build_menu_spec(main_window):
         from gui.album_delete_dialog import AlbumDeleteDialog
         AlbumDeleteDialog(main_window).exec()
 
+    def _manage_album_publication():
+        from gui.album_publish_dialog import AlbumPublishDialog
+        AlbumPublishDialog(main_window).exec()
+
     find_trips = MenuSpec(
         callback=_find_trips,
         title="Find Trips in the Master…",
@@ -1301,9 +1305,13 @@ def build_menu_spec(main_window):
                 showsubdirectory=False,
             ),
             f"{MenuSpec.separator()}_vt4": None,
-            "Add Album to Master": MenuSpec(
-                callback=lambda: VirttripAddToMasterDialog(main_window).exec(),
-                title="Add Album to Master",
+            # One place for both directions (list / remove), showing the current
+            # state. Supersedes the advertise-only "Add Album to Master"; never a
+            # Trip door — the album equivalent of Trip's publication actions.
+            "Manage Album Publication…": MenuSpec(
+                callback=lambda: _manage_album_publication(),
+                title="Manage Album Publication…",
+                tooltip="List this album on the site's trip index, or remove it from there",
             ),
             f"{MenuSpec.separator()}_vt5": None,
             "Export Album": export_virttrip,

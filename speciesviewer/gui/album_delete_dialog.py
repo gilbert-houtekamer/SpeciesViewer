@@ -99,13 +99,13 @@ class AlbumDeleteDialog(QDialog):
                     "Also delete the published website  (server unreachable)")
         layout.addWidget(self._remote_cb)
 
-        # An advertised album would leave a dead tripindex link — but that
-        # un-advertise step is a separate feature (the Albums publish action),
-        # so say so rather than half-do it.
+        # An advertised album would leave a dead tripindex link, so point at the
+        # place that removes the listing rather than half-doing it here.
         note = QLabel(
             "The <b>master is not touched</b> — an album only references the "
-            "master's pictures, it never copies them. If this album is advertised "
-            "on the trip index, remove it there separately.")
+            "master's pictures, it never copies them. If this album is listed on "
+            "the trip index, remove it first with <i>Albums ▸ Manage Album "
+            "Publication</i>.")
         note.setWordWrap(True)
         note.setStyleSheet("color: #666; font-size: 11px;")
         layout.addWidget(note)
