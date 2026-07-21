@@ -458,6 +458,20 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
     <code>.jpg</code> was genuinely on disk but never in the master's inventory (now one row, no duplicate).
     So it never invents or duplicates — it makes the inventory match disk; a second click says “No new
     files”. Possible follow-up: a master-wide sweep to register all untracked renders in one pass.</p></li>
+  <li><strong>Crop + qualifier display fixes (album viewer)</strong>
+    <span class="tag-shipped">SHIPPED</span> <code>0c48c91</code> / <code>a03e341</code>, 2026-07-21,
+    user-confirmed.
+    <ul>
+      <li><strong>Crop invisible in a multi-block XMP:</strong> a PhotoLab/exiftool <code>.xmp</code>
+        splits its metadata across many <code>rdf:Description</code> blocks (one file had 22), and the
+        crop reader parsed only the <em>first</em> — so a crop in a later block came back empty. The large
+        view opened uncropped and the grid lost the crop on reopen (the cropped thumbnail was a stale
+        cache). Now searches every block, taking each value as an attribute or a child element.
+        (Still one-sided: the <em>writer</em> targets only the first block, so a from-scratch crop drawn in
+        SpeciesViewer on a no-<code>.dop</code> RAW has nowhere durable to land yet — a separate follow-up.)</li>
+      <li><strong>Qualifier line doubled the tokens</strong> (“kanarie, female, juvenile ♀ juv.”) — now
+        name + abbreviation only (“kanarie ♀ juv.”).</li>
+    </ul></li>
   <li><strong>The album day viewer is now an editable window on the master</strong>
     <span class="tag-shipped">SHIPPED</span> 2026-07-21, verified on Gran Canaria. The album /
     virtual-trip day viewer opened fully read-only; it now permits the edits that are
