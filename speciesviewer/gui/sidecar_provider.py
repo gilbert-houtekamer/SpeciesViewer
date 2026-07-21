@@ -27,6 +27,7 @@ from gui.picture_provider import (PictureItem, PictureCollection, ExifSummary,
                                   PixmapCallback, sweep_dop, apply_crop, crop_for,
                                   jpg_is_crop_by_size)
 from gui.image_loader import AsyncImageLoader
+from gui.master_ops import MasterCardOpsMixin
 from gui.preview_provider import cached_jpg_for, preview_cache_dir_for
 from engine.exif_writer import exiftool_write
 from engine.sidecarlib import push_metadata_to_dop, read_dop_metadata
@@ -325,9 +326,16 @@ class SidecarItem(PictureItem):
         self._c.write_tag(self._stem, "XMP:Subject", value, "Subject")
 
 
-class SidecarCollection(PictureCollection):
+class SidecarCollection(MasterCardOpsMixin, PictureCollection):
     """Pictures discovered from RAW(+JPG)+XMP sidecar groups in a folder or an
-    explicit RAW list. Reads metadata from the sidecars; edits write back to them."""
+    explicit RAW list. Reads metadata from the sidecars; edits write back to them.
+
+    In the album day viewer the pictures ARE the master's, so bind_master() attaches
+    the master DB + this day's rows and the shared MasterCardOpsMixin lights up the
+    full master card menu (pin / delete-JPG / move / add / delete). The sex/age/plumage
+    qualifier methods below stay SIDECAR-based (they override the mixin's DB versions),
+    so they work in the large viewer even without a DB binding — and both write the same
+    XMP:Subject on the master's own file."""
 
     # The culling grid carries species/description/GPS per card, so it can show the
     # PictureCard status/📝/📍 badge row even without an fpr project (the no-fpr
@@ -360,6 +368,15 @@ class SidecarCollection(PictureCollection):
         # ON the master, not a copy), so they may be edited on the read-only day
         # viewer too. Species RE-DETERMINATION stays out — that belongs in the master.
         self.allow_edit = bool(allow_edit)
+        # Master inventory binding (album day viewer only). Empty until bind_master();
+        # the shared MasterCardOpsMixin reads these to gate + drive pin/move/delete/add
+        # against the master DB. Keyed by UPN, exactly like _groups
+        # (deriveUniquePictureName), so a card's key resolves straight through.
+        self._master_db = None
+        self._master_root = None
+        self._master_keys: set = set()
+        self._master_upn: dict = {}
+        self._master_files: dict = {}
         self._cache_root = Path(cache_root) if cache_root else None
         self._loader = loader or AsyncImageLoader()
         # Group input picture files by their unique-picture name. Using
@@ -895,6 +912,21 @@ class SidecarCollection(PictureCollection):
         self._crop_cache.pop(stem, None)
         self._image_sigs[stem] = self._image_sig(stem)
         return res
+
+    # ── master inventory binding (album day viewer) ───────────────────────────
+    def bind_master(self, db, master_root, upn_rows, file_rows) -> None:
+        """Attach the master DB + this day's picture/file rows so the shared master
+        card menu can offer the inventory ops (pin / delete-JPG / move / add / delete)
+        on these master pictures. Rows come from MasterDB.pictures_in_daterange +
+        files_for_upns; keyed by UPN / File:FileName to match _groups and the
+        MasterCardOpsMixin's reads."""
+        self._master_db = db
+        self._master_root = Path(master_root) if master_root else None
+        self._master_upn = {r["UniquePictureName"]: r for r in upn_rows
+                            if r.get("UniquePictureName")}
+        self._master_files = {r["File:FileName"]: r for r in file_rows
+                              if r.get("File:FileName")}
+        self._master_keys = set(self._master_upn)
 
     # ── Sex / age / plumage qualifier (album day viewer) ──────────────────────
     # The album's pictures ARE the master's, so their FORM (a property of the

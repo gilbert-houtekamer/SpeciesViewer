@@ -99,17 +99,38 @@ a few-line swap.
 - [ ] **Live GUI verify** (user, F5): open a day from the Active Album, confirm the
       cards, JPEG filtering, "#" crop markers and captions render as before.
 
-### S2b — Converge the card context menu onto the Master Species Viewer (NEXT)
-Bigger, provider-level refactor (kept separate on purpose). The `master_*` methods +
-`_master_context_menu` live on the **rating_provider** collection (Master Species
-Viewer + Rating Editor); the album day viewer uses a **sidecar_provider** collection
-with only a partial master surface. Convergence means giving the day viewer the same
-master ops (qualifiers / add / pin / delete / move) rather than its current crippled
-menu — a deliberate step of its own.
-- [ ] Decide: extend the sidecar_provider collection with the full `master_*` surface,
-      OR host the album day viewer on the rating_provider collection.
-- [ ] Wire `_master_context_menu` (or a shared copy) into the day viewer's cards.
-- [ ] Verify each master op works from an album.
+### S2b — Converge the card context menu (full convergence) ✅ CODE DONE (awaiting live GUI verify)
+The master menu + `_do_master_*` were duplicated in the Master Species Viewer and the
+Rating Editor (the latter a deliberate subset); the album day viewer had none of it.
+
+- [x] **S2b/1** — new `gui/master_ops.py` with two mixins: `MasterCardOpsMixin`
+      (collection-side surface, thin wrappers over MasterDB + db.master_mutate) and
+      `MasterCardMenuMixin` (viewer-side menu + handlers, composable via
+      `_build_master_menu(menu, upn, ops=…)`). Master Species Viewer + Rating Editor
+      now inherit the menu mixin and their duplicate copies are deleted; the Rating
+      Editor keeps its reference-card subset via `ops={"add","delete","delete_file"}`.
+      Handler bodies verbatim from the Master Species Viewer → behaviour preserved.
+- [x] **S2b/2** — album gets the FULL menu. `SidecarCollection` (the album day
+      viewer's collection) inherits `MasterCardOpsMixin` + a `bind_master()` populated
+      from the day query; its own SIDECAR-based qualifier methods override the mixin's
+      DB versions (so the large viewer is untouched). `ImagePreviewDialog` inherits
+      `MasterCardMenuMixin`, overrides the status/refresh hooks, gains
+      `enable_master_ops()`, and appends the master menu to a from-master card's menu.
+      `_open_day_viewer` binds it.
+- [x] Functionally verified offscreen vs helgoland 2014-06-25: 175 groups ↔ 175 master
+      UPNs (keys align), and the built menu matches the Master Species Viewer exactly —
+      multi-JPG (pin + delete-JPG, delete/move blocked by the JPG guard), no-JPG (move
+      + delete + delete-single-file), single-JPG (blocked), read-only album (hidden).
+- [ ] **Live GUI verify** (user, F5): right-click a picture in an album day viewer;
+      confirm the master ops appear and each works (qualifiers / pin / delete-JPG /
+      move / add / delete).
+
+**Follow-ups (safe, deferred):** (1) album qualifier via the card menu uses
+`SidecarCollection`'s sidecar-based apply (no master-DB mirror), so the DB's
+`subject` lags until a re-read and the status suffix can read stale — a qualifier
+mirror like the GPS one would fix it. (2) `RatingEditorCollection` still keeps its own
+copy of the ops surface; it can inherit `MasterCardOpsMixin` and drop the copy once the
+above is verified.
 
 ### S3 — Map reads the query
 - [ ] Replace `_collection_from_review_days` (`gui/mainwindow.py:1093`) CSV reads with

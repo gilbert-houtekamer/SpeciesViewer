@@ -13,6 +13,7 @@ from gui.species_editor import SpeciesInfoDialog
 from gui.window_state import restore_window, save_window
 from gui.image_loader import AsyncImageLoader
 from gui.preview_provider import PreviewCollection, FileListPreviewCollection, preview_cache_dir_for
+from gui.master_ops import MasterCardMenuMixin
 from gui.rating_editor import PictureCard
 
 logger = logging.getLogger("speciesviewer")
@@ -75,7 +76,7 @@ class ColorFilterBar(QWidget):
         self.on_filter_changed(active_colors)
 
 
-class ImagePreviewDialog(QDialog):
+class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     """Per-picture (UPN) contact sheet, rendered from a picture-provider
     collection (the same seam the Rating Editor uses). Three modes:
       - day folder with metadata  → PreviewCollection (fpr, one card per UPN)
@@ -1146,8 +1147,19 @@ class ImagePreviewDialog(QDialog):
         if hasattr(self._collection, "delete_keys"):
             menu.addSeparator()
             act_delete = menu.addAction(f"🗑 Delete  ({lbl})")
+        # The full master card menu (qualifiers / pin best-JPG / delete-JPG / move /
+        # add / delete), on the right-clicked master picture. The album's pictures ARE
+        # the master's, so these act straight on the master via the shared mixin.
+        master_handlers: dict = {}
+        if (getattr(self, "_master_ops_enabled", False) and item is not None
+                and getattr(item, "from_master", False)
+                and not self._collection.master_read_only):
+            menu.addSeparator()
+            master_handlers = self._build_master_menu(menu, key)
         chosen = menu.exec(QCursor.pos())
-        if chosen == act_species:
+        if chosen in master_handlers:
+            master_handlers[chosen]()
+        elif chosen == act_species:
             self._open_species_dialog_for_keys(keys_for_action)
         elif chosen == act_rate:
             self._open_batch_rate_dialog(keys_for_action)
@@ -1220,6 +1232,35 @@ class ImagePreviewDialog(QDialog):
                     f"Album picture set from {Path(jpg).name}.")
             except Exception:
                 pass
+
+    # ── shared master card menu (MasterCardMenuMixin hooks) ───────────────────
+    def enable_master_ops(self, db, master_root, pic_rows, file_rows) -> None:
+        """Album day viewer: bind the master DB + this day's rows to the collection so
+        the shared master card menu (pin / delete-JPG / move / add / delete / qualifiers)
+        can act on these master pictures. No-op if the collection can't be bound."""
+        bind = getattr(self._collection, "bind_master", None)
+        if not callable(bind):
+            return
+        try:
+            bind(db, master_root, pic_rows, file_rows)
+            self._master_ops_enabled = True
+        except Exception as e:
+            logger.warning(f"enable_master_ops failed: {e}")
+
+    def _master_status(self, msg: str) -> None:
+        try:
+            self.status_label.setText(msg)
+        except Exception:
+            pass
+
+    def _after_master_change(self) -> None:
+        # Repaint so a pin (best JPG) / qualifier (caption) shows immediately.
+        # Structural changes (delete / move) drop the file from the master; the card
+        # is refreshed on the next open — the status line says what happened.
+        try:
+            self._rebuild_grid_from_keys(self._collection.all_keys())
+        except Exception as e:
+            logger.debug(f"album master refresh skipped: {e}")
 
     def _register_master_renders(self, keys):
         """Register freshly-rendered sibling files (a DxO JPG + its .dop) of these

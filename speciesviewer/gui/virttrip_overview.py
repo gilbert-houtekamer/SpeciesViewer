@@ -200,6 +200,12 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
         name_hints=name_hints,
         name_profile=effective_profile(_vt_override),
     )
+    # Bind the master DB + this day's rows so the right-click card menu offers the full
+    # master surface (sex/age/plumage, pin best-JPG, delete-JPG, move-to-species, add
+    # files, delete) — the album's pictures ARE the master's. Editable gate handled by
+    # the collection (master menu hidden on a read-only album).
+    if db is not None:
+        dlg.enable_master_ops(db, db.master_root, pics, files)
     dlg.exec()
     # The viewer can geotag (Get GPS from location, and the map it opens), and that
     # write lands in the sidecars the No-GPS column counts. Repaint on the way out so
