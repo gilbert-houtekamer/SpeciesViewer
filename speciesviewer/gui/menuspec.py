@@ -605,6 +605,10 @@ def build_menu_spec(main_window):
         import gui.trip_finder_view as tf
         tf.show(main_window, _config)
 
+    def _delete_album():
+        from gui.album_delete_dialog import AlbumDeleteDialog
+        AlbumDeleteDialog(main_window).exec()
+
     find_trips = MenuSpec(
         callback=_find_trips,
         title="Find Trips in the Master…",
@@ -1304,6 +1308,12 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_vt5": None,
             "Export Album": export_virttrip,
             "Import Album": import_virttrip,
+            f"{MenuSpec.separator()}_vt6": None,
+            "Delete Album…": MenuSpec(
+                callback=lambda: _delete_album(),
+                title="Delete Album…",
+                tooltip="Delete the active album (backed up first; the master is untouched)",
+            ),
         },
         "Utilities": {
         #     "BirdingBreaks": None, # PROCESS BIRDING BREAK FILES
