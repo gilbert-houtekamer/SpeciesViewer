@@ -144,17 +144,18 @@ class AlbumDeleteDialog(QDialog):
             #    remote failure leaves the album intact to retry.
             if remote:
                 self._delete_remote(info)
-            # 2. Back up, then remove the folder.
+            # 2. Back up, then remove the folder. delete_local renames first, so
+            #    a lock fails cleanly (album intact) instead of half-deleting it.
             backup = album_delete.backup_album(self._album_root)
-            ok = album_delete.delete_local(self._album_root)
+            err = album_delete.delete_local(self._album_root)
         finally:
             QApplication.restoreOverrideCursor()
 
-        if not ok:
+        if err:
             QMessageBox.warning(
                 self, "Delete Album",
-                "The album folder could not be fully removed — something may have "
-                "it open. The backup zip was still written.")
+                err + "\n\nNothing is lost — the full backup zip was written to "
+                ".trash, and the album is left as it was.")
             return
 
         # 3. It was the active album; it is gone. Clear the pointers so the GUI

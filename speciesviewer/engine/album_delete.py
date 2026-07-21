@@ -92,16 +92,41 @@ def backup_album(album_root, trash_dir=None) -> Path | None:
     return Path(archive)
 
 
-def delete_local(album_root) -> bool:
-    """Remove the album folder. Returns True if it is gone afterwards."""
+def delete_local(album_root) -> str:
+    """Remove the album folder. Returns "" on success, else an error message.
+
+    RENAME-FIRST, then delete the renamed copy. On Windows a directory that holds
+    an open file cannot be renamed, so this claims the whole folder atomically or
+    fails having touched NOTHING — where a plain shutil.rmtree deletes depth-first
+    and, meeting a lock partway, leaves a HALF-GONE album (a stray Explorer or
+    PhotoLab window on one sub-folder did exactly that). Once the rename succeeds
+    the album is gone under its real name even if the recursive delete then
+    stumbles on a late lock; the leftovers sit in a hidden staging folder.
+    """
+    import os
+
     root = Path(album_root)
     if not root.is_dir():
-        return True
+        return ""
+    staging = root.with_name(f".{root.name}.deleting")
+    if staging.exists():                       # leftover from an earlier stumble
+        try:
+            shutil.rmtree(staging)
+        except OSError:
+            pass
     try:
-        shutil.rmtree(root)
+        os.rename(root, staging)
     except OSError as e:
-        logger.warning(f"album delete: could not remove {root}: {e}")
-    return not root.exists()
+        return (f"{root.name} is in use, so nothing was removed. Close any "
+                f"Explorer or DxO PhotoLab window showing the album or its "
+                f"sub-folders, then delete again. [{e}]")
+    try:
+        shutil.rmtree(staging)
+    except OSError as e:
+        # The album is gone under its real name; only hidden leftovers remain.
+        logger.warning(f"album delete: {root.name} removed, but some files "
+                       f"linger in {staging.name} (in use): {e}")
+    return "" if not root.exists() else f"{root.name} could not be fully removed."
 
 
 def remote_web_target(config_web_root: str, remote_prefix: str) -> str:
