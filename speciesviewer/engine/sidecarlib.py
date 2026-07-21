@@ -62,44 +62,57 @@ def read_dop_overrides(dop_path):
 
 
 def read_xmp_edits(xmp_path):
-    """Read crop and exposure from XMP crs: attributes."""
+    """Read crop and exposure from the XMP crs: fields.
+
+    ⚠ A PhotoLab / exiftool XMP splits its metadata across MANY rdf:Description
+    blocks (one per namespace group) — the crs: crop is often NOT in the first.
+    Reading only the first block (as this did) silently missed the crop, so the
+    grid showed a stale cached thumbnail while the large view opened uncropped.
+    Search EVERY rdf:Description, and accept the value as an attribute OR a child
+    element (PhotoLab writes elements, our own writer writes attributes)."""
     result = {"exposure": None, "crop": None, "angle": None, "mtime": os.path.getmtime(xmp_path)}
 
     tree = ET.parse(xmp_path)
-    desc = tree.find('.//rdf:Description', NS)
-    if desc is None:
+    descs = tree.findall('.//rdf:Description', NS)
+    if not descs:
         return result
 
-    # Exposure — can be attribute or child element
-    exp = desc.get(f'{{{NS["crs"]}}}Exposure2012')
-    if exp is None:
-        exp_el = desc.find(f'{{{NS["crs"]}}}Exposure2012')
-        if exp_el is not None:
-            exp = exp_el.text
+    crs = f'{{{NS["crs"]}}}'
+
+    def _crs_val(name, default=None):
+        """First value found for crs:<name> across all Description blocks, taken
+        as an attribute or a child element; `default` if nowhere."""
+        for d in descs:
+            v = d.get(crs + name)
+            if v is not None:
+                return v
+            el = d.find(crs + name)
+            if el is not None and el.text is not None:
+                return el.text
+        return default
+
+    exp = _crs_val('Exposure2012')
     if exp is not None:
-        result["exposure"] = float(exp)
+        try:
+            result["exposure"] = float(exp)
+        except ValueError:
+            pass
 
-    # Crop — can be attribute or child element
-    has_crop = desc.get(f'{{{NS["crs"]}}}HasCrop')
-    if has_crop is None:
-        hc_el = desc.find(f'{{{NS["crs"]}}}HasCrop')
-        if hc_el is not None:
-            has_crop = hc_el.text
-    if has_crop == "True":
-        def _crs_val(name, default):
-            v = desc.get(f'{{{NS["crs"]}}}{name}')
-            if v is None:
-                el = desc.find(f'{{{NS["crs"]}}}{name}')
-                v = el.text if el is not None else None
-            return float(v) if v is not None else default
+    if _crs_val('HasCrop') == "True":
+        def _f(name, default):
+            v = _crs_val(name)
+            try:
+                return float(v) if v is not None else default
+            except ValueError:
+                return default
 
-        top = _crs_val('CropTop', 0)
-        left = _crs_val('CropLeft', 0)
-        bottom = _crs_val('CropBottom', 1)
-        right = _crs_val('CropRight', 1)
+        top = _f('CropTop', 0)
+        left = _f('CropLeft', 0)
+        bottom = _f('CropBottom', 1)
+        right = _f('CropRight', 1)
         result["crop"] = {"left": left, "top": top, "width": right - left, "height": bottom - top}
 
-        angle_val = _crs_val('CropAngle', None)
+        angle_val = _f('CropAngle', None)
         if angle_val is not None and angle_val != 0.0:
             result["angle"] = angle_val
 
