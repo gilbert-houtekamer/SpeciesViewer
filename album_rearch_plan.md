@@ -85,16 +85,31 @@ a few-line swap.
 - [ ] **Live GUI verify** (user, F5): open the Active Album tab, confirm the columns
       read sensibly and 2014-06-23 now shows Pictures 92 + GPS ✅ (was 93 + 📍1).
 
-### S2 — Day viewer reads the query, menu converges on the master
-- [ ] Point `_open_day_viewer` (`gui/virttrip_overview.py:134`) at the query rows for
-      that day: build `file_list`, `crop_hints`, `name_hints` from them instead of the
-      day CSVs.
-- [ ] Replace the day viewer's crippled card context menu with the Master Species
-      Viewer's `_master_context_menu` shape + `col.master_*` methods (see
-      `gui/master_species_viewer.py:679`). This lights up the master ops that were
-      unavailable from an album. Edit side already writes to the master, so no new
-      write plumbing.
-- [ ] Verify each menu action (qualifiers / add / pin / delete / move) from an album.
+### S2a — Day viewer reads the query ✅ CODE DONE (awaiting live GUI verify)
+- [x] `_open_day_viewer` now builds `file_list` / `crop_hints` / `name_hints` from a
+      one-day master query (`_day_data_from_master`) as PRIMARY; the CSV builders
+      remain as a FALLBACK when no master is configured.
+- [x] The hint builders were factored into row-based cores
+      (`_file_list_from_files` / `_crop_hints_from_files` / `_name_hints_from`) shared
+      by both the query and CSV paths — the CSV `_build_*` now just read rows and
+      delegate. Master-DB open consolidated into `_open_master_db()` (reused by the
+      overview too).
+- [x] Unit-verified vs helgoland 2014-06-25: all-files (370), jpg-files (20), crop
+      hints, and name hints are IDENTICAL between the query and CSV paths.
+- [ ] **Live GUI verify** (user, F5): open a day from the Active Album, confirm the
+      cards, JPEG filtering, "#" crop markers and captions render as before.
+
+### S2b — Converge the card context menu onto the Master Species Viewer (NEXT)
+Bigger, provider-level refactor (kept separate on purpose). The `master_*` methods +
+`_master_context_menu` live on the **rating_provider** collection (Master Species
+Viewer + Rating Editor); the album day viewer uses a **sidecar_provider** collection
+with only a partial master surface. Convergence means giving the day viewer the same
+master ops (qualifiers / add / pin / delete / move) rather than its current crippled
+menu — a deliberate step of its own.
+- [ ] Decide: extend the sidecar_provider collection with the full `master_*` surface,
+      OR host the album day viewer on the rating_provider collection.
+- [ ] Wire `_master_context_menu` (or a shared copy) into the day viewer's cards.
+- [ ] Verify each master op works from an album.
 
 ### S3 — Map reads the query
 - [ ] Replace `_collection_from_review_days` (`gui/mainwindow.py:1093`) CSV reads with

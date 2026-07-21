@@ -30,94 +30,118 @@ WEB_COL   = 5
 TAB_TITLE = "Active Album"
 
 
-def _build_file_list(csv_path: Path, jpeg_only: bool) -> list:
-    """Read data_files.csv and return full Path objects for each file.
-
-    Files live in the master database at their original location — no
-    copies are made. When jpeg_only is True only .jpg / .jpeg rows are
-    returned.
-    """
-    paths = []
+def _open_master_db():
+    """The master DB if one is configured and present, else None (callers fall back
+    to the legacy review CSVs). Cheap — the DB is a warm global cache."""
     try:
-        with open(csv_path, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f, delimiter=";")
-            for row in reader:
-                ext = row.get("WindowsExtension", "").lower()
-                if jpeg_only and ext not in JPEG_EXTS:
-                    continue
-                directory = row.get("File:Directory", "")
-                filename  = row.get("File:FileName",  "")
-                if directory and filename:
-                    paths.append(Path(directory) / filename)
-    except (FileNotFoundError, OSError):
-        pass
+        mroot = (_config.get("master", "masterbiotadatabase", fallback="")
+                 or "").replace('"', "").replace("'", "").strip()
+        if mroot and Path(mroot).is_dir():
+            from db.master_db import MasterDB
+            return MasterDB(mroot)
+    except Exception as e:
+        logger.debug(f"album: master DB unavailable: {e}")
+    return None
+
+
+def _day_data_from_master(db, day_label: str) -> tuple:
+    """(picture rows, file rows) for ONE day straight from the master by date — the
+    day viewer's replacement for reading review/<day>/data_*.csv. An album day IS the
+    master's pictures whose camera DateTimeOriginal falls on that day, so this is a
+    live query, not a snapshot read."""
+    by_day = db.pictures_in_daterange(day_label, day_label)
+    pics = by_day.get(day_label, [])
+    files = list(db.files_for_upns([p["UniquePictureName"] for p in pics]).values())
+    return pics, files
+
+
+def _area(dims: str) -> int:
+    try:
+        w, h = re.split(r"[x ]+", (dims or "").strip())[:2]
+        return int(w) * int(h)
+    except (ValueError, IndexError):
+        return 0
+
+
+def _file_list_from_files(file_rows, jpeg_only: bool) -> list:
+    """Full Path per file row; when jpeg_only, only .jpg/.jpeg. Files live at their
+    master location — no copies are made."""
+    paths = []
+    for row in file_rows:
+        ext = (row.get("WindowsExtension") or "").lower()
+        if jpeg_only and ext not in JPEG_EXTS:
+            continue
+        directory = row.get("File:Directory", "")
+        filename  = row.get("File:FileName",  "")
+        if directory and filename:
+            paths.append(Path(directory) / filename)
     return paths
 
 
-def _build_crop_hints(csv_path: Path) -> dict:
-    """Map each JPG file's full path -> True when it's (probably) a crop: its
-    ImageSize is much smaller than the biggest (RAW) ImageSize sharing its UPN.
-    These are baked DxO renders — the crop lives in the pixels, not a readable
-    sidecar — so size is the only cue (see gui.picture_provider.jpg_is_crop_by_size).
-    data_files.csv already carries every file's size, so this needs no per-card
-    disk read. A JPG-only UPN (no RAW to compare against) stays False."""
+def _crop_hints_from_files(file_rows) -> dict:
+    """{jpg full path -> True when it's (probably) a crop}: its ImageSize is much
+    smaller than the biggest (RAW) ImageSize sharing its UPN. Same size-only cue as
+    gui.picture_provider.jpg_is_crop_by_size; a JPG-only UPN stays False."""
     from gui.picture_provider import jpg_is_crop_by_size
-
-    def area(dims: str) -> int:
-        try:
-            w, h = re.split(r"[x ]+", (dims or "").strip())[:2]
-            return int(w) * int(h)
-        except (ValueError, IndexError):
-            return 0
-
     native: dict[str, str] = {}                # upn -> biggest ImageSize seen (the RAW)
     jpgs: list[tuple[str, str, str]] = []       # (full path, upn, this JPG's ImageSize)
-    try:
-        with open(csv_path, newline="", encoding="utf-8") as f:
-            for row in csv.DictReader(f, delimiter=";"):
-                upn = (row.get("UniquePictureName") or "").strip()
-                dims = row.get("ImageSize", "")
-                if area(dims) > area(native.get(upn, "")):
-                    native[upn] = dims
-                if row.get("WindowsExtension", "").lower() in JPEG_EXTS:
-                    directory = row.get("File:Directory", "")
-                    filename  = row.get("File:FileName",  "")
-                    if directory and filename:
-                        jpgs.append((str(Path(directory) / filename), upn, dims))
-    except (FileNotFoundError, OSError, csv.Error):
-        return {}
+    for row in file_rows:
+        upn = (row.get("UniquePictureName") or "").strip()
+        dims = row.get("ImageSize", "")
+        if _area(dims) > _area(native.get(upn, "")):
+            native[upn] = dims
+        if (row.get("WindowsExtension") or "").lower() in JPEG_EXTS:
+            directory = row.get("File:Directory", "")
+            filename  = row.get("File:FileName",  "")
+            if directory and filename:
+                jpgs.append((str(Path(directory) / filename), upn, dims))
     return {path: jpg_is_crop_by_size(native.get(upn, ""), jpg_dims)
             for path, upn, jpg_dims in jpgs}
 
 
-def _build_name_hints(day_dir: Path) -> dict:
-    """Map each file's full path -> its species-name row {NLSoortNaam,
-    EngSoortNaam, WetSoortNaam}, so the metadata-less virtual-trip viewer can show
-    the caption in the chosen language instead of the scientific folder name.
-    Names come from data_pictures.csv (per UPN); the path->UPN link from
-    data_files.csv. Empty on any read error → the folder name is used."""
-    pics: dict[str, dict] = {}       # upn -> name row
-    try:
-        with open(day_dir / "data_pictures.csv", newline="", encoding="utf-8") as f:
-            for row in csv.DictReader(f, delimiter=";"):
-                upn = (row.get("UniquePictureName") or "").strip()
-                if upn:
-                    pics[upn] = {k: row.get(k, "") for k in
-                                 ("NLSoortNaam", "EngSoortNaam", "WetSoortNaam")}
-    except (FileNotFoundError, OSError, csv.Error):
-        return {}
+def _name_hints_from(pic_rows, file_rows) -> dict:
+    """{file full path -> its species-name row}, so the metadata-less viewer can caption
+    in the chosen language instead of the scientific folder name. Names from the picture
+    rows (per UPN); the path->UPN link from the file rows."""
+    pics: dict[str, dict] = {}
+    for r in pic_rows:
+        upn = (r.get("UniquePictureName") or "").strip()
+        if upn:
+            pics[upn] = {k: r.get(k, "") for k in
+                         ("NLSoortNaam", "EngSoortNaam", "WetSoortNaam")}
     hints: dict[str, dict] = {}
-    try:
-        with open(day_dir / "data_files.csv", newline="", encoding="utf-8") as f:
-            for row in csv.DictReader(f, delimiter=";"):
-                upn = (row.get("UniquePictureName") or "").strip()
-                directory = row.get("File:Directory", "")
-                filename  = row.get("File:FileName",  "")
-                if upn in pics and directory and filename:
-                    hints[str(Path(directory) / filename)] = pics[upn]
-    except (FileNotFoundError, OSError, csv.Error):
-        return {}
+    for row in file_rows:
+        upn = (row.get("UniquePictureName") or "").strip()
+        directory = row.get("File:Directory", "")
+        filename  = row.get("File:FileName",  "")
+        if upn in pics and directory and filename:
+            hints[str(Path(directory) / filename)] = pics[upn]
     return hints
+
+
+def _read_csv_rows(csv_path: Path) -> list:
+    try:
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            return list(csv.DictReader(f, delimiter=";"))
+    except (FileNotFoundError, OSError, csv.Error):
+        return []
+
+
+def _build_file_list(csv_path: Path, jpeg_only: bool) -> list:
+    """Legacy CSV path: full Path per file row in data_files.csv (see
+    _file_list_from_files). Used only when no master is configured."""
+    return _file_list_from_files(_read_csv_rows(csv_path), jpeg_only)
+
+
+def _build_crop_hints(csv_path: Path) -> dict:
+    """Legacy CSV path: crop markers from data_files.csv (see _crop_hints_from_files)."""
+    return _crop_hints_from_files(_read_csv_rows(csv_path))
+
+
+def _build_name_hints(day_dir: Path) -> dict:
+    """Legacy CSV path: name captions from the day's two CSVs (see _name_hints_from)."""
+    return _name_hints_from(_read_csv_rows(day_dir / "data_pictures.csv"),
+                            _read_csv_rows(day_dir / "data_files.csv"))
 
 
 def _open_blog_editor(parent, day_dirs: list, first_date: date,
@@ -133,18 +157,26 @@ def _open_blog_editor(parent, day_dirs: list, first_date: date,
 
 def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path):
     from gui.image_viewer import ImagePreviewDialog
-    file_list = _build_file_list(day_dir / "data_files.csv", jpeg_only)
+    # Primary: the day IS the master's pictures whose camera DateTimeOriginal falls on
+    # this day — a live query, no snapshot. Fallback: the legacy review/<day>/ CSVs,
+    # for a machine with no master configured.
+    db = _open_master_db()
+    if db is not None:
+        pics, files = _day_data_from_master(db, day_dir.name)
+        file_list  = _file_list_from_files(files, jpeg_only)
+        crop_hints = _crop_hints_from_files(files)
+        name_hints = _name_hints_from(pics, files)
+    else:
+        file_list  = _build_file_list(day_dir / "data_files.csv", jpeg_only)
+        crop_hints = _build_crop_hints(day_dir / "data_files.csv")
+        name_hints = _build_name_hints(day_dir)
     if not file_list:
         return
-    # Precompute the "#" crop marker per JPG from the day CSV's sizes (no per-card
-    # disk read) — these baked DxO renders keep no readable crop rectangle.
-    crop_hints = _build_crop_hints(day_dir / "data_files.csv")
-    # And the species names per JPG, so the caption follows the name-language
-    # profile instead of the metadata-less viewer's scientific folder name. The
-    # profile is this virtual trip's override (virttrip.ini) or the global default.
+    # The species names per JPG let the caption follow the name-language profile
+    # instead of the metadata-less viewer's scientific folder name. The profile is
+    # this virtual trip's override (virttrip.ini) or the global default.
     from utils.name_profile import effective_profile
     from utils.virttrip_config import read_virttrip_ini
-    name_hints = _build_name_hints(day_dir)
     _vt_override = ((read_virttrip_ini(str(virttrip_root)) or {}).get("name_profile") or "").strip()
     # Read-only for rating/colour/species/files — these are the master's pictures.
     # The one exception is geotagging: "Get GPS from location" is how a picture that
@@ -317,15 +349,7 @@ def populate_virttrip_overview(self):
     # indexed query by the album's date range — instead of re-reading every picture's
     # sidecar (which froze the switch for ~30 s on a big album). None = no master
     # configured → fall back to the legacy per-day review CSVs below.
-    master_db = None
-    try:
-        _mroot = (_config.get("master", "masterbiotadatabase", fallback="")
-                  or "").replace('"', "").replace("'", "").strip()
-        if _mroot and Path(_mroot).is_dir():
-            from db.master_db import MasterDB
-            master_db = MasterDB(_mroot)
-    except Exception as e:
-        logger.debug(f"overview: master DB unavailable, GPS column from CSV only: {e}")
+    master_db = _open_master_db()
 
     # Primary source: the live master date-range query (an album is a window ON the
     # master, not a copy). Fallback: the legacy per-day review CSV snapshot, for a
