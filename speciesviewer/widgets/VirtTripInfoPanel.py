@@ -60,6 +60,11 @@ class VirtTripInfoPanel(QWidget):
             for d in sorted(root_path.iterdir()):
                 if not d.is_dir():
                     continue
+                # Skip hidden / housekeeping folders: .trash, and the
+                # ".<name>.deleting" staging a delete leaves if a transient lock
+                # blocks its final removal — neither is an album.
+                if d.name.startswith("."):
+                    continue
                 trip_data = read_virttrip_ini(str(d))
                 if trip_data is None:
                     continue
