@@ -446,6 +446,18 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
     in Photoshop), so it needs a neutral house default. The user's own printed photo books record each
     trip's route and locations — that plus the gap function is expected to carry the old trips a long
     way.</p></li>
+  <li><strong>“Register new renders in the master” — from the album viewer</strong>
+    <span class="tag-shipped">SHIPPED</span> 2026-07-21, verified on Gran Canaria. The follow-up that
+    removes the “detour”: right-click a picture (or selection) in the album day viewer → registers a
+    freshly-rendered DxO JPG (+ its <code>.dop</code>) into the master's file inventory, using the
+    <strong>same journaled add operator</strong> the Master viewer uses, then flushes the checkpoint so the
+    overview's “Re-extract this day” sees it at once. Only shown in the editable album viewer on master
+    pictures.
+    <p class="note"><strong>Finding from the live run:</strong> it also heals the append-only blind spot —
+    clicking it on a picture that “hadn't been touched” registered 1 JPG, and a disk check proved that
+    <code>.jpg</code> was genuinely on disk but never in the master's inventory (now one row, no duplicate).
+    So it never invents or duplicates — it makes the inventory match disk; a second click says “No new
+    files”. Possible follow-up: a master-wide sweep to register all untracked renders in one pass.</p></li>
   <li><strong>The album day viewer is now an editable window on the master</strong>
     <span class="tag-shipped">SHIPPED</span> 2026-07-21, verified on Gran Canaria. The album /
     virtual-trip day viewer opened fully read-only; it now permits the edits that are
