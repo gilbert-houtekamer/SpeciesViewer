@@ -446,6 +446,33 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
     in Photoshop), so it needs a neutral house default. The user's own printed photo books record each
     trip's route and locations — that plus the gap function is expected to carry the old trips a long
     way.</p></li>
+  <li><strong>The album day viewer is now an editable window on the master</strong>
+    <span class="tag-shipped">SHIPPED</span> 2026-07-21, verified on Gran Canaria. The album /
+    virtual-trip day viewer opened fully read-only; it now permits the edits that are
+    <em>properties of the photograph</em> — the things stored in the picture's own sidecar, so the
+    album writes them and a master re-read produces exactly what was stored:
+    <ul>
+      <li><strong>Rating, colour, website description</strong> — a new <code>allow_edit</code> carve-out
+        threaded exactly like the existing crop/GPS carve-outs, gated on the same “master editable” check.</li>
+      <li><strong>Sex / age / plumage qualifier</strong> — reuses the master's shared qualifier logic (no
+        vocabulary duplicated); writes the form onto <code>XMP:Subject</code>, never the species name.</li>
+      <li><strong>Crop</strong> — already had a carve-out but crashed on an undefined <code>ensure_xmp</code>;
+        added it (authors a minimal <code>.xmp</code> the same way ingest does).</li>
+    </ul>
+    <p>Species re-determination stays out — a settled master name is not re-typed from an album. A guard
+    from the same pass: the “Set rating…” batch dialog now respects the edit flags, so a genuinely
+    read-only viewer can't batch-write.</p>
+    <p><strong>Per-day refresh:</strong> the overview's day right-click gained <em>Re-extract this day</em>,
+    <em>Re-write this day's blog</em>, and <em>Rebuild website</em>, so after adding a DxO render you refresh
+    just the day you touched (svv2 gained a single-day filter; the website, whose species pages span days,
+    stays whole-album).</p>
+    <p class="note"><strong>The model — why adding a render still needs a “detour”:</strong> an album edits
+    picture-<em>local</em> metadata (rating, colour, species, qualifier, GPS, crop — all stored in the
+    picture's sidecar), which flows to the master on a re-read. But a <em>new file</em> is a change to the
+    master's <strong>file inventory</strong> (which picture owns which files) — a journaled, master-global
+    structure, not something in any one sidecar — so registering a render is a real master mutation and
+    lives behind the master's add operator (Master viewer → “Add new files for this picture”). It could be
+    surfaced as a right-click in the album viewer later.</p></li>
   <li><strong>Manage Album Publication — list / unlist on the trip index</strong>
     <span class="tag-shipped">SHIPPED</span> <code>a7d6d4a</code> + fixes, 2026-07-21, arc steps 6–7,
     verified both directions on Gran Canaria. <strong>Albums ▸ Manage Album Publication</strong> — its

@@ -93,7 +93,7 @@ class ImagePreviewDialog(QDialog):
     def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg",
                  file_list=None, cache_root=None, source_label=None, collection=None,
                  readonly=False, start_species=False, allow_geotag=False,
-                 allow_crop=False, crop_hints=None, name_hints=None,
+                 allow_crop=False, allow_edit=False, crop_hints=None, name_hints=None,
                  name_profile=""):
         super().__init__(parent)
         # {full JPG path -> True} for the "#" crop marker in the metadata-less
@@ -193,7 +193,7 @@ class ImagePreviewDialog(QDialog):
                 self._collection = SidecarCollection(
                     paths, cache_root=self.cache_dir, loader=self._loader,
                     readonly=readonly, allow_geotag=allow_geotag,
-                    allow_crop=allow_crop)
+                    allow_crop=allow_crop, allow_edit=allow_edit)
             else:
                 self._collection = FileListPreviewCollection(
                     paths, cache_root=self.cache_dir, loader=self._loader)

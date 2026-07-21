@@ -420,6 +420,34 @@ def ensure_dop(raw_path):
     return dop_path if os.path.exists(dop_path) else None
 
 
+def ensure_xmp(raw_path):
+    """Return the RAW's `.xmp` sidecar path, CREATING a minimal one if missing.
+
+    Unlike the .dop (see ensure_dop — a from-scratch .dop is impossible because
+    PhotoLab matches by a UUID we cannot compute), an .xmp is always safe to
+    author: every tool that reads .xmp treats a fresh sidecar as authoritative.
+    When none exists we create it exactly the way ingest does — exiftool copies
+    the RAW's own metadata into `<stem>.xmp` — so write_xmp_edits below has a
+    real rdf:Description to patch. Returns the path, or None if creation failed.
+    """
+    base = os.path.splitext(str(raw_path))[0]
+    for existing in (base + ".xmp", base + ".XMP"):
+        if os.path.exists(existing):
+            return existing
+
+    xmp_path = base + ".xmp"
+    try:
+        from engine.exif_writer import run_exiftool_files
+        run_exiftool_files(
+            ["-tagsfromfile", "@", "-xmp:all<all",
+             "-XMP-exif:SubjectDistance<Olympus:FocusDistance#", "-o", "%d%f.xmp"],
+            [str(raw_path)])
+    except Exception as e:
+        logger.warning(f"ensure_xmp: could not create sidecar for {raw_path}: {e}")
+        return None
+    return xmp_path if os.path.exists(xmp_path) else None
+
+
 def suggest_crop(raw_path, crop, angle=None):
     """Write a suggested crop to the DxO .dop (and, for a RAW source, the
     Lightroom .xmp) so the next edit in PhotoLab or Lightroom opens with it.

@@ -159,6 +159,11 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
         # act on — a real, useful write even though this read-only viewer changes
         # nothing itself. Same carve-out as geotag, gated on the same editable check.
         allow_crop=parent._master_is_editable(),
+        # Rating / colour / website description are durable in the sidecar and write
+        # straight to the master — an album is a window ON the master, not a copy —
+        # so they are editable here too. Same editable gate. (Species re-determination
+        # and the sex/age qualifier are handled separately.)
+        allow_edit=parent._master_is_editable(),
         crop_hints=crop_hints,
         name_hints=name_hints,
         name_profile=effective_profile(_vt_override),
@@ -263,6 +268,37 @@ def _count_pictures_from_csv(csv_path: Path, stats: dict | None = None):
         return len(upns), jpegs, no_gps
     except (FileNotFoundError, KeyError, OSError):
         return 0, 0, 0
+
+
+class _OverviewBatchHost(QWidget):
+    """Minimal host so BatchModuleRunner can run a per-day step straight from the
+    overview's context menu. The runner expects a dialog-like widget carrying
+    status_label + logger + passed_parent (the main window); the overview itself
+    IS the main window, which has neither. A virttrip spec uses an empty
+    statusname, so none of the trip-cell / statemachine paths fire — only the
+    status text and the log box are touched. Hidden; parented to the main window
+    so it (and the runner it holds) survive until the worker thread finishes."""
+    def __init__(self, main_window):
+        super().__init__(main_window)
+        self.logger = main_window.logger
+        self.passed_parent = main_window
+        self.status_label = QLabel(self)
+        self.hide()
+
+
+def _run_day_step(main_window, module_fn, before_msg, after_msg,
+                  extra_config=None, on_success=None):
+    """Run one per-day album batch step (svv2/svv3/svv4) from the overview."""
+    from gui.batch import BatchModuleRunner
+    from gui.virttrip_process import _virttrip_spec
+    spec = _virttrip_spec(module_fn, before_msg, after_msg)
+    if extra_config:
+        spec.batch_parms["extra_config"] = extra_config
+    host = _OverviewBatchHost(main_window)
+    runner = BatchModuleRunner(host, main_window)
+    host._runner = runner                  # keep both alive past this return
+    main_window._virttrip_day_host = host  # single slot; prior host GC'd after its run
+    runner.run(spec, on_success=on_success)
 
 
 def populate_virttrip_overview(self):
@@ -466,11 +502,44 @@ def populate_virttrip_overview(self):
         menu = QMenu(self.virttrip_table)
         map_day = menu.addAction("🗺 Map this day")
         map_all = menu.addAction("🗺 Map whole trip")
+        menu.addSeparator()
+        # After adding a render in PhotoLab, the day's data must be re-projected
+        # from the master (Re-extract), then its blog re-written. The website's
+        # species pages span days, so that stays a whole-album rebuild. The render
+        # must already be REGISTERED in the master (Master viewer → "Add new files
+        # for this picture"); these steps re-read the master, they don't scan disk.
+        reextract = menu.addAction("🔄 Re-extract this day from the master")
+        reblog    = menu.addAction("📝 Re-write this day's blog")
+        rebuild   = menu.addAction("🌐 Rebuild website (whole album)")
         chosen = menu.exec(self.virttrip_table.viewport().mapToGlobal(pos))
+        day_name = day_dirs[row].name
         if chosen == map_day:
             self.open_virttrip_map([day_dirs[row]])
         elif chosen == map_all:
             self.open_virttrip_map()
+        elif chosen == reextract:
+            import batch.svv2ExtractDays
+            _run_day_step(
+                self, batch.svv2ExtractDays.main,
+                f"Re-extracting {day_name} from the master…",
+                f"✅ {day_name} re-extracted from the master.",
+                extra_config=[("extractconfig", "only_day", day_name)],
+                on_success=lambda: populate_virttrip_overview(self))
+        elif chosen == reblog:
+            import batch.svv3WriteBlog
+            _run_day_step(
+                self, batch.svv3WriteBlog.main,
+                f"Re-writing the blog for {day_name}…",
+                f"✅ Blog for {day_name} rewritten and uploaded.",
+                extra_config=[("blogconfig", "only_day", day_name)],
+                on_success=lambda: populate_virttrip_overview(self))
+        elif chosen == rebuild:
+            import batch.svv4BuildWebsite
+            _run_day_step(
+                self, batch.svv4BuildWebsite.main,
+                "Rebuilding the album website…",
+                "✅ Album website rebuilt and uploaded.",
+                on_success=lambda: populate_virttrip_overview(self))
 
     self.virttrip_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
     self.virttrip_table.customContextMenuRequested.connect(_on_context_menu)

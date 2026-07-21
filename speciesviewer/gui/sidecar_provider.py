@@ -161,9 +161,15 @@ class SidecarItem(PictureItem):
         self.can_set_crop = ((not collection.readonly or collection.allow_crop)
                              and bool(collection._groups.get(stem, {}).get("raw")))
         if collection.readonly:
-            self.can_edit_rating = False
-            self.can_edit_color = False
-            self.can_edit_description = False
+            # allow_edit is the rating/colour/description carve-out (see collection):
+            # these write to the master's sidecars, which is exactly what an album
+            # day viewer should be able to do. Species RE-DETERMINATION is NOT part
+            # of it — a settled master name is not re-typed from an album (the sex/
+            # age qualifier, which IS a property of the photo, is a separate editor).
+            edit = getattr(collection, "allow_edit", False)
+            self.can_edit_rating = edit
+            self.can_edit_color = edit
+            self.can_edit_description = edit
             self.can_edit_species = False
 
     @property
@@ -195,6 +201,14 @@ class SidecarItem(PictureItem):
     def qualifier_suffix(self) -> str:
         from gui.culling_species import qualifier_suffix_from_subject
         return qualifier_suffix_from_subject(self.species)
+
+    @property
+    def from_master(self) -> bool:
+        # A read-only sidecar viewer is the album/virtual-trip DAY viewer, whose
+        # pictures ARE the master's — so their sex/age/plumage form is editable
+        # here the same way it is in the Master Species Viewer. (Normal off-card
+        # culling is not read-only and its pictures are not yet in the master.)
+        return self._c.readonly
 
     # read fields
     @property
@@ -325,10 +339,11 @@ class SidecarCollection(PictureCollection):
     read_only = False
     allow_geotag = False
     allow_crop = False
+    allow_edit = False
 
     def __init__(self, paths, *, readonly=False, cache_root=None,
                  loader: AsyncImageLoader | None = None, allow_geotag=False,
-                 allow_crop=False):
+                 allow_crop=False, allow_edit=False):
         # `read_only` is the name every viewer (grid, large view, map) asks for —
         # keep the older `readonly` in step for this class's own callers.
         self.readonly = readonly
@@ -340,6 +355,11 @@ class SidecarCollection(PictureCollection):
         # A second carve-out, same spirit: a suggested crop lands in the master RAW's
         # .dop/.xmp for PhotoLab to pick up, so it is allowed on a read-only viewer too.
         self.allow_crop = bool(allow_crop)
+        # Third carve-out: rating / colour / website description are durable in the
+        # sidecar and write straight to the master's .dop/.xmp (an album is a window
+        # ON the master, not a copy), so they may be edited on the read-only day
+        # viewer too. Species RE-DETERMINATION stays out — that belongs in the master.
+        self.allow_edit = bool(allow_edit)
         self._cache_root = Path(cache_root) if cache_root else None
         self._loader = loader or AsyncImageLoader()
         # Group input picture files by their unique-picture name. Using
@@ -875,6 +895,47 @@ class SidecarCollection(PictureCollection):
         self._crop_cache.pop(stem, None)
         self._image_sigs[stem] = self._image_sig(stem)
         return res
+
+    # ── Sex / age / plumage qualifier (album day viewer) ──────────────────────
+    # The album's pictures ARE the master's, so their FORM (a property of the
+    # photograph, not of the determination) is editable here. These three methods
+    # give large_image_view the same interface the master-DB collection exposes,
+    # so the shared culling_species.edit_master_qualifiers flow works unchanged.
+    # The write lands in the RAW's own XMP:Subject — the master's file — so a
+    # master re-read produces exactly what we stored. The species NAME is never
+    # touched (only the qualifier tokens are replaced around it).
+    @property
+    def master_read_only(self) -> bool:
+        return not self.allow_edit
+
+    def _qualifier_sc(self):
+        if not hasattr(self, "_qual_sc"):
+            from gui.culling_species import load_species_classification
+            self._qual_sc = load_species_classification()
+        return self._qual_sc
+
+    def master_taxon_lineage(self, key: str) -> dict:
+        from gui.culling_species import taxon_lineage, split_species_qualifiers
+        item = self.item_for_key(key)
+        name, _ = split_species_qualifiers(item.species)
+        return taxon_lineage(self._qualifier_sc(), name) if name else {}
+
+    def master_qualifiers(self, key: str) -> dict:
+        """{group index: canonical token} currently on this picture's subject."""
+        from gui.culling_species import split_species_qualifiers
+        _name, selected = split_species_qualifiers(self.item_for_key(key).species)
+        return selected
+
+    def apply_master_qualifiers(self, key: str, selected: dict) -> bool:
+        from gui.culling_species import (split_species_qualifiers,
+                                         build_species_subject)
+        item = self.item_for_key(key)
+        name, _old = split_species_qualifiers(item.species)
+        if not name:
+            logger.warning(f"qualifiers: {key} has no species to attach them to.")
+            return False
+        item.set_species(build_species_subject(name, selected))
+        return True
 
     def request_image(self, stem: str, target_w, on_ready: PixmapCallback,
                       crop: bool = True) -> None:

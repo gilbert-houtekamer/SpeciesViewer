@@ -2057,6 +2057,14 @@ class LargeImageView(QDialog):
     def _batch_rating(self):
         if not self._selected_keys:
             return
+        # The selection bar's "Set rating…" is always visible, but a read-only
+        # viewer with no edit carve-out must not batch-write to the master. Edit
+        # flags are per-collection, so one representative item answers for all.
+        rep = self._collection.item_for_key(next(iter(self._selected_keys)))
+        can_rate = getattr(rep, "can_edit_rating", False)
+        can_color = getattr(rep, "can_edit_color", False)
+        if not (can_rate or can_color):
+            return
         from PyQt6.QtWidgets import QDialogButtonBox
         n = len(self._selected_keys)
         dlg = QDialog(self)
@@ -2125,9 +2133,9 @@ class LargeImageView(QDialog):
             QApplication.processEvents()
             try:
                 item = self._collection.item_for_key(k)
-                if _star_touched[0]:
+                if _star_touched[0] and can_rate:
                     item.set_rating(stars)   # stars=0 clears rating
-                if _color_touched[0]:
+                if _color_touched[0] and can_color:
                     item.set_color(color)    # color="" clears colour
                 changed.append(k)
             except (ValueError, KeyError):

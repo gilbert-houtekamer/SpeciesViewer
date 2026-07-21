@@ -73,6 +73,24 @@ def main(args, config):
         logger.error(f"Invalid date in virttrip.ini: {e}")
         return
 
+    # only_day (optional): re-extract just ONE day, for the overview's per-day
+    # "Re-extract this day" action after adding a render. The whole date range is
+    # still scanned (the master CSV read is the cost either way); only that day's
+    # CSVs are rewritten, leaving the other days' extracts untouched.
+    only_day = config.get("extractconfig", "only_day", fallback="").strip()
+    if only_day:
+        try:
+            od = datetime.strptime(only_day, "%Y-%m-%d").date()
+        except ValueError:
+            logger.error(f"extractconfig only_day is not a valid date: {only_day!r}")
+            return
+        if not (from_date <= od <= to_date):
+            logger.error(f"only_day {only_day} is outside the album range "
+                         f"{fromdate_str}–{todate_str}.")
+            return
+        from_date = to_date = od
+        logger.info(f"Single-day re-extract: {only_day}")
+
     master_files_path    = os.path.join(master_db, "metadata", "active", "data_files.csv")
     master_pictures_path = os.path.join(master_db, "metadata", "active", "data_pictures.csv")
 
