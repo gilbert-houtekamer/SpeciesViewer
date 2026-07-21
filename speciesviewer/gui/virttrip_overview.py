@@ -557,12 +557,10 @@ def populate_virttrip_overview(self):
         map_day = menu.addAction("🗺 Map this day")
         map_all = menu.addAction("🗺 Map whole trip")
         menu.addSeparator()
-        # After adding a render in PhotoLab, the day's data must be re-projected
-        # from the master (Re-extract), then its blog re-written. The website's
-        # species pages span days, so that stays a whole-album rebuild. The render
-        # must already be REGISTERED in the master (Master viewer → "Add new files
-        # for this picture"); these steps re-read the master, they don't scan disk.
-        reextract = menu.addAction("🔄 Re-extract this day from the master")
+        # The blog and website steps now read the master LIVE by date range — no
+        # extract step. After registering a render in the master (a day card's
+        # right-click → "Add new renders to the master"), re-writing the day's blog
+        # picks it up straight away.
         reblog    = menu.addAction("📝 Re-write this day's blog")
         rebuild   = menu.addAction("🌐 Rebuild website (whole album)")
         chosen = menu.exec(self.virttrip_table.viewport().mapToGlobal(pos))
@@ -571,14 +569,6 @@ def populate_virttrip_overview(self):
             self.open_virttrip_map([day_dirs[row]])
         elif chosen == map_all:
             self.open_virttrip_map()
-        elif chosen == reextract:
-            import batch.svv2ExtractDays
-            _run_day_step(
-                self, batch.svv2ExtractDays.main,
-                f"Re-extracting {day_name} from the master…",
-                f"✅ {day_name} re-extracted from the master.",
-                extra_config=[("extractconfig", "only_day", day_name)],
-                on_success=lambda: populate_virttrip_overview(self))
         elif chosen == reblog:
             import batch.svv3WriteBlog
             _run_day_step(

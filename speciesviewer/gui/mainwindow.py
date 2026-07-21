@@ -1121,6 +1121,77 @@ class MainWindow(QMainWindow):
                                  allow_geotag=allow_geotag)
         return coll, coll.all_keys(), loader
 
+    def _collection_from_master_daterange(self, from_date, to_date, *,
+                                          read_only: bool = False,
+                                          allow_geotag: bool = False,
+                                          label: str = "Map"):
+        """The album map's collection, read LIVE from the master by date range —
+        the replacement for reading the per-day review CSV snapshot. An album is a
+        window ON the master (pictures whose camera DateTimeOriginal falls in
+        [from_date, to_date]), not a copy, so this reads the same rows the day viewer
+        and overview now do. Returns (collection, keys, loader) shaped exactly like
+        _collection_from_review_days, so the map works unchanged.
+
+        The map reads a picture's position from its FILE rows' Composite:GPSPosition
+        (gps_cached). But placed GPS lives in the picture-level mirror
+        (pictures.GPSPosition) — Helgoland's camera had no receiver, so ALL its GPS is
+        there — so we seed the file rows from that mirror. The sidecar overlay then
+        only has to catch coordinates still unmirrored (and folds them in)."""
+        from engine.filepicture import FilePicture
+        from engine.filecsv import Files
+        from engine.picturecsv import Pictures
+        from gui.preview_provider import PreviewCollection
+        from gui.image_loader import AsyncImageLoader
+        from db.master_db import MasterDB
+        master_root = (_config.get("master", "masterbiotadatabase", fallback="")
+                       or "").replace('"', "").replace("'", "").strip()
+        db = MasterDB(master_root)
+        by_day = db.pictures_in_daterange(from_date, to_date)
+        pics = [p for day in by_day.values() for p in day]
+        file_rows = db.files_for_upns([p["UniquePictureName"] for p in pics])
+        fi, upn = Files(None), Pictures(None)
+        for p in pics:
+            upn.UniquePictureName_dict.setdefault(p["UniquePictureName"], p)
+        for fname, frow in file_rows.items():
+            fi.files_dict.setdefault(fname, frow)
+        self._seed_file_gps_from_pictures(fi, upn)
+        fpr = FilePicture(None)
+        fpr.fi, fpr.upn = fi, upn
+        self._overlay_sidecar_gps(fpr, label=label)
+        loader = AsyncImageLoader(self)
+        coll = PreviewCollection(fpr, loader=loader, read_only=read_only,
+                                 allow_geotag=allow_geotag)
+        return coll, coll.all_keys(), loader
+
+    @staticmethod
+    def _seed_file_gps_from_pictures(fi, upn) -> None:
+        """Copy each picture's mirrored GPSPosition / GPSProcessingMethod (the master's
+        reconciled coordinate, into which every geotag is mirrored) onto its file rows'
+        Composite:GPSPosition / EXIF:GPSProcessingMethod — but only where the file row
+        carries no camera coordinate of its own, so a real in-camera GPS always wins.
+        The map reads position from file rows; placed GPS lives in the picture mirror,
+        so without this an album whose camera had no receiver plots nothing.
+
+        A picture that has a coordinate while its FILES carry none is, by definition,
+        one we PLACED (a camera fix would be in the file row) — so the seeded coordinate
+        is marked MANUAL, which is what lets the map offer to drag and refine it. A
+        stored method on the picture wins if present."""
+        from gui.geolocate import GPS_MANUAL
+        files_by_upn: dict = {}
+        for frow in fi.files_dict.values():
+            u = (frow.get("UniquePictureName") or "").strip()
+            if u:
+                files_by_upn.setdefault(u, []).append(frow)
+        for u, prow in upn.UniquePictureName_dict.items():
+            pos = (prow.get("GPSPosition") or "").strip()
+            if not pos:
+                continue
+            method = (prow.get("GPSProcessingMethod") or "").strip() or GPS_MANUAL
+            for frow in files_by_upn.get(u, []):
+                if not (frow.get("Composite:GPSPosition") or "").strip():
+                    frow["Composite:GPSPosition"] = pos
+                    frow["EXIF:GPSProcessingMethod"] = method
+
     def _overlay_sidecar_gps(self, fpr, *, label: str = "Map") -> int:
         """Patch coordinates written to the sidecars (an XMP, or the JPG itself for a
         JPG-only picture) into the freshly-loaded CSV rows, for every picture the CSV
@@ -1319,11 +1390,28 @@ class MainWindow(QMainWindow):
                 "No days with picture data were found — extract the days first.")
             return
         geotag = self._master_is_editable()
+        # Read the album's pictures LIVE from the master by date range (one day, or the
+        # whole trip's fromdate..todate) instead of the per-day review CSV snapshot.
+        # Fall back to the CSVs only when no master is configured.
+        info = read_virttrip_ini(root) or {}
+        if one_day:
+            fdate = tdate = day_dirs[0].name
+        else:
+            fdate = (info.get("fromdate") or "").strip()
+            tdate = (info.get("todate") or "").strip()
+        mroot = (_config.get("master", "masterbiotadatabase", fallback="")
+                 or "").replace('"', "").replace("'", "").strip()
+        use_query = bool(mroot and Path(mroot).is_dir() and fdate and tdate)
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            coll, keys, loader = self._collection_from_review_days(
-                day_dirs, read_only=True, allow_geotag=geotag,
-                label="Album Map")
+            if use_query:
+                coll, keys, loader = self._collection_from_master_daterange(
+                    fdate, tdate, read_only=True, allow_geotag=geotag,
+                    label="Album Map")
+            else:
+                coll, keys, loader = self._collection_from_review_days(
+                    day_dirs, read_only=True, allow_geotag=geotag,
+                    label="Album Map")
         finally:
             QApplication.restoreOverrideCursor()
         if not keys:

@@ -139,23 +139,38 @@ mirror like the GPS one would fix it. (2) `RatingEditorCollection` still keeps i
 copy of the ops surface; it can inherit `MasterCardOpsMixin` and drop the copy once the
 above is verified.
 
-### S3 — Map reads the query
-- [ ] Replace `_collection_from_review_days` (`gui/mainwindow.py:1093`) CSV reads with
-      the query → in-memory `FilePicture`.
-- [ ] `_overlay_sidecar_gps` likely becomes dead code (it reconciled stale snapshots
-      against sidecars; the DB mirror already holds placed GPS) — verify, then delete.
-- [ ] Verify whole-trip + single-day map against the live map.
+### S3 — Map reads the query ✅ CODE DONE (awaiting live GUI verify)
+- [x] New `_collection_from_master_daterange` builds the album map's collection from
+      the date-range query (whole trip = fromdate..todate, one day = the label);
+      `open_virttrip_map` uses it when a master is configured, CSV fallback otherwise.
+      The TRIP map (`open_trip_map`) still uses `_collection_from_review_days` — a trip
+      is a real copy, not master-backed.
+- [x] `_overlay_sidecar_gps` **kept, not deleted** — verification showed it's still the
+      belt-and-braces for sidecar-only unmirrored GPS. But the map reads position from
+      FILE rows, and placed GPS lives in the picture-level mirror, so a new
+      `_seed_file_gps_from_pictures` copies each picture's mirrored GPSPosition onto its
+      file rows (marked MANUAL = draggable, since a picture-with-GPS whose files have
+      none is by definition placed). Verified vs helgoland: 0/1106 file rows had GPS →
+      516/516 pictures now mappable, all draggable, no sidecar reads.
+- [ ] **Live GUI verify** (user): open the album map (whole trip + one day); confirm
+      all placed pictures plot and a placed bubble can still be dragged.
 
-### S4 — Publish pipeline consumes the query  *(retires svv2)*
-- [ ] Add `load_day_from_master(project, db, day)` — fills `project.files_dict` +
-      `UniquePictureName_dict` and returns `(from_time, last_time)` — a drop-in for the
-      `read_file` / `read_pictures` pair at `svv3WriteBlog.py:513-514`.
-- [ ] svv3 day discovery moves from `review_root.iterdir()` to the date range; the
-      per-day loop is otherwise untouched.
-- [ ] Repeat the identical swap in `svv4BuildWebsite`.
-- [ ] Retire `svv2ExtractDays` (menu + flow).
-- [ ] Verify a full blog write + website build for a real album, diffed against the
-      last published output.
+### S4 — Publish pipeline consumes the query ✅ CODE DONE (awaiting live verify)
+- [x] New `batch/album_source.py`: `open_master_db`, `day_labels_in_range`,
+      `day_pictures`, and `load_day_from_master(project, db, day)` — the drop-in for
+      `read_file` + `read_pictures`. Verified BYTE-IDENTICAL to the CSV path on
+      helgoland 2014-06-25 (same 370 files / 175 pics / UPNs / file names / time range).
+- [x] svv3WriteBlog: day discovery from the date range; per-day load, blog auto-text
+      and only-day republish all via `album_source`; dropped `_read_day_pictures_raw`
+      and the `read_file`/`read_pictures` import.
+- [x] svv4BuildWebsite: `read_virttrip_days` loads the range from the master.
+- [x] Removed the moot "Re-extract this day" overview context action.
+- [ ] **Broader svv2 retirement deferred to S6**: svv2ExtractDays is still wired into
+      album CREATION/import (`virttrip_process.py`) and the "Extract Days from Master"
+      menu item (`menuspec.py`). Those create now-vestigial review folders; removing
+      them touches the creation flow, so it belongs in the S6 sweep, not here.
+- [ ] **Live verify** (user): re-write a day's blog + rebuild an album website; diff
+      against the last published output.
 
 ### S5 — Album authoring gated to BigBoy
 - [ ] Album Create / design UI (date range picker, "Find Trips → Create") requires the

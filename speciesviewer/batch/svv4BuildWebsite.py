@@ -2,11 +2,11 @@
 """
 svv4BuildWebsite — Virtual Trip: build and upload species web pages.
 
-Reads all per-day data_files.csv / data_pictures.csv from
-  <virttrip>/metadata/review/<YYYY-MM-DD>/
-derives species counts, generates species HTML pages and the all-species
-overview into the virtual trip's frozen + web folders, then uploads via
-SFTP to mirror what sv7WriteCommit does for a regular trip.
+Reads the album's pictures LIVE from the master by its date range
+(batch.album_source), not from per-day review CSV snapshots, then derives species
+counts, generates species HTML pages and the all-species overview into the virtual
+trip's frozen + web folders, and uploads via SFTP to mirror what sv7WriteCommit does
+for a regular trip.
 
 Upload steps (same as sv7WriteCommit.putRecursiveTreeWeb):
   1. Upload biota/ tree (species HTML + full-size JPGs) from frozen/biota/
@@ -33,7 +33,6 @@ import engine.speciesclassification
 import engine.bloglib
 import engine.statemachine
 from engine import SVException
-from engine.handling import read_file, read_pictures
 from engine.websupport import jpgResizeCopy, getSmallJPG
 
 logger = logging.getLogger("speciesviewer")
@@ -73,29 +72,24 @@ def _seed_empty_kingdom_stubs(project) -> int:
     return count
 
 
-def read_virttrip_days(project, virttrip_root: str) -> int:
-    """Load all per-day CSVs into project.files_dict / UniquePictureName_dict.
-    Returns the number of days loaded."""
-    review_root = Path(virttrip_root) / "metadata" / "review"
-    if not review_root.is_dir():
-        logger.warning(f"svv4: review directory not found: {review_root}")
+def read_virttrip_days(project, virttrip_root: str, master_root: str) -> int:
+    """Load the album's pictures into project.files_dict / UniquePictureName_dict,
+    LIVE from the master by the album's date range — the replacement for reading the
+    per-day review CSV snapshot. Returns the number of days loaded."""
+    from utils.virttrip_config import read_virttrip_ini
+    import batch.album_source as src
+    info = read_virttrip_ini(virttrip_root) or {}
+    from_date = (info.get("fromdate") or "").strip()
+    to_date   = (info.get("todate")   or "").strip()
+    if not (from_date and to_date):
+        logger.warning("svv4: album has no fromdate/todate — nothing to load.")
         return 0
-
-    day_dirs = sorted(d for d in review_root.iterdir() if d.is_dir()
-                      and (d / "data_files.csv").exists())
-    loaded = 0
-    for day_dir in day_dirs:
-        files_csv = day_dir / "data_files.csv"
-        pics_csv  = day_dir / "data_pictures.csv"
-        if files_csv.exists():
-            read_file(project, str(files_csv), silent=True)
-        if pics_csv.exists():
-            read_pictures(project, str(pics_csv))
-        if files_csv.exists():
-            loaded += 1
-            logger.info(f"  {day_dir.name}: loaded")
-
-    return loaded
+    db = src.open_master_db(master_root)
+    labels = src.day_labels_in_range(db, from_date, to_date)
+    for label in labels:
+        src.load_day_from_master(project, db, label)
+        logger.info(f"  {label}: loaded")
+    return len(labels)
 
 
 def _read_species_best_picks(species_csv: str) -> dict:
@@ -190,10 +184,10 @@ def main(args, config):
     master_best = _read_species_best_picks(master_species_csv)
     sp.readSpeciesInfo(master_species_csv, True)
 
-    # Load all per-day data from the virtual trip
-    days = read_virttrip_days(project, virttrip_root)
+    # Load the album's pictures live from the master by its date range.
+    days = read_virttrip_days(project, virttrip_root, master_db)
     if days == 0:
-        raise SVException("No day data found — run 'Extract Days from Master' first.")
+        raise SVException("No pictures found in the album's date range.")
     logger.info(f"Loaded {days} day(s) ({len(project.files_dict)} files, "
                 f"{len(project.UniquePictureName_dict)} pictures).")
 

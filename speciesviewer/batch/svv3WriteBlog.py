@@ -2,12 +2,14 @@
 """
 svv3WriteBlog — Virtual Trip: write blog posts for every day that has data.
 
-For each day directory in <virttrip>/metadata/review/<YYYY-MM-DD>/:
+The album's days and pictures are read LIVE from the master by its date range
+(batch.album_source), not from per-day review CSV snapshots — an album is a window
+ON the master, not a copy. For each day in fromdate..todate that has pictures:
   1. Auto-creates <virttrip>/metadata/blog/blog_YYYY-MM-DD.ini if absent AND
-     auto-create is on (title + auto-text from species/location in that day's
-     data_pictures.csv), marked `reviewed = false` so it reads as a draft.
+     auto-create is on (title + auto-text from that day's species/location, read
+     from the master), marked `reviewed = false` so it reads as a draft.
   2. Reads the (auto-created or hand-edited) ini.
-  3. Loads only that day's CSVs into the project, rebuilds species counters,
+  3. Loads only that day's master rows into the project, rebuilds species counters,
      and generates + uploads blog HTML (nl + en) and slider pages.
 
 After all days: writes blog_admin.csv, regenerates blog index, uploads both.
@@ -47,7 +49,6 @@ import engine.speciesclassification
 import engine.bloglib
 import engine.triplib
 from engine import SVException
-from engine.handling import read_file, read_pictures
 from utils.virttrip_config import read_virttrip_ini
 
 logger = logging.getLogger("speciesviewer")
@@ -56,15 +57,6 @@ logger = logging.getLogger("speciesviewer")
 # ---------------------------------------------------------------------------
 # Blog INI helpers
 # ---------------------------------------------------------------------------
-
-def _read_day_pictures_raw(day_dir: Path) -> list:
-    """Read data_pictures.csv from a day directory as plain dicts."""
-    pics_csv = day_dir / "data_pictures.csv"
-    if not pics_csv.exists():
-        return []
-    with pics_csv.open(encoding="utf-8", newline="") as f:
-        return list(csv.DictReader(f, delimiter=";"))
-
 
 _UNNAMED_ROADS = {'Vía Sin Nombre', 'Route sans nom', 'Unnamed Road'}
 
@@ -384,15 +376,17 @@ def main(args, config):
     master_species_csv = os.path.join(master_db, "metadata", "active", "species.csv")
     sc.readSpeciesCollection(master_sc_csv, False)
 
-    # --- discover day directories ---
-    review_root = Path(virttrip_root) / "metadata" / "review"
-    if not review_root.is_dir():
-        raise SVException("No review directory found — run 'Extract Days from Master' first.")
-
-    all_day_dirs = sorted(d for d in review_root.iterdir() if d.is_dir()
-                          and (d / "data_files.csv").exists())
-    if not all_day_dirs:
-        raise SVException("No day data found — run 'Extract Days from Master' first.")
+    # --- discover the album's days: LIVE from the master by date range ---
+    import batch.album_source as album_source
+    trip_data = read_virttrip_ini(virttrip_root) or {}
+    from_date = (trip_data.get("fromdate") or "").strip()
+    to_date   = (trip_data.get("todate")   or "").strip()
+    if not (from_date and to_date):
+        raise SVException("The album has no fromdate/todate in virttrip.ini.")
+    db = album_source.open_master_db(master_db)
+    all_labels = album_source.day_labels_in_range(db, from_date, to_date)
+    if not all_labels:
+        raise SVException("No pictures found in the album's date range.")
 
     # --- ensure blog directory and auto-create missing ini files ---
     blog_dir = Path(virttrip_root) / "metadata" / "blog"
@@ -400,19 +394,19 @@ def main(args, config):
 
     # Day numbering ("Dag 3: …") is always relative to the trip's FIRST day, so it
     # is taken from the full set even when only one day is being republished.
-    first_date = date.fromisoformat(all_day_dirs[0].name)
+    first_date = date.fromisoformat(all_labels[0])
 
     # Single-day republish (the blog editor's "Save & Upload this day"): render and
     # upload just this day, leaving the other days' pages on the web untouched.
     only_day = config.get("blogconfig", "only_day", fallback="").strip()
     if only_day:
-        day_dirs = [d for d in all_day_dirs if d.name == only_day]
-        if not day_dirs:
-            raise SVException(f"Day {only_day} has no extracted data to publish.")
+        day_labels = [l for l in all_labels if l == only_day]
+        if not day_labels:
+            raise SVException(f"Day {only_day} has no pictures in the master.")
         logger.info(f"Single-day republish: {only_day} "
-                    f"(the other {len(all_day_dirs) - 1} day(s) are left alone)")
+                    f"(the other {len(all_labels) - 1} day(s) are left alone)")
     else:
-        day_dirs = all_day_dirs
+        day_labels = all_labels
 
     # Whether a day with no blog ini gets one written for it.
     #
@@ -428,16 +422,15 @@ def main(args, config):
     #
     # Whatever is written is marked reviewed=false, so it reads as a draft until
     # accepted. The dialog checkbox overrides this either way.
-    trip_data      = read_virttrip_ini(virttrip_root) or {}
     source_trip_id = (trip_data.get("source_trip_id") or "").strip()
-    existing_blogs = sum(1 for d in all_day_dirs
-                         if (blog_dir / f"blog_{d.name}.ini").exists())
+    existing_blogs = sum(1 for l in all_labels
+                         if (blog_dir / f"blog_{l}.ini").exists())
     auto_create    = config.getboolean(
         "blogconfig", "auto_create_blogs",
         fallback=not source_trip_id and existing_blogs == 0)
 
     if existing_blogs:
-        why = (f"the trip already has {existing_blogs} blog(s) over {len(all_day_dirs)} "
+        why = (f"the trip already has {existing_blogs} blog(s) over {len(all_labels)} "
                f"day(s) — days without one are treated as deliberate gaps")
     elif source_trip_id:
         why = f"retired from trip '{source_trip_id}' — its blogs are migrated, not written"
@@ -446,10 +439,10 @@ def main(args, config):
     logger.info(f"Auto-create day blogs: {'ON' if auto_create else 'OFF'} ({why})")
 
     created = 0
-    for day_dir in day_dirs:
-        ini_path = blog_dir / f"blog_{day_dir.name}.ini"
-        rows     = _read_day_pictures_raw(day_dir)
-        day_num  = (date.fromisoformat(day_dir.name) - first_date).days + 1
+    for label in day_labels:
+        ini_path = blog_dir / f"blog_{label}.ini"
+        rows     = album_source.day_pictures(db, label)
+        day_num  = (date.fromisoformat(label) - first_date).days + 1
         loc_nl, loc_en = _day_location_label(rows)
         if ini_path.exists():
             _patch_ini_titles(ini_path, day_num, loc_nl, loc_en)
@@ -494,13 +487,13 @@ def main(args, config):
         logger.info(f"Remote directories ensured: {bio_web}")
 
     processed = 0
-    for idx, day_dir in enumerate(day_dirs, start=1):
-        ini_path = blog_dir / f"blog_{day_dir.name}.ini"
+    for idx, label in enumerate(day_labels, start=1):
+        ini_path = blog_dir / f"blog_{label}.ini"
         if not ini_path.exists():
-            logger.warning(f"  {day_dir.name}: no blog ini — skipping")
+            logger.warning(f"  {label}: no blog ini — skipping")
             continue
 
-        logger.info(f"  Processing day {idx}/{len(day_dirs)}: {day_dir.name}")
+        logger.info(f"  Processing day {idx}/{len(day_labels)}: {label}")
 
         # Reset per-day project data
         project.files_dict             = {}
@@ -509,9 +502,9 @@ def main(args, config):
         # Reset species counters so only this day's pictures contribute
         sp.readSpeciesInfo(master_species_csv, True)
 
-        # Load this day's data; capture time range for the blog's picture filter
-        _, from_time, last_time = read_file(project, str(day_dir / "data_files.csv"), silent=True)
-        read_pictures(project, str(day_dir / "data_pictures.csv"))
+        # Load this day's data live from the master; capture the time range the blog's
+        # picture filter (collectBestJPGs) needs.
+        from_time, last_time = album_source.load_day_from_master(project, db, label)
 
         # collectBestJPGs filters by Blog.from_time / Blog.last_time.
         # Without these, last_time == "" so every DateTimeOriginal comparison
@@ -520,7 +513,7 @@ def main(args, config):
         blog.last_time = last_time
 
         if not project.files_dict:
-            logger.warning(f"  {day_dir.name}: empty after load — skipping")
+            logger.warning(f"  {label}: empty after load — skipping")
             continue
 
         # Save master BestJPG/BestJPGPathName before addSpeciesInformation
@@ -553,7 +546,7 @@ def main(args, config):
             if p.get("WetSoortNaam", "")
         )
         if species_count == 0:
-            logger.info(f"  {day_dir.name}: 0 species recognized — skipping")
+            logger.info(f"  {label}: 0 species recognized — skipping")
             continue
 
         # Issue 1: skip days where no UPN has a renderable JPEG (RAW-only with no
@@ -562,7 +555,7 @@ def main(args, config):
             upn.get("BestJPG", "") for upn in project.UniquePictureName_dict.values()
         )
         if not has_any_jpg:
-            logger.warning(f"  {day_dir.name}: no JPEG files found — skipping blog page")
+            logger.warning(f"  {label}: no JPEG files found — skipping blog page")
             continue
 
         today = blog.getDateFromPictures(0)
@@ -600,7 +593,7 @@ def main(args, config):
             blog.logExcludedSpecies()
             below = len(blog.excluded_species.get("below_score", []))
             logger.warning(
-                f"  {day_dir.name}: {below} species below score threshold "
+                f"  {label}: {below} species below score threshold "
                 f"({bc['minimum_score']}) — skipping blog page"
             )
             continue
@@ -609,7 +602,7 @@ def main(args, config):
         _register_day_blog(blog, project)
 
         blog.uploadBlog(sftp)
-        logger.info(f"  {day_dir.name}: uploaded ({blog.getBlogDay()}, {len(blog.BestJPGs)} pictures)")
+        logger.info(f"  {label}: uploaded ({blog.getBlogDay()}, {len(blog.BestJPGs)} pictures)")
         processed += 1
 
     if processed == 0:
@@ -619,7 +612,7 @@ def main(args, config):
                 f"recognised species, no JPEG, or every species scored below its "
                 f"minimum. See the status log for which.")
         if not auto_create and not any(
-                (blog_dir / f"blog_{d.name}.ini").exists() for d in day_dirs):
+                (blog_dir / f"blog_{l}.ini").exists() for l in day_labels):
             raise SVException(
                 "No day has a blog to publish, and auto-create is off. This "
                 "virtual trip was retired from a trip, so its blogs are expected "
