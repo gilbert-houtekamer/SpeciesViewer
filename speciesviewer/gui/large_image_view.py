@@ -1744,10 +1744,13 @@ class LargeImageView(QDialog):
             self._species_cl.addWidget(panel)
         else:
             if item.species:
-                # Show the FORM the picture carries ("roodborst juv."), not just the name —
-                # otherwise the one thing this panel can edit is the one thing it hides.
+                # Show the FORM as NAME + abbreviated suffix ("roodborst juv."), never
+                # the raw subject: that already spells the qualifiers out as WORDS, so
+                # item.species + suffix doubled them ("kanarie, female, juvenile ♀ juv.").
+                from gui.culling_species import split_species_qualifiers
+                name_only, _ = split_species_qualifiers(item.species)
                 suffix = getattr(item, "qualifier_suffix", "") or ""
-                lbl = _field_lbl(item.species + suffix)
+                lbl = _field_lbl((name_only or item.species) + suffix)
                 lbl.setStyleSheet("font-size: 11px; font-weight: bold;")
                 self._species_cl.addWidget(lbl)
             if item.headline:
