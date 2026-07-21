@@ -29,6 +29,7 @@ from engine.picturecsv import Pictures
 from engine.exif_writer import exiftool_write
 from gui.window_state import restore_window, save_window
 from gui.image_loader import AsyncImageLoader
+from gui.master_ops import MasterCardMenuMixin
 from gui.picture_provider import PictureItem
 from utils.config import _config, set_setting
 
@@ -720,7 +721,7 @@ class DeletePreviewDialog(QDialog):
 
 # ── Main dialog ────────────────────────────────────────────────────────────────
 
-class RatingEditorDialog(QDialog):
+class RatingEditorDialog(MasterCardMenuMixin, QDialog):
     """Scrollable grid of picture cards with editable stars and color labels.
 
     Opened from the Trip menu. Shows pictures for one day (Day scope) or for
@@ -1702,9 +1703,12 @@ class RatingEditorDialog(QDialog):
     def _on_card_context_menu(self, upn_key: str):
         from PyQt6.QtWidgets import QMenu
         from PyQt6.QtGui import QCursor
-        # Master cards get their own add/delete menu (Phase 3 master mutate).
+        # Master reference cards get the shared master menu, limited to the
+        # inventory ops that make sense on a reference card (add / delete). The
+        # fuller surface (qualifiers, pin, move, delete-JPG) lives in the Master
+        # Species Viewer and the album day viewer.
         if self._collection is not None and self._collection.is_master(upn_key):
-            self._master_context_menu(upn_key)
+            self._master_context_menu(upn_key, ops={"add", "delete", "delete_file"})
             return
         keys_for_action = (self._selected_keys
                            if upn_key in self._selected_keys and self._selected_keys
@@ -1735,98 +1739,6 @@ class RatingEditorDialog(QDialog):
             self._cull_geolocate(keys_for_action)
         elif chosen == act_addfiles:
             self._do_trip_add(keys_for_action)
-
-    # ── master add/delete context menu ────────────────────────────────────────
-    def _master_context_menu(self, upn_key: str):
-        from PyQt6.QtWidgets import QMenu
-        from PyQt6.QtGui import QCursor
-        col = self._collection
-        if col is None:
-            return
-        if col.master_read_only:
-            menu = QMenu(self)
-            info = menu.addAction("Master is read-only — enable in Repository Settings")
-            info.setEnabled(False)
-            menu.exec(QCursor.pos())
-            return
-        menu = QMenu(self)
-        act_add = menu.addAction("Add new files for this picture (scan folder)")
-        act_del = None
-        file_acts: dict = {}
-        if col.master_upn_deletable(upn_key):
-            menu.addSeparator()
-            act_del = menu.addAction("Delete picture (move to trash)")
-            nonjpg = col.master_nonjpg_files(upn_key)
-            if len(nonjpg) > 1:
-                sub = menu.addMenu("Delete single file")
-                for fn in nonjpg:
-                    file_acts[sub.addAction(fn)] = fn
-        elif col.master_upn_has_jpg(upn_key):
-            menu.addSeparator()
-            info = menu.addAction("Delete blocked — picture has a JPG (protected)")
-            info.setEnabled(False)
-        chosen = menu.exec(QCursor.pos())
-        if chosen is None:
-            return
-        if chosen == act_add:
-            self._do_master_add(upn_key)
-        elif act_del is not None and chosen == act_del:
-            self._do_master_delete(upn_key)
-        elif chosen in file_acts:
-            self._do_master_delete_file(upn_key, file_acts[chosen])
-
-    def _do_master_delete(self, upn_key: str):
-        from db.master_mutate import MasterMutateError
-        files = self._collection.master_nonjpg_files(upn_key)
-        if QMessageBox.question(
-                self, "Delete master picture",
-                f"Move {len(files)} file(s) to the master trash and remove this "
-                f"picture from the collection?\n\nFiles can be restored from "
-                f".trash until purged.") != QMessageBox.StandardButton.Yes:
-            return
-        try:
-            res = self._collection.delete_master_picture(upn_key)
-        except MasterMutateError as e:
-            QMessageBox.warning(self, "Delete blocked", str(e))
-            return
-        self._status.setText(
-            f"Deleted — {len(res['trashed'])} file(s) moved to .trash; "
-            f"species counts updated.")
-        self._rebuild_cards()
-
-    def _do_master_delete_file(self, upn_key: str, fname: str):
-        from db.master_mutate import MasterMutateError
-        if QMessageBox.question(
-                self, "Delete file",
-                f"Move {fname} to the master trash? The picture keeps its other "
-                f"files.") != QMessageBox.StandardButton.Yes:
-            return
-        try:
-            self._collection.delete_master_file(upn_key, fname)
-        except MasterMutateError as e:
-            QMessageBox.warning(self, "Delete blocked", str(e))
-            return
-        self._status.setText(f"Deleted {fname} (moved to .trash).")
-        self._rebuild_cards()
-
-    def _do_master_add(self, upn_key: str):
-        from db.master_mutate import MasterMutateError
-        try:
-            res = self._collection.add_master_files(upn_key)
-        except MasterMutateError as e:
-            QMessageBox.warning(self, "Add files", str(e))
-            return
-        if not res["added"]:
-            self._status.setText(
-                "No new files found for this picture in its species folder.")
-            return
-        parts = []
-        if res["jpg"]:
-            parts.append(f"{res['jpg']} JPG" + ("s" if res["jpg"] != 1 else ""))
-        if res["meta"]:
-            parts.append(f"{res['meta']} metafile" + ("s" if res["meta"] != 1 else ""))
-        self._status.setText(f"Added {' and '.join(parts)} to the picture.")
-        self._rebuild_cards()
 
     def _do_trip_add(self, keys: set):
         """Scan each selected TRIP picture's folder for files that belong to it
