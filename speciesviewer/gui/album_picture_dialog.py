@@ -78,10 +78,12 @@ class AlbumPictureDialog(QDialog):
         # Replacing the shipped placeholder is nothing; replacing a picture the
         # user chose (or made by hand) deserves to be said out loud.
         if not is_seeded_default(self._album_root):
+            _cur = target_path(self._album_root)
             warn = QLabel(
-                f"⚠ <b>{target_path(self._album_root).name}</b> is not the default "
-                f"placeholder — it will be replaced. The current one is kept as "
-                f"<i>tripimage.jpg.previous</i>.")
+                f"⚠ <b>{_cur.name}</b> is not the default placeholder — it will be "
+                f"replaced. The current one is kept as a dated copy "
+                f"(<i>{_cur.stem}-YYYYMMDD-HHMMSS{_cur.suffix}</i>) you can restore "
+                f"with Browse.")
             warn.setWordWrap(True)
             warn.setStyleSheet("color: #b8860b; font-size: 11px;")
             root.addWidget(warn)

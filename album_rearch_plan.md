@@ -121,9 +121,16 @@ Rating Editor (the latter a deliberate subset); the album day viewer had none of
       UPNs (keys align), and the built menu matches the Master Species Viewer exactly —
       multi-JPG (pin + delete-JPG, delete/move blocked by the JPG guard), no-JPG (move
       + delete + delete-single-file), single-JPG (blocked), read-only album (hidden).
-- [ ] **Live GUI verify** (user, F5): right-click a picture in an album day viewer;
-      confirm the master ops appear and each works (qualifiers / pin / delete-JPG /
-      move / add / delete).
+- [x] **Live GUI verified** (user, 2014-06-23): overview shows 92 pictures (stale
+      ghost gone), cards render, the full master menu appears, blue-delete + group
+      selection work. Polish from that pass:
+      - removed the duplicate: the album's own "Register new renders in the master"
+        is gone; the shared menu's item (reworded "Add new renders to the master
+        (scan folder)") is the single entry, and `_after_master_change` now folds a
+        just-added render onto its card (no "Re-extract" step — the day reads live).
+      - fixed the Use-as-album-picture dialog's stale note: it said
+        "tripimage.jpg.previous"; now shows the real dated-backup scheme
+        `<name>-YYYYMMDD-HHMMSS.jpg`.
 
 **Follow-ups (safe, deferred):** (1) album qualifier via the card menu uses
 `SidecarCollection`'s sidecar-based apply (no master-DB mirror), so the DB's

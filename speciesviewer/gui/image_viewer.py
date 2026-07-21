@@ -1126,21 +1126,10 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             _root, kind, owner = cover
             menu.addSeparator()
             act_album_pic = menu.addAction(f"Use as {kind} picture  ({owner})")
-        # Register a freshly-rendered DxO JPG (+ its .dop) into the MASTER's file
-        # inventory for this picture. This is the one master mutation an album edit
-        # cannot make from a sidecar: which files a picture HAS is master-global,
-        # journaled state, not something stored in any one sidecar. Offered only in
-        # the editable album day viewer, on master pictures. After it, the overview's
-        # "Re-extract this day" pulls the render into the album.
-        act_register = None
-        if (getattr(self._collection, "allow_edit", False)
-                and item is not None and getattr(item, "from_master", False)):
-            menu.addSeparator()
-            act_register = menu.addAction(f"Register new renders in the master  ({lbl})")
-            act_register.setToolTip(
-                "Add a DxO render you just created (a new JPG beside the RAW) to the "
-                "master's file list for this picture, so it can appear on the site. "
-                "Then use the overview's 'Re-extract this day' to pull it in.")
+        # (Registering a freshly-rendered DxO JPG into the master is now the shared
+        # master menu's "Add new renders…" item, appended below for master pictures —
+        # no separate album-only entry, and no "Re-extract" step: the day reads the
+        # master live, so the render shows on refresh.)
         # Delete straight to .trash (recoverable) — the intuitive per-picture cull,
         # beside the batch blue/purple-delete. Same JPG protection as blue-delete.
         act_delete = None
@@ -1177,8 +1166,6 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._paste_gps(keys_for_action)
         elif act_album_pic is not None and chosen == act_album_pic:
             self._set_album_picture(key)
-        elif act_register is not None and chosen == act_register:
-            self._register_master_renders(keys_for_action)
         elif act_delete is not None and chosen == act_delete:
             self._delete_keys_ui(keys_for_action)
 
@@ -1254,78 +1241,17 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             pass
 
     def _after_master_change(self) -> None:
-        # Repaint so a pin (best JPG) / qualifier (caption) shows immediately.
-        # Structural changes (delete / move) drop the file from the master; the card
-        # is refreshed on the next open — the status line says what happened.
+        # Repaint so a pin (best JPG) / qualifier (caption) shows immediately, and a
+        # just-added render (a new JPG beside the RAW) folds onto its card. Structural
+        # changes (delete / move) drop the file from the master; the card is refreshed
+        # on the next open — the status line says what happened.
         try:
+            attach = getattr(self._collection, "_attach_sibling_jpgs", None)
+            if callable(attach):
+                attach()   # "Add new renders" wrote a JPG on disk — pick it up now
             self._rebuild_grid_from_keys(self._collection.all_keys())
         except Exception as e:
             logger.debug(f"album master refresh skipped: {e}")
-
-    def _register_master_renders(self, keys):
-        """Register freshly-rendered sibling files (a DxO JPG + its .dop) of these
-        master pictures into the master's file inventory — the ONE master mutation
-        the album's read-only sidecar view cannot make itself (which files a picture
-        has is journaled master-global state, not sidecar metadata). Uses the same
-        durable add operator as the Master viewer. Flushes the checkpoint so the
-        master's active CSV is current, then the overview's 'Re-extract this day'
-        pulls the render into the album."""
-        from PyQt6.QtWidgets import QMessageBox, QApplication
-        from utils.config import _config
-        master_root = (_config.get("master", "masterbiotadatabase", fallback="")
-                       or "").replace('"', "").replace("'", "").strip()
-        if not master_root or not Path(master_root).is_dir():
-            QMessageBox.warning(self, "Register renders",
-                                "No master database is configured.")
-            return
-        from db.master_db import MasterDB
-        from db.master_mutate import add_upn_files, MasterMutateError
-
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        total_jpg = total_meta = added_any = 0
-        errors = []
-        try:
-            db = MasterDB(master_root)
-            db.ensure_fresh()
-            for k in keys:
-                try:
-                    upn = self._collection.item_for_key(k).key
-                except (ValueError, KeyError):
-                    continue
-                try:
-                    res = add_upn_files(db, master_root, upn)
-                    total_jpg += res["jpg"]
-                    total_meta += res["meta"]
-                    added_any += len(res["added"])
-                except MasterMutateError as e:
-                    errors.append(str(e))
-                except Exception as e:
-                    logger.error(f"register renders failed for {k}: {e}", exc_info=True)
-                    errors.append(f"{k}: {e}")
-            if added_any:
-                db.checkpoint()   # flush to the master's active CSV so re-extract sees it
-        finally:
-            QApplication.restoreOverrideCursor()
-
-        parts = []
-        if total_jpg:
-            parts.append(f"{total_jpg} JPG" + ("s" if total_jpg != 1 else ""))
-        if total_meta:
-            parts.append(f"{total_meta} metafile" + ("s" if total_meta != 1 else ""))
-        if parts:
-            summary = "Registered " + " and ".join(parts) + " in the master."
-            msg = (summary + "\n\nNow use the album overview's right-click → "
-                   "\"Re-extract this day from the master\" to pull the new render "
-                   "into this album, then re-write the day's blog.")
-            try:
-                self.status_label.setText(summary)
-            except Exception:
-                pass
-        else:
-            msg = "No new files found beside these pictures to register."
-        if errors:
-            msg += "\n\nSome pictures could not be registered:\n" + "\n".join(errors[:5])
-        QMessageBox.information(self, "Register renders", msg)
 
     def _culling_sc(self):
         """Lazily load (and cache) the standalone species collection for the

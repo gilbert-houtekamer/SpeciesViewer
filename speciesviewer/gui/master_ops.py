@@ -241,7 +241,11 @@ class MasterCardMenuMixin:
             a = menu.addAction("Sex / age / plumage…")
             handlers[a] = lambda: self._do_master_qualifiers(upn_key)
         if "add" in want:
-            a = menu.addAction("Add new files for this picture (scan folder)")
+            a = menu.addAction("Add new renders to the master (scan folder)")
+            a.setToolTip(
+                "Scan this picture's folder for a render you just made (a new JPG "
+                "beside the RAW, + its .dop) and add it to the master under this "
+                "picture's name — updating the best-JPG pick. It then appears here.")
             handlers[a] = lambda: self._do_master_add(upn_key)
 
         # Which JPG is the picture's public face. Only worth asking when there is more
