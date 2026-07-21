@@ -10,7 +10,7 @@ Since the 16-June edition most of the backlog shipped (WP4 identity decouple, WP
 1. **Re-extract the 9 stale albums** — their day CSVs predate the Refresh-Master reconcile and still list ~33% ghost pictures (ch.2). One click each (Extract Days); the code now refuses to write or map them.
 2. **GPS / data-integrity umbrella — down to ONE item: tracklog geotag (GPX)** (ch.3). GPS-from-addresses and location-from-GPS are both SHIPPED; the dead-link purge shipped as Refresh Master Database.
 3. **NEW Compact the viewer toolbar + laptop-fit review** — wide filter/knob row + dialog sizing on small screens (ch.3).
-4. **Albums smart-Create arc** — steps 1–2 DONE (smart Create + Extract, live on Gran Canaria); NEXT is build+publish, then Delete Album and an Albums-menu publish action (ch.2). Cover-picture-from-grid shipped.
+4. **Albums smart-Create arc** — steps 1–5 DONE (smart Create → one-flow extract+build+publish, Delete Album; live on Gran Canaria + Panama). REMAINING: step 6 = Albums-menu publish/advertise action (+ the un-advertise Delete flags), then 7 test (ch.2). Cover-picture-from-grid shipped.
 5. Smaller: GBIF lookup disk-cache (ch.11).
 
 *(Dropped from the shortlist: Map for the Day (micro-trip) — verified already working, see ch.3.)*
