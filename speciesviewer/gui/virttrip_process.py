@@ -1,7 +1,7 @@
 import webbrowser
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QCheckBox, QSpinBox, QTabWidget, QWidget, QLineEdit, QFileDialog, QApplication,
-    QComboBox)
+    QComboBox, QMessageBox)
 from PyQt6.QtCore import QThread, QObject, pyqtSignal, Qt
 import logging
 import os
@@ -209,6 +209,84 @@ class _RetireVirttripWorker(QObject):
                 self.finished.emit(label, "\n".join(notes))
                 return
         self.finished.emit("", "\n".join(notes))
+
+
+def _run_virttrip_pipeline(parent, steps, *, title, success_msg):
+    """Run an ordered list of (label, callable) album-pipeline steps in a worker
+    thread behind a shared spinner. Used by retire-to-album AND Create Album's
+    full-publish finish, so the two flows share one runner instead of two copies
+    of the spinner/thread/finish plumbing.
+
+    On completion it restores the active-trip svconfig context and refreshes the
+    album overview + panel (both flows need this), then shows `success_msg` — or,
+    on failure, names the failing step and says the completed steps are safe to
+    repeat. `steps` and the config must already be set up by the caller (svconfig
+    in virttrip_mode, mcfg/args built) exactly as before.
+    """
+    from PyQt6.QtGui import QMovie
+    from utils.batch_config import generate_svconfig_ini
+
+    logger = parent.logger
+    spinner = QDialog(parent)
+    spinner.setWindowTitle(title)
+    spinner.setModal(True)
+    spinner.setFixedSize(480, 180)
+    slayout = QVBoxLayout(spinner)
+    step_label = QLabel("Starting…")
+    step_label.setWordWrap(True)
+    slayout.addWidget(step_label, alignment=Qt.AlignmentFlag.AlignCenter)
+    progress_label = QLabel("")
+    slayout.addWidget(progress_label, alignment=Qt.AlignmentFlag.AlignCenter)
+    movie = QMovie("spinner.gif")
+    movie_label = QLabel()
+    movie_label.setMovie(movie)
+    slayout.addWidget(movie_label, alignment=Qt.AlignmentFlag.AlignCenter)
+    movie.start()
+
+    thread = QThread()
+    worker = _RetireVirttripWorker(steps)
+    worker.moveToThread(thread)
+    thread.started.connect(worker.run)
+
+    def _on_progress(idx, total, label):
+        step_label.setText(f"Step {idx + 1} of {total}: {label}…")
+        progress_label.setText(f"{idx + 1} / {total}")
+
+    def _on_finished(failed_label, result_notes):
+        thread.quit()
+        thread.wait()
+        movie.stop()
+        spinner.close()
+        try:
+            generate_svconfig_ini()       # restore active-trip context
+        except Exception:
+            pass
+        try:
+            populate_virttrip_overview(parent)
+            parent.virttrip_panel.rebuild()
+        except Exception:
+            pass
+        parent._vtpipe_thread = None
+        parent._vtpipe_worker = None
+        if failed_label:
+            logger.warning(f"Album pipeline stopped at: {failed_label}")
+            QMessageBox.critical(
+                parent, title,
+                f"Stopped at “{failed_label}”.\n\n"
+                + (result_notes + "\n\n" if result_notes else "")
+                + "See the status log for details. Fix the problem and run again — "
+                  "the steps that already completed are safe to repeat.")
+        else:
+            QMessageBox.information(
+                parent, title,
+                success_msg + ("\n\n" + result_notes if result_notes else ""))
+
+    worker.progress.connect(_on_progress)
+    worker.finished.connect(_on_finished)
+    parent._vtpipe_thread = thread   # keep refs alive until finished
+    parent._vtpipe_worker = worker
+    thread.start()
+    spinner.show()
 
 
 class RetireTripDialog(QDialog):
@@ -422,70 +500,12 @@ def retire_trip_to_virttrip(parent):
         ("Adding the trip to the master index", lambda: batch.svv5AddToMaster.main(args, mcfg)),
     ]
 
-    from PyQt6.QtGui import QMovie
-    spinner = QDialog(parent)
-    spinner.setWindowTitle("Retiring trip to album…")
-    spinner.setModal(True)
-    spinner.setFixedSize(480, 180)
-    slayout = QVBoxLayout(spinner)
-    step_label = QLabel("Starting…")
-    step_label.setWordWrap(True)
-    slayout.addWidget(step_label, alignment=Qt.AlignmentFlag.AlignCenter)
-    progress_label = QLabel("")
-    slayout.addWidget(progress_label, alignment=Qt.AlignmentFlag.AlignCenter)
-    movie = QMovie("spinner.gif")
-    movie_label = QLabel()
-    movie_label.setMovie(movie)
-    slayout.addWidget(movie_label, alignment=Qt.AlignmentFlag.AlignCenter)
-    movie.start()
-
-    thread = QThread()
-    worker = _RetireVirttripWorker(steps)
-    worker.moveToThread(thread)
-    thread.started.connect(worker.run)
-
-    def _on_progress(idx, total, label):
-        step_label.setText(f"Step {idx + 1} of {total}: {label}…")
-        progress_label.setText(f"{idx + 1} / {total}")
-
-    def _on_finished(failed_label, result_notes):
-        thread.quit()
-        thread.wait()
-        movie.stop()
-        spinner.close()
-        try:
-            generate_svconfig_ini()       # restore active-trip context
-        except Exception:
-            pass
-        try:
-            populate_virttrip_overview(parent)
-            parent.virttrip_panel.rebuild()
-        except Exception:
-            pass
-        parent._retire_thread = None
-        parent._retire_worker = None
-        if failed_label:
-            logger.warning(f"Retire trip stopped at: {failed_label}")
-            QMessageBox.critical(
-                parent, "Retire Trip to Album",
-                f"Stopped at “{failed_label}”.\n\n"
-                + (result_notes + "\n\n" if result_notes else "")
-                + "See the status log for details. Fix the problem and run again — "
-                  "the steps that already completed are safe to repeat.")
-        else:
-            logger.info(f"✅ Album '{trip_name}' fully retired and published.")
-            QMessageBox.information(
-                parent, "Retire Trip to Album",
-                f"Album “{trip_name}” is complete.\n\n"
-                + (result_notes + "\n\n" if result_notes else "")
-                + "The blogs, website and master trip index have all been built and uploaded.")
-
-    worker.progress.connect(_on_progress)
-    worker.finished.connect(_on_finished)
-    parent._retire_thread = thread   # keep refs alive until finished
-    parent._retire_worker = worker
-    thread.start()
-    spinner.show()
+    logger.info(f"Retiring trip '{trip_name}' into an album…")
+    _run_virttrip_pipeline(
+        parent, steps,
+        title="Retire Trip to Album",
+        success_msg=f"Album “{trip_name}” is complete.\n\nThe blogs, website and "
+                    f"master trip index have all been built and uploaded.")
 
 
 def _clear_virttrip_blogs(virttrip_root, web_root, pwd, logger):
@@ -958,16 +978,55 @@ class VirtualTripCreationDialog(QDialog):
         self.passed_parent.status_bar.showMessage("Album settings updated.")
 
     def on_create_clicked(self):
-        self._write_virttrip_ini()
-        set_setting("virttrip", "virttriprootdirectory", str(Path(self.root_field.get_text()).parent))
-        set_setting("virttrip", "virttripbiotadatabase", self.root_field.get_text())
-        set_setting("virttrip", "virttripbiotawebroot",  self.trip_web.field.text())
-        runner = BatchModuleRunner(self, self.passed_parent)
-        runner.run(self.menu_spec, on_success=self._refresh_panels)
+        """Create the album AND take it all the way to a published website in one
+        flow (arc step 4): make repository → extract days → write+upload blogs →
+        build+upload website → make the blogs clickable. It stops short of the
+        trip index on purpose — publishing is fine before advertising, and
+        un/advertising is a separate, deliberate action. Offline, the build steps
+        fall back to local-only (they check connectivity themselves)."""
+        import argparse as _argparse
+        import configparser as _cp
+        from utils.batch_config import generate_svconfig_ini
 
-    def _refresh_panels(self):
-        populate_virttrip_overview(self.passed_parent)
-        self.passed_parent.virttrip_panel.rebuild()
+        self._write_virttrip_ini()
+        virttrip_root = self.root_field.get_text()
+        web_root = self.trip_web.field.text()
+        set_setting("virttrip", "virttriprootdirectory", str(Path(virttrip_root).parent))
+        set_setting("virttrip", "virttripbiotadatabase", virttrip_root)
+        set_setting("virttrip", "virttripbiotawebroot",
+                    web_root if web_root.endswith("/") else web_root + "/")
+
+        # Point svconfig at THIS album (virttrip_mode), then build the module
+        # config + args the svv* steps expect — the same setup the retire flow does.
+        try:
+            generate_svconfig_ini(virttrip_mode=True)
+            mcfg = _cp.ConfigParser()
+            mcfg.read("svconfig.ini")
+        except Exception as e:
+            self.passed_parent.logger.warning(f"Create Album setup failed: {e}")
+            QMessageBox.critical(self, "Create Album", f"Setup failed: {e}")
+            return
+        args = _argparse.Namespace(config="svconfig.ini", dir="")
+        name = Path(virttrip_root).name
+
+        steps = [
+            ("Creating the album",                 lambda: batch.svv1MakeVirtualRepository.main(args, mcfg)),
+            ("Extracting days from the master",     lambda: batch.svv2ExtractDays.main(args, mcfg)),
+            ("Writing and uploading the blogs",     lambda: batch.svv3WriteBlog.main(args, mcfg)),
+            ("Building and uploading the website",  lambda: batch.svv4BuildWebsite.main(args, mcfg)),
+            ("Making the blogs clickable",          lambda: batch.svv6RedoBlog.main(args, mcfg)),
+        ]
+        self.passed_parent.logger.info(f"Creating and publishing album '{name}'…")
+        # Close this dialog first; the pipeline runs on the main window behind its
+        # own spinner and refreshes the album panel when done.
+        self.accept()
+        _run_virttrip_pipeline(
+            self.passed_parent, steps,
+            title="Create Album",
+            success_msg=f"Album “{name}” is created and published.\n\nThe pictures "
+                        f"were extracted and the blogs + website built and uploaded. "
+                        f"It is not yet advertised on the trip index — do that from "
+                        f"the Albums menu when you are ready.")
 
     def on_select(self):
         set_setting("virttrip", "virttriprootdirectory", str(Path(self.root_field.get_text()).parent))
