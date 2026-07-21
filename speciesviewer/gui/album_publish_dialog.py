@@ -65,9 +65,9 @@ class AlbumPublishDialog(QDialog):
 
         # Current advertised state, read from the authoritative web copy.
         self._status = self._current_status()
-        status_lbl = QLabel(self._status_text())
-        status_lbl.setWordWrap(True)
-        layout.addWidget(status_lbl)
+        self._status_lbl = QLabel(self._status_text())
+        self._status_lbl.setWordWrap(True)
+        layout.addWidget(self._status_lbl)
 
         explain = QLabel(
             "Listing adds this album to the site's trip index (the page that links "
@@ -80,6 +80,11 @@ class AlbumPublishDialog(QDialog):
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
         layout.addWidget(sep)
+
+        # Progress line — BatchModuleRunner writes its status text here.
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
 
         btns = QHBoxLayout()
         btns.addStretch()
@@ -149,12 +154,18 @@ class AlbumPublishDialog(QDialog):
                 "Removing the album from the trip index…",
                 "✅ Album removed from the trip index.")
         runner = BatchModuleRunner(self, self.passed_parent)
-        runner.run(spec, on_success=self._refresh_after)
+        new_status = which == _ADVERTISE  # advertise → listed, unadvertise → not
+        runner.run(spec, on_success=lambda: self._refresh_after(new_status))
 
-    def _refresh_after(self):
-        # Re-read status and re-guide the buttons; the album's own web pages are
-        # untouched either way, so nothing else needs refreshing here.
-        self._status = self._current_status()
+    def _refresh_after(self, new_status):
+        # Trust the action we just completed rather than re-reading the live site:
+        # right after an upload the web copy is often still cached and would report
+        # the old state, leaving the buttons out of step with what just happened.
+        # The album's own web pages are untouched either way.
+        self._status = new_status
+        self._status_lbl.setText(self._status_text())
         self._list_btn.setEnabled(True)
         self._remove_btn.setEnabled(True)
+        self._list_btn.setToolTip("")
+        self._remove_btn.setToolTip("")
         self._apply_status_to_buttons()

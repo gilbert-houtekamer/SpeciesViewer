@@ -172,9 +172,18 @@ class Trip:
         tripconfig = configparser.ConfigParser()
 
         if os.path.exists(tripinifile):
-            # create a separete config instance
-            with open(tripinifile, 'r', encoding='utf-8') as _tf:
-                tripconfig.read_string(_coerce_orphan_continuations(_tf.read()))
+            # create a separete config instance.
+            # Read tolerantly: the file is UTF-8 today, but the write-back below
+            # used to omit the encoding (→ cp1252 on Windows), so files touched by
+            # older builds hold cp1252 accents (é → 0xe9). Fall back to cp1252 so
+            # those legacy files load; the UTF-8 write-back below then heals them.
+            with open(tripinifile, 'rb') as _tf:
+                _raw = _tf.read()
+            try:
+                _text = _raw.decode('utf-8')
+            except UnicodeDecodeError:
+                _text = _raw.decode('cp1252')
+            tripconfig.read_string(_coerce_orphan_continuations(_text))
             # 'created' records when the trip's web link was first set up — set it
             # only once. (Previously this clobbered it on every read, so the date
             # never reflected the original setup.)
@@ -202,8 +211,10 @@ class Trip:
             tripconfig['trip_text']['title_en'] = tripname
             tripconfig['trip_text']['message_en'] = "A description of the trip " + tripname
 
-        # now write updated / created version back
-        with open(tripinifile, 'w') as tripfile:
+        # now write updated / created version back — always UTF-8, matching the
+        # read above. Omitting the encoding wrote cp1252 on Windows, which then
+        # broke the next UTF-8 read; keeping one encoding closes that loop.
+        with open(tripinifile, 'w', encoding='utf-8') as tripfile:
             tripconfig.write(tripfile)
 
         # at least one must have master

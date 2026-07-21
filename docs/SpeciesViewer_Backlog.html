@@ -64,9 +64,9 @@ design</em>.</p>
       shipped as Refresh Master Database.</li>
     <li><strong>Compact the viewer toolbar + laptop-fit review</strong> <span class="tag-new">NEW</span> —
       the wide filter/knob row and dialog sizing on small screens (ch. 3).</li>
-    <li><strong>Albums smart-Create arc</strong> — steps 1–5 done (smart Create → one-flow
-      extract+build+publish → Delete Album; live on Gran Canaria + Panama). Remaining: step 6, the
-      Albums-menu publish/advertise action, then a final test (ch. 2).</li>
+    <li><strong>Albums smart-Create arc</strong> <span class="tag-complete">COMPLETE</span> — steps 1–7
+      done (smart Create → one-flow extract+build+publish → Delete Album → Manage Album Publication,
+      list/unlist on the trip index); live-verified both directions on Gran Canaria + Panama (ch. 2).</li>
     <li>Smaller: GBIF lookup disk-cache (ch. 11).</li>
     <li><em>Dropped from the shortlist: Map for the Day (micro-trip) — verified already
       working, see ch. 3.</em></li>
@@ -426,15 +426,15 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
         on purpose — that is step 6.</li>
       <li><strong>✅ DONE — Delete Album</strong> (f3be5ee → 48b8bb4, verified: Gran Canaria
         local+remote, Panama local-only). See the dedicated entry below.</li>
-      <li><strong>Album publish function</strong> — its own <strong>Albums-menu</strong> action.
+      <li><strong>✅ DONE — Manage Album Publication</strong> (a7d6d4a + fixes, verified list+unlist on
+        Gran Canaria) — its own <strong>Albums-menu</strong> action; see the dedicated entry below.
         ⚠ <strong>Rule (user, 2026-07-19): an album must never be reached through a door marked
-        Trip</strong>, even when the underlying batch is identical — it may delegate to
-        <code>svr4UpdateTrips</code> internally, the boundary is the GUI. Braakman, extramadura,
-        tanzania and costa-rica are listed on the site only for a <em>historical</em> reason (published
-        as trips, later turned into virttrips silently keeping the URL), not because any album flow
-        lists them. Currently unlisted: <code>helgolanddb</code>, <code>spanjeebrodb</code>,
-        <code>srilanka</code>, <code>Tucson_2023db</code>.</li>
-      <li><strong>Test and celebrate.</strong></li>
+        Trip</strong>, even when the underlying batch is identical — the boundary is the GUI. Braakman,
+        extramadura, tanzania and costa-rica are listed on the site only for a <em>historical</em> reason
+        (published as trips, later turned into virttrips silently keeping the URL), not because any album
+        flow lists them.</li>
+      <li><strong>✅ DONE — Tested and celebrated.</strong> Full list→index→unlist round-trip verified
+        live; the arc is complete.</li>
     </ol>
     <p>Notes: publishing before advertising is fine — the URL works, the web menu does not link it, and
     “no secrets are involved”. Default <em>text</em> is wanted (something publishable during
@@ -446,6 +446,28 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
     in Photoshop), so it needs a neutral house default. The user's own printed photo books record each
     trip's route and locations — that plus the gap function is expected to carry the old trips a long
     way.</p></li>
+  <li><strong>Manage Album Publication — list / unlist on the trip index</strong>
+    <span class="tag-shipped">SHIPPED</span> <code>a7d6d4a</code> + fixes, 2026-07-21, arc steps 6–7,
+    verified both directions on Gran Canaria. <strong>Albums ▸ Manage Album Publication</strong> — its
+    own door (never a Trip door), acting on the active album. One dialog for both directions: it reads
+    the live site to show whether the album is currently listed, then <strong>List on the site</strong>
+    (adds the album's row to the master <code>trip_admin.csv</code>, regenerates the tripindex NL+EN and
+    uploads) or <strong>Remove from the site</strong> (the clean mirror — the album's own
+    <code>/trips/&lt;slug&gt;/</code> pages stay online, only the index link goes). Advertising is
+    deliberately separate from publishing: Create/Build already put the album LIVE at its URL; this only
+    controls the index link.
+    <p><strong>Four fixes from the live run:</strong> (a) the dialog never created the status widget the
+    batch runner writes into, so both buttons crashed before doing any work; (b) the ini reader forced
+    strict UTF-8 and choked on a cp1252 <code>é</code> (“San Bartolomé”); (c) <strong>the real
+    root</strong> — <code>readTrip</code> READ the ini as UTF-8 but WROTE it back with no encoding
+    (cp1252 on Windows), so the List run silently re-encoded the file and the next read crashed; it now
+    reads cp1252-tolerantly AND writes UTF-8, which <em>heals</em> every ini the old asymmetry mangled;
+    (d) after a successful action the dialog re-read the live (still CDN-cached) site and left the
+    buttons on the old state — it now trusts the action just completed and flips the status line and
+    buttons immediately.</p>
+    <p class="note">Cosmetic (user asked, decided leave-as-is): short-description rows on the trip index
+    look “centered” only because the portrait trip image towers over one line of text — the cells are
+    already left/top-aligned, not a CSS bug.</p></li>
   <li><strong>Create Album = one-flow extract + build + publish</strong>
     <span class="tag-shipped">SHIPPED</span> <code>c7b09f8</code>, 2026-07-21, arc step 4, verified on
     Gran Canaria. The user chose full publish over extract-only, so Create's finish takes the album

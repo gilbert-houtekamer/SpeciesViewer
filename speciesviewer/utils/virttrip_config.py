@@ -70,13 +70,28 @@ def _coerce_orphan_continuations(text: str) -> str:
     return '\n'.join(out) + '\n'
 
 
+def _read_ini_text(ini_path: str) -> str:
+    """Read an ini file's text, tolerating legacy (non-UTF-8) encodings.
+
+    virttrip.ini is written as UTF-8 today, but some older/converted files hold
+    cp1252-encoded accented characters (e.g. an é in a title). configparser's
+    own default read uses the locale encoding (cp1252 on Windows), which is why
+    the batch path never tripped on this — only this explicit UTF-8 read did.
+    Fall back to cp1252, which maps every byte, so the reader never crashes."""
+    with open(ini_path, "rb") as f:
+        raw = f.read()
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("cp1252")
+
+
 def read_virttrip_ini(trip_root: str):
     ini_path = os.path.join(trip_root, "virttrip.ini")
     if not os.path.isfile(ini_path):
         return None
 
-    with open(ini_path, "r", encoding="utf-8") as f:
-        content = f.read()
+    content = _read_ini_text(ini_path)
     parser = configparser.ConfigParser()
     parser.read_string(_coerce_orphan_continuations(content))
 
