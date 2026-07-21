@@ -418,7 +418,10 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
         separate menu step; folding it into Create is step 4.</li>
       <li><strong>NEXT — Build Web + Web Publish</strong> — try them on the album (user running the blog
         and website steps 2026-07-21).</li>
-      <li><strong>Integrate 1–3</strong> into one flow.</li>
+      <li><strong>✅ DONE — Integrate 1–3 into one flow</strong> (c7b09f8, full-publish, verified on
+        Gran Canaria). Create's finish runs the whole chain in one spinner: make repo → extract →
+        write+upload blogs → build+upload website → make blogs clickable. Stops short of the trip index
+        on purpose — that is step 6.</li>
       <li><strong>✅ DONE — Delete Album</strong> (f3be5ee → 48b8bb4, verified: Gran Canaria
         local+remote, Panama local-only). See the dedicated entry below.</li>
       <li><strong>Album publish function</strong> — its own <strong>Albums-menu</strong> action.
@@ -441,6 +444,27 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
     in Photoshop), so it needs a neutral house default. The user's own printed photo books record each
     trip's route and locations — that plus the gap function is expected to carry the old trips a long
     way.</p></li>
+  <li><strong>Create Album = one-flow extract + build + publish</strong>
+    <span class="tag-shipped">SHIPPED</span> <code>c7b09f8</code>, 2026-07-21, arc step 4, verified on
+    Gran Canaria. The user chose full publish over extract-only, so Create's finish takes the album
+    from nothing to a live website in one spinner: make repo → extract days → write+upload blogs →
+    build+upload website → make blogs clickable.
+    <p><strong>Stops short of the trip index on purpose</strong> — publishing before advertising is
+    fine (the URL works, the web menu does not link it); un/advertising is the deliberate step 6. So the
+    chain is svv1→svv2→svv3→svv4→svv6, never svv5. Offline is handled by the steps themselves
+    (svv3/svv4 check connectivity and fall back to a local-only build).</p>
+    <p><strong>Refactor:</strong> the retire-to-album flow already had this exact spinner + worker-thread
+    plumbing, so it was extracted into a shared <code>_run_virttrip_pipeline(parent, steps, title,
+    success_msg)</code> and both flows now use it (the generic <code>_RetireVirttripWorker</code> just
+    runs a list of <em>(label, callable)</em>); retire keeps its own step list, which still advertises
+    via svv5 — correct when retiring a real trip. A latent bug the name-resolution check caught:
+    <code>QMessageBox</code> was only imported function-locally inside retire, so the new code would have
+    NameError'd at runtime — now module-level.</p>
+    <p><strong>⚠ Slug-after-publish gotcha:</strong> the web root (URL slug) is editable before Create,
+    and the auto-slug is the dominant city — for Gran Canaria that was the long municipality
+    <code>san-bartolome-de-tirajana-2023</code>. Changing the slug <em>after</em> publishing orphans the
+    old <code>/trips/&lt;old-slug&gt;/</code> tree on the server; clean recovery is Delete Album (which
+    removes the tree at the current slug) → change slug → re-create.</p></li>
   <li><strong>Delete Album — reversible, master untouched</strong>
     <span class="tag-shipped">SHIPPED</span> <code>f3be5ee</code> → <code>48b8bb4</code>, 2026-07-21,
     arc step 5, verified on both cases. Albums ▸ Delete Album…, acting on the ACTIVE album like Build
