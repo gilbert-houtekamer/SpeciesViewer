@@ -458,6 +458,25 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
     <code>.jpg</code> was genuinely on disk but never in the master's inventory (now one row, no duplicate).
     So it never invents or duplicates — it makes the inventory match disk; a second click says “No new
     files”. Possible follow-up: a master-wide sweep to register all untracked renders in one pass.</p></li>
+  <li><strong>Album switch was frozen ~30 s → GPS mirrored into the master DB</strong>
+    <span class="tag-shipped">SHIPPED</span> <code>261f571</code>, 2026-07-21, verified on Helgoland.
+    Switching to a big album locked the UI (“(Not Responding)”) because the overview's <strong>No-GPS
+    column</strong> re-opened every no-camera-GPS picture's <strong>sidecar</strong> — a geotag writes to
+    the sidecar, and the day CSV is a stale snapshot. The fix follows the user's own model (“all state
+    should live in the UPN”): make the <strong>master DB</strong> the one place GPS lives and read it
+    there.
+    <ul>
+      <li><code>MasterDB.apply_gps</code> — a journaled write of <code>pictures.GPSPosition</code>
+        (one entry per action, so no checkpoint race); <code>upns_with_gps</code> — one indexed query.</li>
+      <li>Every <em>new</em> geotag mirrors into the DB (<code>write_gps</code>); <em>existing</em> placed
+        GPS folds in when a <strong>map opens</strong> (the map already reads exactly those coordinates —
+        and the master read never touches sidecars, so this is the only way pre-mirror geotags reach the
+        DB). Heal an album by opening its whole-trip map once (Helgoland day 2: 126 → 1).</li>
+      <li>The overview's No-GPS is now one DB query per day: <strong>31-day album 0.18 s, was 30+ s.</strong></li>
+    </ul>
+    <p class="note">Scope: the mirror writes the <em>coordinate</em>; the reverse-geocoded place
+    <em>name</em> (Location) is a separate step — a follow-up. The bigger ideal the user named — Albums
+    reading the master directly, with no per-album CSV copy — is a deferred re-architecture.</p></li>
   <li><strong>Crop + qualifier display fixes (album viewer)</strong>
     <span class="tag-shipped">SHIPPED</span> <code>0c48c91</code> / <code>a03e341</code>, 2026-07-21,
     user-confirmed.
