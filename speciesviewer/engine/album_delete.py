@@ -92,6 +92,47 @@ def backup_album(album_root, trash_dir=None) -> Path | None:
     return Path(archive)
 
 
+def _rmtree_retry(path, attempts: int = 5) -> bool:
+    """rmtree with backoff. Dropbox holds file handles for a moment while it
+    syncs a deletion, so a first rmtree of a Dropbox folder often hits a
+    transient WinError 32 that is gone a fraction of a second later. Returns True
+    if the folder is gone."""
+    import time
+
+    path = Path(path)
+    for i in range(attempts):
+        try:
+            shutil.rmtree(path)
+            return True
+        except OSError as e:
+            if i == attempts - 1:
+                logger.warning(f"could not remove {path.name} after {attempts} "
+                               f"tries: {e}")
+                return not path.exists()
+            time.sleep(0.4 * (i + 1))          # 0.4, 0.8, 1.2, 1.6s
+    return not path.exists()
+
+
+def sweep_deleting(albums_root) -> int:
+    """Remove leftover '.<name>.deleting' staging folders in the albums root.
+
+    A staging folder is left when the recursive delete was blocked by a transient
+    lock (Dropbox syncing) after the album had already been renamed away — the
+    album is gone, only the junk lingers. Swept at the start of every delete so it
+    never accumulates. The pattern (leading dot AND trailing .deleting) cannot
+    match a real album folder.
+    """
+    root = Path(albums_root)
+    if not root.is_dir():
+        return 0
+    swept = 0
+    for p in root.glob(".*.deleting"):
+        if p.is_dir() and _rmtree_retry(p):
+            logger.info(f"swept leftover delete-staging: {p.name}")
+            swept += 1
+    return swept
+
+
 def delete_local(album_root) -> str:
     """Remove the album folder. Returns "" on success, else an error message.
 
@@ -108,24 +149,21 @@ def delete_local(album_root) -> str:
     root = Path(album_root)
     if not root.is_dir():
         return ""
+    # Clear any leftover staging from a prior interrupted delete before starting.
+    sweep_deleting(root.parent)
     staging = root.with_name(f".{root.name}.deleting")
-    if staging.exists():                       # leftover from an earlier stumble
-        try:
-            shutil.rmtree(staging)
-        except OSError:
-            pass
+    if staging.exists():
+        _rmtree_retry(staging)
     try:
         os.rename(root, staging)
     except OSError as e:
         return (f"{root.name} is in use, so nothing was removed. Close any "
                 f"Explorer or DxO PhotoLab window showing the album or its "
                 f"sub-folders, then delete again. [{e}]")
-    try:
-        shutil.rmtree(staging)
-    except OSError as e:
-        # The album is gone under its real name; only hidden leftovers remain.
-        logger.warning(f"album delete: {root.name} removed, but some files "
-                       f"linger in {staging.name} (in use): {e}")
+    # Retry the recursive delete — the album is already gone under its real name,
+    # this just clears the renamed staging past a transient Dropbox lock. If it
+    # STILL loses the race the staging lingers, but the next delete sweeps it.
+    _rmtree_retry(staging)
     return "" if not root.exists() else f"{root.name} could not be fully removed."
 
 
