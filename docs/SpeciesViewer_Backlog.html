@@ -14,6 +14,7 @@
   .meta { font-size: 9pt; color: #555; margin-bottom: 16pt; }
   .tag-shipped, .tag-complete { background: #C6EFCE; color: #276221; padding: 1pt 5pt; border-radius: 3pt; font-size: 9pt; font-weight: bold; }
   .tag-open { background: #FFF2CC; color: #7F6000; padding: 1pt 5pt; border-radius: 3pt; font-size: 9pt; font-weight: bold; }
+  .tag-progress { background: #DDEBF7; color: #1F4E79; padding: 1pt 5pt; border-radius: 3pt; font-size: 9pt; font-weight: bold; }
   .tag-parked { background: #EDEDED; color: #444; padding: 1pt 5pt; border-radius: 3pt; font-size: 9pt; font-weight: bold; }
   .tag-big { background: #FCE4D6; color: #833C00; padding: 1pt 5pt; border-radius: 3pt; font-size: 9pt; font-weight: bold; }
   .tag-test { background: #DEEAF1; color: #1F3864; padding: 1pt 5pt; border-radius: 3pt; font-size: 9pt; font-weight: bold; }
@@ -396,22 +397,27 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
     f-string is not a STRING token</strong> but FSTRING_START/MIDDLE/END, so a tokenize sweep filtering on
     STRING silently skips every f-string — and a verification pass sharing that filter confirms its own
     blind spot and reports success. <strong>A sweep and its check must not share a filter.</strong></p></li>
-  <li><strong>Albums — the smart <em>Create</em> arc</strong> <span class="tag-open">OPEN</span>
-    <span class="tag-new">PLAN</span> — agreed 2026-07-19, replaces the old “guided Create” item.
+  <li><strong>Albums — the smart <em>Create</em> arc</strong> <span class="tag-progress">IN PROGRESS</span>
+    — agreed 2026-07-19, replaces the old “guided Create” item.
     The order is the user's and it is deliberate: nothing exists to delete yet, and every step is
     hand-driven, so building Delete first would be building against a hypothetical. Guinea pig
     throughout: <strong>2013 Panama</strong> — the trip that started the hobby (12 days, 115 pictures),
     and the oldest, thinnest data in the master (no Country/State, no GPS), so it is both a good test
-    and a plausible source of surprises unrelated to the new code.
+    and a plausible source of surprises unrelated to the new code; step 2 onward now driven on
+    <strong>Gran Canaria</strong> as well.
     <ol>
-      <li><strong>Smart Create Album</strong> — a <em>Pick from the master…</em> button opens the
-        candidate table (one picker, two entry points: from Create, and from Albums ▸ Find Trips).
-        Picking fills the folder name (<strong>suggested but editable, live-validated unique</strong>),
-        the dates, the web root and default text. No loading yet. Optionally split: (a) without a
-        generated trip image, (b) with one.</li>
-      <li><strong>Extract</strong> the pictures — “the extract will extract; what it can do is a
-        different story”.</li>
-      <li><strong>Build Web + Web Publish</strong> — try them on the album.</li>
+      <li><strong>✅ DONE — Smart Create Album</strong> (662da74 → 788b0a6, verified on Panama and
+        Gran Canaria) — <em>Pick from the master…</em> (bottom-left, not between fields, because it does
+        far more than fill the field beside it) opens the candidate table (one picker, two entry points:
+        Create, and Albums ▸ Find Trips). Picking <em>creates the folder</em> and fills everything: a
+        unique, live-validated name; the dates; a slug web root (<code>/trips/panama-2013</code> — a URL
+        is not a title); a default Dutch title and factual description, translated to English. The image
+        split resolved into the cover-picture item below.</li>
+      <li><strong>✅ DONE (verified) — Extract</strong> — Gran Canaria extracted 7 days / 454 files /
+        193 pictures cleanly, and the album overview then shows them with GPS and species. Still a
+        separate menu step; folding it into Create is step 4.</li>
+      <li><strong>NEXT — Build Web + Web Publish</strong> — try them on the album (user running the blog
+        and website steps 2026-07-21).</li>
       <li><strong>Integrate 1–3</strong> into one flow.</li>
       <li><strong>Delete Album</strong>, proven by deleting the album just made. Safer than trip delete
         <em>by construction</em>: an album owns only metadata; the master's pictures are referenced and
@@ -438,6 +444,32 @@ and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. 
     in Photoshop), so it needs a neutral house default. The user's own printed photo books record each
     trip's route and locations — that plus the gap function is expected to carry the old trips a long
     way.</p></li>
+  <li><strong>Set a trip/album cover picture from the grid</strong>
+    <span class="tag-shipped">SHIPPED</span> <code>ca45a74</code> → <code>788b0a6</code>, 2026-07-20,
+    verified on the Kreta trip and the Gran Canaria album. Right-click one picture →
+    <strong>Use as &lt;trip|album&gt; picture (&lt;owner&gt;)</strong> → a confirm that shows the
+    <em>actual</em> 600×450 that will be written (centre-crop to 4:3 — never squash — then resize; a 3:2
+    original loses 11% off each side, measured, which is why the crop is shown, not guessed) → written
+    as the collection's cover. Manual beats automatic: the best-<em>rated</em> photo is often a tight
+    portrait that crops badly, and a person sees that at a glance. Logic in
+    <code>utils/album_picture.py</code> (no Qt, so testable); dialog
+    <code>gui/album_picture_dialog.py</code>.
+    <p><strong>Three things it got right only after live bugs.</strong> (a) The target is the collection
+    you are <em>looking at</em>, derived from the viewer — reading the globally-configured active album
+    wrote a <strong>Kreta orchid as the Gran Canaria cover</strong>. (b) A trip does not name its cover
+    <code>tripimage.jpg</code> — kretadb uses <code>trip_picture = kretaimage.jpg</code>, so the filename
+    comes from that collection's own ini, or a second, ignored file is written. (c) The album day viewer
+    passes <code>file_list=</code>, so its label is “68 files” not a path — the album is identified from
+    the source label (the day folder inside it), which was being dropped.</p>
+    <p><strong>Two guards from prior incidents:</strong> never write the cover over its own source (the
+    142-thumbnails-destroyed rule), and the write renders to a temp file then <code>os.replace()</code>s
+    it in — so the target is never held open during encoding (a plausible cause of a one-off
+    <code>Errno 22</code> on the trip cover) and a half-write cannot truncate the cover. The replaced
+    cover is kept as a <strong>dated real .jpg</strong> (<code>tripimage-20260720-2102.jpg</code>) —
+    pickable in Browse, unlike the un-previewable <code>.previous</code>. The menu entry appears only
+    where there is a cover to set and the picture has a JPG, so a plain culling day shows nothing. Also
+    finished the Create Album vocabulary the earlier sweep missed (bare “Trip” → Album picture, Web
+    banner, Album title, Album Text).</p></li>
   <li><strong>WP7 — fold Extract Days into <em>Create</em></strong> <span class="tag-open">OPEN</span> —
     all that remains of the guided Create: the date-range problem is solved above, but
     <em>Extract Days from Master</em> is still a separate menu step rather than folded into Create's
