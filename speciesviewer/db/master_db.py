@@ -566,6 +566,46 @@ class MasterDB:
             (wet_soort_naam.strip().lower(),)).fetchall()
         return [self._picture_row_to_dict(r) for r in rows]
 
+    @staticmethod
+    def _day_key(d) -> str:
+        """Coerce a date / 'YYYY-MM-DD' / 'YYYY:MM:DD' into the DateTimeOriginal
+        prefix form 'YYYY:MM:DD' used for the range compare. DateTimeOriginal is
+        stored fixed-width ('2014:06:23 18:31:08'), so substr(...,1,10) is a
+        lexicographically-sortable date and a plain string BETWEEN is chronological."""
+        s = str(d)[:10]
+        return s.replace("-", ":")
+
+    def pictures_in_daterange(self, from_date, to_date) -> dict[str, list[dict]]:
+        """An ALBUM's core query: every master picture whose camera timestamp
+        (`DateTimeOriginal`, the UPN-level truth) falls in [from_date, to_date],
+        grouped by day. Returns {"YYYY-MM-DD": [picture_dict, …]} — day labels shaped
+        like the old review/<day>/ folder names so downstream day-numbering is
+        unchanged; picture dicts shaped exactly like `pictures_for_species` (and the
+        CSV readers) so the callers' row-walking code is untouched.
+
+        This REPLACES the per-day CSV snapshot (svv2ExtractDays): an album is a window
+        ON the master, not a copy of it, so its picture list is a live query and there
+        is exactly one copy of the truth. A picture removed from the master since the
+        album was created simply stops appearing — the stale-extract class is gone.
+
+        Ghost filter: pictures with no TargetPath were never filed under biota/ (no
+        species → no folder) and cannot be shown; they are excluded, mirroring
+        svv2's on-disk guardrail without a per-file stat. On-disk verification of the
+        surviving rows is a display concern the viewer already handles."""
+        con = self._connect()
+        lo, hi = self._day_key(from_date), self._day_key(to_date)
+        rows = con.execute(
+            'SELECT * FROM pictures '
+            'WHERE substr("DateTimeOriginal", 1, 10) BETWEEN ? AND ? '
+            '  AND TRIM(COALESCE("TargetPath", "")) <> "" '
+            'ORDER BY "DateTimeOriginal", "UniquePictureName"',
+            (lo, hi)).fetchall()
+        by_day: dict[str, list[dict]] = {}
+        for r in rows:
+            day = (r["DateTimeOriginal"] or "")[:10].replace(":", "-")
+            by_day.setdefault(day, []).append(self._picture_row_to_dict(r))
+        return by_day
+
     def species_picker_rows(self) -> list[dict]:
         """Distinct species that actually have master pictures, for the Master
         Species Viewer's selector. Derived from the pictures table (always

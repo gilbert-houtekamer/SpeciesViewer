@@ -231,6 +231,39 @@ def _count_pictures_from_csv(csv_path: Path, db=None):
         return 0, 0, 0
 
 
+def _day_counts_from_query(db, fromdate: str, todate: str) -> dict:
+    """Per-day (pictures, jpeg_files, no_gps) straight from the master, by date range —
+    the replacement for the per-day CSV snapshot. An album is a live query over the
+    master (pictures whose camera DateTimeOriginal falls in fromdate..todate), not a
+    copied-out set of day CSVs, so there is exactly one copy of the truth and a picture
+    removed from the master since the album was created simply stops appearing.
+
+    Two indexed queries total (the pictures, then their files), not one CSV read per
+    day. Returns {"YYYY-MM-DD": (pictures, jpeg_files, no_gps)}:
+      - pictures  = distinct UPNs in range (the pictures table is per-UPN);
+      - jpeg_files = jpg/jpeg file rows for those UPNs;
+      - no_gps    = pictures whose master GPSPosition is empty. That is the UPN's own
+        truth, into which a geotag is mirrored (apply_gps), so a placed coordinate is
+        counted here WITHOUT re-reading any sidecar — the whole reconciliation dance
+        the CSV path needed collapses to one field test."""
+    by_day = db.pictures_in_daterange(fromdate, todate)
+    all_upns = [p["UniquePictureName"] for pics in by_day.values() for p in pics]
+    files = db.files_for_upns(all_upns)
+    jpeg_by_upn: dict = {}
+    for r in files.values():
+        if (r.get("WindowsExtension") or "").lower() in JPEG_EXTS:
+            u = r.get("UniquePictureName", "")
+            if u:
+                jpeg_by_upn[u] = jpeg_by_upn.get(u, 0) + 1
+    counts: dict = {}
+    for day, pics in by_day.items():
+        upns = [p["UniquePictureName"] for p in pics]
+        jpegs = sum(jpeg_by_upn.get(u, 0) for u in upns)
+        no_gps = sum(1 for p in pics if not (p.get("GPSPosition") or "").strip())
+        counts[day] = (len(pics), jpegs, no_gps)
+    return counts
+
+
 class _OverviewBatchHost(QWidget):
     """Minimal host so BatchModuleRunner can run a per-day step straight from the
     overview's context menu. The runner expects a dialog-like widget carrying
@@ -274,21 +307,56 @@ def populate_virttrip_overview(self):
         return
 
     review_root = virttrip_path / "metadata" / "review"
-    if not review_root.is_dir():
-        return
 
-    # Only include YYYY-MM-DD directories; the 'frozen/' subdir created by
-    # svv4BuildWebsite must not appear as a fake day row.
+    trip_data = read_virttrip_ini(virttrip_root) or {}
+    trip_name = trip_data.get("trip_name", virttrip_path.name) or virttrip_path.name
+    fromdate  = (trip_data.get("fromdate") or "").strip()
+    todate    = (trip_data.get("todate")   or "").strip()
+
+    # No-GPS, and now the whole day list, come from the master's own rows — a fast
+    # indexed query by the album's date range — instead of re-reading every picture's
+    # sidecar (which froze the switch for ~30 s on a big album). None = no master
+    # configured → fall back to the legacy per-day review CSVs below.
+    master_db = None
+    try:
+        _mroot = (_config.get("master", "masterbiotadatabase", fallback="")
+                  or "").replace('"', "").replace("'", "").strip()
+        if _mroot and Path(_mroot).is_dir():
+            from db.master_db import MasterDB
+            master_db = MasterDB(_mroot)
+    except Exception as e:
+        logger.debug(f"overview: master DB unavailable, GPS column from CSV only: {e}")
+
+    # Primary source: the live master date-range query (an album is a window ON the
+    # master, not a copy). Fallback: the legacy per-day review CSV snapshot, for a
+    # machine with no master configured.
     _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-    day_dirs = sorted(
-        [d for d in review_root.iterdir() if d.is_dir() and _DATE_RE.match(d.name)],
-        key=lambda p: p.name,
-    )
+    query_counts = None
+    if master_db is not None and fromdate and todate:
+        try:
+            query_counts = _day_counts_from_query(master_db, fromdate, todate)
+        except Exception as e:
+            logger.warning(f"overview: master date-range query failed, using CSV: {e}")
+
+    if query_counts is not None:
+        day_names = sorted(query_counts)
+        day_dirs  = [review_root / n for n in day_names]
+        def _day_counts(day_dir):
+            return query_counts[day_dir.name]
+    else:
+        # Only include YYYY-MM-DD directories; the 'frozen/' subdir created by
+        # svv4BuildWebsite must not appear as a fake day row.
+        if not review_root.is_dir():
+            return
+        day_dirs = sorted(
+            [d for d in review_root.iterdir() if d.is_dir() and _DATE_RE.match(d.name)],
+            key=lambda p: p.name,
+        )
+        def _day_counts(day_dir):
+            return _count_pictures_from_csv(day_dir / "data_files.csv", db=master_db)
+
     if not day_dirs:
         return
-
-    trip_data = read_virttrip_ini(virttrip_root)
-    trip_name = trip_data.get("trip_name", virttrip_path.name) if trip_data else virttrip_path.name
 
     self.virttrip_table = QTableWidget()
     self.virttrip_table.setColumnCount(6)
@@ -317,25 +385,10 @@ def populate_virttrip_overview(self):
     # Website is built trip-wide (not per-day); detect from the all-species summary page.
     web_built = (virttrip_path / "web" / "summaries" / "all biota species-nl.html").exists()
 
-    # No-GPS is answered from the master's own pictures.GPSPosition (the UPN's
-    # truth) — a fast indexed query — instead of re-reading every picture's sidecar,
-    # which used to freeze the switch for ~30 s on a big album. Open the master DB
-    # once here and hand it to every day. None = no master configured → the column
-    # falls back to the CSV's camera GPS only (no placed-GPS reconciliation).
-    master_db = None
-    try:
-        _mroot = (_config.get("master", "masterbiotadatabase", fallback="")
-                  or "").replace('"', "").replace("'", "").strip()
-        if _mroot and Path(_mroot).is_dir():
-            from db.master_db import MasterDB
-            master_db = MasterDB(_mroot)
-    except Exception as e:
-        logger.debug(f"overview: master DB unavailable, GPS column from CSV only: {e}")
-
     no_gps_by_day: dict = {}
     logger.info(f"Checking GPS status for {len(day_dirs)} day(s)...")
     for i, day_dir in enumerate(day_dirs):
-        total, jpegs, no_gps = _count_pictures_from_csv(day_dir / "data_files.csv", db=master_db)
+        total, jpegs, no_gps = _day_counts(day_dir)
         no_gps_by_day[day_dir.name] = no_gps
 
         self.virttrip_table.setItem(i, DATE_COL,  QTableWidgetItem(day_dir.name))
@@ -396,7 +449,7 @@ def populate_virttrip_overview(self):
         self.virttrip_table.setItem(i, WEB_COL, web_item)
 
     logger.info(f"GPS status checked for {len(day_dirs)} day(s) "
-                f"({'from the master DB' if master_db is not None else 'from CSV only'}).")
+                f"({'from the master date-range query' if query_counts is not None else 'from CSV only'}).")
 
     overview_widget = QWidget()
     layout = QVBoxLayout(overview_widget)
