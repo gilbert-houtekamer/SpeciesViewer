@@ -431,10 +431,39 @@ def write_gps(files, lat, lon, *, method: str = GPS_MANUAL):
         if r.returncode != 0:
             logger.warning(f"GPS write returned {r.returncode}: {r.stderr.strip()}")
             return 0
+        _mirror_gps_to_master(files, lat, lon)
         return len(files)
     except Exception as e:
         logger.warning(f"GPS write failed: {e}")
         return 0
+
+
+def _mirror_gps_to_master(files, lat, lon):
+    """Best-effort: also write the just-placed coordinate into the master's
+    pictures.GPSPosition, so the No-GPS count and the map read it straight from
+    the UPN (the "one truth") instead of re-opening each sidecar — which is what
+    made switching to a big album freeze for ~30 s. Only master pictures are
+    touched (apply_gps skips any UPN the master doesn't have, e.g. a plain trip
+    shot); a read-only master or an unreachable DB is a silent no-op — the sidecar
+    write above already succeeded, so the geotag itself never fails on the mirror."""
+    try:
+        from pathlib import Path
+        from utils.config import _config
+        master_root = (_config.get("master", "masterbiotadatabase", fallback="")
+                       or "").replace('"', "").replace("'", "").strip()
+        if not master_root or not Path(master_root).is_dir():
+            return
+        if _config.get("master", "readonly", fallback="yes").strip().lower() != "no":
+            return  # read-only master (SmallBoy) — never write
+        from engine.filecsv import deriveUniquePictureName
+        gps_by_upn = {deriveUniquePictureName(Path(f).name): (lat, lon)
+                      for f in files if f}
+        gps_by_upn.pop("", None)
+        if gps_by_upn:
+            from db.master_db import MasterDB
+            MasterDB(master_root).apply_gps(gps_by_upn)
+    except Exception as e:
+        logger.debug(f"GPS master-mirror skipped: {e}")
 
 
 # ── THROWAWAY: safe-compare dry run ───────────────────────────────────────────

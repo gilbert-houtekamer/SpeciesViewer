@@ -1521,6 +1521,61 @@ class MasterDB:
         MasterCheckpointWorker.get(self.master_root).notify()
         return True
 
+    def apply_gps(self, gps_by_upn: dict) -> int:
+        """Mirror placed GPS into the master's pictures.GPSPosition — the same field
+        the map and the No-GPS count read — so a geotag no longer lives ONLY in the
+        sidecar (which is why the album overview had to re-read every sidecar to be
+        current). `gps_by_upn` maps UPN -> (lat, lon); stored as decimal "lat, lon"
+        (parse_gps_dms reads both DMS and decimal). Journaled as ONE entry, so a whole
+        place-a-day action is a single quiescent write — no checkpoint race. Returns
+        the number of pictures updated (UPNs not in the master are skipped)."""
+        if not gps_by_upn:
+            return 0
+        con = self._connect()
+        pics: dict = {}
+        for upn, latlon in gps_by_upn.items():
+            if not upn or not latlon:
+                continue
+            lat, lon = latlon
+            if lat is None or lon is None:
+                continue
+            row = con.execute(
+                'SELECT 1 FROM pictures WHERE "UniquePictureName"=?', (upn,)).fetchone()
+            if row is None:
+                continue
+            pics[upn] = {"GPSPosition": f"{lat}, {lon}"}
+        if not pics:
+            return 0
+        entry = {"op": "gps", "ts": time.time(), "pictures": pics, "files": {}}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        with con:
+            for upn, fields in pics.items():
+                self._set_picture_fields(con, upn, fields)
+        MasterCheckpointWorker.get(self.master_root).notify()
+        return len(pics)
+
+    def upns_with_gps(self, upns) -> set:
+        """Of these UPNs, the set that has a non-empty GPSPosition in the master.
+        One indexed query (chunked) — the fast replacement for re-reading each
+        picture's sidecar to answer 'did we place a coordinate here?'."""
+        upns = [u for u in upns if u]
+        if not upns:
+            return set()
+        con = self._connect()
+        out: set = set()
+        CHUNK = 500
+        for i in range(0, len(upns), CHUNK):
+            chunk = upns[i:i + CHUNK]
+            ph = ", ".join(["?"] * len(chunk))
+            rows = con.execute(
+                f'SELECT "UniquePictureName" AS upn FROM pictures '
+                f'WHERE "UniquePictureName" IN ({ph}) '
+                f'  AND TRIM(COALESCE("GPSPosition","")) <> ""', chunk).fetchall()
+            out.update(r["upn"] for r in rows)
+        return out
+
     def empty_taxa(self) -> list[str]:
         """Taxon rows with NO leaves and NO pictures anywhere beneath them.
 

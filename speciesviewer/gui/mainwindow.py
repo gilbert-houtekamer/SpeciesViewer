@@ -1179,7 +1179,9 @@ class MainWindow(QMainWindow):
                 self.logger.warning(f"{label}: could not read sidecars: {e}")
             return 0
 
+        from engine.geo import parse_gps_dms
         found = 0
+        placed: dict = {}          # UPN -> (lat, lon) to fold into the master DB
         for u in need:
             path, frow = src_of[u]
             srow = rows.get(_norm(path)) or {}
@@ -1191,11 +1193,50 @@ class MainWindow(QMainWindow):
             if method:
                 frow["EXIF:GPSProcessingMethod"] = method
             found += 1
+            ll = parse_gps_dms(pos)
+            if ll:
+                placed[u] = ll
         if found and self.logger:
             self.logger.info(
                 f"{label}: {found} picture(s) carry a coordinate written to their "
                 f"sidecar that the day CSVs predate.")
+        # Fold those coordinates into the master's pictures.GPSPosition too. The
+        # master read never touches sidecars, so GPS placed before the write-time
+        # mirror (geolocate.write_gps) existed lives ONLY in the sidecar — which is
+        # why the album overview (a fast DB read) still called them missing. Opening
+        # the map, which already reads exactly these sidecars, is the natural place
+        # to bring the master up to date; only the ones the DB lacks are written.
+        if placed:
+            self._mirror_placed_gps_to_master(placed)
         return found
+
+    def _mirror_placed_gps_to_master(self, gps_by_upn: dict) -> None:
+        """Best-effort: fold placed coordinates the master DB does not have yet into
+        its pictures.GPSPosition, so the overview's fast DB read agrees with the map.
+        Only master pictures are touched; a read-only master or an unreachable DB is
+        a silent no-op. Idempotent — already-known coordinates are skipped."""
+        try:
+            master_root = (_config.get("master", "masterbiotadatabase", fallback="")
+                           or "").replace('"', "").replace("'", "").strip()
+            if not master_root:
+                return
+            if _config.get("master", "readonly", fallback="yes").strip().lower() != "no":
+                return
+            from db.master_db import MasterDB
+            db = MasterDB(master_root)
+            have = db.upns_with_gps(list(gps_by_upn))
+            todo = {u: ll for u, ll in gps_by_upn.items() if u not in have}
+            if todo:
+                n = db.apply_gps(todo)
+                if n:
+                    if self.logger:
+                        self.logger.info(f"{n} placed coordinate(s) folded into the master.")
+                    # The album overview reads no-GPS from the DB we just updated, so
+                    # repaint it (deferred) — its count corrects without a switch.
+                    self.refresh_gps_counts("virttrip")
+        except Exception as e:
+            if self.logger:
+                self.logger.debug(f"GPS master-mirror (map) skipped: {e}")
 
     def refresh_gps_counts(self, kind: str = "virttrip"):
         """Repaint the yellow panel after something wrote GPS into the pictures it

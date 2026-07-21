@@ -175,52 +175,20 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
     parent.refresh_gps_counts("virttrip")
 
 
-def _gps_from_sidecars(src_by_upn: dict, stats: dict | None = None) -> set:
-    """{UPN} for those whose GPS source now carries a coordinate. The source is the
-    XMP sidecar where there is one, else the JPG itself (a JPG-only picture keeps its
-    GPS in the file, not in a sidecar we never made).
-
-    Reuses the day viewer's own cache-first reader, so this is the SAME answer the
-    map gives — no second opinion about what "has GPS" means. Unchanged sources are
-    served from the per-folder cache; only ones whose mtime moved cost an exiftool
-    read, and that is one batched call, not one per file."""
-    if not src_by_upn:
-        return set()
-    from gui.sidecar_provider import _read_sidecar_rows, _norm
-    paths = [p for p in src_by_upn.values() if p and Path(p).is_file()]
-    if not paths:
-        return set()
-    try:
-        rows, _caches = _read_sidecar_rows(paths, quiet_stats=stats)
-    except Exception as e:
-        logger.warning(f"No-GPS count: could not read sidecars: {e}")
-        return set()
-    out = set()
-    for upn, p in src_by_upn.items():
-        row = rows.get(_norm(p)) or {}
-        if str(row.get("GPSPosition", "") or "").strip() \
-                or str(row.get("GPSLatitude", "") or "").strip():
-            out.add(upn)
-    return out
-
-
-def _count_pictures_from_csv(csv_path: Path, stats: dict | None = None):
+def _count_pictures_from_csv(csv_path: Path, db=None):
     """Return (pictures, jpeg_files, no_gps) for one day.
 
     pictures = distinct UniquePictureNames (a RAW and its sidecars share one UPN,
     so they are one picture, not several files).
 
-    no_gps is the count that says which days still need placing on the map, and it
-    CANNOT be answered from this CSV alone. The CSV is a SNAPSHOT that Extract Days
-    took from the master, and geotagging writes to the pictures' XMP SIDECARS — so a
-    day you have just placed still reads as 93-without-GPS here, while the map shows
-    them all on the island. (The master's own CSV is equally stale until a re-read;
-    the sidecar is the only thing that is current.)
-
-    So: the CSV answers "did the CAMERA record a coordinate" (that GPS lives in the
-    RAW, which we never touch), and for every picture it says has none we ask the
-    sidecar, which is where anything WE placed ended up. Cache-first — a day whose
-    sidecars have not changed costs no exiftool call at all."""
+    no_gps is the count that says which days still need placing on the map. The CSV
+    answers "did the CAMERA record a coordinate" (that GPS lives in the RAW). But the
+    CSV is a SNAPSHOT Extract Days took from the master, and geotagging writes to the
+    picture's XMP SIDECAR — so a day you have just placed would still read as missing
+    here. For every picture the CSV says has none we therefore ask the MASTER's own
+    pictures.GPSPosition (the UPN's truth, which a geotag now mirrors into) rather
+    than re-opening each sidecar — a single indexed query instead of the per-picture
+    exiftool read that froze the album switch."""
     from gui.trip_overview import PHOTO_EXTENSIONS
     try:
         with open(csv_path, newline="", encoding="utf-8") as f:
@@ -228,8 +196,6 @@ def _count_pictures_from_csv(csv_path: Path, stats: dict | None = None):
             upns = set()
             jpegs = 0
             upn_has_gps: dict = {}
-            xmp_by_upn: dict = {}   # UPN -> XMP sidecar path (preferred GPS source)
-            jpg_by_upn: dict = {}   # UPN -> JPG path (fallback for a JPG-only picture)
             for row in reader:
                 u = (row.get("UniquePictureName") or "").strip()
                 if u:
@@ -239,30 +205,25 @@ def _count_pictures_from_csv(csv_path: Path, stats: dict | None = None):
                     jpegs += 1
                 if not u:
                     continue
-                if ext == "xmp":
-                    p = (row.get("WindowsFileName") or "").strip()
-                    if p:
-                        xmp_by_upn.setdefault(u, p)
-                elif ext in PHOTO_EXTENSIONS:
+                if ext in PHOTO_EXTENSIONS:
                     has_gps = bool((row.get("Composite:GPSPosition") or "").strip()) \
                            or bool((row.get("EXIF:GPSLatitude") or "").strip())
                     upn_has_gps[u] = upn_has_gps.get(u, False) or has_gps
-                    if ext in JPEG_EXTS:
-                        p = (row.get("WindowsFileName") or "").strip()
-                        if p:
-                            jpg_by_upn.setdefault(u, p)
 
-        # A geotag writes to the XMP sidecar, or — for a JPG-only picture (a phone
-        # shot with no RAW, no sidecar) — straight into the JPG. Re-read from the XMP
-        # when there is one, else from the JPG, so a placed JPG-only picture stops
-        # being counted as missing.
+        # For pictures the CSV says have no CAMERA GPS, ask the MASTER: its
+        # pictures.GPSPosition is the UPN's own record of any coordinate we placed —
+        # one indexed query, instead of re-opening every sidecar (that per-picture
+        # sidecar read is what froze the album switch for ~30 s on a big trip). A
+        # geotag mirrors straight into that column (geolocate.write_gps →
+        # MasterDB.apply_gps), so it is current; a coordinate placed since the last
+        # master read is folded in on the next re-read.
         missing = [u for u, has in upn_has_gps.items() if not has]
-        if missing:
-            src_by_upn = {u: xmp_by_upn.get(u) or jpg_by_upn.get(u)
-                          for u in missing if u in xmp_by_upn or u in jpg_by_upn}
-            placed = _gps_from_sidecars(src_by_upn, stats=stats)
-            for u in placed:
-                upn_has_gps[u] = True
+        if missing and db is not None:
+            try:
+                for u in db.upns_with_gps(missing):
+                    upn_has_gps[u] = True
+            except Exception as e:
+                logger.warning(f"No-GPS count: master GPS query failed: {e}")
 
         no_gps = sum(1 for has in upn_has_gps.values() if not has)
         return len(upns), jpegs, no_gps
@@ -356,11 +317,25 @@ def populate_virttrip_overview(self):
     # Website is built trip-wide (not per-day); detect from the all-species summary page.
     web_built = (virttrip_path / "web" / "summaries" / "all biota species-nl.html").exists()
 
+    # No-GPS is answered from the master's own pictures.GPSPosition (the UPN's
+    # truth) — a fast indexed query — instead of re-reading every picture's sidecar,
+    # which used to freeze the switch for ~30 s on a big album. Open the master DB
+    # once here and hand it to every day. None = no master configured → the column
+    # falls back to the CSV's camera GPS only (no placed-GPS reconciliation).
+    master_db = None
+    try:
+        _mroot = (_config.get("master", "masterbiotadatabase", fallback="")
+                  or "").replace('"', "").replace("'", "").strip()
+        if _mroot and Path(_mroot).is_dir():
+            from db.master_db import MasterDB
+            master_db = MasterDB(_mroot)
+    except Exception as e:
+        logger.debug(f"overview: master DB unavailable, GPS column from CSV only: {e}")
+
     no_gps_by_day: dict = {}
     logger.info(f"Checking GPS status for {len(day_dirs)} day(s)...")
-    sidecar_stats: dict = {}
     for i, day_dir in enumerate(day_dirs):
-        total, jpegs, no_gps = _count_pictures_from_csv(day_dir / "data_files.csv", stats=sidecar_stats)
+        total, jpegs, no_gps = _count_pictures_from_csv(day_dir / "data_files.csv", db=master_db)
         no_gps_by_day[day_dir.name] = no_gps
 
         self.virttrip_table.setItem(i, DATE_COL,  QTableWidgetItem(day_dir.name))
@@ -420,12 +395,8 @@ def populate_virttrip_overview(self):
         web_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
         self.virttrip_table.setItem(i, WEB_COL, web_item)
 
-    if sidecar_stats.get("stale"):
-        logger.info(f"GPS status checked for {len(day_dirs)} day(s): "
-                    f"{sidecar_stats.get('cached', 0)} sidecar(s) cached, "
-                    f"{sidecar_stats['stale']} read via exiftool.")
-    else:
-        logger.info(f"GPS status checked for {len(day_dirs)} day(s) (all cached).")
+    logger.info(f"GPS status checked for {len(day_dirs)} day(s) "
+                f"({'from the master DB' if master_db is not None else 'from CSV only'}).")
 
     overview_widget = QWidget()
     layout = QVBoxLayout(overview_widget)
