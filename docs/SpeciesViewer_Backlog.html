@@ -36,7 +36,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 22 July 2026 (album re-architecture — live master query, S0–S6) &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 22 July 2026 (drag-and-drop pool into the master — a third ingest path) &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Working task list for the SpeciesViewer nature-photo pipeline and GUI. Since the
 16 June version most of the backlog has shipped: the identity/​picture-root
@@ -59,6 +59,9 @@ design</em>.</p>
 <div class="next">
   <strong>What's next (the active shortlist):</strong>
   <ul style="margin-bottom:0;">
+    <li><strong>Drag-and-drop pool — a third way into the master</strong>
+      <span class="tag-complete">SHIPPED</span> — drag a hand-picked selection onto “Add Pictures to
+      Master”, name/rate it, commit; it lands in the album automatically by date (ch. 4).</li>
     <li><strong>Album re-architecture — an album is now a LIVE QUERY over the master</strong>
       <span class="tag-complete">SHIPPED</span> — no more per-day CSV snapshots; the whole
       stale-copy class (and the ~33% ghost pictures) is gone (ch. 2).</li>
@@ -1006,6 +1009,28 @@ the whole trip → master flow is in daily use.</p>
     one context-aware <code>AddToMasterDialog</code>: Master ▸ “Add Pictures to Master…” keeps an
     editable folder and remembers it across sessions (leftover-rescue after a trip is moved); Days ▸
     “Add to Master” locks the path to the day’s folder and stays stateless. (<code>9e2b233</code>)</li>
+  <li><strong>Drag-and-drop pool — a third way into the master</strong>
+    <span class="tag-shipped">SHIPPED</span> <code>6290701</code>, 2026-07-22, verified on Gran
+    Canaria (added dolphins live in the album + on the published blog). Beside date-range albums and
+    day folders, you can now <em>drag a hand-picked selection</em> (RAW + render + sidecars) onto
+    “Add Pictures to Master”. The drop zone is a <strong>visible tray</strong>: one thumbnail card per
+    picture with a file count; dropping only builds the pool (re-dropping is harmless), and nothing is
+    read until <strong>Scan pool</strong>. Name and rate the pictures in <strong>Review</strong>
+    (which now opens even when nothing is tagged yet, starting in <em>All</em>), then
+    <strong>Commit</strong>. Because an album is a live date-range query over the master, a picture
+    committed with the right camera date <strong>appears in its album automatically</strong> — no
+    separate “add to album” step. Key fix: the commit rebuilds the master SQLite cache
+    (<code>ensure_fresh</code>) and repaints the overviews, since the batch commit writes the CSVs
+    outside the DB journal and the album’s cached query was otherwise stale.</li>
+</ul>
+
+<h3>Known / next</h3>
+<ul>
+  <li><strong><code>sv7</code> commit is slow on a tiny add — the <code>-small.jpg</code> pass scales
+    with the whole master, not the delta.</strong> <span class="tag-new">OPEN</span> — committing two
+    added dolphins still walked a very large number of <code>-small.jpg</code> thumbnails (most already
+    cached). The commit’s website/thumbnail step should touch only the <em>added/changed</em> pictures,
+    not re-scan every small render. A batch/incremental win, not correctness — the add itself is fast.</li>
 </ul>
 
 <!-- ============================================================ -->

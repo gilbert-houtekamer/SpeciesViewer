@@ -197,6 +197,10 @@ Then the GPS/data-integrity umbrella (`project_gps_data_integrity`): tracklog ge
 **Done**
 - DONE **retire svr7 / deletelist.csv** (0fb1695) — deletelist.csv removed end-to-end (sv6 no longer writes it, sv7 gate dropped, svr7DeleteFiles deleted); trip_delete_scan is the sole delete authority. Verified live via a full freeze→commit→publish.
 - DONE **converge two no-trip ingest paths** (9e2b233) — one context-aware AddToMasterDialog: Master mode editable + remembers last folder (leftover-rescue wording); Days mode path locked to the day, stateless. Menu "(no trip)" → "Add Pictures to Master…". [[project_master_add_dialog]] [[project_working_days]]
+- SHIPPED **drag-and-drop pool — a third way into the master** (6290701, 2026-07-22, verified Gran Canaria: dolphins live in album + published blog). Drag a hand-picked selection (RAW+render+sidecars) onto "Add Pictures to Master". Drop zone = a VISIBLE tray (one thumbnail card per UPN + file count); dropping only builds the pool (re-drop harmless), nothing read until **Scan pool**. Review opens even when nothing is tagged (starts in All) → name+rate → Commit. Album inclusion is automatic by camera date (album = live date-range query). Key fix: commit rebuilds the master SQLite cache (ensure_fresh) + repaints overviews, else the album's cached query is stale (batch commit writes CSVs outside the DB journal). [[project_add_master_droppool]] [[project_album_rearch_datetime]]
+
+**Known / next**
+- OPEN **sv7 commit slow on a tiny add** — the `-small.jpg` pass scales with the whole master, not the delta (committing 2 dolphins still walked a huge number of cached small renders). The website/thumbnail step should touch only added/changed pictures. Batch/incremental win, not correctness. [[project_add_master_droppool]]
 
 ## 5. SmallMaster — COMPLETE ✓
 Shipped+live on SmallBoy; auto-locks read-only. No open items. [[project_small_master]]
