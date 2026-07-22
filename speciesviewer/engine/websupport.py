@@ -327,6 +327,16 @@ def jpgResizeCopy(targetstr, horizontalsize = 600):
                            f"{os.path.basename(targetstr)} is the file itself — "
                            f"writing it would destroy the original.")
             return
+        # CACHE: the callers loop over the WHOLE-master allspecies.csv, so a commit of
+        # two pictures used to regenerate every species' -small.jpg from scratch. Skip
+        # when a thumbnail already exists and is no older than its source — regenerate
+        # only when the source changed. (Missing source: fall through so Image.open
+        # raises and is logged as before.)
+        try:
+            if os.path.exists(small) and os.path.getmtime(small) >= os.path.getmtime(targetstr):
+                return
+        except OSError:
+            pass                                 # can't stat — fall through and rebuild
         image = Image.open(targetstr)
         if image.size[0] > image.size[1]:
             resized_image = image.resize((600, 450))
