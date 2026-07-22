@@ -60,9 +60,27 @@ class MainWindow(QMainWindow):
         red_layout.addWidget(self.days_panel, 1)
         self.hsplitter.addWidget(red_panel)
 
-        # Yellow panel
+        # Yellow panel. Style the tab bar explicitly so the SELECTED tab is yellow
+        # (it belongs to the yellow content below it) and the unselected tab is the
+        # pale "other" panel — the reverse of Windows' default, which paints the active
+        # tab white against a yellow strip.
         self.yellow_tabs = QTabWidget()
-        self.yellow_tabs.setStyleSheet("background-color: #fff8d2;")
+        self.yellow_tabs.setStyleSheet("""
+            QTabWidget::pane { background-color: #fff8d2; border: 1px solid #e6dfa8;
+                               border-top: none; }
+            QTabBar { background: transparent; }
+            QTabBar::tab {
+                background: #efefef; color: #666;
+                padding: 5px 16px; margin-right: 2px; margin-top: 3px;
+                border: 1px solid #dcdcdc; border-bottom: none;
+                border-top-left-radius: 4px; border-top-right-radius: 4px;
+            }
+            QTabBar::tab:selected {
+                background: #fff8d2; color: #000; font-weight: bold;
+                border: 1px solid #e6dfa8; border-bottom: none; margin-top: 0px;
+            }
+            QTabBar::tab:hover:!selected { background: #f6f6f6; }
+        """)
         self.hsplitter.addWidget(self.yellow_tabs)
 
         # Virtual trip navigator panel

@@ -110,12 +110,23 @@ class VirtTripInfoPanel(QWidget):
                 trip_name = (trip_data.get("trip_name") or d.name).strip()
                 is_adv    = trip_name in advertised
 
-                parts = [blog_dot]
-                if web_built:
-                    parts.append("🌐")
-                if is_adv:
-                    parts.append("📢")
-                base_text = f"{' '.join(parts)}  {d.name}"
+                # ONE icon, not a christmas tree — it captures the two things that
+                # matter (is it public, is the review done); the tooltip has the rest.
+                #   ✅ advertised + all blogs reviewed → done & public
+                #   📢 advertised but drafts remain    → public, review still pending
+                #   🟢 all reviewed, not advertised    → ready to publish
+                #   🟠 drafts remain, not advertised   → in progress
+                #   ⚪ no blogs yet
+                all_reviewed = bool(inis) and n_draft == 0
+                if is_adv and all_reviewed:
+                    icon = "✅"
+                elif is_adv:
+                    icon = "📢"
+                elif not inis:
+                    icon = "⚪"
+                else:
+                    icon = "🟢" if all_reviewed else "🟠"
+                base_text = f"{icon}  {d.name}"
 
                 item = QTreeWidgetItem([base_text])
                 item.setData(0, _PATH_ROLE, d)
