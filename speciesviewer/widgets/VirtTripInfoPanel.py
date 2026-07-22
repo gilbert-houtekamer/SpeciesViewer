@@ -2,13 +2,33 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QTreeWidget, QTreeWidg
 from PyQt6.QtGui import QFont, QCursor
 from PyQt6.QtCore import Qt
 from pathlib import Path
+import csv
 import os
-from utils.virttrip_config import read_virttrip_ini
+from utils.virttrip_config import read_virttrip_ini, blog_review_state, BLOG_DRAFT
 from utils.config import _config, persist_config, get_virttrips_root
 from utils.open_path import open_path
 
 _PATH_ROLE = Qt.ItemDataRole.UserRole          # trip_dir Path object
 _BASE_ROLE = Qt.ItemDataRole.UserRole + 1      # base label text without ▶
+
+
+def _advertised_trip_names() -> set:
+    """The trip_names advertised per THIS machine's master admin/trip_admin.csv — a
+    cheap, local read (one small CSV). The authoritative check is against the WEB copy
+    (Manage Album Publication does that); this is what the local master last recorded.
+    Empty set on any problem."""
+    try:
+        mroot = (_config.get("master", "masterbiotadatabase", fallback="")
+                 or "").replace('"', "").replace("'", "").strip()
+        p = Path(mroot) / "admin" / "trip_admin.csv"
+        if not p.is_file():
+            return set()
+        with p.open(encoding="utf-8", newline="") as f:
+            return {(row.get("trip_name") or "").strip()
+                    for row in csv.DictReader(f, delimiter=";")
+                    if (row.get("trip_name") or "").strip()}
+    except Exception:
+        return set()
 
 
 class VirtTripInfoPanel(QWidget):
@@ -56,6 +76,9 @@ class VirtTripInfoPanel(QWidget):
         if hasattr(self, "root_label"):
             self.root_label.setText(virttrip_root or "(not configured)")
         root_path = Path(virttrip_root) if virttrip_root else None
+        # The trip_names advertised per this machine's master — one small local read,
+        # reused for every album row.
+        advertised = _advertised_trip_names()
         if root_path and root_path.is_dir():
             for d in sorted(root_path.iterdir()):
                 if not d.is_dir():
@@ -69,11 +92,30 @@ class VirtTripInfoPanel(QWidget):
                 if trip_data is None:
                     continue
 
+                # ── status, all cheap + local ────────────────────────────────
+                # Blog dot (🟠/🟢/⚪), same convention as the yellow overview panel.
+                blog_dir = d / "metadata" / "blog"
+                inis = sorted(blog_dir.glob("blog_*.ini")) if blog_dir.is_dir() else []
+                n_draft = sum(1 for p in inis if blog_review_state(p) == BLOG_DRAFT)
+                if not inis:
+                    blog_dot, blog_note = "⚪", "no blogs yet"
+                elif n_draft:
+                    blog_dot = "🟠"
+                    blog_note = (f"{n_draft} of {len(inis)} day blog"
+                                 f"{'s' if len(inis) != 1 else ''} still a draft to review")
+                else:
+                    blog_dot, blog_note = "🟢", f"all {len(inis)} day blogs reviewed"
+
                 web_built = (d / "web" / "summaries").is_dir()
-                blog_dir  = d / "metadata" / "blog"
-                has_blogs = blog_dir.is_dir() and any(blog_dir.glob("*.ini"))
-                icon = "✅" if web_built else ("📝" if has_blogs else "⚪")
-                base_text = f"{icon} {d.name}"
+                trip_name = (trip_data.get("trip_name") or d.name).strip()
+                is_adv    = trip_name in advertised
+
+                parts = [blog_dot]
+                if web_built:
+                    parts.append("🌐")
+                if is_adv:
+                    parts.append("📢")
+                base_text = f"{' '.join(parts)}  {d.name}"
 
                 item = QTreeWidgetItem([base_text])
                 item.setData(0, _PATH_ROLE, d)
@@ -87,8 +129,18 @@ class VirtTripInfoPanel(QWidget):
                 message_en = trip_data.get("message_en", "")
                 date_range = f"{fromdate} – {todate}" if fromdate else ""
 
+                web_line = "🌐 website built" if web_built else "— no website built"
+                if is_adv:
+                    adv_line = ("📢 advertised on the trip index "
+                                "<span style='color:#888'>(per this machine's master)</span>")
+                else:
+                    adv_line = "— not advertised on the trip index"
+                status_html = (
+                    f"<p><b>Status</b><br>{blog_dot} {blog_note}<br>"
+                    f"{web_line}<br>{adv_line}</p><hr>")
                 tooltip_html = f"""
                     <html><body>
+                        {status_html}
                         <p><b>{title_nl}</b></p><p>{message_nl}</p><p></p>
                         <p><b>{title_en}</b></p><p>{message_en}</p>
                         {f'<p><i>{date_range}</i></p>' if date_range else ''}
