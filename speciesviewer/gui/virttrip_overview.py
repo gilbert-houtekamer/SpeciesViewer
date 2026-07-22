@@ -280,24 +280,33 @@ def _day_counts_from_query(db, fromdate: str, todate: str) -> dict:
     day. Returns {"YYYY-MM-DD": (pictures, jpeg_files, no_gps)}:
       - pictures  = distinct UPNs in range (the pictures table is per-UPN);
       - jpeg_files = jpg/jpeg file rows for those UPNs;
-      - no_gps    = pictures whose master GPSPosition is empty. That is the UPN's own
-        truth, into which a geotag is mirrored (apply_gps), so a placed coordinate is
-        counted here WITHOUT re-reading any sidecar — the whole reconciliation dance
-        the CSV path needed collapses to one field test."""
+      - no_gps    = pictures with NO coordinate anywhere. A picture has GPS if its
+        master pictures.GPSPosition is set (a placed coordinate, mirrored by apply_gps)
+        OR any of its file rows carries a CAMERA coordinate (Composite:GPSPosition /
+        EXIF:GPSLatitude). The picture row alone is not enough: the master doesn't
+        always copy the camera's fix up to the picture level (Gran Canaria has 233
+        pictures whose files hold camera GPS but whose picture row is empty), so
+        checking only the picture row over-counts 'without GPS'."""
     by_day = db.pictures_in_daterange(fromdate, todate)
     all_upns = [p["UniquePictureName"] for pics in by_day.values() for p in pics]
     files = db.files_for_upns(all_upns)
     jpeg_by_upn: dict = {}
+    file_gps_upns: set = set()          # UPNs with a camera coordinate in a file row
     for r in files.values():
+        u = r.get("UniquePictureName", "")
+        if not u:
+            continue
         if (r.get("WindowsExtension") or "").lower() in JPEG_EXTS:
-            u = r.get("UniquePictureName", "")
-            if u:
-                jpeg_by_upn[u] = jpeg_by_upn.get(u, 0) + 1
+            jpeg_by_upn[u] = jpeg_by_upn.get(u, 0) + 1
+        if (r.get("Composite:GPSPosition") or "").strip() or (r.get("EXIF:GPSLatitude") or "").strip():
+            file_gps_upns.add(u)
     counts: dict = {}
     for day, pics in by_day.items():
         upns = [p["UniquePictureName"] for p in pics]
         jpegs = sum(jpeg_by_upn.get(u, 0) for u in upns)
-        no_gps = sum(1 for p in pics if not (p.get("GPSPosition") or "").strip())
+        no_gps = sum(1 for p in pics
+                     if not (p.get("GPSPosition") or "").strip()
+                     and p["UniquePictureName"] not in file_gps_upns)
         counts[day] = (len(pics), jpegs, no_gps)
     return counts
 
