@@ -82,6 +82,11 @@ class MainWindow(QMainWindow):
             }
             QTabBar::tab:hover:!selected { background: #f6f6f6; }
         """)
+        # Remember which tab (Active Trip / Active Album) the user last chose, so the
+        # choice survives a restart. Both overviews force their own tab selected when
+        # they (re)build, so we key off tabBarClicked — a genuine user click — rather
+        # than the current index, which the programmatic switches keep resetting.
+        self.yellow_tabs.tabBarClicked.connect(self._remember_active_yellow_tab)
         self.hsplitter.addWidget(self.yellow_tabs)
 
         # Virtual trip navigator panel
@@ -281,6 +286,28 @@ class MainWindow(QMainWindow):
         persist_config()
         super().closeEvent(event)
     
+    def _remember_active_yellow_tab(self, index):
+        """Persist the yellow tab the user just clicked (by its title, since indices
+        shift as tabs are added/removed). Written to disk on close with the rest of
+        [layout]."""
+        if index < 0:
+            return
+        if not _config.has_section("layout"):
+            _config.add_section("layout")
+        _config["layout"]["active_yellow_tab"] = self.yellow_tabs.tabText(index)
+
+    def _restore_active_yellow_tab(self):
+        """Re-select the tab the user last clicked. Called once after startup
+        population (both overviews force their own tab selected as they build, so this
+        has to run last to win)."""
+        want = _config.get("layout", "active_yellow_tab", fallback="").strip()
+        if not want:
+            return
+        for i in range(self.yellow_tabs.count()):
+            if self.yellow_tabs.tabText(i) == want:
+                self.yellow_tabs.setCurrentIndex(i)
+                return
+
     def init_panels(self):
         self.yellow_builder.populate_tabs(self.yellow_tabs)
 
