@@ -1026,22 +1026,28 @@ the whole trip → master flow is in daily use.</p>
 
 <h3>Known / next</h3>
 <ul>
-  <li><strong><code>sv7</code> regenerates EVERY species’ <code>-small.jpg</code> on every commit —
-    no cache, whole-master loop.</strong> <span class="tag-new">OPEN</span> (diagnosed 2026-07-22) —
-    <code>jpgResizeCopy</code> (<code>engine/websupport.py:316</code>) has no exists/mtime guard: it
-    re-opens + resizes + re-saves the thumbnail on <em>every</em> call, and
-    <code>sv7WriteCommit.py:97-105</code> (also <code>svv4BuildWebsite.py:284-294</code>) calls it for
-    every row of the whole-master <code>allspecies.csv</code>. That is both the slowness AND the
-    “not cached” symptom. Fix: skip when <code>-small</code> exists and is newer than its source, and/or
-    only process changed species. <strong>NOT data loss</strong> — verified the committed pictures’
-    <code>data_files</code> point at their real <code>biota/</code> location, not the pool.</li>
-  <li><strong>Pool-added pictures write their <code>-small.jpg</code> into the deleted temp pool.</strong>
-    <span class="tag-new">OPEN</span> — <code>allspecies.csv</code> recorded the temp
-    <code>sv_droppool_…</code> path as the representative source for the newly-added species, so their
-    thumbnails land in temp (the website still gets a valid upload; only the local <code>biota/</code>
-    copy of those thumbnails is missing until a full rebuild). Cosmetic/waste, not corruption. (Minor
-    aside: the biota path in <code>data_files</code> shows a mixed <code>\</code>/<code>/</code>
-    separator — a path-hygiene smell, resolves fine.)</li>
+  <li><strong><code>sv7</code> regenerated EVERY species’ <code>-small.jpg</code> on every commit —
+    no cache, whole-master loop.</strong> <span class="tag-complete">FIXED</span> (f68d36f, 2026-07-22)
+    — <code>jpgResizeCopy</code> (<code>engine/websupport.py</code>) had no exists/mtime guard: it
+    re-opened + resized + re-saved the thumbnail on <em>every</em> call, and
+    <code>sv7WriteCommit.putRecursiveTreeWeb</code> (also <code>svv4BuildWebsite</code>) called it for
+    every row of the whole-master <code>allspecies.csv</code> — both the slowness AND the
+    “not cached” symptom. Fix: one guard after the never-write-over-source refusal — skip when the
+    <code>-small.jpg</code> exists and its mtime ≥ source; rebuild only on source change; missing
+    source falls through to <code>Image.open</code> (raises + logged). <strong>Verified live: whole-master
+    publish ~20× faster.</strong></li>
+  <li><strong>Pool-added pictures wrote their <code>-small.jpg</code> into the deleted temp pool.</strong>
+    <span class="tag-complete">FIXED</span> (00f99d2, 2026-07-22) — <code>writeOneSpecies</code>
+    registered the transient <code>sourcestr</code> (a temp <code>sv_droppool_…</code> path, or a
+    trip-local file) as the <code>allspecies.csv</code> resize source, so the thumbnail landed where
+    <code>putRecursiveTreeDisk</code>’s <code>copytree(frozen/biota → repository/biota)</code> never
+    reached — the local <code>biota/</code> thumbnail was missing until a full rebuild (website upload
+    was fine; not corruption). Fix: in the copy branch register the frozen biota copy
+    (<code>targetstr</code>) — the real persistent file <code>shutil.copy</code> just made — so
+    <code>-small.jpg</code> lands beside it and is carried into <code>biota/</code>. The historical
+    <code>_src_already_at_final</code> branch stays <code>sourcestr</code>, preserving the cache above.
+    (Minor aside, still open: the biota path in <code>data_files</code> shows a mixed
+    <code>\</code>/<code>/</code> separator — a path-hygiene smell, resolves fine.)</li>
 </ul>
 
 <!-- ============================================================ -->
