@@ -36,7 +36,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 15 July 2026 (JPG-only GPS read-back + sidecar-viewer search) &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 22 July 2026 (album re-architecture — live master query, S0–S6) &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Working task list for the SpeciesViewer nature-photo pipeline and GUI. Since the
 16 June version most of the backlog has shipped: the identity/​picture-root
@@ -59,6 +59,9 @@ design</em>.</p>
 <div class="next">
   <strong>What's next (the active shortlist):</strong>
   <ul style="margin-bottom:0;">
+    <li><strong>Album re-architecture — an album is now a LIVE QUERY over the master</strong>
+      <span class="tag-complete">SHIPPED</span> — no more per-day CSV snapshots; the whole
+      stale-copy class (and the ~33% ghost pictures) is gone (ch. 2).</li>
     <li><strong>GPS / data-integrity umbrella — down to one item: tracklog geotag (GPX)</strong>
       (ch. 3). GPS-from-addresses and location-from-GPS are both shipped; the dead-link purge
       shipped as Refresh Master Database.</li>
@@ -230,13 +233,49 @@ Cancel-during-copy, Lightroom-in-place, and tz-offset are validated.</p>
 </ul>
 
 <!-- ============================================================ -->
-<h2>2. Albums <span class="tag-complete">CORE + RETIRE COMPLETE</span></h2>
+<h2>2. Albums <span class="tag-complete">CORE + RETIRE COMPLETE</span> <span class="tag-complete">RE-ARCHITECTED</span></h2>
 
-<p>The whole arc is shipped and live: create → extract days → migrate &amp; upload blogs →
-build website → make blogs clickable → add to master. <strong>Retire-a-trip-to-a-virtual-trip</strong>
-now runs the entire chain from one confirm (verified end-to-end on BigBoy/Braakman), banners
-and clickable blogs correct, published under <code>/trips/&lt;name&gt;/</code>. Blog re-render
-(svv6 “make clickable”) and the per-day blog editor are done.</p>
+<p><strong>An album is now a LIVE QUERY over the master by its date range</strong>, not a
+copied-out set of per-day CSV snapshots — the single biggest change in this chapter and the
+thing that dissolves most of the bug list below.</p>
+
+<div class="next">
+  <p><strong>Album re-architecture (S0–S6) <span class="tag-shipped">SHIPPED</span>.</strong>
+  An album used to be per-day CSV snapshots that <code>svv2 Extract Days</code> copied out of the
+  master; they went stale the instant the master changed — the root of every GPS / crop / rating /
+  qualifier staleness bug here, and why the 9 albums carried ~33% <em>ghost</em> pictures. An album
+  is now a query: <code>fromdate ≤ DateTimeOriginal ≤ todate</code> over the master
+  (<code>MasterDB.pictures_in_daterange</code> + <code>batch/album_source.py</code>), exactly the way
+  the Master Species Viewer filters by species — so there is <strong>one copy of the truth</strong>
+  and the stale-copy class is gone.</p>
+  <ul>
+    <li><strong>Read side</strong> — the overview (day list + Pictures/JPEG/GPS counts), the day
+      viewer (cards, crop marks, captions), and the map all read the master directly. The map seeds
+      each picture's placed GPS from the master mirror, so Helgoland (a camera with no receiver) now
+      plots every picture.</li>
+    <li><strong>Publish side</strong> — <code>svv3</code> (blog), <code>svv4</code> (website) and
+      <code>svv6</code> (make-clickable) all load per day from the master;
+      <code>svv2 Extract Days</code> is <strong>retired</strong> (menu + every pipeline) and nothing
+      writes <code>metadata/review/</code> any more. Build Website now opens the species overview in
+      the browser on finish, like Write Blog does for the blog index.</li>
+    <li><strong>One master card menu</strong> — the album day viewer converged onto the Master
+      Species Viewer's full surface (sex/age/plumage · pin best-JPG · delete-JPG · move-to-species ·
+      add renders · delete) via a shared <code>gui/master_ops.py</code>; the two viewers' duplicate
+      copies are gone. Album edits (rating / colour / <strong>qualifier</strong>) mirror into the
+      master DB, so the blog + website publish the right form (a picture marked <em>imm.</em> or
+      <em>♂♀ br.</em> now shows it).</li>
+    <li><strong>Authoring gated to BigBoy</strong> — Create / Find-Trips / Import / Retire need the
+      full master (<code>readonly_locked</code>); a SmallBoy can view + publish but not design.</li>
+  </ul>
+  <p>This makes the old <em>“re-extract the 9 stale albums”</em> chore <strong>moot</strong> — there
+  is no extract, and nothing to go stale.</p>
+</div>
+
+<p>The rest of the arc remains shipped and live: create → migrate &amp; upload blogs → build website
+→ make blogs clickable → add to master. <strong>Retire-a-trip-to-a-virtual-trip</strong> runs the
+entire chain from one confirm (verified end-to-end on BigBoy/Braakman), published under
+<code>/trips/&lt;name&gt;/</code>. Blog re-render (svv6 “make clickable”) and the per-day blog editor
+are done.</p>
 
 <h3>Shipped — the retroactive trip (Sri Lanka is live)</h3>
 <ul>
