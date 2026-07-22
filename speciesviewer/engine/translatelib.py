@@ -47,28 +47,45 @@ class CachedTranslate:
             self.cachedtranslations = 0
         self._dirty = False
 
-    def writeTranslationCache(self):
-        # Persist whenever anything changed (a new translation, a backfilled
-        # source_lang, or a human verification/correction) — not just on growth.
+    def writeTranslationCache(self, on_locked=None) -> bool:
+        """Persist the cache whenever anything changed. Returns True on success (or when
+        there is nothing to save).
+
+        TransCache.csv lives in the master admin, which can be open in Excel or mid
+        Dropbox-sync — a plain write then dies with PermissionError. We never crash on
+        that: the cache is kept in memory (still marked dirty, so it saves next time) and
+        this returns False. An interactive caller may pass `on_locked(err) -> "retry" |
+        "skip"` to let the user free the file and try again."""
         if not self._dirty:
-            return
+            return True
         cachefile = os.path.join(self.admindir, 'TransCache.csv')
         os.makedirs(self.admindir, exist_ok=True)
-        logger.info(f'Writing {len(self.translation_cache)} cached translations to CSV file "{cachefile}".')
-        with open(cachefile, "w", newline="", encoding='utf-8') as csvfile:
-            writer = csv.DictWriter(csvfile,
-                                    fieldnames=['crctext', 'translatedtext', 'source_lang', 'verified'],
-                                    quoting=csv.QUOTE_MINIMAL, delimiter='^')
-            writer.writeheader()
-            for crc, entry in self.translation_cache.items():
-                writer.writerow({
-                    'crctext': int(crc),
-                    'translatedtext': entry['translation'],
-                    'source_lang': entry.get('source_lang', ''),
-                    'verified': '1' if entry.get('verified') else '0',
-                })
-        self.cachedtranslations = len(self.translation_cache)
-        self._dirty = False
+        while True:
+            try:
+                logger.info(f'Writing {len(self.translation_cache)} cached translations to CSV file "{cachefile}".')
+                with open(cachefile, "w", newline="", encoding='utf-8') as csvfile:
+                    writer = csv.DictWriter(csvfile,
+                                            fieldnames=['crctext', 'translatedtext', 'source_lang', 'verified'],
+                                            quoting=csv.QUOTE_MINIMAL, delimiter='^')
+                    writer.writeheader()
+                    for crc, entry in self.translation_cache.items():
+                        writer.writerow({
+                            'crctext': int(crc),
+                            'translatedtext': entry['translation'],
+                            'source_lang': entry.get('source_lang', ''),
+                            'verified': '1' if entry.get('verified') else '0',
+                        })
+                self.cachedtranslations = len(self.translation_cache)
+                self._dirty = False
+                return True
+            except OSError as e:
+                logger.warning(
+                    f'Could not write "{cachefile}": {e}. It is probably open in Excel or '
+                    f'syncing in Dropbox — the translations are kept and will be saved next '
+                    f'time.')
+                if on_locked is None or on_locked(e) != "retry":
+                    return False
+                # else loop and try again — the user has (hopefully) freed the file.
 
     def detectLanguage(self, text):
         try:

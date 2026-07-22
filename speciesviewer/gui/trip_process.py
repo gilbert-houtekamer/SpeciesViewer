@@ -307,7 +307,9 @@ class TripCreationDialog(QDialog):
         select_button.clicked.connect(self.on_select)
 
     def closeEvent(self, event):
-        self.passed_parent.translator.writeTranslationCache()
+        from gui.translation_validate import prompt_translation_locked
+        self.passed_parent.translator.writeTranslationCache(
+            on_locked=lambda e: prompt_translation_locked(self, e))
         super().closeEvent(event)
 
     def create_new_trip_folder(self):

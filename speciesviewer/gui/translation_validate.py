@@ -24,6 +24,25 @@ def _cache_text(kind, raw):
     return raw
 
 
+def prompt_translation_locked(parent, err) -> str:
+    """Ask the user what to do when TransCache.csv is locked (open in Excel / Dropbox
+    syncing). Returns "retry" or "skip" — pass this as writeTranslationCache(on_locked=…)
+    so a failed save offers a way out instead of crashing."""
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setWindowTitle("Translations not saved")
+    box.setText("Could not save the translation cache — <b>TransCache.csv</b> is "
+                "locked by another process.")
+    box.setInformativeText(
+        "It is probably open in Excel, or Dropbox is syncing it. Close it, then "
+        "<b>Retry</b> — or <b>Skip</b> to carry on (the translations are kept in memory "
+        "and will be saved next time).")
+    retry_btn = box.addButton("Retry", QMessageBox.ButtonRole.AcceptRole)
+    box.addButton("Skip", QMessageBox.ButtonRole.RejectRole)
+    box.exec()
+    return "retry" if box.clickedButton() is retry_btn else "skip"
+
+
 class _Card:
     """One validatable text: a picture's Headline or Description."""
     def __init__(self, upn_name, files, kind, raw, src_lang,
@@ -180,7 +199,8 @@ class TranslationValidateDialog(QDialog):
                                               corrected=new_trans, source_lang=c.src_lang)
                 verified_count += 1
 
-        self.translator.writeTranslationCache()
+        self.translator.writeTranslationCache(
+            on_locked=lambda e: prompt_translation_locked(self, e))
         self.logger.info(
             f"Translation validation ({self.day_str}): {verified_count} verified, "
             f"{source_fixes} source text(s) corrected.")
