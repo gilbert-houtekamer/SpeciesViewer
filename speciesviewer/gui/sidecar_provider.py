@@ -314,6 +314,21 @@ class SidecarItem(PictureItem):
     def set_rating(self, value: int) -> None:
         self._c.write_tag(self._stem, "XMP:Rating", str(int(value)), "Rating")
 
+    @property
+    def rate(self):
+        """The master's computed Rate score for this picture, shown on the card. Comes
+        from the bound master rows (album day viewer, collection._master_upn); None → the
+        card shows '?', which is right for the plain culling grid (no master DB, so no
+        computed score). The star rating is separate and edited via the sidecar."""
+        row = getattr(self._c, "_master_upn", {}).get(self._stem)
+        if not row:
+            return None
+        try:
+            r = row.get("Rate")
+            return int(r) if r not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
+
     def set_color(self, value: str) -> None:
         self._c.write_tag(self._stem, "XMP:Label", value, "Label")
 
@@ -967,24 +982,35 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
             logger.warning(f"qualifiers: {key} has no species to attach them to.")
             return False
         subject = build_species_subject(name, selected)
-        item.set_species(subject)               # writes XMP:Subject to the master's file
+        item.set_species(subject)               # writes XMP:Subject to the master's .xmp
         mf, age, sw = qualifier_fields(subject)
         # Keep the bound in-memory master row in step, so the caller's status text and any
-        # later gating see the new form without a re-read.
+        # later gating see the new form without a re-read. Also carry the new keyword onto
+        # this UPN's file rows: the publish pipeline RE-DERIVES the form from the first
+        # file's XMP:Subject (projectlib.addSpeciesInformation → getBirdInfo), so updating
+        # only the picture row is not enough — the blog would re-derive the base species.
         row = getattr(self, "_master_upn", {}).get(key)
+        file_updates: dict = {}
         if row is not None:
             row["subject"] = subject
             row["malefemale"], row["ageintext"], row["summerwinter"] = mf, age, sw
+            # Replace the keyword on EVERY file that already carries one (the pipeline
+            # uses the first file with a non-empty XMP:Subject, which can be the RAW), so
+            # the re-derivation can't fall back to a sibling still holding the base name.
+            for fname in (row.get("Files") or []):
+                frow = getattr(self, "_master_files", {}).get(fname)
+                if frow and (frow.get("XMP:Subject") or "").strip():
+                    frow["XMP:Subject"] = subject
+                    file_updates[fname] = {"XMP:Subject": subject}
         # Mirror the form into the master DB — like the GPS mirror. The blog and website
-        # read the master's pictures.malefemale/ageintext/summerwinter, NOT the sidecar,
-        # so without this the DB stays empty and the published page shows the base species
-        # with no 'imm.' / '♀' suffix. Only when bound to a master (the album day viewer);
-        # the plain culling grid has no DB and just writes the sidecar.
+        # read the master, NOT the sidecar, so without this the published page shows the
+        # base species with no 'imm.' / '♀' suffix. Only when bound to a master (the album
+        # day viewer); the plain culling grid has no DB and just writes the sidecar.
         db = getattr(self, "_master_db", None)
         if db is not None:
             try:
-                db.apply_qualifiers(key, subject=subject, malefemale=mf,
-                                    ageintext=age, summerwinter=sw)
+                db.apply_qualifiers(key, subject=subject, malefemale=mf, ageintext=age,
+                                    summerwinter=sw, file_updates=file_updates)
             except Exception as e:
                 logger.warning(f"qualifier master mirror failed for {key}: {e}")
         return True
