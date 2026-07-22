@@ -1306,7 +1306,16 @@ def writeOneSpecies(MyProject, leaf, temptextfile):
                     MyProject.getBiotaWebRoot(), species['TargetPath'], species['BestJPG']))
             else:
                 rc = shutil.copy(sourcestr, targetstr)
-                MyProject.addAllSpeciesFiles(sourcestr,os.path.join(MyProject.getBiotaWebRoot(), species['TargetPath'], species['BestJPG']))
+                # Register the FROZEN biota copy (targetstr), not the transient
+                # source (sourcestr), as the -small.jpg resize source. sourcestr
+                # can be a temp drop-pool path (sv_droppool_…) or a trip-local
+                # file; resizing there writes the thumbnail somewhere that never
+                # reaches the repository biota tree, so putRecursiveTreeDisk's
+                # copytree(frozen/biota -> repository/biota) leaves the local
+                # thumbnail missing until a full rebuild. targetstr is the real,
+                # persistent full-size copy in the frozen biota tree, so the
+                # -small.jpg lands beside it and is carried into biota/ on commit.
+                MyProject.addAllSpeciesFiles(targetstr,os.path.join(MyProject.getBiotaWebRoot(), species['TargetPath'], species['BestJPG']))
         except Exception as e:
             logger.info(f"writeOneSpecies copy failed {sourcestr} -> {targetstr}: {e}")
     else:
