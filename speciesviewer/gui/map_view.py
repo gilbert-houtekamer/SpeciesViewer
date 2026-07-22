@@ -45,7 +45,11 @@ _MERC_MAX_LAT = 85.05112878   # Web-Mercator clamp
 # are openly licensed (OSM / OpenTopoMap CC-BY-SA). Terrain gives the paper-atlas
 # relief the user wanted and is the default.
 _BASEMAPS = [
-    {"name": "Terrain", "sub": "opentopo", "max": 17, "wash": 0.35,
+    # OpenTopoMap renders to zoom 17 only in well-mapped regions; over remote areas
+    # (Costa Rica rainforest, etc.) its tiles stop earlier and it serves a grey
+    # "max zoom / layer = 17" PLACEHOLDER instead of relief. Cap Terrain at 15 — its
+    # reliable global level — so a zoom-in never lands on those placeholder tiles.
+    {"name": "Terrain", "sub": "opentopo", "max": 15, "wash": 0.35,
      "url": "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
      "attr": "© OpenTopoMap (CC-BY-SA) · © OpenStreetMap contributors"},
     {"name": "Standard", "sub": "osm", "max": 19, "wash": 0.0,
