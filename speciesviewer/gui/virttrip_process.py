@@ -1093,6 +1093,20 @@ class VirtualTripCreationDialog(QDialog):
         )
 
 
+def _virttrip_spec(module_fn, before_msg, after_msg):
+    """Return a MenuSpec that runs a virtual-trip batch module."""
+    return MenuSpec(
+        callback=None,
+        batch_parms={
+            "statusname":    "",
+            "module_called": module_fn,
+            "before_msg":    before_msg,
+            "after_msg":     after_msg,
+            "virttrip_mode": True,
+        },
+    )
+
+
 class ExportVirtualTripDialog(QDialog):
     """Zip the active virtual trip's authored content (recipe, blog drafts,
     extracted day CSVs) for transfer to another machine.
