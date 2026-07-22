@@ -15,7 +15,6 @@ from gui.batch import BatchModuleRunner
 from utils.config import set_setting, _config, get_virttrips_root, get_trips_root
 from utils.virttrip_config import read_virttrip_ini
 from gui.virttrip_overview import populate_virttrip_overview
-import batch.svv2ExtractDays
 import batch.svv3WriteBlog
 import batch.svv4BuildWebsite
 import batch.svv5AddToMaster
@@ -26,6 +25,31 @@ from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt,
                                    RecentDirectoryFieldQt, DirectoryFieldQt, ImageFileFieldQt)
 
 import batch.svv1MakeVirtualRepository
+
+logger = logging.getLogger("speciesviewer")
+
+
+def require_full_master(parent) -> bool:
+    """True when this machine holds the FULL master and may AUTHOR albums.
+
+    An album is a live query over the WHOLE master by date range, so creating or
+    redesigning one needs the complete master. A SmallMaster install
+    (master.readonly_locked = yes) holds only a JPG-bearing subset — it can VIEW and
+    PUBLISH albums, but designing one against a partial master would silently drop
+    pictures. Returns False (with a plain-language note) on such a machine so the
+    caller can abort before opening the authoring dialog."""
+    locked = _config.get("master", "readonly_locked",
+                         fallback="no").strip().lower() == "yes"
+    if locked:
+        QMessageBox.information(
+            parent, "Design albums on the main machine",
+            "This machine holds a partial copy of the master (a SmallMaster install), "
+            "so it can view and publish albums but not create or redesign them.\n\n"
+            "An album is a live query over the WHOLE master by date range, which isn't "
+            "available here — designing one would silently leave pictures out. Create "
+            "and edit albums on the machine that has the full master.")
+        return False
+    return True
 
 
 def generate_virttrip_ini(
@@ -492,7 +516,6 @@ def retire_trip_to_virttrip(parent):
 
     steps = [
         ("Creating the album",          lambda: batch.svv1MakeVirtualRepository.main(args, mcfg)),
-        ("Extracting days from the master",    lambda: batch.svv2ExtractDays.main(args, mcfg)),
         ("Migrating the trip blogs",           _migrate_blogs),
         ("Writing and uploading the blogs",    lambda: batch.svv3WriteBlog.main(args, mcfg)),
         ("Building the website",               lambda: batch.svv4BuildWebsite.main(args, mcfg)),
@@ -1011,7 +1034,6 @@ class VirtualTripCreationDialog(QDialog):
 
         steps = [
             ("Creating the album",                 lambda: batch.svv1MakeVirtualRepository.main(args, mcfg)),
-            ("Extracting days from the master",     lambda: batch.svv2ExtractDays.main(args, mcfg)),
             ("Writing and uploading the blogs",     lambda: batch.svv3WriteBlog.main(args, mcfg)),
             ("Building and uploading the website",  lambda: batch.svv4BuildWebsite.main(args, mcfg)),
             ("Making the blogs clickable",          lambda: batch.svv6RedoBlog.main(args, mcfg)),
@@ -1069,78 +1091,6 @@ class VirtualTripCreationDialog(QDialog):
             self.logger,
             name_profile=self.name_profile_combo.currentData() or "",
         )
-
-
-class ExtractDaysDialog(QDialog):
-    def __init__(self, parent, menu_spec):
-        super().__init__(parent)
-        self.menu_spec = menu_spec
-        self.logger = parent.logger
-        self.passed_parent = parent
-        self.setWindowTitle("Extract Days from Master")
-        self.resize(600, 280)
-
-        layout = QVBoxLayout(self)
-
-        virttrip_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
-        trip_data = read_virttrip_ini(virttrip_root) if virttrip_root else {}
-
-        fromdate = trip_data.get("fromdate", "?") if trip_data else "?"
-        todate   = trip_data.get("todate",   "?") if trip_data else "?"
-
-        # Count days in range for the info label
-        day_count = ""
-        try:
-            n = (datetime.strptime(todate, "%Y-%m-%d") -
-                 datetime.strptime(fromdate, "%Y-%m-%d")).days + 1
-            day_count = f" ({n} day{'s' if n != 1 else ''})"
-        except ValueError:
-            pass
-
-        layout.addWidget(HTMLLabel(
-            "<p><b>Extract daily picture data from the master</b><br>"
-            "Reads the master's <i>data_files.csv</i> and <i>data_pictures.csv</i> and writes "
-            "one sub-directory per day that has pictures:</p>"
-            "<pre>  &lt;virttrip&gt;/metadata/review/YYYY-MM-DD/data_files.csv\n"
-            "  &lt;virttrip&gt;/metadata/review/YYYY-MM-DD/data_pictures.csv</pre>"
-            "<p>Days with no pictures in the master are skipped.</p>"
-        ))
-
-        layout.addWidget(QLabel(f"Album:  {virttrip_root or '(not set)'}"))
-        layout.addWidget(QLabel(f"Date range:    {fromdate}  →  {todate}{day_count}"))
-
-        self.status_label = QLabel("")
-        layout.addWidget(self.status_label)
-
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        run_btn   = QPushButton("Extract Days")
-        close_btn = QPushButton("Close")
-        btn_layout.addWidget(run_btn)
-        btn_layout.addWidget(close_btn)
-        layout.addLayout(btn_layout)
-
-        run_btn.clicked.connect(self.on_run)
-        close_btn.clicked.connect(self.close)
-
-    def on_run(self):
-        runner = BatchModuleRunner(self, self.passed_parent)
-        runner.run(self.menu_spec,
-                   on_success=lambda: populate_virttrip_overview(self.passed_parent))
-
-
-def _virttrip_spec(module_fn, before_msg, after_msg):
-    """Return a MenuSpec that runs a virtual-trip batch module."""
-    return MenuSpec(
-        callback=None,
-        batch_parms={
-            "statusname":    "",
-            "module_called": module_fn,
-            "before_msg":    before_msg,
-            "after_msg":     after_msg,
-            "virttrip_mode": True,
-        },
-    )
 
 
 class ExportVirtualTripDialog(QDialog):
@@ -1260,12 +1210,6 @@ class ImportVirtualTripDialog(QDialog):
         self.dest_label.setStyleSheet("color: #555; font-style: italic;")
         layout.addWidget(self.dest_label)
 
-        self.reextract_check = QCheckBox(
-            "Re-run \"Extract Days from Master\" after import (recommended — "
-            "regenerates picture paths and current data for this machine's master)")
-        self.reextract_check.setChecked(True)
-        layout.addWidget(self.reextract_check)
-
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
@@ -1353,19 +1297,11 @@ class ImportVirtualTripDialog(QDialog):
         populate_virttrip_overview(self.passed_parent)
         self.passed_parent.virttrip_panel.rebuild()
 
-        if self.reextract_check.isChecked():
-            self.status_label.setText(f"✅ Imported in {elapsed:.1f}s. Extracting days from master…")
-            spec = _virttrip_spec(
-                batch.svv2ExtractDays.main,
-                "Extracting per-day CSVs from master...",
-                "✅ Import complete — day data refreshed from this machine's master.",
-            )
-            runner = BatchModuleRunner(self, self.passed_parent)
-            runner.run(spec, on_success=lambda: populate_virttrip_overview(self.passed_parent))
-        else:
-            self.status_label.setText(
-                f"✅ Imported in {elapsed:.1f}s. Picture paths still point at the source "
-                "machine's master — run Extract Days from Master before viewing pictures.")
+        # No day extract any more — the album reads THIS machine's master live by its
+        # date range, so its pictures resolve against the local master immediately.
+        self.status_label.setText(
+            f"✅ Imported in {elapsed:.1f}s. The album reads this machine's master "
+            "by date range — open it to view its pictures.")
 
 
 class VirttripWriteBlogDialog(QDialog):

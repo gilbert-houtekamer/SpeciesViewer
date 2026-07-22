@@ -13,11 +13,12 @@ from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDial
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
         TestbedDialog, BlogAdminDialog, ManageTripsDialog, PhotoMechanicDialog,
         RescanMasterCacheDialog, SmallMasterDialog, InstallSmallMasterDialog, TripMasterDashboard)
-from gui.virttrip_process import (VirtualTripCreationDialog, ExtractDaysDialog,
+from gui.virttrip_process import (VirtualTripCreationDialog,
                                    VirttripWriteBlogDialog, VirttripRedoBlogDialog,
                                    VirttripBuildWebsiteDialog,
                                    VirttripAddToMasterDialog, retire_trip_to_virttrip,
-                                   ExportVirtualTripDialog, ImportVirtualTripDialog)
+                                   ExportVirtualTripDialog, ImportVirtualTripDialog,
+                                   require_full_master)
 from utils.config import _config, debug_enabled
 import gui.days_process as days_process
 import os
@@ -53,7 +54,6 @@ import batch.svu6EmptyTripData
 import batch.svu9SmallMaster
 import batch.svu7Testbed
 import batch.svv1MakeVirtualRepository
-import batch.svv2ExtractDays
 import batch.svv3WriteBlog
 import batch.svv4BuildWebsite
 import batch.svv7ExportVirtualTrip
@@ -570,7 +570,8 @@ def build_menu_spec(main_window):
     export_virttrip.callback = lambda: ExportVirtualTripDialog(main_window, export_virttrip).exec()
 
     import_virttrip = MenuSpec(
-        callback=lambda: ImportVirtualTripDialog(main_window).exec(),
+        callback=lambda: require_full_master(main_window)
+                         and ImportVirtualTripDialog(main_window).exec(),
         title="Import Album",
     )
 
@@ -596,12 +597,16 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Album created. Fill in the album details and select a date range."
         }
     )
-    virttrip_create.callback = lambda: VirtualTripCreationDialog(main_window, virttrip_create).exec()
+    virttrip_create.callback = lambda: (
+        require_full_master(main_window)
+        and VirtualTripCreationDialog(main_window, virttrip_create).exec())
 
     # Read-only companion to Create: the date range is the thing you cannot
     # remember, and the master already knows it. Report only — see
     # gui/trip_finder_view.py.
     def _find_trips():
+        if not require_full_master(main_window):
+            return
         import gui.trip_finder_view as tf
         tf.show(main_window, _config)
 
@@ -620,23 +625,6 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
-    extract_days = MenuSpec(
-        callback=None,
-        title="Extract Days from Master",
-        batch_parms={
-            'statusname': "",
-            'module_called': batch.svv2ExtractDays.main,
-            'before_msg': "Extracting per-day CSVs from master...",
-            'after_msg': "✅ Day extraction complete. Check metadata/review/ for results.",
-            # Without this the batch writes svconfig with [repository] BiotaDatabase
-            # taken from the active REGULAR trip, so svv2ExtractDays reads the wrong
-            # root (e.g. trips/<active>) and finds no virttrip.ini. virttrip_mode
-            # points BiotaDatabase at [virttrip] virttripbiotadatabase instead.
-            'virttrip_mode': True,
-        }
-    )
-    extract_days.callback = lambda: ExtractDaysDialog(main_window, extract_days).exec()
-
     rating_editor = MenuSpec(
         callback=lambda: main_window.open_rating_editor(),
         title="Trip Species Viewer",
@@ -647,7 +635,8 @@ def build_menu_spec(main_window):
     # (same name/range/text), build it (svv1), extract its master days (svv2),
     # and migrate the day blogs — one action. The svr7 delete stays separate.
     retire_trip_item = MenuSpec(
-        callback=lambda: retire_trip_to_virttrip(main_window),
+        callback=lambda: require_full_master(main_window)
+                         and retire_trip_to_virttrip(main_window),
         title="Retire Trip to Album",
         showsubdirectory=False,
     )
@@ -1282,8 +1271,6 @@ def build_menu_spec(main_window):
         "Albums": {
             "Find Trips in the Master…": find_trips,
             "Create Album": virttrip_create,
-            f"{MenuSpec.separator()}_vt1": None,
-            "Extract Days from Master": extract_days,
             f"{MenuSpec.separator()}_vt2": None,
             "Write Album Blogs": MenuSpec(
                 callback=lambda: VirttripWriteBlogDialog(main_window).exec(),

@@ -44,7 +44,6 @@ import engine.speciesclassification
 import engine.bloglib
 import engine.triplib
 from engine import SVException
-from engine.handling import read_file, read_pictures
 from batch.svv3WriteBlog import _read_blog_ini, _register_day_blog
 
 logger = logging.getLogger("speciesviewer")
@@ -81,16 +80,16 @@ def _master_collection_counts(master_species_csv):
     return counts
 
 
-def _load_day(project, sp, master_species_csv, day_files, day_pics, blog,
+def _load_day(project, sp, master_species_csv, db, label, blog,
               collection_counts=None):
-    """Load one day's extracted CSVs into the project — identical to svv3 so the
-    rendered cards match a normal write. Returns True if the day has data."""
+    """Load one day's pictures into the project LIVE from the master — identical to
+    svv3 so the rendered cards match a normal write. Returns True if the day has data."""
+    import batch.album_source as album_source
     project.files_dict             = {}
     project.UniquePictureName_dict = {}
     sp.readSpeciesInfo(master_species_csv, True)
 
-    _, from_time, last_time = read_file(project, str(day_files), silent=True)
-    read_pictures(project, str(day_pics))
+    from_time, last_time = album_source.load_day_from_master(project, db, label)
     blog.from_time = from_time
     blog.last_time = last_time
     if not project.files_dict:
@@ -171,44 +170,46 @@ def main(args, config):
     sc.readSpeciesCollection(master_sc_csv, False)
     collection_counts  = _master_collection_counts(master_species_csv)
 
-    review_root = Path(virttrip_root) / "metadata" / "review"
     blog_dir    = Path(virttrip_root) / "metadata" / "blog"
 
-    # --- discover published days: extracted day dirs that carry a blog ini ---
-    # (identical selection to svv3, so the same set of pages is targeted).
+    # --- discover published days: LIVE from the master by the album's date range,
+    # keeping only days that carry a blog ini (identical selection to svv3). ---
+    import batch.album_source as album_source
+    from utils.virttrip_config import read_virttrip_ini
+    _info = read_virttrip_ini(virttrip_root) or {}
+    _from = (_info.get("fromdate") or "").strip()
+    _to   = (_info.get("todate")   or "").strip()
+    if not (_from and _to):
+        raise SVException("The album has no fromdate/todate in virttrip.ini.")
+    db = album_source.open_master_db(master_db)
     published = [
-        d for d in sorted(review_root.iterdir())
-        if d.is_dir()
-        and (d / "data_files.csv").exists()
-        and (blog_dir / f"blog_{d.name}.ini").exists()
-    ] if review_root.is_dir() else []
+        label for label in album_source.day_labels_in_range(db, _from, _to)
+        if (blog_dir / f"blog_{label}.ini").exists()
+    ]
     if not published:
         raise SVException(
             "No day blogs found — run 'Write Virtual Trip Blogs' (or Edit Blogs) first.")
 
     blog = engine.bloglib.Blog(project)
 
-    def _day_paths(day_dir):
-        return (day_dir / "data_files.csv",
-                day_dir / "data_pictures.csv",
-                blog_dir / f"blog_{day_dir.name}.ini")
+    def _ini_path(label):
+        return blog_dir / f"blog_{label}.ini"
 
     # === PASS 1: render locally (no upload) just to learn every blog-day key ===
     # setBlogDay derives the key from the day's own pictures + ini, so the only
     # reliable way to know the full set up front is to load and render each day.
     blog.blog_dict = {}
     project.setSkipJPGs(True)
-    for day_dir in published:
-        day_files, day_pics, ini_path = _day_paths(day_dir)
-        if not _load_day(project, sp, master_species_csv, day_files, day_pics, blog,
+    for label in published:
+        if not _load_day(project, sp, master_species_csv, db, label, blog,
                          collection_counts):
-            logger.warning(f"  {day_dir.name}: empty after load — skipping")
+            logger.warning(f"  {label}: empty after load — skipping")
             continue
-        _init_blog_for_day(blog, ini_path)
+        _init_blog_for_day(blog, _ini_path(label))
         blog.makeRunSummaryPost("biota", "nl")
         blog.makeRunSummaryPost("biota", "en")
         if not blog.BestJPGs:
-            logger.info(f"  {day_dir.name}: no pictures above threshold — skipping")
+            logger.info(f"  {label}: no pictures above threshold — skipping")
             continue
         _register_day_blog(blog, project)
     project.setSkipJPGs(False)
@@ -241,12 +242,11 @@ def main(args, config):
     # === PASS 2: re-render with the full nav known, upload HTML only ===
     recreated = 0
     project.setSkipJPGs(True)
-    for day_dir in published:
-        day_files, day_pics, ini_path = _day_paths(day_dir)
-        if not _load_day(project, sp, master_species_csv, day_files, day_pics, blog,
+    for label in published:
+        if not _load_day(project, sp, master_species_csv, db, label, blog,
                          collection_counts):
             continue
-        _init_blog_for_day(blog, ini_path)
+        _init_blog_for_day(blog, _ini_path(label))
         if blog.getBlogDay() not in blog.committed_blogdays:
             continue
         blog.makeRunSummaryPost("biota", "nl")
@@ -255,7 +255,7 @@ def main(args, config):
             continue
         blog.blog_dict[blog.getBlogDay()]["BestJPGs"] = list(blog.BestJPGs)
         blog.uploadBlog(sftp, sftpPictures=False)
-        logger.info(f"  {day_dir.name}: recreated ({len(blog.BestJPGs)} pictures, HTML only)")
+        logger.info(f"  {label}: recreated ({len(blog.BestJPGs)} pictures, HTML only)")
         recreated += 1
     project.setSkipJPGs(False)
 

@@ -172,21 +172,30 @@ open: `RatingEditorCollection` keeps its own copy of the ops surface; it can inh
 - [ ] **Live verify** (user): re-write a day's blog + rebuild an album website; diff
       against the last published output.
 
-### S5 — Album authoring gated to BigBoy
-- [ ] Album Create / design UI (date range picker, "Find Trips → Create") requires the
-      full master: block when `master.readonly_locked == yes`, with a plain-language
-      note ("This machine holds a partial master copy — design albums on the main
-      machine").
-- [ ] Confirm the gate does NOT break simply *viewing* an already-created album on
-      SmallBoy if that path is kept (open question below).
+### S5 — Album authoring gated to BigBoy ✅ CODE DONE
+- [x] New `require_full_master(parent)` (virttrip_process): returns False + a
+      plain-language note when `master.readonly_locked == yes` (a SmallMaster install).
+- [x] Gated the four authoring entry points in menuspec: **Create Album**, **Find
+      Trips in the Master…**, **Import Album**, **Retire Trip to Album**.
+- [x] Viewing + publishing are NOT gated — the overview / day viewer / map / blog /
+      website all still work on a SmallBoy (against its subset master).
 
-### S6 — Retire the extract + migrate gracefully; sweep stragglers
-- [ ] Remove the "Re-extract this day" context action (moot).
-- [ ] **Leave existing `review/` folders on disk** — the new code never reads them;
-      don't delete user data. (Optional later: a cleanup that trashes them.)
-- [ ] Grep the remaining `review/` readers (`virttrip_process.py`, blog editor,
-      cover-from-grid, Delete / Manage-publication) — confirm each is query-backed or
-      identity-only before declaring the class dead.
+### S6 — Retire the extract + migrate gracefully ✅ CODE DONE
+- [x] "Re-extract this day" context action removed (S4).
+- [x] **svv6RedoBlog converted to the master query** (the last review-folder reader in
+      the publish path) — day discovery from the date range, `_load_day` via
+      `album_source.load_day_from_master`.
+- [x] svv2ExtractDays removed from ALL pipelines: Create Album, Retire Trip to Album,
+      Import Album (its "re-extract after import" checkbox is gone too).
+- [x] Standalone "Extract Days from Master" menu item + `ExtractDaysDialog` removed;
+      `svv2ExtractDays.py` is now orphaned (left on disk, wired nowhere).
+- [x] **Existing `review/` folders left on disk** — nothing reads them; not deleted.
+- [ ] Optional later: trash the vestigial `review/` folders + delete
+      `batch/svv2ExtractDays.py`.
+
+## STATUS: re-architecture COMPLETE (S0–S6). Album read + publish are entirely
+master-query-based; no per-day CSV snapshot anywhere. Remaining is polish + the two
+optional cleanups above.
 
 ---
 
