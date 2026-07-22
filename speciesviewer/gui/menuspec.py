@@ -1107,6 +1107,63 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # Fill each picture's coordinate from its camera files. The master pipeline does
+    # not always copy the camera's fix up from the file EXIF to the picture row, so the
+    # picture can read empty while the RAW/JPG holds a coordinate — and everything that
+    # reads the PICTURE row (the species distribution map, the album No-GPS counts) then
+    # goes blind to it. Additive only (never changes/removes an existing coordinate).
+    def _consolidate_gps():
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from PyQt6.QtCore import Qt
+        from db.master_db import MasterDB
+        master = _config.get("master", "masterbiotadatabase", fallback="").replace('"', "").replace("'", "")
+        if not master:
+            QMessageBox.warning(main_window, "Fill Picture GPS from Files", "No master is configured.")
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            db = MasterDB(master)
+            db.ensure_fresh()
+            report = db.consolidate_picture_gps(apply=False)
+        finally:
+            QApplication.restoreOverrideCursor()
+        n = report["candidates"]
+        if n == 0:
+            QMessageBox.information(main_window, "Fill Picture GPS from Files",
+                "Every picture already carries its own coordinate — nothing to fill.")
+            return
+        msg = (f"{n} master picture(s) have a camera coordinate in their files but an "
+               f"empty coordinate on the picture itself.\n\n"
+               f"The species distribution map and the album No-GPS counts read the "
+               f"picture's coordinate, so those pictures are invisible to them until "
+               f"this is filled.\n\n"
+               f"Copy the camera coordinate up into the picture rows now?\n"
+               f"(Additive only — it never changes or removes an existing coordinate.)")
+        if QMessageBox.question(main_window, "Fill Picture GPS from Files", msg,
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        logger.info(f"Filling {n} picture coordinate(s) from their camera files…")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        r = None
+        try:
+            r = db.consolidate_picture_gps(apply=True)
+        except Exception as e:
+            QMessageBox.warning(main_window, "Fill Picture GPS from Files", f"{type(e).__name__}: {e}")
+        finally:
+            QApplication.restoreOverrideCursor()
+        if r:
+            logger.info(f"Filled {r['applied']} picture coordinate(s) from the camera files.")
+            QMessageBox.information(main_window, "Fill Picture GPS from Files",
+                f"Filled {r['applied']} picture coordinate(s). They now appear on the "
+                f"species distribution map and count as having GPS.")
+
+    consolidate_gps_item = MenuSpec(
+        callback=_consolidate_gps,
+        title="Fill Picture GPS from Files…",
+        showsubdirectory=False,
+    )
+
     # File ▸ Admin. The Refresh Master Database pair (Review → Apply) reconciles
     # the master CSVs with what is on disk; Apply is the only destructive action
     # and is always shown. The consoles/testbed diagnostics are gated behind the
@@ -1117,6 +1174,7 @@ def build_menu_spec(main_window):
         "Refresh Master Database — Apply…": heal_admin_item,
         f"{MenuSpec.separator()}_admin_maint": None,
         "Add Missing Place Names…": add_place_names_item,
+        "Fill Picture GPS from Files…": consolidate_gps_item,
     }
     if debug_enabled():
         admin_menu = {
@@ -1127,6 +1185,7 @@ def build_menu_spec(main_window):
             "Refresh Master Database — Apply…": heal_admin_item,
             f"{MenuSpec.separator()}_admin_maint": None,
             "Add Missing Place Names…": add_place_names_item,
+            "Fill Picture GPS from Files…": consolidate_gps_item,
             "Audit Species Counters (dry-run)…": audit_species_item,
             "Clean Orphan Sidecars (move to trash)…": clean_orphans_item,
             f"{MenuSpec.separator()}_admin_1": None,

@@ -1596,6 +1596,49 @@ class MasterDB:
         MasterCheckpointWorker.get(self.master_root).notify()
         return len(pics)
 
+    def consolidate_picture_gps(self, *, apply: bool = False) -> dict:
+        """Backfill pictures.GPSPosition from the file rows' CAMERA coordinate, for every
+        picture whose picture row is empty but whose files carry one.
+
+        The master pipeline does not always copy a camera's fix up from the file EXIF to
+        the picture level, so the picture row can read empty while the RAW/JPG holds a
+        coordinate. Everything that reads pictures.GPSPosition — the species distribution
+        map (gps_points_for_species) and the album No-GPS counts — then goes blind to that
+        camera GPS. This copies it up so the picture table tells the whole truth.
+
+        GPSProcessingMethod is left empty on purpose: these are CAMERA fixes, not places
+        we set by hand, so they must stay un-draggable (empty = camera). apply=False just
+        counts; True journals ONE entry, writes, and nudges the checkpoint so the master
+        CSV catches up. Returns {"candidates": n, "applied": m}."""
+        con = self._connect()
+        empty = [r[0] for r in con.execute(
+            'SELECT "UniquePictureName" FROM pictures '
+            'WHERE TRIM(COALESCE("GPSPosition","")) = ""').fetchall()]
+        updates: dict = {}
+        CHUNK = 500
+        for i in range(0, len(empty), CHUNK):
+            chunk = empty[i:i + CHUNK]
+            ph = ",".join("?" * len(chunk))
+            rows = con.execute(
+                f'SELECT "UniquePictureName" AS u, "Composite:GPSPosition" AS g '
+                f'FROM files WHERE "UniquePictureName" IN ({ph}) '
+                f'  AND TRIM(COALESCE("Composite:GPSPosition","")) <> ""', chunk).fetchall()
+            for r in rows:
+                u, g = r["u"], (r["g"] or "").strip()
+                if u and g and u not in updates:
+                    updates[u] = {"GPSPosition": g}
+        if not apply or not updates:
+            return {"candidates": len(updates), "applied": 0}
+        entry = {"op": "gps", "ts": time.time(), "pictures": updates, "files": {}}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        with con:
+            for upn, fields in updates.items():
+                self._set_picture_fields(con, upn, fields)
+        MasterCheckpointWorker.get(self.master_root).notify()
+        return {"candidates": len(updates), "applied": len(updates)}
+
     def upns_with_gps(self, upns) -> set:
         """Of these UPNs, the set that has a non-empty GPSPosition in the master.
         One indexed query (chunked) — the fast replacement for re-reading each
