@@ -1466,12 +1466,37 @@ class LargeImageView(QDialog):
         if not self._keys:
             return
         menu = QMenu(self)
+        key = self._item.key if self._item else None
+        host = self.parent()          # the grid dialog — reuse its actions for this key
+
+        # Sex / age / plumage — the same form editor as the side-panel button, in the
+        # menu too. (Rating + colour already live in the side panel, so they aren't
+        # repeated here; "Full resolution" is moot — this IS the full view.)
+        act_qual = None
+        item = self._item
+        if (key and getattr(item, "from_master", False)
+                and hasattr(self._collection, "apply_master_qualifiers")
+                and not getattr(self._collection, "master_read_only", True)):
+            act_qual = menu.addAction("Sex / age / plumage…")
+            menu.addSeparator()
+
         act_geo = menu.addAction("Get location  (from GPS)")
+        # Get GPS from location — the reverse of Get location (place name → coordinate),
+        # delegated to the grid host. The one grid action the large viewer lacked.
+        act_gps_from = None
+        gps_from_fn = getattr(host, "_gps_from_location", None)
+        if key and callable(gps_from_fn):
+            act_gps_from = menu.addAction("Get GPS from location")
+            can_fn = getattr(host, "_can_gps_from_location", None)
+            if callable(can_fn):
+                try:
+                    act_gps_from.setEnabled(bool(can_fn({key})))
+                except Exception:
+                    pass
         act_edit = menu.addAction("Edit location…  (type a place name)")
         # "Add new files" only where the collection supports it (an editable trip
         # picture) — the culling/album/master viewers won't advertise it.
         act_add = None
-        key = self._item.key if self._item else None
         supported = getattr(self._collection, "add_files_supported", None)
         if key and callable(supported):
             try:
@@ -1481,10 +1506,17 @@ class LargeImageView(QDialog):
             except Exception:
                 act_add = None
         chosen = menu.exec(event.globalPos())
+        if chosen is None:
+            return
         if chosen == act_geo:
             self._geolocate_current()
         elif chosen == act_edit:
             self._edit_location_current()
+        elif act_qual is not None and chosen == act_qual:
+            self._edit_master_qualifiers(key)
+        elif act_gps_from is not None and chosen == act_gps_from:
+            gps_from_fn({key})
+            self._show_location(key)   # reflect the new coordinate in the panel
         elif act_add is not None and chosen == act_add:
             self._add_files_current()
 

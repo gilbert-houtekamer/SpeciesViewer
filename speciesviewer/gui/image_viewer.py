@@ -1263,6 +1263,9 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # changes (delete / move) drop the file from the master; the card is refreshed
         # on the next open — the status line says what happened.
         try:
+            # Keep the user's place: the grid rebuilds from the top, so remember the
+            # scroll position for _finalize_load to restore (same as the delete path).
+            self._restore_scroll = self.scroll_area.verticalScrollBar().value()
             attach = getattr(self._collection, "_attach_sibling_jpgs", None)
             if callable(attach):
                 attach()   # "Add new renders" wrote a JPG on disk — pick it up now
