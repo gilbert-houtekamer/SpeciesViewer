@@ -305,6 +305,12 @@ def main(args, config):
     sftp.closeFTPCache(location_cache)
     sftp.disconnect()
 
+    # Write the album's species-overview URL so the GUI can open it in a browser after
+    # completion, the way svv3 does for the blog index.
+    summary_url = project.getBiotaWebRoot().rstrip("/") + "/summaries/all biota species-nl.html"
+    with open("last_website_url.txt", "w") as f:
+        f.write(summary_url)
+
     logger.info("✅ svv4BuildWebsite complete.")
 
 

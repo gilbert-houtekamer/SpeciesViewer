@@ -960,13 +960,27 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
 
     def apply_master_qualifiers(self, key: str, selected: dict) -> bool:
         from gui.culling_species import (split_species_qualifiers,
-                                         build_species_subject)
+                                         build_species_subject, qualifier_fields)
         item = self.item_for_key(key)
         name, _old = split_species_qualifiers(item.species)
         if not name:
             logger.warning(f"qualifiers: {key} has no species to attach them to.")
             return False
-        item.set_species(build_species_subject(name, selected))
+        subject = build_species_subject(name, selected)
+        item.set_species(subject)               # writes XMP:Subject to the master's file
+        # Mirror the form into the master DB — like the GPS mirror. The blog and website
+        # read the master's pictures.malefemale/ageintext/summerwinter, NOT the sidecar,
+        # so without this the DB stays empty and the published page shows the base species
+        # with no 'imm.' / '♀' suffix. Only when bound to a master (the album day viewer);
+        # the plain culling grid has no DB and just writes the sidecar.
+        db = getattr(self, "_master_db", None)
+        if db is not None:
+            try:
+                mf, age, sw = qualifier_fields(subject)
+                db.apply_qualifiers(key, subject=subject, malefemale=mf,
+                                    ageintext=age, summerwinter=sw)
+            except Exception as e:
+                logger.warning(f"qualifier master mirror failed for {key}: {e}")
         return True
 
     def request_image(self, stem: str, target_w, on_ready: PixmapCallback,

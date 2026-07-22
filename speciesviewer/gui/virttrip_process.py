@@ -1629,14 +1629,17 @@ class VirttripBuildWebsiteDialog(QDialog):
 
         layout.addWidget(HTMLLabel(
             "<p><b>Build Album Website</b></p>"
-            "<p>Generates species HTML pages (NL + EN) for the album "
-            "using pictures extracted from the master. No SFTP — local build only, "
-            "identical to the regular trip's Build Website step.</p>"
-            "<p>Requires 'Extract Days from Master' to have been run first.</p>"
+            "<p>Generates species HTML pages (NL + EN) for the album, reading its "
+            "pictures live from the master by date range, then uploads them via SFTP "
+            "— identical to the regular trip's Build Website step.</p>"
         ))
 
         layout.addWidget(QLabel(f"Album:  {virttrip_root or '(not set)'}"))
         layout.addWidget(QLabel(f"Trip name:     {trip_name}"))
+
+        self.open_after_checkbox = QCheckBox("Open the album's species overview in the browser after building")
+        self.open_after_checkbox.setChecked(True)
+        layout.addWidget(self.open_after_checkbox)
 
         self.status_label = QLabel("")
         layout.addWidget(self.status_label)
@@ -1657,10 +1660,23 @@ class VirttripBuildWebsiteDialog(QDialog):
         run_btn.clicked.connect(self.on_run)
         close_btn.clicked.connect(self.close)
 
+    def get_website_url(self) -> str:
+        base_url = _config.get("websettings", "base_url", fallback="https://houtekamer.com/")
+        try:
+            with open("last_website_url.txt", "r") as f:
+                relative_url = f.read().strip()
+            return base_url.rstrip("/") + relative_url
+        except FileNotFoundError:
+            return base_url
+
     def on_run(self):
+        def on_success():
+            populate_virttrip_overview(self.passed_parent)
+            if self.open_after_checkbox.isChecked():
+                webbrowser.open(self.get_website_url())
+
         runner = BatchModuleRunner(self, self.passed_parent)
-        runner.run(self.menu_spec,
-                   on_success=lambda: populate_virttrip_overview(self.passed_parent))
+        runner.run(self.menu_spec, on_success=on_success)
 
 
 class VirttripAddToMasterDialog(QDialog):
