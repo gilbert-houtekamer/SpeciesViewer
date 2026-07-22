@@ -169,3 +169,11 @@ class AlbumPublishDialog(QDialog):
         self._list_btn.setToolTip("")
         self._remove_btn.setToolTip("")
         self._apply_status_to_buttons()
+        # svv5/svv8 rewrote the local master trip_admin.csv the album panel reads for
+        # its 📢 badge — rebuild it so the icon/tooltip update without a restart.
+        panel = getattr(self.passed_parent, "virttrip_panel", None)
+        if panel is not None:
+            try:
+                panel.rebuild()
+            except Exception:
+                pass
