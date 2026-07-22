@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import QPlainTextEdit, QLabel, QSizePolicy, QLineEdit, QTab
 from PyQt6.QtCore import Qt, QTimer
 
 from utils.config import _config, persist_config
+from gui.window_state import restore_window, save_window
 from gui.menu import create_menubar
 from gui.menuspec import build_menu_spec
 from gui.trip_overview import populate_trip_overview
@@ -131,6 +132,11 @@ class MainWindow(QMainWindow):
         self.translator = CachedTranslate(_config["master"]["masterbiotadatabase"])
         # self.yellow_builder = YellowPanelBuilder(root_field, self.config)
         # populate_trip_overview(self)
+        # Restore the WINDOW's own size/position first (it was never remembered before,
+        # so the panel widths — absolute pixels below — were being applied to a
+        # different width each launch). Then the splitter sizes fit that width.
+        restore_window(self, "MainWindow", default_size=(1200, 900))
+
         # Horizontal splitter
         if _config.has_option("layout", "split_sizes_horizontal"):
             h_sizes = _config.get("layout", "split_sizes_horizontal")
@@ -270,7 +276,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         # logger.info("Close and save screen sizes")
         _config["layout"]["split_sizes_vertical"] = ",".join(str(s) for s in self.vsplitter.sizes())
-        _config["layout"]["split_sizes_horizontal"] = ",".join(str(s) for s in self.hsplitter.sizes())        
+        _config["layout"]["split_sizes_horizontal"] = ",".join(str(s) for s in self.hsplitter.sizes())
+        save_window(self, "MainWindow")   # the window's own size/position
         persist_config()
         super().closeEvent(event)
     
