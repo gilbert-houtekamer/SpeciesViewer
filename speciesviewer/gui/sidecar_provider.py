@@ -1082,6 +1082,40 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         drop_for_files(srcs)     # the RAWs are gone; their cached previews are junk
         return len(matching), protected, deleted
 
+    def _mirror_rating_to_master(self, upn: str, tag: str, value: str) -> None:
+        """Mirror an album colour/rating edit into the master DB (pictures.Rating/Label,
+        the files' XMP field) and recompute pictures.Rate, so the score reflects it at
+        once — the same effect as editing in the Master Species Viewer. The derived Rate
+        is recomputed from the picture's CURRENT files with the same formula the pipeline
+        uses."""
+        from gui.rating_editor import _compute_rate
+        prow = self._master_upn.get(upn)
+        if prow is None:
+            return
+        if tag == "XMP:Rating":
+            prow["Rating"] = value
+        else:
+            prow["Label"] = value
+        # Carry the value onto the file rows too — _compute_rate reads XMP:Rating from
+        # the FILE rows, and the DB's file rows must match for a later re-read.
+        file_updates: dict = {}
+        for fname in (prow.get("Files") or []):
+            frow = self._master_files.get(fname)
+            if frow and (frow.get("WindowsExtension") or "").lower() in ("xmp", "jpg", "jpeg"):
+                frow[tag] = value
+                file_updates[fname] = {tag: value}
+        new_rate = _compute_rate(prow, self._master_files)
+        prow["Rate"] = str(new_rate)
+        try:
+            self._master_db.apply_rating(
+                upn,
+                rating=value if tag == "XMP:Rating" else None,
+                label=value if tag == "XMP:Label" else None,
+                rate=new_rate,
+                file_updates=file_updates)
+        except Exception as e:
+            logger.warning(f"rating master mirror failed for {upn}: {e}")
+
     def write_tag(self, stem: str, tag: str, value: str, row_key: str) -> None:
         """Write one metadata tag for the stem, honouring Sidecar Behaviour.
 
@@ -1091,6 +1125,15 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         the in-memory row and patches the on-disk cache so the next culling session
         opens without re-running exiftool."""
         is_colorrating = tag in ("XMP:Rating", "XMP:Label")
+
+        # Album day viewer: the picture IS the master's, so mirror a colour/rating edit
+        # into the master DB and recompute the derived Rate — the card's "Rate:" is read
+        # from the master row, so without this it stays at the RAW-only value while the
+        # stars move. Independent of which sidecar channel the value goes to below; a
+        # no-op in plain culling (no master bound).
+        if (is_colorrating and getattr(self, "_master_db", None) is not None
+                and stem in self._master_upn):
+            self._mirror_rating_to_master(stem, tag, value)
 
         # Colour/rating → the DxO .dop (preferred PhotoLab channel).
         if is_colorrating and color_rating_to_dop_enabled():
