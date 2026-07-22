@@ -1090,8 +1090,24 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                            else {key})
         n = len(keys_for_action)
         lbl = f"{n} picture{'s' if n != 1 else ''}"
+        try:
+            item = self._collection.item_for_key(key)
+        except (ValueError, KeyError):
+            item = None
         menu = QMenu(self)
-        act_species = menu.addAction(f"Set species…  ({lbl})")
+        # "Set species…" re-types the determination. It works in the trip viewer
+        # (SpeciesInfoPanel, fpr present) and the culling grid (can_edit_species). But a
+        # master picture's species is settled and NOT re-typed from an album (an actual
+        # re-file goes through the master menu's "Move to existing species…"). What IS
+        # editable there is the FORM — sex / age / plumage — a property of the photo, so
+        # it takes this slot in the album, in place of the dead "Set species…".
+        act_species = act_qualifiers = None
+        if self.fpr is not None or getattr(item, "can_edit_species", False):
+            act_species = menu.addAction(f"Set species…  ({lbl})")
+        elif (getattr(self, "_master_ops_enabled", False) and item is not None
+                and getattr(item, "from_master", False)
+                and not self._collection.master_read_only):
+            act_qualifiers = menu.addAction("Sex / age / plumage…")
         act_rate = menu.addAction(f"Set rating…  ({lbl})")
         act_fullres = menu.addAction(f"Full resolution  ({lbl})")
         act_geo = menu.addAction(f"Get location  ({lbl})")
@@ -1109,10 +1125,6 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # Copy GPS + place from THIS one picture; paste into the selection. Lets a
         # no-GPS shot inherit a neighbour's location when the sv2 backfill can't
         # reach it (no GPS frame within its time/distance window).
-        try:
-            item = self._collection.item_for_key(key)
-        except (ValueError, KeyError):
-            item = None
         act_copy_gps = menu.addAction("Copy GPS + place  (this picture)")
         act_copy_gps.setEnabled(bool(item and getattr(item, "has_gps", False)))
         act_paste_gps = menu.addAction(f"Paste GPS + place  ({lbl})")
@@ -1144,12 +1156,17 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 and getattr(item, "from_master", False)
                 and not self._collection.master_read_only):
             menu.addSeparator()
-            master_handlers = self._build_master_menu(menu, key)
+            # Qualifiers are offered up top (in the "Set species" slot), so the master
+            # section here carries only the inventory ops.
+            master_handlers = self._build_master_menu(
+                menu, key, ops={"add", "pin", "delete_jpg", "move", "delete", "delete_file"})
         chosen = menu.exec(QCursor.pos())
         if chosen in master_handlers:
             master_handlers[chosen]()
-        elif chosen == act_species:
+        elif act_species is not None and chosen == act_species:
             self._open_species_dialog_for_keys(keys_for_action)
+        elif act_qualifiers is not None and chosen == act_qualifiers:
+            self._do_master_qualifiers(key)
         elif chosen == act_rate:
             self._open_batch_rate_dialog(keys_for_action)
         elif chosen == act_fullres:

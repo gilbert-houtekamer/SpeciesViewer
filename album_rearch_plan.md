@@ -132,12 +132,12 @@ Rating Editor (the latter a deliberate subset); the album day viewer had none of
         "tripimage.jpg.previous"; now shows the real dated-backup scheme
         `<name>-YYYYMMDD-HHMMSS.jpg`.
 
-**Follow-ups (safe, deferred):** (1) album qualifier via the card menu uses
-`SidecarCollection`'s sidecar-based apply (no master-DB mirror), so the DB's
-`subject` lags until a re-read and the status suffix can read stale — a qualifier
-mirror like the GPS one would fix it. (2) `RatingEditorCollection` still keeps its own
-copy of the ops surface; it can inherit `MasterCardOpsMixin` and drop the copy once the
-above is verified.
+**Follow-ups:** (1) ✅ DONE — album qualifiers now mirror to the master DB
+(`SidecarCollection.apply_master_qualifiers` → `db.apply_qualifiers`), so the blog +
+website publish the right form. In the album the qualifier editor also takes the
+"Set species…" slot (species is settled there; the dead no-op is hidden). (2) still
+open: `RatingEditorCollection` keeps its own copy of the ops surface; it can inherit
+`MasterCardOpsMixin` and drop the copy later.
 
 ### S3 — Map reads the query ✅ CODE DONE (awaiting live GUI verify)
 - [x] New `_collection_from_master_daterange` builds the album map's collection from

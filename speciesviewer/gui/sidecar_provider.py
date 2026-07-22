@@ -968,6 +968,13 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
             return False
         subject = build_species_subject(name, selected)
         item.set_species(subject)               # writes XMP:Subject to the master's file
+        mf, age, sw = qualifier_fields(subject)
+        # Keep the bound in-memory master row in step, so the caller's status text and any
+        # later gating see the new form without a re-read.
+        row = getattr(self, "_master_upn", {}).get(key)
+        if row is not None:
+            row["subject"] = subject
+            row["malefemale"], row["ageintext"], row["summerwinter"] = mf, age, sw
         # Mirror the form into the master DB — like the GPS mirror. The blog and website
         # read the master's pictures.malefemale/ageintext/summerwinter, NOT the sidecar,
         # so without this the DB stays empty and the published page shows the base species
@@ -976,7 +983,6 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         db = getattr(self, "_master_db", None)
         if db is not None:
             try:
-                mf, age, sw = qualifier_fields(subject)
                 db.apply_qualifiers(key, subject=subject, malefemale=mf,
                                     ageintext=age, summerwinter=sw)
             except Exception as e:
