@@ -100,17 +100,20 @@ class _DayTab(QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
 
         # Draft banner — an auto-written day says so, in plain words, above the
-        # text it wrote.
+        # text it wrote. Hidden the moment the day is marked Reviewed (see
+        # _on_reviewed_toggled) so it doesn't linger over text you've just blessed.
+        self._banner = None
+        self._on_review_change = None    # dialog sets this to refresh the tab dot
         if self._draft:
-            banner = QLabel(
+            self._banner = QLabel(
                 f"{DRAFT_DOT}  This text was written automatically from the day's "
                 f"locations and best species. Read it, edit what you want, then tick "
                 f"<b>Reviewed</b> below.")
-            banner.setWordWrap(True)
-            banner.setStyleSheet(
+            self._banner.setWordWrap(True)
+            self._banner.setStyleSheet(
                 "background:#fff3e0; border:1px solid #ffb74d; "
                 "border-radius:4px; padding:6px; margin-bottom:4px;")
-            layout.addWidget(banner)
+            layout.addWidget(self._banner)
 
         # Dutch
         layout.addWidget(self._section_label("Dutch"))
@@ -182,6 +185,7 @@ class _DayTab(QWidget):
             "Tick this to accept the text as it stands. Editing any of the four text "
             "fields counts as a review on its own, so you only need this to bless an "
             "auto-written day you are happy with unchanged.")
+        self.reviewed_box.toggled.connect(self._on_reviewed_toggled)
         review_row.addWidget(self.reviewed_box)
         review_row.addStretch()
 
@@ -228,6 +232,16 @@ class _DayTab(QWidget):
                 or self.message_nl.toPlainText() != self._data["message_nl"]
                 or self.titel_en.text()          != self._data["titel_en"]
                 or self.message_en.toPlainText() != self._data["message_en"])
+
+    def _on_reviewed_toggled(self, checked: bool):
+        """Ticking Reviewed clears the amber auto-text banner and turns the tab dot
+        green at once — no need to save/reopen to see it took. The saved state still
+        follows on save()."""
+        if self._banner is not None:
+            self._banner.setVisible(not checked)
+        self._draft = not checked
+        if callable(self._on_review_change):
+            self._on_review_change()
 
     def save(self) -> bool:
         """Write the current field values back to the ini file. Returns the day's
@@ -320,6 +334,7 @@ class VirtTripBlogEditorDialog(QDialog):
             day_num = (date.fromisoformat(day_dir.name) - first_date).days + 1
             tab = _DayTab(ini_path, day_num, translator, config_score)
             tab.day_name = day_dir.name          # YYYY-MM-DD — what svv3 filters on
+            tab._on_review_change = self._refresh_tab_labels   # live tab-dot update
             tab.upload_btn.clicked.connect(
                 lambda _checked=False, t=tab: self._save_and_upload_day(t))
             idx = self.tab_widget.addTab(tab, self._tab_label(tab, day_num))
@@ -438,8 +453,23 @@ class VirtTripBlogEditorDialog(QDialog):
         menu_spec.batch_parms["extra_config"] = [
             ("blogconfig", "only_day", tab.day_name),
         ]
+        def _on_success():
+            self._refresh_overview()
+            self._open_blog_in_browser()
         BatchModuleRunner(self, self.passed_parent).run(
-            menu_spec, on_success=self._refresh_overview)
+            menu_spec, on_success=_on_success)
+
+    def _open_blog_in_browser(self):
+        """Open the just-published blog index in a browser, the way Write Blogs does.
+        svv3 writes the relative URL to last_blog_url.txt on success."""
+        import webbrowser
+        base = _config.get("websettings", "base_url", fallback="https://houtekamer.com/")
+        try:
+            with open("last_blog_url.txt", "r") as f:
+                rel = f.read().strip()
+            webbrowser.open(base.rstrip("/") + rel)
+        except (FileNotFoundError, OSError) as e:
+            logger.info(f"Blog editor: no blog URL to open ({e}).")
 
     def _save_and_upload(self):
         self._save_all()
