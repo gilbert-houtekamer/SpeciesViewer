@@ -493,6 +493,13 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self.species_btn.setChecked(True)
             self.species_only = True
             initial_keys = species_keys
+        elif self._start_species:
+            # Add-to-Master with nothing named yet: show ALL so the pictures are
+            # visible and can be named here (Species view would be empty).
+            self._active_filter = "all"
+            self.all_btn.setChecked(True)
+            self.show_all = True
+            initial_keys = self._base_keys()
         elif self.fpr and warnings_keys:
             self._active_filter = "warnings"
             self.warnings_btn.setChecked(True)

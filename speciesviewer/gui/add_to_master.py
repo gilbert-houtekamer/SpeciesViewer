@@ -9,16 +9,19 @@
 # until the commit + optional delete-originals step.
 
 import os
+import shutil
+import tempfile
 import logging
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QCheckBox,
     QPlainTextEdit, QFileDialog, QLabel, QApplication, QMessageBox, QWidget,
+    QListWidget, QListWidgetItem, QListView, QStackedWidget,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import (
-    QFont, QShortcut, QKeySequence, QTextCursor, QTextDocument,
+    QFont, QShortcut, QKeySequence, QTextCursor, QTextDocument, QIcon, QImage,
 )
 
 from utils.config import _config, persist_config
@@ -62,23 +65,42 @@ class MicroTripReviewDialog(ImagePreviewDialog):
 
     def _add_commit_bar(self, report):
         bar = QHBoxLayout()
-        n = report.get("pictures", 0)
-        ident = report.get("identified", 0)
-        untag = report.get("no_species", 0)
-        info = QLabel(f"{n} pictures · {ident} with a species · {untag} untagged "
-                      f"(untagged are not added)")
-        info.setStyleSheet("color: #444;")
+        self._commit_info = QLabel()
+        self._commit_info.setStyleSheet("color: #444;")
         self.delete_originals_cb = QCheckBox("Delete originals after commit")
         self.delete_originals_cb.setToolTip("After committing, delete the folder's "
                                             "files that are confirmed present in the master.")
         self.commit_btn = QPushButton("Commit to Master")
-        self.commit_btn.setEnabled(ident > 0)
         self.commit_btn.clicked.connect(self._commit)
-        bar.addWidget(info)
+        bar.addWidget(self._commit_info)
         bar.addStretch(1)
         bar.addWidget(self.delete_originals_cb)
         bar.addWidget(self.commit_btn)
         self.layout().addLayout(bar)
+        self._refresh_commit_bar_counts()
+
+    def _refresh_commit_bar_counts(self):
+        """Keep the commit line honest as species are named on the cards here — the
+        initial scan predates those edits, so a fixed label would read '0 with a
+        species' forever."""
+        n = self._report.get("pictures", 0)
+        try:
+            ident = len(self._collection.species_keys())
+        except Exception:
+            ident = self._report.get("identified", 0)
+        untag = max(n - ident, 0)
+        self._commit_info.setText(
+            f"{n} pictures · {ident} with a species · {untag} untagged "
+            f"(set species on a card, or in Lightroom; untagged are not added)")
+        # Enabled as long as there are pictures: you may still be about to tag them.
+        # Commit re-reads species fresh and adds only the tagged ones.
+        self.commit_btn.setEnabled(n > 0)
+
+    def refresh_after_species_change(self, updated_upns):
+        # Repaint the affected cards (base class) AND update the commit line so the
+        # "with a species" count reflects what was just named.
+        super().refresh_after_species_change(updated_upns)
+        self._refresh_commit_bar_counts()
 
     def _commit(self):
         """Run the proven master pipeline (sv2→sv3→sv5→sv6→sv7) scoped to this
@@ -96,7 +118,20 @@ class MicroTripReviewDialog(ImagePreviewDialog):
 
         folder = self._micro_trip.input_dir
         recurse = getattr(self._micro_trip, "recurse", False)
+        # Re-read the pool so species just set on the cards here (not only in
+        # Lightroom) are counted — the initial scan predates those edits.
+        try:
+            self._micro_trip.ingest()
+            self._report = self._micro_trip.summary()
+        except Exception as e:
+            logger.info(f"add_to_master: pre-commit re-summary failed: {e}")
         ident = self._report.get("identified", 0)
+        if ident == 0:
+            QMessageBox.information(
+                self, "Commit to Master",
+                "No picture has a species yet. Set one on a card here (or tag it in "
+                "Lightroom), then commit — untagged pictures are not added.")
+            return
         if QMessageBox.question(
                 self, "Commit to Master",
                 f"Add the {ident} identified picture(s) in\n{folder}\n"
@@ -135,6 +170,12 @@ class MicroTripReviewDialog(ImagePreviewDialog):
                 QApplication.processEvents()
                 fn(None, cfg)
             prog.setValue(len(steps))
+            # The batch commit rewrote the master CSVs directly (outside the DB
+            # journal), so the SQLite cache the album + master viewer read is now
+            # stale — the new pictures are on disk but the album's date-range query
+            # still returns the old rows. Rebuild the cache and repaint the master-
+            # derived overviews so they show without a restart.
+            self._refresh_master_views()
             deleted_msg = ""
             if self.delete_originals_cb.isChecked():
                 deleted_msg = self._delete_originals(folder)
@@ -159,6 +200,25 @@ class MicroTripReviewDialog(ImagePreviewDialog):
             self.commit_btn.setEnabled(True)
         finally:
             prog.close()
+
+    def _refresh_master_views(self):
+        """Rebuild the master SQLite cache from the just-written CSVs, then repaint
+        the album + trip overviews so newly-added pictures appear at once (an album
+        is a live date-range query over the master — a new picture on a covered day
+        shows up automatically once the cache is fresh)."""
+        try:
+            from db.master_db import MasterDB
+            MasterDB(self._micro_trip.master_root).ensure_fresh()
+        except Exception as e:
+            logger.warning(f"add_to_master: master DB refresh failed: {e}")
+        mw = self.main_window
+        for mod, fn_name in (("gui.virttrip_overview", "populate_virttrip_overview"),
+                             ("gui.trip_overview", "populate_trip_overview")):
+            try:
+                import importlib
+                getattr(importlib.import_module(mod), fn_name)(mw)
+            except Exception as e:
+                logger.info(f"add_to_master: overview repaint ({fn_name}): {e}")
 
     def _delete_originals(self, folder):
         """Delete the folder's files now confirmed present in the master (reuses
@@ -198,6 +258,14 @@ class MicroTripReviewDialog(ImagePreviewDialog):
 
 
 class AddToMasterDialog(QDialog):
+    _DROP_IDLE = ("⬇  Drag pictures here to build a pool\n"
+                  "(RAW + JPG + sidecars — drop a whole set at once), then Scan → Review → Commit")
+    _DROP_ACTIVE = "⬇  Release to add these files to the pool"
+    _DROP_STYLE_IDLE = ("border: 2px dashed #bbb; border-radius: 6px; color: #777; "
+                        "padding: 8px; background: #fafafa;")
+    _DROP_STYLE_ACTIVE = ("border: 2px dashed #4a90d9; border-radius: 6px; color: #2b6cb0; "
+                          "padding: 8px; background: #eaf3fb;")
+
     def __init__(self, main_window, fixed_dir=None):
         super().__init__(main_window)
         self.main_window = main_window
@@ -206,6 +274,8 @@ class AddToMasterDialog(QDialog):
         self._report = None
         self._review_dlg = None
         self._fixed_dir = None
+        self._drop_pool = None          # temp dir collecting dragged-in files
+        self.setAcceptDrops(True)
         self._build_ui()
         self._apply_mode(fixed_dir)
 
@@ -215,6 +285,35 @@ class AddToMasterDialog(QDialog):
         self.intro = QLabel()
         self.intro.setWordWrap(True)
         lay.addWidget(self.intro)
+
+        # Drag-and-drop pool: drop a loose selection (RAW + JPG + sidecars) straight
+        # onto here instead of assembling a folder. The pool is a VISIBLE tray — one
+        # thumbnail per UPN with a file count — that you build up before scanning.
+        # Files are copied into a temp pool that feeds the same scan/review/commit
+        # path as Browse; nothing is interpreted until you press Scan pool.
+        self.pool_stack = QStackedWidget()
+        self.pool_hint = QLabel(self._DROP_IDLE)
+        self.pool_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.pool_hint.setStyleSheet(self._DROP_STYLE_IDLE)
+        self.pool_hint.setWordWrap(True)
+        self.pool_list = QListWidget()
+        self.pool_list.setViewMode(QListView.ViewMode.IconMode)
+        self.pool_list.setIconSize(QSize(110, 110))
+        self.pool_list.setGridSize(QSize(150, 150))
+        self.pool_list.setResizeMode(QListView.ResizeMode.Adjust)
+        self.pool_list.setMovement(QListView.Movement.Static)
+        self.pool_list.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+        self.pool_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.pool_list.setWordWrap(True)
+        self.pool_list.setAcceptDrops(False)
+        self.pool_list.setStyleSheet("QListWidget { border: 2px dashed #bbb; "
+                                     "border-radius: 6px; background: #fafafa; }")
+        self.pool_stack.addWidget(self.pool_hint)   # page 0 — empty
+        self.pool_stack.addWidget(self.pool_list)    # page 1 — has files
+        lay.addWidget(self.pool_stack, 1)
+
+        from gui.image_loader import AsyncImageLoader
+        self._loader = AsyncImageLoader(self)
 
         row = QHBoxLayout()
         self.dir_edit = QLineEdit()
@@ -250,6 +349,11 @@ class AddToMasterDialog(QDialog):
         self.out.setFont(QFont("Consolas", 10))
         self.out.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         lay.addWidget(self.out)
+
+        # Let file drops fall through to the dialog's handler from anywhere, rather
+        # than a child (folder field / report box) swallowing them as pasted text.
+        self.dir_edit.setAcceptDrops(False)
+        self.out.setAcceptDrops(False)
 
         lay.addWidget(self._build_find_bar())
 
@@ -287,17 +391,24 @@ class AddToMasterDialog(QDialog):
             self.dir_edit.setReadOnly(True)
             self.dir_edit.setStyleSheet("color: gray;")
             self.browse_btn.setVisible(False)
+            self.pool_stack.setVisible(False)
+            self.scan_btn.setText("Scan folder")
+            self.pool_stack.setMaximumHeight(0)
+            self.out.setMaximumHeight(16777215)
         else:
             self.setWindowTitle("Add Pictures to Master")
             self.intro.setText(
-                "Add loose pictures to the master — e.g. what's left in a trip "
-                "folder after the trip was moved. Often there's something worth "
-                "keeping.\n"
-                "Pictures need a species (tag them in Lightroom first); untagged "
-                "ones are listed but not added.")
+                "Add loose pictures to the master — drag a few files onto the box "
+                "below, or Browse to a folder. Handy for a trip left-over or a few "
+                "hand-picked renders.\n"
+                "Pictures need a species; set it here in Review (or tag in Lightroom "
+                "first). Untagged ones are listed but not added.")
             self.dir_edit.setReadOnly(False)
             self.dir_edit.setStyleSheet("")
             self.browse_btn.setVisible(True)
+            self.pool_stack.setVisible(True)
+            self.scan_btn.setText("Scan folder")
+            self._neutral_pool_layout()
             self.dir_edit.setText(_config.get("addmaster", "lastdir", fallback=""))
 
     def open_session(self, fixed_dir=None):
@@ -306,6 +417,7 @@ class AddToMasterDialog(QDialog):
         scratch; Days mode scans immediately so the user lands on the summary."""
         self._close_review()
         self._cleanup_scratch()
+        self._cleanup_drop_pool()
         self._apply_mode(fixed_dir)
         self._reset_scan_state()
         self.show()
@@ -316,6 +428,201 @@ class AddToMasterDialog(QDialog):
                 self._scan()
             except Exception as e:
                 logger.info(f"add_to_master: initial scan failed: {e}")
+
+    # ── drag-and-drop pool ─────────────────────────────────────────────────────
+    def _drops_allowed(self) -> bool:
+        # Only in Master mode: a Days session is locked to that day's folder, so a
+        # loose drop there would be misleading.
+        return self._fixed_dir is None
+
+    def _dropped_paths(self, mime) -> list[str]:
+        """Local file paths from a drop. A dropped folder contributes its files
+        (recursively); non-local URLs are ignored."""
+        paths = []
+        for url in mime.urls():
+            if not url.isLocalFile():
+                continue
+            p = Path(url.toLocalFile())
+            if p.is_dir():
+                paths.extend(str(f) for f in p.rglob("*") if f.is_file())
+            elif p.is_file():
+                paths.append(str(p))
+        return paths
+
+    def _highlight_pool(self, active: bool):
+        page = self.pool_stack.currentWidget()
+        if page is self.pool_hint:
+            self.pool_hint.setText(self._DROP_ACTIVE if active else self._DROP_IDLE)
+            self.pool_hint.setStyleSheet(self._DROP_STYLE_ACTIVE if active
+                                         else self._DROP_STYLE_IDLE)
+        else:
+            border = "#4a90d9" if active else "#bbb"
+            bg = "#eaf3fb" if active else "#fafafa"
+            self.pool_list.setStyleSheet(
+                f"QListWidget {{ border: 2px dashed {border}; border-radius: 6px; "
+                f"background: {bg}; }}")
+
+    def dragEnterEvent(self, event):
+        if self._drops_allowed() and event.mimeData().hasUrls():
+            event.acceptProposedAction()
+            # Give the tray the room while dragging (the report box shrinks away),
+            # so the drop target is the obvious, dominant thing on screen.
+            self._show_pool_state(scanned=False)
+            self._highlight_pool(True)
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        if self._drops_allowed() and event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragLeaveEvent(self, event):
+        self._highlight_pool(False)
+        # If nothing has been pooled yet, don't leave the tray blown up over an
+        # empty hint — settle back to the balanced default.
+        if not self._pool_has_files():
+            self._neutral_pool_layout()
+
+    def dropEvent(self, event):
+        self._highlight_pool(False)
+        if not self._drops_allowed():
+            return
+        srcs = self._dropped_paths(event.mimeData())
+        if not srcs:
+            return
+        pool = self._ensure_drop_pool()
+        copied = 0
+        for s in srcs:
+            try:
+                # Re-dropping a file just refreshes it — no duplicate complaints.
+                shutil.copy2(s, os.path.join(pool, os.path.basename(s)))
+                copied += 1
+            except OSError as e:
+                logger.warning(f"add_to_master: could not pool {s}: {e}")
+        # Building the pool does NOT interpret it — that waits for Scan pool. A fresh
+        # drop invalidates any prior scan, so disable Review/Discard first, then let
+        # the tray rebuild set the pool summary + the "Scan pool" affordance.
+        self.dir_edit.setText(pool)
+        self._reset_scan_state()
+        self._rebuild_pool_tray()
+        self._show_pool_state(scanned=False)
+
+    # ── the pool tray (one card per UPN) ───────────────────────────────────────
+    def _rebuild_pool_tray(self):
+        """Redraw the tray from the pool folder: one card per UPN (the picture),
+        its file count, and a thumbnail loaded off-thread. The whole file set of a
+        UPN — RAW, render, sidecars — folds onto a single card."""
+        from engine.handling import deriveUniquePictureName
+        self.pool_list.clear()
+        self._loader.cancel_all()
+        pool = self._drop_pool
+        files = []
+        if pool and os.path.isdir(pool):
+            files = [f for f in sorted(os.listdir(pool))
+                     if os.path.isfile(os.path.join(pool, f))]
+        if not files:
+            self.pool_stack.setCurrentWidget(self.pool_hint)
+            self.scan_btn.setText("Scan folder")
+            return
+
+        groups: dict[str, list[str]] = {}
+        for name in files:
+            groups.setdefault(deriveUniquePictureName(name), []).append(name)
+
+        for upn, members in sorted(groups.items()):
+            short = self._short_upn_label(upn)
+            item = QListWidgetItem(f"{short}\n{len(members)} file"
+                                   f"{'s' if len(members) != 1 else ''}")
+            item.setToolTip(upn + "\n" + "\n".join(sorted(members)))
+            item.setTextAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
+            self.pool_list.addItem(item)
+            self._load_thumb(item, [os.path.join(pool, m) for m in members])
+
+        self.pool_stack.setCurrentWidget(self.pool_list)
+        n_pool = len(files)
+        self.scan_btn.setText("Scan pool")
+        self.out.setPlainText(
+            f"Pool holds {len(groups)} picture(s) in {n_pool} file(s). "
+            f'Press "Scan pool" to read species, date and rating.')
+
+    @staticmethod
+    def _short_upn_label(upn: str) -> str:
+        # UPNs are long ("2023 feb gran canaria-ds5_5772"); the distinctive part is
+        # the frame token after the last space/dash ("ds5_5772"). Fall back to the
+        # tail if there's no separator.
+        base = os.path.basename(upn)
+        cut = max(base.rfind(" "), base.rfind("-"))
+        token = base[cut + 1:] if cut >= 0 else base
+        return token[-14:] if len(token) > 14 else token
+
+    def _load_thumb(self, item: QListWidgetItem, member_paths: list[str]):
+        """Load one thumbnail for the UPN card off-thread. Prefers a JPG (instant);
+        otherwise extracts a RAW/HEIC preview via the shared exiftool path."""
+        from pathlib import Path as _P
+        jpgs = [p for p in member_paths if _P(p).suffix.lower() in (".jpg", ".jpeg")]
+        src = jpgs[0] if jpgs else next(
+            (p for p in member_paths
+             if _P(p).suffix.lower() not in (".dop", ".xmp")), None)
+        if not src:
+            return
+        cache_dir = _P(tempfile.gettempdir()) / "sv_droppool_prev"
+
+        def producer():
+            from gui.preview_provider import cached_jpg_for
+            jpg = cached_jpg_for(_P(src), cache_dir)
+            return QImage(str(jpg)) if jpg else QImage()
+
+        def on_ready(px, _item=item):
+            if not px.isNull():
+                _item.setIcon(QIcon(px))
+        self._loader.request(producer, on_ready, target_w=220)
+
+    def _ensure_drop_pool(self) -> str:
+        if not self._drop_pool or not os.path.isdir(self._drop_pool):
+            self._drop_pool = tempfile.mkdtemp(prefix="sv_droppool_")
+        return self._drop_pool
+
+    def _cleanup_drop_pool(self):
+        self._loader.cancel_all()
+        self.pool_list.clear()
+        self.pool_stack.setCurrentWidget(self.pool_hint)
+        if self._drop_pool and os.path.isdir(self._drop_pool):
+            try:
+                shutil.rmtree(self._drop_pool, ignore_errors=True)
+            except Exception as e:
+                logger.info(f"add_to_master: drop-pool cleanup: {e}")
+        self._drop_pool = None
+
+    def _pool_has_files(self) -> bool:
+        return bool(self._drop_pool and os.path.isdir(self._drop_pool)
+                    and any(os.scandir(self._drop_pool)))
+
+    def _neutral_pool_layout(self):
+        """The balanced default (no drag in progress, pool empty): a modest tray and
+        a normal report box."""
+        self.pool_stack.setMaximumHeight(120)
+        self.pool_stack.setMinimumHeight(0)
+        self.out.setMaximumHeight(16777215)
+        self.out.setMinimumHeight(0)
+
+    def _show_pool_state(self, scanned: bool):
+        """Two working layouts (Master mode only):
+        - building the pool  → tray dominant, report shrinks to a strip;
+        - after Scan pool     → report dominant, tray shrinks to a couple of rows."""
+        if self._fixed_dir is not None:
+            return
+        if scanned:
+            self.pool_stack.setMaximumHeight(190)
+            self.pool_stack.setMinimumHeight(0)
+            self.out.setMaximumHeight(16777215)
+            self.out.setMinimumHeight(180)
+        else:
+            self.pool_stack.setMaximumHeight(16777215)
+            self.pool_stack.setMinimumHeight(200)
+            self.out.setMaximumHeight(60)
+            self.out.setMinimumHeight(0)
 
     # ── Find-in-report bar (Ctrl+F) ───────────────────────────────────────────
     def _build_find_bar(self) -> QWidget:
@@ -417,8 +724,9 @@ class AddToMasterDialog(QDialog):
             return
 
         # Only Master mode remembers the folder; a locked Day path must not
-        # overwrite the Master "last folder" the user browses to.
-        if not self._fixed_dir:
+        # overwrite the Master "last folder" the user browses to. The drop-pool is a
+        # throwaway temp dir — never remember it (it won't exist next launch).
+        if not self._fixed_dir and input_dir != self._drop_pool:
             if not _config.has_section("addmaster"):
                 _config.add_section("addmaster")
             _config.set("addmaster", "lastdir", input_dir)
@@ -444,9 +752,15 @@ class AddToMasterDialog(QDialog):
             self._mt = mt
             self._report = report
             self.out.setPlainText(micro_trip.format_summary(report))
-            has_pics = report.get("ok", False) and report.get("identified", 0) > 0
+            # Open Review whenever there are pictures at all — naming the unnamed ones
+            # is exactly what Review is for; gating it on "already identified" locked
+            # you out of the one case you need it. Commit still only adds the tagged.
+            has_pics = report.get("ok", False) and report.get("pictures", 0) > 0
             self.review_btn.setEnabled(has_pics)
             self.discard_btn.setEnabled(report.get("ok", False))
+            # Scanning the pool = interpretation done: hand the room to the report.
+            if input_dir == self._drop_pool:
+                self._show_pool_state(scanned=True)
         except Exception as e:
             logger.warning(f"add_to_master: scan failed: {e}")
             self.out.setPlainText(f"Scan failed: {e}")
@@ -475,9 +789,10 @@ class AddToMasterDialog(QDialog):
     def _discard(self):
         self._close_review()
         self._cleanup_scratch()
+        self._cleanup_drop_pool()
         self.review_btn.setEnabled(False)
         self.discard_btn.setEnabled(False)
-        self.out.appendPlainText("\nDiscarded — scratch removed.")
+        self.out.appendPlainText("\nDiscarded — scratch and drop-pool removed.")
 
     def _close_review(self):
         if self._review_dlg is not None:
@@ -510,6 +825,7 @@ class AddToMasterDialog(QDialog):
         # dialog clean so the next open isn't showing stale results.
         self._close_review()
         self._cleanup_scratch()
+        self._cleanup_drop_pool()
         self._reset_scan_state()
         super().closeEvent(event)
 
