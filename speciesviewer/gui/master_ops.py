@@ -456,8 +456,36 @@ class MasterCardMenuMixin:
             parts.append(f"{res['jpg']} JPG" + ("s" if res["jpg"] != 1 else ""))
         if res["meta"]:
             parts.append(f"{res['meta']} metafile" + ("s" if res["meta"] != 1 else ""))
-        self._master_status(f"Added {' and '.join(parts)} to the picture.")
+        # A new render raises the score: a full-size JPG lifts the size multiplier and
+        # the .dop adds the processed bonus. Recompute the Rate so the picture rises to
+        # where it belongs (and can win the species best-pick), instead of staying at
+        # its RAW-only value.
+        new_rate = self._recompute_master_rate(upn_key)
+        note = f" (Rate → {new_rate})" if new_rate is not None else ""
+        self._master_status(f"Added {' and '.join(parts)} to the picture.{note}")
         self._after_master_change()
+
+    def _recompute_master_rate(self, upn_key: str):
+        """Recompute this master picture's Rate from its CURRENT files and persist it
+        (pictures.Rate), so a just-added render is reflected at once — the same score
+        the pipeline would give it on a full re-read. Returns the new Rate, or None when
+        no master DB is bound. The star rating (XMP:Rating) is untouched; Rate is the
+        DERIVED score computed from the stars + files."""
+        col = self._collection
+        db = getattr(col, "_master_db", None)
+        if db is None:
+            return None
+        from gui.rating_editor import _compute_rate
+        picture = db.picture(upn_key)
+        if picture is None:
+            return None
+        files_dict = db.files_for_upns([upn_key])
+        new_rate = _compute_rate(picture, files_dict)
+        db.apply_rating(upn_key, rate=new_rate)
+        row = getattr(col, "_master_upn", {}).get(upn_key)   # keep the card in step
+        if row is not None:
+            row["Rate"] = str(new_rate)
+        return new_rate
 
     def _ask_master_species(self, upn_key: str, targets: list[dict]) -> dict | None:
         """Searchable picker over the whole master species list (species.csv) — the
