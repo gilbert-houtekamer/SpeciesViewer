@@ -408,6 +408,25 @@ def main(args, config):
     else:
         day_labels = all_labels
 
+    # Days the user marked as not worth a blog page (album overview → "In Blog"
+    # unticked). Skipped entirely: no ini is auto-created, no HTML is written or
+    # uploaded, and — because a full run rebuilds blog_dict from scratch — the day
+    # drops out of the blog index. Day numbering above still counts from the true
+    # first day, so this only trims which days are published.
+    from utils.virttrip_config import read_excluded_days
+    excluded_days = read_excluded_days(virttrip_root)
+    if excluded_days:
+        kept = [l for l in day_labels if l not in excluded_days]
+        skipped = sorted(set(day_labels) - set(kept))
+        if skipped:
+            logger.info(f"Excluding {len(skipped)} day(s) marked 'not in blog': "
+                        f"{', '.join(skipped)}")
+        day_labels = kept
+        if not day_labels:
+            raise SVException(
+                "Every day in range is excluded from the blog ('In Blog' unticked) "
+                "— nothing to publish.")
+
     # Whether a day with no blog ini gets one written for it.
     #
     # Default ON only for a trip that has NO blogs at all — a retroactive trip on

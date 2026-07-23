@@ -43,6 +43,9 @@ class _DayTab(QWidget):
         self._translator = translator
         self._data       = self._load(ini_path)
         self._draft      = blog_review_state(ini_path) == BLOG_DRAFT
+        # True once any field is edited and not yet saved — drives the
+        # "discard your changes?" prompt when the editor is closed.
+        self._dirty      = False
 
         # If the ini still has the generic generated default, swap in the
         # globally-configured value so the editor is in sync with Write All Blogs.
@@ -104,6 +107,7 @@ class _DayTab(QWidget):
         # _on_reviewed_toggled) so it doesn't linger over text you've just blessed.
         self._banner = None
         self._on_review_change = None    # dialog sets this to refresh the tab dot
+        self._on_saved = None            # dialog sets this: a silent save happened
         if self._draft:
             self._banner = QLabel(
                 f"{DRAFT_DOT}  This text was written automatically from the day's "
@@ -198,6 +202,23 @@ class _DayTab(QWidget):
         # No trailing addStretch(): the two message boxes are the stretchy items
         # now, so spare height goes into the text you are actually editing.
 
+        # Any edit after the initial values are in place marks the tab dirty, so
+        # closing without saving can offer to keep or discard the work. Connected
+        # last, after the widgets are seeded, so loading doesn't count as an edit.
+        self.titel_nl.textChanged.connect(self._mark_dirty)
+        self.message_nl.textChanged.connect(self._mark_dirty)
+        self.titel_en.textChanged.connect(self._mark_dirty)
+        self.message_en.textChanged.connect(self._mark_dirty)
+        self.min_score.valueChanged.connect(self._mark_dirty)
+        self.col_width.valueChanged.connect(self._mark_dirty)
+
+    def _mark_dirty(self, *args):
+        self._dirty = True
+
+    def is_dirty(self) -> bool:
+        """True when there are edits not yet written to the ini."""
+        return self._dirty
+
     # ------------------------------------------------------------------
     # Translate
     # ------------------------------------------------------------------
@@ -235,11 +256,18 @@ class _DayTab(QWidget):
 
     def _on_reviewed_toggled(self, checked: bool):
         """Ticking Reviewed clears the amber auto-text banner and turns the tab dot
-        green at once — no need to save/reopen to see it took. The saved state still
-        follows on save()."""
+        green at once. It also SAVES the day silently: ticking Reviewed reads as
+        "this is final", so the text and the reviewed flag are written to disk right
+        away — you no longer have to remember a separate Save afterwards."""
         if self._banner is not None:
             self._banner.setVisible(not checked)
         self._draft = not checked
+        if checked:
+            # save() re-baselines and clears the dirty flag, so a tick that follows
+            # your edits persists both in one silent write.
+            self.save()
+            if callable(self._on_saved):
+                self._on_saved()
         if callable(self._on_review_change):
             self._on_review_change()
 
@@ -284,6 +312,7 @@ class _DayTab(QWidget):
         })
         self._draft = not reviewed
         self.reviewed_box.setChecked(reviewed)
+        self._dirty = False
         logger.info(f"Blog editor: saved {self.ini_path.name} "
                     f"({'reviewed' if reviewed else 'still a draft'})")
         return reviewed
@@ -314,6 +343,10 @@ class VirtTripBlogEditorDialog(QDialog):
         self.status_label  = QLabel("")
 
         self._tabs: list[_DayTab] = []
+        # Set whenever a day is written to disk (Save All, per-day upload, or a
+        # silent save from ticking Reviewed) so closing can refresh the album
+        # overview once instead of on every keystroke.
+        self._saved_since_open = False
 
         # Shared translator (one cache load for all tabs)
         translator = self._make_translator()
@@ -335,6 +368,7 @@ class VirtTripBlogEditorDialog(QDialog):
             tab = _DayTab(ini_path, day_num, translator, config_score)
             tab.day_name = day_dir.name          # YYYY-MM-DD — what svv3 filters on
             tab._on_review_change = self._refresh_tab_labels   # live tab-dot update
+            tab._on_saved = self._note_saved                   # silent save happened
             tab.upload_btn.clicked.connect(
                 lambda _checked=False, t=tab: self._save_and_upload_day(t))
             idx = self.tab_widget.addTab(tab, self._tab_label(tab, day_num))
@@ -381,6 +415,12 @@ class VirtTripBlogEditorDialog(QDialog):
         for i, tab in enumerate(self._tabs):
             self.tab_widget.setTabText(i, self._tab_label(tab, tab.day_num))
 
+    def _note_saved(self):
+        """A tab wrote itself to disk (e.g. a silent save on ticking Reviewed);
+        remember to refresh the album overview when the editor closes."""
+        self._saved_since_open = True
+        self._refresh_tab_labels()
+
     @staticmethod
     def _make_translator():
         try:
@@ -410,8 +450,33 @@ class VirtTripBlogEditorDialog(QDialog):
     def _save_all(self) -> int:
         """Save every tab; returns how many days are still drafts."""
         drafts = sum(0 if tab.save() else 1 for tab in self._tabs)
+        self._saved_since_open = True
         self._refresh_tab_labels()
         return drafts
+
+    def closeEvent(self, event):
+        """Guard against losing edits. If any day has unsaved changes, offer to
+        save them, discard them, or stay in the editor. A day blessed with
+        Reviewed was already saved silently, so it never triggers this."""
+        dirty = [t for t in self._tabs if t.is_dirty()]
+        if dirty:
+            n = len(dirty)
+            ret = QMessageBox.question(
+                self, "Unsaved changes",
+                f"You have unsaved edits to {n} day{'s' if n != 1 else ''}.\n\n"
+                "Save them before closing?",
+                QMessageBox.StandardButton.Save
+                | QMessageBox.StandardButton.Discard
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Save)
+            if ret == QMessageBox.StandardButton.Cancel:
+                event.ignore()
+                return
+            if ret == QMessageBox.StandardButton.Save:
+                self._save_all()
+        if self._saved_since_open:
+            self._refresh_overview()
+        super().closeEvent(event)
 
     def _refresh_overview(self):
         """Repaint the trip's day table so the amber/green bubbles reflect what

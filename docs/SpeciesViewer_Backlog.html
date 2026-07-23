@@ -315,6 +315,19 @@ are done.</p>
     that day. The trap: the blog step opens every run by clearing the blog index so stale entries
     vanish — doing that for a single day would have dropped the other twenty out of the index and
     orphaned their live pages. Single-day mode skips the wipe and updates just that day in place.</li>
+  <li><strong>Keep a thin day out of the blog, and make “Reviewed” actually save</strong>
+    <span class="tag-shipped">SHIPPED</span> — two small blog-editing frictions, both from real use.
+    (1) Some days aren't worth a page — a single grab shot. The album overview gained an
+    <strong>In&nbsp;Blog</strong> checkbox column: untick a day and its Write-Blog cell goes grey (it
+    stops reading as a to-do), it drops out of the “drafts to review” count, and
+    <code>svv3WriteBlog</code> / <code>svv6RedoBlog</code> skip it entirely — so on the next full run it
+    also falls out of the blog index. The choice lives in its own file
+    (<code>metadata/blog/excluded_days.txt</code>) on purpose: a flag in the blog ini would wrongly flip
+    svv3's “this album already has blogs” gate, and virttrip.ini is rewritten wholesale elsewhere and
+    would lose it. (2) Ticking <strong>Reviewed</strong> in the blog editor now <em>saves the day
+    silently</em> (text + flag), because that tick reads as “this is final” — the user had lost edits
+    believing a tick was a save. And closing the editor with unsaved edits now asks
+    <em>Save / Discard / Cancel</em> instead of silently dropping them.</li>
   <li><strong>Geotag the master from the virtual-trip map</strong> <span class="tag-shipped">SHIPPED</span> —
     the map was flatly read-only because an album's files <em>are</em> the master's — which also
     made it the best surface we have for <em>fixing</em> the master's missing coordinates. Geotagging

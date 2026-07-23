@@ -10,22 +10,24 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTableWidget, QTableWidgetItem, QMenu,
+    QTableWidget, QTableWidgetItem, QMenu, QCheckBox,
     QHeaderView, QAbstractItemView,
 )
 
 from utils.config import _config
 from utils.virttrip_config import (read_virttrip_ini, blog_review_state,
+                                   read_excluded_days, write_excluded_days,
                                    BLOG_DRAFT, BLOG_REVIEWED)
 
 JPEG_EXTS = {"jpg", "jpeg"}
 
-DATE_COL  = 0
-FILES_COL = 1
-JPGS_COL  = 2
-GPS_COL   = 3
-BLOG_COL  = 4
-WEB_COL   = 5
+DATE_COL   = 0
+FILES_COL  = 1
+JPGS_COL   = 2
+GPS_COL    = 3
+INBLOG_COL = 4
+BLOG_COL   = 5
+WEB_COL    = 6
 
 TAB_TITLE = "Active Album"
 
@@ -360,6 +362,10 @@ def populate_virttrip_overview(self):
     fromdate  = (trip_data.get("fromdate") or "").strip()
     todate    = (trip_data.get("todate")   or "").strip()
 
+    # Days the user has marked as not worth a blog page ("In Blog" unticked). A
+    # mutable set: the checkbox handler updates it and re-persists.
+    excluded = read_excluded_days(virttrip_path)
+
     # No-GPS, and now the whole day list, come from the master's own rows — a fast
     # indexed query by the album's date range — instead of re-reading every picture's
     # sidecar (which froze the switch for ~30 s on a big album). None = no master
@@ -398,10 +404,10 @@ def populate_virttrip_overview(self):
         return
 
     self.virttrip_table = QTableWidget()
-    self.virttrip_table.setColumnCount(6)
+    self.virttrip_table.setColumnCount(7)
     self.virttrip_table.setRowCount(len(day_dirs))
     self.virttrip_table.setHorizontalHeaderLabels(
-        ["Date", "Pictures", "JPEG\nFiles", "GPS", "Write\nBlog", "Build\nWebsite"]
+        ["Date", "Pictures", "JPEG\nFiles", "GPS", "In\nBlog", "Write\nBlog", "Build\nWebsite"]
     )
     self.virttrip_table.setSortingEnabled(False)
     self.virttrip_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -420,6 +426,48 @@ def populate_virttrip_overview(self):
 
     blog_dir  = virttrip_path / "metadata" / "blog"
     first_date = date.fromisoformat(day_dirs[0].name)
+
+    def _set_blog_cell(row, day_name, jpegs):
+        """(Re)paint the Write-Blog cell. A day the user excluded from the blog is
+        grey — no page is written or published for it — regardless of any draft it
+        may still carry, so it stops reading as a to-do."""
+        blog_ini = blog_dir / f"blog_{day_name}.ini"
+        if day_name in excluded:
+            icon, tip = "○", ("Excluded from the blog — no page is written or "
+                              "published for this day.\nTick 'In Blog' to include it.")
+        elif jpegs == 0:
+            icon, tip = "○", "No JPEG files — blog page not generated"
+        else:
+            state = blog_review_state(blog_ini)
+            if state == BLOG_DRAFT:
+                icon, tip = "🟠", ("Auto-written draft — nobody has reviewed it.\n"
+                                   "Double-click to read and edit it.")
+            elif state == BLOG_REVIEWED:
+                icon, tip = "🟢", "Blog text reviewed — double-click to edit."
+            else:
+                icon, tip = "⚪", "No blog yet. Click 'Write All Blogs' to write a draft."
+        item = QTableWidgetItem(icon)
+        item.setToolTip(tip)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+        self.virttrip_table.setItem(row, BLOG_COL, item)
+
+    def _on_inblog_toggled(row, checked):
+        """Persist the In-Blog choice and, without a full re-query, grey/restore the
+        day's Write-Blog cell and refresh the 'drafts to review' count."""
+        day_name = day_dirs[row].name
+        if checked:
+            excluded.discard(day_name)
+        else:
+            excluded.add(day_name)
+        write_excluded_days(virttrip_path, excluded)
+        jpgs_item = self.virttrip_table.item(row, JPGS_COL)
+        try:
+            jpegs = int(jpgs_item.text()) if jpgs_item else 0
+        except ValueError:
+            jpegs = 0
+        _set_blog_cell(row, day_name, jpegs)
+        _update_draft_label()
 
     # Website is built trip-wide (not per-day); detect from the all-species summary page.
     web_built = (virttrip_path / "web" / "summaries" / "all biota species-nl.html").exists()
@@ -455,24 +503,25 @@ def populate_virttrip_overview(self):
         gps_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
         self.virttrip_table.setItem(i, GPS_COL, gps_item)
 
-        # BLOG_COL: grey when there is nothing to show; otherwise amber for an
-        # auto-written draft nobody has read, green once the text is yours.
-        blog_ini = blog_dir / f"blog_{day_dir.name}.ini"
-        state = blog_review_state(blog_ini)
-        if jpegs == 0:
-            blog_icon, blog_tooltip = "○", "No JPEG files — blog page not generated"
-        elif state == BLOG_DRAFT:
-            blog_icon, blog_tooltip = "🟠", ("Auto-written draft — nobody has reviewed it.\n"
-                                             "Double-click to read and edit it.")
-        elif state == BLOG_REVIEWED:
-            blog_icon, blog_tooltip = "🟢", "Blog text reviewed — double-click to edit."
-        else:
-            blog_icon, blog_tooltip = "⚪", "No blog yet. Click 'Write All Blogs' to write a draft."
-        blog_item = QTableWidgetItem(blog_icon)
-        blog_item.setToolTip(blog_tooltip)
-        blog_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        blog_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
-        self.virttrip_table.setItem(i, BLOG_COL, blog_item)
+        # INBLOG_COL: a checkbox to keep a thin day (e.g. a single photo) out of
+        # the blog. A cell WIDGET (not a checkable item) so the tick sits centered
+        # like the ✅ columns and no stray cell-editor box appears on select.
+        inblog_cb = QCheckBox()
+        inblog_cb.setChecked(day_dir.name not in excluded)
+        inblog_cb.setToolTip(
+            "Include this day in the blog.\nUntick to leave a thin day (e.g. a single "
+            "photo) out — 'Write All Blogs' then skips it and it drops from the index.")
+        inblog_cb.toggled.connect(lambda checked, r=i: _on_inblog_toggled(r, checked))
+        inblog_holder = QWidget()
+        _inblog_lay = QHBoxLayout(inblog_holder)
+        _inblog_lay.setContentsMargins(0, 0, 0, 0)
+        _inblog_lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        _inblog_lay.addWidget(inblog_cb)
+        self.virttrip_table.setCellWidget(i, INBLOG_COL, inblog_holder)
+
+        # BLOG_COL: grey when there is nothing to show (or the day is excluded);
+        # otherwise amber for an auto-written draft nobody has read, green once yours.
+        _set_blog_cell(i, day_dir.name, jpegs)
 
         # WEB_COL: grey when no JPEGs; otherwise show trip-wide build state
         if jpegs == 0:
@@ -498,15 +547,22 @@ def populate_virttrip_overview(self):
     header_label.setStyleSheet("font-weight: bold; font-size: 16px;")
     header_row.addWidget(header_label)
 
-    drafts = sum(1 for d in day_dirs
-                 if blog_review_state(blog_dir / f"blog_{d.name}.ini") == BLOG_DRAFT)
-    if drafts:
-        draft_label = QLabel(f"🟠 {drafts} draft blog{'s' if drafts != 1 else ''} to review")
-        draft_label.setStyleSheet("color:#e65100; margin-left:10px;")
-        draft_label.setToolTip(
-            "Day blogs written automatically that nobody has read yet. They will be "
-            "published as they are — double-click an amber row to review it.")
-        header_row.addWidget(draft_label)
+    # Excluded days never count as drafts to review (they are not published at all).
+    draft_label = QLabel("")
+    draft_label.setStyleSheet("color:#e65100; margin-left:10px;")
+    draft_label.setToolTip(
+        "Day blogs written automatically that nobody has read yet. They will be "
+        "published as they are — double-click an amber row to review it.")
+
+    def _update_draft_label():
+        n = sum(1 for d in day_dirs
+                if d.name not in excluded
+                and blog_review_state(blog_dir / f"blog_{d.name}.ini") == BLOG_DRAFT)
+        draft_label.setText(f"🟠 {n} draft blog{'s' if n != 1 else ''} to review")
+        draft_label.setVisible(n > 0)
+
+    _update_draft_label()
+    header_row.addWidget(draft_label)
 
     missing_gps = sum(no_gps_by_day.values())
     if missing_gps:

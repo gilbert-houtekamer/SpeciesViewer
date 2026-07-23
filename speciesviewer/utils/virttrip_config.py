@@ -53,6 +53,33 @@ def blog_review_state(ini_path) -> str:
     return BLOG_DRAFT if any(m in text for m in _AUTO_MARKERS) else BLOG_REVIEWED
 
 
+def _excluded_days_path(trip_root) -> Path:
+    return Path(trip_root) / "metadata" / "blog" / "excluded_days.txt"
+
+
+def read_excluded_days(trip_root) -> set:
+    """The album days the user marked as not worth a blog page (album overview →
+    'In Blog' unticked), one ISO date per line.
+
+    Kept in its OWN file rather than in each blog ini or in virttrip.ini on
+    purpose: a blog ini would count toward svv3's 'this album already has blogs'
+    gate (silently turning off auto-create for the other days), and virttrip.ini
+    is rewritten wholesale by the create/update path (the flag would be lost)."""
+    try:
+        text = _excluded_days_path(trip_root).read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        return set()
+    return {ln.strip() for ln in text.splitlines() if ln.strip()}
+
+
+def write_excluded_days(trip_root, days) -> None:
+    """Persist the set of excluded ISO day labels (see read_excluded_days)."""
+    path = _excluded_days_path(trip_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = "\n".join(sorted(days))
+    path.write_text(body + "\n" if body else "", encoding="utf-8")
+
+
 def _coerce_orphan_continuations(text: str) -> str:
     out = []
     in_value = False

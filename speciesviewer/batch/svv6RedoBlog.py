@@ -182,9 +182,14 @@ def main(args, config):
     if not (_from and _to):
         raise SVException("The album has no fromdate/todate in virttrip.ini.")
     db = album_source.open_master_db(master_db)
+    # Days the user excluded from the blog ("In Blog" unticked) are dropped here too,
+    # so a redo re-renders and re-indexes only the days that stay published.
+    from utils.virttrip_config import read_excluded_days
+    excluded_days = read_excluded_days(virttrip_root)
     published = [
         label for label in album_source.day_labels_in_range(db, _from, _to)
-        if (blog_dir / f"blog_{label}.ini").exists()
+        if label not in excluded_days
+        and (blog_dir / f"blog_{label}.ini").exists()
     ]
     if not published:
         raise SVException(
