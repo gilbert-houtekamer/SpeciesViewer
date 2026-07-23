@@ -2025,10 +2025,17 @@ class TripMapView(QDialog):
                 parts.append(f'<span style="color:{_TRIP_OWN_COLOR}; '
                              f'font-weight:600">pink</span> = this trip')
         self._info.setText("  ·  ".join(parts))
-        self._info.setToolTip(
-            f"{self._ghosts} picture(s) are listed for this trip but their files are "
-            f"not on disk, so they are not mapped. Re-run Extract Days to rebuild "
-            f"this trip's day data from the master." if self._ghosts else "")
+        if self._ghosts:
+            # A real trip owns its day data (Read & Summarize); an album is a live
+            # window on the master, so a ghost there is a master row whose file is gone.
+            rebuild = ("Re-run Read & Summarize to rebuild this trip's day data."
+                       if self._trip_root else
+                       "These are master entries whose files are missing on disk.")
+            ghost_tip = (f"{self._ghosts} picture(s) are listed but their files are "
+                         f"not on disk, so they are not mapped. {rebuild}")
+        else:
+            ghost_tip = ""
+        self._info.setToolTip(ghost_tip)
         self._showall_btn.setVisible(bool(self._hidden))
         if fit:
             self._map.fit_to_points()
