@@ -1435,18 +1435,14 @@ class MainWindow(QMainWindow):
                                 "No album is active.")
             return
         one_day = day_dirs is not None
-        day_dirs = list(day_dirs) if one_day else self._review_day_dirs(root)
-        if not day_dirs:
-            QMessageBox.warning(
-                self, "Album Map",
-                "No days with picture data were found — extract the days first.")
-            return
         geotag = self._master_is_editable()
         # Read the album's pictures LIVE from the master by date range (one day, or the
         # whole trip's fromdate..todate) instead of the per-day review CSV snapshot.
-        # Fall back to the CSVs only when no master is configured.
+        # An album is a WINDOW on the master, not a copy, so the per-day review/ folders
+        # may never have been extracted to disk — don't require them for the map.
         info = read_virttrip_ini(root) or {}
         if one_day:
+            day_dirs = list(day_dirs)
             fdate = tdate = day_dirs[0].name
         else:
             fdate = (info.get("fromdate") or "").strip()
@@ -1454,6 +1450,19 @@ class MainWindow(QMainWindow):
         mroot = (_config.get("master", "masterbiotadatabase", fallback="")
                  or "").replace('"', "").replace("'", "").strip()
         use_query = bool(mroot and Path(mroot).is_dir() and fdate and tdate)
+        # Only the CSV fallback needs the on-disk review day folders. When we can query
+        # the master by date range (the normal case for an album), the whole trip maps
+        # straight from the master — even with no extracted day folders on disk, which
+        # is exactly why the old _review_day_dirs guard wrongly reported "extract the
+        # days first" for a fresh album that reads the master live.
+        if not use_query and not one_day:
+            day_dirs = self._review_day_dirs(root)
+        if not use_query and not day_dirs:
+            QMessageBox.warning(
+                self, "Album Map",
+                "No pictures found for this album, and no master is configured to "
+                "read them from.")
+            return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             if use_query:
