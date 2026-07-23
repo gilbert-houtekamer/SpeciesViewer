@@ -150,11 +150,24 @@ def _open_blog_editor(parent, day_dirs: list, first_date: date,
                       virttrip_root: Path, jump_to_day_num: int = 0):
     """Open the tabbed blog editor, optionally jumping to a specific day's tab."""
     from gui.virttrip_blog_editor import VirtTripBlogEditorDialog
+    from utils.virttrip_config import read_excluded_days
     blog_dir = virttrip_root / "metadata" / "blog"
-    dlg = VirtTripBlogEditorDialog(parent, blog_dir, day_dirs, first_date)
+    # Days unticked in the "In Blog" column are not published, so the editor greys
+    # their tab and leaves them out of its "still a draft" count — matching how the
+    # overview and svv3 already treat them.
+    excluded = read_excluded_days(virttrip_root)
+    dlg = VirtTripBlogEditorDialog(parent, blog_dir, day_dirs, first_date,
+                                   excluded_days=excluded)
     if jump_to_day_num:
         dlg.jump_to_day(jump_to_day_num)
-    dlg.exec()
+    # Non-modal so the day's Species viewer can sit open beside it while you write
+    # the blog for that day. The editor already refreshes the overview in its own
+    # closeEvent, so there is nothing to do after it closes.
+    dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+    parent._blog_editor_dlg = dlg        # keep a ref (PyQt GC)
+    dlg.show()
+    dlg.raise_()
+    dlg.activateWindow()
 
 
 def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path):
@@ -208,11 +221,16 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
     # the collection (master menu hidden on a read-only album).
     if db is not None:
         dlg.enable_master_ops(db, db.master_root, pics, files)
-    dlg.exec()
-    # The viewer can geotag (Get GPS from location, and the map it opens), and that
-    # write lands in the sidecars the No-GPS column counts. Repaint on the way out so
-    # the panel does not keep quoting the count from before the viewer was opened.
-    parent.refresh_gps_counts("virttrip")
+    # Non-modal so it can sit open beside the Blog Editor while you write that day's
+    # blog. The viewer can geotag (Get GPS from location, and the map it opens), and
+    # that write lands in the sidecars the No-GPS column counts — so repaint the panel
+    # when the viewer closes, instead of on the way back from a blocking exec().
+    dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+    parent._day_viewer_dlg = dlg         # keep a ref (PyQt GC)
+    dlg.finished.connect(lambda _=0: parent.refresh_gps_counts("virttrip"))
+    dlg.show()
+    dlg.raise_()
+    dlg.activateWindow()
 
 
 def _count_pictures_from_csv(csv_path: Path, db=None):

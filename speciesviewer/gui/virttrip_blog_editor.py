@@ -30,17 +30,24 @@ _GENERATED_DEFAULT_SCORE = 25   # value hardcoded by _generate_blog_ini
 
 DRAFT_DOT    = "🟠"
 REVIEWED_DOT = "🟢"
+DISABLED_DOT = "⚪"   # a day unticked in "In Blog" — not published, so not a draft to review
 
 
 class _DayTab(QWidget):
     """Widget for one day's blog ini content."""
 
     def __init__(self, ini_path: Path, day_num: int,
-                 translator, default_min_score: int):
+                 translator, default_min_score: int, excluded: bool = False):
         super().__init__()
         self.ini_path    = ini_path
         self.day_num     = day_num
         self._translator = translator
+        # A day unticked in "In Blog": it is not published, so it is never a draft
+        # awaiting review. Its tab shows a grey dot and it drops out of the drafts
+        # count — the amber "read this auto-text" banner is suppressed too. The real
+        # review state (_draft) is kept truthful so re-ticking "In Blog" later shows
+        # the day's true colour again.
+        self.excluded    = excluded
         self._data       = self._load(ini_path)
         self._draft      = blog_review_state(ini_path) == BLOG_DRAFT
         # True once any field is edited and not yet saved — drives the
@@ -108,7 +115,7 @@ class _DayTab(QWidget):
         self._banner = None
         self._on_review_change = None    # dialog sets this to refresh the tab dot
         self._on_saved = None            # dialog sets this: a silent save happened
-        if self._draft:
+        if self._draft and not self.excluded:
             self._banner = QLabel(
                 f"{DRAFT_DOT}  This text was written automatically from the day's "
                 f"locations and best species. Read it, edit what you want, then tick "
@@ -126,6 +133,11 @@ class _DayTab(QWidget):
         layout.addWidget(self.titel_nl)
         layout.addWidget(QLabel("Message:"))
         self.message_nl = QTextEdit()
+        # Plain-text only: a paste from a web page comes in as plain text, so it
+        # can't drag in the source's fonts/italics (which is how "(Fluvicola
+        # nengeta)" arrived big and italic). Our own <i>…</i> markup is literal text
+        # and is preserved untouched.
+        self.message_nl.setAcceptRichText(False)
         self.message_nl.setPlainText(self._data["message_nl"])
         # A minimum, not a fixed height: pinned at 90 these two boxes could not
         # give up a pixel, so once the banner + button row pushed the content past
@@ -158,6 +170,7 @@ class _DayTab(QWidget):
         layout.addWidget(self.titel_en)
         layout.addWidget(QLabel("Message:"))
         self.message_en = QTextEdit()
+        self.message_en.setAcceptRichText(False)   # plain-text paste (see message_nl)
         self.message_en.setPlainText(self._data["message_en"])
         self.message_en.setMinimumHeight(70)
         layout.addWidget(self.message_en, stretch=1)
@@ -325,9 +338,12 @@ class _DayTab(QWidget):
 class VirtTripBlogEditorDialog(QDialog):
     """Tabbed editor for all per-day blog ini files of a virtual trip."""
 
-    def __init__(self, parent, blog_dir: Path, day_dirs: list, first_date: date):
+    def __init__(self, parent, blog_dir: Path, day_dirs: list, first_date: date,
+                 excluded_days=None):
         super().__init__(parent)
         self.setWindowTitle("Blog Editor")
+        # ISO day labels unticked in the album overview's "In Blog" column.
+        self._excluded = set(excluded_days or ())
         # Tall enough for the draft banner, both message boxes at their 70 px
         # minimum, the Reviewed/upload row and the status line — the old 560 was
         # sized for a page that had none of those.
@@ -365,12 +381,20 @@ class VirtTripBlogEditorDialog(QDialog):
             if not ini_path.exists():
                 continue
             day_num = (date.fromisoformat(day_dir.name) - first_date).days + 1
-            tab = _DayTab(ini_path, day_num, translator, config_score)
+            tab = _DayTab(ini_path, day_num, translator, config_score,
+                          excluded=day_dir.name in self._excluded)
             tab.day_name = day_dir.name          # YYYY-MM-DD — what svv3 filters on
             tab._on_review_change = self._refresh_tab_labels   # live tab-dot update
             tab._on_saved = self._note_saved                   # silent save happened
             tab.upload_btn.clicked.connect(
                 lambda _checked=False, t=tab: self._save_and_upload_day(t))
+            if tab.excluded:
+                # svv3 would reject a single-day publish of an excluded day
+                # ("nothing to publish"), so don't offer the button at all.
+                tab.upload_btn.setEnabled(False)
+                tab.upload_btn.setToolTip(
+                    "This day is set to 'not in blog', so there is nothing to "
+                    "publish. Re-tick 'In Blog' in the album overview to include it.")
             idx = self.tab_widget.addTab(tab, self._tab_label(tab, day_num))
             self.tab_widget.setTabToolTip(idx,
                 f"{day_dir.name}\n{tab._data['titel_nl']}")
@@ -409,6 +433,8 @@ class VirtTripBlogEditorDialog(QDialog):
 
     @staticmethod
     def _tab_label(tab: _DayTab, day_num: int) -> str:
+        if tab.excluded:
+            return f"{DISABLED_DOT} Day {day_num}"
         return f"{DRAFT_DOT if tab._draft else REVIEWED_DOT} Day {day_num}"
 
     def _refresh_tab_labels(self):
@@ -448,8 +474,16 @@ class VirtTripBlogEditorDialog(QDialog):
     # ------------------------------------------------------------------
 
     def _save_all(self) -> int:
-        """Save every tab; returns how many days are still drafts."""
-        drafts = sum(0 if tab.save() else 1 for tab in self._tabs)
+        """Save every tab; returns how many PUBLISHED days are still drafts.
+
+        An excluded day ("In Blog" unticked) is not published, so it never counts
+        as a draft to review even when its ini is still auto-text — otherwise the
+        Saved dialog would nag about a day that will never see the web."""
+        drafts = 0
+        for tab in self._tabs:
+            reviewed = tab.save()
+            if not reviewed and not tab.excluded:
+                drafts += 1
         self._saved_since_open = True
         self._refresh_tab_labels()
         return drafts

@@ -328,6 +328,21 @@ are done.</p>
     silently</em> (text + flag), because that tick reads as “this is final” — the user had lost edits
     believing a tick was a save. And closing the editor with unsaved edits now asks
     <em>Save / Discard / Cancel</em> instead of silently dropping them.</li>
+  <li><strong>Blog Editor beside the day's photos, and “In&nbsp;Blog” consistent everywhere</strong>
+    <span class="tag-shipped">SHIPPED</span> — follow-up polish on the thin-day work above, all from
+    real use. (1) The Blog Editor and a day's <strong>Species image viewer</strong> now open
+    <em>non-modally</em>, so you can look at the day's pictures while writing its blog. The data was
+    never the obstacle — the editor works off the on-disk blog inis and the viewer off a live master
+    query, so neither needs the other; only the modal <code>exec()</code> stood in the way. (2) A day
+    unticked in <strong>In&nbsp;Blog</strong> now reads as excluded in <em>every</em> status surface,
+    not just the publish step: its Blog-Editor tab shows a grey&nbsp;⚪ instead of amber, it drops from
+    the editor's “still a draft” count, its auto-text banner and per-day <em>Upload</em> button are
+    suppressed, and the right-hand <strong>album tree</strong> (icon + Status tooltip) stops counting
+    it — so an album whose only draft is an excluded grab-shot day now reads&nbsp;✅ / all-reviewed
+    instead of a false alarm. (3) The two blog message boxes take <strong>plain-text paste only</strong>
+    (<code>setAcceptRichText(False)</code>), so a paste from a web page no longer drags in the source's
+    fonts and italics (our own literal <code>&lt;i&gt;…&lt;/i&gt;</code> markup is kept) — retiring the
+    paste-through-Notepad++ workaround.</li>
   <li><strong>Geotag the master from the virtual-trip map</strong> <span class="tag-shipped">SHIPPED</span> —
     the map was flatly read-only because an album's files <em>are</em> the master's — which also
     made it the best surface we have for <em>fixing</em> the master's missing coordinates. Geotagging

@@ -4,7 +4,9 @@ from PyQt6.QtCore import Qt
 from pathlib import Path
 import csv
 import os
-from utils.virttrip_config import read_virttrip_ini, blog_review_state, BLOG_DRAFT
+from utils.virttrip_config import (
+    read_virttrip_ini, blog_review_state, BLOG_DRAFT, read_excluded_days,
+)
 from utils.config import _config, persist_config, get_virttrips_root
 from utils.open_path import open_path
 
@@ -96,6 +98,11 @@ class VirtTripInfoPanel(QWidget):
                 # Blog dot (🟠/🟢/⚪), same convention as the yellow overview panel.
                 blog_dir = d / "metadata" / "blog"
                 inis = sorted(blog_dir.glob("blog_*.ini")) if blog_dir.is_dir() else []
+                # A day unticked in "In Blog" is never published, so it must not keep
+                # the album amber. Drop excluded days before counting drafts — the ini
+                # name is blog_<YYYY-MM-DD>.ini, matching the excluded-day label.
+                excluded = read_excluded_days(str(d))
+                inis = [p for p in inis if p.stem[len("blog_"):] not in excluded]
                 n_draft = sum(1 for p in inis if blog_review_state(p) == BLOG_DRAFT)
                 if not inis:
                     blog_dot, blog_note = "⚪", "no blogs yet"
