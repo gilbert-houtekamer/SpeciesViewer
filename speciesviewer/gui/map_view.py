@@ -922,7 +922,14 @@ class TileMapView(QGraphicsView):
             self._moving = False
             self._press_vp = None
             self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
-            self.group_move_requested.emit(data, lat, lon)
+            # Invariant: reaching here with _moving set means a bubble was grabbed, so
+            # _grab_data should be that bubble. If it isn't (a drag whose state was
+            # torn by the modal confirm bar or a mid-drag re-render), emitting would
+            # crash _move_group on data.get(...). Drop the phantom move instead.
+            if data is not None:
+                self.group_move_requested.emit(data, lat, lon)
+            else:
+                logger.warning("map: drag-move released with no grabbed bubble — ignored.")
             return
         self._grab_data = self._grab_press = None
         if self._press_vp is None or e.button() != Qt.MouseButton.LeftButton:
@@ -2481,14 +2488,18 @@ class TripMapView(QDialog):
         try:
             write_gps(files, lat, lon)
             if has_place:
-                write_location_batch(files, fields, overwrite=True)
+                # Never replace a Location the picture already carries: a hand-entered
+                # place ("Hotel Bourbon Atibaia") must survive the coarse reverse-geocode
+                # this coordinate produced ("Caetetuba"). City/State/Country are
+                # administrative and still update; only Location is protected.
+                write_location_batch(files, fields, overwrite=True, protect=("Location",))
             # In-memory only from here — no more spawns. Handing the coordinates over
             # is also what makes a MOVE stick: the collection used to keep the
             # pre-move value, so a moved picture snapped back to its old spot the
             # moment the map was re-opened.
             for k in written:
                 if has_place:
-                    self._coll.note_location_written(k, fields)
+                    self._coll.note_location_written(k, fields, protect=("Location",))
                 self._coll.note_gps_written(k, lat, lon)
         finally:
             QApplication.restoreOverrideCursor()
@@ -2510,6 +2521,8 @@ class TripMapView(QDialog):
         the confirm bar to re-place ALL its pictures (a bubble is a same-spot
         group). Warns when the bubble spans several distinct spots (zoom in for
         just one) and when it overwrites pictures that already carried GPS."""
+        if not data:
+            return                      # no bubble grabbed — nothing to move
         present = {p["upn"] for p in self._all_points}
         keys = [k for k in (data.get("upns") or [])
                 if k in present and k not in self._hidden]

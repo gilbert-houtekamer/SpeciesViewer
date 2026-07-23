@@ -260,8 +260,12 @@ class SidecarItem(PictureItem):
     @property
     def place_fields(self) -> dict:
         r = self._row
-        return {k: str(r.get(k, "") or "")
+        base = {k: str(r.get(k, "") or "")
                 for k in ("Location", "City", "Municipality", "State")}
+        if any(base.values()):
+            return base
+        # JPG-only picture: no .xmp row, so read the name folded in from the JPG.
+        return dict(self._c._place_by_stem.get(self._stem, {})) or base
 
     @property
     def gps_text(self) -> str:
@@ -447,6 +451,10 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         # exiftool call covers all files; we keep the coordinates (not just
         # presence) so the card's location line can show them with no extra I/O.
         self._gps_by_stem: dict[str, tuple] = self._build_gps_map()
+        # Place names for stems whose .xmp row has none — chiefly JPG-only pictures,
+        # whose location lives in the JPG itself, not an .xmp sidecar. Without this the
+        # card's location line falls back to raw coordinates for them.
+        self._place_by_stem: dict[str, dict] = self._build_place_map()
         self.rebuild()
 
     def _attach_sibling_jpgs(self) -> set:
@@ -494,6 +502,34 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
             ll = gps_result.get(os.path.normcase(os.path.normpath(str(p))))
             if ll:
                 out[s] = ll
+        return out
+
+    _PLACE_FALLBACK_KEYS = ("Location", "City", "Municipality", "State")
+
+    def _build_place_map(self) -> dict:
+        """{stem: {Location,City,Municipality,State}} read from the best source for the
+        stems whose .xmp row carries NO place text — chiefly JPG-only pictures (their
+        location lives in the JPG, not an .xmp). One batched exiftool call, and only for
+        the stems that need it, so a fully-sidecar'd album pays nothing. This keeps the
+        card's location line off the raw-coordinate fallback when a name is on disk."""
+        from gui.geolocate import read_location_fields_batch
+        need = {}
+        for s, g in self._groups.items():
+            xmp = g.get("xmp")
+            row = self._rows.get(_norm(xmp), {}) if xmp else {}
+            if not any(str(row.get(k, "") or "").strip() for k in self._PLACE_FALLBACK_KEYS):
+                src = g.get("jpg") or g.get("raw") or xmp
+                if src:
+                    need[s] = src
+        if not need:
+            return {}
+        read = read_location_fields_batch([str(p) for p in need.values()])
+        out = {}
+        for s, p in need.items():
+            d = read.get(os.path.normcase(os.path.normpath(str(p))), {})
+            loc = {k: (d.get(k, "") or "") for k in self._PLACE_FALLBACK_KEYS}
+            if any(loc.values()):
+                out[s] = loc
         return out
 
     # ── ordering ──────────────────────────────────────────────────────────
@@ -795,6 +831,9 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         # A render (PhotoLab _DxO.jpg, LR/v5 export) may have appeared — fold it in
         # (switches the display source RAW→JPG, caught by the image signature too).
         self._attach_sibling_jpgs()
+        # Rebuild the JPG-only place-name fallback — a "Get GPS from location" or an
+        # external edit may have written a name into a JPG that has no .xmp row.
+        self._place_by_stem = self._build_place_map()
 
         text_after = self._row_snapshot()
         text_changed = {s for s in text_after if text_after[s] != text_before.get(s)}
@@ -821,13 +860,26 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
                     out.append(str(dop))
         return out
 
-    def note_location_written(self, key: str, fields: dict) -> None:
+    def note_location_written(self, key: str, fields: dict, protect=()) -> None:
         """An Edit/Get-location write just put these place fields into the key's
         XMP — patch the in-memory row + the on-disk cache so the card's location
-        line updates with no re-read (the write already changed the file)."""
+        line updates with no re-read (the write already changed the file).
+        `protect` names fields the file kept a pre-existing value for (a coarse
+        reverse-geocode must not overwrite a hand-entered Location), so the cache
+        must keep the row's existing value rather than adopt the proposed one."""
         g = self._groups.get(key, {})
         xmp = g.get("xmp")
+        protect = set(protect)
         if not xmp:
+            # JPG-only picture: no .xmp row to patch — keep the card's location line
+            # fresh via the JPG place-name fallback instead (same protect semantics).
+            cur = self._place_by_stem.get(key, {})
+            merged = dict(cur)
+            for k, v in fields.items():
+                if v and not (k in protect and (cur.get(k) or "").strip()):
+                    merged[k] = v
+            if merged:
+                self._place_by_stem[key] = merged
             return
         xmp = Path(xmp)
         row = self._rows.setdefault(_norm(xmp), {"SourceFile": str(xmp)})
@@ -836,9 +888,12 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
             from engine.sidecar_cache import SidecarCache
             self._caches[folder] = SidecarCache(folder)
         for k, v in fields.items():
-            if v:
-                row[k] = v
-                self._caches[folder].put_field(xmp, k, v)
+            if not v:
+                continue
+            if k in protect and (row.get(k) or "").strip():
+                continue          # file kept its existing value → so does the cache
+            row[k] = v
+            self._caches[folder].put_field(xmp, k, v)
         self._caches[folder].save()
 
     # ── image + write helpers ───────────────────────────────────────────────

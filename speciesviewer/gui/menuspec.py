@@ -1350,6 +1350,16 @@ def build_menu_spec(main_window):
                 title="Rating Editor",
                 showsubdirectory=False,
             ),
+            f"{MenuSpec.separator()}_vt_sync": None,
+            "Sync Placed GPS into the Index…": MenuSpec(
+                callback=lambda: __import__(
+                    "gui.place_sync", fromlist=["open_place_sync_for_active_album"]
+                ).open_place_sync_for_active_album(main_window),
+                title="Sync Placed GPS into the Index…",
+                tooltip="For this album, copy the place name and movable flag a "
+                        "hand-placed coordinate already carries in its sidecar into "
+                        "the master index (fixes cards showing raw coordinates)",
+                showsubdirectory=False),
             f"{MenuSpec.separator()}_vt4": None,
             # One place for both directions (list / remove), showing the current
             # state. Supersedes the advertise-only "Add Album to Master"; never a

@@ -402,10 +402,12 @@ class PictureCollection(ABC):
         No-op by default; overridden where has_gps is cached."""
         return None
 
-    def note_location_written(self, key: str, fields: dict) -> None:
+    def note_location_written(self, key: str, fields: dict, protect=()) -> None:
         """Tell the collection that `key` just had these location fields written
         to its XMP, so the cached row (and the card's location line) updates
-        without re-reading. No-op by default; overridden where rows are cached."""
+        without re-reading. `protect` names fields that were fill-only on disk (a
+        pre-existing value was kept), so the cache must not adopt the new value for
+        them either. No-op by default; overridden where rows are cached."""
         return None
 
     # ── external-edit refresh ─────────────────────────────────────────────────

@@ -1473,6 +1473,65 @@ class MasterDB:
         logger.info(f"master: set place names on {len(clean)} picture(s).")
         return len(clean)
 
+    def apply_provenance(self, prov_by_upn: dict) -> int:
+        """Set pictures.GPSProcessingMethod — the provenance flag that grants the map
+        permission to MOVE a hand-placed coordinate. {upn: method}. Journaled as ONE
+        entry; UPNs the master lacks are skipped. Used by the place-sync backfill to
+        reflect a sidecar's MANUAL into the master index, so a coordinate placed in an
+        earlier session (mirrored coordinate-only) stays movable."""
+        clean = {u: str(m).strip() for u, m in (prov_by_upn or {}).items()
+                 if u and str(m or "").strip()}
+        if not clean:
+            return 0
+        con = self._connect()
+        present = {}
+        for upn, method in clean.items():
+            row = con.execute(
+                'SELECT 1 FROM pictures WHERE "UniquePictureName"=?', (upn,)).fetchone()
+            if row is not None:
+                present[upn] = {"GPSProcessingMethod": method}
+        if not present:
+            return 0
+        entry = {"op": "provenance", "ts": time.time(), "pictures": present}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        with con:
+            for upn, fields in present.items():
+                self._set_picture_fields(con, upn, fields)
+        MasterCheckpointWorker.get(self.master_root).notify()
+        logger.info(f"master: set provenance on {len(present)} picture(s).")
+        return len(present)
+
+    def pictures_missing_place_or_provenance(self, from_date=None,
+                                             to_date=None) -> list[dict]:
+        """Master pictures carrying a coordinate whose place name OR provenance flag
+        is not yet in the index: {upn, need_place, need_prov}. These are the pictures
+        a coordinate-only geotag left half-mirrored — the place-sync backfill reads
+        their sidecars and fills in whatever the sidecar already holds.
+
+        Optionally restricted to a camera-timestamp range (an album's fromdate..todate),
+        which is the sane scope: the provenance column is empty for almost every GPS
+        picture in the master (cameras rarely record GPSProcessingMethod), so a
+        master-wide run would read tens of thousands of camera sidecars to change the
+        handful a person placed. Scoping to the album a user is fixing keeps it fast."""
+        con = self._connect()
+        where = ['TRIM(COALESCE("GPSPosition","")) <> ""',
+                 '(TRIM(COALESCE("Location","")) = "" '
+                 ' OR TRIM(COALESCE("GPSProcessingMethod","")) = "")']
+        params: list = []
+        if from_date and to_date:
+            where.append('substr("DateTimeOriginal", 1, 10) BETWEEN ? AND ?')
+            params += [self._day_key(from_date), self._day_key(to_date)]
+        rows = con.execute(
+            'SELECT "UniquePictureName" AS upn, '
+            '       (TRIM(COALESCE("Location","")) = "") AS need_place, '
+            '       (TRIM(COALESCE("GPSProcessingMethod","")) = "") AS need_prov '
+            '  FROM pictures WHERE ' + ' AND '.join(where), params).fetchall()
+        return [{"upn": r["upn"], "need_place": bool(r["need_place"]),
+                 "need_prov": bool(r["need_prov"])}
+                for r in rows if r["upn"]]
+
     # ── master add/delete operations (durable; mirror apply_rating's discipline)
     def taxon_lineage(self, sci: str) -> dict:
         """{'kingdom': 'animalia', 'phylum': 'chordata', …} for a master species.
@@ -1561,14 +1620,19 @@ class MasterDB:
         MasterCheckpointWorker.get(self.master_root).notify()
         return True
 
-    def apply_gps(self, gps_by_upn: dict) -> int:
+    def apply_gps(self, gps_by_upn: dict, *, method: str | None = None) -> int:
         """Mirror placed GPS into the master's pictures.GPSPosition — the same field
         the map and the No-GPS count read — so a geotag no longer lives ONLY in the
         sidecar (which is why the album overview had to re-read every sidecar to be
         current). `gps_by_upn` maps UPN -> (lat, lon); stored as decimal "lat, lon"
         (parse_gps_dms reads both DMS and decimal). Journaled as ONE entry, so a whole
         place-a-day action is a single quiescent write — no checkpoint race. Returns
-        the number of pictures updated (UPNs not in the master are skipped)."""
+        the number of pictures updated (UPNs not in the master are skipped).
+
+        `method` also stamps pictures.GPSProcessingMethod (MANUAL for a human-placed
+        fix). Provenance is what grants permission to MOVE a picture on the map; the
+        map reads it from this master row, so without it a placed picture read as a
+        camera fix on the next session and refused to move."""
         if not gps_by_upn:
             return 0
         con = self._connect()
@@ -1583,7 +1647,10 @@ class MasterDB:
                 'SELECT 1 FROM pictures WHERE "UniquePictureName"=?', (upn,)).fetchone()
             if row is None:
                 continue
-            pics[upn] = {"GPSPosition": f"{lat}, {lon}"}
+            fields = {"GPSPosition": f"{lat}, {lon}"}
+            if method:
+                fields["GPSProcessingMethod"] = method
+            pics[upn] = fields
         if not pics:
             return 0
         entry = {"op": "gps", "ts": time.time(), "pictures": pics, "files": {}}

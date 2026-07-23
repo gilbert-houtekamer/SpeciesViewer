@@ -311,23 +311,41 @@ def _exiftool_config():
     return str(Path(__file__).with_name("sv_exiftool.config"))
 
 
-def write_location(path, fields, overwrite=True):
+def write_location(path, fields, overwrite=True, protect=()):
     """Write the non-empty location fields into a file's XMP (sidecar or JPG).
     overwrite=False → only fill fields that are currently empty (don't replace
-    existing values). Uses -config so the custom Municipality tag is defined;
-    values go through a -@ argfile (run_exiftool_files) for unicode safety."""
+    existing values). `protect` names fields that are fill-only EVEN when
+    overwrite=True — a value already on the file is kept (e.g. a hand-entered
+    Location like "Hotel Bourbon Atibaia" must survive a coarse reverse-geocode).
+    Uses -config so the custom Municipality tag is defined; values go through a -@
+    argfile (run_exiftool_files) for unicode safety."""
+    import os
     from engine.exif_writer import run_exiftool_files
     from pathlib import Path
-    to_write = {k: tag for k, tag in _LOCATION_TAGS.items() if fields.get(k)}
-    if not overwrite and to_write:
-        current = read_location_fields(path)
-        to_write = {k: tag for k, tag in to_write.items() if not current.get(k)}
+    protect = set(protect)
+    base = {k: tag for k, tag in _LOCATION_TAGS.items() if fields.get(k)}
+    key = os.path.normcase(os.path.normpath(str(path)))
+    current = {}
+    if (not overwrite or protect) and base:
+        current = {key: read_location_fields(path)}
+        # A field is skipped when the file already has a value AND we're not allowed
+        # to replace it — either globally (overwrite=False) or field-wise (protect).
+        to_write = {k: tag for k, tag in base.items()
+                    if not (current[key].get(k) and (not overwrite or k in protect))}
+    else:
+        to_write = dict(base)
     args = [f"-{tag}={fields[k]}" for k, tag in to_write.items()]
     if not args:
         return False
     try:
         r = run_exiftool_files(args + ["-overwrite_original"], [str(path)],
                                pre_args=["-config", _exiftool_config()])
+        if r.returncode == 0:
+            # Reflect the file's effective location (written + protect-kept) into the
+            # master index — same contract as write_location_batch.
+            _mirror_location_to_master(_effective_location_by_upn(
+                [str(path)], base, fields, current,
+                {str(path): tuple(to_write)}, {str(path)}))
         return r.returncode == 0
     except Exception as e:
         logger.warning(f"Location write failed for {Path(path).name}: {e}")
@@ -361,7 +379,37 @@ def read_location_fields_batch(paths):
     return res
 
 
-def write_location_batch(files, fields, *, overwrite=True):
+def read_place_and_provenance_batch(paths):
+    """{normcase(normpath): {…location fields…, 'GPSProcessingMethod': str}} for MANY
+    files in ONE exiftool call — the place-sync backfill reads what a sidecar already
+    holds (its place name AND how its coordinate was obtained) so it can reflect both
+    into the master index without a network lookup."""
+    import os
+    from engine.exif_writer import run_exiftool_files
+    paths = [str(p) for p in paths if p]
+    if not paths:
+        return {}
+    out = run_exiftool_files(
+        ["-j", "-location", "-city", "-state", "-country", "-countrycode",
+         "-XMP-sv:Municipality", "-GPSProcessingMethod"], paths,
+        pre_args=["-config", _exiftool_config()]).stdout
+    rows = json.loads(out) if out.strip() else []
+    res = {}
+    for d in rows:
+        key = os.path.normcase(os.path.normpath(d.get("SourceFile", "")))
+        res[key] = {
+            "Location": d.get("Location", "") or "",
+            "City": d.get("City", "") or "",
+            "Municipality": d.get("Municipality", "") or "",
+            "State": d.get("State", "") or "",
+            "Country": d.get("Country", "") or "",
+            "CountryCode": d.get("CountryCode", "") or "",
+            "GPSProcessingMethod": d.get("GPSProcessingMethod", "") or "",
+        }
+    return res
+
+
+def write_location_batch(files, fields, *, overwrite=True, protect=()):
     """Write the non-empty location `fields` (one place) to MANY files in as few
     exiftool calls as possible — one call per distinct set of tags-to-write,
     rather than one spawn per file. All files at a given place share the same
@@ -370,24 +418,39 @@ def write_location_batch(files, fields, *, overwrite=True):
 
     overwrite=False → only fill fields that are currently empty; files are grouped
     by which subset is empty (freshly-ingested sidecars are all empty, so this is
-    still a single call), keeping the arg set consistent within each call."""
+    still a single call), keeping the arg set consistent within each call.
+    `protect` names fields that are fill-only EVEN when overwrite=True — a value
+    already on a file is kept (e.g. a hand-entered Location must survive a coarse
+    reverse-geocode). When set it forces the per-file current read like
+    overwrite=False, but only for the protected fields."""
     import os
     from engine.exif_writer import run_exiftool_files
+    protect = set(protect)
     base = {k: _LOCATION_TAGS[k] for k in _LOCATION_TAGS if fields.get(k)}
     files = [str(f) for f in files if f]
     if not base or not files:
         return 0
-    if overwrite:
-        groups = {tuple(base): files}
-    else:
-        current = read_location_fields_batch(files)
-        groups = {}
-        for f in files:
-            cur = current.get(os.path.normcase(os.path.normpath(f)), {})
-            keys = tuple(k for k in base if not cur.get(k))
-            if keys:
-                groups.setdefault(keys, []).append(f)
+    # Read the current values whenever a field might be KEPT (overwrite=False, or a
+    # protected field): we need them both to decide what to write and to know what the
+    # file will END UP holding — its effective location, which the master index mirrors.
+    need_current = not (overwrite and not (protect & set(base)))
+    current = read_location_fields_batch(files) if need_current else {}
+    write_keys_by_file = {}
+    groups = {}
+    for f in files:
+        cur = current.get(os.path.normcase(os.path.normpath(f)), {}) if need_current else {}
+        if need_current:
+            # Skip a field only where the file already has it AND replacing it isn't
+            # allowed — globally (overwrite=False) or field-wise (protect).
+            wkeys = tuple(k for k in base
+                          if not (cur.get(k) and (not overwrite or k in protect)))
+        else:
+            wkeys = tuple(base)                      # overwrite everything
+        write_keys_by_file[f] = wkeys
+        if wkeys:
+            groups.setdefault(wkeys, []).append(f)
     written = 0
+    written_files = set()
     for keys, group_files in groups.items():
         args = [f"-{_LOCATION_TAGS[k]}={fields[k]}" for k in keys]
         try:
@@ -395,11 +458,75 @@ def write_location_batch(files, fields, *, overwrite=True):
                                    pre_args=["-config", _exiftool_config()])
             if r.returncode == 0:
                 written += len(group_files)
+                written_files.update(group_files)
             else:
                 logger.warning(f"Batched location write returned {r.returncode}: {r.stderr.strip()}")
         except Exception as e:
             logger.warning(f"Batched location write failed for {len(group_files)} files: {e}")
+    # Reflect each touched file's EFFECTIVE location (a written field's new value, or
+    # the value a protect/fill-only skip left in place) into the master index, so the
+    # album/day cards and website show the name instead of raw coordinates — even for a
+    # Location we deliberately did NOT overwrite.
+    _mirror_location_to_master(
+        _effective_location_by_upn(files, base, fields, current,
+                                   write_keys_by_file, written_files))
     return written
+
+
+def _effective_location_by_upn(files, base, fields, current, write_keys_by_file,
+                               written_files) -> dict:
+    """Per UniquePictureName, the place fields the files now actually hold: a WRITTEN
+    field takes its new value, a KEPT/skipped field keeps what was already on the file.
+    So the master index reflects the sidecar truth — including a protected Location we
+    chose not to overwrite. A field whose write FAILED is dropped back to the kept
+    value (the file never took the new one)."""
+    import os
+    from pathlib import Path
+    from engine.filecsv import deriveUniquePictureName
+    out: dict = {}
+    for f in files:
+        cur = current.get(os.path.normcase(os.path.normpath(f)), {})
+        wkeys = write_keys_by_file.get(f, ())
+        eff = {}
+        for k in base:
+            if k in wkeys and f in written_files:
+                eff[k] = fields[k]
+            elif cur.get(k):
+                eff[k] = cur[k]
+        if not eff:
+            continue
+        upn = deriveUniquePictureName(Path(f).name)
+        if upn:
+            out.setdefault(upn, {}).update(eff)
+    return out
+
+
+def _mirror_location_to_master(loc_by_upn: dict) -> None:
+    """Best-effort: reflect just-written place names into the master's picture rows,
+    so the album/day cards, the maps and the website — which read the master INDEX,
+    not each sidecar — show the name instead of falling back to raw coordinates.
+
+    The sidecar stays the truth (the XMP was written first); this only keeps the
+    index in step, exactly what MasterDB.apply_location_fields is for. Only master
+    pictures are touched (an UPN the master lacks updates nothing); a read-only or
+    absent master is a silent no-op — the sidecar write already succeeded, so a
+    location write never fails on the mirror."""
+    try:
+        from pathlib import Path
+        from utils.config import _config
+        loc_by_upn = {u: f for u, f in (loc_by_upn or {}).items() if u and f}
+        if not loc_by_upn:
+            return
+        master_root = (_config.get("master", "masterbiotadatabase", fallback="")
+                       or "").replace('"', "").replace("'", "").strip()
+        if not master_root or not Path(master_root).is_dir():
+            return
+        if _config.get("master", "readonly", fallback="yes").strip().lower() != "no":
+            return  # read-only master (SmallBoy) — never write
+        from db.master_db import MasterDB
+        MasterDB(master_root).apply_location_fields(loc_by_upn)
+    except Exception as e:
+        logger.debug(f"location master-mirror skipped: {e}")
 
 
 def write_gps(files, lat, lon, *, method: str = GPS_MANUAL):
@@ -431,21 +558,26 @@ def write_gps(files, lat, lon, *, method: str = GPS_MANUAL):
         if r.returncode != 0:
             logger.warning(f"GPS write returned {r.returncode}: {r.stderr.strip()}")
             return 0
-        _mirror_gps_to_master(files, lat, lon)
+        _mirror_gps_to_master(files, lat, lon, method=method)
         return len(files)
     except Exception as e:
         logger.warning(f"GPS write failed: {e}")
         return 0
 
 
-def _mirror_gps_to_master(files, lat, lon):
+def _mirror_gps_to_master(files, lat, lon, method: str | None = None):
     """Best-effort: also write the just-placed coordinate into the master's
     pictures.GPSPosition, so the No-GPS count and the map read it straight from
     the UPN (the "one truth") instead of re-opening each sidecar — which is what
     made switching to a big album freeze for ~30 s. Only master pictures are
     touched (apply_gps skips any UPN the master doesn't have, e.g. a plain trip
     shot); a read-only master or an unreachable DB is a silent no-op — the sidecar
-    write above already succeeded, so the geotag itself never fails on the mirror."""
+    write above already succeeded, so the geotag itself never fails on the mirror.
+
+    `method` also mirrors GPSProcessingMethod (MANUAL for anything a human placed).
+    Without it the master row carries the coordinate but no provenance, so on the
+    NEXT session the map — which reads provenance from the master index, not the
+    sidecar — mistook a hand-placed picture for a camera fix and refused to move it."""
     try:
         from pathlib import Path
         from utils.config import _config
@@ -461,7 +593,7 @@ def _mirror_gps_to_master(files, lat, lon):
         gps_by_upn.pop("", None)
         if gps_by_upn:
             from db.master_db import MasterDB
-            MasterDB(master_root).apply_gps(gps_by_upn)
+            MasterDB(master_root).apply_gps(gps_by_upn, method=method)
     except Exception as e:
         logger.debug(f"GPS master-mirror skipped: {e}")
 
