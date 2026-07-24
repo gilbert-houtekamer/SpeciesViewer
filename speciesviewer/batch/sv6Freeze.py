@@ -284,16 +284,21 @@ def main(args, config):
     debugfile = open("Species print.txt", "w")
     count = 0
     print(f"Debug enabled for Species copy.", file=debugfile)
-    # add new directories as needed, right in database. copy_gate="pictures":
-    # copy EVERY file of every picture identified this run, developed or not —
-    # undeveloped ORF/XMP pairs included. Applies in BOTH modes: the repository a
-    # commit writes into (the master directly, OR a trip that publishes into the
-    # master) must physically hold every named file it lists, or the delete step
-    # will destroy the only copy. (Gating this to master-only was reverted: a
-    # trip publish that feeds the master is the very path the ghost rows came
-    # from, so it must copy everything too.)
+    # Copy gate by mode (confirmed live on Kreta 2026-07-24):
+    #   MASTER  -> "pictures": copy EVERY file of every identified picture,
+    #     developed or not (undeveloped ORF/XMP included). The master is the
+    #     backup that makes deleting the local originals safe, so it MUST hold
+    #     them all. The master gets the undeveloped ones from D:\CurrentPictures
+    #     during "Merge Pictures into Master".
+    #   TRIP    -> "jpg": a trip repo only needs the website (developed) files;
+    #     it is transient (retired once the album is set up). Copying undeveloped
+    #     RAWs there is pure bloat — the master already backs them up via Merge.
+    # SAFETY DEPENDS ON: run Merge (reads D:\CurrentPictures) BEFORE deleting
+    # locals; and the delete gate refuses to remove any file not physically in
+    # the master, so a wrong order still can't lose a picture. See docs/DataFlow.
     MyProject.setLanguage('en')
-    makeDirectories(MyProject, 'biota', 'New', copy_gate="pictures")
+    biota_gate = "pictures" if MyProject.isMasterRepository() else "jpg"
+    makeDirectories(MyProject, 'biota', 'New', copy_gate=biota_gate)
     MyProject.makeWebDirectories('biota', 'New')
     # web in both language
     MyProject.setLanguage('nl')
