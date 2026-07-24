@@ -284,15 +284,16 @@ def main(args, config):
     debugfile = open("Species print.txt", "w")
     count = 0
     print(f"Debug enabled for Species copy.", file=debugfile)
-    # add new directories as needed, right in database.
-    # The MASTER must physically hold every named file of every identified
-    # picture (it is the backup), so copy_gate="pictures" — developed or not,
-    # undeveloped ORF/XMP pairs included. A TRIP repo only needs what its website
-    # shows (JPG-bearing species); copying undeveloped RAWs there just bloats the
-    # (often soon-retired) trip repo — Dropbox in practice — so keep the JPG gate.
+    # add new directories as needed, right in database. copy_gate="pictures":
+    # copy EVERY file of every picture identified this run, developed or not —
+    # undeveloped ORF/XMP pairs included. Applies in BOTH modes: the repository a
+    # commit writes into (the master directly, OR a trip that publishes into the
+    # master) must physically hold every named file it lists, or the delete step
+    # will destroy the only copy. (Gating this to master-only was reverted: a
+    # trip publish that feeds the master is the very path the ghost rows came
+    # from, so it must copy everything too.)
     MyProject.setLanguage('en')
-    biota_gate = "pictures" if MyProject.isMasterRepository() else "jpg"
-    makeDirectories(MyProject, 'biota', 'New', copy_gate=biota_gate)
+    makeDirectories(MyProject, 'biota', 'New', copy_gate="pictures")
     MyProject.makeWebDirectories('biota', 'New')
     # web in both language
     MyProject.setLanguage('nl')
