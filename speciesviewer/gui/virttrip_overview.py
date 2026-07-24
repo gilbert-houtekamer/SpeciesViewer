@@ -109,8 +109,12 @@ def _name_hints_from(pic_rows, file_rows) -> dict:
     for r in pic_rows:
         upn = (r.get("UniquePictureName") or "").strip()
         if upn:
+            # Headline + subject travel with the species names so the metadata-light
+            # file-list viewer can title a landscape (topics/ leaf) by its Headline
+            # instead of the topic leaf "2025". See preview_provider.FileListPreviewItem.
             pics[upn] = {k: r.get(k, "") for k in
-                         ("NLSoortNaam", "EngSoortNaam", "WetSoortNaam")}
+                         ("NLSoortNaam", "EngSoortNaam", "WetSoortNaam",
+                          "Headline", "subject")}
     hints: dict[str, dict] = {}
     for row in file_rows:
         upn = (row.get("UniquePictureName") or "").strip()

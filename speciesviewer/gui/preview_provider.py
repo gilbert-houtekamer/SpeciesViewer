@@ -1361,6 +1361,12 @@ class FilePreviewItem(PictureItem):
         # path can give.
         hint = self._c._name_hints.get(self._key)
         if hint:
+            # A landscape / context photo (topics/ leaf) is titled by its Headline,
+            # not the leaf ("2025") — matching how the other viewers show a blog extra.
+            if self.is_blog_extra:
+                hl = (hint.get("Headline") or "").strip()
+                if hl:
+                    return hl
             from utils.name_profile import name_for
             n = name_for(hint, self._c._name_profile)
             if n:
@@ -1380,7 +1386,18 @@ class FilePreviewItem(PictureItem):
 
     @property
     def headline(self) -> str:
-        return ""
+        # Carried from the master picture row via the name hint (this viewer does no
+        # per-file exiftool read), so a committed landscape shows its stored Headline.
+        hint = self._c._name_hints.get(self._key)
+        return (hint.get("Headline") or "").strip() if hint else ""
+
+    @property
+    def is_blog_extra(self) -> bool:
+        hint = self._c._name_hints.get(self._key)
+        if not hint:
+            return False
+        from engine.speciesclassification import SpeciesClassification
+        return SpeciesClassification.isBlogExtra(hint.get("subject", ""))
 
     @property
     def description(self) -> str:
