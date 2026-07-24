@@ -1240,10 +1240,36 @@ Full design in <code>path_portability_plan.md</code>.</p>
   (<code>engine/websupport.py:1558</code>). A landscape shot RAW-only (ORF + <code>.xmp</code>, no
   <code>_DxO.jpg</code> yet) is correctly authored and titled but will not render in the day blog until
   PhotoLab produces its JPG — same rule as a species photo. Not a bug; expected.</p>
-<p><strong>What remains for Ch 12 = the architectural half below</strong>: giving landscapes a
-  <em>home in the master</em> (the <code>topics/</code> branch) so they are indexed, backed up, and
-  optionally published. The authoring above is deliberately master-agnostic — it only touches the
-  trip-side sidecars — so it stands on its own and pre-commits none of the open design questions.</p>
+<h3>The architectural half: landscapes now have a home in the master (<code>topics/</code> branch)
+  <span class="tag-shipped">SHIPPED 2026-07-24</span></h3>
+<p>Built in four reviewed phases (<code>c313732</code>, <code>2b3c2d6</code>, <code>a75db54</code>);
+  live-confirmed on the 2026 Kreta trip (3 landscapes → <code>topics/landscape/2026/</code>).</p>
+<ul>
+  <li><strong>Generic topics engine</strong> (<code>engine/topics.py</code>): a declarative
+    <code>TopicRegistry</code> (seeded with the single <code>landscape</code> topic; CSV-loadable) replaces
+    the hardcoded keyword set. <code>route()</code> injects a synthetic <code>topics/&lt;topic&gt;/&lt;leaf&gt;</code>
+    chain into the <em>same</em> <code>sc_dict</code>/<code>species_dict</code>, so <code>getPathToSpecies</code>
+    yields <code>topics/landscape/2026/</code> through the identical walk that builds
+    <code>biota/…/pica pica/</code>. “Landscape-first vs. more-topics” was a false choice — the mechanism is
+    identical; only the number of registry rows differs.</li>
+  <li><strong>Read-only dry run</strong> (<code>engine/topics_scan.py</code> + <code>tools/topics_dry_run.py</code>):
+    previews per candidate the target path, rating+colour read from the <strong><code>.dop</code></strong>
+    (not the <code>.xmp</code>), JPG presence, and conflicts. Writes nothing.</li>
+  <li><strong>Ingest</strong> (<code>sv6Freeze</code> + <code>projectlib</code>): the freeze stops
+    <em>excluding</em> blog extras and routes them via their <code>topics/…</code> <code>TargetPath</code>
+    like any picture — files copied into the master tree, <code>species.csv</code> topic rows, counters,
+    best-JPG. Covered by the daily backup; verified byte-identical through the MasterDB checkpoint
+    round-trip.</li>
+  <li><strong>Containment</strong> turned out mostly free: the <code>biota</code> walk (blog species walk +
+    <code>makeWebDirectories</code>) never reaches the sibling <code>topics</code> root, so <strong>no topic
+    species pages / occurrence map</strong> are generated. Explicit guards only where an enumerator walks
+    <em>all</em> species: the blog card renderer (a topic leaf renders as a Headline extra, not a species)
+    and the Master Species Viewer / Move-to-species (<code>TargetPath NOT LIKE 'topics/%'</code>).</li>
+</ul>
+<p class="note"><strong>Remaining for Ch 12:</strong> (a) a <strong>backfill</strong> operator for
+  landscapes frozen <em>before</em> this change (still on disk in the picture root / trips); (b) optional
+  <strong>topic web pages</strong> (a per-year landscape gallery) — storage and publication are separable,
+  and the <code>on_website</code> registry flag is already the switch.</p>
 
 <h3>How it works now</h3>
 <ul>

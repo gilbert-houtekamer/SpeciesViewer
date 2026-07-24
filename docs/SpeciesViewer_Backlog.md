@@ -269,7 +269,15 @@ Today a landscape / context photo is a **trip-only, second-class citizen**: it n
 
 **GOTCHA learned (keep): a blog extra still needs a rendered JPG to appear in the blog.** `collectBlogExtras` skips any picture whose `BestJPG == ""` (`engine/websupport.py:1558`). A landscape shot RAW-only (ORF + `.xmp`, no `_DxO.jpg` yet) is correctly authored and titled but will not render in the day blog until PhotoLab produces its JPG — same rule as a species photo. Not a bug; expected.
 
-**What remains for Ch 12 = the architectural half below**: giving landscapes a *home in the master* (the `topics/` branch) so they are indexed, backed up, and optionally published. The authoring above is deliberately master-agnostic — it only touches the trip-side sidecars — so it stands on its own and pre-commits none of the open design questions.
+**✅ SHIPPED 2026-07-24 — the architectural half: landscapes now have a home in the master (`topics/` branch).** Built in four reviewed phases (`c313732`, `2b3c2d6`, `a75db54`); live-confirmed on the 2026 Kreta trip (3 landscapes → `topics/landscape/2026/`).
+- **Generic topics engine** (`engine/topics.py`): a declarative `TopicRegistry` (seeded with the single `landscape` topic; CSV-loadable) replaces the hardcoded keyword set. `route()` injects a synthetic `topics/<topic>/<leaf>` chain into the *same* `sc_dict`/`species_dict`, so `getPathToSpecies` yields `topics/landscape/2026/` through the identical walk that builds `biota/…/pica pica/`. **"Landscape-first vs. more-topics" was a false choice — the mechanism is identical; only the number of registry rows differs.**
+- **Read-only dry run** (`engine/topics_scan.py` + `tools/topics_dry_run.py`): previews per candidate the target path, rating+colour read from the **`.dop`** (not the `.xmp`), JPG presence, and conflicts. Writes nothing.
+- **Ingest** (`sv6Freeze` + `projectlib`): the freeze stops *excluding* blog extras and routes them via their `topics/…` `TargetPath` like any picture — files copied into the master tree, `species.csv` topic rows, counters, best-JPG. Covered by the daily backup; **verified byte-identical through the MasterDB checkpoint round-trip**.
+- **Containment** turned out mostly free: the `biota` walk (blog species walk + `makeWebDirectories`) never reaches the sibling `topics` root, so **no topic species pages / occurrence map** are generated. Explicit guards where an enumerator walks *all* species: the blog card renderer (renders a topic leaf as a Headline extra, not a species) and the Master Species Viewer / Move-to-species (`TargetPath NOT LIKE 'topics/%'`).
+
+**Remaining for Ch 12:** (a) a **backfill** operator for landscapes frozen *before* this change (still on disk in the picture root / trips); (b) optional **topic web pages** (a per-year landscape gallery) — storage and publication are separable, and the `on_website` registry flag is already the switch. See the open questions below.
+
+**What the architectural half delivered** (the authoring front half remains master-agnostic — trip-side sidecars only):
 
 **How it works now (grounded):**
 - A picture is a **"blog extra"** when its subject carries a marker keyword: `LANDSCAPE_KEYWORDS = {'landscape', 'landschap'}` → `SpeciesClassification.isBlogExtra(subject)` (`engine/speciesclassification.py:69-89`).
