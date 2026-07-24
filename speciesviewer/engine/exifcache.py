@@ -77,6 +77,13 @@ DENY_EXTENSIONS = {"dop", "dng", "ini", "txt", "ico", "html", "lrcat", "lrdata"}
 # Everything else readable (xmp, jpg, jpeg, png, mov, aae, ...) is treated as
 # mutable and keyed by path+size+mtime.
 
+# Housekeeping sub-directories that never hold original pictures — pruned from
+# the scan just like dot-folders, so their contents don't produce "duplicate
+# file" noise (e.g. a hand-made _dup_trash quarantine of trashed duplicates).
+# Matches engine.trip_delete_scan.SKIP_DIRS (+ _dup_trash). Compared lowercased.
+SKIP_DIRS = {"facebook", "frozen", "metadata", ".preview_cache", ".trash",
+             ".thumbnails", "thumbs", "_dup_trash"}
+
 # Location/time-specific keys: never trusted from cache, re-derived per file.
 _VOLATILE_EXIF_KEYS = {
     "SourceFile", "File:Directory", "File:FileName",
@@ -234,9 +241,12 @@ def partition(root, cache, fingerprint, recurse=True):
     now_day = _epoch_day()   # LRU: stamp every hit so live paths never age out
     for dirpath, dirs, files in os.walk(root):
         # Match exiftool -r: it does NOT recurse into directories whose names
-        # begin with '.' (e.g. the GUI's .preview_cache). Prune in place so we
-        # don't read files the dir-scan never produced rows for.
-        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        # begin with '.' (e.g. the GUI's .preview_cache). Also skip known
+        # housekeeping folders (SKIP_DIRS, e.g. a _dup_trash quarantine) so we
+        # don't read duplicate files the dir-scan then rejects with warnings.
+        # Prune in place so we don't read files the dir-scan never produced rows for.
+        dirs[:] = [d for d in dirs
+                   if not d.startswith(".") and d.lower() not in SKIP_DIRS]
         if not recurse:
             dirs[:] = []        # top-level only
         for name in files:

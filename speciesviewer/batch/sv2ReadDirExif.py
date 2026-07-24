@@ -48,7 +48,10 @@ def _append_dop_rows(all_rows, root, recurse):
     seen = {(r.get("File:Directory", ""), r.get("File:FileName", "")) for r in all_rows}
     added = 0
     for dirpath, dirs, files in os.walk(root):
-        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        # Skip dot-folders and housekeeping dirs (e.g. _dup_trash) so a trashed
+        # duplicate .dop isn't re-added — matches the main scan in exifcache.partition.
+        dirs[:] = [d for d in dirs
+                   if not d.startswith(".") and d.lower() not in exifcache.SKIP_DIRS]
         if not recurse:
             dirs[:] = []
         directory = dirpath.replace("\\", "/")
