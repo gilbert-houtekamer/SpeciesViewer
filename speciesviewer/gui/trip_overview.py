@@ -5,11 +5,12 @@ from fastcrc import crc32
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QTableWidget,
-    QTableWidgetItem, QHeaderView, QAbstractItemView, QAbstractItemView
+    QTableWidgetItem, QHeaderView, QAbstractItemView, QAbstractItemView, QCheckBox
 )
 from pathlib import Path
 from engine.statemachine import StateMachine, NOTHING_TO_DO_PREFIX, is_nothing_to_do
 from utils.config import _config
+from utils.virttrip_config import read_excluded_days, write_excluded_days
 
 SYNC_COL = 3
 STATE_COL_START = 4
@@ -416,16 +417,25 @@ def populate_trip_overview(self):
     # Translations status is read once per trip from the per-trip cache.
     verified_crcs = _verified_crc_set(trip_root)
     translations_col = STATE_COL_START + len(self.state_labels) + 1
+    # In-Blog checkbox column: append it AFTER Translations so the state-column
+    # indices and the double-click handlers that map column -> step stay
+    # untouched. Unticking a day (e.g. the 'iphone' folder) keeps it out of the
+    # blog — sv4WriteBlog then drops it from the index, like an empty day.
+    inblog_col = STATE_COL_START + len(self.state_labels) + 2
+    # The "Write Blog" state cell to grey out immediately when a day is excluded.
+    blog_state_col = STATE_COL_START + next(
+        (j for j, c in enumerate(STATE_COLUMNS) if c["gate"] == "WriteBlog"), 1)
+    excluded = read_excluded_days(trip_root)
 
     self.trip_table = QTableWidget()
-    # +1 for Progress, +1 for the trailing Translations column. Translations is
-    # LAST on purpose so the state-column indices (and the double-click handlers
-    # that map column -> step) are untouched.
-    self.trip_table.setColumnCount(STATE_COL_START + len(self.state_labels) + 2)
+    # +1 for Progress, +1 for Translations, +1 for the trailing In-Blog column.
+    # Translations and In-Blog are LAST on purpose so the state-column indices
+    # (and the double-click handlers that map column -> step) are untouched.
+    self.trip_table.setColumnCount(STATE_COL_START + len(self.state_labels) + 3)
     self.trip_table.setRowCount(len(image_days))
     self.trip_table.setHorizontalHeaderLabels(
         ["Day", "Pictures", "JPEG\nFiles", "Sync\nSidecars"] + self.state_labels
-        + ["Progress", "Trans-\nlations"]
+        + ["Progress", "Trans-\nlations", "In\nBlog"]
     )
     self.trip_table.setSortingEnabled(False)
     self.trip_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -451,6 +461,25 @@ def populate_trip_overview(self):
     header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
     header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
     header.setSectionResizeMode(translations_col, QHeaderView.ResizeMode.ResizeToContents)
+    header.setSectionResizeMode(inblog_col, QHeaderView.ResizeMode.ResizeToContents)
+
+    def _paint_blog_state_excluded(row, day_name):
+        """Grey the day's Write-Blog cell to show it is excluded (or leave the
+        live state when re-included; a refresh restores the real symbol)."""
+        if day_name in excluded:
+            cell = QTableWidgetItem("🚫")
+            cell.setToolTip("Excluded from the blog ('In Blog' unticked) — "
+                            "no blog page is written or published for this day.")
+            cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.trip_table.setItem(row, blog_state_col, cell)
+
+    def _on_trip_inblog_toggled(row, checked, day_name):
+        if checked:
+            excluded.discard(day_name)
+        else:
+            excluded.add(day_name)
+        write_excluded_days(trip_root, excluded)
+        _paint_blog_state_excluded(row, day_name)
 
     for i, day in enumerate(image_days):
         total, jpgs = count_files(day)
@@ -482,9 +511,30 @@ def populate_trip_overview(self):
         summary_item = self.get_progress_summary_item(sm,  review_root / day.name)
         self.trip_table.setItem(i, STATE_COL_START + len(self.state_labels), summary_item)
 
-        # Translations column (last): texts on this day still needing validation
+        # Translations column: texts on this day still needing validation
         self.trip_table.setItem(i, translations_col,
                                 _format_translations_item(review_root / day.name, verified_crcs))
+
+        # In-Blog column (last): a checkbox to keep a day out of the blog. A cell
+        # WIDGET (not a checkable item) so the tick sits centered and no stray
+        # cell-editor box appears on select. Mirrors the album overview.
+        inblog_cb = QCheckBox()
+        inblog_cb.setChecked(day.name not in excluded)
+        inblog_cb.setToolTip(
+            "Include this day in the blog.\nUntick to keep a day out (e.g. the "
+            "'iphone' folder) — the blog step then skips it and it drops from the "
+            "index.")
+        inblog_cb.toggled.connect(
+            lambda checked, r=i, dn=day.name: _on_trip_inblog_toggled(r, checked, dn))
+        inblog_holder = QWidget()
+        _inblog_lay = QHBoxLayout(inblog_holder)
+        _inblog_lay.setContentsMargins(0, 0, 0, 0)
+        _inblog_lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        _inblog_lay.addWidget(inblog_cb)
+        self.trip_table.setCellWidget(i, inblog_col, inblog_holder)
+
+        # If already excluded, reflect it in the Write-Blog cell now.
+        _paint_blog_state_excluded(i, day.name)
 
     # Layout
     overview_widget = QWidget()

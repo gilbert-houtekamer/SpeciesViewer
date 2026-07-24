@@ -48,7 +48,7 @@ def list_candidates(picture_root, master_root, trip_db):
     Non-destructive."""
     if not os.path.isdir(picture_root):
         return {"ok": False, "error": f"Trip picture directory not found: {picture_root}"}
-    upns, _filenames = tds.load_master_inventory(master_root)
+    upns, _filenames, _master_index = tds.load_master_inventory(master_root)
     if upns is None:
         return {"ok": False, "error": "Could not read the master inventory."}
 

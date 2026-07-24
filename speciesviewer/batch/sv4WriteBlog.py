@@ -119,20 +119,30 @@ def main(args, config):
 
     blog.prepareBlogCreation(sftp)
 
+    # A day the user unticked in the trip overview's "In Blog" column is kept out
+    # of the blog on purpose (e.g. the 'iphone' folder). The day folder name is
+    # what the overview persists, so match on the PictureDirectory basename.
+    import utils.virttrip_config as vtc
+    day_name = os.path.basename(os.path.normpath(config.get("project", "PictureDirectory")))
+    excluded_day = day_name in vtc.read_excluded_days(config.get("repository", "BiotaDatabase"))
+
     # A day can hold JPGs but no recognized species (and no landscape photos) —
     # that renders an EMPTY post. Rather than publish a placeholder, make the day
     # disappear: drop it from the blog admin + index (and remove any post already
-    # published for it on the server).
+    # published for it on the server). An excluded day is treated the same way.
     empty = not blog.dayHasContent()
     result_msg = None
-    if empty:
+    if empty or excluded_day:
         was_present = blog.removeEmptyDay()
-        logger.info(f"{blog.getBlogDay()}: no recognized species and no landscape "
-                    f"photos — day removed from the blog"
+        reason = ("excluded from the blog ('In Blog' unticked)" if excluded_day
+                  else "no recognized species and no landscape photos")
+        logger.info(f"{blog.getBlogDay()}: {reason} — day removed from the blog"
                     f"{' (prior post pruned)' if was_present else ''}.")
         # A distinct GUI message: nothing was created, so don't claim it was.
         # The prefix makes the trip overview show 🚫 rather than ✅ for this day.
-        result_msg = engine.statemachine.nothing_to_do("no species this day — no blog created.")
+        note = ("day excluded from the blog — none created." if excluded_day
+                else "no species this day — no blog created.")
+        result_msg = engine.statemachine.nothing_to_do(note)
     else:
         # make them
         blog.makeRunSummaryPost('biota', 'nl')

@@ -862,6 +862,16 @@ class Project:
             # now compute path when we have a scientific name
             if picture['WetSoortNaam'] != "":
                 picture['TargetPath'] = sp.getPathToSpecies(picture['WetSoortNaam'])
+                # Ensure the species NODE also carries its path. The block below
+                # that sets species['TargetPath'] runs ONLY for JPG files, so an
+                # undeveloped species (no rendered JPG) would keep the empty
+                # initial TargetPath — and sv6Freeze then builds the wrong master
+                # directory and cannot copy the RAW/XMP (the ghost-row fix now
+                # copies these). Look it up fresh; the loop-local `species` may be
+                # stale from a prior UPN iteration.
+                _spnode = sp.species_dict.get(picture['WetSoortNaam'])
+                if _spnode is not None and not _spnode.get('TargetPath'):
+                    _spnode['TargetPath'] = picture['TargetPath']
                 
 
             # find JPG (if there is more than 1, find the best JPG)

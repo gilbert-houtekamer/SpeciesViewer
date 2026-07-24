@@ -59,7 +59,7 @@ def _same_file_on_disk(src, dst):
 
 
 def makeSpeciesDirectory(MyProject, leaf):
-    global debugfile, count
+    global debugfile, count, copy_failures
     species = MyProject.sp.species_dict[leaf]
     # os.path.join handles a missing trailing separator on the repository
     # path; raw '+' concat produced 'naturedbbiota/...' for repositories
@@ -89,10 +89,26 @@ def makeSpeciesDirectory(MyProject, leaf):
                     # when the destination doesn't exist yet so a clean
                     # first run still skips no-op copies.
                     if not _same_file_on_disk(sourcefile, targetfile):
+                        # Create THIS file's target directory from the exact target
+                        # path — the directoryname made above is lowercased and
+                        # built from species['TargetPath'], which can be empty for
+                        # an undeveloped species or differ in case (Mac). This
+                        # guarantees the destination folder exists before the copy.
+                        os.makedirs(os.path.dirname(targetfile), exist_ok=True)
                         shutil.copy(sourcefile, targetfile)
+                    # Verify the master now physically holds a byte-for-byte copy.
+                    # A CSV row must NEVER be published for a file that did not
+                    # actually land (the ghost-row incident). A size mismatch means
+                    # a partial/aborted copy — just as bad. Any miss is collected
+                    # and fails the whole freeze in main() before sv7 commits.
+                    if (not os.path.exists(targetfile)
+                            or os.path.getsize(targetfile) != os.path.getsize(sourcefile)):
+                        copy_failures.append((sourcefile, targetfile, "missing or size mismatch"))
                     count += 1
                 except Exception as exc:
-                    logger.info(
+                    copy_failures.append((sourcefile, targetfile,
+                                          f"{type(exc).__name__}: {exc}"))
+                    logger.warning(
                         f"Species copy failed {sourcefile} -> {targetfile}: "
                         f"{type(exc).__name__}: {exc}"
                     )
@@ -100,7 +116,18 @@ def makeSpeciesDirectory(MyProject, leaf):
     return
 
 # create website based on current count setting, now to test iSpeciesThisRunCount
-def makeDirectories(MyProject, speciesname, all_or_new):
+def makeDirectories(MyProject, speciesname, all_or_new, copy_gate="jpg"):
+    # copy_gate selects which counter decides whether a subtree's files are
+    # copied into the master:
+    #   "pictures" — any picture identified this run (has a species), developed
+    #                or not. This is what the master needs: EVERY named file must
+    #                be backed up, including undeveloped ORF/XMP pairs. Gating on
+    #                JPGs (the old behaviour) skipped species whose new pictures
+    #                had no rendered JPG, writing CSV rows for files it never
+    #                copied — the root of the ghost-row data-loss incident.
+    #   "jpg"      — only subtrees with a rendered JPG this run (unchanged legacy
+    #                behaviour; kept for the topics/landscape branch, which is
+    #                ch.12 territory and deliberately left as-is here).
     species = MyProject.sp.species_dict[speciesname]
     # create database to store pictures as needed
     directoryname = os.path.join(MyProject.getRepositoryPath(),
@@ -109,10 +136,12 @@ def makeDirectories(MyProject, speciesname, all_or_new):
         os.makedirs(directoryname, exist_ok=True)
         for leaf in species['Leaves']:
             species = MyProject.sp.species_dict[leaf]
-            if int(species['iPicturesWithJPGsThisRun']) > 0:
+            gate_count = (int(species['iPictureThisRunCount']) if copy_gate == "pictures"
+                          else int(species['iPicturesWithJPGsThisRun']))
+            if gate_count > 0:
                 if species['Level'] != Level.SPECIES:
                     try:
-                        makeDirectories(MyProject, leaf, all_or_new)
+                        makeDirectories(MyProject, leaf, all_or_new, copy_gate)
                     except Exception as e:
                         logger.info(f"makeDirectories failed ()  {e.strerror} {e.filename}")
                 else: # only species store actual data
@@ -153,6 +182,15 @@ def AppendChangedFileData(MyProject, firstNewFile):
                     and not extra_picture.get('WetSoortNaam')):
                 continue
             if idx >= firstNewFile:
+                # NEW file. In a master commit an untagged picture (no species and
+                # not a routed landscape) is NOT part of the master: writing its
+                # row would create a ghost entry at the master root (empty
+                # TargetPath) with no physical file — the ghost-row incident. Skip
+                # it. Existing master rows are left untouched (historical cleanup
+                # is a separate, explicit prune).
+                if MyProject.isMasterRepository() and not (
+                        extra_picture and extra_picture.get('WetSoortNaam')):
+                    continue
                 # New file: rewrite its path to the repository (master) location.
                 targetpath = MyProject.UniquePictureName_dict[upn]['TargetPath']
                 wfn = filespec['WindowsFileName']
@@ -182,30 +220,42 @@ def AppendChangedPictureData(MyProject, firstNewPicture):
     SC = engine.speciesclassification.SpeciesClassification
     written = 0
     extras_skipped = 0
+    untagged_skipped = 0
     with open(picturename, 'w', newline='', encoding='utf-8') as frozencsv:
         ordered_fieldnames = OrderedDict((field, None) for field in PICTURE_FIELDS)
         writer = csv.DictWriter(frozencsv, fieldnames=ordered_fieldnames,
                                 restval='', extrasaction='ignore',
                                 quoting=csv.QUOTE_MINIMAL, delimiter=';')
         writer.writeheader()
-        for picture in MyProject.UniquePictureName_dict.values():
+        for idx, picture in enumerate(MyProject.UniquePictureName_dict.values()):
             # A blog extra now lives in the master under topics/<topic>/<leaf>
             # once it was routed (it has a WetSoortNaam). Only an UN-routed
             # extra (no leaf, e.g. missing capture date) stays out.
             if SC.isBlogExtra(picture['subject']) and not picture.get('WetSoortNaam'):
                 extras_skipped += 1
                 continue
+            # NEW untagged pictures (no species, not a routed landscape) are not
+            # part of the master — skip them in a master commit so they never
+            # become ghost picture rows. Existing master rows pass through
+            # (historical cleanup is a separate, explicit prune).
+            if (idx >= firstNewPicture and MyProject.isMasterRepository()
+                    and not picture.get('WetSoortNaam')):
+                untagged_skipped += 1
+                continue
             writer.writerow(picture)
             written += 1
 
     if extras_skipped:
         logger.info(f'{extras_skipped} un-routed blog-extra picture(s) excluded from the master collection.')
+    if untagged_skipped:
+        logger.info(f'{untagged_skipped} untagged picture(s) excluded from the master (no species).')
     logger.info(f'{written} picture records written to {picturename} (current-schema header).')
     return
 
 def main(args, config):
-    global starttime, species_dict, debugfile, count
+    global starttime, species_dict, debugfile, count, copy_failures
     starttime = time.time()
+    copy_failures = []
 
     MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"), 
                                           config.get("project","PictureDirectory"),
@@ -234,9 +284,12 @@ def main(args, config):
     debugfile = open("Species print.txt", "w")
     count = 0
     print(f"Debug enabled for Species copy.", file=debugfile)
-    # add new directories as needed, right in database
+    # add new directories as needed, right in database. copy_gate="pictures":
+    # copy EVERY file of every picture identified this run, developed or not —
+    # undeveloped ORF/XMP pairs included. The master must physically hold every
+    # named file it lists, or the delete step will destroy the only copy.
     MyProject.setLanguage('en')
-    makeDirectories(MyProject, 'biota', 'New')
+    makeDirectories(MyProject, 'biota', 'New', copy_gate="pictures")
     MyProject.makeWebDirectories('biota', 'New')
     # web in both language
     MyProject.setLanguage('nl')
@@ -246,12 +299,25 @@ def main(args, config):
     # backed up (topics/<topic>/<leaf>/). Deliberately NO makeWebDirectories for
     # topics: they carry no species pages / occurrence map (on_website=no). The
     # biota walk above never reaches this sibling root, so species pages are
-    # unaffected. See engine/topics.py.
+    # unaffected. Left on the legacy JPG gate on purpose — landscapes in the
+    # master are ch.12 territory, out of scope for this fix. See engine/topics.py.
     if 'topics' in MyProject.sp.species_dict:
         makeDirectories(MyProject, 'topics', 'New')
 
     #logger.info(f"{count} files copied to species picture repository in {time.time() - starttime:.1f} seconds.")
     debugfile.close()
+
+    # Fail the freeze LOUDLY if any file did not physically land in the master.
+    # The frozen CSVs already list these files at their master paths; letting sv7
+    # promote those rows would recreate the ghost-row condition. Aborting here
+    # keeps sv7 from running (statemachine gate / GUI step loop both stop on the
+    # exception), so no CSV claiming a missing file is ever committed.
+    if copy_failures:
+        for src, dst, why in copy_failures[:30]:
+            logger.warning(f"sv6Freeze: master copy NOT confirmed: {src} -> {dst} ({why})")
+        raise SVException(
+            f"{len(copy_failures)} file(s) could not be copied into the master (see log). "
+            f"Commit aborted so no CSV row is published for a file that isn't there.")
     # simply append new files and pictures, based on the new files.
     sp.writeSpeciesInfo(os.path.join(MyProject.ReviewFrozen(), "species.csv"), commit_counters=True)
     sc.updateSpeciesCollection(os.path.join(MyProject.ReviewFrozen(),"speciescollection.csv")) 

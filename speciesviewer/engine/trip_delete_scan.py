@@ -43,28 +43,70 @@ def _basename_key(name):
 
 def load_master_inventory(master_root):
     """Read the master straight from its active CSVs (decoupled from the SQLite
-    cache for this dry-run). Returns (upns, filenames) where
+    cache for this dry-run). Returns (upns, filenames, master_index) where
       - upns:      set of every UniquePictureName in the master picture list
       - filenames: set of lowercased File:FileName basenames in the master file
                    list (the stronger file-level signal)
-    Returns (None, None) on failure."""
+      - master_index: {"by_name": {basename_key -> master file path},
+                       "by_upn":  {upn -> [master file paths]}} — used to VERIFY
+                   a byte-for-byte copy actually exists on disk before a local
+                   file is ever proposed for deletion (the ghost-row guard: the
+                   master CSVs can list a file that was never physically copied).
+    Returns (None, None, None) on failure."""
     import engine.trip_registry as tr
     _real, _plac, upns, _species = tr.load_master_index(master_root)
     if upns is None:
-        return None, None
+        return None, None, None
 
     filenames = set()
+    master_index = {"by_name": {}, "by_upn": {}}
     files_csv = os.path.join(master_root, "metadata", "active", "data_files.csv")
     try:
         with open(files_csv, "r", encoding="utf-8", errors="replace", newline="") as fh:
             for row in csv.DictReader(fh, delimiter=";"):
                 fn = (row.get("File:FileName") or "").strip()
-                if fn:
-                    filenames.add(fn.lower())
+                if not fn:
+                    continue
+                fn_key = fn.lower()
+                filenames.add(fn_key)
+                path = (row.get("WindowsFileName") or "").strip()
+                if path:
+                    master_index["by_name"][fn_key] = path
+                    u = (row.get("UniquePictureName") or "").strip().lower()
+                    if u:
+                        master_index["by_upn"].setdefault(u, []).append(path)
     except Exception as e:
         logger.warning(f"trip_delete_scan: could not read master data_files.csv: {e}")
-        # UPN-level check still works without the file-level signal.
-    return upns, filenames
+        # Without the file index we cannot verify a physical copy, so nothing is
+        # classified deletable below — the safe degradation for a destructive op.
+    return upns, filenames, master_index
+
+
+def _master_copy_present(local_path, master_path):
+    """True only when the master holds a byte-for-byte copy of this file: the
+    master file exists AND its size matches the local file. The size check
+    catches the exact ghost-row failure mode — a CSV row whose file was never
+    copied (missing) or only partially copied (wrong size)."""
+    try:
+        if not master_path or not os.path.exists(master_path):
+            return False
+        return os.path.getsize(master_path) == os.path.getsize(local_path)
+    except OSError:
+        return False
+
+
+def _upn_has_confirmed_master_file(upn, master_index):
+    """True when at least one of the UPN's master files physically exists — the
+    proof that the picture (its RAW) is really backed up. Used for the .dng
+    carve-out: a DNG is recreatable from the RAW and never stored in the master,
+    so it is deletable only when the RAW it derives from is confirmed present."""
+    for p in master_index.get("by_upn", {}).get((upn or "").lower(), []):
+        try:
+            if os.path.exists(p):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def _trip_species_by_upn(trip_db):
@@ -121,10 +163,10 @@ def scan_trip(picture_root, master_root, trip_db):
     if not os.path.isdir(picture_root):
         return {"ok": False, "error": f"Trip picture directory not found: {picture_root}"}
 
-    upns, filenames = load_master_inventory(master_root)
+    upns, filenames, master_index = load_master_inventory(master_root)
     if upns is None:
         return {"ok": False, "error": "Could not read the master inventory."}
-    have_file_index = bool(filenames)
+    have_file_index = bool(master_index["by_name"])
 
     from engine.filecsv import deriveUniquePictureName
     days = []
@@ -146,29 +188,36 @@ def scan_trip(picture_root, master_root, trip_db):
                 tot["files"] += 1
                 upn = (deriveUniquePictureName(fn) or "").strip()
                 upn_in_master = upn in upns
-                file_in_master = (_basename_key(fn) in filenames) if have_file_index else None
+                master_path = master_index["by_name"].get(_basename_key(fn))
+                file_in_master = bool(master_path) if have_file_index else None
                 item = {"path": path, "upn": upn, "file_in_master": file_in_master}
 
-                # Deletion gate: a byte-identical copy must exist in the master.
-                # That means UPN in master AND (this exact file is in the master
-                # file list, or we have no file index to check against).
-                # Exception: a .dng is bulky and recreatable from the RAW, so it's
-                # deletable whenever its picture (the RAW) is in the master, even
+                # Deletion gate: a byte-for-byte copy must PHYSICALLY exist in the
+                # master (the master is the backup). CSV membership alone is not
+                # enough — the master CSVs can list a file that was never copied
+                # (the ghost-row incident), so we stat the master file and require
+                # a size match before ever proposing a delete.
+                # Exception: a .dng is bulky and recreatable from the RAW, so it is
+                # deletable when its picture (the RAW) is confirmed present, even
                 # though the master never stores the DNG itself.
-                recreatable_dng = ext == ".dng" and upn_in_master
-                file_backed = file_in_master is True or (file_in_master is None and upn_in_master)
-                if upn_in_master and (file_backed or recreatable_dng):
-                    if recreatable_dng and not file_backed:
-                        item["reason"] = "recreatable DNG (RAW in master)"
+                file_confirmed = _master_copy_present(path, master_path)
+                recreatable_dng = (ext == ".dng" and upn_in_master
+                                   and _upn_has_confirmed_master_file(upn, master_index))
+                if file_confirmed or recreatable_dng:
+                    if recreatable_dng and not file_confirmed:
+                        item["reason"] = "recreatable DNG (RAW confirmed in master)"
                     else:
-                        item["reason"] = "in master (file confirmed)" if have_file_index else "in master (UPN)"
+                        item["reason"] = "in master (file confirmed on disk)"
                     d_deletable.append(item)
                     tot["deletable_files"] += 1
                     tot["deletable_upns"].add(upn)
                 elif upn_in_master:
-                    # UPN backed but this exact rendition isn't in the master -
-                    # held back so we never delete a file without an identical twin.
-                    item["reason"] = "UPN in master, exact file not - held (kept)"
+                    # UPN is in the master but this exact file is not physically
+                    # confirmed (missing master copy, size mismatch, or a local-
+                    # only rendition) — held back so we never delete a file without
+                    # a verified identical twin.
+                    item["reason"] = ("UPN in master, exact file not confirmed on disk"
+                                      " - held (kept)")
                     d_held.append(item)
                     tot["held_files"] += 1
                     tot["held_upns"].add(upn)
