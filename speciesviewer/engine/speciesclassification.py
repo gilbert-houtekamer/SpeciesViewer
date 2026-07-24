@@ -51,6 +51,11 @@ class Level(Enum):
     PHYLUM = auto()
     KINGDOM = auto()
     BIOTA = auto()
+    # Non-taxonomic "topics" branch — see engine/topics.py. Appended last so the
+    # taxonomic members keep their .value (ClassificationGroupName indexing).
+    TOPICS = auto()
+    TOPIC = auto()
+    TOPICLEAF = auto()
 
 
 class SpeciesClassification:
@@ -152,9 +157,15 @@ class SpeciesClassification:
                     row_dict['Level'] = Level.FAMILY                                 
                 elif level == "Level.SPECIES":
                     row_dict['Level'] = Level.SPECIES
+                elif level == "Level.TOPICS":
+                    row_dict['Level'] = Level.TOPICS
+                elif level == "Level.TOPIC":
+                    row_dict['Level'] = Level.TOPIC
+                elif level == "Level.TOPICLEAF":
+                    row_dict['Level'] = Level.TOPICLEAF
 
-            
-                # fix lists to native [Python list] conventions                
+
+                # fix lists to native [Python list] conventions
                 for col in list_columns:
                     if row_dict[col] == '[]':           # update in place
                         row_dict[col] = []

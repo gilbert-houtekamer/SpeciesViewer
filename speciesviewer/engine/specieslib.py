@@ -20,6 +20,13 @@ class Level(Enum):
     PHYLUM = auto()
     KINGDOM = auto()
     BIOTA = auto()
+    # Non-taxonomic "topics" branch (topics/<topic>/<leaf>), appended AFTER the
+    # taxonomic levels so their .value never renumbers the existing members. See
+    # engine/topics.py. TOPICS mirrors BIOTA (root), TOPIC the middle node,
+    # TOPICLEAF the countable leaf.
+    TOPICS = auto()
+    TOPIC = auto()
+    TOPICLEAF = auto()
 
 class Species:
     # specieslib
@@ -176,6 +183,12 @@ class Species:
                     row_dict['Level'] = Level.FAMILY
                 elif level == "Level.SPECIES":
                     row_dict['Level'] = Level.SPECIES
+                elif level == "Level.TOPICS":
+                    row_dict['Level'] = Level.TOPICS
+                elif level == "Level.TOPIC":
+                    row_dict['Level'] = Level.TOPIC
+                elif level == "Level.TOPICLEAF":
+                    row_dict['Level'] = Level.TOPICLEAF
 
                 if reset_all_counters:
                     for col in numeric_columns: row_dict[col] = 0
