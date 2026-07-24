@@ -421,6 +421,23 @@ class PreviewCollection(PictureCollection):
                 out.append(k)
         return out
 
+    def blog_extra_keys(self) -> list[str]:
+        """UPNs marked as a landscape / context 'blog extra' — the subject carries
+        the landscape marker. These ARE committable (they get a home in the master
+        under topics/<topic>/<leaf>) but are counted and shown as landscapes, not
+        species — so the Add-to-Master line doesn't call a landscape 'species 2025'.
+        Keyed on the subject marker so it holds both BEFORE ingest (species not yet
+        resolved) and AFTER (the topic leaf sits in the species name slot). Callers
+        that also count species subtract this set to avoid double-counting a
+        picture that carries both a real species and the marker. See topics.py."""
+        from engine.speciesclassification import SpeciesClassification
+        out = []
+        for k in self.all_keys():
+            rep = self.rep_filename(k)
+            if SpeciesClassification.isBlogExtra(self.fpr.getSubject(rep) or ""):
+                out.append(k)
+        return out
+
     def jpg_keys(self) -> list[str]:
         """UPNs that have at least one JPG file — the 'JPG only' (column 2) set."""
         return [k for k in self.all_keys() if self.jpg_path(k) is not None]

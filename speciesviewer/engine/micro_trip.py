@@ -158,7 +158,7 @@ class MicroTrip:
         if not os.path.isfile(pic_csv):
             return {"ok": False, "error": f"No data_pictures.csv produced at {pic_csv}"}
         import re
-        pictures = identified = no_species = 0
+        pictures = identified = no_species = landscapes = 0
         species = {}
         unrecognized = {}            # tagged name -> count (name didn't resolve)
         date_lo = date_hi = ""       # YYYY:MM:DD span of the scanned pictures
@@ -174,6 +174,14 @@ class MicroTrip:
                         date_hi = day if not date_hi else max(date_hi, day)
                     sp = (row.get("WetSoortNaam") or "").strip()
                     err = (row.get("errormessage") or "").strip()
+                    tp = (row.get("TargetPath") or "").strip()
+                    if tp.startswith("topics/"):
+                        # A landscape / context photo routed into the topics/
+                        # branch (WetSoortNaam is a topic leaf like the year, not
+                        # a taxon). Committable, but counted as a landscape — never
+                        # shown as "species 2025". See engine/topics.py.
+                        landscapes += 1
+                        continue
                     if not sp and err:
                         # The user tagged a name that didn't resolve to a species
                         # ("may have a typo" / not in GBIF). Surface it so it's
@@ -209,7 +217,7 @@ class MicroTrip:
             rec["range_pics"], rec["range_jpgs"] = rp, rj
         with_jpg = sum(r["jpgs"] for r in species.values())
         return {"ok": True, "pictures": pictures, "identified": identified,
-                "no_species": no_species, "species": species,
+                "no_species": no_species, "landscapes": landscapes, "species": species,
                 "unrecognized": unrecognized,
                 "identified_with_jpg": with_jpg, "identified_no_jpg": identified - with_jpg,
                 "date_lo": date_lo, "date_hi": date_hi,
@@ -257,6 +265,7 @@ def format_summary(rep):
         f"  pictures   : {rep['pictures']}",
         f"  identified : {rep['identified']}  ({rep.get('identified_with_jpg', 0)} with a JPG, "
         f"{no_jpg} without)",
+        f"  landscapes : {rep.get('landscapes', 0)}  (filed under topics/landscape/<year>/)",
         f"  no species : {rep['no_species']}",
     ]
     if no_jpg:

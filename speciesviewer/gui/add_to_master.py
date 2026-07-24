@@ -85,13 +85,20 @@ class MicroTripReviewDialog(ImagePreviewDialog):
         species' forever."""
         n = self._report.get("pictures", 0)
         try:
-            ident = len(self._collection.species_keys())
+            # A landscape's topic leaf ("2025") sits in the species-name slot after
+            # ingest, so it appears in species_keys too — subtract the blog-extra
+            # set so it is counted once, as a landscape.
+            extras = set(self._collection.blog_extra_keys())
+            ident = len(set(self._collection.species_keys()) - extras)
+            land = len(extras)
         except Exception:
             ident = self._report.get("identified", 0)
-        untag = max(n - ident, 0)
+            land = self._report.get("landscapes", 0)
+        untag = max(n - ident - land, 0)
+        land_txt = f" · {land} landscape{'' if land == 1 else 's'}" if land else ""
         self._commit_info.setText(
-            f"{n} pictures · {ident} with a species · {untag} untagged "
-            f"(set species on a card, or in Lightroom; untagged are not added)")
+            f"{n} pictures · {ident} with a species{land_txt} · {untag} untagged "
+            f"(set a species or mark as landscape; untagged are not added)")
         # Enabled as long as there are pictures: you may still be about to tag them.
         # Commit re-reads species fresh and adds only the tagged ones.
         self.commit_btn.setEnabled(n > 0)
@@ -126,18 +133,27 @@ class MicroTripReviewDialog(ImagePreviewDialog):
         except Exception as e:
             logger.info(f"add_to_master: pre-commit re-summary failed: {e}")
         ident = self._report.get("identified", 0)
-        if ident == 0:
+        land = self._report.get("landscapes", 0)
+        if ident == 0 and land == 0:
             QMessageBox.information(
                 self, "Commit to Master",
-                "No picture has a species yet. Set one on a card here (or tag it in "
-                "Lightroom), then commit — untagged pictures are not added.")
+                "No picture has a species or landscape marker yet. Set a species on a "
+                "card here (or tag it in Lightroom), or mark it as a landscape, then "
+                "commit — untagged pictures are not added.")
             return
+        parts = []
+        if ident:
+            parts.append(f"{ident} identified picture{'' if ident == 1 else 's'}")
+        if land:
+            parts.append(f"{land} landscape{'' if land == 1 else 's'}")
+        what = " and ".join(parts)
         if QMessageBox.question(
                 self, "Commit to Master",
-                f"Add the {ident} identified picture(s) in\n{folder}\n"
+                f"Add {what} in\n{folder}\n"
                 f"to the master and update the website?\n\n"
-                f"Untagged pictures are not added. This writes to the master "
-                f"(undoable via the master .trash).",
+                f"Landscapes are filed under topics/landscape/<year>/. Untagged "
+                f"pictures are not added. This writes to the master (undoable via "
+                f"the master .trash).",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
@@ -181,7 +197,7 @@ class MicroTripReviewDialog(ImagePreviewDialog):
                 deleted_msg = self._delete_originals(folder)
             QMessageBox.information(
                 self, "Add to Master",
-                f"Added {ident} picture(s) to the master and updated the website.{deleted_msg}")
+                f"Added {what} to the master and updated the website.{deleted_msg}")
             self.commit_btn.setText("Committed ✓")
             # If this folder is a registered Day, mark it done automatically
             # (it stays in the Days list; nothing is deleted). No-op otherwise.
