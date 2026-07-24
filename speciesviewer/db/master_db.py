@@ -624,6 +624,10 @@ class MasterDB:
                 '       COUNT(*)            AS n '
                 'FROM pictures '
                 'WHERE TRIM("WetSoortNaam") <> "" '
+                # Topic pictures (landscapes) carry a topics/ leaf as WetSoortNaam
+                # so the master can file them, but they are not species: keep them
+                # out of the Master Species Viewer selector. See engine/topics.py.
+                'AND "TargetPath" NOT LIKE "topics/%" '
                 'GROUP BY LOWER(TRIM("WetSoortNaam")) '
                 'ORDER BY sci COLLATE NOCASE').fetchall()
         except sqlite3.OperationalError:
@@ -642,6 +646,10 @@ class MasterDB:
                 'SELECT "ScientificName" AS sci, "DutchName" AS nl, '
                 '"EnglishName" AS en, "TargetPath" AS target_path '
                 'FROM species WHERE "Level" = ? AND TRIM("ScientificName") <> "" '
+                # Topic leaves (topics/<topic>/<leaf>) are Level.SPECIES too, but
+                # they are not taxa: exclude them from the move-to-species universe.
+                # See engine/topics.py (is_topic_node / TOPICS_ROOT).
+                'AND "TargetPath" NOT LIKE "topics/%" '
                 'ORDER BY sci COLLATE NOCASE', ("Level.SPECIES",)).fetchall()
         except sqlite3.OperationalError:
             return []

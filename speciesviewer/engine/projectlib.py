@@ -801,10 +801,31 @@ class Project:
                 if subject_in_jpg != "":
                     scientificname = sp.getSpecies(subject_in_jpg)
                     if (scientificname == "" or scientificname is None) and self.sc.isBlogExtra(subject_in_jpg):
-                        # Non-species blog extra (landscape/context photo):
-                        # belongs in the day blog but carries no taxon, so it
-                        # must not warn about an unrecognized species.
+                        # Non-species blog extra (landscape/context photo). It
+                        # carries no taxon, so it must not warn as an unknown
+                        # species. Route it into the topics/ branch so it gets a
+                        # home in the master (TargetPath, counters, best-JPG) via
+                        # the SAME tree machinery as a species. It stays a blog
+                        # extra for RENDERING (subject unchanged -> isBlogExtra
+                        # still true; is_topic_node() keeps it off the species
+                        # website/map). A leaf that can't be resolved (e.g. no
+                        # capture date -> no year) leaves WetSoortNaam empty and
+                        # is excluded at freeze, exactly as before.
+                        from engine import topics
                         picture['errormessage'] = ""
+                        leaf_key = topics.route(self.sc, sp, None, subject_in_jpg, picture)
+                        if leaf_key:
+                            species = sp.species_dict[leaf_key]
+                            picture['WetSoortNaam'] = species['ScientificName']
+                            picture['NLSoortNaam'] = species['DutchName']
+                            picture['EngSoortNaam'] = species['EnglishName']
+                            # truthy so the JPG loop below fills the leaf's
+                            # BestJPG / JPGmap (topic pictures do NOT walk the
+                            # taxonomic ClassificationGroupName loop — their Level
+                            # values are out of that 7-wide list's range).
+                            scientificname = leaf_key
+                            recognized_species += 1
+                            break
                         continue
                     if scientificname == "":
                         logger.warning(f"""The species "{subject_in_jpg}" is not found in the GBIF database as a scientific name for "{upn['UniquePictureName']}".""")
@@ -893,19 +914,27 @@ class Project:
                 if upn['BestJPG'] != "":                # do we have a picture?
                     species['iPicturesWithJPGsThisRun'] = int(species['iPicturesWithJPGsThisRun']) + 1    # add the JPGs from this run, starting from 0
 
-        # at least biota must be present to run species summarization;
-        # skip it gracefully when no keywords matched (culling-first workflow:
-        # species may still be assigned in the viewer after Read & Summarize).
-        if 'biota' not in sp.species_dict:
+        # at least biota (or the topics branch) must be present to run
+        # summarization; skip gracefully when no keywords matched (culling-first
+        # workflow: species may still be assigned in the viewer after Read &
+        # Summarize). The two roots roll up independently — a landscape-only day
+        # has a 'topics' root but no 'biota'.
+        if 'biota' not in sp.species_dict and 'topics' not in sp.species_dict:
             logger.warning("No recognized species in this batch — data_pictures.csv written without species assignment.")
             return 0
 
         # Add counters from species to higher levels, tail-recursion works fine
-        counters = []
-        counters = sp.summarizeSpeciesCounters('biota', counters, debugfile)
+        if 'biota' in sp.species_dict:
+            counters = []
+            counters = sp.summarizeSpeciesCounters('biota', counters, debugfile)
+            sp.printDataForSpecies('biota', debugfile)
 
-        # debug ouput, using Option 2
-        sp.printDataForSpecies('biota', debugfile)
+        # Same rollup for the non-taxonomic topics/ branch (see engine/topics.py)
+        # so topic leaves carry counters + best-JPG up to topics/<topic>, which
+        # the freeze file-copy and species.csv need.
+        if 'topics' in sp.species_dict:
+            sp.summarizeSpeciesCounters('topics', [], debugfile)
+            sp.printDataForSpecies('topics', debugfile)
 
         return 0
 

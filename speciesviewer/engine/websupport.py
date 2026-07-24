@@ -1569,10 +1569,14 @@ def addOneSpeciesJPG(MyProject, jpgname, textCreated, templatehtml):
     try:
         filedata = MyProject.files_dict[jpgname]
         picturedata = MyProject.UniquePictureName_dict[filedata['UniquePictureName']]
-        # Blog extras have no taxon: render with species=None so the card
-        # template falls back to Headline/Description and the environment text.
+        # Blog extras render with species=None so the card template falls back to
+        # Headline/Description and the environment text. A landscape now carries a
+        # topics/ leaf as its WetSoortNaam (so the master can file it), but it must
+        # STILL render as an extra here — a topic leaf is not a taxon.
+        from engine.topics import is_topic_node
         wetname = picturedata['WetSoortNaam']
-        species = MyProject.sp.species_dict.get(wetname) if wetname else None
+        species = MyProject.sp.species_dict.get(wetname) \
+            if wetname and not is_topic_node(MyProject.sp.species_dict, wetname) else None
         MyProject.Blog.addBestJPG(filedata)
         # print(f"Picture {picturedata['NLSoortNaam']} {picturedata['UniquePictureName']} {picturedata['Description']}")
         for rawline in MyProject.getTemplateLines(templatehtml):

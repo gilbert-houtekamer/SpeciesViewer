@@ -144,11 +144,13 @@ def AppendChangedFileData(MyProject, firstNewFile):
         writer.writeheader()
         for idx, filespec in enumerate(all_files):
             upn = filespec['UniquePictureName']
-            # Non-species "blog extras" (landscape/context photos) are not
-            # committed to the master: they live only in the trip and in the
-            # blog's own copy. Skip their file records here.
+            # Blog extras (landscape/context photos) that COULD be routed into
+            # the topics/ branch now have a WetSoortNaam + TargetPath and are
+            # committed like any picture. Only an UN-routed extra (e.g. no
+            # capture date -> no year leaf) is still excluded from the master.
             extra_picture = MyProject.UniquePictureName_dict.get(upn)
-            if extra_picture is not None and SC.isBlogExtra(extra_picture['subject']):
+            if (extra_picture is not None and SC.isBlogExtra(extra_picture['subject'])
+                    and not extra_picture.get('WetSoortNaam')):
                 continue
             if idx >= firstNewFile:
                 # New file: rewrite its path to the repository (master) location.
@@ -187,15 +189,17 @@ def AppendChangedPictureData(MyProject, firstNewPicture):
                                 quoting=csv.QUOTE_MINIMAL, delimiter=';')
         writer.writeheader()
         for picture in MyProject.UniquePictureName_dict.values():
-            # Blog extras (landscape/context photos) stay out of the master.
-            if SC.isBlogExtra(picture['subject']):
+            # A blog extra now lives in the master under topics/<topic>/<leaf>
+            # once it was routed (it has a WetSoortNaam). Only an UN-routed
+            # extra (no leaf, e.g. missing capture date) stays out.
+            if SC.isBlogExtra(picture['subject']) and not picture.get('WetSoortNaam'):
                 extras_skipped += 1
                 continue
             writer.writerow(picture)
             written += 1
 
     if extras_skipped:
-        logger.info(f'{extras_skipped} blog-extra (landscape) pictures excluded from the master collection.')
+        logger.info(f'{extras_skipped} un-routed blog-extra picture(s) excluded from the master collection.')
     logger.info(f'{written} picture records written to {picturename} (current-schema header).')
     return
 
@@ -237,6 +241,14 @@ def main(args, config):
     # web in both language
     MyProject.setLanguage('nl')
     MyProject.makeWebDirectories('biota', 'New')
+
+    # Copy the topics/ branch FILES into the master tree so landscapes are
+    # backed up (topics/<topic>/<leaf>/). Deliberately NO makeWebDirectories for
+    # topics: they carry no species pages / occurrence map (on_website=no). The
+    # biota walk above never reaches this sibling root, so species pages are
+    # unaffected. See engine/topics.py.
+    if 'topics' in MyProject.sp.species_dict:
+        makeDirectories(MyProject, 'topics', 'New')
 
     #logger.info(f"{count} files copied to species picture repository in {time.time() - starttime:.1f} seconds.")
     debugfile.close()

@@ -213,6 +213,18 @@ def inject_chain(sc, rule, leaf):
     return leaf.key
 
 
+_DEFAULT_REGISTRY = None
+
+
+def default_registry():
+    """Process-wide default registry (the seeded `landscape` topic). Lazily
+    built so a future master-metadata CSV can replace it in one place."""
+    global _DEFAULT_REGISTRY
+    if _DEFAULT_REGISTRY is None:
+        _DEFAULT_REGISTRY = TopicRegistry.default()
+    return _DEFAULT_REGISTRY
+
+
 def route(sc, sp, registry, subject, picture):
     """One-call convenience for the ingest side (Phase 3): given a subject that
     resolved to NO species and a picture, return the leaf WetSoortNaam to file it
@@ -220,7 +232,9 @@ def route(sc, sp, registry, subject, picture):
 
     The species-first precedence (a subject naming a real species is never a
     topic) is the CALLER's responsibility: call this only when species
-    resolution already returned empty."""
+    resolution already returned empty. registry=None uses default_registry()."""
+    if registry is None:
+        registry = default_registry()
     rule = registry.match(subject)
     if rule is None:
         return None
