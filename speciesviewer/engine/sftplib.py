@@ -1,5 +1,6 @@
 import pysftp
 import stat
+import errno
 from urllib.parse import urlparse
 import os
 import json
@@ -9,6 +10,13 @@ import binascii
 
 warnings.filterwarnings('ignore','.*Failed to load HostKeys.*')
 logger = logging.getLogger("speciesviewer")
+
+
+def _remote_already_absent(e):
+    """True when an SFTP IOError means the target was already gone — the
+    desired end state of a delete, so a quiet no-op rather than a warning."""
+    return (getattr(e, "errno", None) == errno.ENOENT
+            or "no such file" in str(e).lower())
 
 
 class Sftp:
@@ -75,14 +83,18 @@ class Sftp:
             cache.pop(remote_path, None)
 
     def remove(self, remote_path):
-        """Delete a single remote file. Missing files are logged as warnings,
-        not raised — callers (cleanup flows) generally don't care if the
-        target was already gone. Always invalidates the upload-cache entry."""
+        """Delete a single remote file. An already-absent target is the desired
+        end state of a delete (e.g. pruning an empty day that was never
+        published), so it's a quiet no-op — only a real failure warns. Never
+        raises. Always invalidates the upload-cache entry."""
         try:
             self.connection.remove(remote_path)
             logger.info(f"removed remote file: {remote_path}")
         except IOError as e:
-            logger.warning(f"could not remove remote file {remote_path}: {e}")
+            if _remote_already_absent(e):
+                logger.debug(f"remote file already absent: {remote_path}")
+            else:
+                logger.warning(f"could not remove remote file {remote_path}: {e}")
         # Invalidate whether or not the delete found the file: if it was already
         # gone, a lingering cache entry is exactly what we must clear.
         self._invalidate_cache(remote_path)
@@ -106,7 +118,10 @@ class Sftp:
                 try:
                     self.connection.remove(full)
                 except IOError as e:
-                    logger.warning(f"could not remove remote file {full}: {e}")
+                    if _remote_already_absent(e):
+                        logger.debug(f"remote file already absent: {full}")
+                    else:
+                        logger.warning(f"could not remove remote file {full}: {e}")
                 self._invalidate_cache(full)
         try:
             self.connection.rmdir(remote_path)
