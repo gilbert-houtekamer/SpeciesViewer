@@ -1213,6 +1213,38 @@ Full design in <code>path_portability_plan.md</code>.</p>
   pictures, which made their status visible. Today a landscape / context photo is a
   <strong>trip-only, second-class citizen</strong>: it never reaches the master.</p>
 
+<h3>GUI authoring for blog extras — the front half of this chapter
+  <span class="tag-shipped">SHIPPED 2026-07-24</span></h3>
+<p>Landscapes can now be <em>declared and titled</em> entirely inside the app — the natural first
+  step of Ch 12, before the master-ingest re-architecture below. In the large viewer (all three hosts:
+  Image Preview, culling/album, rating editor):</p>
+<ul>
+  <li><strong>🌄 “Mark as landscape / context photo”</strong> button in the Species area sets the
+    <code>landscape</code> marker without needing to know the keyword; typing <code>landscape</code> in
+    the species field still works and <strong>no longer trips the “unknown species” warning</strong>
+    (<code>gui/species_editor.py</code> — <code>isBlogExtra</code> carve-out in the commit guard).</li>
+  <li>The Species area is now <strong>mode-aware</strong>: a blog extra shows a greyed
+    <strong>“🌄 Landscape / context photo”</strong> block (with a <em>“Not a landscape → set species”</em>
+    way back) instead of the taxon editor. Driven by a new <code>PictureItem.is_blog_extra</code>
+    (subject → <code>isBlogExtra</code>) on the preview / sidecar / rating items.</li>
+  <li>An editable <strong>HEADLINE</strong> field (the card/blog title = <code>XMP:Headline</code>) now
+    sits above DESCRIPTION, wired through <code>set_headline</code> / <code>can_edit_headline</code> →
+    <code>apply_headline</code> (rating) · <code>write_tag</code> (sidecar) ·
+    <code>fpr.updateHeadline</code> (preview). Previously the Headline was read-only in the GUI and could
+    only be set in an external tool.</li>
+  <li>The grid <strong>card title shows the Headline</strong> for a landscape (matching the website)
+    instead of the filename (<code>display_name</code> fallback in all three providers).</li>
+</ul>
+<p class="note"><strong>Gotcha learned (keep):</strong> a blog extra still needs a rendered JPG to appear
+  in the blog. <code>collectBlogExtras</code> skips any picture whose <code>BestJPG == ""</code>
+  (<code>engine/websupport.py:1558</code>). A landscape shot RAW-only (ORF + <code>.xmp</code>, no
+  <code>_DxO.jpg</code> yet) is correctly authored and titled but will not render in the day blog until
+  PhotoLab produces its JPG — same rule as a species photo. Not a bug; expected.</p>
+<p><strong>What remains for Ch 12 = the architectural half below</strong>: giving landscapes a
+  <em>home in the master</em> (the <code>topics/</code> branch) so they are indexed, backed up, and
+  optionally published. The authoring above is deliberately master-agnostic — it only touches the
+  trip-side sidecars — so it stands on its own and pre-commits none of the open design questions.</p>
+
 <h3>How it works now</h3>
 <ul>
   <li>A picture is a <strong>“blog extra”</strong> when its subject carries a marker keyword

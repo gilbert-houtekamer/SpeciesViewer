@@ -22,8 +22,8 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QTextEdit,
-    QSizePolicy, QScrollArea, QSplitter, QFrame, QPushButton, QToolButton, QStyle,
-    QMessageBox, QTabWidget,
+    QLineEdit, QSizePolicy, QScrollArea, QSplitter, QFrame, QPushButton, QToolButton,
+    QStyle, QMessageBox, QTabWidget,
 )
 from PyQt6.QtGui import (
     QMovie, QPixmap, QImage, QGuiApplication, QShortcut, QKeySequence, QPainter, QColor,
@@ -639,6 +639,7 @@ class LargeImageView(QDialog):
         self._pixmap = QPixmap()
         self._load_token = 0
         self._original_description = ""
+        self._original_headline = ""
         self._panel_first_show = True
         self._selected_keys: set[str] = set(initial_selection) if initial_selection else set()
         self._bracket_left:  str | None = None
@@ -910,6 +911,13 @@ class LargeImageView(QDialog):
         self._apply_all_btn.clicked.connect(self._apply_to_all_selected)
         pl.addWidget(self._apply_all_btn)
 
+        pl.addWidget(_section_header("HEADLINE"))
+        pl.addWidget(_small_lbl("Title for a landscape / context photo (optional)"))
+        self._headline_edit = QLineEdit()
+        self._headline_edit.setPlaceholderText("e.g. Sunrise over the marsh")
+        self._headline_edit.editingFinished.connect(self._save_headline)
+        pl.addWidget(self._headline_edit)
+
         pl.addWidget(_section_header("DESCRIPTION"))
         pl.addWidget(_small_lbl("Story for the website (optional)"))
         self._desc_edit = QTextEdit()
@@ -992,6 +1000,7 @@ class LargeImageView(QDialog):
         self._filmstrip_bottom.setVisible(not self._strip_left)
 
         QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self._save_description)
+        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self._save_headline)
 
         self._apply_default_or_remembered_geometry()
         self._load_current()
@@ -1724,6 +1733,14 @@ class LargeImageView(QDialog):
         self._rate_lbl.setText(f"Rate: {item.rate}" if item.rate is not None else "")
         self._apply_frame_color(item.color or "")
 
+        self._original_headline = item.headline or ""
+        self._headline_edit.blockSignals(True)
+        self._headline_edit.setText(self._original_headline)
+        self._headline_edit.setReadOnly(not item.can_edit_headline)
+        self._headline_edit.setToolTip("" if item.can_edit_headline
+                                        else "Headlines can't be saved for this picture.")
+        self._headline_edit.blockSignals(False)
+
         self._original_description = item.description or ""
         self._desc_edit.blockSignals(True)
         self._desc_edit.setPlainText(self._original_description)
@@ -1760,6 +1777,14 @@ class LargeImageView(QDialog):
 
     def _rebuild_species_section(self, item, key: str):
         _clear_layout(self._species_cl)
+
+        # Landscape / context "blog extra": no species. Show a greyed Topic block
+        # instead of the species editor (whatever the host), with a way back to a
+        # species. The Headline field over in the DESCRIPTION column is its title.
+        if getattr(item, "is_blog_extra", False):
+            self._build_landscape_block(item, key)
+            return
+
         ctx = self._collection.species_editor_context(key)
         if ctx is not None:
             fpr, file_paths = ctx
@@ -1801,13 +1826,84 @@ class LargeImageView(QDialog):
             if (getattr(item, "from_master", False)
                     and hasattr(self._collection, "apply_master_qualifiers")
                     and not getattr(self._collection, "master_read_only", True)):
-                from PyQt6.QtWidgets import QPushButton
                 qbtn = QPushButton("Sex / age / plumage…")
                 qbtn.setToolTip(
                     "Which form of the species this photo shows. The website publishes "
                     "one best photo per form, so this changes what appears.")
                 qbtn.clicked.connect(lambda _c, k=key: self._edit_master_qualifiers(k))
                 self._species_cl.addWidget(qbtn)
+
+        # Offer marking this photo as a landscape / context photo wherever the
+        # subject is writable (fpr editor OR the item's own species writer).
+        self._add_mark_landscape_button(item, key)
+
+    # ── Landscape / context "blog extra" ──────────────────────────────────────
+
+    def _can_set_landscape(self, item, key: str) -> bool:
+        """True when this host can change the subject to/from the landscape marker
+        — either the item exposes its own species writer (sidecar / culling) or the
+        collection offers the fpr species-editor context (trip / rating editor)."""
+        if getattr(item, "can_edit_species", False):
+            return True
+        return self._collection.species_editor_context(key) is not None
+
+    def _add_mark_landscape_button(self, item, key: str):
+        if not self._can_set_landscape(item, key):
+            return
+        btn = QPushButton("🌄  Mark as landscape / context photo")
+        btn.setToolTip(
+            "Mark this photo as a landscape / context photo — a 'blog extra' titled "
+            "by its Headline, not a species. It appears in the day blog but is kept "
+            "out of the species website and the master collection.")
+        btn.clicked.connect(lambda _c, k=key: self._mark_as_landscape(k))
+        self._species_cl.addWidget(btn)
+
+    def _build_landscape_block(self, item, key: str):
+        lbl = _field_lbl("🌄  Landscape / context photo")
+        lbl.setStyleSheet("font-size: 11px; font-weight: bold; color: #7a7a7a;")
+        self._species_cl.addWidget(lbl)
+        hint = _small_lbl("No species — shown in the day blog under its Headline; "
+                          "kept out of the species website and the master.")
+        hint.setStyleSheet("font-size: 10px; color: #999;")
+        hint.setWordWrap(True)
+        self._species_cl.addWidget(hint)
+        if item.headline:
+            h = _small_lbl(item.headline)
+            h.setStyleSheet("font-size: 11px; font-weight: bold;")
+            self._species_cl.addWidget(h)
+        if self._can_set_landscape(item, key):
+            btn = QPushButton("Not a landscape → set species")
+            btn.setToolTip("Clear the landscape marker so this photo is treated as a "
+                           "species again.")
+            btn.clicked.connect(lambda _c, k=key: self._unmark_landscape(k))
+            self._species_cl.addWidget(btn)
+
+    def _mark_as_landscape(self, key: str):
+        self._set_landscape_subject(key, "landscape")
+
+    def _unmark_landscape(self, key: str):
+        self._set_landscape_subject(key, "")
+
+    def _set_landscape_subject(self, key: str, subject: str):
+        """Set (or clear) the landscape marker via whichever species-write path this
+        host supports (the item's own set_species for sidecar/culling, else the fpr
+        editor context), then rebuild so the Species section flips modes."""
+        item = self._item
+        try:
+            if item is not None and getattr(item, "can_edit_species", False):
+                item.set_species(subject)
+                updated = {key}
+            else:
+                ctx = self._collection.species_editor_context(key)
+                if ctx is None:
+                    return
+                fpr, file_paths = ctx
+                upns, _ = fpr.updateSubjects(file_paths, subject)
+                updated = set(upns) or {key}
+        except Exception as e:
+            logger.warning(f"LargeImageView: set landscape marker failed: {e}")
+            return
+        self._on_species_committed(updated)
 
     def _edit_master_qualifiers(self, key: str):
         from gui.culling_species import edit_master_qualifiers
@@ -1842,6 +1938,7 @@ class LargeImageView(QDialog):
         if self._crop_mode:
             self._exit_crop_mode(reload=False)  # _load_current below restores the view
         self._save_description()
+        self._save_headline()
         n = len(self._keys)
         step = 1 if delta >= 0 else -1
         # In the 100% tab, Blue/Purple are rejects and aren't even decoded, so
@@ -1874,6 +1971,7 @@ class LargeImageView(QDialog):
         if self._crop_mode:
             self._exit_crop_mode(reload=False)
         self._save_description()
+        self._save_headline()
         self._index = new
         self._load_current()
         self.picture_navigated.emit(key)
@@ -2223,6 +2321,19 @@ class LargeImageView(QDialog):
         except Exception as e:
             logger.warning(f"LargeImageView: description save failed: {e}")
 
+    def _save_headline(self):
+        if self._item is None or not self._item.can_edit_headline:
+            return
+        text = self._headline_edit.text()
+        if text == self._original_headline:
+            return
+        try:
+            self._item.set_headline(text)
+            self._original_headline = text
+            self.picture_changed.emit(self._item.key)
+        except Exception as e:
+            logger.warning(f"LargeImageView: headline save failed: {e}")
+
     # ── External tools (Explorer / DxO PhotoLab) ───────────────────────────────
 
     def _open_in_explorer(self):
@@ -2351,6 +2462,7 @@ class LargeImageView(QDialog):
 
     def closeEvent(self, event):
         self._save_description()
+        self._save_headline()
         # Save the ACTIVE splitter's live sizes; use _last_* for the inactive one
         # (querying a splitter with a hidden child returns misleading 0 values).
         save_window(self, self._geo_key,

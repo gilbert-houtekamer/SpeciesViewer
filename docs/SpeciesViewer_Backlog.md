@@ -261,6 +261,16 @@ Path layer P1 DONE (utils/paths.py host-independent). [[project_portability_audi
 ## 12. Landscapes in the Master — NEW, ARCHITECTURAL (raised 2026-07-12)
 Today a landscape / context photo is a **trip-only, second-class citizen**: it never reaches the master. Raised while adding the map's All/Species scope — "Species" drops exactly these pictures, which made their status visible.
 
+**✅ SHIPPED 2026-07-24 — GUI authoring for blog extras (the front half of this chapter).** Landscapes can now be *declared and titled* entirely inside the app — the natural first step of Ch 12, before the master-ingest re-architecture below. In the large viewer (all three hosts: Image Preview, culling/album, rating editor):
+- **🌄 "Mark as landscape / context photo"** button in the Species area sets the `landscape` marker without needing to know the keyword; typing `landscape` in the species field still works and **no longer trips the "unknown species" warning** (`gui/species_editor.py` — `isBlogExtra` carve-out in the commit guard).
+- The Species area is now **mode-aware**: a blog extra shows a greyed **"🌄 Landscape / context photo"** block (with a *"Not a landscape → set species"* way back) instead of the taxon editor. Driven by a new `PictureItem.is_blog_extra` (subject → `isBlogExtra`) on the preview / sidecar / rating items.
+- An editable **HEADLINE** field (the card/blog title = `XMP:Headline`) now sits above DESCRIPTION, wired through `set_headline` / `can_edit_headline` → `apply_headline` (rating) · `write_tag` (sidecar) · `fpr.updateHeadline` (preview). Previously the Headline was read-only in the GUI and could only be set in an external tool.
+- The grid **card title shows the Headline** for a landscape (matching the website) instead of the filename (`display_name` fallback in all three providers).
+
+**GOTCHA learned (keep): a blog extra still needs a rendered JPG to appear in the blog.** `collectBlogExtras` skips any picture whose `BestJPG == ""` (`engine/websupport.py:1558`). A landscape shot RAW-only (ORF + `.xmp`, no `_DxO.jpg` yet) is correctly authored and titled but will not render in the day blog until PhotoLab produces its JPG — same rule as a species photo. Not a bug; expected.
+
+**What remains for Ch 12 = the architectural half below**: giving landscapes a *home in the master* (the `topics/` branch) so they are indexed, backed up, and optionally published. The authoring above is deliberately master-agnostic — it only touches the trip-side sidecars — so it stands on its own and pre-commits none of the open design questions.
+
 **How it works now (grounded):**
 - A picture is a **"blog extra"** when its subject carries a marker keyword: `LANDSCAPE_KEYWORDS = {'landscape', 'landschap'}` → `SpeciesClassification.isBlogExtra(subject)` (`engine/speciesclassification.py:69-89`).
 - It is deliberately **exempted from species resolution** so it doesn't warn as an unknown species (`engine/projectlib.py:799` clears `errormessage`).

@@ -272,6 +272,14 @@ class PictureItem(ABC):
         return ""
 
     @property
+    def is_blog_extra(self) -> bool:
+        """True → a landscape / context 'blog extra' (marker keyword 'landscape'
+        / 'landschap', no species). It belongs in the day blog under its Headline,
+        not in the species website or the master. Providers that carry a subject
+        override this; the safe default is 'ordinary species'."""
+        return False
+
+    @property
     def file_exts(self) -> list[str]:   # e.g. ["JPG", "ORF", "XMP"] — a compact
         return []                       # "what files exist" hint on the card
 

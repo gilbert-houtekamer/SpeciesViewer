@@ -73,6 +73,10 @@ class RatingEditorItem(PictureItem):
         # per-day CSV routing, and — like rating/colour — for master pictures when
         # master writes are enabled on this machine (master.readonly = no).
         self.can_edit_description = editable
+        # Headline (the title of a landscape / context 'blog extra') follows the
+        # same write rule as Description; it only matters for blog extras but the
+        # field is harmless on any editable picture.
+        self.can_edit_headline = editable
 
     @property
     def from_master(self) -> bool:
@@ -115,7 +119,14 @@ class RatingEditorItem(PictureItem):
 
     @property
     def display_name(self) -> str:
-        return self._c.species_name(self._row) or self._key
+        name = self._c.species_name(self._row)
+        if name:
+            return name
+        # A landscape / context "blog extra" has no species — title it by its
+        # Headline (what the website shows), falling back to the filename.
+        if self.is_blog_extra and self.headline:
+            return self.headline
+        return self._key
 
     @property
     def place_fields(self) -> dict:
@@ -143,6 +154,11 @@ class RatingEditorItem(PictureItem):
     @property
     def headline(self) -> str:
         return self._row.get("Headline", "")
+
+    @property
+    def is_blog_extra(self) -> bool:
+        from engine.speciesclassification import SpeciesClassification
+        return SpeciesClassification.isBlogExtra(self._row.get("subject", ""))
 
     @property
     def description(self) -> str:
@@ -197,6 +213,11 @@ class RatingEditorItem(PictureItem):
         if not self.can_edit_description:
             return
         self._c.apply_description(self._key, value)
+
+    def set_headline(self, value: str) -> None:
+        if not self.can_edit_headline:
+            return
+        self._c.apply_headline(self._key, value)
 
     def set_crop(self, crop: dict):
         """Write the suggested crop to this trip picture's RAW sidecars (see the
@@ -1338,6 +1359,37 @@ class RatingEditorCollection(PictureCollection):
                 logger.error(f"exiftool write failed for {fpath.name}: {e}")
             frow["XMP:Description"] = value
         upn_row["Description"] = value
+        self._persist_upn(upn_key, wrote_file)
+
+    def apply_headline(self, upn_key: str, value: str) -> None:
+        """Write XMP:Headline (the landscape / context-photo title) to the trip
+        picture's sidecar + JPGs, mirroring apply_description. A blog extra never
+        reaches the master, so master keys have no headline — no-op there."""
+        if upn_key in self._master_keys:
+            return
+        upn_row = self.fpr.upn.UniquePictureName_dict.get(upn_key)
+        if not upn_row:
+            return
+        files = upn_row.get("Files", [])
+        if not isinstance(files, list):
+            files = []
+        wrote_file = False
+        for fname in files:
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            if frow.get("WindowsExtension", "").lower() not in ("xmp", "jpg", "jpeg"):
+                continue
+            fpath = Path(frow.get("WindowsFileName", ""))
+            if not fpath.exists():
+                continue
+            try:
+                exiftool_write(fpath, [f"-XMP:Headline={value}"])
+                wrote_file = True
+            except Exception as e:
+                logger.error(f"exiftool write failed for {fpath.name}: {e}")
+            frow["XMP:Headline"] = value
+        upn_row["Headline"] = value
         self._persist_upn(upn_key, wrote_file)
 
     def delete_by_color(self, color: str, trash_root: Path,

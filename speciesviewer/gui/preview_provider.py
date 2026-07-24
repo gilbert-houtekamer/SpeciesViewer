@@ -104,11 +104,15 @@ def cached_jpg_for(src: Path | None, cache_dir: Path) -> Path | None:
 
 
 class PreviewItem(PictureItem):
-    can_edit_headline = False
     can_edit_species = False      # species edits go through SpeciesInfoDialog
 
     @property
     def can_edit_description(self) -> bool:
+        return not self._c.read_only
+
+    @property
+    def can_edit_headline(self) -> bool:
+        # The landscape / context-photo title; same write rule as the description.
         return not self._c.read_only
 
     def __init__(self, collection: "PreviewCollection", upn_key: str):
@@ -144,7 +148,14 @@ class PreviewItem(PictureItem):
 
     @property
     def display_name(self) -> str:
-        return self._c.fpr.getSpeciesName(self._rep) or self._key
+        name = self._c.fpr.getSpeciesName(self._rep)
+        if name:
+            return name
+        # A landscape / context "blog extra" has no species — title it by its
+        # Headline (what the website shows), falling back to the filename.
+        if self.is_blog_extra and self.headline:
+            return self.headline
+        return self._key
 
     @property
     def qualifier_suffix(self) -> str:
@@ -162,6 +173,14 @@ class PreviewItem(PictureItem):
     @property
     def headline(self) -> str:
         return self._row.get("Headline", "")
+
+    @property
+    def is_blog_extra(self) -> bool:
+        from engine.speciesclassification import SpeciesClassification
+        try:
+            return SpeciesClassification.isBlogExtra(self._c.fpr.getSubject(self._rep))
+        except Exception:
+            return False
 
     @property
     def description(self) -> str:
@@ -255,6 +274,9 @@ class PreviewItem(PictureItem):
 
     def set_description(self, value: str) -> None:
         self._c.fpr.updateDescription(self._rep, value)
+
+    def set_headline(self, value: str) -> None:
+        self._c.fpr.updateHeadline(self._rep, value)
 
     # async image
     def request_thumbnail(self, target_w: int, on_ready: PixmapCallback) -> None:

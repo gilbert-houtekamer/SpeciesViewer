@@ -146,7 +146,7 @@ class SidecarItem(PictureItem):
     can_edit_rating = True
     can_edit_color = True
     can_edit_description = True
-    can_edit_headline = False
+    can_edit_headline = True
     can_edit_species = True
     show_location_line = True   # culling grid: place line under the species name
 
@@ -171,6 +171,7 @@ class SidecarItem(PictureItem):
             self.can_edit_rating = edit
             self.can_edit_color = edit
             self.can_edit_description = edit
+            self.can_edit_headline = edit
             self.can_edit_species = False
 
     @property
@@ -194,6 +195,10 @@ class SidecarItem(PictureItem):
         hinted = self._c._name_for_stem(self._stem)
         if hinted:
             return hinted
+        # A landscape / context "blog extra" has no species — title it by its
+        # Headline (what the website shows) rather than the bare 'landscape' keyword.
+        if self.is_blog_extra and self.headline:
+            return self.headline
         from gui.culling_species import split_species_qualifiers
         name, _ = split_species_qualifiers(self.species)
         return name or self._stem
@@ -219,6 +224,11 @@ class SidecarItem(PictureItem):
     @property
     def headline(self) -> str:
         return str(self._row.get("Headline", "") or "")
+
+    @property
+    def is_blog_extra(self) -> bool:
+        from engine.speciesclassification import SpeciesClassification
+        return SpeciesClassification.isBlogExtra(self._row.get("Subject", ""))
 
     @property
     def description(self) -> str:
@@ -338,6 +348,9 @@ class SidecarItem(PictureItem):
 
     def set_description(self, value: str) -> None:
         self._c.write_tag(self._stem, "XMP:Description", value, "Description")
+
+    def set_headline(self, value: str) -> None:
+        self._c.write_tag(self._stem, "XMP:Headline", value, "Headline")
 
     def set_species(self, value: str) -> None:
         # Assigning a list-type XMP tag replaces it, so the sidecar carries the

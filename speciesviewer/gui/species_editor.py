@@ -14,7 +14,7 @@ from PyQt6.QtGui import QCursor
 
 from widgets.trip_widgets import LabeledTextFieldQt
 from engine.filepicture import FilePicture, format_subject_for_xmp
-from engine.speciesclassification import Level
+from engine.speciesclassification import Level, SpeciesClassification
 from utils.config import _config
 
 logger = logging.getLogger("speciesviewer")
@@ -568,9 +568,14 @@ class SpeciesInfoPanel(QWidget):
 
         clearing = (corrected_subject == "")
 
-        # Unknown-species guard (skip for clearing, and skip when the species
-        # collection isn't loaded on this fpr — then we just store as typed).
-        if not clearing and _sc_usable(fpr.sc):
+        # 'landscape' / 'landschap' is a DELIBERATE no-species marker (a blog
+        # extra: a landscape / context photo titled by its Headline, not a taxon).
+        # It must not trip the unknown-species warning — storing it is the whole point.
+        is_landscape = SpeciesClassification.isBlogExtra(corrected_subject)
+
+        # Unknown-species guard (skip for clearing, for the landscape marker, and
+        # when the species collection isn't loaded on this fpr — then store as typed).
+        if not clearing and not is_landscape and _sc_usable(fpr.sc):
             try:
                 _parts = ast.literal_eval(corrected_subject)
                 _lookup = max(_parts, key=len) if isinstance(_parts, list) and _parts else corrected_subject
