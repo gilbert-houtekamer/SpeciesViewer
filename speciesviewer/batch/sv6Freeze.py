@@ -191,17 +191,49 @@ def AppendChangedFileData(MyProject, firstNewFile):
                 if MyProject.isMasterRepository() and not (
                         extra_picture and extra_picture.get('WetSoortNaam')):
                     continue
-                # New file: rewrite its path to the repository (master) location.
-                targetpath = MyProject.UniquePictureName_dict[upn]['TargetPath']
-                wfn = filespec['WindowsFileName']
-                fd = filespec['File:Directory']
-                new_dir = os.path.join(targetpathbase, targetpath)
-                filespec['WindowsFileName'] = filespec['WindowsFileName'].replace(filespec['File:Directory'], new_dir)
-                filespec['File:Directory'] = new_dir
-                writer.writerow(filespec)
-                # restore actual situation for the subsequent file move
-                filespec['WindowsFileName'] = wfn
-                filespec['File:Directory'] = fd
+                # A new file's stored path may point at the repository ONLY when
+                # the file will actually be copied there. The copy is gated per
+                # species by makeDirectories/makeSpeciesDirectory: master mode
+                # copies every identified species (iPictureThisRunCount), a trip
+                # only the developed ones (iPicturesWithJPGsThisRun — the JPG gate).
+                # Rewriting the path for a file whose species is NOT gated-in this
+                # run wrote a ghost row: a CSV entry pointing at a repo file that
+                # was never copied. A later run that DOES develop that species
+                # (a multi-day species: e.g. alectoris chukar undeveloped on 03-16,
+                # a _DxO on 03-20) then read the ghost path as the copy SOURCE and
+                # the freeze aborted. Keep the real (CurrentPictures) source path
+                # for an un-gated file so a subsequent gated-in freeze copies it
+                # from where it actually lives. [[project-ghost-row-incident]]
+                leaf = extra_picture.get('WetSoortNaam') if extra_picture else None
+                sp_node = MyProject.sp.species_dict.get(leaf) if leaf else None
+                gate_counter = ('iPictureThisRunCount' if MyProject.isMasterRepository()
+                                else 'iPicturesWithJPGsThisRun')
+                will_copy = False
+                if sp_node is not None:
+                    try:
+                        will_copy = int(sp_node.get(gate_counter, 0) or 0) > 0
+                    except (TypeError, ValueError):
+                        will_copy = False
+                if will_copy:
+                    # Rewrite its path to the repository location. TargetPath comes
+                    # from getPathToSpecies with '/' seps and a trailing '/';
+                    # normpath collapses the trailing sep and unifies separators
+                    # (the '/\\' path-hygiene bug) and we rebuild the filename from
+                    # the authoritative File:FileName, not a fragile str.replace.
+                    targetpath = MyProject.UniquePictureName_dict[upn]['TargetPath']
+                    wfn = filespec['WindowsFileName']
+                    fd = filespec['File:Directory']
+                    new_dir = os.path.normpath(os.path.join(targetpathbase, targetpath))
+                    filespec['File:Directory'] = new_dir
+                    filespec['WindowsFileName'] = os.path.join(new_dir, filespec['File:FileName'])
+                    writer.writerow(filespec)
+                    # restore actual situation for the subsequent file move
+                    filespec['WindowsFileName'] = wfn
+                    filespec['File:Directory'] = fd
+                else:
+                    # Not copied this run (species not gated-in): keep the real
+                    # source path so no ghost row is published.
+                    writer.writerow(filespec)
             else:
                 # Existing master file: already at its repository path.
                 writer.writerow(filespec)
