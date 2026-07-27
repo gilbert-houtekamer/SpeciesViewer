@@ -16,9 +16,9 @@ source of truth, this document deliberately does not mirror it.
 
 | CSV (on disk) | In-memory dict | Owning class | Holds |
 |---|---|---|---|
-| `speciescollection.csv` | `sc_dict` | [`SpeciesClassification`](../speciesviewer/engine/speciesclassification.py) | Pure taxonomy: every species/family/order/etc. the system knows about, with parent/child links and vernacular names. |
-| `species.csv` | `species_dict` | [`Species`](../speciesviewer/engine/specieslib.py) | Subset of the taxonomy that we actually have pictures for, **plus** per-species rollups (best JPG, counters, target path). |
-| `data_files.csv` | `files_dict` | [`Project`](../speciesviewer/engine/projectlib.py) | One row per **physical file** (RAW, XMP, DOP, JPG, DNG…) with raw EXIF/XMP read by exiftool. |
+| `speciescollection.csv` | `sc_dict` | [`SpeciesClassification`](../speciesviewer/engine/speciesclassification.py) | Pure taxonomy with parent/child links and vernacular names. **Seeded with a full bird list** — species you've never photographed included — and grown to plants, mammals, insects, etc. on the fly via GBIF. |
+| `species.csv` | `species_dict` | [`Species`](../speciesviewer/engine/specieslib.py) | **The bridge** between taxonomy and photos: the subset of the taxonomy we actually have pictures for, **plus** per-species rollups (best JPG, counters, target path). |
+| `data_files.csv` | `files_dict` | [`Project`](../speciesviewer/engine/projectlib.py) | One row per **physical file** — RAW, XMP, DOP, **the JPGs rendered from the RAW** (e.g. `_DxO.jpg`), DNG… — with raw EXIF/XMP read by exiftool. |
 | `data_pictures.csv` | `UniquePictureName_dict` | [`Project`](../speciesviewer/engine/projectlib.py) | One row per **camera click**, grouping the files that belong to that click and holding the distilled picture-level metadata. |
 
 ```mermaid
@@ -40,7 +40,8 @@ graph TD
   These dicts know nothing about cameras or files. They are the answer to
   "what species exist, what family does this bird belong to, what's its
   Dutch name?". The taxonomy is bootstrapped from a static
-  `initial_speciescollection.csv` and extended on the fly via GBIF
+  `initial_speciescollection.csv` (a full bird taxonomy, most of it never
+  photographed) and extended on the fly via GBIF for the other kingdoms
   ([`SpeciesClassification.addSpecies`](../speciesviewer/engine/speciesclassification.py)).
 - **Photographic evidence** is in `files_dict` and `UniquePictureName_dict`.
   These dicts know nothing about taxonomy beyond a single foreign key
@@ -162,7 +163,6 @@ created by `Repository.populate`:
         frozen_data_files.csv
         frozen_data_pictures.csv
         species.csv
-        deletelist.csv
     web/                       # generated HTML
 ```
 
