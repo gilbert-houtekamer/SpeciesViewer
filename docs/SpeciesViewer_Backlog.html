@@ -36,7 +36,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 24 July 2026 (⚠ data-loss fix — ghost rows in the trip→master commit) &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 27 July 2026 (menu reorganization v3 — “To Master” bridge menu, queued to implement) &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Working task list for the SpeciesViewer nature-photo pipeline and GUI. Since the
 16 June version most of the backlog has shipped: the identity/​picture-root
@@ -74,6 +74,9 @@ design</em>.</p>
       done (smart Create → one-flow extract+build+publish → Delete Album → Manage Album Publication,
       list/unlist on the trip index); live-verified both directions on Gran Canaria + Panama (ch. 2).</li>
     <li>Smaller: GBIF lookup disk-cache (ch. 11).</li>
+    <li><strong>Menu reorganization v3 — “To Master” bridge menu</strong> <span class="tag-new">NEW</span> —
+      spec ready (<code>menu_map_v3.txt</code>), top of the list to implement; pure relocation so the
+      menus mirror the trip→master data flow (ch. 9).</li>
     <li><em>Dropped from the shortlist: Map for the Day (micro-trip) — verified already
       working, see ch. 3.</em></li>
   </ul>
@@ -1151,6 +1154,32 @@ filmstrip position, inline master comparison (via Trip+Master scope), grid↔lar
   <li><strong>Species qualifier picker + abbreviations</strong> <span class="tag-shipped">DONE</span> —
     sex / age / plumage toggles in both species editors; the qualifier shows on grid cards and the
     large viewer as <code>fuut ♂♀ br.</code> (<code>9efab26</code> / <code>e69cbf8</code>)</li>
+</ul>
+<h3>To do</h3>
+<ul>
+  <li><strong>Menu reorganization v3 — “To Master” bridge menu</strong>
+    <span class="tag-new">NEW</span> <span class="tag-open">OPEN</span> — spec in
+    <code>menu_map_v3.txt</code>, top of the list to implement. Pure relocation of existing items
+    (no new functionality except <strong>Delete Trip…</strong> and two grouping submenus) so the menus
+    mirror the trip→master data flow. Key moves: a new top-level <strong>To Master</strong> menu =
+    Publish Species Names + Merge Pictures into Master + Retire Trip to Album + Delete Local Files +
+    Delete Trip…; <strong>Trip</strong> keeps its whole publishing cycle (per-day 1–4 +
+    <strong>Make the Blogs Clickable</strong> + <strong>Manage Trip Publication</strong> as steps 5–6,
+    re-run each pass — practice, not a once-only finalize); <strong>Master</strong> gains a
+    <strong>Maintain Master Database</strong> submenu (Refresh Review/Apply + Add Missing Place Names +
+    Fill Picture GPS, moved out of File ▸ Admin); File ▸ Admin → <strong>Developer Tools</strong>
+    (debug-gated only); <strong>Albums</strong>: “Rating Editor” → “Album Species Viewer”,
+    “Recreate Album Blogs” key → “Make the Blogs Clickable”; Days ▸ “Add to Master” and
+    Master ▸ “Add Pictures to Master…” stay separate (structured whole-day vs free-format pool).
+    <strong>Publish Species Names appears in BOTH Trip and To Master</strong> (speciescollection is a
+    shared reference book; it merges names new to the trip). Follow-ons raised:
+    (1) redesign the Trip-to-Master Dashboard (keep, clarify not complicate);
+    (2) grey out invalid (state-machine) menu options — may reveal odd patterns;
+    (3) one name per function across Trip / Master / Album (subsumes the parked “Rating Editor” rename below);
+    (4) reduce the GPS “four homes” seam so the three GPS fix-tools aren't needed;
+    (5) <strong>eliminate “Publish Species Names”</strong> by auto-propagating new species into the single
+    <code>speciescollection</code> during <strong>Summarize</strong> — add to the active list during the run,
+    fold new species into the global master list at end of run (nearly free in CPU).</li>
 </ul>
 <h3>Parked / watch</h3>
 <ul>
