@@ -36,7 +36,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 27 July 2026 (menu reorganization v3 — “To Master” bridge menu, queued to implement) &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 28 July 2026 (menu reorganization v3 — “To Master” bridge menu, shipped) &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Working task list for the SpeciesViewer nature-photo pipeline and GUI. Since the
 16 June version most of the backlog has shipped: the identity/​picture-root
@@ -74,9 +74,8 @@ design</em>.</p>
       done (smart Create → one-flow extract+build+publish → Delete Album → Manage Album Publication,
       list/unlist on the trip index); live-verified both directions on Gran Canaria + Panama (ch. 2).</li>
     <li>Smaller: GBIF lookup disk-cache (ch. 11).</li>
-    <li><strong>Menu reorganization v3 — “To Master” bridge menu</strong> <span class="tag-new">NEW</span> —
-      spec ready (<code>menu_map_v3.txt</code>), top of the list to implement; pure relocation so the
-      menus mirror the trip→master data flow (ch. 9).</li>
+    <li><strong>Menu reorganization v3 — “To Master” bridge menu</strong> <span class="tag-complete">SHIPPED</span> —
+      the menus now mirror the trip→master data flow (Trip→Trips, new To Master menu); follow-on polish in ch. 9.</li>
     <li><em>Dropped from the shortlist: Map for the Day (micro-trip) — verified already
       working, see ch. 3.</em></li>
   </ul>
@@ -1158,8 +1157,10 @@ filmstrip position, inline master comparison (via Trip+Master scope), grid↔lar
 <h3>To do</h3>
 <ul>
   <li><strong>Menu reorganization v3 — “To Master” bridge menu</strong>
-    <span class="tag-new">NEW</span> <span class="tag-open">OPEN</span> — spec in
-    <code>menu_map_v3.txt</code>, top of the list to implement. Pure relocation of existing items
+    <span class="tag-shipped">DONE</span> — SHIPPED 2026-07-28 (ClaudeSpecies), live-verified. Trip menu
+    renamed <strong>Trips</strong> (plural, like Days/Albums); also fixed a pre-existing dead lookup
+    (re-run Write Summary after a species-name edit was a silent no-op, the item being nested under
+    Advanced). Pure relocation of existing items
     (no new functionality except <strong>Delete Trip…</strong> and two grouping submenus) so the menus
     mirror the trip→master data flow. Key moves: a new top-level <strong>To Master</strong> menu =
     Publish Species Names + Merge Pictures into Master + Retire Trip to Album + Delete Local Files +

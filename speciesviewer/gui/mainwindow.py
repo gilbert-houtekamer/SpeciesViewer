@@ -502,7 +502,7 @@ class MainWindow(QMainWindow):
 
         # Batch action
         else:
-            trip_menu = self.menu_spec.get("Trip", {})
+            trip_menu = self.menu_spec.get("Trips", {})
             # Map the column to its Trip-menu action by the stable dict key
             # (STATE_COLUMNS["menu"]) — the header text carries a numbered,
             # newline-formatted label that does not match the dict key.
@@ -580,7 +580,7 @@ class MainWindow(QMainWindow):
         module_config = configparser.ConfigParser()
         module_config.read("svconfig.ini")
 
-        trip_menu = self.menu_spec.get("Trip", {})
+        trip_menu = self.menu_spec.get("Trips", {})
 
         def _find_spec(menu, want):
             # Descend into submenus (e.g. Advanced ▸ Freeze Data / Write Website Commit).
@@ -669,7 +669,7 @@ class MainWindow(QMainWindow):
             if not needs_reset and not sm.stateOKtorun(step_name):
                 continue
 
-            trip_menu = self.menu_spec.get("Trip", {})
+            trip_menu = self.menu_spec.get("Trips", {})
             # Look up by the stable STATE_COLUMNS key, not the numbered header text.
             spec_obj = trip_menu.get(col["menu"])
             if not spec_obj:
@@ -718,7 +718,7 @@ class MainWindow(QMainWindow):
         project_root = Path(_config.get("project", "picturedirectory")).parent
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
 
-        trip_menu = self.menu_spec.get("Trip", {})
+        trip_menu = self.menu_spec.get("Trips", {})
         spec_obj = trip_menu.get("Sync Sidecars")
         if not spec_obj:
             return
@@ -778,7 +778,7 @@ class MainWindow(QMainWindow):
 
         project_root = Path(_config.get("project", "picturedirectory")).parent
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
-        trip_menu = self.menu_spec.get("Trip", {})
+        trip_menu = self.menu_spec.get("Trips", {})
 
         # Group the selection by day so each day can be evaluated as its own
         # mini-pipeline. A ⚪ cell on its own is "not runnable now" — but
@@ -996,7 +996,20 @@ class MainWindow(QMainWindow):
         ) != QMessageBox.StandardButton.Yes:
             return
 
-        spec_obj = self.menu_spec.get("Trip", {}).get("Write Summary")
+        # "Write Summary" lives under Trips ▸ Advanced ▸ Legacy, so search the
+        # submenus recursively rather than only the top level (a plain .get here
+        # returned None once the step was demoted into Advanced — this re-run was
+        # silently a no-op).
+        def _find_trip_spec(menu, want):
+            for k, v in menu.items():
+                if isinstance(v, dict):
+                    hit = _find_trip_spec(v, want)
+                    if hit:
+                        return hit
+                elif k == want and v is not None:
+                    return v
+            return None
+        spec_obj = _find_trip_spec(self.menu_spec.get("Trips", {}), "Write Summary")
         if not spec_obj or not spec_obj.get_batch_parms():
             return
         module_called = spec_obj.get_batch_parms()["module_called"]

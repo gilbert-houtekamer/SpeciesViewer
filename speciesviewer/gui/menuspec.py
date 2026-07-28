@@ -293,7 +293,7 @@ def build_menu_spec(main_window):
 
     redo_trip_blogs = MenuSpec(
         callback=None,
-        title="Make the Blogs Clickable",
+        title="5. Make the Blogs Clickable",
         tooltip="Add species links & navigation",
         showsubdirectory=False,
         batch_parms={
@@ -334,7 +334,7 @@ def build_menu_spec(main_window):
     # Master updates
     merge_trip_species = MenuSpec(
         callback=None,
-        title="1. Publish Species Names",
+        title="Publish Species Names",
         tooltip="Merge the trip's species into the master",
         showsubdirectory=False,
         batch_parms={
@@ -362,7 +362,7 @@ def build_menu_spec(main_window):
 
     manage_trips = MenuSpec(
         callback=lambda: ManageTripsDialog(main_window).exec(),
-        title="Manage Trip Publication",
+        title="6. Manage Trip Publication…",
         showsubdirectory=False,
     )
 
@@ -423,7 +423,7 @@ def build_menu_spec(main_window):
     ]
     add_trip_pictures = MenuSpec(
         callback=None,
-        title="3. Merge Pictures into Master",
+        title="Merge Pictures into Master",
         tooltip="Copy the trip's pictures into the master",
         showsubdirectory=False,
     )
@@ -719,6 +719,29 @@ def build_menu_spec(main_window):
     delete_trip_item = MenuSpec(
         callback=_delete_trip_in_master,
         title="Delete Local Files Backed Up in Master…",
+        showsubdirectory=False,
+    )
+
+    # ── Delete Trip: permanently remove the trip REPOSITORY (its metadata copy),
+    # reusing the vetted retire flow (engine.trip_retire_scan pre-flight + explicit
+    # confirm). Operates on the ACTIVE trip. KNOWN LIMIT: the scan's blocker B3
+    # refuses to retire the active trip ("switch to another trip or the master
+    # first"), so today the menu path guides rather than deletes in place; making
+    # it available only when the Album is complete, plus a Force variant under
+    # Advanced, is the next menu item (the grey-out work).
+    def _delete_trip_repo():
+        from gui.trip_retire import retire_trip_dialog
+        trip_db = _config.get("trip", "tripbiotadatabase", fallback="").replace('"', "").replace("'", "")
+        if not trip_db:
+            QMessageBox.warning(main_window, "Delete Trip", "Select an active trip first.")
+            return
+        retire_trip_dialog(main_window, trip_db)
+
+    delete_trip_repo_item = MenuSpec(
+        callback=_delete_trip_repo,
+        title="Delete Trip…",
+        tooltip="Permanently delete the trip repository (its metadata copy). "
+                "CurrentPictures, the master and the album are untouched.",
         showsubdirectory=False,
     )
 
@@ -1164,33 +1187,27 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
-    # File ▸ Admin. The Refresh Master Database pair (Review → Apply) reconciles
-    # the master CSVs with what is on disk; Apply is the only destructive action
-    # and is always shown. The consoles/testbed diagnostics are gated behind the
-    # "Enable debug functionality" flag (Global Settings). Read at build time —
-    # toggling the flag takes effect on restart.
-    admin_menu = {
+    # Master-data repair (the Refresh Master Database pair + the two GPS fixers)
+    # is grouped under Master ▸ Maintain Master Database — always visible; Apply is
+    # the only destructive action. The consoles / testbed diagnostics live under
+    # File ▸ Developer Tools, shown only when "Enable debug functionality" is on
+    # (Global Settings; read at build time, so toggling takes effect on restart).
+    maintain_master_menu = {
         "Refresh Master Database — Review…": refresh_review_item,
         "Refresh Master Database — Apply…": heal_admin_item,
-        f"{MenuSpec.separator()}_admin_maint": None,
+        f"{MenuSpec.separator()}_maint_gps": None,
         "Add Missing Place Names…": add_place_names_item,
         "Fill Picture GPS from Files…": consolidate_gps_item,
     }
-    if debug_enabled():
-        admin_menu = {
-            "Trip Status Console…": trip_status_console,
-            "Merged Status (all machines)…": merged_status_console,
-            f"{MenuSpec.separator()}_admin_0": None,
-            "Refresh Master Database — Review…": refresh_review_item,
-            "Refresh Master Database — Apply…": heal_admin_item,
-            f"{MenuSpec.separator()}_admin_maint": None,
-            "Add Missing Place Names…": add_place_names_item,
-            "Fill Picture GPS from Files…": consolidate_gps_item,
-            "Audit Species Counters (dry-run)…": audit_species_item,
-            "Clean Orphan Sidecars (move to trash)…": clean_orphans_item,
-            f"{MenuSpec.separator()}_admin_1": None,
-            "Call Testbed for trip day": testbed,
-        }
+    developer_tools_menu = {
+        "Trip Status Console…": trip_status_console,
+        "Merged Status (all machines)…": merged_status_console,
+        f"{MenuSpec.separator()}_dev_0": None,
+        "Audit Species Counters (dry-run)…": audit_species_item,
+        "Clean Orphan Sidecars (move to trash)…": clean_orphans_item,
+        f"{MenuSpec.separator()}_dev_1": None,
+        "Call Testbed for trip day": testbed,
+    }
 
     return {
         "File": {
@@ -1236,7 +1253,7 @@ def build_menu_spec(main_window):
                 "Manage Caches…": manage_caches,
                 "Rescan master EXIF cache": rescan_master_cache,
             },
-            "Admin": admin_menu,
+            **({"Developer Tools": developer_tools_menu} if debug_enabled() else {}),
             f"{MenuSpec.separator()}_file": None,
             "Quit": MenuSpec(
                 callback=main_window.close,
@@ -1262,60 +1279,69 @@ def build_menu_spec(main_window):
                 callback=lambda: days_process.remove_day_from_list(main_window),
                 title="Remove from List", showsubdirectory=False),
         },
-        "Trip": {
+        "Trips": {
             "Create Trip": trip_create,
             f"{MenuSpec.separator()}_setup0": None,
             "Read SD-cards": read_sdcard,
             f"{MenuSpec.separator()}_setup": None,
             "Sync Sidecars": sync_sidecars,
             f"{MenuSpec.separator()}_pipeline": None,
-            # Numbered day pipeline (titles carry the 1.–4. prefixes). Publish Day
-            # merges Freeze + Write Commit (the individual steps live under
-            # Advanced ▸ below).
+            # The trip's whole publishing cycle. 1–4 run per day; 5–6 act on the
+            # WHOLE trip and are re-run each publishing pass (make the blogs
+            # clickable, (re)list the trip on the site) — this is how a trip is
+            # worked on the laptop. Publish Day merges Freeze + Write Commit (the
+            # individual steps live under Advanced ▸ Legacy below).
             "Read & Summarize": read_summarize,
             "Write Blog": write_blog,
             "Build Website": build_website,
             "Publish Day": publish_day,
+            "Make the Blogs Clickable": redo_trip_blogs,      # 5.
+            "Manage Trip Publication…": manage_trips,          # 6.
             f"{MenuSpec.separator()}_2": None,
-            # Review & edit
-            "Rating Editor": rating_editor,
+            # Review & edit this trip
+            "Rating Editor": rating_editor,                    # shows "Trip Species Viewer"
             "Edit Trip Species List": edit_trip_species,
+            "Publish Species Names": merge_trip_species,       # also under To Master
             "Count Species": count_species,
-            "Redo Blogs": redo_trip_blogs,
-            f"{MenuSpec.separator()}_maint": None,
-            # Maintenance
-            "Manage Blogs": manage_blogs,
-            "Empty Trip Data": empty_trip_data,
-            "Recreate Trip": recreate_trip,
-            f"{MenuSpec.separator()}_retire": None,
-            # Retire
-            "Retire Trip to Album": retire_trip_item,
-            "Delete Local Files Backed Up in Master…": delete_trip_item,
             f"{MenuSpec.separator()}_advanced": None,
-            # Advanced: the individual pipeline steps, for a read-only CSV refresh
-            # (Read Directory / Write Summary) or the freeze-only edge case.
-            "Advanced (legacy)": {
-                "Read Directory": read_dir,
-                "Write Summary": write_summary,
-                f"{MenuSpec.separator()}_adv1": None,
-                "Freeze Data": freeze_data,
-                "Write Website Commit": commit_website,
+            # Advanced: rare maintenance + the individual pipeline steps for a
+            # read-only CSV refresh / the freeze-only edge case.
+            "Advanced": {
+                "Manage Blogs": manage_blogs,
+                "Empty Trip Data": empty_trip_data,
+                "Recreate Trip": recreate_trip,
+                f"{MenuSpec.separator()}_adv0": None,
+                "Legacy": {
+                    "Read Directory": read_dir,
+                    "Write Summary": write_summary,
+                    f"{MenuSpec.separator()}_adv1": None,
+                    "Freeze Data": freeze_data,
+                    "Write Website Commit": commit_website,
+                },
             },
         },
-        "Master": {
+        # The whole "into the master" phase (architecture lifecycle steps 4 & 7):
+        # the real master merge, then winding the trip down once it lives in the
+        # master + an album.
+        "To Master": {
             "Trip to Master Dashboard…": trip_master_dashboard,
-            f"{MenuSpec.separator()}_master_dash": None,
+            f"{MenuSpec.separator()}_tm_dash": None,
+            "Publish Species Names": merge_trip_species,
+            "Merge Pictures into Master": add_trip_pictures,
+            f"{MenuSpec.separator()}_tm_retire": None,
+            "Retire Trip to Album": retire_trip_item,
+            "Delete Local Files Backed Up in Master…": delete_trip_item,
+            f"{MenuSpec.separator()}_tm_del": None,
+            "Delete Trip…": delete_trip_repo_item,
+        },
+        # The master as a collection: edit the shared name list, add pictures
+        # directly, view it, and keep it healthy. The trip→master merge lives in
+        # the To Master menu; Publish Species Names is shared with it.
+        "Master": {
             "Edit Species List": edit_master_species,
             f"{MenuSpec.separator()}_master_0": None,
-            # Publish the active trip to the master, in order.
-            "Publish Trip to Master": {
-                "1. Publish species names": merge_trip_species,
-                "2. List trip on the site": add_trip_to_master,
-                "3. Merge pictures into master": add_trip_pictures,
-            },
-            "Manage Trip Publication…": manage_trips,
-            "Add pictures (no trip)…": add_pictures_to_master_item,
-            f"{MenuSpec.separator()}_master_2": None,
+            "Add Pictures to Master…": add_pictures_to_master_item,
+            f"{MenuSpec.separator()}_master_1": None,
             "Species Viewer…": MenuSpec(
                 callback=lambda: main_window.open_master_species_viewer(),
                 title="Species Viewer",
@@ -1326,6 +1352,8 @@ def build_menu_spec(main_window):
                 tooltip="Distribution map — pick 1–4 species and see their GPS points",
                 showsubdirectory=False),
             "Species Without a Website Picture…": no_display_item,
+            f"{MenuSpec.separator()}_master_maint": None,
+            "Maintain Master Database": maintain_master_menu,
         },
         "Albums": {
             "Find Trips in the Master…": find_trips,
@@ -1335,7 +1363,7 @@ def build_menu_spec(main_window):
                 callback=lambda: VirttripWriteBlogDialog(main_window).exec(),
                 title="Write Album Blogs",
             ),
-            "Recreate Album Blogs": MenuSpec(
+            "Make the Blogs Clickable": MenuSpec(
                 callback=lambda: VirttripRedoBlogDialog(main_window).exec(),
                 title="Make the Blogs Clickable",
                 tooltip="Add species links & navigation",
@@ -1344,10 +1372,15 @@ def build_menu_spec(main_window):
                 callback=lambda: VirttripBuildWebsiteDialog(main_window).exec(),
                 title="Build Album Website",
             ),
+            "Manage Album Publication…": MenuSpec(
+                callback=lambda: _manage_album_publication(),
+                title="Manage Album Publication…",
+                tooltip="List this album on the site's trip index, or remove it from there",
+            ),
             f"{MenuSpec.separator()}_vt3": None,
-            "Rating Editor": MenuSpec(
+            "Album Species Viewer": MenuSpec(
                 callback=lambda: main_window.open_virttrip_rating_editor(),
-                title="Rating Editor",
+                title="Album Species Viewer",
                 showsubdirectory=False,
             ),
             f"{MenuSpec.separator()}_vt_sync": None,
@@ -1360,15 +1393,6 @@ def build_menu_spec(main_window):
                         "hand-placed coordinate already carries in its sidecar into "
                         "the master index (fixes cards showing raw coordinates)",
                 showsubdirectory=False),
-            f"{MenuSpec.separator()}_vt4": None,
-            # One place for both directions (list / remove), showing the current
-            # state. Supersedes the advertise-only "Add Album to Master"; never a
-            # Trip door — the album equivalent of Trip's publication actions.
-            "Manage Album Publication…": MenuSpec(
-                callback=lambda: _manage_album_publication(),
-                title="Manage Album Publication…",
-                tooltip="List this album on the site's trip index, or remove it from there",
-            ),
             f"{MenuSpec.separator()}_vt5": None,
             "Export Album": export_virttrip,
             "Import Album": import_virttrip,
