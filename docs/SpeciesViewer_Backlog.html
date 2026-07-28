@@ -24,6 +24,7 @@
   .done { color: #888; }
   .note { font-size: 9.5pt; color: #555; margin-top: 6pt; padding-left: 10pt; border-left: 3px solid #D3D3D3; }
   .next { background: #F3F7FC; border: 1px solid #9DC3E6; border-radius: 5pt; padding: 8pt 14pt; margin: 12pt 0; }
+  .none { color: #888; font-style: italic; }
   .legend { font-size: 9.5pt; color: #444; }
   table { border-collapse: collapse; width: 100%; font-size: 10pt; margin-top: 6pt; }
   th { background: #2E5496; color: white; padding: 4pt 8pt; text-align: left; }
@@ -36,1497 +37,205 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 28 July 2026 (menu reorganization v3 + menu gating Phase 1&amp;2 — shipped) &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 28 July 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
-<p>Working task list for the SpeciesViewer nature-photo pipeline and GUI. Since the
-16 June version most of the backlog has shipped: the identity/​picture-root
-decouple, the cross-platform path layer, the retire-to-virtual-trip arc, the
-Working&nbsp;Days lane, and the whole Trip&nbsp;Species&nbsp;Viewer delete rework are
-all done (see <em>Recently Completed</em> at the end). What remains is a short list —
-focus is on that.</p>
+<p>Open work for the SpeciesViewer nature-photo pipeline and GUI. This document holds
+only what is <strong>still to do</strong> — everything that has shipped now lives in the companion
+<strong>SpeciesViewer — Capabilities Added</strong> document, in the same chapter order. Chapters
+keep their fixed numbers here so the two documents line up; a chapter with nothing outstanding
+reads <em>No current work planned</em>.</p>
 
 <p class="legend"><strong>Status legend:</strong>
 <span class="tag-open">OPEN</span> to build ·
 <span class="tag-new">NEW</span> newly raised ·
 <span class="tag-bug">BUG</span> defect to fix ·
 <span class="tag-test">NEEDS TEST</span> built, awaiting a live run ·
+<span class="tag-progress">IN PROGRESS</span> under way ·
 <span class="tag-parked">PARKED</span> deliberately deferred (“not now, by choice”) ·
-<span class="tag-rejected">REJECTED</span> decided against (won't build) ·
-<span class="tag-complete">DONE</span> shipped.
-Each chapter separates <em>things to do</em> from things that are <em>parked by
-design</em>.</p>
+<span class="tag-rejected">REJECTED</span> decided against (won't build).</p>
 
 <div class="next">
-  <strong>What's next (the active shortlist):</strong>
+  <strong>Active shortlist:</strong>
   <ul style="margin-bottom:0;">
-    <li><strong>Drag-and-drop pool — a third way into the master</strong>
-      <span class="tag-complete">SHIPPED</span> — drag a hand-picked selection onto “Add Pictures to
-      Master”, name/rate it, commit; it lands in the album automatically by date (ch. 4).</li>
-    <li><strong>Album re-architecture — an album is now a LIVE QUERY over the master</strong>
-      <span class="tag-complete">SHIPPED</span> — no more per-day CSV snapshots; the whole
-      stale-copy class (and the ~33% ghost pictures) is gone (ch. 2).</li>
-    <li><strong>GPS / data-integrity umbrella — down to one item: tracklog geotag (GPX)</strong>
-      (ch. 3). GPS-from-addresses and location-from-GPS are both shipped; the dead-link purge
-      shipped as Refresh Master Database.</li>
-    <li><strong>Compact the viewer toolbar + laptop-fit review</strong> <span class="tag-new">NEW</span> —
-      the wide filter/knob row and dialog sizing on small screens (ch. 3).</li>
-    <li><strong>Albums smart-Create arc</strong> <span class="tag-complete">COMPLETE</span> — steps 1–7
-      done (smart Create → one-flow extract+build+publish → Delete Album → Manage Album Publication,
-      list/unlist on the trip index); live-verified both directions on Gran Canaria + Panama (ch. 2).</li>
-    <li>Smaller: GBIF lookup disk-cache (ch. 11).</li>
-    <li><strong>Menu reorganization v3 — “To Master” bridge menu</strong> <span class="tag-complete">SHIPPED</span> —
-      the menus now mirror the trip→master data flow (Trip→Trips, new To Master menu); follow-on polish in ch. 9.</li>
-    <li><em>Dropped from the shortlist: Map for the Day (micro-trip) — verified already
-      working, see ch. 3.</em></li>
+    <li><strong>Albums — smart <em>Create</em> arc</strong> <span class="tag-progress">IN PROGRESS</span> —
+      one step left: fold <em>Extract Days</em> into Create's finish (ch. 2).</li>
+    <li><strong>GPS / data-integrity umbrella</strong> — down to one item: tracklog geotag (GPX import) (ch. 3).</li>
+    <li><strong>Map polish</strong> — cosmetic pass, day-map delete, rectangle-select, published Leaflet (ch. 3).</li>
+    <li><strong>GPM on a southern/western trip</strong> <span class="tag-test">NEEDS TEST</span> — hemisphere sign on S/W coords (ch. 1).</li>
+    <li><strong>Windows “all biota” viewers</strong> <span class="tag-new">NEW</span> — desktop equivalents of the web browsers (ch. 14).</li>
   </ul>
-  Deliberately parked: taxonomy/sequence (ch. 6) and rating-formula/HEIC (ch. 7); the master
-  data relativization waits for the Mac (ch. 10).
 </div>
 
 <!-- ============================================================ -->
-<h2>1. SD-card Ingest &amp; Culling <span class="tag-complete">CORE COMPLETE</span></h2>
-
-<p>Feature-complete for daily use: M0–M4 ingest, sidecar cache, GPS place-names,
-100% view, day-selection picker, batched location writes, recent-species buttons,
-GPM copy/paste GPS, the manual location editor + on-card location line, and live
-external-edit refresh are all <span class="tag-complete">SHIPPED &amp; live</span>.
-Cancel-during-copy, Lightroom-in-place, and tz-offset are validated.</p>
-
-<h3>Shipped 2026-07-20 — the <code>.dop</code> arc</h3>
-<ul>
-  <li><strong>.dop files were being INVENTED, and a day's colour work landed where
-    PhotoLab cannot read it</strong> <span class="tag-shipped">SHIPPED</span>
-    <code>763e5d5</code> + <code>cd7c059</code>, user-verified live.
-    Culling a day with the <code>.xmp</code> channel switched off wrote colour to the
-    <code>.dop</code>, and <code>sidecarlib.ensure_dop</code> <strong>created one when none
-    existed</strong>. One afternoon left <strong>647 SpeciesViewer-authored .dop files</strong>
-    (empty <code>Base</code>, schema <code>"19.5"</code>) holding 44 Green + 3 Yellow in a form
-    PhotoLab misreads. The skeleton's own comment had called this “the one unverified
-    assumption in this path”; it was later verified and is <strong>false</strong> — PhotoLab
-    assigns each RAW a random v4 UUID in its <em>own</em> catalog and matches items by it, so a
-    recipe we author is taken as a virtual copy; the UUIDs cannot be computed and the format has
-    no master/virtual flag.
-    <p><strong>Fixes.</strong> (1) <code>ensure_dop</code> <strong>never creates</strong> — it
-    returns an existing recipe or none, and the skeleton is <em>deleted</em>, not disabled, since
-    a dormant one invites a retry. (2) <strong>Write both channels</strong> — colour, rating and
-    crop go to the <code>.xmp</code> always and to the <code>.dop</code> whenever PhotoLab
-    authored one. The old 2×2 switch was a false choice: PhotoLab ignores the <code>.xmp</code>
-    when its metadata sync is off, Lightroom ignores the <code>.dop</code> always, and neither
-    reads the other's file under any setting — so writing both cannot conflict and is the only
-    way they stay in step. Changed in the <em>single gate</em>
-    (<code>utils/sidecar_policy</code>), not at the nine call sites.</p>
-    <p>The Sidecar Behaviour dialog <strong>lost its four checkboxes</strong> — switches that
-    decide nothing are worse than none — and explains the behaviour instead, with the PhotoLab
-    advice. <strong>The supported direction is: PhotoLab authors, we edit.</strong> Verified
-    live: a day went 36 files (ORF+XMP) → 54 (ORF+DOP+XMP) after <em>Ctrl-A → write
-    sidecars</em>, and our colour then merged into a genuine recipe
-    (<code>Software = "DxO PhotoLab 9.8"</code>, full <code>Base</code>, real <code>CafId</code>).
-    Recovery for files already invented: <code>tools/svr_dop_colour_scan.py</code> is read-only,
-    reports what each holds, and <strong>tells ours from PhotoLab's</strong> (our Software stamp
-    <em>and</em> an empty <code>Base</code>) so real recipes are never swept up with them.</p></li>
-  <li><strong>The DxO options are one subject, and now one menu</strong>
-    <span class="tag-shipped">SHIPPED</span> <code>99e5d61</code> — the PhotoLab path was a lone
-    field at the bottom of Global Settings while Denoise and Sidecar Behaviour sat loose in the
-    Settings menu. Now <strong>File ▸ Settings ▸ Interfaces to Lightroom and PhotoLab</strong>:
-    <em>PhotoLab Location…</em> (the path moved there; <code>[Global] dxo_path</code> unchanged,
-    and it now says at once whether the path is real — a PhotoLab upgrade renames the folder
-    9→10, which otherwise only surfaces later as a failure to open a picture),
-    <em>PhotoLab Denoise…</em>, <em>Sidecar Behaviour…</em>.</li>
-  <li><strong>After an ingest, offer PhotoLab — and say why</strong>
-    <span class="tag-shipped">SHIPPED</span> <code>99e5d61</code> + <code>cd7c059</code> — a
-    freshly read day has no <code>.dop</code>, and we no longer invent them, so colour and crop
-    set before PhotoLab has seen the day live in the <code>.xmp</code> alone. The ingest dialog
-    says so and offers <strong>Open day in PhotoLab</strong>. It hands PhotoLab a
-    <strong>RAW file, not a folder</strong>: <code>_last_dest</code> is the days-location parent
-    (“…/2026 Zomer”), never the day itself, and PhotoLab is single-instance so a folder argument
-    merely raised its existing window on the SD card it already had open. Also: the three long
-    phases (scanning capture days, copying, geocoding) now announce themselves <em>in the log</em>
-    and say why they are slow — minutes of silence read as a hang — and the post-scan resize asks
-    for at least <code>minimumSizeHint</code>, ending the
-    <code>QWindowsWindow::setGeometry … mintrack(837, 977)</code> warning.</li>
-  <li><strong>The Days lane remembers its selected day</strong>
-    <span class="tag-shipped">SHIPPED</span> <code>5d7b062</code> — a trip and an album both come
-    back selected; the Days lane forgot every restart. It now persists in the per-machine days
-    registry beside the day list. ⚠ The trap: <code>save_days()</code> rewrote the document as
-    <code>{"days": …}</code> and would have dropped the new key on every add, rename or remove —
-    reads and writes now <em>merge</em>. Restore is conservative: only a day still in the registry
-    comes back, so an unplugged drive cannot return as a dead selection.</li>
-</ul>
-
+<h2>1. SD-card Ingest &amp; Culling</h2>
 <h3>To do</h3>
 <ul>
-  <li><strong>Municipality → website output</strong> <span class="tag-shipped">SHIPPED</span> —
-    now wired end-to-end: read (sv2 <code>-Municipality</code>) → <code>data_files.csv</code>
-    / <code>data_pictures.csv</code> → picture row (<code>projectlib.UpdatePicture</code>) →
-    website (<code>getFormattedCityStateCountry</code> shows it between City and State, hidden
-    when it equals City). <code>master_db</code> SCHEMA_VERSION → 3. Verified live on the
-    Greece 2026-05-05 blog. Existing sites need a re-run to backfill (the XMP already carries
-    it via geolocate).</li>
   <li><strong>GPM on a southern/western trip</strong> <span class="tag-test">NEEDS TEST</span> —
-    copy/paste GPS+place verified in the north; confirm the hemisphere sign handling on a
+    copy/paste GPS + place is verified in the north; confirm the hemisphere sign handling on a
     trip with S/W coordinates.</li>
-  <li><strong>Search boxes work in the culling / virtual-trip day viewer</strong>
-    <span class="tag-shipped">SHIPPED</span> — <em>Find species</em>, <em>Find file</em> and the
-    <em>Species</em> filter used to sit greyed-out whenever a day was opened without a full pipeline
-    behind it (a virtual-trip day, or a freshly-ingested folder). The boxes were real but the
-    underlying collection had never been taught to answer them, so only <em>JPG-only</em> stayed
-    live. They now search the same way the pipeline-backed viewer does — species name from the
-    sidecar, file search on the picture name — and light up in both the culling grid and the
-    virtual-trip day viewer. Confirmed live on Tucson 2023-04-03.</li>
-  <li><strong>Delete plant/context JPGs while culling a trip</strong>
-    <span class="tag-shipped">SHIPPED</span> — the hard “never trash a JPG” rule protects the
-    website's finished pictures, but a JPG-only plant or context shot in a trip cull is throwaway
-    working material. In a real trip cull you can now delete a JPG-bearing picture <em>unless it is
-    published in a blog</em> (those are kept, with a warning). Two ways: Blue/Purple are no longer
-    greyed on trip JPG cards (so blue/purple-delete reaches them), <em>and</em> a new
-    <strong>right-click → 🗑 Delete</strong> on grid cards and the large-viewer filmstrip — the more
-    intuitive per-picture path. It acts on the clicked picture (or the whole selection when it's part
-    of one), moves straight to <code>.trash</code> (recoverable), and only stops to ask when something
-    is protected. The master, plain SD-card culling and virtual-trip viewers keep the strict rule.
-    A delete no longer bounces the grid to the top (it keeps your place). Confirmed live on Kreta.</li>
-  <li><strong>Crop HEIC pictures</strong> <span class="tag-shipped">SHIPPED</span> — a HEIC (iPhone)
-    is already a developed image with no RAW-style develop step, so it used to be excluded from the
-    crop tool. It can now be cropped the same way in spirit as a RAW — by <strong>baking a full-res
-    JPG</strong>: draw the crop in the large viewer and it writes <code>&lt;stem&gt;.jpg</code> beside
-    the HEIC, which becomes the picture's usable image (and reaches the website like any other JPG). A
-    re-crop always works from the original HEIC. Confirmed live on Kreta.</li>
-  <li><strong>Crop tool enabled in the Trip Species Viewer</strong> <span class="tag-shipped">SHIPPED</span>
-    (9e53a9b) — cropping had only ever been wired to the culling viewer and the read-only virtual-trip
-    carve-out; here the large viewer's <strong>&#9986; Crop</strong> button greyed out because the trip
-    item never exposed <code>can_set_crop</code>/<code>set_crop</code>. Now wired, reusing the SAME shared
-    machinery (no new crop logic). It's allowed only for a <strong>writable trip picture with a RAW</strong>
-    (master reference cards and the read-only Album viewer stay look-only), writes the crop to the RAW's
-    <code>.dop</code>/<code>.xmp</code>, and draws over the RAW's full uncropped preview. The card/large
-    view now also <strong>overlays an existing crop when showing a RAW's own preview</strong> (no JPG render
-    yet), so a drawn crop shows up afterward — matching the culling viewer; a JPG render is already cropped
-    and shown as-is. Confirmed live on Kreta.</li>
-  <li><strong>&ldquo;#&rdquo; crop marker on the cards + filmstrip</strong> <span class="tag-shipped">SHIPPED</span>
-    (dab8dad) &mdash; a small <code>#</code> chip in a thumbnail&rsquo;s top-left signals the picture carries
-    a crop, over <strong>both</strong> the RAW preview and a baked JPG render (the crop lives in the RAW&rsquo;s
-    sidecar or is inferred, so it&rsquo;s known even though the JPG&rsquo;s pixels don&rsquo;t reveal it &mdash;
-    and that JPG is the website pick). Detection = a readable <code>.dop</code>/<code>.xmp</code> crop
-    <strong>OR</strong> a size cue (JPG long edge &le; 75% of the RAW&rsquo;s). The size cue matters because
-    DxO/LR renders and old master JPGs bake the crop into the pixels with <strong>no recoverable
-    rectangle</strong> &mdash; verified on a Gambia DxO XMP: only a vignette setting, no crop geometry, no
-    <code>.dop</code>. And since the user crops <strong>retaining aspect ratio</strong> (keeps the site
-    &ldquo;quieter&rdquo;), an aspect test would never fire &mdash; size is the signal. Covers trip and master
-    cards; it doubles as a &ldquo;has a developed JPG&rdquo; hint, which the user accepts. Style chosen from a
-    4-variant mock-up (small dark chip + white <code>#</code>).</li>
-  <li><strong>&ldquo;#&rdquo; marker in the virtual-trip Species Image Preview too</strong>
-    <span class="tag-shipped">SHIPPED</span> (2125914) &mdash; the metadata-less file-list viewer had no
-    crop signal. Its flags are precomputed from the day&rsquo;s <code>data_files.csv</code> (already read for
-    the file list): each UPN&rsquo;s biggest <code>ImageSize</code> is the RAW, every JPG is scored by
-    <code>jpg_is_crop_by_size</code>. On the Gambia day this correctly marks the <code>_DxO.jpg</code> crops
-    (2000&times;1500) and leaves the <strong>full-frame <code>.JPG</code> exports</strong>
-    (5184&times;3888 &asymp; the RAW) unmarked. Two card fixes it exposed: the card now titles on the
-    <strong>species</strong> (the parent folder is the scientific name) instead of the bare filename; and the
-    key line shows the filename only, word-wrapped, so a long path can no longer blow out the grid column and
-    shrink every image (full path in the tooltip).</li>
 </ul>
-
 <h3>Parked (by design)</h3>
 <ul>
-  <li><span class="tag-parked">PARKED</span> Curated sidecar EXIF field set — ingest does a
-    blanket <code>-xmp:all&lt;all</code> copy today (works fine). Replacing it with a deliberate
-    curated set (+ per-camera focus-distance maps) is a nice-to-have, not wanted now.</li>
-  <li><span class="tag-parked">PARKED</span> eBird regional most-likely-birds list — would weight
-    the species autocomplete; deferred.</li>
-  <li><span class="tag-parked">PARKED</span> GPM keyboard shortcut (menu shipped); Nominatim
-    zoom tuning for reserve/lake names; offline reverse-geocoder fallback.</li>
-  <li><span class="tag-parked">IDEA</span> Lightroom-style map module (QtWebEngine/QtLocation)
-    to show GPS points + click-to-set — not planned; LR Map covers it in the current toolset.</li>
+  <li><span class="tag-parked">PARKED</span> Curated sidecar EXIF field set — the blanket
+    <code>-xmp:all&lt;all</code> works today.</li>
+  <li><span class="tag-parked">PARKED</span> eBird regional most-likely-birds list; Nominatim zoom
+    tuning; offline reverse-geocoder.</li>
+  <li><span class="tag-parked">PARKED</span> GPM keyboard shortcut (the menu shipped).</li>
 </ul>
 
 <!-- ============================================================ -->
-<h2>2. Albums <span class="tag-complete">CORE + RETIRE COMPLETE</span> <span class="tag-complete">RE-ARCHITECTED</span></h2>
-
-<p><strong>An album is now a LIVE QUERY over the master by its date range</strong>, not a
-copied-out set of per-day CSV snapshots — the single biggest change in this chapter and the
-thing that dissolves most of the bug list below.</p>
-
-<div class="next">
-  <p><strong>Album re-architecture (S0–S6) <span class="tag-shipped">SHIPPED</span>.</strong>
-  An album used to be per-day CSV snapshots that <code>svv2 Extract Days</code> copied out of the
-  master; they went stale the instant the master changed — the root of every GPS / crop / rating /
-  qualifier staleness bug here, and why the 9 albums carried ~33% <em>ghost</em> pictures. An album
-  is now a query: <code>fromdate ≤ DateTimeOriginal ≤ todate</code> over the master
-  (<code>MasterDB.pictures_in_daterange</code> + <code>batch/album_source.py</code>), exactly the way
-  the Master Species Viewer filters by species — so there is <strong>one copy of the truth</strong>
-  and the stale-copy class is gone.</p>
-  <ul>
-    <li><strong>Read side</strong> — the overview (day list + Pictures/JPEG/GPS counts), the day
-      viewer (cards, crop marks, captions), and the map all read the master directly. The map seeds
-      each picture's placed GPS from the master mirror, so Helgoland (a camera with no receiver) now
-      plots every picture.</li>
-    <li><strong>Publish side</strong> — <code>svv3</code> (blog), <code>svv4</code> (website) and
-      <code>svv6</code> (make-clickable) all load per day from the master;
-      <code>svv2 Extract Days</code> is <strong>retired</strong> (menu + every pipeline) and nothing
-      writes <code>metadata/review/</code> any more. Build Website now opens the species overview in
-      the browser on finish, like Write Blog does for the blog index.</li>
-    <li><strong>One master card menu</strong> — the album day viewer converged onto the Master
-      Species Viewer's full surface (sex/age/plumage · pin best-JPG · delete-JPG · move-to-species ·
-      add renders · delete) via a shared <code>gui/master_ops.py</code>; the two viewers' duplicate
-      copies are gone. Album edits (rating / colour / <strong>qualifier</strong>) mirror into the
-      master DB, so the blog + website publish the right form (a picture marked <em>imm.</em> or
-      <em>♂♀ br.</em> now shows it).</li>
-    <li><strong>Authoring gated to BigBoy</strong> — Create / Find-Trips / Import / Retire need the
-      full master (<code>readonly_locked</code>); a SmallBoy can view + publish but not design.</li>
-  </ul>
-  <p>This makes the old <em>“re-extract the 9 stale albums”</em> chore <strong>moot</strong> — there
-  is no extract, and nothing to go stale.</p>
-</div>
-
-<p>The rest of the arc remains shipped and live: create → migrate &amp; upload blogs → build website
-→ make blogs clickable → add to master. <strong>Retire-a-trip-to-a-virtual-trip</strong> runs the
-entire chain from one confirm (verified end-to-end on BigBoy/Braakman), published under
-<code>/trips/&lt;name&gt;/</code>. Blog re-render (svv6 “make clickable”) and the per-day blog editor
-are done.</p>
-
-<h3>Shipped — the retroactive trip (Sri Lanka is live)</h3>
-<ul>
-  <li><strong>WP7 — scenario-2 “retroactive” pipeline</strong> <span class="tag-shipped">SHIPPED</span> —
-    an album for a journey that never had a SpeciesViewer trip now runs end-to-end:
-    <strong>Sri Lanka 2018-11-17 → 12-07</strong>, 1766 pictures, 148 species, 21 days — created,
-    blogged, mapped and published. The blocker was not missing code. The auto-blog writer (day
-    title from the day's locations, opening sentence, species callouts) was complete but
-    <strong>had been unplugged</strong>: the day loop said <em>“never fabricate blog text — a day
-    gets a page only if it already has a blog ini.”</em> That is right for a <em>retired</em> trip,
-    whose blogs are migrated from the real trip, but it meant a retroactive trip — which has no
-    source trip and nothing to migrate — skipped <em>every</em> day and then failed outright. The
-    blog editor was no escape either: it only opens tabs for blogs that already exist, so you got
-    an empty dialog. Auto-create is now back, behind a gate.</li>
-  <li><strong>The gate is “this trip has no blogs at all”, not “no source trip”</strong>
-    <span class="tag-shipped">SHIPPED</span> — the obvious rule (auto-create when
-    <code>source_trip_id</code> is empty) would have been a bug: <em>every</em> album made
-    before that key existed carries an empty one, gaps and all — safari has 28 blogs across 30 days,
-    costa-rica 23 of 25, gambia 26 of 29. Keying off it would have fabricated drafts into exactly
-    the deliberate gaps the original block existed to protect. Checked against all eleven virtual
-    trips on disk: ten default <em>off</em>, only Sri Lanka <em>on</em>. A checkbox in Write Blogs
-    overrides it either way.</li>
-  <li><strong>Amber / green blog-review bubbles</strong> <span class="tag-shipped">SHIPPED</span> —
-    the same piece of work: auto-generation was disabled because it fabricated <em>silently</em>, and
-    amber/green is what makes it visible — so it is what earns back the right to generate at all. A
-    day blog is now 🟠 <em>draft</em> (written automatically, nobody has read it) or 🟢
-    <em>reviewed</em> (your words), with the count in the trip header. In the editor a draft page
-    carries an amber banner and a <strong>Reviewed</strong> checkbox — and editing the text counts as
-    reviewing it, so <em>Save All</em> deliberately does not bless every draft at once, which would
-    make the flag meaningless. Old hand-written blogs stay green; a blog left by the <em>old</em>
-    auto-writer is still recognised (by its marker) and correctly shows amber.</li>
-  <li><strong>Single-day blog re-upload</strong> <span class="tag-shipped">SHIPPED</span> (was parked
-    as “future”) — <strong>“Save &amp; Upload this day”</strong> on each editor page republishes only
-    that day. The trap: the blog step opens every run by clearing the blog index so stale entries
-    vanish — doing that for a single day would have dropped the other twenty out of the index and
-    orphaned their live pages. Single-day mode skips the wipe and updates just that day in place.</li>
-  <li><strong>Keep a thin day out of the blog, and make “Reviewed” actually save</strong>
-    <span class="tag-shipped">SHIPPED</span> — two small blog-editing frictions, both from real use.
-    (1) Some days aren't worth a page — a single grab shot. The album overview gained an
-    <strong>In&nbsp;Blog</strong> checkbox column: untick a day and its Write-Blog cell goes grey (it
-    stops reading as a to-do), it drops out of the “drafts to review” count, and
-    <code>svv3WriteBlog</code> / <code>svv6RedoBlog</code> skip it entirely — so on the next full run it
-    also falls out of the blog index. The choice lives in its own file
-    (<code>metadata/blog/excluded_days.txt</code>) on purpose: a flag in the blog ini would wrongly flip
-    svv3's “this album already has blogs” gate, and virttrip.ini is rewritten wholesale elsewhere and
-    would lose it. (2) Ticking <strong>Reviewed</strong> in the blog editor now <em>saves the day
-    silently</em> (text + flag), because that tick reads as “this is final” — the user had lost edits
-    believing a tick was a save. And closing the editor with unsaved edits now asks
-    <em>Save / Discard / Cancel</em> instead of silently dropping them.</li>
-  <li><strong>Blog Editor beside the day's photos, and “In&nbsp;Blog” consistent everywhere</strong>
-    <span class="tag-shipped">SHIPPED</span> — follow-up polish on the thin-day work above, all from
-    real use. (1) The Blog Editor and a day's <strong>Species image viewer</strong> now open
-    <em>non-modally</em>, so you can look at the day's pictures while writing its blog. The data was
-    never the obstacle — the editor works off the on-disk blog inis and the viewer off a live master
-    query, so neither needs the other; only the modal <code>exec()</code> stood in the way. (2) A day
-    unticked in <strong>In&nbsp;Blog</strong> now reads as excluded in <em>every</em> status surface,
-    not just the publish step: its Blog-Editor tab shows a grey&nbsp;⚪ instead of amber, it drops from
-    the editor's “still a draft” count, its auto-text banner and per-day <em>Upload</em> button are
-    suppressed, and the right-hand <strong>album tree</strong> (icon + Status tooltip) stops counting
-    it — so an album whose only draft is an excluded grab-shot day now reads&nbsp;✅ / all-reviewed
-    instead of a false alarm. (3) The two blog message boxes take <strong>plain-text paste only</strong>
-    (<code>setAcceptRichText(False)</code>), so a paste from a web page no longer drags in the source's
-    fonts and italics (our own literal <code>&lt;i&gt;…&lt;/i&gt;</code> markup is kept) — retiring the
-    paste-through-Notepad++ workaround.</li>
-  <li><strong>Geotag the master from the virtual-trip map</strong> <span class="tag-shipped">SHIPPED</span> —
-    the map was flatly read-only because an album's files <em>are</em> the master's — which also
-    made it the best surface we have for <em>fixing</em> the master's missing coordinates. Geotagging
-    is now let through, and <em>only</em> geotagging: rating, colour, crop and delete stay refused, and
-    the permission is gated on the machine's existing master write policy, so a read-only master still
-    gets the view-only map. Two rules hold it honest. <strong>Fill, never overwrite</strong>: you can
-    place a picture that has no coordinate, but you cannot drag a bubble to <em>move</em> pictures
-    whose coordinates the camera recorded. And the map <strong>says what it does</strong> — where it
-    read “· view only” it now reads “· placing writes to the master”.
-    <br>To see where the work is, each day now shows a <strong>No&nbsp;GPS</strong> count; double-click
-    it to open that day's map. Sri Lanka: 285 of 2060 pictures, with two days consisting of
-    <em>nothing but</em> those — which is precisely why they auto-titled “onbekend”.</li>
-  <li><strong>GPS provenance — telling <em>our</em> coordinates from the camera's</strong>
-    <span class="tag-shipped">SHIPPED</span> — needed before any batch can seed coordinates from a
-    place name, because a seeded picture <em>has</em> GPS and would otherwise be frozen: moving it is
-    exactly what the map forbids. The idea of marking a derived coordinate by making it
-    <em>less precise</em> (whole arcseconds) was tested against the master and <strong>791 of 41,246
-    GPS'd pictures (1.9%) already look like that</strong> — Galapagos 2015 repeating one coordinate
-    across many photos, a South Africa shot at a suspiciously round position. The instinct was right
-    that something is there, but as a <em>permission</em> signal it fails, and it rides on a number
-    that any tool may reformat. So the idea was split into its two true jobs:
-    <br><strong>Permission</strong> now lives in <code>GPSProcessingMethod</code>, the field whose
-    actual purpose is recording how a fix was obtained. Blank means the camera measured it and we do
-    not touch it; “manual” means a person placed it, so it may be moved and refined.
-    <br><strong>Precision</strong> is about telling the truth: a place-name look-up is accurate to
-    tens of metres, so its coordinate is rounded to match — and it visibly reads as approximate
-    (<code>47.00&quot;</code> beside a camera's <code>46.52&quot;</code>), which is the cue that it
-    still wants attention. It never decides what you are allowed to do.
-    <br>The map's rule therefore sharpens from “fill, never overwrite” to
-    <strong>“never overwrite what we did not put there ourselves”</strong>.</li>
-  <li><strong>Get GPS from location</strong> <span class="tag-shipped">SHIPPED</span> — the mirror of
-    <em>Get location</em>, sitting right under it in the same menu. That one turns a coordinate into a
-    place name; this turns the place name a picture <em>already carries</em> into a coordinate. It is
-    the answer for the older trips, whose camera had no GPS but whose files say “Helgoland”.
-    <br>All 93 pictures of a day share one written place, so it is <strong>one look-up, not 93</strong>.
-    Nothing is written until you have seen it: a review table shows the written place, what OpenStreetMap
-    found, the coordinate and how many pictures would get it — untick anything you don't trust. The
-    result is deliberately rough (~30 m) and marked as placed by hand, so the next step is to open the
-    day's map and drag the clusters onto the right cliffs. <strong>Seed, then refine.</strong></li>
-  <li><strong>The Helgoland bug hunt</strong> <span class="tag-shipped">SHIPPED</span> — running the
-    feature for real turned up six defects, and they were all the same shape:
-    <strong>one truth on disk (the picture's sidecar) and several things reading a stale copy of it.</strong>
-    A moved picture snapped back when the map was re-opened (the data was never lost — the map was
-    reading its own out-of-date list). The day table said 93 pictures had no GPS when the true answer
-    was 1. “Map whole trip” opened on an empty world map while the day map showed 92 of them on the
-    island. Underneath, the metadata cache had been <em>poisoned</em>: a geotag writes a coordinate, a
-    method and a place name, but only the place name was recorded — so the cache went on insisting the
-    coordinate wasn't there. And an unexplained three-second delay turned out to be the cache being kept
-    <em>inside Dropbox</em>, where the sync client locked it just as we saved, so the save was lost and
-    that folder re-read every file from scratch, every time. It now lives with all the other caches,
-    outside the synced folder. Placing pictures also got far quicker: dragging 62 of them used to launch
-    the metadata tool 124 times, and now does it twice.</li>
-  <li><strong>A placed JPG-only picture wouldn't stay placed</strong> <span class="tag-shipped">SHIPPED</span> —
-    same shape as the bug hunt above, one more stale copy. On the Tucson 2023 map two birds
-    kept coming back to the “without GPS” tray on every re-open, and the trip's no-GPS count never
-    dropped, even though the coordinate had in fact been written to the file and was sitting there on
-    disk. The catch: those two were <em>JPG-only</em> pictures — a phone or a friend's camera, no RAW
-    and no separate sidecar — so their GPS lives inside the JPG itself. Both things that re-read a
-    placed coordinate only ever looked at the <code>.xmp</code> sidecar and never at the JPG, so a
-    JPG-only picture was invisible to them. They now fall back to the JPG when there's no sidecar.
-    Nothing was ever lost — the placement had always saved; only the reading-back was blind. Confirmed
-    live: the two caracaras drop out of the tray and the day count goes 2 → 0.</li>
-  <li><strong>Find a place by name</strong> <span class="tag-shipped">SHIPPED</span> — we had
-    OpenStreetMap look-up in one direction only (coordinates → place name). This adds the mirror: type
-    <em>“Jetwing St. Andrews, Nuwara Eliya”</em> and get the coordinate. It sits in the right-click
-    menu just after <em>Suggest a position</em> — for when the camera recorded nothing but you wrote
-    the place down. It doesn't place the picture for you: it drops the same draggable pin, because the
-    hotel's coordinate is where the <em>hotel</em> is, not where the bird was. The search prefers the
-    part of the world already on your screen (St. Andrews is also in Scotland), and it will place a
-    whole selection at once.</li>
-</ul>
-
+<h2>2. Albums</h2>
 <h3>To do</h3>
 <ul>
-  <li><strong>Finish Helgoland</strong> <span class="tag-complete">DONE</span> — all four days are
-    placed; the whole 2014 trip is geotagged (2026-07-13). This was the live run that exposed the
-    stale-copy bug hunt above.</li>
-  <li><strong>Look at the 791 already-coarse coordinates</strong> <span class="tag-open">OPEN / NEW</span> —
+  <li><strong>Albums — the smart <em>Create</em> arc</strong> <span class="tag-progress">IN PROGRESS</span> —
+    the arc has shipped through Delete Album and Manage Album Publication; the one remaining step is
+    folding <em>Extract Days</em> into Create's finish (WP7 scenario-2) so Create is a single flow.</li>
+  <li><strong>The 791 already-coarse coordinates</strong> <span class="tag-open">OPEN / NEW</span> —
     pictures whose GPS looks hand-entered but carries no record of it. Report first, decide later.
     The scan already turned up two real errors worth a look: a South Africa photo tagged
-    <em>Country = Spain</em>, and Galapagos 2015 reusing a single coordinate across many pictures.</li>
-  <li><strong>Find Trips in the Master + “Make an album…”</strong> <span class="tag-shipped">SHIPPED</span> —
-    <code>ac2c0c1</code> / <code>718ec62</code> / <code>f72126a</code>, 2026-07-18. Kills the
-    “you must know the date range and type it yourself” half of WP7.
-    <strong>Albums ▸ Find Trips in the Master…</strong> is a read-only report listing candidates from
-    TWO sources in ONE table — which is what dissolves the “from an existing trip vs retroactive from
-    master dates?” question, because the answer is just which row you picked:
-    <strong>KNOWN</strong> (a real trip from <code>trip_admin.csv</code>, dates recorded) and
-    <strong>FOUND</strong> (a run of consecutive shooting days). Every row has a
-    <strong>Make an album…</strong> button that opens Create Album with the dates and a suggested name
-    prefilled — deliberately <em>not</em> one-click, because a row cannot know the title, description
-    or trip image.
-    <p>Signals were chosen from what the data actually supports (73,957 pictures):
-    <code>DateTimeOriginal</code> 100%, Country/State 85%, <strong>GPS only 56% — so cluster by DATE and
-    label by PLACE NAMES, not GPS</strong>. The strongest label is the dominant <strong>UPN prefix</strong>,
-    because it is not inferred at all: it is what you called the pictures when you filed them, and it is
-    the only thing that names the early years (2013 and earlier carry no Country/State, leaving ten
-    clusters as “(no place recorded)” while their UPNs say panama, florida, oostzee). Extracting it is
-    <em>not</em> a split on the last space or hyphen — the separator is a space on old UPNs and a hyphen
-    on new ones, and hyphens occur inside names (<code>2024 zomer zuid-afrika-n6240016</code>) and inside
-    filenames (<code>2013 december nl dsc_1975-v2</code>); recognising the camera filename instead works
-    for <strong>99%</strong> of UPNs. Pictures-per-day <em>ranks</em> away-trips above time at home
-    (Tucson 87/day, home 5.9/day) but never drops a row — Braakman and Helgoland are exactly what a home
-    filter would hide. Ranges already built are <strong>marked, not hidden</strong>: a hidden row makes
-    the list lie.</p>
-    <p>Validated live: it independently derives “Tucson_2023” (the name picked by hand) and dates it
-    <em>tighter</em> than the typed range (2023-03-25→2026-04-16 vs the padded 2023-03-23→2023-04-18),
-    and it finds the <strong>2013 Panama trip that started the hobby</strong> (12 days, 115 pictures →
-    <code>2013_panama</code>). The report is <strong>modeless</strong> — it is a list you work beside —
-    re-scans after a Create, and has a Refresh button. Performance: ONE table scan aggregated in Python =
-    <strong>0.19 s</strong>; a first version doing three scans per candidate took 7.1 s.</p></li>
-  <li><strong>GUI vocabulary: “Album” replaces “virtual trip”</strong> <span class="tag-shipped">SHIPPED</span> —
-    <code>961e5f8</code> / <code>f72126a</code>. <em>Virtual trip</em> describes how the thing is BUILT;
-    <em>album</em> describes what it IS. <strong>Labels only</strong>: menus, dialog titles, buttons,
-    table headers, tooltips, status messages, the sidebar, repo settings, and both backlog documents.
-    <strong>Deliberately unchanged</strong>: <code>virttrip.ini</code>, the <code>[virttrip]</code> config
-    section, <code>virttripbiotadatabase</code>, the <code>svv*</code> module names, folder names like
-    <code>Tucson_2023db</code>, and code identifiers — those are persisted on disk, in config and in
-    published URLs, and this project already knows renaming identity is expensive
-    (<code>trip_name</code> doubles as the website slug).
-    <p>⚠ <strong>Two traps for any future string sweep.</strong> (1) Menu <em>items</em> display
-    <code>MenuSpec.title</code> falling back to the dict key, so titles rename freely while lookup keys
-    stay — but the <em>top-level</em> menu name IS its key. (2) Under <strong>PEP 701 (Python 3.12) an
-    f-string is not a STRING token</strong> but FSTRING_START/MIDDLE/END, so a tokenize sweep filtering on
-    STRING silently skips every f-string — and a verification pass sharing that filter confirms its own
-    blind spot and reports success. <strong>A sweep and its check must not share a filter.</strong></p></li>
-  <li><strong>Albums — the smart <em>Create</em> arc</strong> <span class="tag-progress">IN PROGRESS</span>
-    — agreed 2026-07-19, replaces the old “guided Create” item.
-    The order is the user's and it is deliberate: nothing exists to delete yet, and every step is
-    hand-driven, so building Delete first would be building against a hypothetical. Guinea pig
-    throughout: <strong>2013 Panama</strong> — the trip that started the hobby (12 days, 115 pictures),
-    and the oldest, thinnest data in the master (no Country/State, no GPS), so it is both a good test
-    and a plausible source of surprises unrelated to the new code; step 2 onward now driven on
-    <strong>Gran Canaria</strong> as well.
-    <ol>
-      <li><strong>✅ DONE — Smart Create Album</strong> (662da74 → 788b0a6, verified on Panama and
-        Gran Canaria) — <em>Pick from the master…</em> (bottom-left, not between fields, because it does
-        far more than fill the field beside it) opens the candidate table (one picker, two entry points:
-        Create, and Albums ▸ Find Trips). Picking <em>creates the folder</em> and fills everything: a
-        unique, live-validated name; the dates; a slug web root (<code>/trips/panama-2013</code> — a URL
-        is not a title); a default Dutch title and factual description, translated to English. The image
-        split resolved into the cover-picture item below.</li>
-      <li><strong>✅ DONE (verified) — Extract</strong> — Gran Canaria extracted 7 days / 454 files /
-        193 pictures cleanly, and the album overview then shows them with GPS and species. Still a
-        separate menu step; folding it into Create is step 4.</li>
-      <li><strong>NEXT — Build Web + Web Publish</strong> — try them on the album (user running the blog
-        and website steps 2026-07-21).</li>
-      <li><strong>✅ DONE — Integrate 1–3 into one flow</strong> (c7b09f8, full-publish, verified on
-        Gran Canaria). Create's finish runs the whole chain in one spinner: make repo → extract →
-        write+upload blogs → build+upload website → make blogs clickable. Stops short of the trip index
-        on purpose — that is step 6.</li>
-      <li><strong>✅ DONE — Delete Album</strong> (f3be5ee → 48b8bb4, verified: Gran Canaria
-        local+remote, Panama local-only). See the dedicated entry below.</li>
-      <li><strong>✅ DONE — Manage Album Publication</strong> (a7d6d4a + fixes, verified list+unlist on
-        Gran Canaria) — its own <strong>Albums-menu</strong> action; see the dedicated entry below.
-        ⚠ <strong>Rule (user, 2026-07-19): an album must never be reached through a door marked
-        Trip</strong>, even when the underlying batch is identical — the boundary is the GUI. Braakman,
-        extramadura, tanzania and costa-rica are listed on the site only for a <em>historical</em> reason
-        (published as trips, later turned into virttrips silently keeping the URL), not because any album
-        flow lists them.</li>
-      <li><strong>✅ DONE — Tested and celebrated.</strong> Full list→index→unlist round-trip verified
-        live; the arc is complete.</li>
-    </ol>
-    <p>Notes: publishing before advertising is fine — the URL works, the web menu does not link it, and
-    “no secrets are involved”. Default <em>text</em> is wanted (something publishable during
-    development; the real words come after working with the images). Default <em>images</em> already
-    seed from <code>dist/includes web/</code> at the right sizes (banner 2000×270, image 600×450) but
-    the CONTENT is the user's Crete artwork — a Panama album would ship looking like Crete, which is
-    worse than looking blank. The trip image can be generated (highest-rated picture in range, scaled,
-    centre-cropped 3:2→4:3 — ⚠ never write a derived file over its source); the BANNER cannot (hand-widened
-    in Photoshop), so it needs a neutral house default. The user's own printed photo books record each
-    trip's route and locations — that plus the gap function is expected to carry the old trips a long
-    way.</p></li>
-  <li><strong>“Register new renders in the master” — from the album viewer</strong>
-    <span class="tag-shipped">SHIPPED</span> 2026-07-21, verified on Gran Canaria. The follow-up that
-    removes the “detour”: right-click a picture (or selection) in the album day viewer → registers a
-    freshly-rendered DxO JPG (+ its <code>.dop</code>) into the master's file inventory, using the
-    <strong>same journaled add operator</strong> the Master viewer uses, then flushes the checkpoint so the
-    overview's “Re-extract this day” sees it at once. Only shown in the editable album viewer on master
-    pictures.
-    <p class="note"><strong>Finding from the live run:</strong> it also heals the append-only blind spot —
-    clicking it on a picture that “hadn't been touched” registered 1 JPG, and a disk check proved that
-    <code>.jpg</code> was genuinely on disk but never in the master's inventory (now one row, no duplicate).
-    So it never invents or duplicates — it makes the inventory match disk; a second click says “No new
-    files”. Possible follow-up: a master-wide sweep to register all untracked renders in one pass.</p></li>
-  <li><strong>Album switch was frozen ~30 s → GPS mirrored into the master DB</strong>
-    <span class="tag-shipped">SHIPPED</span> <code>261f571</code>, 2026-07-21, verified on Helgoland.
-    Switching to a big album locked the UI (“(Not Responding)”) because the overview's <strong>No-GPS
-    column</strong> re-opened every no-camera-GPS picture's <strong>sidecar</strong> — a geotag writes to
-    the sidecar, and the day CSV is a stale snapshot. The fix follows the user's own model (“all state
-    should live in the UPN”): make the <strong>master DB</strong> the one place GPS lives and read it
-    there.
-    <ul>
-      <li><code>MasterDB.apply_gps</code> — a journaled write of <code>pictures.GPSPosition</code>
-        (one entry per action, so no checkpoint race); <code>upns_with_gps</code> — one indexed query.</li>
-      <li>Every <em>new</em> geotag mirrors into the DB (<code>write_gps</code>); <em>existing</em> placed
-        GPS folds in when a <strong>map opens</strong> (the map already reads exactly those coordinates —
-        and the master read never touches sidecars, so this is the only way pre-mirror geotags reach the
-        DB). Heal an album by opening its whole-trip map once (Helgoland day 2: 126 → 1).</li>
-      <li>The overview's No-GPS is now one DB query per day: <strong>31-day album 0.18 s, was 30+ s.</strong></li>
-    </ul>
-    <p class="note">Scope: the mirror writes the <em>coordinate</em>; the reverse-geocoded place
-    <em>name</em> (Location) is a separate step — a follow-up. The bigger ideal the user named — Albums
-    reading the master directly, with no per-album CSV copy — is a deferred re-architecture.</p></li>
-  <li><strong>Crop + qualifier display fixes (album viewer)</strong>
-    <span class="tag-shipped">SHIPPED</span> <code>0c48c91</code> / <code>a03e341</code>, 2026-07-21,
-    user-confirmed.
-    <ul>
-      <li><strong>Crop invisible in a multi-block XMP:</strong> a PhotoLab/exiftool <code>.xmp</code>
-        splits its metadata across many <code>rdf:Description</code> blocks (one file had 22), and the
-        crop reader parsed only the <em>first</em> — so a crop in a later block came back empty. The large
-        view opened uncropped and the grid lost the crop on reopen (the cropped thumbnail was a stale
-        cache). Now searches every block, taking each value as an attribute or a child element.
-        (Still one-sided: the <em>writer</em> targets only the first block, so a from-scratch crop drawn in
-        SpeciesViewer on a no-<code>.dop</code> RAW has nowhere durable to land yet — a separate follow-up.)</li>
-      <li><strong>Qualifier line doubled the tokens</strong> (“kanarie, female, juvenile ♀ juv.”) — now
-        name + abbreviation only (“kanarie ♀ juv.”).</li>
-    </ul></li>
-  <li><strong>The album day viewer is now an editable window on the master</strong>
-    <span class="tag-shipped">SHIPPED</span> 2026-07-21, verified on Gran Canaria. The album /
-    virtual-trip day viewer opened fully read-only; it now permits the edits that are
-    <em>properties of the photograph</em> — the things stored in the picture's own sidecar, so the
-    album writes them and a master re-read produces exactly what was stored:
-    <ul>
-      <li><strong>Rating, colour, website description</strong> — a new <code>allow_edit</code> carve-out
-        threaded exactly like the existing crop/GPS carve-outs, gated on the same “master editable” check.</li>
-      <li><strong>Sex / age / plumage qualifier</strong> — reuses the master's shared qualifier logic (no
-        vocabulary duplicated); writes the form onto <code>XMP:Subject</code>, never the species name.</li>
-      <li><strong>Crop</strong> — already had a carve-out but crashed on an undefined <code>ensure_xmp</code>;
-        added it (authors a minimal <code>.xmp</code> the same way ingest does).</li>
-    </ul>
-    <p>Species re-determination stays out — a settled master name is not re-typed from an album. A guard
-    from the same pass: the “Set rating…” batch dialog now respects the edit flags, so a genuinely
-    read-only viewer can't batch-write.</p>
-    <p><strong>Per-day refresh:</strong> the overview's day right-click gained <em>Re-extract this day</em>,
-    <em>Re-write this day's blog</em>, and <em>Rebuild website</em>, so after adding a DxO render you refresh
-    just the day you touched (svv2 gained a single-day filter; the website, whose species pages span days,
-    stays whole-album).</p>
-    <p class="note"><strong>The model — why adding a render still needs a “detour”:</strong> an album edits
-    picture-<em>local</em> metadata (rating, colour, species, qualifier, GPS, crop — all stored in the
-    picture's sidecar), which flows to the master on a re-read. But a <em>new file</em> is a change to the
-    master's <strong>file inventory</strong> (which picture owns which files) — a journaled, master-global
-    structure, not something in any one sidecar — so registering a render is a real master mutation and
-    lives behind the master's add operator (Master viewer → “Add new files for this picture”). It could be
-    surfaced as a right-click in the album viewer later.</p></li>
-  <li><strong>Manage Album Publication — list / unlist on the trip index</strong>
-    <span class="tag-shipped">SHIPPED</span> <code>a7d6d4a</code> + fixes, 2026-07-21, arc steps 6–7,
-    verified both directions on Gran Canaria. <strong>Albums ▸ Manage Album Publication</strong> — its
-    own door (never a Trip door), acting on the active album. One dialog for both directions: it reads
-    the live site to show whether the album is currently listed, then <strong>List on the site</strong>
-    (adds the album's row to the master <code>trip_admin.csv</code>, regenerates the tripindex NL+EN and
-    uploads) or <strong>Remove from the site</strong> (the clean mirror — the album's own
-    <code>/trips/&lt;slug&gt;/</code> pages stay online, only the index link goes). Advertising is
-    deliberately separate from publishing: Create/Build already put the album LIVE at its URL; this only
-    controls the index link.
-    <p><strong>Four fixes from the live run:</strong> (a) the dialog never created the status widget the
-    batch runner writes into, so both buttons crashed before doing any work; (b) the ini reader forced
-    strict UTF-8 and choked on a cp1252 <code>é</code> (“San Bartolomé”); (c) <strong>the real
-    root</strong> — <code>readTrip</code> READ the ini as UTF-8 but WROTE it back with no encoding
-    (cp1252 on Windows), so the List run silently re-encoded the file and the next read crashed; it now
-    reads cp1252-tolerantly AND writes UTF-8, which <em>heals</em> every ini the old asymmetry mangled;
-    (d) after a successful action the dialog re-read the live (still CDN-cached) site and left the
-    buttons on the old state — it now trusts the action just completed and flips the status line and
-    buttons immediately.</p>
-    <p class="note">Cosmetic (user asked, decided leave-as-is): short-description rows on the trip index
-    look “centered” only because the portrait trip image towers over one line of text — the cells are
-    already left/top-aligned, not a CSS bug.</p></li>
-  <li><strong>Create Album = one-flow extract + build + publish</strong>
-    <span class="tag-shipped">SHIPPED</span> <code>c7b09f8</code>, 2026-07-21, arc step 4, verified on
-    Gran Canaria. The user chose full publish over extract-only, so Create's finish takes the album
-    from nothing to a live website in one spinner: make repo → extract days → write+upload blogs →
-    build+upload website → make blogs clickable.
-    <p><strong>Stops short of the trip index on purpose</strong> — publishing before advertising is
-    fine (the URL works, the web menu does not link it); un/advertising is the deliberate step 6. So the
-    chain is svv1→svv2→svv3→svv4→svv6, never svv5. Offline is handled by the steps themselves
-    (svv3/svv4 check connectivity and fall back to a local-only build).</p>
-    <p><strong>Refactor:</strong> the retire-to-album flow already had this exact spinner + worker-thread
-    plumbing, so it was extracted into a shared <code>_run_virttrip_pipeline(parent, steps, title,
-    success_msg)</code> and both flows now use it (the generic <code>_RetireVirttripWorker</code> just
-    runs a list of <em>(label, callable)</em>); retire keeps its own step list, which still advertises
-    via svv5 — correct when retiring a real trip. A latent bug the name-resolution check caught:
-    <code>QMessageBox</code> was only imported function-locally inside retire, so the new code would have
-    NameError'd at runtime — now module-level.</p>
-    <p><strong>⚠ Slug-after-publish gotcha:</strong> the web root (URL slug) is editable before Create,
-    and the auto-slug is the dominant city — for Gran Canaria that was the long municipality
-    <code>san-bartolome-de-tirajana-2023</code>. Changing the slug <em>after</em> publishing orphans the
-    old <code>/trips/&lt;old-slug&gt;/</code> tree on the server; clean recovery is Delete Album (which
-    removes the tree at the current slug) → change slug → re-create.</p></li>
-  <li><strong>Delete Album — reversible, master untouched</strong>
-    <span class="tag-shipped">SHIPPED</span> <code>f3be5ee</code> → <code>48b8bb4</code>, 2026-07-21,
-    arc step 5, verified on both cases. Albums ▸ Delete Album…, acting on the ACTIVE album like Build
-    Website; its own Albums-menu action, never a Trip door.
-    <p><strong>Why an album is safe where a trip is not:</strong> it owns only metadata and generated
-    web files (18 MB published, 0.5 MB extract-only); the master's photographs are referenced, never
-    copied, so nothing irreplaceable lives here — and at that size the whole folder is zipped into
-    <code>&lt;albums&gt;/.trash</code> first, making the delete undoable by unzipping. Scopes: local
-    always (backed up first); the published <code>/trips/&lt;slug&gt;/</code> tree optional, offered
-    only when the album was published AND the server is reachable (Panama greyed “never published”);
-    the master never touched. Uses the config web ROOT, not the folder name — the slug differs (folder
-    <code>2023_feb_gran_canaria</code> vs web <code>/trips/grancanaria2023</code>). Remote runs before
-    the local wipe so a network failure leaves the album to retry; rmtree already invalidates the upload
-    cache and the album's own <code>FTPcache.json</code> goes with the folder, so no stale-cache trap.</p>
-    <p><strong>Two robustness fixes from the live run.</strong> (a) The delete RENAMES the folder first
-    — on Windows a directory holding an open file cannot be renamed, so a stray Explorer or PhotoLab
-    window makes the delete <em>fail clean with the album intact</em>, instead of the half-deleted state
-    a bare depth-first rmtree left (Gran Canaria lost days 17–20 before meeting a lock on 21). (b)
-    Transient <strong>Dropbox</strong> sync locks are ridden out with a retry-with-backoff, and any
-    leftover <code>.&lt;name&gt;.deleting</code> staging is swept at the start of every delete —
-    Panama's delete swept Gran Canaria's orphan on the way. Also filters <code>.</code>-prefixed folders
-    out of the album panel, so a lingering staging folder never shows as a fake album.</p>
-    <p><strong>Deferred to step 6:</strong> un-advertising from the trip index — the dialog flags it
-    rather than half-doing it.</p></li>
-  <li><strong>Set a trip/album cover picture from the grid</strong>
-    <span class="tag-shipped">SHIPPED</span> <code>ca45a74</code> → <code>788b0a6</code>, 2026-07-20,
-    verified on the Kreta trip and the Gran Canaria album. Right-click one picture →
-    <strong>Use as &lt;trip|album&gt; picture (&lt;owner&gt;)</strong> → a confirm that shows the
-    <em>actual</em> 600×450 that will be written (centre-crop to 4:3 — never squash — then resize; a 3:2
-    original loses 11% off each side, measured, which is why the crop is shown, not guessed) → written
-    as the collection's cover. Manual beats automatic: the best-<em>rated</em> photo is often a tight
-    portrait that crops badly, and a person sees that at a glance. Logic in
-    <code>utils/album_picture.py</code> (no Qt, so testable); dialog
-    <code>gui/album_picture_dialog.py</code>.
-    <p><strong>Three things it got right only after live bugs.</strong> (a) The target is the collection
-    you are <em>looking at</em>, derived from the viewer — reading the globally-configured active album
-    wrote a <strong>Kreta orchid as the Gran Canaria cover</strong>. (b) A trip does not name its cover
-    <code>tripimage.jpg</code> — kretadb uses <code>trip_picture = kretaimage.jpg</code>, so the filename
-    comes from that collection's own ini, or a second, ignored file is written. (c) The album day viewer
-    passes <code>file_list=</code>, so its label is “68 files” not a path — the album is identified from
-    the source label (the day folder inside it), which was being dropped.</p>
-    <p><strong>Two guards from prior incidents:</strong> never write the cover over its own source (the
-    142-thumbnails-destroyed rule), and the write renders to a temp file then <code>os.replace()</code>s
-    it in — so the target is never held open during encoding (a plausible cause of a one-off
-    <code>Errno 22</code> on the trip cover) and a half-write cannot truncate the cover. The replaced
-    cover is kept as a <strong>dated real .jpg</strong> (<code>tripimage-20260720-2102.jpg</code>) —
-    pickable in Browse, unlike the un-previewable <code>.previous</code>. The menu entry appears only
-    where there is a cover to set and the picture has a JPG, so a plain culling day shows nothing. Also
-    finished the Create Album vocabulary the earlier sweep missed (bare “Trip” → Album picture, Web
-    banner, Album title, Album Text).</p></li>
-  <li><strong>WP7 — fold Extract Days into <em>Create</em></strong> <span class="tag-open">OPEN</span> —
-    all that remains of the guided Create: the date-range problem is solved above, but
-    <em>Extract Days from Master</em> is still a separate menu step rather than folded into Create's
-    finish. Everything after that point works.</li>
-  <li><strong>Scenario-1 “Add to Master” no-op greying</strong> <span class="tag-parked">PARKED</span> —
-    a retired trip already ran Add-to-Master in its arc, so the standalone action would be a no-op.
-    Greying it is pure cosmetic and low-value (unlike the greyed <em>search</em> boxes, which actively
-    misled). Parked 2026-07-15.</li>
+    <code>Country = Spain</code>, and Galapagos 2015 reusing a single coordinate across many pictures.</li>
 </ul>
-
 <h3>Parked (by design)</h3>
 <ul>
-  <li><span class="tag-parked">PARKED</span> Trips vs Virtual-Trips panel visual alignment (tree
-    vs date-table) — some differences are valid; cosmetic convergence only.</li>
+  <li><span class="tag-parked">PARKED</span> waarneming.nl records are a different <em>kind</em> of
+    thing (determination records, not photographs), not a broken import — not a priority.</li>
+  <li><span class="tag-parked">PARKED</span> Scenario-1 “Add to Master” no-op greying — pure cosmetic,
+    low value.</li>
+  <li><span class="tag-parked">PARKED</span> Trips vs Albums panel visual alignment.</li>
 </ul>
 
 <!-- ============================================================ -->
 <h2>3. Master Database, Editing &amp; Viewer</h2>
-
-<p>Phases 1–3 <span class="tag-complete">SHIPPED &amp; live-tested</span> (JSON EXIF cache;
-SQLite DB-first re-rating with WAL + debounced CSV checkpoint + crash recovery + Read-Only
-toggle; add/delete with reversible <code>.trash</code> + JPG-protection). The
-<strong>Trip Species Viewer</strong> (formerly Rating Editor) Trip+Master scope is fully working,
-now with scope-aware colour-delete (incl. master), a delete-preview, and a colour filter.</p>
-
 <h3>To do</h3>
 <ul>
-  <li><strong>Name-language profiles for the caption under each picture</strong>
-    <span class="tag-shipped">SHIPPED</span> (<code>15bd3d1</code>, <code>a3c9075</code>) — which of NL/EN/Sci
-    reads out as the label under each picture is now a <strong>profile</strong> (an ordered fallback chain),
-    not a single language. Four presets: <strong>Dutch/English/Scientific</strong>,
-    <strong>English/Scientific</strong>, <strong>Dutch/Scientific</strong>, <strong>Scientific only</strong>.
-    The chains are chosen so <em>English/Scientific NEVER falls back to Dutch</em> (an American never sees a
-    Dutch name), and an African bird with no Dutch name simply lands on English/Sci — the Europe-vs-Africa
-    case, handled for free by the fallback. <strong>Precedence: per-trip override &rarr; global default.</strong>
-    The global default lives in <em>Global Settings &blacktriangleright; Preferred names</em> (where the
-    orphaned Window width/height fields, read by nothing, were removed — the app remembers its size); a
-    per-trip override lives in <em>Create Trip &blacktriangleright; Images &amp; Dates</em> (written to
-    <code>trip.ini</code>). Each viewer's combo is repurposed to the profiles as a per-session override.
-    <strong>Display only</strong> — website output and all species suggestion/editing untouched. The Create
-    Trip dialog's cryptic &ldquo;Write trip.ini&rdquo; button became <strong>&ldquo;Update Trip
-    Settings&rdquo;</strong> (writes trip.ini incl. Trip Text, no repository rebuild), now placed after Create.
-    The metadata-less virtual-trip Species Image Preview now follows the profile too (<code>e2aa0f7</code>):
-    names come from the day's <code>data_pictures.csv</code> (NL/EN/Sci per UPN, keyed by path — the crop-#
-    hint pattern), resolved through <code>name_for</code>, falling back to the sci folder name where missing.
-    A <strong>per-virttrip override</strong> followed (<code>19984bb</code>) in the existing Create Virtual
-    Trip dialog's Images &amp; Dates tab (&rarr; <code>virttrip.ini</code>) — the &ldquo;guided-Create
-    dialog&rdquo; first called a blocker already exists; that backlog item is about the creation
-    <em>flow</em>, not a missing dialog. Precedence: per-virttrip override &rarr; global default. Two
-    follow-up fixes the Orlando virttrip exposed: the preview uses <code>SidecarCollection</code> when any
-    JPG has a paired <code>.xmp</code>, and there the caption ignored the profile &mdash; wired
-    <code>name_hints</code> in too (<code>f54a4ec</code>); and a DxO DeepPRIME render's <code>.xmp</code> is
-    named after the <em>source</em>, so the group read no rating/colour/subject &mdash;
-    <code>_source_xmp_for</code> now reconstructs the source stem and pairs it (<code>33bb3a2</code>).</li>
-  <li><strong>Closed three viewer-capability-matrix gaps</strong> <span class="tag-shipped">SHIPPED</span>
-    (2026-07-16) — a scan of what each grid viewer (Culling/Day, Virtual-Trip, Trip Species Viewer, Master)
-    can do turned up gaps that were unwired rather than deliberate. Fixed: (1) <strong>&ldquo;#&rdquo; crop
-    marker everywhere</strong> (<code>91a98a6</code>) — the size cue (JPG long edge &le; 75% of the RAW&rsquo;s)
-    now also drives the marker in the day-cull and virtual-trip &ldquo;All&rdquo; viewers, where DxO renders
-    bake the crop into the pixels with no readable rectangle. (2) <strong>Trip Species Viewer map</strong>
-    (<code>de29fdc</code>, colours <code>02b845c</code>) — a <strong>Map&hellip;</strong> button plots the
-    shown pictures of the selected species over the viewer&rsquo;s own collection (the trip&rsquo;s own GPS
-    points, plus master reference points in Trip+Master — <strong>needs no master</strong>, correcting a first
-    cut that required it), read-only for now, with the trip&rsquo;s own points <strong>pink</strong> vs master
-    <strong>teal</strong> (&ldquo;pink = this trip&rdquo; legend). Geotag-from-the-map is the next step.
-    (3) <strong>Master description editing</strong> (<code>de29fdc</code>) — the website &ldquo;story&rdquo;
-    now writes back for master pictures too (when <code>master.readonly = no</code>), via a new
-    <code>MasterDB.apply_description</code> modelled on <code>apply_qualifiers</code>. Also fixed a
-    <strong>cp1252 console crash</strong> (<code>ecab7e3</code>): an emoji in any log line dumped a
-    &ldquo;--- Logging error ---&rdquo; traceback at startup.</li>
-  <li><strong>Trip Species Viewer: &ldquo;Add new files (scan folder)&rdquo;</strong>
-    <span class="tag-shipped">SHIPPED</span> (<code>50511a6</code>, 2026-07-17) — a fourth
-    viewer-capability-matrix gap: the master viewer could pull a freshly-rendered DxO/PureRaw JPG into a
-    picture, the Trip Species Viewer could not, so a JPG rendered <em>after</em> the last Read &amp; Summarize
-    (to complete a RAW-only picture) never joined its UPN without re-reading the whole day. Right-click a trip
-    card → <strong>&ldquo;Add new files (scan folder)&hellip;&rdquo;</strong> scans the picture&rsquo;s folder
-    for files belonging to its UPN that aren&rsquo;t tracked yet (the <code>_DxO.jpg</code>, plus its
-    <code>.dop</code> if new), adds them to the day&rsquo;s <code>data_files</code>/<code>data_pictures</code>,
-    re-distils <code>BestJPG</code>/<code>BestJPGPathName</code>/<code>JPGSize</code>, recomputes
-    <code>Rate</code>, and persists. The trip-side sibling of <code>master_mutate.add_upn_files</code>
-    (<code>RatingEditorCollection.add_trip_files</code> + <code>_redistill_upn</code>); works on a
-    multi-selection, no-ops on master reference cards. &ldquo;Tracked&rdquo; is the files table not the
-    <code>Files</code> list (the master&rsquo;s truth), so the scan is idempotent and case-insensitive.
-    Verified against real <code>N3161031</code>: the resulting Rate equals a full re-read
-    (<code>projectlib.computeRating == _compute_rate == 30</code>). <strong>Also on the large viewer&rsquo;s
-    right-click</strong> (<code>af26630</code>) — gated by a collection capability so it shows only for an
-    editable trip picture (not master/Album/culling); on success it refreshes the large view&rsquo;s FILE panel
-    + image + filmstrip and repaints the grid card behind.</li>
-  <li><strong>Camera JPEG tab is a zoomable fit view — and now the primary zoom</strong>
-    <span class="tag-shipped">SHIPPED</span> (<code>03c66a2</code> + <code>2c9d27b</code>, 2026-07-17) — the
-    Camera JPEG tab used to refuse a sub-sensor embed (the OM-1 writes only a 3200&times;2400 preview; the odd
-    Nikon NEF a tiny one) and show a wall of text sending you to the decode tab. But that preview is usually
-    plenty, and zoomed to 1:1 it is already pixel-for-pixel. <code>_FullResView</code> gained a
-    <strong>zoomable mode</strong> (the Camera JPEG tab; the 80% decode tab keeps its 1:1-pan behaviour): the
-    image <strong>opens fit-to-window and the wheel zooms in to 1:1</strong> (capped there &mdash; no real
-    detail past it; fit never upscales a tiny embed), double-click toggles fit &hArr; 1:1, drag pans. Two corner
-    badges &mdash; bottom-left names the source (&ldquo;OM-1 Mark II &middot; camera JPEG 3200&times;2400
-    &middot; preview only&rdquo;), top-left is the interaction hint (&ldquo;Scroll to zoom &middot; double-click
-    for 1:1 &middot; drag to pan&rdquo;); both hide behind a message. <strong>Step 2</strong> made it the go-to
-    zoom: <strong>tab order &rarr; Fit &middot; Camera JPEG &middot; 80%</strong> (slow decode last),
-    <strong>double-click the Fit image &rarr; Camera JPEG</strong> (was 80%), <code>F</code> toggles Fit &hArr;
-    Camera JPEG. Every hard-coded view-tab index (~13 sites) became a named constant. Shared
-    <code>LargeImageView</code>, so <strong>all viewers</strong> (culling, Trip Species Viewer, virtual-trip,
-    master, map) get it.</li>
-  <li><strong>Two large-view&harr;grid glitches fixed (Trip + Master Species Viewers)</strong>
-    <span class="tag-shipped">SHIPPED</span> (<code>a4258e5</code> + <code>e4813f5</code>, 2026-07-17) —
-    (1) a <strong>colour/Rate set in the large view didn&rsquo;t reach the grid card</strong>, and stayed
-    wrong even after closing the large view (only a full rebuild fixed it). Cause: Qt drops a card&rsquo;s
-    repaint while it is <strong>occluded by the large-view window</strong>, so the single-card
-    <code>refresh()</code> no-oped. The culling viewer already worked around this on close; the Trip viewer had
-    none and the Master viewer had the same gap. Both now repaint <strong>every</strong> card on each large-view
-    edit and refresh-all + re-sort on close (grid visible again) &mdash; <code>refresh()</code> is text-only, so
-    it is cheap. (2) <strong>Changing the species left a stale large view</strong> drilling into the previous
-    species (its key list is snapshotted at open), so edits/navigation there acted on a set the grid no longer
-    showed &mdash; the species change now <strong>closes the open large view</strong>. Camera/colour/JPG filters
-    deliberately keep it open (same species).</li>
-  <li><strong>Reveal-in-Explorer button now finds the group</strong>
-    <span class="tag-shipped">SHIPPED</span> (<code>5b33507</code>, 2026-07-17) — the large view&rsquo;s
-    Explorer icon searched the full UPN (<code>2026 kreta-n3173237</code>); Windows Search parses that
-    multi-word, hyphenated string as a natural-language query and returns <strong>nothing</strong> (a Microsoft
-    quirk the user diagnosed). <code>reveal_group</code> now searches the UPN&rsquo;s unique tail as a
-    <strong>filename wildcard</strong> &mdash; <code>*&lt;last 8 chars&gt;</code>, e.g. <code>*n3173237</code>
-    &mdash; which is plain globbing and reliably returns the whole group (.ORF/.XMP/.dop/.jpg), the exact
-    workaround the user verified by hand.</li>
-  <li><strong>Stamp the DxO denoise method into the .dop on a crop</strong>
-    <span class="tag-shipped">SHIPPED</span> (<code>7300dc4</code>, 2026-07-17, v9 confirmed) — when
-    SpeciesViewer writes a crop to a picture&rsquo;s <code>.dop</code> (the &ldquo;preparing a JPG&rdquo;
-    moment) it can now also set the DxO denoise method, so the RAW opens in PhotoLab already on the method this
-    machine uses &mdash; no menu-picking, no v7/v8 clutter. Rides <strong>only</strong> on the crop write (a RAW
-    you never crop is untouched); <strong>OFF by default</strong>. The method sits in the <code>.dop</code>
-    Overrides block beside the crop: <code>NoiseActive = true</code> + <code>NoiseRemovalMethod = "&lt;code&gt;"</code>
-    (omitted for Standard). Codes are <strong>PhotoLab-version specific</strong>, so they live in a per-version,
-    per-machine <code>photolab_denoise.ini</code> (seeded from codes harvested from the user&rsquo;s own
-    <code>.dop</code> library, <strong>editable in the GUI</strong>). Validated live across PL7/PL8/PL9
-    (<code>b8f0173</code>): v9 DeepPRIME&nbsp;3 = <code>DeepRaw2RGBv6</code> / XD3 = <code>DeepRaw2RGBv7</code>;
-    v8 PRIME = <code>ultra</code> / XD2 = <code>DeepRaw2RGBv4</code>; v7 DeepPRIME = <code>DeepRaw2RGB</code> /
-    XD = <code>DeepRaw2RGBv2</code> (PL7 labels it &ldquo;High Quality&rdquo;, PL8/9 &ldquo;Standard&rdquo;). New
-    <code>utils/photolab_denoise.py</code> + <code>sidecarlib.write_dop_edits(denoise=…)</code> (idempotent
-    Overrides merge, wired into <code>suggest_crop</code> only) + <strong>File ▸ Settings ▸ &ldquo;PhotoLab
-    Denoise…&rdquo;</strong> with an editable Method→code table. &#9888; The <code>.dop</code> recipe schema
-    <code>Version</code> is forward-incompatible (PL8&asymp;19.5 can&rsquo;t read a PL9 <code>20.6</code>
-    <code>.dop</code> at all), so v8/v7 rows are best-effort; recipe downgrading is out of scope. FUTURE
-    <strong>Virgin culling <code>.xmp</code> &rarr; virgin <code>.dop</code>: BUILT then REVERTED &mdash;
-    officially not possible</strong> (<code>a2f0a05</code> &rarr; reverted <code>c24df8a</code>, 2026-07-18). A
-    deep PL9 reverse-engineering session established that <strong>PhotoLab owns the master identity in its own
-    catalog</strong>: it assigns each RAW a random <strong>v4 UUID</strong> at import and matches
-    <code>.dop</code> items by it. A from-scratch <code>.dop</code> carries a UUID PL never registered, so PL
-    <strong>always adds it as a virtual copy</strong> &mdash; even in an unseen folder, even byte-faithful
-    (correct Name/Orientation/ShotDate, no CafId, empty OutputItems). UUIDs are random (not derived from the RAW),
-    so the &ldquo;right&rdquo; one can&rsquo;t be computed; there is no master/copy flag in the format. (Learned
-    en route: DxO <code>Orientation</code> = standard EXIF 1/3/6/8; <code>CafId</code> is a per-batch id,
-    omittable; the crash was empty <code>Base</code> + schema <code>19.5</code>.) <strong>Reliable path: PL
-    authors the <code>.dop</code> (Ctrl-A write sidecars), SpeciesViewer edits it</strong> &mdash;
-    <code>write_dop_edits</code> merges without touching UUIDs, so no copy. Denoise-on-crop unaffected.</li>
-  <li><strong>A species-less blog day disappears (no crash, no empty post)</strong>
-    <span class="tag-shipped">SHIPPED</span> (<code>8270aa8</code>, 2026-07-17) — a day with JPGs but no
-    recognized species (and no landscape photo) used to crash WriteBlog with <code>KeyError: 'biota'</code>,
-    and before that published an empty placeholder post. Now <code>Blog.dayHasContent()</code> checks THIS
-    day&rsquo;s own pictures (time window) for a species or a landscape blog-extra &mdash; deliberately NOT
-    &ldquo;<code>'biota'</code> in the species tree&rdquo;, which also holds the master&rsquo;s committed species
-    from <em>other</em> days. Empty &rarr; <code>Blog.removeEmptyDay()</code> drops it from the blog admin +
-    index, and sv4WriteBlog prunes any already-published post/pictures on the server, returning a distinct GUI
-    message (&ldquo;No species this day &mdash; no blog created&rdquo;). Needed <code>batch.py</code> to surface
-    a module&rsquo;s <code>result_msg</code> in the sequential + per-day runners. Conservative: a species day with
-    JPGs still pending is kept; never drops content on doubt. <code>makeRunSummaryPost</code> keeps a defensive
-    minimal-root guard for the virttrip/redo-blog paths. (A lingering empty day needs a WriteBlog re-run to
-    clear; broken thumbnails on other days = an upload/FTP-cache 404, not this change.)</li>
-  <li><strong>Two blog bugs behind &ldquo;the pruned day won&rsquo;t disappear / pictures 404&rdquo;</strong>
-    <span class="tag-shipped">SHIPPED</span> (<code>c425eb3</code> + <code>cb0f5e0</code>, 2026-07-17) — two
-    classic-Python / cache traps. <strong>(1)</strong> <code>Blog.blog_dict</code> was a <strong>class-level
-    mutable attribute</strong> shared by every <code>Blog</code> instance for the whole app session, and
-    <code>read_BlogAdmin</code> only ever ADDS, never clears &mdash; so a blog pruned from
-    <code>blog_admin.csv</code> (empty day, or a Manage-Blogs delete) lingered from an earlier instance and
-    <strong>reappeared in every rebuilt index</strong> though the CSV was clean (also why restarting the app used
-    to &ldquo;fix&rdquo; blog glitches). Fixed: each <code>Blog</code> gets its own <code>blog_dict</code>.
-    <strong>(2)</strong> <code>sftp.remove</code>/<code>rmtree</code> deleted server files but <strong>left their
-    <code>FTPcache.json</code> entries</strong>, and <code>cachedUpload</code> skips a path it thinks is already
-    uploaded &mdash; so after a delete a later re-upload was a no-op and the file stayed a <strong>404 that never
-    heals</strong> (the 03-13 drift; user-diagnosed). Fixed with <code>Sftp._invalidate_cache</code> on every
-    remote delete.</li>
-  <li><strong>Master Species Viewer</strong> <span class="tag-shipped">SHIPPED</span> —
-    standalone viewer for the master itself (<em>Master → Master Species Viewer…</em>),
-    <strong>scope = Master only</strong> with a searchable ~2000-species field driven by the
-    <strong>master’s own species list</strong> (not a trip’s <code>SpeciesCollection</code>).
-    Reuses the existing card grid + master read path (<code>RatingEditorCollection</code> full mode
-    + <code>MasterDB</code>); editing follows the master Read-Only rules.</li>
-  <li><strong>Regenerate ONE species' website page</strong> <span class="tag-shipped">SHIPPED</span> —
-    a “Regenerate page…” button in the Master Species Viewer re-renders + SFTP-uploads just that
-    species' page from the <strong>current master data</strong> (no re-read, no mutation). Fast: it
-    pulls only this species' pictures/files from the <code>MasterDB</code> SQLite index (never the
-    127&nbsp;MB <code>data_files.csv</code>), renders NL+EN via <code>makeSpeciesWebDirectory</code>,
-    and uploads its subtree; the done dialog shows clickable page URLs. Also fixed the qualifier
-    captions: <code>getBirdInfo</code> now recognises bare <code>juv/imm/ad</code>, and regenerate
-    re-derives sex/age/plumage from each picture's subject at render (the master's derived
-    <code>ageintext</code> columns were empty), so token-101 (“jonge aasgier”) and the age/sex/plumage
-    grouping work. Caveats: parent index thumbnails still need a full build; the master's stored
-    <code>ageintext</code> columns stay empty until a separate re-derive/re-commit pass.
-    (<code>c1a359d</code> / <code>afda800</code>)</li>
-  <li><strong>“Upgrade the best JPG” workflow</strong> <span class="tag-shipped">SHIPPED</span> —
-    the whole per-picture loop is built; the old “open” note was stale (it predated Regenerate-page,
-    which closed its last clause). Sort by rating in the Master Species Viewer and the small
-    best-picks surface; the large viewer's <strong>PL badge</strong> opens the RAW straight in DxO
-    PhotoLab (with the Explorer reveal beside it); render the <code>_DxO.jpg</code>; right-click the
-    master card → <strong>“Add new files for this picture (scan folder)”</strong> ingests the new JPG
-    + <code>.dop</code> and <strong>re-distils BestJPG</strong>; <strong>“Regenerate page…”</strong>
-    re-renders and re-uploads that one species page — which <em>is</em> the “confirm the website
-    re-publish picks it up” step. Best-pick size also stopped reporting the <code>-small</code>
-    thumbnail (<code>f0d7e69</code>: largest JPG, not the first one found). What is left is not the
-    workflow but the <em>scale</em> — see the next item.</li>
-  <li><strong>Find the pages that could show a bigger picture (bulk)</strong>
-    <span class="tag-complete">DONE</span> — the worklist and the crop-recovery batch shipped:
-    <strong>811 small website JPGs upgraded in place across 410 species</strong> (864 proposed, 53 set
-    aside). Of those 53 — a DxO/exposure job, not ours — <strong>47 still await review</strong>, which
-    the user works through at leisure (2026-07-15).</li>
-  <li><strong>EXIF-cache LRU retention</strong> <span class="tag-shipped">SHIPPED</span> — the
-    day/trip cache now stamps a <code>seen</code> epoch-day on every hit/write and
-    <code>prune_expired(ttl_days=90)</code> evicts only paths that stopped being touched (LRU, not
-    FIFO); the master cache is left unpruned (rebuilt wholesale by Rescan). A wrong eviction costs
-    at most one re-read.</li>
+  <li><strong>GPS / data-integrity umbrella</strong> <span class="tag-open">OPEN</span> — one item
+    left: <strong>tracklog geotag (2a)</strong>, i.e. a real GPX import (parse a logger/phone track,
+    match photos by timestamp, write GPS). The other three have shipped: GPS-from-addresses =
+    <em>Get GPS from location</em>; location-from-GPS = <em>Get location</em>; purge dangling
+    data_files/pictures = <em>Refresh Master Database</em>. What exists today is not a substitute:
+    the map interpolates between the photos taken just before and after (your own pictures as a
+    poor-man's tracklog), which cannot help a day with no GPS'd photos at all.</li>
+  <li><strong>Map polish</strong> <span class="tag-open">OPEN</span> — cosmetic polish; extend
+    map-delete to the day map; Phase 3 rectangle-select; Phase 4 published Leaflet.</li>
+  <li><strong>Compact the viewer toolbar + laptop-fit review</strong> <span class="tag-new">NEW</span> —
+    the wide filter/knob row and dialog sizing on small screens.</li>
 </ul>
-
-<h3>Maps &amp; master data integrity</h3>
-<p><strong>Maps — Phase 1 + 5</strong> <span class="tag-complete">SHIPPED</span> — a dependency-free
-  native OSM slippy-map (no QtWebEngine; <code>gui/map_view.py</code>). <em>Phase 1</em> plots a
-  species' GPS distribution from the Master Species Viewer (“Species Map…”): up-to-4-species
-  overlays, zoom-dependent clustering with count bubbles, click-a-bubble → filmstrip → large
-  viewer, Terrain/Standard basemaps. <em>Phase 5</em> adds a trip/day map over the LIVE collection
-  (all species): a “🗺 Map” button in the day viewer and “🗺 Map whole trip” on the Trip Overview,
-  spatial clustering, a time-ordered travel path with direction arrows, Smart Fit, and
-  <strong>drag-to-geotag</strong> for no-GPS pictures (drag onto the map, or right-click → “Place at
-  estimated position” which time-interpolates between neighbours). Reads GPS from already-loaded
-  memory (<code>gps_cached</code>) so a whole trip plots with zero exiftool spawns. Live-confirmed
-  on 2026 North Greece (1846 pics) and Kreta.</p>
-<p><strong>Refresh Master Database (dead-link reconcile)</strong> <span class="tag-complete">SHIPPED
-  &amp; run live</span> — <em>File ▸ Admin ▸ Refresh Master Database — Review… / Apply…</em>
-  reconciles the master CSVs with what is actually on disk under <code>biota/</code>: Review reports
-  REMOVE / REPOINT / ADD / SPECIES and can write the full suggested CSVs (Excel diff) + a
-  <code>display_status.csv</code> black-image scan; Apply backs up both CSVs and rewrites them
-  (metadata only — never touches image files). Ran live on the master: cleared ~43k dead file rows
-  and ~15k phantom pictures. Fixed the two black-image causes — dead-link phantoms (removed) and
-  <strong>Nikon D90 NEFs</strong> whose embedded JPEG sits under <code>OtherImage</code>/<code>JpgFromRaw</code>
-  (the extractor only tried PreviewImage/ThumbnailImage, so ~627 D90 pictures rendered black; now
-  fixed). Doc: <code>docs/refresh_master_database.md</code>. (<code>bc4a060</code> / <code>3d0e490</code>
-  / <code>4135c48</code>)</p>
-
-<h3>Maps &amp; GPS — to do</h3>
+<h3>Parked / rejected</h3>
 <ul>
-  <li><strong>Map for the Day (micro-trip) viewer</strong> <span class="tag-shipped">SHIPPED</span> —
-    verified live 2026-07-18 on the 2024-10-03 working day (76 pictures plotted).
-    <strong>No micro-trip-specific work was ever needed</strong>; the item stayed open only
-    because it was never checked off. The 🗺 Map button lives on <code>ImagePreviewDialog</code>
-    itself (<code>image_viewer.py</code>, <code>_on_show_map</code>) rather than on any
-    trip-specific host, and the Days lane opens that very dialog
-    (<code>days_process.py</code>) with <code>readonly</code> defaulting to <strong>False</strong>.
-    So a working day's folder gets a writable <code>SidecarCollection</code> →
-    <code>read_only=False</code> → the map's <code>_can_place</code> is true → the same
-    <code>TripMapView</code> a trip day gets: clustering, travel path, no-GPS tray,
-    drag-to-geotag, suggested position, drag-a-group-to-move. The geotag write path is fully
-    implemented on that collection (<code>location_targets</code> → <code>write_gps</code> →
-    <code>note_gps_written</code> → <code>note_location_written</code>).
-    <em>The lesson worth keeping:</em> Phase 5 was built against the <em>collection
-    interface</em> rather than against a trip, so every viewer reusing
-    <code>ImagePreviewDialog</code> inherits the map for free — a new collection context needs
-    no map work, only a collection that can report GPS and name its
-    <code>location_targets</code>. (A non-finding checked en route:
-    <code>note_location_written</code> is absent from <code>PreviewCollection</code> — the
-    <em>trip</em> path — but the base <code>PictureCollection</code> defines it as a deliberate
-    no-op for collections that don't cache location rows, so a trip-day geotag with a place
-    name does not crash.)</li>
-  <li><strong>Virtual-trip map</strong> <span class="tag-shipped">SHIPPED</span> —
-    the same map (bubbles → filmstrip → large view, travel path) over an album's
-    accumulated collection, read-only except for the geotag carve-out: a picture with NO
-    coordinate may be placed, and the write lands in the master's own sidecar.</li>
-  <li><strong>GPS / data-integrity umbrella</strong> <span class="tag-open">OPEN</span> —
-    <strong>one item left: tracklog geotag (2a)</strong>, i.e. a real GPX import (parse a
-    logger/phone track, match photos by timestamp, write GPS). The other three have shipped:
-    GPS-from-addresses = <em>Get GPS from location</em>; location-from-GPS = <em>Get
-    location</em>; purge dangling data_files/pictures = <em>Refresh Master Database</em>.
-    What exists today is not a substitute: the map interpolates between the photos taken just
-    before and after (your own pictures as a poor-man's tracklog), which cannot help a day
-    with no GPS'd photos at all.</li>
-  <li>Map cosmetic polish; extend map-delete to the day map; Phase 3 rectangle-select; Phase 4
-    published Leaflet.</li>
-</ul>
-
-<h3>GUI &amp; cache — to do</h3>
-<ul>
-  <li><strong>Compact the filter/knob toolbar</strong> <span class="tag-complete">DONE</span> —
-    the wide Species Viewer top row (Species · language · Camera · Sort · Map · Regenerate · JPG-only ·
-    colour swatches · Columns · Blue/Purple) was reworked to fit narrow screens; done on the laptop
-    (2026-07-15), hardly any issues. Follow-up (d9a3a83): the redundant <em>Species / Camera / Sort</em>
-    text labels were dropped from the Trip Species Viewer too (the combos carry tooltips), mirroring the
-    Master viewer.</li>
-  <li><strong>&ldquo;(only RAW)&rdquo; species flag — publication to-do at a glance</strong>
-    <span class="tag-complete">DONE</span> (d9a3a83) — while getting the Kreta trip ready the user
-    reached for the old <em>Count Species</em> batch to see which species still needed a JPG. Now the
-    <strong>Trip Species Viewer</strong> picker does it inline: any species whose <em>trip</em> pictures
-    are all RAW/HEIC (no JPG on disk yet — so it won&rsquo;t appear on the website) reads
-    &ldquo;<strong>alpenkraai (only RAW)</strong>&rdquo;. When no &ldquo;(only RAW)&rdquo; entries remain,
-    the trip is done. Uses the same JPG-on-disk test as the JPG-only filter (HEIC counts as RAW);
-    <strong>master pictures never count</strong> — it&rsquo;s the trip&rsquo;s own readiness, so it&rsquo;s
-    a trip-only feature. The combo&rsquo;s stored value stays the plain name, so filter/sort/language are
-    unaffected; it short-circuits per species after the first JPG, so it&rsquo;s cheap on a big trip.</li>
-  <li><strong>Laptop GUI fit review</strong> <span class="tag-complete">DONE</span> —
-    walked every dialog on a laptop-sized screen (2026-07-15); each fits, hardly any issues.</li>
-  <li><strong>Normalise cached preview size to the OM-1 long edge (~3200 px)</strong>
-    <span class="tag-complete">DONE</span> (shipped 2026-07-13) — the largest-first extractor fix
-    (needed so the D90 shows at all) had started caching multi-MB previews. The extractor now downscales
-    anything past ~3200&nbsp;px on the long edge to one reference size, and also re-encodes near-lossless
-    embeds that stay <em>within</em> the pixel cap but are still fat (the D90's 2.3&nbsp;MB case). A
-    preview that is already fine is cached byte-for-byte (the OM-1, most of the library) — no decode, no
-    generation loss. New <code>[preview]</code> config + a knob in the Decode Quality dialog.</li>
-  <li><strong>Preview-cache hygiene</strong> <span class="tag-complete">DONE</span>
-    (<code>cf4c13f</code>) — the cache now has the same 90-day LRU prune as the EXIF cache, an orphan
-    sweep (source folder or file gone → drop it — the only thing that catches deletions made outside the
-    app), and delete hooks on retire / trash / colour-delete; each cache folder is self-describing (a
-    <code>source.txt</code> naming its source). A live clean found <strong>17.65 of 24.35&nbsp;GB was
-    dead</strong>. Surfaced via a daily startup prune + <em>Manage Caches ▸ Prune stale</em>. Guardrail:
-    an unplugged drive looks like a deleted trip, so the sweep concludes nothing when the volume isn't
-    mounted.</li>
-</ul>
-
-<h3>Parked (by design)</h3>
-<ul>
-  <li><span class="tag-parked">PARKED</span> <strong>Delete step 3 — delete JPG-bearing UPNs.</strong>
-    Blocked by the hard “never trash a JPG” invariant; whether/how to allow it (e.g. only if not
-    referenced by any published page) is an open question, intentionally not built.</li>
-  <li><span class="tag-rejected">REJECTED</span> <strong>Undo → “Restore from trash”.</strong> The
-    engine capability (<code>undo_delete</code>/<code>apply_restore</code>) exists headless, but a lone
-    “Undo” button implies a generic action-log we don't have, so this is decided against — not just
-    deferred. Data is already safe in <code>.trash</code>; if recovery ever needs to be user-facing,
-    it would be a deliberate <em>Restore-from-trash</em> browser, not an Undo.</li>
-  <li><span class="tag-parked">DEFERRED</span> Trip-side SQLite DBs — same pattern, not urgent now
-    the master design is proven.</li>
+  <li><span class="tag-parked">PARKED</span> Delete step 3 — delete JPG-bearing UPNs.</li>
+  <li><span class="tag-parked">DEFERRED</span> Trip-side SQLite DBs — same pattern, not urgent now.</li>
+  <li><span class="tag-rejected">REJECTED</span> Undo → “Restore from trash”.</li>
 </ul>
 
 <!-- ============================================================ -->
-<h2>4. Trip-to-Master Pipeline <span class="tag-complete">COMPLETE ✓</span></h2>
-
-<p>The <strong>“Add Trip Pictures to Master”</strong> 3-step dialog + <strong>Run-all</strong>
-button are shipped, and the on-disk-truth <strong>“Delete Local Files Backed Up in Master…”</strong>
-report + red delete (<code>trip_delete_scan</code>) is live and now the sole delete authority; the
-older <code>svr7DeleteFiles</code> / <code>deletelist.csv</code> path has been removed. Nothing open —
-the whole trip → master flow is in daily use.</p>
-
-<h3>Done</h3>
-<ul>
-  <li><strong>⚠ DATA-LOSS FIX — ghost rows in the trip→master commit destroyed ~14k local originals</strong>
-    <span class="tag-bug">FIXED</span> <code>a7634b8</code>, Kreta-verified 2026-07-24 — the commit wrote
-    CSV rows for files it never copied, and the delete step trusted CSV membership, so it deleted local
-    RAWs the master never physically held. Three causes, all fixed:
-    <strong>(1)</strong> <code>sv6Freeze</code> copied only species with a rendered JPG
-    (<code>iPicturesWithJPGsThisRun</code>) → undeveloped species got rows but no files; now gates biota on
-    <code>iPictureThisRunCount</code> (every identified picture, RAW/XMP incl. undeveloped), verifies each
-    copy (exists + size) and <strong>aborts the freeze</strong> if any file did not land.
-    <strong>(2)</strong> a brand-new undeveloped species kept an empty node <code>TargetPath</code> (only
-    set in the JPG loop) so its master directory was never created; <code>projectlib</code> now sets it on
-    any species assignment and <code>sv6</code> makedirs the exact target (also closes a Mac
-    case-sensitivity gap). <strong>(3)</strong> untagged (no-species) pictures were written as rows at the
-    master <em>root</em> with no file — the biggest source; now excluded from the master CSVs in a master
-    commit (<code>isMasterRepository</code>), trip pipeline + existing rows untouched. Delete side:
-    <code>trip_delete_scan</code> now requires a physically-present, size-matching master copy before
-    proposing any delete (a <code>.dng</code> only when its RAW is confirmed).
-    <p class="note">Live test: 609/609 Kreta species landed (496/496 undeveloped), 0 ghost rows; a scoped
-    prune then cleared 635 pre-fix untagged ghost pictures / 1567 dead file rows from the master.
-    Forward-only — does not recover already-lost pictures. Also shipped: the trip-overview
-    <strong>“In Blog” column</strong> (mirrors the album mechanism; <code>sv4WriteBlog</code> honors it) so
-    a day like an <code>iphone</code> folder stays out of the blog.</p></li>
-  <li><strong>Retire svr7 / deletelist.csv</strong> <span class="tag-shipped">DONE</span> —
-    <code>deletelist.csv</code> removed end-to-end (<code>sv6</code> no longer writes it, the
-    <code>sv7</code> existence-gate is dropped, <code>svr7DeleteFiles</code> deleted);
-    <code>trip_delete_scan</code> confirms every delete against the clean master. Verified live via a
-    full freeze → commit → publish. (<code>0fb1695</code>)</li>
-  <li><strong>Converge the two no-trip ingest paths</strong> <span class="tag-shipped">DONE</span> —
-    one context-aware <code>AddToMasterDialog</code>: Master ▸ “Add Pictures to Master…” keeps an
-    editable folder and remembers it across sessions (leftover-rescue after a trip is moved); Days ▸
-    “Add to Master” locks the path to the day’s folder and stays stateless. (<code>9e2b233</code>)</li>
-  <li><strong>Drag-and-drop pool — a third way into the master</strong>
-    <span class="tag-shipped">SHIPPED</span> <code>6290701</code>, 2026-07-22, verified on Gran
-    Canaria (added dolphins live in the album + on the published blog). Beside date-range albums and
-    day folders, you can now <em>drag a hand-picked selection</em> (RAW + render + sidecars) onto
-    “Add Pictures to Master”. The drop zone is a <strong>visible tray</strong>: one thumbnail card per
-    picture with a file count; dropping only builds the pool (re-dropping is harmless), and nothing is
-    read until <strong>Scan pool</strong>. Name and rate the pictures in <strong>Review</strong>
-    (which now opens even when nothing is tagged yet, starting in <em>All</em>), then
-    <strong>Commit</strong>. Because an album is a live date-range query over the master, a picture
-    committed with the right camera date <strong>appears in its album automatically</strong> — no
-    separate “add to album” step. Key fix: the commit rebuilds the master SQLite cache
-    (<code>ensure_fresh</code>) and repaints the overviews, since the batch commit writes the CSVs
-    outside the DB journal and the album’s cached query was otherwise stale.</li>
-</ul>
-
-<h3>Known / next</h3>
-<ul>
-  <li><strong><code>sv7</code> regenerated EVERY species’ <code>-small.jpg</code> on every commit —
-    no cache, whole-master loop.</strong> <span class="tag-complete">FIXED</span> (f68d36f, 2026-07-22)
-    — <code>jpgResizeCopy</code> (<code>engine/websupport.py</code>) had no exists/mtime guard: it
-    re-opened + resized + re-saved the thumbnail on <em>every</em> call, and
-    <code>sv7WriteCommit.putRecursiveTreeWeb</code> (also <code>svv4BuildWebsite</code>) called it for
-    every row of the whole-master <code>allspecies.csv</code> — both the slowness AND the
-    “not cached” symptom. Fix: one guard after the never-write-over-source refusal — skip when the
-    <code>-small.jpg</code> exists and its mtime ≥ source; rebuild only on source change; missing
-    source falls through to <code>Image.open</code> (raises + logged). <strong>Verified live: whole-master
-    publish ~20× faster.</strong></li>
-  <li><strong>Pool-added pictures wrote their <code>-small.jpg</code> into the deleted temp pool.</strong>
-    <span class="tag-complete">FIXED</span> (00f99d2, 2026-07-22) — <code>writeOneSpecies</code>
-    registered the transient <code>sourcestr</code> (a temp <code>sv_droppool_…</code> path, or a
-    trip-local file) as the <code>allspecies.csv</code> resize source, so the thumbnail landed where
-    <code>putRecursiveTreeDisk</code>’s <code>copytree(frozen/biota → repository/biota)</code> never
-    reached — the local <code>biota/</code> thumbnail was missing until a full rebuild (website upload
-    was fine; not corruption). Fix: in the copy branch register the frozen biota copy
-    (<code>targetstr</code>) — the real persistent file <code>shutil.copy</code> just made — so
-    <code>-small.jpg</code> lands beside it and is carried into <code>biota/</code>. The historical
-    <code>_src_already_at_final</code> branch stays <code>sourcestr</code>, preserving the cache above.
-    (Minor aside, still open: the biota path in <code>data_files</code> shows a mixed
-    <code>\</code>/<code>/</code> separator — a path-hygiene smell, resolves fine.)</li>
-</ul>
+<h2>4. Trip-to-Master Pipeline</h2>
+<p class="none">No current work planned. Complete — see <em>Capabilities Added</em>.</p>
 
 <!-- ============================================================ -->
-<h2>5. SmallMaster (Laptop-Friendly Master) <span class="tag-complete">COMPLETE ✓</span></h2>
-<p>Shipped and live-tested on SmallBoy. BigBoy builds <code>smallmaster.zip</code> (relativized
-CSV paths); SmallBoy installs and auto-locks to read-only. No open items.</p>
+<h2>5. SmallMaster</h2>
+<p class="none">No current work planned. Complete — see <em>Capabilities Added</em>.</p>
 
 <!-- ============================================================ -->
 <h2>6. Taxonomy &amp; Species <span class="tag-parked">PARKED (by design)</span></h2>
-<p>All four are deliberately on the not-now list.</p>
 <ul>
   <li><span class="tag-parked">PARKED</span> <strong>Sequence redesign</strong> — replace the
-    “040 passeriformes” text-prefix sort with an eBird <code>TAXON_ORDER</code> float column
-    (schema change across the species tree + sort/display).</li>
-  <li><span class="tag-parked">PARKED</span> <strong>Auto-detect obscure flag</strong> — derive
-    from GBIF family (Orchidaceae, etc.) using data already fetched; no extra API call.</li>
-  <li><span class="tag-parked">PARKED</span> <strong>Placeholder-species cleanup</strong> —
-    <code>? &lt;name&gt;</code> entries are intentional placeholders that propagate trip→master;
-    coordinated cleanup across both collections.</li>
-  <li><span class="tag-parked">PARKED</span> <strong>Regional most-likely-birds</strong> (eBird) —
-    weighted autocomplete for species assignment.</li>
+    “040 passeriformes” prefix with a Sequence float column (eBird TAXON_ORDER).</li>
+  <li><span class="tag-parked">PARKED</span> <strong>Auto-detect obscure flag</strong> — derive from
+    the GBIF family, no extra API call.</li>
+  <li><span class="tag-parked">PARKED</span> <strong>Placeholder-species cleanup</strong> — the
+    “? &lt;name&gt;” placeholders, coordinated cleanup.</li>
+  <li><span class="tag-parked">PARKED</span> <strong>Regional most-likely-birds</strong> (eBird).</li>
 </ul>
 
 <!-- ============================================================ -->
 <h2>7. Rating &amp; Website <span class="tag-parked">PARKED (by design)</span></h2>
 <ul>
-  <li><span class="tag-parked">DEFERRED</span> <strong>Rating-formula tuning</strong> — weights
-    (Red/Yellow/Green boost; star/size/DxO/description balance) are tuned <em>last</em>, once the
-    viewer work has settled which pictures get seen and rated. Feeds the website best-pick.</li>
+  <li><span class="tag-parked">DEFERRED</span> <strong>Rating-formula tuning</strong> — fine-tune the
+    Rate formula at the end of viewer convergence; feeds the website best-pick.</li>
   <li><span class="tag-parked">NEEDS DECISION</span> <strong>HEIC / PNG sidecar capture</strong> —
-    HEIC/PNG-only pictures have no writable sidecar, so rating/colour can’t be stored (controls
-    greyed). Options: (a) separate <code>.xmp</code> beside the HEIC, (b) patch the <code>.dop</code>,
-    (c) write into the HEIC. User decision required before any code.</li>
+    formats with no writable sidecar need a user call.</li>
 </ul>
 
 <!-- ============================================================ -->
-<h2>8. Viewer Convergence <span class="tag-complete">COMPLETE ✓</span></h2>
-<p>All convergence items closed: shared PictureCard + UPN grid, LargeImageView + filmstrip +
-right panel, persisted splitters, description write-back, embeddable SpeciesInfoPanel, adaptive
-filmstrip position, inline master comparison (via Trip+Master scope), grid↔large selection sync.</p>
+<h2>8. Viewer Convergence</h2>
+<p class="none">No current work planned. Complete — see <em>Capabilities Added</em>.</p>
 
 <!-- ============================================================ -->
 <h2>9. Usability &amp; Polish</h2>
-<h3>Done</h3>
-<ul>
-  <li><strong>Connectivity / publish reliability</strong> <span class="tag-shipped">DONE</span> —
-    publishing (blog / website / commit) now checks the <strong>SFTP publish server</strong>
-    (<code>engine.connectivity.publish_reachable</code>), not a website HTTP ping, so a sluggish
-    website no longer reads as “no internet”; the failure message is specific. Added
-    <strong>Help → Connection status</strong> lamps (publish / GBIF / place names / website, with
-    latency and an amber “slow” state). (<code>99547b5</code>)</li>
-  <li><strong>Species qualifier picker + abbreviations</strong> <span class="tag-shipped">DONE</span> —
-    sex / age / plumage toggles in both species editors; the qualifier shows on grid cards and the
-    large viewer as <code>fuut ♂♀ br.</code> (<code>9efab26</code> / <code>e69cbf8</code>)</li>
-  <li><strong>Menu gating — grey items whose precondition isn't met</strong>
-    <span class="tag-shipped">DONE</span> — Phase 1 <code>3e93ca7</code> + Phase 2 <code>a75c62d</code>,
-    live-verified. Menu items grey out <strong>live</strong>, re-evaluated on every menu open via
-    <code>QMenu.aboutToShow</code> (no dependency on when the menu rebuilds). <strong>Phase 1:</strong>
-    predicates <code>has_master</code> / <code>has_full_master</code> / <code>has_active_trip</code> /
-    <code>has_active_album</code> / <code>has_active_day</code> on ~32 items; also fixed two silent
-    no-ops (Edit Trip Species List / Edit Species List used to just return with no message when no
-    trip/master). <strong>Phase 2 — the To Master lifecycle chain:</strong> <em>Merge Pictures into
-    Master</em> enables once every <code>YYYY-MM-DD</code> day with &gt;0 JPGs is published (aux folders
-    like <code>iphone</code> ignored); <em>Retire</em> and <em>Delete Local Files</em> enable once
-    <strong>merged</strong> (merge-done reuses the existing <code>master_commits.csv</code> marker —
-    no new hook); <em>Delete Trip</em> enables once <strong>merged AND retired</strong> (retire stamps a
-    new <code>retired_to_album</code> flag into <code>trip.ini</code> via a surgical writer + a final
-    “Recording retirement” pipeline step); <em>Make the Blogs Clickable</em> enables once ≥1 day
-    published. Day-scan memoised ~3&nbsp;s. Menu-reorg follow-on #2.</li>
-</ul>
 <h3>To do</h3>
 <ul>
-  <li><strong>Force Delete Trip (destructive — needs a safe test case)</strong>
-    <span class="tag-open">OPEN</span> <span class="tag-parked">DEFERRED</span> — a second
-    <strong>Delete Trip…</strong> under <strong>Trips ▸ Advanced</strong> that bypasses the retire-scan
-    blockers, behind a BIG WARNING confirm. The regular <em>To Master ▸ Delete Trip</em> is gated on
-    merged+retired (shipped); Force is the escape hatch for (a) legacy trips retired before the
-    <code>retired_to_album</code> flag existed and (b) the B3 active-trip block — the menu targets the
-    <em>active</em> trip, which <code>trip_retire_scan</code> refuses. <strong>Spec:</strong> reuse
-    <code>gui.trip_retire.retire_trip_dialog</code> with a force path that skips B1/B2/B3 and shows an
-    explicit destructive confirm; no enable precondition on the item. Deferred by user 2026-07-28 —
-    too hard to build/test safely without a throwaway trip; documented rather than half-built.</li>
-  <li><strong>Menu reorganization v3 — “To Master” bridge menu</strong>
-    <span class="tag-shipped">DONE</span> — SHIPPED 2026-07-28 (ClaudeSpecies), live-verified. Trip menu
-    renamed <strong>Trips</strong> (plural, like Days/Albums); also fixed a pre-existing dead lookup
-    (re-run Write Summary after a species-name edit was a silent no-op, the item being nested under
-    Advanced). Pure relocation of existing items
-    (no new functionality except <strong>Delete Trip…</strong> and two grouping submenus) so the menus
-    mirror the trip→master data flow. Key moves: a new top-level <strong>To Master</strong> menu =
-    Publish Species Names + Merge Pictures into Master + Retire Trip to Album + Delete Local Files +
-    Delete Trip…; <strong>Trip</strong> keeps its whole publishing cycle (per-day 1–4 +
-    <strong>Make the Blogs Clickable</strong> + <strong>Manage Trip Publication</strong> as steps 5–6,
-    re-run each pass — practice, not a once-only finalize); <strong>Master</strong> gains a
-    <strong>Maintain Master Database</strong> submenu (Refresh Review/Apply + Add Missing Place Names +
-    Fill Picture GPS, moved out of File ▸ Admin); File ▸ Admin → <strong>Developer Tools</strong>
-    (debug-gated only); <strong>Albums</strong>: “Rating Editor” → “Album Species Viewer”,
-    “Recreate Album Blogs” key → “Make the Blogs Clickable”; Days ▸ “Add to Master” and
-    Master ▸ “Add Pictures to Master…” stay separate (structured whole-day vs free-format pool).
-    <strong>Publish Species Names appears in BOTH Trip and To Master</strong> (speciescollection is a
-    shared reference book; it merges names new to the trip). Follow-ons raised:
-    (1) redesign the Trip-to-Master Dashboard (keep, clarify not complicate);
-    (2) grey out invalid (state-machine) menu options — <strong>DONE, see the Menu gating entry above</strong>;
-    (3) one name per function across Trip / Master / Album (subsumes the parked “Rating Editor” rename below);
-    (4) reduce the GPS “four homes” seam so the three GPS fix-tools aren't needed;
-    (5) <strong>eliminate “Publish Species Names”</strong> by auto-propagating new species into the single
-    <code>speciescollection</code> during <strong>Summarize</strong> — add to the active list during the run,
-    fold new species into the global master list at end of run (nearly free in CPU).</li>
+  <li><strong>Force Delete Trip</strong> <span class="tag-open">OPEN</span> — the deferred
+    force-delete path (spec'd as a TODO).</li>
+  <li><strong>AVI list processing upgrade</strong> <span class="tag-new">NEW</span>.</li>
 </ul>
-<h3>Parked / watch</h3>
+<h3>Parked (by design)</h3>
 <ul>
-  <li><strong>Preview cards don't resize live</strong> <span class="tag-parked">PARKED</span> —
-    card width is fixed at build, recomputed only on the Per-row spinner. A debounced
-    <code>resizeEvent</code> → the existing grid rebuild is small, but live resize hammers the
-    card-rebuild / async-reload path (the one behind the earlier destroyed-widget crash), so it isn't
-    free. Not worth it now; if revisited, reflow the column <em>count</em> only, not thumbnail re-decode.
-    (Parked 2026-07-15.)</li>
-  <li><span class="tag-parked">WATCH</span> Translation edge cases — editing a source text orphans
-    its old CRC cache entry (no crash, entries accumulate); a competing HEIC Headline/Description
-    could re-resolve to stale text after a re-read (not observed).</li>
-  <li><span class="tag-parked">DEFERRED</span> User-configurable cache locations (all under
-    <code>%LOCALAPPDATA%</code> today).</li>
-  <li><span class="tag-parked">PARKED</span> Align the Albums menu’s remaining “Rating Editor”
-    entry with the “Trip Species Viewer” rename (or an Album-specific name).</li>
+  <li><span class="tag-parked">PARKED</span> Preview cards don't resize live.</li>
+  <li><span class="tag-parked">WATCH</span> Translation edge cases — editing a source text orphans an override.</li>
+  <li><span class="tag-parked">DEFERRED</span> User-configurable cache locations.</li>
+  <li><span class="tag-parked">PARKED</span> Align the Albums menu's remaining “Rating Editor” naming.</li>
 </ul>
 
 <!-- ============================================================ -->
 <h2>10. Cross-platform (Mac) Prep</h2>
-<p>Path layer <span class="tag-complete">P1 DONE</span>: stored paths (CSV <code>WindowsFileName</code>,
-etc.) are now parsed host-independently (<code>utils/paths.py</code> + <code>PureWindowsPath</code>),
-so a Windows-authored value resolves on macOS. The earlier <code>open_path()</code> pass is also in.
-Full design in <code>path_portability_plan.md</code>.</p>
-<h3>To do (when the Mac arrives)</h3>
 <ul>
   <li><strong>Master data relativization</strong> <span class="tag-open">OPEN</span>
-    <span class="tag-parked">until Mac</span> — the live master <code>data_files.csv</code> is
-    <em>202,661 rows, 100% absolute drive-letter</em> (<code>E:/…</code>); none resolve without an
-    <code>E:</code> drive. Needs a one-time, reviewed relativization migration (dry-run report →
-    confirmed apply w/ backup) to make the data portable.</li>
+    <span class="tag-parked">until Mac</span> — the live master <code>data_files.csv</code> holds
+    absolute Windows paths; relativize when the Mac arrives.</li>
   <li><strong>Case-sensitivity + defaults</strong> <span class="tag-open">OPEN</span>
-    <span class="tag-parked">until Mac</span> — strip full-path <code>.lower()</code> in
-    <code>engine/projectlib.py</code> (website build); make the DxO/default paths blank/config
-    instead of Windows <code>.exe</code> strings.</li>
+    <span class="tag-parked">until Mac</span> — strip full-path <code>.lower()</code>, no drive-letter defaults.</li>
 </ul>
 
 <!-- ============================================================ -->
 <h2>11. Performance &amp; EXIFtool</h2>
-<h3>Done</h3>
-<ul>
-  <li><strong>EXIFtool parallel workers</strong> <span class="tag-complete">SHIPPED</span> — cold
-    day/master reads split the uncached files across N independent exiftool processes
-    (<code>exifcache.read_metadata_parallel</code> + <code>auto_worker_count</code> = min(cpu//2, 16,
-    files//24)); wired into sv2 Read Directory, master Rescan, and SD-card XMP creation. Speedup peaks
-    at physical cores (BigBoy ≈7.4×; master rescan 159,973 files cold ~5m25s @16). Output byte-identical
-    to serial. Config <code>[performance] exif_workers = auto</code>. (<code>65e0c45</code>)</li>
-</ul>
 <h3>To do</h3>
 <ul>
-  <li><strong>GBIF lookup disk-cache</strong> <span class="tag-open">OPEN</span> — after the parallel
-    EXIF read, species classification is the Read-Directory bottleneck (704 files read in 2.0&nbsp;s, then
-    GBIF dominates). GBIF results are cached only in memory for the run. Persist a subject-string →
-    backbone cache to disk (incl. not-found, with a TTL — a name unknown today may resolve later), and/or
-    write GBIF-resolved species back into <code>speciescollection</code> at session end (the more valuable
-    half: the name then resolves locally with no lookup at all). Caching beats parallelizing (external API
-    + rate limits). <strong>Low priority (2026-07-15) — does not hurt badly</strong>: the in-memory cache
-    already short-circuits within a session, so it only costs on a fresh session / new machine.
-    Estimate ~0.5–1 day, low risk (reuses the EXIF/sidecar/preview disk-cache pattern).</li>
-  <li><strong>Shared persistent (global) exiftool server</strong> <span class="tag-rejected">REJECTED</span> —
-    one app-wide <code>-stay_open</code> exiftool + worker pool. Decided against as the <em>wrong shape</em>,
-    not merely deprioritised: the value was already captured by targeted fixes (parallel workers for the
-    cold bulk read; batched writers + batched preview extract + per-op <code>-stay_open</code> for the
-    write/read storms; map GPS from memory). What a global server adds now is launch-overhead elimination
-    on scattered small ops, none on a hot path — and a single serialized server <strong>conflicts with the
-    parallel-worker model</strong> that owns the hot path (which wants N processes, not one), so it can't
-    replace the pool, only add lifecycle / crash-recovery / thread-safety cost. Escape hatch: if launch
-    overhead ever shows on an interactive path, use a narrow <em>per-surface</em> <code>-stay_open</code>
-    (the existing pattern), never a global server. (2026-07-15)</li>
+  <li><strong>GBIF lookup disk-cache</strong> <span class="tag-open">OPEN</span> — persist GBIF family
+    lookups to disk after the parallel-worker win.</li>
+  <li><strong>Smarter immediate update of <code>speciescollection</code></strong> <span class="tag-new">NEW</span>.</li>
 </ul>
-<h3>Parked (by design)</h3>
+<h3>Parked</h3>
 <ul>
-  <li><span class="tag-parked">PAUSED</span> General micro-perf sweep — one <code>processEvents</code>
-    throttle shipped; the rest was non-winning or bordered risky metadata paths. Revisit only with
-    a measured bottleneck.</li>
+  <li><span class="tag-parked">PAUSED</span> General micro-perf sweep — the real value is the
+    XMP/.dop/PhotoLab write-contract, not micro-perf.</li>
 </ul>
 
 <!-- ============================================================ -->
-<h2>12. Landscapes in the Master <span class="tag-new">NEW</span> <span class="tag-big">ARCHITECTURAL</span></h2>
-<p>Raised 2026-07-12 while adding the map's All/Species scope — “Species” drops exactly these
-  pictures, which made their status visible. Today a landscape / context photo is a
-  <strong>trip-only, second-class citizen</strong>: it never reaches the master.</p>
-
-<h3>GUI authoring for blog extras — the front half of this chapter
-  <span class="tag-shipped">SHIPPED 2026-07-24</span></h3>
-<p>Landscapes can now be <em>declared and titled</em> entirely inside the app — the natural first
-  step of Ch 12, before the master-ingest re-architecture below. In the large viewer (all three hosts:
-  Image Preview, culling/album, rating editor):</p>
+<h2>12. Landscapes in the Master <span class="tag-big">ARCHITECTURAL</span></h2>
+<p>GUI authoring and the Add-to-Master <em>drag</em> path have shipped and are live-confirmed into the
+  master — see Capabilities ch. 12. The one untested path is the bulk trip merge. Remaining:</p>
 <ul>
-  <li><strong>🌄 “Mark as landscape / context photo”</strong> button in the Species area sets the
-    <code>landscape</code> marker without needing to know the keyword; typing <code>landscape</code> in
-    the species field still works and <strong>no longer trips the “unknown species” warning</strong>
-    (<code>gui/species_editor.py</code> — <code>isBlogExtra</code> carve-out in the commit guard).</li>
-  <li>The Species area is now <strong>mode-aware</strong>: a blog extra shows a greyed
-    <strong>“🌄 Landscape / context photo”</strong> block (with a <em>“Not a landscape → set species”</em>
-    way back) instead of the taxon editor. Driven by a new <code>PictureItem.is_blog_extra</code>
-    (subject → <code>isBlogExtra</code>) on the preview / sidecar / rating items.</li>
-  <li>An editable <strong>HEADLINE</strong> field (the card/blog title = <code>XMP:Headline</code>) now
-    sits above DESCRIPTION, wired through <code>set_headline</code> / <code>can_edit_headline</code> →
-    <code>apply_headline</code> (rating) · <code>write_tag</code> (sidecar) ·
-    <code>fpr.updateHeadline</code> (preview). Previously the Headline was read-only in the GUI and could
-    only be set in an external tool.</li>
-  <li>The grid <strong>card title shows the Headline</strong> for a landscape (matching the website)
-    instead of the filename (<code>display_name</code> fallback in all three providers).</li>
+  <li><strong>Test the trip Read&amp;Summarize → Freeze landscape merge on the real master</strong>
+    <span class="tag-test">NEEDS TEST</span> — the code exists and is trip/headless-verified, and the
+    drag path is already live-confirmed, but the bulk <em>Freeze</em> merge has never been run live into
+    the production master. <strong>Test on the Spain trip.</strong> The usual way — dry-run report →
+    review → explicit apply with backup — and confirm the master is byte-correct before trusting it.</li>
+  <li><strong>Backfill operator</strong> <span class="tag-open">OPEN</span> — re-ingest landscapes frozen
+    <em>before</em> this change (still loose in the picture root / retired trips), which have no master copy.</li>
+  <li><strong>Topic web pages</strong> <span class="tag-parked">OPTIONAL</span> — a per-year landscape
+    gallery; storage and publication are separable, and the <code>on_website</code> registry flag is the switch.</li>
 </ul>
-<p class="note"><strong>Gotcha learned (keep):</strong> a blog extra still needs a rendered JPG to appear
-  in the blog. <code>collectBlogExtras</code> skips any picture whose <code>BestJPG == ""</code>
-  (<code>engine/websupport.py:1558</code>). A landscape shot RAW-only (ORF + <code>.xmp</code>, no
-  <code>_DxO.jpg</code> yet) is correctly authored and titled but will not render in the day blog until
-  PhotoLab produces its JPG — same rule as a species photo. Not a bug; expected.</p>
-<h3>The architectural half: landscapes now have a home in the master (<code>topics/</code> branch)
-  <span class="tag-shipped">SHIPPED 2026-07-24</span></h3>
-<p>Built in four reviewed phases (<code>c313732</code>, <code>2b3c2d6</code>, <code>a75db54</code>);
-  live-confirmed on the 2026 Kreta trip (3 landscapes → <code>topics/landscape/2026/</code>).</p>
-<ul>
-  <li><strong>Generic topics engine</strong> (<code>engine/topics.py</code>): a declarative
-    <code>TopicRegistry</code> (seeded with the single <code>landscape</code> topic; CSV-loadable) replaces
-    the hardcoded keyword set. <code>route()</code> injects a synthetic <code>topics/&lt;topic&gt;/&lt;leaf&gt;</code>
-    chain into the <em>same</em> <code>sc_dict</code>/<code>species_dict</code>, so <code>getPathToSpecies</code>
-    yields <code>topics/landscape/2026/</code> through the identical walk that builds
-    <code>biota/…/pica pica/</code>. “Landscape-first vs. more-topics” was a false choice — the mechanism is
-    identical; only the number of registry rows differs.</li>
-  <li><strong>Read-only dry run</strong> (<code>engine/topics_scan.py</code> + <code>tools/topics_dry_run.py</code>):
-    previews per candidate the target path, rating+colour read from the <strong><code>.dop</code></strong>
-    (not the <code>.xmp</code>), JPG presence, and conflicts. Writes nothing.</li>
-  <li><strong>Ingest</strong> (<code>sv6Freeze</code> + <code>projectlib</code>): the freeze stops
-    <em>excluding</em> blog extras and routes them via their <code>topics/…</code> <code>TargetPath</code>
-    like any picture — files copied into the master tree, <code>species.csv</code> topic rows, counters,
-    best-JPG. Covered by the daily backup; verified byte-identical through the MasterDB checkpoint
-    round-trip.</li>
-  <li><strong>Containment</strong> turned out mostly free: the <code>biota</code> walk (blog species walk +
-    <code>makeWebDirectories</code>) never reaches the sibling <code>topics</code> root, so <strong>no topic
-    species pages / occurrence map</strong> are generated. Explicit guards only where an enumerator walks
-    <em>all</em> species: the blog card renderer (a topic leaf renders as a Headline extra, not a species)
-    and the Master Species Viewer / Move-to-species (<code>TargetPath NOT LIKE 'topics/%'</code>).</li>
-</ul>
-<p class="note"><strong>Remaining for Ch 12:</strong> (a) a <strong>backfill</strong> operator for
-  landscapes frozen <em>before</em> this change (still on disk in the picture root / trips); (b) optional
-  <strong>topic web pages</strong> (a per-year landscape gallery) — storage and publication are separable,
-  and the <code>on_website</code> registry flag is already the switch.</p>
-
-<h3>How it works now</h3>
-<ul>
-  <li>A picture is a <strong>“blog extra”</strong> when its subject carries a marker keyword
-    (<code>landscape</code> / <code>landschap</code> → <code>isBlogExtra</code>). It is deliberately
-    <strong>exempted from species resolution</strong> (so it doesn't warn as an unknown species), renders
-    in the day blog as a card with no taxon, and is excluded from species groups.</li>
-  <li>It is <strong>SKIPPED when freezing to the master</strong> — both its picture record and its file
-    records (<code>sv6Freeze</code>), logging “N blog-extra (landscape) pictures excluded”.</li>
-</ul>
-
-<h3>Why it is architectural, not a small feature</h3>
-<p>The master's whole organising principle is the <strong>species</strong>: the on-disk tree is species
-  folders (<code>TargetPath</code> from the taxonomy chain), and species is the key for the MasterDB
-  index, the counters, “move to species”, the per-species website pages, the best-JPG/rating pick, and
-  the audit/heal tooling. <strong>A landscape has no taxon, so there is no answer today to “where does it
-  live and how is it found.”</strong></p>
-
-<h3>The real problem (and the reason to do this)</h3>
-<p>Nothing is lost <em>today</em> — verified: neither delete path touches landscape originals (retire
-  removes the trip's <em>metadata repo</em>, not the picture files; the delete tool only removes a file
-  whose UPN is in the master, and a landscape never is). But landscapes have <strong>no path into the
-  master at all, so they are never backed up.</strong> After a retire, a landscape survives only as a
-  loose file in the picture root — no master copy, no trip index, and permanently un-cleanable (the
-  cleanup tool reports it “keep — not in master” forever). They <strong>accumulate as un-backed-up
-  orphans</strong>, one disk failure or one manual cleanup away from being gone.</p>
-
-<h3>Direction (user, 2026-07-12): a <code>topics/</code> branch beside <code>biota/</code></h3>
-<p>Add a sibling top-level branch for non-biota subjects — e.g. <code>topics/landscape/&lt;year&gt;/</code>.
-  The organising key stops being <em>species</em> and becomes <strong>subject</strong>, which resolves
-  either down the <strong>biota</strong> chain (taxonomy → species) or down a <strong>topics</strong>
-  chain (topic → leaf/year). <code>TargetPath</code> is already built from a chain, so a topics chain
-  just yields a different root — it gives landscapes a real home, a backup path into the master, and a
-  website home without special-casing them everywhere.</p>
-<p>The record is fully reconstructible from disk even for an already-retired trip: subject + GPS/location
-  from the <code>.xmp</code>, rating + colour from the <code>.dop</code>, date/camera/EXIF from the RAW.</p>
-<p class="note"><strong>⚠ The trap:</strong> a scan that reads only the <code>.xmp</code> finds the
-  landscapes but <strong>silently loses every rating and colour label</strong> — those live in the
-  <code>.dop</code>, not the XMP. Get this right up front.</p>
-
-<h3>Open design questions</h3>
-<ul>
-  <li><strong>Indexing</strong> — MasterDB and the CSV schema assume a species per picture; the
-    generalisation is <em>subject = species OR topic leaf</em>, or species-less records ripple into every
-    species-keyed query, counter, audit and the “move to species” tool.</li>
-  <li><strong>Website</strong> — stay blog-only (stored purely for safekeeping) or earn a home (topic
-    pages / a per-year landscape gallery)? Storage and publication are separable.</li>
-  <li><strong>“Best” without a species</strong> — the rating/best-JPG pick groups by species; group by
-    topic leaf (year/place), or not at all?</li>
-  <li><strong>Migration</strong> — every trip committed so far excluded its landscapes; a backfill would
-    re-ingest them from the picture root.</li>
-  <li><strong>Declaring a topic</strong> — today the marker is a hardcoded keyword set; a topics branch
-    needs a small registry (topic → leaf rule) so <code>planes/F16</code> isn't a code change.</li>
-</ul>
-
-<h3>Order of work</h3>
-<p>The scan cannot go first — there is no <code>TargetPath</code> until a topic has a rule.
-  (1) <strong>Topic registry</strong> — declarative topic → leaf rule. (2) <strong>Scan → dry-run
-  report</strong> — walk the picture root with the parallel EXIF reader, listing every topic picture and
-  what was reconstructed from RAW + <code>.xmp</code> + <code>.dop</code>. (3) <strong>Reviewed
-  ingest</strong> into <code>topics/…</code>, with backup — dry-run → review → explicit apply, never an
-  auto-fix.</p>
 
 <!-- ============================================================ -->
-<hr class="section-divider">
-<h2>Recently Completed</h2>
-<p>Removed from the active list because they are shipped and working.</p>
+<h2>13. Web viewer <span class="tag-new">NEW</span></h2>
+<ul>
+  <li><strong>Search on the “all biota species” page</strong> <span class="tag-open">OPEN</span> —
+    add a search box to
+    <code>https://houtekamer.com/nature/summaries/all&nbsp;biota&nbsp;species-nl.html</code>
+    that filters the list to only the matching species.</li>
+</ul>
 
-<table>
-  <tr><th>Area</th><th>What was done</th><th>Key commit(s)</th></tr>
-
-  <tr><td>Refresh Master Database</td>
-    <td>Dead-link reconcile of the master CSVs (File ▸ Admin, Review → Apply); ran live, cleared
-      ~43k dead file rows / ~15k phantom pictures with backup. Black-image causes fixed: dead-link
-      phantoms + Nikon D90 NEFs (embedded JPEG under OtherImage/JpgFromRaw). Doc added.</td>
-    <td>bc4a060 · 3d0e490 · 4135c48</td></tr>
-
-  <tr><td>Maps (Phase 1 + 5)</td>
-    <td>Native OSM slippy-map (no QtWebEngine): per-species distribution from the Master Species
-      Viewer (overlays, clustering, bubble → filmstrip → large view) and a trip/day map over the
-      live collection with travel path + drag-to-geotag; GPS read from memory (zero exiftool spawns).</td>
-    <td>b90ceda · 77ae39a · e7c6012 · 67fd558 · d2cb49f</td></tr>
-
-  <tr><td>Naming decouple (WP4)</td>
-    <td>Explicit trip identities — <code>trip_id</code> / <code>web_slug</code> / display, resolved
-      through one <code>TripIdentity</code>; retire matcher keys on an explicit <code>source_trip_id</code>
-      link, not the folder basename (the real ebro fix); editable-title retire dialog.</td>
-    <td>b4871ae</td></tr>
-
-  <tr><td>Trip picture-root (WP8)</td>
-    <td>Trip self-describes its pictures — <code>trip.ini picture_root</code> stored relative to a
-      per-machine <code>[currentpictures] rootdirectory</code>; one resolver replaces the scattered
-      <code>Path(picturedirectory).parent</code>; invariant kept: picturedirectory is always a day.</td>
-    <td>8ddd7e1</td></tr>
-
-  <tr><td>Cross-platform paths (P1)</td>
-    <td>Host-independent parsing of stored paths (<code>utils/paths.py</code>, PureWindowsPath) so
-      Windows-authored CSV paths resolve on macOS; no-op on Windows.</td>
-    <td>0af2d87</td></tr>
-
-  <tr><td>Trip Species Viewer — delete rework</td>
-    <td>Rating Editor → “Trip Species Viewer” rename; colour-delete scoped to the view (species →
-      that species incl. master, day/trip → wider); master colour-delete via the master path
-      (JPG-protected); delete-preview with thumbnails + persisted checkbox; colour filter in the
-      toolbar; edited card stays in view after re-sort.</td>
-    <td>ee5333e, 3aaa390, 454832d</td></tr>
-
-  <tr><td>Menu reorg (WP1–WP6)</td>
-    <td>File/Settings/Admin homing + debug flag; Trip menu reorder/renames + yellow-panel columns;
-      “Publish day”; “Add species hyperlinks to trip blogs”; numbered “Publish Trip to Master”
-      submenu + Run-all; unified Retire runs the whole arc.</td>
-    <td>6dde8ed (+ series)</td></tr>
-
-  <tr><td>Retire → Album (full arc)</td>
-    <td>One confirm runs svv1→svv2→migrate blogs→svv3→svv4→svv6→svv5 in a worker thread; banner/
-      picture copied into the virttrip; publishing fixes (/trips root, read-only trip_dict, banner
-      fallback). Verified end-to-end on Braakman.</td>
-    <td>6dde8ed, a0f6906, 6ad9893, 6042ae6</td></tr>
-
-  <tr><td>Recreate virtual-trip blogs</td>
-    <td>svv6 HTML-only re-render (full Prev/Next nav + species links); virttrips publish under
-      <code>/trips/&lt;name&gt;/</code>.</td>
-    <td>db27090</td></tr>
-
-  <tr><td>Working Days lane</td>
-    <td>Days menu + left panel; ad-hoc YYYY-MM-DD folder → review → Add to Master (no website);
-      per-machine registry <code>days_&lt;machine&gt;.json</code>.</td>
-    <td>beee137, 3c679bf</td></tr>
-
-  <tr><td>Trip retirement (data delete)</td>
-    <td>Right-click permanent delete of a trip repo once it lives in master+virttrip (blockers/
-      warnings scan); Dropbox-lock-tolerant multi-pass rmtree. Live: costa-rica, marokko.</td>
-    <td>2942aad</td></tr>
-
-  <tr><td>Manage trip publication / rename</td>
-    <td>Un-advertise a trip from the master tripindex (preview+diff → red Remove); change a trip’s
-      display title via the existing Create/Select dialog (no data rebuild).</td>
-    <td>3ad4bf9</td></tr>
-
-  <tr><td>Days viewer colour/rating</td>
-    <td>Read colour/rating back from the <code>.dop</code> (fixes colour revert in the Days viewer).</td>
-    <td>8431799</td></tr>
-
-  <tr><td>Location editor + card line</td>
-    <td>Manual Edit-location dialog + 9px on-card location line; Location Settings (lang/zoom/
-      overwrite); live external-edit refresh (PhotoLab/LR colour writes show in the open grid);
-      show PL/LR crop on RAW previews; JPG note per sibling render.</td>
-    <td>3b896d4, 178529f, 877ce6a, e127b5d</td></tr>
-
-  <tr><td>Crop tool (write crops)</td>
-    <td>Interactive crop in the large viewer → writes to <code>.dop</code>+<code>.xmp</code>
-      (nominal-aspect lock + snap sizes); works in culling and Read&amp;Summarize.</td>
-    <td>2cce37f, e7676ef</td></tr>
-
-  <tr><td>SD-card grid / picker / GPM</td>
-    <td>Modal-grid fix + batched location writes + day-selection picker + grid↔large colour sync;
-      recent-species quick buttons; copy/paste GPS+place for no-GPS shots.</td>
-    <td>51dbf38, 4a1ad2f, 25b8ac1, 286965a, e94b16f</td></tr>
-
-  <tr><td>Master “no website picture” scan</td>
-    <td>Classifies flagged species stale/raw-only/orphan; report + card viewer (master + virttrip).</td>
-    <td>e6dc5fd, 8bd1ab5</td></tr>
-
-  <tr><td>File policy .dop/.dng</td>
-    <td>Global master policy: keep <code>.dop</code>, drop <code>.dng</code>.</td>
-    <td>ce2e589</td></tr>
-
-  <tr><td colspan="3"><em>Earlier (May–June 2026): codebase restructure, 100% decode quality,
-    geolocation activation, Blue/Purple batch-delete, preview/sidecar caches, blog extras,
-    translation validation, global EXIF cache, Master SQLite Phase 2/3, SmallMaster, Mac
-    first-pass — see the 16 June edition / memories for commit detail.</em></td></tr>
-</table>
-
-<hr class="section-divider">
-<p class="note">
-  <strong>Reference docs:</strong> path portability → <code>path_portability_plan.md</code> ·
-  config/state files → <code>docs/config_state_files.md</code> ·
-  viewer keybindings → <code>docs/viewer_keybindings.md</code>.
-  Detailed memories back every chapter (master DB, virttrip, SD-ingest, species-viewer delete, …).
-  A machine-readable mirror of this backlog lives at <code>docs/SpeciesViewer_Backlog.md</code>.
-</p>
+<!-- ============================================================ -->
+<h2>14. Windows “all biota” viewers <span class="tag-new">NEW</span></h2>
+<ul>
+  <li><strong>Desktop equivalent of the biota tree</strong> <span class="tag-open">OPEN</span> —
+    a functional equivalent of <code>https://houtekamer.com/nature/biota/biota-nl.html</code>:
+    search at a selected taxonomic level; click through at a species to also view all its RAWs.</li>
+  <li><strong>Desktop equivalent of the species summary</strong> <span class="tag-open">OPEN</span> —
+    a functional equivalent of
+    <code>https://houtekamer.com/nature/summaries/all&nbsp;biota&nbsp;species-nl.html</code>:
+    search species; click through at a species to also view all its RAWs.</li>
+</ul>
 
 </body>
 </html>
