@@ -79,7 +79,37 @@ def build_menu_spec(main_window):
         try:
             return sm.explainAbort(statusname, raiseSV=False)
         except:
-            return None    
+            return None
+
+    # ── Menu-gating predicates (Phase 1). They read the LIVE config / window
+    # state and are re-evaluated every time a menu opens (see gui/menu.py
+    # aboutToShow), so an item greys as soon as the relevant selection changes.
+    # "configured" mirrors the existing self-guards: a non-empty, quote-stripped
+    # path. Items with no precondition (Settings, Create Trip, Read SD-cards,
+    # Testbed, Sync Sidecars, …) are deliberately left ungated.
+    def _cfg(section, key):
+        return _config.get(section, key, fallback="").replace('"', "").replace("'", "").strip()
+
+    def has_master():
+        return bool(_cfg("master", "masterbiotadatabase"))
+
+    def has_full_master():
+        # BigBoy (full master), not a SmallMaster install (readonly_locked=yes) —
+        # the non-dialog twin of virttrip_process.require_full_master.
+        return has_master() and _config.get(
+            "master", "readonly_locked", fallback="no").strip().lower() != "yes"
+
+    def has_active_trip():
+        return bool(_cfg("trip", "tripbiotadatabase"))
+
+    def has_active_album():
+        return bool(_cfg("virttrip", "virttripbiotadatabase"))
+
+    def has_active_day():
+        return bool(getattr(main_window, "active_day_folder", ""))
+
+    def has_trip_and_master():
+        return has_active_trip() and has_master()
 
     # ── Read SD-cards: the front-stage ingest (M0). Copies pictures from a
     # folder (e.g. a mounted card) into the project pictures dir. Runs the copy
@@ -269,6 +299,7 @@ def build_menu_spec(main_window):
     edit_trip_species = MenuSpec(
         callback=_edit_trip_species,
         title="Edit Trip Species List",
+        enabled=has_active_trip,
         showsubdirectory=False,
     )
 
@@ -308,6 +339,7 @@ def build_menu_spec(main_window):
     empty_trip_data = MenuSpec(
         callback=None,
         title="Empty Trip Data",
+        enabled=has_active_trip,
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
@@ -321,6 +353,7 @@ def build_menu_spec(main_window):
     recreate_trip = MenuSpec(
         callback=None,
         title="Recreate Trip Repository",
+        enabled=has_active_trip,
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
@@ -335,6 +368,7 @@ def build_menu_spec(main_window):
     merge_trip_species = MenuSpec(
         callback=None,
         title="Publish Species Names",
+        enabled=has_trip_and_master,
         tooltip="Merge the trip's species into the master",
         showsubdirectory=False,
         batch_parms={
@@ -445,6 +479,7 @@ def build_menu_spec(main_window):
     add_pictures_to_master_item = MenuSpec(
         callback=_add_pictures_to_master,
         title="Add Pictures to Master…",
+        enabled=has_master,
         showsubdirectory=False,
     )
 
@@ -474,6 +509,7 @@ def build_menu_spec(main_window):
     edit_master_species = MenuSpec(
         callback=_edit_master_species,
         title="Edit Species List",
+        enabled=has_master,
         showsubdirectory=False,
     )
 
@@ -498,6 +534,7 @@ def build_menu_spec(main_window):
     rescan_master_cache = MenuSpec(
         callback=None,
         title="Rescan master EXIF cache",
+        enabled=has_master,
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
@@ -540,6 +577,7 @@ def build_menu_spec(main_window):
     small_master = MenuSpec(
         callback=None,
         title="Create Small Master Database",
+        enabled=has_master,
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
@@ -558,6 +596,7 @@ def build_menu_spec(main_window):
     export_virttrip = MenuSpec(
         callback=None,
         title="Export Album",
+        enabled=has_active_album,
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
@@ -573,6 +612,7 @@ def build_menu_spec(main_window):
         callback=lambda: require_full_master(main_window)
                          and ImportVirtualTripDialog(main_window).exec(),
         title="Import Album",
+        enabled=has_full_master,
     )
 
     testbed = MenuSpec(
@@ -590,6 +630,7 @@ def build_menu_spec(main_window):
     virttrip_create = MenuSpec(
         callback=None,
         title="Create Album",
+        enabled=has_full_master,
         batch_parms={
             'statusname': "",
             'module_called': batch.svv1MakeVirtualRepository.main,
@@ -621,6 +662,7 @@ def build_menu_spec(main_window):
     find_trips = MenuSpec(
         callback=_find_trips,
         title="Find Trips in the Master…",
+        enabled=has_full_master,
         tooltip="Report: date ranges that look like trips, to use when creating one",
         showsubdirectory=False,
     )
@@ -719,6 +761,7 @@ def build_menu_spec(main_window):
     delete_trip_item = MenuSpec(
         callback=_delete_trip_in_master,
         title="Delete Local Files Backed Up in Master…",
+        enabled=has_trip_and_master,
         showsubdirectory=False,
     )
 
@@ -803,6 +846,7 @@ def build_menu_spec(main_window):
     trip_status_console = MenuSpec(
         callback=_trip_status_console,
         title="Trip Status Console…",
+        enabled=has_master,
         showsubdirectory=False,
     )
 
@@ -840,6 +884,7 @@ def build_menu_spec(main_window):
     merged_status_console = MenuSpec(
         callback=_merged_status_console,
         title="Merged Status (all machines)…",
+        enabled=has_master,
         showsubdirectory=False,
     )
 
@@ -891,6 +936,7 @@ def build_menu_spec(main_window):
     audit_species_item = MenuSpec(
         callback=_audit_species_counters,
         title="Audit Species Counters (dry-run)…",
+        enabled=has_master,
         showsubdirectory=False,
     )
 
@@ -901,6 +947,7 @@ def build_menu_spec(main_window):
     no_display_item = MenuSpec(
         callback=_species_no_display,
         title="Species Without a Website Picture…",
+        enabled=has_master,
         showsubdirectory=False,
     )
 
@@ -968,6 +1015,7 @@ def build_menu_spec(main_window):
     heal_admin_item = MenuSpec(
         callback=_heal_admin,
         title="Refresh Master Database — Apply…",
+        enabled=has_master,
         showsubdirectory=False,
     )
 
@@ -1059,6 +1107,7 @@ def build_menu_spec(main_window):
     refresh_review_item = MenuSpec(
         callback=_refresh_review,
         title="Refresh Master Database — Review…",
+        enabled=has_master,
         showsubdirectory=False,
     )
 
@@ -1109,6 +1158,7 @@ def build_menu_spec(main_window):
     clean_orphans_item = MenuSpec(
         callback=_clean_orphan_sidecars,
         title="Clean Orphan Sidecars (move to trash)…",
+        enabled=has_master,
         showsubdirectory=False,
     )
 
@@ -1124,6 +1174,7 @@ def build_menu_spec(main_window):
     add_place_names_item = MenuSpec(
         callback=_add_place_names,
         title="Add Missing Place Names…",
+        enabled=has_master,
         tooltip="Look up the place for master pictures that have GPS but no "
                 "location, city or country — they show as bare coordinates on "
                 "the species map",
@@ -1184,6 +1235,7 @@ def build_menu_spec(main_window):
     consolidate_gps_item = MenuSpec(
         callback=_consolidate_gps,
         title="Fill Picture GPS from Files…",
+        enabled=has_master,
         showsubdirectory=False,
     )
 
@@ -1270,14 +1322,14 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_days0": None,
             "Review & rate pictures…": MenuSpec(
                 callback=lambda: days_process.review_day(main_window),
-                title="Review & Rate Pictures…", showsubdirectory=False),
+                title="Review & Rate Pictures…", enabled=has_active_day, showsubdirectory=False),
             "Add to Master": MenuSpec(
                 callback=lambda: days_process.add_day_to_master(main_window),
-                title="Add to Master", showsubdirectory=False),
+                title="Add to Master", enabled=has_active_day, showsubdirectory=False),
             f"{MenuSpec.separator()}_days1": None,
             "Remove from list": MenuSpec(
                 callback=lambda: days_process.remove_day_from_list(main_window),
-                title="Remove from List", showsubdirectory=False),
+                title="Remove from List", enabled=has_active_day, showsubdirectory=False),
         },
         "Trips": {
             "Create Trip": trip_create,
@@ -1345,10 +1397,12 @@ def build_menu_spec(main_window):
             "Species Viewer…": MenuSpec(
                 callback=lambda: main_window.open_master_species_viewer(),
                 title="Species Viewer",
+                enabled=has_master,
                 showsubdirectory=False),
             "Species Map…": MenuSpec(
                 callback=lambda: main_window.open_species_map(),
                 title="Species Map",
+                enabled=has_master,
                 tooltip="Distribution map — pick 1–4 species and see their GPS points",
                 showsubdirectory=False),
             "Species Without a Website Picture…": no_display_item,
@@ -1362,15 +1416,18 @@ def build_menu_spec(main_window):
             "Write Album Blogs": MenuSpec(
                 callback=lambda: VirttripWriteBlogDialog(main_window).exec(),
                 title="Write Album Blogs",
+                enabled=has_active_album,
             ),
             "Make the Blogs Clickable": MenuSpec(
                 callback=lambda: VirttripRedoBlogDialog(main_window).exec(),
                 title="Make the Blogs Clickable",
+                enabled=has_active_album,
                 tooltip="Add species links & navigation",
             ),
             "Build Album Website": MenuSpec(
                 callback=lambda: VirttripBuildWebsiteDialog(main_window).exec(),
                 title="Build Album Website",
+                enabled=has_active_album,
             ),
             "Manage Album Publication…": MenuSpec(
                 callback=lambda: _manage_album_publication(),
@@ -1389,6 +1446,7 @@ def build_menu_spec(main_window):
                     "gui.place_sync", fromlist=["open_place_sync_for_active_album"]
                 ).open_place_sync_for_active_album(main_window),
                 title="Sync Placed GPS into the Index…",
+                enabled=has_active_album,
                 tooltip="For this album, copy the place name and movable flag a "
                         "hand-placed coordinate already carries in its sidecar into "
                         "the master index (fixes cards showing raw coordinates)",
@@ -1400,6 +1458,7 @@ def build_menu_spec(main_window):
             "Delete Album…": MenuSpec(
                 callback=lambda: _delete_album(),
                 title="Delete Album…",
+                enabled=has_active_album,
                 tooltip="Delete the active album (backed up first; the master is untouched)",
             ),
         },

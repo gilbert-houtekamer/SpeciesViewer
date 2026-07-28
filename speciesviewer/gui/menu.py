@@ -28,6 +28,7 @@ def _populate_menu(menu, actions, parent, separator_marker):
     express groupings like File ▸ Settings and File ▸ Admin. A label starting
     with the separator marker (value None) inserts a divider."""
     menu.setToolTipsVisible(True)   # Qt hides action tooltips in menus otherwise
+    dynamic = []   # (action, spec) pairs to re-grey each time this menu opens
     for label, spec_obj in actions.items():
         if label.startswith(separator_marker):
             menu.addSeparator()
@@ -47,6 +48,20 @@ def _populate_menu(menu, actions, parent, separator_marker):
             if spec_obj.shortcut:
                 action.setShortcut(spec_obj.shortcut)
             menu.addAction(action)
+            dynamic.append((action, spec_obj))
+    # Re-evaluate each item's enabled() every time this menu opens, so a gate
+    # that depends on the current selection (active trip / album / day, or
+    # whether a master is configured) greys LIVE. Without this the menu is only
+    # rebuilt after a pipeline step or a day change, so switching trip or album
+    # would leave the grey state stale until the next rebuild.
+    if dynamic:
+        def _refresh(pairs=dynamic):
+            for act, spec in pairs:
+                try:
+                    act.setEnabled(spec.is_enabled())
+                except Exception:
+                    pass
+        menu.aboutToShow.connect(_refresh)
 
 
 def create_menubar(parent, spec):
