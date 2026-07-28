@@ -514,6 +514,20 @@ def retire_trip_to_virttrip(parent):
         return (f"Migrated {copied} day blog(s); "
                 f"{no_blog} day(s) had none (nothing fabricated).")
 
+    import datetime as _dt
+
+    def _record_retirement():
+        # Stamp the milestone the menu gating reads (Delete Trip enables once the
+        # trip is both merged AND retired). Never raises — it is the last step and
+        # a failure here must not fail a retirement that already completed.
+        try:
+            from utils.trip_config import set_trip_flag
+            set_trip_flag(trip_db, "retired_to_album",
+                          _dt.datetime.now().strftime("%Y-%m-%d %H:%M"))
+        except Exception as e:
+            logger.warning(f"retire: could not record the retired_to_album milestone: {e}")
+        return None
+
     steps = [
         ("Creating the album",          lambda: batch.svv1MakeVirtualRepository.main(args, mcfg)),
         ("Migrating the trip blogs",           _migrate_blogs),
@@ -521,6 +535,7 @@ def retire_trip_to_virttrip(parent):
         ("Building the website",               lambda: batch.svv4BuildWebsite.main(args, mcfg)),
         ("Making the blogs clickable",         lambda: batch.svv6RedoBlog.main(args, mcfg)),
         ("Adding the trip to the master index", lambda: batch.svv5AddToMaster.main(args, mcfg)),
+        ("Recording retirement",               _record_retirement),
     ]
 
     logger.info(f"Retiring trip '{trip_name}' into an album…")

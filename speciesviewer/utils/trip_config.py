@@ -82,6 +82,9 @@ def read_trip_ini(trip_root: str):
         "picture_root": parser.get("trip_config", "picture_root", fallback=""),
         "fromdate": parser.get("trip_config", "fromdate", fallback=""),
         "todate": parser.get("trip_config", "todate", fallback=""),
+        # Lifecycle milestone, stamped by Retire Trip to Album; read by the
+        # menu-gating predicates (Delete Trip enables only once it is set).
+        "retired_to_album": parser.get("trip_config", "retired_to_album", fallback=""),
         # Per-trip name-language override (empty = follow the global default)
         "name_profile": parser.get("trip_config", "name_profile", fallback=""),
         "title_nl": parser.get("trip_text", "title_nl", fallback=""),
@@ -89,5 +92,44 @@ def read_trip_ini(trip_root: str):
         "title_en": parser.get("trip_text", "title_en", fallback=""),
         "message_en": parser.get("trip_text", "message_en", fallback=""),
     }
-    return result  
+    return result
+
+
+def set_trip_flag(trip_root: str, key: str, value: str) -> bool:
+    """Set a single ``key = value`` in the [trip_config] section of
+    <trip_root>/trip.ini, PRESERVING the rest of the file — its ``;`` comment and
+    the multi-line [trip_text] values (a configparser rewrite would drop the
+    comment and reflow the text). Replaces the line if the key already exists,
+    else inserts it right under the [trip_config] header. Returns True on write,
+    False when there's no trip.ini / no [trip_config] section.
+
+    Used to stamp lifecycle milestones (e.g. retired_to_album) that the menu
+    gating reads cheaply. Idempotent — safe to call again to refresh the value."""
+    import os
+    ini_path = os.path.join(trip_root, "trip.ini")
+    if not os.path.isfile(ini_path):
+        return False
+    with open(ini_path, "r", encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    key_re = re.compile(r'^\s*' + re.escape(key) + r'\s*[=:]', re.IGNORECASE)
+    new_line = f"{key} = {value}"
+    in_trip_config = False
+    header_idx = None
+    for i, line in enumerate(lines):
+        if _SECTION_RE.match(line):
+            in_trip_config = line.strip().lower() == "[trip_config]"
+            if in_trip_config:
+                header_idx = i
+            continue
+        if in_trip_config and key_re.match(line):
+            lines[i] = new_line
+            with open(ini_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines) + "\n")
+            return True
+    if header_idx is None:
+        return False
+    lines.insert(header_idx + 1, new_line)
+    with open(ini_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    return True
 

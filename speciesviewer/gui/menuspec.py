@@ -20,6 +20,7 @@ from gui.virttrip_process import (VirtualTripCreationDialog,
                                    ExportVirtualTripDialog, ImportVirtualTripDialog,
                                    require_full_master)
 from utils.config import _config, debug_enabled
+from utils.trip_config import read_trip_ini
 import gui.days_process as days_process
 import os
 from settings.globalsettings import GlobalSettingsDialog
@@ -110,6 +111,116 @@ def build_menu_spec(main_window):
 
     def has_trip_and_master():
         return has_active_trip() and has_master()
+
+    # ── Phase 2: lifecycle-milestone gates for the To Master chain. Cheap reads:
+    # merge-done comes from the marker MasterPipelineDialog already writes
+    # (<master>/admin/master_commits.csv, keyed by the trip's picture root);
+    # retire-done from the retired_to_album flag stamped into trip.ini; the
+    # "days published" state from a short-memoised scan of the trip's day folders.
+    def _active_picture_root():
+        pic = _cfg("project", "picturedirectory")
+        return os.path.dirname(pic.rstrip("/\\")) if pic else ""
+
+    def _norm(p):
+        return os.path.normpath(p).lower() if p else ""
+
+    def has_merged():
+        master = _cfg("master", "masterbiotadatabase")
+        target = _norm(_active_picture_root())
+        if not master or not target:
+            return False
+        path = os.path.join(master, "admin", "master_commits.csv")
+        if not os.path.isfile(path):
+            return False
+        try:
+            import csv as _csv
+            with open(path, "r", encoding="utf-8") as f:
+                for r in _csv.DictReader(f, delimiter=";"):
+                    if _norm((r.get("picture_directory") or "").strip()) == target:
+                        return True
+        except OSError:
+            return False
+        return False
+
+    def has_retired():
+        trip_db = _cfg("trip", "tripbiotadatabase")
+        if not trip_db:
+            return False
+        try:
+            return bool((read_trip_ini(trip_db) or {}).get("retired_to_album", ""))
+        except Exception:
+            return False
+
+    def _scan_trip_publish(trip_db):
+        # (any_day_published, all_jpg_days_published). A day is "publishable" when
+        # its picture folder holds >0 JPGs; "published" when its WriteCommit
+        # statemachine step is done. all_jpg_days_published is vacuously True with
+        # no JPG day, so Merge also requires any_day_published (real work done).
+        if not trip_db:
+            return False, False
+        try:
+            import re as _re
+            from utils.trip_identity import resolve_trip_picture_root
+            image_root = resolve_trip_picture_root(trip_db, kind="trip")
+            if not image_root:
+                return False, False
+            image_root = os.fspath(image_root)
+            review_root = os.path.join(trip_db, "metadata", "review")
+            names = os.listdir(image_root)
+        except Exception:
+            return False, False
+        # Only real trip days count — folders named YYYY-MM-DD, the same convention
+        # the retire flow and date-range derivation use. Auxiliary folders like
+        # "iphone" carry JPGs but are never part of the day pipeline, so counting
+        # them as unpublished JPG-days would keep Merge greyed forever.
+        _date_re = _re.compile(r"^\d{4}-\d{2}-\d{2}$")
+        any_pub, all_jpg_pub = False, True
+        for name in names:
+            day_dir = os.path.join(image_root, name)
+            if not _date_re.match(name) or not os.path.isdir(day_dir):
+                continue
+            try:
+                has_jpg = any(f.lower().endswith(".jpg") for f in os.listdir(day_dir))
+            except OSError:
+                has_jpg = False
+            try:
+                sm_day = StateMachine(trip_db, os.path.join(review_root, name), readState=True)
+                published = bool(sm_day.Taskstate.get("WriteCommit", [False])[0])
+            except Exception:
+                published = False
+            if published:
+                any_pub = True
+            if has_jpg and not published:
+                all_jpg_pub = False
+        return any_pub, all_jpg_pub
+
+    def _pub_state():
+        # Memoise the day scan for a few seconds so opening a menu doesn't re-walk
+        # the day folders every time; a Publish Day run rebuilds the whole menu.
+        import time
+        trip_db = _cfg("trip", "tripbiotadatabase")
+        now = time.monotonic()
+        c = getattr(main_window, "_publish_state_cache", None)
+        if c and c[0] == trip_db and (now - c[1]) < 3.0:
+            return c[2], c[3]
+        st = _scan_trip_publish(trip_db)
+        main_window._publish_state_cache = (trip_db, now, st[0], st[1])
+        return st
+
+    def any_day_published():
+        return _pub_state()[0]
+
+    def merge_ready():
+        if not has_trip_and_master():
+            return False
+        any_pub, all_jpg_pub = _pub_state()
+        return any_pub and all_jpg_pub
+
+    def retire_ready():
+        return has_full_master() and has_active_trip() and has_merged()
+
+    def delete_trip_ready():
+        return has_merged() and has_retired()
 
     # ── Read SD-cards: the front-stage ingest (M0). Copies pictures from a
     # folder (e.g. a mounted card) into the project pictures dir. Runs the copy
@@ -325,6 +436,7 @@ def build_menu_spec(main_window):
     redo_trip_blogs = MenuSpec(
         callback=None,
         title="5. Make the Blogs Clickable",
+        enabled=any_day_published,
         tooltip="Add species links & navigation",
         showsubdirectory=False,
         batch_parms={
@@ -458,6 +570,7 @@ def build_menu_spec(main_window):
     add_trip_pictures = MenuSpec(
         callback=None,
         title="Merge Pictures into Master",
+        enabled=merge_ready,
         tooltip="Copy the trip's pictures into the master",
         showsubdirectory=False,
     )
@@ -680,6 +793,7 @@ def build_menu_spec(main_window):
         callback=lambda: require_full_master(main_window)
                          and retire_trip_to_virttrip(main_window),
         title="Retire Trip to Album",
+        enabled=retire_ready,
         showsubdirectory=False,
     )
 
@@ -761,7 +875,7 @@ def build_menu_spec(main_window):
     delete_trip_item = MenuSpec(
         callback=_delete_trip_in_master,
         title="Delete Local Files Backed Up in Master…",
-        enabled=has_trip_and_master,
+        enabled=has_merged,
         showsubdirectory=False,
     )
 
@@ -783,6 +897,7 @@ def build_menu_spec(main_window):
     delete_trip_repo_item = MenuSpec(
         callback=_delete_trip_repo,
         title="Delete Trip…",
+        enabled=delete_trip_ready,
         tooltip="Permanently delete the trip repository (its metadata copy). "
                 "CurrentPictures, the master and the album are untouched.",
         showsubdirectory=False,
