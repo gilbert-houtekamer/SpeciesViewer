@@ -119,13 +119,14 @@ class RatingEditorItem(PictureItem):
 
     @property
     def display_name(self) -> str:
+        # A landscape / context "blog extra" is titled by its Headline (what the
+        # website shows). It now carries a synthetic species name (the topic year
+        # leaf, e.g. "2026"), so this must win BEFORE species_name, not after.
+        if self.is_blog_extra and self.headline:
+            return self.headline
         name = self._c.species_name(self._row)
         if name:
             return name
-        # A landscape / context "blog extra" has no species — title it by its
-        # Headline (what the website shows), falling back to the filename.
-        if self.is_blog_extra and self.headline:
-            return self.headline
         return self._key
 
     @property

@@ -356,10 +356,13 @@ def getAltTextForJPG(MyProject, jpgname):
     try:
         jpgobj = MyProject.files_dict[jpgname]
         upn = MyProject.UniquePictureName_dict[jpgobj['UniquePictureName']]
-        # Blog extras (landscape/context photos) have no taxon: show the
-        # (translated) Headline as the slider title instead of the " /  / "
-        # artifact three blank species names would produce.
-        if upn['WetSoortNaam'] == "":
+        # Blog extras (landscape/context photos) show the (translated) Headline as
+        # the slider title instead of the " /  / " artifact three blank species
+        # names would produce. A topic-filed landscape now carries a synthetic
+        # species name (the year leaf, e.g. "2026"), so the empty-name test no
+        # longer catches it — key off the subject keyword too.
+        from engine.speciesclassification import SpeciesClassification
+        if upn['WetSoortNaam'] == "" or SpeciesClassification.isBlogExtra(upn.get('subject', "")):
             return getHeadlineText(MyProject, upn).replace('"', '&quot;')
         sci_display = upn['WetSoortNaam'].replace(' ', '&nbsp;').replace('-', '&#8209;').capitalize()
         # Link the scientific name to the species page when it exists in the
@@ -523,7 +526,16 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
     # its title slot shows the XMP:Headline instead of a taxon name. The body
     # (Description, settings, "shows the environment" prose) is handled by the
     # existing no-kingdom branches of tokens 41/42/111/112.
-    is_blog_extra = species_param is None and picture is not None
+    # A topic-filed landscape now resolves to a synthetic species (the year leaf),
+    # so species_param is no longer None for it — also treat a subject-marked blog
+    # extra as one, so its title slot shows the Headline, not the "2026" leaf name.
+    # `picture` is a dict only on a per-picture card; the biota index/summary
+    # pages pass a string, so guard on isinstance before .get() (the headline
+    # path below already needs a dict anyway).
+    from engine.speciesclassification import SpeciesClassification
+    is_blog_extra = isinstance(picture, dict) and (
+        species_param is None
+        or SpeciesClassification.isBlogExtra(picture.get('subject', "")))
     if is_blog_extra and tokenno in (25, 36, 37, 125):
         headline = getHeadlineText(MyProject, picture)
         if tokenno == 125:

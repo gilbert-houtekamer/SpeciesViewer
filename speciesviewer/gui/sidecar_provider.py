@@ -189,16 +189,18 @@ class SidecarItem(PictureItem):
 
     @property
     def display_name(self) -> str:
+        # A landscape / context "blog extra" is titled by its Headline (what the
+        # website shows) rather than a species name; a topic-filed landscape now
+        # carries a synthetic species name (the year leaf, e.g. "2026"), so check
+        # this BEFORE the species-name hint.
+        if self.is_blog_extra and self.headline:
+            return self.headline
         # Prefer the species name in the host's language profile (from the day CSV);
         # this also names a picture whose sidecar subject is empty (a DxO render
         # whose .xmp didn't pair). Else fall back to the sidecar subject, then stem.
         hinted = self._c._name_for_stem(self._stem)
         if hinted:
             return hinted
-        # A landscape / context "blog extra" has no species — title it by its
-        # Headline (what the website shows) rather than the bare 'landscape' keyword.
-        if self.is_blog_extra and self.headline:
-            return self.headline
         from gui.culling_species import split_species_qualifiers
         name, _ = split_species_qualifiers(self.species)
         return name or self._stem

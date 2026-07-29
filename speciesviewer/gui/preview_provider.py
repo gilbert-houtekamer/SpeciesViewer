@@ -148,13 +148,15 @@ class PreviewItem(PictureItem):
 
     @property
     def display_name(self) -> str:
+        # A landscape / context "blog extra" is titled by its Headline (what the
+        # website shows). A topic-filed landscape now carries a synthetic species
+        # name (the year leaf, e.g. "2026"), so this must win BEFORE the species
+        # name, not after.
+        if self.is_blog_extra and self.headline:
+            return self.headline
         name = self._c.fpr.getSpeciesName(self._rep)
         if name:
             return name
-        # A landscape / context "blog extra" has no species — title it by its
-        # Headline (what the website shows), falling back to the filename.
-        if self.is_blog_extra and self.headline:
-            return self.headline
         return self._key
 
     @property
