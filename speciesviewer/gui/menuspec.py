@@ -12,7 +12,7 @@ from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDial
         AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
         TestbedDialog, BlogAdminDialog, ManageTripsDialog, PhotoMechanicDialog,
-        RescanMasterCacheDialog, SmallMasterDialog, InstallSmallMasterDialog, TripMasterDashboard)
+        RescanMasterCacheDialog, SmallMasterDialog, InstallSmallMasterDialog)
 from gui.virttrip_process import (VirtualTripCreationDialog,
                                    VirttripWriteBlogDialog, VirttripRedoBlogDialog,
                                    VirttripBuildWebsiteDialog,
@@ -603,16 +603,80 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    def _open_lifecycle_board():
+        # The lifecycle board is a VIEW over the same MenuSpecs + gating predicates
+        # the menu uses (built here at click time, so specs defined further down
+        # resolve fine). Both the menu and this board stay — companions.
+        from gui.trip_lifecycle_board import TripLifecycleBoard
+
+        def _raise_yellow_tab(match):
+            # Bring a yellow-panel tab forward (best-effort). The pipeline steps and
+            # Customize Album point here rather than firing a gated batch action —
+            # the yellow panel is where the user picks what to run per day.
+            try:
+                tabs = getattr(main_window, "yellow_tabs", None)
+                if tabs is not None:
+                    for i in range(tabs.count()):
+                        if match in tabs.tabText(i):
+                            tabs.setCurrentIndex(i)
+                            break
+            except Exception as e:
+                logger.info(f"lifecycle board: raise '{match}' tab: {e}")
+
+        model = [
+            {"title": "Trip", "sub": "the editable working repo",
+             "gate": ("no edits possible", lambda: all(_pub_state())),
+             "groups": [
+                 # The pipeline steps are re-runnable any time and are driven per-day
+                 # from the Active Trip yellow panel — so these cards NAVIGATE there
+                 # (always enabled given a trip) rather than firing a gated batch step.
+                 # The progress bar still shows how many days each step has reached.
+                 {"label": "Pipeline — open the Active Trip panel to run per day", "blocks": [
+                     {"title": "Read & Summarize", "desc": "Read photos, recognise species",
+                      "on_click": lambda: _raise_yellow_tab("Active Trip"),
+                      "enabled": has_active_trip, "close_after": True, "prog": "read"},
+                     {"title": "Write Blog", "desc": "Generate the day blogs",
+                      "on_click": lambda: _raise_yellow_tab("Active Trip"),
+                      "enabled": has_active_trip, "close_after": True, "prog": "blog"},
+                     {"title": "Publish Day", "desc": "Freeze & publish each day",
+                      "on_click": lambda: _raise_yellow_tab("Active Trip"),
+                      "enabled": has_active_trip, "close_after": True, "prog": "publish"},
+                 ]},
+                 {"label": "Publication (one state, trip → album)", "blocks": [
+                     {"title": "Publish trip", "desc": "Advertise / un-advertise on the site",
+                      "spec": manage_trips},
+                 ]},
+             ]},
+            {"title": "To Master", "sub": "into the shared collection",
+             "gate": ("no more changes", has_merged),
+             "groups": [{"label": "Merge", "blocks": [
+                 {"title": "Publish Species Names", "desc": "Push new species names to the master site",
+                  "spec": merge_trip_species},
+                 {"title": "Merge Pictures into Master", "desc": "Copy the trip's pictures into the master",
+                  "spec": add_trip_pictures, "done": has_merged},
+             ]}]},
+            {"title": "Album", "sub": "live master date-range view",
+             "gate": ("changes now happen in the album", has_retired),
+             "groups": [{"label": "Create & edit", "blocks": [
+                 {"title": "Retire Trip to Album", "desc": "Create the album from the master",
+                  "spec": retire_trip_item, "done": has_retired},
+                 {"title": "Customize Album", "desc": "Show the album in the yellow panel",
+                  "on_click": lambda: _raise_yellow_tab("Album"), "enabled": has_retired,
+                  "close_after": True},
+             ]}]},
+            {"title": "Clean up", "sub": "reclaim local space",
+             "gate": None,
+             "groups": [{"label": "Delete", "blocks": [
+                 {"title": "Delete Local Files", "desc": "Remove local originals already in the master",
+                  "spec": delete_trip_item, "warn": True},
+                 {"title": "Delete Trip", "desc": "Permanently delete the trip repository",
+                  "spec": delete_trip_repo_item, "warn": True},
+             ]}]},
+        ]
+        TripLifecycleBoard(main_window, model).exec()
+
     trip_master_dashboard = MenuSpec(
-        callback=lambda: TripMasterDashboard(
-            main_window,
-            {
-                'redo_blogs':          redo_trip_blogs,
-                'merge_species':       merge_trip_species,
-                'add_website':         add_trip_to_master,
-                'add_pictures_steps':  master_pipeline_steps,
-            }
-        ).exec(),
+        callback=_open_lifecycle_board,
         title="Trip to Master Dashboard",
         enabled=has_active_trip,
         showsubdirectory=False,
