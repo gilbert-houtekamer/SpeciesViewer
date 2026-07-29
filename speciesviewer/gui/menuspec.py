@@ -74,7 +74,11 @@ def build_menu_spec(main_window):
     )
 
     def make_enabled_checker(statusname):
-        return lambda: sm.stateOKtorun(statusname)
+        # A pipeline step needs an ACTIVE trip as well as its statemachine's OK:
+        # with no trip selected the (empty) statemachine reports "OK to run the
+        # first step", which would leave the whole trip pipeline clickable in the
+        # no-trip state. has_active_trip is defined below and resolved at call time.
+        return lambda: has_active_trip() and sm.stateOKtorun(statusname)
 
     def make_tooltip(statusname):
         try:
@@ -248,6 +252,7 @@ def build_menu_spec(main_window):
     sync_sidecars = MenuSpec(
         callback=None,
         title="Sync Lightroom & PhotoLab Metadata",
+        enabled=has_active_trip,
         batch_parms={
             'statusname': "SyncSidecars",
             'module_called': batch.svu5SyncSidecars.main,
@@ -417,6 +422,7 @@ def build_menu_spec(main_window):
     count_species = MenuSpec(
         callback=None,
         title="Count Species",
+        enabled=has_active_trip,
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
@@ -509,6 +515,7 @@ def build_menu_spec(main_window):
     manage_trips = MenuSpec(
         callback=lambda: ManageTripsDialog(main_window).exec(),
         title="6. Manage Trip Publication…",
+        enabled=has_active_trip,
         showsubdirectory=False,
     )
 
@@ -607,6 +614,7 @@ def build_menu_spec(main_window):
             }
         ).exec(),
         title="Trip to Master Dashboard",
+        enabled=has_active_trip,
         showsubdirectory=False,
     )
 
@@ -783,6 +791,7 @@ def build_menu_spec(main_window):
     rating_editor = MenuSpec(
         callback=lambda: main_window.open_rating_editor(),
         title="Trip Species Viewer",
+        enabled=has_active_trip,
         showsubdirectory=False,
     )
 
@@ -881,11 +890,11 @@ def build_menu_spec(main_window):
 
     # ── Delete Trip: permanently remove the trip REPOSITORY (its metadata copy),
     # reusing the vetted retire flow (engine.trip_retire_scan pre-flight + explicit
-    # confirm). Operates on the ACTIVE trip. KNOWN LIMIT: the scan's blocker B3
-    # refuses to retire the active trip ("switch to another trip or the master
-    # first"), so today the menu path guides rather than deletes in place; making
-    # it available only when the Album is complete, plus a Force variant under
-    # Advanced, is the next menu item (the grey-out work).
+    # confirm). Operates on the ACTIVE trip. Blocker B3 refuses to retire the active
+    # trip (the GUI must not be left pointing at a deleted repo); retire_trip_dialog
+    # now DE-SELECTS the active trip up-front (clears the trip config + repaints the
+    # overview + rebuilds the menu → the no-trip state), which satisfies B3 and lets
+    # the delete proceed in place.
     def _delete_trip_repo():
         from gui.trip_retire import retire_trip_dialog
         trip_db = _config.get("trip", "tripbiotadatabase", fallback="").replace('"', "").replace("'", "")

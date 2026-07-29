@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QFont
 
 import engine.trip_retire_scan as trs
-from utils.config import _config, get_virttrips_root
+from utils.config import _config, get_virttrips_root, persist_config
 from utils.gui_config import load_gui_cache, save_gui_cache
 from utils.trip_config import read_trip_ini
 
@@ -25,6 +25,54 @@ logger = logging.getLogger("speciesviewer")
 
 def _norm(p):
     return os.path.normcase(os.path.normpath(str(p))) if p else ""
+
+
+# The config keys that make up the "active trip" selection (trip identity + the
+# active day). Cleared to de-select; snapshotted so a cancel can restore them.
+# NOTE: tripsrootdirectory is deliberately NOT here — it is the PARENT folder that
+# holds every trip (get_trips_root lists it to build the Trips panel). Clearing it
+# would leave the panel with no root, falling back to the current working directory
+# (it would list the code repo folders instead of the trips).
+_TRIP_SEL_KEYS = (
+    ("trip", "tripbiotadatabase"),
+    ("trip", "tripbiotawebroot"),
+    ("project", "picturedirectory"),
+)
+
+
+def _snapshot_trip_selection():
+    """Capture the current active-trip config so a cancelled retire can restore it."""
+    return {sk: _config.get(sk[0], sk[1], fallback="") for sk in _TRIP_SEL_KEYS}
+
+
+def _set_trip_selection(main_window, values):
+    """Write a {(section,key): value} selection and repaint the GUI: the Trips-panel
+    ▶ marker, the trip overview, and the menu grey-state."""
+    for (section, key), val in values.items():
+        if not _config.has_section(section):
+            _config.add_section(section)
+        _config.set(section, key, val)
+    persist_config()
+    try:
+        main_window.trip_panel._refresh_highlights()
+    except Exception as e:
+        logger.info(f"trip_retire: highlight refresh skipped: {e}")
+    try:
+        from gui.trip_overview import populate_trip_overview
+        populate_trip_overview(main_window)
+    except Exception as e:
+        logger.info(f"trip_retire: overview refresh skipped: {e}")
+    try:
+        main_window.rebuild_menu()
+    except Exception as e:
+        logger.info(f"trip_retire: menu rebuild skipped: {e}")
+
+
+def _deselect_active_trip(main_window):
+    """Clear the active-trip selection → the no-trip state. Retiring the ACTIVE trip
+    needs this: blocker B3 forbids retiring the active trip, and the GUI must never
+    be left holding a Project that points at a repo we are about to delete."""
+    _set_trip_selection(main_window, {sk: "" for sk in _TRIP_SEL_KEYS})
 
 
 def _clean_references(trip_db):
@@ -45,8 +93,20 @@ def _clean_references(trip_db):
 
 def retire_trip_dialog(main_window, trip_db):
     active = _config.get("trip", "tripbiotadatabase", fallback="")
+    # Deleting the ACTIVE trip requires de-selecting it first: B3 refuses to retire
+    # the active trip, and the GUI must not be left pointing at a repo we delete.
+    # De-selecting up-front satisfies B3; we snapshot the prior selection so a
+    # CANCELLED dialog restores it (only a completed delete stays in the no-trip
+    # state — cancel leaves the GUI exactly as it was).
+    prior = None
+    if active and _norm(active) == _norm(trip_db):
+        prior = _snapshot_trip_selection()
+        _deselect_active_trip(main_window)
+        active = ""
     rep = trs.scan(trip_db, get_virttrips_root(), active)
     if not rep.get("ok"):
+        if prior is not None:
+            _set_trip_selection(main_window, prior)
         QMessageBox.warning(main_window, "Retire trip", rep.get("error", "Scan failed."))
         return
 
@@ -80,6 +140,8 @@ def retire_trip_dialog(main_window, trip_db):
     ack.toggled.connect(lambda _=False: _update_enabled())
     _update_enabled()
 
+    state = {"deleted": False}   # set once the repo is actually gone (see tail)
+
     def _do_delete():
         if QMessageBox.question(
                 dlg, "Retire trip",
@@ -94,6 +156,7 @@ def retire_trip_dialog(main_window, trip_db):
         if not ok:
             QMessageBox.warning(dlg, "Retire trip", f"Delete failed:\n{err}")
             return
+        state["deleted"] = True
         _clean_references(rep["trip_db"])
         try:
             main_window.trip_panel.remove_trip(rep["trip_db"])
@@ -107,3 +170,8 @@ def retire_trip_dialog(main_window, trip_db):
 
     del_btn.clicked.connect(_do_delete)
     dlg.exec()
+
+    # Cancelled (or closed) without deleting → put the prior selection back, so
+    # de-selecting was invisible unless the delete actually happened.
+    if prior is not None and not state["deleted"]:
+        _set_trip_selection(main_window, prior)

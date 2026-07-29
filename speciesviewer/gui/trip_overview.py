@@ -372,6 +372,11 @@ def populate_trip_overview(self):
         except Exception:
             pass
     self.remove_existing_overview_tab()
+    # No active trip (e.g. just after retiring one) is a legitimate empty state,
+    # not an error — the tab is cleared above; return quietly instead of logging
+    # the "Invalid directory paths." warning meant for a genuinely broken trip.
+    if not _config.get("trip", "tripbiotadatabase", fallback="").strip():
+        return
     # Get image and statemachine directories. WP8: the trip's picture root comes
     # from its explicit picture_root when present, else the active-day parent.
     from utils.trip_identity import resolve_trip_picture_root

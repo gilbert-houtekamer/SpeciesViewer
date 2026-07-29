@@ -53,8 +53,13 @@ class TripInfoPanel(QWidget):
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.show_context_menu)
 
-        trip_root = Path(get_trips_root())
-        if trip_root.is_dir():
+        # Guard the empty case: get_trips_root() returns "" when no trips root is
+        # configured, and Path("") is the current working directory — iterating it
+        # would list the code repo folders instead of trips. Only build the tree
+        # from a real, non-empty root.
+        trips_root_str = get_trips_root()
+        trip_root = Path(trips_root_str) if trips_root_str else None
+        if trip_root is not None and trip_root.is_dir():
             for trip_dir in sorted(trip_root.iterdir()):
                 if trip_dir.is_dir():
                     trip_item = QTreeWidgetItem([trip_dir.name])
