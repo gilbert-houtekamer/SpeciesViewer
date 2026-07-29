@@ -201,19 +201,23 @@ reads <em>No current work planned</em>.</p>
 </ul>
 
 <!-- ============================================================ -->
-<h2>12. Landscapes in the Master <span class="tag-big">ARCHITECTURAL</span></h2>
-<p>GUI authoring and the Add-to-Master <em>drag</em> path have shipped and are live-confirmed into the
-  master — see Capabilities ch. 12. The one untested path is the bulk trip merge. Remaining:</p>
+<h2>12. Landscapes in the Master <span class="tag-shipped">SHIPPED</span></h2>
+<p>A landscape / context photo now has a home in the master under a <code>topics/</code> branch
+  (<code>topics/landscape/&lt;year&gt;/</code>), titled by its Headline. The full round-trip —
+  trip → master → album, in the GUI grids and the published web slider — is live-confirmed
+  (2026-07-29, on the Kreta trip: <em>Olijfgaard / Winter / Grindstrand</em>). See Capabilities ch. 12.</p>
 <ul>
-  <li><strong>Test the trip Read&amp;Summarize → Freeze landscape merge on the real master</strong>
-    <span class="tag-test">NEEDS TEST</span> — the code exists and is trip/headless-verified, and the
-    drag path is already live-confirmed, but the bulk <em>Freeze</em> merge has never been run live into
-    the production master. <strong>Test on the Spain trip.</strong> The usual way — dry-run report →
-    review → explicit apply with backup — and confirm the master is byte-correct before trusting it.</li>
-  <li><strong>Backfill operator</strong> <span class="tag-open">OPEN</span> — re-ingest landscapes frozen
-    <em>before</em> this change (still loose in the picture root / retired trips), which have no master copy.</li>
-  <li><strong>Topic web pages</strong> <span class="tag-parked">OPTIONAL</span> — a per-year landscape
-    gallery; storage and publication are separable, and the <code>on_website</code> registry flag is the switch.</li>
+  <li><strong>Trip Read&amp;Summarize → Freeze landscape merge</strong> <span class="tag-shipped">DONE</span> —
+    run live into the production master (Kreta) and surfaced through Retire-to-Album.</li>
+  <li><strong>Topic-leaf title bug</strong> <span class="tag-shipped">FIXED</span> — a topic-filed landscape
+    carries a synthetic species name (the year leaf, e.g. <code>2026</code>); the blog/card title now keys
+    off the subject keyword so it shows the Headline, not <code>2026</code>.</li>
+  <li><strong>Backfill operator</strong> <span class="tag-complete">CLOSED</span> — not needed; the few
+    pre-fix stranded landscapes go in via the Add-to-Master <em>drag</em> path (Tanzania-proven).</li>
+  <li><strong>Topic web pages</strong> <span class="tag-parked">FUTURE — collections</span> — rejected for
+    landscapes (they are context/background for <em>where you were</em>, not their own page). The
+    <code>on_website</code> registry flag keeps this open for a real collection later (trains, planes, …),
+    where a topic page <em>is</em> the point.</li>
 </ul>
 
 <!-- ============================================================ -->
