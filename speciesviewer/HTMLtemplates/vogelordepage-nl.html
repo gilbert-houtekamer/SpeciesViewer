@@ -85,7 +85,11 @@
 		</div>
 		<div class="content">
 			<p>Hieronder een overzicht van alle %%34%% waar ik foto's van heb in mijn %%150%% verzameling. Klik op de plaatjes voor meer over %%60%% geselecteerde %%39%%.</p>
-			%%93%%
+			<input type="search" id="speciesFilter" placeholder="Zoek soort… (bv. gors, bunting, Emberiza)"
+				       oninput="filterSpecies()" autocomplete="off"
+				       style="width:100%;max-width:420px;padding:8px;margin-bottom:6px;font-size:14px;box-sizing:border-box;">
+				<span id="filterCount" style="font-size:13px;color:#555;margin-left:8px;"></span>
+				%%93%%
 		</div>		
 	</div> 
 
@@ -96,6 +100,21 @@
 </div>
 <!-- End Content -->
 </div>
+
+<script>
+function filterSpecies() {
+  var q = document.getElementById('speciesFilter').value.trim().toLowerCase();
+  var cards = document.querySelectorAll('#grid > div');
+  var shown = 0;
+  for (var i = 0; i < cards.length; i++) {
+    var match = (q === '') || (cards[i].textContent.toLowerCase().indexOf(q) !== -1);
+    cards[i].style.display = match ? '' : 'none';
+    if (match) shown++;
+  }
+  document.getElementById('filterCount').textContent =
+    (q === '') ? '' : (shown + ' van ' + cards.length + ' soorten');
+}
+</script>
 
 </body>
 </html> 
