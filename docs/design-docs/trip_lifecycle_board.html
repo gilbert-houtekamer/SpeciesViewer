@@ -215,8 +215,8 @@
           { t:"Write Blog", d:"Generate the day blogs", prog:true, ready:[1,1], done:2 },
           { t:"Publish Day", d:"Freeze & publish each day", prog:true, ready:[2,2], done:3 },
         ]},
-        { label:"Trip website", blocks:[
-          { t:"Publish trip", d:"Advertise the trip on the site — on/off", kind:"toggle", from:2 },
+        { label:"Publication (one state, trip → album)", blocks:[
+          { t:"Publish trip", d:"Advertise on the site — the trip owns the slot until it's retired", kind:"pub", on:[2,4], lockLate:"the album owns publication now" },
         ]},
       ],
       gate:{ txt:"no edits possible", from:3 } },
@@ -234,10 +234,10 @@
       groups:[
         { label:"Create & publish", blocks:[
           { t:"Retire Trip to Album", d:"Create the album from the master", ready:[4,4], done:5 },
-          { t:"Publish Album", d:"Build & upload the album site — on/off", kind:"toggle", from:5 },
+          { t:"Publish Album", d:"Advertise on the site — same slot, inherited from the trip", kind:"pub", on:[5,6] },
         ]},
         { label:"Edit", blocks:[
-          { t:"Customize Album", d:"Open the album's day table (cover, blogs, dates)", ready:[5,6] },
+          { t:"Customize Album", d:"Show the album in the yellow panel (blogs, GPS, cover, dates)", ready:[5,6] },
         ]},
       ],
       gate:{ txt:"changes now happen in the album", from:5 } },
@@ -253,10 +253,12 @@
   ];
 
   let stage = 0;
-  const pub = {};   // local on/off state for toggle blocks (mockup)
+  // ONE publish state for the whole life: the trip owns the site slot, then hands
+  // it to the album on retirement. Not two independent toggles.
+  let published = false;
 
   function stateOf(b) {
-    if (b.kind === "toggle") return stage >= b.from ? "toggle" : "locked";
+    if (b.kind === "pub") return (stage >= b.on[0] && stage <= b.on[1]) ? "toggle" : "locked";
     if (b.done !== undefined && stage >= b.done) return "done";
     if (b.ready && stage >= b.ready[0] && stage <= b.ready[1]) return "ready";
     return "locked";
@@ -300,14 +302,23 @@
         g.blocks.forEach(b=>{
           const st=stateOf(b);
           const el=document.createElement("button"); el.type="button";
-          const isOn = b.kind==="toggle" && pub[b.t];
-          el.className=`block ${st==="toggle" ? (isOn?"ready on":"ready") : st}${b.warn?" warn":""}`;
+          const isPub = b.kind==="pub";
+          const enabled = st==="toggle";
+          const pastHandoff = isPub && b.lockLate && stage > b.on[1];   // trip publish after retire
+          const isOn = isPub && published;
+
+          if(isPub) el.className=`block ${enabled ? (isOn?"ready on":"ready") : "locked"}${isOn?" on":""}${b.warn?" warn":""}`;
+          else el.className=`block ${st}${b.warn?" warn":""}`;
 
           let right;
-          if(b.kind==="toggle"){
-            right = st==="locked"
-              ? `<span class="chip">Locked</span>`
-              : `<span class="toggle"><span class="tlabel">${isOn?"On":"Off"}</span><span class="switch"></span></span>`;
+          if(isPub){
+            if(enabled || pastHandoff){
+              // show the switch even when handed off, greyed by the locked block, so the
+              // ONE publish state stays visible where the album now owns it
+              right = `<span class="toggle"><span class="tlabel">${isOn?"On":"Off"}</span><span class="switch"></span></span>`;
+            } else {
+              right = `<span class="chip">Locked</span>`;
+            }
           } else {
             const chip = st==="done" ? "Done" : st==="ready" ? "Enabled" : "Locked";
             right = `<span class="chip">${chip}</span>`;
@@ -324,10 +335,11 @@
             <div class="b-desc">${b.d}</div>${prog}`;
 
           el.addEventListener("click",()=>{
-            if(b.kind==="toggle"){
-              if(st==="locked"){ toast(`Locked — publishing isn't available yet.`); return; }
-              pub[b.t]=!pub[b.t]; render();
-              toast(`${pub[b.t]?"Published":"Un-published"}: <span class="t-mono">${b.t}</span>`);
+            if(isPub){
+              if(pastHandoff){ toast(`Publication is the album's now — use <span class="t-mono">Publish Album</span>.`); return; }
+              if(!enabled){ toast(`Locked — publishing isn't available yet.`); return; }
+              published=!published; render();
+              toast(`${published?"Published":"Un-published"} on the site (one slot, trip → album).`);
             } else if(st==="ready"){ toast(`Would run: <span class="t-mono">${b.t}</span>`); }
             else if(st==="done"){ toast(`Already done: <span class="t-mono">${b.t}</span>`); }
             else { toast(`Locked — not a valid step at "${STAGES[stage]}".`); }
