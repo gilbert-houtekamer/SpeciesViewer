@@ -1,0 +1,350 @@
+<title>Trip → Master → Album — lifecycle board (mockup)</title>
+<style>
+  :root {
+    --bg: #f5f7f3; --surface: #ffffff; --surface-2: #eef1ea;
+    --ink: #1c211b; --ink-soft: #59634f; --line: #d7ddce;
+    --done: #2f7d43; --done-bg: #e6f1e8;
+    --ready: #2563a8; --ready-bg: #e4eef8;
+    --locked: #97a08c; --locked-bg: #f0f2ec;
+    --gate: #2f9e57; --warn: #b45309; --warn-bg: #f8ecdc;
+    --font-display: "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-mono: ui-monospace, "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+    --radius: 9px;
+    --shadow: 0 1px 2px rgba(20,30,15,.06), 0 4px 14px rgba(20,30,15,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141711; --surface: #1d211a; --surface-2: #252a20;
+      --ink: #e8ece2; --ink-soft: #a3ac99; --line: #333a2c;
+      --done: #5bb271; --done-bg: #1d2c20; --ready: #64a2db; --ready-bg: #1a2632;
+      --locked: #6b7362; --locked-bg: #21261d; --gate: #5cc282;
+      --warn: #d98a3d; --warn-bg: #2c2213;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141711; --surface: #1d211a; --surface-2: #252a20; --ink: #e8ece2;
+    --ink-soft: #a3ac99; --line: #333a2c; --done: #5bb271; --done-bg: #1d2c20;
+    --ready: #64a2db; --ready-bg: #1a2632; --locked: #6b7362; --locked-bg: #21261d;
+    --gate: #5cc282; --warn: #d98a3d; --warn-bg: #2c2213;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.28);
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7f3; --surface: #ffffff; --surface-2: #eef1ea; --ink: #1c211b;
+    --ink-soft: #59634f; --line: #d7ddce; --done: #2f7d43; --done-bg: #e6f1e8;
+    --ready: #2563a8; --ready-bg: #e4eef8; --locked: #97a08c; --locked-bg: #f0f2ec;
+    --gate: #2f9e57; --warn: #b45309; --warn-bg: #f8ecdc;
+    --shadow: 0 1px 2px rgba(20,30,15,.06), 0 4px 14px rgba(20,30,15,.05);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--font-display); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 24px 64px; }
+
+  header.page { margin-bottom: 26px; }
+  .eyebrow { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--ink-soft); margin: 0 0 6px; }
+  h1 { font-size: clamp(22px, 3.4vw, 30px); margin: 0 0 8px; text-wrap: balance; letter-spacing: -.01em; }
+  .lede { margin: 0; color: var(--ink-soft); max-width: 64ch; font-size: 15px; }
+  .mock-tag { display: inline-block; font-family: var(--font-mono); font-size: 10.5px;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--warn); background: var(--warn-bg);
+    border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+    padding: 2px 8px; border-radius: 20px; margin-left: 10px; vertical-align: 3px; }
+
+  .stepper { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px 18px; margin-bottom: 8px; box-shadow: var(--shadow); }
+  .stepper h2 { font-size: 12px; font-family: var(--font-mono); letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-soft); margin: 0 0 4px; font-weight: 600; }
+  .stepper .hint { font-size: 12px; color: var(--ink-soft); margin: 0 0 12px; opacity: .85; }
+  .stages { display: flex; flex-wrap: wrap; gap: 6px; }
+  .stage-btn { font: inherit; font-size: 13px; cursor: pointer; background: var(--surface-2); color: var(--ink-soft);
+    border: 1px solid var(--line); border-radius: 20px; padding: 6px 13px;
+    display: inline-flex; align-items: center; gap: 7px; transition: background .15s, color .15s, border-color .15s; }
+  .stage-btn .num { font-family: var(--font-mono); font-size: 11px; opacity: .7; }
+  .stage-btn:hover { border-color: var(--ready); color: var(--ink); }
+  .stage-btn[aria-current="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .where { margin: 14px 0 30px; font-size: 14px; color: var(--ink-soft);
+    display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .where b { color: var(--ink); font-weight: 600; }
+
+  .board-scroll { overflow-x: auto; padding-bottom: 6px; }
+  .board { display: grid; grid-template-columns: repeat(4, minmax(232px, 1fr)); gap: 0; min-width: 960px; align-items: stretch; }
+  .phase { padding: 0 18px; position: relative; display: flex; flex-direction: column; }
+  .phase + .phase { border-left: 1px dashed var(--line); }
+  .phase-head { display: flex; align-items: center; gap: 9px; margin: 0 0 4px; padding-bottom: 10px; }
+  .phase-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--locked); flex: none; }
+  .phase.active .phase-dot { background: var(--ready); box-shadow: 0 0 0 4px var(--ready-bg); }
+  .phase.complete .phase-dot { background: var(--done); box-shadow: 0 0 0 4px var(--done-bg); }
+  .phase-title { font-size: 13px; font-weight: 700; }
+  .phase-sub { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-soft); }
+
+  .lane-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-soft); margin: 14px 0 7px; opacity: .8; }
+  .lane-label:first-of-type { margin-top: 2px; }
+
+  .block { width: 100%; text-align: left; font: inherit; cursor: pointer;
+    background: var(--locked-bg); color: var(--ink);
+    border: 1px solid var(--line); border-left: 5px solid var(--locked); border-radius: var(--radius);
+    padding: 11px 13px; margin-bottom: 9px; display: block;
+    transition: transform .12s, box-shadow .12s, border-color .12s, background .15s; }
+  .block:focus-visible { outline: 2px solid var(--ready); outline-offset: 2px; }
+  .b-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .b-title { font-size: 14px; font-weight: 600; }
+  .b-desc { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; }
+
+  .chip { font-family: var(--font-mono); font-size: 10px; letter-spacing: .09em; text-transform: uppercase;
+    font-weight: 700; padding: 2px 7px; border-radius: 5px; white-space: nowrap; flex: none; }
+
+  .block.done { border-left-color: var(--done); background: var(--done-bg); }
+  .block.done .chip { color: var(--done); background: color-mix(in srgb, var(--done) 15%, transparent); }
+  .block.done .b-title::before { content: "✓ "; color: var(--done); font-weight: 800; }
+
+  .block.ready { border-left-color: var(--ready); border-left-width: 7px; background: var(--surface);
+    border-color: color-mix(in srgb, var(--ready) 40%, var(--line)); box-shadow: var(--shadow); }
+  .block.ready .chip { color: var(--ready); background: var(--ready-bg); }
+  .block.ready:hover { transform: translateY(-2px);
+    box-shadow: 0 3px 6px rgba(20,30,15,.09), 0 10px 22px rgba(20,30,15,.09); border-color: var(--ready); }
+
+  .block.locked { color: var(--ink-soft); background: var(--locked-bg); cursor: not-allowed; opacity: .78; }
+  .block.locked .chip { color: var(--locked); background: color-mix(in srgb, var(--locked) 18%, transparent); }
+
+  .block.warn { border-left-color: var(--warn); }
+  .block.warn.ready .chip { color: var(--warn); background: var(--warn-bg); }
+
+  /* per-day progress bar (pipeline steps are multi-day) */
+  .prog { margin-top: 9px; }
+  .prog-bar { height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--locked) 25%, transparent); overflow: hidden; }
+  .prog-bar > span { display: block; height: 100%; border-radius: 3px; background: var(--ready); transition: width .3s; }
+  .block.done .prog-bar > span { background: var(--done); }
+  .prog-cap { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-soft); margin-top: 4px;
+    display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
+
+  /* on/off publish toggle */
+  .toggle { display: inline-flex; align-items: center; gap: 7px; flex: none; }
+  .toggle .tlabel { font-family: var(--font-mono); font-size: 10px; letter-spacing: .09em; text-transform: uppercase;
+    font-weight: 700; color: var(--ink-soft); }
+  .switch { width: 34px; height: 19px; border-radius: 19px; background: color-mix(in srgb, var(--locked) 35%, transparent);
+    border: 1px solid var(--line); position: relative; transition: background .18s; flex: none; }
+  .switch::after { content: ""; position: absolute; top: 1.5px; left: 1.5px; width: 14px; height: 14px;
+    border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: left .18s; }
+  .block.on .switch { background: var(--done); border-color: var(--done); }
+  .block.on .switch::after { left: 16px; }
+  .block.on { border-left-color: var(--done); }
+  .block.on .tlabel { color: var(--done); }
+
+  .gate { margin: 6px 0 4px; padding: 8px 11px; border-radius: 7px; font-size: 12.5px;
+    display: flex; align-items: center; gap: 8px; border: 1px dashed transparent; font-weight: 600;
+    color: var(--locked); background: transparent; }
+  .gate .g-ico { font-family: var(--font-mono); font-weight: 800; }
+  .gate.on { color: var(--gate); background: color-mix(in srgb, var(--gate) 12%, transparent);
+    border-color: color-mix(in srgb, var(--gate) 45%, transparent); }
+  .spacer { flex: 1 1 auto; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 18px 26px; margin-top: 30px; padding-top: 20px;
+    border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-soft); }
+  .legend .item { display: flex; align-items: center; gap: 9px; }
+  .swatch { width: 26px; height: 16px; border-radius: 4px; border: 1px solid var(--line); border-left-width: 5px; flex: none; }
+  .swatch.done { background: var(--done-bg); border-left-color: var(--done); }
+  .swatch.ready { background: var(--surface); border-left-color: var(--ready); border-left-width: 7px; }
+  .swatch.locked { background: var(--locked-bg); border-left-color: var(--locked); }
+  .swatch.gate { background: color-mix(in srgb, var(--gate) 12%, transparent); border-left-color: var(--gate); border-style: dashed; }
+
+  #toast { position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 20px);
+    background: var(--ink); color: var(--bg); padding: 11px 18px; border-radius: 8px; font-size: 13.5px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.28); opacity: 0; pointer-events: none;
+    transition: opacity .2s, transform .2s; max-width: 90vw; z-index: 20; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  #toast .t-mono { font-family: var(--font-mono); color: color-mix(in srgb, var(--done) 60%, white); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="page">
+    <p class="eyebrow">SpeciesViewer · To Master</p>
+    <h1>Trip lifecycle board <span class="mock-tag">Layout mockup</span></h1>
+    <p class="lede">A visual companion to the To&nbsp;Master menu — the same actions, arranged along the trip&nbsp;→&nbsp;master&nbsp;→&nbsp;album journey. Each block is enabled only when it's a valid next step; the green bands are the gates that freeze earlier phases.</p>
+  </header>
+
+  <section class="stepper" aria-label="Lifecycle stage">
+    <h2>Preview — move the active trip through its lifecycle</h2>
+    <p class="hint">Mockup device only. In the product the board reflects the real trip state, and you click a <b>block</b> to fire the action.</p>
+    <div class="stages" id="stages"></div>
+  </section>
+  <p class="where" id="where"></p>
+
+  <div class="board-scroll"><div class="board" id="board"></div></div>
+
+  <div class="legend">
+    <div class="item"><span class="swatch done"></span> Done — already run</div>
+    <div class="item"><span class="swatch ready"></span> Enabled — a valid next step (click to run)</div>
+    <div class="item"><span class="swatch locked"></span> Locked — precondition not met yet</div>
+    <div class="item"><span class="swatch gate"></span> Gate — a rule that freezes earlier phases</div>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+  const TOTAL_DAYS = 11;   // demo trip: 11 real days (those with >1 JPG)
+  const STAGES = ["New trip", "Read & summarized", "Blogged", "All days published",
+    "Merged to master", "Retired to album", "Cleaned up"];
+  const WHERE = [
+    "A fresh trip — read the photos first.",
+    "Species recognised. Write the day blogs next.",
+    "Blogs written; some days already published. Keep publishing, or start pushing to the master.",
+    "Every day published — the trip is <b>frozen</b>. Merge its pictures into the master.",
+    "Merged. The trip's pictures are safe in the master; retire it into its album.",
+    "Retired — the album is live. Safe to clean up the local files and the repo.",
+    "Local originals removed and the trip repository deleted. Nothing left to do.",
+  ];
+  // per-stage day counts for the three multi-day pipeline steps
+  const DAYPROG = {
+    "Read & Summarize": [0, 11, 11, 11, 11, 11, 11],
+    "Write Blog":       [0,  0, 11, 11, 11, 11, 11],
+    "Publish Day":      [0,  0,  4, 11, 11, 11, 11],
+  };
+
+  const PHASES = [
+    { key:"trip", title:"Trip", sub:"the editable working repo",
+      groups:[
+        { label:"Pipeline", blocks:[
+          { t:"Read & Summarize", d:"Read photos, recognise species", prog:true, ready:[0,0], done:1 },
+          { t:"Write Blog", d:"Generate the day blogs", prog:true, ready:[1,1], done:2 },
+          { t:"Publish Day", d:"Freeze & publish each day", prog:true, ready:[2,2], done:3 },
+        ]},
+        { label:"Trip website", blocks:[
+          { t:"Publish trip", d:"Advertise the trip on the site — on/off", kind:"toggle", from:2 },
+        ]},
+      ],
+      gate:{ txt:"no edits possible", from:3 } },
+
+    { key:"master", title:"To Master", sub:"into the shared collection",
+      groups:[
+        { label:"Merge", blocks:[
+          { t:"Publish Species Names", d:"Push new species names to the master site", ready:[2,3], done:4 },
+          { t:"Merge Pictures into Master", d:"Copy the trip's pictures into the master", ready:[3,3], done:4 },
+        ]},
+      ],
+      gate:{ txt:"no more changes", from:4 } },
+
+    { key:"album", title:"Album", sub:"live master date-range view",
+      groups:[
+        { label:"Create & publish", blocks:[
+          { t:"Retire Trip to Album", d:"Create the album from the master", ready:[4,4], done:5 },
+          { t:"Publish Album", d:"Build & upload the album site — on/off", kind:"toggle", from:5 },
+        ]},
+        { label:"Edit", blocks:[
+          { t:"Customize Album", d:"Open the album's day table (cover, blogs, dates)", ready:[5,6] },
+        ]},
+      ],
+      gate:{ txt:"changes now happen in the album", from:5 } },
+
+    { key:"cleanup", title:"Clean up", sub:"reclaim local space",
+      groups:[
+        { label:"Delete", blocks:[
+          { t:"Delete Local Files", d:"Remove local originals already in the master", ready:[4,5], done:6, warn:true },
+          { t:"Delete Trip", d:"Permanently delete the trip repository", ready:[5,5], done:6, warn:true },
+        ]},
+      ],
+      gate:null },
+  ];
+
+  let stage = 0;
+  const pub = {};   // local on/off state for toggle blocks (mockup)
+
+  function stateOf(b) {
+    if (b.kind === "toggle") return stage >= b.from ? "toggle" : "locked";
+    if (b.done !== undefined && stage >= b.done) return "done";
+    if (b.ready && stage >= b.ready[0] && stage <= b.ready[1]) return "ready";
+    return "locked";
+  }
+
+  const boardEl = document.getElementById("board");
+  const stagesEl = document.getElementById("stages");
+  const whereEl = document.getElementById("where");
+  const toastEl = document.getElementById("toast");
+  let toastTimer;
+  function toast(html){ toastEl.innerHTML = html; toastEl.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(()=>toastEl.classList.remove("show"), 2600); }
+
+  function renderStages(){
+    stagesEl.innerHTML = "";
+    STAGES.forEach((name,i)=>{
+      const b=document.createElement("button");
+      b.className="stage-btn"; b.setAttribute("aria-current", i===stage?"true":"false");
+      b.innerHTML=`<span class="num">${i}</span> ${name}`;
+      b.addEventListener("click",()=>{stage=i; render();});
+      stagesEl.appendChild(b);
+    });
+  }
+
+  function render(){
+    renderStages();
+    whereEl.innerHTML = `<b>Where:</b> ${WHERE[stage]}`;
+    boardEl.innerHTML = "";
+    PHASES.forEach(ph=>{
+      const col=document.createElement("div"); col.className="phase";
+      const flat = ph.groups.flatMap(g=>g.blocks);
+      const tracked = flat.filter(b=>b.done!==undefined);
+      const complete = tracked.length && tracked.every(b=>stage>=b.done);
+      const active = !complete && flat.some(b=>["ready","toggle"].includes(stateOf(b)));
+      if(complete) col.classList.add("complete"); else if(active) col.classList.add("active");
+      col.innerHTML=`<div class="phase-head"><span class="phase-dot"></span>
+        <span><span class="phase-title">${ph.title}</span><br><span class="phase-sub">${ph.sub}</span></span></div>`;
+
+      ph.groups.forEach(g=>{
+        const lbl=document.createElement("div"); lbl.className="lane-label"; lbl.textContent=g.label; col.appendChild(lbl);
+        g.blocks.forEach(b=>{
+          const st=stateOf(b);
+          const el=document.createElement("button"); el.type="button";
+          const isOn = b.kind==="toggle" && pub[b.t];
+          el.className=`block ${st==="toggle" ? (isOn?"ready on":"ready") : st}${b.warn?" warn":""}`;
+
+          let right;
+          if(b.kind==="toggle"){
+            right = st==="locked"
+              ? `<span class="chip">Locked</span>`
+              : `<span class="toggle"><span class="tlabel">${isOn?"On":"Off"}</span><span class="switch"></span></span>`;
+          } else {
+            const chip = st==="done" ? "Done" : st==="ready" ? "Enabled" : "Locked";
+            right = `<span class="chip">${chip}</span>`;
+          }
+
+          let prog = "";
+          if(b.prog){
+            const n = DAYPROG[b.t][stage], pct = Math.round(n/TOTAL_DAYS*100);
+            prog = `<div class="prog"><div class="prog-bar"><span style="width:${pct}%"></span></div>
+              <div class="prog-cap"><span>${n} / ${TOTAL_DAYS} days</span><span>${pct}%</span></div></div>`;
+          }
+
+          el.innerHTML=`<div class="b-top"><span class="b-title">${b.t}</span>${right}</div>
+            <div class="b-desc">${b.d}</div>${prog}`;
+
+          el.addEventListener("click",()=>{
+            if(b.kind==="toggle"){
+              if(st==="locked"){ toast(`Locked — publishing isn't available yet.`); return; }
+              pub[b.t]=!pub[b.t]; render();
+              toast(`${pub[b.t]?"Published":"Un-published"}: <span class="t-mono">${b.t}</span>`);
+            } else if(st==="ready"){ toast(`Would run: <span class="t-mono">${b.t}</span>`); }
+            else if(st==="done"){ toast(`Already done: <span class="t-mono">${b.t}</span>`); }
+            else { toast(`Locked — not a valid step at "${STAGES[stage]}".`); }
+          });
+          col.appendChild(el);
+        });
+      });
+
+      const sp=document.createElement("div"); sp.className="spacer"; col.appendChild(sp);
+      if(ph.gate){
+        const g=document.createElement("div"); const on=stage>=ph.gate.from;
+        g.className=`gate${on?" on":""}`;
+        g.innerHTML=`<span class="g-ico">${on?"▣":"▢"}</span> ${ph.gate.txt}`;
+        col.appendChild(g);
+      }
+      boardEl.appendChild(col);
+    });
+  }
+  render();
+</script>
