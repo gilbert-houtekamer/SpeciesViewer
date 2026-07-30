@@ -330,9 +330,10 @@ class SpeciesPanel(QWidget):
         il.addStretch(1)
         lay.addWidget(ident, 1)
 
-        cover = host._source.cover_path(self._sci)
+        cover = host._source.cover_spec(self._sci)
         if cover is not None:
-            host._loader.request(lambda p=cover: _load_qimage(p), self._set_hero, target_w=760)
+            from gui.biota_browser import _load_cover_spec
+            host._loader.request(lambda s=cover: _load_cover_spec(s), self._set_hero, target_w=760)
         else:
             self._hero_label.setText("no photo")
         return wrap
@@ -600,10 +601,11 @@ class SpeciesPanel(QWidget):
         else:
             row.clicked.connect(lambda _c=False, k=target: host._open_species(k))
 
-        cover = host._source.cover_path(target)
+        cover = host._source.cover_spec(target)
         if cover is not None:
+            from gui.biota_browser import _load_cover_spec
             host._loader.request(
-                lambda p=cover: _load_qimage(p),
+                lambda s=cover: _load_cover_spec(s),
                 lambda px, _t=thumb: self._set_thumb(px, _t), target_w=80)
         return row
 

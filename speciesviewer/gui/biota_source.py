@@ -30,6 +30,10 @@ RANK_LABEL = {"BIOTA": "Biota", "KINGDOM": "Kingdom", "PHYLUM": "Phylum",
               "CLASS": "Class", "ORDER": "Order", "FAMILY": "Family",
               "SPECIES": "Species"}
 
+# RAW extensions whose embedded preview can stand in for a cover (mirrors
+# gui.rating_provider._RAW_EXTS, kept local so the model needs no GUI import).
+_RAW_EXTS = {".nef", ".orf", ".cr2", ".cr3", ".arw", ".rw2", ".raf", ".dng", ".pef"}
+
 
 def _rank_of(level: str) -> str:
     """'Level.SPECIES' -> 'SPECIES'."""
@@ -56,6 +60,7 @@ class MasterBiotaSource:
         self._species_n = {}       # sci_lower -> aggregated species count
         self._own_pics = {}        # sci_lower -> pictures on THIS species only
         self._cover = {}           # sci_lower -> resolved cover Path | None (memo)
+        self._cover_spec = {}      # sci_lower -> ("jpg"|"raw", Path) | None (memo)
         self._load()
 
     # ── build ───────────────────────────────────────────────────────────────
@@ -156,6 +161,76 @@ class MasterBiotaSource:
             p = self._resolve_cover(c, seen)
             if p is not None:
                 return p
+        return None
+
+    # cover as a (kind, Path) spec — kind "jpg" or "raw". Falls back to the best
+    # picture's RAW when a node (common on an unprocessed trip) has no JPG anywhere,
+    # so the caller can extract its embedded preview instead of showing a blank.
+    def cover_spec(self, sci: str):
+        key = (sci or "").strip().lower()
+        if key in self._cover_spec:
+            return self._cover_spec[key]
+        self._cover_spec[key] = self._resolve_cover_spec(key, set())
+        return self._cover_spec[key]
+
+    def _resolve_cover_spec(self, key: str, seen: set):
+        if not key or key in seen or key not in self._by_sci or self.master_root is None:
+            return None
+        seen.add(key)
+        n = self._by_sci[key]
+        # 1. a real JPG on this node
+        if n["best_jpg"] and n["best_dir"]:
+            p = self.master_root / n["best_dir"] / n["best_jpg"]
+            if p.suffix.lower() in (".jpg", ".jpeg") and p.exists():
+                return ("jpg", p)
+        # 2. a species with no JPG → its best picture's RAW (for a preview)
+        if n["rank"] == "SPECIES":
+            raw = self._species_raw_cover(key, n["target_path"] or n["best_dir"])
+            if raw is not None:
+                return ("raw", raw)
+        # 3. best photographed child, recurse
+        kids = [c for c in self._kids.get(key, []) if self._pics.get(c, 0) > 0]
+        kids.sort(key=lambda c: (-int(self._by_sci[c]["rate"] or 0),
+                                 -self._pics.get(c, 0)))
+        for c in kids:
+            r = self._resolve_cover_spec(c, seen)
+            if r is not None:
+                return r
+        return None
+
+    def _species_raw_cover(self, key: str, target_path: str):
+        """The RAW file of this species' best-rated picture. A processed picture is
+        filed under the repo's biota/ tree (root/TargetPath/<raw>); an UNPROCESSED
+        one (no JPG, no folder yet — common on a working trip) still lives at its
+        ingest location, recorded as an absolute WindowsFileName."""
+        pics = self.db.pictures_for_species(key)
+        if not pics:
+            return None
+
+        def _si(v):
+            try:
+                return int(str(v).strip() or 0)
+            except (TypeError, ValueError):
+                return 0
+        best = max(pics, key=lambda p: (_si(p.get("Rating")), _si(p.get("Rate"))))
+        upn = best.get("UniquePictureName")
+        if not upn:
+            return None
+        try:
+            frows = self.db.files_for_upns([upn])
+        except Exception:
+            return None
+        for fname, frow in frows.items():
+            ext = "." + ((frow.get("WindowsExtension") or "").lower())
+            if ext not in _RAW_EXTS:
+                continue
+            if target_path:
+                p = self.master_root / target_path / fname
+                if p.exists():
+                    return p
+            wf = frow.get("WindowsFileName") or ""
+            if wf and Path(wf).exists():
+                return Path(wf)
         return None
 
     # ── leaf pictures (handed to the existing card grid) ────────────────────

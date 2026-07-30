@@ -51,12 +51,37 @@ def _load_qimage(path):
     return None if img.isNull() else img
 
 
+def _load_cover_spec(spec):
+    """Worker-thread producer for a cover spec ('jpg'|'raw', Path). A JPG is
+    decoded directly; a RAW's embedded preview is extracted once (cached) via the
+    shared exiftool — so a taxon whose pictures are all RAW (common on an
+    unprocessed trip) still shows a real image instead of a blank tile."""
+    if not spec:
+        return None
+    kind, path = spec
+    if kind == "raw":
+        try:
+            from gui.preview_provider import preview_cache_dir_for
+            from gui.preview_extract import extract_preview_to
+            cache = preview_cache_dir_for(path.parent) / (path.stem + ".jpg")
+            if not cache.exists():
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                if not extract_preview_to(path, cache):
+                    return None
+            img = QImage(str(cache))
+        except Exception:
+            return None
+    else:
+        img = QImage(str(path))
+    return None if img.isNull() else img
+
+
 class TaxonCard(QFrame):
     """One olive-framed card — a child taxon or a species leaf. Emits its
     scientific name on a left click."""
     clicked = pyqtSignal(str)
 
-    def __init__(self, node, sub_html, card_w, cover_path, loader):
+    def __init__(self, node, sub_html, card_w, cover_spec, loader):
         super().__init__()
         self.setObjectName("tcard")
         self._sci = node["sci"]
@@ -116,8 +141,8 @@ class TaxonCard(QFrame):
         ml.addWidget(stat)
         lay.addWidget(meta)
 
-        if cover_path is not None:
-            loader.request(lambda p=cover_path: _load_qimage(p),
+        if cover_spec is not None:
+            loader.request(lambda s=cover_spec: _load_cover_spec(s),
                            self._set_cover, target_w=card_w)
 
     def _set_cover(self, px: QPixmap):
@@ -729,7 +754,7 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
             else:
                 sub = (f"<b style='color:{_FRAME}'>{n_sp}</b> species"
                        f" &nbsp;·&nbsp; {n_pic} photos")
-            cover = self._source.cover_path(node["sci"])
+            cover = self._source.cover_spec(node["sci"])
             card = TaxonCard(node, sub, card_w, cover, self._loader)
             card.clicked.connect(self._on_taxon_clicked)
             self._grid.addWidget(card, idx // self.columns, idx % self.columns)
