@@ -132,6 +132,13 @@ function filterSpecies() {
   document.getElementById('filterCount').textContent =
     (q === '') ? '' : (shown + ' van ' + cards.length + ' soorten');
 }
+// Hide the search box on short lists where it adds nothing.
+(function () {
+  if (document.querySelectorAll('#grid > div').length < 12) {
+    document.getElementById('speciesFilter').style.display = 'none';
+    document.getElementById('filterCount').style.display = 'none';
+  }
+})();
 </script>
 
 </body>

@@ -85,7 +85,7 @@
 		</div>
 		<div class="content">
 			<p>Hieronder een overzicht van alle %%34%% waar ik foto's van heb in mijn %%150%% verzameling. Klik op de plaatjes voor meer over %%60%% geselecteerde %%39%%.</p>
-			<input type="search" id="speciesFilter" placeholder="Zoek soort… (bv. gors, bunting, Emberiza)"
+			<input type="search" id="speciesFilter" placeholder="Zoek op naam…"
 				       oninput="filterSpecies()" autocomplete="off"
 				       style="width:100%;max-width:420px;padding:8px;margin-bottom:6px;font-size:14px;box-sizing:border-box;">
 				<span id="filterCount" style="font-size:13px;color:#555;margin-left:8px;"></span>
@@ -112,8 +112,15 @@ function filterSpecies() {
     if (match) shown++;
   }
   document.getElementById('filterCount').textContent =
-    (q === '') ? '' : (shown + ' van ' + cards.length + ' soorten');
+    (q === '') ? '' : (shown + ' van ' + cards.length);
 }
+// Hide the search box on short lists where it adds nothing.
+(function () {
+  if (document.querySelectorAll('#grid > div').length < 12) {
+    document.getElementById('speciesFilter').style.display = 'none';
+    document.getElementById('filterCount').style.display = 'none';
+  }
+})();
 </script>
 
 </body>
