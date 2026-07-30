@@ -130,8 +130,16 @@ class PhotoTile(QFrame):
         if jpg is not None:
             fname = jpg.name
         else:
-            exts = getattr(item, "file_exts", []) or []
-            fname = (exts[0] + " · " if exts else "") + item.key[:14]
+            rp = None
+            try:
+                rp = collection.raw_path(item.key)
+            except Exception:
+                rp = None
+            if rp is not None:
+                fname = rp.name
+            else:
+                exts = getattr(item, "file_exts", []) or []
+                fname = (exts[0] + " · " if exts else "") + item.key[:14]
         self._fn = QLabel(fname)
         self._fn.setStyleSheet(f"color:{_FRAME_INK}; font-family:Consolas,monospace; font-size:9px;")
         self._fn.setWordWrap(False)
@@ -143,15 +151,12 @@ class PhotoTile(QFrame):
 
         self._paint_state()
 
-        if jpg is not None:
-            loader.request(lambda pth=jpg: _load_qimage(pth), self._set_photo, target_w=tile_w * 2)
-        else:
-            # RAW-only frame (revealed by "Show all files"): no JPG face — a quiet,
-            # dimmed placeholder. No # (that marks a JPG); the star still shows.
-            self._photo.setText("RAW")
-            self._photo.setStyleSheet(
-                f"background:#dfe2d8; border:3px solid {_MAT}; border-radius:3px;"
-                f" color:#9aa091; font-family:Consolas,monospace; font-size:11px; font-weight:700;")
+        # Image via the provider — a JPG render when there is one, otherwise the
+        # RAW's embedded preview (extracted off the GUI thread, crop applied). This
+        # is the same path PictureCard uses, so RAW-only frames show a real picture
+        # rather than a placeholder.
+        self._photo.setText("…")
+        item.request_thumbnail(tile_w * 2, self._set_photo)
 
     def _paint_state(self):
         from gui.rating_editor import COLOR_HEX
@@ -168,7 +173,7 @@ class PhotoTile(QFrame):
 
     def _set_photo(self, px: QPixmap):
         if px is None or px.isNull():
-            self._photo.setText("no jpg")
+            self._photo.setText("no preview")
             return
         w = self._photo.width() or self.width() - 10
         h = self._photo.height()
@@ -533,8 +538,14 @@ class SpeciesPanel(QWidget):
             for s in sibs[:self._MAX_SIBS]:
                 sl.addWidget(self._sib_row(s, current=(s["sci"] == node["sci"])))
             if len(sibs) > self._MAX_SIBS:
-                more = QLabel(f"  …and {len(sibs) - self._MAX_SIBS} more")
-                more.setStyleSheet(f"color:{_INK_SOFT}; font-size:11px; padding:4px 6px;")
+                more = QPushButton(f"…and {len(sibs) - self._MAX_SIBS} more")
+                more.setFlat(True)
+                more.setCursor(Qt.CursorShape.PointingHandCursor)
+                more.setStyleSheet(
+                    f"QPushButton {{ color:{_READY}; font-size:11px; padding:4px 6px;"
+                    f" border:none; text-align:left; }}"
+                    f"QPushButton:hover {{ text-decoration:underline; }}")
+                more.clicked.connect(lambda _c=False, k=parent["sci"]: host._go(k))
                 sl.addWidget(more)
 
         # orders-with-photos (under the class ancestor)
@@ -546,9 +557,9 @@ class SpeciesPanel(QWidget):
             oh.setStyleSheet(f"color:{_INK_SOFT}; font-family:Consolas,monospace;"
                              f" font-size:10px; letter-spacing:1px;")
             sl.addWidget(oh)
-            orders = sorted(src.children(klass["sci"]),
-                            key=lambda o: -src.counts(o["sci"])[1])[:6]
-            for o in orders:
+            # ALL orders that have photos, in taxonomic order (children() already
+            # sorts by TargetPath — the numeric "040 …" prefix). The sidebar scrolls.
+            for o in src.children(klass["sci"]):
                 sl.addWidget(self._sib_row(o, order=True))
         sl.addStretch(1)
         return side
