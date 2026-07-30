@@ -1569,6 +1569,14 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_2": None,
             # Review & edit this trip
             "Rating Editor": rating_editor,                    # shows "Trip Species Viewer"
+            "Biota Browser…": MenuSpec(
+                callback=lambda: main_window.open_trip_biota_browser(),
+                title="Biota Browser",
+                enabled=lambda: bool(_cfg("trip", "tripbiotadatabase")
+                                     or _cfg("repository", "biotadatabase")),
+                tooltip="Browse this trip by taxonomy (Kingdom → Species), read-only; "
+                        "drill to a species to see its pictures",
+                showsubdirectory=False),
             "Edit Trip Species List": edit_trip_species,
             "Publish Species Names": merge_trip_species,       # also under To Master
             "Count Species": count_species,

@@ -1117,6 +1117,28 @@ class MainWindow(QMainWindow):
         self._biota_browser_dlg = BiotaBrowserDialog(self, start_mode=start_mode)
         self._biota_browser_dlg.show()
 
+    def open_trip_biota_browser(self):
+        """Biota Browser over the ACTIVE TRIP's repository (read-only). A trip repo
+        is master-shaped, so it browses through the same MasterBiotaSource — with
+        its own SQLite cache (never touching master.db) and no editing (that stays
+        in the authorized Tech panels)."""
+        import hashlib
+        from gui.biota_browser import BiotaBrowserDialog
+        trip_root = (_config.get("trip", "tripbiotadatabase", fallback="")
+                     or _config.get("repository", "biotadatabase", fallback="")
+                     ).replace('"', "").replace("'", "").strip()
+        if not trip_root or not Path(trip_root).exists():
+            QMessageBox.warning(self, "Biota Browser (Trip)",
+                                "No active trip repository is configured.")
+            return
+        cache = "trip_" + hashlib.sha1(trip_root.encode("utf-8")).hexdigest()[:12]
+        name = os.path.basename(trip_root.rstrip("/\\")) or "Trip"
+        # Strong ref on the main window — see open_rating_editor for the why.
+        self._trip_biota_browser_dlg = BiotaBrowserDialog(
+            self, repo_root=trip_root, scope_title=f"Trip · {name}",
+            read_only_scope=True, cache_name=cache)
+        self._trip_biota_browser_dlg.show()
+
     def open_species_map(self):
         """Standalone species distribution map — a peer of the Species Viewer
         (grid): pick 1–4 species and see their GPS points on a map, click a

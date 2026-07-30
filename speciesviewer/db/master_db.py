@@ -301,10 +301,19 @@ class MasterDB:
     # background worker (each has its own sqlite connection).
     _checkpoint_lock = threading.Lock()
 
-    def __init__(self, master_root: str | Path):
+    def __init__(self, master_root: str | Path, *, cache_name: str | None = None):
+        # cache_name lets a NON-master biota repo (e.g. a trip, browsed read-only)
+        # get its OWN SQLite cache instead of clobbering the single master.db —
+        # the cache is keyed to one root. The real master passes nothing and keeps
+        # master.db / master.wal.jsonl exactly as before.
         self.master_root = str(master_root)
-        self._db_path = db_path()
-        self._jsonl_path = wal_jsonl_path()
+        if cache_name:
+            base = _app_data_dir() / "db"
+            self._db_path = base / f"{cache_name}.db"
+            self._jsonl_path = base / f"{cache_name}.wal.jsonl"
+        else:
+            self._db_path = db_path()
+            self._jsonl_path = wal_jsonl_path()
         self._con: sqlite3.Connection | None = None
         self._seq: int | None = None          # next-seq cache (append side)
         self._append_lock = threading.Lock()  # guards _next_seq + append

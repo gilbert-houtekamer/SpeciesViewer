@@ -145,10 +145,19 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
     # before asking the user to narrow with the search box (the master has ~2200).
     _ALL_CAP = 400
 
-    def __init__(self, parent, start_mode="tree"):
+    def __init__(self, parent, start_mode="tree", *, repo_root=None,
+                 scope_title=None, read_only_scope=False, cache_name=None):
         super().__init__(parent)
         self._start_mode = start_mode   # "tree" | "allspecies"
-        self.setWindowTitle("Biota Browser — Master")
+        # Scope: default is the master (repo_root None → master config). A trip is
+        # browsed by passing its repo root + its own cache_name (so it never
+        # clobbers master.db) + read_only_scope=True (editing stays in the
+        # authorized Tech panels elsewhere).
+        self._repo_root = repo_root
+        self._scope_title = scope_title or "Master collection"
+        self._read_only_scope = read_only_scope
+        self._cache_name = cache_name
+        self.setWindowTitle(f"Biota Browser — {self._scope_title}")
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
                             | Qt.WindowType.WindowMaximizeButtonHint)
@@ -303,27 +312,32 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
 
     # ── init ────────────────────────────────────────────────────────────────
     def _init_master(self):
-        master_root = _config.get("master", "masterbiotadatabase", fallback="").strip()
-        if not master_root:
-            self._status.setText("No master database is configured — set one in Repository Settings.")
+        # repo_root None → the configured master; otherwise a trip repo (read-only).
+        root = (self._repo_root or
+                _config.get("master", "masterbiotadatabase", fallback="")).strip()
+        if not root:
+            self._status.setText("No database is configured — set one in Repository Settings.")
             return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             from db.master_db import MasterDB
             from gui.biota_source import MasterBiotaSource
-            db = MasterDB(master_root)
-            self._status.setText("Opening master database…")
+            db = MasterDB(root, cache_name=self._cache_name)
+            self._status.setText("Opening database…")
             QApplication.processEvents()
             db.ensure_fresh(progress_cb=lambda msg: self._status.setText(msg))
-            self._source = MasterBiotaSource(db, master_root)
+            self._source = MasterBiotaSource(db, root)
+            self._source.scope_label = self._scope_title
         except Exception as e:
-            logger.error(f"Biota Browser: master load failed: {e}", exc_info=True)
-            self._status.setText("Master database load failed — see the log.")
+            logger.error(f"Biota Browser: load failed: {e}", exc_info=True)
+            self._status.setText("Database load failed — see the log.")
             QApplication.restoreOverrideCursor()
             return
 
         self._master_db = db
-        self._master_read_only = _config.get(
+        # A trip scope is always read-only here (editing goes through the
+        # authorized Tech panels); the master follows its machine policy.
+        self._master_read_only = self._read_only_scope or _config.get(
             "master", "readonly", fallback="yes").strip().lower() != "no"
 
         # A provider in full-master mode powers the inline species grid — the same
@@ -341,7 +355,7 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
                 fpr, day_objects=None, upn_day_map={}, jpg_only=True,
                 species_lang=self._lang, loader=self._loader, view_read_only=False)
             self._collection.set_master(
-                db, master_root, include=True,
+                db, root, include=True,
                 read_only=self._master_read_only, full=True)
         except Exception as e:
             logger.error(f"Biota Browser: provider setup failed: {e}", exc_info=True)
