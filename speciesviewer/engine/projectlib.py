@@ -284,6 +284,24 @@ class Project:
         logger.info(f"Read all new data from project in {time.time()-thissteptime:.1f} seconds.")
         return [RepositoryFileCount, RepositoryPictureCount, from_time, last_time]
     
+    def readMasterCommitted(self, silent=False):
+        """Load the master's fully committed collection from metadata/active/
+        for rebuilding the whole master website independent of any trip.
+
+        readProject() reads the species list from review/<projectName>/species.csv
+        — the subset for the trip currently being ingested. This instead reads the
+        FULL master species tree from active/species.csv (already carrying computed
+        Leaves / TargetPath / BestJPG / counters), plus the committed files and
+        pictures from active/. No review/day merging — there is no trip context."""
+        starttime = time.time()
+        active = os.path.join(self.getMetaDir(), "active")
+        self.readSpeciesInfo(os.path.join(active, "species.csv"), False)
+        self.sc.readSpeciesCollection(os.path.join(active, "speciescollection.csv"), False)
+        read_file(self, os.path.join(active, "data_files.csv"), silent=silent)
+        read_pictures(self, os.path.join(active, "data_pictures.csv"))
+        logger.info(f"Read committed master collection (active/) in {time.time()-starttime:.1f}s.")
+        return
+
     def makeSpeciesDirectory(self, leaf):
         global debugfile, count
         species = self.getSpecies(leaf)
@@ -390,7 +408,17 @@ class Project:
         return
 
     # create website based on current count setting, now to test iSpeciesThisRunCount
-    def makeWebDirectories(self, speciesname, all_or_new):
+    #
+    # force_all decouples SELECTION from OUTPUT ROUTING. Normally all_or_new does both:
+    # it decides which pages to render (New = only taxa/species with new pics this run)
+    # AND where they land (getBiotaAllorNewDir: 'All' -> web/, 'New' -> frozen/). The
+    # uploaders (sv7, svv4) only ship frozen/biota, so we must keep all_or_new='New' to
+    # land in frozen. force_all=True then re-renders EVERY published taxon/species anyway
+    # — a full re-render (e.g. after a shared-template change) that still uploads normally.
+    # progress_cb, when given, is called once per species page rendered — a heartbeat
+    # for long full re-renders (the master has thousands of species). Optional, so
+    # normal trip/album builds are unaffected.
+    def makeWebDirectories(self, speciesname, all_or_new, force_all=False, progress_cb=None):
         if speciesname not in self.sp.species_dict:
             logger.warning(f"makeWebDirectories: '{speciesname}' not found in species data, skipping.")
             return
@@ -400,16 +428,19 @@ class Project:
         for leaf in sorted(species['Leaves']):
             species = self.sp.species_dict[leaf]
             if (int(species['iPicturesWithJPGsThisRun']) + int(species['iPicturesWithJPGsCollection'])) > 0:
+                render_it = all_or_new == 'All' or force_all or (int(species['iPicturesWithJPGsThisRun']) > 0)
                 if species['Level'] != Level.SPECIES:
-                    # only create directory if is new", or all
-                    if all_or_new == 'All' or (int(species['iPicturesWithJPGsThisRun']) > 0):
-                        self.makeWebDirectories(leaf, all_or_new)
+                    # only create directory if is new, all, or a forced full re-render
+                    if render_it:
+                        self.makeWebDirectories(leaf, all_or_new, force_all=force_all, progress_cb=progress_cb)
                 # species page updated just in case it is needed
-                elif all_or_new == 'All' or (int(species['iPicturesWithJPGsThisRun']) > 0):
+                elif render_it:
                     # Skip species whose JPGmap has no JPG currently in files_dict;
                     # these are forward references from stale state and would render empty pages.
                     if any(os.path.basename(jpg) in self.files_dict for jpg in species['JPGmap']):
                         self.makeSpeciesWebDirectory(leaf, all_or_new)
+                        if progress_cb is not None:
+                            progress_cb()
         return
 
     def makeSpeciesWebDirectory(self, leaf, all_or_new):

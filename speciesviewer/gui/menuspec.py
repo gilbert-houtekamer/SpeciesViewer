@@ -9,7 +9,7 @@ from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDial
         PublishDayDialog,
         WritePicturesDialog, CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog,
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
-        AddTripToMasterDialog, MasterPipelineDialog, ConvertAvibaseDialog,
+        AddTripToMasterDialog, MasterPipelineDialog, MasterRebuildWebsiteDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
         TestbedDialog, BlogAdminDialog, ManageTripsDialog, PhotoMechanicDialog,
         RescanMasterCacheDialog, SmallMasterDialog, InstallSmallMasterDialog)
@@ -43,6 +43,7 @@ import batch.sv4WriteBlog
 import batch.sv5BuildWebsite
 import batch.sv6Freeze
 import batch.sv7WriteCommit
+import batch.svMasterRebuildWeb
 import batch.svr2CountSpecies
 import batch.svr4UpdateTrips
 import batch.svr5MergeSpeciesCollections
@@ -1427,6 +1428,32 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # Force a full website re-render (every taxon/species page, not just the ones
+    # changed this run) + upload — for when a SHARED TEMPLATE changed and must reach
+    # all master pages at once. HTML-only + publish-only: it never freezes or commits
+    # master data (deliberately separate from the data pipeline). master_mode=True so
+    # the batch runs against the master repository config.
+    master_rebuild_web_spec = MenuSpec(
+        callback=None,
+        title="Rebuild Entire Website",
+        showsubdirectory=False,
+        batch_parms={
+            'statusname':     "",
+            'module_called':  batch.svMasterRebuildWeb.main,
+            'before_msg':     "Re-rendering and uploading every master page…",
+            'after_msg':      "✅ Master website fully rebuilt and uploaded.",
+            'master_mode':    True,
+        },
+    )
+    rebuild_master_web_item = MenuSpec(
+        callback=lambda: MasterRebuildWebsiteDialog(main_window, master_rebuild_web_spec).exec(),
+        title="Rebuild Entire Website (all pages)…",
+        enabled=has_master,
+        tooltip="Re-render every master species/taxon page (e.g. after a template "
+                "change) and upload. HTML only — no master data is changed.",
+        showsubdirectory=False,
+    )
+
     # Master-data repair (the Refresh Master Database pair + the two GPS fixers)
     # is grouped under Master ▸ Maintain Master Database — always visible; Apply is
     # the only destructive action. The consoles / testbed diagnostics live under
@@ -1438,6 +1465,8 @@ def build_menu_spec(main_window):
         f"{MenuSpec.separator()}_maint_gps": None,
         "Add Missing Place Names…": add_place_names_item,
         "Fill Picture GPS from Files…": consolidate_gps_item,
+        f"{MenuSpec.separator()}_maint_web": None,
+        "Rebuild Entire Website (all pages)…": rebuild_master_web_item,
     }
     developer_tools_menu = {
         "Trip Status Console…": trip_status_console,

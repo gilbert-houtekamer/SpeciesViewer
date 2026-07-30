@@ -213,6 +213,8 @@ def main(args, config):
     # Build web pages in both languages.
     # Use "New" so species HTML lands in ReviewFrozen() alongside the JPG copies,
     # enabling a single put_r_portable upload instead of two separate trees.
+    # (An album extract has iPicturesWithJPGsThisRun>0 for every species, so "New"
+    # already re-renders every taxon/species page — no force-all needed here.)
     for language in ("nl", "en"):
         project.setLanguage(language)
         project.makeWebDirectories("biota", "New")

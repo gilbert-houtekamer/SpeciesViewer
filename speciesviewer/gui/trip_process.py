@@ -3562,6 +3562,58 @@ class RescanMasterCacheDialog(BaseTripModuleDialog):
                 f"✅ {summary}" if summary else "✅ Master EXIF cache updated.")
 
 
+class MasterRebuildWebsiteDialog(QDialog):
+    """Force a full re-render + upload of every master website page.
+
+    HTML-only and publish-only: it re-renders every species/taxon page (so a
+    shared-template change reaches all pages at once) and uploads, but never
+    freezes or commits any master data. Runs threaded via BatchModuleRunner so
+    the (multi-minute) render+upload doesn't block the GUI."""
+
+    def __init__(self, parent, menu_spec):
+        super().__init__(parent)
+        self.logger        = parent.logger
+        self.passed_parent = parent
+        self.menu_spec     = menu_spec
+        self.setWindowTitle("Rebuild Entire Master Website")
+        self.resize(600, 300)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(HTMLLabel(
+            "<p><b>Rebuild the entire master website</b></p>"
+            "<p>Re-renders <b>every</b> species and taxon page — not only those "
+            "changed since the last build — and uploads them. Use it after a "
+            "shared-template change that should appear on all pages (e.g. the "
+            "species search box).</p>"
+            "<p>This re-renders HTML and uploads only. It does <b>not</b> change, "
+            "freeze, or commit any master data. Unchanged files are skipped on "
+            "upload, but a full master can still take several minutes.</p>"
+        ))
+
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        self.run_btn = QPushButton("Rebuild && Upload")
+        close_btn = QPushButton("Close")
+        btn_layout.addWidget(self.run_btn)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+        self.run_btn.clicked.connect(self.on_run)
+        close_btn.clicked.connect(self.close)
+
+    def on_run(self):
+        self.run_btn.setEnabled(False)
+        # on_success passes no args, on_failure passes the error string — accept both.
+        def _reenable(*_args):
+            self.run_btn.setEnabled(True)
+        runner = BatchModuleRunner(self, self.passed_parent)
+        runner.run(self.menu_spec, on_success=_reenable, on_failure=_reenable)
+
+
 class MasterPipelineDialog(QDialog):
     """Drive the master-side database merge — three progressive steps
     (ingest → build+freeze → commit) inside one dialog. Each step's
