@@ -199,12 +199,44 @@ class MasterBiotaSource:
         return None
 
     def _species_raw_cover(self, key: str, target_path: str):
-        """The RAW file of this species' best-rated picture. A processed picture is
-        filed under the repo's biota/ tree (root/TargetPath/<raw>); an UNPROCESSED
-        one (no JPG, no folder yet — common on a working trip) still lives at its
-        ingest location, recorded as an absolute WindowsFileName."""
+        """A RAW file of this species that actually exists on disk, preferring the
+        best-rated picture. A processed picture is filed under the repo's biota/
+        tree (root/TargetPath/<raw>); an UNPROCESSED one (no JPG, no folder yet —
+        common on a working trip) lives at its ingest location, an absolute
+        WindowsFileName. Some rows carry a STALE repo path that was never copied,
+        so we must scan all the species' RAWs for one that resolves, not just the
+        single best pic's."""
         pics = self.db.pictures_for_species(key)
         if not pics:
+            return None
+        upns = [p.get("UniquePictureName") for p in pics if p.get("UniquePictureName")]
+        if not upns:
+            return None
+        try:
+            frows = self.db.files_for_upns(upns)   # {File:FileName: row}, chunked
+        except Exception:
+            return None
+        # upn -> first RAW of that picture that exists on disk
+        raw_by_upn = {}
+        for fname, frow in frows.items():
+            ext = "." + ((frow.get("WindowsExtension") or "").lower())
+            if ext not in _RAW_EXTS:
+                continue
+            upn = frow.get("UniquePictureName")
+            if not upn or upn in raw_by_upn:
+                continue
+            found = None
+            if target_path:
+                cand = self.master_root / target_path / fname
+                if cand.exists():
+                    found = cand
+            if found is None:
+                wf = frow.get("WindowsFileName") or ""
+                if wf and Path(wf).exists():
+                    found = Path(wf)
+            if found is not None:
+                raw_by_upn[upn] = found
+        if not raw_by_upn:
             return None
 
         def _si(v):
@@ -212,26 +244,12 @@ class MasterBiotaSource:
                 return int(str(v).strip() or 0)
             except (TypeError, ValueError):
                 return 0
-        best = max(pics, key=lambda p: (_si(p.get("Rating")), _si(p.get("Rate"))))
-        upn = best.get("UniquePictureName")
-        if not upn:
-            return None
-        try:
-            frows = self.db.files_for_upns([upn])
-        except Exception:
-            return None
-        for fname, frow in frows.items():
-            ext = "." + ((frow.get("WindowsExtension") or "").lower())
-            if ext not in _RAW_EXTS:
-                continue
-            if target_path:
-                p = self.master_root / target_path / fname
-                if p.exists():
-                    return p
-            wf = frow.get("WindowsFileName") or ""
-            if wf and Path(wf).exists():
-                return Path(wf)
-        return None
+        for pic in sorted(pics, key=lambda p: (_si(p.get("Rating")), _si(p.get("Rate"))),
+                          reverse=True):
+            u = pic.get("UniquePictureName")
+            if u in raw_by_upn:
+                return raw_by_upn[u]
+        return next(iter(raw_by_upn.values()))
 
     # ── leaf pictures (handed to the existing card grid) ────────────────────
     def pictures_for_species(self, sci: str) -> list[dict]:
