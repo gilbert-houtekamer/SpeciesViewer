@@ -265,6 +265,19 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         self._scroll.setWidget(self._grid_widget)
         body.addWidget(self._scroll, 1)
 
+        # The pretty species panel's sidebar is docked HERE, outside the main
+        # scroll, so narrowing the window reflows the content but never slides the
+        # sidebar off-screen. Its own vertical scroll handles a long family list.
+        # Hidden except in the pretty species view.
+        self._sidebar_scroll = QScrollArea()
+        self._sidebar_scroll.setWidgetResizable(True)
+        self._sidebar_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._sidebar_scroll.setFixedWidth(258)
+        self._sidebar_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._sidebar_scroll.setVisible(False)
+        body.addWidget(self._sidebar_scroll, 0)
+
         outer.addLayout(body, 1)
 
         QTimer.singleShot(0, self._init_master)
@@ -516,9 +529,11 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
             return
         self._clear_grid()
         self._all_btn.setChecked(self._mode == "allspecies")
-        # The pretty species panel carries its own sidebar; the rank rail only
-        # makes sense while browsing the tree.
+        # The rank rail makes sense only while browsing the tree; the sidebar only
+        # in the pretty species view.
         self._rail_host.setVisible(self._mode != "species")
+        self._sidebar_scroll.setVisible(self._mode == "species"
+                                        and self._species_view == "pretty")
         self._rebuild_crumbs()
         self._rebuild_rail()
         if self._mode == "allspecies":
@@ -547,6 +562,10 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         panel.show_species(self._cur)
         self._grid.setColumnStretch(0, 1)
         self._grid.addWidget(panel, 0, 0)
+        # Dock the panel's sidebar outside the scroll (setWidget deletes the old one).
+        sidebar = panel.sidebar_widget()
+        if sidebar is not None:
+            self._sidebar_scroll.setWidget(sidebar)
         # the large viewer + card sync work off these
         self._pic_cards = panel.pic_cards
         self._pic_by_key = {c.upn_key: c for c in panel.pic_cards}

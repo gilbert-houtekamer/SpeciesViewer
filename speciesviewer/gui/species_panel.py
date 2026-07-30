@@ -56,6 +56,136 @@ def _load_qimage(path):
     return None if img.isNull() else img
 
 
+class _Photo(QLabel):
+    """A photo label that positions small corner badges over itself."""
+    def __init__(self):
+        super().__init__()
+        self._badges = []   # (widget, corner)
+
+    def add_badge(self, w, corner):
+        w.setParent(self)
+        self._badges.append((w, corner))
+        w.show()
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        m = 6
+        for w, corner in self._badges:
+            w.adjustSize()
+            x = m if "l" in corner else self.width() - w.width() - m
+            y = m if "t" in corner else self.height() - w.height() - m
+            w.move(x, y)
+
+
+class PhotoTile(QFrame):
+    """View-only olive-matted photo tile for the pretty panel — the site's look.
+    Double-click opens the large viewer; right-click opens the master card menu.
+    All editing lives in the Tech panel; this tile only shows state (# = has a
+    JPG, colour label dot, star rating)."""
+
+    def __init__(self, item, collection, loader, tile_w, on_open, on_menu):
+        super().__init__()
+        self._item = item
+        self.upn_key = item.key
+        self._on_open = on_open
+        self._on_menu = on_menu
+        self.setObjectName("ptile")
+        self.setStyleSheet(
+            f"QFrame#ptile {{ background:{_FRAME}; border-radius:7px; }}"
+            f"QFrame#ptile:hover {{ background:#5f7a56; }}")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedWidth(tile_w)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(5, 5, 5, 5)
+        lay.setSpacing(4)
+
+        ph_h = max(90, int((tile_w - 10) * 0.66))
+        self._photo = _Photo()
+        self._photo.setFixedHeight(ph_h)
+        self._photo.setStyleSheet(f"background:#e9ece3; border:3px solid {_MAT};"
+                                  f" border-radius:3px;")
+        self._photo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(self._photo)
+
+        # # badge (has a JPG) — the marker the user asked for
+        self._hash = QLabel("#")
+        self._hash.setStyleSheet(
+            "color:#fff; background:rgba(60,64,58,.78); font-family:Consolas,monospace;"
+            " font-size:8px; font-weight:700; padding:0px 3px; border-radius:3px;")
+        self._photo.add_badge(self._hash, "tl")
+        self._hash.setVisible(item.has_jpg)
+
+        self._dot = QLabel()
+        self._dot.setFixedSize(11, 11)
+        self._photo.add_badge(self._dot, "tr")
+
+        self._stars = QLabel()
+        self._stars.setStyleSheet("color:#fff; font-size:9px;"
+                                  " background:rgba(0,0,0,.30); border-radius:3px; padding:0 3px;")
+        self._photo.add_badge(self._stars, "br")
+
+        cap = QHBoxLayout(); cap.setContentsMargins(2, 0, 2, 1); cap.setSpacing(6)
+        fname = ""
+        p = collection.jpg_path(item.key)
+        if p is not None:
+            fname = p.name
+        self._fn = QLabel(fname)
+        self._fn.setStyleSheet(f"color:{_FRAME_INK}; font-family:Consolas,monospace; font-size:9px;")
+        self._fn.setWordWrap(False)
+        cap.addWidget(self._fn, 1)
+        self._date = QLabel((item.date or "")[:10])
+        self._date.setStyleSheet("color:rgba(255,255,255,.75); font-family:Consolas,monospace; font-size:9px;")
+        cap.addWidget(self._date, 0)
+        lay.addLayout(cap)
+
+        self._paint_state()
+
+        cover = collection.jpg_path(item.key)
+        if cover is not None:
+            loader.request(lambda pth=cover: _load_qimage(pth), self._set_photo, target_w=tile_w * 2)
+
+    def _paint_state(self):
+        from gui.rating_editor import COLOR_HEX
+        col = COLOR_HEX.get(self._item.color, "")
+        if col:
+            self._dot.setStyleSheet(f"background:{col}; border:1.5px solid rgba(255,255,255,.85);"
+                                    f" border-radius:6px;")
+            self._dot.setVisible(True)
+        else:
+            self._dot.setVisible(False)
+        r = max(0, min(5, self._item.rating))
+        self._stars.setText("★" * r if r else "")
+        self._stars.setVisible(r > 0)
+
+    def _set_photo(self, px: QPixmap):
+        if px is None or px.isNull():
+            self._photo.setText("no jpg")
+            return
+        w = self._photo.width() or self.width() - 10
+        h = self._photo.height()
+        # Contain (not cover): show the WHOLE photo, matted — a centre-crop hides
+        # too much of a bird in a wide or tall frame.
+        self._photo.setPixmap(px.scaled(
+            w, h, Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation))
+        self._photo.setText("")
+
+    def refresh(self):
+        # colour / stars may have changed in the large view or Tech panel
+        self._paint_state()
+
+    def mouseDoubleClickEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self._on_open(self.upn_key)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.RightButton:
+            self._on_menu(self.upn_key)
+        else:
+            super().mousePressEvent(e)
+
+
 class SpeciesPanel(QWidget):
     """Built once, refreshed per species via show_species(sci)."""
 
@@ -103,18 +233,22 @@ class SpeciesPanel(QWidget):
         self._outer.addWidget(self._build_hero(node, display, pics))
         self._outer.addWidget(self._build_actions())
 
-        body = QWidget()
-        bl = QHBoxLayout(body)
-        bl.setContentsMargins(16, 8, 16, 16)
-        bl.setSpacing(16)
-        main = QWidget(); ml = QVBoxLayout(main)
-        ml.setContentsMargins(0, 0, 0, 0); ml.setSpacing(6)
+        # Main content only — the sidebar is hosted OUTSIDE the scroll by the
+        # Biota Browser (so narrowing the window never slides it off-screen).
+        main = QWidget()
+        ml = QVBoxLayout(main)
+        ml.setContentsMargins(16, 8, 16, 16); ml.setSpacing(6)
         ml.addWidget(self._build_names(src))
         ml.addWidget(self._build_photos(pics))
         ml.addStretch(1)
-        bl.addWidget(main, 1)
-        bl.addWidget(self._build_sidebar(src, node), 0)
-        self._outer.addWidget(body, 1)
+        self._outer.addWidget(main, 1)
+
+        self._sidebar = self._build_sidebar(src, node)
+
+    def sidebar_widget(self):
+        """The siblings / orders sidebar — the Biota Browser docks this to the
+        right of the scroll (built during show_species)."""
+        return getattr(self, "_sidebar", None)
 
     # hero: best photo (natural aspect, olive mat) + identity
     def _build_hero(self, node, display, pics):
@@ -287,7 +421,6 @@ class SpeciesPanel(QWidget):
 
     # photos grouped by age/sex/plumage
     def _build_photos(self, pics):
-        from gui.rating_editor import PictureCard
         host = self._host
         box = QWidget(); bl = QVBoxLayout(box); bl.setContentsMargins(0, 10, 0, 0); bl.setSpacing(4)
 
@@ -345,12 +478,11 @@ class SpeciesPanel(QWidget):
             grid = QGridLayout(row_wrap); grid.setContentsMargins(0, 4, 0, 0); grid.setSpacing(10)
             ncols = max(2, host.columns)
             for idx, it in enumerate(items):
-                card = PictureCard(it, card_w, show_kind_tag=False)
-                card.card_double_clicked.connect(host._on_pic_open)
-                card.card_right_clicked.connect(host._on_pic_menu)
-                card.card_changed.connect(host._on_pic_changed)
-                grid.addWidget(card, idx // ncols, idx % ncols)
-                self._pic_cards.append(card)
+                tile = PhotoTile(it, col, host._loader, card_w,
+                                 host._on_pic_open, host._on_pic_menu)
+                grid.addWidget(tile, idx // ncols, idx % ncols,
+                               Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+                self._pic_cards.append(tile)
             for c in range(ncols):
                 grid.setColumnStretch(c, 1)
             bl.addWidget(row_wrap)
@@ -359,7 +491,7 @@ class SpeciesPanel(QWidget):
     # sidebar: sibling species (same family) + orders with photos
     def _build_sidebar(self, src, node):
         host = self._host
-        side = QWidget(); side.setFixedWidth(248)
+        side = QWidget()
         side.setStyleSheet(f"background:{_SURFACE}; border-left:1px solid {_LINE};")
         sl = QVBoxLayout(side); sl.setContentsMargins(14, 8, 12, 12); sl.setSpacing(4)
 
