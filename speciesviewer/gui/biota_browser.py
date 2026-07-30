@@ -95,10 +95,20 @@ class TaxonCard(QFrame):
         nm.setStyleSheet(f"color:{_INK}; font-weight:600; font-size:14px; border:none;")
         nm.setWordWrap(True)
         ml.addWidget(nm)
-        sci = QLabel(node["sci"] + (f" · {node['en']}" if node.get("en") else ""))
-        sci.setStyleSheet(f"color:{_INK_SOFT}; font-style:italic; font-size:12px; border:none;")
-        sci.setWordWrap(True)
-        ml.addWidget(sci)
+        # Secondary line: the scientific name (italic) — UNLESS the title already IS
+        # the scientific name (Sci profile / a taxon with no vernacular), in which case
+        # show a common name instead. Never repeat what the title already shows.
+        disp_cf = (node["_display"] or "").strip().casefold()
+        if disp_cf and disp_cf == (node["sci"] or "").strip().casefold():
+            secondary, sec_italic = (node.get("en") or node.get("nl") or ""), False
+        else:
+            secondary, sec_italic = node["sci"], True
+        if secondary:
+            sci = QLabel(secondary)
+            sci.setStyleSheet(f"color:{_INK_SOFT}; font-size:12px; border:none;"
+                              + (" font-style:italic;" if sec_italic else ""))
+            sci.setWordWrap(True)
+            ml.addWidget(sci)
         stat = QLabel(sub_html)
         stat.setTextFormat(Qt.TextFormat.RichText)
         stat.setStyleSheet(f"color:{_INK_SOFT}; font-family:Consolas,monospace;"
@@ -131,8 +141,13 @@ class TaxonCard(QFrame):
 class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
     """Scope-agnostic biota tree browser. Master scope only for now."""
 
-    def __init__(self, parent):
+    # How many species cards to paint at once in the flat 'all species' view
+    # before asking the user to narrow with the search box (the master has ~2200).
+    _ALL_CAP = 400
+
+    def __init__(self, parent, start_mode="tree"):
         super().__init__(parent)
+        self._start_mode = start_mode   # "tree" | "allspecies"
         self.setWindowTitle("Biota Browser — Master")
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
@@ -148,6 +163,7 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         self._collection = None     # RatingEditorCollection (full master), for species mode
         self._master_db = None
         self._master_read_only = True
+        self._species_view = "pretty"   # "pretty" (SpeciesPanel) | "tech" (grid)
         self._pic_cards = []
         self._pic_by_key = {}
         self._large_view = None
@@ -166,6 +182,18 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
             f"color:{_DONE}; font-weight:700; font-size:13px;")
         top.addWidget(self._scope_label)
         top.addSpacing(14)
+
+        self._all_btn = QPushButton("All species")
+        self._all_btn.setCheckable(True)
+        self._all_btn.setToolTip("Show every species as one flat, searchable list")
+        self._all_btn.setStyleSheet(
+            f"QPushButton {{ border:1px solid {_LINE}; border-radius:6px;"
+            f" padding:4px 10px; }}"
+            f"QPushButton:checked {{ background:{_DONE_BG}; border-color:{_DONE};"
+            f" color:{_DONE}; font-weight:600; }}")
+        self._all_btn.clicked.connect(self._on_all_species_toggled)
+        top.addWidget(self._all_btn)
+        top.addSpacing(10)
 
         top.addWidget(QLabel("Rank:"))
         self._level_combo = QComboBox()
@@ -296,6 +324,9 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
 
         self._scope_label.setText(self._source.scope_label)
         self._cur = self._source.root()
+        if self._start_mode == "allspecies":
+            self._mode = "allspecies"
+            self._all_btn.setChecked(True)
         self._render()
 
     def _on_lang_changed(self, _i):
@@ -309,9 +340,22 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         self._render()
 
     def _on_search_changed(self, _t):
-        # A search is a tree query; leave any open species view.
+        # A search is a query over the current view; leave an open species view
+        # (but keep the flat all-species list — there the box just filters it).
         if self._mode == "species" and self._search.text().strip():
             self._mode = "tree"
+        self._render()
+
+    def _on_all_species_toggled(self, checked):
+        self._close_large_view()
+        self._search.blockSignals(True)
+        self._search.clear()
+        self._search.blockSignals(False)
+        if checked:
+            self._mode = "allspecies"
+        else:
+            self._mode = "tree"
+            self._cur = self._source.root() if self._source else self._cur
         self._render()
 
     # ── naming ──────────────────────────────────────────────────────────────
@@ -327,6 +371,16 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
             if w:
                 w.deleteLater()
         if not self._source or not self._cur:
+            return
+        if self._mode == "allspecies":
+            here = QLabel("All species  ")
+            here.setStyleSheet(f"color:{_INK}; font-weight:700;")
+            self._crumbs.addWidget(here)
+            tag = QLabel("FLAT INDEX")
+            tag.setStyleSheet(f"color:{_INK_SOFT}; font-family:Consolas,monospace;"
+                              f" font-size:9px; letter-spacing:1px;")
+            self._crumbs.addWidget(tag)
+            self._crumbs.addStretch(1)
             return
         chain = self._source.chain(self._cur)
         for i, node in enumerate(chain):
@@ -372,6 +426,14 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         head.setStyleSheet(f"color:{_INK_SOFT}; font-family:Consolas,monospace;"
                            f" font-size:9px; letter-spacing:1px; padding:2px 6px;")
         self._rail.addWidget(head)
+
+        if self._mode == "allspecies":
+            note = QLabel("  Flat species index —\n  no tree position.")
+            note.setStyleSheet(f"color:{_INK_SOFT}; font-size:11px; padding:6px 8px;")
+            note.setWordWrap(True)
+            self._rail.addWidget(note)
+            self._rail.addStretch(1)
+            return
 
         chain = self._source.chain(self._cur)
         by_rank = {n["rank"]: n for n in chain}
@@ -438,6 +500,10 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
             self._collection.cancel_pending_loads()
         self._pic_cards = []
         self._pic_by_key = {}
+        # Reset column stretches — otherwise a previous multi-column taxon layout
+        # would squeeze a single full-width widget (the pretty panel) into one column.
+        for c in range(8):
+            self._grid.setColumnStretch(c, 0)
         while self._grid.count():
             item = self._grid.takeAt(0)
             w = item.widget()
@@ -449,14 +515,90 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         if self._source is None:
             return
         self._clear_grid()
+        self._all_btn.setChecked(self._mode == "allspecies")
+        # The pretty species panel carries its own sidebar; the rank rail only
+        # makes sense while browsing the tree.
+        self._rail_host.setVisible(self._mode != "species")
         self._rebuild_crumbs()
         self._rebuild_rail()
-        if self._search.text().strip():
+        if self._mode == "allspecies":
+            self._render_all_species()
+        elif self._search.text().strip():
             self._render_search()
         elif self._mode == "species":
-            self._render_species()
+            if self._species_view == "tech":
+                self._render_species()
+            else:
+                self._render_species_pretty()
         else:
             self._render_children()
+
+    # ── species: pretty panel (default) ─────────────────────────────────────
+    def _render_species_pretty(self):
+        node = self._source.node(self._cur)
+        display = self._display(dict(node)) if node else self._cur
+        n_pic = self._source.counts(self._cur)[1]
+        self._status.setText(f"{display} — {n_pic} photos · {self._source.scope_label}")
+        if self._collection is None:
+            self._show_empty("Picture provider unavailable — see the log.")
+            return
+        from gui.species_panel import SpeciesPanel
+        panel = SpeciesPanel(self)
+        panel.show_species(self._cur)
+        self._grid.setColumnStretch(0, 1)
+        self._grid.addWidget(panel, 0, 0)
+        # the large viewer + card sync work off these
+        self._pic_cards = panel.pic_cards
+        self._pic_by_key = {c.upn_key: c for c in panel.pic_cards}
+        QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
+
+    # Panel → host hooks
+    def _panel_open_tech(self):
+        self._species_view = "tech"
+        self._render()
+
+    def _panel_open_pretty(self):
+        self._species_view = "pretty"
+        self._render()
+
+    def _panel_show_map(self, sci):
+        from PyQt6.QtWidgets import QMessageBox
+        if self._master_db is None:
+            return
+        points = self._master_db.gps_points_for_species(sci)
+        if not points:
+            QMessageBox.information(
+                self, "Map",
+                "No GPS points for this species yet — older material predates in-camera GPS.")
+            return
+        from gui.map_view import MapView
+        node = self._source.node(sci)
+        display = self._display(dict(node)) if node else sci
+        dlg = MapView(self, self._master_db, sci, display, points)
+        dlg.show()
+
+    # ── flat: all species ────────────────────────────────────────────────────
+    def _render_all_species(self):
+        raw = self._search.text().strip()
+        q = raw.lower()
+        nodes = self._source.all_species()
+        if q:
+            nodes = [n for n in nodes
+                     if any(q in (n[f] or "").lower() for f in ("sci", "nl", "en"))]
+        total = len(nodes)
+        capped = nodes[:self._ALL_CAP]
+        if q:
+            self._status.setText(
+                f"{total} species match “{raw}” · {self._source.scope_label}")
+        else:
+            more = (f" (showing first {len(capped)} — type to search all)"
+                    if total > len(capped) else "")
+            self._status.setText(
+                f"All species — {total}{more} · {self._source.scope_label}")
+        if not capped:
+            self._show_empty("No species match." if q else "No species.")
+            return
+        self._lay_taxon_cards(capped)
 
     # ── tree: children ───────────────────────────────────────────────────────
     def _render_children(self):
@@ -520,6 +662,7 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
     def _open_species(self, sci):
         self._close_large_view()
         self._mode = "species"
+        self._species_view = "pretty"
         self._cur = sci
         self._render()
 
@@ -528,7 +671,9 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         display = self._display(dict(node)) if node else self._cur
         parent = self._source.node(node["up"]) if node and node.get("up") else None
 
-        # back link above the grid
+        # header row: back link (left) + a toggle back to the pretty panel (right)
+        header = QWidget()
+        hl = QHBoxLayout(header); hl.setContentsMargins(0, 0, 0, 0); hl.setSpacing(8)
         back = QPushButton(f"←  {parent['sci']}" if parent else "←  back")
         back.setFlat(True)
         back.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -538,7 +683,18 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
             f"QPushButton:hover {{ text-decoration:underline; }}")
         back.clicked.connect(lambda: self._go(parent["sci"]) if parent
                              else self._go(self._source.root()))
-        self._grid.addWidget(back, 0, 0, 1, self.columns)
+        hl.addWidget(back)
+        hl.addStretch(1)
+        pretty = QPushButton("✦ Pretty view")
+        pretty.setCursor(Qt.CursorShape.PointingHandCursor)
+        pretty.setToolTip("Back to the species page (hero, grouped photos, siblings)")
+        pretty.setStyleSheet(
+            f"QPushButton {{ color:{_DONE}; border:1px solid {_LINE}; background:{_DONE_BG};"
+            f" border-radius:7px; padding:5px 11px; font-weight:600; }}"
+            f"QPushButton:hover {{ border-color:{_DONE}; }}")
+        pretty.clicked.connect(self._panel_open_pretty)
+        hl.addWidget(pretty)
+        self._grid.addWidget(header, 0, 0, 1, self.columns)
 
         if self._collection is None:
             self._show_empty_at(1, "Picture provider unavailable — see the log.")

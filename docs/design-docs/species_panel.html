@@ -1,0 +1,326 @@
+<title>Species panel — desktop (mockup)</title>
+<style>
+  :root {
+    --bg: #f5f7f3; --surface: #ffffff; --surface-2: #eef1ea;
+    --ink: #1c211b; --ink-soft: #59634f; --line: #d7ddce;
+    --done: #2f7d43; --done-bg: #e6f1e8; --ready: #2563a8; --ready-bg: #e4eef8;
+    --frame: #6d8764; --frame-ink: #ffffff; --mat: #ffffff;
+    --font-display: "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-mono: ui-monospace, "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+    --radius: 9px;
+    --shadow: 0 1px 2px rgba(20,30,15,.06), 0 4px 14px rgba(20,30,15,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#141711; --surface:#1d211a; --surface-2:#252a20; --ink:#e8ece2;
+      --ink-soft:#a3ac99; --line:#333a2c; --done:#5bb271; --done-bg:#1d2c20;
+      --ready:#64a2db; --ready-bg:#1a2632; --frame:#7f9673; --frame-ink:#f3f6ee; --mat:#12150f;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.28); }
+  }
+  :root[data-theme="dark"] { --bg:#141711; --surface:#1d211a; --surface-2:#252a20; --ink:#e8ece2;
+    --ink-soft:#a3ac99; --line:#333a2c; --done:#5bb271; --done-bg:#1d2c20; --ready:#64a2db;
+    --ready-bg:#1a2632; --frame:#7f9673; --frame-ink:#f3f6ee; --mat:#12150f;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.28); }
+  :root[data-theme="light"] { --bg:#f5f7f3; --surface:#ffffff; --surface-2:#eef1ea; --ink:#1c211b;
+    --ink-soft:#59634f; --line:#d7ddce; --done:#2f7d43; --done-bg:#e6f1e8; --ready:#2563a8;
+    --ready-bg:#e4eef8; --frame:#6d8764; --frame-ink:#ffffff; --mat:#ffffff;
+    --shadow:0 1px 2px rgba(20,30,15,.06),0 4px 14px rgba(20,30,15,.05); }
+
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:var(--font-display);
+    line-height:1.5; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1180px; margin:0 auto; padding:32px 24px 64px; }
+  .eyebrow { font-family:var(--font-mono); font-size:11.5px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-soft); margin:0 0 6px; }
+  h1 { font-size:clamp(22px,3.4vw,30px); margin:0 0 8px; text-wrap:balance; letter-spacing:-.01em; }
+  .lede { margin:0 0 22px; color:var(--ink-soft); max-width:66ch; font-size:15px; }
+  .mock-tag { display:inline-block; font-family:var(--font-mono); font-size:10.5px; letter-spacing:.1em;
+    text-transform:uppercase; color:#b45309; background:#f8ecdc; border:1px solid #e6c9a1;
+    padding:2px 8px; border-radius:20px; margin-left:10px; vertical-align:3px; }
+
+  .app { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); overflow:hidden; }
+
+  /* toolbar: breadcrumb + actions (always on top) */
+  .bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 16px;
+    border-bottom:1px solid var(--line); background:var(--surface-2); }
+  .crumbs { display:flex; align-items:center; gap:4px; flex-wrap:wrap; font-size:13px; }
+  .crumbs a { color:var(--frame); text-decoration:none; font-weight:600; cursor:pointer; padding:2px 4px; border-radius:5px; }
+  .crumbs a:hover { color:var(--ready); background:var(--ready-bg); }
+  .crumbs .sep { color:var(--ink-soft); opacity:.6; }
+  .crumbs .here { font-weight:700; color:var(--ink); font-style:italic; }
+  .grow { flex:1 1 auto; }
+  .btn { font:inherit; font-size:13px; cursor:pointer; border:1px solid var(--line); background:var(--surface);
+    color:var(--ink); border-radius:7px; padding:6px 12px; display:inline-flex; align-items:center; gap:7px; }
+  .btn:hover { border-color:var(--ready); color:var(--ready); }
+  .btn.tech { border-color:color-mix(in srgb, var(--ready) 45%, var(--line)); color:var(--ready);
+    background:var(--ready-bg); font-weight:600; }
+  .btn .k { font-family:var(--font-mono); font-size:11px; opacity:.7; }
+
+  /* ── hero spotlight: the best photo at its NATURAL aspect, olive-matted ──── */
+  .spotlight { display:grid; grid-template-columns:auto 1fr; gap:22px; padding:18px; align-items:stretch; }
+  @media (max-width:680px){ .spotlight { grid-template-columns:1fr; } }
+  .spot-frame { background:var(--frame); border-radius:var(--radius); padding:9px; height:340px;
+    display:flex; align-items:center; justify-content:center; min-width:0; }
+  /* the mat + photo. The mat SHRINK-WRAPS the photo so olive shows around whatever
+     aspect the real image is — portrait 2:3 / 3:4 or landscape 3:2. No hard crop. */
+  .spot-mat { height:100%; border:4px solid var(--mat); border-radius:4px; overflow:hidden;
+    display:flex; }
+  .spot-img { height:100%; background-size:cover; background-position:center; }
+  .spot-id { display:flex; flex-direction:column; justify-content:center; min-width:0; }
+  .spot-id .nm { font-size:30px; font-weight:700; letter-spacing:-.01em; line-height:1.1; }
+  .spot-id .sci { font-style:italic; font-size:16px; color:var(--ink-soft); margin-top:3px; }
+  .spot-id .stars { color:var(--frame); font-size:15px; margin-top:8px; letter-spacing:1px; }
+  .spot-id .chips { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+  .chip { font-family:var(--font-mono); font-size:11px; color:var(--ink-soft); background:var(--surface-2);
+    border:1px solid var(--line); border-radius:20px; padding:4px 11px; display:inline-flex; gap:6px; align-items:center; }
+  .chip b { color:var(--frame); font-weight:700; }
+  .chip.rank { color:var(--done); background:var(--done-bg); border-color:color-mix(in srgb,var(--done) 30%,var(--line)); font-weight:600; }
+  .spot-id .best { font-family:var(--font-mono); font-size:10.5px; color:var(--ink-soft); margin-top:14px; opacity:.85; }
+
+  /* body: main + sidebar */
+  .grid2 { display:grid; grid-template-columns:1fr 250px; gap:0; border-top:1px solid var(--line); }
+  @media (max-width:780px){ .grid2 { grid-template-columns:1fr; } }
+  .main { padding:18px; min-width:0; }
+  .side { border-left:1px solid var(--line); padding:18px 16px; background:var(--surface); }
+  @media (max-width:780px){ .side { border-left:0; border-top:1px solid var(--line); } }
+
+  h2.sec { font-size:12px; font-family:var(--font-mono); letter-spacing:.09em; text-transform:uppercase;
+    color:var(--ink-soft); margin:0 0 10px; font-weight:600; }
+  .photos-head { display:flex; align-items:center; gap:12px; margin:0 0 6px; }
+  .photos-head h2 { margin:0; }
+  .photos-head .grow { flex:1; }
+  /* subtle All-files toggle */
+  .toggle { display:inline-flex; align-items:center; gap:8px; cursor:pointer; user-select:none;
+    font-size:12.5px; color:var(--ink-soft); }
+  .toggle .sw { width:34px; height:19px; border-radius:19px; background:color-mix(in srgb,var(--ink-soft) 35%,transparent);
+    border:1px solid var(--line); position:relative; transition:background .18s; flex:none; }
+  .toggle .sw::after { content:""; position:absolute; top:1.5px; left:1.5px; width:14px; height:14px;
+    border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.25); transition:left .18s; }
+  .toggle.on .sw { background:var(--ready); border-color:var(--ready); }
+  .toggle.on .sw::after { left:16px; }
+  .toggle .hint { font-family:var(--font-mono); font-size:10px; color:var(--ink-soft); opacity:.8; }
+
+  /* names table */
+  .names { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:24px; }
+  .names th, .names td { text-align:left; padding:7px 10px; border:1px solid var(--line); }
+  .names thead th { background:var(--surface-2); font-family:var(--font-mono); font-size:10px;
+    letter-spacing:.05em; text-transform:uppercase; color:var(--ink-soft); font-weight:600; }
+  .names td.sci { font-style:italic; }
+  .names tr:hover td { background:color-mix(in srgb, var(--frame) 7%, transparent); }
+  .names .tag { font-family:var(--font-mono); font-size:9px; color:var(--ink-soft); }
+
+  /* photo groups (age / sex / plumage) */
+  .grouphdr { display:flex; align-items:baseline; gap:9px; margin:18px 0 9px; }
+  .grouphdr .g { font-size:14px; font-weight:600; }
+  .grouphdr .c { font-family:var(--font-mono); font-size:10.5px; color:var(--ink-soft); }
+  .grouphdr::after { content:""; flex:1; height:1px; background:var(--line); align-self:center; }
+  .photos { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px,1fr)); gap:10px; }
+  .ph { cursor:pointer; background:var(--frame); padding:5px; border-radius:7px;
+    transition:transform .12s, box-shadow .12s; position:relative; }
+  .ph:hover { transform:translateY(-2px); box-shadow:0 8px 20px rgba(20,30,15,.16); }
+  .ph .im { aspect-ratio:3/2; border:3px solid var(--mat); border-radius:3px; background-size:cover;
+    background-position:center; position:relative; }
+  .ph .fn { margin-top:5px; font-family:var(--font-mono); font-size:9.5px; color:var(--frame-ink);
+    display:flex; justify-content:space-between; gap:6px; }
+  .ph .cb { position:absolute; right:5px; top:5px; width:11px; height:11px; border-radius:50%;
+    border:1.5px solid rgba(255,255,255,.85); }
+  /* JPG marker — a "#" shown ONLY in "All files" mode, ONLY on frames that carry a
+     JPG. RAW-only frames stay unmarked (and dimmed): no # = no JPG. */
+  .ph .kind { position:absolute; left:9px; top:9px; font-family:var(--font-mono); font-size:12px; font-weight:700;
+    line-height:1; padding:2px 6px; border-radius:5px; display:none;
+    color:var(--frame-ink); background:rgba(47,125,67,.92); }
+  .allfiles .ph.jpg .kind { display:block; }
+  .allfiles .ph.raw .im { filter:saturate(.6) brightness(.94); }   /* raw-only reads quieter */
+  .raw-only { display:none; }
+  .allfiles .raw-only { display:block; }
+
+  /* map */
+  .map { margin-top:24px; height:200px; border:1px solid var(--line); border-radius:8px;
+    background:
+      radial-gradient(circle at 32% 44%, color-mix(in srgb, var(--done) 55%, transparent) 0 6px, transparent 7px),
+      radial-gradient(circle at 36% 50%, color-mix(in srgb, var(--done) 55%, transparent) 0 5px, transparent 6px),
+      radial-gradient(circle at 61% 39%, color-mix(in srgb, var(--done) 55%, transparent) 0 5px, transparent 6px),
+      linear-gradient(160deg, color-mix(in srgb, var(--ready) 14%, var(--surface)), var(--surface-2));
+    position:relative; overflow:hidden; }
+  .map .lbl { position:absolute; left:12px; top:10px; font-family:var(--font-mono); font-size:10px;
+    letter-spacing:.06em; text-transform:uppercase; color:var(--ink-soft); }
+
+  /* sidebar lists */
+  .side h3 { font-family:var(--font-mono); font-size:10px; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--ink-soft); margin:0 0 8px; font-weight:600; }
+  .sib { list-style:none; margin:0 0 22px; padding:0; }
+  .sib li { display:flex; align-items:center; gap:9px; padding:5px 6px; border-radius:6px; cursor:pointer; font-size:13px; }
+  .sib li:hover { background:var(--surface-2); }
+  .sib li.cur { background:var(--done-bg); color:var(--done); font-weight:600; }
+  .sib .sw { width:34px; height:26px; border-radius:4px; border:2px solid var(--frame); flex:none; background-size:cover; }
+  .sib .nm2 { min-width:0; }
+  .sib .nm2 .s { font-style:italic; color:var(--ink-soft); font-size:11px; }
+  .sib .n { margin-left:auto; font-family:var(--font-mono); font-size:10px; color:var(--ink-soft); }
+
+  .notes { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px 26px;
+    margin-top:26px; padding-top:20px; border-top:1px solid var(--line); }
+  .notes h4 { margin:0 0 5px; font-size:12px; font-family:var(--font-mono); letter-spacing:.08em;
+    text-transform:uppercase; color:var(--ink-soft); font-weight:600; }
+  .notes p { margin:0; font-size:13px; color:var(--ink-soft); line-height:1.5; }
+  .notes code { font-family:var(--font-mono); font-size:12px; color:var(--ink); }
+  @media (prefers-reduced-motion: reduce){ * { transition:none !important; } }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">SpeciesViewer · Backlog ch.14 → ch.15</p>
+  <h1>Species panel — desktop <span class="mock-tag">Layout v2</span></h1>
+  <p class="lede">The app twin of a website species page. The best photo shows at its
+    <b>natural aspect</b> — olive matting frames a portrait (2:3 / 3:4) or a landscape,
+    never a hard-cropped banner. Photos group by age/sex/plumage with a subtle rating;
+    <b>Show all files</b> reveals the RAWs too and marks which carry a JPG. Editing lives
+    behind the <b>⚙ Tech panel</b>.</p>
+
+  <div class="app">
+    <div class="bar">
+      <nav class="crumbs">
+        <a>biota</a><span class="sep">›</span><a>aves</a><span class="sep">›</span>
+        <a>passeriformes</a><span class="sep">›</span><a>emberizidae</a>
+        <span class="sep">›</span><span class="here">Emberiza sahari</span>
+      </nav>
+      <span class="grow"></span>
+      <button class="btn">🗺 Map</button>
+      <button class="btn tech" id="techBtn">⚙ Tech panel <span class="k">stars · colour · delete</span></button>
+    </div>
+
+    <div class="spotlight">
+      <div class="spot-frame">
+        <div class="spot-mat">
+          <!-- landscape 3:2 example (the common case) → olive mats top/bottom; a
+               portrait would mat left/right instead. The mat shrink-wraps the real image. -->
+          <div class="spot-img" style="width:480px; max-width:52vw; height:100%;
+               background-image:linear-gradient(150deg, hsl(96 30% 58%), hsl(120 26% 32%));"></div>
+        </div>
+      </div>
+      <div class="spot-id">
+        <div class="nm">huisgors</div>
+        <div class="sci">Emberiza sahari · house bunting</div>
+        <div class="stars" title="best photo rating">★★★★★</div>
+        <div class="chips">
+          <span class="chip rank">Species · Aves</span>
+          <span class="chip"><b>14</b> photos</span>
+          <span class="chip"><b>9</b> GPS points</span>
+          <span class="chip">Morocco · Spain</span>
+        </div>
+        <div class="best">Best of 14 · SAHA_4203 · ★★★★★ · 6000×4000</div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="main">
+        <h2 class="sec">Names &amp; classification</h2>
+        <table class="names">
+          <thead><tr><th></th><th>Species</th><th>Family</th><th>Order</th><th>Class</th></tr></thead>
+          <tbody>
+            <tr><td class="tag">NL</td><td>huisgors</td><td>gorzen</td><td>zangvogels</td><td>vogels</td></tr>
+            <tr><td class="tag">EN</td><td>house bunting</td><td>buntings</td><td>passerines</td><td>birds</td></tr>
+            <tr><td class="tag">Sci</td><td class="sci">Emberiza sahari</td><td class="sci">Emberizidae</td><td class="sci">Passeriformes</td><td class="sci">Aves</td></tr>
+          </tbody>
+        </table>
+
+        <div class="photos-head">
+          <h2 class="sec" id="photosLabel">Photos · 14</h2>
+          <span class="grow"></span>
+          <label class="toggle" id="allToggle">
+            <span class="sw"></span> Show all files <span class="hint" id="allHint">(incl. RAW · # = JPG)</span>
+          </label>
+        </div>
+        <div id="groups"></div>
+
+        <h2 class="sec" style="margin-top:26px">Where I photographed it</h2>
+        <div class="map"><span class="lbl">Distribution · 9 GPS points</span></div>
+      </div>
+
+      <aside class="side">
+        <h3>Other buntings (family)</h3>
+        <ul class="sib" id="sibs"></ul>
+        <h3>Orders with photos</h3>
+        <ul class="sib">
+          <li><span class="sw" style="background:linear-gradient(135deg,#7aa0c8,#3c5a78)"></span>
+            <span class="nm2">passeriformes<div class="s">songbirds</div></span><span class="n">182</span></li>
+          <li><span class="sw" style="background:linear-gradient(135deg,#c88a6a,#7a4a2a)"></span>
+            <span class="nm2">accipitriformes<div class="s">raptors</div></span><span class="n">95</span></li>
+        </ul>
+      </aside>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div><h4>Hero, honestly</h4><p>The mat shrink-wraps the real photo, so a 2:3 / 3:4
+      portrait or a 3:2 landscape all frame cleanly in olive — no forced wide crop.</p></div>
+    <div><h4>Show all files</h4><p>Off = the curated JPGs, grouped. On = every picture
+      including RAW-only; a <code>#</code> marks each frame that carries a JPG, RAW-only
+      frames stay unmarked and dimmed — the light-tech completeness view, in place.</p></div>
+    <div><h4>Tech panel</h4><p>Stars, colour, delete, best-JPG pick live behind the button —
+      today's PictureCard grid, one clear place.</p></div>
+  </div>
+</div>
+
+<script>
+  const wash=(h)=>`linear-gradient(150deg, hsl(${h} 36% 60%), hsl(${(h+34)%360} 30% 38%))`;
+  // n = curated JPG photos; raw = extra RAW-only frames revealed by "Show all files"
+  const GROUPS=[
+    {g:"Male", hue:38, n:5, raw:2},
+    {g:"Female", hue:30, n:4, raw:1},
+    {g:"Immature", hue:46, n:3, raw:3},
+    {g:"Unspecified", hue:34, n:2, raw:1},
+  ];
+  const colors=["#1E90FF","#2f9e57","#e0a92b","#c0392b","#9370DB",""];
+  const gEl=document.getElementById("groups");
+  let jpgTotal=0, rawTotal=0;
+  GROUPS.forEach(gr=>{
+    jpgTotal+=gr.n; rawTotal+=gr.raw;
+    const h=document.createElement("div"); h.className="grouphdr";
+    h.innerHTML=`<span class="g">${gr.g}</span><span class="c" data-n="${gr.n}" data-all="${gr.n+gr.raw}">${gr.n} photos</span>`;
+    gEl.appendChild(h);
+    const row=document.createElement("div"); row.className="photos";
+    const make=(i,isRaw)=>{
+      const stars="★★★★★".slice(0,5-(i%3))+"☆☆☆☆☆".slice(0,(i%3));
+      const cb=colors[(i+gr.hue)%colors.length];
+      const t=document.createElement("div");
+      t.className="ph "+(isRaw?"raw raw-only":"jpg");
+      t.innerHTML=`<span class="kind">#</span>
+        <div class="im" style="background-image:${wash((gr.hue+i*13)%360)}">
+          ${cb?`<span class="cb" style="background:${cb}"></span>`:""}</div>
+        <div class="fn"><span>SAHA_${4200+i}</span><span>${isRaw?"—":stars}</span></div>`;
+      return t;
+    };
+    for(let i=0;i<gr.n;i++) row.appendChild(make(i,false));
+    for(let i=0;i<gr.raw;i++) row.appendChild(make(gr.n+i,true));
+    gEl.appendChild(row);
+  });
+
+  const SIBS=[
+    {nl:"huisgors", s:"Emberiza sahari", hue:38, n:14, cur:true},
+    {nl:"grauwe gors", s:"Emberiza calandra", hue:34, n:7},
+    {nl:"cirlgors", s:"Emberiza cirlus", hue:60, n:33},
+    {nl:"ortolaan", s:"Emberiza hortulana", hue:52, n:58},
+    {nl:"rietgors", s:"Emberiza schoeniclus", hue:25, n:26},
+  ];
+  const sEl=document.getElementById("sibs");
+  SIBS.forEach(x=>{
+    const li=document.createElement("li"); if(x.cur) li.className="cur";
+    li.innerHTML=`<span class="sw" style="background:${wash(x.hue)}"></span>
+      <span class="nm2">${x.nl}<div class="s">${x.s}</div></span><span class="n">${x.n}</span>`;
+    sEl.appendChild(li);
+  });
+
+  // Show-all-files toggle
+  const tg=document.getElementById("allToggle");
+  tg.addEventListener("click",()=>{
+    const on=gEl.parentElement.classList.toggle("allfiles"); // main gets the class
+    tg.classList.toggle("on",on);
+    document.getElementById("photosLabel").textContent =
+      on ? `Photos · ${jpgTotal} + ${rawTotal} RAW` : `Photos · ${jpgTotal}`;
+    document.querySelectorAll(".grouphdr .c").forEach(c=>{
+      c.textContent = (on ? c.dataset.all : c.dataset.n) + " photos";
+    });
+  });
+  document.getElementById("techBtn").addEventListener("click",()=>{
+    alert("Opens the technical grid: stars, colour label, delete, best-JPG pick — the current PictureCard view, now a distinct panel.");
+  });
+</script>

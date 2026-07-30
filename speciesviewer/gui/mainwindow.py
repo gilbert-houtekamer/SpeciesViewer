@@ -1103,9 +1103,10 @@ class MainWindow(QMainWindow):
         self._master_species_viewer_dlg = MasterSpeciesViewerDialog(self)
         self._master_species_viewer_dlg.show()
 
-    def open_biota_browser(self):
+    def open_biota_browser(self, start_mode="tree"):
         """Desktop twin of the website's biota tree — walk the taxonomy for the
-        master, drill to a species to see its pictures. Needs no active trip."""
+        master, drill to a species to see its pictures. Needs no active trip.
+        `start_mode="allspecies"` opens straight to the flat all-species index."""
         from gui.biota_browser import BiotaBrowserDialog
         master_root = _config.get("master", "masterbiotadatabase", fallback="")
         if not master_root:
@@ -1113,7 +1114,7 @@ class MainWindow(QMainWindow):
                                 "No master database is configured.")
             return
         # Strong ref on the main window — see open_rating_editor for the why.
-        self._biota_browser_dlg = BiotaBrowserDialog(self)
+        self._biota_browser_dlg = BiotaBrowserDialog(self, start_mode=start_mode)
         self._biota_browser_dlg.show()
 
     def open_species_map(self):

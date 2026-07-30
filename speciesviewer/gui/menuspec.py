@@ -1623,6 +1623,13 @@ def build_menu_spec(main_window):
                 tooltip="Browse the master by taxonomy (Kingdom → Species); "
                         "drill to a species to see its pictures",
                 showsubdirectory=False),
+            "All Species…": MenuSpec(
+                callback=lambda: main_window.open_biota_browser(start_mode="allspecies"),
+                title="All Species",
+                enabled=has_master,
+                tooltip="Flat, searchable index of every master species; "
+                        "click one to see its pictures",
+                showsubdirectory=False),
             "Species Map…": MenuSpec(
                 callback=lambda: main_window.open_species_map(),
                 title="Species Map",

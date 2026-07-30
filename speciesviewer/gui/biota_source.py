@@ -162,6 +162,14 @@ class MasterBiotaSource:
     def pictures_for_species(self, sci: str) -> list[dict]:
         return self.db.pictures_for_species(sci)
 
+    def all_species(self) -> list[dict]:
+        """Every species with at least one master picture, scientific-name order —
+        the flat 'all species' index (backlog ch.14, item 2)."""
+        out = [n for k, n in self._by_sci.items()
+               if n["rank"] == "SPECIES" and self._pics.get(k, 0) > 0]
+        out.sort(key=lambda n: n["sci"].lower())
+        return out
+
     # ── rank search ─────────────────────────────────────────────────────────
     def search(self, query: str, rank: str | None = None) -> list[dict]:
         """Every photographed node whose NL/EN/scientific name contains `query`,
