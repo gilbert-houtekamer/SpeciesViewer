@@ -165,6 +165,7 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         self._master_read_only = True
         self._species_view = "pretty"   # "pretty" (SpeciesPanel) | "tech" (grid)
         self._show_all_files = False     # pretty panel: reveal RAW-only frames
+        self._history = []               # navigation back-stack (view snapshots)
         self._pic_cards = []
         self._pic_by_key = {}
         self._large_view = None
@@ -178,6 +179,18 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
 
         # ── top bar ─────────────────────────────────────────────────────────
         top = QHBoxLayout()
+        self._back_btn = QPushButton("←")
+        self._back_btn.setFixedWidth(34)
+        self._back_btn.setToolTip("Back to the previous view")
+        self._back_btn.setEnabled(False)
+        self._back_btn.setStyleSheet(
+            f"QPushButton {{ border:1px solid {_LINE}; border-radius:6px; padding:4px 0;"
+            f" font-size:15px; color:{_INK}; }}"
+            f"QPushButton:hover:enabled {{ border-color:{_READY}; color:{_READY}; }}"
+            f"QPushButton:disabled {{ color:{_LINE}; }}")
+        self._back_btn.clicked.connect(self._go_back)
+        top.addWidget(self._back_btn)
+        top.addSpacing(8)
         self._scope_label = QLabel("Master collection")
         self._scope_label.setStyleSheet(
             f"color:{_DONE}; font-weight:700; font-size:13px;")
@@ -361,6 +374,7 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         self._render()
 
     def _on_all_species_toggled(self, checked):
+        self._push_history()
         self._close_large_view()
         self._search.blockSignals(True)
         self._search.clear()
@@ -490,7 +504,43 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
             self._rail.addWidget(wrap)
         self._rail.addStretch(1)
 
+    # ── navigation history (back-stack) ─────────────────────────────────────
+    def _snapshot(self):
+        return {"mode": self._mode, "cur": self._cur, "view": self._species_view,
+                "search": self._search.text(), "level": self._level_combo.currentIndex(),
+                "all_files": self._show_all_files}
+
+    def _push_history(self):
+        if self._source is None:
+            return
+        snap = self._snapshot()
+        if self._history and self._history[-1] == snap:
+            return
+        self._history.append(snap)
+        if len(self._history) > 50:
+            self._history.pop(0)
+        self._back_btn.setEnabled(True)
+
+    def _go_back(self):
+        if not self._history:
+            return
+        self._close_large_view()
+        snap = self._history.pop()
+        self._mode = snap["mode"]
+        self._cur = snap["cur"]
+        self._species_view = snap["view"]
+        self._show_all_files = snap["all_files"]
+        self._search.blockSignals(True)
+        self._search.setText(snap["search"])
+        self._search.blockSignals(False)
+        self._level_combo.blockSignals(True)
+        self._level_combo.setCurrentIndex(snap["level"])
+        self._level_combo.blockSignals(False)
+        self._back_btn.setEnabled(bool(self._history))
+        self._render()
+
     def _go(self, sci):
+        self._push_history()
         self._search.blockSignals(True)
         self._search.clear()
         self._search.blockSignals(False)
@@ -684,6 +734,7 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
 
     # ── species: inline picture grid ─────────────────────────────────────────
     def _open_species(self, sci):
+        self._push_history()
         self._close_large_view()
         self._mode = "species"
         self._species_view = "pretty"
