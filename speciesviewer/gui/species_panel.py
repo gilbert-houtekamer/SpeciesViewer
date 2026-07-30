@@ -454,8 +454,13 @@ class SpeciesPanel(QWidget):
         col.rebuild(host._display(dict(host._source.node(self._sci))),
                     forced_sci=self._sci.casefold())
 
-        n = len(col)
-        n_raw = sum(1 for i in range(n) if not col.item(i).has_jpg) if show_all else 0
+        # An album shows only its own (date-range) pictures out of the full-master
+        # collection — count over the scoped items (None = all).
+        scope = host._source.scope_upns(self._sci)
+        idxs = [i for i in range(len(col))
+                if scope is None or col.item(i).key in scope]
+        n = len(idxs)
+        n_raw = sum(1 for i in idxs if not col.item(i).has_jpg) if show_all else 0
         head_row = QWidget()
         hrl = QHBoxLayout(head_row); hrl.setContentsMargins(0, 6, 0, 0); hrl.setSpacing(8)
         hdr = QLabel(f"PHOTOS · {n - n_raw}" + (f"  +  {n_raw} RAW" if n_raw else ""))
@@ -486,9 +491,10 @@ class SpeciesPanel(QWidget):
         for p in pics:
             k = (p.get("UniquePictureName") or "")
             qual[k] = _group_label(p.get("malefemale"), p.get("ageintext"), p.get("summerwinter"))
+        # Group the SCOPED items (idxs already excludes anything outside an album).
         groups = {}
         order = []
-        for i in range(n):
+        for i in idxs:
             it = col.item(i)
             g = qual.get(it.key, "Unspecified")
             if g not in groups:

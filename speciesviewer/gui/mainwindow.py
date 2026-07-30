@@ -1139,6 +1139,40 @@ class MainWindow(QMainWindow):
             read_only_scope=True, cache_name=cache)
         self._trip_biota_browser_dlg.show()
 
+    def open_album_biota_browser(self):
+        """Biota Browser over the ACTIVE ALBUM (read-only). An album is a live date
+        window on the master (no stored data of its own), so this reads the REAL
+        master restricted to the album's fromdate..todate (from its virttrip.ini)."""
+        import configparser
+        from gui.biota_browser import BiotaBrowserDialog
+        album_root = _config.get("virttrip", "virttripbiotadatabase",
+                                 fallback="").replace('"', "").replace("'", "").strip()
+        if not album_root or not Path(album_root).exists():
+            QMessageBox.warning(self, "Biota Browser (Album)",
+                                "No active album is configured.")
+            return
+        ini = Path(album_root) / "virttrip.ini"
+        fromdate = todate = name = ""
+        if ini.exists():
+            cp = configparser.ConfigParser()
+            try:
+                cp.read(ini, encoding="utf-8")
+                fromdate = cp.get("trip_config", "fromdate", fallback="").strip()
+                todate = cp.get("trip_config", "todate", fallback="").strip()
+                name = cp.get("trip_config", "trip_name", fallback="").strip()
+            except Exception:
+                pass
+        if not (fromdate and todate):
+            QMessageBox.warning(self, "Biota Browser (Album)",
+                                "This album has no date range in its virttrip.ini.")
+            return
+        name = name or os.path.basename(album_root.rstrip("/\\")) or "Album"
+        # Strong ref on the main window — see open_rating_editor for the why.
+        self._album_biota_browser_dlg = BiotaBrowserDialog(
+            self, scope_title=f"Album · {name}", read_only_scope=True,
+            album_from=fromdate, album_to=todate)
+        self._album_biota_browser_dlg.show()
+
     def open_species_map(self):
         """Standalone species distribution map — a peer of the Species Viewer
         (grid): pick 1–4 species and see their GPS points on a map, click a

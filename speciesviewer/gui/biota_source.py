@@ -65,6 +65,13 @@ class MasterBiotaSource:
 
     # ── build ───────────────────────────────────────────────────────────────
     def _load(self):
+        self._load_tree()
+        self._apply_counts(self._own_pics_map())
+
+    def _load_tree(self):
+        """Build the taxonomy adjacency (sci → node, parent → sorted children)
+        from the repo's species table. Counts come separately (see _apply_counts),
+        so a subclass can restrict them to a subset (e.g. an album's date range)."""
         rows = self.db.taxa_rows()
         for r in rows:
             key = (r["sci"] or "").strip().lower()
@@ -81,14 +88,22 @@ class MasterBiotaSource:
             kids.sort(key=lambda k: (self._by_sci[k]["target_path"].lower(),
                                      self._by_sci[k]["sci"].lower()))
 
-        # ground-truth picture counts, per species that has master pictures
+    def _own_pics_map(self) -> dict:
+        """{species_key: picture count} — the master's ground truth (every species
+        that actually has master pictures). Overridden by AlbumBiotaSource."""
+        m = {}
         for row in self.db.species_picker_rows():
             key = (row["sci"] or "").strip().lower()
             if key in self._by_sci:
-                self._own_pics[key] = row["n"]
+                m[key] = row["n"]
+        return m
 
-        # aggregate counts up every ancestor chain (one walk per photographed leaf)
+    def _apply_counts(self, own_pics: dict):
+        """Aggregate per-species counts UP every ancestor chain."""
+        self._own_pics = dict(own_pics)
         for key, n in self._own_pics.items():
+            if key not in self._by_sci:
+                continue
             self._pics[key] = self._pics.get(key, 0) + n
             self._species_n[key] = self._species_n.get(key, 0) + 1
             up = (self._by_sci[key]["up"] or "").strip().lower()
@@ -206,7 +221,7 @@ class MasterBiotaSource:
         WindowsFileName. Some rows carry a STALE repo path that was never copied,
         so we must scan all the species' RAWs for one that resolves, not just the
         single best pic's."""
-        pics = self.db.pictures_for_species(key)
+        pics = self.pictures_for_species(key)   # scope-aware (album = its subset)
         if not pics:
             return None
         upns = [p.get("UniquePictureName") for p in pics if p.get("UniquePictureName")]
@@ -255,6 +270,17 @@ class MasterBiotaSource:
     def pictures_for_species(self, sci: str) -> list[dict]:
         return self.db.pictures_for_species(sci)
 
+    def date_range(self):
+        """(from, to) when the scope is a date window on the master (an album);
+        None for the master or a trip (which own their pictures)."""
+        return None
+
+    def scope_upns(self, sci: str) -> set | None:
+        """The UPNs to SHOW for a species — None means 'all the collection loaded'
+        (master / trip). An album returns only its own (date-range) UPNs, so the
+        picture grid can filter the full-master collection down to the album."""
+        return None
+
     def all_species(self) -> list[dict]:
         """Every species with at least one master picture, scientific-name order —
         the flat 'all species' index (backlog ch.14, item 2)."""
@@ -282,3 +308,86 @@ class MasterBiotaSource:
         hits.sort(key=lambda n: (RANK_ORDER.index(n["rank"]) if n["rank"] in RANK_ORDER else 99,
                                  n["sci"].lower()))
         return hits
+
+
+class AlbumBiotaSource(MasterBiotaSource):
+    """An album is a live date window on the MASTER (no stored pictures of its
+    own), so it borrows the master's taxonomy tree but counts / pictures / covers
+    come from `pictures_in_daterange(from, to)`. The db passed in IS the real
+    master (default cache); the tree is the master's, restricted to the species
+    that actually fall in the album's dates.
+    """
+
+    def __init__(self, master_db, master_root, fromdate, todate, label="Album"):
+        self._fromdate = str(fromdate)
+        self._todate = str(todate)
+        self._album_pics: dict[str, list[dict]] = {}
+        super().__init__(master_db, master_root)
+        self.scope_label = label
+
+    def _own_pics_map(self) -> dict:
+        # ONE date-range query on the master; stash the pictures per species and
+        # return the per-species counts (used to prune the borrowed master tree).
+        by_day = self.db.pictures_in_daterange(self._fromdate, self._todate)
+        m: dict[str, int] = {}
+        for _day, pics in by_day.items():
+            for p in pics:
+                sci = (p.get("WetSoortNaam") or "").strip().lower()
+                if not sci or sci not in self._by_sci:
+                    continue
+                self._album_pics.setdefault(sci, []).append(p)
+                m[sci] = m.get(sci, 0) + 1
+        return m
+
+    def pictures_for_species(self, sci: str) -> list[dict]:
+        return self._album_pics.get((sci or "").strip().lower(), [])
+
+    def date_range(self):
+        return (self._fromdate, self._todate)
+
+    def scope_upns(self, sci: str) -> set | None:
+        return {(p.get("UniquePictureName") or "")
+                for p in self.pictures_for_species(sci)}
+
+    # Cover from the ALBUM's own pictures (the master's global BestJPG for a
+    # species may be from an entirely different trip). Prefer an album frame with
+    # a JPG on disk; else the album's best RAW (via the parent helper, which now
+    # reads the scope-aware pictures_for_species).
+    def _resolve_cover_spec(self, key: str, seen: set):
+        if not key or key in seen or key not in self._by_sci or self.master_root is None:
+            return None
+        seen.add(key)
+        n = self._by_sci[key]
+        if n["rank"] == "SPECIES":
+            return self._album_species_cover(key)
+        kids = [c for c in self._kids.get(key, []) if self._pics.get(c, 0) > 0]
+        kids.sort(key=lambda c: (-int(self._by_sci[c]["rate"] or 0),
+                                 -self._pics.get(c, 0)))
+        for c in kids:
+            r = self._resolve_cover_spec(c, seen)
+            if r is not None:
+                return r
+        return None
+
+    def _album_species_cover(self, key: str):
+        pics = self._album_pics.get(key, [])
+        if not pics:
+            return None
+
+        def _si(v):
+            try:
+                return int(str(v).strip() or 0)
+            except (TypeError, ValueError):
+                return 0
+        ranked = sorted(pics, key=lambda p: (_si(p.get("Rating")), _si(p.get("Rate"))),
+                        reverse=True)
+        for pic in ranked:
+            bj = (pic.get("BestJPG") or "").strip()
+            bd = (pic.get("TargetPath") or pic.get("BestJPGPathName") or "").strip()
+            if bj and bd:
+                p = self.master_root / bd / bj
+                if p.suffix.lower() in (".jpg", ".jpeg") and p.exists():
+                    return ("jpg", p)
+        tp = (ranked[0].get("TargetPath") or ranked[0].get("BestJPGPathName") or "")
+        raw = self._species_raw_cover(key, tp)
+        return ("raw", raw) if raw else None

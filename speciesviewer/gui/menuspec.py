@@ -1651,6 +1651,13 @@ def build_menu_spec(main_window):
         "Albums": {
             "Find Trips in the Master…": find_trips,
             "Create Album": virttrip_create,
+            "Biota Browser…": MenuSpec(
+                callback=lambda: main_window.open_album_biota_browser(),
+                title="Biota Browser",
+                enabled=has_active_album,
+                tooltip="Browse this album by taxonomy (Kingdom → Species), read-only; "
+                        "a live date-range window on the master",
+                showsubdirectory=False),
             f"{MenuSpec.separator()}_vt2": None,
             "Write Album Blogs": MenuSpec(
                 callback=lambda: VirttripWriteBlogDialog(main_window).exec(),

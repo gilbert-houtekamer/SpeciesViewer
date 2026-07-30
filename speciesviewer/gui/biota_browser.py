@@ -171,9 +171,14 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
     _ALL_CAP = 400
 
     def __init__(self, parent, start_mode="tree", *, repo_root=None,
-                 scope_title=None, read_only_scope=False, cache_name=None):
+                 scope_title=None, read_only_scope=False, cache_name=None,
+                 album_from=None, album_to=None):
         super().__init__(parent)
         self._start_mode = start_mode   # "tree" | "allspecies"
+        # An album is a date window on the master (album_from/to set): it reads the
+        # real master, restricted to the range, rather than a repo of its own.
+        self._album_from = album_from
+        self._album_to = album_to
         # Scope: default is the master (repo_root None → master config). A trip is
         # browsed by passing its repo root + its own cache_name (so it never
         # clobbers master.db) + read_only_scope=True (editing stays in the
@@ -337,22 +342,29 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
 
     # ── init ────────────────────────────────────────────────────────────────
     def _init_master(self):
-        # repo_root None → the configured master; otherwise a trip repo (read-only).
-        root = (self._repo_root or
-                _config.get("master", "masterbiotadatabase", fallback="")).strip()
+        is_album = bool(self._album_from and self._album_to)
+        # An album reads the REAL master (default cache), windowed by dates; a trip
+        # reads its own repo (its own cache); otherwise the configured master.
+        root = ((_config.get("master", "masterbiotadatabase", fallback="") if is_album
+                 else (self._repo_root or _config.get("master", "masterbiotadatabase", fallback="")))
+                ).strip()
         if not root:
             self._status.setText("No database is configured — set one in Repository Settings.")
             return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             from db.master_db import MasterDB
-            from gui.biota_source import MasterBiotaSource
-            db = MasterDB(root, cache_name=self._cache_name)
+            from gui.biota_source import MasterBiotaSource, AlbumBiotaSource
+            db = MasterDB(root, cache_name=(None if is_album else self._cache_name))
             self._status.setText("Opening database…")
             QApplication.processEvents()
             db.ensure_fresh(progress_cb=lambda msg: self._status.setText(msg))
-            self._source = MasterBiotaSource(db, root)
-            self._source.scope_label = self._scope_title
+            if is_album:
+                self._source = AlbumBiotaSource(db, root, self._album_from,
+                                                self._album_to, label=self._scope_title)
+            else:
+                self._source = MasterBiotaSource(db, root)
+                self._source.scope_label = self._scope_title
         except Exception as e:
             logger.error(f"Biota Browser: load failed: {e}", exc_info=True)
             self._status.setText("Database load failed — see the log.")
@@ -824,10 +836,17 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
             pass
         self._collection.rebuild(display, forced_sci=self._cur.casefold())
 
-        n = len(self._collection)
+        # An album borrows the full-master collection but shows only its own
+        # (date-range) pictures — filter to that UPN set (None = show all).
+        scope = self._source.scope_upns(self._cur)
+        items = [self._collection.item(i) for i in range(len(self._collection))]
+        if scope is not None:
+            items = [it for it in items if it.key in scope]
+
+        n = len(items)
         ro = " (read-only)" if self._master_read_only else ""
         self._status.setText(
-            f"{n} master picture{'s' if n != 1 else ''} for {display}{ro}")
+            f"{n} picture{'s' if n != 1 else ''} for {display}{ro}")
         if n == 0:
             self._show_empty_at(1, f"No pictures for {display}.")
             return
@@ -836,8 +855,7 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         card_w = self._card_width()
         for c in range(self.columns):
             self._grid.setColumnStretch(c, 1)
-        for idx in range(n):
-            item = self._collection.item(idx)
+        for idx, item in enumerate(items):
             card = PictureCard(item, card_w, show_kind_tag=False)
             card.card_changed.connect(self._on_pic_changed)
             card.card_clicked.connect(self._on_pic_cursor)
