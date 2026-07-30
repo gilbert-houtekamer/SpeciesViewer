@@ -14,7 +14,8 @@ rawpy
 configparser
 pygbif
 pysftp
-googletrans==4.0.0-rc1
+deep-translator
+langdetect
 fastcrc
 openpyxl
 

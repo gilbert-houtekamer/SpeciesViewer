@@ -1,13 +1,22 @@
 import csv
 import os
-import googletrans
-from googletrans import Translator
+from collections import namedtuple
+from deep_translator import GoogleTranslator
+from langdetect import detect as _langdetect_detect, DetectorFactory
 from fastcrc import crc32
 import logging
 logger = logging.getLogger("speciesviewer")
 
+# Translation backend: deep-translator (GoogleTranslator) — actively maintained.
+# Language detection: langdetect (offline, deterministic). This replaced
+# googletrans 4.0.0-rc1, whose translate()/detect() blow up whenever Google
+# throttles the unofficial endpoint (a raise_Exception typo in its client.py).
+# pip install deep-translator langdetect
+DetectorFactory.seed = 0  # make langdetect deterministic across runs
 
-#pip install googletrans==4.0.0-rc1
+# googletrans.detect() returned an object with a .lang attribute; keep that shape
+# so existing callers (detected.lang) don't change.
+_Detected = namedtuple("_Detected", "lang")
 
 class CachedTranslate:
     # crc32(source_text) -> {'translation': str, 'source_lang': 'nl'|'en'|'', 'verified': bool}
@@ -20,7 +29,8 @@ class CachedTranslate:
         # GUI's master translator vs a per-trip one) must NOT share state, or
         # one would write the other's entries into the wrong TransCache.csv.
         self.translation_cache = {}
-        self.translator = googletrans.Translator()
+        # deep-translator is stateless/per-call (GoogleTranslator(source, target)),
+        # so there is no persistent translator object to hold here.
         self.admindir = os.path.join(treedir, 'admin')
         self._dirty = False
         self.readTranslationache()
@@ -88,10 +98,15 @@ class CachedTranslate:
                 # else loop and try again — the user has (hopefully) freed the file.
 
     def detectLanguage(self, text):
+        # Offline detection via langdetect. Returns a _Detected(lang=...) shim so
+        # callers keep using .lang. langdetect yields ISO codes ('nl', 'en', …);
+        # our callers only act on 'nl'/'en' and ignore anything else.
+        if not text or not text.strip():
+            return None
         try:
-            return self.translator.detect(text)
+            return _Detected(_langdetect_detect(text))
         except Exception as e:
-            logger.warning(f"Translation service unavailable: {e}")
+            logger.warning(f"Language detection failed, leaving source unknown: {e}")
             return None
 
     # convert text to crc32
@@ -116,8 +131,10 @@ class CachedTranslate:
         else:
             from_lang, to_lang = 'en', 'nl'
         try:
-            translated_text_stuct = self.translator.translate(text, src=from_lang, dest=to_lang)
-            translatedText = translated_text_stuct.text.replace('.', '. ').replace('.  ', '. ')
+            translated = GoogleTranslator(source=from_lang, target=to_lang).translate(text)
+            if not translated:
+                return text
+            translatedText = translated.replace('.', '. ').replace('.  ', '. ')
         except Exception as e:
             logger.warning(f"Translation failed, returning original text: {e}")
             return text
