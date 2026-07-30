@@ -37,7 +37,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 28 July 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 30 July 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Open work for the SpeciesViewer nature-photo pipeline and GUI. This document holds
 only what is <strong>still to do</strong> — everything that has shipped now lives in the companion
@@ -62,7 +62,9 @@ reads <em>No current work planned</em>.</p>
     <li><strong>GPS / data-integrity umbrella</strong> — down to one item: tracklog geotag (GPX import) (ch. 3).</li>
     <li><strong>Map polish</strong> — cosmetic pass, day-map delete, rectangle-select, published Leaflet (ch. 3).</li>
     <li><strong>GPM on a southern/western trip</strong> <span class="tag-test">NEEDS TEST</span> — hemisphere sign on S/W coords (ch. 1).</li>
-    <li><strong>Windows “all biota” viewers</strong> <span class="tag-new">NEW</span> — desktop equivalents of the web browsers (ch. 14).</li>
+    <li><strong>Desktop Biota Browser</strong> <span class="tag-shipped">SHIPPED</span> — Master, Trip &amp; Album,
+      tree + species pages (ch. 14). <strong>Two follow-ups queued for the next session</strong>:
+      (a) audit the blue-delete accounting (dangling file rows), (b) scope the Album species map.</li>
   </ul>
 </div>
 
@@ -230,15 +232,35 @@ reads <em>No current work planned</em>.</p>
 </ul>
 
 <!-- ============================================================ -->
-<h2>14. Windows “all biota” viewers <span class="tag-new">NEW</span></h2>
+<h2>14. Desktop Biota Browser <span class="tag-shipped">SHIPPED</span></h2>
+<p>The desktop twin of the website's biota browsers — one dialog, three scopes (Master ·
+  Trip · Album), styled in the Trip-lifecycle-board palette with the site's olive photo
+  frames. On the branch (<code>413bdb2 … b892b39</code>); all live-confirmed except the
+  Album grids (headless-verified).</p>
 <ul>
-  <li><strong>Desktop equivalent of the biota tree</strong> <span class="tag-open">OPEN</span> —
-    a functional equivalent of <code>https://houtekamer.com/nature/biota/biota-nl.html</code>:
-    search at a selected taxonomic level; click through at a species to also view all its RAWs.</li>
-  <li><strong>Desktop equivalent of the species summary</strong> <span class="tag-open">OPEN</span> —
-    a functional equivalent of
-    <code>https://houtekamer.com/nature/summaries/all&nbsp;biota&nbsp;species-nl.html</code>:
-    search species; click through at a species to also view all its RAWs.</li>
+  <li><strong>Biota tree</strong> <span class="tag-shipped">SHIPPED</span> — walk Kingdom → Species;
+    a rank filter + search box search at any level; a left rank rail and a back-history button
+    (<code>←</code>) navigate. Taxon/hero/sibling covers show a real photo — a rendered JPG or,
+    when a taxon is all-RAW (an unprocessed trip), the best RAW's embedded preview.</li>
+  <li><strong>All-species index &amp; species page</strong> <span class="tag-shipped">SHIPPED</span> —
+    a flat searchable list of every species; clicking one opens a web-style <em>species page</em>
+    (hero at natural aspect, names table, photos grouped by age/sex/plumage, distribution map,
+    sibling sidebar). A <em>Show all files</em> toggle reveals RAW-only frames (# marks a JPG);
+    a <em>⚙ Tech panel</em> holds the editable grid.</li>
+  <li><strong>Trip &amp; Album scopes</strong> <span class="tag-shipped">SHIPPED</span> — read-only.
+    A trip repo is master-shaped (its own SQLite cache); an album is a live date-range window on
+    the master. Editing stays in the authorized panels.</li>
+</ul>
+<p class="next" style="margin-top:6pt;"><strong>Follow-ups — queued for tomorrow (new session):</strong></p>
+<ul>
+  <li><strong>Audit the blue-delete accounting</strong> <span class="tag-bug">TODO</span> —
+    the RAW-cover work surfaced <code>data_files</code> rows whose repo paths were never copied to
+    disk (dangling). Suspicion: deleting blue-marked (delete-candidate) pictures removes files but
+    leaves their rows re-pointed at never-copied paths. A trip/delete accounting audit
+    (a <code>trip_delete_scan</code>-style check on a real trip), <em>not</em> a browser bug.</li>
+  <li><strong>Scope the Album species map</strong> <span class="tag-open">TODO</span> —
+    the species <em>Map</em> button in an Album shows the <em>full-master</em> GPS distribution,
+    not just the album's date-range points; filter it by the album's UPNs.</li>
 </ul>
 
 <!-- ============================================================ -->
