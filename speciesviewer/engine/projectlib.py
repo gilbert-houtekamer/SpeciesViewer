@@ -191,6 +191,25 @@ class Project:
     def getSpecies(self, speciesname):
         # call to get scientific name
         return self.sp.species_dict[self.sp.getSpecies(speciesname)]
+    def hasWebPage(self, species):
+        """True when this taxon/species node has (or will have) a page in the
+        CURRENT web build tree. Mirrors the render gate in makeWebDirectories,
+        so sidebar links (sibling-species / orders-with-photos) never point at
+        a page that was never generated. On a trip/album build the web tree
+        holds only a subset of the master collection, so guarding on the master
+        collection count (getSpeciesCount) emits dead links; this guards on the
+        same condition that decides whether the page is actually written."""
+        try:
+            this_run   = int(species['iPicturesWithJPGsThisRun'])
+            collection = int(species['iPicturesWithJPGsCollection'])
+        except (KeyError, ValueError, TypeError):
+            return False
+        if (this_run + collection) <= 0:
+            return False
+        # 'All' and force_all builds (incl. the master rebuild, which runs as
+        # 'New'+force_all) render every node that has photos; a plain 'New'
+        # trip/album build renders only nodes touched this run.
+        return self.all_or_new == 'All' or getattr(self, 'force_all', False) or this_run > 0
     
     # Templates for HTML pages
     # Add one file per call
@@ -424,6 +443,10 @@ class Project:
             return
         species = self.sp.species_dict[speciesname]
         self.setAllOrNew(all_or_new)
+        # Remember whether this build forces a full render (master rebuild runs
+        # as 'New'+force_all). hasWebPage() reads it so sidebar links match the
+        # set of pages actually written this build.
+        self.force_all = force_all
         self.makeWebLevel(species, all_or_new)
         for leaf in sorted(species['Leaves']):
             species = self.sp.species_dict[leaf]

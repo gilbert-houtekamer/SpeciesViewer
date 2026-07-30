@@ -557,10 +557,14 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             if species_param['Level'] == Level.SPECIES and len(class_local)>0:
                 workstr = "<li class=""\"first""\">\n"
                 for leaf in class_local['Leaves']:
-                    if MyProject.getSpeciesCount(leaf):
+                    leaf_sp = MyProject.getSpecies(leaf)
+                    # Only link taxa that actually have a page in THIS web tree;
+                    # on a trip/album the tree holds a subset of the master, so a
+                    # master collection count (getSpeciesCount) would emit 404s.
+                    if MyProject.hasWebPage(leaf_sp):
                         workstr += '			<li><a href="' + BiotaWebRoot + \
-                            MyProject.getSpecies(leaf)['TargetPath'] + \
-                            MyProject.getSpecies(leaf)['ScientificName'] + '-' + language + '.html">' \
+                            leaf_sp['TargetPath'] + \
+                            leaf_sp['ScientificName'] + '-' + language + '.html">' \
                             + getSpeciesNameScientificDefault(MyProject, leaf, languageName) + "</a></li>\n"
                 return workstr
             else:
@@ -577,10 +581,15 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             if species_param['Level'] == Level.SPECIES and len(family_local)>0:
                 workstr = "<li class=""\"first""\">\n"
                 for leaf in family_local['Leaves']:
-                    if MyProject.getSpeciesCount(leaf):
+                    leaf_sp = MyProject.getSpecies(leaf)
+                    # Only link siblings that actually have a page in THIS web
+                    # tree; on a trip/album the tree holds a subset of the
+                    # master, so guarding on the master collection count would
+                    # emit dead links to species not published for this trip.
+                    if MyProject.hasWebPage(leaf_sp):
                         workstr += "			<li><a href=""\"" + BiotaWebRoot + \
-                            MyProject.getSpecies(leaf)['TargetPath'] + \
-                            MyProject.getSpecies(leaf)['ScientificName']  + '-' + language + '.html">' \
+                            leaf_sp['TargetPath'] + \
+                            leaf_sp['ScientificName']  + '-' + language + '.html">' \
                             + getSpeciesNameScientificDefault(MyProject, leaf, languageName) + "</a></li>\n"
                 return workstr
             else:
