@@ -695,6 +695,51 @@ class MasterDB:
         return {"sci": row["sci"], "nl": row["nl"] or "", "en": row["en"] or "",
                 "target_path": row["target_path"] or ""}
 
+    def taxa_rows(self) -> list[dict]:
+        """Every row of the biota tree table — all ranks, not just SPECIES — with
+        the fields the Biota Browser needs to walk it: Level / names / Up / Leaves,
+        the representative cover pointer (BestJPG under BestJPGPathName, falling
+        back to TargetPath), and TargetPath itself (it embeds the taxonomic sort
+        prefix, e.g. 'biota/animalia/chordata/aves/040 passeriformes/…', so sorting
+        children by it reproduces the website's order rather than plain alphabetics).
+
+        Leaves is stored as JSON in the DB → returned as a list. Topic nodes
+        (topics/…) are excluded: they are not taxa. Returns [] on a master with no
+        species table (very old masters)."""
+        con = self._connect()
+        try:
+            rows = con.execute(
+                'SELECT "Level" AS level, "ScientificName" AS sci, '
+                '"DutchName" AS nl, "EnglishName" AS en, "Up" AS up, '
+                '"Leaves" AS leaves, "BestJPG" AS best_jpg, '
+                '"BestJPGPathName" AS best_dir, "TargetPath" AS target_path, '
+                '"currentHighestRating" AS rate '
+                'FROM species '
+                'WHERE TRIM("ScientificName") <> "" '
+                'AND "TargetPath" NOT LIKE "topics/%"').fetchall()
+        except sqlite3.OperationalError:
+            return []
+        out = []
+        for r in rows:
+            raw = r["leaves"]
+            try:
+                leaves = json.loads(raw) if raw else []
+            except Exception:
+                leaves = []
+            out.append({
+                "level": r["level"] or "",
+                "sci": r["sci"],
+                "nl": r["nl"] or "",
+                "en": r["en"] or "",
+                "up": (r["up"] or "").strip(),
+                "leaves": leaves,
+                "best_jpg": (r["best_jpg"] or "").strip(),
+                "best_dir": (r["best_dir"] or r["target_path"] or "").strip(),
+                "target_path": (r["target_path"] or "").strip(),
+                "rate": r["rate"] or 0,
+            })
+        return out
+
     def picture(self, upn: str) -> dict | None:
         con = self._connect()
         row = con.execute(

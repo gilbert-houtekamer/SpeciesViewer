@@ -1,0 +1,486 @@
+<title>Biota browser — desktop (mockup)</title>
+<style>
+  :root {
+    --bg: #f5f7f3; --surface: #ffffff; --surface-2: #eef1ea;
+    --ink: #1c211b; --ink-soft: #59634f; --line: #d7ddce;
+    --done: #2f7d43; --done-bg: #e6f1e8;
+    --ready: #2563a8; --ready-bg: #e4eef8;
+    --locked: #97a08c; --locked-bg: #f0f2ec;
+    --gate: #2f9e57; --warn: #b45309; --warn-bg: #f8ecdc;
+    /* olive picture frame — lifted straight from the website (w3-win8-olive #6d8764) */
+    --frame: #6d8764; --frame-ink: #ffffff; --mat: #ffffff;
+    --font-display: "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-mono: ui-monospace, "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+    --radius: 9px;
+    --shadow: 0 1px 2px rgba(20,30,15,.06), 0 4px 14px rgba(20,30,15,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141711; --surface: #1d211a; --surface-2: #252a20;
+      --ink: #e8ece2; --ink-soft: #a3ac99; --line: #333a2c;
+      --done: #5bb271; --done-bg: #1d2c20; --ready: #64a2db; --ready-bg: #1a2632;
+      --locked: #6b7362; --locked-bg: #21261d; --gate: #5cc282;
+      --warn: #d98a3d; --warn-bg: #2c2213;
+      --frame: #7f9673; --frame-ink: #f3f6ee; --mat: #12150f;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141711; --surface: #1d211a; --surface-2: #252a20; --ink: #e8ece2;
+    --ink-soft: #a3ac99; --line: #333a2c; --done: #5bb271; --done-bg: #1d2c20;
+    --ready: #64a2db; --ready-bg: #1a2632; --locked: #6b7362; --locked-bg: #21261d;
+    --gate: #5cc282; --warn: #d98a3d; --warn-bg: #2c2213;
+    --frame: #7f9673; --frame-ink: #f3f6ee; --mat: #12150f;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.28);
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7f3; --surface: #ffffff; --surface-2: #eef1ea; --ink: #1c211b;
+    --ink-soft: #59634f; --line: #d7ddce; --done: #2f7d43; --done-bg: #e6f1e8;
+    --ready: #2563a8; --ready-bg: #e4eef8; --locked: #97a08c; --locked-bg: #f0f2ec;
+    --gate: #2f9e57; --warn: #b45309; --warn-bg: #f8ecdc;
+    --frame: #6d8764; --frame-ink: #ffffff; --mat: #ffffff;
+    --shadow: 0 1px 2px rgba(20,30,15,.06), 0 4px 14px rgba(20,30,15,.05);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--font-display); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1220px; margin: 0 auto; padding: 32px 24px 64px; }
+
+  header.page { margin-bottom: 22px; }
+  .eyebrow { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--ink-soft); margin: 0 0 6px; }
+  h1 { font-size: clamp(22px, 3.4vw, 30px); margin: 0 0 8px; text-wrap: balance; letter-spacing: -.01em; }
+  .lede { margin: 0; color: var(--ink-soft); max-width: 66ch; font-size: 15px; }
+  .mock-tag { display: inline-block; font-family: var(--font-mono); font-size: 10.5px;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--warn); background: var(--warn-bg);
+    border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+    padding: 2px 8px; border-radius: 20px; margin-left: 10px; vertical-align: 3px; }
+
+  /* ── The app window ─────────────────────────────────────────── */
+  .app { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); overflow: hidden; }
+
+  /* top bar: scope + level search + name language + columns */
+  .topbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+  .scope { display: inline-flex; align-items: center; gap: 6px; }
+  .scope .slabel { font-family: var(--font-mono); font-size: 10px; letter-spacing: .09em;
+    text-transform: uppercase; color: var(--ink-soft); }
+  .seg { display: inline-flex; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 8px; padding: 2px; gap: 2px; }
+  .seg button { font: inherit; font-size: 12.5px; cursor: pointer; border: 0; background: transparent;
+    color: var(--ink-soft); padding: 5px 11px; border-radius: 6px; display: inline-flex; gap: 6px; align-items: center; }
+  .seg button .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .55; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  .seg button:not([aria-pressed="true"]):hover { color: var(--ink); }
+
+  .spacer { flex: 1 1 auto; }
+  .field { display: inline-flex; align-items: center; gap: 6px; }
+  .field label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .09em;
+    text-transform: uppercase; color: var(--ink-soft); }
+  select, input[type=search] { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 7px; padding: 6px 9px; }
+  input[type=search] { width: 210px; }
+  select:focus-visible, input:focus-visible, button:focus-visible { outline: 2px solid var(--ready); outline-offset: 2px; }
+
+  /* breadcrumb strip — mirrors the website's olive breadcrumb */
+  .crumbs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+    padding: 9px 16px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .crumbs a { color: var(--frame); text-decoration: none; font-weight: 600; cursor: pointer;
+    padding: 2px 4px; border-radius: 5px; }
+  .crumbs a:hover { color: var(--ready); background: var(--ready-bg); }
+  .crumbs .sep { color: var(--ink-soft); opacity: .6; }
+  .crumbs .rank { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-soft); opacity: .75; margin-left: 2px; }
+  .crumbs .here { font-weight: 700; color: var(--ink); padding: 2px 4px; }
+
+  /* the body: left rank rail + main grid */
+  .body { display: grid; grid-template-columns: 190px 1fr; min-height: 520px; }
+  .rail { border-right: 1px solid var(--line); padding: 14px 12px; background: var(--surface); }
+  .rail h3 { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-soft); margin: 0 0 8px; font-weight: 600; }
+  .ranks { list-style: none; margin: 0 0 18px; padding: 0; }
+  .ranks li { display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+    font-size: 13px; padding: 5px 8px; border-radius: 6px; cursor: pointer; color: var(--ink-soft); }
+  .ranks li .rk { font-family: var(--font-mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }
+  .ranks li:hover { background: var(--surface-2); color: var(--ink); }
+  .ranks li[aria-current="true"] { background: var(--done-bg); color: var(--done); font-weight: 600; }
+  .ranks li[aria-current="true"] .rk { color: var(--done); opacity: .9; }
+  .railnote { font-size: 11.5px; color: var(--ink-soft); line-height: 1.45; }
+  .railnote code { font-family: var(--font-mono); font-size: 11px; background: var(--surface-2);
+    padding: 1px 5px; border-radius: 4px; }
+
+  .main { padding: 16px; overflow: auto; }
+  .main-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .main-head h2 { margin: 0; font-size: 17px; }
+  .main-head h2 em { font-style: italic; color: var(--ink-soft); font-weight: 400; font-size: 14px; }
+  .main-head .count { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-soft);
+    font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* ── taxon grid: cards that drill down (olive-framed) ───────── */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 12px; }
+  .taxon { text-align: left; font: inherit; cursor: pointer; padding: 0; overflow: hidden;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    transition: transform .12s, box-shadow .12s, border-color .12s; display: flex; flex-direction: column; }
+  .taxon:hover { transform: translateY(-2px); border-color: var(--frame);
+    box-shadow: 0 3px 6px rgba(20,30,15,.09), 0 12px 24px rgba(20,30,15,.09); }
+  /* the olive frame around the representative photo */
+  .thumb { aspect-ratio: 5 / 4; padding: 6px; background: var(--frame);
+    display: flex; align-items: stretch; }
+  .thumb > .photo { flex: 1; border: 3px solid var(--mat); border-radius: 3px; background-size: cover;
+    background-position: center; position: relative; }
+  .thumb .rankchip { position: absolute; left: 6px; top: 6px; font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: .09em; text-transform: uppercase; font-weight: 700;
+    color: var(--frame-ink); background: color-mix(in srgb, #000 42%, transparent);
+    padding: 2px 6px; border-radius: 20px; backdrop-filter: blur(2px); }
+  .taxon .meta { padding: 9px 11px 11px; }
+  .taxon .nl { font-size: 14px; font-weight: 600; line-height: 1.25; }
+  .taxon .sci { font-size: 12px; font-style: italic; color: var(--ink-soft); margin-top: 1px; }
+  .taxon .stat { margin-top: 7px; font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-soft);
+    font-variant-numeric: tabular-nums; display: flex; gap: 10px; }
+  .taxon .stat b { color: var(--frame); font-weight: 700; }
+
+  /* ── species RAW grid: the click-through destination ────────── */
+  .rawgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .raw { cursor: pointer; background: var(--frame); padding: 5px; border-radius: 7px;
+    transition: transform .12s, box-shadow .12s; }
+  .raw:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(20,30,15,.16); }
+  .raw .photo { aspect-ratio: 3 / 2; border: 3px solid var(--mat); border-radius: 3px;
+    background-size: cover; background-position: center; position: relative; }
+  .raw .fname { margin-top: 5px; font-family: var(--font-mono); font-size: 9.5px; color: var(--frame-ink);
+    display: flex; justify-content: space-between; gap: 6px; }
+  .raw .stars { letter-spacing: -1px; }
+  .raw .cbadge { position: absolute; right: 5px; top: 5px; width: 11px; height: 11px; border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,.85); }
+
+  .modewrap { margin-bottom: 12px; }
+  .backlink { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600;
+    color: var(--ready); cursor: pointer; background: none; border: 0; padding: 4px 0; }
+  .backlink:hover { text-decoration: underline; }
+
+  .empty { color: var(--ink-soft); font-size: 14px; padding: 30px 4px; }
+
+  /* legend / notes below the app */
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px 26px;
+    margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--line); }
+  .notes h4 { margin: 0 0 5px; font-size: 12px; font-family: var(--font-mono); letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-soft); font-weight: 600; }
+  .notes p { margin: 0; font-size: 13px; color: var(--ink-soft); line-height: 1.5; }
+  .notes code { font-family: var(--font-mono); font-size: 12px; color: var(--ink); }
+  .swatchrow { display: flex; gap: 8px; align-items: center; margin-top: 6px; font-size: 12px; color: var(--ink-soft); }
+  .sw { width: 22px; height: 15px; border-radius: 4px; border: 1px solid var(--line); flex: none; }
+
+  @media (max-width: 720px) { .body { grid-template-columns: 1fr; } .rail { border-right: 0; border-bottom: 1px solid var(--line); } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="page">
+    <p class="eyebrow">SpeciesViewer · Backlog ch.14</p>
+    <h1>Biota browser — desktop <span class="mock-tag">Layout mockup</span></h1>
+    <p class="lede">The desktop twin of the website's biota tree. One dialog, three
+      <b>starting points</b> — the active Trip, an Album, or the Master — walking the same
+      taxonomic tree (<span style="font-family:var(--font-mono)">Kingdom → … → Species</span>).
+      Drill to a species to see <b>every RAW</b> behind it. Styled in the Trip-lifecycle
+      palette, with the site's olive frame around each photo.</p>
+  </header>
+
+  <div class="app">
+    <!-- top bar -->
+    <div class="topbar">
+      <div class="scope">
+        <span class="slabel">Start&nbsp;from</span>
+        <div class="seg" id="scopeSeg" role="group" aria-label="Scope">
+          <button data-scope="trip"   aria-pressed="true"><span class="dot"></span>Trip · Marokko</button>
+          <button data-scope="album"  aria-pressed="false"><span class="dot"></span>Album</button>
+          <button data-scope="master" aria-pressed="false"><span class="dot"></span>Master</button>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <div class="field">
+        <label for="levelSel">Search level</label>
+        <select id="levelSel">
+          <option value="any">Any rank</option>
+          <option value="CLASS">Class</option>
+          <option value="ORDER">Order</option>
+          <option value="FAMILY">Family</option>
+          <option value="SPECIES" selected>Species</option>
+        </select>
+      </div>
+      <input type="search" id="search" placeholder="Search names at this rank…" autocomplete="off">
+      <div class="field">
+        <label for="langSel">Names</label>
+        <select id="langSel">
+          <option>NL › EN › sci</option>
+          <option>EN › sci</option>
+          <option>Scientific</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- breadcrumb -->
+    <div class="crumbs" id="crumbs"></div>
+
+    <!-- body -->
+    <div class="body">
+      <aside class="rail">
+        <h3>Jump to rank</h3>
+        <ul class="ranks" id="ranks"></ul>
+        <h3>The click-through</h3>
+        <p class="railnote">A <b>taxon</b> card opens its children. A <b>species</b> card opens
+          the picture grid — its complete <code>RAW</code> set for this scope, the same grid the
+          Species&nbsp;Viewer already draws.</p>
+      </aside>
+
+      <section class="main" id="main"></section>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div>
+      <h4>One tree, three sources</h4>
+      <p>Trip &amp; Album read <code>Project.sp.species_dict</code>; Master reads the
+        <code>species</code> table. Both already carry <code>Level / Up / Leaves</code> — so a thin
+        <code>BiotaSource</code> adapter is all that differs.</p>
+    </div>
+    <div>
+      <h4>Reused wholesale</h4>
+      <p>The species RAW grid is the existing <code>PictureCard</code> + provider + large viewer.
+        New code is only the tree adapter, the taxon cards, breadcrumb, and rank search.</p>
+    </div>
+    <div>
+      <h4>Palette</h4>
+      <p>Lifecycle-board tokens; the olive is the site's own frame colour.</p>
+      <div class="swatchrow">
+        <span class="sw" style="background:#6d8764"></span> <code>--frame #6d8764</code>
+        <span class="sw" style="background:#2f7d43"></span> <code>--done</code>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── Sample taxonomy (a slice — enough to demo drill-down + rank search) ────
+  // node: { sci, level, nl, en, up, hue }  counts are computed from leaves.
+  const T = {
+    biota:        { sci:"Biota", level:"BIOTA", nl:"Biota", en:"Biota", up:null, hue:120 },
+    animalia:     { sci:"Animalia", level:"KINGDOM", nl:"Dieren", en:"Animals", up:"biota", hue:30 },
+    chordata:     { sci:"Chordata", level:"PHYLUM", nl:"Chordadieren", en:"Chordates", up:"animalia", hue:200 },
+    aves:         { sci:"Aves", level:"CLASS", nl:"Vogels", en:"Birds", up:"chordata", hue:210 },
+    mammalia:     { sci:"Mammalia", level:"CLASS", nl:"Zoogdieren", en:"Mammals", up:"chordata", hue:28 },
+    passeriformes:{ sci:"Passeriformes", level:"ORDER", nl:"Zangvogels", en:"Passerines", up:"aves", hue:95 },
+    charadriiformes:{ sci:"Charadriiformes", level:"ORDER", nl:"Steltloperachtigen", en:"Shorebirds", up:"aves", hue:190 },
+    accipitriformes:{ sci:"Accipitriformes", level:"ORDER", nl:"Roofvogels", en:"Raptors", up:"aves", hue:20 },
+    emberizidae:  { sci:"Emberizidae", level:"FAMILY", nl:"Gorzen", en:"Buntings", up:"passeriformes", hue:45 },
+    fringillidae: { sci:"Fringillidae", level:"FAMILY", nl:"Vinken", en:"Finches", up:"passeriformes", hue:8 },
+    alaudidae:    { sci:"Alaudidae", level:"FAMILY", nl:"Leeuweriken", en:"Larks", up:"passeriformes", hue:38 },
+    // species leaves of Emberizidae
+    "emberiza cia":       { sci:"Emberiza cia", level:"SPECIES", nl:"grauwe gors", en:"rock bunting", up:"emberizidae", hue:40 },
+    "emberiza hortulana": { sci:"Emberiza hortulana", level:"SPECIES", nl:"ortolaan", en:"ortolan bunting", up:"emberizidae", hue:52 },
+    "emberiza cirlus":    { sci:"Emberiza cirlus", level:"SPECIES", nl:"cirlgors", en:"cirl bunting", up:"emberizidae", hue:60 },
+    "emberiza calandra":  { sci:"Emberiza calandra", level:"SPECIES", nl:"grauwe gors", en:"corn bunting", up:"emberizidae", hue:34 },
+    "emberiza schoeniclus":{ sci:"Emberiza schoeniclus", level:"SPECIES", nl:"rietgors", en:"reed bunting", up:"emberizidae", hue:25 },
+    // a couple of species under other families so rank-search has range
+    "fringilla coelebs":  { sci:"Fringilla coelebs", level:"SPECIES", nl:"vink", en:"common chaffinch", up:"fringillidae", hue:6 },
+    "carduelis carduelis":{ sci:"Carduelis carduelis", level:"SPECIES", nl:"putter", en:"european goldfinch", up:"fringillidae", hue:12 },
+    "galerida cristata":  { sci:"Galerida cristata", level:"SPECIES", nl:"kuifleeuwerik", en:"crested lark", up:"alaudidae", hue:36 },
+  };
+  // children index
+  const KIDS = {};
+  Object.keys(T).forEach(k => { const up = T[k].up; if (up) (KIDS[up] ||= []).push(k); });
+
+  // per-scope picture counts on species (Master ⊇ Trip ⊇ Album demo numbers)
+  const PICS = {
+    trip:   { "emberiza cia":9, "emberiza hortulana":14, "emberiza cirlus":6, "emberiza calandra":0, "emberiza schoeniclus":3, "fringilla coelebs":11, "carduelis carduelis":8, "galerida cristata":5 },
+    album:  { "emberiza cia":9, "emberiza hortulana":12, "emberiza cirlus":6, "emberiza calandra":0, "emberiza schoeniclus":3, "fringilla coelebs":11, "carduelis carduelis":8, "galerida cristata":5 },
+    master: { "emberiza cia":41, "emberiza hortulana":58, "emberiza cirlus":33, "emberiza calandra":7, "emberiza schoeniclus":26, "fringilla coelebs":103, "carduelis carduelis":77, "galerida cristata":29 },
+  };
+  const SCOPE_NAME = { trip:"Trip · Marokko 2024", album:"Album · Marokko", master:"Master collection" };
+
+  let scope = "trip";
+  let cur = "biota";     // current node in the tree
+  let leafOpen = null;   // species whose RAWs are shown
+
+  const RANK_LABEL = { BIOTA:"Biota", KINGDOM:"Kingdom", PHYLUM:"Phylum", CLASS:"Class",
+    ORDER:"Order", FAMILY:"Family", SPECIES:"Species" };
+  const RANK_ORDER = ["KINGDOM","PHYLUM","CLASS","ORDER","FAMILY","SPECIES"];
+
+  // photo stand-in — a soft two-stop wash keyed by the node hue
+  function wash(hue){ return `linear-gradient(150deg,
+      hsl(${hue} 34% 62%), hsl(${(hue+38)%360} 30% 40%))`; }
+
+  // recursive picture total for a node in the current scope
+  function picCount(k){
+    if (T[k].level === "SPECIES") return (PICS[scope][k] ?? 0);
+    return (KIDS[k]||[]).reduce((s,c)=>s+picCount(c),0);
+  }
+  function speciesCount(k){
+    if (T[k].level === "SPECIES") return picCount(k) > 0 ? 1 : 0;
+    return (KIDS[k]||[]).reduce((s,c)=>s+speciesCount(c),0);
+  }
+  // children that actually have pictures in this scope (mirrors the web render gate)
+  function liveKids(k){ return (KIDS[k]||[]).filter(c => picCount(c) > 0)
+      .sort((a,b)=> T[a].sci.localeCompare(T[b].sci)); }
+
+  function nameOf(k){ const n=T[k]; return `${n.nl}`; }
+
+  // ── breadcrumb ─────────────────────────────────────────────
+  function chain(k){ const out=[]; let c=k; while(c){ out.unshift(c); c=T[c].up; } return out; }
+  function renderCrumbs(){
+    const el = document.getElementById("crumbs"); el.innerHTML="";
+    const ch = chain(cur);
+    ch.forEach((k,i)=>{
+      if(i) { const s=document.createElement("span"); s.className="sep"; s.textContent="›"; el.appendChild(s); }
+      const last = (i===ch.length-1) && !leafOpen;
+      if(last){
+        const b=document.createElement("span"); b.className="here";
+        b.innerHTML = `${T[k].sci} <span class="rank">${RANK_LABEL[T[k].level]}</span>`;
+        el.appendChild(b);
+      } else {
+        const a=document.createElement("a"); a.textContent=T[k].sci;
+        a.addEventListener("click",()=>{ cur=k; leafOpen=null; render(); });
+        el.appendChild(a);
+      }
+    });
+    if(leafOpen){
+      const s=document.createElement("span"); s.className="sep"; s.textContent="›"; el.appendChild(s);
+      const b=document.createElement("span"); b.className="here";
+      b.innerHTML = `<em style="font-style:italic">${T[leafOpen].sci}</em> <span class="rank">RAWs</span>`;
+      el.appendChild(b);
+    }
+  }
+
+  // ── left rail: jump to an ancestor rank ────────────────────
+  function renderRanks(){
+    const el = document.getElementById("ranks"); el.innerHTML="";
+    const ch = chain(leafOpen || cur);
+    RANK_ORDER.forEach(rk=>{
+      const k = ch.find(x=>T[x].level===rk);
+      const li=document.createElement("li");
+      li.setAttribute("aria-current", (!leafOpen && T[cur].level===rk) ? "true":"false");
+      li.innerHTML = `<span>${k?T[k].sci:"—"}</span><span class="rk">${RANK_LABEL[rk]}</span>`;
+      if(k){ li.addEventListener("click",()=>{ cur=k; leafOpen=null; render(); }); }
+      else { li.style.opacity=.4; li.style.cursor="default"; }
+      el.appendChild(li);
+    });
+  }
+
+  // ── main area ──────────────────────────────────────────────
+  const mainEl = document.getElementById("main");
+  function render(){
+    document.querySelectorAll("#scopeSeg button").forEach(b=>
+      b.setAttribute("aria-pressed", b.dataset.scope===scope ? "true":"false"));
+    renderCrumbs(); renderRanks();
+    const q = document.getElementById("search").value.trim().toLowerCase();
+    const lvl = document.getElementById("levelSel").value;
+
+    // rank search overrides the tree view when there's a query
+    if(q){ renderSearch(q, lvl); return; }
+    if(leafOpen){ renderRaws(leafOpen); return; }
+    renderChildren(cur);
+  }
+
+  function renderChildren(k){
+    const kids = liveKids(k);
+    mainEl.innerHTML =
+      `<div class="main-head"><h2>${T[k].sci} <em>${T[k].nl} · ${T[k].en}</em></h2>
+       <span class="count">${speciesCount(k)} species · ${picCount(k)} photos · ${SCOPE_NAME[scope]}</span></div>`;
+    if(!kids.length){ mainEl.insertAdjacentHTML("beforeend",
+      `<p class="empty">No photographed taxa here in ${SCOPE_NAME[scope]}.</p>`); return; }
+    const grid=document.createElement("div"); grid.className="grid";
+    kids.forEach(c=>{
+      const n=T[c], isSp = n.level==="SPECIES";
+      const card=document.createElement("button"); card.className="taxon";
+      const sub = isSp ? `<span>${picCount(c)} photos</span>`
+                       : `<span><b>${speciesCount(c)}</b> species</span><span>${picCount(c)} photos</span>`;
+      card.innerHTML =
+        `<div class="thumb"><div class="photo" style="background-image:${wash(n.hue)}">
+           <span class="rankchip">${RANK_LABEL[n.level]}</span></div></div>
+         <div class="meta"><div class="nl">${n.nl}</div>
+           <div class="sci">${n.sci}${n.en?` · ${n.en}`:""}</div>
+           <div class="stat">${sub}</div></div>`;
+      card.addEventListener("click",()=>{
+        if(isSp){ leafOpen=c; } else { cur=c; }
+        render();
+      });
+      grid.appendChild(card);
+    });
+    mainEl.appendChild(grid);
+  }
+
+  // species RAW grid — the click-through destination
+  function renderRaws(k){
+    const n=T[k], total=picCount(k);
+    mainEl.innerHTML =
+      `<div class="modewrap"><button class="backlink" id="back">← ${T[n.up].sci} · ${T[n.up].nl}</button></div>
+       <div class="main-head"><h2><em style="font-style:italic;color:var(--ink);font-weight:600">${n.sci}</em>
+         &nbsp;${n.nl} · ${n.en}</h2>
+         <span class="count">${total} RAW${total!==1?"s":""} · ${SCOPE_NAME[scope]}</span></div>`;
+    document.getElementById("back").addEventListener("click",()=>{ leafOpen=null; render(); });
+    if(!total){ mainEl.insertAdjacentHTML("beforeend",
+      `<p class="empty">No pictures for ${n.nl} in ${SCOPE_NAME[scope]}.</p>`); return; }
+    const grid=document.createElement("div"); grid.className="rawgrid";
+    const colors=["#1E90FF","#2f9e57","#e0a92b","#c0392b","#9370DB",""];
+    for(let i=0;i<total;i++){
+      const stars = "★★★★★".slice(0,5-(i%3)) + "☆☆☆☆☆".slice(0,(i%3));
+      const cb = colors[i%colors.length];
+      const tile=document.createElement("div"); tile.className="raw";
+      tile.innerHTML =
+        `<div class="photo" style="background-image:${wash((n.hue + i*11)%360)}">
+           ${cb?`<span class="cbadge" style="background:${cb}"></span>`:""}</div>
+         <div class="fname"><span>${n.sci.split(" ")[1].slice(0,4).toUpperCase()}_${String(4100+i)}</span>
+           <span class="stars">${stars}</span></div>`;
+      grid.appendChild(tile);
+    }
+    mainEl.appendChild(grid);
+  }
+
+  // rank search — every node at the chosen rank whose name matches, anywhere in the tree
+  function renderSearch(q, lvl){
+    const hits = Object.keys(T).filter(k=>{
+      if(k==="biota") return false;
+      if(lvl!=="any" && T[k].level!==lvl) return false;
+      if(picCount(k)<=0) return false;
+      const n=T[k];
+      return [n.sci,n.nl,n.en].some(s=>s.toLowerCase().includes(q));
+    }).sort((a,b)=> RANK_ORDER.indexOf(T[a].level)-RANK_ORDER.indexOf(T[b].level) || T[a].sci.localeCompare(T[b].sci));
+    mainEl.innerHTML =
+      `<div class="main-head"><h2>Search <em>“${q}”${lvl!=="any"?` · ${RANK_LABEL[lvl]}`:""}</em></h2>
+       <span class="count">${hits.length} match${hits.length!==1?"es":""} · ${SCOPE_NAME[scope]}</span></div>`;
+    if(!hits.length){ mainEl.insertAdjacentHTML("beforeend",
+      `<p class="empty">Nothing at this rank matches “${q}”.</p>`); return; }
+    const grid=document.createElement("div"); grid.className="grid";
+    hits.forEach(c=>{
+      const n=T[c], isSp=n.level==="SPECIES";
+      const card=document.createElement("button"); card.className="taxon";
+      card.innerHTML =
+        `<div class="thumb"><div class="photo" style="background-image:${wash(n.hue)}">
+           <span class="rankchip">${RANK_LABEL[n.level]}</span></div></div>
+         <div class="meta"><div class="nl">${n.nl}</div>
+           <div class="sci">${n.sci}${n.en?` · ${n.en}`:""}</div>
+           <div class="stat"><span>${isSp?`${picCount(c)} photos`:`<b>${speciesCount(c)}</b> species · ${picCount(c)} photos`}</span></div></div>`;
+      card.addEventListener("click",()=>{
+        document.getElementById("search").value="";
+        if(isSp){ cur=n.up; leafOpen=c; } else { cur=c; leafOpen=null; }
+        render();
+      });
+      grid.appendChild(card);
+    });
+    mainEl.appendChild(grid);
+  }
+
+  // ── wire controls ──────────────────────────────────────────
+  document.getElementById("scopeSeg").addEventListener("click", e=>{
+    const b=e.target.closest("button"); if(!b) return;
+    scope=b.dataset.scope; leafOpen=null;
+    // if the current node has no pictures in the new scope, fall back to biota
+    if(picCount(cur)<=0) cur="biota";
+    render();
+  });
+  document.getElementById("search").addEventListener("input", render);
+  document.getElementById("levelSel").addEventListener("change", render);
+
+  // start the demo already drilled into Emberizidae, like the reference page
+  cur="emberizidae"; render();
+</script>

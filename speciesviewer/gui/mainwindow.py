@@ -1103,6 +1103,19 @@ class MainWindow(QMainWindow):
         self._master_species_viewer_dlg = MasterSpeciesViewerDialog(self)
         self._master_species_viewer_dlg.show()
 
+    def open_biota_browser(self):
+        """Desktop twin of the website's biota tree — walk the taxonomy for the
+        master, drill to a species to see its pictures. Needs no active trip."""
+        from gui.biota_browser import BiotaBrowserDialog
+        master_root = _config.get("master", "masterbiotadatabase", fallback="")
+        if not master_root:
+            QMessageBox.warning(self, "Biota Browser",
+                                "No master database is configured.")
+            return
+        # Strong ref on the main window — see open_rating_editor for the why.
+        self._biota_browser_dlg = BiotaBrowserDialog(self)
+        self._biota_browser_dlg.show()
+
     def open_species_map(self):
         """Standalone species distribution map — a peer of the Species Viewer
         (grid): pick 1–4 species and see their GPS points on a map, click a

@@ -38,8 +38,11 @@ logger = logging.getLogger("speciesviewer")
 class MasterSpeciesViewerDialog(MasterCardMenuMixin, QDialog):
     """Scrollable grid of master picture cards for one selected species."""
 
-    def __init__(self, parent):
+    def __init__(self, parent, initial_sci=None):
         super().__init__(parent)
+        # When opened from the Biota Browser, jump straight to this species once
+        # the master list has loaded (a scientific name, casefolded on use).
+        self._initial_sci = (initial_sci or "").strip() or None
         self.setWindowTitle("Master Species Viewer")
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
@@ -298,6 +301,27 @@ class MasterSpeciesViewerDialog(MasterCardMenuMixin, QDialog):
         self._status.setText(
             f"{len(self._species_rows)} master species{ro} — type a name to view its pictures.")
         self._species_field.setFocus()
+        if self._initial_sci and self.show_species(self._initial_sci):
+            self._initial_sci = None
+
+    def show_species(self, sci: str) -> bool:
+        """Jump the viewer to `sci` (a scientific name) programmatically — used by
+        the Biota Browser's species click-through. Returns False if the master has
+        no such species. Mirrors _on_species_entered without the name→sci lookup."""
+        if self._collection is None:
+            return False
+        row = self._sci_to_row.get((sci or "").strip().casefold())
+        if not row:
+            return False
+        self._close_large_view()
+        self._current_sci = sci.strip().casefold()
+        self._current_display = self._display_name_for(self._current_sci)
+        self._species_field.setText(self._current_display)
+        self._camera_combo.blockSignals(True)
+        self._camera_combo.setCurrentIndex(0)
+        self._camera_combo.blockSignals(False)
+        self._rebuild_cards()
+        return True
 
     # ── Species selection ──────────────────────────────────────────────────
     def _display_name_for(self, sci: str) -> str:

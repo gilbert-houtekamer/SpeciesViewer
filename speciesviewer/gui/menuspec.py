@@ -1616,6 +1616,13 @@ def build_menu_spec(main_window):
                 title="Species Viewer",
                 enabled=has_master,
                 showsubdirectory=False),
+            "Biota Browser…": MenuSpec(
+                callback=lambda: main_window.open_biota_browser(),
+                title="Biota Browser",
+                enabled=has_master,
+                tooltip="Browse the master by taxonomy (Kingdom → Species); "
+                        "drill to a species to see its pictures",
+                showsubdirectory=False),
             "Species Map…": MenuSpec(
                 callback=lambda: main_window.open_species_map(),
                 title="Species Map",
