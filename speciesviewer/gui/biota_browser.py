@@ -164,6 +164,7 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         self._master_db = None
         self._master_read_only = True
         self._species_view = "pretty"   # "pretty" (SpeciesPanel) | "tech" (grid)
+        self._show_all_files = False     # pretty panel: reveal RAW-only frames
         self._pic_cards = []
         self._pic_by_key = {}
         self._large_view = None
@@ -578,6 +579,10 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
 
     def _panel_open_pretty(self):
         self._species_view = "pretty"
+        self._render()
+
+    def _panel_toggle_all_files(self):
+        self._show_all_files = not self._show_all_files
         self._render()
 
     def _panel_show_map(self, sci):

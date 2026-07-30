@@ -125,11 +125,13 @@ class PhotoTile(QFrame):
                                   " background:rgba(0,0,0,.30); border-radius:3px; padding:0 3px;")
         self._photo.add_badge(self._stars, "br")
 
+        jpg = collection.jpg_path(item.key)
         cap = QHBoxLayout(); cap.setContentsMargins(2, 0, 2, 1); cap.setSpacing(6)
-        fname = ""
-        p = collection.jpg_path(item.key)
-        if p is not None:
-            fname = p.name
+        if jpg is not None:
+            fname = jpg.name
+        else:
+            exts = getattr(item, "file_exts", []) or []
+            fname = (exts[0] + " · " if exts else "") + item.key[:14]
         self._fn = QLabel(fname)
         self._fn.setStyleSheet(f"color:{_FRAME_INK}; font-family:Consolas,monospace; font-size:9px;")
         self._fn.setWordWrap(False)
@@ -141,9 +143,15 @@ class PhotoTile(QFrame):
 
         self._paint_state()
 
-        cover = collection.jpg_path(item.key)
-        if cover is not None:
-            loader.request(lambda pth=cover: _load_qimage(pth), self._set_photo, target_w=tile_w * 2)
+        if jpg is not None:
+            loader.request(lambda pth=jpg: _load_qimage(pth), self._set_photo, target_w=tile_w * 2)
+        else:
+            # RAW-only frame (revealed by "Show all files"): no JPG face — a quiet,
+            # dimmed placeholder. No # (that marks a JPG); the star still shows.
+            self._photo.setText("RAW")
+            self._photo.setStyleSheet(
+                f"background:#dfe2d8; border:3px solid {_MAT}; border-radius:3px;"
+                f" color:#9aa091; font-family:Consolas,monospace; font-size:11px; font-weight:700;")
 
     def _paint_state(self):
         from gui.rating_editor import COLOR_HEX
@@ -424,10 +432,13 @@ class SpeciesPanel(QWidget):
         host = self._host
         box = QWidget(); bl = QVBoxLayout(box); bl.setContentsMargins(0, 10, 0, 0); bl.setSpacing(4)
 
-        # (re)build the shared provider for this species; jpg-only pretty view
+        # (re)build the shared provider for this species. "Show all files" (a
+        # session-level host flag) drops the jpg-only filter so RAW-only frames
+        # appear too — marked by the ABSENCE of a #.
+        show_all = getattr(host, "_show_all_files", False)
         col = host._collection
         col.set_species_lang(host._lang)
-        col.set_jpg_only(True)
+        col.set_jpg_only(not show_all)
         col.set_camera_filter(set())
         try:
             col.set_color_filter(set())
@@ -438,10 +449,26 @@ class SpeciesPanel(QWidget):
                     forced_sci=self._sci.casefold())
 
         n = len(col)
-        hdr = QLabel(f"PHOTOS · {n}")
+        n_raw = sum(1 for i in range(n) if not col.item(i).has_jpg) if show_all else 0
+        head_row = QWidget()
+        hrl = QHBoxLayout(head_row); hrl.setContentsMargins(0, 6, 0, 0); hrl.setSpacing(8)
+        hdr = QLabel(f"PHOTOS · {n - n_raw}" + (f"  +  {n_raw} RAW" if n_raw else ""))
         hdr.setStyleSheet(f"color:{_INK_SOFT}; font-family:Consolas,monospace; font-size:10px;"
-                          f" letter-spacing:1px; margin-top:6px;")
-        bl.addWidget(hdr)
+                          f" letter-spacing:1px;")
+        hrl.addWidget(hdr)
+        hrl.addStretch(1)
+        allbtn = QPushButton("Show all files")
+        allbtn.setCheckable(True)
+        allbtn.setChecked(show_all)
+        allbtn.setToolTip("Include RAW-only frames — # marks the ones that have a JPG")
+        allbtn.setStyleSheet(
+            f"QPushButton {{ border:1px solid {_LINE}; border-radius:6px; padding:3px 10px;"
+            f" font-size:12px; color:{_INK_SOFT}; }}"
+            f"QPushButton:checked {{ background:{_READY_BG}; border-color:{_READY};"
+            f" color:{_READY}; font-weight:600; }}")
+        allbtn.clicked.connect(host._panel_toggle_all_files)
+        hrl.addWidget(allbtn)
+        bl.addWidget(head_row)
         if n == 0:
             empty = QLabel("No pictures for this species.")
             empty.setStyleSheet(f"color:{_INK_SOFT}; padding:16px 2px;")
