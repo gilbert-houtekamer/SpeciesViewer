@@ -1000,6 +1000,18 @@ the whole trip → master flow is in daily use.</p>
 <h2>5. SmallMaster (Laptop-Friendly Master) <span class="tag-complete">COMPLETE ✓</span></h2>
 <p>Shipped and live-tested on SmallBoy. BigBoy builds <code>smallmaster.zip</code> (relativized
 CSV paths); SmallBoy installs and auto-locks to read-only. No open items.</p>
+<h3>Done</h3>
+<ul>
+  <li><strong>Import Album on a SmallMaster machine</strong> <span class="tag-shipped">DONE</span> —
+    live-verified 2026-07-31. <em>Import Album</em> used to be greyed out on SmallBoy entirely
+    (it required the full master). Since the Album re-arch to a live date-range query, Import no
+    longer extracts day data — it just drops the recipe into the Albums root, so a partial master
+    is not actually a blocker. The menu item now only requires <em>some</em> master to be configured;
+    the dialog shows an upfront note when the local master is a SmallMaster copy ("may show fewer
+    pictures than the original") and repeats it in the completion message. <em>Create Album</em>,
+    <em>Find Trips in the Master</em>, and <em>Retire Trip to Album</em> stay full-master-only, since
+    those genuinely browse or extract against the complete dataset.</li>
+</ul>
 
 <!-- ============================================================ -->
 <h2>8. Viewer Convergence <span class="tag-complete">COMPLETE ✓</span></h2>

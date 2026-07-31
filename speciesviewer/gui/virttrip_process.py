@@ -1195,9 +1195,11 @@ class ExportVirtualTripDialog(QDialog):
 
 class ImportVirtualTripDialog(QDialog):
     """Unpack a virtual trip ZIP (from Export Virtual Trip) into this
-    machine's Virtual Trips root, register it in [virttrip], and optionally
-    re-extract day data so picture paths resolve against this machine's own
-    master rather than whatever machine the ZIP was built on."""
+    machine's Virtual Trips root and register it in [virttrip]. No
+    extraction runs here — an album reads the master live by date range, so
+    its pictures resolve against whatever master THIS machine has as soon as
+    it's opened. On a SmallMaster (partial, JPG-only) machine that means
+    fewer pictures than the original — see the on-screen notice below."""
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -1208,6 +1210,9 @@ class ImportVirtualTripDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
+        self._locked = _config.get(
+            "master", "readonly_locked", fallback="no").strip().lower() == "yes"
+
         info = QLabel(
             "<b>Import a Album from a ZIP file</b><br>"
             "Extracts <tt>virttrip.ini</tt> and <tt>metadata/</tt> (blog drafts, "
@@ -1217,6 +1222,18 @@ class ImportVirtualTripDialog(QDialog):
         )
         info.setWordWrap(True)
         layout.addWidget(info)
+
+        if self._locked:
+            limitation = QLabel(
+                "⚠ This machine holds a partial copy of the master (SmallMaster: "
+                "JPG-bearing pictures only, no RAWs). The imported album will show "
+                "only the pictures present in that partial copy — it may have fewer "
+                "pictures than on the machine that authored it. You can still view "
+                "and publish it here."
+            )
+            limitation.setWordWrap(True)
+            limitation.setStyleSheet("color: #8a6d00;")
+            layout.addWidget(limitation)
 
         # ZIP file picker
         zip_row = QHBoxLayout()
@@ -1330,9 +1347,11 @@ class ImportVirtualTripDialog(QDialog):
 
         # No day extract any more — the album reads THIS machine's master live by its
         # date range, so its pictures resolve against the local master immediately.
+        note = (" This machine's SmallMaster copy is partial, so some pictures may "
+                 "be missing." if self._locked else "")
         self.status_label.setText(
             f"✅ Imported in {elapsed:.1f}s. The album reads this machine's master "
-            "by date range — open it to view its pictures.")
+            f"by date range — open it to view its pictures.{note}")
 
 
 class VirttripWriteBlogDialog(QDialog):

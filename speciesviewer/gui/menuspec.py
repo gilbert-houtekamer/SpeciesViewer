@@ -792,10 +792,9 @@ def build_menu_spec(main_window):
     export_virttrip.callback = lambda: ExportVirtualTripDialog(main_window, export_virttrip).exec()
 
     import_virttrip = MenuSpec(
-        callback=lambda: require_full_master(main_window)
-                         and ImportVirtualTripDialog(main_window).exec(),
+        callback=lambda: ImportVirtualTripDialog(main_window).exec(),
         title="Import Album",
-        enabled=has_full_master,
+        enabled=has_master,
     )
 
     testbed = MenuSpec(
