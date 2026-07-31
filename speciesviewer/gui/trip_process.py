@@ -1564,6 +1564,13 @@ class PublishDayDialog(QDialog):
         import batch.sv6Freeze
         import batch.sv7WriteCommit
 
+        # Don't publish while an open culling window has unsaved edits — Freeze
+        # would snapshot stale review data. (Covers the menu path; the day-board
+        # path is guarded in handle_trip_table_double_click.)
+        guard = getattr(self.passed_parent, "confirm_no_pending_edits", None)
+        if guard and not guard("Publish Day"):
+            return
+
         selected_base = Path(self.base_dir_field.get_path())
         selected_subdir = self.subdir_dropdown.currentText()
         full_selected_path = selected_base / selected_subdir

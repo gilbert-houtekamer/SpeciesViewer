@@ -432,6 +432,35 @@ class MainWindow(QMainWindow):
             _config.set("project", "picturedirectory", str(new_dir))
             self.rebuild_menu()
 
+    def confirm_no_pending_edits(self, action_label="this step") -> bool:
+        """Guard: refuse to launch a pipeline step while an open culling window
+        still has edits that haven't been folded back into the day (a pending
+        Read & Summarize). Running the step on the stale review CSVs would drop
+        the edit — the 'I forgot to close the dialog' bug. The user closes the
+        window first (its closeEvent saves), then re-runs. Returns True when it is
+        safe to proceed. See [[project_frozen_day_guard]] Bug B."""
+        pending = []
+        for attr in ("image_viewer_dialog", "dlgImagePreviewDialog"):
+            dlg = getattr(self, attr, None)
+            if dlg is None:
+                continue
+            try:
+                if dlg.isVisible() and dlg.has_unsaved_edits():
+                    day = Path(dlg.image_dir).name if getattr(dlg, "image_dir", "") else "a day"
+                    pending.append(day)
+            except (RuntimeError, AttributeError):
+                pass  # dialog's C++ object gone, or not a culling viewer
+        if pending:
+            days = ", ".join(sorted(set(pending)))
+            QMessageBox.warning(
+                self, "Unsaved edits are open",
+                f"Close the editing window for {days} before running "
+                f"{action_label}.\n\nIt has changes that aren't saved into the day "
+                f"yet — closing the window saves them (a quick Read & Summarize), so "
+                f"the step runs on the up-to-date data.")
+            return False
+        return True
+
     def handle_trip_table_double_click(self, row, column):
         from gui.trip_overview import SYNC_COL, STATE_COL_START, STATE_COLUMNS
         # Translations column (last): open the per-day validation panel.
@@ -502,6 +531,10 @@ class MainWindow(QMainWindow):
 
         # Batch action
         else:
+            # Don't run a pipeline step while an open culling window has edits not
+            # yet saved into the day — it would run on stale review CSVs.
+            if not self.confirm_no_pending_edits(action_label):
+                return
             trip_menu = self.menu_spec.get("Trips", {})
             # Map the column to its Trip-menu action by the stable dict key
             # (STATE_COLUMNS["menu"]) — the header text carries a numbered,

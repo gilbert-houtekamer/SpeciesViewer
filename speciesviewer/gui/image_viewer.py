@@ -2091,6 +2091,18 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._restore_scroll = self.scroll_area.verticalScrollBar().value()
         self._apply_filters()
 
+    def has_unsaved_edits(self) -> bool:
+        """True when this culling window holds edits not yet folded into the day's
+        review CSVs — i.e. a Read & Summarize re-run is pending (the same
+        condition closeEvent uses to auto-save). A pipeline step must NOT run
+        while this is True: it would read the stale review CSVs and drop the edit
+        (the 'I forgot to close the dialog' bug). Closing the window saves.
+        See [[project_frozen_day_guard]] Bug B."""
+        return ((bool(getattr(self, "_day_edited", False))
+                 or bool(getattr(self, "_species_changed", False)))
+                and self.fpr is not None and self._file_list is None
+                and not getattr(self, "_day_frozen", False))
+
     # ── Close ───────────────────────────────────────────────────────────────
     def closeEvent(self, event):
         save_window(self, self._geo_key, cols=self.columns)
