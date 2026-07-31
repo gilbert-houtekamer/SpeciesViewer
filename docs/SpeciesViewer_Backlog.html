@@ -65,8 +65,9 @@ reads <em>No current work planned</em>.</p>
     <li><strong>Committed-day protection</strong> <span class="tag-shipped">SHIPPED</span> — the
       blue-delete accounting audit (ch. 14 follow-up) grew into a full fix: committed trip days are
       now read-only, a pipeline step is blocked while a culling window has unsaved edits, and
-      <em>Build Website</em> folded into <em>Publish Day</em> (ch. 4). One follow-up remains:
-      <strong>scope the Album species map</strong> to the album's date-range points (ch. 14).</li>
+      <em>Build Website</em> folded into <em>Publish Day</em> (ch. 4). The last ch.-14 follow-up —
+      <strong>colour this scope's own points on the species map</strong> — is now
+      <span class="tag-shipped">SHIPPED</span> for both album and trip (ch. 14).</li>
   </ul>
 </div>
 
@@ -262,11 +263,16 @@ reads <em>No current work planned</em>.</p>
     outside the pipeline</em>; the fix is the committed-day protection in <strong>ch. 4</strong>
     (Capabilities). The dangling/zombie rows a stray delete could leave are harmless — a Reset Trip
     or the ultimate master merge (a fresh full-directory Read &amp; Summarize) supersedes them.</li>
-  <li><strong>Colour the album's points on the species map</strong> <span class="tag-open">TODO</span> —
-    the species <em>Map</em> button in an Album shows the full-master GPS distribution. Rather than
-    filtering to only the album's date-range points, keep <em>all</em> master locations but draw the
-    album's own points in a <strong>different colour</strong> so they stand out. (Possibly already done
-    somewhere in the map history — check before building.)</li>
+  <li><strong>Colour this scope's points on the species map</strong> <span class="tag-shipped">SHIPPED</span> —
+    the species <em>Map</em> keeps the whole master range for a species but draws <em>this</em>
+    scope's own pictures in a standout amber so they stand out against it, with a legend chip
+    (<em>Album · marokko</em> / <em>Trip · greecedb</em>). Works for an <strong>album</strong>
+    (its date-range pictures) and a <strong>trip</strong> (its own repo, even before it is merged
+    into the master — those points are unioned in and their pictures resolve from the trip). Bonus
+    fixes from live use: clicking any bubble opens its pictures in the site's <strong>olive photo
+    tiles</strong>; the fit no longer zooms past a basemap's max tile level (no more grey
+    <em>“max zoom”</em> tiles on a tight cluster); and <strong>F5 / ⟳</strong> resets the map to the
+    full world view and refreshes.</li>
 </ul>
 
 <!-- ============================================================ -->
