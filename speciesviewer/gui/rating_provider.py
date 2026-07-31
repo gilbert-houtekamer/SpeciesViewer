@@ -65,7 +65,11 @@ class RatingEditorItem(PictureItem):
         # be a master write-back, deferred). Otherwise trip pictures are always
         # editable; master reference pictures only when the master is not in
         # read-only mode (Phase 2).
-        editable = (not collection.view_read_only) and \
+        # A committed-day trip picture is locked (the day is frozen — changes only
+        # via Empty-the-trip). The card stamps a 🔒 and greys its controls, exactly
+        # like a master reference card.
+        self.frozen = collection.is_frozen_day(upn_key)
+        editable = (not collection.view_read_only) and (not self.frozen) and \
                    ((not self._master) or (not collection.master_read_only))
         self.can_edit_rating = editable
         self.can_edit_color = editable
@@ -104,7 +108,7 @@ class RatingEditorItem(PictureItem):
         Master reference cards and the read-only Album viewer stay look-only.
         Lazy (one disk stat) so building a species' grid pays nothing — only the
         large viewer, which asks per shown picture, resolves it."""
-        if self._c.view_read_only or self._master:
+        if self._c.view_read_only or self._master or self.frozen:
             return False
         return self._c.raw_path(self._key) is not None
 
@@ -245,10 +249,16 @@ class RatingEditorCollection(PictureCollection):
     def __init__(self, fpr, day_objects, upn_day_map, *,
                  jpg_only: bool = True, species_lang: str = "nl_en_sci",
                  loader: AsyncImageLoader | None = None,
-                 view_read_only: bool = False):
+                 view_read_only: bool = False, frozen_days=None):
         self.fpr = fpr
         self._day_objects = day_objects      # dict day->(Files,Pictures), or None in Day scope
         self._upn_day_map = upn_day_map      # upn_key -> day
+        # Days that are Frozen/Committed (see gui/day_freeze.py). A TRIP picture
+        # from such a day is immutable — its item's edit flags are off and it
+        # can't be deleted (a committed day changes only via Empty-the-trip). In
+        # Day scope the whole collection is view_read_only instead, so this stays
+        # empty there; it drives the per-picture 🔒 lock in Trip/Trip+Master scope.
+        self._frozen_days = set(frozen_days or ())
         self._jpg_only = jpg_only
         self._color_filter: set[str] = set()   # lowercased colour names; empty = all
         self._camera_filter: set[str] = set()  # exact CameraModel strings; empty = all
@@ -321,6 +331,14 @@ class RatingEditorCollection(PictureCollection):
 
     def is_master(self, key: str) -> bool:
         return key in self._master_keys
+
+    def is_frozen_day(self, key: str) -> bool:
+        """True when this TRIP picture belongs to a Frozen/Committed day, so it
+        is locked (no edit, no delete). Master pictures are never 'frozen' here —
+        they have their own read-only path. See gui/day_freeze.py."""
+        if key in self._master_keys:
+            return False
+        return self._upn_day_map.get(key) in self._frozen_days
 
     def is_album_member(self, key: str) -> bool:
         """Full-master scope only: True when this master picture's UPN is also
@@ -1323,7 +1341,8 @@ class RatingEditorCollection(PictureCollection):
         """The large viewer offers "Add new files" only for an editable TRIP
         picture — never a master reference card or a read-only (Album) view. The
         Master Species Viewer keeps its own add on the card context menu."""
-        return (not self.view_read_only) and (key not in self._master_keys)
+        return ((not self.view_read_only) and (key not in self._master_keys)
+                and not self.is_frozen_day(key))
 
     def add_files(self, key: str) -> dict:
         """Large-viewer entry point → the trip-side folder scan/add. Returns
@@ -1449,6 +1468,11 @@ class RatingEditorCollection(PictureCollection):
         days_to_persist: set[str] = set()
         for key in matching:
             if self.jpg_path(key):
+                protected += 1
+                continue
+            if self.is_frozen_day(key):
+                # A committed day is immutable — never trash its files (the caller
+                # already filters, this is the last-line guard). See day_freeze.py.
                 protected += 1
                 continue
             upn_row = self.fpr.upn.UniquePictureName_dict.get(key, {})

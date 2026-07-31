@@ -385,6 +385,14 @@ class PictureCard(QFrame):
                 tag.setStyleSheet("color: #888; font-size: 8px; font-style: italic;")
             vbox.addWidget(tag)
 
+        # Committed-day lock: this trip picture is on a frozen day → read-only.
+        if getattr(item, "frozen", False):
+            lock = QLabel("🔒 committed")
+            lock.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lock.setStyleSheet("color:#8a6d00; font-size:8px; font-weight:bold;")
+            lock.setToolTip("This day is committed — Empty the trip to unlock it.")
+            vbox.addWidget(lock)
+
         # Stars row + date + rate
         row_stars = QHBoxLayout()
         row_stars.setContentsMargins(0, 0, 0, 0)
@@ -932,6 +940,16 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
 
         main_layout.addLayout(top)
 
+        # Committed-day lock banner (frozen day / some frozen pictures). Hidden
+        # until a load resolves the frozen state (see _apply_lock_ui).
+        self._lock_banner = QLabel()
+        self._lock_banner.setWordWrap(True)
+        self._lock_banner.setStyleSheet(
+            "background:#8a6d00; color:#fff; font-weight:bold; "
+            "padding:5px 8px; border-radius:3px;")
+        self._lock_banner.hide()
+        main_layout.addWidget(self._lock_banner)
+
         # ── Status bar ────────────────────────────────────────────────────────
         self._status = QLabel("Initializing…")
         self._status.setStyleSheet("color: #555; font-size: 10px;")
@@ -946,9 +964,9 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._sel_label = QLabel()
         self._sel_label.setStyleSheet("color: #1565c0; font-weight: bold;")
         _sb_layout.addWidget(self._sel_label)
-        _sel_species_btn = QPushButton("Set species…")
-        _sel_species_btn.clicked.connect(self._open_species_dialog_for_selection)
-        _sb_layout.addWidget(_sel_species_btn)
+        self._sel_species_btn = QPushButton("Set species…")
+        self._sel_species_btn.clicked.connect(self._open_species_dialog_for_selection)
+        _sb_layout.addWidget(self._sel_species_btn)
         # Move the selection to a DIFFERENT species that already exists (the two
         # swans mislabelled among the ducks). Target is constrained to the trip's
         # species list — no new species, no GBIF.
@@ -993,6 +1011,30 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
 
     # ── Batch delete by colour ────────────────────────────────────────────────
 
+    def _apply_lock_ui(self):
+        """Reflect the frozen state in the toolbar + banner after a load. Album
+        (self._read_only) already hides the edit affordances, so skip it there."""
+        locked = getattr(self, "_day_scope_locked", False)
+        some_frozen = bool(getattr(self, "_frozen_days", set())) and not locked
+        from gui.day_freeze import FROZEN_BANNER
+        if locked:
+            self._lock_banner.setText("🔒 " + FROZEN_BANNER)
+            self._lock_banner.show()
+        elif some_frozen:
+            self._lock_banner.setText(
+                "🔒 Some pictures are on a committed day and are shown locked — "
+                "Empty the trip to unlock them.")
+            self._lock_banner.show()
+        else:
+            self._lock_banner.hide()
+        # A fully-locked (Day scope, frozen) panel hides the cull + species-edit
+        # actions. In Trip scope with only SOME frozen, they stay (they act on the
+        # editable pictures; frozen keys are filtered by each handler).
+        if not self._read_only:
+            for w in (self._del_blue_btn, self._del_purple_btn,
+                      self._sel_move_btn, self._sel_species_btn):
+                w.setVisible(not locked)
+
     def _batch_delete_color(self, color: str):
         if not self.fpr or self._collection is None:
             return
@@ -1024,7 +1066,11 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                                     f"No {color.lower()} pictures in {scope}.")
             return
 
-        trip_deletable = [k for k in trip_keys if not self._collection.jpg_path(k)]
+        # A committed-day trip picture is locked — never deletable here.
+        frozen_trip = [k for k in trip_keys if self._collection.is_frozen_day(k)]
+        trip_deletable = [k for k in trip_keys
+                          if not self._collection.jpg_path(k)
+                          and not self._collection.is_frozen_day(k)]
         master_deletable = [k for k in master_keys
                             if self._collection.master_upn_deletable(k)]
         prot = ((len(trip_keys) - len(trip_deletable))
@@ -1039,6 +1085,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             lines.append(f"Master → master .trash: {len(master_deletable)}")
         if prot:
             why = "have a JPG"
+            if frozen_trip:
+                why += " / committed day (🔒)"
             if (len(master_keys) - len(master_deletable)) and self._collection.master_read_only:
                 why += " / master read-only"
             lines.append(f"Skipped ({why}): {prot}")
@@ -1157,14 +1205,36 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             except Exception as e:
                 logger.warning(f"Could not load species collection for editing: {e}")
 
+        # Frozen-day lock: a committed day (Freeze/WriteCommit done) is immutable
+        # — editing it would diverge the working layer from the trip's active/
+        # CSVs + biota/ tree (the blue-delete accounting gap). In Day scope the
+        # whole panel locks (view_read_only); in Trip / Trip+Master each picture
+        # from a committed day locks individually (🔒 badge, no edit/delete). See
+        # gui/day_freeze.py.
+        from gui.day_freeze import day_is_frozen
+        self._frozen_days: set[str] = set()
+        self._day_scope_locked = False
+        if scope_day:
+            _d = self._current_day()
+            if _d and day_is_frozen(self._trip_root, _d)[0]:
+                self._frozen_days.add(_d)
+                self._day_scope_locked = True
+        else:
+            for _d in {d for d in self._upn_day_map.values() if d}:
+                if day_is_frozen(self._trip_root, _d)[0]:
+                    self._frozen_days.add(_d)
+
         # Build the provider collection over the freshly-loaded data. Local
         # import avoids a circular import (rating_provider imports helpers here).
         from gui.rating_provider import RatingEditorCollection
         self._collection = RatingEditorCollection(
             self.fpr, self._day_objects, self._upn_day_map,
             jpg_only=self._jpg_only, species_lang=self._species_lang,
-            loader=self._loader, view_read_only=self._read_only,
+            loader=self._loader,
+            view_read_only=(self._read_only or self._day_scope_locked),
+            frozen_days=self._frozen_days,
         )
+        self._apply_lock_ui()
         self._populate_camera_combo()   # before species combo (its signal rebuilds cards)
         self._populate_species_combo(restore_selection=saved_species)
         if tripmaster:
@@ -1690,10 +1760,13 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._update_selection_display()
 
     def _editable_keys(self, keys) -> set:
-        """Drop master reference keys — they're read-only (v1)."""
+        """Drop keys that can't be edited here: master reference keys (read-only
+        v1) and committed-day trip keys (frozen — 🔒, change only via Empty)."""
         if self._collection is None:
             return set(keys)
-        return {k for k in keys if not self._collection.is_master(k)}
+        return {k for k in keys
+                if not self._collection.is_master(k)
+                and not self._collection.is_frozen_day(k)}
 
     def _open_species_dialog_for_selection(self):
         keys = self._editable_keys(self._selected_keys)
