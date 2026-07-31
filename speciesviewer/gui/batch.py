@@ -244,7 +244,8 @@ class ChainedBatchRunner:
     steps: list of (module_called, statusname, before_msg, after_msg)
     """
 
-    def __init__(self, parent, main_window, steps, module_config, sm, directory_name, on_complete):
+    def __init__(self, parent, main_window, steps, module_config, sm, directory_name,
+                 on_complete, title="Even geduld..."):
         self._parent = parent
         self._main_window = main_window
         self._steps = steps
@@ -257,7 +258,7 @@ class ChainedBatchRunner:
 
         # Build shared spinner
         self._spinner = QDialog(parent)
-        self._spinner.setWindowTitle("Even geduld...")
+        self._spinner.setWindowTitle(title)
         self._spinner.setModal(True)
         self._spinner.setFixedSize(420, 170)
 

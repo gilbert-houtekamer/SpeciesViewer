@@ -898,12 +898,16 @@ class MainWindow(QMainWindow):
         runner = ColumnBatchRunner(self, self, "Selected steps", day_steps, lambda: None)
         runner.start()
 
-    def rerun_read_summarize_day(self, day_name, reason=""):
-        """Confirm, then re-run Read & Summarize for ONE day so an edit reaches
-        the reports. Used after a species-name change written to XMP from the
-        image preview (Total Files / JPG columns): the XMP on disk changed, so
-        the day must be re-read and re-summarized. Phase 3 keeps it cheap — if
-        the resulting data_pictures.csv is unchanged, downstream stays valid."""
+    def rerun_read_summarize_day(self, day_name, reason="", confirm=True):
+        """Re-run Read & Summarize for ONE day so an edit reaches the reports.
+        Used after an edit/delete on a not-yet-frozen day in the image preview:
+        the day on disk changed, so it must be re-read and re-summarized. Phase 3
+        keeps it cheap — if the resulting data_pictures.csv is unchanged,
+        downstream stays valid.
+
+        confirm=True asks first (Yes/No). confirm=False saves silently behind a
+        "Saving changes…" spinner that auto-closes when done — the re-read is fast
+        enough that a prompt is just friction (the auto-save-on-close path)."""
         import configparser
         import batch.sv2ReadDirExif
         import batch.sv3WritePictures
@@ -916,14 +920,15 @@ class MainWindow(QMainWindow):
         trip_root = Path(trip_root_str)
         review_day = trip_root / "metadata" / "review" / day_name
 
-        prompt = (f"{reason}\n\n" if reason else "")
-        prompt += (f"Re-run Read & Summarize for {day_name} so the change "
-                   f"appears in the blog and website?")
-        if QMessageBox.question(
-                self, "Re-run Read & Summarize", prompt,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        ) != QMessageBox.StandardButton.Yes:
-            return
+        if confirm:
+            prompt = (f"{reason}\n\n" if reason else "")
+            prompt += (f"Re-run Read & Summarize for {day_name} so the change "
+                       f"appears in the blog and website?")
+            if QMessageBox.question(
+                    self, "Re-run Read & Summarize", prompt,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            ) != QMessageBox.StandardButton.Yes:
+                return
 
         project_root = Path(_config.get("project", "picturedirectory")).parent
         _config.set("project", "picturedirectory", str(project_root / day_name))
@@ -943,7 +948,9 @@ class MainWindow(QMainWindow):
             self.refresh_trip_row(sm2, day_name)
 
         runner = ChainedBatchRunner(self, self, steps, module_config, sm,
-                                    day_name, on_complete)
+                                    day_name, on_complete,
+                                    title=("Even geduld..." if confirm
+                                           else "Saving changes…"))
         runner.start()
 
     def rerun_summary_all_days(self, reason=""):

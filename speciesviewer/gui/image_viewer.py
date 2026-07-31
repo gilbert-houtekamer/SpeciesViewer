@@ -215,6 +215,29 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 self.fpr is not None and bool(self.trip_root_dir)
                 and getattr(self, "_allow_trip_jpg_delete", True))
 
+        # ── Frozen-day guard ────────────────────────────────────────────────
+        # A committed day (Freeze/WriteCommit done) is immutable: editing or
+        # deleting it diverges the working layer from the trip's active/ CSVs +
+        # biota/ tree (the blue-delete accounting gap). Open it read-only — the
+        # collection's read_only flag blocks every apply()/delete at the source,
+        # and a banner + disabled delete buttons make it visible. Only a real
+        # trip pipeline day can be frozen; the ad-hoc Working-Days lane, albums
+        # and the master return not-frozen (no statemachine.ini). See
+        # gui/day_freeze.py. Edits to a NOT-yet-frozen day stay allowed and
+        # offer a Read & Summarize re-run on close (see closeEvent).
+        self._day_frozen = False
+        if (self.fpr is not None and self._file_list is None
+                and self._injected_collection is None
+                and self.trip_root_dir and self.image_dir):
+            from gui.day_freeze import day_is_frozen
+            self._day_frozen, _ = day_is_frozen(self.trip_root_dir, self.image_dir)
+            if self._day_frozen and hasattr(self._collection, "read_only"):
+                self._collection.read_only = True
+        # Set by any persisted edit/delete on a NOT-frozen day so closeEvent can
+        # offer to re-run Read & Summarize (kept distinct from _species_changed,
+        # which the species-name path already sets).
+        self._day_edited = False
+
         # Grid state
         self._cards: list[PictureCard] = []
         self._cards_by_key: dict[str, PictureCard] = {}
@@ -246,6 +269,15 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
 
         # ── Build UI ───────────────────────────────────────────────────────
         layout = QVBoxLayout(self)
+
+        # Committed-day banner: this day is frozen, so it opens read-only.
+        if getattr(self, "_day_frozen", False):
+            from gui.day_freeze import FROZEN_BANNER
+            banner = QLabel("🔒 " + FROZEN_BANNER)
+            banner.setStyleSheet(
+                "background:#8a6d00; color:#fff; font-weight:bold; "
+                "padding:5px 8px; border-radius:3px;")
+            layout.addWidget(banner)
 
         dir_layout = QHBoxLayout()
         self.dir_field = None
@@ -395,7 +427,10 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # Blue/Purple batch-delete — enabled whenever the collection supports it
         # (PreviewCollection in fpr mode, SidecarCollection in culling mode;
         #  disabled for FileListPreviewCollection / injected collections)
-        _can_delete = hasattr(self._collection, 'delete_by_color')
+        # A committed day is read-only — no colour-delete (the collection would
+        # refuse anyway; greying the buttons avoids a misleading affordance).
+        _can_delete = (hasattr(self._collection, 'delete_by_color')
+                       and not getattr(self, "_day_frozen", False))
         self._del_blue_btn = QPushButton("✖B")
         self._del_blue_btn.setFixedSize(28, 24)
         self._del_blue_btn.setToolTip("Delete all Blue-tagged pictures (move to trash)")
@@ -934,9 +969,21 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._rebuild_grid_from_keys(keys)
 
     # ── Card actions ────────────────────────────────────────────────────────
+    def _frozen_day_blocked(self):
+        """True (and warns) when this is a committed day, whose species/edit
+        writes go straight to XMP and so bypass the collection's read_only lever.
+        The collection blocks rating/colour/delete; this blocks the species path."""
+        if getattr(self, "_day_frozen", False):
+            from gui.day_freeze import FROZEN_BANNER
+            QMessageBox.information(self, "Day committed", FROZEN_BANNER)
+            return True
+        return False
+
     def _open_species_dialog(self, key):
         if not self.fpr:
             self._open_culling_species_dialog({key})
+            return
+        if self._frozen_day_blocked():
             return
         full_path = self._collection.rep_full_path(key)
         species_name = self.fpr.getSpeciesName(full_path.name)
@@ -1003,6 +1050,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     def _on_large_view_changed(self, key):
         # The viewer wrote the edit via the provider; repaint that card's frame +
         # badges (preview keeps capture order, so no re-sort).
+        self._day_edited = True     # non-frozen day: offer a re-read on close
         card = self._cards_by_key.get(key)
         if card:
             card.refresh()
@@ -1010,6 +1058,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     def _on_large_view_image_changed(self, key):
         # A crop was applied in the large view — the card must RE-DECODE, not just
         # repaint its frame (which is all _on_large_view_changed does).
+        self._day_edited = True     # non-frozen day: offer a re-read on close
         card = self._cards_by_key.get(key)
         if card:
             try:
@@ -1315,6 +1364,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             return
         if not self.fpr:
             self._open_culling_species_dialog(set(keys))
+            return
+        if self._frozen_day_blocked():
             return
         from gui.species_editor import SpeciesInfoPanel
         from PyQt6.QtWidgets import QDialog, QVBoxLayout
@@ -1984,6 +2035,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             _total, _prot, deleted = self._collection.delete_by_color(color, trash_root)
         logger.info(f"Batch delete {color}: {deleted} picture(s) moved to trash "
                     f"({len(blogged)} kept — in a blog).")
+        if deleted:
+            self._day_edited = True     # non-frozen day: offer a re-read on close
         self._reapply_filter()
 
     def _delete_keys_ui(self, keys):
@@ -2024,6 +2077,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             deletable, trash_root, allow_jpg_keys=frozenset(allow_jpg_keys))
         logger.info(f"Right-click delete: {deleted} picture(s) moved to trash "
                     f"({len(blogged)} kept — in a blog).")
+        if deleted:
+            self._day_edited = True     # non-frozen day: offer a re-read on close
         # Stay on the filter the user was using (e.g. Species), minus the removed.
         self._reapply_filter()
         return set(deletable)   # the keys the large viewer should drop
@@ -2053,17 +2108,26 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 refresh_day_health(self.main_window, Path(self.image_dir).name)
         except Exception as e:
             logger.warning(f"refresh_day_health failed: {e}")
-        # If a species name was committed, the XMP on disk changed → offer to
-        # re-run Read & Summarize for this day (real day folder only). NOT in
-        # culling/sidecar mode (fpr is None): culling is deliberately isolated
-        # from the pipeline, so editing a sidecar must never trigger a read.
-        if (getattr(self, "_species_changed", False) and self.main_window
+        # An edit on a NOT-yet-frozen day (species name, rating/colour, crop, or
+        # a delete) changed the day on disk → offer to re-run Read & Summarize so
+        # the change flows through the pipeline (the statemachine cascade also
+        # invalidates WritePictures→Blog→Website→Freeze). Real day folder only;
+        # NOT in culling/sidecar mode (fpr is None: culling is isolated from the
+        # pipeline), and NOT on a frozen day (it was read-only — nothing changed).
+        species_changed = getattr(self, "_species_changed", False)
+        day_edited = getattr(self, "_day_edited", False)
+        if ((species_changed or day_edited) and self.main_window
                 and self.image_dir and self._file_list is None
                 and self.fpr is not None
+                and not getattr(self, "_day_frozen", False)
                 and not getattr(self, "_suppress_rerun", False)):
             day_name = Path(self.image_dir).name
+            reason = ("A species name was changed for one or more pictures."
+                      if species_changed else
+                      "One or more pictures were edited or deleted for this day.")
             rerun = getattr(self.main_window, "rerun_read_summarize_day", None)
             if rerun:
-                QTimer.singleShot(0, lambda: rerun(
-                    day_name, "A species name was changed for one or more pictures."))
+                # Auto-save: the re-read is fast, so save silently behind a
+                # "Saving changes…" spinner rather than asking every time.
+                QTimer.singleShot(0, lambda: rerun(day_name, reason, confirm=False))
         super().closeEvent(event)
