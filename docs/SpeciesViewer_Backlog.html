@@ -37,7 +37,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 30 July 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 31 July 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Open work for the SpeciesViewer nature-photo pipeline and GUI. This document holds
 only what is <strong>still to do</strong> — everything that has shipped now lives in the companion
@@ -62,9 +62,11 @@ reads <em>No current work planned</em>.</p>
     <li><strong>GPS / data-integrity umbrella</strong> — down to one item: tracklog geotag (GPX import) (ch. 3).</li>
     <li><strong>Map polish</strong> — cosmetic pass, day-map delete, rectangle-select, published Leaflet (ch. 3).</li>
     <li><strong>GPM on a southern/western trip</strong> <span class="tag-test">NEEDS TEST</span> — hemisphere sign on S/W coords (ch. 1).</li>
-    <li><strong>Desktop Biota Browser</strong> <span class="tag-shipped">SHIPPED</span> — Master, Trip &amp; Album,
-      tree + species pages (ch. 14). <strong>Two follow-ups queued for the next session</strong>:
-      (a) audit the blue-delete accounting (dangling file rows), (b) scope the Album species map.</li>
+    <li><strong>Committed-day protection</strong> <span class="tag-shipped">SHIPPED</span> — the
+      blue-delete accounting audit (ch. 14 follow-up) grew into a full fix: committed trip days are
+      now read-only, a pipeline step is blocked while a culling window has unsaved edits, and
+      <em>Build Website</em> folded into <em>Publish Day</em> (ch. 4). One follow-up remains:
+      <strong>scope the Album species map</strong> to the album's date-range points (ch. 14).</li>
   </ul>
 </div>
 
@@ -192,9 +194,11 @@ reads <em>No current work planned</em>.</p>
 <h2>11. Performance &amp; EXIFtool</h2>
 <h3>To do</h3>
 <ul>
-  <li><strong>GBIF lookup disk-cache</strong> <span class="tag-open">OPEN</span> — persist GBIF family
-    lookups to disk after the parallel-worker win.</li>
-  <li><strong>Smarter immediate update of <code>speciescollection</code></strong> <span class="tag-new">NEW</span>.</li>
+  <li><strong>Smarter immediate update of <code>speciescollection</code></strong> <span class="tag-new">NEW</span> —
+    update the recognition table the moment a species is learned. This <strong>removes the need for the
+    GBIF lookup disk-cache</strong> (previously planned to persist family lookups after the parallel-worker
+    win): with the immediate update there is nothing left to re-look-up. A merge is still needed to carry a
+    change made on the laptop into the master.</li>
 </ul>
 <h3>Parked</h3>
 <ul>
@@ -251,16 +255,18 @@ reads <em>No current work planned</em>.</p>
     A trip repo is master-shaped (its own SQLite cache); an album is a live date-range window on
     the master. Editing stays in the authorized panels.</li>
 </ul>
-<p class="next" style="margin-top:6pt;"><strong>Follow-ups — queued for tomorrow (new session):</strong></p>
+<p class="next" style="margin-top:6pt;"><strong>Follow-ups:</strong></p>
 <ul>
-  <li><strong>Audit the blue-delete accounting</strong> <span class="tag-bug">TODO</span> —
-    the RAW-cover work surfaced <code>data_files</code> rows whose repo paths were never copied to
-    disk (dangling). Suspicion: deleting blue-marked (delete-candidate) pictures removes files but
-    leaves their rows re-pointed at never-copied paths. A trip/delete accounting audit
-    (a <code>trip_delete_scan</code>-style check on a real trip), <em>not</em> a browser bug.</li>
-  <li><strong>Scope the Album species map</strong> <span class="tag-open">TODO</span> —
-    the species <em>Map</em> button in an Album shows the <em>full-master</em> GPS distribution,
-    not just the album's date-range points; filter it by the album's UPNs.</li>
+  <li><strong>Audit the blue-delete accounting</strong> <span class="tag-shipped">SHIPPED</span> —
+    done, and it grew well past a browser audit. The real cause was <em>editing a committed day
+    outside the pipeline</em>; the fix is the committed-day protection in <strong>ch. 4</strong>
+    (Capabilities). The dangling/zombie rows a stray delete could leave are harmless — a Reset Trip
+    or the ultimate master merge (a fresh full-directory Read &amp; Summarize) supersedes them.</li>
+  <li><strong>Colour the album's points on the species map</strong> <span class="tag-open">TODO</span> —
+    the species <em>Map</em> button in an Album shows the full-master GPS distribution. Rather than
+    filtering to only the album's date-range points, keep <em>all</em> master locations but draw the
+    album's own points in a <strong>different colour</strong> so they stand out. (Possibly already done
+    somewhere in the map history — check before building.)</li>
 </ul>
 
 <!-- ============================================================ -->

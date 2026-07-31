@@ -36,7 +36,7 @@
 <body>
 
 <h1>SpeciesViewer — Capabilities Added</h1>
-<div class="meta">Updated: 28 July 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer &nbsp;·&nbsp; companion to <em>SpeciesViewer — Project Backlog</em></div>
+<div class="meta">Updated: 31 July 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer &nbsp;·&nbsp; companion to <em>SpeciesViewer — Project Backlog</em></div>
 
 <p>Everything that has <strong>shipped</strong> in the SpeciesViewer nature-photo pipeline and GUI, in fixed chapter order. Its companion, <strong>SpeciesViewer — Project Backlog</strong>, holds the open work under the same chapter numbers. Two chapters that are parked by design (Taxonomy &amp; Species; Rating &amp; Website) carry no shipped work yet and live only in the Backlog.</p>
 
@@ -913,6 +913,30 @@ the whole trip → master flow is in daily use.</p>
     Forward-only — does not recover already-lost pictures. Also shipped: the trip-overview
     <strong>“In Blog” column</strong> (mirrors the album mechanism; <code>sv4WriteBlog</code> honors it) so
     a day like an <code>iphone</code> folder stays out of the blog.</p></li>
+  <li><strong>Committed days are immutable — the blue-delete accounting fix</strong>
+    <span class="tag-shipped">SHIPPED</span> <code>841d509 / 1524770 / 8daf599</code>, 2026-07-31,
+    live-verified on greecedb — once a day is Frozen/Committed its pictures are baked into the trip's
+    <code>active/</code> CSVs + <code>biota/</code> tree, and by design the only way to change it is
+    <em>Reset Trip</em> and rebuild (Freeze re-emits the existing rows and never prunes). Editing a
+    committed day in a viewer used to diverge the working layer from the frozen DB — a deleted picture
+    lived on as a <em>zombie</em>, or its file row dangled. Now a committed day opens
+    <strong>read-only</strong>: the culling viewer shows a “This day is committed — Reset the trip to
+    unlock it” banner with its delete/edit affordances greyed; the Trip Species Viewer locks such
+    pictures <strong>per-picture</strong> (a 🔒 badge, edit/delete blocked) because its Trip / Trip+Master
+    grids mix days. A not-yet-frozen day stays fully editable and auto-saves on close (a quick Read &amp;
+    Summarize). And a pipeline step now <strong>refuses to run while a culling window has unsaved
+    edits</strong> — a blocking “Close the editing window for &lt;day&gt; first” prompt, so a Freeze can’t
+    snapshot stale data. Album + Master are unaffected (no per-day pipeline; master edits route through
+    <code>master_mutate</code> with full accounting).</li>
+  <li><strong>“Build Website” retired — Freeze publishes the whole site; “Empty Trip” → “Reset Trip”</strong>
+    <span class="tag-shipped">SHIPPED</span> <code>29770fc</code>, 2026-07-31, live-verified — the separate
+    <em>Build Website</em> step is gone (menu + day-board column + statemachine state);
+    <strong>Freeze (sv6) now builds the complete trip website itself</strong> (species pages + the
+    all-species index → <code>frozen/allspecies.csv</code>, which Write Commit reads), so
+    <em>Publish Day</em> = Freeze + Write Commit is self-contained. (Dropping sv5 without this had crashed
+    Write Commit on a missing <code>allspecies.csv</code>; the writer now also makedirs its own target.)
+    The old <em>Empty Trip Data</em> action is renamed <strong>Reset Trip</strong> with a reassuring hint —
+    “No customization is lost, but after reset you can customize more.”</li>
   <li><strong>Retire svr7 / deletelist.csv</strong> <span class="tag-shipped">DONE</span> —
     <code>deletelist.csv</code> removed end-to-end (<code>sv6</code> no longer writes it, the
     <code>sv7</code> existence-gate is dropped, <code>svr7DeleteFiles</code> deleted);
