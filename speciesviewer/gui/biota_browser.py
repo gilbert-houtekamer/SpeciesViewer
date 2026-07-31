@@ -686,6 +686,27 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         self._show_all_files = not self._show_all_files
         self._render()
 
+    def _real_master(self):
+        """The REAL master DB (default cache), opened lazily and cached — used to
+        draw a species' whole-master range behind a TRIP's own points on the map.
+        A trip browses its OWN repo cache (self._master_db), which knows only the
+        trip's pictures; the master range comes from here. Returns None when no
+        master is configured or it fails to open."""
+        if getattr(self, "_real_master_db", None) is not None:
+            return self._real_master_db
+        root = _config.get("master", "masterbiotadatabase", fallback="").strip()
+        if not root:
+            return None
+        try:
+            from db.master_db import MasterDB
+            db = MasterDB(root)           # default cache = the real master.db
+            db.ensure_fresh()             # cheap no-op when the master is fresh
+            self._real_master_db = db
+            return db
+        except Exception as e:
+            logger.error(f"Biota Browser: real-master open failed: {e}", exc_info=True)
+            return None
+
     def _panel_show_map(self, sci):
         from PyQt6.QtWidgets import QMessageBox
         if self._master_db is None:
@@ -699,7 +720,35 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         from gui.map_view import MapView
         node = self._source.node(sci)
         display = self._display(dict(node)) if node else sci
-        dlg = MapView(self, self._master_db, sci, display, points)
+        # Scope-aware highlight (backlog ch.14): keep the species' WHOLE master
+        # range on the map, but draw THIS scope's own pictures in a standout colour.
+        #  • Album — self._master_db IS the real master, `points` already spans it;
+        #    scope_upns gives the album's own (date-range) UPNs.
+        #  • Trip — self._master_db is only the trip's cache, so `points` is just the
+        #    trip's own pictures. Fetch the whole-master range from the real master,
+        #    union the trip's points in (an un-committed trip isn't in the master),
+        #    and highlight the trip's own UPNs. The MapView runs on the real master
+        #    so Add-species / bubble→pictures work against the full collection.
+        #  • Master — no highlight; the plain single-colour map.
+        db_for_map = self._master_db
+        highlight = highlight_label = None
+        if self._source.date_range() is not None:              # album
+            highlight = self._source.scope_upns(sci) or set()
+            highlight_label = self._source.scope_label or "This album"
+        elif self._repo_root:                                  # trip
+            real = self._real_master()
+            if real is not None:
+                trip_upns = {(p.get("upn") or "") for p in points}
+                merged = {(p.get("upn") or ""): p
+                          for p in real.gps_points_for_species(sci)}
+                for p in points:                               # add un-committed trip pts
+                    merged.setdefault(p.get("upn") or "", p)
+                points = list(merged.values())
+                highlight = trip_upns
+                highlight_label = self._source.scope_label or "This trip"
+                db_for_map = real
+        dlg = MapView(self, db_for_map, sci, display, points,
+                      highlight_upns=highlight, highlight_label=highlight_label or "")
         dlg.show()
 
     # ── flat: all species ────────────────────────────────────────────────────

@@ -426,17 +426,22 @@ class TileMapView(QGraphicsView):
         """Choose zoom + center so the (core) points are visible (world view when
         the species spans continents; close-in when it's local)."""
         pts = self.all_points()
+        # Never zoom past what the current basemap actually serves — OpenTopoMap
+        # (Terrain) stops at 15 and hands back a grey "layer = 17 / max zoom"
+        # PLACEHOLDER tile beyond that. A tight cluster (e.g. one trip's dots)
+        # otherwise fits at z17+ and lands squarely on those placeholders.
+        top = min(MAX_ZOOM, self._basemap.get("max", MAX_ZOOM))
         if not pts:
             self._z, self._center = 2, (5.0, 30.0)
         elif len(pts) == 1:
             p = pts[0]
-            self._z, self._center = 10, (p["lon"], p["lat"])
+            self._z, self._center = min(10, top), (p["lon"], p["lat"])
         else:
             minlat, maxlat, minlon, maxlon = self._fit_bounds()
             self._center = ((minlon + maxlon) / 2.0, (minlat + maxlat) / 2.0)
             vw = max(self.viewport().width(), 100)
             vh = max(self.viewport().height(), 100)
-            z = MAX_ZOOM
+            z = top
             while z > MIN_ZOOM:
                 x0, y0 = lonlat_to_world(minlon, maxlat, z)
                 x1, y1 = lonlat_to_world(maxlon, minlat, z)
@@ -1104,16 +1109,25 @@ class MapView(QDialog):
     GPS points."""
 
     def __init__(self, parent, master_db, initial_sci: str = "",
-                 initial_display: str = "", initial_points: list[dict] | None = None):
+                 initial_display: str = "", initial_points: list[dict] | None = None,
+                 highlight_upns: set | None = None, highlight_label: str = ""):
         super().__init__(parent)
         self._db = master_db
         self._used: dict[str, dict] = {}   # sci.casefold() -> {sci,display,color,lid,n}
+        # Album scope (backlog ch.14): show the species' WHOLE master range but
+        # draw the album's OWN pictures in a standout colour. `highlight_upns` is
+        # the album's set of UniquePictureNames; None = master/trip scope (no split).
+        self._highlight_upns = highlight_upns
+        self._highlight_label = (highlight_label or "This album").strip()
+        self._highlight_lid: int | None = None   # the amber overlay layer, if any
+        self._highlight_n = 0
         from gui.image_loader import AsyncImageLoader
         self._loader = AsyncImageLoader(self)
         self._species_colls: dict[str, object] = {}   # sci.casefold() -> collection
         self._strip = None                             # current FilmstripWidget
         self._strip_coll = None                        # its collection (for large view)
-        self.setWindowTitle("Master species distribution map")
+        self.setWindowTitle("Species distribution map" if highlight_upns is not None
+                            else "Master species distribution map")
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
                             | Qt.WindowType.WindowMaximizeButtonHint)
@@ -1179,8 +1193,32 @@ class MapView(QDialog):
         self._map.resized.connect(self._place_attribution)
 
         if initial_sci and initial_points:
-            self._add_layer(initial_sci, initial_display, initial_points)
+            self._add_initial_layer(initial_sci, initial_display, initial_points)
         QTimer.singleShot(0, self._map.fit_to_points)   # after first layout pass
+
+    def _add_initial_layer(self, sci: str, display: str, points: list[dict]):
+        """The opening species layer. For an album (highlight_upns set) the points
+        are split: the master's OTHER pictures draw in the normal species colour,
+        the album's OWN pictures overlay in amber (a rosette shift keeps a spot that
+        has both legible). Both layers carry the sci, so clicking either bubble still
+        pulls that species' pictures. Master/trip scope keeps the single layer."""
+        hl = self._highlight_upns
+        if hl is None:
+            self._add_layer(sci, display, points)
+            return
+        own = [p for p in points if (p.get("upn") or "") in hl]
+        other = [p for p in points if (p.get("upn") or "") not in hl]
+        # When every point is the album's own (or none are), there is nothing to
+        # contrast — draw them all in the species colour and skip the overlay.
+        self._add_layer(sci, display, other or points)
+        if own and other:
+            row = (self._db.species_row(sci) if self._db else None) or {}
+            nl = (row.get("nl") or display or "").strip()
+            en = (row.get("en") or "").strip()
+            self._highlight_n = len(own)
+            self._highlight_lid = self._map.add_layer(
+                _ALBUM_OWN_COLOR, own, nl=nl, en=en, sci=sci, offset=(8, 8))
+            self._rebuild_legend()
 
     # ── layers / legend ────────────────────────────────────────────────────────
     def _map_fit(self):
@@ -1334,6 +1372,21 @@ class MapView(QDialog):
             x.clicked.connect(lambda _=False, k=key: self._remove_layer(k))
             row.addWidget(x)
             self._legend.addWidget(chip)
+        # Album overlay chip (no × — it is the whole point of this map).
+        if self._highlight_lid is not None:
+            chip = QWidget()
+            row = QHBoxLayout(chip)
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(4)
+            swatch = QLabel()
+            swatch.setFixedSize(12, 12)
+            swatch.setStyleSheet(
+                f"background:{_ALBUM_OWN_COLOR}; border:1px solid #fff; border-radius:6px;")
+            row.addWidget(swatch)
+            name = QLabel(f"{self._highlight_label} ({self._highlight_n})")
+            name.setStyleSheet("font-size: 11px; font-weight: 600;")
+            row.addWidget(name)
+            self._legend.addWidget(chip)
 
     def _on_add_species(self):
         if self._db is None:
@@ -1410,6 +1463,12 @@ _TRIP_COLOR = "#00838f"
 # (Trip Species Viewer), the trip's own points are drawn in this pink — well clear
 # of the teal master bubbles — so trip vs master reads at a glance.
 _TRIP_OWN_COLOR = "#d81b60"
+
+# Album species map: the master shows a species' WHOLE range in the usual palette
+# red; the album's OWN pictures are overlaid in this amber so "where THIS album's
+# sightings fall" stands out against the reference range. Not in _PALETTE, so an
+# overlaid Add-species colour never collides with it.
+_ALBUM_OWN_COLOR = "#ffab00"
 
 # Drag payload for the no-GPS tray → map drop (newline-joined UPN keys).
 _MIME_UPNS = "application/x-speciesviewer-upns"
