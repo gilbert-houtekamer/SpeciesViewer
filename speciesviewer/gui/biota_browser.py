@@ -731,6 +731,7 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         #    so Add-species / bubble→pictures work against the full collection.
         #  • Master — no highlight; the plain single-colour map.
         db_for_map = self._master_db
+        trip_db = None
         highlight = highlight_label = None
         if self._source.date_range() is not None:              # album
             highlight = self._source.scope_upns(sci) or set()
@@ -747,8 +748,12 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
                 highlight = trip_upns
                 highlight_label = self._source.scope_label or "This trip"
                 db_for_map = real
+                # The trip's own points may be un-committed (not in the master), so
+                # hand the map the trip repo to resolve their pictures on click.
+                trip_db = self._master_db
         dlg = MapView(self, db_for_map, sci, display, points,
-                      highlight_upns=highlight, highlight_label=highlight_label or "")
+                      highlight_upns=highlight, highlight_label=highlight_label or "",
+                      trip_db=trip_db)
         dlg.show()
 
     # ── flat: all species ────────────────────────────────────────────────────

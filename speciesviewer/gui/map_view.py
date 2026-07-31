@@ -1102,6 +1102,74 @@ class TileMapView(QGraphicsView):
             self.pictures_dropped.emit(keys, lat, lon)
 
 
+class _MapPhotoStrip(QScrollArea):
+    """The map's bubble → pictures view: a horizontal strip of olive-matted
+    PhotoTiles (the species-panel / website look) instead of the plain filmstrip.
+    Reuses `species_panel.PhotoTile` (so the # / colour-dot / ★ badges and the
+    RAW-preview thumbnail path come for free); left-click a tile opens the large
+    view (matching the old strip). Read-only — no card menu."""
+
+    _TILE_W = 150
+
+    def __init__(self, collection, keys, on_open, loader, parent=None):
+        super().__init__(parent)
+        from gui.species_panel import PhotoTile
+        tile_w = self._TILE_W
+
+        class _Tile(PhotoTile):
+            def __init__(self, *a, **k):
+                super().__init__(*a, **k)
+                # Names share a long common prefix ("2026 North Greece-N…"); the
+                # useful part is the TAIL (frame number + ext), so elide on the LEFT.
+                # Drop the date (same day across a trip) to give the name the full
+                # width, so the tail keeps the frame number, not just "_DxO.jpg".
+                self._date.setVisible(False)
+                fm = self._fn.fontMetrics()
+                avail = max(40, tile_w - 20)
+                self._fn.setText(fm.elidedText(
+                    self._fn.text(), Qt.TextElideMode.ElideLeft, avail))
+
+            # PhotoTile opens on double-click; the map strip opened on single click,
+            # so keep that. Right-click still falls through to the (no-op) menu.
+            def mousePressEvent(self, e):
+                if e.button() == Qt.MouseButton.LeftButton:
+                    self._on_open(self.upn_key)
+                else:
+                    super().mousePressEvent(e)
+
+        self.setWidgetResizable(True)
+        self.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # Snug tile height (photo + one caption line) so the olive frame doesn't
+        # stretch into a tall empty green block; tiles top-align in the pane.
+        ph_h = max(90, int((tile_w - 10) * 0.66))
+        tile_h = ph_h + 34
+        inner = QWidget()
+        row = QHBoxLayout(inner)
+        row.setContentsMargins(8, 6, 8, 6)
+        row.setSpacing(8)
+        self._tiles: dict = {}
+        for k in keys:
+            try:
+                item = collection.item_for_key(k)
+            except Exception:
+                continue
+            tile = _Tile(item, collection, loader, tile_w, on_open,
+                         lambda _k: None)
+            tile.setFixedHeight(tile_h)
+            row.addWidget(tile, 0, Qt.AlignmentFlag.AlignTop)
+            self._tiles[k] = tile
+        row.addStretch(1)
+        self.setWidget(inner)
+        self.setFixedHeight(tile_h + 26)         # + horizontal scrollbar + margins
+
+    def refresh_item(self, key: str, reload_image: bool = False):
+        t = self._tiles.get(key)
+        if t is not None:
+            t.refresh()
+
+
 class MapView(QDialog):
     """Framed window around the map canvas — up to 4 species overlaid, each its
     own colour, with a legend, an "Add species…" picker, Fit, and the required
@@ -1110,9 +1178,15 @@ class MapView(QDialog):
 
     def __init__(self, parent, master_db, initial_sci: str = "",
                  initial_display: str = "", initial_points: list[dict] | None = None,
-                 highlight_upns: set | None = None, highlight_label: str = ""):
+                 highlight_upns: set | None = None, highlight_label: str = "",
+                 trip_db=None):
         super().__init__(parent)
         self._db = master_db
+        # A TRIP map runs on the real master (so master bubbles resolve pictures),
+        # but the highlighted trip-own points may be an UN-COMMITTED trip whose
+        # files aren't in the master. `trip_db` is the trip's own repo cache — used
+        # as the fallback collection when a bubble's UPNs don't resolve in the master.
+        self._trip_db = trip_db
         self._used: dict[str, dict] = {}   # sci.casefold() -> {sci,display,color,lid,n}
         # Album scope (backlog ch.14): show the species' WHOLE master range but
         # draw the album's OWN pictures in a standout colour. `highlight_upns` is
@@ -1159,11 +1233,18 @@ class MapView(QDialog):
         self._basemap_combo.currentIndexChanged.connect(self._on_basemap_changed)
         h.addWidget(self._basemap_combo)
         h.addSpacing(8)
+        refresh_btn = QPushButton("⟳")
+        refresh_btn.setToolTip("Refresh — reload map tiles and rebuild the picture "
+                               "views (F5)")
+        refresh_btn.clicked.connect(self._refresh)
+        h.addWidget(refresh_btn)
         fit_btn = QPushButton("Fit")
         fit_btn.setToolTip("Zoom to fit all points")
         fit_btn.clicked.connect(self._map_fit)
         h.addWidget(fit_btn)
         lay.addWidget(header)
+        from PyQt6.QtGui import QShortcut, QKeySequence
+        QShortcut(QKeySequence(Qt.Key.Key_F5), self, activated=self._refresh)
 
         # Map on top, filmstrip below, in a resizable/collapsible splitter.
         self._splitter = QSplitter(Qt.Orientation.Vertical)
@@ -1180,7 +1261,7 @@ class MapView(QDialog):
         self._splitter.addWidget(self._strip_holder)
         self._splitter.setStretchFactor(0, 1)   # the map takes the extra space
         self._splitter.setStretchFactor(1, 0)
-        self._splitter.setSizes([620, 150])
+        self._splitter.setSizes([600, 165])      # snug row of olive photo tiles
         lay.addWidget(self._splitter, 1)
 
         # Attribution, pinned bottom-right over the map (usage-policy required);
@@ -1224,6 +1305,20 @@ class MapView(QDialog):
     def _map_fit(self):
         self._map.fit_to_points()
 
+    def _refresh(self):
+        """F5 / ⟳ — reset the map back to the full extent (the opening world view),
+        clear the picture strip, and drop the cached picture collections so the next
+        bubble click rebuilds fresh (a first-open collection that came up empty
+        otherwise stays cached until the window is reopened). fit_to_points re-renders
+        and re-requests tiles, so a tile dropped on a network hiccup is retried too."""
+        self._species_colls.clear()
+        if self._strip is not None:
+            self._strip.deleteLater()
+            self._strip = None
+            self._strip_coll = None
+        self._strip_hint.show()
+        self._map.fit_to_points()
+
     def _on_basemap_changed(self, _idx: int):
         entry = self._basemap_combo.currentData()
         if not entry:
@@ -1258,35 +1353,38 @@ class MapView(QDialog):
         self._rebuild_legend()
 
     # ── bubble → filmstrip → large viewer ────────────────────────────────────────
-    def _collection_for_species(self, sci: str, display: str):
-        """A full-master RatingEditorCollection for one species, built lazily and
-        cached. Reused as BOTH the filmstrip's and the large viewer's collection —
-        the same object the Master Species Viewer uses, so its master editing
-        rules + thumbnail/large-view paths come for free. Editing follows the
-        machine's master policy: stars/colour are writable when
-        `master.readonly = no` (read-only otherwise), exactly like the Master
-        Species Viewer. jpg_only=False so every GPS'd picture (JPG or RAW-only)
-        resolves."""
-        key = (sci or "").casefold()
-        coll = self._species_colls.get(key)
+    def _collection_for_species(self, sci: str, display: str, db=None):
+        """A full-collection RatingEditorCollection for one species over `db`
+        (the real master by default; the trip repo when resolving trip-own points),
+        built lazily and cached. Reused as BOTH the filmstrip's and the large
+        viewer's collection — the same object the Master Species Viewer uses, so its
+        editing rules + thumbnail/large-view paths come for free. Editing follows the
+        machine's master policy for the master (writable when `master.readonly = no`),
+        and is always read-only over a trip (editing stays in the Tech panels).
+        jpg_only=False so every GPS'd picture (JPG or RAW-only) resolves."""
+        db = db or self._db
+        is_trip = self._trip_db is not None and db is self._trip_db
+        sci_key = (sci or "").casefold()
+        cache_key = ("trip:" if is_trip else "master:") + sci_key
+        coll = self._species_colls.get(cache_key)
         if coll is None:
             from engine.filepicture import FilePicture
             from engine.filecsv import Files
             from engine.picturecsv import Pictures
             from gui.rating_provider import RatingEditorCollection
             from utils.config import _config
-            read_only = _config.get(
-                "master", "readonly", fallback="yes").strip().lower() != "no"
+            read_only = True if is_trip else (_config.get(
+                "master", "readonly", fallback="yes").strip().lower() != "no")
             fpr = FilePicture(None)
             fpr.fi = Files(None)
             fpr.upn = Pictures(None)
             coll = RatingEditorCollection(
                 fpr, day_objects=None, upn_day_map={}, jpg_only=False,
                 species_lang="NL", loader=self._loader, view_read_only=False)
-            coll.set_master(self._db, self._db.master_root, include=True,
+            coll.set_master(db, db.master_root, include=True,
                             read_only=read_only, full=True)
-            coll.rebuild(display or sci, forced_sci=key)
-            self._species_colls[key] = coll
+            coll.rebuild(display or sci, forced_sci=sci_key)
+            self._species_colls[cache_key] = coll
         return coll
 
     def _on_bubble(self, cluster: dict):
@@ -1299,11 +1397,16 @@ class MapView(QDialog):
         coll = self._collection_for_species(sci, display)
         # Keep only UPNs the collection actually resolves (defensive).
         keys = [u for u in upns if self._resolves(coll, u)]
+        # An un-committed trip's own points aren't in the master — resolve them from
+        # the trip repo instead (the highlighted amber bubbles on a trip map).
+        if not keys and self._trip_db is not None:
+            coll = self._collection_for_species(sci, display, db=self._trip_db)
+            keys = [u for u in upns if self._resolves(coll, u)]
         if not keys:
             return
-        from gui.large_image_view import FilmstripWidget
-        strip = FilmstripWidget(coll, keys)
-        strip.item_clicked.connect(lambda k, c=coll, ks=keys: self._open_large(c, ks, k))
+        strip = _MapPhotoStrip(
+            coll, keys, lambda k, c=coll, ks=keys: self._open_large(c, ks, k),
+            self._loader)
         # Swap it in below the map.
         if self._strip is not None:
             self._strip.deleteLater()
