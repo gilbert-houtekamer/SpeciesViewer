@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import QMessageBox
 from gui.menu import MenuSpec  # assuming class is defined elsewhere
 from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDialog, TripCreationDialog,
         PublishDayDialog,
-        WritePicturesDialog, CreateBlogDialog, BuildWebsiteDialog, FreezeDialog, WriteCommitDialog,
+        WritePicturesDialog, CreateBlogDialog, FreezeDialog, WriteCommitDialog,
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
         AddTripToMasterDialog, MasterPipelineDialog, MasterRebuildWebsiteDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
@@ -40,6 +40,9 @@ import batch.sv1MakeReposity
 import batch.sv2ReadDirExif
 import batch.sv3WritePictures
 import batch.sv4WriteBlog
+# Build Website (sv5) is no longer a separate menu STEP, but its work (species
+# pages + the all-species index → frozen/allspecies.csv, which sv7 reads) is
+# folded into Publish Day. So the module stays wired in.
 import batch.sv5BuildWebsite
 import batch.sv6Freeze
 import batch.sv7WriteCommit
@@ -332,20 +335,10 @@ def build_menu_spec(main_window):
     )
     write_blog.callback = lambda: CreateBlogDialog(main_window, write_blog).exec()
 
-    build_website = MenuSpec(
-        callback=None,
-        title="3. Build Website",
-        enabled=make_enabled_checker("BuildWebsite"),
-        tooltip=make_tooltip("BuildWebsite"),        
-        batch_parms={
-            'statusname': "BuildWebsite",
-            'module_called': batch.sv5BuildWebsite.main,
-            'before_msg': "Build updates for later publication ...",
-            'after_msg': "✅ Website updates prepared."
-        }
-    )
-    build_website.callback = lambda: BuildWebsiteDialog(main_window, build_website).exec()    
-    
+    # Build Website (sv5) retired — Freeze (sv6) already builds the website, so a
+    # separate step was redundant. Publish Day (Freeze + Commit) is the publish
+    # action now. The freeze_data / commit_website specs below stay for the
+    # Advanced ▸ Legacy submenu.
     freeze_data = MenuSpec(
         callback=None,
         title="Freeze Data",
@@ -381,12 +374,15 @@ def build_menu_spec(main_window):
     # WriteCommit) are set in order. statusname is informational — eligibility
     # uses the STATE_COLUMNS gate (Freeze) and state is set per run_keys.
     def _publish_day(args, _config):
+        # Publish Day = Freeze (sv6) + Write Commit (sv7). Freeze now builds the
+        # complete website (incl. the all-species index → frozen/allspecies.csv
+        # that sv7 reads), so the retired "Build Website" step is not needed here.
         batch.sv6Freeze.main(args, _config)
         batch.sv7WriteCommit.main(args, _config)
 
     publish_day = MenuSpec(
         callback=None,
-        title="4. Publish Day",
+        title="3. Publish Day",
         enabled=make_enabled_checker("Freeze"),
         tooltip=make_tooltip("Freeze"),
         batch_parms={
@@ -442,7 +438,7 @@ def build_menu_spec(main_window):
 
     redo_trip_blogs = MenuSpec(
         callback=None,
-        title="5. Make the Blogs Clickable",
+        title="4. Make the Blogs Clickable",
         enabled=any_day_published,
         tooltip="Add species links & navigation",
         showsubdirectory=False,
@@ -457,14 +453,14 @@ def build_menu_spec(main_window):
 
     empty_trip_data = MenuSpec(
         callback=None,
-        title="Empty Trip Data",
+        title="Reset Trip",
         enabled=has_active_trip,
         showsubdirectory=False,
         batch_parms={
             'statusname': "",
             'module_called': batch.svu6EmptyTripData.main,
-            'before_msg': "Clearing trip data ...",
-            'after_msg': "✅ Trip data cleared."
+            'before_msg': "Resetting trip ...",
+            'after_msg': "✅ Trip reset — ready to customize again."
         }
     )
     empty_trip_data.callback = lambda: EmptyTripDataDialog(main_window, empty_trip_data).exec()
@@ -515,7 +511,7 @@ def build_menu_spec(main_window):
 
     manage_trips = MenuSpec(
         callback=lambda: ManageTripsDialog(main_window).exec(),
-        title="6. Manage Trip Publication…",
+        title="5. Manage Trip Publication…",
         enabled=has_active_trip,
         showsubdirectory=False,
     )
@@ -531,6 +527,7 @@ def build_menu_spec(main_window):
         batch.sv3WritePictures.main(args, _config)
 
     def _master_build(args, _config):
+        # Build Website (all-species index → allspecies.csv) then Freeze.
         batch.sv5BuildWebsite.main(args, _config)
         batch.sv6Freeze.main(args, _config)
 
@@ -1555,17 +1552,17 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_setup": None,
             "Sync Sidecars": sync_sidecars,
             f"{MenuSpec.separator()}_pipeline": None,
-            # The trip's whole publishing cycle. 1–4 run per day; 5–6 act on the
+            # The trip's whole publishing cycle. 1–3 run per day; 4–5 act on the
             # WHOLE trip and are re-run each publishing pass (make the blogs
             # clickable, (re)list the trip on the site) — this is how a trip is
-            # worked on the laptop. Publish Day merges Freeze + Write Commit (the
-            # individual steps live under Advanced ▸ Legacy below).
+            # worked on the laptop. Publish Day merges Freeze + Write Commit and
+            # builds the website (Build Website retired; the individual Freeze /
+            # Write Website Commit steps live under Advanced ▸ Legacy below).
             "Read & Summarize": read_summarize,
             "Write Blog": write_blog,
-            "Build Website": build_website,
             "Publish Day": publish_day,
-            "Make the Blogs Clickable": redo_trip_blogs,      # 5.
-            "Manage Trip Publication…": manage_trips,          # 6.
+            "Make the Blogs Clickable": redo_trip_blogs,      # 4.
+            "Manage Trip Publication…": manage_trips,          # 5.
             f"{MenuSpec.separator()}_2": None,
             # Review & edit this trip
             "Rating Editor": rating_editor,                    # shows "Trip Species Viewer"
@@ -1585,7 +1582,7 @@ def build_menu_spec(main_window):
             # read-only CSV refresh / the freeze-only edge case.
             "Advanced": {
                 "Manage Blogs": manage_blogs,
-                "Empty Trip Data": empty_trip_data,
+                "Reset Trip": empty_trip_data,
                 "Recreate Trip": recreate_trip,
                 f"{MenuSpec.separator()}_adv0": None,
                 "Legacy": {

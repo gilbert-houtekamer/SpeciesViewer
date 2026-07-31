@@ -38,14 +38,11 @@ STATE_COLUMNS = [
      "gate": "WriteBlog", "run_keys": ["WriteBlog"],
      "before": "Create a blog entry ...",
      "after": "✅ Blog successfully created."},
-    {"label": "3 Build\nWebsite", "menu": "Build Website",
-     "gate": "BuildWebsite", "run_keys": ["BuildWebsite"],
-     "before": "Build updates for later publication ...",
-     "after": "✅ Website updates prepared."},
-    # Publish Day combines Freeze (sv6) + Write Commit (sv7) — ✅ only when BOTH
-    # keys are done; gate is Freeze (the first, for eligibility). Mirrors the
-    # combined "Read & Summarize" column.
-    {"label": "4 Publish\nDay", "menu": "Publish Day",
+    # Build Website (sv5) retired — Freeze already builds the site; Publish Day
+    # (Freeze + Commit) covers it. Publish Day combines Freeze (sv6) + Write
+    # Commit (sv7) — ✅ only when BOTH keys are done; gate is Freeze (the first,
+    # for eligibility). Mirrors the combined "Read & Summarize" column.
+    {"label": "3 Publish\nDay", "menu": "Publish Day",
      "gate": "Freeze", "run_keys": ["Freeze", "WriteCommit"],
      "before": "Publishing the day (freeze + website commit) ...",
      "after": "✅ Day published."},

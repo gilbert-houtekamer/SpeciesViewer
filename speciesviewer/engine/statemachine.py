@@ -11,15 +11,19 @@ from engine.exceptions import SVException
 logger = logging.getLogger("speciesviewer")
 
 STATE_NAMES = [
-    "Unknown", 
+    "Unknown",
     "MakeRepository",
-    "ReadDirExif", 
-    "WritePictures", 
-    "WriteBlog", 
-    "BuildWebsite",
+    "ReadDirExif",
+    "WritePictures",
+    "WriteBlog",
     "Freeze",
     "WriteCommit"
 ]
+
+# NOTE: "BuildWebsite" (sv5) was retired as a pipeline step — Freeze (sv6) already
+# builds the website (makeWebDirectories), so a separate step was redundant. It no
+# longer gates Freeze and is not tracked here. Old statemachine.ini files may still
+# carry an sv5BuildWebsite key; it is simply ignored on read (read-tolerant).
 
 # A step can finish cleanly having produced nothing, because the day holds no
 # recognized species at all (JPGs but no determinations, and no landscape
@@ -93,41 +97,35 @@ class StateMachine:
             self.Taskstate["ReadDirExif"] = [state.getboolean("state","sv2ReadDirExif"), 
                             self.getUTF8(state, "sv2ReadDirExifMessage"), 
                             ["ReadDirExif", "WritePictures"], ["MakeRepository"]]
-            self.Taskstate["WritePictures"] = [state.getboolean("state","sv3WritePictures"), 
-                            self.getUTF8(state,"sv3WritePicturesMessage"), 
-                            ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite"], ["ReadDirExif"]]
+            self.Taskstate["WritePictures"] = [state.getboolean("state","sv3WritePictures"),
+                            self.getUTF8(state,"sv3WritePicturesMessage"),
+                            ["ReadDirExif", "WritePictures", "WriteBlog"], ["ReadDirExif"]]
             self.Taskstate["WriteBlog"] = [state.getboolean("state","sv4WriteBlog"),
-                            self.getUTF8(state,"sv4WriteBlogMessage"), 
-                            ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite"], ["ReadDirExif", "WritePictures"]]
-            self.Taskstate["BuildWebsite"] = [state.getboolean("state","sv5BuildWebsite"),
-                            self.getUTF8(state,"sv5BuildWebsiteMessage"), 
-                            ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite", "Freeze"], ["ReadDirExif", "WritePictures"]]
-            self.Taskstate["Freeze"] = [state.getboolean("state","sv6Freeze"), 
-                            self.getUTF8(state,"sv6FreezeMessage"), 
-                            ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite", "Freeze", "WriteCommit"],
-                            ["ReadDirExif", "WritePictures", "BuildWebsite"]]
-            self.Taskstate["WriteCommit"] = [state.getboolean("state","sv7WriteCommit"), 
-                            self.getUTF8(state,"sv7WriteCommitMessage"), 
-                            ["ReadDirExif", "WritePictures"], ["ReadDirExif", "WritePictures", "BuildWebsite", "Freeze"]]
+                            self.getUTF8(state,"sv4WriteBlogMessage"),
+                            ["ReadDirExif", "WritePictures", "WriteBlog"], ["ReadDirExif", "WritePictures"]]
+            self.Taskstate["Freeze"] = [state.getboolean("state","sv6Freeze"),
+                            self.getUTF8(state,"sv6FreezeMessage"),
+                            ["ReadDirExif", "WritePictures", "WriteBlog", "Freeze", "WriteCommit"],
+                            ["ReadDirExif", "WritePictures"]]
+            self.Taskstate["WriteCommit"] = [state.getboolean("state","sv7WriteCommit"),
+                            self.getUTF8(state,"sv7WriteCommitMessage"),
+                            ["ReadDirExif", "WritePictures"], ["ReadDirExif", "WritePictures", "Freeze"]]
         else:
             self.Taskstate = {"MakeRepository" : [True, "MakeRepository", 
                                                  ["ReadDirExif"], []],
                          "ReadDirExif" : [False, "This step has not yet been run.",  
                                                ["ReadDirExif", "WritePictures"], ["MakeRepository"]],
-                         "WritePictures" : [False, "This step has not yet been run.",    
-                                               ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite"], ["ReadDirExif"]],
-                         "WriteBlog" : [False, "This step has not yet been run.",    
-                                            ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite"], 
+                         "WritePictures" : [False, "This step has not yet been run.",
+                                               ["ReadDirExif", "WritePictures", "WriteBlog"], ["ReadDirExif"]],
+                         "WriteBlog" : [False, "This step has not yet been run.",
+                                            ["ReadDirExif", "WritePictures", "WriteBlog"],
                                             ["ReadDirExif", "WritePictures"]],
-                         "BuildWebsite" : [False, "This step has not yet been run.",    
-                                               ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite", "Freeze"], 
-                                               ["ReadDirExif", "WritePictures"]],
-                         "Freeze" : [False, "This step has not yet been run.",    
-                                        ["ReadDirExif", "WritePictures", "WriteBlog", "BuildWebsite", "Freeze", "WriteCommit"],
-                                        ["ReadDirExif", "WritePictures", "BuildWebsite"]],
-                         "WriteCommit" : [False, "This step has not yet been run.",    
+                         "Freeze" : [False, "This step has not yet been run.",
+                                        ["ReadDirExif", "WritePictures", "WriteBlog", "Freeze", "WriteCommit"],
+                                        ["ReadDirExif", "WritePictures"]],
+                         "WriteCommit" : [False, "This step has not yet been run.",
                                               ["ReadDirExif", "WriteCommit"],
-                                              ["ReadDirExif", "WritePictures", "BuildWebsite", "Freeze"]]
+                                              ["ReadDirExif", "WritePictures", "Freeze"]]
             }
         return self.Taskstate
 
@@ -143,7 +141,6 @@ class StateMachine:
             'sv2ReadDirExif'  : self.Taskstate["ReadDirExif"][0],
             'sv3WritePictures'  : self.Taskstate["WritePictures"][0],
             'sv4WriteBlog'  : self.Taskstate["WriteBlog"][0],
-            'sv5BuildWebsite'  : self.Taskstate["BuildWebsite"][0],
             'sv6Freeze'  : self.Taskstate["Freeze"][0],
             'sv7WriteCommit'  : self.Taskstate["WriteCommit"][0]
         }
@@ -152,7 +149,6 @@ class StateMachine:
             'sv2ReadDirExifMessage'  : self.Taskstate["ReadDirExif"][1],
             'sv3WritePicturesMessage'  : self.Taskstate["WritePictures"][1],
             'sv4WriteBlogMessage'  : self.Taskstate["WriteBlog"][1],
-            'sv5BuildWebsiteMessage'  : self.Taskstate["BuildWebsite"][1],
             'sv6FreezeMessage'  : self.Taskstate["Freeze"][1],
             'sv7WriteCommitMessage'  : self.Taskstate["WriteCommit"][1]
         }    
@@ -235,9 +231,8 @@ class StateMachine:
 
         # Invalidate downstream steps if needed
         invalidation_map = {
-            "ReadDirExif": ["WritePictures", "WriteBlog", "BuildWebsite", "Freeze"],
-            "WritePictures": ["WriteBlog", "BuildWebsite", "Freeze"],
-            "BuildWebsite": ["Freeze"]
+            "ReadDirExif": ["WritePictures", "WriteBlog", "Freeze"],
+            "WritePictures": ["WriteBlog", "Freeze"],
         }
 
         if invalidate_downstream and statejustdone in invalidation_map:

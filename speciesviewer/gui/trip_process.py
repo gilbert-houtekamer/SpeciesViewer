@@ -2534,8 +2534,11 @@ class EmptyTripDataDialog(BaseTripModuleDialog):
         super().__init__(
             parent,
             menu_spec,
-            title="Empty Trip Data",
-            info_text="Delete all day directories and reset active data CSVs to empty templates. Use this to get a clean slate before re-running the pipeline.",
+            title="Reset Trip",
+            info_text="No customization is lost, but after reset you can customize more. "
+                      "This unlocks the trip: it clears the day directories and resets the "
+                      "active data to empty templates so the whole pipeline can be re-run "
+                      "(your pictures and the master are untouched).",
             subdirectory=False
         )
 

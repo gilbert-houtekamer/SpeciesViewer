@@ -1358,7 +1358,12 @@ def addAllSpeciesWrapper(MyProject, speciesname, textCreated):
             textlist = temptextfile.readlines()
             textCreated += '\n'.join(textlist)
             temptextfile.close()
-            # write
+            # write — ensure the frozen/ dir exists first. In Publish Day the
+            # website build (sv5, which calls this) runs BEFORE Freeze (sv6)
+            # creates frozen/, so on a fresh day this open() used to fail silently
+            # (swallowed below) → sv7 WriteCommit then crashed reading a missing
+            # allspecies.csv. A writer must create its own target directory.
+            os.makedirs(MyProject.ReviewFrozen(), exist_ok=True)
             with open(os.path.join(MyProject.ReviewFrozen(), 'allspecies.csv'), mode="w", newline="", encoding='utf-8') as allspeclist:
                 for file in MyProject.getAllSpeciesFiles():
                     ftpfile = MyProject.AllSpeciesFiles[file]

@@ -28,7 +28,7 @@ from engine.statemachine import StateMachine
 
 logger = logging.getLogger("speciesviewer")
 
-FROZEN_BANNER = "This day is committed — Empty the trip to unlock it."
+FROZEN_BANNER = "This day is committed — Reset the trip to unlock it."
 
 
 def day_is_frozen(trip_root, day_folder):

@@ -390,7 +390,7 @@ class PictureCard(QFrame):
             lock = QLabel("🔒 committed")
             lock.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lock.setStyleSheet("color:#8a6d00; font-size:8px; font-weight:bold;")
-            lock.setToolTip("This day is committed — Empty the trip to unlock it.")
+            lock.setToolTip("This day is committed — Reset the trip to unlock it.")
             vbox.addWidget(lock)
 
         # Stars row + date + rate
@@ -1023,7 +1023,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         elif some_frozen:
             self._lock_banner.setText(
                 "🔒 Some pictures are on a committed day and are shown locked — "
-                "Empty the trip to unlock them.")
+                "Reset the trip to unlock them.")
             self._lock_banner.show()
         else:
             self._lock_banner.hide()

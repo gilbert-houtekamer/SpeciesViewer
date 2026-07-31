@@ -336,6 +336,25 @@ def main(args, config):
     MyProject.setLanguage('nl')
     MyProject.makeWebDirectories('biota', 'New')
 
+    # Build the all-species index (writes frozen/allspecies.csv, which sv7
+    # WriteCommit reads) + the intro pages — the work the retired "Build Website"
+    # (sv5) step used to do. Freeze now publishes the COMPLETE trip website, so
+    # Publish Day (Freeze + Write Commit) needs no separate build step. Trip only:
+    # the master keeps its own build (_master_build still runs sv5). Guard on a
+    # 'biota' root so a species-less day doesn't KeyError (mirrors sv5).
+    if not MyProject.isMasterRepository() and 'biota' in MyProject.sp.species_dict:
+        _saveSkip = MyProject.getSkipJPGs()
+        MyProject.setSkipJPGs(False)
+        MyProject.makeAllSpeciesPage('biota', 'nl')
+        MyProject.setSkipJPGs(_saveSkip)
+        MyProject.makeAllSpeciesPage('biota', 'en')
+        MyProject.setLanguage('nl')
+        MyProject.makeIntro('intro', 'nl')
+        MyProject.makeIntro('intro-link', 'nl')
+        MyProject.setLanguage('en')
+        MyProject.makeIntro('intro', 'en')
+        MyProject.makeIntro('intro-link', 'en')
+
     # Copy the topics/ branch FILES into the master tree so landscapes are
     # backed up (topics/<topic>/<leaf>/). Deliberately NO makeWebDirectories for
     # topics: they carry no species pages / occurrence map (on_website=no). The

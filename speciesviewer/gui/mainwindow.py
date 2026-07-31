@@ -545,7 +545,6 @@ class MainWindow(QMainWindow):
             ("ReadDirExif",   "Read Directory", "Reading picture directory...",          "✅ Directory scan complete."),
             ("WritePictures", "Write Summary",  "Reading meta data for all pictures ...", "✅ Writing Summary data."),
             ("WriteBlog",     "Write Blog",     "Create a blog entry ...",               "✅ Blog successfully created."),
-            ("BuildWebsite",  "Build Website",  "Build updates for later publication ...", "✅ Website updates prepared."),
             ("Freeze",        "Freeze Data",    "Freeze all collected data ...",          "✅ Data frozen."),
             ("WriteCommit",   "Write Website Commit", "Update the trip website ...",      "✅ Please review updated Website."),
         ]
@@ -1063,8 +1062,7 @@ class MainWindow(QMainWindow):
 
         note = "Needs re-run: " + (reason or "content changed")
         invalidated = []
-        for step, label in (("WriteBlog", "Write Blog"),
-                            ("BuildWebsite", "Build Website")):
+        for step, label in (("WriteBlog", "Write Blog"),):
             st = sm.Taskstate.get(step)
             if st and st[0] and st[1] == "Successfully run.":
                 st[0] = False
