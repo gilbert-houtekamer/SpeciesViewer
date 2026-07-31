@@ -61,7 +61,7 @@ reads <em>No current work planned</em>.</p>
       one step left: fold <em>Extract Days</em> into Create's finish (ch. 2).</li>
     <li><strong>GPS / data-integrity umbrella</strong> — down to one item: tracklog geotag (GPX import) (ch. 3).</li>
     <li><strong>Map polish</strong> — cosmetic pass, day-map delete, rectangle-select, published Leaflet (ch. 3).</li>
-    <li><strong>GPM on a southern/western trip</strong> <span class="tag-test">NEEDS TEST</span> — hemisphere sign on S/W coords (ch. 1).</li>
+    <li><strong>GPM on a southern/western trip</strong> <span class="tag-shipped">VERIFIED</span> — hemisphere sign on S/W coords holds in all four quadrants (ch. 1).</li>
     <li><strong>Committed-day protection</strong> <span class="tag-shipped">SHIPPED</span> — the
       blue-delete accounting audit (ch. 14 follow-up) grew into a full fix: committed trip days are
       now read-only, a pipeline step is blocked while a culling window has unsaved edits, and
@@ -73,11 +73,12 @@ reads <em>No current work planned</em>.</p>
 
 <!-- ============================================================ -->
 <h2>1. SD-card Ingest &amp; Culling</h2>
-<h3>To do</h3>
+<h3>Done</h3>
 <ul>
-  <li><strong>GPM on a southern/western trip</strong> <span class="tag-test">NEEDS TEST</span> —
-    copy/paste GPS + place is verified in the north; confirm the hemisphere sign handling on a
-    trip with S/W coordinates.</li>
+  <li><strong>GPM on a southern/western trip</strong> <span class="tag-shipped">VERIFIED</span> —
+    copy/paste GPS + place keeps the hemisphere sign in all four quadrants, confirmed live
+    (2026-07-31): NE Sri Lanka, SE South Africa, NW Tucson, SW Brazil. A repeatable headless
+    round-trip check lives in <code>tools/svr_gpm_hemisphere_test.py</code>.</li>
 </ul>
 <h3>Parked (by design)</h3>
 <ul>
