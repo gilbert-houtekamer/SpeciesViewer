@@ -118,9 +118,10 @@ def start_main():
             print(f"✅ Logging configured, logger assigned: {main_window.logger}")
 
         populate_trip_overview(main_window)  # ✅ Now logger is ready
-        # Both overviews are now built; honour the tab the user last chose (this must
-        # run after the final populate, which forces the Active Trip tab selected).
-        main_window._restore_active_yellow_tab()
+        # Both overviews are now built; honour the Day/Trip/Album mode the user
+        # last had active (this must run after the final populate, which forces
+        # the Active Trip tab selected).
+        main_window._restore_active_left_mode()
         splash.finish(main_window)
         main_window.show()
         # Content-driven splitter sizes (restored from [layout] in the per-machine

@@ -30,19 +30,13 @@ class TripInfoPanel(QWidget):
         font_style = "font-size: 10pt; font-family: Consolas, monospace;"
         self.setStyleSheet(f"{font_style} background-color: #f9f9f9;")
 
-        # Master info
-        layout.addWidget(QLabel("Master Repository:"))
-        layout.addWidget(QLabel(str(_config["master"]["masterbiotadatabase"])))
-        layout.addWidget(QLabel("Master URL:"))
-        layout.addWidget(QLabel(f"www.houtekamer.com/{_config['master']['masterbiotawebroot']}"))
-
-        for i in range(layout.count()):
-            widget = layout.itemAt(i).widget()
-            if isinstance(widget, QLabel):
-                widget.setStyleSheet(font_style)
-
-        layout.addSpacing(10)
-        layout.addWidget(QLabel("Trips:"))
+        # Master Repository/URL now lives only in the right-hand info rail
+        # (widgets/SidebarInfoRail.py, ch.15 layout pass) — this panel used to
+        # duplicate it here, which read as redundant once the rail always
+        # shows it regardless of which left-mode is active.
+        trips_label = QLabel("Trips:")
+        trips_label.setStyleSheet(font_style)
+        layout.addWidget(trips_label)
 
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)

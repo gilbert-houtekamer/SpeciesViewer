@@ -3,6 +3,7 @@ import os
 
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStatusBar, QApplication
 from PyQt6.QtWidgets import QPlainTextEdit, QLabel, QSizePolicy, QLineEdit, QTabWidget, QTableWidgetItem, QMessageBox
+from PyQt6.QtWidgets import QStackedWidget, QPushButton, QButtonGroup
 from PyQt6.QtCore import Qt, QTimer
 
 from utils.config import _config, persist_config
@@ -15,10 +16,34 @@ from engine.translatelib import CachedTranslate
 from widgets.TripInfoPanel import TripInfoPanel
 from widgets.VirtTripInfoPanel import VirtTripInfoPanel
 from widgets.DaysPanel import DaysPanel
+from widgets.SidebarInfoRail import SidebarInfoRail
+from widgets.fold_chip import FoldChipButton, VerticalLabel
 from gui.trip_overview import populate_trip_overview
 from engine.statemachine import StateMachine
 from gui.image_viewer import ImagePreviewDialog
 from utils.gui_config import load_gui_cache  # or wherever your cache functions live
+
+MODE_DAY = "Day"
+MODE_TRIP = "Trip"
+MODE_ALBUM = "Album"
+
+_LEFT_COLLAPSED_W = 44
+_RAIL_COLLAPSED_W = 44
+_RAIL_EXPANDED_W = 220
+_WIDGET_MAX = 16777215  # QWIDGETSIZE_MAX — releases a setFixedWidth() pin
+
+_MODE_PILL_STYLE = """
+QPushButton {
+    background: transparent; color: #5b6b56; font-weight: 600; font-size: 9pt;
+    padding: 4px 12px; border: 1px solid transparent; border-radius: 11px;
+}
+QPushButton:checked {
+    background-color: #6d8764; color: white;
+}
+QPushButton:hover:!checked {
+    background-color: #e3ead9;
+}
+"""
 
 
 
@@ -31,7 +56,7 @@ class MainWindow(QMainWindow):
         self.virttrip_table = None
         self.state_keys = None
         self.state_labels = None
-        self.setWindowTitle("Species Viewer 0.1")
+        self.setWindowTitle("Species Viewer 0.2")
         # Create and attach status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)        
@@ -45,61 +70,131 @@ class MainWindow(QMainWindow):
         # Create the splitter
         self.hsplitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # Red panel
-        red_panel = QWidget()
-        red_panel.setStyleSheet("background-color: #f9f9f9;")
-        red_layout = QVBoxLayout(red_panel)
-        red_layout.setContentsMargins(0, 0, 0, 0)
+        # --- Left column: one Day/Trip/Album mode strip + a shared stack ----
+        # (ch.15 layout pass) Each mode shows its OWN list — TripInfoPanel,
+        # DaysPanel, VirtTripInfoPanel are unchanged internally, only moved
+        # from "three panels split across two columns, always visible" into
+        # "one at a time, picked by the strip above them."
+        left_panel = QWidget()
+        left_panel.setStyleSheet("background-color: #f9f9f9;")
+        left_outer = QVBoxLayout(left_panel)
+        left_outer.setContentsMargins(0, 0, 0, 0)
+        left_outer.setSpacing(0)
+
+        mode_row = QWidget()
+        mode_row_layout = QHBoxLayout(mode_row)
+        mode_row_layout.setContentsMargins(8, 8, 8, 6)
+        mode_row_layout.setSpacing(4)
+        self._mode_buttons = {}
+        self._mode_group = QButtonGroup(self)
+        self._mode_group.setExclusive(True)
+        for mode in (MODE_DAY, MODE_TRIP, MODE_ALBUM):
+            btn = QPushButton(mode)
+            btn.setCheckable(True)
+            btn.setStyleSheet(_MODE_PILL_STYLE)
+            btn.clicked.connect(lambda checked, m=mode: self._set_left_mode(m))
+            mode_row_layout.addWidget(btn)
+            self._mode_group.addButton(btn)
+            self._mode_buttons[mode] = btn
+        mode_row_layout.addStretch(1)
+        self._left_fold = FoldChipButton(collapse_char="‹", expand_char="›")
+        self._left_fold.clicked.connect(self._toggle_left_collapsed)
+        mode_row_layout.addWidget(self._left_fold)
+        left_outer.addWidget(mode_row)
+
+        self._left_stack = QStackedWidget()
         cache = load_gui_cache()
         trip_project_map = cache.get("trip_project_map", {})  # ✅ actual dict
         # Keep a reference so populate_trip_overview can refresh the active-trip
         # ▶ marker after any trip switch (panel click, create/select dialog, …).
         self.trip_panel = TripInfoPanel(self, trip_project_map, populate_trip_overview)
-        red_layout.addWidget(self.trip_panel, 3)
-        # Days list (ad-hoc single-date folders → Master) below the trips.
         self.days_panel = DaysPanel(self)
-        red_layout.addWidget(self.days_panel, 1)
-        self.hsplitter.addWidget(red_panel)
+        self.virttrip_panel = VirtTripInfoPanel(self, populate_virttrip_overview)
+        self._left_stack.addWidget(self.days_panel)     # index 0 = Day
+        self._left_stack.addWidget(self.trip_panel)      # index 1 = Trip
+        self._left_stack.addWidget(self.virttrip_panel)  # index 2 = Album
+        left_outer.addWidget(self._left_stack, 1)
 
-        # Yellow panel. Style the tab bar explicitly so the SELECTED tab is yellow
-        # (it belongs to the yellow content below it) and the unselected tab is the
-        # pale "other" panel — the reverse of Windows' default, which paints the active
-        # tab white against a yellow strip.
+        # Shown instead of the stack when collapsed, so a collapsed left
+        # column still reads (e.g. "TRIP") rather than going fully blank. Sits
+        # right under the fold chip (stretch 0) rather than filling/centering
+        # in the leftover height — it's a label next to the toggle, not a
+        # footer.
+        self._left_vertical_label = VerticalLabel(MODE_TRIP)
+        self._left_vertical_label.setVisible(False)
+        left_outer.addWidget(self._left_vertical_label, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        self._left_panel_widget = left_panel
+        self.hsplitter.addWidget(left_panel)
+
+        self._left_collapsed = False
+        self._left_width = 220
+        self._mode_buttons[MODE_TRIP].setChecked(True)
+        self._left_stack.setCurrentIndex(1)
+
+        # --- Center: yellow panel, with a Maximize toggle above it ----------
+        yellow_container = QWidget()
+        yellow_outer = QVBoxLayout(yellow_container)
+        yellow_outer.setContentsMargins(0, 0, 0, 0)
+        yellow_outer.setSpacing(0)
+
+        yellow_header = QWidget()
+        yellow_header_layout = QHBoxLayout(yellow_header)
+        yellow_header_layout.setContentsMargins(8, 4, 8, 0)
+        yellow_header_layout.addStretch(1)
+        self._maximize_btn = QPushButton("✦ Maximize")
+        self._maximize_btn.setStyleSheet(
+            "QPushButton { padding: 3px 10px; border: 1px solid #ccc; border-radius: 5px; "
+            "background: white; } QPushButton:hover { background: #f2f2f2; }")
+        self._maximize_btn.clicked.connect(self._toggle_yellow_maximized)
+        yellow_header_layout.addWidget(self._maximize_btn)
+        yellow_outer.addWidget(yellow_header)
+
+        # Yellow panel. Style the pane so it stays the intentional yellow
+        # "active" accent. The tab BAR itself is hidden — the left mode strip
+        # is now the single visible selector (ch.15); the QTabWidget stays as
+        # a QTabWidget internally so trip_overview.py/virttrip_overview.py
+        # need no changes at all (they still addTab/setCurrentWidget as before).
         self.yellow_tabs = QTabWidget()
         self.yellow_tabs.setStyleSheet("""
-            QTabWidget::pane { background-color: #fff8d2; border: 1px solid #e6dfa8;
-                               border-top: none; }
-            QTabBar { background: transparent; }
-            QTabBar::tab {
-                background: #efefef; color: #666;
-                padding: 5px 16px; margin-right: 2px; margin-top: 3px;
-                border: 1px solid #dcdcdc; border-bottom: none;
-                border-top-left-radius: 4px; border-top-right-radius: 4px;
-            }
-            QTabBar::tab:selected {
-                background: #fff8d2; color: #000; font-weight: bold;
-                border: 1px solid #e6dfa8; border-bottom: none; margin-top: 0px;
-            }
-            QTabBar::tab:hover:!selected { background: #f6f6f6; }
+            QTabWidget::pane { background-color: #fff8d2; border: 1px solid #e6dfa8; }
         """)
-        # Remember which tab (Active Trip / Active Album) the user last chose, so the
-        # choice survives a restart. Both overviews force their own tab selected when
-        # they (re)build, so we key off tabBarClicked — a genuine user click — rather
-        # than the current index, which the programmatic switches keep resetting.
-        self.yellow_tabs.tabBarClicked.connect(self._remember_active_yellow_tab)
-        self.hsplitter.addWidget(self.yellow_tabs)
+        self.yellow_tabs.tabBar().setVisible(False)
+        yellow_outer.addWidget(self.yellow_tabs, 1)
+        self.hsplitter.addWidget(yellow_container)
 
-        # Virtual trip navigator panel
-        self.virttrip_panel = VirtTripInfoPanel(self, populate_virttrip_overview)
-        self.hsplitter.addWidget(self.virttrip_panel)
+        # --- Right: collapsible info rail (Master Repository + quick stats) -
+        self.info_rail = SidebarInfoRail(self)
+        rail_container = QWidget()
+        rail_outer = QVBoxLayout(rail_container)
+        rail_outer.setContentsMargins(0, 0, 0, 0)
+        rail_outer.setSpacing(0)
+        rail_header = QWidget()
+        rail_header_layout = QHBoxLayout(rail_header)
+        rail_header_layout.setContentsMargins(6, 6, 6, 6)
+        self._rail_fold = FoldChipButton(collapse_char="›", expand_char="‹", collapsed=True)
+        self._rail_fold.clicked.connect(self._toggle_rail_collapsed)
+        rail_header_layout.addWidget(self._rail_fold)
+        rail_header_layout.addStretch(1)
+        rail_outer.addWidget(rail_header)
+        rail_outer.addWidget(self.info_rail, 1)
+        self._rail_container_widget = rail_container
+        self.hsplitter.addWidget(rail_container)
+
+        self._rail_collapsed = True
+        self._yellow_maximized = False
+        # Starts collapsed — pin the width now, not just via setSizes() below,
+        # since a splitter's stretch-factor recompute can otherwise creep it
+        # back wider on the first relayout.
+        self._rail_container_widget.setFixedWidth(_RAIL_COLLAPSED_W)
 
         # Optional: set initial sizes
-        self.hsplitter.setSizes([220, 720, 220])
+        self.hsplitter.setSizes([220, 720, _RAIL_COLLAPSED_W])
 
         # Optional: make panels expand
         self.hsplitter.setStretchFactor(0, 1)
         self.hsplitter.setStretchFactor(1, 3)
-        self.hsplitter.setStretchFactor(2, 1)
+        self.hsplitter.setStretchFactor(2, 0)
 
         # Wrap in a container widget
         color_row = QWidget()
@@ -112,16 +207,39 @@ class MainWindow(QMainWindow):
         self.green_log_box = QPlainTextEdit()
         self.green_log_box.setReadOnly(True)
         self.green_log_box.setStyleSheet("background-color: #d0f0c0;")
-        self.green_log_box.setMinimumHeight(100)
+        self.green_log_box.setMinimumHeight(60)
         self.green_log_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+        # Log gets its own header (fold chip + label) so it collapses like the
+        # left stack and the right rail — same affordance, ch.15 layout pass.
+        log_container = QWidget()
+        log_outer = QVBoxLayout(log_container)
+        log_outer.setContentsMargins(0, 0, 0, 0)
+        log_outer.setSpacing(0)
+        log_header = QWidget()
+        log_header.setStyleSheet("background-color: #d0f0c0;")
+        log_header_layout = QHBoxLayout(log_header)
+        log_header_layout.setContentsMargins(8, 3, 8, 3)
+        self._log_fold = FoldChipButton(collapse_char="▾", expand_char="▸")
+        self._log_fold.clicked.connect(self._toggle_log_collapsed)
+        log_header_layout.addWidget(self._log_fold)
+        log_label = QLabel("Log")
+        log_label.setStyleSheet("font-weight: bold; color: #2b3b22;")
+        log_header_layout.addWidget(log_label)
+        log_header_layout.addStretch(1)
+        log_outer.addWidget(log_header)
+        log_outer.addWidget(self.green_log_box, 1)
 
         self.vsplitter = QSplitter(Qt.Orientation.Vertical)
         self.vsplitter.addWidget(color_row)
-        self.vsplitter.addWidget(self.green_log_box)
+        self.vsplitter.addWidget(log_container)
 
         sizes = _config.get("layout", "split_sizes", fallback="500,400")
         sizes = [int(s) for s in sizes.split(",")]
-        self.vsplitter.setSizes(sizes)        
+        self.vsplitter.setSizes(sizes)
+
+        self._log_collapsed = False
+        self._log_prev_height = None
 
         widget = QWidget()
         layout = QVBoxLayout(widget)
@@ -286,27 +404,106 @@ class MainWindow(QMainWindow):
         persist_config()
         super().closeEvent(event)
     
-    def _remember_active_yellow_tab(self, index):
-        """Persist the yellow tab the user just clicked (by its title, since indices
-        shift as tabs are added/removed). Written to disk on close with the rest of
-        [layout]."""
-        if index < 0:
-            return
+    _MODE_STACK_INDEX = {MODE_DAY: 0, MODE_TRIP: 1, MODE_ALBUM: 2}
+
+    def _set_left_mode(self, mode):
+        """Switch which of the three left-column lists is showing, and — for
+        Trip/Album — sync the (now hidden-tab-bar) yellow panel to match, by
+        the same tab-title lookup the old active_yellow_tab restore used. Day
+        mode leaves the yellow panel showing whatever it last showed: there is
+        no day-scope overview table yet (ch.15 Phase 1, deliberately deferred,
+        not silently dropped)."""
+        self._left_stack.setCurrentIndex(self._MODE_STACK_INDEX.get(mode, 1))
+        self._left_vertical_label.setText(mode)
+        btn = self._mode_buttons.get(mode)
+        if btn is not None and not btn.isChecked():
+            btn.setChecked(True)
+        if mode in (MODE_TRIP, MODE_ALBUM):
+            want_title = "Active Trip" if mode == MODE_TRIP else VIRTTRIP_TAB_TITLE
+            for i in range(self.yellow_tabs.count()):
+                if self.yellow_tabs.tabText(i) == want_title:
+                    self.yellow_tabs.setCurrentIndex(i)
+                    break
         if not _config.has_section("layout"):
             _config.add_section("layout")
-        _config["layout"]["active_yellow_tab"] = self.yellow_tabs.tabText(index)
+        _config["layout"]["active_left_mode"] = mode
 
-    def _restore_active_yellow_tab(self):
-        """Re-select the tab the user last clicked. Called once after startup
-        population (both overviews force their own tab selected as they build, so this
-        has to run last to win)."""
-        want = _config.get("layout", "active_yellow_tab", fallback="").strip()
-        if not want:
-            return
-        for i in range(self.yellow_tabs.count()):
-            if self.yellow_tabs.tabText(i) == want:
-                self.yellow_tabs.setCurrentIndex(i)
-                return
+    def _restore_active_left_mode(self):
+        """Re-select the mode the user last had active. Called once after
+        startup population (both overviews force their own yellow tab
+        selected as they build, so this has to run last to win) — the same
+        ordering trick the old active_yellow_tab restore used."""
+        want = _config.get("layout", "active_left_mode", fallback="").strip()
+        if want not in self._mode_buttons:
+            want = MODE_TRIP
+        self._set_left_mode(want)
+
+    def _relayout_hsplitter(self):
+        """Recompute the 3 hsplitter widths from the current collapse/maximize
+        flags. Collapse/maximize state is session-only by design (confirmed
+        with the user) — nothing here reads or writes _config."""
+        sizes = self.hsplitter.sizes()
+        total = sum(sizes) or (self.width() or 1200)
+        if self._yellow_maximized:
+            left_w, rail_w = 0, 0
+        else:
+            left_w = _LEFT_COLLAPSED_W if self._left_collapsed else max(self._left_width, 160)
+            rail_w = _RAIL_COLLAPSED_W if self._rail_collapsed else _RAIL_EXPANDED_W
+        middle_w = max(total - left_w - rail_w, 200)
+        self.hsplitter.setSizes([left_w, middle_w, rail_w])
+
+    def _toggle_left_collapsed(self):
+        # A plain hsplitter.setSizes() request can get silently overridden by
+        # the splitter's own stretch-factor recompute — setFixedWidth() pins
+        # the pane so the collapse actually sticks. Cleared (min 0 / max
+        # QWIDGETSIZE_MAX) on expand so the user can drag-resize normally.
+        if not self._left_collapsed:
+            current = self.hsplitter.sizes()[0]
+            if current > _LEFT_COLLAPSED_W:
+                self._left_width = current
+        self._left_collapsed = not self._left_collapsed
+        self._left_fold.set_collapsed(self._left_collapsed)
+        self._left_stack.setVisible(not self._left_collapsed)
+        self._left_vertical_label.setVisible(self._left_collapsed)
+        for btn in self._mode_buttons.values():
+            btn.setVisible(not self._left_collapsed)
+        if self._left_collapsed:
+            self.hsplitter.setStretchFactor(0, 0)
+            self._left_panel_widget.setFixedWidth(_LEFT_COLLAPSED_W)
+        else:
+            self._left_panel_widget.setMinimumWidth(0)
+            self._left_panel_widget.setMaximumWidth(_WIDGET_MAX)
+            self.hsplitter.setStretchFactor(0, 1)
+        self._relayout_hsplitter()
+
+    def _toggle_rail_collapsed(self):
+        self._rail_collapsed = not self._rail_collapsed
+        self._rail_fold.set_collapsed(self._rail_collapsed)
+        self.info_rail.set_collapsed(self._rail_collapsed)
+        if self._rail_collapsed:
+            self._rail_container_widget.setFixedWidth(_RAIL_COLLAPSED_W)
+        else:
+            self._rail_container_widget.setMinimumWidth(0)
+            self._rail_container_widget.setMaximumWidth(_WIDGET_MAX)
+        self._relayout_hsplitter()
+
+    def _toggle_yellow_maximized(self):
+        self._yellow_maximized = not self._yellow_maximized
+        self._maximize_btn.setText("✦ Restore" if self._yellow_maximized else "✦ Maximize")
+        self._relayout_hsplitter()
+
+    def _toggle_log_collapsed(self):
+        self._log_collapsed = not self._log_collapsed
+        self._log_fold.set_collapsed(self._log_collapsed)
+        self.green_log_box.setVisible(not self._log_collapsed)
+        sizes = self.vsplitter.sizes()
+        total = sum(sizes) or 900
+        if self._log_collapsed:
+            self._log_prev_height = sizes[1]
+            self.vsplitter.setSizes([total - 30, 30])
+        else:
+            restore = self._log_prev_height or 200
+            self.vsplitter.setSizes([max(total - restore, 200), restore])
 
     def init_panels(self):
         self.yellow_builder.populate_tabs(self.yellow_tabs)

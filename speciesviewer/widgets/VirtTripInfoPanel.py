@@ -46,11 +46,9 @@ class VirtTripInfoPanel(QWidget):
         font_style = "font-size: 10pt; font-family: Consolas, monospace;"
         self.setStyleSheet(f"{font_style} background-color: #f9f9f9;")
 
-        layout.addWidget(self._header_label("Album Root:"))
-        self.root_label = self._header_label(get_virttrips_root() or "(not configured)")
-        layout.addWidget(self.root_label)
-
-        layout.addSpacing(10)
+        # Album Root now lives only in the right-hand info rail
+        # (widgets/SidebarInfoRail.py, ch.15 layout pass) — this panel used to
+        # duplicate it here.
         layout.addWidget(self._header_label("Albums:"))
 
         self.tree = QTreeWidget()
