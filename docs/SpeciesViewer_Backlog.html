@@ -301,13 +301,23 @@ reads <em>No current work planned</em>.</p>
     sv_gui_cache.json) backs Recent/Frequent — recorded only on real clicks, starts empty. A-Z
     doubles as Z-A on a re-click so Days (previously always newest-first) isn't stuck
     oldest-first by default.</li>
-  <li><strong>Global QSS theme</strong> <span class="tag-open">OPEN — NEXT</span> — the new Trip
-    lifecycle board looks noticeably more polished than the rest of the app because it is
-    styled deliberately (chosen palette, spacing, rounded state cards, mono labels); most
-    other views use default Qt styling. Lift the whole app with one app-wide stylesheet:
-    define the palette/tokens once, apply a base QSS at startup, then tune the high-traffic
-    views (trip/album tables, culling grid, menus, buttons). Keep the intentional yellow
-    “active” and green “log” panels as accents. Logic-free, presentation only.</li>
+  <li><strong>Global QSS theme — Phase 1</strong> <span class="tag-shipped">SHIPPED</span> —
+    new gui/theme.py centralizes the palette that already existed, independently duplicated
+    near-identically across the Trip lifecycle board, Biota Browser and Species Panel. Extends
+    the app's one existing QApplication-level stylesheet (previously QToolTip-only) to cover
+    buttons, menu selection, focus borders, and tree/list/table selection highlight (replaces
+    Qt's default blue with the brand olive app-wide); QMessageBox and dialog buttons inherit the
+    button styling for free. Keeps the intentional yellow “active” and green “log” panels as
+    accents. Found and fixed one real regression via live testing: several fixed-size toolbar
+    toggles (e.g. image_viewer.py's 40x24 “All” / 64x24 “Species” buttons) clipped their text
+    once a global button padding cascaded into them — fixed by dropping padding from the shared
+    button rule, verified byte-identical to the pre-theme baseline via a headless Qt sizeHint
+    measurement.</li>
+  <li><strong>Global QSS theme — Phase 2</strong> <span class="tag-open">OPEN</span> — migrate
+    the Trip lifecycle board / Biota Browser / Species Panel's own local token copies to import
+    gui/theme.py (real de-duplication, deferred in Phase 1 to avoid risking recently-shipped,
+    already-correct screens); then tune the remaining high-traffic surfaces (culling grid,
+    deeper QMessageBox/dialog polish). Logic-free, presentation only.</li>
 </ul>
 
 </body>
