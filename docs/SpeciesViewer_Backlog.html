@@ -287,6 +287,20 @@ reads <em>No current work planned</em>.</p>
   <li><strong>Compact the viewer toolbar + laptop-fit review</strong> <span class="tag-shipped">SHIPPED</span> —
     the wide filter/knob row and dialog sizing were tightened to fit small/laptop screens. Any
     further polish of the viewer chrome belongs to this app-wide pass.</li>
+  <li><strong>Main window layout restructure</strong> <span class="tag-shipped">SHIPPED</span> —
+    Day/Trip/Album unified into one mode strip driving a shared left-column stack (TripInfoPanel/
+    DaysPanel/VirtTripInfoPanel unchanged internally, only reparented); the yellow overview panel's
+    tab bar is hidden and driven by the mode strip instead (trip_overview.py/virttrip_overview.py
+    untouched). New collapsible right-hand info rail (Master Repository + Album Root + quick
+    Trips/Albums/Days counts) replaces the old fixed album-list column; every panel (left stack,
+    right rail, log console) collapses through one shared fold-chip control; yellow panel gained a
+    Maximize toggle. App version bumped to 0.2.</li>
+  <li><strong>Sort controls for Days/Trips/Albums</strong> <span class="tag-shipped">SHIPPED</span> —
+    one shared A-Z/Z-A/Recent/Frequent control (not three independent per-list settings) reorders
+    whichever list is showing. New per-machine usage tracking (utils/gui_config.py, extends
+    sv_gui_cache.json) backs Recent/Frequent — recorded only on real clicks, starts empty. A-Z
+    doubles as Z-A on a re-click so Days (previously always newest-first) isn't stuck
+    oldest-first by default.</li>
   <li><strong>Global QSS theme</strong> <span class="tag-open">OPEN — NEXT</span> — the new Trip
     lifecycle board looks noticeably more polished than the rest of the app because it is
     styled deliberately (chosen palette, spacing, rounded state cards, mono labels); most
