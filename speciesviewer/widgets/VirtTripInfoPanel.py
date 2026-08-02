@@ -8,6 +8,8 @@ from utils.virttrip_config import (
     read_virttrip_ini, blog_review_state, BLOG_DRAFT, read_excluded_days,
 )
 from utils.config import _config, persist_config, get_virttrips_root
+from utils.gui_config import get_all_gui_usage, record_gui_usage
+from utils.sort_modes import sort_items, DEFAULT_MODE
 from utils.open_path import open_path
 
 _PATH_ROLE = Qt.ItemDataRole.UserRole          # trip_dir Path object
@@ -34,10 +36,11 @@ def _advertised_trip_names() -> set:
 
 
 class VirtTripInfoPanel(QWidget):
-    def __init__(self, parent, on_virttrip_selected):
+    def __init__(self, parent, on_virttrip_selected, sort_mode=DEFAULT_MODE):
         super().__init__()
         self.main_window = parent
         self.on_virttrip_selected = on_virttrip_selected
+        self._sort_mode = sort_mode
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -80,7 +83,10 @@ class VirtTripInfoPanel(QWidget):
         # reused for every album row.
         advertised = _advertised_trip_names()
         if root_path and root_path.is_dir():
-            for d in sorted(root_path.iterdir()):
+            usage = get_all_gui_usage()
+            candidates = sort_items([p for p in root_path.iterdir() if p.is_dir()],
+                                     self._sort_mode, usage)
+            for d in candidates:
                 if not d.is_dir():
                     continue
                 # Skip hidden / housekeeping folders: .trash, and the
@@ -169,8 +175,11 @@ class VirtTripInfoPanel(QWidget):
 
         self._refresh_highlights()
 
-    def rebuild(self):
-        """Re-enumerate the virttrips root and refresh the tree (e.g. after creation)."""
+    def rebuild(self, sort_mode=None):
+        """Re-enumerate the virttrips root and refresh the tree (e.g. after
+        creation). sort_mode=None keeps the panel's current mode."""
+        if sort_mode is not None:
+            self._sort_mode = sort_mode
         self._populate_tree()
 
     def _refresh_highlights(self):
@@ -198,6 +207,7 @@ class VirtTripInfoPanel(QWidget):
         active = _config.get("virttrip", "virttripbiotadatabase", fallback="")
         if str(trip_dir) == active:
             return  # already active
+        record_gui_usage(trip_dir)
         if not _config.has_section("virttrip"):
             _config.add_section("virttrip")
         _config.set("virttrip", "virttripbiotadatabase", str(trip_dir))

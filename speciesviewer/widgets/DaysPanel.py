@@ -9,6 +9,8 @@ from PyQt6.QtGui import QFont, QCursor
 from PyQt6.QtCore import Qt
 
 from utils import days_registry
+from utils.gui_config import get_all_gui_usage, record_gui_usage
+from utils.sort_modes import sort_items, DEFAULT_MODE
 from utils.open_path import open_path
 
 _FOLDER_ROLE = Qt.ItemDataRole.UserRole + 1
@@ -25,9 +27,10 @@ def _norm_reg(p):
 
 
 class DaysPanel(QWidget):
-    def __init__(self, parent):
+    def __init__(self, parent, sort_mode=DEFAULT_MODE):
         super().__init__()
         self.main_window = parent
+        self._sort_mode = sort_mode
         if not hasattr(parent, "active_day_folder"):
             # Restore the day that was active last session — a trip and an album
             # both come back selected, and the Days lane forgetting was the odd
@@ -57,10 +60,19 @@ class DaysPanel(QWidget):
 
         self.rebuild()
 
-    def rebuild(self):
+    def rebuild(self, sort_mode=None):
+        """Re-sort and repaint the list. sort_mode=None keeps the panel's
+        current mode."""
+        if sort_mode is not None:
+            self._sort_mode = sort_mode
         self.list.clear()
         active = getattr(self.main_window, "active_day_folder", "")
-        for d in days_registry.load_days():
+        days = days_registry.load_days()
+        usage = get_all_gui_usage()
+        by_folder = {d["folder"]: d for d in days}
+        ordered_folders = sort_items(list(by_folder.keys()), self._sort_mode, usage)
+        for folder in ordered_folders:
+            d = by_folder[folder]
             folder = d["folder"]
             date = d.get("date", "")
             done = d.get("status") == days_registry.STATUS_DONE
@@ -88,6 +100,7 @@ class DaysPanel(QWidget):
         folder = item.data(_FOLDER_ROLE)
         if not folder:
             return
+        record_gui_usage(folder)
         self.main_window.active_day_folder = folder
         from utils import days_registry
         days_registry.set_active_day(folder)

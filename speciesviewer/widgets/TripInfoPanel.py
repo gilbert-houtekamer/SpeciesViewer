@@ -7,7 +7,8 @@ from pathlib import Path
 import os
 from utils.trip_config import read_trip_ini
 from utils.config import _config, persist_config, get_trips_root
-from utils.gui_config import load_gui_cache
+from utils.gui_config import load_gui_cache, get_all_gui_usage, record_gui_usage
+from utils.sort_modes import sort_items, DEFAULT_MODE
 from utils.open_path import open_path
 
 import re as _re
@@ -17,11 +18,12 @@ _DAY_RE         = _re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class TripInfoPanel(QWidget):
-    def __init__(self, parent, trip_project_map, on_trip_selected):
+    def __init__(self, parent, trip_project_map, on_trip_selected, sort_mode=DEFAULT_MODE):
         super().__init__()
         self.main_window = parent
         self.trip_project_map = trip_project_map
         self.on_trip_selected = on_trip_selected
+        self._sort_mode = sort_mode
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -47,6 +49,18 @@ class TripInfoPanel(QWidget):
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.show_context_menu)
 
+        self._populate_tree()
+
+    def rebuild(self, sort_mode=None):
+        """Re-sort and repaint the tree. sort_mode=None keeps the panel's
+        current mode (used for the mainwindow-driven sort-button handler;
+        pass the new mode explicitly there)."""
+        if sort_mode is not None:
+            self._sort_mode = sort_mode
+        self._populate_tree()
+
+    def _populate_tree(self):
+        self.tree.clear()
         # Guard the empty case: get_trips_root() returns "" when no trips root is
         # configured, and Path("") is the current working directory — iterating it
         # would list the code repo folders instead of trips. Only build the tree
@@ -54,46 +68,47 @@ class TripInfoPanel(QWidget):
         trips_root_str = get_trips_root()
         trip_root = Path(trips_root_str) if trips_root_str else None
         if trip_root is not None and trip_root.is_dir():
-            for trip_dir in sorted(trip_root.iterdir()):
-                if trip_dir.is_dir():
-                    trip_item = QTreeWidgetItem([trip_dir.name])
-                    trip_item.setData(0, Qt.ItemDataRole.UserRole, None)  # default
+            usage = get_all_gui_usage()
+            trip_dirs = [d for d in trip_root.iterdir() if d.is_dir()]
+            for trip_dir in sort_items(trip_dirs, self._sort_mode, usage):
+                trip_item = QTreeWidgetItem([trip_dir.name])
+                trip_item.setData(0, Qt.ItemDataRole.UserRole, None)  # default
 
-                    try:
-                        trip_data = read_trip_ini(trip_dir)
-                        trip_name = trip_data.get("trip_name", "").strip()
-                        title = trip_data.get("title_nl", "(geen titel)")
-                        message = trip_data.get("message_nl", "")
-                        title_en = trip_data.get("title_en", "(geen titel)")
-                        message_en = trip_data.get("message_en", "")
+                try:
+                    trip_data = read_trip_ini(trip_dir)
+                    trip_name = trip_data.get("trip_name", "").strip()
+                    title = trip_data.get("title_nl", "(geen titel)")
+                    message = trip_data.get("message_nl", "")
+                    title_en = trip_data.get("title_en", "(geen titel)")
+                    message_en = trip_data.get("message_en", "")
 
-                        tooltip_html = f"""
-                            <html><body>
-                                <p><b>{title}</b></p><p>{message}</p><p></p>
-                                <p><b>{title_en}</b></p><p>{message_en}</p>
-                            </body></html>
-                        """
-                        trip_item.setToolTip(0, tooltip_html)
+                    tooltip_html = f"""
+                        <html><body>
+                            <p><b>{title}</b></p><p>{message}</p><p></p>
+                            <p><b>{title_en}</b></p><p>{message_en}</p>
+                        </body></html>
+                    """
+                    trip_item.setToolTip(0, tooltip_html)
 
-                        trip_key = f"/trips/{trip_name}"
-                        if trip_key in trip_project_map:
-                            trip_item.setText(0, f"🔗 {trip_dir.name}")
-                            trip_item.setFont(0, QFont("Consolas", 10, QFont.Weight.Bold))
-                            trip_item.setForeground(0, Qt.GlobalColor.darkGreen)
-                            trip_item.setData(0, Qt.ItemDataRole.UserRole, trip_dir)
+                    trip_key = f"/trips/{trip_name}"
+                    if trip_key in self.trip_project_map:
+                        trip_item.setText(0, f"🔗 {trip_dir.name}")
+                        trip_item.setFont(0, QFont("Consolas", 10, QFont.Weight.Bold))
+                        trip_item.setForeground(0, Qt.GlobalColor.darkGreen)
+                        trip_item.setData(0, Qt.ItemDataRole.UserRole, trip_dir)
 
-                    except Exception as e:
-                        trip_item.setToolTip(0, f"Error reading trip.ini: {e}")
+                except Exception as e:
+                    trip_item.setToolTip(0, f"Error reading trip.ini: {e}")
 
-                    trip_item.setData(0, _PATH_ROLE, trip_dir)
-                    trip_item.setData(0, _BASE_TEXT_ROLE, trip_item.text(0))
-                    self.tree.addTopLevelItem(trip_item)
-                    review_path = trip_dir / "metadata" / "review"
-                    if review_path.is_dir():
-                        for day_dir in sorted(review_path.iterdir()):
-                            if day_dir.is_dir():
-                                day_item = QTreeWidgetItem([f"    {day_dir.name}"])
-                                trip_item.addChild(day_item)
+                trip_item.setData(0, _PATH_ROLE, trip_dir)
+                trip_item.setData(0, _BASE_TEXT_ROLE, trip_item.text(0))
+                self.tree.addTopLevelItem(trip_item)
+                review_path = trip_dir / "metadata" / "review"
+                if review_path.is_dir():
+                    for day_dir in sorted(review_path.iterdir()):
+                        if day_dir.is_dir():
+                            day_item = QTreeWidgetItem([f"    {day_dir.name}"])
+                            trip_item.addChild(day_item)
         else:
             self.tree.addTopLevelItem(QTreeWidgetItem(["(No trips found)"]))
 
@@ -125,6 +140,7 @@ class TripInfoPanel(QWidget):
     def handle_trip_click(self, item, column):
         trip_dir = item.data(0, Qt.ItemDataRole.UserRole)
         if trip_dir and (trip_dir !=  Path(_config["trip"]["tripbiotadatabase"])):
+            record_gui_usage(trip_dir)
             trip_data = read_trip_ini(trip_dir)
             trip_name = trip_data.get("trip_name", "").strip()
             _config["trip"]["tripbiotadatabase"] = str(trip_dir)

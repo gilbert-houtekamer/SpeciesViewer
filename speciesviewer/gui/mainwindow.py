@@ -18,6 +18,9 @@ from widgets.VirtTripInfoPanel import VirtTripInfoPanel
 from widgets.DaysPanel import DaysPanel
 from widgets.SidebarInfoRail import SidebarInfoRail
 from widgets.fold_chip import FoldChipButton, VerticalLabel
+from utils.sort_modes import (
+    ALL_MODES, DEFAULT_MODE, SORT_ALPHA_ASC, SORT_ALPHA_DESC, SORT_RECENT, SORT_FREQUENT,
+)
 from gui.trip_overview import populate_trip_overview
 from engine.statemachine import StateMachine
 from gui.image_viewer import ImagePreviewDialog
@@ -42,6 +45,19 @@ QPushButton:checked {
 }
 QPushButton:hover:!checked {
     background-color: #e3ead9;
+}
+"""
+
+_SORT_PILL_STYLE = """
+QPushButton {
+    background: transparent; color: #8b9784; font-weight: 600; font-size: 8pt;
+    padding: 3px 9px; border: 1px solid transparent; border-radius: 9px;
+}
+QPushButton:checked {
+    background-color: #c9d6bb; color: #2f3f29;
+}
+QPushButton:hover:!checked {
+    background-color: #eef0ea;
 }
 """
 
@@ -102,14 +118,54 @@ class MainWindow(QMainWindow):
         mode_row_layout.addWidget(self._left_fold)
         left_outer.addWidget(mode_row)
 
+        # One shared sort control for all three lists (decided over three
+        # independent per-list settings — simpler, one thing to persist).
+        # The A-Z button doubles as Z-A on a re-click while already active,
+        # so Days (short-lived, previously always newest-first) can get that
+        # ordering back without a 4th button or a Days-only special case.
+        initial_sort_mode = _config.get("layout", "list_sort_mode", fallback=DEFAULT_MODE)
+        if initial_sort_mode not in ALL_MODES:
+            initial_sort_mode = DEFAULT_MODE
+        self._current_sort_mode = initial_sort_mode
+
+        sort_row = QWidget()
+        sort_row_layout = QHBoxLayout(sort_row)
+        sort_row_layout.setContentsMargins(8, 0, 8, 8)
+        sort_row_layout.setSpacing(4)
+        self._sort_alpha_btn = QPushButton(
+            "Z-A" if initial_sort_mode == SORT_ALPHA_DESC else "A-Z")
+        self._sort_recent_btn = QPushButton("Recent")
+        self._sort_frequent_btn = QPushButton("Frequent")
+        self._sort_group = QButtonGroup(self)
+        self._sort_group.setExclusive(True)
+        for btn in (self._sort_alpha_btn, self._sort_recent_btn, self._sort_frequent_btn):
+            btn.setCheckable(True)
+            btn.setStyleSheet(_SORT_PILL_STYLE)
+            sort_row_layout.addWidget(btn)
+            self._sort_group.addButton(btn)
+        sort_row_layout.addStretch(1)
+        self._sort_alpha_btn.clicked.connect(self._on_sort_alpha_clicked)
+        self._sort_recent_btn.clicked.connect(lambda: self._apply_sort_mode(SORT_RECENT))
+        self._sort_frequent_btn.clicked.connect(lambda: self._apply_sort_mode(SORT_FREQUENT))
+        if initial_sort_mode == SORT_RECENT:
+            self._sort_recent_btn.setChecked(True)
+        elif initial_sort_mode == SORT_FREQUENT:
+            self._sort_frequent_btn.setChecked(True)
+        else:
+            self._sort_alpha_btn.setChecked(True)
+        self._sort_row_widget = sort_row
+        left_outer.addWidget(sort_row)
+
         self._left_stack = QStackedWidget()
         cache = load_gui_cache()
         trip_project_map = cache.get("trip_project_map", {})  # ✅ actual dict
         # Keep a reference so populate_trip_overview can refresh the active-trip
         # ▶ marker after any trip switch (panel click, create/select dialog, …).
-        self.trip_panel = TripInfoPanel(self, trip_project_map, populate_trip_overview)
-        self.days_panel = DaysPanel(self)
-        self.virttrip_panel = VirtTripInfoPanel(self, populate_virttrip_overview)
+        self.trip_panel = TripInfoPanel(self, trip_project_map, populate_trip_overview,
+                                         sort_mode=initial_sort_mode)
+        self.days_panel = DaysPanel(self, sort_mode=initial_sort_mode)
+        self.virttrip_panel = VirtTripInfoPanel(self, populate_virttrip_overview,
+                                                 sort_mode=initial_sort_mode)
         self._left_stack.addWidget(self.days_panel)     # index 0 = Day
         self._left_stack.addWidget(self.trip_panel)      # index 1 = Trip
         self._left_stack.addWidget(self.virttrip_panel)  # index 2 = Album
@@ -438,6 +494,31 @@ class MainWindow(QMainWindow):
             want = MODE_TRIP
         self._set_left_mode(want)
 
+    def _on_sort_alpha_clicked(self):
+        """The A-Z button doubles as Z-A: a re-click while it's already the
+        active mode flips direction instead of doing nothing (QButtonGroup
+        still fires `clicked` on a re-click of the checked button)."""
+        if self._current_sort_mode == SORT_ALPHA_ASC:
+            new_mode = SORT_ALPHA_DESC
+        else:
+            new_mode = SORT_ALPHA_ASC
+        self._sort_alpha_btn.setText("Z-A" if new_mode == SORT_ALPHA_DESC else "A-Z")
+        self._apply_sort_mode(new_mode)
+
+    def _apply_sort_mode(self, mode):
+        """Re-sort all three lists (matches this app's existing "always full
+        rebuild" pattern — these lists are tens of items, not master-scale).
+        Persisted immediately, like the trip/album selection, not deferred to
+        close — it's a real preference, cheap to save."""
+        self._current_sort_mode = mode
+        if not _config.has_section("layout"):
+            _config.add_section("layout")
+        _config["layout"]["list_sort_mode"] = mode
+        persist_config()
+        self.trip_panel.rebuild(mode)
+        self.days_panel.rebuild(mode)
+        self.virttrip_panel.rebuild(mode)
+
     def _relayout_hsplitter(self):
         """Recompute the 3 hsplitter widths from the current collapse/maximize
         flags. Collapse/maximize state is session-only by design (confirmed
@@ -467,6 +548,7 @@ class MainWindow(QMainWindow):
         self._left_vertical_label.setVisible(self._left_collapsed)
         for btn in self._mode_buttons.values():
             btn.setVisible(not self._left_collapsed)
+        self._sort_row_widget.setVisible(not self._left_collapsed)
         if self._left_collapsed:
             self.hsplitter.setStretchFactor(0, 0)
             self._left_panel_widget.setFixedWidth(_LEFT_COLLAPSED_W)
