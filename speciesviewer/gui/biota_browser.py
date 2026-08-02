@@ -33,14 +33,17 @@ from gui.image_loader import AsyncImageLoader
 from gui.master_ops import MasterCardMenuMixin
 from gui.biota_source import RANK_LABEL, RANK_ORDER
 from utils.config import _config
+from gui import theme
 
 logger = logging.getLogger("speciesviewer")
 
 # ── palette (Trip-lifecycle board, light) + the website's olive frame ────────
-_INK = "#1c211b"; _INK_SOFT = "#59634f"; _LINE = "#d7ddce"
-_SURFACE = "#ffffff"; _BG = "#f5f7f3"
-_FRAME = "#6d8764"; _FRAME_INK = "#ffffff"; _MAT = "#ffffff"
-_DONE = "#2f7d43"; _DONE_BG = "#e6f1e8"; _READY = "#2563a8"; _READY_BG = "#e4eef8"
+# Sourced from gui/theme.py (ch.15 global QSS, Phase 2) — was a local
+# near-duplicate of Species Panel's/Trip lifecycle board's own copies.
+_INK = theme.INK; _INK_SOFT = theme.INK_SOFT; _LINE = theme.LINE
+_SURFACE = theme.SURFACE; _BG = theme.BG
+_FRAME = theme.ACCENT; _FRAME_INK = theme.ACCENT_INK; _MAT = theme.SURFACE
+_DONE = theme.DONE_FG; _DONE_BG = theme.DONE_BG; _READY = theme.READY_FG; _READY_BG = theme.READY_BG
 
 
 def _load_qimage(path):

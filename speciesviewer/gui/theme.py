@@ -23,6 +23,7 @@ NEUTRAL_GRAY = "#777777"  # a plain (non-olive-tinted) secondary-label grey
 
 # Brand accent (olive — matches the published website's own photo-frame color)
 ACCENT = "#6d8764"
+ACCENT_RGB = "109, 135, 100"  # same color as ACCENT, for an rgba(...) tint
 ACCENT_HOVER = "#5c7454"
 ACCENT_SOFT = "#e3ead9"
 ACCENT_SOFT_BORDER = "#c9d6bb"

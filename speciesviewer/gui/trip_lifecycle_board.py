@@ -35,18 +35,23 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from utils.config import _config
+from gui import theme
 
 logger = logging.getLogger("speciesviewer")
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-# palette — mirrors docs/design-docs/trip_lifecycle_board.html (light)
-_DONE_FG = "#2f7d43"; _DONE_BG = "#e6f1e8"
-_RDY_FG  = "#2563a8"; _RDY_BG  = "#ffffff"
-_LCK_FG  = "#7a8172"; _LCK_BG  = "#f0f2ec"; _LCK_BD = "#c9d0be"
-_GATE    = "#2f9e57"; _GATE_BG = "#e7f4ec"
-_WARN    = "#b45309"
-_INK = "#1c211b"; _INK_SOFT = "#59634f"; _LINE = "#d7ddce"
+# palette — mirrors docs/design-docs/trip_lifecycle_board.html (light).
+# Sourced from gui/theme.py (ch.15 global QSS, Phase 2), except _RDY_BG:
+# this board's "ready" background is genuinely white, not theme.READY_BG's
+# pale blue (Biota Browser/Species Panel) — a real, pre-existing divergence
+# discovered while migrating, left as-is rather than silently unified.
+_DONE_FG = theme.DONE_FG; _DONE_BG = theme.DONE_BG
+_RDY_FG  = theme.READY_FG; _RDY_BG  = "#ffffff"
+_LCK_FG  = theme.LOCKED_FG; _LCK_BG  = theme.LOCKED_BG; _LCK_BD = theme.LOCKED_BORDER
+_GATE    = theme.GATE_FG; _GATE_BG = theme.GATE_BG
+_WARN    = theme.WARN
+_INK = theme.INK; _INK_SOFT = theme.INK_SOFT; _LINE = theme.LINE
 
 
 def trip_day_progress():

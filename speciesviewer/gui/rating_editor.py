@@ -28,6 +28,7 @@ from engine.filecsv import Files
 from engine.picturecsv import Pictures
 from engine.exif_writer import exiftool_write
 from gui.window_state import restore_window, save_window
+from gui import theme
 from gui.image_loader import AsyncImageLoader
 from gui.master_ops import MasterCardMenuMixin
 from gui.picture_provider import PictureItem
@@ -602,9 +603,13 @@ class PictureCard(QFrame):
 
     def _update_frame_style(self):
         if self._selected:
+            # Brand olive, not the old off-brand blue — the app-wide selection
+            # color everywhere else since ch.15's global QSS (Phase 1) already
+            # unified QTreeView/QListView/QTableView; PictureCard is a plain
+            # QFrame so it needs its own explicit swap here (ch.15 Phase 2).
             self.setStyleSheet(
-                "QFrame#PictureCard { border: 2px solid #2196f3; "
-                "background: rgba(33, 150, 243, 0.08); }")
+                f"QFrame#PictureCard {{ border: 2px solid {theme.ACCENT}; "
+                f"background: rgba({theme.ACCENT_RGB}, 0.08); }}")
         elif self._cursor:
             bg = "background: #e2e2e2; " if self._from_master else ""
             self.setStyleSheet(f"QFrame#PictureCard {{ border: 1px solid #333; {bg}}}")

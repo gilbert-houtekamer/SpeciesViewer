@@ -21,15 +21,17 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPixmap
+from gui import theme
 
 logger = logging.getLogger("speciesviewer")
 
-# palette — mirrors gui/biota_browser (kept local to avoid an import cycle; both
-# fold into the shared gui/theme.py when the ch.15 global QSS lands)
-_INK = "#1c211b"; _INK_SOFT = "#59634f"; _LINE = "#d7ddce"
-_SURFACE = "#ffffff"; _SURFACE2 = "#eef1ea"
-_FRAME = "#6d8764"; _FRAME_INK = "#ffffff"; _MAT = "#ffffff"
-_DONE = "#2f7d43"; _DONE_BG = "#e6f1e8"; _READY = "#2563a8"; _READY_BG = "#e4eef8"
+# palette — mirrors gui/biota_browser, now sourced from gui/theme.py
+# (ch.15 global QSS, Phase 2 — no import cycle: theme.py has zero imports
+# of its own). _SURFACE2 has no shared counterpart yet, stays local.
+_INK = theme.INK; _INK_SOFT = theme.INK_SOFT; _LINE = theme.LINE
+_SURFACE = theme.SURFACE; _SURFACE2 = "#eef1ea"
+_FRAME = theme.ACCENT; _FRAME_INK = theme.ACCENT_INK; _MAT = theme.SURFACE
+_DONE = theme.DONE_FG; _DONE_BG = theme.DONE_BG; _READY = theme.READY_FG; _READY_BG = theme.READY_BG
 
 # readable group labels from the master row's derived qualifier fields
 _MF = {"male": "Male", "female": "Female", "pair": "Pair", "couple": "Pair"}
