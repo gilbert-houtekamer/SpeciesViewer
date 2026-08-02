@@ -282,7 +282,7 @@ reads <em>No current work planned</em>.</p>
 </ul>
 
 <!-- ============================================================ -->
-<h2>15. App-wide look &amp; feel <span class="tag-open">OPEN</span></h2>
+<h2>15. App-wide look &amp; feel <span class="tag-shipped">SHIPPED</span></h2>
 <ul>
   <li><strong>Compact the viewer toolbar + laptop-fit review</strong> <span class="tag-shipped">SHIPPED</span> —
     the wide filter/knob row and dialog sizing were tightened to fit small/laptop screens. Any
@@ -313,11 +313,18 @@ reads <em>No current work planned</em>.</p>
     once a global button padding cascaded into them — fixed by dropping padding from the shared
     button rule, verified byte-identical to the pre-theme baseline via a headless Qt sizeHint
     measurement.</li>
-  <li><strong>Global QSS theme — Phase 2</strong> <span class="tag-open">OPEN</span> — migrate
-    the Trip lifecycle board / Biota Browser / Species Panel's own local token copies to import
-    gui/theme.py (real de-duplication, deferred in Phase 1 to avoid risking recently-shipped,
-    already-correct screens); then tune the remaining high-traffic surfaces (culling grid,
-    deeper QMessageBox/dialog polish). Logic-free, presentation only.</li>
+  <li><strong>Global QSS theme — Phase 2</strong> <span class="tag-shipped">SHIPPED</span> —
+    migrated the Trip lifecycle board / Biota Browser / Species Panel's own local palette copies
+    to import gui/theme.py (variable names kept, so no usage site in any of the three needed to
+    change); verified all 36 constants byte-identical to their pre-migration values. Found and
+    deliberately preserved one real, pre-existing divergence: the lifecycle board's “ready”
+    background is white, not the other two's pale blue — left local rather than silently
+    unified. Also swapped PictureCard's (the shared card behind the culling grid, image preview,
+    biota browser grid, and master species viewer — one class, four consumers) off-brand blue
+    selection color to the same olive accent used everywhere else. Settings dialogs
+    (Database/Sidecar/Repository/Location/RAW Settings, the geocode and translation-validate
+    dialogs) already picked up Phase 1's button/focus/selection styling for free — no local
+    overrides to fight, so no further work needed there.</li>
 </ul>
 
 </body>
