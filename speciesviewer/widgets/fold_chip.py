@@ -6,21 +6,23 @@ from PyQt6.QtWidgets import QPushButton, QWidget
 from PyQt6.QtGui import QPainter, QColor
 from PyQt6.QtCore import Qt, QSize
 
-_CHIP_STYLE = """
-QPushButton {
-    background-color: #e3ead9;
-    border: 1px solid #c9d6bb;
+from gui import theme
+
+_CHIP_STYLE = f"""
+QPushButton {{
+    background-color: {theme.ACCENT_SOFT};
+    border: 1px solid {theme.ACCENT_SOFT_BORDER};
     border-radius: 12px;
-    color: #2f3f29;
+    color: {theme.ACCENT_INK_SOFT};
     font-weight: bold;
     font-size: 11pt;
     padding: 0px;
-}
-QPushButton:hover {
-    background-color: #6d8764;
-    border-color: #6d8764;
-    color: white;
-}
+}}
+QPushButton:hover {{
+    background-color: {theme.ACCENT};
+    border-color: {theme.ACCENT};
+    color: {theme.ACCENT_INK};
+}}
 """
 
 
@@ -60,7 +62,7 @@ class VerticalLabel(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setPen(QColor("#8b9784"))
+        painter.setPen(QColor(theme.INK_FAINT))
         font = self.font()
         font.setPointSize(8)
         font.setBold(True)

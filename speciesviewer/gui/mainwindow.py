@@ -18,6 +18,7 @@ from widgets.VirtTripInfoPanel import VirtTripInfoPanel
 from widgets.DaysPanel import DaysPanel
 from widgets.SidebarInfoRail import SidebarInfoRail
 from widgets.fold_chip import FoldChipButton, VerticalLabel
+from gui import theme
 from utils.sort_modes import (
     ALL_MODES, DEFAULT_MODE, SORT_ALPHA_ASC, SORT_ALPHA_DESC, SORT_RECENT, SORT_FREQUENT,
 )
@@ -35,30 +36,30 @@ _RAIL_COLLAPSED_W = 44
 _RAIL_EXPANDED_W = 220
 _WIDGET_MAX = 16777215  # QWIDGETSIZE_MAX — releases a setFixedWidth() pin
 
-_MODE_PILL_STYLE = """
-QPushButton {
-    background: transparent; color: #5b6b56; font-weight: 600; font-size: 9pt;
+_MODE_PILL_STYLE = f"""
+QPushButton {{
+    background: transparent; color: {theme.INK_MUTED}; font-weight: 600; font-size: 9pt;
     padding: 4px 12px; border: 1px solid transparent; border-radius: 11px;
-}
-QPushButton:checked {
-    background-color: #6d8764; color: white;
-}
-QPushButton:hover:!checked {
-    background-color: #e3ead9;
-}
+}}
+QPushButton:checked {{
+    background-color: {theme.ACCENT}; color: {theme.ACCENT_INK};
+}}
+QPushButton:hover:!checked {{
+    background-color: {theme.ACCENT_SOFT};
+}}
 """
 
-_SORT_PILL_STYLE = """
-QPushButton {
-    background: transparent; color: #8b9784; font-weight: 600; font-size: 8pt;
+_SORT_PILL_STYLE = f"""
+QPushButton {{
+    background: transparent; color: {theme.INK_FAINT}; font-weight: 600; font-size: 8pt;
     padding: 3px 9px; border: 1px solid transparent; border-radius: 9px;
-}
-QPushButton:checked {
-    background-color: #c9d6bb; color: #2f3f29;
-}
-QPushButton:hover:!checked {
-    background-color: #eef0ea;
-}
+}}
+QPushButton:checked {{
+    background-color: {theme.ACCENT_SOFT_BORDER}; color: {theme.ACCENT_INK_SOFT};
+}}
+QPushButton:hover:!checked {{
+    background-color: {theme.ROW_HOVER};
+}}
 """
 
 
@@ -92,7 +93,7 @@ class MainWindow(QMainWindow):
         # from "three panels split across two columns, always visible" into
         # "one at a time, picked by the strip above them."
         left_panel = QWidget()
-        left_panel.setStyleSheet("background-color: #f9f9f9;")
+        left_panel.setStyleSheet(f"background-color: {theme.PANEL_BG};")
         left_outer = QVBoxLayout(left_panel)
         left_outer.setContentsMargins(0, 0, 0, 0)
         left_outer.setSpacing(0)
@@ -200,8 +201,8 @@ class MainWindow(QMainWindow):
         yellow_header_layout.addStretch(1)
         self._maximize_btn = QPushButton("✦ Maximize")
         self._maximize_btn.setStyleSheet(
-            "QPushButton { padding: 3px 10px; border: 1px solid #ccc; border-radius: 5px; "
-            "background: white; } QPushButton:hover { background: #f2f2f2; }")
+            f"QPushButton {{ padding: 3px 10px; border: 1px solid {theme.LINE}; border-radius: 5px; "
+            f"background: {theme.SURFACE}; }} QPushButton:hover {{ background: {theme.ROW_HOVER}; }}")
         self._maximize_btn.clicked.connect(self._toggle_yellow_maximized)
         yellow_header_layout.addWidget(self._maximize_btn)
         yellow_outer.addWidget(yellow_header)
@@ -212,8 +213,8 @@ class MainWindow(QMainWindow):
         # a QTabWidget internally so trip_overview.py/virttrip_overview.py
         # need no changes at all (they still addTab/setCurrentWidget as before).
         self.yellow_tabs = QTabWidget()
-        self.yellow_tabs.setStyleSheet("""
-            QTabWidget::pane { background-color: #fff8d2; border: 1px solid #e6dfa8; }
+        self.yellow_tabs.setStyleSheet(f"""
+            QTabWidget::pane {{ background-color: {theme.ACTIVE_BG}; border: 1px solid {theme.ACTIVE_BORDER}; }}
         """)
         self.yellow_tabs.tabBar().setVisible(False)
         yellow_outer.addWidget(self.yellow_tabs, 1)
@@ -262,7 +263,7 @@ class MainWindow(QMainWindow):
 
         self.green_log_box = QPlainTextEdit()
         self.green_log_box.setReadOnly(True)
-        self.green_log_box.setStyleSheet("background-color: #d0f0c0;")
+        self.green_log_box.setStyleSheet(f"background-color: {theme.LOG_BG};")
         self.green_log_box.setMinimumHeight(60)
         self.green_log_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
@@ -273,14 +274,14 @@ class MainWindow(QMainWindow):
         log_outer.setContentsMargins(0, 0, 0, 0)
         log_outer.setSpacing(0)
         log_header = QWidget()
-        log_header.setStyleSheet("background-color: #d0f0c0;")
+        log_header.setStyleSheet(f"background-color: {theme.LOG_BG};")
         log_header_layout = QHBoxLayout(log_header)
         log_header_layout.setContentsMargins(8, 3, 8, 3)
         self._log_fold = FoldChipButton(collapse_char="▾", expand_char="▸")
         self._log_fold.clicked.connect(self._toggle_log_collapsed)
         log_header_layout.addWidget(self._log_fold)
         log_label = QLabel("Log")
-        log_label.setStyleSheet("font-weight: bold; color: #2b3b22;")
+        log_label.setStyleSheet(f"font-weight: bold; color: {theme.LOG_INK};")
         log_header_layout.addWidget(log_label)
         log_header_layout.addStretch(1)
         log_outer.addWidget(log_header)

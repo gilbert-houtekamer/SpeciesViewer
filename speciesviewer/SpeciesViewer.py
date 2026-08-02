@@ -15,6 +15,7 @@ from PyQt6.QtGui import QPixmap, QFont
 from PyQt6.QtCore import Qt, QTimer
 
 from utils.config import _config
+from gui.theme import build_base_qss
 
 
 def _warm_master_db_in_background() -> None:
@@ -139,14 +140,7 @@ def start_main():
 def main():
     app = QApplication(sys.argv)
     QToolTip.setFont(QFont("SansSerif", 12))
-    app.setStyleSheet("""
-        QToolTip {
-            background-color: white;
-            color: #333;
-            border: 1px solid #ccc;
-            padding: 4px;
-        }
-    """)    
+    app.setStyleSheet(build_base_qss())  # ch.15 global QSS theme, Phase 1 — see gui/theme.py
     ex = start_main()
     # print("QApplication exists in TripCreationDialog?", QApplication.instance()) 
     sys.exit(app.exec())    

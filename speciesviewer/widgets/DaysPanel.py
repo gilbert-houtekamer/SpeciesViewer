@@ -12,9 +12,10 @@ from utils import days_registry
 from utils.gui_config import get_all_gui_usage, record_gui_usage
 from utils.sort_modes import sort_items, DEFAULT_MODE
 from utils.open_path import open_path
+from gui import theme
 
 _FOLDER_ROLE = Qt.ItemDataRole.UserRole + 1
-_FONT = "font-size: 10pt; font-family: Consolas, monospace;"
+_FONT = theme.FONT_MONO
 
 
 def _same(a, b):
@@ -45,7 +46,7 @@ class DaysPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 0, 10, 10)
         layout.setSpacing(6)
-        self.setStyleSheet(f"{_FONT} background-color: #f9f9f9;")
+        self.setStyleSheet(f"{_FONT} background-color: {theme.PANEL_BG};")
 
         header = QLabel("Days:")
         header.setStyleSheet(_FONT)

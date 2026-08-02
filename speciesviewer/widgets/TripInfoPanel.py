@@ -10,6 +10,7 @@ from utils.config import _config, persist_config, get_trips_root
 from utils.gui_config import load_gui_cache, get_all_gui_usage, record_gui_usage
 from utils.sort_modes import sort_items, DEFAULT_MODE
 from utils.open_path import open_path
+from gui import theme
 
 import re as _re
 _PATH_ROLE      = Qt.ItemDataRole.UserRole + 1  # trip_dir for all items (highlight)
@@ -29,8 +30,8 @@ class TripInfoPanel(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(6)
 
-        font_style = "font-size: 10pt; font-family: Consolas, monospace;"
-        self.setStyleSheet(f"{font_style} background-color: #f9f9f9;")
+        font_style = theme.FONT_MONO
+        self.setStyleSheet(f"{font_style} background-color: {theme.PANEL_BG};")
 
         # Master Repository/URL now lives only in the right-hand info rail
         # (widgets/SidebarInfoRail.py, ch.15 layout pass) — this panel used to

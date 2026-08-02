@@ -13,16 +13,17 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QStackedWidget
 
 from utils.config import _config, get_virttrips_root
 from utils import days_registry
+from gui import theme
 
-_FONT = "font-size: 10pt; font-family: Consolas, monospace;"
-_SECTION_FONT = "font-size: 9pt; font-family: Consolas, monospace; color: #777; font-weight: bold;"
+_FONT = theme.FONT_MONO
+_SECTION_FONT = f"font-size: 9pt; font-family: Consolas, monospace; color: {theme.NEUTRAL_GRAY}; font-weight: bold;"
 
 
 class SidebarInfoRail(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
-        self.setStyleSheet(f"{_FONT} background-color: #f9f9f9;")
+        self.setStyleSheet(f"{_FONT} background-color: {theme.PANEL_BG};")
 
         self._stack = QStackedWidget()
         outer = QVBoxLayout(self)
