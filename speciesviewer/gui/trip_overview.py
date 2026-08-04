@@ -606,6 +606,25 @@ def populate_trip_overview(self):
     trip_map_btn.clicked.connect(self.open_trip_map)
     header_row.addWidget(trip_map_btn)
 
+    # Edit Blogs — the new multi-day tabbed editor (gui/trip_blog_editor.py,
+    # ported from Album's), for bulk review across the whole trip. Trip's
+    # existing single-day editor (CreateBlogDialog, reached via the "2 Write
+    # Blog" column) is untouched and stays the fine-grained per-day tool.
+    def _open_trip_blog_editor():
+        from gui.trip_blog_editor import TripBlogEditorDialog
+        dlg = TripBlogEditorDialog(self, image_days, trip_root, excluded_days=excluded)
+        # Non-modal so a day's Species viewer can sit open beside it while you
+        # write the blog for that day (matches Album's editor). The editor
+        # already refreshes the overview in its own closeEvent.
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+        self._trip_blog_editor_dlg = dlg     # keep a ref (PyQt GC)
+        dlg.show()
+    edit_blogs_btn = QPushButton("Edit Blogs")
+    edit_blogs_btn.setToolTip("Open the tabbed blog editor to edit titles, text and "
+                              "settings for every day.")
+    edit_blogs_btn.clicked.connect(_open_trip_blog_editor)
+    header_row.addWidget(edit_blogs_btn)
+
     # Write All Blogs — bulk-runs the "2 Write Blog" step across every eligible
     # day, same as double-clicking that column's header (handle_column_run_all
     # already gates jpgs==0 days the same way the cell double-click does — no

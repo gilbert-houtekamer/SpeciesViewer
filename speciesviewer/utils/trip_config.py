@@ -2,6 +2,7 @@
 
 import configparser
 import re
+from pathlib import Path
 
 CONFIG_FILE = "sv_config.ini"
 
@@ -93,6 +94,46 @@ def read_trip_ini(trip_root: str):
         "message_en": parser.get("trip_text", "message_en", fallback=""),
     }
     return result
+
+
+# A Trip day's blog.ini can carry default text from two different origins,
+# depending on how it was first created — sv4WriteBlog.py's own fallback (run
+# directly, no dialog yet opened) leaves the EN fields empty; CreateBlogDialog
+# ._create_default_ini (trip_process.py, the dialog's first open for a day)
+# seeds real EN placeholder text. Either can be sitting on disk untouched.
+_TRIP_DEFAULT_TITLES_NL = ("Standaard titel", "Dag 2: Nederlandse Titel")
+
+
+def trip_blog_review_state(ini_path) -> bool:
+    """True if a Trip day's blog.ini still holds default/unedited text — the
+    Trip-side equivalent of virttrip_config.blog_review_state(), which Trip
+    cannot reuse: Trip has no auto-generator markers (svv3WriteBlog is
+    Album-only) and never wrote a `reviewed` flag before this editor existed.
+
+    `[blog_config] reviewed` is authoritative when present (this editor writes
+    it going forward, exactly like Album's). Otherwise, fall back to comparing
+    titel_nl against Trip's known placeholder strings — see
+    _TRIP_DEFAULT_TITLES_NL above."""
+    path = Path(ini_path)
+    if not path.is_file():
+        return True
+
+    cfg = configparser.RawConfigParser()
+    try:
+        cfg.read(str(path), encoding="utf-8")
+    except UnicodeDecodeError:
+        cfg.read(str(path), encoding="latin-1")
+    except configparser.Error:
+        return True
+
+    if cfg.has_option("blog_config", "reviewed"):
+        try:
+            return not cfg.getboolean("blog_config", "reviewed")
+        except ValueError:
+            pass
+
+    titel_nl = cfg.get("blog_text", "titel_nl", fallback="").strip()
+    return titel_nl in _TRIP_DEFAULT_TITLES_NL
 
 
 def set_trip_flag(trip_root: str, key: str, value: str) -> bool:
