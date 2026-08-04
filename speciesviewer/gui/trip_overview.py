@@ -101,23 +101,47 @@ def state_cell_symbol(sm, col, jpgs):
     return "⚪", sm.explainAbort(gate, raiseSV=False)
 
 
+def _dot_icon(color_hex: str, size: int = 10):
+    """A small solid-colour circle icon. Used (not just a text/foreground
+    colour) for the Write Blog draft/reviewed tint because Qt's item-view
+    :selected style-sheet rule (trip_table's "strong selection colour")
+    unconditionally overrides an item's text colour once it's the selected
+    cell — an icon paints independently of that and stays visible either way."""
+    from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QBrush
+    from PyQt6.QtCore import Qt as _Qt
+    pm = QPixmap(size, size)
+    pm.fill(_Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setBrush(QBrush(QColor(color_hex)))
+    p.setPen(_Qt.PenStyle.NoPen)
+    p.drawEllipse(0, 0, size, size)
+    p.end()
+    return QIcon(pm)
+
+
+_DRAFT_TINT    = "#c9770a"
+_REVIEWED_TINT = "#2f7d43"
+
+
 def _tint_write_blog_cell(item, tooltip, day_path):
     """Once the '2 Write Blog' step shows ✅, tint it orange while the blog
     text is still an untouched default and green once it's been reviewed or
     edited — the same distinction Edit Blogs' tab dots already show (🟠/🟢),
     now visible at a glance in the main grid without opening the editor.
-    No-op (default text colour) when there's no blog.ini yet to judge."""
+    No-op (default text colour/icon) when there's no blog.ini yet to judge."""
     from utils.trip_config import trip_blog_review_state
     from PyQt6.QtGui import QColor
     ini_path = day_path / "blog.ini"
     if not ini_path.is_file():
         return
     if trip_blog_review_state(ini_path):
-        item.setForeground(QColor("#c9770a"))
-        item.setToolTip(tooltip + "\nStill an auto-written draft — open Edit Blogs to review it.")
+        color, tip = _DRAFT_TINT, "\nStill an auto-written draft — open Edit Blogs to review it."
     else:
-        item.setForeground(QColor("#2f7d43"))
-        item.setToolTip(tooltip + "\nBlog text reviewed.")
+        color, tip = _REVIEWED_TINT, "\nBlog text reviewed."
+    item.setForeground(QColor(color))
+    item.setIcon(_dot_icon(color))
+    item.setToolTip(tooltip + tip)
 
 
 def state_cell_item(sm, col, jpgs, day_path=None):
