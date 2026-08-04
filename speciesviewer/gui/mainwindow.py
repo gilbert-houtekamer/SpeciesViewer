@@ -605,19 +605,26 @@ class MainWindow(QMainWindow):
         new_menu_bar = create_menubar(self, self.menu_spec)
         self.setMenuBar(new_menu_bar)
 
-    def update_trip_cell(self, day_name, step_key, symbol, tooltip):
-        from gui.trip_overview import SYNC_COL, STATE_COL_START, cell_is_inert
+    def update_trip_cell(self, day_name, step_key, symbol, tooltip, day_path=None):
+        from gui.trip_overview import (SYNC_COL, STATE_COL_START, STATE_COLUMNS,
+                                       cell_is_inert, _tint_write_blog_cell)
         for row in range(self.trip_table.rowCount()):
             if self.trip_table.item(row, 0).text() == day_name:
                 if step_key == "Sync\nSidecars":
                     col_index = SYNC_COL
+                    col_spec = None
                 else:
-                    col_index = self.state_labels.index(step_key) + STATE_COL_START
+                    step_idx = self.state_labels.index(step_key)
+                    col_index = step_idx + STATE_COL_START
+                    col_spec = STATE_COLUMNS[step_idx]
                 item = QTableWidgetItem(symbol)
                 item.setToolTip(tooltip)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 if cell_is_inert(symbol, tooltip):
                     item.setFlags(Qt.ItemFlag.NoItemFlags)
+                if (symbol == "✅" and col_spec is not None
+                        and col_spec["gate"] == "WriteBlog" and day_path is not None):
+                    _tint_write_blog_cell(item, tooltip, day_path)
                 self.trip_table.setItem(row, col_index, item)
                 break
 
@@ -653,6 +660,7 @@ class MainWindow(QMainWindow):
             self.trip_table.setItem(row, 2, jpgs_item)
         else:
             jpgs = 0
+            day_path = None
 
         # Note: Sync Sidecars column is intentionally NOT refreshed here
         # (it is not tracked in the statemachine). state_cell_symbol applies the
@@ -660,7 +668,7 @@ class MainWindow(QMainWindow):
         # "Read & Summarize" column that tracks both ReadDirExif + WritePictures.
         for col in STATE_COLUMNS:
             symbol, tooltip = state_cell_symbol(sm, col, jpgs)
-            self.update_trip_cell(day_name, col["label"], symbol, tooltip)
+            self.update_trip_cell(day_name, col["label"], symbol, tooltip, day_path=day_path)
 
         # Update Translations column too — Write Summary rewrites
         # data_pictures.csv, so the unverified-text count may have changed.
