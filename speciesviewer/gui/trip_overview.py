@@ -186,13 +186,14 @@ def _translation_counts(review_day_path, verified_crcs):
     return len(texts), unverified
 
 
-def _format_translations_item(review_day_path, verified_crcs):
-    """Trip-overview cell: a sphere showing the day's translation-validation
-    state — 🟢 all verified, 🔵 at least one pending, blank when there are no
-    translatable texts or Read Directory hasn't run. Count is in the tooltip."""
-    counts = _translation_counts(review_day_path, verified_crcs)
+def _format_translations_cell(counts, none_tooltip="No translation data yet."):
+    """Shared Trip/Album renderer: a sphere showing translation-validation
+    state from a precomputed (total, unverified) tuple — 🟢 all verified, 🔵
+    at least one pending, blank when there are no translatable texts. counts
+    is None when there is no data to judge yet (caller supplies the tooltip
+    for that case, since "why" differs between Trip and Album)."""
     if counts is None:
-        text, tip = "", "Write Summary not yet run for this day."
+        text, tip = "", none_tooltip
     else:
         total, unverified = counts
         if total == 0:
@@ -206,6 +207,14 @@ def _format_translations_item(review_day_path, verified_crcs):
     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
     item.setToolTip(tip)
     return item
+
+
+def _format_translations_item(review_day_path, verified_crcs):
+    """Trip-overview cell — counts read from data_pictures.csv (Trip-specific
+    disk source); see _format_translations_cell for the shared rendering."""
+    counts = _translation_counts(review_day_path, verified_crcs)
+    return _format_translations_cell(
+        counts, none_tooltip="Write Summary not yet run for this day.")
 
 
 def _count_pictures(day_path):

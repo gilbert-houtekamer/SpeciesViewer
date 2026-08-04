@@ -4,6 +4,8 @@ import re
 from datetime import date
 from pathlib import Path
 
+from fastcrc import crc32
+
 logger = logging.getLogger("speciesviewer")
 
 from PyQt6.QtCore import Qt
@@ -15,6 +17,7 @@ from PyQt6.QtWidgets import (
 )
 
 from gui import theme
+from gui.trip_overview import PHOTO_EXTENSIONS, _verified_crc_set, _format_translations_cell
 from utils.config import _config
 from utils.virttrip_config import (read_virttrip_ini, blog_review_state,
                                    read_excluded_days, write_excluded_days,
@@ -29,8 +32,21 @@ GPS_COL    = 3
 INBLOG_COL = 4
 BLOG_COL   = 5
 WEB_COL    = 6
+TRANS_COL  = 7
 
 TAB_TITLE = "Active Album"
+
+
+def _pic_has_supported_photo(pic_row: dict) -> bool:
+    """True if a master picture row's Files list has at least one supported
+    photo file — excludes PNG-only screenshots. Master rows return Files as an
+    already-json.loads'd list (db.master_db._picture_row_to_dict), unlike
+    Trip's CSV-string cell — do NOT reuse trip_overview._has_supported_file,
+    which expects that CSV-string shape and breaks on a list."""
+    for fn in (pic_row.get("Files") or []):
+        if fn and "." in fn and fn.rsplit(".", 1)[-1].lower() in PHOTO_EXTENSIONS:
+            return True
+    return False
 
 
 def _open_master_db():
@@ -294,15 +310,16 @@ def _count_pictures_from_csv(csv_path: Path, db=None):
         return 0, 0, 0
 
 
-def _day_counts_from_query(db, fromdate: str, todate: str) -> dict:
-    """Per-day (pictures, jpeg_files, no_gps) straight from the master, by date range —
-    the replacement for the per-day CSV snapshot. An album is a live query over the
-    master (pictures whose camera DateTimeOriginal falls in fromdate..todate), not a
-    copied-out set of day CSVs, so there is exactly one copy of the truth and a picture
-    removed from the master since the album was created simply stops appearing.
+def _day_counts_from_query(db, fromdate: str, todate: str, verified_crcs) -> dict:
+    """Per-day (pictures, jpeg_files, no_gps, texts_total, texts_unverified) straight
+    from the master, by date range — the replacement for the per-day CSV snapshot. An
+    album is a live query over the master (pictures whose camera DateTimeOriginal
+    falls in fromdate..todate), not a copied-out set of day CSVs, so there is exactly
+    one copy of the truth and a picture removed from the master since the album was
+    created simply stops appearing.
 
     Two indexed queries total (the pictures, then their files), not one CSV read per
-    day. Returns {"YYYY-MM-DD": (pictures, jpeg_files, no_gps)}:
+    day. Returns {"YYYY-MM-DD": (pictures, jpeg_files, no_gps, texts_total, texts_unverified)}:
       - pictures  = distinct UPNs in range (the pictures table is per-UPN);
       - jpeg_files = jpg/jpeg file rows for those UPNs;
       - no_gps    = pictures with NO coordinate anywhere. A picture has GPS if its
@@ -311,7 +328,12 @@ def _day_counts_from_query(db, fromdate: str, todate: str) -> dict:
         EXIF:GPSLatitude). The picture row alone is not enough: the master doesn't
         always copy the camera's fix up to the picture level (Gran Canaria has 233
         pictures whose files hold camera GPS but whose picture row is empty), so
-        checking only the picture row over-counts 'without GPS'."""
+        checking only the picture row over-counts 'without GPS'.
+      - texts_total/texts_unverified = distinct Headline/Description texts on the day
+        (PNG-only UPNs excluded, mirrors trip_overview._translation_counts) and how
+        many of them aren't in verified_crcs (the MASTER's TransCache — an album's
+        pictures ARE master pictures, so that's the one true verified-translation
+        cache, not any single contributing trip's)."""
     by_day = db.pictures_in_daterange(fromdate, todate)
     all_upns = [p["UniquePictureName"] for pics in by_day.values() for p in pics]
     files = db.files_for_upns(all_upns)
@@ -332,7 +354,21 @@ def _day_counts_from_query(db, fromdate: str, todate: str) -> dict:
         no_gps = sum(1 for p in pics
                      if not (p.get("GPSPosition") or "").strip()
                      and p["UniquePictureName"] not in file_gps_upns)
-        counts[day] = (len(pics), jpegs, no_gps)
+        texts = set()
+        for p in pics:
+            if not _pic_has_supported_photo(p):
+                continue
+            h = p.get("Headline") or ""
+            if h:
+                texts.add(h)
+            d = p.get("Description") or ""
+            if d:
+                if d[0:1] == "#":
+                    d = d[1:]
+                texts.add(d)
+        unverified = sum(1 for t in texts
+                         if crc32.aixm(t.encode("utf-8")) not in verified_crcs)
+        counts[day] = (len(pics), jpegs, no_gps, len(texts), unverified)
     return counts
 
 
@@ -402,7 +438,14 @@ def populate_virttrip_overview(self):
     query_counts = None
     if master_db is not None and fromdate and todate:
         try:
-            query_counts = _day_counts_from_query(master_db, fromdate, todate)
+            # Verified-CRC source is the MASTER's own TransCache (album pictures ARE
+            # master pictures — mainwindow.py's translator and virttrip_blog_editor.py
+            # both already treat the master as the one true cache), not any single
+            # contributing trip's.
+            master_root = (_config.get("master", "masterbiotadatabase", fallback="")
+                           or "").replace('"', "").replace("'", "").strip()
+            verified_crcs = _verified_crc_set(Path(master_root)) if master_root else set()
+            query_counts = _day_counts_from_query(master_db, fromdate, todate, verified_crcs)
         except Exception as e:
             logger.warning(f"overview: master date-range query failed, using CSV: {e}")
 
@@ -421,16 +464,21 @@ def populate_virttrip_overview(self):
             key=lambda p: p.name,
         )
         def _day_counts(day_dir):
-            return _count_pictures_from_csv(day_dir / "data_files.csv", db=master_db)
+            # No master configured — the legacy CSV fallback doesn't compute
+            # translation counts (that needs the master's TransCache); the
+            # Translations column just shows blank for these days.
+            total, jpegs, no_gps = _count_pictures_from_csv(day_dir / "data_files.csv", db=master_db)
+            return total, jpegs, no_gps, 0, 0
 
     if not day_dirs:
         return
 
     self.virttrip_table = QTableWidget()
-    self.virttrip_table.setColumnCount(7)
+    self.virttrip_table.setColumnCount(8)
     self.virttrip_table.setRowCount(len(day_dirs))
     self.virttrip_table.setHorizontalHeaderLabels(
-        ["Date", "Pictures", "JPEG\nFiles", "GPS", "In\nBlog", "Write\nBlog", "Build\nWebsite"]
+        ["Date", "Pictures", "JPEG\nFiles", "GPS", "In\nBlog", "Write\nBlog", "Build\nWebsite",
+         "Trans-\nlations"]
     )
     self.virttrip_table.setSortingEnabled(False)
     self.virttrip_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -498,12 +546,14 @@ def populate_virttrip_overview(self):
     no_gps_by_day: dict = {}
     logger.info(f"Checking GPS status for {len(day_dirs)} day(s)...")
     for i, day_dir in enumerate(day_dirs):
-        total, jpegs, no_gps = _day_counts(day_dir)
+        total, jpegs, no_gps, texts_total, texts_unverified = _day_counts(day_dir)
         no_gps_by_day[day_dir.name] = no_gps
 
         self.virttrip_table.setItem(i, DATE_COL,  QTableWidgetItem(day_dir.name))
         self.virttrip_table.setItem(i, FILES_COL, QTableWidgetItem(str(total)))
         self.virttrip_table.setItem(i, JPGS_COL,  QTableWidgetItem(str(jpegs)))
+        self.virttrip_table.setItem(
+            i, TRANS_COL, _format_translations_cell((texts_total, texts_unverified)))
 
         # GPS_COL: how many of the day's pictures still have no coordinate. A day
         # where EVERY picture is missing GPS is the one that ends up titled
