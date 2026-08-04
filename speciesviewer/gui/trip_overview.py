@@ -597,6 +597,20 @@ def populate_trip_overview(self):
     trip_map_btn.clicked.connect(self.open_trip_map)
     header_row.addWidget(trip_map_btn)
 
+    # Write All Blogs — bulk-runs the "2 Write Blog" step across every eligible
+    # day, same as double-clicking that column's header (handle_column_run_all
+    # already gates jpgs==0 days the same way the cell double-click does — no
+    # new runner logic needed). Trip's per-day "2 Write Blog" column stays for
+    # fine-grained control; this is additive. Matches Album's "Write All Blogs".
+    write_blog_col = STATE_COL_START + next(
+        (j for j, c in enumerate(STATE_COLUMNS) if c["menu"] == "Write Blog"), 1)
+    write_all_blogs_btn = QPushButton("Write All Blogs")
+    write_all_blogs_btn.setToolTip(
+        "Write every eligible day's blog entry — the same bulk action as "
+        "double-clicking the '2 Write Blog' column header.")
+    write_all_blogs_btn.clicked.connect(lambda: self.handle_column_run_all(write_blog_col))
+    header_row.addWidget(write_all_blogs_btn)
+
     # Publish Trip — bulk-runs the "3 Publish Day" step (Freeze + Commit) across
     # every eligible day, same as double-clicking that column's header, matching
     # Album's "Publish Album" bulk button (virttrip_overview.py).
