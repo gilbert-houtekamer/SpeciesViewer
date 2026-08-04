@@ -621,35 +621,12 @@ class MainWindow(QMainWindow):
                 self.trip_table.setItem(row, col_index, item)
                 break
 
-    def get_progress_summary_item(self, sm, ini_path):
-        item = QTableWidgetItem()
-        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        if not ini_path.exists():
-            item.setText("🔘")
-            item.setToolTip("No steps processed yet.")
-            # item.setBackground(QtGui.QBrush(QtGui.QColor("whitesmoke")))
-        elif sm.Taskstate.get("WriteCommit", [False])[0]:
-            if sm.Taskstate.get("WriteBlog", [False])[0]:
-                item.setText("✅")
-                item.setToolTip("All steps successfully run.")
-                # item.setBackground(QtGui.QBrush(QtGui.QColor("lightgreen")))
-            else:
-                item.setText("🟢")
-                item.setToolTip("Website frozen, consider to add blog entry.")
-                # item.setBackground(QtGui.QBrush(QtGui.QColor("lightblue")))
-        else:
-            item.setText("⚙️")
-            item.setToolTip("Work in progress for this day.")
-            # item.setBackground(QtGui.QBrush(QtGui.QColor("lightyellow")))
-
-        return item
-    
     def refresh_trip_row(self, sm, day_name):
         from gui.trip_overview import (GPS_COL, STATE_COL_START, STATE_COLUMNS,
                                        state_cell_symbol, _verified_crc_set,
                                        _format_translations_item,
-                                       _format_total_files_item, _format_gps_item)
+                                       _format_total_files_item, _format_gps_item,
+                                       count_files)
 
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
         review_root = trip_root / "metadata" / "review"
@@ -657,12 +634,12 @@ class MainWindow(QMainWindow):
 
         row = next((r for r in range(self.trip_table.rowCount())
                     if self.trip_table.item(r, 0).text() == day_name), None)
-        jpgs = int(self.trip_table.item(row, 2).text()) if row is not None else 0
 
-        # Pictures + GPS cells: their health badges come from the day's
-        # freshly written data_files.csv / data_pictures.csv, so recompute
-        # both here too — otherwise a Read & Summarize flips the checkmarks
-        # green but leaves the badges stale until the next full repopulate.
+        # Pictures, GPS and JPEG Files cells: recompute all three from disk —
+        # otherwise a Read & Summarize re-run (e.g. after exporting JPGs from
+        # PhotoLab) flips the checkmarks green but the JPEG Files cell — and
+        # the jpgs==0 gate that blocks Write Blog — stays stuck at whatever it
+        # read the first time, since it was never re-painted here before.
         if row is not None:
             image_root = Path(_config.get("project", "picturedirectory")).parent
             day_path = image_root / day_name
@@ -670,6 +647,12 @@ class MainWindow(QMainWindow):
                 row, 1, _format_total_files_item(day_path, review_root))
             self.trip_table.setItem(
                 row, GPS_COL, _format_gps_item(day_path, review_root))
+            _total, jpgs = count_files(day_path)
+            jpgs_item = QTableWidgetItem(str(jpgs))
+            jpgs_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self.trip_table.setItem(row, 2, jpgs_item)
+        else:
+            jpgs = 0
 
         # Note: Sync Sidecars column is intentionally NOT refreshed here
         # (it is not tracked in the statemachine). state_cell_symbol applies the
@@ -679,22 +662,14 @@ class MainWindow(QMainWindow):
             symbol, tooltip = state_cell_symbol(sm, col, jpgs)
             self.update_trip_cell(day_name, col["label"], symbol, tooltip)
 
-        # Update progress column
-        ini_path = review_day / "statemachine.ini"
-        summary_item = self.get_progress_summary_item(sm, ini_path)
-        for row in range(self.trip_table.rowCount()):
-            if self.trip_table.item(row, 0).text() == day_name:
-                self.trip_table.setItem(row, STATE_COL_START + len(self.state_labels), summary_item)
-
         # Update Translations column too — Write Summary rewrites
         # data_pictures.csv, so the unverified-text count may have changed.
         verified_crcs = _verified_crc_set(trip_root)
-        translations_col = STATE_COL_START + len(self.state_labels) + 1
+        translations_col = STATE_COL_START + len(self.state_labels)
         for row in range(self.trip_table.rowCount()):
             if self.trip_table.item(row, 0).text() == day_name:
                 self.trip_table.setItem(row, translations_col,
                                         _format_translations_item(review_day, verified_crcs))
-                break
                 break
 
 
@@ -746,17 +721,17 @@ class MainWindow(QMainWindow):
 
     def handle_trip_table_double_click(self, row, column):
         from gui.trip_overview import GPS_COL, SYNC_COL, STATE_COL_START, STATE_COLUMNS
-        # Translations column (last): open the per-day validation panel.
-        translations_col = STATE_COL_START + len(self.state_labels) + 1
+        # Translations column: open the per-day validation panel. No separate
+        # Progress column exists (see trip_overview.state_cell_symbol) — this is
+        # the first trailing non-action column after the 3 state columns.
+        translations_col = STATE_COL_START + len(self.state_labels)
         if column == translations_col:
             day_item = self.trip_table.item(row, 0)
             if day_item:
                 self.open_translation_validator(day_item.text())
             return
-        # Ignore the remaining trailing non-action column (Progress) and the
-        # Day column / headers.
-        progress_col = STATE_COL_START + len(self.state_labels)
-        if column >= progress_col or column < 1:
+        # Ignore the trailing In-Blog column and the Day column / headers.
+        if column > translations_col or column < 1:
             return
 
         day_item = self.trip_table.item(row, 0)

@@ -398,8 +398,14 @@ class TripCreationDialog(QDialog):
         # Also save trip/project pair (the per-machine day cache)
         update_cache_gui_section("trip_project_map", self.trip_web.field.text(), pd)
         # now do the actual work
+        def _on_created():
+            populate_trip_overview(self.passed_parent)
+            # A brand-new trip folder doesn't exist yet in the sidebar tree
+            # (TripInfoPanel scans disk once at startup) — rescan it now so the
+            # trip just created is actually selectable.
+            self.passed_parent.trip_panel.rebuild()
         runner = BatchModuleRunner(self, self.passed_parent)
-        runner.run(self.menu_spec, on_success=lambda: populate_trip_overview(self.passed_parent))
+        runner.run(self.menu_spec, on_success=_on_created)
 
     def on_select(self):
         # save settings

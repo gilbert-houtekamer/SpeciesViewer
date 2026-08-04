@@ -90,7 +90,7 @@ def state_cell_symbol(sm, col, jpgs):
         if nothing:
             return "🚫", nothing[len(NOTHING_TO_DO_PREFIX):].capitalize()
         if write_commit_done:
-            return "⬜", "Step completed. Workflow is frozen after WriteCommit."
+            return "🔒", "Step completed. Workflow is frozen after WriteCommit."
         return "✅", "Successfully run."
     if failed:
         return "❌", failed[1]
@@ -388,6 +388,18 @@ def _day_health(review_day_path):
             pass
     return warnings, no_gps, obscured
 
+
+def count_files(path):
+    """(total file count, JPG count) for a day folder — a raw filesystem glob,
+    not CSV-derived, so it reflects files added since the last Read Directory
+    (e.g. a JPG just exported from DxO PhotoLab). Shared by populate and
+    refresh_trip_row so a Read & Summarize re-run actually updates the JPEG
+    Files cell instead of leaving it at whatever it read the first time."""
+    all_files = list(path.glob("*"))
+    jpg_files = [f for f in all_files if f.suffix.lower() == ".jpg"]
+    return len(all_files), len(jpg_files)
+
+
 def populate_trip_overview(self):
     self.update_trip_label()
     # Keep the left Trips panel's active-trip ▶ marker in sync after any trip
@@ -425,11 +437,6 @@ def populate_trip_overview(self):
                          if d.is_dir() and not d.name.startswith(".")], key=lambda p: p.name)
     self._trip_overview_day_snapshot = tuple(d.name for d in image_days)
 
-    def count_files(path):
-        all_files = list(path.glob("*"))
-        jpg_files = [f for f in all_files if f.suffix.lower() == ".jpg"]
-        return len(all_files), len(jpg_files)
-
     # Pipeline state columns come from the shared STATE_COLUMNS registry.
     # "Read & Summarize" is one column tracking both sv2 (Read Directory) and
     # sv3 (Write Summary) — see STATE_COLUMNS at the top of this module.
@@ -448,26 +455,28 @@ def populate_trip_overview(self):
 
     # Translations status is read once per trip from the per-trip cache.
     verified_crcs = _verified_crc_set(trip_root)
-    translations_col = STATE_COL_START + len(self.state_labels) + 1
+    translations_col = STATE_COL_START + len(self.state_labels)
     # In-Blog checkbox column: append it AFTER Translations so the state-column
     # indices and the double-click handlers that map column -> step stay
     # untouched. Unticking a day (e.g. the 'iphone' folder) keeps it out of the
     # blog — sv4WriteBlog then drops it from the index, like an empty day.
-    inblog_col = STATE_COL_START + len(self.state_labels) + 2
+    inblog_col = STATE_COL_START + len(self.state_labels) + 1
     # The "Write Blog" state cell to grey out immediately when a day is excluded.
     blog_state_col = STATE_COL_START + next(
         (j for j, c in enumerate(STATE_COLUMNS) if c["gate"] == "WriteBlog"), 1)
     excluded = read_excluded_days(trip_root)
 
     self.trip_table = QTableWidget()
-    # +1 for Progress, +1 for Translations, +1 for the trailing In-Blog column.
-    # Translations and In-Blog are LAST on purpose so the state-column indices
-    # (and the double-click handlers that map column -> step) are untouched.
-    self.trip_table.setColumnCount(STATE_COL_START + len(self.state_labels) + 3)
+    # +1 for Translations, +1 for the trailing In-Blog column. Translations and
+    # In-Blog are LAST on purpose so the state-column indices (and the
+    # double-click handlers that map column -> step) are untouched. There is no
+    # separate Progress column — a day's "done and locked" state is the 🔒 glyph
+    # on the 3 step columns themselves (state_cell_symbol), not a 4th column.
+    self.trip_table.setColumnCount(STATE_COL_START + len(self.state_labels) + 2)
     self.trip_table.setRowCount(len(image_days))
     header_labels = (
         ["Day", "Pictures", "JPEG\nFiles", "GPS", "Sync\nSidecars"] + self.state_labels
-        + ["Progress", "Trans-\nlations", "In\nBlog"]
+        + ["Trans-\nlations", "In\nBlog"]
     )
     assert self.trip_table.columnCount() == len(header_labels), (
         f"trip_table column count {self.trip_table.columnCount()} != "
@@ -541,14 +550,13 @@ def populate_trip_overview(self):
         sm = StateMachine(str(trip_root), str(review_day), readState=True)
 
         # Loop through each state column (Read & Summarize is one column
-        # tracking sv2+sv3 — see STATE_COLUMNS / state_cell_item).
+        # tracking sv2+sv3 — see STATE_COLUMNS / state_cell_item). A day locked
+        # after WriteCommit shows 🔒 on these cells directly (state_cell_symbol)
+        # — that IS the "done and published" signal; there is no separate
+        # Progress column.
         for j, col in enumerate(STATE_COLUMNS):
             self.trip_table.setItem(i, STATE_COL_START + j,
                                     state_cell_item(sm, col, jpgs))
-
-        # Determine progress summary
-        summary_item = self.get_progress_summary_item(sm,  review_root / day.name)
-        self.trip_table.setItem(i, STATE_COL_START + len(self.state_labels), summary_item)
 
         # Translations column: texts on this day still needing validation
         self.trip_table.setItem(i, translations_col,
