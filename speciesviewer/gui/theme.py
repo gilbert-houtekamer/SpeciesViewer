@@ -134,6 +134,33 @@ def build_base_qss() -> str:
             image: url({_CHECKMARK});
         }}
 
+        QRadioButton::indicator {{
+            width: 14px;
+            height: 14px;
+            border: 1px solid {LINE};
+            border-radius: 7px;
+            background-color: {SURFACE};
+        }}
+        QRadioButton::indicator:hover {{
+            border-color: {ACCENT};
+        }}
+        QRadioButton::indicator:checked {{
+            background-color: {ACCENT};
+            border-color: {ACCENT};
+        }}
+
+        QProgressBar {{
+            border: 1px solid {LINE};
+            border-radius: 4px;
+            background-color: {BG};
+            text-align: center;
+            color: {INK};
+        }}
+        QProgressBar::chunk {{
+            background-color: {ACCENT};
+            border-radius: 4px;
+        }}
+
         QMenuBar {{
             background-color: {SURFACE};
             border-bottom: 1px solid {LINE};
