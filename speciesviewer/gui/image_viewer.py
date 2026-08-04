@@ -93,7 +93,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
 
     def __init__(self, parent=None, image_dir="", trip_root_dir="", mode="jpg",
                  file_list=None, cache_root=None, source_label=None, collection=None,
-                 readonly=False, start_species=False, allow_geotag=False,
+                 readonly=False, start_species=False, start_no_gps=False, allow_geotag=False,
                  allow_crop=False, allow_edit=False, crop_hints=None, name_hints=None,
                  name_profile=""):
         super().__init__(parent)
@@ -250,6 +250,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.show_all = False
         self.species_only = False
         self._start_species = start_species
+        self._start_no_gps = start_no_gps
         self._find_query = ""
         self._findfile_query = ""
         self._color_filter = set()          # colour overlay (combines with the rest)
@@ -535,6 +536,14 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self.all_btn.setChecked(True)
             self.show_all = True
             initial_keys = self._base_keys()
+        elif self._start_no_gps and no_gps_keys:
+            # Trip Overview's GPS cell opens focused on the pictures still
+            # missing GPS — deterministic, not subject to the warnings-first
+            # cascade below (a day can have both warnings and missing GPS).
+            self._active_filter = "no_gps"
+            self.no_gps_btn.setChecked(True)
+            self.no_gps_only = True
+            initial_keys = no_gps_keys
         elif self.fpr and warnings_keys:
             self._active_filter = "warnings"
             self.warnings_btn.setChecked(True)
@@ -1740,12 +1749,20 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             if has_place:
                 write_location_batch(files, fields, overwrite=True)
                 self._collection.note_location_written(k, fields)
-            self._collection.note_gps_written(k)
+            self._collection.note_gps_written(k, clip["lat"], clip["lon"])
             card = self._cards_by_key.get(k)
             if card:
                 card.refresh()
             self._notify_large_view(k)
             n += 1
+        if n:
+            # The in-memory collection (and the card) already reflect the fix —
+            # note_gps_written() keeps that in a side set rather than the
+            # pipeline's file rows — but data_files.csv on disk does not, so the
+            # trip-overview GPS count stays stale until a Read & Summarize
+            # re-run rewrites it. Flag the day so closeEvent offers that re-run,
+            # same as a species/rating/crop/delete edit already does.
+            self._day_edited = True
         logger.info(f"Pasted GPS {clip['lat']:.6f}, {clip['lon']:.6f}"
                     f"{' + place' if has_place else ''} into {n} picture(s).")
 

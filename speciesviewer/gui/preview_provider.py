@@ -264,7 +264,14 @@ class PreviewItem(PictureItem):
 
     @property
     def exif(self) -> ExifSummary:
-        return exif_from_rows(self._row, self._c.rep_file_row(self._key))
+        summary = exif_from_rows(self._row, self._c.rep_file_row(self._key))
+        # A GPS pasted this session isn't in self._row (see note_gps_written) —
+        # show it anyway instead of leaving the field blank until a re-read.
+        override = getattr(self._c, "_gps_override", {}).get(self._key)
+        if override:
+            lat, lon = override
+            summary.gps = f"{lat:.6f}, {lon:.6f} (just placed)"
+        return summary
 
     # write ops
     def set_rating(self, value: int) -> None:
@@ -650,9 +657,11 @@ class PreviewCollection(PictureCollection):
         missing-GPS badge clears without a rescan. Kept in a side set rather than
         poked into the pipeline's in-memory file rows (which feed Write Summary).
 
-        (lat, lon) are accepted to match SidecarCollection's signature — this
-        collection has nothing extra to store, since gps_cached() reads the file rows
-        the map keeps in step.
+        (lat, lon), when given, also go into a small override dict so the info
+        panel's EXIF/GPS text (PreviewItem.exif, sourced from those same
+        in-memory rows) shows the new coordinate immediately too — otherwise it
+        stays blank for the rest of the session even though has_gps() already
+        knows better. Mirrors SidecarCollection's _gps_by_stem.
 
         Anything WE wrote is by definition human-placed, so it also becomes movable
         immediately — without this a picture you just placed would be frozen until
@@ -660,6 +669,10 @@ class PreviewCollection(PictureCollection):
         if not hasattr(self, "_pasted_gps"):
             self._pasted_gps = set()
         self._pasted_gps.add(upn_key)
+        if lat is not None and lon is not None:
+            if not hasattr(self, "_gps_override"):
+                self._gps_override = {}
+            self._gps_override[upn_key] = (float(lat), float(lon))
 
     def gps_is_derived(self, upn_key: str) -> bool:
         """True when this picture's coordinate was placed by a HUMAN — dragged onto

@@ -646,10 +646,10 @@ class MainWindow(QMainWindow):
         return item
     
     def refresh_trip_row(self, sm, day_name):
-        from gui.trip_overview import (STATE_COL_START, STATE_COLUMNS,
+        from gui.trip_overview import (GPS_COL, STATE_COL_START, STATE_COLUMNS,
                                        state_cell_symbol, _verified_crc_set,
                                        _format_translations_item,
-                                       _format_total_files_item)
+                                       _format_total_files_item, _format_gps_item)
 
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
         review_root = trip_root / "metadata" / "review"
@@ -659,14 +659,17 @@ class MainWindow(QMainWindow):
                     if self.trip_table.item(r, 0).text() == day_name), None)
         jpgs = int(self.trip_table.item(row, 2).text()) if row is not None else 0
 
-        # Pictures cell (col 1): its species/GPS health badges come from the
-        # day's freshly written data_files.csv / data_pictures.csv, so recompute
-        # it here too — otherwise a Read & Summarize flips the checkmarks green
-        # but leaves the badges stale until the next full repopulate.
+        # Pictures + GPS cells: their health badges come from the day's
+        # freshly written data_files.csv / data_pictures.csv, so recompute
+        # both here too — otherwise a Read & Summarize flips the checkmarks
+        # green but leaves the badges stale until the next full repopulate.
         if row is not None:
             image_root = Path(_config.get("project", "picturedirectory")).parent
+            day_path = image_root / day_name
             self.trip_table.setItem(
-                row, 1, _format_total_files_item(image_root / day_name, review_root))
+                row, 1, _format_total_files_item(day_path, review_root))
+            self.trip_table.setItem(
+                row, GPS_COL, _format_gps_item(day_path, review_root))
 
         # Note: Sync Sidecars column is intentionally NOT refreshed here
         # (it is not tracked in the statemachine). state_cell_symbol applies the
@@ -742,7 +745,7 @@ class MainWindow(QMainWindow):
         return True
 
     def handle_trip_table_double_click(self, row, column):
-        from gui.trip_overview import SYNC_COL, STATE_COL_START, STATE_COLUMNS
+        from gui.trip_overview import GPS_COL, SYNC_COL, STATE_COL_START, STATE_COLUMNS
         # Translations column (last): open the per-day validation panel.
         translations_col = STATE_COL_START + len(self.state_labels) + 1
         if column == translations_col:
@@ -808,6 +811,16 @@ class MainWindow(QMainWindow):
         elif column == 2:
             self.dlgImagePreviewDialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root), mode="jpg")
             self.dlgImagePreviewDialog.show()
+
+        # GPS column — the same viewer the Pictures column opens (Trip has no
+        # per-day map today, unlike Album's open_virttrip_map), but forced
+        # straight to the no-GPS filter — start_no_gps takes priority over the
+        # generic warnings-first cascade, so this is deterministic even on a
+        # day that also has species warnings.
+        elif column == GPS_COL:
+            self.image_viewer_dialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root), mode="all", start_no_gps=True)
+            self.image_viewer_dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+            self.image_viewer_dialog.show()
 
         # Batch action
         else:

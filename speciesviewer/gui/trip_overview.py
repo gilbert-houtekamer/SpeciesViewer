@@ -13,8 +13,9 @@ from gui import theme
 from utils.config import _config
 from utils.virttrip_config import read_excluded_days, write_excluded_days
 
-SYNC_COL = 3
-STATE_COL_START = 4
+GPS_COL = 3
+SYNC_COL = 4
+STATE_COL_START = 5
 
 # ── Trip-overview pipeline state columns ─────────────────────────────────────
 # Single source of truth shared by trip_overview (rendering) and mainwindow
@@ -227,10 +228,11 @@ def _count_pictures(day_path):
 
 
 def _format_total_files_item(day_path, review_root):
-    """Build the Pictures cell with health markers and tooltip. Re-used by
-    refresh_day_health so the trip-overview row updates after the image
-    preview dialog fixes species/GPS issues. Shows the picture (UPN) count,
-    not the raw file count."""
+    """Build the Pictures cell with the species-health marker and tooltip.
+    Re-used by refresh_day_health so the trip-overview row updates after the
+    image preview dialog fixes a species issue. Shows the picture (UPN)
+    count, not the raw file count. GPS has its own column/cell — see
+    _format_gps_item — this cell no longer carries a GPS glyph."""
     total = _count_pictures(day_path)
     health = _day_health(review_root / day_path.name)
     if health is None:
@@ -250,20 +252,45 @@ def _format_total_files_item(day_path, review_root):
         else:
             species_mark = "✅"
             species_tip = "All species OK"
-        gps_mark = "📍" if no_gps == 0 else "❓"
-        text = f"{total}  {species_mark} {gps_mark}"
-        gps_tip = "All GPS OK" if no_gps == 0 else f"{no_gps} missing GPS"
-        tooltip = f"{species_tip} — {gps_tip}"
+        text = f"{total}  {species_mark}"
+        tooltip = species_tip
     item = QTableWidgetItem(text)
     item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
     item.setToolTip(tooltip)
     return item
 
 
+def _format_gps_item(day_path, review_root):
+    """Build the GPS cell — styled to match the Album overview's GPS column
+    (✅ vs an amber '📍 N missing' count) instead of Trip's old binary
+    📍/❓ glyph, for real visual parity, not just relocation."""
+    from PyQt6.QtGui import QColor
+    health = _day_health(review_root / day_path.name)
+    if health is None:
+        item = QTableWidgetItem("")
+        item.setToolTip("Read Directory not yet run for this day.")
+    else:
+        total = _count_pictures(day_path)
+        _warnings, no_gps, _obscured = health
+        if no_gps == 0:
+            item = QTableWidgetItem("✅")
+            item.setToolTip("Every picture of this day has GPS.")
+        else:
+            item = QTableWidgetItem(f"📍 {no_gps}")
+            item.setForeground(QColor("#b26500"))
+            all_missing = (no_gps == total)
+            if all_missing:
+                item.setToolTip(f"ALL {no_gps} pictures of this day are missing GPS.")
+            else:
+                item.setToolTip(f"{no_gps} of {total} pictures have no GPS.")
+    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+    return item
+
+
 def refresh_day_health(main_window, day_name):
-    """Re-read data_pictures.csv for `day_name` and update its Total Files
-    cell. Called from ImagePreviewDialog.closeEvent so the table reflects
-    GPS / species fixes the user just made.
+    """Re-read data_pictures.csv for `day_name` and update its Pictures and
+    GPS cells. Called from ImagePreviewDialog.closeEvent so the table
+    reflects GPS / species fixes the user just made.
 
     Logs what it does so we can tell from the green box whether the refresh
     actually hit the row — surgical updates have failed silently before."""
@@ -291,9 +318,11 @@ def refresh_day_health(main_window, day_name):
         if cell and cell.text() == day_name:
             new_item = _format_total_files_item(day_path, review_root)
             table.setItem(row, 1, new_item)
+            gps_item = _format_gps_item(day_path, review_root)
+            table.setItem(row, GPS_COL, gps_item)
             logger.debug(
                 f"refresh_day_health: row {row} for {day_name} → "
-                f"{new_item.text()!r}"
+                f"{new_item.text()!r}, GPS → {gps_item.text()!r}"
             )
             return
     logger.debug(f"refresh_day_health: no matching row for {day_name}")
@@ -436,10 +465,14 @@ def populate_trip_overview(self):
     # (and the double-click handlers that map column -> step) are untouched.
     self.trip_table.setColumnCount(STATE_COL_START + len(self.state_labels) + 3)
     self.trip_table.setRowCount(len(image_days))
-    self.trip_table.setHorizontalHeaderLabels(
-        ["Day", "Pictures", "JPEG\nFiles", "Sync\nSidecars"] + self.state_labels
+    header_labels = (
+        ["Day", "Pictures", "JPEG\nFiles", "GPS", "Sync\nSidecars"] + self.state_labels
         + ["Progress", "Trans-\nlations", "In\nBlog"]
     )
+    assert self.trip_table.columnCount() == len(header_labels), (
+        f"trip_table column count {self.trip_table.columnCount()} != "
+        f"{len(header_labels)} header labels — column layout drifted.")
+    self.trip_table.setHorizontalHeaderLabels(header_labels)
     self.trip_table.setSortingEnabled(False)
     self.trip_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
     self.trip_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -459,10 +492,11 @@ def populate_trip_overview(self):
     header = self.trip_table.horizontalHeader()
     header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
     header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-    # Pictures and JPEG Files auto-size to their content (Pictures
-    # carries "N ✅ 📍" markers that don't fit a stretched column).
+    # Pictures, JPEG Files and GPS auto-size to their content (short glyph
+    # markers like "N ✅" or "📍 3" that don't fit a stretched column).
     header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
     header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+    header.setSectionResizeMode(GPS_COL, QHeaderView.ResizeMode.ResizeToContents)
     header.setSectionResizeMode(translations_col, QHeaderView.ResizeMode.ResizeToContents)
     header.setSectionResizeMode(inblog_col, QHeaderView.ResizeMode.ResizeToContents)
 
@@ -492,6 +526,8 @@ def populate_trip_overview(self):
         jpgs_item = QTableWidgetItem(str(jpgs))
         jpgs_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.trip_table.setItem(i, 2, jpgs_item)
+
+        self.trip_table.setItem(i, GPS_COL, _format_gps_item(day, review_root))
 
         # Sync Sidecars column — not persisted, starts as ⚪
         sync_item = QTableWidgetItem("⚪")
