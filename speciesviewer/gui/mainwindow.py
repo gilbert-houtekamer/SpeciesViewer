@@ -821,6 +821,21 @@ class MainWindow(QMainWindow):
             else:
                 self.logger.warning(f"No menu action found for: {action_label}")
 
+    def _find_trip_menu_spec(self, want, menu=None):
+        """Find a Trip-menu MenuSpec by its dict key, descending into submenus
+        (e.g. Advanced ▸ Reset Trip, Advanced ▸ Legacy ▸ Write Summary) — a
+        plain top-level .get() misses anything demoted into a submenu."""
+        if menu is None:
+            menu = self.menu_spec.get("Trips", {})
+        for k, v in menu.items():
+            if isinstance(v, dict):
+                hit = self._find_trip_menu_spec(want, v)
+                if hit:
+                    return hit
+            elif k == want and v is not None:
+                return v
+        return None
+
     def handle_row_rerun(self, row):
         """Double-click on the vertical row header: rerun all ✅ steps for that day."""
         import configparser
@@ -880,22 +895,9 @@ class MainWindow(QMainWindow):
         module_config = configparser.ConfigParser()
         module_config.read("svconfig.ini")
 
-        trip_menu = self.menu_spec.get("Trips", {})
-
-        def _find_spec(menu, want):
-            # Descend into submenus (e.g. Advanced ▸ Freeze Data / Write Website Commit).
-            for k, v in menu.items():
-                if isinstance(v, dict):
-                    hit = _find_spec(v, want)
-                    if hit:
-                        return hit
-                elif k == want and v is not None:
-                    return v
-            return None
-
         steps_to_run = []
         for sname, label, bmsg, amsg in completed:
-            spec = _find_spec(trip_menu, label)
+            spec = self._find_trip_menu_spec(label)
             if spec:
                 bp = spec.get_batch_parms()
                 if bp:
@@ -1307,16 +1309,7 @@ class MainWindow(QMainWindow):
         # submenus recursively rather than only the top level (a plain .get here
         # returned None once the step was demoted into Advanced — this re-run was
         # silently a no-op).
-        def _find_trip_spec(menu, want):
-            for k, v in menu.items():
-                if isinstance(v, dict):
-                    hit = _find_trip_spec(v, want)
-                    if hit:
-                        return hit
-                elif k == want and v is not None:
-                    return v
-            return None
-        spec_obj = _find_trip_spec(self.menu_spec.get("Trips", {}), "Write Summary")
+        spec_obj = self._find_trip_menu_spec("Write Summary")
         if not spec_obj or not spec_obj.get_batch_parms():
             return
         module_called = spec_obj.get_batch_parms()["module_called"]

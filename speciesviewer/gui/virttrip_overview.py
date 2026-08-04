@@ -552,7 +552,7 @@ def populate_virttrip_overview(self):
         elif web_built:
             web_icon, web_tooltip = "✅", "Species pages built and uploaded."
         else:
-            web_icon, web_tooltip = "⚪", "Click 'Build Website' to generate species pages."
+            web_icon, web_tooltip = "⚪", "Click 'Publish Album' to generate species pages."
         web_item = QTableWidgetItem(web_icon)
         web_item.setToolTip(web_tooltip)
         web_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -609,8 +609,8 @@ def populate_virttrip_overview(self):
     edit_blogs_btn.setToolTip("Open the tabbed blog editor to edit titles, text and settings for every day.")
     write_blog_btn = QPushButton("Write All Blogs")
     write_blog_btn.setToolTip("Auto-create blog ini files and upload all day blogs.")
-    build_web_btn  = QPushButton("Build Website")
-    build_web_btn.setToolTip("Generate species HTML pages for this album.")
+    build_web_btn  = QPushButton("Publish Album")
+    build_web_btn.setToolTip("Generate species HTML pages for this album and upload them.")
     header_row.addWidget(edit_blogs_btn)
     header_row.addWidget(write_blog_btn)
     header_row.addWidget(build_web_btn)

@@ -596,6 +596,38 @@ def populate_trip_overview(self):
                             "with the travel path")
     trip_map_btn.clicked.connect(self.open_trip_map)
     header_row.addWidget(trip_map_btn)
+
+    # Publish Trip — bulk-runs the "3 Publish Day" step (Freeze + Commit) across
+    # every eligible day, same as double-clicking that column's header, matching
+    # Album's "Publish Album" bulk button (virttrip_overview.py).
+    publish_col = STATE_COL_START + next(
+        (j for j, c in enumerate(STATE_COLUMNS) if c["menu"] == "Publish Day"), 2)
+    publish_trip_btn = QPushButton("Publish Trip")
+    publish_trip_btn.setToolTip(
+        "Publish every eligible day (Freeze + Commit) — the same bulk action as "
+        "double-clicking the '3 Publish Day' column header.")
+    publish_trip_btn.clicked.connect(lambda: self.handle_column_run_all(publish_col))
+    header_row.addWidget(publish_trip_btn)
+
+    # Reset Trip — already exists at Trips ▸ Advanced ▸ Reset Trip; promoted to a
+    # button here for visibility. Warn-outlined (not filled) so it doesn't blend
+    # in with the routine action buttons beside it — it clears the day
+    # directories and active data (pictures/master untouched, review-first).
+    def _open_reset_trip_dialog():
+        from gui.trip_process import EmptyTripDataDialog
+        spec = self._find_trip_menu_spec("Reset Trip")
+        if spec:
+            EmptyTripDataDialog(self, spec).exec()
+    reset_trip_btn = QPushButton("Reset Trip")
+    reset_trip_btn.setToolTip(
+        "Clear this trip's day directories and reset the active data to empty "
+        "templates so the pipeline can be re-run. Pictures and the master are "
+        "untouched.")
+    reset_trip_btn.setStyleSheet(
+        f"QPushButton {{ border: 1.5px solid {theme.WARN}; color: {theme.WARN}; }}")
+    reset_trip_btn.clicked.connect(_open_reset_trip_dialog)
+    header_row.addWidget(reset_trip_btn)
+
     layout.addLayout(header_row)
     layout.addWidget(self.trip_table)
     overview_widget.setLayout(layout)
