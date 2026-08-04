@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
 )
 from pathlib import Path
 from engine.statemachine import StateMachine, NOTHING_TO_DO_PREFIX, is_nothing_to_do
+from gui import theme
 from utils.config import _config
 from utils.virttrip_config import read_excluded_days, write_excluded_days
 
@@ -446,11 +447,11 @@ def populate_trip_overview(self):
     self.trip_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
     # Strong selection colour — the default translucent highlight is invisible
     # against the yellow tab background.
-    self.trip_table.setStyleSheet("""
-        QTableWidget::item:selected {
-            background-color: #3478d4;
-            color: white;
-        }
+    self.trip_table.setStyleSheet(f"""
+        QTableWidget::item:selected {{
+            background-color: {theme.ACCENT};
+            color: {theme.ACCENT_INK};
+        }}
     """)
 
 

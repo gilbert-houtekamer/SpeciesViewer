@@ -187,6 +187,7 @@ class RecentDirectoryFieldQt(QWidget):
 
         self.combo.setMinimumWidth(500)
         self.browse_btn.setFixedWidth(80)
+        self.browse_btn.setStyleSheet("QPushButton { padding: 4px 0px; }")
 
         # Load recent paths from cache
         recent = load_gui_cache().get(section, [])

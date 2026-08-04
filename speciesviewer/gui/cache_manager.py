@@ -202,6 +202,7 @@ class ManageCachesDialog(QDialog):
             if spec.get("edit", True):
                 edit_btn = QPushButton("Edit…")
                 edit_btn.setFixedWidth(70)
+                edit_btn.setStyleSheet("QPushButton { padding: 4px 0px; }")
                 edit_btn.setToolTip(
                     "Move this cache to another folder (e.g. a faster or larger "
                     "disk). The day/trip and master EXIF caches share one folder, "
@@ -209,6 +210,7 @@ class ManageCachesDialog(QDialog):
                 size_row.addWidget(edit_btn)
             btn = QPushButton("Clear")
             btn.setFixedWidth(80)
+            btn.setStyleSheet("QPushButton { padding: 4px 0px; }")
             size_row.addWidget(btn)
             gl.addLayout(size_row)
 

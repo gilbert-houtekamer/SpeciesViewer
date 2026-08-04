@@ -10,6 +10,13 @@ for why) — but every new consumer should import from here instead of
 re-defining hex constants.
 """
 
+from pathlib import Path
+
+# checkbox-check.png: white checkmark glyph drawn over the ACCENT-filled
+# checked indicator below. QSS can't tint a glyph, so the checkmark itself
+# has to ship as its own asset rather than a color token.
+_CHECKMARK = (Path(__file__).resolve().parent.parent / "assets" / "checkbox-check.png").as_posix()
+
 # Neutrals
 INK = "#1c211b"
 INK_SOFT = "#59634f"
@@ -66,15 +73,17 @@ def build_base_qss() -> str:
     screens (their own local styling always wins for anything they set
     themselves — Qt gives a widget's own stylesheet priority over an
     app-level one for matching properties on itself)."""
-    # QPushButton deliberately has NO `padding` property: many buttons
-    # app-wide call setFixedSize() with their own local border-only
-    # stylesheet (e.g. gui/image_viewer.py's 40x24 "All" / 64x24 "Species"
-    # toggles). App-level padding cascades into whatever THEY didn't set
-    # locally and grows the wanted content size past the fixed box, clipping
-    # the text — measured live: padding:4px 14px pushed "Species"'s natural
-    # sizeHint from 88px to 116px against its 64px budget. If you ever want
-    # to add padding back, re-run the headless sizeHint measurement first
-    # (see the ch.15 theme memory) against every setFixedSize() QPushButton.
+    # QPushButton padding (ch.15 Phase 3): v0.1 had no app-wide QSS, so plain
+    # buttons (Browse, Close, Create Blog, ...) got the native style's own
+    # comfortable content margins for free. Any QSS rule on QPushButton makes
+    # Qt drop those native margins app-wide, which is what made v0.2 buttons
+    # look cramped — so padding has to come back explicitly here. Every
+    # button that calls setFixedSize()/setFixedWidth() locks its own box and
+    # must neutralize this in ITS OWN local stylesheet (padding: 0 for an
+    # icon/glyph button with no room to grow, or padding: Npx 0 to gain
+    # vertical room only on a fixed-WIDTH button) — see gui/image_viewer.py,
+    # gui/biota_browser.py's _back_btn for the pattern. A local stylesheet's
+    # own padding always wins over this one for that widget.
     return f"""
         QToolTip {{
             background-color: {SURFACE};
@@ -88,6 +97,7 @@ def build_base_qss() -> str:
             border: 1px solid {LINE};
             border-radius: 4px;
             color: {INK};
+            padding: 6px 14px;
         }}
         QPushButton:hover {{
             background-color: {ACCENT_SOFT};
@@ -102,12 +112,26 @@ def build_base_qss() -> str:
             border-color: {LOCKED_BORDER};
         }}
         QPushButton:default {{
-            background-color: {ACCENT};
-            border-color: {ACCENT};
-            color: {ACCENT_INK};
+            border: 1.5px solid {ACCENT};
         }}
         QPushButton:default:hover {{
-            background-color: {ACCENT_HOVER};
+            background-color: {ACCENT_SOFT};
+        }}
+
+        QCheckBox::indicator {{
+            width: 14px;
+            height: 14px;
+            border: 1px solid {LINE};
+            border-radius: 3px;
+            background-color: {SURFACE};
+        }}
+        QCheckBox::indicator:hover {{
+            border-color: {ACCENT};
+        }}
+        QCheckBox::indicator:checked {{
+            background-color: {ACCENT};
+            border-color: {ACCENT};
+            image: url({_CHECKMARK});
         }}
 
         QMenuBar {{

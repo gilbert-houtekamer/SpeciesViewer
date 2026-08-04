@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QHeaderView, QAbstractItemView,
 )
 
+from gui import theme
 from utils.config import _config
 from utils.virttrip_config import (read_virttrip_ini, blog_review_state,
                                    read_excluded_days, write_excluded_days,
@@ -435,11 +436,11 @@ def populate_virttrip_overview(self):
     self.virttrip_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
     self.virttrip_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
     self.virttrip_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-    self.virttrip_table.setStyleSheet("""
-        QTableWidget::item:selected {
-            background-color: #3478d4;
-            color: white;
-        }
+    self.virttrip_table.setStyleSheet(f"""
+        QTableWidget::item:selected {{
+            background-color: {theme.ACCENT};
+            color: {theme.ACCENT_INK};
+        }}
     """)
 
     header = self.virttrip_table.horizontalHeader()

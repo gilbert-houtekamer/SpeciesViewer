@@ -1470,7 +1470,7 @@ class MapView(QDialog):
             x = QPushButton("×")
             x.setFixedSize(16, 16)
             x.setToolTip(f"Remove {m['display']}")
-            x.setStyleSheet("QPushButton{border:none;color:#888;font-weight:bold;}"
+            x.setStyleSheet("QPushButton{border:none;color:#888;font-weight:bold;padding:0;}"
                             "QPushButton:hover{color:#d32f2f;}")
             x.clicked.connect(lambda _=False, k=key: self._remove_layer(k))
             row.addWidget(x)

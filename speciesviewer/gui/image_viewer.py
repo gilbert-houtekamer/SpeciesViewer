@@ -318,7 +318,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.warnings_btn.setCheckable(True)
         self.warnings_btn.setToolTip("Show only pictures with incorrect species information")
         self.warnings_btn.setStyleSheet("""
-            QPushButton { border: 2px solid #FFA500; border-radius: 4px; background: transparent; }
+            QPushButton { border: 2px solid #FFA500; border-radius: 4px; background: transparent; padding: 0; }
             QPushButton:checked { background: #FFA500; }
             QPushButton:disabled { border-color: #CCCCCC; color: #BBBBBB; }
         """)
@@ -330,7 +330,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.no_gps_btn.setCheckable(True)
         self.no_gps_btn.setToolTip("Show only pictures without GPS coordinates")
         self.no_gps_btn.setStyleSheet("""
-            QPushButton { border: 2px solid #C0392B; border-radius: 4px; background: transparent; }
+            QPushButton { border: 2px solid #C0392B; border-radius: 4px; background: transparent; padding: 0; }
             QPushButton:checked { background: #F5B7B1; }
             QPushButton:disabled { border-color: #CCCCCC; color: #BBBBBB; }
         """)
@@ -351,7 +351,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.all_btn.setCheckable(True)
         self.all_btn.setToolTip("Show all pictures")
         self.all_btn.setStyleSheet("""
-            QPushButton { border: 2px solid #3498DB; border-radius: 4px; background: transparent; }
+            QPushButton { border: 2px solid #3498DB; border-radius: 4px; background: transparent; padding: 0; }
             QPushButton:checked { background: #AED6F1; }
         """)
         self.all_btn.clicked.connect(self.on_all_toggled)
@@ -365,7 +365,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.species_btn.setCheckable(True)
         self.species_btn.setToolTip("Show only pictures that have a species")
         self.species_btn.setStyleSheet("""
-            QPushButton { border: 2px solid #27AE60; border-radius: 4px; background: transparent; }
+            QPushButton { border: 2px solid #27AE60; border-radius: 4px; background: transparent; padding: 0; }
             QPushButton:checked { background: #ABEBC6; }
             QPushButton:disabled { border-color: #CCCCCC; color: #BBBBBB; }
         """)
@@ -406,7 +406,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             "Show only pictures that have a JPG — combines with All / Species and the colours")
         self.jpg_btn.setEnabled(hasattr(self._collection, "jpg_keys"))
         self.jpg_btn.setStyleSheet("""
-            QPushButton { border: 2px solid #16A085; border-radius: 4px; background: transparent; }
+            QPushButton { border: 2px solid #16A085; border-radius: 4px; background: transparent; padding: 0; }
             QPushButton:checked { background: #A3E4D7; }
             QPushButton:disabled { border-color: #CCCCCC; color: #BBBBBB; }
         """)

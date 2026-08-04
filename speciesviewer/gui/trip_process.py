@@ -150,6 +150,7 @@ class TripCreationDialog(QDialog):
         new_folder_row.addWidget(self.new_folder_name)
         create_folder_btn = QPushButton("Create Folder")
         create_folder_btn.setFixedWidth(110)
+        create_folder_btn.setStyleSheet("QPushButton { padding: 4px 0px; }")
         create_folder_btn.clicked.connect(self.create_new_trip_folder)
         new_folder_row.addWidget(create_folder_btn)
         new_folder_row.addStretch()
@@ -1793,6 +1794,7 @@ class SpeciesCollectionDialog(QDialog):
         nav_layout = QHBoxLayout()
         self.prev_btn = QPushButton("<")
         self.prev_btn.setFixedWidth(30)
+        self.prev_btn.setStyleSheet("QPushButton { padding: 4px 0px; }")
         self.prev_btn.clicked.connect(self.on_prev_page)
         nav_layout.addWidget(self.prev_btn)
         self.range_label = QLabel("")
@@ -1800,6 +1802,7 @@ class SpeciesCollectionDialog(QDialog):
         nav_layout.addWidget(self.range_label)
         self.next_btn = QPushButton(">")
         self.next_btn.setFixedWidth(30)
+        self.next_btn.setStyleSheet("QPushButton { padding: 4px 0px; }")
         self.next_btn.clicked.connect(self.on_next_page)
         nav_layout.addWidget(self.next_btn)
         self.filter_edit = QLineEdit()
@@ -2100,6 +2103,7 @@ class SpeciesCollectionDialog(QDialog):
             # Copy button right after Scientific Name
             copy_btn = QPushButton("\u2398")  # ⎘ copy icon
             copy_btn.setFixedSize(24, 24)
+            copy_btn.setStyleSheet("QPushButton { padding: 0; }")
             copy_btn.setToolTip("Copy scientific name")
             copy_btn.clicked.connect(lambda checked, r=i: self._copy_scientific_name(r))
             self.table.setCellWidget(i, self.COPY_VISUAL_COL, copy_btn)

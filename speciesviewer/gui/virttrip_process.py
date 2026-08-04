@@ -630,6 +630,7 @@ class VirtualTripCreationDialog(QDialog):
         new_folder_row.addWidget(self.new_folder_name)
         create_folder_btn = QPushButton("Create Folder")
         create_folder_btn.setFixedWidth(110)
+        create_folder_btn.setStyleSheet("QPushButton { padding: 4px 0px; }")
         create_folder_btn.clicked.connect(self.create_new_trip_folder)
         new_folder_row.addWidget(create_folder_btn)
         new_folder_row.addStretch()

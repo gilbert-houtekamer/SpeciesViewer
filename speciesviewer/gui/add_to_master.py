@@ -651,6 +651,8 @@ class AddToMasterDialog(QDialog):
         self.find_input.textChanged.connect(self._find_incremental)
         prev_btn = QPushButton("▲"); prev_btn.setFixedWidth(28)
         next_btn = QPushButton("▼"); next_btn.setFixedWidth(28)
+        _nav_pad = "QPushButton { padding: 4px 0px; }"
+        prev_btn.setStyleSheet(_nav_pad); next_btn.setStyleSheet(_nav_pad)
         prev_btn.setToolTip("Previous match"); next_btn.setToolTip("Next match")
         prev_btn.clicked.connect(self._find_prev)
         next_btn.clicked.connect(self._find_next)
