@@ -1,0 +1,382 @@
+<title>Species Viewer — card style playground</title>
+<style>
+  :root {
+    --bg: #f5f7f3; --surface: #ffffff; --surface-2: #eef1ea;
+    --ink: #1c211b; --ink-soft: #59634f; --line: #d7ddce;
+    --ready: #2563a8; --ready-bg: #e4eef8;
+    --done: #2f7d43; --done-bg: #e6f1e8;
+    --warn: #b45309; --warn-bg: #f8ecdc;
+    --frame-olive: #6d8764; --mat: #ffffff; --frame-ink: #ffffff;
+    --font-display: "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-mono: ui-monospace, "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+    --radius: 9px;
+    --shadow: 0 1px 2px rgba(20,30,15,.06), 0 4px 14px rgba(20,30,15,.05);
+    --c-red: #e24a4a; --c-yellow: #e5b000; --c-green: #4caf50;
+    --c-blue: #3e7be0; --c-purple: #9c6bd6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141711; --surface: #1d211a; --surface-2: #252a20; --ink: #e8ece2;
+      --ink-soft: #a3ac99; --line: #333a2c; --ready: #64a2db; --ready-bg: #1a2632;
+      --done: #5bb271; --done-bg: #1d2c20; --warn: #d98a3d; --warn-bg: #2c2213;
+      --frame-olive: #7f9673; --mat: #12150f; --frame-ink: #f3f6ee;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141711; --surface: #1d211a; --surface-2: #252a20; --ink: #e8ece2;
+    --ink-soft: #a3ac99; --line: #333a2c; --ready: #64a2db; --ready-bg: #1a2632;
+    --done: #5bb271; --done-bg: #1d2c20; --warn: #d98a3d; --warn-bg: #2c2213;
+    --frame-olive: #7f9673; --mat: #12150f; --frame-ink: #f3f6ee;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.28);
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7f3; --surface: #ffffff; --surface-2: #eef1ea; --ink: #1c211b;
+    --ink-soft: #59634f; --line: #d7ddce; --ready: #2563a8; --ready-bg: #e4eef8;
+    --done: #2f7d43; --done-bg: #e6f1e8; --warn: #b45309; --warn-bg: #f8ecdc;
+    --frame-olive: #6d8764; --mat: #ffffff; --frame-ink: #ffffff;
+    --shadow: 0 1px 2px rgba(20,30,15,.06), 0 4px 14px rgba(20,30,15,.05);
+  }
+  :root[data-scheme="muted"]   { --c-red:#b5544f; --c-yellow:#c2a24a; --c-green:#6d8a5a; --c-blue:#5f7fa6; --c-purple:#8a749e; }
+  :root[data-scheme="pastel"]  { --c-red:#e29a97; --c-yellow:#e6d18f; --c-green:#a9c69c; --c-blue:#9db8d6; --c-purple:#c1abd6; }
+  :root[data-scheme="vivid"]   { --c-red:#ff3b30; --c-yellow:#ffcc00; --c-green:#34c759; --c-blue:#0a84ff; --c-purple:#af52de; }
+  :root[data-scheme="nature"]  { --c-red:#c65b3c; --c-yellow:#d9a441; --c-green:#6d8764; --c-blue:#4f748a; --c-purple:#7a6b8f; }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--font-display); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 22px 72px; }
+
+  .eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--ink-soft); margin: 0 0 6px; }
+  h1 { font-size: clamp(21px, 3.2vw, 27px); margin: 0 0 8px; text-wrap: balance; letter-spacing: -.01em; }
+  .lede { margin: 0; color: var(--ink-soft); max-width: 78ch; font-size: 14.5px; }
+  .lede b { color: var(--ink); }
+
+  .settings { margin: 22px 0 12px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+  .settings > header { display: flex; align-items: center; gap: 10px; padding: 11px 16px;
+    background: var(--surface-2); border-bottom: 1px solid var(--line); }
+  .settings > header h2 { margin: 0; font-size: 13.5px; font-weight: 600; }
+  .settings > header .hint { font-family: var(--font-mono); font-size: 10px; letter-spacing: .06em;
+    color: var(--ink-soft); margin-left: auto; text-transform: uppercase; }
+  .settings .body { padding: 16px 18px; display: flex; flex-wrap: wrap; gap: 26px 30px; align-items: flex-start; }
+  .col { display: flex; flex-direction: column; gap: 12px; }
+  .divider { align-self: stretch; width: 1px; background: var(--line); }
+
+  .group { display: flex; flex-direction: column; gap: 8px; }
+  .group > .glabel { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-soft); }
+  .group > .glabel .shared { color: var(--ready); }
+
+  .seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 3px; gap: 3px; flex-wrap: wrap; max-width: 340px; }
+  .seg button { font: inherit; font-size: 12px; cursor: pointer; border: 0; background: transparent;
+    color: var(--ink-soft); padding: 6px 11px; border-radius: 6px; text-align: left; }
+  .seg button:hover { color: var(--ink); }
+  .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); font-weight: 600;
+    box-shadow: 0 1px 2px rgba(20,30,15,.12); }
+
+  /* derived label-style chip (locked, we set it) */
+  .lockchip { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px;
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px 11px; background: var(--surface); }
+  .lockchip .sw { width: 22px; height: 16px; border-radius: 3px; border: 2px solid var(--mat);
+    box-shadow: inset 0 0 0 1px var(--line); }
+  .lockchip.frame .sw { background: var(--c-green); }
+  .lockchip.dot .sw { background: var(--frame-olive); position: relative; }
+  .lockchip.dot .sw::after { content:""; position:absolute; right:-3px; top:-3px; width:8px; height:8px;
+    border-radius:50%; background: var(--c-green); border: 1.5px solid var(--surface); }
+  .lockchip b { font-weight: 600; }
+  .lockchip .rule { color: var(--ink-soft); font-family: var(--font-mono); font-size: 10px; }
+
+  .cornermap { display: grid; grid-template-columns: repeat(2, 146px); gap: 8px 10px; }
+  .cslot { display: flex; flex-direction: column; gap: 3px; }
+  .cslot small { font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .09em;
+    text-transform: uppercase; color: var(--ink-soft); opacity: .8; }
+  select { font: inherit; font-size: 12.5px; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; width: 100%; }
+  select:focus-visible, button:focus-visible { outline: 2px solid var(--ready); outline-offset: 2px; }
+  .ghost { font: inherit; font-size: 12.5px; cursor: pointer; color: var(--ink-soft);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 7px 12px; }
+  .ghost:hover { color: var(--ink); border-color: var(--frame-olive); }
+
+  .nowview { margin: 0 0 20px; font-size: 12.5px; color: var(--ink-soft); }
+  .nowview b { color: var(--ink); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column;
+    transition: transform .12s, box-shadow .12s, border-color .12s; }
+  .card:hover { transform: translateY(-2px); border-color: var(--frame-olive);
+    box-shadow: 0 3px 6px rgba(20,30,15,.09), 0 12px 24px rgba(20,30,15,.1); }
+
+  .frame { --lc: var(--label, var(--frame-olive));
+    padding: 9px; background: var(--frame-olive); position: relative; }
+  :root[data-labelmode="frame"] .frame { background: var(--lc); }
+  .photo { aspect-ratio: 5 / 4; border: 3px solid var(--mat); border-radius: 3px;
+    background-size: cover; background-position: center; position: relative; overflow: hidden; }
+
+  .corner { position: absolute; font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .04em;
+    font-variant-numeric: tabular-nums; color: #fff; background: rgba(0,0,0,.46);
+    padding: 2px 7px; border-radius: 20px; backdrop-filter: blur(2px); white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+  .corner.tl { left: 7px; top: 7px; } .corner.tr { right: 7px; top: 7px; }
+  .corner.bl { left: 7px; bottom: 7px; } .corner.br { right: 7px; bottom: 7px; }
+  .corner[data-datum="format"], .corner[data-datum="lock"] { text-transform: uppercase; letter-spacing: .09em; font-weight: 700; }
+  .corner[data-datum="rate"] { font-weight: 700; background: color-mix(in srgb, var(--frame-olive) 78%, #000); }
+  :root[data-labelmode="frame"] .corner[data-datum="rate"] { background: color-mix(in srgb, var(--label, #000) 82%, #000); }
+  .corner.dot { padding: 0; background: none; backdrop-filter: none; }
+  .corner.dot::before { content:""; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--label, transparent); border: 2px solid rgba(255,255,255,.9); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+  :root[data-labelmode="frame"] .corner.dot { display: none; }
+  .card[data-label=""] .corner.dot { display: none; }
+
+  .meta { padding: 10px 12px 4px; }
+  .nl  { font-size: 15px; font-weight: 600; line-height: 1.2; }
+  .sci { font-size: 12px; font-style: italic; color: var(--ink-soft); margin-top: 1px; }
+  .stat { margin-top: 7px; font-family: var(--font-mono); font-size: 10px; letter-spacing: .02em;
+    color: var(--ink-soft); font-variant-numeric: tabular-nums; display: flex; gap: 9px; align-items: center; }
+  .stat b { color: var(--frame-olive); font-weight: 700; }
+  .stat .tag { text-transform: uppercase; letter-spacing: .08em; font-size: 8.5px; font-weight: 700;
+    color: var(--ink-soft); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; }
+  .card:not(.editable) .meta { padding-bottom: 12px; }
+
+  .controls { padding: 8px 12px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .stars { display: inline-flex; gap: 1px; cursor: pointer; }
+  .stars span { font-size: 17px; line-height: 1; color: var(--line); transition: color .08s; }
+  .stars span.on { color: #e5a800; }
+  .stars:hover span.hot { color: #f0be3a; }
+  .swatches { display: inline-flex; gap: 5px; }
+  .swatches i { width: 15px; height: 15px; border-radius: 50%; cursor: pointer; display: block;
+    border: 2px solid transparent; transition: transform .08s; }
+  .swatches i:hover { transform: scale(1.18); }
+  .swatches i[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 2px var(--surface) inset; }
+  .swatches i.none { background: var(--surface); border: 2px dashed var(--line); }
+  .swatches i.none[aria-pressed="true"] { border-style: solid; border-color: var(--ink); }
+
+  .footnote { margin-top: 26px; font-size: 12.5px; color: var(--ink-soft); line-height: 1.55;
+    border-top: 1px solid var(--line); padding-top: 14px; max-width: 84ch; }
+  .footnote b { color: var(--ink); }
+  .footnote code { font-family: var(--font-mono); font-size: .92em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">SpeciesViewer · design tool · defining per-viewer card sets</p>
+  <h1>Species card — one look, a fixed set per viewer</h1>
+  <p class="lede">
+    The card design is shared, but <b>we</b> fix two things per viewer, not the user: the <b>label style</b>
+    (read-only browsing = olive frame + corner dot; anything that <b>edits</b> name/rating/colour = full frame)
+    and the <b>corner info set</b>. Only the <b>colour scheme</b> and <b>theme</b> are shared global choices.
+    This panel is our tool for defining each viewer's set — pick a viewer to load its set.
+  </p>
+
+  <div class="settings">
+    <header>
+      <span>⚙</span><h2>Card set — per viewer</h2>
+      <span class="hint">design-time, not shipped as user settings</span>
+    </header>
+    <div class="body">
+      <div class="col">
+        <div class="group">
+          <span class="glabel">Viewer</span>
+          <div class="seg" id="viewer" role="group" style="flex-direction:column; max-width:280px">
+            <button data-v="biota" aria-pressed="true">Biota browser — read-only</button>
+            <button data-v="species" aria-pressed="false">Trip / Master / Album species</button>
+            <button data-v="strip" aria-pressed="false">Large-viewer strip · Map strips</button>
+            <button data-v="image" aria-pressed="false">Species image viewer</button>
+          </div>
+        </div>
+        <div class="group">
+          <span class="glabel">Label style — derived, we set it</span>
+          <div class="lockchip dot" id="lockchip">
+            <span class="sw"></span><b id="lockname">Corner dot</b>
+            <span class="rule" id="lockrule">read-only → olive frame</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="col">
+        <div class="group">
+          <span class="glabel">Corner set for this viewer</span>
+          <div class="cornermap" id="corners"></div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="col">
+        <div class="group">
+          <span class="glabel"><span class="shared">◆ shared</span> · colour scheme (5 labels)</span>
+          <div class="seg" id="scheme" role="group">
+            <button data-scheme="classic" aria-pressed="true">Classic</button>
+            <button data-scheme="muted" aria-pressed="false">Muted</button>
+            <button data-scheme="pastel" aria-pressed="false">Pastel</button>
+            <button data-scheme="vivid" aria-pressed="false">Vivid</button>
+            <button data-scheme="nature" aria-pressed="false">Nature</button>
+          </div>
+        </div>
+        <div class="group">
+          <span class="glabel"><span class="shared">◆ shared</span> · theme</span>
+          <button class="ghost" id="themebtn">◐ Toggle light / dark</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="nowview">Showing: <b id="nowname">Biota browser</b> — <span id="nowdesc"></span></p>
+  <div class="grid" id="grid"></div>
+
+  <p class="footnote">
+    <b>The rule for label style.</b> A viewer you only <em>browse</em> keeps the calm olive frame with the
+    colour as a small corner dot. A viewer where you <em>change</em> the picture — rate it, label it, rename —
+    switches to the full colour frame so the label reads across the whole grid, and the clickable star + colour
+    rows appear below. (The full-frame “Tech Panel” treatment still wants a nicer look — parked for now.)<br><br>
+    <b>Corners are per viewer, fixed by us.</b> <code>Biota</code> ships with empty corners.
+    <code>Species</code> leans on format · date · Rate with the lock glyph on committed days.
+    Strips stay sparse; the image viewer can afford camera + more. These are starting points to iterate here —
+    they are not exposed to the user.
+  </p>
+</div>
+
+<script>
+  const P = {
+    water:'linear-gradient(180deg,#7fa6b8,#5c8497 44%,#3f5f6d)', reeds:'linear-gradient(160deg,#9fb37a,#6f8b57 55%,#41562f)',
+    sky:'linear-gradient(180deg,#a9c6db,#7ba0c0 60%,#5b7f9e)',   grass:'linear-gradient(165deg,#c7b978,#9c9a55 50%,#6b7239)',
+    branch:'linear-gradient(150deg,#bcae8e,#8f8a63 55%,#5f5c3d)', dusk:'linear-gradient(180deg,#c99a6a,#8f6f52 55%,#4f4436)'
+  };
+  const cards = [
+    { nl:'dwergaalscholver', sci:'Microcarbo pygmaeus', fmt:'JPG', date:'2026-05-06', rate:112, cam:'Z9',   n:11, stars:4, label:'green',  committed:true,  bg:P.water },
+    { nl:'roze pelikaan',    sci:'Pelecanus onocrotalus', fmt:'RAW', date:'2026-05-05', rate:96, cam:'OM-1', n:31, stars:5, label:'red',    committed:false, bg:P.sky },
+    { nl:'aalscholver',      sci:'Phalacrocorax carbo', fmt:'JPG', date:'2026-05-06', rate:75, cam:'Z9',   n:18, stars:2, label:'yellow', committed:true,  bg:P.reeds },
+    { nl:'zwarte wouw',      sci:'Milvus migrans', fmt:'RAW', date:'2026-05-04', rate:45, cam:'OM-1', n:22, stars:2, label:'',       committed:false, bg:P.branch },
+    { nl:'hop',              sci:'Upupa epops', fmt:'JPG', date:'2026-05-07', rate:88, cam:'Z9',   n:5,  stars:3, label:'blue',   committed:false, bg:P.grass },
+    { nl:'jachtluipaard',    sci:'Acinonyx jubatus', fmt:'RAW', date:'2024-06-25', rate:64, cam:'OM-1', n:50, stars:2, label:'purple', committed:false, bg:P.dusk }
+  ];
+  const COLORS = ['red','yellow','green','blue','purple'];
+
+  const DATA = {
+    none:   { name:'— nothing —',      render:()=>null },
+    format: { name:'Format (RAW/JPG)', render:c=>c.fmt },
+    date:   { name:'Capture date',     render:c=>c.date },
+    rate:   { name:'Rate score',       render:c=>'Rate '+c.rate },
+    camera: { name:'Camera',           render:c=>c.cam },
+    count:  { name:'Photo count',      render:c=>c.n+' ph' },
+    lock:   { name:'Committed lock',   render:c=>c.committed?'🔒 committed':null },
+    colour: { name:'Colour dot',       render:()=>'' }
+  };
+  const POS = [['tl','Top-left'],['tr','Top-right'],['bl','Bottom-left'],['br','Bottom-right']];
+
+  // ── the per-viewer sets we're defining ──
+  const PRESETS = {
+    biota:   { name:'Biota browser', desc:'read-only tree browsing · empty corners · no editing controls',
+               editable:false, corners:{tl:'none',tr:'colour',bl:'none',br:'none'} },
+    species: { name:'Trip / Master / Album species', desc:'editing viewer · full colour frame · clickable stars + colours',
+               editable:true,  corners:{tl:'format',tr:'lock',bl:'date',br:'rate'} },
+    strip:   { name:'Large-viewer strip · Map strips', desc:'compact filmstrip · sparse corners',
+               editable:false, corners:{tl:'none',tr:'colour',bl:'none',br:'rate'} },
+    image:   { name:'Species image viewer', desc:'editing viewer · full colour frame · richer corners',
+               editable:true,  corners:{tl:'format',tr:'camera',bl:'date',br:'rate'} }
+  };
+  // biota default is empty corners; keep colour dot available but off by default
+  PRESETS.biota.corners = {tl:'none',tr:'none',bl:'none',br:'none'};
+
+  let cfg = { ...PRESETS.biota.corners };
+  let editable = PRESETS.biota.editable;
+
+  // corner pickers
+  const cbox = document.getElementById('corners');
+  POS.forEach(([pos,name]) => {
+    const slot = document.createElement('div'); slot.className='cslot';
+    const opts = Object.entries(DATA).map(([k,v]) => `<option value="${k}">${v.name}</option>`).join('');
+    slot.innerHTML = `<small>${name}</small><select data-pos="${pos}">${opts}</select>`;
+    cbox.appendChild(slot);
+  });
+  cbox.addEventListener('change', e => {
+    const s = e.target.closest('select'); if(!s) return;
+    cfg[s.dataset.pos] = s.value;
+    document.querySelectorAll('.card').forEach(paintCorners);
+  });
+
+  function syncCornerSelects(){ cbox.querySelectorAll('select').forEach(s => s.value = cfg[s.dataset.pos]); }
+
+  function paintCorners(card){
+    const c = card._data;
+    card.querySelectorAll('.corner').forEach(n => n.remove());
+    const photo = card.querySelector('.photo');
+    for (const [pos] of POS){
+      const d = cfg[pos]; if (d==='none') continue;
+      const span = document.createElement('span');
+      span.className = 'corner '+pos+(d==='colour'?' dot':''); span.dataset.datum = d;
+      if (d!=='colour'){ const t = DATA[d].render(c); if (t==null) continue; span.textContent = t; }
+      photo.appendChild(span);
+    }
+  }
+
+  const grid = document.getElementById('grid');
+  function buildGrid(){
+    grid.innerHTML = '';
+    cards.forEach(c => {
+      const el = document.createElement('article');
+      el.className = 'card' + (editable?' editable':''); el._data = c; el.dataset.label = c.label;
+      if (c.label) el.style.setProperty('--label', `var(--c-${c.label})`);
+      const stars = [0,1,2,3,4].map(i => `<span class="${i<c.stars?'on':''}" data-i="${i}">★</span>`).join('');
+      const sw = COLORS.map(col => `<i data-col="${col}" style="background:var(--c-${col})" aria-pressed="${c.label===col}" title="${col}"></i>`).join('')
+        + `<i class="none" data-col="" aria-pressed="${!c.label}" title="no label"></i>`;
+      el.innerHTML = `
+        <div class="frame"><div class="photo" style="background:${c.bg}"></div></div>
+        <div class="meta"><div class="nl">${c.nl}</div><div class="sci">${c.sci}</div>
+          <div class="stat"><b>${c.n}</b> photos<span class="tag">${c.fmt}</span></div></div>
+        ${editable ? `<div class="controls"><div class="stars">${stars}</div><div class="swatches">${sw}</div></div>` : ''}`;
+      grid.appendChild(el);
+      paintCorners(el);
+      if (!editable) return;
+      const starRow = el.querySelector('.stars');
+      starRow.querySelectorAll('span').forEach(s => {
+        s.addEventListener('mouseenter', () => starRow.querySelectorAll('span').forEach(x => x.classList.toggle('hot', +x.dataset.i<=+s.dataset.i)));
+        s.addEventListener('mouseleave', () => starRow.querySelectorAll('span').forEach(x => x.classList.remove('hot')));
+        s.addEventListener('click', () => { const v=+s.dataset.i+1; starRow.querySelectorAll('span').forEach(x => x.classList.toggle('on', +x.dataset.i<v)); });
+      });
+      el.querySelectorAll('.swatches i').forEach(swi => {
+        swi.addEventListener('click', () => {
+          const col = swi.dataset.col; el.dataset.label = col; c.label = col;
+          if (col) el.style.setProperty('--label', `var(--c-${col})`); else el.style.removeProperty('--label');
+          el.querySelectorAll('.swatches i').forEach(x => x.setAttribute('aria-pressed', x.dataset.col===col));
+          paintCorners(el);
+        });
+      });
+    });
+  }
+
+  function applyPreset(key){
+    const p = PRESETS[key];
+    cfg = { ...p.corners }; editable = p.editable;
+    document.documentElement.dataset.labelmode = editable ? 'frame' : 'dot';
+    // label chip
+    const chip = document.getElementById('lockchip');
+    chip.className = 'lockchip ' + (editable?'frame':'dot');
+    document.getElementById('lockname').textContent = editable ? 'Full frame' : 'Corner dot';
+    document.getElementById('lockrule').textContent = editable ? 'edits picture → colour frame' : 'read-only → olive frame';
+    document.getElementById('nowname').textContent = p.name;
+    document.getElementById('nowdesc').textContent = p.desc;
+    syncCornerSelects();
+    buildGrid();
+  }
+
+  document.getElementById('viewer').addEventListener('click', e => {
+    const b = e.target.closest('button'); if(!b) return;
+    document.querySelectorAll('#viewer button').forEach(x => x.setAttribute('aria-pressed', x===b));
+    applyPreset(b.dataset.v);
+  });
+  function wireSeg(id, apply){ const box=document.getElementById(id);
+    box.addEventListener('click', e => { const b=e.target.closest('button'); if(!b) return;
+      box.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x===b)); apply(b); }); }
+  wireSeg('scheme', b => document.documentElement.dataset.scheme = b.dataset.scheme);
+  document.getElementById('themebtn').addEventListener('click', () => {
+    const r = document.documentElement;
+    const cur = r.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light');
+    r.dataset.theme = cur==='dark'?'light':'dark';
+  });
+
+  applyPreset('biota');
+</script>

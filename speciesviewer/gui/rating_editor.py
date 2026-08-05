@@ -19,8 +19,8 @@ from PyQt6.QtWidgets import (
     QProgressDialog, QRadioButton, QButtonGroup, QMessageBox, QStyle,
 )
 from PyQt6.QtGui import QPixmap, QImage, QGuiApplication, QIcon, QPainter, QColor
-from PyQt6.QtCore import (Qt, QTimer, QSize, QRect, pyqtSignal, QObject, QRunnable,
-                          QThreadPool)
+from PyQt6.QtCore import (Qt, QTimer, QSize, QRect, QEvent, pyqtSignal, QObject,
+                          QRunnable, QThreadPool)
 
 from engine.filepicture import FilePicture
 from engine.speciesclassification import SpeciesClassification
@@ -44,6 +44,15 @@ COLOR_HEX = {
     "Blue":   "#1E90FF",
     "Purple": "#9370DB",
 }
+
+# Framed-card palette (the Biota-browser look) — sourced from the shared theme
+# so light/dark and the app-wide olive stay in one place.
+_FRAME = theme.ACCENT           # olive picture frame (unlabelled)
+_MAT = theme.SURFACE            # white mat inside the frame
+_INK = theme.INK
+_INK_SOFT = theme.INK_SOFT
+_LINE = theme.LINE
+_SURFACE = theme.SURFACE
 
 
 # ── Standalone rate recomputation ─────────────────────────────────────────────
@@ -149,6 +158,7 @@ class StarWidget(QWidget):
             btn.setFixedSize(22, 22)
             btn.setStyleSheet("font-size: 15px; border: none; padding: 0;")
             btn.clicked.connect(lambda _, n=i: self._on_click(n))
+            btn.installEventFilter(self)   # hover-preview: fill as the pointer moves
             layout.addWidget(btn)
             self._buttons.append(btn)
         self._refresh()
@@ -163,9 +173,33 @@ class StarWidget(QWidget):
         self._refresh()
         self.rating_changed.emit(self._rating)
 
+    # Hover-preview: pointing at a star fills up to it (in a lighter gold) without
+    # committing; the fill follows the pointer and reverts on exit. Only a click
+    # actually changes the rating. Disabled widgets get no preview.
+    def eventFilter(self, obj, event):
+        if (self.isEnabled() and obj in self._buttons
+                and event.type() == QEvent.Type.Enter):
+            self._paint(self._buttons.index(obj) + 1, preview=True)
+        return super().eventFilter(obj, event)
+
+    def leaveEvent(self, e):
+        # Fires as the pointer moves between stars too; a 0-ms hop lets the next
+        # star's Enter win, so we only revert when the pointer truly left the row.
+        QTimer.singleShot(0, self._maybe_revert)
+        super().leaveEvent(e)
+
+    def _maybe_revert(self):
+        if not any(b.underMouse() for b in self._buttons):
+            self._refresh()
+
     def _refresh(self):
+        self._paint(self._rating, preview=False)
+
+    def _paint(self, upto: int, *, preview: bool):
+        colour = "color:#e6a92e;" if preview else ""
         for i, btn in enumerate(self._buttons):
-            btn.setText("★" if i < self._rating else "☆")
+            btn.setText("★" if i < upto else "☆")
+            btn.setStyleSheet(f"font-size: 15px; border: none; padding: 0; {colour}")
 
     @property
     def rating(self) -> int:
@@ -285,6 +319,43 @@ def stamp_crop_marker(px: QPixmap) -> QPixmap:
     return out
 
 
+class _FramedPhoto(QLabel):
+    """Photo label that pins small mono corner badges over itself (Biota look).
+    Badges are child widgets repositioned to the four corners on every resize."""
+
+    def __init__(self):
+        super().__init__()
+        self._badges = []   # (widget, corner) where corner ∈ {tl,tr,bl,br}
+
+    def add_badge(self, w, corner):
+        w.setParent(self)
+        self._badges.append((w, corner))
+        w.show()
+
+    def reposition(self):
+        m = 7
+        for w, corner in self._badges:
+            w.adjustSize()
+            x = m if "l" in corner else self.width() - w.width() - m
+            y = m if "t" in corner else self.height() - w.height() - m
+            w.move(x, y)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self.reposition()
+
+
+def _corner_badge(text: str, *, bold: bool = False, rate: bool = False) -> QLabel:
+    """A mono over-image corner pill: dark for scan-data, olive-tinted for Rate."""
+    lbl = QLabel(text)
+    bg = "rgba(60,74,52,.88)" if rate else "rgba(0,0,0,.5)"
+    lbl.setStyleSheet(
+        f"color:#fff; background:{bg}; font-family:Consolas,monospace;"
+        f" font-size:9px; font-weight:{'700' if (bold or rate) else '400'};"
+        f" padding:1px 6px; border-radius:9px;")
+    return lbl
+
+
 class PictureCard(QFrame):
     """Thumbnail + star rating + color selector + rate label for one picture.
 
@@ -299,13 +370,18 @@ class PictureCard(QFrame):
     status_clicked = pyqtSignal(str)      # key — status icon clicked → open SpeciesInfoDialog
 
     def __init__(self, item: PictureItem, card_width: int, parent=None,
-                 *, show_status: bool = False, show_kind_tag: bool = False):
+                 *, show_status: bool = False, show_kind_tag: bool = False,
+                 framed: bool = False):
         super().__init__(parent)
         self.setObjectName("PictureCard")
         self._item = item
         self.upn_key = item.key
         self._selected = False
         self._cursor = False
+        # framed = the Biota-browser card look (colour picture frame + corner
+        # info badges + name/sci meta lines). Opt-in; the legacy stacked layout
+        # is the default so untouched viewers are unaffected.
+        self._framed = framed
         self._from_master = getattr(item, "from_master", False)
         # In Trip+Master scope the grid mixes the two; tag each card with its
         # origin + the picture's web/JPG size so they're directly comparable.
@@ -319,6 +395,11 @@ class PictureCard(QFrame):
         self._crop_badge = None
         self._desc_badge = None
         self._gps_badge = None
+
+        if framed:
+            self._frame_color = item.color
+            self._build_framed_ui(item, card_width)
+            return
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setFrameShadow(QFrame.Shadow.Raised)
@@ -478,6 +559,129 @@ class PictureCard(QFrame):
         if self._from_master:
             self._update_frame_style()   # paint the grey reference background now
 
+    # ── framed (Biota-look) build ────────────────────────────────────────────
+    def _build_framed_ui(self, item, card_width):
+        """Colour picture frame + corner info badges + name/scientific-name meta
+        + clickable stars/colours. Reuses StarWidget, ColorSelector, the provider
+        write-path, and set_thumbnail — only the layout differs from legacy."""
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # the thick colour frame — label colour, olive when unlabelled
+        self._pframe = QFrame()
+        self._pframe.setObjectName("pframe")
+        fl = QVBoxLayout(self._pframe)
+        fl.setContentsMargins(8, 8, 8, 8)
+        fl.setSpacing(0)
+
+        target_w = max(80, card_width - 20)
+        self._thumb_target_w = target_w
+        self._thumb = _FramedPhoto()
+        self._thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._thumb.setFixedHeight(max(70, target_w * 2 // 3))
+        self._thumb.setText("…")
+        self._thumb.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._thumb.mousePressEvent = lambda e: (
+            self.card_right_clicked.emit(self.upn_key)
+            if e.button() == Qt.MouseButton.RightButton
+            else self.card_clicked.emit(self.upn_key))
+        self._thumb.mouseDoubleClickEvent = lambda e: self.card_double_clicked.emit(self.upn_key)
+        fl.addWidget(self._thumb)
+        outer.addWidget(self._pframe)
+
+        # corners: TL format · BL date · BR Rate · TR committed-lock
+        exts = item.file_exts or []
+        primary = next((e for e in exts if e.upper() not in ("XMP", "DOP", "DNG")), None)
+        fmt = "JPG" if item.has_jpg else (primary or "RAW")
+        self._thumb.add_badge(_corner_badge(fmt.upper(), bold=True), "tl")
+        if item.date:
+            self._thumb.add_badge(
+                _corner_badge(item.date[:10].replace(":", "-")), "bl")
+        self._rate_lbl = _corner_badge("", rate=True)
+        self._thumb.add_badge(self._rate_lbl, "br")
+        self.update_rate_display(item.rate)
+        if getattr(item, "frozen", False):
+            lock = _corner_badge("🔒", bold=True)
+            lock.setToolTip("This day is committed — Reset the trip to unlock it.")
+            self._thumb.add_badge(lock, "tr")
+
+        # meta lines: display name (bold) + scientific name(+modifiers) italic
+        meta = QWidget()
+        ml = QVBoxLayout(meta)
+        ml.setContentsMargins(10, 8, 10, 2)
+        ml.setSpacing(1)
+        self._lbl_name = QLabel(item.display_name or item.key)
+        self._lbl_name.setStyleSheet(f"color:{_INK}; font-weight:600; font-size:14px;")
+        self._lbl_name.setWordWrap(True)
+        ml.addWidget(self._lbl_name)
+        sci_text = self._sci_line_text()
+        self._lbl_sci = QLabel(sci_text)
+        self._lbl_sci.setStyleSheet(f"color:{_INK_SOFT}; font-style:italic; font-size:11.5px;")
+        self._lbl_sci.setWordWrap(True)
+        self._lbl_sci.setVisible(bool(sci_text))
+        ml.addWidget(self._lbl_sci)
+        # filename + file-types (mono, JPG token greened) — the scan-data line the
+        # old card carried; kept in the white meta area, not over the photo.
+        self._lbl_key = QLabel(self._key_line_text())
+        self._lbl_key.setStyleSheet(f"color:{_INK_SOFT}; font-family:Consolas,monospace; font-size:9.5px;")
+        self._lbl_key.setWordWrap(True)
+        self._lbl_key.setToolTip(self._item.key)
+        ml.addWidget(self._lbl_key)
+        # origin tag only when kinds are mixed (Trip+Master) or a master/album ref
+        from_album = getattr(item, "from_album", False)
+        if self._from_master or self._show_kind_tag or from_album:
+            res = item.exif.jpg_dimensions or item.exif.dimensions
+            origin = "Album" if from_album else ("master" if self._from_master else "trip")
+            tag = QLabel(f"— from {origin} ({res}) —" if res else f"— from {origin} —")
+            if from_album:
+                tag.setStyleSheet("color:#2e7d32; font-size:9px; font-style:italic; font-weight:bold;")
+            else:
+                tag.setStyleSheet("color:#888; font-size:9px; font-style:italic;")
+            ml.addWidget(tag)
+        outer.addWidget(meta)
+
+        # controls: clickable stars (left) + colour swatches (right)
+        controls = QWidget()
+        cl = QHBoxLayout(controls)
+        cl.setContentsMargins(10, 2, 10, 10)
+        cl.setSpacing(6)
+        self._stars = StarWidget(item.rating)
+        if item.can_edit_rating:
+            self._stars.rating_changed.connect(self._on_rating_changed)
+        else:
+            self._stars.setEnabled(False)
+        cl.addWidget(self._stars)
+        cl.addStretch()
+        self._color_sel = ColorSelector(item.color)
+        if item.can_edit_color:
+            self._color_sel.color_changed.connect(self._on_color_changed)
+        else:
+            self._color_sel.setEnabled(False)
+        if item.has_jpg and not getattr(item, "discard_allowed", False):
+            self._color_sel.set_disabled_colors(("Blue", "Purple"), _DISCARD_GREYED_TIP)
+        cl.addWidget(self._color_sel)
+        outer.addWidget(controls)
+
+        # legacy-only label other methods may touch — None so its guard skips.
+        self._lbl_location = None
+
+        self._update_frame_style()   # base surface + selection border
+        self._update_thumb_style()   # paints the frame colour from the label
+        item.request_thumbnail(target_w, self.set_thumbnail)
+
+    def _sci_line_text(self) -> str:
+        sci = (getattr(self._item, "sci_name", "") or "").strip()
+        suffix = getattr(self._item, "qualifier_suffix", "") or ""
+        return (f"{sci}{suffix}").strip()
+
+    def _update_frame_color(self):
+        """Paint the thick frame with the colour label (olive when unlabelled)."""
+        hexc = COLOR_HEX.get((self._frame_color or "").capitalize())
+        self._pframe.setStyleSheet(
+            f"QFrame#pframe {{ background:{hexc or _FRAME}; border-radius:8px; }}")
+
     def _refresh_status_badges(self):
         """Set the status icon + description/GPS badges from the live item.
         Re-callable after an edit (species commit, GPS fix)."""
@@ -519,6 +723,19 @@ class PictureCard(QFrame):
     def refresh(self):
         """Re-read every field from the (live) item and repaint — used after an
         external edit such as a species commit or a GPS backfill."""
+        if self._framed:
+            self._lbl_name.setText(self._item.display_name or self._item.key)
+            sci_text = self._sci_line_text()
+            self._lbl_sci.setText(sci_text)
+            self._lbl_sci.setVisible(bool(sci_text))
+            self._frame_color = self._item.color
+            self._update_thumb_style()          # repaints the frame colour
+            self._lbl_key.setText(self._key_line_text())
+            self._stars.set_rating(self._item.rating)
+            self._color_sel.set_color(self._item.color)
+            self.update_rate_display(self._item.rate)
+            self._refresh_status_badges()
+            return
         # Include the sex/age/plumage suffix, exactly as the constructor does —
         # else committing "pair" repaints the card WITHOUT the ♂♀ it just gained.
         self._lbl_name.setText((self._item.display_name or self._item.key)
@@ -579,6 +796,11 @@ class PictureCard(QFrame):
         self.card_changed.emit(self.upn_key)
 
     def update_rate_display(self, new_rate):
+        if self._framed:
+            self._rate_lbl.setText(f"Rate {new_rate}" if new_rate is not None else "Rate ?")
+            if isinstance(self._thumb, _FramedPhoto):
+                self._thumb.reposition()   # width changed with the new digits
+            return
         self._rate_lbl.setText(f"Rate: {new_rate if new_rate is not None else '?'}")
 
     def update_rating_display(self, stars: int):
@@ -593,6 +815,17 @@ class PictureCard(QFrame):
         """Apply the dark placeholder bg (when no pixmap) plus the coloured
         frame border (when the picture has a colour label)."""
         has_pix = self._thumb.pixmap() is not None and not self._thumb.pixmap().isNull()
+        if self._framed:
+            # In framed mode the colour lives on the outer frame, not a thumb
+            # border; the mat stays white. Only the placeholder bg differs.
+            if has_pix:
+                self._thumb.setStyleSheet(f"border:3px solid {_MAT}; border-radius:3px;")
+            else:
+                self._thumb.setStyleSheet(
+                    f"background:#e9ece3; border:3px solid {_MAT}; border-radius:3px;"
+                    f" color:{_INK_SOFT}; font-size:10px;")
+            self._update_frame_color()
+            return
         parts = []
         if not has_pix:
             parts.append("background-color: #2a2a2a; color: #ccc; font-size: 10px;")
@@ -602,6 +835,23 @@ class PictureCard(QFrame):
         self._thumb.setStyleSheet(" ".join(parts))
 
     def _update_frame_style(self):
+        if self._framed:
+            # Framed cards carry a surface-coloured base with the app-wide olive
+            # selection border; the picture's colour label lives on the inner
+            # frame, not here.
+            if self._selected:
+                self.setStyleSheet(f"QFrame#PictureCard {{ background:{_SURFACE};"
+                                   f" border:2px solid {theme.ACCENT}; border-radius:9px; }}")
+            elif self._cursor:
+                self.setStyleSheet(f"QFrame#PictureCard {{ background:{_SURFACE};"
+                                   f" border:1px solid #333; border-radius:9px; }}")
+            elif self._from_master:
+                self.setStyleSheet("QFrame#PictureCard { background:#ececec;"
+                                   " border:1px solid #cfcfcf; border-radius:9px; }")
+            else:
+                self.setStyleSheet(f"QFrame#PictureCard {{ background:{_SURFACE};"
+                                   f" border:1px solid {_LINE}; border-radius:9px; }}")
+            return
         if self._selected:
             # Brand olive, not the old off-brand blue — the app-wide selection
             # color everywhere else since ch.15's global QSS (Phase 1) already
@@ -1482,7 +1732,11 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         for idx in range(n):
             item = self._collection.item(idx)
             r, col, span, card_w = placement[idx]
-            card = PictureCard(item, card_w, show_kind_tag=show_kind_tag)   # async thumb
+            # Framed Biota-look card for Trip AND the read-only Album variant —
+            # the Album's controls auto-disable (view_read_only → can_edit False),
+            # so it gets visual parity without any misleading affordance.
+            card = PictureCard(item, card_w, show_kind_tag=show_kind_tag,
+                               framed=True)   # async thumb
             card.card_changed.connect(self._on_card_changed)
             card.card_clicked.connect(self._on_card_cursor)
             card.card_double_clicked.connect(self._on_card_clicked)

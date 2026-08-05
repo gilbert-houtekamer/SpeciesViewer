@@ -618,7 +618,7 @@ class MasterSpeciesViewerDialog(MasterCardMenuMixin, QDialog):
         for idx in range(n):
             item = self._collection.item(idx)
             r, col, span, card_w = placement[idx]
-            card = PictureCard(item, card_w, show_kind_tag=False)
+            card = PictureCard(item, card_w, show_kind_tag=False, framed=True)
             card.card_changed.connect(self._on_card_changed)
             card.card_clicked.connect(self._on_card_cursor)
             card.card_double_clicked.connect(self._on_card_clicked)

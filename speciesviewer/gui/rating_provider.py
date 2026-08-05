@@ -151,6 +151,12 @@ class RatingEditorItem(PictureItem):
             r.get("malefemale", ""), r.get("ageintext", ""), r.get("summerwinter", ""))
         return suffix or qualifier_suffix_from_subject(r.get("subject", "") or "")
 
+    @property
+    def sci_name(self) -> str:
+        # WetSoortNaam = the scientific name carried on every trip/master row;
+        # language-independent, so it's the framed card's stable second line.
+        return self._row.get("WetSoortNaam", "") or ""
+
     # read fields
     @property
     def species(self) -> str:

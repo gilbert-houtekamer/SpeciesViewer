@@ -177,6 +177,12 @@ class PictureItem(ABC):
         card (' ♀ br.'). Empty by default; species-carrying providers override."""
         return ""
 
+    @property
+    def sci_name(self) -> str:
+        """Scientific species name, for the framed card's second meta line.
+        Empty by default; species-carrying providers override."""
+        return ""
+
     # ── display (async + cancellable) ────────────────────────────────────────
     # A trip can be hundreds of pictures; the user changes the view long before
     # all of them are drawn. So loading is asynchronous (off the GUI thread) and
