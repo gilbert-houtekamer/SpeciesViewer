@@ -345,13 +345,15 @@ class _FramedPhoto(QLabel):
         self.reposition()
 
 
-def _corner_badge(text: str, *, bold: bool = False, rate: bool = False) -> QLabel:
-    """A mono over-image corner pill: dark for scan-data, olive-tinted for Rate."""
+def _corner_badge(text: str, *, bold: bool = False, rate: bool = False,
+                  attn: bool = False) -> QLabel:
+    """A mono over-image corner pill: dark for scan-data, olive for Rate, red for
+    an attention flag (missing GPS / unset or uncertain species)."""
     lbl = QLabel(text)
-    bg = "rgba(60,74,52,.88)" if rate else "rgba(0,0,0,.5)"
+    bg = "#b4530b" if attn else ("rgba(60,74,52,.88)" if rate else "rgba(0,0,0,.5)")
     lbl.setStyleSheet(
         f"color:#fff; background:{bg}; font-family:Consolas,monospace;"
-        f" font-size:9px; font-weight:{'700' if (bold or rate) else '400'};"
+        f" font-size:9px; font-weight:{'700' if (bold or rate or attn) else '400'};"
         f" padding:1px 6px; border-radius:9px;")
     return lbl
 
@@ -602,10 +604,25 @@ class PictureCard(QFrame):
         self._rate_lbl = _corner_badge("", rate=True)
         self._thumb.add_badge(self._rate_lbl, "br")
         self.update_rate_display(item.rate)
+        # Top-right corner: committed-lock wins; otherwise, on a preview (culling)
+        # card, the Attention flag — a red badge shown ONLY when something needs a
+        # decision (missing GPS, unset/uncertain species). A clean corner = fine.
+        self._attn = self._compute_attention() if self._show_status else False
+        self._attn_badge = None
         if getattr(item, "frozen", False):
             lock = _corner_badge("🔒", bold=True)
             lock.setToolTip("This day is committed — Reset the trip to unlock it.")
             self._thumb.add_badge(lock, "tr")
+        elif self._show_status:
+            text, clickable = self._attn_badge_spec()
+            self._attn_badge = _corner_badge(text or "", attn=True)
+            self._attn_badge.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._attn_badge.mousePressEvent = \
+                lambda e: self.status_clicked.emit(self.upn_key)
+            self._thumb.add_badge(self._attn_badge, "tr")
+            # add_badge shows the widget, so hide AFTER it — a clean card (no
+            # issue) must not show an empty brown pill.
+            self._attn_badge.setVisible(bool(text))
 
         # meta lines: display name (bold) + scientific name(+modifiers) italic
         meta = QWidget()
@@ -622,13 +639,31 @@ class PictureCard(QFrame):
         self._lbl_sci.setWordWrap(True)
         self._lbl_sci.setVisible(bool(sci_text))
         ml.addWidget(self._lbl_sci)
-        # filename + file-types (mono, JPG token greened) — the scan-data line the
-        # old card carried; kept in the white meta area, not over the photo.
+        # location line (preview/culling only): place name or "No GPS data available"
+        self._lbl_location = None
+        if getattr(item, "show_location_line", False):
+            self._lbl_location = QLabel()
+            self._lbl_location.setWordWrap(True)
+            ml.addWidget(self._lbl_location)
+            self._refresh_location_line()
+        # filename + file-types (left, mono, JPG token greened) with a right-aligned
+        # "⌗ Crop" mark. Crop is its own concept (independent of JPG), so the format
+        # reads off the corner and no '#' is stamped on framed thumbnails.
+        key_row = QHBoxLayout()
+        key_row.setContentsMargins(0, 0, 0, 0)
+        key_row.setSpacing(8)
         self._lbl_key = QLabel(self._key_line_text())
         self._lbl_key.setStyleSheet(f"color:{_INK_SOFT}; font-family:Consolas,monospace; font-size:9.5px;")
         self._lbl_key.setWordWrap(True)
         self._lbl_key.setToolTip(self._item.key)
-        ml.addWidget(self._lbl_key)
+        key_row.addWidget(self._lbl_key, 1)
+        self._lbl_crop = QLabel()
+        self._lbl_crop.setStyleSheet(f"color:{_FRAME}; font-family:Consolas,monospace;"
+                                     f" font-size:9.5px; font-weight:700;")
+        key_row.addWidget(self._lbl_crop, 0,
+                          Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        ml.addLayout(key_row)
+        self._refresh_crop_mark()
         # origin tag only when kinds are mixed (Trip+Master) or a master/album ref
         from_album = getattr(item, "from_album", False)
         if self._from_master or self._show_kind_tag or from_album:
@@ -664,9 +699,6 @@ class PictureCard(QFrame):
         cl.addWidget(self._color_sel)
         outer.addWidget(controls)
 
-        # legacy-only label other methods may touch — None so its guard skips.
-        self._lbl_location = None
-
         self._update_frame_style()   # base surface + selection border
         self._update_thumb_style()   # paints the frame colour from the label
         item.request_thumbnail(target_w, self.set_thumbnail)
@@ -682,11 +714,62 @@ class PictureCard(QFrame):
         self._pframe.setStyleSheet(
             f"QFrame#pframe {{ background:{hexc or _FRAME}; border-radius:8px; }}")
 
+    # ── framed preview (culling) status ──────────────────────────────────────
+    def _compute_attention(self) -> bool:
+        """True when this culling card needs a decision — unset/uncertain species
+        or missing GPS. Frozen (committed) cards are read-only, so never flagged."""
+        it = self._item
+        if getattr(it, "frozen", False):
+            return False
+        return (not it.species) or bool(it.error_msg) or (not it.has_gps)
+
+    def _attn_badge_spec(self):
+        """(text, clickable) for the top-right Attention badge — species issues
+        first (clickable → SpeciesInfoDialog), then missing GPS. ('', False) when
+        nothing needs attention."""
+        it = self._item
+        if getattr(it, "frozen", False):
+            return ("", False)
+        if not it.species:
+            return ("❔ species", True)
+        if it.error_msg:
+            return ("⚠ ID", True)
+        if not it.has_gps:
+            return ("❓ GPS", True)
+        return ("", False)
+
+    def _refresh_crop_mark(self):
+        """The right-aligned '⌗ Crop' mark on the filename line (plus a 📝 when a
+        preview card carries a description). Crop is its own signal — no '#' stamp
+        on the framed image."""
+        marks = []
+        if getattr(self._item, "has_crop", False):
+            marks.append("⌗ Crop")
+        if self._show_status and self._item.description:
+            marks.append("📝")
+        self._lbl_crop.setText("   ".join(marks))
+        self._lbl_crop.setToolTip("This picture carries a crop" if getattr(
+            self._item, "has_crop", False) else "")
+
+    def _refresh_framed_status(self):
+        """Repaint the preview-only bits (location line, Attention badge, red
+        frame) after an edit such as a species commit or a GPS backfill."""
+        if not self._show_status:
+            return
+        self._refresh_location_line()
+        text, _clickable = self._attn_badge_spec()
+        if self._attn_badge is not None:
+            self._attn_badge.setText(text)
+            self._attn_badge.setVisible(bool(text))
+            self._thumb.reposition()
+        self._attn = self._compute_attention()
+        self._update_frame_style()   # red border on/off
+
     def _refresh_status_badges(self):
         """Set the status icon + description/GPS badges from the live item.
         Re-callable after an edit (species commit, GPS fix)."""
-        if not self._show_status:
-            return
+        if self._framed or not self._show_status:
+            return   # framed cards use _refresh_framed_status (Attention model)
         item = self._item
         error_msg = item.error_msg
         species = item.species
@@ -731,10 +814,11 @@ class PictureCard(QFrame):
             self._frame_color = self._item.color
             self._update_thumb_style()          # repaints the frame colour
             self._lbl_key.setText(self._key_line_text())
+            self._refresh_crop_mark()
             self._stars.set_rating(self._item.rating)
             self._color_sel.set_color(self._item.color)
             self.update_rate_display(self._item.rate)
-            self._refresh_status_badges()
+            self._refresh_framed_status()
             return
         # Include the sex/age/plumage suffix, exactly as the constructor does —
         # else committing "pair" repaints the card WITHOUT the ♂♀ it just gained.
@@ -845,6 +929,10 @@ class PictureCard(QFrame):
             elif self._cursor:
                 self.setStyleSheet(f"QFrame#PictureCard {{ background:{_SURFACE};"
                                    f" border:1px solid #333; border-radius:9px; }}")
+            elif getattr(self, "_attn", False):
+                # a culling card that needs a decision — subtle amber-red edge
+                self.setStyleSheet(f"QFrame#PictureCard {{ background:{_SURFACE};"
+                                   f" border:2px solid {theme.WARN}; border-radius:9px; }}")
             elif self._from_master:
                 self.setStyleSheet("QFrame#PictureCard { background:#ececec;"
                                    " border:1px solid #cfcfcf; border-radius:9px; }")
@@ -888,7 +976,10 @@ class PictureCard(QFrame):
         else:
             # +6 leaves room for the 3px frame border so the pixmap isn't clipped
             self._thumb.setFixedHeight(px.height() + 6)
-            if getattr(self._item, "has_crop", False):
+            # Framed cards carry the crop signal as a ⌗ mark in the text line, so
+            # the '#' is NOT stamped on the image (it also read as "has a JPG",
+            # which the corner format badge now covers). Legacy keeps the stamp.
+            if getattr(self._item, "has_crop", False) and not self._framed:
                 px = stamp_crop_marker(px)
             self._thumb.setPixmap(px)
         self._update_thumb_style()

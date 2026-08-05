@@ -1,0 +1,282 @@
+<title>Species Image Preview — culling card variants</title>
+<style>
+  :root {
+    --bg: #f5f7f3; --surface: #ffffff; --surface-2: #eef1ea;
+    --ink: #1c211b; --ink-soft: #59634f; --line: #d7ddce;
+    --ready: #2563a8; --ready-bg: #e4eef8; --done: #2f7d43; --done-bg: #e6f1e8;
+    --warn: #b4530b; --warn-bg: #f8ecd8; --danger: #c0392b;
+    --frame-olive: #6d8764; --mat: #ffffff;
+    --font-display: "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-mono: ui-monospace, "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+    --radius: 9px; --shadow: 0 1px 2px rgba(20,30,15,.06), 0 4px 14px rgba(20,30,15,.05);
+    --c-red:#e24a4a; --c-yellow:#e5b000; --c-green:#4caf50; --c-blue:#3e7be0; --c-purple:#9c6bd6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#141711; --surface:#1d211a; --surface-2:#252a20; --ink:#e8ece2; --ink-soft:#a3ac99;
+      --line:#333a2c; --ready:#64a2db; --ready-bg:#1a2632; --done:#5bb271; --done-bg:#1d2c20;
+      --warn:#d98a3d; --warn-bg:#2c2213; --danger:#e0685a; --frame-olive:#7f9673; --mat:#12150f;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.28); }
+  }
+  :root[data-theme="dark"] { --bg:#141711; --surface:#1d211a; --surface-2:#252a20; --ink:#e8ece2; --ink-soft:#a3ac99;
+    --line:#333a2c; --ready:#64a2db; --ready-bg:#1a2632; --done:#5bb271; --done-bg:#1d2c20;
+    --warn:#d98a3d; --warn-bg:#2c2213; --danger:#e0685a; --frame-olive:#7f9673; --mat:#12150f;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.28); }
+  :root[data-theme="light"] { --bg:#f5f7f3; --surface:#ffffff; --surface-2:#eef1ea; --ink:#1c211b; --ink-soft:#59634f;
+    --line:#d7ddce; --ready:#2563a8; --ready-bg:#e4eef8; --done:#2f7d43; --done-bg:#e6f1e8;
+    --warn:#b4530b; --warn-bg:#f8ecd8; --danger:#c0392b; --frame-olive:#6d8764; --mat:#ffffff;
+    --shadow:0 1px 2px rgba(20,30,15,.06), 0 4px 14px rgba(20,30,15,.05); }
+  :root[data-scheme="muted"]  { --c-red:#b5544f; --c-yellow:#c2a24a; --c-green:#6d8a5a; --c-blue:#5f7fa6; --c-purple:#8a749e; }
+  :root[data-scheme="pastel"] { --c-red:#e29a97; --c-yellow:#e6d18f; --c-green:#a9c69c; --c-blue:#9db8d6; --c-purple:#c1abd6; }
+  :root[data-scheme="vivid"]  { --c-red:#ff3b30; --c-yellow:#ffcc00; --c-green:#34c759; --c-blue:#0a84ff; --c-purple:#af52de; }
+  :root[data-scheme="nature"] { --c-red:#c65b3c; --c-yellow:#d9a441; --c-green:#6d8764; --c-blue:#4f748a; --c-purple:#7a6b8f; }
+
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:var(--font-display); line-height:1.5; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1180px; margin:0 auto; padding:28px 22px 72px; }
+  .eyebrow { font-family:var(--font-mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-soft); margin:0 0 6px; }
+  h1 { font-size:clamp(21px,3.2vw,27px); margin:0 0 8px; text-wrap:balance; letter-spacing:-.01em; }
+  .lede { margin:0; color:var(--ink-soft); max-width:78ch; font-size:14.5px; }
+  .lede b { color:var(--ink); }
+
+  .deck { margin:22px 0 8px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:15px 18px; display:flex; flex-wrap:wrap; gap:22px 30px; align-items:flex-end; }
+  .ctl { display:flex; flex-direction:column; gap:8px; }
+  .ctl > label { font-family:var(--font-mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-soft); }
+  .seg { display:inline-flex; background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:3px; gap:3px; flex-wrap:wrap; }
+  .seg button { font:inherit; font-size:12.5px; cursor:pointer; border:0; background:transparent; color:var(--ink-soft); padding:6px 12px; border-radius:6px; }
+  .seg button:hover { color:var(--ink); }
+  .seg button[aria-pressed="true"] { background:var(--surface); color:var(--ink); font-weight:600; box-shadow:0 1px 2px rgba(20,30,15,.12); }
+  .spacer { flex:1 1 auto; }
+  .ghost { font:inherit; font-size:12.5px; cursor:pointer; color:var(--ink-soft); background:var(--surface); border:1px solid var(--line); border-radius:7px; padding:7px 12px; }
+  .ghost:hover { color:var(--ink); border-color:var(--frame-olive); }
+  button:focus-visible { outline:2px solid var(--ready); outline-offset:2px; }
+  .vhint { margin:0 0 18px; font-size:12.5px; color:var(--ink-soft); } .vhint b { color:var(--ink); }
+
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(232px, 1fr)); gap:18px; }
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow);
+    overflow:hidden; display:flex; flex-direction:column; transition:transform .12s, box-shadow .12s, border-color .12s; }
+  .card:hover { transform:translateY(-2px); border-color:var(--frame-olive); box-shadow:0 3px 6px rgba(20,30,15,.09), 0 12px 24px rgba(20,30,15,.1); }
+  /* an attention frame when something needs fixing (attention variant) */
+  .card.attn { border-color:var(--danger); box-shadow:0 0 0 1px var(--danger); }
+
+  .frame { padding:9px; background:var(--frame-olive); position:relative; }
+  .card[data-label] .frame { background:var(--lab, var(--frame-olive)); }
+  .photo { aspect-ratio:5/4; border:3px solid var(--mat); border-radius:3px; background-size:cover; background-position:center; position:relative; overflow:hidden; }
+
+  .corner { position:absolute; font-family:var(--font-mono); font-size:9.5px; letter-spacing:.04em; font-variant-numeric:tabular-nums;
+    color:#fff; background:rgba(0,0,0,.5); padding:2px 7px; border-radius:20px; backdrop-filter:blur(2px); white-space:nowrap; display:flex; align-items:center; gap:4px; }
+  .corner.tl{left:7px;top:7px;} .corner.tr{right:7px;top:7px;} .corner.bl{left:7px;bottom:7px;} .corner.br{right:7px;bottom:7px;}
+  .corner[data-k="format"]{font-weight:700;} .corner[data-k="rate"]{font-weight:700; background:rgba(60,74,52,.9);}
+  .corner[data-k="gps-ok"]{background:rgba(20,60,30,.6);} .corner[data-k="gps-no"]{background:var(--warn); font-weight:700;}
+  .corner[data-k="attn"]{background:var(--danger); font-weight:700;}
+  .corner.clickable{cursor:pointer;} .corner.clickable:hover{outline:2px solid rgba(255,255,255,.6);}
+
+  .meta { padding:10px 12px 4px; }
+  .nl { font-size:15px; font-weight:600; line-height:1.2; display:flex; align-items:center; gap:6px; }
+  .nl .warnpill { font-size:10px; font-weight:700; color:#fff; background:var(--warn); border-radius:5px; padding:1px 6px; cursor:pointer; }
+  .nl .nonepill { font-size:10px; font-weight:700; color:var(--ink-soft); background:var(--surface-2); border:1px solid var(--line); border-radius:5px; padding:1px 6px; cursor:pointer; }
+  .loc { font-size:11px; margin-top:2px; color:var(--done); }
+  .loc.missing { color:var(--ink-soft); font-style:italic; }
+  .fn { margin-top:6px; font-family:var(--font-mono); font-size:9.5px; color:var(--ink-soft); display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .fn .jpg { color:var(--done); font-weight:700; } .fn .chip { color:var(--ink-soft); }
+
+  .controls { padding:8px 12px 10px; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .stars { display:inline-flex; gap:1px; cursor:pointer; } .stars span { font-size:17px; line-height:1; color:var(--line); }
+  .stars span.on { color:#e5a800; } .stars:hover span.hot { color:#f0be3a; }
+  .swatches { display:inline-flex; gap:5px; } .swatches i { width:14px; height:14px; border-radius:50%; cursor:pointer; border:2px solid transparent; }
+  .swatches i[aria-pressed="true"] { border-color:var(--ink); box-shadow:0 0 0 2px var(--surface) inset; }
+  .swatches i.none { background:var(--surface); border:2px dashed var(--line); }
+
+  /* below-strip variant: the badge row */
+  .badges { border-top:1px solid var(--line); padding:7px 12px 10px; display:flex; align-items:center; gap:8px; }
+  .badges .b { display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:22px; padding:0 5px;
+    border-radius:6px; font-size:13px; border:1px solid var(--line); background:var(--surface); cursor:pointer; }
+  .badges .b.ok { color:var(--done); border-color:color-mix(in srgb, var(--done) 40%, var(--line)); }
+  .badges .b.warn { color:var(--warn); border-color:color-mix(in srgb, var(--warn) 45%, var(--line)); background:var(--warn-bg); }
+  .badges .b.none { color:var(--ink-soft); }
+  .badges .b.gps-no { color:var(--warn); border-color:color-mix(in srgb, var(--warn) 45%, var(--line)); background:var(--warn-bg); }
+  .badges .grow { flex:1 1 auto; }
+
+  .footnote { margin-top:26px; font-size:12.5px; color:var(--ink-soft); line-height:1.55; border-top:1px solid var(--line); padding-top:14px; max-width:84ch; }
+  .footnote b { color:var(--ink); } .footnote code { font-family:var(--font-mono); font-size:.92em; background:var(--surface-2); padding:1px 5px; border-radius:4px; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">SpeciesViewer · design study · culling viewer (#1)</p>
+  <h1>Species Image Preview — where the culling signals live</h1>
+  <p class="lede">
+    The culling card is the framed card <b>plus</b> four signals the Trip/Master/Album cards don't carry:
+    <b>species-ID status</b> (OK / uncertain / none — clickable to fix), <b>GPS present/missing</b>,
+    <b>crop</b>, <b>description</b>, and a <b>location line</b>. Same photo frame, same clickable stars/colours.
+    The open question is placement — pick a variant and a colour scheme to compare.
+  </p>
+
+  <div class="deck">
+    <div class="ctl">
+      <label>Signal placement</label>
+      <div class="seg" id="variant" role="group">
+        <button data-v="attention" aria-pressed="true">Attention-only</button>
+        <button data-v="onimage" aria-pressed="false">On the image</button>
+        <button data-v="strip" aria-pressed="false">Badge strip below</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <label>Colour scheme (5 labels)</label>
+      <div class="seg" id="scheme" role="group">
+        <button data-scheme="classic" aria-pressed="true">Classic</button>
+        <button data-scheme="muted" aria-pressed="false">Muted</button>
+        <button data-scheme="pastel" aria-pressed="false">Pastel</button>
+        <button data-scheme="vivid" aria-pressed="false">Vivid</button>
+        <button data-scheme="nature" aria-pressed="false">Nature</button>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="ctl"><label>Preview</label><button class="ghost" id="themebtn">◐ Light / dark</button></div>
+  </div>
+  <p class="vhint" id="vhint"></p>
+
+  <div class="grid" id="grid"></div>
+
+  <p class="footnote">
+    <b>Attention-only</b> keeps the card clean and only flags what needs a decision — a red frame + corner when
+    GPS is missing or the species is unset/uncertain; crop/description sit as faint marks on the filename line.
+    Best for fast culling: a tidy card means "nothing to fix here."<br>
+    <b>On the image</b> pins GPS to the top-right corner always (📍/❓) and shows the ID status as a pill by the
+    name; crop/📝 ride the filename line. Everything visible without a strip, at the cost of busier photos.<br>
+    <b>Badge strip below</b> is today's row — status · ⌗ · 📝 · 📍 under the card, corners stay minimal. Most
+    familiar, most explicit, but adds a row of height per card.<br><br>
+    <b>Still to come:</b> the <code>large image view</code> (single-photo viewer + filmstrip) and the
+    <code>map view</code> bubbles/strips — both reuse these signals, so whichever placement you pick here sets the
+    vocabulary for those too.
+  </p>
+</div>
+
+<script>
+  const P = {
+    perch:'linear-gradient(160deg,#9fb37a,#6f8b57 55%,#41562f)', sky:'linear-gradient(180deg,#a9c6db,#7ba0c0 60%,#5b7f9e)',
+    red:'linear-gradient(150deg,#c98a6a,#9a5a44 55%,#5f3a2f)',   branch:'linear-gradient(150deg,#bcae8e,#8f8a63 55%,#5f5c3d)',
+    post:'linear-gradient(165deg,#b0a48a,#877c5f 50%,#544a34)',  reed:'linear-gradient(170deg,#c7c07a,#8f8a4a 55%,#5a5730)'
+  };
+  // status: ok | warn (uncertain "? …") | none (no species set)
+  const cards = [
+    { name:'vermilion flycatcher', status:'ok',   gps:true,  crop:true,  desc:'male, full sun', loc:'Sweetwater Wetlands', fmt:'JPG', date:'2023-04-05', rate:67, stars:3, label:'green',  bg:P.perch },
+    { name:'vermilion flycatcher', status:'ok',   gps:false, crop:false, desc:'',               loc:'',                    fmt:'ORF', date:'2023-04-05', rate:45, stars:2, label:'yellow', bg:P.branch },
+    { name:'? flycatcher',         status:'warn', gps:true,  crop:false, desc:'',               loc:'Tucson',              fmt:'ORF', date:'2023-03-27', rate:12, stars:1, label:'',       bg:P.post },
+    { name:'',                     status:'none', gps:true,  crop:false, desc:'',               loc:'Catalina SP',         fmt:'JPG', date:'2023-04-01', rate:6,  stars:0, label:'',       bg:P.sky },
+    { name:'vermilion flycatcher', status:'ok',   gps:true,  crop:true,  desc:'perched male',   loc:'Reid Park',           fmt:'JPG', date:'2023-03-27', rate:88, stars:4, label:'red',    bg:P.red },
+    { name:'vermilion flycatcher', status:'ok',   gps:false, crop:false, desc:'',               loc:'',                    fmt:'ORF', date:'2023-04-05', rate:30, stars:2, label:'',       bg:P.reed }
+  ];
+  const COLORS = ['red','yellow','green','blue','purple'];
+  const VHINT = {
+    attention: "<b>Attention-only</b> — a clean card means nothing to fix. Red frame + corner appear only for missing GPS or an unset/uncertain species.",
+    onimage:   "<b>On the image</b> — GPS lives in the top-right corner (📍/❓) always; species status is a pill by the name.",
+    strip:     "<b>Badge strip below</b> — today's icon row: status · crop · description · GPS, under the card."
+  };
+  let variant = 'attention';
+
+  const grid = document.getElementById('grid');
+  function attn(c){ return !c.gps || c.status !== 'ok'; }
+
+  function fnLine(c){
+    let s = `2023 tucson-xxxx <span class="jpg">${c.fmt==='JPG'?'JPG':''}</span>`;
+    s = `<span>2023 tucson-…&nbsp; <span class="jpg">${c.fmt}</span></span>`;
+    const chips = [];
+    if (variant !== 'strip'){
+      if (c.crop) chips.push('<span class="chip" title="has a crop">⌗</span>');
+      if (c.desc) chips.push(`<span class="chip" title="${c.desc}">📝</span>`);
+    }
+    return s + chips.map(x=>' '+x).join('');
+  }
+
+  function render(){
+    document.getElementById('vhint').innerHTML = VHINT[variant];
+    grid.innerHTML = '';
+    cards.forEach(c => {
+      const el = document.createElement('article');
+      el.className = 'card' + (variant==='attention' && attn(c) ? ' attn' : '');
+      if (c.label){ el.dataset.label = c.label; el.style.setProperty('--lab', `var(--c-${c.label})`); }
+
+      // corners
+      const corners = [
+        `<span class="corner tl" data-k="format">${c.fmt}</span>`,
+        `<span class="corner bl" data-k="date">${c.date}</span>`,
+        `<span class="corner br" data-k="rate">Rate ${c.rate}</span>`
+      ];
+      if (variant==='onimage'){
+        corners.push(c.gps
+          ? `<span class="corner tr clickable" data-k="gps-ok" title="GPS present">📍</span>`
+          : `<span class="corner tr clickable" data-k="gps-no" title="Missing GPS — fix in Lightroom">❓ no GPS</span>`);
+      } else if (variant==='attention'){
+        if (!c.gps) corners.push(`<span class="corner tr clickable" data-k="attn" title="Missing GPS">❓ GPS</span>`);
+        else if (c.status==='none') corners.push(`<span class="corner tr clickable" data-k="attn" title="No species set">❔ species</span>`);
+        else if (c.status==='warn') corners.push(`<span class="corner tr clickable" data-k="attn" title="Uncertain ID">⚠ ID</span>`);
+      }
+
+      // name row
+      let nameHtml;
+      if (c.status==='none') nameHtml = `<span style="color:var(--ink-soft); font-style:italic;">no species</span> <span class="nonepill" title="Set the species">❔ set</span>`;
+      else if (c.status==='warn') nameHtml = `${c.name} <span class="warnpill" title="Confirm the identification">⚠ check</span>`;
+      else nameHtml = c.name;
+
+      // location
+      const locHtml = c.loc
+        ? `<div class="loc">${c.loc}</div>`
+        : (variant!=='strip' && !c.gps ? '' : `<div class="loc missing">No GPS data available</div>`);
+
+      const stars = [0,1,2,3,4].map(i=>`<span class="${i<c.stars?'on':''}">★</span>`).join('');
+      const sw = COLORS.map(col=>`<i style="background:var(--c-${col})" aria-pressed="${c.label===col}" title="${col}"></i>`).join('')
+        + `<i class="none" aria-pressed="${!c.label}" title="no label"></i>`;
+
+      // below strip
+      let strip = '';
+      if (variant==='strip'){
+        const st = c.status==='ok' ? '<span class="b ok" title="species OK">✓</span>'
+                 : c.status==='warn' ? '<span class="b warn" title="uncertain ID">⚠</span>'
+                 : '<span class="b none" title="no species set">❔</span>';
+        const crop = c.crop ? '<span class="b" title="has a crop">⌗</span>' : '';
+        const desc = c.desc ? `<span class="b" title="${c.desc}">📝</span>` : '';
+        const gps  = c.gps ? '<span class="b ok" title="GPS present">📍</span>' : '<span class="b gps-no" title="missing GPS">❓</span>';
+        strip = `<div class="badges">${st}${crop}${desc}<span class="grow"></span>${gps}</div>`;
+      }
+
+      el.innerHTML = `
+        <div class="frame"><div class="photo" style="background:${c.bg}">${corners.join('')}</div></div>
+        <div class="meta">
+          <div class="nl">${nameHtml}</div>
+          ${locHtml}
+          <div class="fn">${fnLine(c)}</div>
+        </div>
+        <div class="controls"><div class="stars">${stars}</div><div class="swatches">${sw}</div></div>
+        ${strip}`;
+      grid.appendChild(el);
+
+      // interactivity: stars + swatches
+      const sr = el.querySelector('.stars');
+      sr.querySelectorAll('span').forEach((s,idx)=>{
+        s.addEventListener('mouseenter',()=>sr.querySelectorAll('span').forEach((x,j)=>x.classList.toggle('hot', j<=idx)));
+        s.addEventListener('mouseleave',()=>sr.querySelectorAll('span').forEach(x=>x.classList.remove('hot')));
+        s.addEventListener('click',()=>sr.querySelectorAll('span').forEach((x,j)=>x.classList.toggle('on', j<=idx)));
+      });
+      el.querySelectorAll('.swatches i').forEach((sw,idx)=>{
+        sw.addEventListener('click',()=>{
+          const col = idx<COLORS.length?COLORS[idx]:'';
+          c.label = col;
+          if (col){ el.dataset.label=col; el.style.setProperty('--lab',`var(--c-${col})`); }
+          else { el.removeAttribute('data-label'); el.style.removeProperty('--lab'); }
+          el.querySelectorAll('.swatches i').forEach((x,j)=>x.setAttribute('aria-pressed', (j<COLORS.length?COLORS[j]:'')===col));
+        });
+      });
+    });
+  }
+
+  function wireSeg(id, fn){ const b=document.getElementById(id);
+    b.addEventListener('click',e=>{const t=e.target.closest('button'); if(!t) return;
+      b.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed', x===t)); fn(t);}); }
+  wireSeg('variant', t=>{ variant=t.dataset.v; render(); });
+  wireSeg('scheme',  t=>document.documentElement.dataset.scheme=t.dataset.scheme);
+  document.getElementById('themebtn').addEventListener('click',()=>{ const r=document.documentElement;
+    const cur=r.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+    r.dataset.theme = cur==='dark'?'light':'dark'; });
+
+  render();
+</script>

@@ -938,7 +938,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             idx = self._build_index
             item = self._collection.item(idx)
             r, col, span, card_w = self._placement[idx]
-            card = PictureCard(item, card_w, show_status=show_status)
+            card = PictureCard(item, card_w, show_status=show_status, framed=True)
             card.card_clicked.connect(self._on_card_cursor)
             card.card_double_clicked.connect(self._open_large_view)
             card.card_right_clicked.connect(self._on_card_context_menu)
