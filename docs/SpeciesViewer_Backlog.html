@@ -37,7 +37,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 31 July 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 5 August 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Open work for the SpeciesViewer nature-photo pipeline and GUI. This document holds
 only what is <strong>still to do</strong> — everything that has shipped now lives in the companion
@@ -100,6 +100,20 @@ reads <em>No current work planned</em>.</p>
     pictures whose GPS looks hand-entered but carries no record of it. Report first, decide later.
     The scan already turned up two real errors worth a look: a South Africa photo tagged
     <code>Country = Spain</code>, and Galapagos 2015 reusing a single coordinate across many pictures.</li>
+</ul>
+<h3>Done</h3>
+<ul>
+  <li><strong>Album edits now reach the master</strong> <span class="tag-shipped">SHIPPED</span> —
+    an album is a window on the master and its blog/website are built <em>live</em> from the master,
+    so edits that stopped at the sidecar or the legacy review CSVs silently missed the published page.
+    Fixed: a picture's <strong>website description</strong> (the day viewer's "story") now mirrors into
+    the master DB, and the <strong>Album Translations</strong> panel (double-click the Translations
+    sphere) reads the day's texts from the master and writes source fixes there too.</li>
+  <li><strong>Add new renders to the master</strong> <span class="tag-shipped">SHIPPED</span> —
+    a DxO/Lightroom JPG dropped beside a master RAW used to show in the Pictures view (a disk scan)
+    but silently miss the JPEG count and the blog (both read the master). The album overview now has an
+    <em>➕ Add new renders</em> button that scans the album on demand, shows a per-day breakdown of what
+    it found, and on confirm registers them (setting each as its picture's best JPG).</li>
 </ul>
 <h3>Parked (by design)</h3>
 <ul>
