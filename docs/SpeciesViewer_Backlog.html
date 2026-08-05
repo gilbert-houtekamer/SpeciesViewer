@@ -100,6 +100,13 @@ reads <em>No current work planned</em>.</p>
     pictures whose GPS looks hand-entered but carries no record of it. Report first, decide later.
     The scan already turned up two real errors worth a look: a South Africa photo tagged
     <code>Country = Spain</code>, and Galapagos 2015 reusing a single coordinate across many pictures.</li>
+  <li><strong>Auto-notice new renders while a day viewer is open</strong> <span class="tag-new">NEW</span> —
+    watch the <em>open</em> day/album's folders (a handful) with a native file-added signal
+    (<code>QFileSystemWatcher</code>/watchdog) so a render dropped beside a RAW auto-surfaces — an amber
+    card badge + one-click register — instead of needing the manual <em>➕ Add new renders</em> scan.
+    Could make the product noticeably simpler to use. <strong>Scope caveat:</strong> only the open day's
+    folders — watching the whole master tree (hundreds of Dropbox folders) is impractical (OS handle
+    limits + sync churn). Not now, by choice — captured because the UX win is real.</li>
 </ul>
 <h3>Done</h3>
 <ul>
