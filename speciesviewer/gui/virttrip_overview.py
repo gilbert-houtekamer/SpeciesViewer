@@ -763,6 +763,13 @@ def populate_virttrip_overview(self):
                 for upn in day_hits:
                     try:
                         res = add_upn_files(master_db, master_db.master_root, upn)
+                        # Flush THIS add synchronously before the next. A master-wide
+                        # bulk sweep was removed precisely because streaming journal
+                        # writes past a slow per-UPN exiftool lets the debounced
+                        # checkpoint worker fire mid-stream and strand (drop) entries.
+                        # A per-add checkpoint keeps the journal quiescent so nothing
+                        # is lost; batches here are a handful, so the cost is fine.
+                        master_db.checkpoint()
                         added += res.get("jpg", 0)
                     except Exception as e:
                         self.logger.warning(f"add renders failed for {upn}: {e}")
