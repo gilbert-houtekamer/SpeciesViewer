@@ -1,0 +1,221 @@
+<title>Large Image Viewer — restyle study</title>
+<style>
+  /* The large viewer is dark by design (best for judging a photo). This study
+     keeps the dark stage, and brings the metadata panel + filmstrip onto the
+     Biota vocabulary: mono utility face for data, name/sci typography, the
+     olive/colour picture frame. Single dark theme on purpose. */
+  :root {
+    --bg:#141711; --panel:#1b1f18; --panel-2:#232820; --stage:#0e100c;
+    --ink:#e8ece2; --ink-soft:#9aa48f; --line:#333a2c; --line-soft:#2a3023;
+    --frame-olive:#7f9673; --mat:#e9ece3; --ready:#7fb2e6; --warn:#d98a3d; --danger:#e0685a;
+    --font-display:"Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-mono: ui-monospace,"Cascadia Code","Cascadia Mono", Consolas, monospace;
+    --c-red:#e24a4a; --c-yellow:#e5b000; --c-green:#4caf50; --c-blue:#3e7be0; --c-purple:#9c6bd6;
+  }
+  :root[data-scheme="muted"]  { --c-red:#b5544f; --c-yellow:#c2a24a; --c-green:#6d8a5a; --c-blue:#5f7fa6; --c-purple:#8a749e; }
+  :root[data-scheme="nature"] { --c-red:#c65b3c; --c-yellow:#d9a441; --c-green:#7f9673; --c-blue:#4f748a; --c-purple:#7a6b8f; }
+
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:var(--font-display); line-height:1.5; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1200px; margin:0 auto; padding:26px 20px 64px; }
+  .eyebrow { font-family:var(--font-mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-soft); margin:0 0 6px; }
+  h1 { font-size:clamp(20px,3vw,26px); margin:0 0 8px; letter-spacing:-.01em; }
+  .lede { margin:0 0 18px; color:var(--ink-soft); max-width:80ch; font-size:14px; }
+  .lede b { color:var(--ink); }
+
+  .deck { display:flex; flex-wrap:wrap; gap:20px 28px; align-items:flex-end; margin-bottom:16px; }
+  .ctl { display:flex; flex-direction:column; gap:7px; }
+  .ctl > label { font-family:var(--font-mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-soft); }
+  .seg { display:inline-flex; background:var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:3px; gap:3px; }
+  .seg button { font:inherit; font-size:12.5px; cursor:pointer; border:0; background:transparent; color:var(--ink-soft); padding:6px 12px; border-radius:6px; }
+  .seg button:hover { color:var(--ink); }
+  .seg button[aria-pressed="true"] { background:var(--panel); color:var(--ink); font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.4); }
+
+  /* the viewer window */
+  .viewer { background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden; box-shadow:0 10px 40px rgba(0,0,0,.4); }
+  .topbar { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid var(--line); background:var(--panel-2); }
+  .topbar .title { font-size:12.5px; color:var(--ink-soft); font-family:var(--font-mono); }
+  .topbar .grow { flex:1 1 auto; }
+  .tbtn { font:inherit; font-size:11.5px; color:var(--ink-soft); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 9px; cursor:pointer; }
+  .tbtn:hover { color:var(--ink); border-color:var(--frame-olive); }
+
+  .body { display:grid; grid-template-columns:1fr 320px; min-height:440px; }
+  .stage { background:var(--stage); display:flex; align-items:center; justify-content:center; position:relative; padding:16px; }
+  .stage .pic { width:100%; height:100%; min-height:400px; border-radius:4px;
+    background:linear-gradient(150deg,#3a5566,#26414d 55%,#16262e); box-shadow:0 6px 30px rgba(0,0,0,.5); }
+  .stage .fbadge { position:absolute; left:22px; top:22px; font-family:var(--font-mono); font-size:10px; color:#fff;
+    background:rgba(0,0,0,.5); padding:3px 9px; border-radius:20px; }
+
+  /* metadata panel — Biota vocabulary */
+  .panel { background:var(--panel); border-left:1px solid var(--line); padding:14px 14px 16px; overflow:auto; }
+  .sec { font-family:var(--font-mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-soft);
+    margin:14px 0 6px; padding-bottom:4px; border-bottom:1px solid var(--line-soft); }
+  .sec:first-child { margin-top:0; }
+  .name { font-size:19px; font-weight:700; line-height:1.15; }
+  .sci { font-size:12.5px; font-style:italic; color:var(--ink-soft); margin-top:1px; }
+  .row { display:flex; justify-content:space-between; gap:10px; font-size:12px; padding:2px 0; }
+  .row .k { color:var(--ink-soft); font-family:var(--font-mono); font-size:10.5px; }
+  .row .v { text-align:right; font-variant-numeric:tabular-nums; }
+  .mono { font-family:var(--font-mono); font-size:11px; color:var(--ink); }
+  .place { color:#8fc99a; font-size:12.5px; } .place.miss { color:var(--warn); font-style:italic; }
+
+  .stars { display:inline-flex; gap:2px; cursor:pointer; } .stars span { font-size:20px; color:#4a4f43; }
+  .stars span.on { color:#e5a800; } .stars:hover span.hot { color:#f0be3a; }
+  .rateno { font-family:var(--font-mono); font-size:11px; color:var(--ink-soft); }
+  .ratewrap { display:flex; align-items:center; justify-content:space-between; }
+  .swatches { display:flex; gap:7px; margin-top:9px; } .swatches i { width:18px; height:18px; border-radius:50%; cursor:pointer; border:2px solid transparent; }
+  .swatches i[aria-pressed="true"] { border-color:var(--ink); box-shadow:0 0 0 2px var(--panel) inset; }
+  .swatches i.none { background:transparent; border:2px dashed var(--line); }
+  .applybtn { margin-top:10px; font:inherit; font-size:11.5px; color:var(--ready); background:transparent; border:1px solid var(--line); border-radius:6px; padding:5px 10px; cursor:pointer; }
+  .applybtn:hover { border-color:var(--ready); }
+
+  /* filmstrip */
+  .strip { display:flex; gap:8px; padding:12px; background:var(--panel-2); border-top:1px solid var(--line); overflow-x:auto; }
+  .cell { flex:0 0 auto; width:118px; cursor:pointer; }
+  /* variant A — framed (olive/colour picture frame, like the grid cards) */
+  .strip[data-cell="framed"] .cell .fr { padding:5px; border-radius:6px; background:var(--frame-olive); }
+  .strip[data-cell="framed"] .cell[data-label] .fr { background:var(--lab); }
+  .strip[data-cell="framed"] .cell .ph { border:2px solid var(--mat); border-radius:2px; }
+  .strip[data-cell="framed"] .cell.cur .fr { box-shadow:0 0 0 2px #fff; }
+  /* variant B — dark colour-border (today's look, refined) */
+  .strip[data-cell="dark"] .cell .fr { padding:0; border-radius:5px; border:2px solid #3a3f34; background:#20241c; }
+  .strip[data-cell="dark"] .cell[data-label] .fr { border-color:var(--lab); }
+  .strip[data-cell="dark"] .cell.cur .fr { border-color:#fff; }
+  /* variant C — colour underline (photo clean, colour as a bar under it) */
+  .strip[data-cell="bar"] .cell .fr { padding:0; border-radius:5px; border:1px solid #2a3023; background:#20241c; }
+  .strip[data-cell="bar"] .cell .ph { border-radius:4px 4px 0 0; }
+  .strip[data-cell="bar"] .cell[data-label] .fr { border-bottom:4px solid var(--lab); }
+  .strip[data-cell="bar"] .cell.cur .fr { border-color:#fff; }
+
+  .cell .ph { height:78px; background-size:cover; background-position:center; }
+  .cell .cap { display:flex; align-items:center; justify-content:center; gap:5px; padding:3px 2px 1px; }
+  .cell .cst { font-size:10px; color:#c9cdbf; letter-spacing:-1px; }
+  .cell.cur .cap .cst { color:#fff; }
+  .cell.sel .cap { background:#2255cc; border-radius:3px; } .cell.sel .cst { color:#fff; }
+
+  .footnote { margin-top:22px; font-size:12.5px; color:var(--ink-soft); line-height:1.55; border-top:1px solid var(--line); padding-top:14px; max-width:84ch; }
+  .footnote b { color:var(--ink); } .footnote code { font-family:var(--font-mono); font-size:.92em; background:var(--panel-2); padding:1px 5px; border-radius:4px; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">SpeciesViewer · design study · large image viewer</p>
+  <h1>Large viewer — Biota vocabulary on the dark stage</h1>
+  <p class="lede">
+    The image stage stays dark (best for judging a photo). What changes: the <b>metadata panel</b> adopts the
+    mono section headers and name/sci typography, and the <b>filmstrip</b> gets a cell style to match the grid.
+    The panel already carries <b>Apply to selected</b> — the same group hook the ❔-species request wants.
+    Pick a filmstrip cell + colour scheme.
+  </p>
+
+  <div class="deck">
+    <div class="ctl">
+      <label>Filmstrip cell</label>
+      <div class="seg" id="cell" role="group">
+        <button data-c="framed" aria-pressed="true">Framed (olive/colour)</button>
+        <button data-c="dark" aria-pressed="false">Dark colour-border</button>
+        <button data-c="bar" aria-pressed="false">Colour underline</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <label>Colour scheme</label>
+      <div class="seg" id="scheme" role="group">
+        <button data-scheme="classic" aria-pressed="true">Classic</button>
+        <button data-scheme="muted" aria-pressed="false">Muted</button>
+        <button data-scheme="nature" aria-pressed="false">Nature</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="viewer">
+    <div class="topbar">
+      <span class="title">Species Image Preview — buizerd · greece-n5061081</span>
+      <span class="grow"></span>
+      <button class="tbtn">✂ Crop</button><button class="tbtn">⟳ Rotate</button><button class="tbtn">▭ Filmstrip</button>
+    </div>
+    <div class="body">
+      <div class="stage">
+        <div class="pic"></div>
+        <span class="fadge fbadge">JPG · 6000×4000</span>
+      </div>
+      <div class="panel">
+        <div class="name">buizerd</div>
+        <div class="sci">Buteo buteo ♀</div>
+
+        <div class="sec">File</div>
+        <div class="row"><span class="k">name</span><span class="v mono">greece-n5061081</span></div>
+        <div class="row"><span class="k">files</span><span class="v mono">DOP · <b style="color:#8fc99a">JPG</b> · ORF · XMP</span></div>
+        <div class="row"><span class="k">crop</span><span class="v mono" style="color:var(--frame-olive)">⌗ Crop</span></div>
+
+        <div class="sec">Location</div>
+        <div class="place">Kerkini Lake · Central Macedonia</div>
+        <div class="row"><span class="k">gps</span><span class="v mono">41.2076, 23.1355</span></div>
+
+        <div class="sec">EXIF</div>
+        <div class="row"><span class="k">camera</span><span class="v mono">OM-1</span></div>
+        <div class="row"><span class="k">lens</span><span class="v mono">300mm f/4</span></div>
+        <div class="row"><span class="k">exposure</span><span class="v mono">1/1600 · f/5.6 · ISO 640</span></div>
+        <div class="row"><span class="k">date</span><span class="v mono">2026-05-06 08:14</span></div>
+
+        <div class="sec">Rating</div>
+        <div class="ratewrap">
+          <div class="stars" id="stars"><span class="on">★</span><span class="on">★</span><span>★</span><span>★</span><span>★</span></div>
+          <span class="rateno">Rate 53</span>
+        </div>
+        <div class="swatches" id="sw">
+          <i style="background:var(--c-red)" title="red"></i><i style="background:var(--c-yellow)" aria-pressed="true" title="yellow"></i>
+          <i style="background:var(--c-green)" title="green"></i><i style="background:var(--c-blue)" title="blue"></i>
+          <i style="background:var(--c-purple)" title="purple"></i><i class="none" title="no label"></i>
+        </div>
+        <button class="applybtn">Apply to selected (3)</button>
+      </div>
+    </div>
+    <div class="strip" id="strip" data-cell="framed"></div>
+  </div>
+
+  <p class="footnote">
+    <b>Filmstrip cells.</b> <em>Framed</em> matches the grid exactly — the olive/colour picture frame, current cell
+    ringed white. <em>Dark colour-border</em> is today's look, tightened. <em>Colour underline</em> keeps the photo
+    edge-to-edge with the label as a bar beneath — quietest, good when scanning many frames. Crop still shows as ⌗
+    (no <code>#</code>); stars sit under each cell as today.<br><br>
+    <b>Then the map view.</b> Its bubbles + strips reuse this same colour + frame language, so this choice carries
+    over. And the panel's <b>Apply to selected</b> is exactly where group species-assignment would hang.
+  </p>
+</div>
+
+<script>
+  const cells = [
+    { fmt:'ORF', stars:0, label:'green',  cur:false, sel:false, bg:'linear-gradient(150deg,#8fa06a,#5f7a4a)' },
+    { fmt:'ORF', stars:0, label:'green',  cur:false, sel:false, bg:'linear-gradient(150deg,#9aa87a,#6a8352)' },
+    { fmt:'JPG', stars:2, label:'yellow', cur:true,  sel:false, bg:'linear-gradient(150deg,#7f9b5a,#4f6d3a)' },
+    { fmt:'ORF', stars:0, label:'green',  cur:false, sel:true,  bg:'linear-gradient(150deg,#8fa06a,#5f7a4a)' },
+    { fmt:'JPG', stars:4, label:'red',    cur:false, sel:true,  bg:'linear-gradient(150deg,#a9884f,#6f5a34)' },
+    { fmt:'HEIC',stars:0, label:'',       cur:false, sel:false, bg:'linear-gradient(150deg,#7f9bb0,#4f6d84)' },
+    { fmt:'ORF', stars:1, label:'blue',   cur:false, sel:false, bg:'linear-gradient(150deg,#6a8ca6,#3f5f7d)' },
+    { fmt:'ORF', stars:0, label:'',       cur:false, sel:true,  bg:'linear-gradient(150deg,#8fa06a,#5f7a4a)' }
+  ];
+  const strip = document.getElementById('strip');
+  function stars(n){ return '★'.repeat(n) + '☆'.repeat(5-n); }
+  cells.forEach(c => {
+    const el = document.createElement('div');
+    el.className = 'cell' + (c.cur?' cur':'') + (c.sel?' sel':'');
+    if (c.label){ el.dataset.label=c.label; el.style.setProperty('--lab',`var(--c-${c.label})`); }
+    el.innerHTML = `<div class="fr"><div class="ph" style="background:${c.bg}"></div></div>
+      <div class="cap"><span class="cst">${stars(c.stars)}</span></div>`;
+    strip.appendChild(el);
+  });
+
+  function wireSeg(id, fn){ const b=document.getElementById(id);
+    b.addEventListener('click',e=>{const t=e.target.closest('button'); if(!t) return;
+      b.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed', x===t)); fn(t);}); }
+  wireSeg('cell', t=>strip.dataset.cell=t.dataset.c);
+  wireSeg('scheme', t=>{ if(t.dataset.scheme==='classic') document.documentElement.removeAttribute('data-scheme');
+    else document.documentElement.dataset.scheme=t.dataset.scheme; });
+
+  const sr = document.getElementById('stars');
+  sr.querySelectorAll('span').forEach((s,i)=>{
+    s.addEventListener('mouseenter',()=>sr.querySelectorAll('span').forEach((x,j)=>x.classList.toggle('hot', j<=i)));
+    s.addEventListener('mouseleave',()=>sr.querySelectorAll('span').forEach(x=>x.classList.remove('hot')));
+    s.addEventListener('click',()=>sr.querySelectorAll('span').forEach((x,j)=>x.classList.toggle('on', j<=i)));
+  });
+  document.querySelectorAll('#sw i').forEach((sw,i,arr)=>sw.addEventListener('click',()=>arr.forEach((x,j)=>x.setAttribute('aria-pressed', j===i))));
+</script>

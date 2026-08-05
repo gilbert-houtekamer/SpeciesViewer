@@ -31,6 +31,7 @@ from PyQt6.QtGui import (
 from PyQt6.QtCore import Qt, QTimer, QSize, pyqtSignal
 
 from gui.rating_editor import StarWidget, ColorSelector, COLOR_HEX
+from gui import theme
 from gui.image_loader import AsyncImageLoader
 from gui.window_state import restore_window, save_window, clamp_to_visible_screen
 from utils.open_path import open_path, reveal_group, launch_app_with_file
@@ -74,8 +75,8 @@ def dxo_executable() -> str:
 # ── Filmstrip geometry ─────────────────────────────────────────────────────────
 _THUMB_W   = 144   # px — thumbnail width inside a strip cell
 _THUMB_H   = 108   # px — thumbnail height (matches 4:3)
-_ITEM_W    = 160   # px — total strip-cell width  (thumb + 8px margin × 2)
-_ITEM_H    = 130   # px — total strip-cell height (thumb + gap + stars + margins)
+_ITEM_W    = 160   # px — total strip-cell width  (thumb + frame + margins)
+_ITEM_H    = 140   # px — total strip-cell height (framed thumb + stars + margins)
 _ITEM_GAP  = 4     # px — gap between cells
 _PREFETCH  = 4     # cells to load beyond each viewport edge
 
@@ -89,11 +90,16 @@ def color_to_css(color: str) -> str:
 
 # ── Panel helpers ──────────────────────────────────────────────────────────────
 
+# Biota vocabulary: mono, letter-spaced uppercase section headers; the display
+# face for names/values you read; the mono utility face for data you scan.
+_MONO = "'Cascadia Mono','Cascadia Code',Consolas,monospace"
+
+
 def _section_header(title: str) -> QLabel:
-    lbl = QLabel(title)
+    lbl = QLabel(title.upper())
     lbl.setStyleSheet(
-        "font-weight: bold; font-size: 10px; color: #555; "
-        "padding: 5px 0 1px 0; letter-spacing: 0.5px;")
+        f"font-family:{_MONO}; font-size:9.5px; font-weight:600;"
+        f" letter-spacing:1.4px; color:{theme.INK_SOFT}; padding:6px 0 3px 0;")
     return lbl
 
 
@@ -101,21 +107,23 @@ def _hsep() -> QFrame:
     line = QFrame()
     line.setFrameShape(QFrame.Shape.HLine)
     line.setFrameShadow(QFrame.Shadow.Plain)
-    line.setStyleSheet("color: #ddd; margin: 2px 0;")
+    line.setStyleSheet(f"color:{theme.LINE}; margin:3px 0;")
     return line
 
 
 def _field_lbl(text: str = "") -> QLabel:
+    """A value you read (place, camera, species) — display face, ink."""
     lbl = QLabel(text)
     lbl.setWordWrap(True)
-    lbl.setStyleSheet("font-size: 11px;")
+    lbl.setStyleSheet(f"font-size:12.5px; color:{theme.INK};")
     return lbl
 
 
 def _small_lbl(text: str = "") -> QLabel:
+    """Data you scan (exts, GPS, exposure, path) — mono utility face, soft ink."""
     lbl = QLabel(text)
     lbl.setWordWrap(True)
-    lbl.setStyleSheet("font-size: 10px; color: #666;")
+    lbl.setStyleSheet(f"font-family:{_MONO}; font-size:10.5px; color:{theme.INK_SOFT};")
     return lbl
 
 
@@ -124,6 +132,32 @@ def _clear_layout(layout):
         child = layout.takeAt(0)
         if child.widget():
             child.widget().deleteLater()
+
+
+class _KVRow(QWidget):
+    """A right-panel key→value row (the mockup's clean look): mono key on the
+    left, value right-aligned. setText sets the value; setVisible hides the whole
+    row so an empty field leaves no dangling key."""
+
+    def __init__(self, key: str, parent=None):
+        super().__init__(parent)
+        h = QHBoxLayout(self)
+        h.setContentsMargins(0, 1, 0, 1)
+        h.setSpacing(10)
+        k = QLabel(key)
+        k.setStyleSheet(f"font-family:{_MONO}; font-size:10.5px; color:{theme.INK_SOFT};")
+        self._v = QLabel()
+        self._v.setStyleSheet(f"font-family:{_MONO}; font-size:11px; color:{theme.INK};")
+        self._v.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        self._v.setWordWrap(True)
+        h.addWidget(k, 0, Qt.AlignmentFlag.AlignTop)
+        h.addWidget(self._v, 1)
+
+    def setText(self, t: str):
+        self._v.setText(t)
+
+    def text(self) -> str:
+        return self._v.text()
 
 
 # ── Filmstrip ──────────────────────────────────────────────────────────────────
@@ -149,41 +183,50 @@ class _StripItem(QWidget):
         vbox.setContentsMargins(3, 3, 3, 2)
         vbox.setSpacing(2)
 
+        # Framed cell: an olive/colour picture frame with a white mat, matching
+        # the grid card. Colour label = frame colour; current cell = white ring.
+        self._frame = QFrame()
+        self._frame.setObjectName("scell")
+        fl = QVBoxLayout(self._frame)
+        fl.setContentsMargins(4, 4, 4, 4)
+        fl.setSpacing(0)
         self._thumb_lbl = QLabel()
         self._thumb_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumb_lbl.setFixedSize(_THUMB_W, _THUMB_H)
-        self._thumb_lbl.setStyleSheet("background: #1e1e1e;")
-        vbox.addWidget(self._thumb_lbl)
+        self._thumb_lbl.setStyleSheet(
+            f"background:#e9ece3; border:2px solid {theme.SURFACE}; border-radius:2px;")
+        fl.addWidget(self._thumb_lbl)
+        vbox.addWidget(self._frame)
 
-        r = max(0, min(5, item.rating))
-        self._star_lbl = QLabel("★" * r + "☆" * (5 - r))
+        self._star_lbl = QLabel(self._star_text(item))
         self._star_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._star_lbl.setStyleSheet(
-            "font-size: 9px; color: #ddd; background: transparent;")
         vbox.addWidget(self._star_lbl)
 
         self._repaint_border()
 
+    def _star_text(self, item) -> str:
+        """Stars, plus a ⌗ crop mark (crop is its own signal — no '#' on the
+        image, matching the grid/large-view text)."""
+        r = max(0, min(5, item.rating))
+        s = "★" * r + "☆" * (5 - r)
+        if getattr(item, "has_crop", False):
+            s += "  ⌗"
+        return s
+
     def _repaint_border(self):
-        """Update cell border (current=white / normal=colour or grey)."""
-        if self._current:
-            self.setStyleSheet(
-                "QWidget { border: 3px solid white; border-radius: 3px; "
-                "background: #111; }")
-        else:
-            c = color_to_css(self._item.color)
-            border = f"2px solid {c}" if c else "1px solid #3a3a3a"
-            self.setStyleSheet(
-                f"QWidget {{ border: {border}; border-radius: 3px; "
-                f"background: #2a2a2a; }}")
-        # Selection shown as blue star-bar (keeps colour border fully visible)
+        """Paint the frame: colour label (olive when unlabelled); current cell
+        adds a white ring. Selection shows as a blue star-bar."""
+        c = color_to_css(self._item.color) or theme.ACCENT
+        ring = " border:2px solid #fff;" if self._current else ""
+        self._frame.setStyleSheet(
+            f"QFrame#scell {{ background:{c};{ring} border-radius:5px; }}")
         if self._selected:
             self._star_lbl.setStyleSheet(
-                "font-size: 9px; color: #fff; background: #2255cc; "
-                "border-radius: 2px; padding: 0 4px;")
+                "font-size:9px; color:#fff; background:#2255cc;"
+                " border-radius:2px; padding:0 4px;")
         else:
             self._star_lbl.setStyleSheet(
-                "font-size: 9px; color: #ddd; background: transparent;")
+                f"font-size:9px; color:{theme.INK_SOFT}; background:transparent;")
 
     def set_current(self, yes: bool):
         if self._current == yes:
@@ -206,20 +249,18 @@ class _StripItem(QWidget):
 
     def _on_pixmap(self, pixmap):
         if pixmap and not pixmap.isNull():
+            # Fit inside the white mat (2px each side); crop shows as ⌗ on the
+            # star line, so the image itself is left clean (no '#' stamp).
             scaled = pixmap.scaled(
-                _THUMB_W, _THUMB_H,
+                _THUMB_W - 4, _THUMB_H - 4,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation)
-            if getattr(self._item, "has_crop", False):
-                from gui.rating_editor import stamp_crop_marker
-                scaled = stamp_crop_marker(scaled)
             self._thumb_lbl.setPixmap(scaled)
 
     def refresh_from(self, item):
-        """Repaint stars and colour border after an edit."""
+        """Repaint stars and colour frame after an edit."""
         self._item = item
-        r = max(0, min(5, item.rating))
-        self._star_lbl.setText("★" * r + "☆" * (5 - r))
+        self._star_lbl.setText(self._star_text(item))
         self._repaint_border()  # also updates the star-bar colour
 
     def reload_thumbnail(self):
@@ -812,17 +853,24 @@ class LargeImageView(QDialog):
         self._splitter.addWidget(panel_scroll)
         self._splitter.setStretchFactor(1, 0)
 
-        # FILE section
-        pl.addWidget(_section_header("FILE"))
-        file_row = QHBoxLayout()
-        file_row.setContentsMargins(0, 0, 0, 0)
-        file_row.setSpacing(4)
-        self._file_key_lbl = _field_lbl()
-        self._file_key_lbl.setStyleSheet(
-            "font-weight: bold; font-size: 12px; padding-bottom: 1px;")
-        file_row.addWidget(self._file_key_lbl, stretch=1)
+        # Identity header — the name you read (matches the grid card / mockup):
+        # bold display name + italic scientific name(+modifiers).
+        self._panel_name = QLabel("")
+        self._panel_name.setWordWrap(True)
+        self._panel_name.setStyleSheet(f"font-size:19px; font-weight:700; color:{theme.INK};")
+        pl.addWidget(self._panel_name)
+        self._panel_sci = QLabel("")
+        self._panel_sci.setWordWrap(True)
+        self._panel_sci.setStyleSheet(
+            f"font-size:12.5px; font-style:italic; color:{theme.INK_SOFT}; padding-bottom:2px;")
+        pl.addWidget(self._panel_sci)
 
-        # Open the picture's folder in Explorer / Finder (all files of the UPN).
+        # FILE section — key→value rows; the explorer / PhotoLab icons ride on
+        # the section header (kept per your call, just out of the value column).
+        file_hdr = QHBoxLayout()
+        file_hdr.setContentsMargins(0, 0, 0, 0)
+        file_hdr.addWidget(_section_header("FILE"))
+        file_hdr.addStretch(1)
         self._explorer_btn = QToolButton()
         self._explorer_btn.setIcon(
             self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
@@ -830,12 +878,10 @@ class LargeImageView(QDialog):
         self._explorer_btn.setAutoRaise(True)
         self._explorer_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._explorer_btn.setToolTip(
-            "Show this picture's files in Explorer "
-            "(folder + UPN search)")
+            "Show this picture's files in Explorer (folder + UPN search)")
         self._explorer_btn.clicked.connect(self._open_in_explorer)
-        file_row.addWidget(self._explorer_btn, alignment=Qt.AlignmentFlag.AlignTop)
+        file_hdr.addWidget(self._explorer_btn, 0, Qt.AlignmentFlag.AlignBottom)
 
-        # Open the RAW file in DxO PhotoLab.
         self._dxo_btn = QToolButton()
         self._dxo_btn.setIcon(_make_pl_icon(18))
         self._dxo_btn.setIconSize(QSize(18, 18))
@@ -843,13 +889,15 @@ class LargeImageView(QDialog):
         self._dxo_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._dxo_btn.setToolTip("Open the RAW file in the associated viewer")
         self._dxo_btn.clicked.connect(self._open_in_dxo)
-        file_row.addWidget(self._dxo_btn, alignment=Qt.AlignmentFlag.AlignTop)
-        pl.addLayout(file_row)
+        file_hdr.addWidget(self._dxo_btn, 0, Qt.AlignmentFlag.AlignBottom)
+        pl.addLayout(file_hdr)
 
-        self._file_exts_lbl = _small_lbl()
-        pl.addWidget(self._file_exts_lbl)
-        self._file_dir_lbl = _small_lbl()
-        pl.addWidget(self._file_dir_lbl)
+        # name (full path on hover) · files · crop — as clean rows
+        self._file_key_lbl  = _KVRow("name")
+        self._file_exts_lbl = _KVRow("files")
+        self._file_crop_lbl = _KVRow("crop")
+        for w in (self._file_key_lbl, self._file_exts_lbl, self._file_crop_lbl):
+            pl.addWidget(w)
         pl.addWidget(_hsep())
 
         # LOCATION section (right after FILE) — reverse-geocoded place + the GPS
@@ -863,14 +911,14 @@ class LargeImageView(QDialog):
             pl.addWidget(w)
         pl.addWidget(_hsep())
 
-        # EXIF section (GPS moved up to LOCATION)
+        # EXIF section (GPS moved up to LOCATION) — clean key→value rows
         pl.addWidget(_section_header("EXIF"))
-        self._exif_camera_lbl   = _field_lbl()
-        self._exif_lens_lbl     = _small_lbl()
-        self._exif_settings_lbl = _small_lbl()
-        self._exif_focal_lbl    = _small_lbl()
-        self._exif_dims_lbl     = _small_lbl()
-        self._exif_date_lbl     = _small_lbl()
+        self._exif_camera_lbl   = _KVRow("camera")
+        self._exif_lens_lbl     = _KVRow("lens")
+        self._exif_settings_lbl = _KVRow("exposure")
+        self._exif_focal_lbl    = _KVRow("focal")
+        self._exif_dims_lbl     = _KVRow("size")
+        self._exif_date_lbl     = _KVRow("date")
         for w in (self._exif_camera_lbl, self._exif_lens_lbl,
                   self._exif_settings_lbl, self._exif_focal_lbl,
                   self._exif_dims_lbl, self._exif_date_lbl):
@@ -1654,14 +1702,28 @@ class LargeImageView(QDialog):
         for _fs in (self._filmstrip_left, self._filmstrip_bottom):
             _fs.set_current(key, self._index, len(self._keys))
 
+        # Identity header: display name (bold) + scientific name(+modifiers)
+        self._panel_name.setText(item.display_name or key)
+        _scitxt = ((getattr(item, "sci_name", "") or "")
+                   + (getattr(item, "qualifier_suffix", "") or "")).strip()
+        self._panel_sci.setText(_scitxt)
+        self._panel_sci.setVisible(bool(_scitxt))
+
         # FILE
         self._file_key_lbl.setText(item.key)
         exts = item.file_exts
         self._file_exts_lbl.setText("  ·  ".join(exts) if exts else "")
         self._file_exts_lbl.setVisible(bool(exts))
         dir_path = self._collection.file_directory(key)
-        self._file_dir_lbl.setText(dir_path)
-        self._file_dir_lbl.setVisible(bool(dir_path))
+        # Full filename (dir + UPN + file-types) on hover — the header shows the
+        # short UPN, the tooltip gives the whole thing.
+        _full = (dir_path + "\\" if dir_path else "") + item.key
+        if exts:
+            _full += "  (" + " · ".join(exts) + ")"
+        self._file_key_lbl.setToolTip(_full)
+        _crop = getattr(item, "has_crop", False)
+        self._file_crop_lbl.setText("⌗ Crop" if _crop else "")
+        self._file_crop_lbl.setVisible(_crop)
         self._explorer_btn.setEnabled(bool(dir_path))
         raw = self._collection.raw_path(key)
         self._dxo_btn.setEnabled(raw is not None)

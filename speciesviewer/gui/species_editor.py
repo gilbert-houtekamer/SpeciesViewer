@@ -16,8 +16,19 @@ from widgets.trip_widgets import LabeledTextFieldQt
 from engine.filepicture import FilePicture, format_subject_for_xmp
 from engine.speciesclassification import Level, SpeciesClassification
 from utils.config import _config
+from gui import theme
 
 logger = logging.getLogger("speciesviewer")
+
+# Biota vocabulary — mono utility face for the small uppercase micro-labels, so
+# the embedded editor reads as one system with the restyled large-viewer panel.
+_MONO = "'Cascadia Mono','Cascadia Code',Consolas,monospace"
+_MICRO = (f"font-family:{_MONO}; font-size:9.5px; font-weight:600;"
+          f" letter-spacing:1.2px; color:{theme.INK_SOFT};")
+_RECENT_CHIP = (
+    f"QPushButton {{ font-size:11.5px; color:{theme.INK}; background:{theme.SURFACE};"
+    f" border:1px solid {theme.LINE}; border-radius:12px; padding:3px 11px; text-align:left; }}"
+    f"QPushButton:hover {{ border-color:{theme.ACCENT}; color:{theme.ACCENT}; }}")
 
 
 class DialogContext:
@@ -159,11 +170,15 @@ class SpeciesInfoPanel(QWidget):
         # ── Header ───────────────────────────────────────────────────────────
         n = len(file_paths)
         if n == 1:
-            layout.addWidget(QLabel(f"<b>Filename:</b> {file_paths[0].name}"))
-            # Show the species with its qualifier abbreviations ("fuut ♀ br.").
-            from gui.culling_species import qualifier_suffix_from_subject
-            _suffix = qualifier_suffix_from_subject(fpr.getSubject(file_paths[0].name)) if fpr else ""
-            layout.addWidget(QLabel(f"<b>Species:</b> {(species_names[0] or '(unknown)')}{_suffix}"))
+            # When embedded in a host panel (the large viewer) the filename +
+            # current species are already shown above, so skip these redundant
+            # lines; the standalone popup keeps them for context.
+            if not collapsible_error:
+                layout.addWidget(QLabel(f"<b>Filename:</b> {file_paths[0].name}"))
+                # Species with its qualifier abbreviations ("fuut ♀ br.").
+                from gui.culling_species import qualifier_suffix_from_subject
+                _suffix = qualifier_suffix_from_subject(fpr.getSubject(file_paths[0].name)) if fpr else ""
+                layout.addWidget(QLabel(f"<b>Species:</b> {(species_names[0] or '(unknown)')}{_suffix}"))
             if error_msgs[0]:
                 if collapsible_error:
                     # Compact toggle: ⚠ button reveals the error text on demand.
@@ -220,7 +235,9 @@ class SpeciesInfoPanel(QWidget):
         self._attach_species_completer()
 
         # ── Suggestion dropdown ───────────────────────────────────────────────
-        layout.addWidget(QLabel("Suggestions"))
+        _sugg_lbl = QLabel("SUGGESTIONS")
+        _sugg_lbl.setStyleSheet(_MICRO)
+        layout.addWidget(_sugg_lbl)
         self.suggestion_dropdown = QComboBox()
         self.suggestion_dropdown.setEditable(False)
         self.suggestion_dropdown.setVisible(False)
@@ -233,7 +250,8 @@ class SpeciesInfoPanel(QWidget):
         # to caption the picture and to show one best photo per age/sex/plumage.
         # Single-select within each row; click again to clear.
         from gui.culling_species import QUALIFIER_GROUPS
-        self._qual_header = QLabel("Optional — sex / age / plumage:")
+        self._qual_header = QLabel("SEX / AGE / PLUMAGE — OPTIONAL")
+        self._qual_header.setStyleSheet(_MICRO)
         layout.addWidget(self._qual_header)
         self._qual_buttons: dict[int, list[tuple[QPushButton, str]]] = {}
         self._qual_rows: dict[int, QWidget] = {}
@@ -292,7 +310,8 @@ class SpeciesInfoPanel(QWidget):
         self._recent_sep.setFrameShape(QFrame.Shape.HLine)
         self._recent_sep.setFrameShadow(QFrame.Shadow.Sunken)
         layout.addWidget(self._recent_sep)
-        self._recent_label = QLabel("Recent species — click to apply, right-click to remove:")
+        self._recent_label = QLabel("RECENT SPECIES — CLICK TO APPLY, RIGHT-CLICK TO REMOVE")
+        self._recent_label.setStyleSheet(_MICRO)
         self._recent_label.setWordWrap(True)
         layout.addWidget(self._recent_label)
         self._recent_container = QWidget()
@@ -678,6 +697,8 @@ class SpeciesInfoPanel(QWidget):
             widget.setVisible(bool(recent))
         for i, name in enumerate(recent):
             b = QPushButton(name)
+            b.setStyleSheet(_RECENT_CHIP)
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.setToolTip(f"Click to set “{name}”; right-click to remove from recents")
             b.clicked.connect(lambda _=False, nm=name: self._apply_recent(nm))
             b.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
