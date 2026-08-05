@@ -13,7 +13,7 @@ from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QMenu, QCheckBox,
-    QHeaderView, QAbstractItemView,
+    QHeaderView, QAbstractItemView, QMessageBox,
 )
 
 from gui import theme
@@ -186,6 +186,31 @@ def _open_blog_editor(parent, day_dirs: list, first_date: date,
     # closeEvent, so there is nothing to do after it closes.
     dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
     parent._blog_editor_dlg = dlg        # keep a ref (PyQt GC)
+    dlg.show()
+    dlg.raise_()
+    dlg.activateWindow()
+
+
+def _open_translation_validator(parent, virttrip_root: Path, day_str: str):
+    """Album counterpart of mainwindow.open_translation_validator. The album's
+    pictures ARE master pictures, so the day's texts are read from the master and both
+    a 'verified' tick (master TransCache) and a source-text fix (pictures.Description)
+    land in the master — the same one true store the overview, blog editor and website
+    read. On save we refresh the album tab rather than the trip overview."""
+    from gui.translation_validate import TranslationValidateDialog
+    master_root = (_config.get("master", "masterbiotadatabase", fallback="")
+                   or "").replace('"', "").replace("'", "").strip()
+    db = _open_master_db()
+    if not master_root or db is None:
+        QMessageBox.warning(parent, "Translation Validation",
+                            "No master is configured — album translations are read "
+                            "from and verified against the master.")
+        return
+    dlg = TranslationValidateDialog(
+        parent, str(virttrip_root), day_str, cache_root=master_root, master_db=db,
+        on_saved=lambda: populate_virttrip_overview(parent))
+    dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+    parent._translation_validate_dlg = dlg   # keep a ref (PyQt GC)
     dlg.show()
     dlg.raise_()
     dlg.activateWindow()
@@ -655,6 +680,20 @@ def populate_virttrip_overview(self):
                        "the map only shows them — it does not change them.")
     header_row.addWidget(map_btn)
 
+    # "Add new renders": find DxO/LR JPGs sitting beside a master RAW that were never
+    # registered — they show in the Pictures view (disk sibling-scan) but silently miss
+    # the JPEG count and the blog (both read the master). Only when the master is
+    # editable and a live query backs the table (raw CSV fallback has no master to add
+    # to). The scan is folder I/O, so it runs on click, not on every populate.
+    add_renders_btn = None
+    if query_counts is not None and master_db is not None and self._master_is_editable():
+        add_renders_btn = QPushButton("➕ Add new renders")
+        add_renders_btn.setToolTip(
+            "Scan the album's picture folders for a render you made (a new JPG beside "
+            "the RAW) that isn't in the master yet, and add it — so it appears in the "
+            "JPEG count and the blog. Nothing is changed until you confirm what was found.")
+        header_row.addWidget(add_renders_btn)
+
     edit_blogs_btn = QPushButton("Edit Blogs")
     edit_blogs_btn.setToolTip("Open the tabbed blog editor to edit titles, text and settings for every day.")
     write_blog_btn = QPushButton("Write All Blogs")
@@ -682,9 +721,65 @@ def populate_virttrip_overview(self):
         from gui.virttrip_process import VirttripBuildWebsiteDialog
         VirttripBuildWebsiteDialog(self).exec()
 
+    def _on_add_renders():
+        """Scan the album for untracked renders, show what was found (per day), and on
+        confirmation register them into the master via the same add_upn_files operator
+        the per-card 'Add new renders' menu uses. Re-populates so the JPEG counts move."""
+        from PyQt6.QtWidgets import QApplication
+        from db.master_mutate import untracked_renders_for_upns, add_upn_files
+        from PyQt6.QtCore import Qt as _Qt
+        by_day = master_db.pictures_in_daterange(fromdate, todate)
+        # {day: {upn: [files]}} — scan raw folders once (cached inside the detector).
+        found: dict[str, dict] = {}
+        QApplication.setOverrideCursor(_Qt.CursorShape.WaitCursor)
+        try:
+            for day, pics in by_day.items():
+                hits = untracked_renders_for_upns(
+                    master_db, master_db.master_root,
+                    [p["UniquePictureName"] for p in pics])
+                if hits:
+                    found[day] = hits
+        finally:
+            QApplication.restoreOverrideCursor()
+        total = sum(len(v) for h in found.values() for v in h.values())
+        if total == 0:
+            QMessageBox.information(self, "Add new renders",
+                                    "No new renders found — every JPG in the album's "
+                                    "folders is already in the master.")
+            return
+        lines = "\n".join(f"  {day}: {sum(len(v) for v in found[day].values())} "
+                          f"render(s)" for day in sorted(found))
+        if QMessageBox.question(
+                self, "Add new renders",
+                f"Found {total} render(s) not yet in the master:\n\n{lines}\n\n"
+                "Add them now? They will then count as JPEGs and appear in the blog.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        added = 0
+        QApplication.setOverrideCursor(_Qt.CursorShape.WaitCursor)
+        try:
+            for day_hits in found.values():
+                for upn in day_hits:
+                    try:
+                        res = add_upn_files(master_db, master_db.master_root, upn)
+                        added += res.get("jpg", 0)
+                    except Exception as e:
+                        self.logger.warning(f"add renders failed for {upn}: {e}")
+        finally:
+            QApplication.restoreOverrideCursor()
+        self.logger.info(f"Added {added} render(s) to the master across "
+                         f"{len(found)} day(s).")
+        QMessageBox.information(
+            self, "Add new renders",
+            f"Added {added} render(s). Re-run Write All Blogs to publish them.")
+        populate_virttrip_overview(self)
+
     edit_blogs_btn.clicked.connect(_on_edit_blogs)
     write_blog_btn.clicked.connect(_on_write_blog)
     build_web_btn.clicked.connect(_on_build_website)
+    if add_renders_btn is not None:
+        add_renders_btn.clicked.connect(_on_add_renders)
     map_btn.clicked.connect(lambda _=False: self.open_virttrip_map())
 
     def _on_context_menu(pos):
@@ -739,5 +834,7 @@ def populate_virttrip_overview(self):
             day_num = (date.fromisoformat(day_dirs[row].name) - first_date).days + 1
             _open_blog_editor(self, day_dirs, first_date, virttrip_path,
                               jump_to_day_num=day_num)
+        elif col == TRANS_COL:
+            _open_translation_validator(self, virttrip_path, day_dirs[row].name)
 
     self.virttrip_table.cellDoubleClicked.connect(_on_cell_double_clicked)

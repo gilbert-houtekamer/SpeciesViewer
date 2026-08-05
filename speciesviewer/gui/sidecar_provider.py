@@ -1186,6 +1186,30 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         except Exception as e:
             logger.warning(f"rating master mirror failed for {upn}: {e}")
 
+    def _mirror_description_to_master(self, upn: str, value: str) -> None:
+        """Mirror an album Description edit (the website 'story') into the master DB —
+        pictures.Description and the files' XMP:Description. The blog and website read
+        the master, NOT the sidecar (same reason as _mirror_rating_to_master and the
+        qualifier mirror), so without this a story typed in the album day viewer is
+        written to the sidecar but never reaches the published page. No-op in plain
+        culling (no master bound)."""
+        prow = self._master_upn.get(upn)
+        if prow is None:
+            return
+        prow["Description"] = value
+        # Keep the DB's file rows in step with the sidecar write_tag just made, so a
+        # later master re-read stays consistent (mirrors _mirror_rating_to_master).
+        file_updates: dict = {}
+        for fname in (prow.get("Files") or []):
+            frow = self._master_files.get(fname)
+            if frow and (frow.get("WindowsExtension") or "").lower() in ("xmp", "jpg", "jpeg"):
+                frow["XMP:Description"] = value
+                file_updates[fname] = {"XMP:Description": value}
+        try:
+            self._master_db.apply_description(upn, value, file_updates=file_updates)
+        except Exception as e:
+            logger.warning(f"description master mirror failed for {upn}: {e}")
+
     def write_tag(self, stem: str, tag: str, value: str, row_key: str) -> None:
         """Write one metadata tag for the stem, honouring Sidecar Behaviour.
 
@@ -1204,6 +1228,12 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         if (is_colorrating and getattr(self, "_master_db", None) is not None
                 and stem in self._master_upn):
             self._mirror_rating_to_master(stem, tag, value)
+
+        # Same reason for the website 'story': the blog/website read the master, not
+        # the sidecar, so an album Description edit must also land in the master DB.
+        if (tag == "XMP:Description" and getattr(self, "_master_db", None) is not None
+                and stem in self._master_upn):
+            self._mirror_description_to_master(stem, value)
 
         # Colour/rating → the DxO .dop (preferred PhotoLab channel).
         if is_colorrating and color_rating_to_dop_enabled():

@@ -62,23 +62,50 @@ class TranslationValidateDialog(QDialog):
     Headlines/Descriptions, fix source typos (written back to XMP + CSVs), and
     mark translations verified. Reads/writes the per-trip translation cache."""
 
-    def __init__(self, parent, trip_root, day_str):
+    def __init__(self, parent, trip_root, day_str, cache_root=None, on_saved=None,
+                 master_db=None):
+        """trip_root supplies a Trip's day review CSVs (metadata/review/<day>).
+        cache_root is the translation cache (TransCache) root — for a Trip it equals
+        trip_root, but an Album's pictures ARE master pictures, so the album passes
+        the master here so a 'verified' tick lands in the one true cache. on_saved,
+        when given, owns the post-save overview refresh (and replaces the Trip-only
+        render-invalidation); Trips leave it None.
+
+        master_db (album mode): when given, the day's texts are read straight from the
+        master and source-text fixes are written to the master — because an Album is a
+        window ON the master and its blog/website read the master, NOT the review CSVs
+        (which the large viewer's edits no longer touch). Trips leave it None and keep
+        the CSV read/write path."""
         super().__init__(parent)
         self.setWindowTitle(f"Translation Validation — {day_str}")
         self.resize(960, 720)
         self.trip_root = str(trip_root)
         self.day_str = day_str
+        self.on_saved = on_saved
+        self.master_db = master_db
+        self.album_master = master_db is not None
         self.logger = logger
         self._cards = []
 
-        self.translator = CachedTranslate(self.trip_root)
-        self.fpr = FilePicture(None)
-        self.fpr.readTripDay(self.trip_root, day_str)
+        self.translator = CachedTranslate(str(cache_root) if cache_root else self.trip_root)
+        if self.album_master:
+            # Read this day's pictures + files live from the master (mirrors the album
+            # day viewer). Headline stays a Trip/blog-extra concept — master pictures
+            # carry none — so in practice these are Description cards.
+            self._day_pics = master_db.pictures_in_daterange(day_str, day_str).get(day_str, [])
+            self._day_files = master_db.files_for_upns(
+                [p["UniquePictureName"] for p in self._day_pics])
+            self.fpr = None
+        else:
+            self._day_pics = None
+            self._day_files = None
+            self.fpr = FilePicture(None)
+            self.fpr.readTripDay(self.trip_root, day_str)
 
         outer = QVBoxLayout(self)
         info = QLabel(
             "Review the machine translations. Fix typos in the <b>source</b> (left) "
-            "— that is written back to the photo's XMP and the CSVs — correct the "
+            "— that is written back to the photo's XMP — correct the "
             "<b>translation</b> (right), and tick <b>Verified</b> to lock it. "
             "Unverified texts still publish with the machine translation."
         )
@@ -123,8 +150,15 @@ class TranslationValidateDialog(QDialog):
         except Exception:
             return ""
 
+    def _picture_items(self):
+        """(upn_name, picture_dict) for the day — from the master (album) or the day's
+        review CSVs (trip). Both dict shapes carry Headline/Description/Files."""
+        if self.album_master:
+            return [(p["UniquePictureName"], p) for p in self._day_pics]
+        return list(self.fpr.upn.UniquePictureName_dict.items())
+
     def _build_cards(self):
-        for upn_name, pic in self.fpr.upn.UniquePictureName_dict.items():
+        for upn_name, pic in self._picture_items():
             head = pic.get("Headline", "") or ""
             desc = pic.get("Description", "") or ""
             if head == "" and desc == "":
@@ -171,6 +205,35 @@ class TranslationValidateDialog(QDialog):
         self._cards.append(_Card(upn_name, files, kind, raw, src_lang,
                                  source_edit, trans_edit, verified_chk))
 
+    def _write_master_description(self, upn, files, new_desc):
+        """Album source-text fix: write the corrected Description to the master's
+        xmp/jpg files (RAW stays immutable) and record it in the master DB via
+        apply_description — the same door the album day viewer uses, so the blog and
+        website (which read the master, not the review CSVs) publish the fix. Mirrors
+        rating_provider._apply_master_description."""
+        from engine.exif_writer import exiftool_write
+        file_updates: dict = {}
+        for fname in files:
+            frow = self._day_files.get(fname)
+            if not frow:
+                continue
+            if (frow.get("WindowsExtension") or "").lower() not in ("xmp", "jpg", "jpeg"):
+                continue
+            fpath = Path(frow.get("WindowsFileName", ""))
+            if not fpath.exists():
+                continue
+            try:
+                exiftool_write(fpath, [f"-XMP:Description={new_desc}"])
+            except Exception as e:
+                self.logger.warning(
+                    f"master source write-back failed for {fpath.name}: {e}")
+                continue
+            file_updates[fname] = {"XMP:Description": new_desc}
+        try:
+            self.master_db.apply_description(upn, new_desc, file_updates=file_updates)
+        except Exception as e:
+            self.logger.warning(f"master DB description write failed for {upn}: {e}")
+
     def _on_save(self):
         verified_count = 0
         source_fixes = 0
@@ -179,19 +242,30 @@ class TranslationValidateDialog(QDialog):
             new_trans = c.trans_edit.toPlainText().strip()
             if new_raw == "":
                 continue
-            # 1) source typo fix -> write back to XMP + CSVs
+            # 1) source typo fix -> write back to the master (album) or the CSVs (trip)
             if new_raw != c.original_raw:
-                fname = c.files[0] if c.files else None
-                if fname:
-                    try:
-                        if c.kind == "Headline":
-                            self.fpr.updateHeadline(fname, new_raw)
-                        else:
-                            self.fpr.updateDescription(fname, new_raw)
+                if self.album_master:
+                    if c.kind == "Description":
+                        self._write_master_description(c.upn_name, c.files, new_raw)
                         source_fixes += 1
-                    except Exception as e:
-                        self.logger.warning(
-                            f"source write-back failed for {c.upn_name} {c.kind}: {e}")
+                    else:
+                        # Master pictures carry no Headline (blog extras are excluded
+                        # from the master), so there is nowhere to write one back.
+                        self.logger.info(
+                            f"album headline source-fix skipped (no master headline): "
+                            f"{c.upn_name}")
+                else:
+                    fname = c.files[0] if c.files else None
+                    if fname:
+                        try:
+                            if c.kind == "Headline":
+                                self.fpr.updateHeadline(fname, new_raw)
+                            else:
+                                self.fpr.updateDescription(fname, new_raw)
+                            source_fixes += 1
+                        except Exception as e:
+                            self.logger.warning(
+                                f"source write-back failed for {c.upn_name} {c.kind}: {e}")
                 c.original_raw = new_raw
             # 2) verify (and persist any translation correction)
             if c.verified_chk.isChecked():
@@ -205,10 +279,24 @@ class TranslationValidateDialog(QDialog):
             f"Translation validation ({self.day_str}): {verified_count} verified, "
             f"{source_fixes} source text(s) corrected.")
 
-        # Rebuild the trip overview so the Translations sphere updates live.
-        # populate_trip_overview is a module-level function (not a bound method),
-        # so call it directly with the main window — a hasattr() check fails.
+        # Rebuild the overview so the Translations sphere updates live.
         parent = self.parent()
+
+        # Album mode: the caller owns the refresh (its own tab) and there is no
+        # per-day statemachine to invalidate, so we stop here — invalidating the
+        # active trip's render day (below) would mark the WRONG trip's day stale.
+        if self.on_saved is not None:
+            try:
+                self.on_saved()
+            except Exception as e:
+                self.logger.warning(f"overview refresh after validation failed: {e}")
+            QMessageBox.information(
+                self, "Translation Validation",
+                f"Saved: {verified_count} verified, {source_fixes} source correction(s).")
+            return
+
+        # Trip mode. populate_trip_overview is a module-level function (not a bound
+        # method), so call it directly with the main window — a hasattr() check fails.
         if parent is not None:
             try:
                 from gui.trip_overview import populate_trip_overview

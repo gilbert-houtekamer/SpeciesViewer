@@ -336,6 +336,47 @@ def add_upn_files(db, master_root, upn: str) -> dict:
     return {"upn": upn, "added": added, "jpg": len(jpgs), "meta": len(metas)}
 
 
+def untracked_renders_for_upns(db, master_root, upns) -> dict[str, list[str]]:
+    """Read-only counterpart of add_upn_files, for a whole day/album at once.
+
+    {upn: [render filenames]} for every UPN that has a JPG render sitting in its
+    species folder — belonging to it (name starts with the UPN) and NOT a '-small'
+    web thumbnail — with no master file row yet. These are exactly the files
+    add_upn_files would register; the album grid uses this to badge a card whose
+    render would silently miss the blog, and the bulk "Add new renders" action uses
+    it to know which UPNs to ingest. Folder listings are cached so pictures sharing a
+    species folder are scanned once."""
+    master_root = Path(master_root)
+    listing_cache: dict[Path, list[str]] = {}
+    out: dict[str, list[str]] = {}
+    for upn in upns:
+        picture = db.picture(upn)
+        if picture is None:
+            continue
+        rel = _rel_dir(picture)
+        if not rel:
+            continue
+        folder = master_root / rel
+        names = listing_cache.get(folder)
+        if names is None:
+            try:
+                names = [p.name for p in folder.iterdir() if p.is_file()]
+            except OSError:
+                names = []
+            listing_cache[folder] = names
+        existing = {f.lower() for f in db.files_for_upns([upn])}
+        hits = [
+            name for name in names
+            if name.rsplit(".", 1)[-1].lower() in _JPG_EXTS
+            and not name.lower().endswith("-small.jpg")
+            and _belongs_to_upn(name, upn)
+            and name.lower() not in existing
+        ]
+        if hits:
+            out[upn] = sorted(hits)
+    return out
+
+
 def resync_jpg_sizes(db, master_root, upn: str) -> list[dict]:
     """Re-read the pixel size of every TRACKED JPG of this picture, and correct the
     master where the file on disk has changed underneath it.
