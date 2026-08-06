@@ -966,8 +966,10 @@ class PictureCard(QFrame):
                 self.setStyleSheet(f"QFrame#PictureCard {{ background:{_SURFACE};"
                                    f" border:2px solid {theme.WARN}; border-radius:9px; }}")
             elif self._from_master:
-                self.setStyleSheet("QFrame#PictureCard { background:#ececec;"
-                                   " border:1px solid #cfcfcf; border-radius:9px; }")
+                # a master REFERENCE card — subtly off the normal surface so it
+                # reads as "existing" (theme-aware; was a hardcoded light grey)
+                self.setStyleSheet(f"QFrame#PictureCard {{ background:{theme.SURFACE_2};"
+                                   f" border:1px solid {_LINE}; border-radius:9px; }}")
             else:
                 self.setStyleSheet(f"QFrame#PictureCard {{ background:{_SURFACE};"
                                    f" border:1px solid {_LINE}; border-radius:9px; }}")
@@ -984,9 +986,10 @@ class PictureCard(QFrame):
             bg = "background: #e2e2e2; " if self._from_master else ""
             self.setStyleSheet(f"QFrame#PictureCard {{ border: 1px solid #333; {bg}}}")
         elif self._from_master:
-            # Light-grey card so reference pictures read as "existing master".
+            # Off-surface card so reference pictures read as "existing master"
+            # (theme-aware; was a hardcoded light grey that stayed white on dark).
             self.setStyleSheet(
-                "QFrame#PictureCard { background: #ececec; border: 1px solid #cfcfcf; }")
+                f"QFrame#PictureCard {{ background: {theme.SURFACE_2}; border: 1px solid {_LINE}; }}")
         else:
             self.setStyleSheet("")
 
@@ -1261,9 +1264,9 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._jpg_btn.setCheckable(True)
         self._jpg_btn.setChecked(True)
         self._jpg_btn.setToolTip("Show only pictures that have a JPG file")
-        self._jpg_btn.setStyleSheet("""
-            QPushButton { border: 1px solid #aaa; border-radius: 3px; padding: 2px 6px; }
-            QPushButton:checked { background-color: #c8e6c9; border-color: #4caf50; }
+        self._jpg_btn.setStyleSheet(f"""
+            QPushButton {{ border: 1px solid {_LINE}; border-radius: 3px; padding: 2px 6px; }}
+            QPushButton:checked {{ background-color: #c8e6c9; border-color: #4caf50; color: #16241f; }}
         """)
         self._jpg_btn.toggled.connect(self._on_jpg_only_toggled)
         top.addWidget(self._jpg_btn)
