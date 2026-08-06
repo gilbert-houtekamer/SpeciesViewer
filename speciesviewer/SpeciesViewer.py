@@ -140,6 +140,10 @@ def start_main():
 def main():
     app = QApplication(sys.argv)
     QToolTip.setFont(QFont("SansSerif", 12))
+    from gui import theme
+    if theme.is_dark():
+        app.setStyle("Fusion")            # Fusion honours a custom QPalette everywhere
+        app.setPalette(theme.build_palette())
     app.setStyleSheet(build_base_qss())  # ch.15 global QSS theme, Phase 1 — see gui/theme.py
     ex = start_main()
     # print("QApplication exists in TripCreationDialog?", QApplication.instance()) 

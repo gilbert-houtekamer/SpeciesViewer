@@ -11,57 +11,124 @@ re-defining hex constants.
 """
 
 from pathlib import Path
+from PyQt6.QtGui import QPalette, QColor
+from utils.config import get_setting
 
 # checkbox-check.png: white checkmark glyph drawn over the ACCENT-filled
 # checked indicator below. QSS can't tint a glyph, so the checkmark itself
 # has to ship as its own asset rather than a color token.
 _CHECKMARK = (Path(__file__).resolve().parent.parent / "assets" / "checkbox-check.png").as_posix()
 
+
+def is_dark() -> bool:
+    """True when the user picked the dark theme ([lookfeel] theme). Read once at
+    import — like the colour scheme, a change applies on the next restart, since
+    these tokens are captured into module constants across the app."""
+    return (get_setting("lookfeel", "theme", fallback="light")
+            or "light").strip().lower() == "dark"
+
+
+# Two token sets, same KEYS. Everything downstream reads the module constants
+# below (INK, SURFACE, ACCENT, …), so flipping the active set re-themes the app.
+# Dark values are lifted from the Biota-browser dark mockup + reasoned status hues.
+_LIGHT = dict(
+    INK="#1c211b", INK_SOFT="#59634f", INK_MUTED="#5b6b56", INK_FAINT="#8b9784",
+    LINE="#d7ddce", SURFACE="#ffffff", BG="#f5f7f3", ROW_HOVER="#eef0ea",
+    NEUTRAL_GRAY="#777777",
+    ACCENT="#6d8764", ACCENT_RGB="109, 135, 100", ACCENT_HOVER="#5c7454",
+    ACCENT_SOFT="#e3ead9", ACCENT_SOFT_BORDER="#c9d6bb",
+    ACCENT_INK="#ffffff", ACCENT_INK_SOFT="#2f3f29",
+    DONE_FG="#2f7d43", DONE_BG="#e6f1e8", READY_FG="#2563a8", READY_BG="#e4eef8",
+    LOCKED_FG="#7a8172", LOCKED_BG="#f0f2ec", LOCKED_BORDER="#c9d0be",
+    GATE_FG="#2f9e57", GATE_BG="#e7f4ec", WARN="#b45309",
+    ACTIVE_BG="#fff8d2", ACTIVE_BORDER="#e6dfa8", LOG_BG="#d0f0c0", LOG_INK="#2b3b22",
+    PANEL_BG="#f9f9f9",
+)
+_DARK = dict(
+    INK="#e8ece2", INK_SOFT="#a3ac99", INK_MUTED="#98a28b", INK_FAINT="#7c8874",
+    LINE="#333a2c", SURFACE="#1d211a", BG="#141711", ROW_HOVER="#252a20",
+    NEUTRAL_GRAY="#9aa38f",
+    ACCENT="#7f9673", ACCENT_RGB="127, 150, 115", ACCENT_HOVER="#8fa683",
+    ACCENT_SOFT="#253022", ACCENT_SOFT_BORDER="#3a4a33",
+    ACCENT_INK="#f3f6ee", ACCENT_INK_SOFT="#c7d6b9",
+    DONE_FG="#5bb271", DONE_BG="#1d2c20", READY_FG="#64a2db", READY_BG="#1a2632",
+    LOCKED_FG="#8b937f", LOCKED_BG="#21261d", LOCKED_BORDER="#3a4230",
+    GATE_FG="#5cc282", GATE_BG="#1c2c20", WARN="#d98a3d",
+    ACTIVE_BG="#2c2a12", ACTIVE_BORDER="#4a4520", LOG_BG="#1c2c16", LOG_INK="#b7d6a5",
+    PANEL_BG="#191d15",
+)
+_T = _DARK if is_dark() else _LIGHT
+
 # Neutrals
-INK = "#1c211b"
-INK_SOFT = "#59634f"
-INK_MUTED = "#5b6b56"   # unchecked/unselected pill text — between INK_SOFT and INK_FAINT
-INK_FAINT = "#8b9784"  # secondary/label text, e.g. a collapsed panel's caption
-LINE = "#d7ddce"
-SURFACE = "#ffffff"
-BG = "#f5f7f3"
-ROW_HOVER = "#eef0ea"  # subtle hover background for a not-yet-selected row/pill
-NEUTRAL_GRAY = "#777777"  # a plain (non-olive-tinted) secondary-label grey
+INK = _T["INK"]
+INK_SOFT = _T["INK_SOFT"]
+INK_MUTED = _T["INK_MUTED"]   # unchecked/unselected pill text
+INK_FAINT = _T["INK_FAINT"]   # secondary/label text, e.g. a collapsed panel's caption
+LINE = _T["LINE"]
+SURFACE = _T["SURFACE"]
+BG = _T["BG"]
+ROW_HOVER = _T["ROW_HOVER"]   # subtle hover background for a not-yet-selected row/pill
+NEUTRAL_GRAY = _T["NEUTRAL_GRAY"]  # a plain (non-olive-tinted) secondary-label grey
 
 # Brand accent (olive — matches the published website's own photo-frame color)
-ACCENT = "#6d8764"
-ACCENT_RGB = "109, 135, 100"  # same color as ACCENT, for an rgba(...) tint
-ACCENT_HOVER = "#5c7454"
-ACCENT_SOFT = "#e3ead9"
-ACCENT_SOFT_BORDER = "#c9d6bb"
-ACCENT_INK = "#ffffff"       # text/foreground on a FILLED accent surface
-ACCENT_INK_SOFT = "#2f3f29"  # text/foreground on the pale ACCENT_SOFT surface
+ACCENT = _T["ACCENT"]
+ACCENT_RGB = _T["ACCENT_RGB"]  # same color as ACCENT, for an rgba(...) tint
+ACCENT_HOVER = _T["ACCENT_HOVER"]
+ACCENT_SOFT = _T["ACCENT_SOFT"]
+ACCENT_SOFT_BORDER = _T["ACCENT_SOFT_BORDER"]
+ACCENT_INK = _T["ACCENT_INK"]       # text/foreground on a FILLED accent surface
+ACCENT_INK_SOFT = _T["ACCENT_INK_SOFT"]  # text/foreground on the pale ACCENT_SOFT surface
 
 # Status colors, shared by the Trip lifecycle board / Biota Browser / Species Panel
-DONE_FG = "#2f7d43"
-DONE_BG = "#e6f1e8"
-READY_FG = "#2563a8"
-READY_BG = "#e4eef8"
-LOCKED_FG = "#7a8172"
-LOCKED_BG = "#f0f2ec"
-LOCKED_BORDER = "#c9d0be"
-GATE_FG = "#2f9e57"
-GATE_BG = "#e7f4ec"
-WARN = "#b45309"
+DONE_FG = _T["DONE_FG"]
+DONE_BG = _T["DONE_BG"]
+READY_FG = _T["READY_FG"]
+READY_BG = _T["READY_BG"]
+LOCKED_FG = _T["LOCKED_FG"]
+LOCKED_BG = _T["LOCKED_BG"]
+LOCKED_BORDER = _T["LOCKED_BORDER"]
+GATE_FG = _T["GATE_FG"]
+GATE_BG = _T["GATE_BG"]
+WARN = _T["WARN"]
 
-# Kept as deliberate accents, not folded into the neutral palette above — the
-# "active" trip/album panel (yellow) and the log console (green) are
-# intentional per the original ch.15 backlog note.
-ACTIVE_BG = "#fff8d2"
-ACTIVE_BORDER = "#e6dfa8"
-LOG_BG = "#d0f0c0"
-LOG_INK = "#2b3b22"
+# Kept as deliberate accents — the "active" trip/album panel (yellow) and the
+# log console (green) are intentional per the original ch.15 backlog note.
+ACTIVE_BG = _T["ACTIVE_BG"]
+ACTIVE_BORDER = _T["ACTIVE_BORDER"]
+LOG_BG = _T["LOG_BG"]
+LOG_INK = _T["LOG_INK"]
 
 # Plain neutral background used by the left-column list panels.
-PANEL_BG = "#f9f9f9"
+PANEL_BG = _T["PANEL_BG"]
 
 # Previously duplicated verbatim in TripInfoPanel/DaysPanel/SidebarInfoRail/VirtTripInfoPanel.
 FONT_MONO = "font-size: 10pt; font-family: Consolas, monospace;"
+
+
+def build_palette() -> QPalette:
+    """A QPalette from the active tokens. Applied app-wide at startup so bare
+    widgets (QWidget/QLabel/QScrollArea backgrounds, text, inputs) follow the
+    theme — build_base_qss only styles the specific rules it names, not the
+    default widget backgrounds. Applied for dark; light keeps Qt's own palette."""
+    p = QPalette()
+    C = QColor
+    p.setColor(QPalette.ColorRole.Window, C(BG))
+    p.setColor(QPalette.ColorRole.WindowText, C(INK))
+    p.setColor(QPalette.ColorRole.Base, C(SURFACE))
+    p.setColor(QPalette.ColorRole.AlternateBase, C(ROW_HOVER))
+    p.setColor(QPalette.ColorRole.Text, C(INK))
+    p.setColor(QPalette.ColorRole.Button, C(SURFACE))
+    p.setColor(QPalette.ColorRole.ButtonText, C(INK))
+    p.setColor(QPalette.ColorRole.ToolTipBase, C(SURFACE))
+    p.setColor(QPalette.ColorRole.ToolTipText, C(INK))
+    p.setColor(QPalette.ColorRole.Highlight, C(ACCENT))
+    p.setColor(QPalette.ColorRole.HighlightedText, C(ACCENT_INK))
+    p.setColor(QPalette.ColorRole.PlaceholderText, C(INK_FAINT))
+    p.setColor(QPalette.ColorRole.BrightText, C("#ff6b6b"))
+    for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.Text,
+                 QPalette.ColorRole.ButtonText):
+        p.setColor(QPalette.ColorGroup.Disabled, role, C(INK_FAINT))
+    return p
 
 
 def build_base_qss() -> str:
@@ -87,8 +154,8 @@ def build_base_qss() -> str:
     return f"""
         QToolTip {{
             background-color: {SURFACE};
-            color: #333;
-            border: 1px solid #ccc;
+            color: {INK};
+            border: 1px solid {LINE};
             padding: 4px;
         }}
 

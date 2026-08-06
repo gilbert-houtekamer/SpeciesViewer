@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from utils.config import set_setting, persist_config
+from utils.config import get_setting, set_setting, persist_config
 from gui import theme
 from gui.label_colors import COLORS, COLOR_SCHEMES, active_scheme_name
 
@@ -89,18 +89,16 @@ class LookFeelDialog(QDialog):
         sep.setStyleSheet(f"color:{theme.LINE}; margin:6px 0;")
         lay.addWidget(sep)
         lay.addWidget(_section("THEME"))
-        tg = QButtonGroup(self)
-        light = QRadioButton("Light")
-        light.setChecked(True)
-        light.setStyleSheet("font-size:12.5px;")
-        dark = QRadioButton("Dark  (coming soon)")
-        dark.setEnabled(False)
-        dark.setStyleSheet(f"font-size:12.5px; color:{theme.INK_FAINT};")
-        tg.addButton(light); tg.addButton(dark)
-        lay.addWidget(light)
-        lay.addWidget(dark)
+        self._theme_group = QButtonGroup(self)
+        self._light_rb = QRadioButton("Light")
+        self._dark_rb = QRadioButton("Dark")
+        for rb in (self._light_rb, self._dark_rb):
+            rb.setStyleSheet("font-size:12.5px;")
+            self._theme_group.addButton(rb)
+            lay.addWidget(rb)
+        (self._dark_rb if theme.is_dark() else self._light_rb).setChecked(True)
 
-        note = QLabel("↻  Colour changes apply after restarting SpeciesViewer.")
+        note = QLabel("↻  Changes apply after restarting SpeciesViewer.")
         note.setStyleSheet(f"color:{theme.INK_SOFT}; font-size:11px; padding-top:6px;")
         lay.addWidget(note)
 
@@ -120,6 +118,9 @@ class LookFeelDialog(QDialog):
         name = getattr(chosen, "_scheme_name", None) if chosen else None
         if name:
             set_setting("lookfeel", "color_scheme", name)
-            persist_config()
-            logger.info("Look & feel: colour scheme set to '%s' (applies on restart).", name)
+        theme_val = "dark" if self._dark_rb.isChecked() else "light"
+        set_setting("lookfeel", "theme", theme_val)
+        persist_config()
+        logger.info("Look & feel: scheme='%s', theme='%s' (applies on restart).",
+                    name, theme_val)
         self.accept()
