@@ -211,6 +211,13 @@ class SidecarItem(PictureItem):
         return qualifier_suffix_from_subject(self.species)
 
     @property
+    def sci_name(self) -> str:
+        # From the day-CSV hint (album/virttrip) or resolved locally from the
+        # sidecar Subject (culling), so the large viewer shows the scientific
+        # name under the common name.
+        return self._c._sci_for_stem(self._stem, self.species)
+
+    @property
     def from_master(self) -> bool:
         # A read-only sidecar viewer is the album/virtual-trip DAY viewer, whose
         # pictures ARE the master's — so their sex/age/plumage form is editable
@@ -448,6 +455,13 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         # sidecar subject is empty (a DxO render whose .xmp didn't pair by stem).
         self._name_hints: dict = {}
         self._name_profile: str = ""
+        # Scientific-name resolution for the identity header: lazily-loaded
+        # SpeciesClassification (from the trip/master species collection) +
+        # a common-name→scientific cache, so a culling picture whose only name
+        # is the sidecar Subject still shows the Latin name.
+        self._sci_by_name: dict[str, str] = {}
+        self._sc = None
+        self._sc_loaded = False
         self._image_changed: set = set() # stems whose IMAGE changed at last refresh()
         self._attach_sibling_jpgs()
         # Baseline image signatures (source file + mtime + .dop mtime) so refresh()
@@ -950,6 +964,73 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
                 if hint:
                     return name_for(hint, self._name_profile)
         return ""
+
+    def _hint_row_for_stem(self, stem: str) -> dict:
+        """The raw day-CSV hint row for a group (keyed by any of its file paths),
+        so callers can read fields the display name doesn't carry (e.g. the
+        scientific name). {} when unhinted."""
+        if not self._name_hints:
+            return {}
+        g = self._groups.get(stem, {})
+        for kind in ("jpg", "raw", "xmp"):
+            p = g.get(kind)
+            if p is not None:
+                hint = self._name_hints.get(str(p))
+                if hint:
+                    return hint
+        return {}
+
+    def _sci_for_stem(self, stem: str, subject: str = "") -> str:
+        """The scientific name for a group, so the large viewer's identity header
+        can show the Latin name under the common one.
+
+        Two sources: the album/virttrip day viewers carry it on the day-CSV hint
+        row (WetSoortNaam); a culling picture has only the sidecar Subject (the
+        common name typed at the camera stage), which we resolve LOCALLY through
+        the trip/master species collection — no network."""
+        hint = self._hint_row_for_stem(stem)
+        sci = (hint.get("WetSoortNaam") or hint.get("sci") or "").strip()
+        if sci:
+            return sci
+        return self._sci_from_subject(subject)
+
+    def _sci_from_subject(self, subject: str) -> str:
+        """Resolve a common (or scientific) name to a scientific name, local-only
+        and cached. '' when unknown — the header just hides the line."""
+        from gui.culling_species import split_species_qualifiers
+        name, _ = split_species_qualifiers(subject or "")
+        name = (name or "").strip().lower()
+        if not name:
+            return ""
+        if name in self._sci_by_name:
+            return self._sci_by_name[name]
+        sci = ""
+        sc = self._ensure_species_classification()
+        if sc is not None:
+            try:
+                sci = sc.getKnownSpecies(name, False, LookUpInGBIF=False) or ""
+            except Exception as e:
+                logger.debug(f"sci-name resolve failed for {name!r}: {e}")
+        # Scientific convention "Genus species": the collection stores lower-case,
+        # so capitalise the leading genus letter (leave the epithet as-is).
+        if sci:
+            sci = sci[0].upper() + sci[1:]
+        self._sci_by_name[name] = sci
+        return sci
+
+    def _ensure_species_classification(self):
+        """Load the trip/master species collection once (the same source the
+        culling Set-species dialog uses). Cached; None when unavailable."""
+        if self._sc_loaded:
+            return self._sc
+        self._sc_loaded = True
+        try:
+            from gui.culling_species import load_species_classification
+            self._sc = load_species_classification()
+        except Exception as e:
+            logger.debug(f"could not load species classification for sci names: {e}")
+            self._sc = None
+        return self._sc
 
     def _jpg_dims(self, path) -> str:
         """"WxH" of a JPG, read from its header only (no full decode). Cached."""

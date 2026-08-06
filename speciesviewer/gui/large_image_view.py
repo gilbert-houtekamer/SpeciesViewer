@@ -160,6 +160,84 @@ class _KVRow(QWidget):
         return self._v.text()
 
 
+class _CollapsibleSection(QWidget):
+    """A metadata-panel section with a clickable mono header that collapses its
+    body. The picture drives the window height; when the panel is short the user
+    collapses the sections they don't need (and scrolls for the rest) rather than
+    the text forcing a taller window. Collapsed state persists per section under
+    [large_viewer] so a chosen layout survives the next open."""
+
+    def __init__(self, title: str, *, setting_key: str | None = None,
+                 start_collapsed: bool = False, parent=None):
+        super().__init__(parent)
+        self._setting_key = setting_key
+        if setting_key is not None:
+            start_collapsed = get_setting(
+                "large_viewer", f"collapsed_{setting_key}",
+                fallback="yes" if start_collapsed else "no").strip().lower() == "yes"
+        self._collapsed = start_collapsed
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # Header row — triangle + title, the whole strip is the click target.
+        self._hdr = QWidget()
+        self._hdr.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._hrow = QHBoxLayout(self._hdr)
+        self._hrow.setContentsMargins(0, 6, 0, 3)
+        self._hrow.setSpacing(5)
+        self._tri = QLabel()
+        self._tri.setStyleSheet(f"font-size:8px; color:{theme.INK_SOFT};")
+        self._tri.setFixedWidth(11)
+        title_lbl = QLabel(title.upper())
+        title_lbl.setStyleSheet(
+            f"font-family:{_MONO}; font-size:9.5px; font-weight:600;"
+            f" letter-spacing:1.4px; color:{theme.INK_SOFT};")
+        self._hrow.addWidget(self._tri)
+        self._hrow.addWidget(title_lbl)
+        self._hrow.addStretch(1)
+        self._hdr.mousePressEvent = self._on_header_click
+        outer.addWidget(self._hdr)
+
+        # Body — the section's actual rows.
+        self._body = QWidget()
+        self._body_l = QVBoxLayout(self._body)
+        self._body_l.setContentsMargins(0, 0, 0, 3)
+        self._body_l.setSpacing(2)
+        outer.addWidget(self._body)
+
+        outer.addWidget(_hsep())
+        self._apply_state()
+
+    # Body content ─────────────────────────────────────────────────────────────
+    def add_widget(self, w):
+        self._body_l.addWidget(w)
+
+    def add_layout(self, lay):
+        self._body_l.addLayout(lay)
+
+    def add_trailing_widget(self, w):
+        """Add a control to the RIGHT of the header (e.g. the FILE row's Explorer
+        / PhotoLab icons), so it rides the title strip rather than a value row."""
+        self._hrow.addWidget(w, 0, Qt.AlignmentFlag.AlignVCenter)
+
+    # State ──────────────────────────────────────────────────────────────────────
+    def _on_header_click(self, _e):
+        self.set_collapsed(not self._collapsed)
+
+    def set_collapsed(self, yes: bool):
+        self._collapsed = yes
+        self._apply_state()
+        if self._setting_key is not None:
+            set_setting("large_viewer", f"collapsed_{self._setting_key}",
+                        "yes" if yes else "no")
+
+    def _apply_state(self):
+        self._tri.setText("▶" if self._collapsed else "▼")
+        self._body.setVisible(not self._collapsed)
+
+
 # ── Filmstrip ──────────────────────────────────────────────────────────────────
 
 class _StripItem(QWidget):
@@ -697,12 +775,19 @@ class LargeImageView(QDialog):
         # Default: left strip (better for 4:3 and 3:2 on widescreen monitors).
         self._strip_left = get_setting("layout", "filmstrip_left", fallback="yes").strip().lower() != "no"
 
-        # ── Filmstrip toggle button — thin bar at top-right of dialog ──────────
+        # ── Title bar — name · file on the left (mockup), tools on the right ────
         top_bar = QWidget()
-        top_bar.setFixedHeight(22)
+        top_bar.setObjectName("titleBar")
+        top_bar.setFixedHeight(28)
+        top_bar.setStyleSheet(
+            f"QWidget#titleBar {{ border-bottom:1px solid {theme.LINE}; }}")
         top_bar_row = QHBoxLayout(top_bar)
-        top_bar_row.setContentsMargins(0, 0, 4, 0)
+        top_bar_row.setContentsMargins(8, 0, 4, 0)
         top_bar_row.setSpacing(0)
+        self._titlebar_lbl = QLabel("")
+        self._titlebar_lbl.setStyleSheet(
+            f"font-family:{_MONO}; font-size:12px; color:{theme.INK_SOFT};")
+        top_bar_row.addWidget(self._titlebar_lbl)
         top_bar_row.addStretch()
         # Crop tool — draw a suggested crop on the full frame for PhotoLab/LR.
         self._crop_btn = QToolButton()
@@ -865,12 +950,14 @@ class LargeImageView(QDialog):
             f"font-size:12.5px; font-style:italic; color:{theme.INK_SOFT}; padding-bottom:2px;")
         pl.addWidget(self._panel_sci)
 
+        # Every section below is a _CollapsibleSection: the picture drives the
+        # window height, and on a short window the user collapses the sections
+        # they don't need (the panel scrolls for the rest) instead of the text
+        # forcing the dialog taller. Each section's state persists.
+
         # FILE section — key→value rows; the explorer / PhotoLab icons ride on
         # the section header (kept per your call, just out of the value column).
-        file_hdr = QHBoxLayout()
-        file_hdr.setContentsMargins(0, 0, 0, 0)
-        file_hdr.addWidget(_section_header("FILE"))
-        file_hdr.addStretch(1)
+        sec_file = _CollapsibleSection("FILE", setting_key="file")
         self._explorer_btn = QToolButton()
         self._explorer_btn.setIcon(
             self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon))
@@ -880,7 +967,6 @@ class LargeImageView(QDialog):
         self._explorer_btn.setToolTip(
             "Show this picture's files in Explorer (folder + UPN search)")
         self._explorer_btn.clicked.connect(self._open_in_explorer)
-        file_hdr.addWidget(self._explorer_btn, 0, Qt.AlignmentFlag.AlignBottom)
 
         self._dxo_btn = QToolButton()
         self._dxo_btn.setIcon(_make_pl_icon(18))
@@ -889,30 +975,30 @@ class LargeImageView(QDialog):
         self._dxo_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._dxo_btn.setToolTip("Open the RAW file in the associated viewer")
         self._dxo_btn.clicked.connect(self._open_in_dxo)
-        file_hdr.addWidget(self._dxo_btn, 0, Qt.AlignmentFlag.AlignBottom)
-        pl.addLayout(file_hdr)
+        sec_file.add_trailing_widget(self._explorer_btn)
+        sec_file.add_trailing_widget(self._dxo_btn)
 
         # name (full path on hover) · files · crop — as clean rows
         self._file_key_lbl  = _KVRow("name")
         self._file_exts_lbl = _KVRow("files")
         self._file_crop_lbl = _KVRow("crop")
         for w in (self._file_key_lbl, self._file_exts_lbl, self._file_crop_lbl):
-            pl.addWidget(w)
-        pl.addWidget(_hsep())
+            sec_file.add_widget(w)
+        pl.addWidget(sec_file)
 
         # LOCATION section (right after FILE) — reverse-geocoded place + the GPS
         # coordinates, read straight from the XMP (shows during culling, before
         # any CSV). Filled/updated by 'l'.
-        pl.addWidget(_section_header("LOCATION"))
+        sec_loc = _CollapsibleSection("LOCATION", setting_key="location")
         self._loc_place_lbl = _field_lbl()   # descriptive place (reserve / lake / town)
         self._loc_admin_lbl = _small_lbl()   # City · State · Country
         self._gps_lbl       = _small_lbl()   # GPS coordinates
         for w in (self._loc_place_lbl, self._loc_admin_lbl, self._gps_lbl):
-            pl.addWidget(w)
-        pl.addWidget(_hsep())
+            sec_loc.add_widget(w)
+        pl.addWidget(sec_loc)
 
         # EXIF section (GPS moved up to LOCATION) — clean key→value rows
-        pl.addWidget(_section_header("EXIF"))
+        sec_exif = _CollapsibleSection("EXIF", setting_key="exif")
         self._exif_camera_lbl   = _KVRow("camera")
         self._exif_lens_lbl     = _KVRow("lens")
         self._exif_settings_lbl = _KVRow("exposure")
@@ -922,20 +1008,20 @@ class LargeImageView(QDialog):
         for w in (self._exif_camera_lbl, self._exif_lens_lbl,
                   self._exif_settings_lbl, self._exif_focal_lbl,
                   self._exif_dims_lbl, self._exif_date_lbl):
-            pl.addWidget(w)
-        pl.addWidget(_hsep())
+            sec_exif.add_widget(w)
+        pl.addWidget(sec_exif)
 
         # SPECIES section (container rebuilt on each picture)
-        pl.addWidget(_section_header("SPECIES"))
+        sec_species = _CollapsibleSection("SPECIES", setting_key="species")
         self._species_container = QWidget()
         self._species_cl = QVBoxLayout(self._species_container)
         self._species_cl.setContentsMargins(0, 0, 0, 0)
         self._species_cl.setSpacing(4)
-        pl.addWidget(self._species_container)
-        pl.addWidget(_hsep())
+        sec_species.add_widget(self._species_container)
+        pl.addWidget(sec_species)
 
         # RATING section
-        pl.addWidget(_section_header("RATING"))
+        sec_rating = _CollapsibleSection("RATING", setting_key="rating")
         stars_row = QHBoxLayout()
         stars_row.setContentsMargins(0, 2, 0, 2)
         self._stars = StarWidget(0)
@@ -945,11 +1031,11 @@ class LargeImageView(QDialog):
         self._rate_lbl = QLabel("")
         self._rate_lbl.setStyleSheet("font-size: 11px; color: #555;")
         stars_row.addWidget(self._rate_lbl)
-        pl.addLayout(stars_row)
+        sec_rating.add_layout(stars_row)
 
         self._color_sel = ColorSelector("")
         self._color_sel.color_changed.connect(self._on_color)
-        pl.addWidget(self._color_sel)
+        sec_rating.add_widget(self._color_sel)
 
         self._apply_all_btn = QPushButton("Apply to selected")
         self._apply_all_btn.setEnabled(False)
@@ -957,23 +1043,27 @@ class LargeImageView(QDialog):
         self._apply_all_btn.setStyleSheet(
             "font-size: 10px; color: #555; padding: 1px 4px; margin-top: 2px;")
         self._apply_all_btn.clicked.connect(self._apply_to_all_selected)
-        pl.addWidget(self._apply_all_btn)
+        sec_rating.add_widget(self._apply_all_btn)
+        pl.addWidget(sec_rating)
 
-        pl.addWidget(_section_header("HEADLINE"))
-        pl.addWidget(_small_lbl("Title for a landscape / context photo (optional)"))
+        sec_head = _CollapsibleSection("HEADLINE", setting_key="headline")
+        sec_head.add_widget(
+            _small_lbl("Title for a landscape / context photo (optional)"))
         self._headline_edit = QLineEdit()
         self._headline_edit.setPlaceholderText("e.g. Sunrise over the marsh")
         self._headline_edit.editingFinished.connect(self._save_headline)
-        pl.addWidget(self._headline_edit)
+        sec_head.add_widget(self._headline_edit)
+        pl.addWidget(sec_head)
 
-        pl.addWidget(_section_header("DESCRIPTION"))
-        pl.addWidget(_small_lbl("Story for the website (optional)"))
+        sec_desc = _CollapsibleSection("DESCRIPTION", setting_key="description")
+        sec_desc.add_widget(_small_lbl("Story for the website (optional)"))
         self._desc_edit = QTextEdit()
         fm = self._desc_edit.fontMetrics()
         self._desc_edit.setMinimumHeight(int(fm.lineSpacing() * 3) + 8)
         self._desc_edit.setMaximumHeight(int(fm.lineSpacing() * 8) + 8)
         self._desc_edit.setAcceptRichText(False)
-        pl.addWidget(self._desc_edit)
+        sec_desc.add_widget(self._desc_edit)
+        pl.addWidget(sec_desc)
         pl.addStretch(1)
 
         # ── Selection bar (same markup in both layout modes) ──────────────────
@@ -1698,14 +1788,22 @@ class LargeImageView(QDialog):
                 self._load_embedded()
 
         pos = f"  ({self._index + 1} of {len(self._keys)})"
-        self.setWindowTitle((item.display_name or key) + pos)
+        name = item.display_name or key
+        self.setWindowTitle(name + pos)
+        # Title bar (mockup): "name · file", so the picture on screen is named
+        # right above it as well as in the OS titlebar.
+        self._titlebar_lbl.setText(f"{name}  ·  {key}")
         for _fs in (self._filmstrip_left, self._filmstrip_bottom):
             _fs.set_current(key, self._index, len(self._keys))
 
-        # Identity header: display name (bold) + scientific name(+modifiers)
+        # Identity header: display name (bold) + scientific name(+modifiers).
+        # Scientific convention is "Genus species" — capitalise the leading
+        # genus letter (the resolver returns lower-case), leaving the rest as-is.
         self._panel_name.setText(item.display_name or key)
-        _scitxt = ((getattr(item, "sci_name", "") or "")
-                   + (getattr(item, "qualifier_suffix", "") or "")).strip()
+        _sci = (getattr(item, "sci_name", "") or "").strip()
+        if _sci:
+            _sci = _sci[0].upper() + _sci[1:]
+        _scitxt = (_sci + (getattr(item, "qualifier_suffix", "") or "")).strip()
         self._panel_sci.setText(_scitxt)
         self._panel_sci.setVisible(bool(_scitxt))
 
@@ -1882,6 +1980,19 @@ class LargeImageView(QDialog):
                 ph = _small_lbl("(no species)")
                 ph.setStyleSheet("font-size: 10px; color: #999; font-style: italic;")
                 self._species_cl.addWidget(ph)
+            # Culling has no inline editor (the collection returns no fpr context),
+            # so give it a visible button onto the same Set-species dialog the 's'
+            # key opens — set / change the species from the big image. Only where
+            # the subject is actually writable, so it never dangles.
+            if (getattr(item, "can_edit_species", False)
+                    and not getattr(item, "from_master", False)):
+                sbtn = QPushButton(
+                    "Change species…" if item.species else "Set species…")
+                sbtn.setToolTip(
+                    "Type a Dutch, English or scientific name (or pick a recent "
+                    "one) to set the species for this picture.")
+                sbtn.clicked.connect(lambda _c: self._batch_species())
+                self._species_cl.addWidget(sbtn)
             # A master picture has no species EDITOR here (its determination is settled),
             # but its FORM is a property of the photograph and remains editable — which is
             # the whole reason the qualifier exists. Same flow as the card's right-click.
@@ -2459,6 +2570,12 @@ class LargeImageView(QDialog):
 
     def _apply_default_or_remembered_geometry(self):
         avail = QGuiApplication.primaryScreen().availableGeometry()
+        # The PICTURE drives the height: the panel is in a scroll area and its
+        # sections collapse, so the text never forces the window taller — which
+        # means the floor can stay small and you can freely shrink a wide photo's
+        # window down to a short, wide one. (A large minimum here was what pinned
+        # the window tall.) Keep just a usability floor.
+        self.setMinimumSize(720, 400)
         restore_window(self, self._geo_key,
                        default_size=(int(avail.width() * 0.80),
                                      int(avail.height() * 0.85)))
