@@ -8,8 +8,17 @@ import os
 from pathlib import Path
 from PIL import Image
 from utils.gui_config import load_gui_cache, add_recent_gui_project
+from gui import theme
 
 _ASSETS = str(Path(__file__).resolve().parent.parent / "assets")
+
+
+def _set_valid_glyph(label: QLabel, valid: bool):
+    """Show a coloured ✓/✗ validity glyph. Replaces the old black circle-check /
+    circle-x PNGs, which were invisible on the dark theme."""
+    label.setText("✓" if valid else "✗")
+    label.setStyleSheet(
+        f"color: {theme.DONE_FG if valid else '#e0574a'}; font-size: 15px; font-weight: bold;")
 
 class ImageFileFieldQt(QWidget):
     def __init__(self, label, expected_size, root_field, icon_path=_ASSETS):
@@ -26,7 +35,7 @@ class ImageFileFieldQt(QWidget):
         self.hint_label = QLabel("")
 
         # Initial UI Setup
-        self.status_icon.setPixmap(self.get_icon("error"))
+        _set_valid_glyph(self.status_icon, False)
         self.status_icon.setToolTip("")
         self.hint_label.setStyleSheet("color: red; font-size: 9pt;")
         self.hint_label.setVisible(False)
@@ -75,13 +84,13 @@ class ImageFileFieldQt(QWidget):
             return self._invalidate(f"Error reading image: {err}")
 
         # Valid image
-        self.status_icon.setPixmap(self.get_icon("valid"))
+        _set_valid_glyph(self.status_icon, True)
         self.status_icon.setToolTip("")
         self.clear_hint()
         return True
 
     def _invalidate(self, message: str) -> bool:
-        self.status_icon.setPixmap(self.get_icon("error"))
+        _set_valid_glyph(self.status_icon, False)
         self.status_icon.setToolTip(message)
         self.show_hint(message)
         return False
@@ -120,7 +129,7 @@ class DirectoryFieldQt(QWidget):
         self.field.setText(initial_path)
         self.browse_btn = QPushButton("Browse")
         self.status_icon = QLabel()
-        self.status_icon.setPixmap(self.get_icon(False))
+        _set_valid_glyph(self.status_icon, False)
 
         layout = QHBoxLayout(self)
         layout.addWidget(self.label_widget)
@@ -149,7 +158,7 @@ class DirectoryFieldQt(QWidget):
     def update_status(self):
         path = self.field.text()
         valid = os.path.isdir(path)
-        self.status_icon.setPixmap(self.get_icon(valid))
+        _set_valid_glyph(self.status_icon, valid)
         tip = "Directory exists" if valid else "Directory not found or invalid"
         self.status_icon.setToolTip(tip)
         if valid:
@@ -183,7 +192,7 @@ class RecentDirectoryFieldQt(QWidget):
         self.combo = QComboBox()
         self.browse_btn = QPushButton("Browse")
         self.status_icon = QLabel()
-        self.status_icon.setPixmap(self.get_icon(False))
+        _set_valid_glyph(self.status_icon, False)
 
         self.combo.setMinimumWidth(500)
         self.browse_btn.setFixedWidth(80)
@@ -221,7 +230,7 @@ class RecentDirectoryFieldQt(QWidget):
     def update_status(self):
         path = self.get_text()
         valid = os.path.isdir(path)
-        self.status_icon.setPixmap(self.get_icon(valid))
+        _set_valid_glyph(self.status_icon, valid)
         tip = "Directory exists" if valid else "Directory not found or invalid"
         self.status_icon.setToolTip(tip)
         if valid:

@@ -1107,12 +1107,14 @@ class LargeImageView(QDialog):
         # ── Both filmstrips always exist; toggle just shows/hides them ────────
         self._filmstrip_left = FilmstripWidget(collection, self._keys, self,
                                                orientation=Qt.Orientation.Vertical)
-        self._filmstrip_left.setMinimumWidth(0)
+        # Protect the strip: it must always keep room for one row/column of
+        # thumbnails, so a window resize shrinks the IMAGE, not the filmstrip.
+        self._filmstrip_left.setMinimumWidth(_ITEM_W + 30)
         self._filmstrip_left.item_clicked.connect(self._on_filmstrip_click)
         self._filmstrip_left.item_right_clicked.connect(self._on_filmstrip_context)
 
         self._filmstrip_bottom = FilmstripWidget(collection, self._keys, self)
-        self._filmstrip_bottom.setMinimumHeight(0)
+        self._filmstrip_bottom.setMinimumHeight(_ITEM_H + 22)
         self._filmstrip_bottom.item_clicked.connect(self._on_filmstrip_click)
         self._filmstrip_bottom.item_right_clicked.connect(self._on_filmstrip_context)
 
@@ -1126,9 +1128,13 @@ class LargeImageView(QDialog):
         wrap_vbox.addWidget(self._sel_bar)
         wrap_vbox.addWidget(sep)
 
-        # _v_splitter: content (top) | bottom filmstrip (bottom)
+        # _v_splitter: content (top) | bottom filmstrip (bottom). Content takes
+        # all the give; the strip keeps its height and can't be collapsed away.
         self._v_splitter.addWidget(content_wrapper)
         self._v_splitter.addWidget(self._filmstrip_bottom)
+        self._v_splitter.setStretchFactor(0, 1)
+        self._v_splitter.setStretchFactor(1, 0)
+        self._v_splitter.setCollapsible(1, False)
 
         # right_pane: wraps _v_splitter so it can be the right child of _outer_splitter
         right_pane = QWidget()
@@ -1140,6 +1146,7 @@ class LargeImageView(QDialog):
         # _outer_splitter: left filmstrip | right_pane
         self._outer_splitter.addWidget(self._filmstrip_left)
         self._outer_splitter.setStretchFactor(0, 0)
+        self._outer_splitter.setCollapsible(0, False)   # left strip stays put
         self._outer_splitter.addWidget(right_pane)
         self._outer_splitter.setStretchFactor(1, 1)
 
