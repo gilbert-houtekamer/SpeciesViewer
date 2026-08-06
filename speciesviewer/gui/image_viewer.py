@@ -990,6 +990,13 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         return False
 
     def _open_species_dialog(self, key):
+        # Respect a multi-selection: clicking ❔ on a card that's part of the
+        # current selection sets the species for the WHOLE group (same as the
+        # right-click "Set species…"). Clicking a card outside the selection
+        # targets just that one.
+        if key in self._selected_keys and len(self._selected_keys) > 1:
+            self._open_species_dialog_for_keys(set(self._selected_keys))
+            return
         if not self.fpr:
             self._open_culling_species_dialog({key})
             return
