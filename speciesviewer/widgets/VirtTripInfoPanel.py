@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QTreeWidget, QTreeWidgetItem, QMenu
-from PyQt6.QtGui import QFont, QCursor
+from PyQt6.QtGui import QFont, QCursor, QColor
 from PyQt6.QtCore import Qt
 from pathlib import Path
 import csv
@@ -57,7 +57,7 @@ class VirtTripInfoPanel(QWidget):
 
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
-        self.tree.setStyleSheet(f"{font_style} background-color: white;")
+        self.tree.setStyleSheet(f"{font_style} background-color: {theme.SURFACE};")
         layout.addWidget(self.tree)
 
         self.tree.itemClicked.connect(self._handle_click)
@@ -194,7 +194,7 @@ class VirtTripInfoPanel(QWidget):
             if active_path and d == active_path:
                 item.setText(0, f"▶ {base_text}")
                 item.setFont(0, QFont("Consolas", 10, QFont.Weight.Bold))
-                item.setForeground(0, Qt.GlobalColor.darkMagenta)
+                item.setForeground(0, QColor(theme.ACTIVE_FG))
             else:
                 item.setText(0, base_text)
                 item.setFont(0, QFont("Consolas", 10))

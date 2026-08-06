@@ -320,7 +320,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.warnings_btn.setToolTip("Show only pictures with incorrect species information")
         self.warnings_btn.setStyleSheet("""
             QPushButton { border: 2px solid #FFA500; border-radius: 4px; background: transparent; padding: 0; }
-            QPushButton:checked { background: #FFA500; }
+            QPushButton:checked { background: #FFA500; color: #16241f; }
             QPushButton:disabled { border-color: #CCCCCC; color: #BBBBBB; }
         """)
         self.warnings_btn.clicked.connect(self.on_warnings_toggled)
@@ -332,7 +332,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.no_gps_btn.setToolTip("Show only pictures without GPS coordinates")
         self.no_gps_btn.setStyleSheet("""
             QPushButton { border: 2px solid #C0392B; border-radius: 4px; background: transparent; padding: 0; }
-            QPushButton:checked { background: #F5B7B1; }
+            QPushButton:checked { background: #F5B7B1; color: #16241f; }
             QPushButton:disabled { border-color: #CCCCCC; color: #BBBBBB; }
         """)
         self.no_gps_btn.clicked.connect(self.on_no_gps_toggled)
@@ -353,7 +353,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.all_btn.setToolTip("Show all pictures")
         self.all_btn.setStyleSheet("""
             QPushButton { border: 2px solid #3498DB; border-radius: 4px; background: transparent; padding: 0; }
-            QPushButton:checked { background: #AED6F1; }
+            QPushButton:checked { background: #AED6F1; color: #16241f; }
         """)
         self.all_btn.clicked.connect(self.on_all_toggled)
         controls_layout.addWidget(self.all_btn)
@@ -367,7 +367,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.species_btn.setToolTip("Show only pictures that have a species")
         self.species_btn.setStyleSheet("""
             QPushButton { border: 2px solid #27AE60; border-radius: 4px; background: transparent; padding: 0; }
-            QPushButton:checked { background: #ABEBC6; }
+            QPushButton:checked { background: #ABEBC6; color: #16241f; }
             QPushButton:disabled { border-color: #CCCCCC; color: #BBBBBB; }
         """)
         self.species_btn.clicked.connect(self.on_species_toggled)
@@ -408,7 +408,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.jpg_btn.setEnabled(hasattr(self._collection, "jpg_keys"))
         self.jpg_btn.setStyleSheet("""
             QPushButton { border: 2px solid #16A085; border-radius: 4px; background: transparent; padding: 0; }
-            QPushButton:checked { background: #A3E4D7; }
+            QPushButton:checked { background: #A3E4D7; color: #16241f; }
             QPushButton:disabled { border-color: #CCCCCC; color: #BBBBBB; }
         """)
         self.jpg_btn.toggled.connect(self._on_jpg_toggled)

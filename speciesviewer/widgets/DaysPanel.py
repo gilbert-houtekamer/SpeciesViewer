@@ -5,7 +5,7 @@ Days menu actions operate on. See working_days_plan.md.
 import os
 
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QListWidget, QListWidgetItem, QMenu
-from PyQt6.QtGui import QFont, QCursor
+from PyQt6.QtGui import QFont, QCursor, QColor
 from PyQt6.QtCore import Qt
 
 from utils import days_registry
@@ -88,7 +88,7 @@ class DaysPanel(QWidget):
                 item.setToolTip(folder + "  (folder not found)")
             elif active and _same(active, folder):
                 item.setFont(QFont("Consolas", 10, QFont.Weight.Bold))
-                item.setForeground(Qt.GlobalColor.darkMagenta)
+                item.setForeground(QColor(theme.ACTIVE_FG))
             elif done:
                 item.setForeground(Qt.GlobalColor.darkGray)
             self.list.addItem(item)

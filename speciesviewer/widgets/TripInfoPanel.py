@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QTreeWidget, QTreeWidgetItem, QMenu
 )
-from PyQt6.QtGui import QFont, QCursor
+from PyQt6.QtGui import QFont, QCursor, QColor
 from PyQt6.QtCore import Qt
 from pathlib import Path
 import os
@@ -95,7 +95,7 @@ class TripInfoPanel(QWidget):
                     if trip_key in self.trip_project_map:
                         trip_item.setText(0, f"🔗 {trip_dir.name}")
                         trip_item.setFont(0, QFont("Consolas", 10, QFont.Weight.Bold))
-                        trip_item.setForeground(0, Qt.GlobalColor.darkGreen)
+                        trip_item.setForeground(0, QColor(theme.DONE_FG))
                         trip_item.setData(0, Qt.ItemDataRole.UserRole, trip_dir)
 
                 except Exception as e:
@@ -127,12 +127,12 @@ class TripInfoPanel(QWidget):
             if active_path and path == active_path:
                 item.setText(0, f"▶ {base_text}")
                 item.setFont(0, QFont("Consolas", 10, QFont.Weight.Bold))
-                item.setForeground(0, Qt.GlobalColor.darkMagenta)
+                item.setForeground(0, QColor(theme.ACTIVE_FG))
             else:
                 item.setText(0, base_text)
                 if base_text.startswith("🔗"):
                     item.setFont(0, QFont("Consolas", 10, QFont.Weight.Bold))
-                    item.setForeground(0, Qt.GlobalColor.darkGreen)
+                    item.setForeground(0, QColor(theme.DONE_FG))
                 else:
                     item.setFont(0, QFont("Consolas", 10))
                     item.setForeground(0, self.tree.palette().color(

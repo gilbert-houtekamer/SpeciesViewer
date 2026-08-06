@@ -42,22 +42,24 @@ _LIGHT = dict(
     LOCKED_FG="#7a8172", LOCKED_BG="#f0f2ec", LOCKED_BORDER="#c9d0be",
     GATE_FG="#2f9e57", GATE_BG="#e7f4ec", WARN="#b45309",
     ACTIVE_BG="#fff8d2", ACTIVE_BORDER="#e6dfa8", LOG_BG="#d0f0c0", LOG_INK="#2b3b22",
-    PANEL_BG="#f9f9f9",
+    PANEL_BG="#f9f9f9", ACTIVE_FG="#800080",  # current trip/album/day in the nav list
 )
-# Medium-dark neutral grey with a faint olive warmth — modelled on the tone of
-# PhotoLab / Photoshop's dark UI (the previous near-black read as "too black").
+# Medium-dark neutral grey with a faint olive warmth — modelled on PhotoLab /
+# Photoshop's dark UI. SURFACE sits clearly ABOVE BG so cards/panels/text-areas
+# read as raised, not merged into the window; text + lines lean brighter for
+# readability (the near-black + low-contrast first pass read as "too black").
 _DARK = dict(
-    INK="#e7e9e2", INK_SOFT="#a9af9f", INK_MUTED="#99a08d", INK_FAINT="#7e8576",
-    LINE="#474a40", SURFACE="#32352e", SURFACE_2="#3b3e36", BG="#282a25",
-    ROW_HOVER="#3b3e36", NEUTRAL_GRAY="#9aa38f",
-    ACCENT="#8aa07d", ACCENT_RGB="138, 160, 125", ACCENT_HOVER="#9ab08d",
-    ACCENT_SOFT="#3a4433", ACCENT_SOFT_BORDER="#4e5b45",
-    ACCENT_INK="#f3f6ee", ACCENT_INK_SOFT="#d3e0c6",
-    DONE_FG="#6cc084", DONE_BG="#28382c", READY_FG="#6fb0e8", READY_BG="#243542",
-    LOCKED_FG="#909985", LOCKED_BG="#33362f", LOCKED_BORDER="#4a4d42",
-    GATE_FG="#63c98a", GATE_BG="#28382c", WARN="#e0954a",
-    ACTIVE_BG="#3a3620", ACTIVE_BORDER="#5a5326", LOG_BG="#2a3a26", LOG_INK="#bcd9aa",
-    PANEL_BG="#2b2d27",
+    INK="#ecefe6", INK_SOFT="#bcc2b1", INK_MUTED="#a6ad99", INK_FAINT="#969d88",
+    LINE="#565a4c", SURFACE="#393c34", SURFACE_2="#454840", BG="#2c2e28",
+    ROW_HOVER="#454840", NEUTRAL_GRAY="#a6af9b",
+    ACCENT="#8fa681", ACCENT_RGB="143, 166, 129", ACCENT_HOVER="#9fb691",
+    ACCENT_SOFT="#3f4a37", ACCENT_SOFT_BORDER="#56634c",
+    ACCENT_INK="#f3f6ee", ACCENT_INK_SOFT="#d6e2ca",
+    DONE_FG="#6cc084", DONE_BG="#2e3d31", READY_FG="#6fb0e8", READY_BG="#29394a",
+    LOCKED_FG="#9aa28d", LOCKED_BG="#3a3d35", LOCKED_BORDER="#52564a",
+    GATE_FG="#63c98a", GATE_BG="#2e3d31", WARN="#e0954a",
+    ACTIVE_BG="#3f3a22", ACTIVE_BORDER="#605826", LOG_BG="#30402b", LOG_INK="#c4dfb2",
+    PANEL_BG="#303229", ACTIVE_FG="#e3c766",  # readable warm gold (darkMagenta was unreadable on dark)
 )
 _T = _DARK if is_dark() else _LIGHT
 
@@ -100,6 +102,7 @@ ACTIVE_BG = _T["ACTIVE_BG"]
 ACTIVE_BORDER = _T["ACTIVE_BORDER"]
 LOG_BG = _T["LOG_BG"]
 LOG_INK = _T["LOG_INK"]
+ACTIVE_FG = _T["ACTIVE_FG"]   # the current/active item in the nav lists
 
 # Plain neutral background used by the left-column list panels.
 PANEL_BG = _T["PANEL_BG"]
@@ -255,4 +258,15 @@ def build_base_qss() -> str:
             background-color: {ACCENT_SOFT};
             color: {INK};
         }}
-    """
+    """ + (f"""
+        /* Dark only: give text inputs a visible edge so they don't merge into
+           the panel (they were hard to spot). Light keeps its native look. */
+        QLineEdit, QComboBox, QAbstractSpinBox, QPlainTextEdit, QTextEdit {{
+            background-color: {SURFACE};
+            color: {INK};
+            border: 1px solid {LINE};
+            border-radius: 4px;
+            selection-background-color: {ACCENT};
+            selection-color: {ACCENT_INK};
+        }}
+    """ if is_dark() else "")

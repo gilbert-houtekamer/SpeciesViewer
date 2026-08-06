@@ -863,8 +863,11 @@ class LargeImageView(QDialog):
         self._v_splitter.splitterMoved.connect(self._on_v_splitter_moved)
         # (children assembled in the filmstrip block below)
 
-        # Left — image stage
+        # Left — image stage. Near-black surround (independent of the light/dark
+        # theme): a neutral dark ground is the right backdrop for judging a photo.
         self._stage = QWidget()
+        self._stage.setObjectName("imgStage")
+        self._stage.setStyleSheet("QWidget#imgStage { background: #141414; }")
         self._stage.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         stage_v = QVBoxLayout(self._stage)
         stage_v.setContentsMargins(0, 0, 0, 0)

@@ -189,23 +189,14 @@ class MainWindow(QMainWindow):
         self._mode_buttons[MODE_TRIP].setChecked(True)
         self._left_stack.setCurrentIndex(1)
 
-        # --- Center: yellow panel, with a Maximize toggle above it ----------
+        # --- Center: yellow panel (the ✦ Maximize button was removed — it read
+        # as clutter and the pane is large enough; the toggle method stays but is
+        # now unreachable) ---------------------------------------------------
         yellow_container = QWidget()
         yellow_outer = QVBoxLayout(yellow_container)
         yellow_outer.setContentsMargins(0, 0, 0, 0)
         yellow_outer.setSpacing(0)
-
-        yellow_header = QWidget()
-        yellow_header_layout = QHBoxLayout(yellow_header)
-        yellow_header_layout.setContentsMargins(8, 4, 8, 0)
-        yellow_header_layout.addStretch(1)
-        self._maximize_btn = QPushButton("✦ Maximize")
-        self._maximize_btn.setStyleSheet(
-            f"QPushButton {{ padding: 3px 10px; border: 1px solid {theme.LINE}; border-radius: 5px; "
-            f"background: {theme.SURFACE}; }} QPushButton:hover {{ background: {theme.ROW_HOVER}; }}")
-        self._maximize_btn.clicked.connect(self._toggle_yellow_maximized)
-        yellow_header_layout.addWidget(self._maximize_btn)
-        yellow_outer.addWidget(yellow_header)
+        self._maximize_btn = None
 
         # Yellow panel. Style the pane so it stays the intentional yellow
         # "active" accent. The tab BAR itself is hidden — the left mode strip
@@ -572,7 +563,8 @@ class MainWindow(QMainWindow):
 
     def _toggle_yellow_maximized(self):
         self._yellow_maximized = not self._yellow_maximized
-        self._maximize_btn.setText("✦ Restore" if self._yellow_maximized else "✦ Maximize")
+        if self._maximize_btn is not None:
+            self._maximize_btn.setText("✦ Restore" if self._yellow_maximized else "✦ Maximize")
         self._relayout_hsplitter()
 
     def _toggle_log_collapsed(self):
@@ -1182,7 +1174,7 @@ class MainWindow(QMainWindow):
         # Parent the menu to the main window so it doesn't inherit the yellow
         # background from yellow_tabs (which made hovered text unreadable).
         menu = QMenu(self)
-        menu.setStyleSheet("QMenu { background-color: white; color: black; }")
+        menu.setStyleSheet(f"QMenu {{ background-color: {theme.SURFACE}; color: {theme.INK}; }}")
         if not day_steps:
             disabled = menu.addAction("No eligible steps in selection")
             disabled.setEnabled(False)
