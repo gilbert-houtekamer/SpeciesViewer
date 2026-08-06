@@ -920,6 +920,7 @@ class LargeImageView(QDialog):
 
         # Right — metadata panel
         panel_scroll = QScrollArea()
+        self._panel_scroll = panel_scroll  # wheelEvent: don't flip pictures over it
         panel_scroll.setWidgetResizable(True)
         panel_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         # Floor wide enough for the species editor's qualifier button rows (Sex /
@@ -1149,8 +1150,15 @@ class LargeImageView(QDialog):
 
     def wheelEvent(self, event):
         # Wheel over the image flips through pictures: up → next, down → previous.
-        # (Wheels over the description panel / filmstrip are consumed by their own
-        # scroll areas, so this only fires over the photo.)
+        # But NOT when the cursor is over the metadata panel or a filmstrip: those
+        # scroll their own content, and once scrolled to an end the wheel stops
+        # being consumed there and bubbles up here — which used to leak into
+        # picture navigation. Gate on the widget under the pointer so it doesn't.
+        under = QApplication.widgetAt(event.globalPosition().toPoint())
+        if under is not None and any(
+                self._is_descendant(under, host) for host in (
+                    self._panel_scroll, self._filmstrip_left, self._filmstrip_bottom)):
+            return
         dy = event.angleDelta().y()
         if dy > 0:
             self._next()
@@ -1160,6 +1168,15 @@ class LargeImageView(QDialog):
             event.accept()
         else:
             super().wheelEvent(event)
+
+    @staticmethod
+    def _is_descendant(widget, ancestor) -> bool:
+        """True when `widget` is `ancestor` or nested inside it."""
+        while widget is not None:
+            if widget is ancestor:
+                return True
+            widget = widget.parentWidget()
+        return False
 
     # ── 100% (full-resolution) view ──────────────────────────────────────────
     def _fullres_cache_dir(self):
@@ -1960,7 +1977,14 @@ class LargeImageView(QDialog):
             panel.committed.connect(self._on_species_committed)
             self._species_cl.addWidget(panel)
         else:
-            if item.species:
+            # Culling (no fpr context) but the subject IS writable → embed the full
+            # inline species editor (name + sex/age/plumage + GBIF + recents), the
+            # same widget the 's'-key dialog wraps. Writes via the item's own
+            # sidecar set_species. Read-only hosts (album/master) fall through to
+            # the read-only display below.
+            can_inline = (getattr(item, "can_edit_species", False)
+                          and not getattr(item, "from_master", False))
+            if not can_inline and item.species:
                 # Show the FORM as NAME + abbreviated suffix ("roodborst juv."), never
                 # the raw subject: that already spells the qualifiers out as WORDS, so
                 # item.species + suffix doubled them ("kanarie, female, juvenile ♀ juv.").
@@ -1976,23 +2000,18 @@ class LargeImageView(QDialog):
                 err = _small_lbl(f"⚠  {item.error_msg}")
                 err.setStyleSheet("font-size: 10px; color: #c0392b;")
                 self._species_cl.addWidget(err)
-            if not item.species and not item.error_msg:
+            if not can_inline and not item.species and not item.error_msg:
                 ph = _small_lbl("(no species)")
                 ph.setStyleSheet("font-size: 10px; color: #999; font-style: italic;")
                 self._species_cl.addWidget(ph)
-            # Culling has no inline editor (the collection returns no fpr context),
-            # so give it a visible button onto the same Set-species dialog the 's'
-            # key opens — set / change the species from the big image. Only where
-            # the subject is actually writable, so it never dangles.
-            if (getattr(item, "can_edit_species", False)
-                    and not getattr(item, "from_master", False)):
-                sbtn = QPushButton(
-                    "Change species…" if item.species else "Set species…")
-                sbtn.setToolTip(
-                    "Type a Dutch, English or scientific name (or pick a recent "
-                    "one) to set the species for this picture.")
-                sbtn.clicked.connect(lambda _c: self._batch_species())
-                self._species_cl.addWidget(sbtn)
+            if can_inline:
+                from gui.culling_species import CullingSpeciesWidget
+                editor = CullingSpeciesWidget(
+                    self._inline_species_sc(), item.species or "", 1,
+                    parent=self._species_container, embedded=True)
+                editor.committed.connect(
+                    lambda subject, k=key: self._commit_inline_species(subject, k))
+                self._species_cl.addWidget(editor)
             # A master picture has no species EDITOR here (its determination is settled),
             # but its FORM is a property of the photograph and remains editable — which is
             # the whole reason the qualifier exists. Same flow as the card's right-click.
@@ -2009,6 +2028,37 @@ class LargeImageView(QDialog):
         # Offer marking this photo as a landscape / context photo wherever the
         # subject is writable (fpr editor OR the item's own species writer).
         self._add_mark_landscape_button(item, key)
+
+    def _inline_species_sc(self):
+        """The species collection backing the inline culling editor. Reuse the
+        host's cached one when it has it (the culling grid loads it once); else
+        load and cache here so navigation doesn't re-read the CSV each picture."""
+        fn = getattr(self.parent(), "_culling_sc", None)
+        if callable(fn):
+            try:
+                return fn()
+            except Exception:
+                pass
+        if getattr(self, "_inline_sc_cache", "unset") == "unset":
+            try:
+                from gui.culling_species import load_species_classification
+                self._inline_sc_cache = load_species_classification()
+            except Exception as e:
+                logger.warning(f"inline species editor: no species collection ({e})")
+                self._inline_sc_cache = None
+        return self._inline_sc_cache
+
+    def _commit_inline_species(self, subject: str, key: str):
+        """Write the inline editor's chosen subject to THIS picture via the item's
+        own sidecar writer, then refresh the section + strips + host. Scoped to
+        the one picture on purpose — batch species-set stays on the 's'-key dialog,
+        so a range selected for some other reason isn't silently overwritten."""
+        try:
+            self._collection.item_for_key(key).set_species(subject)
+        except Exception as e:
+            logger.error(f"inline set_species failed for {key}: {e}")
+            return
+        self._on_species_committed({key})
 
     # ── Landscape / context "blog extra" ──────────────────────────────────────
 

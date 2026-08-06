@@ -19,7 +19,7 @@ import os
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
     QPushButton, QCompleter, QFrame, QWidget, QMenu, QMessageBox)
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QCursor
 
 from engine.speciesclassification import SpeciesClassification, Level
@@ -570,22 +570,35 @@ def edit_master_qualifiers(parent, collection, key: str) -> bool:
     return True
 
 
-class CullingSpeciesDialog(QDialog):
-    """Assign a species name to one or more pictures during culling. Accepts
-    NL / EN / scientific input with contains-match auto-complete and live
-    resolution feedback; the chosen keyword is written to XMP:Subject."""
+class CullingSpeciesWidget(QWidget):
+    """Assign a species name to one or more pictures during culling — the editor
+    proper, reusable both as a modal dialog (CullingSpeciesDialog) and embedded
+    inline (the large image viewer's SPECIES section). Accepts NL / EN /
+    scientific input with contains-match auto-complete and live resolution
+    feedback; emits the chosen keyword (name + optional qualifiers) via
+    `committed`. `cancelled` fires when the user backs out of committing an
+    unrecognised name. It does not write anything itself — the host decides which
+    pictures the keyword lands on.
 
-    def __init__(self, sc, current_name: str, n_pictures: int, parent=None):
+    `embedded=True` drops the modal chrome (the bold title) so it sits cleanly
+    under the panel's own SPECIES header."""
+
+    committed = pyqtSignal(str)   # the built XMP:Subject keyword
+    cancelled = pyqtSignal()      # user abandoned an unrecognised-name commit
+
+    def __init__(self, sc, current_name: str, n_pictures: int = 1, parent=None,
+                 *, embedded: bool = False):
         super().__init__(parent)
         self._sc = sc
-        self.setWindowTitle("Set species")
-        self.setMinimumWidth(560)
+        self._embedded = embedded
 
         layout = QVBoxLayout(self)
-        header = (f"Set species for {n_pictures} pictures"
-                  if n_pictures != 1 else "Set species")
-        title = QLabel(f"<b>{header}</b>")
-        layout.addWidget(title)
+        if embedded:
+            layout.setContentsMargins(0, 0, 0, 0)
+        else:
+            header = (f"Set species for {n_pictures} pictures"
+                      if n_pictures != 1 else "Set species")
+            layout.addWidget(QLabel(f"<b>{header}</b>"))
         layout.addWidget(QLabel("Type a Dutch, English or scientific name:"))
 
         # An incoming subject may already carry qualifiers ("blauwborst, female");
@@ -671,26 +684,18 @@ class CullingSpeciesDialog(QDialog):
         layout.addWidget(self._recent_container)
         self._build_recent_buttons()
 
-        # Close only — "Set species" lives next to the field above. Named "Close"
-        # (not "Cancel"): any recents you removed are already gone, so this button
-        # doesn't undo them — it just leaves without assigning a species.
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        self.close_btn = QPushButton("Close")
-        self.close_btn.setToolTip("Leave without setting a species (removed recents stay removed)")
-        btn_row.addWidget(self.close_btn)
-        layout.addLayout(btn_row)
-
         self.field.textChanged.connect(lambda: self._resolve(use_gbif=False))
         self.field.returnPressed.connect(self._on_ok)
         self.gbif_btn.clicked.connect(lambda: self._resolve(use_gbif=True))
         self.ok_btn.clicked.connect(self._on_ok)
-        self.close_btn.clicked.connect(self.reject)
 
-        self._chosen = ""
         self._is_known = False   # does the current field text resolve to a real species?
         self._resolve(use_gbif=False)
-        self.field.setFocus()
+        # In the modal dialog we want to type at once; embedded (large-viewer
+        # panel) we must NOT grab focus — the arrow keys drive picture navigation,
+        # and a focused field would swallow them on every rebuild.
+        if not embedded:
+            self.field.setFocus()
 
     def _build_recent_buttons(self):
         """(Re)fill the recent-species grid from the persisted list. Two columns,
@@ -845,7 +850,7 @@ class CullingSpeciesDialog(QDialog):
                 | QMessageBox.StandardButton.Cancel,
                 QMessageBox.StandardButton.No)
             if resp == QMessageBox.StandardButton.Cancel:
-                self.reject()
+                self.cancelled.emit()
                 return
             if resp != QMessageBox.StandardButton.Yes:   # No → fix the name, stay open
                 self.field.setFocus()
@@ -887,14 +892,49 @@ class CullingSpeciesDialog(QDialog):
         return sel
 
     def _commit(self, name: str):
-        """Accept with `name` as the chosen species (from the field or a recent
-        button), append any selected qualifiers, and bump the species (without
-        qualifiers) to the front of the recents list."""
+        """Emit `name` as the chosen species (from the field or a recent button),
+        appending any selected qualifiers, and bump the species (without
+        qualifiers) to the front of the recents list. The host decides which
+        pictures the keyword is written to."""
         name = (name or "").strip()
         if not name:
             return
-        self._chosen = build_species_subject(name, self._selected_qualifiers())
+        subject = build_species_subject(name, self._selected_qualifiers())
         remember_recent_species(name)
+        self.committed.emit(subject)
+
+
+class CullingSpeciesDialog(QDialog):
+    """Modal wrapper around CullingSpeciesWidget for one-shot species assignment
+    (the 's' key / grid context menu). Keeps the exec() + chosen_name() API its
+    callers rely on; the inline large-viewer editor uses the widget directly."""
+
+    def __init__(self, sc, current_name: str, n_pictures: int, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Set species")
+        self.setMinimumWidth(560)
+        self._chosen = ""
+
+        layout = QVBoxLayout(self)
+        self.panel = CullingSpeciesWidget(sc, current_name, n_pictures, self)
+        self.panel.committed.connect(self._on_committed)
+        self.panel.cancelled.connect(self.reject)
+        layout.addWidget(self.panel)
+
+        # Close only — "Set species" lives next to the field. Named "Close" (not
+        # "Cancel"): any recents you removed are already gone, so it doesn't undo
+        # them — it just leaves without assigning a species.
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        self.close_btn = QPushButton("Close")
+        self.close_btn.setToolTip(
+            "Leave without setting a species (removed recents stay removed)")
+        self.close_btn.clicked.connect(self.reject)
+        btn_row.addWidget(self.close_btn)
+        layout.addLayout(btn_row)
+
+    def _on_committed(self, subject: str):
+        self._chosen = subject
         self.accept()
 
     def chosen_name(self) -> str:
