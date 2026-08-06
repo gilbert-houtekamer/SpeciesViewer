@@ -370,6 +370,7 @@ class PictureCard(QFrame):
     card_double_clicked = pyqtSignal(str) # key — double click → open large view
     card_right_clicked = pyqtSignal(str)  # key — right click → context menu
     status_clicked = pyqtSignal(str)      # key — status icon clicked → open SpeciesInfoDialog
+    notes_clicked = pyqtSignal(str)       # key — 📝 clicked → open Headline/Description editor
 
     def __init__(self, item: PictureItem, card_width: int, parent=None,
                  *, show_status: bool = False, show_kind_tag: bool = False,
@@ -547,6 +548,13 @@ class PictureCard(QFrame):
             self._desc_badge.setStyleSheet("font-size: 14px;")
             self._desc_badge.setFixedSize(20, 20)
             self._desc_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            # The 📝 is a link: clicking it opens the Headline/Description editor
+            # (the same thing the right-click menu does).
+            self._desc_badge.setTextInteractionFlags(
+                Qt.TextInteractionFlag.LinksAccessibleByMouse)
+            self._desc_badge.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._desc_badge.linkActivated.connect(
+                lambda _h: self.notes_clicked.emit(self.upn_key))
             badge_row.addWidget(self._desc_badge)
 
             self._gps_badge = QLabel()
@@ -660,6 +668,12 @@ class PictureCard(QFrame):
         self._lbl_crop = QLabel()
         self._lbl_crop.setStyleSheet(f"color:{_FRAME}; font-family:Consolas,monospace;"
                                      f" font-size:9.5px; font-weight:700;")
+        # 📝 on this line is a link to the Headline/Description editor (⌗ Crop is
+        # not — it's just a marker).
+        self._lbl_crop.setTextInteractionFlags(
+            Qt.TextInteractionFlag.LinksAccessibleByMouse)
+        self._lbl_crop.linkActivated.connect(
+            lambda _h: self.notes_clicked.emit(self.upn_key))
         key_row.addWidget(self._lbl_crop, 0,
                           Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
         ml.addLayout(key_row)
@@ -746,10 +760,20 @@ class PictureCard(QFrame):
         if getattr(self._item, "has_crop", False):
             marks.append("⌗ Crop")
         if self._show_status and self._item.description:
-            marks.append("📝")
-        self._lbl_crop.setText("   ".join(marks))
+            if self._notes_editable():
+                # A clickable link → the Headline/Description editor; the label
+                # renders as rich text once it contains the anchor.
+                marks.append('<a href="notes" style="text-decoration:none;"'
+                             ' title="Edit headline / description">📝</a>')
+            else:
+                marks.append("📝")   # read-only host: an indicator, not a link
+        self._lbl_crop.setText("&nbsp;&nbsp;".join(marks))
         self._lbl_crop.setToolTip("This picture carries a crop" if getattr(
             self._item, "has_crop", False) else "")
+
+    def _notes_editable(self) -> bool:
+        return (getattr(self._item, "can_edit_headline", False)
+                or getattr(self._item, "can_edit_description", False))
 
     def _refresh_framed_status(self):
         """Repaint the preview-only bits (location line, Attention badge, red
@@ -793,8 +817,20 @@ class PictureCard(QFrame):
             if has_crop else "")
 
         desc = item.description
-        self._desc_badge.setText("📝" if desc else "")
-        self._desc_badge.setToolTip(desc or "")
+        # 📝: a link → the Headline/Description editor where editable, else a plain
+        # indicator (no dead affordance on a read-only card).
+        if desc and self._notes_editable():
+            self._desc_badge.setText(
+                '<a href="notes" style="text-decoration:none;">📝</a>')
+            self._desc_badge.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._desc_badge.setToolTip("Edit headline / description")
+        elif desc:
+            self._desc_badge.setText("📝")
+            self._desc_badge.unsetCursor()
+            self._desc_badge.setToolTip(desc)
+        else:
+            self._desc_badge.setText("")
+            self._desc_badge.setToolTip("")
 
         if item.has_gps:
             self._gps_badge.setText("📍")
@@ -2147,6 +2183,17 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         act_rate = menu.addAction(f"Set rating…  ({lbl})")
         act_fullres = menu.addAction(f"Full resolution  ({lbl})")
         act_geo = menu.addAction(f"Get location  ({lbl})")
+        # Headline / Description — per-picture text, so on the ONE clicked card.
+        act_hd = None
+        try:
+            clicked_item = (self._collection.item_for_key(upn_key)
+                            if self._collection is not None else None)
+        except (ValueError, KeyError):
+            clicked_item = None
+        if clicked_item is not None and (clicked_item.can_edit_headline
+                                         or clicked_item.can_edit_description):
+            menu.addSeparator()
+            act_hd = menu.addAction("Edit headline / description…  (this picture)")
         menu.addSeparator()
         act_addfiles = menu.addAction(f"Add new files (scan folder)…  ({lbl})")
         chosen = menu.exec(QCursor.pos())
@@ -2160,8 +2207,32 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             self._cull_full_res(keys_for_action)
         elif chosen == act_geo:
             self._cull_geolocate(keys_for_action)
+        elif act_hd is not None and chosen == act_hd:
+            self._edit_headline_description(upn_key)
         elif chosen == act_addfiles:
             self._do_trip_add(keys_for_action)
+
+    def _edit_headline_description(self, upn_key: str):
+        """Open the shared Headline / Description editor for one grid card and
+        write + repaint it (the 📝 mark follows the description)."""
+        if self._collection is None:
+            return
+        try:
+            item = self._collection.item_for_key(upn_key)
+        except (ValueError, KeyError):
+            return
+        from gui.headline_desc_dialog import (edit_headline_description,
+                                              apply_headline_description)
+        values = edit_headline_description(
+            self, title=item.display_name or upn_key,
+            headline=item.headline, description=item.description,
+            can_edit_headline=item.can_edit_headline,
+            can_edit_description=item.can_edit_description)
+        if apply_headline_description(item, values):
+            card = self._cards_by_key.get(upn_key)
+            if card is not None:
+                card.refresh()
+            self._status.setText(f"Saved headline / description for {upn_key}")
 
     def _do_trip_add(self, keys: set):
         """Scan each selected TRIP picture's folder for files that belong to it

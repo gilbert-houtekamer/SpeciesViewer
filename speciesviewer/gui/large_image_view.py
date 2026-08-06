@@ -825,6 +825,16 @@ class LargeImageView(QDialog):
         self._rotate_btn.setVisible(False)
         top_bar_row.addWidget(self._rotate_btn)
         self._update_crop_btn()
+        # Headline / Description — the same shared editor the grid right-click
+        # opens, for when the panel's fields are scrolled off / collapsed.
+        self._hd_btn = QToolButton()
+        self._hd_btn.setAutoRaise(True)
+        self._hd_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._hd_btn.setStyleSheet("font-size: 10px; padding: 1px 5px;")
+        self._hd_btn.setText("📝 Notes")
+        self._hd_btn.setToolTip("Edit the headline / description for this picture")
+        self._hd_btn.clicked.connect(self._edit_headline_description_current)
+        top_bar_row.addWidget(self._hd_btn)
         self._filmstrip_btn = QToolButton()
         self._filmstrip_btn.setAutoRaise(True)
         self._filmstrip_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1658,6 +1668,12 @@ class LargeImageView(QDialog):
                 except Exception:
                     pass
         act_edit = menu.addAction("Edit location…  (type a place name)")
+        # Headline / Description — the same shared editor as the top-bar button.
+        act_hd = None
+        if item is not None and (getattr(item, "can_edit_headline", False)
+                                 or getattr(item, "can_edit_description", False)):
+            menu.addSeparator()
+            act_hd = menu.addAction("Edit headline / description…")
         # "Add new files" only where the collection supports it (an editable trip
         # picture) — the culling/album/master viewers won't advertise it.
         act_add = None
@@ -1681,6 +1697,8 @@ class LargeImageView(QDialog):
         elif act_gps_from is not None and chosen == act_gps_from:
             gps_from_fn({key})
             self._show_location(key)   # reflect the new coordinate in the panel
+        elif act_hd is not None and chosen == act_hd:
+            self._edit_headline_description_current()
         elif act_add is not None and chosen == act_add:
             self._add_files_current()
 
@@ -1909,6 +1927,9 @@ class LargeImageView(QDialog):
             self._color_sel.setEnabled(False)
         self._rate_lbl.setText(f"Rate: {item.rate}" if item.rate is not None else "")
         self._apply_frame_color(item.color or "")
+
+        # Top-bar Notes button: only when this picture's text is writable.
+        self._hd_btn.setVisible(item.can_edit_headline or item.can_edit_description)
 
         self._original_headline = item.headline or ""
         self._headline_edit.blockSignals(True)
@@ -2530,6 +2551,33 @@ class LargeImageView(QDialog):
         self.picture_changed.emit(self._item.key)
         if self._auto_advance and color and not self._selected_keys:
             self._next()
+
+    def _edit_headline_description_current(self):
+        """Open the shared Headline / Description editor for the picture on screen,
+        then mirror the written values back into the panel's own fields (which may
+        be collapsed / scrolled off — the reason the top-bar button exists)."""
+        item = self._item
+        if item is None:
+            return
+        from gui.headline_desc_dialog import (edit_headline_description,
+                                              apply_headline_description)
+        values = edit_headline_description(
+            self, title=item.display_name or item.key,
+            headline=item.headline, description=item.description,
+            can_edit_headline=item.can_edit_headline,
+            can_edit_description=item.can_edit_description)
+        if not apply_headline_description(item, values):
+            return
+        self._original_headline = item.headline
+        self._headline_edit.blockSignals(True)
+        self._headline_edit.setText(item.headline)
+        self._headline_edit.blockSignals(False)
+        self._original_description = item.description
+        self._desc_edit.blockSignals(True)
+        self._desc_edit.setPlainText(item.description)
+        self._desc_edit.blockSignals(False)
+        self._refresh_strip_items(item.key)
+        self.picture_changed.emit(item.key)
 
     def _save_description(self):
         if self._item is None or not self._item.can_edit_description:

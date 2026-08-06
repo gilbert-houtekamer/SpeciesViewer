@@ -943,6 +943,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             card.card_double_clicked.connect(self._open_large_view)
             card.card_right_clicked.connect(self._on_card_context_menu)
             card.status_clicked.connect(self._open_species_dialog)
+            card.notes_clicked.connect(self._edit_headline_description)
             self.grid_layout.addWidget(card, r, col, 1, span)
             self._cards.append(card)
             self._cards_by_key[item.key] = card
@@ -1186,6 +1187,11 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             "coordinate (~30 m), so they appear on the map. Marked as placed by hand, "
             "so you can then drag them to the exact spot.")
         act_editloc = menu.addAction(f"Edit location…  ({lbl})")
+        # Headline / Description — per-picture text, so on the ONE clicked card.
+        act_hd = None
+        if item is not None and (getattr(item, "can_edit_headline", False)
+                                 or getattr(item, "can_edit_description", False)):
+            act_hd = menu.addAction("Edit headline / description…  (this picture)")
         menu.addSeparator()
         # Copy GPS + place from THIS one picture; paste into the selection. Lets a
         # no-GPS shot inherit a neighbour's location when the sv2 backfill can't
@@ -1242,6 +1248,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._gps_from_location(keys_for_action)
         elif chosen == act_editloc:
             self._edit_location(keys_for_action)
+        elif act_hd is not None and chosen == act_hd:
+            self._edit_headline_description(key)
         elif chosen == act_copy_gps:
             self._copy_gps(key)
         elif chosen == act_paste_gps:
@@ -1250,6 +1258,25 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._set_album_picture(key)
         elif act_delete is not None and chosen == act_delete:
             self._delete_keys_ui(keys_for_action)
+
+    def _edit_headline_description(self, key: str):
+        """Open the shared Headline / Description editor for one grid card and
+        write + repaint it (the 📝 badge follows the description)."""
+        try:
+            item = self._collection.item_for_key(key)
+        except (ValueError, KeyError):
+            return
+        from gui.headline_desc_dialog import (edit_headline_description,
+                                              apply_headline_description)
+        values = edit_headline_description(
+            self, title=item.display_name or key,
+            headline=item.headline, description=item.description,
+            can_edit_headline=getattr(item, "can_edit_headline", False),
+            can_edit_description=getattr(item, "can_edit_description", False))
+        if apply_headline_description(item, values):
+            card = self._cards_by_key.get(key)
+            if card is not None:
+                card.refresh()
 
     def _cover_target(self):
         """(root, kind, name) whose cover this viewer would set, or None.
