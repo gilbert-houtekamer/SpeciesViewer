@@ -2040,12 +2040,17 @@ class TripMapView(QDialog):
         # would also block dragging the pin to adjust it.
         self._pending = None               # {mode, keys, lat, lon, fields, place}
         self._bar = QWidget()
-        self._bar.setStyleSheet("background:#fff8e1; border-top:1px solid #e0c97f;")
+        # Scoped (#confirmBar) so the "active" yellow doesn't cascade onto the
+        # child buttons and wash out their text; theme-aware for light/dark.
+        self._bar.setObjectName("confirmBar")
+        self._bar.setStyleSheet(
+            f"QWidget#confirmBar {{ background:{theme.ACTIVE_BG};"
+            f" border-top:1px solid {theme.ACTIVE_BORDER}; }}")
         b = QHBoxLayout(self._bar)
         b.setContentsMargins(8, 5, 8, 5)
         self._bar_label = QLabel()
         self._bar_label.setWordWrap(True)
-        self._bar_label.setStyleSheet("color:#333; border:none;")
+        self._bar_label.setStyleSheet(f"color:{theme.INK}; border:none;")
         b.addWidget(self._bar_label, 1)
         self._bar_ok = QPushButton("Place here")
         self._bar_ok.setDefault(True)
