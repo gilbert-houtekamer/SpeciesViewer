@@ -370,7 +370,7 @@ class PictureCard(QFrame):
 
     def __init__(self, item: PictureItem, card_width: int, parent=None,
                  *, show_status: bool = False, show_kind_tag: bool = False,
-                 framed: bool = False):
+                 framed: bool = False, viewer_key: str = "species"):
         super().__init__(parent)
         self.setObjectName("PictureCard")
         self._item = item
@@ -381,6 +381,7 @@ class PictureCard(QFrame):
         # info badges + name/sci meta lines). Opt-in; the legacy stacked layout
         # is the default so untouched viewers are unaffected.
         self._framed = framed
+        self._viewer_key = viewer_key   # which per-viewer corner set to apply
         self._from_master = getattr(item, "from_master", False)
         # In Trip+Master scope the grid mixes the two; tag each card with its
         # origin + the picture's web/JPG size so they're directly comparable.
@@ -597,36 +598,51 @@ class PictureCard(QFrame):
         fl.addWidget(self._thumb)
         outer.addWidget(self._pframe)
 
-        # corners: TL format · BL date · BR Rate · TR committed-lock
-        exts = item.file_exts or []
-        primary = next((e for e in exts if e.upper() not in ("XMP", "DOP", "DNG")), None)
-        fmt = "JPG" if item.has_jpg else (primary or "RAW")
-        self._thumb.add_badge(_corner_badge(fmt.upper(), bold=True), "tl")
-        if item.date:
-            self._thumb.add_badge(
-                _corner_badge(item.date[:10].replace(":", "-")), "bl")
-        self._rate_lbl = _corner_badge("", rate=True)
-        self._thumb.add_badge(self._rate_lbl, "br")
-        self.update_rate_display(item.rate)
-        # Top-right corner: committed-lock wins; otherwise, on a preview (culling)
-        # card, the Attention flag — a red badge shown ONLY when something needs a
-        # decision (missing GPS, unset/uncertain species). A clean corner = fine.
+        # corners — datum per position from this viewer's configurable set. The
+        # committed lock (species) and the Attention flag (preview) auto-override
+        # the top-right corner, whatever datum is configured there.
+        from gui.card_layout import corner_config, render_datum
+        self._corner_cfg = corner_config(self._viewer_key)
+        self._rate_lbl = _corner_badge("", rate=True)   # updated by update_rate_display
+        self._colour_dot = None
         self._attn = self._compute_attention() if self._show_status else False
         self._attn_badge = None
-        if getattr(item, "frozen", False):
-            lock = _corner_badge("🔒", bold=True)
-            lock.setToolTip("This day is committed — Reset the trip to unlock it.")
-            self._thumb.add_badge(lock, "tr")
-        elif self._show_status:
-            text, clickable = self._attn_badge_spec()
-            self._attn_badge = _corner_badge(text or "", attn=True)
-            self._attn_badge.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._attn_badge.mousePressEvent = \
-                lambda e: self.status_clicked.emit(self.upn_key)
-            self._thumb.add_badge(self._attn_badge, "tr")
-            # add_badge shows the widget, so hide AFTER it — a clean card (no
-            # issue) must not show an empty brown pill.
-            self._attn_badge.setVisible(bool(text))
+
+        for pos in ("tl", "bl", "br", "tr"):
+            datum = self._corner_cfg.get(pos, "none")
+            if pos == "tr" and getattr(item, "frozen", False):
+                lock = _corner_badge("🔒", bold=True)
+                lock.setToolTip("This day is committed — Reset the trip to unlock it.")
+                self._thumb.add_badge(lock, "tr")
+                continue
+            if pos == "tr" and self._show_status:
+                text, _clickable = self._attn_badge_spec()
+                self._attn_badge = _corner_badge(text or "", attn=True)
+                self._attn_badge.setCursor(Qt.CursorShape.PointingHandCursor)
+                self._attn_badge.mousePressEvent = \
+                    lambda e: self.status_clicked.emit(self.upn_key)
+                self._thumb.add_badge(self._attn_badge, "tr")
+                self._attn_badge.setVisible(bool(text))   # hide the empty pill
+                continue
+            if datum == "none":
+                continue
+            if datum == "rate":
+                self._thumb.add_badge(self._rate_lbl, pos)
+            elif datum == "lock":
+                if getattr(item, "frozen", False):
+                    lk = _corner_badge("🔒", bold=True)
+                    lk.setToolTip("This day is committed — Reset the trip to unlock it.")
+                    self._thumb.add_badge(lk, pos)
+            elif datum == "colour":
+                self._colour_dot = QLabel()
+                self._colour_dot.setFixedSize(15, 15)
+                self._thumb.add_badge(self._colour_dot, pos)
+                self._paint_colour_dot()
+            else:
+                txt = render_datum(datum, item)
+                if txt is not None:
+                    self._thumb.add_badge(_corner_badge(txt, bold=(datum == "format")), pos)
+        self.update_rate_display(item.rate)
 
         # meta lines: display name (bold) + scientific name(+modifiers) italic
         meta = QWidget()
@@ -719,10 +735,26 @@ class PictureCard(QFrame):
         return (f"{sci}{suffix}").strip()
 
     def _update_frame_color(self):
-        """Paint the thick frame with the colour label (olive when unlabelled)."""
+        """Paint the thick frame. Per the viewer's frame setting: the colour label
+        floods it (olive when unlabelled), or it's always olive."""
+        if getattr(self, "_corner_cfg", {}).get("frame") == "olive":
+            bg = _FRAME
+        else:
+            hexc = COLOR_HEX.get((self._frame_color or "").capitalize())
+            bg = hexc or _FRAME
+        self._pframe.setStyleSheet(f"QFrame#pframe {{ background:{bg}; border-radius:8px; }}")
+
+    def _paint_colour_dot(self):
+        """Repaint the optional colour-dot corner from the current label colour."""
+        if getattr(self, "_colour_dot", None) is None:
+            return
         hexc = COLOR_HEX.get((self._frame_color or "").capitalize())
-        self._pframe.setStyleSheet(
-            f"QFrame#pframe {{ background:{hexc or _FRAME}; border-radius:8px; }}")
+        if hexc:
+            self._colour_dot.setStyleSheet(
+                f"background:{hexc}; border:2px solid rgba(255,255,255,.9); border-radius:8px;")
+            self._colour_dot.setVisible(True)
+        else:
+            self._colour_dot.setVisible(False)
 
     # ── framed preview (culling) status ──────────────────────────────────────
     def _compute_attention(self) -> bool:
@@ -941,6 +973,7 @@ class PictureCard(QFrame):
                     f"background:{theme.SURFACE_2}; border:3px solid {_MAT}; border-radius:3px;"
                     f" color:{_INK_SOFT}; font-size:10px;")
             self._update_frame_color()
+            self._paint_colour_dot()
             return
         parts = []
         if not has_pix:
@@ -1862,7 +1895,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             # the Album's controls auto-disable (view_read_only → can_edit False),
             # so it gets visual parity without any misleading affordance.
             card = PictureCard(item, card_w, show_kind_tag=show_kind_tag,
-                               framed=True)   # async thumb
+                               framed=True, viewer_key="species")   # async thumb
             card.card_changed.connect(self._on_card_changed)
             card.card_clicked.connect(self._on_card_cursor)
             card.card_double_clicked.connect(self._on_card_clicked)

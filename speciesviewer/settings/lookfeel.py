@@ -13,13 +13,15 @@ import logging
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QRadioButton, QButtonGroup,
-    QPushButton, QWidget, QFrame,
+    QPushButton, QWidget, QFrame, QComboBox, QGridLayout,
 )
 from PyQt6.QtCore import Qt
 
 from utils.config import get_setting, set_setting, persist_config
 from gui import theme
 from gui.label_colors import COLORS, COLOR_SCHEMES, active_scheme_name
+from gui.card_layout import (CORNER_OPTIONS, FRAME_OPTIONS, VIEWERS,
+                             POSITION_LABELS, corner_config, set_corner_config)
 
 logger = logging.getLogger("speciesviewer")
 
@@ -98,7 +100,11 @@ class LookFeelDialog(QDialog):
             lay.addWidget(rb)
         (self._dark_rb if theme.is_dark() else self._light_rb).setChecked(True)
 
-        note = QLabel("↻  Changes apply after restarting SpeciesViewer.")
+        self._build_corner_section(lay)
+
+        note = QLabel("↻  Colour scheme + theme apply after restarting SpeciesViewer; "
+                      "card corners apply the next time you open a viewer.")
+        note.setWordWrap(True)
         note.setStyleSheet(f"color:{theme.INK_SOFT}; font-size:11px; padding-top:6px;")
         lay.addWidget(note)
 
@@ -113,6 +119,77 @@ class LookFeelDialog(QDialog):
         btns.addWidget(save)
         lay.addLayout(btns)
 
+    # ── Card corners — per-viewer configurable corner set + frame colour ──────
+    def _build_corner_section(self, lay):
+        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"color:{theme.LINE}; margin:6px 0;")
+        lay.addWidget(sep)
+        lay.addWidget(_section("CARD CORNERS — PER VIEWER"))
+
+        # in-memory copy of every viewer's config; edits land here, saved on Save.
+        self._cc_state = {vk: dict(corner_config(vk)) for vk, _ in VIEWERS}
+
+        vrow = QHBoxLayout()
+        vlbl = QLabel("Viewer:"); vlbl.setStyleSheet("font-size:12.5px;")
+        self._cc_viewer = QComboBox()
+        for vk, vlabel in VIEWERS:
+            self._cc_viewer.addItem(vlabel, vk)
+        vrow.addWidget(vlbl, 0); vrow.addWidget(self._cc_viewer, 1)
+        lay.addLayout(vrow)
+
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 4, 0, 0)
+        grid.setHorizontalSpacing(14); grid.setVerticalSpacing(4)
+        self._cc_corners = {}
+        for pos, r, c in (("tl", 0, 0), ("tr", 0, 1), ("bl", 1, 0), ("br", 1, 1)):
+            cell = QWidget(); cv = QVBoxLayout(cell)
+            cv.setContentsMargins(0, 0, 0, 0); cv.setSpacing(1)
+            plbl = QLabel(POSITION_LABELS[pos].upper())
+            plbl.setStyleSheet(f"font-family:{_MONO}; font-size:8.5px; letter-spacing:.08em; color:{theme.INK_SOFT};")
+            combo = QComboBox()
+            for key, label in CORNER_OPTIONS:
+                combo.addItem(label, key)
+            combo.currentIndexChanged.connect(self._grab_corners)
+            self._cc_corners[pos] = combo
+            cv.addWidget(plbl); cv.addWidget(combo)
+            grid.addWidget(cell, r, c)
+        gwrap = QWidget(); gwrap.setLayout(grid); lay.addWidget(gwrap)
+
+        frow = QHBoxLayout()
+        flbl = QLabel("Frame colour:"); flbl.setStyleSheet("font-size:12.5px;")
+        self._cc_frame = QComboBox()
+        for key, label in FRAME_OPTIONS:
+            self._cc_frame.addItem(label, key)
+        self._cc_frame.currentIndexChanged.connect(self._grab_corners)
+        frow.addWidget(flbl, 0); frow.addWidget(self._cc_frame, 1)
+        lay.addLayout(frow)
+
+        self._cc_viewer.currentIndexChanged.connect(self._on_viewer_changed)
+        self._cc_current = self._cc_viewer.currentData()
+        self._load_corners(self._cc_current)
+
+    def _load_corners(self, vk):
+        st = self._cc_state[vk]
+        for pos, combo in self._cc_corners.items():
+            combo.blockSignals(True)
+            combo.setCurrentIndex(max(0, combo.findData(st.get(pos, "none"))))
+            combo.blockSignals(False)
+        self._cc_frame.blockSignals(True)
+        self._cc_frame.setCurrentIndex(max(0, self._cc_frame.findData(st.get("frame", "colour"))))
+        self._cc_frame.blockSignals(False)
+
+    def _grab_corners(self, *_):
+        vk = getattr(self, "_cc_current", None)
+        if vk is None:
+            return
+        for pos, combo in self._cc_corners.items():
+            self._cc_state[vk][pos] = combo.currentData()
+        self._cc_state[vk]["frame"] = self._cc_frame.currentData()
+
+    def _on_viewer_changed(self, *_):
+        self._cc_current = self._cc_viewer.currentData()
+        self._load_corners(self._cc_current)
+
     def _save(self):
         chosen = next((b for b in self._scheme_group.buttons() if b.isChecked()), None)
         name = getattr(chosen, "_scheme_name", None) if chosen else None
@@ -120,7 +197,9 @@ class LookFeelDialog(QDialog):
             set_setting("lookfeel", "color_scheme", name)
         theme_val = "dark" if self._dark_rb.isChecked() else "light"
         set_setting("lookfeel", "theme", theme_val)
+        self._grab_corners()
+        for vk, cfg in self._cc_state.items():
+            set_corner_config(vk, cfg)
         persist_config()
-        logger.info("Look & feel: scheme='%s', theme='%s' (applies on restart).",
-                    name, theme_val)
+        logger.info("Look & feel: scheme='%s', theme='%s', corners saved.", name, theme_val)
         self.accept()
