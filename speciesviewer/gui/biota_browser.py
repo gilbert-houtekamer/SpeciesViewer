@@ -41,7 +41,7 @@ logger = logging.getLogger("speciesviewer")
 # Sourced from gui/theme.py (ch.15 global QSS, Phase 2) — was a local
 # near-duplicate of Species Panel's/Trip lifecycle board's own copies.
 _INK = theme.INK; _INK_SOFT = theme.INK_SOFT; _LINE = theme.LINE
-_SURFACE = theme.SURFACE; _BG = theme.BG
+_SURFACE = theme.SURFACE; _SURFACE2 = theme.SURFACE_2; _BG = theme.BG
 _FRAME = theme.ACCENT; _FRAME_INK = theme.ACCENT_INK; _MAT = theme.SURFACE
 _DONE = theme.DONE_FG; _DONE_BG = theme.DONE_BG; _READY = theme.READY_FG; _READY_BG = theme.READY_BG
 
@@ -107,7 +107,7 @@ class TaxonCard(QFrame):
         fl.setContentsMargins(6, 6, 6, 6)
         self._photo = QLabel()
         self._photo.setFixedHeight(int((card_w - 12) * 0.8))
-        self._photo.setStyleSheet(f"background:#e9ece3; border:3px solid {_MAT};"
+        self._photo.setStyleSheet(f"background:{_SURFACE2}; border:3px solid {_MAT};"
                                   f" border-radius:3px; color:{_INK_SOFT};")
         self._photo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         rank = node.get("rank", "")

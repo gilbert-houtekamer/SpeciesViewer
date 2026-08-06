@@ -16,27 +16,26 @@ from utils.config import get_setting
 
 COLORS = ["Red", "Yellow", "Green", "Blue", "Purple"]
 
-# name → {colour: hex}. "Classic" is the app's long-standing (vivid) palette, so
-# it stays the default and existing installs look identical until changed.
+# Three schemes (user-simplified). "Vivid" is the app's long-standing saturated
+# palette, so it's the default and existing installs look identical until changed.
 COLOR_SCHEMES: dict[str, dict[str, str]] = {
-    "Classic": {"Red": "#FF4C4C", "Yellow": "#FFD700", "Green": "#32CD32",
-                "Blue": "#1E90FF", "Purple": "#9370DB"},
-    "Muted":   {"Red": "#B5544F", "Yellow": "#C2A24A", "Green": "#6D8A5A",
-                "Blue": "#5F7FA6", "Purple": "#8A749E"},
-    "Pastel":  {"Red": "#E29A97", "Yellow": "#E6D18F", "Green": "#A9C69C",
-                "Blue": "#9DB8D6", "Purple": "#C1ABD6"},
-    "Vivid":   {"Red": "#FF3B30", "Yellow": "#FFCC00", "Green": "#34C759",
-                "Blue": "#0A84FF", "Purple": "#AF52DE"},
-    "Nature":  {"Red": "#C65B3C", "Yellow": "#D9A441", "Green": "#6D8764",
-                "Blue": "#4F748A", "Purple": "#7A6B8F"},
+    "Vivid":  {"Red": "#FF4C4C", "Yellow": "#FFD700", "Green": "#32CD32",
+               "Blue": "#1E90FF", "Purple": "#9370DB"},
+    "Nature": {"Red": "#B5544F", "Yellow": "#C2A24A", "Green": "#6D8A5A",
+               "Blue": "#5F7FA6", "Purple": "#8A749E"},
+    "Pastel": {"Red": "#E29A97", "Yellow": "#E6D18F", "Green": "#A9C69C",
+               "Blue": "#9DB8D6", "Purple": "#C1ABD6"},
 }
-DEFAULT_SCHEME = "Classic"
+DEFAULT_SCHEME = "Vivid"
+# Back-compat: earlier builds wrote these names for the same palettes.
+_ALIASES = {"classic": "Vivid", "muted": "Nature"}
 
 
 def active_scheme_name() -> str:
-    """The persisted scheme name (case-insensitive match), or the default."""
+    """The persisted scheme name (case-insensitive, with legacy aliases), or the default."""
     name = (get_setting("lookfeel", "color_scheme", fallback=DEFAULT_SCHEME)
             or DEFAULT_SCHEME).strip()
+    name = _ALIASES.get(name.lower(), name)
     for k in COLOR_SCHEMES:
         if k.lower() == name.lower():
             return k

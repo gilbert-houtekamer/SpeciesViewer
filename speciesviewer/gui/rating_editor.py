@@ -938,7 +938,7 @@ class PictureCard(QFrame):
                 self._thumb.setStyleSheet(f"border:3px solid {_MAT}; border-radius:3px;")
             else:
                 self._thumb.setStyleSheet(
-                    f"background:#e9ece3; border:3px solid {_MAT}; border-radius:3px;"
+                    f"background:{theme.SURFACE_2}; border:3px solid {_MAT}; border-radius:3px;"
                     f" color:{_INK_SOFT}; font-size:10px;")
             self._update_frame_color()
             return

@@ -29,7 +29,7 @@ logger = logging.getLogger("speciesviewer")
 # (ch.15 global QSS, Phase 2 — no import cycle: theme.py has zero imports
 # of its own). _SURFACE2 has no shared counterpart yet, stays local.
 _INK = theme.INK; _INK_SOFT = theme.INK_SOFT; _LINE = theme.LINE
-_SURFACE = theme.SURFACE; _SURFACE2 = "#eef1ea"
+_SURFACE = theme.SURFACE; _SURFACE2 = theme.SURFACE_2
 _FRAME = theme.ACCENT; _FRAME_INK = theme.ACCENT_INK; _MAT = theme.SURFACE
 _DONE = theme.DONE_FG; _DONE_BG = theme.DONE_BG; _READY = theme.READY_FG; _READY_BG = theme.READY_BG
 
@@ -105,7 +105,7 @@ class PhotoTile(QFrame):
         ph_h = max(90, int((tile_w - 10) * 0.66))
         self._photo = _Photo()
         self._photo.setFixedHeight(ph_h)
-        self._photo.setStyleSheet(f"background:#e9ece3; border:3px solid {_MAT};"
+        self._photo.setStyleSheet(f"background:{_SURFACE2}; border:3px solid {_MAT};"
                                   f" border-radius:3px;")
         self._photo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(self._photo)

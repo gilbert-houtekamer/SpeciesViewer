@@ -33,8 +33,8 @@ def is_dark() -> bool:
 # Dark values are lifted from the Biota-browser dark mockup + reasoned status hues.
 _LIGHT = dict(
     INK="#1c211b", INK_SOFT="#59634f", INK_MUTED="#5b6b56", INK_FAINT="#8b9784",
-    LINE="#d7ddce", SURFACE="#ffffff", BG="#f5f7f3", ROW_HOVER="#eef0ea",
-    NEUTRAL_GRAY="#777777",
+    LINE="#d7ddce", SURFACE="#ffffff", SURFACE_2="#eef1ea", BG="#f5f7f3",
+    ROW_HOVER="#eef0ea", NEUTRAL_GRAY="#777777",
     ACCENT="#6d8764", ACCENT_RGB="109, 135, 100", ACCENT_HOVER="#5c7454",
     ACCENT_SOFT="#e3ead9", ACCENT_SOFT_BORDER="#c9d6bb",
     ACCENT_INK="#ffffff", ACCENT_INK_SOFT="#2f3f29",
@@ -44,18 +44,20 @@ _LIGHT = dict(
     ACTIVE_BG="#fff8d2", ACTIVE_BORDER="#e6dfa8", LOG_BG="#d0f0c0", LOG_INK="#2b3b22",
     PANEL_BG="#f9f9f9",
 )
+# Medium-dark neutral grey with a faint olive warmth — modelled on the tone of
+# PhotoLab / Photoshop's dark UI (the previous near-black read as "too black").
 _DARK = dict(
-    INK="#e8ece2", INK_SOFT="#a3ac99", INK_MUTED="#98a28b", INK_FAINT="#7c8874",
-    LINE="#333a2c", SURFACE="#1d211a", BG="#141711", ROW_HOVER="#252a20",
-    NEUTRAL_GRAY="#9aa38f",
-    ACCENT="#7f9673", ACCENT_RGB="127, 150, 115", ACCENT_HOVER="#8fa683",
-    ACCENT_SOFT="#253022", ACCENT_SOFT_BORDER="#3a4a33",
-    ACCENT_INK="#f3f6ee", ACCENT_INK_SOFT="#c7d6b9",
-    DONE_FG="#5bb271", DONE_BG="#1d2c20", READY_FG="#64a2db", READY_BG="#1a2632",
-    LOCKED_FG="#8b937f", LOCKED_BG="#21261d", LOCKED_BORDER="#3a4230",
-    GATE_FG="#5cc282", GATE_BG="#1c2c20", WARN="#d98a3d",
-    ACTIVE_BG="#2c2a12", ACTIVE_BORDER="#4a4520", LOG_BG="#1c2c16", LOG_INK="#b7d6a5",
-    PANEL_BG="#191d15",
+    INK="#e7e9e2", INK_SOFT="#a9af9f", INK_MUTED="#99a08d", INK_FAINT="#7e8576",
+    LINE="#474a40", SURFACE="#32352e", SURFACE_2="#3b3e36", BG="#282a25",
+    ROW_HOVER="#3b3e36", NEUTRAL_GRAY="#9aa38f",
+    ACCENT="#8aa07d", ACCENT_RGB="138, 160, 125", ACCENT_HOVER="#9ab08d",
+    ACCENT_SOFT="#3a4433", ACCENT_SOFT_BORDER="#4e5b45",
+    ACCENT_INK="#f3f6ee", ACCENT_INK_SOFT="#d3e0c6",
+    DONE_FG="#6cc084", DONE_BG="#28382c", READY_FG="#6fb0e8", READY_BG="#243542",
+    LOCKED_FG="#909985", LOCKED_BG="#33362f", LOCKED_BORDER="#4a4d42",
+    GATE_FG="#63c98a", GATE_BG="#28382c", WARN="#e0954a",
+    ACTIVE_BG="#3a3620", ACTIVE_BORDER="#5a5326", LOG_BG="#2a3a26", LOG_INK="#bcd9aa",
+    PANEL_BG="#2b2d27",
 )
 _T = _DARK if is_dark() else _LIGHT
 
@@ -66,6 +68,7 @@ INK_MUTED = _T["INK_MUTED"]   # unchecked/unselected pill text
 INK_FAINT = _T["INK_FAINT"]   # secondary/label text, e.g. a collapsed panel's caption
 LINE = _T["LINE"]
 SURFACE = _T["SURFACE"]
+SURFACE_2 = _T["SURFACE_2"]   # subtle off-surface bg (table headers, chips, hovers)
 BG = _T["BG"]
 ROW_HOVER = _T["ROW_HOVER"]   # subtle hover background for a not-yet-selected row/pill
 NEUTRAL_GRAY = _T["NEUTRAL_GRAY"]  # a plain (non-olive-tinted) secondary-label grey

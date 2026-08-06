@@ -47,7 +47,7 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # pale blue (Biota Browser/Species Panel) — a real, pre-existing divergence
 # discovered while migrating, left as-is rather than silently unified.
 _DONE_FG = theme.DONE_FG; _DONE_BG = theme.DONE_BG
-_RDY_FG  = theme.READY_FG; _RDY_BG  = "#ffffff"
+_RDY_FG  = theme.READY_FG; _RDY_BG  = theme.SURFACE
 _LCK_FG  = theme.LOCKED_FG; _LCK_BG  = theme.LOCKED_BG; _LCK_BD = theme.LOCKED_BORDER
 _GATE    = theme.GATE_FG; _GATE_BG = theme.GATE_BG
 _WARN    = theme.WARN
@@ -182,7 +182,7 @@ class TripLifecycleBoard(QDialog):
         self.model = model
         self.setWindowTitle("Trip to Master — lifecycle board")
         self.resize(1080, 640)
-        self.setStyleSheet(f"QDialog {{ background:#f5f7f3; }}")
+        self.setStyleSheet(f"QDialog {{ background:{theme.BG}; }}")
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(18, 16, 18, 14)

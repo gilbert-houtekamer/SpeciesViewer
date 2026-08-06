@@ -61,7 +61,7 @@ class LookFeelDialog(QDialog):
 
         intro = QLabel(
             "The colour of the picture labels — Red, Yellow, Green, Blue, Purple — "
-            "across every viewer. “Classic” is the current, vivid set.")
+            "across every viewer. “Vivid” is the current set.")
         intro.setWordWrap(True)
         intro.setStyleSheet(f"color:{theme.INK}; font-size:12.5px;")
         lay.addWidget(intro)

@@ -272,7 +272,7 @@ class _StripItem(QWidget):
         self._thumb_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumb_lbl.setFixedSize(_THUMB_W, _THUMB_H)
         self._thumb_lbl.setStyleSheet(
-            f"background:#e9ece3; border:2px solid {theme.SURFACE}; border-radius:2px;")
+            f"background:{theme.SURFACE_2}; border:2px solid {theme.SURFACE}; border-radius:2px;")
         fl.addWidget(self._thumb_lbl)
         vbox.addWidget(self._frame)
 
