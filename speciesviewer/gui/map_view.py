@@ -1716,7 +1716,7 @@ class NoGpsTray(QWidget):
                 item = collection.item_for_key(k)
             except (ValueError, KeyError):
                 continue
-            cell = _StripItem(item, self._strip)
+            cell = _StripItem(item, self._strip, viewer_key="map_nogps")
             cell.request_load()
             cell.setToolTip(self._tip(item, self._fname(collection, k)))
             cell.setFocusPolicy(Qt.FocusPolicy.StrongFocus)   # receive [ ] keys
@@ -2906,7 +2906,7 @@ class TripMapView(QDialog):
         if not keys:
             return
         from gui.large_image_view import FilmstripWidget
-        strip = FilmstripWidget(self._coll, keys)
+        strip = FilmstripWidget(self._coll, keys, viewer_key="map_placed")
         strip.item_clicked.connect(lambda k, ks=keys: self._open_large(ks, k))
         if self._strip is not None:
             self._strip.deleteLater()

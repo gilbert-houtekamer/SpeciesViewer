@@ -30,7 +30,7 @@ from PyQt6.QtGui import (
     QIcon, QFont)
 from PyQt6.QtCore import Qt, QTimer, QSize, pyqtSignal
 
-from gui.rating_editor import StarWidget, ColorSelector, COLOR_HEX
+from gui.rating_editor import StarWidget, ColorSelector, COLOR_HEX, _FramedPhoto, _corner_badge
 from gui import theme
 from gui.image_loader import AsyncImageLoader
 from gui.window_state import restore_window, save_window, clamp_to_visible_screen
@@ -245,13 +245,17 @@ class _StripItem(QWidget):
     tapped = pyqtSignal(str)         # emits key on left click
     right_clicked = pyqtSignal(str)  # emits key on right click (context menu)
 
-    def __init__(self, item, parent=None):
+    def __init__(self, item, parent=None, viewer_key="strip"):
         super().__init__(parent)
         self._key    = item.key
         self._item   = item
+        self._viewer_key = viewer_key
         self._requested = False   # True once request_load() has fired
         self._current   = False
         self._selected  = False
+
+        from gui.card_layout import corner_config
+        self._cfg = corner_config(viewer_key)
 
         self.setFixedSize(_ITEM_W, _ITEM_H)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -262,49 +266,55 @@ class _StripItem(QWidget):
         vbox.setSpacing(2)
 
         # Framed cell: an olive/colour picture frame with a white mat, matching
-        # the grid card. Colour label = frame colour; current cell = white ring.
+        # the grid card. Frame colour + corner badges come from this viewer's set.
         self._frame = QFrame()
         self._frame.setObjectName("scell")
         fl = QVBoxLayout(self._frame)
         fl.setContentsMargins(4, 4, 4, 4)
         fl.setSpacing(0)
-        self._thumb_lbl = QLabel()
+        self._thumb_lbl = _FramedPhoto()     # hosts the corner badges
         self._thumb_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumb_lbl.setFixedSize(_THUMB_W, _THUMB_H)
         self._thumb_lbl.setStyleSheet(
             f"background:{theme.SURFACE_2}; border:2px solid {theme.SURFACE}; border-radius:2px;")
         fl.addWidget(self._thumb_lbl)
         vbox.addWidget(self._frame)
+        vbox.addStretch(1)
 
-        self._star_lbl = QLabel(self._star_text(item))
-        self._star_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        vbox.addWidget(self._star_lbl)
-
+        self._build_corners()
         self._repaint_border()
 
-    def _star_text(self, item) -> str:
-        """Stars, plus a ⌗ crop mark (crop is its own signal — no '#' on the
-        image, matching the grid/large-view text)."""
-        r = max(0, min(5, item.rating))
-        s = "★" * r + "☆" * (5 - r)
-        if getattr(item, "has_crop", False):
-            s += "  ⌗"
-        return s
+    def _build_corners(self):
+        """(Re)build the configured corner badges over the thumbnail. Colour is
+        the frame; lock isn't meaningful on a strip cell, so both are skipped."""
+        from gui.card_layout import render_datum
+        for w, _pos in list(getattr(self._thumb_lbl, "_badges", [])):
+            w.setParent(None)
+            w.deleteLater()
+        self._thumb_lbl._badges = []
+        for pos in ("tl", "tr", "bl", "br"):
+            datum = self._cfg.get(pos, "none")
+            if datum in ("none", "colour", "lock"):
+                continue
+            txt = render_datum(datum, self._item)
+            if txt:
+                self._thumb_lbl.add_badge(_corner_badge(txt, bold=(datum == "format")), pos)
+        self._thumb_lbl.reposition()
 
     def _repaint_border(self):
-        """Paint the frame: colour label (olive when unlabelled); current cell
-        adds a white ring. Selection shows as a blue star-bar."""
-        c = color_to_css(self._item.color) or theme.ACCENT
-        ring = " border:2px solid #fff;" if self._current else ""
-        self._frame.setStyleSheet(
-            f"QFrame#scell {{ background:{c};{ring} border-radius:5px; }}")
-        if self._selected:
-            self._star_lbl.setStyleSheet(
-                "font-size:9px; color:#fff; background:#2255cc;"
-                " border-radius:2px; padding:0 4px;")
+        """Paint the frame: colour label (or always olive per the viewer's frame
+        setting); current cell = white ring, selected = blue ring."""
+        if self._cfg.get("frame") == "olive":
+            c = theme.ACCENT
         else:
-            self._star_lbl.setStyleSheet(
-                f"font-size:9px; color:{theme.INK_SOFT}; background:transparent;")
+            c = color_to_css(self._item.color) or theme.ACCENT
+        if self._current:
+            ring = "border:2px solid #fff;"
+        elif self._selected:
+            ring = "border:2px solid #2255cc;"
+        else:
+            ring = ""
+        self._frame.setStyleSheet(f"QFrame#scell {{ background:{c}; {ring} border-radius:5px; }}")
 
     def set_current(self, yes: bool):
         if self._current == yes:
@@ -336,10 +346,10 @@ class _StripItem(QWidget):
             self._thumb_lbl.setPixmap(scaled)
 
     def refresh_from(self, item):
-        """Repaint stars and colour frame after an edit."""
+        """Rebuild corners + repaint the colour frame after an edit."""
         self._item = item
-        self._star_lbl.setText(self._star_text(item))
-        self._repaint_border()  # also updates the star-bar colour
+        self._build_corners()
+        self._repaint_border()
 
     def reload_thumbnail(self):
         """Re-decode the thumbnail — used when the image itself changed (a re-crop
@@ -364,13 +374,14 @@ class FilmstripWidget(QWidget):
     item_right_clicked = pyqtSignal(str)  # key — host shows a context menu
 
     def __init__(self, collection, keys, parent=None,
-                 orientation=Qt.Orientation.Horizontal):
+                 orientation=Qt.Orientation.Horizontal, viewer_key="strip"):
         super().__init__(parent)
         self._collection  = collection
         self._keys        = list(keys)
         self._cells: dict[str, _StripItem] = {}
         self._current_key: str | None = None
         self._orientation = orientation
+        self._viewer_key = viewer_key
         _vert = (orientation == Qt.Orientation.Vertical)
 
         if _vert:
@@ -423,7 +434,7 @@ class FilmstripWidget(QWidget):
                 item = collection.item_for_key(key)
             except (ValueError, KeyError):
                 continue
-            cell = _StripItem(item, self._strip)
+            cell = _StripItem(item, self._strip, viewer_key=self._viewer_key)
             cell.tapped.connect(self.item_clicked)
             cell.right_clicked.connect(self.item_right_clicked)
             strip_layout.addWidget(cell)

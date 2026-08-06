@@ -16,6 +16,7 @@ CORNER_OPTIONS = [
     ("format",   "Format (RAW/JPG)"),
     ("date",     "Capture date"),
     ("rate",     "Rate score"),
+    ("stars",    "Stars"),
     ("camera",   "Camera"),
     ("lock",     "Committed lock"),
     ("colour",   "Colour dot"),
@@ -25,11 +26,14 @@ CORNER_OPTIONS = [
 # thick-frame colour: the label floods it (today's editing look) or always olive.
 FRAME_OPTIONS = [("colour", "Colour label"), ("olive", "Olive (always)")]
 
-# viewers whose corners are configurable (the framed PictureCard hosts). The
-# large-viewer / map strips join when maps are built.
+# viewers whose corners are configurable. species/preview = framed PictureCard;
+# strip/map_nogps/map_placed = the compact filmstrip cell (_StripItem).
 VIEWERS = [
-    ("species", "Trip / Master / Album species"),
-    ("preview", "Species image viewer"),
+    ("species",    "Trip / Master / Album species"),
+    ("preview",    "Species image viewer"),
+    ("strip",      "Large-viewer filmstrip"),
+    ("map_nogps",  "Map — without GPS (drag to place)"),
+    ("map_placed", "Map — placed pictures"),
 ]
 
 POSITIONS = ("tl", "tr", "bl", "br")
@@ -37,8 +41,12 @@ POSITION_LABELS = {"tl": "Top-left", "tr": "Top-right", "bl": "Bottom-left", "br
 
 # the app's long-standing sets — the defaults (frame = colour label).
 DEFAULTS = {
-    "species": {"tl": "format", "tr": "lock", "bl": "date", "br": "rate", "frame": "colour"},
-    "preview": {"tl": "format", "tr": "lock", "bl": "date", "br": "rate", "frame": "colour"},
+    "species":    {"tl": "format", "tr": "lock", "bl": "date", "br": "rate", "frame": "colour"},
+    "preview":    {"tl": "format", "tr": "lock", "bl": "date", "br": "rate", "frame": "colour"},
+    # compact strip cells — sparse by default.
+    "strip":      {"tl": "none", "tr": "none", "bl": "stars", "br": "none", "frame": "colour"},
+    "map_nogps":  {"tl": "none", "tr": "none", "bl": "filename", "br": "none", "frame": "colour"},
+    "map_placed": {"tl": "none", "tr": "none", "bl": "date", "br": "none", "frame": "olive"},
 }
 _VALID = {k for k, _ in CORNER_OPTIONS}
 _VALID_FRAME = {k for k, _ in FRAME_OPTIONS}
@@ -65,13 +73,19 @@ def set_corner_config(viewer_key: str, cfg: dict) -> None:
 
 def render_datum(datum: str, item) -> str | None:
     """Text for a corner datum from a PictureItem, or None to show nothing.
-    'colour', 'lock' and 'rate' are rendered specially by the card itself."""
+    In the framed card, 'colour'/'lock'/'rate' are handled specially (dot / glyph
+    / live label) BEFORE this is called; the strip cell uses this for all of them."""
     if datum == "format":
         exts = getattr(item, "file_exts", None) or []
         primary = next((e for e in exts if e.upper() not in ("XMP", "DOP", "DNG")), None)
         return ("JPG" if item.has_jpg else (primary or "RAW")).upper()
     if datum == "date":
         return (item.date or "")[:10].replace(":", "-") or None
+    if datum == "rate":
+        return f"Rate {item.rate}" if getattr(item, "rate", None) is not None else None
+    if datum == "stars":
+        r = max(0, min(5, getattr(item, "rating", 0) or 0))
+        return "★" * r + "☆" * (5 - r)
     if datum == "camera":
         return (getattr(item.exif, "model", "") or "") or None
     if datum == "filename":
