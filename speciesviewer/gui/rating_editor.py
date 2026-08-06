@@ -36,14 +36,10 @@ from utils.config import _config, set_setting
 
 logger = logging.getLogger("speciesviewer")
 
-COLORS = ["Red", "Yellow", "Green", "Blue", "Purple"]
-COLOR_HEX = {
-    "Red":    "#FF4C4C",
-    "Yellow": "#FFD700",
-    "Green":  "#32CD32",
-    "Blue":   "#1E90FF",
-    "Purple": "#9370DB",
-}
+# The five label colours + the active scheme's hexes live in gui/label_colors so
+# a "Look & feel" setting can re-tint them (read at import → restart to apply).
+# Re-exported here because many modules import COLORS/COLOR_HEX from rating_editor.
+from gui.label_colors import COLORS, COLOR_HEX, COLOR_SCHEMES  # noqa: F401
 
 # Framed-card palette (the Biota-browser look) — sourced from the shared theme
 # so light/dark and the app-wide olive stay in one place.

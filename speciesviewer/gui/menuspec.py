@@ -24,6 +24,7 @@ from utils.trip_config import read_trip_ini
 import gui.days_process as days_process
 import os
 from settings.globalsettings import GlobalSettingsDialog
+from settings.lookfeel import LookFeelDialog
 from settings.reposettings import RepoSettingsDialog
 from settings.speciessettings import SpeciesSettingsDialog
 from settings.dbsettings import DatabaseSettingsDialog
@@ -1480,6 +1481,9 @@ def build_menu_spec(main_window):
                 "Global Settings": MenuSpec(
                     callback=lambda: GlobalSettingsDialog(main_window).exec(),
                     shortcut="Ctrl+G",
+                ),
+                "Look & Feel…": MenuSpec(
+                    callback=lambda: LookFeelDialog(main_window).exec(),
                 ),
                 "Repository Settings": MenuSpec(
                     callback=lambda: RepoSettingsDialog(main_window).exec(),
