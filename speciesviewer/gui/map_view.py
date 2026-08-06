@@ -31,6 +31,8 @@ from PyQt6.QtGui import (QPixmap, QPainter, QColor, QBrush, QPen, QFont,
 from PyQt6.QtCore import Qt, QPointF, QUrl, QTimer, pyqtSignal, QMimeData, QEvent
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
+from gui import theme
+
 logger = logging.getLogger("speciesviewer")
 
 TILE = 256
@@ -1255,7 +1257,7 @@ class MapView(QDialog):
         self._strip_box = QVBoxLayout(self._strip_holder)
         self._strip_box.setContentsMargins(0, 0, 0, 0)
         self._strip_hint = QLabel("Click a bubble to see its pictures here.")
-        self._strip_hint.setStyleSheet("color:#888; padding:6px;")
+        self._strip_hint.setStyleSheet(f"color:{theme.INK_SOFT}; padding:6px;")
         self._strip_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._strip_box.addWidget(self._strip_hint)
         self._splitter.addWidget(self._strip_holder)
@@ -1470,7 +1472,7 @@ class MapView(QDialog):
             x = QPushButton("×")
             x.setFixedSize(16, 16)
             x.setToolTip(f"Remove {m['display']}")
-            x.setStyleSheet("QPushButton{border:none;color:#888;font-weight:bold;padding:0;}"
+            x.setStyleSheet(f"QPushButton{{border:none;color:{theme.INK_SOFT};font-weight:bold;padding:0;}}"
                             "QPushButton:hover{color:#d32f2f;}")
             x.clicked.connect(lambda _=False, k=key: self._remove_layer(k))
             row.addWidget(x)
@@ -1616,7 +1618,7 @@ class PlaceSearchDialog(QDialog):
         lay.addWidget(self._list, 1)
 
         self._status = QLabel("")
-        self._status.setStyleSheet("color:#666;")
+        self._status.setStyleSheet(f"color:{theme.INK_SOFT};")
         lay.addWidget(self._status)
 
         btns = QHBoxLayout()
@@ -1694,8 +1696,8 @@ class NoGpsTray(QWidget):
         self._toggle = QPushButton()
         self._toggle.setCheckable(True)
         self._toggle.setStyleSheet(
-            "QPushButton{border:none; text-align:left; padding:4px 8px; color:#333;}"
-            "QPushButton:hover{color:#000;}")
+            f"QPushButton{{border:none; text-align:left; padding:4px 8px; color:{theme.INK};}}"
+            f"QPushButton:hover{{color:{theme.ACCENT_HOVER};}}")
         self._toggle.toggled.connect(self._on_toggle)
         v.addWidget(self._toggle)
 
@@ -1941,7 +1943,7 @@ class TripMapView(QDialog):
         h = QHBoxLayout(header)
         h.setContentsMargins(8, 4, 8, 4)
         self._info = QLabel()
-        self._info.setStyleSheet("color:#555;")
+        self._info.setStyleSheet(f"color:{theme.INK_SOFT};")
         h.addWidget(self._info)
         if self._geotag:
             # Never say "view only" on a map that writes. Placing a picture here
@@ -2077,7 +2079,7 @@ class TripMapView(QDialog):
         self._strip_box = QVBoxLayout(self._strip_holder)
         self._strip_box.setContentsMargins(0, 0, 0, 0)
         self._strip_hint = QLabel("Click a bubble to see its pictures here.")
-        self._strip_hint.setStyleSheet("color:#888; padding:6px;")
+        self._strip_hint.setStyleSheet(f"color:{theme.INK_SOFT}; padding:6px;")
         self._strip_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._strip_box.addWidget(self._strip_hint)
         self._splitter.addWidget(self._strip_holder)
