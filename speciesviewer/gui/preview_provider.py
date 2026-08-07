@@ -1081,6 +1081,53 @@ class PreviewCollection(PictureCollection):
         self._img_sigs[upn_key] = self._img_sig(upn_key)
         return res
 
+    def create_blog_jpg(self, upn_key: str) -> dict:
+        """Bake a website-ready JPG beside the RAW from the camera's embedded
+        preview + the sidecar crop (NO scaling) — a quick trip-blog picture
+        without the full DxO render. `<stem>.jpg` folds onto the UPN
+        (deriveUniquePictureName), so it becomes the picture's usable image on
+        the next Read & Summarize.
+
+        Returns {'status': 'created'|'skipped'|'no_raw'|'failed', ...}. Skips a
+        picture that already has a tracked JPG (a camera JPEG or a DxO render) so
+        nothing is clobbered; our own bake is not tracked, so a re-run overwrites
+        it (e.g. after re-cropping)."""
+        raw = self.raw_path(upn_key)
+        if raw is None:
+            return {"status": "no_raw"}
+        if self.jpg_path(upn_key) is not None:
+            return {"status": "skipped", "jpg": str(self.jpg_path(upn_key))}
+        out = raw.with_suffix(".jpg")   # <stem>.jpg beside the RAW
+        from gui.preview_extract import extract_preview_bytes
+        data = extract_preview_bytes(raw)   # LARGEST embed — full-size on Nikon, 3200px on OM-1
+        if not data:
+            return {"status": "failed", "reason": "no embedded preview"}
+        try:
+            from io import BytesIO
+            from PIL import Image
+            im = Image.open(BytesIO(data)).convert("RGB")
+            crop = crop_for(raw, self._xmp_for(upn_key))   # same reader request_image uses
+            if crop:
+                w, h = im.size
+                x  = max(0, min(w - 1, round(crop.get("left", 0.0)   * w)))
+                y  = max(0, min(h - 1, round(crop.get("top", 0.0)    * h)))
+                cw = max(1, min(w - x, round(crop.get("width", 1.0)  * w)))
+                ch = max(1, min(h - y, round(crop.get("height", 1.0) * h)))
+                im = im.crop((x, y, x + cw, y + ch))
+            im.save(str(out), "JPEG", quality=92, optimize=True)
+        except Exception as e:
+            logger.warning(f"Create JPG failed for {raw.name}: {e}")
+            return {"status": "failed", "reason": str(e)}
+        # Reflect it at once (mirrors _bake_heic_crop): show the new JPG as this
+        # UPN's display source and bump the signature so the card re-decodes.
+        self._extra_jpgs[upn_key] = out
+        if getattr(self, "_pic_folders", None) is not None:
+            self._pic_folders.add(out.parent)
+        self._img_sigs[upn_key] = self._img_sig(upn_key)
+        logger.info(f"Blog JPG created → {out.name} "
+                    f"({im.size[0]}×{im.size[1]}, {'cropped' if crop else 'full frame'}).")
+        return {"status": "created", "jpg": str(out), "size": im.size, "cropped": bool(crop)}
+
     def _bake_heic_crop(self, upn_key: str, heic: Path, crop: dict):
         """Crop a HEIC by baking the rectangle into a FULL-RES JPG beside it — a HEIC
         has no RAW-style develop step, so the crop is applied directly (the user's

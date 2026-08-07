@@ -1184,6 +1184,15 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             act_qualifiers = menu.addAction("Sex / age / plumage…")
         act_rate = menu.addAction(f"Set rating…  ({lbl})")
         act_fullres = menu.addAction(f"Full resolution  ({lbl})")
+        # Bake a website-ready JPG beside the RAW from the camera's embedded
+        # preview + the crop — a quick blog picture without the full DxO render.
+        act_create_jpg = None
+        if hasattr(self._collection, "create_blog_jpg"):
+            act_create_jpg = menu.addAction(f"Create JPG (embedded + crop)  ({lbl})")
+            act_create_jpg.setToolTip(
+                "Write a <name>.jpg next to each RAW from the camera's embedded "
+                "preview, applying the crop — a quick trip-blog picture without "
+                "the full render. Skips a picture that already has a JPG.")
         act_geo = menu.addAction(f"Get location  ({lbl})")
         # The mirror of "Get location": that one turns GPS into a place name, this
         # one turns the place name a picture ALREADY carries into GPS. For the older
@@ -1250,6 +1259,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._open_batch_rate_dialog(keys_for_action)
         elif chosen == act_fullres:
             self._cull_full_res(keys_for_action)
+        elif act_create_jpg is not None and chosen == act_create_jpg:
+            self._cull_create_jpg(keys_for_action)
         elif chosen == act_geo:
             self._cull_geolocate(keys_for_action)
         elif chosen == act_gps_from_loc:
@@ -1621,6 +1632,40 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             return
         from gui.fullres import run_fullres_batch
         run_fullres_batch(self, raws)
+
+    def _cull_create_jpg(self, keys=None):
+        """Bake a website-ready JPG beside each selected RAW from its embedded
+        preview + crop (no scaling) — a quick blog picture. Skips a picture that
+        already has a JPG so nothing is clobbered."""
+        if not hasattr(self._collection, "create_blog_jpg"):
+            return
+        keys = keys if keys else self._cull_keys_target()
+        order = [c.upn_key for c in self._cards]
+        ordered = [k for k in order if k in keys] or list(keys)
+        created_paths, skipped, no_raw, failed, made = [], 0, 0, 0, []
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            for k in ordered:
+                res = self._collection.create_blog_jpg(k)
+                st = res.get("status")
+                if st == "created":
+                    created_paths.append(res.get("jpg"))
+                    made.append(k)
+                elif st == "skipped":
+                    skipped += 1
+                elif st == "no_raw":
+                    no_raw += 1
+                else:
+                    failed += 1
+        finally:
+            QApplication.restoreOverrideCursor()
+        # Repaint the cards that gained a JPG (the filename line + JPG tag follow).
+        for k in made:
+            card = self._cards_by_key.get(k)
+            if card:
+                card.refresh()
+        from gui.create_jpg_result import show_create_jpg_result
+        show_create_jpg_result(self, created_paths, skipped, no_raw, failed)
 
     def _cull_geolocate(self, keys=None):
         """Reverse-geocode the selection (else focused picture) in display order

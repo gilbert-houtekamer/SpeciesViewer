@@ -450,6 +450,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         self._groups = {s: g for s, g in self._groups.items() if g.get("raw") or g.get("jpg")}
         self._crop_cache: dict = {}      # stem -> normalised crop | None (cleared on refresh)
         self._jpg_dims_cache: dict = {}  # jpg path -> "WxH" (header read, for the crop size cue)
+        self._created_blog_jpgs: set = set()  # stems whose <stem>.jpg WE baked (safe to overwrite)
         # {file path -> {NLSoortNaam,...}} + profile, so the caption follows the
         # name-language profile from the day CSV — and shows a name even when the
         # sidecar subject is empty (a DxO render whose .xmp didn't pair by stem).
@@ -945,6 +946,53 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         crop = crop_for(g.get("raw"), g.get("xmp"))
         self._crop_cache[stem] = crop
         return crop
+
+    def create_blog_jpg(self, key: str) -> dict:
+        """Write a website-ready JPG next to the RAW from the camera's embedded
+        preview + the sidecar crop (NO scaling) — a quick trip-blog picture
+        without the full DxO render. `<stem>.jpg` folds onto the RAW's UPN
+        (deriveUniquePictureName), so Read & Summarize picks it up as the
+        picture's JPG.
+
+        Returns {'status': 'created'|'skipped'|'no_raw'|'failed', ...}. Skips a
+        picture that already has a tracked JPG we did NOT bake (a camera JPEG in
+        RAW+JPEG mode, or a DxO render) so nothing is clobbered."""
+        g = self._groups.get(key, {})
+        raw = g.get("raw")
+        if not raw or not Path(raw).exists():
+            return {"status": "no_raw"}
+        raw = Path(raw)
+        out = raw.with_suffix(".jpg")   # <stem>.jpg beside the RAW
+        existing = self.jpg_path(key)
+        if existing is not None and key not in self._created_blog_jpgs:
+            return {"status": "skipped", "jpg": str(existing)}
+        from gui.preview_extract import extract_preview_bytes
+        data = extract_preview_bytes(raw)   # LARGEST embed — full-size on Nikon, 3200px on OM-1
+        if not data:
+            return {"status": "failed", "reason": "no embedded preview"}
+        try:
+            from io import BytesIO
+            from PIL import Image
+            im = Image.open(BytesIO(data)).convert("RGB")
+            crop = self._crop_for(key)
+            if crop:
+                w, h = im.size
+                x  = max(0, min(w - 1, round(crop.get("left", 0.0)   * w)))
+                y  = max(0, min(h - 1, round(crop.get("top", 0.0)    * h)))
+                cw = max(1, min(w - x, round(crop.get("width", 1.0)  * w)))
+                ch = max(1, min(h - y, round(crop.get("height", 1.0) * h)))
+                im = im.crop((x, y, x + cw, y + ch))
+            im.save(str(out), "JPEG", quality=92, optimize=True)
+        except Exception as e:
+            logger.warning(f"Create JPG failed for {raw.name}: {e}")
+            return {"status": "failed", "reason": str(e)}
+        # Track it as ours + reflect it so the card and a re-run see the new JPG.
+        self._created_blog_jpgs.add(key)
+        g["jpg"] = str(out)
+        self._jpg_dims_cache.pop(str(out), None)
+        logger.info(f"Blog JPG created → {out.name} "
+                    f"({im.size[0]}×{im.size[1]}, {'cropped' if crop else 'full frame'}).")
+        return {"status": "created", "jpg": str(out), "size": im.size, "cropped": bool(crop)}
 
     def set_name_hints(self, hints: dict, profile: str) -> None:
         self._name_hints = hints or {}

@@ -836,6 +836,19 @@ class LargeImageView(QDialog):
         self._rotate_btn.setVisible(False)
         top_bar_row.addWidget(self._rotate_btn)
         self._update_crop_btn()
+        # Create JPG — bake a website-ready JPG (embedded preview + crop) beside
+        # the RAW for a quick blog. Only where the collection can (culling views).
+        self._makejpg_btn = QToolButton()
+        self._makejpg_btn.setAutoRaise(True)
+        self._makejpg_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._makejpg_btn.setStyleSheet("font-size: 10px; padding: 1px 5px;")
+        self._makejpg_btn.setText("🖼 Make JPG")
+        self._makejpg_btn.setToolTip(
+            "Write a <name>.jpg next to the RAW from the camera's embedded "
+            "preview + the crop — a quick blog picture without the full render.")
+        self._makejpg_btn.clicked.connect(self._on_create_jpg)
+        self._makejpg_btn.setVisible(hasattr(self._collection, "create_blog_jpg"))
+        top_bar_row.addWidget(self._makejpg_btn)
         # Headline / Description — the same shared editor the grid right-click
         # opens, for when the panel's fields are scrolled off / collapsed.
         self._hd_btn = QToolButton()
@@ -1567,6 +1580,32 @@ class LargeImageView(QDialog):
             extra = f"  (created {', '.join(created)})" if created else ""
             logger.info("Crop suggestion written to PhotoLab + Lightroom "
                         f"sidecars.{extra}")
+
+    def _on_create_jpg(self):
+        """Bake a website-ready JPG (embedded preview + crop) for the current
+        picture — mirrors the culling grid's right-click action."""
+        if self._item is None or not hasattr(self._collection, "create_blog_jpg"):
+            return
+        key = self._item.key
+        from PyQt6.QtWidgets import QApplication
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            res = self._collection.create_blog_jpg(key)
+        finally:
+            QApplication.restoreOverrideCursor()
+        st = res.get("status")
+        created = [res["jpg"]] if st == "created" else []
+        from gui.create_jpg_result import show_create_jpg_result
+        show_create_jpg_result(
+            self, created,
+            skipped=1 if st == "skipped" else 0,
+            no_raw=1 if st == "no_raw" else 0,
+            failed=1 if st == "failed" else 0)
+        if st == "created":
+            # Re-decode here + in the host grid to the freshly-cropped JPG.
+            self.refresh_external(key, reload_image=True)
+            self.picture_changed.emit(key)
+            self.picture_image_changed.emit(key)
 
     def _exit_crop_mode(self, reload: bool = True):
         if not self._crop_mode and self._crop_overlay is None:
