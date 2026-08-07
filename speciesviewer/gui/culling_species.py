@@ -18,15 +18,28 @@ import os
 
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
-    QPushButton, QCompleter, QFrame, QWidget, QMenu, QMessageBox)
+    QPushButton, QCompleter, QFrame, QWidget, QMenu, QMessageBox, QSizePolicy)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QCursor
 
 from engine.speciesclassification import SpeciesClassification, Level
 from utils.config import _config
 from utils.gui_config import get_cache_gui_section, update_cache_gui_section
+from gui import theme
 
 logger = logging.getLogger("speciesviewer")
+
+# Biota vocabulary — mono micro-labels + chip-style recents, so this culling
+# species popup reads as one system with the large-viewer SpeciesInfoPanel.
+# (Mirrors species_editor's _MICRO / _RECENT_CHIP; kept local rather than
+# importing private names across the two species editors.)
+_MONO = "'Cascadia Mono','Cascadia Code',Consolas,monospace"
+_MICRO = (f"font-family:{_MONO}; font-size:9.5px; font-weight:600;"
+          f" letter-spacing:1.2px; color:{theme.INK_SOFT};")
+_RECENT_CHIP = (
+    f"QPushButton {{ font-size:11.5px; color:{theme.INK}; background:{theme.SURFACE};"
+    f" border:1px solid {theme.LINE}; border-radius:12px; padding:3px 11px; text-align:left; }}"
+    f"QPushButton:hover {{ border-color:{theme.ACCENT}; color:{theme.ACCENT}; }}")
 
 
 def gbif_match(name, timeout=6.0):
@@ -599,7 +612,9 @@ class CullingSpeciesWidget(QWidget):
             header = (f"Set species for {n_pictures} pictures"
                       if n_pictures != 1 else "Set species")
             layout.addWidget(QLabel(f"<b>{header}</b>"))
-        layout.addWidget(QLabel("Type a Dutch, English or scientific name:"))
+        _hint = QLabel("Type a Dutch, English or scientific name")
+        _hint.setStyleSheet(f"color:{theme.INK_SOFT}; font-size:11px;")
+        layout.addWidget(_hint)
 
         # An incoming subject may already carry qualifiers ("blauwborst, female");
         # keep only the species name in the field and pre-select the toggles below.
@@ -640,7 +655,8 @@ class CullingSpeciesWidget(QWidget):
         # "<species>, <token>"; the pipeline reads them to caption the picture and
         # to show one best photo per age/sex/plumage on the species page. Single-
         # select within each row; click again to clear.
-        self._qual_header = QLabel("Optional — sex / age / plumage:")
+        self._qual_header = QLabel("SEX / AGE / PLUMAGE — OPTIONAL")
+        self._qual_header.setStyleSheet(_MICRO)
         layout.addWidget(self._qual_header)
         self._qual_buttons: dict[int, list[tuple[QPushButton, str]]] = {}
         self._qual_rows: dict[int, QWidget] = {}
@@ -650,8 +666,9 @@ class CullingSpeciesWidget(QWidget):
             holder = QWidget()
             qrow = QHBoxLayout(holder)
             qrow.setContentsMargins(0, 0, 0, 0)
+            qrow.setSpacing(4)
             lbl = QLabel(cat + ":")
-            lbl.setMinimumWidth(60)
+            lbl.setMinimumWidth(56)
             qrow.addWidget(lbl)
             self._qual_buttons[gi] = []
             preset = self._preset_qualifiers.get(gi)
@@ -659,11 +676,12 @@ class CullingSpeciesWidget(QWidget):
                 b = QPushButton(label)
                 b.setCheckable(True)
                 b.setChecked(canon == preset)
+                b.setStyleSheet("QPushButton { padding: 2px 6px; }")
+                b.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
                 b.clicked.connect(
                     lambda _checked, g=gi, bb=b: self._on_qualifier_clicked(g, bb))
                 qrow.addWidget(b)
                 self._qual_buttons[gi].append((b, canon))
-            qrow.addStretch()
             self._qual_rows[gi] = holder
             layout.addWidget(holder)
 
@@ -674,7 +692,9 @@ class CullingSpeciesWidget(QWidget):
         self._recent_sep.setFrameShape(QFrame.Shape.HLine)
         self._recent_sep.setFrameShadow(QFrame.Shadow.Sunken)
         layout.addWidget(self._recent_sep)
-        self._recent_label = QLabel("Recent species — click to apply, right-click to remove:")
+        self._recent_label = QLabel("RECENT SPECIES — CLICK TO APPLY, RIGHT-CLICK TO REMOVE")
+        self._recent_label.setStyleSheet(_MICRO)
+        self._recent_label.setWordWrap(True)
         layout.addWidget(self._recent_label)
         self._recent_container = QWidget()
         self._recent_grid = QGridLayout(self._recent_container)
@@ -710,6 +730,7 @@ class CullingSpeciesWidget(QWidget):
             widget.setVisible(bool(recent))
         for i, name in enumerate(recent):
             b = QPushButton(name)
+            b.setStyleSheet(_RECENT_CHIP)
             b.setToolTip(f"Click to set “{name}”; right-click to remove from recents")
             b.clicked.connect(lambda _=False, nm=name: self._commit(nm))
             b.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
