@@ -183,6 +183,43 @@ class PictureItem(ABC):
         Empty by default; species-carrying providers override."""
         return ""
 
+    @property
+    def name_triple(self) -> dict:
+        """{'nl':.., 'en':.., 'sci':..} for the identity surfaces that show all
+        three names at once (large image viewer, species page). Best-effort here
+        (only the scientific name is known to the base); species-carrying
+        providers override with the full NL/EN/Sci row."""
+        return {"sci": (self.sci_name or "")}
+
+    @property
+    def name_profile(self) -> str:
+        """The display profile in force for this item — its collection's, else the
+        global default. Lets a detail surface order the three names the same way
+        the grid did."""
+        from utils.name_profile import effective_profile
+        c = getattr(self, "_c", None)
+        return (getattr(c, "_species_lang", "") or getattr(c, "_name_profile", "")
+                or effective_profile())
+
+    @property
+    def display_lines(self) -> list:
+        """Ordered (text, is_scientific) meta lines for the framed card — up to
+        three, de-duplicated, the scientific one flagged so the card italicises
+        it. The sex/age/plumage suffix rides the FIRST (primary) line.
+
+        Default = the classic two-line shape (display name, then the scientific
+        name if it differs). Species-carrying providers that hold the full
+        NL/EN/Sci triple override this to render the chosen name profile."""
+        primary = (self.display_name or "").strip()
+        sci = (self.sci_name or "").strip()
+        suffix = self.qualifier_suffix or ""
+        lines: list = []
+        if primary:
+            lines.append((primary + suffix, primary.casefold() == sci.casefold()))
+        if sci and sci.casefold() != primary.casefold():
+            lines.append((sci, True))
+        return lines
+
     # ── display (async + cancellable) ────────────────────────────────────────
     # A trip can be hundreds of pictures; the user changes the view long before
     # all of them are drawn. So loading is asynchronous (off the GUI thread) and

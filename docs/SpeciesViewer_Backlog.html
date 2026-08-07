@@ -375,5 +375,35 @@ reads <em>No current work planned</em>.</p>
     overrides to fight, so no further work needed there.</li>
 </ul>
 
+<!-- ============================================================ -->
+<h2>16. Species name display <span class="tag-shipped">SHIPPED</span></h2>
+<p>How a species reads out under each picture is now a <strong>display profile</strong> — an ordered
+  list of the languages to show (NL / EN / Sci), de-duplicated so a name never appears twice and
+  fallback-filled so a card is never nameless. Seven profiles (<strong>EN/NL</strong> default, plus
+  NL/EN, NL/EN/Sci, EN/Sci, NL/Sci, Sci/EN, Sci/NL); the old plain “Scientific only” folds into Sci/EN.
+  Set it in Global Settings, <strong>Species Settings</strong>, or per trip/album; a viewer's own combo
+  overrides per session. The scientific name stays the identity everywhere (paths, keys, matching) —
+  this is display only. See Capabilities ch. 16.</p>
+<ul>
+  <li><strong>One profile, every surface</strong> <span class="tag-shipped">SHIPPED</span> — the trip/
+    master/album Species Viewers, the culling grid, the large image viewer and the Biota Browser all
+    render the same profile. Two deliberate rules: <em>grid cards</em> show the profile's languages only
+    (NL/EN → two lines, no Latin); the <em>detail surfaces</em> (large image viewer + Biota species page)
+    show all three names at once, the profile only choosing which name leads.</li>
+  <li><strong>Culling resolves the full name triple locally</strong> <span class="tag-shipped">SHIPPED</span> —
+    a freshly-culled picture carries only the camera-stage name, but the same species collection that
+    gives the scientific name also carries the Dutch/English names, so the culling grid follows the
+    profile too (no network). Shows whatever names exist rather than inventing one.</li>
+  <li><strong>Sex/age/plumage suffix on the shown name</strong> <span class="tag-shipped">FIXED</span> —
+    the qualifier is a property of the photo, so it rides the primary (shown) name line, not the
+    possibly-hidden scientific line as before.</li>
+  <li><strong>Biota grid fit &amp; frame</strong> <span class="tag-shipped">SHIPPED</span> — a long taxon
+    name shrinks to fit (smaller font, then up to three lines) with reserved height; higher taxa keep the
+    tidy “name + scientific”, species follow the profile. Grid cells top-align, so a taller neighbour never
+    stretches a card's photo frame and a short row never balloons to fill the window.</li>
+  <li><strong>Balanced Species-Settings confirmation</strong> <span class="tag-shipped">SHIPPED</span> —
+    dropped the oversized system icon for a compact centred message.</li>
+</ul>
+
 </body>
 </html>

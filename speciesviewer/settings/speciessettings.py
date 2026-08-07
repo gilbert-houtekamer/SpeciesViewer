@@ -2,6 +2,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QComboBox,
     QPushButton, QMessageBox
 )
+from PyQt6.QtCore import Qt
 import logging
 from utils.config import _config, persist_config
 
@@ -9,7 +10,7 @@ class SpeciesSettingsDialog(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
         self.setWindowTitle("Species Settings")
-        self.setFixedSize(400, 250)
+        self.setFixedSize(400, 330)
 
         layout = QVBoxLayout(self)
 
@@ -39,6 +40,19 @@ class SpeciesSettingsDialog(QDialog):
             self.name_type_selector.setCurrentIndex(index)
         layout.addWidget(self.name_type_selector)
 
+        # Preferred NAME DISPLAY — which language(s) read out under each picture.
+        # This is a different axis from the correction "name type" above: that one
+        # picks which name a correction WRITES; this only picks what is SHOWN.
+        from utils.name_profile import profile_keys, profile_label, global_profile
+        layout.addWidget(QLabel("Preferred name display (under each picture):"))
+        self.name_display_selector = QComboBox()
+        for key in profile_keys():
+            self.name_display_selector.addItem(profile_label(key), key)
+        idx = self.name_display_selector.findData(global_profile())
+        if idx >= 0:
+            self.name_display_selector.setCurrentIndex(idx)
+        layout.addWidget(self.name_display_selector)
+
         # Save button
         save_button = QPushButton("Save")
         save_button.clicked.connect(self.save_settings)
@@ -51,10 +65,24 @@ class SpeciesSettingsDialog(QDialog):
         _config.set("Species", "correction_scope", selected_scope)
         _config.set("Species", "name_type", selected_type)
 
+        from utils.name_profile import set_global_profile
+        display_key = self.name_display_selector.currentData()
+        set_global_profile(display_key)
+
         persist_config()
 
-        QMessageBox.information(self, "Success", "✅ Species settings updated")
+        # A plain QMessageBox.information() pairs a huge system icon with two words
+        # of text — unbalanced. Drop the icon and centre a compact confirmation.
+        box = QMessageBox(self)
+        box.setWindowTitle("Species Settings")
+        box.setIcon(QMessageBox.Icon.NoIcon)
+        box.setTextFormat(Qt.TextFormat.RichText)
+        box.setText("<div align='center' style='min-width:220px;'>"
+                    "✅&nbsp;&nbsp;Species settings updated</div>")
+        box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        box.exec()
         self.close()
 
         logger = logging.getLogger("speciesviewer")
-        logger.info(f"Species settings updated: scope='{selected_scope}', name_type='{selected_type}'")
+        logger.info(f"Species settings updated: scope='{selected_scope}', "
+                    f"name_type='{selected_type}', name_display='{display_key}'")

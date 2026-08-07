@@ -293,12 +293,18 @@ class SpeciesPanel(QWidget):
         nm.setStyleSheet(f"color:{_INK}; font-size:28px; font-weight:700;")
         nm.setWordWrap(True)
         il.addWidget(nm)
-        sub = node["sci"] + (f" · {node['en']}" if node.get("en")
-                             and node["en"].casefold() != display.casefold() else "")
-        sci = QLabel(sub)
-        sci.setStyleSheet(f"color:{_INK_SOFT}; font-style:italic; font-size:15px;")
-        sci.setWordWrap(True)
-        il.addWidget(sci)
+        # Subtitle = the OTHER two names (all three shown across title + subtitle),
+        # ordered by the display profile. This detail page is the sibling of the
+        # large image viewer, which shows all three too; the profile only sets
+        # which name leads. The full triple also lives in the table below.
+        from utils.name_profile import all_names_ordered
+        lines = all_names_ordered(node, host._lang)
+        sub = " · ".join(t for t, _ in lines[1:])
+        if sub:
+            sci = QLabel(sub)
+            sci.setStyleSheet(f"color:{_INK_SOFT}; font-style:italic; font-size:15px;")
+            sci.setWordWrap(True)
+            il.addWidget(sci)
 
         # Star rating = the best XMP star among this species' pictures (0–5).
         # NOT node['rate'] — that is currentHighestRating, a computed 0–100-ish

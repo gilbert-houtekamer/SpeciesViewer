@@ -79,6 +79,33 @@ def _load_cover_spec(spec):
     return None if img.isNull() else img
 
 
+def _fit_font_px(text, width, base=14, floor=11, max_lines=2):
+    """Pick a pixel font size so `text` word-wraps into at most `max_lines` at
+    width `width`, shrinking from `base` down to `floor`; if even `floor` needs
+    more, it is used anyway (up to 3 lines). Returns (px, reserved_height) so the
+    caller can set a minimum height and never clip. This keeps a very long taxon
+    name (e.g. a Dutch order name) inside roughly two normal lines' worth of space
+    instead of overflowing the card."""
+    from PyQt6.QtGui import QFont, QFontMetrics
+    text = text or ""
+    wrap = int(Qt.TextFlag.TextWordWrap)
+    px = base
+    while True:
+        fm = QFontMetrics(_px_font(px))
+        r = fm.boundingRect(0, 0, max(10, width), 100000, wrap, text)
+        n = max(1, round(r.height() / max(1, fm.lineSpacing())))
+        if n <= max_lines or px <= floor:
+            return px, r.height()
+        px -= 1
+
+
+def _px_font(px):
+    from PyQt6.QtGui import QFont
+    f = QFont()
+    f.setPixelSize(px)
+    return f
+
+
 class TaxonCard(QFrame):
     """One olive-framed card — a child taxon or a species leaf. Emits its
     scientific name on a left click."""
@@ -119,24 +146,38 @@ class TaxonCard(QFrame):
         ml = QVBoxLayout(meta)
         ml.setContentsMargins(11, 9, 11, 11)
         ml.setSpacing(1)
-        nm = QLabel(node["_display"])
-        nm.setStyleSheet(f"color:{_INK}; font-weight:600; font-size:14px; border:none;")
-        nm.setWordWrap(True)
-        ml.addWidget(nm)
-        # Secondary line: the scientific name (italic) — UNLESS the title already IS
-        # the scientific name (Sci profile / a taxon with no vernacular), in which case
-        # show a common name instead. Never repeat what the title already shows.
-        disp_cf = (node["_display"] or "").strip().casefold()
-        if disp_cf and disp_cf == (node["sci"] or "").strip().casefold():
-            secondary, sec_italic = (node.get("en") or node.get("nl") or ""), False
+        # SPECIES nodes follow the display profile (e.g. NL then EN); higher taxa
+        # keep the compact "name + scientific" pairing — a genus/family vernacular
+        # can be long and the Latin name is the stable label there. Never repeat
+        # the title. Long names are shrunk to fit (see _fit_font_px) so the card
+        # never clips.
+        disp = node["_display"]
+        if node.get("rank", "") == "SPECIES":
+            render_lines = list(node.get("_display_lines") or [(disp, False)])
         else:
-            secondary, sec_italic = node["sci"], True
-        if secondary:
-            sci = QLabel(secondary)
-            sci.setStyleSheet(f"color:{_INK_SOFT}; font-size:12px; border:none;"
-                              + (" font-style:italic;" if sec_italic else ""))
-            sci.setWordWrap(True)
-            ml.addWidget(sci)
+            disp_cf = (disp or "").strip().casefold()
+            if disp_cf and disp_cf == (node.get("sci") or "").strip().casefold():
+                sec = node.get("en") or node.get("nl") or ""
+                render_lines = [(disp, True)] + ([(sec, False)] if sec else [])
+            else:
+                render_lines = [(disp, False)] + ([(node["sci"], True)]
+                                                  if node.get("sci") else [])
+        inner_w = card_w - 24
+        for i, (text, is_sci) in enumerate(render_lines):
+            base = 14 if i == 0 else 12
+            px, h = _fit_font_px(text, inner_w, base=base,
+                                 floor=(11 if i == 0 else 10),
+                                 max_lines=2)
+            lbl = QLabel(text)
+            lbl.setWordWrap(True)
+            lbl.setMinimumHeight(h)
+            css = (f"color:{_INK}; font-weight:600;" if i == 0
+                   else f"color:{_INK_SOFT};")
+            css += f" font-size:{px}px; border:none;"
+            if is_sci:
+                css += " font-style:italic;"
+            lbl.setStyleSheet(css)
+            ml.addWidget(lbl)
         stat = QLabel(sub_html)
         stat.setTextFormat(Qt.TextFormat.RichText)
         stat.setStyleSheet(f"color:{_INK_SOFT}; font-family:Consolas,monospace;"
@@ -458,6 +499,15 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
     def _display(self, node) -> str:
         from utils.name_profile import name_for
         return name_for(node, self._lang) or node.get("sci", "")
+
+    def _display_lines_for(self, node) -> list:
+        """The node's names as (text, is_sci) lines for the current profile —
+        deduped, fallback-filled. The TaxonCard renders these for SPECIES nodes;
+        higher taxa keep the tidy 'name + scientific' pairing instead (a genus/
+        family's vernacular can be very long, and the Latin name is the useful
+        stable label there)."""
+        from utils.name_profile import name_lines
+        return name_lines(node, self._lang)
 
     # ── breadcrumb ──────────────────────────────────────────────────────────
     def _rebuild_crumbs(self):
@@ -846,6 +896,7 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         for idx, node in enumerate(nodes):
             node = dict(node)
             node["_display"] = self._display(node)
+            node["_display_lines"] = self._display_lines_for(node)
             n_sp, n_pic = self._source.counts(node["sci"])
             if node["rank"] == "SPECIES":
                 sub = f"<b style='color:{_FRAME}'>{n_pic}</b> photos"
@@ -855,7 +906,11 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
             cover = self._source.cover_spec(node["sci"])
             card = TaxonCard(node, sub, card_w, cover, self._loader)
             card.clicked.connect(self._on_taxon_clicked)
-            self._grid.addWidget(card, idx // self.columns, idx % self.columns)
+            # Top-align each cell: a card keeps its natural height and sits at the
+            # top of its cell, so a taller neighbour in the row never stretches its
+            # photo frame, and a short row never balloons to fill the window.
+            self._grid.addWidget(card, idx // self.columns, idx % self.columns,
+                                 Qt.AlignmentFlag.AlignTop)
         QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
 
     def _show_empty(self, text):

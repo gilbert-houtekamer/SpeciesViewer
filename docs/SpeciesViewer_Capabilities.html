@@ -1241,6 +1241,40 @@ Full design in <code>path_portability_plan.md</code>.</p>
 
 <!-- ============================================================ -->
 <hr class="section-divider">
+<!-- ============================================================ -->
+<h2>16. Species Name Display <span class="tag-shipped">SHIPPED</span></h2>
+<p>The species name shown under each picture is a <strong>display profile</strong>: an ordered list of
+  the languages to render (Dutch / English / Scientific), de-duplicated so a name is never shown twice
+  and fallback-filled so a card is never nameless. One resolver (<code>utils/name_profile.py</code>)
+  serves every viewer — <code>name_lines()</code> for grid cards (the profile's languages only) and
+  <code>all_names_ordered()</code> for the detail surfaces (all three names, the profile only choosing
+  which leads). The scientific name remains the stable identity everywhere (paths, keys, matching); this
+  governs display only, never the website output or species editing.</p>
+<ul>
+  <li><strong>Seven profiles, one default.</strong> EN/NL (default), NL/EN, NL/EN/Sci, EN/Sci, NL/Sci,
+    Sci/EN, Sci/NL. The former plain “Scientific only” is retired and normalises to Sci/EN. Chosen in
+    Global Settings, the new <strong>Species Settings ▸ Preferred name display</strong> row (kept
+    separate from the correction “name type”), or per trip/virttrip; a viewer's own combo is a
+    per-session override. Precedence: per-view combo → per-trip → global default.</li>
+  <li><strong>Every surface follows it.</strong> Trip / Master / Album Species Viewers, the culling
+    “Species Image Preview”, the large image viewer, and the Biota Browser (tree cards, all-species
+    index, species page) all read the same profile. Grid cards show up to three deduped lines with the
+    scientific one italic; the qualifier (♂/♀, juv, br.) rides the primary line, since it is a property
+    of the photograph.</li>
+  <li><strong>Culling resolves names locally.</strong> A just-culled picture carries only the
+    camera-stage subject. The same local species collection that yields the scientific name also holds
+    the Dutch/English names (<code>sc.sc_dict[sci]</code>), so the culling grid resolves the full
+    {NL, EN, Sci} triple and applies the profile — cached, no network.</li>
+  <li><strong>Detail surfaces show all three.</strong> The large image viewer and the Biota species page
+    lead with the profile's primary name and list the other two beneath, so the identity is always fully
+    visible; the full triple also appears in the species page's Names &amp; Classification table.</li>
+  <li><strong>Biota grid legibility.</strong> Long taxon names auto-shrink to fit (down a few px, then up
+    to three lines) with reserved height so nothing clips; higher taxa keep “vernacular + scientific”
+    while species follow the profile; grid cells are top-aligned so a tall neighbour can't stretch a
+    card's photo frame and a short row can't balloon to fill the window.</li>
+</ul>
+
+<!-- ============================================================ -->
 <h2>Recently Completed</h2>
 <p>Removed from the active list because they are shipped and working.</p>
 

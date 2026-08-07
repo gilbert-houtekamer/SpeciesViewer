@@ -157,6 +157,29 @@ class RatingEditorItem(PictureItem):
         # language-independent, so it's the framed card's stable second line.
         return self._row.get("WetSoortNaam", "") or ""
 
+    @property
+    def name_triple(self) -> dict:
+        r = self._row
+        return {"nl": r.get("NLSoortNaam", "") or "",
+                "en": r.get("EngSoortNaam", "") or "",
+                "sci": r.get("WetSoortNaam", "") or ""}
+
+    @property
+    def display_lines(self) -> list:
+        # Full profile rendering: up to three deduped NL/EN/Sci lines, with the
+        # sex/age/plumage suffix on the primary line. A blog extra is titled by
+        # its Headline, so it keeps a single line (mirrors display_name).
+        if self.is_blog_extra and self.headline:
+            return [(self.headline, False)]
+        lines = self._c.species_lines(self._row)
+        if not lines:
+            return [((self.display_name or self._key), False)]
+        suffix = self.qualifier_suffix or ""
+        if suffix:
+            text, is_sci = lines[0]
+            lines = [(text + suffix, is_sci)] + lines[1:]
+        return lines
+
     # read fields
     @property
     def species(self) -> str:
@@ -853,6 +876,12 @@ class RatingEditorCollection(PictureCollection):
     def species_name(self, row: dict) -> str:
         from utils.name_profile import name_for
         return name_for(row, self._species_lang)
+
+    def species_lines(self, row: dict) -> list:
+        """The row's display names as (text, is_sci) lines for the active
+        profile — the multi-line counterpart of species_name()."""
+        from utils.name_profile import name_lines
+        return name_lines(row, self._species_lang)
 
     def _rep_file_row(self, upn_key: str) -> dict:
         """The representative (non-XMP) file row for EXIF — prefer a real

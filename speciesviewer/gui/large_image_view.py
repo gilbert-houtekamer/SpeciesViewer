@@ -1892,16 +1892,28 @@ class LargeImageView(QDialog):
         for _fs in (self._filmstrip_left, self._filmstrip_bottom):
             _fs.set_current(key, self._index, len(self._keys))
 
-        # Identity header: display name (bold) + scientific name(+modifiers).
-        # Scientific convention is "Genus species" — capitalise the leading
-        # genus letter (the resolver returns lower-case), leaving the rest as-is.
-        self._panel_name.setText(item.display_name or key)
-        _sci = (getattr(item, "sci_name", "") or "").strip()
-        if _sci:
-            _sci = _sci[0].upper() + _sci[1:]
-        _scitxt = (_sci + (getattr(item, "qualifier_suffix", "") or "")).strip()
-        self._panel_sci.setText(_scitxt)
-        self._panel_sci.setVisible(bool(_scitxt))
+        # Identity header — this is the detail equivalent of the Biota species
+        # page, so it shows ALL THREE names at once: the profile's primary (bold)
+        # on the first line, the other two (in profile order) on the second. A
+        # scientific name follows the "Genus species" convention, so its leading
+        # genus letter is capitalised (the resolver returns it lower-case). The
+        # sex/age/plumage suffix rides the primary line.
+        from utils.name_profile import all_names_ordered
+        triple = getattr(item, "name_triple", None) or {"sci": getattr(item, "sci_name", "")}
+        _row = {"nl": triple.get("nl", ""), "en": triple.get("en", ""),
+                "sci": triple.get("sci", "")}
+        lines = all_names_ordered(_row, getattr(item, "name_profile", ""))
+        if not lines:
+            lines = [((item.display_name or key), False)]
+
+        def _fmt(text, is_sci):
+            return (text[0].upper() + text[1:]) if (is_sci and text) else text
+
+        _suffix = getattr(item, "qualifier_suffix", "") or ""
+        self._panel_name.setText(_fmt(*lines[0]) + _suffix)
+        _sec = " · ".join(_fmt(t, s) for t, s in lines[1:])
+        self._panel_sci.setText(_sec)
+        self._panel_sci.setVisible(bool(_sec))
 
         # FILE
         self._file_key_lbl.setText(item.key)

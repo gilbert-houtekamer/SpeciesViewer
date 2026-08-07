@@ -187,6 +187,28 @@ class SidecarItem(PictureItem):
     def key(self) -> str:
         return self._stem
 
+    def _profile_lines(self) -> list:
+        """The group's names as (text, is_sci) lines in the display profile —
+        from the day-CSV hint (album/virttrip) or resolved locally from the
+        sidecar Subject (culling). [] when no name is known."""
+        from utils.name_profile import name_lines, effective_profile
+        t = self.name_triple
+        row = {"nl": t.get("nl", ""), "en": t.get("en", ""), "sci": t.get("sci", "")}
+        prof = getattr(self._c, "_name_profile", "") or effective_profile()
+        return name_lines(row, prof)
+
+    @property
+    def name_triple(self) -> dict:
+        # Album/virttrip day viewers carry the triple on the day-CSV hint row; a
+        # culling picture has only the sidecar Subject, resolved locally to its
+        # full NL/EN/Sci triple through the species collection (no network).
+        hint = self._c._hint_row_for_stem(self._stem)
+        if hint:
+            return {"nl": (hint.get("NLSoortNaam") or hint.get("nl") or "").strip(),
+                    "en": (hint.get("EngSoortNaam") or hint.get("en") or "").strip(),
+                    "sci": (hint.get("WetSoortNaam") or hint.get("sci") or "").strip()}
+        return self._c._triple_from_subject(self.species) or {}
+
     @property
     def display_name(self) -> str:
         # A landscape / context "blog extra" is titled by its Headline (what the
@@ -195,15 +217,29 @@ class SidecarItem(PictureItem):
         # this BEFORE the species-name hint.
         if self.is_blog_extra and self.headline:
             return self.headline
-        # Prefer the species name in the host's language profile (from the day CSV);
-        # this also names a picture whose sidecar subject is empty (a DxO render
-        # whose .xmp didn't pair). Else fall back to the sidecar subject, then stem.
-        hinted = self._c._name_for_stem(self._stem)
-        if hinted:
-            return hinted
+        lines = self._profile_lines()
+        if lines:
+            return lines[0][0]
+        # No resolvable name (unhinted render / unknown subject): sidecar subject, then stem.
         from gui.culling_species import split_species_qualifiers
         name, _ = split_species_qualifiers(self.species)
         return name or self._stem
+
+    @property
+    def display_lines(self) -> list:
+        # Follow the display profile: the group's NL/EN/Sci names (deduped), from
+        # the day-CSV hint or resolved locally from the Subject, sex/age suffix on
+        # the primary line. Falls back to the ABC default only when no name at all.
+        if self.is_blog_extra and self.headline:
+            return [(self.headline, False)]
+        lines = self._profile_lines()
+        if not lines:
+            return super().display_lines
+        suffix = self.qualifier_suffix or ""
+        if suffix:
+            t, s = lines[0]
+            lines = [(t + suffix, s)] + lines[1:]
+        return lines
 
     @property
     def qualifier_suffix(self) -> str:
@@ -476,6 +512,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         # a common-name→scientific cache, so a culling picture whose only name
         # is the sidecar Subject still shows the Latin name.
         self._sci_by_name: dict[str, str] = {}
+        self._triple_by_name: dict[str, dict] = {}
         self._sc = None
         self._sc_loaded = False
         self._image_changed: set = set() # stems whose IMAGE changed at last refresh()
@@ -1028,6 +1065,15 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
                     return name_for(hint, self._name_profile)
         return ""
 
+    def _lines_for_stem(self, stem: str) -> list:
+        """The group's NL/EN/Sci names as (text, is_sci) lines in the display
+        profile, from the day-CSV hint. [] when unhinted (pure culling sidecar)."""
+        hint = self._hint_row_for_stem(stem)
+        if not hint:
+            return []
+        from utils.name_profile import name_lines
+        return name_lines(hint, self._name_profile)
+
     def _hint_row_for_stem(self, stem: str) -> dict:
         """The raw day-CSV hint row for a group (keyed by any of its file paths),
         so callers can read fields the display name doesn't carry (e.g. the
@@ -1080,6 +1126,38 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
             sci = sci[0].upper() + sci[1:]
         self._sci_by_name[name] = sci
         return sci
+
+    def _triple_from_subject(self, subject: str) -> dict:
+        """Resolve a common/scientific name to its full {nl,en,sci} triple, LOCAL-
+        only and cached — the same species collection that gives us the scientific
+        name also carries the Dutch/English names, so the culling grid can follow
+        the NL/EN profile instead of only ever showing the camera-stage name + Latin.
+        {} when unknown."""
+        from gui.culling_species import split_species_qualifiers
+        name, _ = split_species_qualifiers(subject or "")
+        name = (name or "").strip().lower()
+        if not name:
+            return {}
+        if name in self._triple_by_name:
+            return self._triple_by_name[name]
+        triple: dict = {}
+        sc = self._ensure_species_classification()
+        if sc is not None:
+            try:
+                sci = sc.getKnownSpecies(name, False, LookUpInGBIF=False) or ""
+            except Exception as e:
+                logger.debug(f"name-triple resolve failed for {name!r}: {e}")
+                sci = ""
+            if sci:
+                rec = sc.sc_dict.get(sci) or sc.sc_dict.get(sci.lower()) or {}
+                triple = {
+                    "nl": (rec.get("DutchName") or "").strip(),
+                    "en": (rec.get("EnglishName") or "").strip(),
+                    # "Genus species": collection stores lower-case, capitalise genus.
+                    "sci": (sci[0].upper() + sci[1:]) if sci else "",
+                }
+        self._triple_by_name[name] = triple
+        return triple
 
     def _ensure_species_classification(self):
         """Load the trip/master species collection once (the same source the

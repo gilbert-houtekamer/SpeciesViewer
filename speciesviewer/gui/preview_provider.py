@@ -146,6 +146,13 @@ class PreviewItem(PictureItem):
     def key(self) -> str:
         return self._key
 
+    def _profile_lines(self) -> list:
+        """The row's NL/EN/Sci names as (text, is_sci) lines in the collection's
+        display profile — deduped, fallback-filled. [] when the row has no names."""
+        from utils.name_profile import name_lines, effective_profile
+        prof = getattr(self._c, "_name_profile", "") or effective_profile()
+        return name_lines(self._row, prof)
+
     @property
     def display_name(self) -> str:
         # A landscape / context "blog extra" is titled by its Headline (what the
@@ -154,10 +161,34 @@ class PreviewItem(PictureItem):
         # name, not after.
         if self.is_blog_extra and self.headline:
             return self.headline
+        lines = self._profile_lines()
+        if lines:
+            return lines[0][0]
         name = self._c.fpr.getSpeciesName(self._rep)
-        if name:
-            return name
-        return self._key
+        return name or self._key
+
+    @property
+    def name_triple(self) -> dict:
+        r = self._row
+        return {"nl": r.get("NLSoortNaam", "") or "",
+                "en": r.get("EngSoortNaam", "") or "",
+                "sci": r.get("WetSoortNaam", "") or ""}
+
+    @property
+    def display_lines(self) -> list:
+        # Follow the display profile: up to three deduped NL/EN/Sci lines, sex/age
+        # suffix on the primary line. Blog extras keep their single Headline line.
+        if self.is_blog_extra and self.headline:
+            return [(self.headline, False)]
+        lines = self._profile_lines()
+        if not lines:
+            name = self._c.fpr.getSpeciesName(self._rep) or self._key
+            return [(name, False)]
+        suffix = self.qualifier_suffix or ""
+        if suffix:
+            t, s = lines[0]
+            lines = [(t + suffix, s)] + lines[1:]
+        return lines
 
     @property
     def qualifier_suffix(self) -> str:
@@ -345,6 +376,11 @@ class PreviewCollection(PictureCollection):
         self.fpr = fpr
         self.read_only = bool(read_only)
         self.allow_geotag = bool(allow_geotag)
+        # Which of NL/EN/Sci reads out under each card — the global default (the
+        # culling viewer has no per-trip override). Items resolve their names
+        # through this so the culling grid follows the same profile as everywhere.
+        from utils.name_profile import effective_profile
+        self._name_profile = effective_profile()
         self._loader = loader or AsyncImageLoader()
         self._order: list[str] = []
         self.rebuild()

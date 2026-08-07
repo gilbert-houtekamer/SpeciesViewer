@@ -645,21 +645,19 @@ class PictureCard(QFrame):
                     self._thumb.add_badge(_corner_badge(txt, bold=(datum == "format")), pos)
         self.update_rate_display(item.rate)
 
-        # meta lines: display name (bold) + scientific name(+modifiers) italic
+        # meta lines: up to three species-name lines per the display profile —
+        # deduped, the scientific one italic, the sex/age/plumage suffix on the
+        # primary (first) line. Held in a sub-layout so a refresh can rebuild them.
         meta = QWidget()
         ml = QVBoxLayout(meta)
         ml.setContentsMargins(10, 8, 10, 2)
         ml.setSpacing(1)
-        self._lbl_name = QLabel(item.display_name or item.key)
-        self._lbl_name.setStyleSheet(f"color:{_INK}; font-weight:600; font-size:14px;")
-        self._lbl_name.setWordWrap(True)
-        ml.addWidget(self._lbl_name)
-        sci_text = self._sci_line_text()
-        self._lbl_sci = QLabel(sci_text)
-        self._lbl_sci.setStyleSheet(f"color:{_INK_SOFT}; font-style:italic; font-size:11.5px;")
-        self._lbl_sci.setWordWrap(True)
-        self._lbl_sci.setVisible(bool(sci_text))
-        ml.addWidget(self._lbl_sci)
+        self._name_holder = QVBoxLayout()
+        self._name_holder.setContentsMargins(0, 0, 0, 0)
+        self._name_holder.setSpacing(1)
+        self._name_labels = []
+        ml.addLayout(self._name_holder)
+        self._populate_name_lines()
         # location line (preview/culling only): place name or "No GPS data available"
         self._lbl_location = None
         if getattr(item, "show_location_line", False):
@@ -729,10 +727,35 @@ class PictureCard(QFrame):
         self._update_thumb_style()   # paints the frame colour from the label
         item.request_thumbnail(target_w, self.set_thumbnail)
 
-    def _sci_line_text(self) -> str:
-        sci = (getattr(self._item, "sci_name", "") or "").strip()
-        suffix = getattr(self._item, "qualifier_suffix", "") or ""
-        return (f"{sci}{suffix}").strip()
+    def _populate_name_lines(self) -> None:
+        """(Re)build the framed card's name lines from the item's display_lines:
+        the first line is the primary (bold) name, any further lines are softer,
+        and whichever line IS the scientific name is italicised."""
+        while self._name_holder.count():
+            it = self._name_holder.takeAt(0)
+            w = it.widget()
+            if w:
+                w.deleteLater()
+        self._name_labels = []
+        lines = getattr(self._item, "display_lines", None)
+        if not lines:
+            name = self._item.display_name or self._item.key
+            suffix = getattr(self._item, "qualifier_suffix", "") or ""
+            lines = [((name + suffix).strip(), False)]
+        for i, (text, is_sci) in enumerate(lines):
+            lbl = QLabel(text)
+            lbl.setWordWrap(True)
+            if i == 0:
+                css = f"color:{_INK}; font-weight:600; font-size:14px;"
+            else:
+                css = f"color:{_INK_SOFT}; font-size:11.5px;"
+            if is_sci:
+                css += " font-style:italic;"
+            lbl.setStyleSheet(css)
+            self._name_holder.addWidget(lbl)
+            self._name_labels.append(lbl)
+        # Keep _lbl_name pointing at the primary line for any external reference.
+        self._lbl_name = self._name_labels[0] if self._name_labels else QLabel()
 
     def _update_frame_color(self):
         """Paint the thick frame. Per the viewer's frame setting: the colour label
@@ -889,10 +912,7 @@ class PictureCard(QFrame):
         """Re-read every field from the (live) item and repaint — used after an
         external edit such as a species commit or a GPS backfill."""
         if self._framed:
-            self._lbl_name.setText(self._item.display_name or self._item.key)
-            sci_text = self._sci_line_text()
-            self._lbl_sci.setText(sci_text)
-            self._lbl_sci.setVisible(bool(sci_text))
+            self._populate_name_lines()
             self._frame_color = self._item.color
             self._update_thumb_style()          # repaints the frame colour
             self._lbl_key.setText(self._key_line_text())
