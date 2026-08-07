@@ -22,6 +22,7 @@ import engine.sftplib
 import engine.projectlib
 import engine.triplib
 import engine.bloglib
+import engine.species_baseline
 
 logger = logging.getLogger("speciesviewer")
 
@@ -101,9 +102,14 @@ def main(args, config):
     # if trip, initialze master
     MyProject.initMasterAndTrip(config, inittrip=True)
     if not MyProject.isMasterRepository():
-        shutil.copy(os.path.join(MyProject.getMasterRepository(), 'metadata/active/speciescollection.csv'), 
+        shutil.copy(os.path.join(MyProject.getMasterRepository(), 'metadata/active/speciescollection.csv'),
                 os.path.join(NEW_DB_TREE, 'metadata/active/speciescollection.csv'))
-        
+        # Freeze what the master already has pictures of, so Count Species can
+        # still tell lifers apart after this trip has been merged into the
+        # master. Never fatal: a missing baseline only means Count Species
+        # falls back to the live master.
+        engine.species_baseline.write_baseline(MyProject.getMasterRepository(), NEW_DB_TREE)
+
     blog = engine.bloglib.Blog(MyProject)   
     blog.updateIndexPage()
     # create intro page, already in good location

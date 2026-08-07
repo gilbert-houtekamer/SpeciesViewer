@@ -9,6 +9,7 @@ import configparser
 import time
 import logging
 import argparse
+from datetime import datetime
 from pathlib import Path
 
 # add directory to python path (only when run as executable)
@@ -24,6 +25,7 @@ import engine.specieslib
 import engine.speciesclassification
 from engine.specieslib import Level
 import engine.triplib
+import engine.species_baseline
 
 logger = logging.getLogger("speciesviewer")
 result_dict = {}
@@ -40,62 +42,84 @@ def readConfig():
     return config
 
 def scan_files(directory, search_string, report):
-    print(f"File stats GPS and location data:\n\nFile           Count  NoGPS   Noloc  NoCity  NoSpec    Good     Bad  NoColor", file=report)    
-    for root, dirs, files in os.walk(directory):
-        for file in files:
-            if file.endswith('.txt'):
-                file_path = os.path.join(root, file)
-                parseddir = root.split('\\')
-                name = parseddir[len(parseddir)-1]
-                if name == "": name = parseddir[0]
-                headers.append(name)
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    NoGPS = 0
-                    NoLocation = 0
-                    NoCity = 0
-                    NoSpecies = 0
-                    Good = 0
-                    NotGood = 0
-                    NoColor = 0
-                    if search_string in content:
-                        #print(f"'{search_string}' found in {file_path}")
-                        lines = content.split('\n')
-                        for i, line in enumerate(lines):
-                            # check counters
-                            if "No GPS specified for" in line:
-                                NoGPS = int(line[32:35])
-                            if "No Location specified" in line:
-                                NoLocation = int(line[32:35])
-                            if "No City specified" in line:
-                                NoCity = int(line[32:35])
-                            if "No Species name specified" in line:
-                                NoSpecies = int(line[32:35]) 
-                            if "Interesting or Good quality" in line:
-                                Good = int(line[32:35])     
-                            if "Duplicate or bad quality" in line:
-                                NotGood = int(line[32:35])
-                            if "No color label rating" in line:
-                                NoColor = int(line[32:35])                                                                                                                                                                                                
-                            if search_string in line:
-                                # print summary 
-                                print(f"{name:12}  {Good+NotGood+NoColor:6} {NoGPS:6}  {NoLocation:6}  {NoCity:6}  {NoSpecies:6}  {Good:6}  {NotGood:6}  {NoColor:6}", file=report)
-                                # get species info
-                                for subsequent_line in lines[i+3:]:
-                                    if subsequent_line.strip():  # Check if the line is non-empty
-                                        # numbers fixed
-                                        numbers = re.findall(r'(\d+)', subsequent_line[0:30])
-                                        # names not in same way
-                                        tokens = re.split(r'[()/]', subsequent_line[31:])
-                                        key = tokens[0].strip()
-                                        info = [name, numbers]; 
-                                        if key in result_dict:
-                                            result_dict[key].append(info)
-                                        else:
-                                            result_dict[key] = [info]
-                    # else:
-                    #     print(f"'{search_string}' not found in {file_path}")
-    return
+    """Read each day's summary report and collect the species it lists.
+
+    One column per day directory, in date order — a day that was never
+    summarized keeps its column (all dots) instead of vanishing from the
+    report. Returns (days_total, days_without_summary) so the caller can state
+    the coverage: a partially-summarized trip yields a partial verdict, and
+    that must be visible rather than merely plausible.
+    """
+    print(f"File stats GPS and location data:\n\nFile           Count  NoGPS   Noloc  NoCity  NoSpec    Good     Bad  NoColor", file=report)
+    days_total = 0
+    days_missing = []
+    if not os.path.isdir(directory):
+        return days_total, days_missing
+
+    for name in sorted(os.listdir(directory)):
+        day_dir = os.path.join(directory, name)
+        if not os.path.isdir(day_dir):
+            continue
+        days_total += 1
+        headers.append(name)
+        # Only the day's own summary — never descend into frozen/.
+        txt_files = sorted(f for f in os.listdir(day_dir)
+                           if f.endswith('.txt')
+                           and os.path.isfile(os.path.join(day_dir, f)))
+        summarized = False
+        for file in txt_files:
+            file_path = os.path.join(day_dir, file)
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                NoGPS = 0
+                NoLocation = 0
+                NoCity = 0
+                NoSpecies = 0
+                Good = 0
+                NotGood = 0
+                NoColor = 0
+                if search_string in content:
+                    summarized = True
+                    lines = content.split('\n')
+                    for i, line in enumerate(lines):
+                        # check counters
+                        if "No GPS specified for" in line:
+                            NoGPS = int(line[32:35])
+                        if "No Location specified" in line:
+                            NoLocation = int(line[32:35])
+                        if "No City specified" in line:
+                            NoCity = int(line[32:35])
+                        if "No Species name specified" in line:
+                            NoSpecies = int(line[32:35])
+                        if "Interesting or Good quality" in line:
+                            Good = int(line[32:35])
+                        if "Duplicate or bad quality" in line:
+                            NotGood = int(line[32:35])
+                        if "No color label rating" in line:
+                            NoColor = int(line[32:35])
+                        if search_string in line:
+                            # print summary
+                            print(f"{name:12}  {Good+NotGood+NoColor:6} {NoGPS:6}  {NoLocation:6}  {NoCity:6}  {NoSpecies:6}  {Good:6}  {NotGood:6}  {NoColor:6}", file=report)
+                            # get species info
+                            for subsequent_line in lines[i+3:]:
+                                if subsequent_line.strip():  # Check if the line is non-empty
+                                    # numbers fixed
+                                    numbers = re.findall(r'(\d+)', subsequent_line[0:30])
+                                    # names not in same way
+                                    tokens = re.split(r'[()/]', subsequent_line[31:])
+                                    # Lowercased throughout: the taxonomy lookup
+                                    # tests the lowered name, so the dict must be
+                                    # keyed the same way or a capitalised name in
+                                    # a summary raises KeyError further down.
+                                    key = tokens[0].strip().lower()
+                                    info = [name, numbers]
+                                    if key in result_dict:
+                                        result_dict[key].append(info)
+                                    else:
+                                        result_dict[key] = [info]
+        if not summarized:
+            days_missing.append(name)
+    return days_total, days_missing
 
 # create website based on current count setting, now to test iSpeciesThisRunCount
 def scanSpecies(sc, speciesname, report):
@@ -106,7 +130,8 @@ def scanSpecies(sc, speciesname, report):
         species = sc.sc_dict[leaf]
         if str(species['Level']) == str(Level.SPECIES):
             # do we have this?
-            if species['ScientificName'].lower() in result_dict:
+            scientific = species['ScientificName'].lower()
+            if scientific in result_dict:
                 best_rating = 0
                 if sc.sc_dict[sc.sc_dict[species['Up']]['Up']]['Up'] != 'aves' and not subheaderdone:
                     print(f"\nOther animals and plants:\n", file=report)
@@ -120,7 +145,7 @@ def scanSpecies(sc, speciesname, report):
                 english = species['EnglishName'] if species['EnglishName'] else f"*{sci}*"
                 dutch = species['DutchName'] if species['DutchName'] else f"*{sci}*"
                 data_line = str(counter).rjust(3) + ' ' + english.ljust(32) + dutch.ljust(40)
-                if species['ScientificName'].lower() in reference_names:
+                if scientific in reference_names:
                     data_line += '     '
                 else:
                     data_line += str(newcounter).rjust(3) + '  '
@@ -131,8 +156,8 @@ def scanSpecies(sc, speciesname, report):
                 days_line = ""
                 for header in headers:
                     # run through the list to see if we have this list
-                    summary = '' 
-                    for info in result_dict[species['ScientificName']]:
+                    summary = ''
+                    for info in result_dict[scientific]:
                         if info[0] == header:
                     # if header in result_dict[species['ScientificName']][0]:
                     #     info = result_dict[species['ScientificName']][header]
@@ -159,7 +184,7 @@ def scanSpecies(sc, speciesname, report):
                 data_line += f"{days_line} {seen:3} "               
                 if best_rating > 0:
                     data_line += f" {best_rating:3}"
-                elif species['ScientificName'].lower() not in reference_names:
+                elif scientific not in reference_names:
                     data_line += '   Needed     '
                 print(data_line, file=report)
         else:
@@ -209,27 +234,46 @@ def main(args, config):
     sp = engine.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)
 
-    # Build the "already known" reference set from master's species.csv —
-    # that's the file that records what master actually has pictures of.
-    # speciescollection.csv was tried earlier but pre-loads most birds
-    # at startup, so a bird being photographed for the first time would
-    # still register as "known" and never surface as new. species.csv
-    # only contains species master has a JPG/RAW for, which matches the
-    # "I haven't photographed this yet" intent of the New column.
+    # Build the "already known" reference set — the species the master could
+    # already show before this trip. speciescollection.csv was tried earlier but
+    # pre-loads most birds at startup, so a bird photographed for the first time
+    # would still register as "known" and never surface as new. The species list
+    # only contains species there is a JPG/RAW for, which matches the "I haven't
+    # photographed this yet" intent of the New column.
+    #
+    # Preferred source is the baseline FROZEN into the trip at creation
+    # (engine/species_baseline.py). The live master is only a fallback: once
+    # this trip's pictures have been merged into the master, the master's own
+    # species.csv contains them and every lifer silently stops being new. Which
+    # source was used is stated at the top of the report — an unfrozen verdict
+    # must never look like a frozen one.
     MyProject.initMasterAndTrip(config, inittrip=False)
-    if MyProject.Trip:
-        ref_csv = os.path.join(MyProject.getMasterRepository(),
-                               "metadata", "active", "species.csv")
+    reference_note = ""
+    baseline_file = (engine.species_baseline.baseline_path(MyProject.getRepositoryPath())
+                     if MyProject.Trip else None)
+    if baseline_file and os.path.exists(baseline_file):
+        reference_names, meta = engine.species_baseline.read_baseline(baseline_file)
+        reference_note = (f"Lifer baseline: master as of {meta.get('taken_at', 'unknown date')}, "
+                          f"frozen at trip creation ({len(reference_names)} species).")
     else:
-        ref_csv = config.get("repository", "ReferenceSpecies")
-    if os.path.exists(ref_csv):
-        with open(ref_csv, "r", encoding="utf-8") as f:
-            for row in csv.DictReader(f, delimiter=";"):
-                name = (row.get("ScientificName") or "").lower().strip()
-                if name:
-                    reference_names.add(name)
-    else:
-        logger.warning(f"svr2CountSpecies: reference file not found: {ref_csv}")
+        if MyProject.Trip:
+            ref_csv = os.path.join(MyProject.getMasterRepository(),
+                                   "metadata", "active", "species.csv")
+        else:
+            ref_csv = config.get("repository", "ReferenceSpecies")
+        if os.path.exists(ref_csv):
+            with open(ref_csv, "r", encoding="utf-8") as f:
+                for row in csv.DictReader(f, delimiter=";"):
+                    name = (row.get("ScientificName") or "").lower().strip()
+                    if name:
+                        reference_names.add(name)
+            reference_note = (f"Lifer baseline: the master AS IT IS TODAY, not frozen "
+                              f"({len(reference_names)} names). Species already merged "
+                              f"into the master do not count as new.")
+        else:
+            logger.warning(f"svr2CountSpecies: reference file not found: {ref_csv}")
+            reference_note = ("Lifer baseline: NONE FOUND — every species below is "
+                              "reported as new. Do not trust the New column.")
 
     # read the list with all pre-defined species, as updated in each project using it
     metadatadir = MyProject.getMetaDir()
@@ -240,10 +284,23 @@ def main(args, config):
     reports_dir.mkdir(parents=True, exist_ok=True)
     report_path = reports_dir / "Species overview.txt"
     with open(report_path, "w", encoding="utf-8") as report:
+        trip_title = MyProject.Trip.getTripName() if MyProject.Trip else "master"
+        print(f"Species overview for {trip_title}", file=report)
+        print(f"Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}", file=report)
+        print(reference_note, file=report)
+
          # Collect species
         directory_to_scan = os.path.join(MyProject.getMetaDir(), 'review')
         search_string = 'Species specified in this dir:'
-        scan_files(directory_to_scan, search_string, report)
+        days_total, days_missing = scan_files(directory_to_scan, search_string, report)
+
+        # A day that was never summarized contributes no species at all. Say so
+        # here rather than letting the report look complete.
+        summarized = days_total - len(days_missing)
+        print(f"\nDays: {summarized} of {days_total} summarized.", file=report)
+        if days_missing:
+            print(f"NOT summarized (no species counted for these days): "
+                  f"{', '.join(days_missing)}", file=report)
 
         # print in order classification
         report.write("\nThe species found below, showing birds first.")
