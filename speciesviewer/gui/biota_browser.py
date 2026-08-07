@@ -172,6 +172,9 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
     # How many species cards to paint at once in the flat 'all species' view
     # before asking the user to narrow with the search box (the master has ~2200).
     _ALL_CAP = 400
+    # Don't run the (whole-tree) name search until this many characters — a 1-2
+    # char query matches almost everything and scans the whole master needlessly.
+    _SEARCH_MIN = 3
 
     def __init__(self, parent, start_mode="tree", *, repo_root=None,
                  scope_title=None, read_only_scope=False, cache_name=None,
@@ -433,7 +436,8 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
     def _on_search_changed(self, _t):
         # A search is a query over the current view; leave an open species view
         # (but keep the flat all-species list — there the box just filters it).
-        if self._mode == "species" and self._search.text().strip():
+        # Only act once the query is long enough to be worth a tree scan.
+        if self._mode == "species" and len(self._search.text().strip()) >= self._SEARCH_MIN:
             self._mode = "tree"
         self._render()
 
@@ -653,7 +657,7 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         self._rebuild_rail()
         if self._mode == "allspecies":
             self._render_all_species()
-        elif self._search.text().strip():
+        elif len(self._search.text().strip()) >= self._SEARCH_MIN:
             self._render_search()
         elif self._mode == "species":
             if self._species_view == "tech":
@@ -878,6 +882,12 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
 
     def _open_species(self, sci):
         self._push_history()
+        # Leave any active search behind — otherwise _render's search branch wins
+        # over the species view and the pretty page never shows (the click would
+        # appear to do nothing but hide the rank rail).
+        self._search.blockSignals(True)
+        self._search.clear()
+        self._search.blockSignals(False)
         self._close_large_view()
         self._mode = "species"
         self._species_view = "pretty"
