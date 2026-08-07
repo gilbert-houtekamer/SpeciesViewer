@@ -1152,8 +1152,12 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
     """
 
     def __init__(self, parent, trip_root_dir: str, day_str: str = None,
-                 read_only: bool = False, scope_label: str = "Trip"):
+                 read_only: bool = False, scope_label: str = "Trip",
+                 initial_sci: str = None):
         super().__init__(parent)
+        # When launched from the Biota Browser's Edit panel: open straight on this
+        # species (a scientific name; resolved to the combo entry after load).
+        self._initial_sci = (initial_sci or "").strip() or None
         # read_only: a whole-collection viewer (no rating/colour edits, no
         # delete, no Trip+Master compare). Used by the Album (virtual-trip)
         # variant, whose pictures are the master's shared files — editing them
@@ -1848,6 +1852,17 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             if idx >= 0:
                 self._species_combo.setCurrentIndex(idx)  # triggers _rebuild_cards via signal
                 return
+        # One-shot: open directly on a requested species (Biota Browser Edit-panel
+        # jump). The combo is keyed by display name, so resolve sci → name.
+        if self._initial_sci:
+            target = self._initial_sci.lower()
+            self._initial_sci = None
+            for name, sci in self._name_to_sci.items():
+                if sci.strip().lower() == target:
+                    idx = self._species_combo.findData(name)
+                    if idx >= 0:
+                        self._species_combo.setCurrentIndex(idx)  # → _rebuild_cards via signal
+                        return
         self._rebuild_cards()
 
     # ── Grid management ───────────────────────────────────────────────────────
@@ -2002,6 +2017,24 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 path.append(r)
         self._crumb.setText("  ›  ".join(path))
         self._crumb.setVisible(bool(path))
+
+    def show_species(self, sci: str) -> bool:
+        """Select this species in the combo (used when the Biota Browser's Edit
+        panel reuses an already-open viewer). For an editable trip, switch to
+        whole-Trip scope first so the species is present regardless of the day
+        showing. Returns False if the species isn't in this trip/album."""
+        target = (sci or "").strip().lower()
+        if not target:
+            return False
+        if not self._read_only and not self._trip_radio.isChecked():
+            self._trip_radio.setChecked(True)   # → reload at Trip scope
+        for name, s in self._name_to_sci.items():
+            if (s or "").strip().lower() == target:
+                idx = self._species_combo.findData(name)
+                if idx >= 0:
+                    self._species_combo.setCurrentIndex(idx)
+                    return True
+        return False
 
     def _open_species_page(self):
         """Jump to this species' pretty page in the Biota Browser, at the

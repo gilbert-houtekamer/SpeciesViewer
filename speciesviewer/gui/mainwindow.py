@@ -1367,14 +1367,47 @@ class MainWindow(QMainWindow):
             self.refresh_trip_row(sm, day_name)
         return invalidated
 
-    def open_rating_editor(self):
+    def _live_dialog(self, attr):
+        """The dialog stored under `attr` if it still exists (not closed and its
+        underlying C++ object not deleted), else None. Lets the openers below
+        REUSE a window rather than spawning a duplicate on every jump."""
+        dlg = getattr(self, attr, None)
+        if dlg is None:
+            return None
+        try:
+            dlg.objectName()   # raises RuntimeError if the C++ object is gone
+            return dlg
+        except RuntimeError:
+            return None
+
+    @staticmethod
+    def _raise_dialog(dlg):
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
+
+    def open_rating_editor(self, initial_sci=None):
         from gui.rating_editor import RatingEditorDialog
         trip_root = _config.get("trip", "tripbiotadatabase", fallback="")
         if not trip_root:
             QMessageBox.warning(self, "Trip Species Viewer", "No trip is configured.")
             return
+        # On a Biota Edit-panel jump (initial_sci set): reuse an already-open
+        # viewer for THIS trip so the ping-pong doesn't stack windows. A different
+        # trip → close the stale one first. Plain menu-opens keep their old
+        # behaviour (honour the day selected in the trip table).
+        existing = self._live_dialog("_rating_editor_dlg") if initial_sci else None
+        if existing is not None:
+            if str(getattr(existing, "_trip_root", "")) == str(Path(trip_root)):
+                existing.show_species(initial_sci)
+                self._raise_dialog(existing)
+                return
+            existing.close()
+        # Launched from the Biota Browser on a species → open whole-Trip scope on
+        # it (a day scope could hide a species shot on another day). Otherwise
+        # follow the day selected in the trip table.
         day_str = None
-        if self.trip_table:
+        if initial_sci is None and self.trip_table:
             row = self.trip_table.currentRow()
             if row >= 0:
                 item = self.trip_table.item(row, 0)
@@ -1385,21 +1418,30 @@ class MainWindow(QMainWindow):
         # GC (triggered by the heavy master CSV read) then reclaims it and its
         # widgets mid-operation → "wrapped C/C++ object ... deleted" crashes.
         # (We recreate per open — our converged RatingEditorDialog has no reload().)
-        self._rating_editor_dlg = RatingEditorDialog(self, trip_root, day_str)
+        self._rating_editor_dlg = RatingEditorDialog(self, trip_root, day_str,
+                                                     initial_sci=initial_sci)
         self._rating_editor_dlg.show()
 
-    def open_master_species_viewer(self):
+    def open_master_species_viewer(self, initial_sci=None):
         """Standalone viewer over the master collection, one species at a time.
         Needs no active trip — the species list + pictures come from the master
-        DB. Editing follows the machine's master read-only policy."""
+        DB. Editing follows the machine's master read-only policy. `initial_sci`
+        opens straight on that species (the Biota Browser's Edit-panel jump)."""
         from gui.master_species_viewer import MasterSpeciesViewerDialog
         master_root = _config.get("master", "masterbiotadatabase", fallback="")
         if not master_root:
             QMessageBox.warning(self, "Master Species Viewer",
                                 "No master database is configured.")
             return
+        # On a Biota Edit-panel jump: reuse an open viewer rather than stacking.
+        existing = self._live_dialog("_master_species_viewer_dlg") if initial_sci else None
+        if existing is not None:
+            existing.show_species(initial_sci)
+            self._raise_dialog(existing)
+            return
         # Strong ref on the main window — see open_rating_editor for the why.
-        self._master_species_viewer_dlg = MasterSpeciesViewerDialog(self)
+        self._master_species_viewer_dlg = MasterSpeciesViewerDialog(
+            self, initial_sci=initial_sci)
         self._master_species_viewer_dlg.show()
 
     def open_biota_browser(self, start_mode="tree", start_sci=None):
@@ -1413,6 +1455,14 @@ class MainWindow(QMainWindow):
         if not master_root:
             QMessageBox.warning(self, "Biota Browser",
                                 "No master database is configured.")
+            return
+        # On a "✦ Species…" jump: reuse an open MASTER browser (no repo/album
+        # scope) rather than stacking. Plain menu-opens create fresh as before.
+        existing = self._live_dialog("_biota_browser_dlg") if start_sci else None
+        if existing is not None and not getattr(existing, "_repo_root", None) \
+                and not getattr(existing, "_album_from", None):
+            existing.show_species_page(start_sci)
+            self._raise_dialog(existing)
             return
         # Strong ref on the main window — see open_rating_editor for the why.
         self._biota_browser_dlg = BiotaBrowserDialog(
@@ -1436,6 +1486,15 @@ class MainWindow(QMainWindow):
             return
         cache = "trip_" + hashlib.sha1(trip_root.encode("utf-8")).hexdigest()[:12]
         name = os.path.basename(trip_root.rstrip("/\\")) or "Trip"
+        # On a "✦ Species…" jump: reuse an open Trip browser for THIS repo;
+        # replace on a switch. Plain menu-opens create fresh as before.
+        existing = self._live_dialog("_trip_biota_browser_dlg") if start_sci else None
+        if existing is not None:
+            if str(getattr(existing, "_repo_root", "")) == str(trip_root):
+                existing.show_species_page(start_sci)
+                self._raise_dialog(existing)
+                return
+            existing.close()
         # Strong ref on the main window — see open_rating_editor for the why.
         self._trip_biota_browser_dlg = BiotaBrowserDialog(
             self, repo_root=trip_root, scope_title=f"Trip · {name}",
@@ -1472,6 +1531,16 @@ class MainWindow(QMainWindow):
                                 "This album has no date range in its virttrip.ini.")
             return
         name = name or os.path.basename(album_root.rstrip("/\\")) or "Album"
+        # On a "✦ Species…" jump: reuse an open Album browser for THIS date
+        # window; replace on a switch. Plain menu-opens create fresh as before.
+        existing = self._live_dialog("_album_biota_browser_dlg") if start_sci else None
+        if existing is not None:
+            if getattr(existing, "_album_from", None) == fromdate \
+                    and getattr(existing, "_album_to", None) == todate:
+                existing.show_species_page(start_sci)
+                self._raise_dialog(existing)
+                return
+            existing.close()
         # Strong ref on the main window — see open_rating_editor for the why.
         self._album_biota_browser_dlg = BiotaBrowserDialog(
             self, scope_title=f"Album · {name}", read_only_scope=True,
@@ -1883,19 +1952,31 @@ class MainWindow(QMainWindow):
             lambda _keys: self.refresh_gps_counts("virttrip"))
         self._virttrip_map_dlg.show()
 
-    def open_virttrip_rating_editor(self):
+    def open_virttrip_rating_editor(self, initial_sci=None):
         """Read-only Rating Editor over the active virtual trip (Album). Its
         pictures are the master's shared files, so editing is off for now —
-        this is a viewer (cards, ratings, best-picks, species filter)."""
+        this is a viewer (cards, ratings, best-picks, species filter).
+        `initial_sci` opens straight on that species (the Biota Browser's
+        Edit-panel jump)."""
         from gui.rating_editor import RatingEditorDialog
         virttrip_root = _config.get("virttrip", "virttripbiotadatabase", fallback="")
         if not virttrip_root:
             QMessageBox.warning(self, "Trip Species Viewer",
                                 "No album (Album) is active.")
             return
+        # On a Biota Edit-panel jump: reuse an open Album viewer for THIS album;
+        # replace on a switch. Plain menu-opens keep their old behaviour.
+        existing = self._live_dialog("_virttrip_rating_editor_dlg") if initial_sci else None
+        if existing is not None:
+            if str(getattr(existing, "_trip_root", "")) == str(Path(virttrip_root)):
+                existing.show_species(initial_sci)
+                self._raise_dialog(existing)
+                return
+            existing.close()
         # Strong ref on the main window — see open_rating_editor for the why.
         self._virttrip_rating_editor_dlg = RatingEditorDialog(
-            self, virttrip_root, day_str=None, read_only=True, scope_label="Album")
+            self, virttrip_root, day_str=None, read_only=True, scope_label="Album",
+            initial_sci=initial_sci)
         self._virttrip_rating_editor_dlg.show()
 
     def open_translation_validator(self, day_str):

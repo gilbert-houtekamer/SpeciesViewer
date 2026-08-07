@@ -688,8 +688,23 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
 
     # Panel → host hooks
     def _panel_open_tech(self):
-        self._species_view = "tech"
-        self._render()
+        """Open the more-capable standalone Species Viewer for this species, at
+        this browser's scope (Master / Trip / Album). Replaces the old in-window
+        edit grid: the standalone viewer adds species search, scope/camera
+        filters, colour-delete and the ✦ Species… round-trip — and, for a Trip,
+        it can actually edit (the in-window grid was read-only over a trip repo)."""
+        sci = self._cur
+        mw = self.parent()
+        if not sci or mw is None:
+            return
+        if self._album_from and self._album_to:
+            fn = getattr(mw, "open_virttrip_rating_editor", None)
+        elif self._repo_root:
+            fn = getattr(mw, "open_rating_editor", None)
+        else:
+            fn = getattr(mw, "open_master_species_viewer", None)
+        if fn is not None:
+            fn(initial_sci=sci)
 
     def _panel_open_pretty(self):
         self._species_view = "pretty"
@@ -851,6 +866,16 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
             self._go(sci)
 
     # ── species: inline picture grid ─────────────────────────────────────────
+    def show_species_page(self, sci: str) -> bool:
+        """Navigate to this species' pretty page (used when a standalone viewer's
+        "✦ Species…" reuses an already-open browser). Returns False if the source
+        isn't loaded yet or doesn't carry the species."""
+        if self._source is None or not sci or self._source.node(sci) is None:
+            return False
+        self._species_view = "pretty"
+        self._open_species(sci)
+        return True
+
     def _open_species(self, sci):
         self._push_history()
         self._close_large_view()

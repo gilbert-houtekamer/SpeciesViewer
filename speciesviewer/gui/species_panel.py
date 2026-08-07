@@ -375,7 +375,8 @@ class SpeciesPanel(QWidget):
         mapb.clicked.connect(lambda: host._panel_show_map(self._sci))
         lay.addWidget(mapb)
         tech = QPushButton("✎ Edit panel")
-        tech.setToolTip("Edit these pictures — stars, colour, delete, best-JPG pick")
+        tech.setToolTip("Open the Species Viewer to edit these pictures — "
+                        "stars, colour, delete, best-JPG pick")
         tech.setStyleSheet(self._btn_css(tech=True))
         tech.clicked.connect(host._panel_open_tech)
         lay.addWidget(tech)
