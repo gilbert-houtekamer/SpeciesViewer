@@ -175,9 +175,12 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
 
     def __init__(self, parent, start_mode="tree", *, repo_root=None,
                  scope_title=None, read_only_scope=False, cache_name=None,
-                 album_from=None, album_to=None):
+                 album_from=None, album_to=None, start_sci=None):
         super().__init__(parent)
         self._start_mode = start_mode   # "tree" | "allspecies"
+        # Open straight to this species' pretty page (the Master Species Viewer's
+        # "✦ Species page" link jumps here). Honoured once the source has loaded.
+        self._start_sci = (start_sci or "").strip() or None
         # An album is a date window on the master (album_from/to set): it reads the
         # real master, restricted to the range, rather than a repo of its own.
         self._album_from = album_from
@@ -405,7 +408,14 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
 
         self._scope_label.setText(self._source.scope_label)
         self._cur = self._source.root()
-        if self._start_mode == "allspecies":
+        if self._start_sci and self._source.node(self._start_sci):
+            # Land on the requested species' pretty page (external "✦ Species page"
+            # jump). Falls through to the normal root view if the master doesn't
+            # carry it.
+            self._cur = self._start_sci
+            self._mode = "species"
+            self._species_view = "pretty"
+        elif self._start_mode == "allspecies":
             self._mode = "allspecies"
             self._all_btn.setChecked(True)
         self._render()
@@ -868,7 +878,7 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
                              else self._go(self._source.root()))
         hl.addWidget(back)
         hl.addStretch(1)
-        pretty = QPushButton("✦ Pretty view")
+        pretty = QPushButton("✦ Species page")
         pretty.setCursor(Qt.CursorShape.PointingHandCursor)
         pretty.setToolTip("Back to the species page (hero, grouped photos, siblings)")
         pretty.setStyleSheet(

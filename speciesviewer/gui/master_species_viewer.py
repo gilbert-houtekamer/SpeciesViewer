@@ -40,6 +40,7 @@ class MasterSpeciesViewerDialog(MasterCardMenuMixin, QDialog):
 
     def __init__(self, parent, initial_sci=None):
         super().__init__(parent)
+        self._main_window = parent   # for the "✦ Species page" jump into the Biota Browser
         # When opened from the Biota Browser, jump straight to this species once
         # the master list has loaded (a scientific name, casefolded on use).
         self._initial_sci = (initial_sci or "").strip() or None
@@ -125,13 +126,23 @@ class MasterSpeciesViewerDialog(MasterCardMenuMixin, QDialog):
         self._map_btn.clicked.connect(self._on_show_map)
         top.addWidget(self._map_btn)
 
+        # Jump to this species' pretty page in the Biota Browser (the read-only
+        # twin — hero photo, grouped shots, siblings). Mirrors the Browser's own
+        # click-through into this viewer, in reverse.
+        self._page_btn = QPushButton("✦ Species…")
+        self._page_btn.setToolTip("Open this species' page in the Biota Browser "
+                                  "(hero, grouped photos, siblings)")
+        self._page_btn.clicked.connect(self._open_species_page)
+        top.addWidget(self._page_btn)
+
         self._refresh_btn = QPushButton("↻")
         self._refresh_btn.setToolTip(
             "Re-read this species from the master and repaint.\n"
             "Also ingests any new file rendered into the species folder since the "
             "last look — a fresh DxO JPG is invisible to the master until something "
             "scans for it, which is why a regenerated page can come back unchanged.")
-        self._refresh_btn.setMaximumWidth(32)
+        # A tight max-width was clipping the glyph to a sliver; give it room.
+        self._refresh_btn.setFixedWidth(38)
         self._refresh_btn.clicked.connect(self._on_refresh)
         top.addWidget(self._refresh_btn)
 
@@ -195,8 +206,20 @@ class MasterSpeciesViewerDialog(MasterCardMenuMixin, QDialog):
 
         main_layout.addLayout(top)
 
+        # Biota lineage of the species in view — the same path the Biota Browser
+        # shows above its cards (biota › animalia › … › species). Plain text, not
+        # a link: the "✦ Species page" button is the way into the tree.
+        from gui import theme
+        self._crumb = QLabel("")
+        self._crumb.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._crumb.setStyleSheet(
+            f"color:{theme.INK_SOFT}; font-family:Consolas,monospace; font-size:11px;"
+            f" padding:1px 2px;")
+        self._crumb.setVisible(False)
+        main_layout.addWidget(self._crumb)
+
         self._status = QLabel("Initializing…")
-        self._status.setStyleSheet("color: #555; font-size: 10px;")
+        self._status.setStyleSheet(f"color:{theme.INK_SOFT}; font-size: 10px;")
         main_layout.addWidget(self._status)
 
         # ── Scroll grid (same structure as the Trip viewer) ─────────────────
@@ -602,6 +625,7 @@ class MasterSpeciesViewerDialog(MasterCardMenuMixin, QDialog):
         self._clear_grid()
         self._last_clicked_key = None
         if not self._current_sci:
+            self._update_crumb()
             return
         self._collection.set_species_lang(self._species_lang)
         self._collection.set_jpg_only(self._jpg_only)
@@ -629,7 +653,42 @@ class MasterSpeciesViewerDialog(MasterCardMenuMixin, QDialog):
             self._cards_by_key[item.key] = card
         self._status.setText(
             f"{n} master picture{'s' if n != 1 else ''} for {self._current_display}")
+        self._update_crumb()
         QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
+
+    def _update_crumb(self):
+        """Show the biota lineage of the species in view (biota › animalia › … ›
+        species), or hide the line when nothing is selected."""
+        if not self._current_sci or self._master_db is None:
+            self._crumb.setVisible(False)
+            self._crumb.clear()
+            return
+        try:
+            lineage = self._master_db.taxon_lineage(self._current_sci)
+        except Exception:
+            lineage = {}
+        # taxon_lineage walks Up (leaf→root); reverse to read root→leaf, and lead
+        # with the tree root the Biota Browser shows.
+        rungs = ["biota"] + list(reversed(list(lineage.values())))
+        # De-dupe defensively (root or species could already be present).
+        seen, path = set(), []
+        for r in rungs:
+            r = (r or "").strip()
+            if r and r.lower() not in seen:
+                seen.add(r.lower())
+                path.append(r)
+        self._crumb.setText("  ›  ".join(path))
+        self._crumb.setVisible(bool(path))
+
+    def _open_species_page(self):
+        """Jump to this species' pretty page in the Biota Browser."""
+        if not self._current_sci:
+            self._status.setText("Pick a species first, then open its page.")
+            return
+        mw = self._main_window
+        if mw is None or not hasattr(mw, "open_biota_browser"):
+            return
+        mw.open_biota_browser(start_sci=self._current_sci)
 
     # ── Card interactions (ported from RatingEditorDialog) ─────────────────
     def _on_card_cursor(self, upn_key: str):
