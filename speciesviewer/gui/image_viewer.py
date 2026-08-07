@@ -580,6 +580,10 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         else:
             self.wait_dialog.close()
 
+        # Folders handed to DxO PhotoLab via the large view's "open in DxO" this
+        # session — the focus-in new-render scan is scoped to just these, so it stays
+        # cheap even when the album's pictures are scattered across the whole master.
+        self._pl_touched_folders: set = set()
         QApplication.instance().applicationStateChanged.connect(
             self._on_application_state_changed)
         self._setup_sidecar_watch(image_dir)
@@ -945,6 +949,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             card.card_right_clicked.connect(self._on_card_context_menu)
             card.status_clicked.connect(self._open_species_dialog)
             card.notes_clicked.connect(self._edit_headline_description)
+            card.render_clicked.connect(self._register_pending_render)
             self.grid_layout.addWidget(card, r, col, 1, span)
             self._cards.append(card)
             self._cards_by_key[item.key] = card
@@ -1047,6 +1052,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         dlg.picture_navigated.connect(self._on_large_view_navigated)
         dlg.selection_changed.connect(self._on_large_view_selection_changed)
         dlg.species_committed.connect(self.refresh_after_species_change)
+        dlg.dxo_launched.connect(self._on_dxo_launched)
         dlg.delete_requested.connect(
             lambda ks, d=dlg: self._on_large_view_delete(d, ks))
         self._large_view = dlg
@@ -2026,6 +2032,59 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         if state == Qt.ApplicationState.ApplicationActive:
             self._refresh_no_gps_from_disk()
             self.refresh_from_disk()   # culling viewer: pick up PhotoLab/LR colour edits
+            # Auto-notice a fresh render: on returning to the app (typically after a
+            # DxO/LR session), scan the folders you handed to PhotoLab this session
+            # for a JPG the master doesn't track yet, and badge those cards. Scoped
+            # to PL-touched folders so it stays cheap; a no-op when you didn't use
+            # the "open in DxO" link (the manual "➕ Add new renders" scan still
+            # covers that case).
+            self._scan_pending_renders(self._pl_touched_folders)
+
+    def _on_dxo_launched(self, raw_path: str):
+        """The large view opened this RAW in DxO PhotoLab — remember its folder so
+        the next focus-in scan checks it for the render that comes back."""
+        try:
+            folder = Path(raw_path).parent
+        except (TypeError, ValueError):
+            return
+        self._pl_touched_folders.add(
+            os.path.normcase(os.path.normpath(str(folder))))
+
+    def _scan_pending_renders(self, folders=None):
+        """Run the master new-render detector over `folders` (None = every loaded
+        picture) and repaint any card whose badge state changed. Silent + free on a
+        collection with no master bound (pending_renders returns {})."""
+        coll = self._collection
+        if coll is None or not hasattr(coll, "pending_renders"):
+            return
+        before = set(getattr(coll, "_pending_renders", {}))
+        try:
+            pend = coll.pending_renders(only_folders=folders)
+        except Exception as e:
+            logger.warning(f"pending-render scan failed: {e}")
+            return
+        after = set(pend)
+        for k in before | after:
+            card = self._cards_by_key.get(k)
+            if card:
+                card.refresh()
+        gained = after - before
+        if gained:
+            total = sum(len(pend[k]) for k in gained)
+            logger.info(f"Noticed {total} new render(s) awaiting registration "
+                        f"in {len(gained)} picture(s).")
+
+    def _register_pending_render(self, key: str):
+        """The amber ➕ badge was clicked — register the untracked render(s) into the
+        master via the same journalled add the card menu uses, then re-scan that one
+        folder so the badge clears (or stays, if the add was blocked)."""
+        if not (getattr(self, "_master_ops_enabled", False)
+                and not self._collection.master_read_only):
+            return
+        self._do_master_add(key)   # add + checkpoint + recompute Rate + rebuild grid
+        folder = self._collection._folder_for_stem(key)
+        if folder:
+            self._scan_pending_renders({folder})
 
     # ── Batch delete by colour ───────────────────────────────────────────────
     def _color_delete_trash_root(self):

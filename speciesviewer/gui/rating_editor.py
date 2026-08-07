@@ -367,6 +367,7 @@ class PictureCard(QFrame):
     card_right_clicked = pyqtSignal(str)  # key — right click → context menu
     status_clicked = pyqtSignal(str)      # key — status icon clicked → open SpeciesInfoDialog
     notes_clicked = pyqtSignal(str)       # key — 📝 clicked → open Headline/Description editor
+    render_clicked = pyqtSignal(str)      # key — amber ➕ clicked → register new render in master
 
     def __init__(self, item: PictureItem, card_width: int, parent=None,
                  *, show_status: bool = False, show_kind_tag: bool = False,
@@ -684,8 +685,7 @@ class PictureCard(QFrame):
         # not — it's just a marker).
         self._lbl_crop.setTextInteractionFlags(
             Qt.TextInteractionFlag.LinksAccessibleByMouse)
-        self._lbl_crop.linkActivated.connect(
-            lambda _h: self.notes_clicked.emit(self.upn_key))
+        self._lbl_crop.linkActivated.connect(self._on_crop_link)
         key_row.addWidget(self._lbl_crop, 0,
                           Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
         ml.addLayout(key_row)
@@ -795,9 +795,27 @@ class PictureCard(QFrame):
                              ' title="Edit headline / description">📝</a>')
             else:
                 marks.append("📝")   # read-only host: an indicator, not a link
+        # A fresh DxO/LR render is sitting on disk that the master doesn't track yet
+        # (found by the focus-in scan). A "+ JPG" link in the same green as the JPG
+        # file token — reads as "add the JPG" — → registers it in the master.
+        if getattr(self._item, "has_pending_render", False):
+            names = getattr(self._item, "pending_render_names", []) or []
+            plural = "s" if len(names) != 1 else ""
+            marks.append(
+                f'<a href="render" style="color:#2e7d32;text-decoration:none;'
+                f'font-weight:700;" title="New render{plural} on disk, not in the '
+                f'master yet — click to add">+ JPG</a>')
         self._lbl_crop.setText("&nbsp;&nbsp;".join(marks))
         self._lbl_crop.setToolTip("This picture carries a crop" if getattr(
             self._item, "has_crop", False) else "")
+
+    def _on_crop_link(self, href: str):
+        """Route the two links that can appear on the filename line: the 📝 notes
+        link and the amber ➕ new-render link (both live on _lbl_crop)."""
+        if href == "render":
+            self.render_clicked.emit(self.upn_key)
+        else:
+            self.notes_clicked.emit(self.upn_key)
 
     def _notes_editable(self) -> bool:
         return (getattr(self._item, "can_edit_headline", False)

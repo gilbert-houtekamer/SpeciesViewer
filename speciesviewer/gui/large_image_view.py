@@ -744,6 +744,7 @@ class LargeImageView(QDialog):
     picture_image_changed = pyqtSignal(str)  # key — the IMAGE changed (a crop) → host re-decodes the card
     picture_navigated = pyqtSignal(str)  # key — emitted when ←/→ moves to a new picture
     species_committed = pyqtSignal(set)  # upns — emitted after a species commit in the panel
+    dxo_launched      = pyqtSignal(str)  # raw path — opened in DxO; host watches its folder for the render
     selection_changed = pyqtSignal(set)  # keys — emitted whenever filmstrip selection changes
     delete_requested  = pyqtSignal(set)  # keys — right-click Delete on a filmstrip cell
 
@@ -1905,7 +1906,23 @@ class LargeImageView(QDialog):
         # FILE
         self._file_key_lbl.setText(item.key)
         exts = item.file_exts
-        self._file_exts_lbl.setText("  ·  ".join(exts) if exts else "")
+        # A pending render (a JPG on disk the master hasn't registered yet) tints
+        # the JPG token amber, so the cue is visible here too — not only on the grid
+        # card. Purely derived from item state, so it clears itself once the render
+        # is registered (and never persists past this window).
+        if exts and getattr(item, "has_pending_render", False):
+            toks = ("JPG",) if "JPG" not in exts else ()
+            toks = list(exts) + list(toks)
+            html = "  ·  ".join(
+                '<span style="color:#b4530b;font-weight:700;">JPG</span>'
+                if e == "JPG" else e for e in toks)
+            self._file_exts_lbl.setText(html)
+            self._file_exts_lbl._v.setToolTip(
+                "This JPG render isn't in the master yet — add it from the grid "
+                "card's “+ JPG”.")
+        else:
+            self._file_exts_lbl.setText("  ·  ".join(exts) if exts else "")
+            self._file_exts_lbl._v.setToolTip("")
         self._file_exts_lbl.setVisible(bool(exts))
         dir_path = self._collection.file_directory(key)
         # Full filename (dir + UPN + file-types) on hover — the header shows the
@@ -2698,6 +2715,9 @@ class LargeImageView(QDialog):
         raw = self._collection.raw_path(self._item.key)
         if not raw:
             return
+        # Tell the host we're about to render here — its focus-in scan will check
+        # this folder for the JPG that comes back and offer to add it to the master.
+        self.dxo_launched.emit(str(raw))
         if sys.platform.startswith("win"):
             if open_path(raw):
                 return

@@ -225,6 +225,17 @@ class SidecarItem(PictureItem):
         # culling is not read-only and its pictures are not yet in the master.)
         return self._c.readonly
 
+    @property
+    def has_pending_render(self) -> bool:
+        """True when a JPG render sits on disk beside this master picture that the
+        master hasn't registered yet — drives the amber ➕ 'new render' card badge.
+        Always False on a plain culling/trip day (nothing bound to register into)."""
+        return bool(self._c.pending_render_for(self._stem))
+
+    @property
+    def pending_render_names(self) -> list:
+        return self._c.pending_render_for(self._stem)
+
     # read fields
     @property
     def species(self) -> str:
@@ -418,6 +429,10 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         self._master_keys: set = set()
         self._master_upn: dict = {}
         self._master_files: dict = {}
+        # {upn: [render filenames]} for master pictures with a JPG render on disk
+        # the master doesn't track yet — filled by pending_renders() on a focus-in
+        # scan, read by SidecarItem.has_pending_render for the amber ➕ card badge.
+        self._pending_renders: dict[str, list] = {}
         self._cache_root = Path(cache_root) if cache_root else None
         self._loader = loader or AsyncImageLoader()
         # Group input picture files by their unique-picture name. Using
@@ -1141,6 +1156,60 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         self._master_files = {r["File:FileName"]: r for r in file_rows
                               if r.get("File:FileName")}
         self._master_keys = set(self._master_upn)
+
+    # ── new-render detector (focus-in "Auto-notice new renders") ──────────────
+    def _folder_for_stem(self, stem: str) -> str:
+        """Normalised on-disk folder of a group's picture — the folder a DxO/LR
+        render lands in. Matches the PhotoLab-launch folder the host records, so a
+        scan can be scoped to just the folders you actually rendered into."""
+        g = self._groups.get(stem, {})
+        src = g.get("raw") or g.get("xmp") or g.get("jpg")
+        if not src:
+            return ""
+        return os.path.normcase(os.path.normpath(str(Path(src).parent)))
+
+    def pending_renders(self, only_folders=None) -> dict:
+        """{upn: [render filenames]} for master pictures whose species folder holds
+        a JPG render the master doesn't track yet — the read-only detector behind the
+        amber ➕ badge, sharing the exact logic of the manual "➕ Add new renders"
+        scan (db.master_mutate.untracked_renders_for_upns).
+
+        Only meaningful when the album's master inventory is bound and editable;
+        returns {} otherwise (a plain culling/trip day has no master to register
+        into). `only_folders`, when given, restricts the scan to pictures living in
+        those folders — the PhotoLab-launch scoping that keeps a focus-in scan cheap
+        and, being additive, merges onto the previously-found set rather than
+        replacing it. Result is cached for pending_render_for()."""
+        if (not self._master_db or self.master_read_only or not self._master_keys):
+            self._pending_renders = {}
+            return self._pending_renders
+        upns = set(self._master_keys)
+        if only_folders is not None:
+            wanted = {os.path.normcase(os.path.normpath(str(f))) for f in only_folders}
+            upns = {u for u in upns if self._folder_for_stem(u) in wanted}
+        if not upns:
+            # A scoped scan of nothing leaves earlier findings intact (merge over an
+            # empty set); an unscoped scan of nothing means no master pictures at all.
+            if only_folders is None:
+                self._pending_renders = {}
+            return self._pending_renders
+        from db.master_mutate import untracked_renders_for_upns
+        try:
+            hits = untracked_renders_for_upns(self._master_db, self._master_root, upns)
+        except Exception as e:
+            logger.warning(f"pending-render scan failed: {e}")
+            return self._pending_renders
+        cache = {} if only_folders is None else dict(self._pending_renders)
+        for u in upns:                       # refresh exactly the folders we scanned
+            if hits.get(u):
+                cache[u] = hits[u]
+            else:
+                cache.pop(u, None)
+        self._pending_renders = cache
+        return self._pending_renders
+
+    def pending_render_for(self, key: str) -> list:
+        return self._pending_renders.get(key, [])
 
     # ── Sex / age / plumage qualifier (album day viewer) ──────────────────────
     # The album's pictures ARE the master's, so their FORM (a property of the
