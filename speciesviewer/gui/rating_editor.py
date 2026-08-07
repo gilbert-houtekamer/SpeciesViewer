@@ -1198,6 +1198,9 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # opens just attach to the existing DB.
         self._master_db = None    # qt.db.master_db.MasterDB | None
         self._master_root: str | None = None
+        self._main_window = parent   # for the "✦ Species…" jump into the Biota Browser
+        self._name_to_sci: dict[str, str] = {}   # combo display name → scientific name
+        self._lineage_db_obj = "unset"   # cached DB for the breadcrumb (lazy)
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(6, 6, 6, 4)
@@ -1291,6 +1294,14 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._map_btn.setToolTip("Plot the shown pictures of this species on a map")
         self._map_btn.clicked.connect(self._on_show_map)
         top.addWidget(self._map_btn)
+
+        # Jump to this species' pretty page in the Biota Browser (the read-only
+        # twin — hero photo, grouped shots, siblings), at the trip/album level.
+        self._page_btn = QPushButton("✦ Species…")
+        self._page_btn.setToolTip("Open this species' page in the Biota Browser "
+                                  "(hero, grouped photos, siblings)")
+        self._page_btn.clicked.connect(self._open_species_page)
+        top.addWidget(self._page_btn)
         top.addStretch()
 
         self._jpg_btn = QPushButton("JPG only")
@@ -1353,6 +1364,17 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             self._del_purple_btn.hide()
 
         main_layout.addLayout(top)
+
+        # Biota lineage of the species in view — the same path the Biota Browser
+        # shows above its cards (biota › … › species). Plain text, not a link: the
+        # "✦ Species…" button is the way into the tree.
+        self._crumb = QLabel("")
+        self._crumb.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._crumb.setStyleSheet(
+            f"color:{_INK_SOFT}; font-family:Consolas,monospace; font-size:11px;"
+            f" padding:1px 2px;")
+        self._crumb.setVisible(False)
+        main_layout.addWidget(self._crumb)
 
         # Committed-day lock banner (frozen day / some frozen pictures). Hidden
         # until a load resolves the frozen state (see _apply_lock_ui).
@@ -1800,12 +1822,16 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # Master pictures never count: this is about the trip's own readiness.
         names: set[str] = set()
         trip_has_jpg: dict[str, bool] = {}   # species name → ≥1 trip JPG on disk
+        self._name_to_sci = {}               # display name → scientific name
         col = self._collection
         for upn_key, upn_row in self.fpr.upn.UniquePictureName_dict.items():
             name = self._species_name(upn_row)
             if not name:
                 continue
             names.add(name)
+            sci = (upn_row.get("WetSoortNaam") or "").strip()
+            if sci:
+                self._name_to_sci.setdefault(name, sci)
             if col is not None and not col.is_master(upn_key):
                 if not trip_has_jpg.get(name) and col.jpg_path(upn_key) is not None:
                     trip_has_jpg[name] = True
@@ -1872,6 +1898,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         if filter_name is None:
             n_species = self._species_combo.count() - 1  # subtract placeholder
             self._status.setText(f"{n_species} species loaded — select one to view pictures.")
+            self._update_crumb()
             return
         self._collection.set_species_lang(self._species_lang)
         self._collection.set_jpg_only(self._jpg_only)
@@ -1907,7 +1934,90 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         suffix = f" for {filter_name}" if filter_name else ""
         self._status.setText(f"{n} picture{'s' if n != 1 else ''}{suffix}")
         self._update_selection_display()
+        self._update_crumb()
         QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
+
+    def _current_sci(self) -> str:
+        """Scientific name of the species selected in the combo, or ''."""
+        name = self._species_combo.currentData()
+        if not name:
+            return ""
+        return self._name_to_sci.get(name, "")
+
+    def _lineage_db(self):
+        """A MasterDB for the breadcrumb lineage, opened lazily and cached.
+
+        Trip → the trip's own repo (matches the Trip Biota Browser and covers
+        trip-only species); Album → the real master (an album's pictures ARE
+        master files). Returns None when nothing is configured/available."""
+        if self._lineage_db_obj != "unset":
+            return self._lineage_db_obj
+        self._lineage_db_obj = None
+        try:
+            from db.master_db import MasterDB
+            if self._read_only:
+                root = _config.get("master", "masterbiotadatabase", fallback="").strip()
+                cache = None
+            else:
+                root = (_config.get("trip", "tripbiotadatabase", fallback="")
+                        or _config.get("repository", "biotadatabase", fallback="")
+                        ).replace('"', "").replace("'", "").strip()
+                import hashlib
+                cache = ("trip_" + hashlib.sha1(root.encode("utf-8")).hexdigest()[:12]
+                         if root else None)
+            if root and Path(root).exists():
+                QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+                try:
+                    db = MasterDB(root, cache_name=cache)
+                    db.ensure_fresh()   # first cold build ~2-6s, then cached
+                    self._lineage_db_obj = db
+                finally:
+                    QApplication.restoreOverrideCursor()
+        except Exception as e:
+            logger.warning(f"lineage DB open failed: {e}", exc_info=True)
+            self._lineage_db_obj = None
+        return self._lineage_db_obj
+
+    def _update_crumb(self):
+        """Show the biota lineage of the species in view (biota › … › species),
+        or hide the line when nothing is selected."""
+        sci = self._current_sci()
+        db = self._lineage_db() if sci else None
+        if not sci or db is None:
+            self._crumb.setVisible(False)
+            self._crumb.clear()
+            return
+        try:
+            lineage = db.taxon_lineage(sci)
+        except Exception:
+            lineage = {}
+        # taxon_lineage walks Up (leaf→root); reverse to read root→leaf, and lead
+        # with the tree root the Biota Browser shows.
+        rungs = ["biota"] + list(reversed(list(lineage.values())))
+        seen, path = set(), []
+        for r in rungs:
+            r = (r or "").strip()
+            if r and r.lower() not in seen:
+                seen.add(r.lower())
+                path.append(r)
+        self._crumb.setText("  ›  ".join(path))
+        self._crumb.setVisible(bool(path))
+
+    def _open_species_page(self):
+        """Jump to this species' pretty page in the Biota Browser, at the
+        trip/album level (a fresh browser — any prior scope/day state is not
+        preserved, by design)."""
+        sci = self._current_sci()
+        if not sci:
+            self._status.setText("Pick a species first, then open its page.")
+            return
+        mw = self._main_window
+        if mw is None:
+            return
+        opener = "open_album_biota_browser" if self._read_only else "open_trip_biota_browser"
+        fn = getattr(mw, opener, None)
+        if fn is not None:
+            fn(start_sci=sci)
 
     # ── Event handlers ────────────────────────────────────────────────────────
 

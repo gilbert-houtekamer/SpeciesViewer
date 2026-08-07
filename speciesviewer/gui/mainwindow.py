@@ -1419,11 +1419,12 @@ class MainWindow(QMainWindow):
             self, start_mode=start_mode, start_sci=start_sci)
         self._biota_browser_dlg.show()
 
-    def open_trip_biota_browser(self):
+    def open_trip_biota_browser(self, start_sci=None):
         """Biota Browser over the ACTIVE TRIP's repository (read-only). A trip repo
         is master-shaped, so it browses through the same MasterBiotaSource — with
         its own SQLite cache (never touching master.db) and no editing (that stays
-        in the authorized Tech panels)."""
+        in the authorized Tech panels). `start_sci` opens straight onto a species'
+        pretty page (the Trip Species Viewer's "✦ Species…" jump)."""
         import hashlib
         from gui.biota_browser import BiotaBrowserDialog
         trip_root = (_config.get("trip", "tripbiotadatabase", fallback="")
@@ -1438,13 +1439,15 @@ class MainWindow(QMainWindow):
         # Strong ref on the main window — see open_rating_editor for the why.
         self._trip_biota_browser_dlg = BiotaBrowserDialog(
             self, repo_root=trip_root, scope_title=f"Trip · {name}",
-            read_only_scope=True, cache_name=cache)
+            read_only_scope=True, cache_name=cache, start_sci=start_sci)
         self._trip_biota_browser_dlg.show()
 
-    def open_album_biota_browser(self):
+    def open_album_biota_browser(self, start_sci=None):
         """Biota Browser over the ACTIVE ALBUM (read-only). An album is a live date
         window on the master (no stored data of its own), so this reads the REAL
-        master restricted to the album's fromdate..todate (from its virttrip.ini)."""
+        master restricted to the album's fromdate..todate (from its virttrip.ini).
+        `start_sci` opens straight onto a species' pretty page (the Album Species
+        Viewer's "✦ Species…" jump)."""
         import configparser
         from gui.biota_browser import BiotaBrowserDialog
         album_root = _config.get("virttrip", "virttripbiotadatabase",
@@ -1472,7 +1475,7 @@ class MainWindow(QMainWindow):
         # Strong ref on the main window — see open_rating_editor for the why.
         self._album_biota_browser_dlg = BiotaBrowserDialog(
             self, scope_title=f"Album · {name}", read_only_scope=True,
-            album_from=fromdate, album_to=todate)
+            album_from=fromdate, album_to=todate, start_sci=start_sci)
         self._album_biota_browser_dlg.show()
 
     def open_species_map(self):
