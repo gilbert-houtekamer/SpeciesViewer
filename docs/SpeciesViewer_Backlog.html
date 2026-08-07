@@ -190,7 +190,22 @@ reads <em>No current work planned</em>.</p>
 
 <!-- ============================================================ -->
 <h2>8. Viewer Convergence</h2>
-<p class="none">No current work planned. Complete — see <em>Capabilities Added</em>.</p>
+<p class="none">Complete — see <em>Capabilities Added</em>. One engineering follow-up parked below.</p>
+<h3>Parked (by design)</h3>
+<ul>
+  <li><span class="tag-parked">PARKED</span> <strong>Large-viewer calling consolidation</strong> —
+    the five call sites that open <code>LargeImageView</code> (culling grid, Trip &amp; Master
+    viewers, Biota Browser, map&nbsp;&times;2) each repeat the same ~8-line single-instance
+    lifecycle: close any open view, snapshot the grid's keys, construct, store the ref, connect
+    <code>finished</code>, show. Consolidating would give one place to fix that lifecycle and a home
+    for the deferred no-GPS-tray <em>“Open in large viewer”</em>. <strong>Deferred because the
+    divergence around that core is real</strong> — per-host <code>settings_key</code>, which signals
+    each host connects, post-close behaviour (repaint-all vs re-sort), grid-vs-map key source — so a
+    single shared entry point risks a config-heavy passthrough that hides the differences, for low
+    value while everything works. <strong>Do it when a 6th caller forces it</strong> (that no-GPS-tray
+    action is the natural trigger), and keep it to a tiny mixin owning only the mechanical lifecycle,
+    leaving each host's signal wiring explicit. Full analysis in the dev notes.</li>
+</ul>
 
 <!-- ============================================================ -->
 <h2>9. Usability &amp; Polish</h2>
@@ -202,6 +217,14 @@ reads <em>No current work planned</em>.</p>
 </ul>
 <h3>Parked (by design)</h3>
 <ul>
+  <li><span class="tag-parked">PARKED</span> <strong>SpeciesInfoPanel deep restyle</strong> — the
+    species editor's fonts &amp; labels were already brought to the Biota look (mono micro-labels,
+    chip recents) in the card-restyle epic; what remained was pure layout <em>density</em> (collapse
+    Sex/Age/Plumage to one tighter row, tighten Suggest/Validate/Commit, compact the recents grid).
+    Deferred as cosmetic-only — it reads cleanly today and the laptop-fit concern was already handled
+    in ch.15. Reopen only on a concrete annoyance (doesn't fit / feels clunky). <em>Good is good
+    enough.</em> (The sibling culling <code>CullingSpeciesWidget</code> popup DID get the Biota
+    restyle — that was the real gap.)</li>
   <li><span class="tag-parked">PARKED</span> Preview cards don't resize live.</li>
   <li><span class="tag-parked">WATCH</span> Translation edge cases — editing a source text orphans an override.</li>
   <li><span class="tag-parked">DEFERRED</span> User-configurable cache locations.</li>
