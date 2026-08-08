@@ -165,7 +165,41 @@ reads <em>No current work planned</em>.</p>
 
 <!-- ============================================================ -->
 <h2>4. Trip-to-Master Pipeline</h2>
-<p class="none">No current work planned. Complete — see <em>Capabilities Added</em>.</p>
+<h3>To do</h3>
+<ul>
+  <li><strong>Give the older trips their baseline back</strong> <span class="tag-open">OPEN</span> —
+    trips created before this feature (Greece and everything earlier) have no frozen species list,
+    so their lifer count is judged against the master <em>as it is today</em> and the report says so
+    in plain words. The master keeps dated snapshots of its own species list
+    (<code>metadata/active/backup/&lt;date&gt;_species.csv</code>), so each old trip can be given a
+    correct <em>retroactive</em> baseline from the snapshot nearest its creation date. Same work
+    package: warn on <em>Retire Trip</em> when a trip is about to be deleted without an archived
+    verdict.</li>
+</ul>
+<h3>Done</h3>
+<ul>
+  <li><strong>New species stay countable after the master is updated</strong>
+    <span class="tag-shipped">SHIPPED</span> —
+    <em>Count Species</em> tells you which species on a trip were new to you, by comparing the trip
+    against the master's species list. That only ever worked because the merge into the master
+    happened once, at the end, <em>after</em> you had read the report: the moment the trip's pictures
+    are in the master, its species are in the master's list and every new species silently stops
+    counting as new. Nothing recorded what the answer had been. Now the master's species list is
+    <strong>frozen into the trip when the trip is created</strong>, and Count Species judges against
+    that frozen list, so the verdict survives any number of later updates. The report states which
+    list it used and how much of the trip it covers — an unfrozen verdict never looks like a frozen
+    one, and a day that was never summarized is named rather than quietly contributing nothing.</li>
+  <li><strong>The trip's species verdict now outlives the trip</strong>
+    <span class="tag-shipped">SHIPPED</span> —
+    <em>Merge Pictures into Master</em> starts by counting species and storing the result in the
+    master: the full report, the species list it was judged against, and a row in
+    <code>admin/trip_species_summary.csv</code> (species seen, new species, dates). It runs first
+    because that is the last moment the master is still free of the trip, and it goes into the master
+    because the trip itself does not survive — retiring a trip deletes its whole repository, and
+    resetting one clears the day summaries the report is built from. "How many new species did that
+    trip give me?" is now a question you can still answer years later, for every trip, without
+    opening a single text file.</li>
+</ul>
 
 <!-- ============================================================ -->
 <h2>5. SmallMaster</h2>
