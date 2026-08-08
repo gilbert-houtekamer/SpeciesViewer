@@ -25,6 +25,14 @@ class _LogEmitter(QObject):
 # The queued signal/slot connection handles cross-thread delivery: when emit()
 # is called from a worker thread, the message is posted to the main thread's
 # event loop and appears in real-time.
+# The log console paints on LOG_BG (a green panel), so the highlight colours have
+# to come from the theme: literal "blue" on the dark theme's LOG_BG was unreadable.
+try:
+    from gui.theme import WARN as _WARN, ALERT as _ALERT
+except Exception:      # theme unavailable (headless batch run) — sane fallbacks
+    _WARN, _ALERT = "#b45309", "#b91c1c"
+
+
 class LogHandler(logging.Handler):
     def __init__(self, log_widget):
         super().__init__()
@@ -38,9 +46,9 @@ class LogHandler(logging.Handler):
         safe = html.escape(msg)
 
         if "may have a typo" in msg or "correct it" in msg or "GPS missing" in msg:
-            safe = f'<span style="color:red;"><b>{safe}</b></span>'
+            safe = f'<span style="color:{_ALERT};"><b>{safe}</b></span>'
         elif record.levelno == logging.WARNING:
-            safe = f'<span style="color:blue;"><b>{safe}</b></span>'
+            safe = f'<span style="color:{_WARN};"><b>{safe}</b></span>'
 
         try:
             self._emitter.sig.emit(safe)

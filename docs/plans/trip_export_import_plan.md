@@ -1,6 +1,25 @@
 # SpeciesViewer — Export / Import a Trip
 
-A design note. Status: **PLANNED — not built.**
+A design note. Status: **BUILT — export verified in the GUI, import not yet tested.**
+
+- Phases 1–4 implemented: `engine/trip_transfer.py` (what travels and how it
+  lands), `batch/svr6ExportTrip.py`, `ExportTripDialog` + `ImportTripDialog` in
+  `gui/trip_process.py`, menu entries under **Trips**, and a `trip_restore_mode`
+  flag in `sv1MakeReposity` + `utils/batch_config.py`.
+- Verified headlessly: export → clean import → update import; a species added in
+  the field survives the return leg; a hand-`verified` translation is never
+  downgraded; replaced files land in `.trash`.
+- Export verified in the GUI. **Import is untested end to end**; so is the
+  publication pull, which needs a published trip and a live connection.
+
+Two things the build changed:
+
+- `sv1MakeReposity` rewrites the master's shared `trip_admin.csv` on EVERY run,
+  via `initMasterAndTrip(inittrip=True)` → `readAndWriteTripAdmin`. That is D6's
+  hazard, and it fires on ordinary Create Trip too. Restore mode passes
+  `inittrip=False`.
+- The species "replaced" count excludes `Leaves`, which is rebuilt on read —
+  otherwise adding one field species reports every ancestor as replaced.
 
 Companion to `menu_reorg_plan.md`. Prior art that this deliberately copies:
 `batch/svv7ExportVirtualTrip.py` + `ImportVirtualTripDialog`

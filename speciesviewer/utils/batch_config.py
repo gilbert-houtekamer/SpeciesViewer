@@ -78,6 +78,17 @@ def generate_svconfig_ini(svconfig_path="svconfig.ini", master_mode=False,
     cfg["utilities"] = {
         "smallmaster_target": _config.get("utilities", "smallmaster_target", fallback=""),
         "virttrip_export_target": _config.get("utilities", "virttrip_export_target", fallback=""),
+        "trip_export_target": _config.get("utilities", "trip_export_target", fallback=""),
+        # "This repository is being RESTORED from a transfer ZIP, not created
+        # fresh." Two things must then not happen (see D4/D6 in the plan):
+        #   - no seeding of speciescollection/lifer baseline from this machine's
+        #     master — the ZIP carries the trip's own, and a laptop's master is
+        #     partial, so a fresh baseline would turn known species into lifers;
+        #   - no write to the master's shared trip_admin.csv — it lists EVERY
+        #     published trip, and a machine that only knows some of them must
+        #     never author it.
+        # Default "no" = today's Create Trip behaviour, unchanged.
+        "trip_restore_mode": _config.get("utilities", "trip_restore_mode", fallback="no"),
     }
 
     try:

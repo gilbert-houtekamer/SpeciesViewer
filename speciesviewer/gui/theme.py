@@ -40,7 +40,7 @@ _LIGHT = dict(
     ACCENT_INK="#ffffff", ACCENT_INK_SOFT="#2f3f29",
     DONE_FG="#2f7d43", DONE_BG="#e6f1e8", READY_FG="#2563a8", READY_BG="#e4eef8",
     LOCKED_FG="#7a8172", LOCKED_BG="#f0f2ec", LOCKED_BORDER="#c9d0be",
-    GATE_FG="#2f9e57", GATE_BG="#e7f4ec", WARN="#b45309",
+    GATE_FG="#2f9e57", GATE_BG="#e7f4ec", WARN="#b45309", ALERT="#b91c1c",
     ACTIVE_BG="#fff8d2", ACTIVE_BORDER="#e6dfa8", LOG_BG="#d0f0c0", LOG_INK="#2b3b22",
     PANEL_BG="#f9f9f9", ACTIVE_FG="#800080",  # current trip/album/day in the nav list
 )
@@ -57,7 +57,7 @@ _DARK = dict(
     ACCENT_INK="#f3f6ee", ACCENT_INK_SOFT="#d6e2ca",
     DONE_FG="#6cc084", DONE_BG="#2e3d31", READY_FG="#6fb0e8", READY_BG="#29394a",
     LOCKED_FG="#9aa28d", LOCKED_BG="#3a3d35", LOCKED_BORDER="#52564a",
-    GATE_FG="#63c98a", GATE_BG="#2e3d31", WARN="#e0954a",
+    GATE_FG="#63c98a", GATE_BG="#2e3d31", WARN="#e0954a", ALERT="#ff8a75",
     ACTIVE_BG="#3f3a22", ACTIVE_BORDER="#605826", LOG_BG="#30402b", LOG_INK="#c4dfb2",
     PANEL_BG="#303229", ACTIVE_FG="#e3c766",  # readable warm gold (darkMagenta was unreadable on dark)
 )
@@ -95,6 +95,9 @@ LOCKED_BORDER = _T["LOCKED_BORDER"]
 GATE_FG = _T["GATE_FG"]
 GATE_BG = _T["GATE_BG"]
 WARN = _T["WARN"]
+ALERT = _T["ALERT"]   # something the user must act on — brighter than WARN. Both
+                      # are picked to stay readable on LOG_BG, where the log
+                      # console prints them (plain "blue"/"red" did not).
 
 # Kept as deliberate accents — the "active" trip/album panel (yellow) and the
 # log console (green) are intentional per the original ch.15 backlog note.

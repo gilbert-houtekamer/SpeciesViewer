@@ -12,7 +12,8 @@ from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDial
         AddTripToMasterDialog, MasterPipelineDialog, MasterRebuildWebsiteDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
         TestbedDialog, BlogAdminDialog, ManageTripsDialog, PhotoMechanicDialog,
-        RescanMasterCacheDialog, SmallMasterDialog, InstallSmallMasterDialog)
+        RescanMasterCacheDialog, SmallMasterDialog, InstallSmallMasterDialog,
+        ExportTripDialog, ImportTripDialog)
 from gui.virttrip_process import (VirtualTripCreationDialog,
                                    VirttripWriteBlogDialog, VirttripRedoBlogDialog,
                                    VirttripBuildWebsiteDialog,
@@ -51,6 +52,7 @@ import batch.svMasterRebuildWeb
 import batch.svr2CountSpecies
 import batch.svr4UpdateTrips
 import batch.svr5MergeSpeciesCollections
+import batch.svr6ExportTrip
 import batch.svr7ArchiveVerdict
 import batch.svr8RecreateTripRepository
 import batch.svr9RedoBlog
@@ -819,6 +821,25 @@ def build_menu_spec(main_window):
     install_small_master = MenuSpec(
         callback=lambda: InstallSmallMasterDialog(main_window).exec(),
         title="Install Small Master Database",
+    )
+
+    export_trip = MenuSpec(
+        callback=None,
+        title="Export Trip",
+        enabled=has_active_trip,
+        showsubdirectory=False,
+        batch_parms={
+            'statusname': "",
+            'module_called': batch.svr6ExportTrip.main,
+            'before_msg': "Zipping the trip's settings, species list and translations...",
+            'after_msg': "✅ Trip export complete.",
+        }
+    )
+    export_trip.callback = lambda: ExportTripDialog(main_window, export_trip).exec()
+
+    import_trip = MenuSpec(
+        callback=lambda: ImportTripDialog(main_window).exec(),
+        title="Import Trip",
     )
 
     export_virttrip = MenuSpec(
@@ -1594,6 +1615,11 @@ def build_menu_spec(main_window):
         },
         "Trips": {
             "Create Trip": trip_create,
+            # Carrying a trip between machines is the other way to get one here:
+            # prepare it on the big machine, import it on the laptop, export it
+            # back when you come home.
+            "Export Trip…": export_trip,
+            "Import Trip…": import_trip,
             f"{MenuSpec.separator()}_setup0": None,
             "Read SD-cards": read_sdcard,
             f"{MenuSpec.separator()}_setup": None,

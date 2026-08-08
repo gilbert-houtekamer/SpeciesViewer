@@ -3100,8 +3100,12 @@ class ManageTripsDialog(QDialog):
         layout.addWidget(self.status_label)
 
         btn_layout = QHBoxLayout()
+        from gui import theme as _theme
         self.remove_btn = QPushButton("Remove from Publication")
-        self.remove_btn.setStyleSheet("QPushButton { color: #a00; font-weight: bold; }")
+        # Destructive-action red from the theme: the hardcoded dark red was
+        # barely legible against the dark theme's button surface.
+        self.remove_btn.setStyleSheet(
+            f"QPushButton {{ color: {_theme.ALERT}; font-weight: bold; }}")
         self.remove_btn.clicked.connect(self.on_remove)
         self.remove_btn.setEnabled(False)
         btn_layout.addWidget(self.remove_btn)
@@ -4261,6 +4265,399 @@ class SmallMasterDialog(QDialog):
         _config["utilities"]["smallmaster_target"] = target
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec)
+
+
+class ExportTripDialog(QDialog):
+    """Zip the active trip's admin for transfer to another machine.
+
+    Kilobytes, not gigabytes: trip.ini, the two trip images, the species
+    collection, the lifer baseline, the trip's own translation cache and a
+    manifest. The pictures move separately with an OS copy — this dialog names
+    the folder to copy, so that step cannot be guessed wrong."""
+
+    def __init__(self, parent, menu_spec):
+        super().__init__(parent)
+        self.setWindowTitle("Export Trip")
+        self.resize(700, 400)
+        self.menu_spec = menu_spec
+        self.logger = logging.getLogger("speciesviewer")
+        self.passed_parent = parent
+
+        trip_root = _config.get("trip", "tripbiotadatabase", fallback="")
+
+        layout = QVBoxLayout(self)
+
+        info = QLabel(
+            "<b>Export this trip</b><br>"
+            "Writes a small ZIP holding the trip's settings (<tt>trip.ini</tt>), its "
+            "trip picture and banner, its species list, its lifer status, its "
+            "translations and its publication state.<br><br>"
+            "The <b>pictures are not included</b> — copy the day folders yourself "
+            "with Explorer or Finder, and use <i>Read &amp; Summarize</i> on the "
+            "other machine to rebuild the day data from them."
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        layout.addWidget(QLabel("Trip to export:"))
+        source_label = QLineEdit(trip_root or "(no trip selected)")
+        source_label.setReadOnly(True)
+        layout.addWidget(source_label)
+
+        # The one manual step, spelled out (D8) — computed up front so it is on
+        # screen before the export runs, not only in the result message.
+        # What to copy and whether it is published are the two facts that decide
+        # whether this export is any use — so they read as normal text, not as
+        # greyed-out chrome (a hardcoded grey vanishes on the dark theme).
+        from gui import theme as _theme
+        self.copy_label = QLabel("")
+        self.copy_label.setWordWrap(True)
+        self.copy_label.setStyleSheet(f"color: {_theme.INK_SOFT};")
+        if trip_root and os.path.isdir(trip_root):
+            try:
+                from engine.trip_transfer import build_manifest, copy_instruction
+                _cfg, _info = build_manifest(
+                    trip_root,
+                    master_root=_config.get("master", "masterbiotadatabase", fallback=""))
+                published = {"yes": "This trip IS published on the website.",
+                             "no": "This trip is not published yet.",
+                             "unknown": "Publication state could not be determined."}
+                self.copy_label.setText(
+                    f"📁 {copy_instruction(_info)}<br>🌐 {published[_info['published']]}")
+                self.copy_label.setTextFormat(Qt.TextFormat.RichText)
+            except Exception as e:
+                self.copy_label.setText(f"(could not read the trip: {e})")
+        layout.addWidget(self.copy_label)
+
+        self.target_field = DirectoryFieldQt("Output directory (ZIP saved here)", "")
+        layout.addWidget(self.target_field)
+
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        self.copy_btn = QPushButton("Create ZIP")
+        self.close_btn = QPushButton("Close")
+        btn_layout.addWidget(self.copy_btn)
+        btn_layout.addWidget(self.close_btn)
+        layout.addLayout(btn_layout)
+
+        self.copy_btn.clicked.connect(self.on_export)
+        self.close_btn.clicked.connect(self.close)
+
+    def on_export(self):
+        target = self.target_field.get_path()
+        if not target or not os.path.isdir(target):
+            self.status_label.setText("Select a valid output directory first.")
+            return
+        if not _config.has_section("utilities"):
+            _config.add_section("utilities")
+        _config["utilities"]["trip_export_target"] = target
+        runner = BatchModuleRunner(self, self.passed_parent)
+        runner.run(self.menu_spec)
+
+
+class ImportTripDialog(QDialog):
+    """Unpack a trip export ZIP into this machine's Trips root and select it.
+
+    Two cases, and the dialog says which one it is before you press Import:
+    a NEW trip (the folder does not exist — the repository is built here), or an
+    UPDATE of a trip this machine already has (settings replaced, species list
+    and translations MERGED, the old files kept in the trip's .trash).
+
+    Never touches the pictures, and never publishes anything."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setWindowTitle("Import Trip")
+        self.resize(760, 560)
+        self.logger = parent.logger
+        self.passed_parent = parent
+        self._manifest = None
+        self._blocked = False
+
+        layout = QVBoxLayout(self)
+
+        info = QLabel(
+            "<b>Import a trip from a ZIP file</b><br>"
+            "Restores the trip's settings, images, species list, lifer status and "
+            "translations, and builds its folder structure here. "
+            "If this machine already has the trip, the species list and "
+            "translations are <b>merged</b> and the old files are kept in the "
+            "trip's <tt>.trash</tt> folder.<br>"
+            "The pictures are not in the ZIP — copy the day folders separately."
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        zip_row = QHBoxLayout()
+        zip_row.addWidget(QLabel("ZIP file:"))
+        self.zip_field = QLineEdit()
+        self.zip_field.setPlaceholderText("Select a trip ZIP…")
+        zip_row.addWidget(self.zip_field)
+        browse_btn = QPushButton("Browse…")
+        browse_btn.clicked.connect(self._browse_zip)
+        zip_row.addWidget(browse_btn)
+        layout.addLayout(zip_row)
+
+        trips_root = get_trips_root()
+        layout.addWidget(QLabel("Trips root:"))
+        self.root_edit = QLineEdit(trips_root or "(not configured — set it in Settings ▸ Repositories)")
+        self.root_edit.setReadOnly(bool(trips_root))
+        layout.addWidget(self.root_edit)
+
+        from gui import theme as _theme
+        self.summary_label = QLabel("Select a ZIP file to see what it holds.")
+        self.summary_label.setWordWrap(True)
+        self.summary_label.setTextFormat(Qt.TextFormat.RichText)
+        # This block IS the decision the user makes ("new trip or update?"), so
+        # it must be as readable as the body text.
+        self.summary_label.setStyleSheet(f"color: {_theme.INK_SOFT};")
+        layout.addWidget(self.summary_label)
+
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        self.import_btn = QPushButton("Import")
+        self.import_btn.setEnabled(False)
+        self.close_btn = QPushButton("Close")
+        btn_layout.addWidget(self.import_btn)
+        btn_layout.addWidget(self.close_btn)
+        layout.addLayout(btn_layout)
+
+        self.import_btn.clicked.connect(self._on_import)
+        self.close_btn.clicked.connect(self.close)
+        self.zip_field.textChanged.connect(self._inspect)
+
+    def _browse_zip(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Trip ZIP", "", "ZIP files (*.zip);;All files (*)")
+        if path:
+            self.zip_field.setText(path)
+
+    def _dest_path(self):
+        trips_root = get_trips_root()
+        if not trips_root or not self._manifest:
+            return None
+        folder = self._manifest.get("folder") or Path(self.zip_field.text()).stem
+        return str(Path(trips_root) / folder)
+
+    def _inspect(self):
+        """Read the manifest and say exactly what Import will do — including
+        whether this is a new trip or an update, and where the pictures belong."""
+        from engine.trip_transfer import inspect_zip
+        from utils.config import get_currentpictures_root
+        from utils.trip_identity import resolve
+        from gui import theme as _theme
+
+        self._manifest = None
+        self.import_btn.setEnabled(False)
+        zip_path = self.zip_field.text().strip()
+        if not zip_path or not os.path.isfile(zip_path):
+            self.summary_label.setText("Select a ZIP file to see what it holds.")
+            return
+        try:
+            man = inspect_zip(zip_path)
+        except Exception as e:
+            self.summary_label.setText(f"<span style='color:{_theme.ALERT};'>{e}</span>")
+            return
+        self._manifest = man
+
+        dest = self._dest_path()
+        lines = [
+            f"<b>{man.get('title_nl') or man.get('trip_name', '?')}</b> "
+            f"({man.get('fromdate', '?')} – {man.get('todate', '?')})",
+            f"Exported from <b>{man.get('machine', '?')}</b> on {man.get('created', '?')}.",
+        ]
+
+        # An existing folder holding a DIFFERENT trip is the one case we refuse:
+        # it would overwrite unrelated work.
+        self._blocked = False
+        if not dest:
+            lines.append(
+                f"<span style='color:{_theme.ALERT};'><b>Cannot import.</b> No Trips root is "
+                "configured — set it in Settings ▸ Repositories first.</span>")
+            self._blocked = True
+        elif os.path.isdir(dest):
+            existing = resolve(dest, kind="trip")
+            if existing.trip_id and man.get("trip_id") and \
+                    existing.trip_id != man.get("trip_id"):
+                lines.append(
+                    f"<span style='color:{_theme.ALERT};'><b>Cannot import.</b> "
+                    f"{dest} already holds a different trip "
+                    f"({existing.trip_id}), not {man.get('trip_id')}.</span>")
+                self._blocked = True
+            else:
+                lines.append(
+                    f"<b>Updating</b> the trip already in {dest}. Settings and images "
+                    f"are replaced, the species list and translations are merged, and "
+                    f"the files being replaced go to its <tt>.trash</tt> folder.")
+        else:
+            lines.append(f"<b>New trip</b> — will be created in {dest}.")
+
+        carried = []
+        if man.get("_has_collection"):
+            carried.append("species list")
+        if man.get("_has_baseline"):
+            carried.append("lifer status")
+        if man.get("_has_transcache"):
+            carried.append("translations")
+        if man.get("_images"):
+            carried.append(f"{len(man['_images'])} image(s)")
+        lines.append("Carries: " + (", ".join(carried) if carried else "settings only") + ".")
+
+        published = man.get("published", "unknown")
+        lines.append({
+            "yes": "🌐 This trip <b>is published</b> — the published trip list will be "
+                   "refreshed from the website.",
+            "no": "🌐 Not published. Nothing is uploaded.",
+            "unknown": "🌐 Publication state was unknown at export; nothing is uploaded.",
+        }[published])
+
+        if man.get("picture_root"):
+            target = os.path.join(get_currentpictures_root() or "<CurrentPictures root>",
+                                  man["picture_root"].replace("/", os.sep))
+            lines.append(f"📁 Pictures belong in {target} "
+                         f"({man.get('day_count', '0')} day folders on the source machine).")
+
+        self.summary_label.setText("<br>".join(lines))
+        self.import_btn.setEnabled(not self._blocked)
+
+    def _on_import(self):
+        import configparser as _cp
+        import time as _time
+        from engine.trip_transfer import (restore_identity, merge_species_collection,
+                                          restore_baseline, merge_transcache,
+                                          pull_trip_admin)
+        from utils.batch_config import generate_svconfig_ini
+        from utils.trip_identity import resolve_trip_picture_root
+        from utils.config import get_currentpictures_root
+
+        zip_path = self.zip_field.text().strip()
+        dest = self._dest_path()
+        if not zip_path or not os.path.isfile(zip_path) or not dest or self._blocked:
+            self.status_label.setText("Select a valid ZIP file first.")
+            return
+
+        is_update = os.path.isdir(dest) and os.path.isfile(os.path.join(dest, "trip.ini"))
+        if is_update:
+            answer = QMessageBox.question(
+                self, "Update this trip?",
+                f"{dest}\n\nalready holds this trip.\n\n"
+                "Its settings and images will be replaced, and its species list and "
+                "translations merged with the ones in the ZIP. The replaced files are "
+                "kept in the trip's .trash folder — nothing is deleted.\n\nProceed?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                self.status_label.setText("Import cancelled.")
+                return
+
+        t0 = _time.time()
+        notes = []
+        try:
+            # 1. trip.ini + images FIRST — sv1MakeReposity reads trip.ini, exactly
+            #    as Create Trip writes it before running the batch.
+            restored, backups = restore_identity(zip_path, dest)
+            self.status_label.setText("Restored the trip settings; building the folders…")
+            QApplication.processEvents()
+
+            # 2. Build the repository — but in RESTORE mode, so it neither re-seeds
+            #    the species list/baseline from this machine's master nor rewrites
+            #    the master's shared published-trip list.
+            if not is_update:
+                if not _config.has_section("utilities"):
+                    _config.add_section("utilities")
+                _config.set("utilities", "trip_restore_mode", "yes")
+                try:
+                    generate_svconfig_ini()
+                    module_config = _cp.ConfigParser()
+                    module_config.read("svconfig.ini")
+                    module_config.set("repository", "BiotaDatabase", dest)
+                    # No web root → sv1's whole SFTP block is skipped. Importing a
+                    # trip must never touch the website.
+                    module_config.set("repository", "BiotaWebRoot", "")
+                    import batch.sv1MakeReposity as sv1
+                    sv1.main(None, module_config)
+                finally:
+                    _config.set("utilities", "trip_restore_mode", "no")
+                    persist_config()
+
+            # 3. The payload: species list (ZIP wins), lifer baseline (never
+            #    overwritten), translations (verified entries protected).
+            sc = merge_species_collection(zip_path, dest)
+            if sc:
+                if is_update and sc["overridden"]:
+                    notes.append(f"Species list merged: {sc['total']} entries "
+                                 f"({sc['kept_local']} kept from this machine, "
+                                 f"{sc['overridden']} replaced by the ZIP).")
+                else:
+                    notes.append(f"Species list restored: {sc['total']} entries.")
+            base = restore_baseline(zip_path, dest)
+            notes.append({"restored": "Lifer status restored.",
+                          "kept": "Kept the lifer status already here.",
+                          "absent": "No lifer status in the ZIP — Count Species will "
+                                    "use the trip's start date."}[base])
+            tc = merge_transcache(zip_path, dest)
+            if tc:
+                kept = (f", {tc['kept_verified']} checked translations kept"
+                        if tc["kept_verified"] else "")
+                notes.append(f"Translations merged: {tc['total']} entries "
+                             f"({tc['added']} new{kept}).")
+
+            # 4. Publication — pull only, never push.
+            if (self._manifest or {}).get("published") == "yes":
+                rows, msg = pull_trip_admin(
+                    _config.get("websettings", "base_url", fallback=""),
+                    (self._manifest.get("master_web_root")
+                     or _config.get("master", "masterbiotawebroot", fallback="")),
+                    _config.get("master", "masterbiotadatabase", fallback=""))
+                notes.append(msg)
+
+            # 5. Make it the active trip, exactly as Select does in Create Trip.
+            trip_data = read_trip_ini(dest) or {}
+            web_slug = trip_data.get("web_slug") or trip_data.get("trip_name", "")
+            web_root = web_slug if web_slug.startswith("/trips/") else f"/trips/{web_slug}"
+            picture_root = resolve_trip_picture_root(dest, kind="trip",
+                                                     active_picturedirectory="")
+            first_day = _first_day_under(picture_root) if picture_root else ""
+            _config.set("trip", "tripsrootdirectory", str(Path(dest).parent))
+            set_trip_settings(dest, web_root, first_day or picture_root or "")
+            update_cache_gui_section("trip_project_map", web_root,
+                                     first_day or picture_root or "")
+        except Exception as e:
+            self.logger.warning(f"Import Trip failed: {e}")
+            self.status_label.setText(f"❌ Import failed: {e}")
+            return
+
+        # 6. The pictures. Not having them yet is the normal order of events, so
+        #    say what to do rather than reporting an error.
+        if not picture_root or not os.path.isdir(picture_root):
+            expected = os.path.join(get_currentpictures_root() or "<CurrentPictures root>",
+                                    (trip_data.get("picture_root") or "").replace("/", os.sep))
+            notes.append(f"⚠ The pictures are not here yet — copy the day folders to "
+                         f"{expected}, then run Read &amp; Summarize.")
+        elif not first_day:
+            notes.append(f"⚠ {picture_root} holds no day folders yet — copy them there, "
+                         f"then run Read &amp; Summarize.")
+        else:
+            notes.append("Next step: Read &amp; Summarize, to rebuild the day data from "
+                         "the pictures.")
+
+        populate_trip_overview(self.passed_parent)
+        self.passed_parent.trip_panel.rebuild()
+        self.passed_parent.rebuild_menu()
+
+        elapsed = _time.time() - t0
+        verb = "Updated" if is_update else "Imported"
+        self.logger.info(f"{verb} trip into {dest} in {elapsed:.1f}s. " + " ".join(notes))
+        self.status_label.setText(f"✅ {verb} in {elapsed:.1f}s.<br>" + "<br>".join(notes))
+        self.status_label.setTextFormat(Qt.TextFormat.RichText)
 
 
 class InstallSmallMasterDialog(QDialog):

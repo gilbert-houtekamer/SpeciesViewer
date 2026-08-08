@@ -99,9 +99,20 @@ def main(args, config):
     MyProject = engine.projectlib.Project(config.get("repository","BiotaDatabase"),
                                           config.get("project","PictureDirectory"),
                                           config.get("repository","BiotaWebRoot"))
-    # if trip, initialze master
-    MyProject.initMasterAndTrip(config, inittrip=True)
-    if not MyProject.isMasterRepository():
+    # Import Trip RESTORES a repository from a transfer ZIP instead of creating a
+    # new one, and then two things below must not happen. See [utilities]
+    # trip_restore_mode in utils/batch_config.py.
+    restore_mode = config.get("utilities", "trip_restore_mode",
+                              fallback="no").strip().lower() == "yes"
+    # if trip, initialze master. NOTE inittrip=True also REWRITES the master's
+    # shared trip_admin.csv (Trip.readAndWriteTripAdmin) — that file lists every
+    # published trip, so a machine restoring one trip must never author it.
+    MyProject.initMasterAndTrip(config, inittrip=not restore_mode)
+    # On a restore the ZIP already carries the trip's own species collection AND
+    # its lifer baseline; re-seeding from THIS machine's master would be wrong,
+    # since a laptop's master is partial and a fresh baseline would silently
+    # promote species the master already knows into lifers.
+    if not MyProject.isMasterRepository() and not restore_mode:
         shutil.copy(os.path.join(MyProject.getMasterRepository(), 'metadata/active/speciescollection.csv'),
                 os.path.join(NEW_DB_TREE, 'metadata/active/speciescollection.csv'))
         # Freeze what the master already has pictures of, so Count Species can
