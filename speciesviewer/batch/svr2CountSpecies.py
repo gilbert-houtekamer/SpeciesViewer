@@ -26,6 +26,7 @@ import engine.speciesclassification
 from engine.specieslib import Level
 import engine.triplib
 import engine.species_baseline
+import engine.topics
 
 logger = logging.getLogger("speciesviewer")
 result_dict = {}
@@ -34,6 +35,7 @@ counter = 1
 newcounter = 1
 total_species = 0
 total_new = 0
+topics_skipped = 0
 jpgneeded = 0
 reference_names = set()  # lowercase ScientificNames that are already in the master collection
 
@@ -43,7 +45,7 @@ def readConfig():
     config.read(INI_LOCATION)
     return config
 
-def scan_files(directory, search_string, report):
+def scan_files(directory, search_string, report, sc=None):
     """Read each day's summary report and collect the species it lists.
 
     One column per day directory, in date order — a day that was never
@@ -52,9 +54,11 @@ def scan_files(directory, search_string, report):
     the coverage: a partially-summarized trip yields a partial verdict, and
     that must be visible rather than merely plausible.
     """
+    global topics_skipped
     print(f"File stats GPS and location data:\n\nFile           Count  NoGPS   Noloc  NoCity  NoSpec    Good     Bad  NoColor", file=report)
     days_total = 0
     days_missing = []
+    records = sc.sc_dict if sc is not None else {}
     if not os.path.isdir(directory):
         return days_total, days_missing
 
@@ -114,6 +118,14 @@ def scan_files(directory, search_string, report):
                                     # keyed the same way or a capitalised name in
                                     # a summary raises KeyError further down.
                                     key = tokens[0].strip().lower()
+                                    # Landscapes/topics come through the day
+                                    # summaries looking exactly like species
+                                    # ("2026"). Drop them here, at the door,
+                                    # rather than relying on the taxonomy walk
+                                    # further down to quietly not find them.
+                                    if key and engine.topics.is_topic_node(records, tokens[0].strip()):
+                                        topics_skipped += 1
+                                        continue
                                     info = [name, numbers]
                                     if key in result_dict:
                                         result_dict[key].append(info)
@@ -221,13 +233,14 @@ def print_headers(sc, report):
 def main(args, config):
     global starttime, SpeciesDebug, reference_names
     global result_dict, headers, counter, newcounter, jpgneeded
-    global total_species, total_new
+    global total_species, total_new, topics_skipped
     result_dict = {}
     headers = []
     counter = 1
     newcounter = 1
     total_species = 0
     total_new = 0
+    topics_skipped = 0
     jpgneeded = 0
     reference_names = set()
     starttime = time.time()
@@ -245,50 +258,74 @@ def main(args, config):
     sp = engine.specieslib.Species(MyProject)
     MyProject.registerSpecies(sp)
 
-    # Build the "already known" reference set — the species the master could
-    # already show before this trip. speciescollection.csv was tried earlier but
-    # pre-loads most birds at startup, so a bird photographed for the first time
-    # would still register as "known" and never surface as new. The species list
-    # only contains species there is a JPG/RAW for, which matches the "I haven't
-    # photographed this yet" intent of the New column.
-    #
-    # Preferred source is the baseline FROZEN into the trip at creation
-    # (engine/species_baseline.py). The live master is only a fallback: once
-    # this trip's pictures have been merged into the master, the master's own
-    # species.csv contains them and every lifer silently stops being new. Which
-    # source was used is stated at the top of the report — an unfrozen verdict
-    # must never look like a frozen one.
     MyProject.initMasterAndTrip(config, inittrip=False)
-    reference_note = ""
-    baseline_file = (engine.species_baseline.baseline_path(MyProject.getRepositoryPath())
-                     if MyProject.Trip else None)
-    if baseline_file and os.path.exists(baseline_file):
-        reference_names, meta = engine.species_baseline.read_baseline(baseline_file)
-        reference_note = (f"Lifer baseline: master as of {meta.get('taken_at', 'unknown date')}, "
-                          f"frozen at trip creation ({len(reference_names)} species).")
-    else:
-        if MyProject.Trip:
-            ref_csv = os.path.join(MyProject.getMasterRepository(),
-                                   "metadata", "active", "species.csv")
-        else:
-            ref_csv = config.get("repository", "ReferenceSpecies")
-        if os.path.exists(ref_csv):
-            with open(ref_csv, "r", encoding="utf-8") as f:
-                for row in csv.DictReader(f, delimiter=";"):
-                    name = (row.get("ScientificName") or "").lower().strip()
-                    if name:
-                        reference_names.add(name)
-            reference_note = (f"Lifer baseline: the master AS IT IS TODAY, not frozen "
-                              f"({len(reference_names)} names). Species already merged "
-                              f"into the master do not count as new.")
-        else:
-            logger.warning(f"svr2CountSpecies: reference file not found: {ref_csv}")
-            reference_note = ("Lifer baseline: NONE FOUND — every species below is "
-                              "reported as new. Do not trust the New column.")
 
     # read the list with all pre-defined species, as updated in each project using it
     metadatadir = MyProject.getMetaDir()
     sc.readSpeciesCollection(os.path.join(metadatadir, "active", "speciescollection.csv"), False)
+
+    # Build the "already known" reference set — the species you had already
+    # photographed before this trip. speciescollection.csv was tried early on but
+    # pre-loads most birds at startup, so a bird photographed for the first time
+    # would still register as "known" and never surface as new.
+    #
+    # THE DATE RULE is the real answer: a species is already known when the
+    # master holds a picture of it taken BEFORE this trip started. It does not
+    # care when the trip repo was made or in what order trips were merged, and
+    # the trip's own pictures fall inside its date range, so they never enter
+    # its own baseline — the count survives the trip's own merge.
+    #
+    # The two fallbacks below are strictly worse and both say so in the report.
+    # The frozen baseline file is right only if no older trip was merged after
+    # this trip was set up; the live master is right only until this trip is
+    # merged, after which every lifer silently stops being new.
+    reference_note = ""
+    fromdate = ""
+    if MyProject.Trip:
+        try:
+            from utils.trip_config import read_trip_ini
+            fromdate = (read_trip_ini(MyProject.getRepositoryPath()) or {}).get("fromdate", "")
+        except Exception as e:
+            logger.warning(f"svr2CountSpecies: could not read trip.ini: {e}")
+
+    dated_names = None
+    if MyProject.Trip and fromdate:
+        dated_names, dated_topics = engine.species_baseline.collect_species_before(
+            MyProject.getMasterRepository(), fromdate, sc_records=sc.sc_dict)
+    if dated_names:
+        reference_names = dated_names
+        reference_note = (f"Lifer baseline: everything the master has a picture of from "
+                          f"before {fromdate[:10]}, the trip's start date "
+                          f"({len(reference_names)} species). Recomputed on every run, so "
+                          f"merging this trip — or an older one — cannot change it.")
+    else:
+        baseline_file = (engine.species_baseline.baseline_path(MyProject.getRepositoryPath())
+                         if MyProject.Trip else None)
+        if baseline_file and os.path.exists(baseline_file):
+            reference_names, meta = engine.species_baseline.read_baseline(baseline_file)
+            origin = meta.get("reconstructed_from", "")
+            how = (f"reconstructed afterwards from {origin}" if origin
+                   else "frozen at trip creation")
+            reference_note = (f"Lifer baseline: master as of {meta.get('taken_at', 'unknown date')}, "
+                              f"{how} ({len(reference_names)} species). No trip start date "
+                              f"available, so an older trip merged after this one was set up "
+                              f"would show up as new here.")
+        else:
+            if MyProject.Trip:
+                ref_csv = os.path.join(MyProject.getMasterRepository(),
+                                       "metadata", "active", "species.csv")
+            else:
+                ref_csv = config.get("repository", "ReferenceSpecies")
+            if os.path.exists(ref_csv):
+                names, _zero, _topic = engine.species_baseline.collect_species_from_csv(ref_csv)
+                reference_names = names
+                reference_note = (f"Lifer baseline: the master AS IT IS TODAY "
+                                  f"({len(reference_names)} species). Species already merged "
+                                  f"into the master do not count as new.")
+            else:
+                logger.warning(f"svr2CountSpecies: reference file not found: {ref_csv}")
+                reference_note = ("Lifer baseline: NONE FOUND — every species below is "
+                                  "reported as new. Do not trust the New column.")
 
     # make output file
     reports_dir = Path(config.get("repository","BiotaDatabase")) / "metadata" / "reports"
@@ -303,7 +340,7 @@ def main(args, config):
          # Collect species
         directory_to_scan = os.path.join(MyProject.getMetaDir(), 'review')
         search_string = 'Species specified in this dir:'
-        days_total, days_missing = scan_files(directory_to_scan, search_string, report)
+        days_total, days_missing = scan_files(directory_to_scan, search_string, report, sc)
 
         # A day that was never summarized contributes no species at all. Say so
         # here rather than letting the report look complete.
@@ -322,6 +359,9 @@ def main(args, config):
         # engine/trip_verdict.py reads it back rather than re-deriving the
         # counts from the report's fixed-width columns.
         print(f"\nTotals: {total_species} species, {total_new} new.", file=report)
+        if topics_skipped:
+            print(f"({topics_skipped} landscape/topic entries were ignored — they are "
+                  f"not species.)", file=report)
 
     # print(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
     totaltime = time.time() - starttime      

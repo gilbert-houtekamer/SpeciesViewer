@@ -49,7 +49,12 @@ _TOTALS_RE = re.compile(r"^Totals:\s*(\d+)\s+species,\s*(\d+)\s+new", re.M)
 _DAYS_RE = re.compile(r"^Days:\s*(\d+)\s+of\s+(\d+)\s+summarized", re.M)
 _GENERATED_RE = re.compile(r"^Generated\s+(.+)$", re.M)
 _BASELINE_RE = re.compile(r"^Lifer baseline:\s*(.+)$", re.M)
-_BASELINE_DATE_RE = re.compile(r"master as of ([0-9-]+ [0-9:]+), frozen")
+# The three ways a baseline can be arrived at, in the wording svr2CountSpecies
+# prints. The time part is optional: a reconstructed baseline is stamped with
+# whatever the trip recorded, which may be a bare date.
+_DATED_RE = re.compile(r"the master has a picture of from before (\d{4}-\d{2}-\d{2})")
+_BASELINE_DATE_RE = re.compile(
+    r"master as of ([0-9-]+(?: [0-9:]+)?), (frozen|reconstructed)")
 
 
 def report_path(trip_repo):
@@ -76,7 +81,14 @@ def parse_report(path):
     generated = _GENERATED_RE.search(text)
     note = _BASELINE_RE.search(text)
     note_text = note.group(1).strip() if note else ""
+    dated = _DATED_RE.search(note_text)
     frozen_at = _BASELINE_DATE_RE.search(note_text)
+    if dated:
+        baseline, baseline_date = "before-trip-start", dated.group(1)
+    elif frozen_at:
+        baseline, baseline_date = frozen_at.group(2), frozen_at.group(1)
+    else:
+        baseline, baseline_date = "live master", ""
 
     return {
         "species_count": int(totals.group(1)) if totals else None,
@@ -84,8 +96,12 @@ def parse_report(path):
         "days_summarized": int(days.group(1)) if days else None,
         "days_total": int(days.group(2)) if days else None,
         "generated_at": generated.group(1).strip() if generated else "",
-        "baseline": "frozen" if frozen_at else "live master",
-        "baseline_date": frozen_at.group(1) if frozen_at else "",
+        # "before-trip-start" (the date rule — the count that stays true),
+        # "frozen" / "reconstructed" (fallbacks for a trip with no start date),
+        # or "live master" (no baseline at all — true only until this trip is
+        # merged).
+        "baseline": baseline,
+        "baseline_date": baseline_date,
         "note": note_text,
     }
 
@@ -136,11 +152,19 @@ def archive(trip_repo, master_repo, trip_id, trip_name="",
     os.makedirs(target_dir, exist_ok=True)
     shutil.copy(src, os.path.join(target_dir, f"{trip_id} species overview.txt"))
 
-    # The baseline travels with the report: without it the verdict is a number
-    # nobody can check once the trip repo is gone.
+    # Archive the baseline file ONLY when the report actually used it. Under the
+    # date rule the comparison set is derived from the master's own picture
+    # dates and can be recomputed at any time from `baseline_date`, so copying
+    # the trip's unused fallback file next to the report would suggest it was
+    # what produced the number.
     baseline_src = species_baseline.baseline_path(trip_repo)
-    if os.path.isfile(baseline_src):
-        shutil.copy(baseline_src, os.path.join(target_dir, f"{trip_id} baseline.csv"))
+    baseline_dst = os.path.join(target_dir, f"{trip_id} baseline.csv")
+    if parsed["baseline"] in ("frozen", "reconstructed") and os.path.isfile(baseline_src):
+        shutil.copy(baseline_src, baseline_dst)
+    elif os.path.isfile(baseline_dst):
+        # A previous merge archived one under a rule we no longer used; leaving
+        # it behind would misrepresent this verdict.
+        os.remove(baseline_dst)
 
     row = {
         "trip_id": trip_id,

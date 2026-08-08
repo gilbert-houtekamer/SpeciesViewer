@@ -103,7 +103,8 @@ def retire_trip_dialog(main_window, trip_db):
         prior = _snapshot_trip_selection()
         _deselect_active_trip(main_window)
         active = ""
-    rep = trs.scan(trip_db, get_virttrips_root(), active)
+    rep = trs.scan(trip_db, get_virttrips_root(), active,
+                   master_db=_config.get("master", "masterbiotadatabase", fallback=""))
     if not rep.get("ok"):
         if prior is not None:
             _set_trip_selection(main_window, prior)

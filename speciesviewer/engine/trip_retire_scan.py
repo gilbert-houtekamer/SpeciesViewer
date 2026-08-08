@@ -10,7 +10,9 @@
 # is allowed; the rest are warnings the user can acknowledge.
 #   B1 virttrip exists   B2 virttrip has day blogs   B3 not the active trip
 #   W1 virttrip intro    W2 trip blogs migrated      W3 virttrip biota non-empty
-#   W4 CurrentPictures still present
+#   W4 species verdict archived in the master
+# (an earlier note here also listed a "CurrentPictures still present" warning;
+#  it was never implemented.)
 
 import os
 import glob
@@ -74,10 +76,38 @@ def _count_pictures(trip_db):
         return 0
 
 
-def scan(trip_db, virttrips_root, active_trip_db=""):
+def _verdict_warning(master_db, trip_id):
+    """W4 — is this trip's species verdict archived in the master?"""
+    if not master_db:
+        return {"id": "W4", "label": "Species verdict archived in the master",
+                "passed": True, "detail": "not checked (no master configured)"}
+    import engine.trip_verdict
+    path = os.path.join(engine.trip_verdict.archive_dir(master_db),
+                        f"{trip_id} species overview.txt")
+    if os.path.isfile(path):
+        parsed = {}
+        try:
+            parsed = engine.trip_verdict.parse_report(path)
+        except Exception:
+            pass
+        new_count = parsed.get("new_count")
+        return {"id": "W4", "label": "Species verdict archived in the master",
+                "passed": True,
+                "detail": (f"{new_count} new of {parsed.get('species_count')} species"
+                           if new_count is not None else "archived")}
+    return {"id": "W4", "label": "Species verdict archived in the master",
+            "passed": False,
+            "detail": "no archived species count — run Merge Pictures into Master "
+                      "(step 1) first, or the trip's new-species count is lost for good"}
+
+
+def scan(trip_db, virttrips_root, active_trip_db="", master_db=""):
     """Assess whether a trip db is safe to retire. Returns a report dict (no
     writes): {ok, name, trip_db, virttrip_db, size_bytes, n_pictures,
-    blockers:[...], warnings:[...], can_retire, has_warnings}."""
+    blockers:[...], warnings:[...], can_retire, has_warnings}.
+
+    `master_db` enables W4 — whether this trip's species verdict was archived in
+    the master. Omitted, W4 cannot be judged and passes."""
     trip_db = os.path.normpath(trip_db)
     if not os.path.isdir(trip_db):
         return {"ok": False, "error": f"trip folder not found: {trip_db}"}
@@ -132,6 +162,11 @@ def scan(trip_db, virttrips_root, active_trip_db=""):
          "passed": vt_built_files > 0,
          "detail": f"{vt_built_files} built file(s) in the virttrip"
                    if vt_built_files else "no built website (frozen biota is empty)"},
+        # Retiring deletes metadata/reports/ along with everything else, and the
+        # day summaries the report is built from go with it — so once this trip
+        # is gone, an unarchived species count is gone for good and cannot be
+        # recomputed. Unlike the blogs, nothing else preserves it.
+        _verdict_warning(master_db, name),
     ]
 
     can_retire = all(b["passed"] for b in blockers)
