@@ -76,9 +76,12 @@ fallback) and buckets it `jpg_ok` / `raw_fallback` / `black`. Investigating the
 - **Apply** copies `data_files.csv` and `data_pictures.csv` into
   `admin/status/backup/<timestamp>_pre-prune_*` before writing. To undo, copy
   those two files back over `metadata/active/`.
-- After Apply, run **Count Species** to refresh the per-species counters (the
-  dropped phantoms leave them high until then); the master DB cache
-  (`master.db`) rebuilds itself on next use.
+- After Apply, the per-species counters in `species.csv` are left high — the
+  dropped phantoms were counted in them. Nothing here recomputes them; use the
+  admin recount/audit tooling if the numbers matter. (An earlier version of this
+  note said to run **Count Species** for that: it never did it. Count Species
+  only reads, and writes a report.) The master DB cache (`master.db`) rebuilds
+  itself on next use.
 
 See also [`config_state_files.md`](config_state_files.md) for the file layout
 and [`data_structures.md`](data_structures.md) for the CSV schemas.
