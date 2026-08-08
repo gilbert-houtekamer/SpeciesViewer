@@ -179,11 +179,15 @@ def copy_instruction(info, target_currentpictures_root=""):
         return (f"Copy the day folders from {src} to this trip's picture folder on "
                 f"the other machine.")
     native = rel.replace("/", os.sep)
-    dest = (os.path.join(target_currentpictures_root, native)
-            if target_currentpictures_root
-            else os.path.join("<CurrentPictures root>", native))
-    return (f"Copy {src} to {dest} on the other machine "
-            f"({info.get('days', 0)} day folders).")
+    days = info.get("days", 0)
+    if target_currentpictures_root:
+        return (f"Copy {src} to {os.path.join(target_currentpictures_root, native)} "
+                f"on the other machine ({days} day folders).")
+    # No angle-bracket placeholder here: this string is shown in RichText labels,
+    # where Qt's HTML parser silently swallows anything that looks like a tag —
+    # "<CurrentPictures root>" vanished and left a path starting mid-way.
+    return (f"Copy {src} to the folder {native} under the other machine's "
+            f"CurrentPictures root ({days} day folders).")
 
 
 def export_trip(trip_root, target_dir, master_root="", machine="", master_web_root=""):
@@ -311,7 +315,7 @@ def _comparable(record):
     return {k: v for k, v in record.items() if k != "Leaves"}
 
 
-def merge_species_collection(zip_path, dest_root):
+def merge_species_collection(zip_path, dest_root, backup=True):
     """Merge the exported collection into the target's, ZIP WINS on conflict
     (D2) — it is the side the work was just done on. Returns a dict with the
     counts, or None when the ZIP carries no collection.
@@ -319,6 +323,10 @@ def merge_species_collection(zip_path, dest_root):
     mergeSpeciesCollections keeps what `self` already holds, so the ZIP is read
     into `self` and the local collection merged IN. Same shape as Install Small
     Master. Nothing is ever dropped: the result is the union.
+
+    `backup=False` on a FRESH import: the only thing to back up there is the
+    empty template sv1MakeReposity just wrote, and a .trash folder in a
+    brand-new trip invites the question "what did I lose?" — nothing.
     """
     from engine.speciesclassification import SpeciesClassification
 
@@ -358,7 +366,8 @@ def merge_species_collection(zip_path, dest_root):
         overridden = sum(1 for k in sc_local.sc_dict
                          if k in zip_keys
                          and _comparable(sc_local.sc_dict[k]) != _comparable(sc_zip.sc_dict[k]))
-        _backup(dest_root, COLLECTION_REL)
+        if backup:
+            _backup(dest_root, COLLECTION_REL)
         sc_zip.mergeSpeciesCollections(sc_local.scCopy())
     sc_zip.writeSpeciesCollection(dest_csv)
     return {"from_zip": from_zip, "kept_local": added,

@@ -4322,9 +4322,13 @@ class ExportTripDialog(QDialog):
                 published = {"yes": "This trip IS published on the website.",
                              "no": "This trip is not published yet.",
                              "unknown": "Publication state could not be determined."}
-                self.copy_label.setText(
-                    f"📁 {copy_instruction(_info)}<br>🌐 {published[_info['published']]}")
+                from html import escape as _e
                 self.copy_label.setTextFormat(Qt.TextFormat.RichText)
+                # Escape: the instruction carries a Windows path, and an
+                # unescaped one can be eaten by Qt's HTML parser.
+                self.copy_label.setText(
+                    f"📁 {_e(copy_instruction(_info))}<br>"
+                    f"🌐 {published[_info['published']]}")
             except Exception as e:
                 self.copy_label.setText(f"(could not read the trip: {e})")
         layout.addWidget(self.copy_label)
@@ -4468,11 +4472,17 @@ class ImportTripDialog(QDialog):
             return
         self._manifest = man
 
+        # This label is RichText, so every value interpolated into it must be
+        # escaped: a Windows path or a placeholder like <CurrentPictures root>
+        # is silently EATEN by Qt's HTML parser, which is how the pictures line
+        # lost its first half.
+        from html import escape as _e
+
         dest = self._dest_path()
         lines = [
-            f"<b>{man.get('title_nl') or man.get('trip_name', '?')}</b> "
-            f"({man.get('fromdate', '?')} – {man.get('todate', '?')})",
-            f"Exported from <b>{man.get('machine', '?')}</b> on {man.get('created', '?')}.",
+            f"<b>{_e(man.get('title_nl') or man.get('trip_name', '?'))}</b> "
+            f"({_e(man.get('fromdate', '?'))} – {_e(man.get('todate', '?'))})",
+            f"Exported from <b>{_e(man.get('machine', '?'))}</b> on {_e(man.get('created', '?'))}.",
         ]
 
         # An existing folder holding a DIFFERENT trip is the one case we refuse:
@@ -4489,16 +4499,16 @@ class ImportTripDialog(QDialog):
                     existing.trip_id != man.get("trip_id"):
                 lines.append(
                     f"<span style='color:{_theme.ALERT};'><b>Cannot import.</b> "
-                    f"{dest} already holds a different trip "
-                    f"({existing.trip_id}), not {man.get('trip_id')}.</span>")
+                    f"{_e(dest)} already holds a different trip "
+                    f"({_e(existing.trip_id)}), not {_e(man.get('trip_id', ''))}.</span>")
                 self._blocked = True
             else:
                 lines.append(
-                    f"<b>Updating</b> the trip already in {dest}. Settings and images "
+                    f"<b>Updating</b> the trip already in {_e(dest)}. Settings and images "
                     f"are replaced, the species list and translations are merged, and "
                     f"the files being replaced go to its <tt>.trash</tt> folder.")
         else:
-            lines.append(f"<b>New trip</b> — will be created in {dest}.")
+            lines.append(f"<b>New trip</b> — will be created in {_e(dest)}.")
 
         carried = []
         if man.get("_has_collection"):
@@ -4520,10 +4530,21 @@ class ImportTripDialog(QDialog):
         }[published])
 
         if man.get("picture_root"):
-            target = os.path.join(get_currentpictures_root() or "<CurrentPictures root>",
-                                  man["picture_root"].replace("/", os.sep))
-            lines.append(f"📁 Pictures belong in {target} "
-                         f"({man.get('day_count', '0')} day folders on the source machine).")
+            rel = man["picture_root"].replace("/", os.sep)
+            cp_root = get_currentpictures_root()
+            if cp_root:
+                lines.append(
+                    f"📁 Pictures belong in {_e(os.path.join(cp_root, rel))} "
+                    f"({_e(man.get('day_count', '0'))} day folders on the source machine).")
+            else:
+                # Without this setting the trip's stored, portable picture path
+                # cannot be turned into a real folder on THIS machine — so say
+                # that, instead of printing a placeholder that reads like a path.
+                lines.append(
+                    f"<span style='color:{_theme.WARN};'>📁 This trip's pictures live in "
+                    f"<b>{_e(rel)}</b>, but the CurrentPictures root is not set on this "
+                    f"machine, so they cannot be found. Set it in "
+                    f"Settings ▸ Repositories.</span>")
 
         self.summary_label.setText("<br>".join(lines))
         self.import_btn.setEnabled(not self._blocked)
@@ -4590,7 +4611,7 @@ class ImportTripDialog(QDialog):
 
             # 3. The payload: species list (ZIP wins), lifer baseline (never
             #    overwritten), translations (verified entries protected).
-            sc = merge_species_collection(zip_path, dest)
+            sc = merge_species_collection(zip_path, dest, backup=is_update)
             if sc:
                 if is_update and sc["overridden"]:
                     notes.append(f"Species list merged: {sc['total']} entries "
@@ -4636,18 +4657,27 @@ class ImportTripDialog(QDialog):
             return
 
         # 6. The pictures. Not having them yet is the normal order of events, so
-        #    say what to do rather than reporting an error.
-        if not picture_root or not os.path.isdir(picture_root):
-            expected = os.path.join(get_currentpictures_root() or "<CurrentPictures root>",
-                                    (trip_data.get("picture_root") or "").replace("/", os.sep))
+        #    say what to do rather than reporting an error. NOTE `notes` is PLAIN
+        #    text throughout — it goes to the log as well as to a RichText label,
+        #    and pre-escaping it here put a literal "&amp;" in the log.
+        rel = (trip_data.get("picture_root") or "").replace("/", os.sep)
+        cp_root = get_currentpictures_root()
+        if not cp_root and rel:
+            # The real reason the pictures can't be located: this machine has no
+            # CurrentPictures root, so the trip's portable relative path cannot
+            # be resolved. Naming the setting beats printing a placeholder.
+            notes.append(f"⚠ This trip's pictures live in {rel}, but the CurrentPictures "
+                         f"root is not set on this machine, so they cannot be found. "
+                         f"Set it in Settings ▸ Repositories, then re-select the trip.")
+        elif not picture_root or not os.path.isdir(picture_root):
             notes.append(f"⚠ The pictures are not here yet — copy the day folders to "
-                         f"{expected}, then run Read &amp; Summarize.")
+                         f"{os.path.join(cp_root, rel)}, then run Read & Summarize.")
         elif not first_day:
             notes.append(f"⚠ {picture_root} holds no day folders yet — copy them there, "
-                         f"then run Read &amp; Summarize.")
+                         f"then run Read & Summarize.")
         else:
-            notes.append("Next step: Read &amp; Summarize, to rebuild the day data from "
-                         "the pictures.")
+            notes.append(f"Pictures found in {picture_root}. "
+                         f"Next step: Read & Summarize, to rebuild the day data from them.")
 
         populate_trip_overview(self.passed_parent)
         self.passed_parent.trip_panel.rebuild()
@@ -4656,8 +4686,10 @@ class ImportTripDialog(QDialog):
         elapsed = _time.time() - t0
         verb = "Updated" if is_update else "Imported"
         self.logger.info(f"{verb} trip into {dest} in {elapsed:.1f}s. " + " ".join(notes))
-        self.status_label.setText(f"✅ {verb} in {elapsed:.1f}s.<br>" + "<br>".join(notes))
+        from html import escape as _e
         self.status_label.setTextFormat(Qt.TextFormat.RichText)
+        self.status_label.setText(
+            f"✅ {verb} in {elapsed:.1f}s.<br>" + "<br>".join(_e(n) for n in notes))
 
 
 class InstallSmallMasterDialog(QDialog):
