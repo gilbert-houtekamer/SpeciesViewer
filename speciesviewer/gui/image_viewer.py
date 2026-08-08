@@ -555,10 +555,21 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self.no_gps_only = True
             initial_keys = no_gps_keys
         elif self.fpr:
-            # Clean day — both filters greyed. Don't auto-load (a big day would
-            # be hard to cancel); require an explicit "All" click.
-            self._active_filter = None
-            initial_keys = None
+            # Clean day: nothing to warn about and no missing GPS, so there is
+            # no subset worth opening on — show everything.
+            #
+            # This used to open with NO filter at all and an empty grid, on the
+            # grounds that a big day would be hard to cancel. It reads as a
+            # broken window rather than a clean day, and the loader is
+            # cancellable (Cancel in the toolbar; cancel_pending_loads on
+            # close), so the caution was costing more than it saved. Note that
+            # pictures without a species name are NOT a warning — a day can be
+            # clean and still be mostly unnamed, which is the normal state
+            # before culling.
+            self._active_filter = "all"
+            self.all_btn.setChecked(True)
+            self.show_all = True
+            initial_keys = self._base_keys()
         else:
             self._active_filter = "all"
             self.all_btn.setChecked(True)
