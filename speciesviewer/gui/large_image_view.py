@@ -2832,6 +2832,16 @@ class LargeImageView(QDialog):
     def closeEvent(self, event):
         self._save_description()
         self._save_headline()
+        # Species named through the inline species panel were buffered, not
+        # written per species; this is the end of that session.
+        try:
+            from gui.culling_species import flush_learned_species_from
+            flush_learned_species_from(
+                (getattr(self, "_inline_sc_cache", None),
+                 getattr(self.fpr, "sc", None) if getattr(self, "fpr", None) else None),
+                parent=self)
+        except Exception as e:
+            logger.warning(f"Saving learned species failed: {e}")
         # Save the ACTIVE splitter's live sizes; use _last_* for the inactive one
         # (querying a splitter with a hidden child returns misleading 0 values).
         save_window(self, self._geo_key,

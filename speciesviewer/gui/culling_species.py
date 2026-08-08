@@ -81,14 +81,92 @@ def load_species_classification():
     sc = SpeciesClassification(None)
     # Fresh per-instance dicts (the class-level ones are shared) so we don't
     # inherit or pollute another load.
-    sc.sc_dict, sc.dutch_dict, sc.english_dict, sc.names_not_found_list = {}, {}, {}, []
+    sc.sc_dict, sc.dutch_dict, sc.english_dict = {}, {}, {}
     try:
         sc.readSpeciesCollection(path)
     except Exception as e:
         logger.warning(f"Could not read species collection {path}: {e}")
         return None
-    sc._source_path = path  # so culling can persist newly-added species back
+    # readSpeciesCollection already records this; kept explicit because the
+    # path chosen above is the contract this loader advertises.
+    sc._source_path = path
     return sc
+
+
+def flush_learned_species(sc):
+    """Append everything this session learned to the master's species list and
+    to the local (trip/album) copy. Returns (ok, message); message is "" when
+    there was nothing to write.
+
+    The MASTER is written first and is required. A species learned here is
+    knowledge, not a picture: if it only ever reaches the local copy it has to
+    be looked up again on every other machine and in every later trip, which is
+    the whole point of doing this. When the master cannot be reached that is an
+    error the user must see, not a silent queue — and because the buffer is
+    only cleared on success, closing the viewer again after fixing the drive
+    still saves the work.
+    """
+    if sc is None or not getattr(sc, "learned", None):
+        return True, ""
+
+    master_db = _config.get("master", "masterbiotadatabase", fallback="")
+    local = getattr(sc, "_source_path", "")
+    master = (os.path.join(master_db, "metadata", "active", "speciescollection.csv")
+              if master_db else "")
+
+    if master and not os.path.exists(master):
+        return False, (f"{len(sc.learned)} newly recognised species could not be saved: "
+                       f"the master species list is not reachable at\n{master}\n\n"
+                       f"They are kept for now — reconnect the master and close this "
+                       f"viewer again, or they will have to be looked up once more.")
+
+    targets = [p for p in (master, local) if p]
+    # Same file twice (working straight on the master) — write it once.
+    if len(targets) == 2 and os.path.normcase(os.path.normpath(targets[0])) == \
+            os.path.normcase(os.path.normpath(targets[1])):
+        targets = targets[:1]
+    if not targets:
+        return True, ""
+
+    try:
+        written = sc.flushSpeciesLearned(targets)
+    except Exception as e:
+        logger.warning(f"Could not save learned species: {e}")
+        return False, f"Newly recognised species could not be saved:\n{e}"
+
+    total = max((len(v) for v in written.values()), default=0)
+    if total:
+        logger.info(f"Saved {total} newly recognised species row(s) to "
+                    f"{len(targets)} collection file(s).")
+    return True, ""
+
+
+def flush_learned_species_from(scs, parent=None):
+    """Flush several classifications at once — a viewer may have touched both
+    the standalone culling collection and the pipeline's (fpr.sc). Reports at
+    most one warning. Returns True when everything was saved.
+
+    Call this from closeEvent: it is the end of the session the buffer belongs
+    to. Never let it stop the window closing — the buffer survives a failure,
+    so closing again after fixing the problem still saves the work."""
+    problems = []
+    for sc in scs:
+        if sc is None:
+            continue
+        try:
+            ok, msg = flush_learned_species(sc)
+        except Exception as e:
+            logger.warning(f"Saving learned species failed: {e}")
+            ok, msg = False, str(e)
+        if not ok and msg:
+            problems.append(msg)
+    if problems and parent is not None:
+        try:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(parent, "Species list not saved", "\n\n".join(problems))
+        except Exception:
+            pass
+    return not problems
 
 
 def species_name_candidates(sc) -> list[str]:
@@ -842,13 +920,21 @@ class CullingSpeciesWidget(QWidget):
                 self._completer.model().setStringList(species_name_candidates(sc))
             except Exception:
                 pass
-        path = getattr(sc, "_source_path", "")
-        if path:
-            try:
-                sc.updateSpeciesCollection(path)
-                logger.info(f"Added '{sci}' to species collection {path}.")
-            except Exception as e:
-                logger.warning(f"Could not save species collection {path}: {e}")
+        # Saved here, but as an APPEND of just this species and its missing
+        # ancestors — not the whole 2 MB rewrite this used to do per species,
+        # in Dropbox. Naming a species the collection did not know is a
+        # decision the user made once, not a keystroke, so the cost is bounded
+        # by the number of NEW species in a session.
+        #
+        # Saved now rather than at viewer close because a pipeline step run
+        # while the viewer is still open would otherwise read a collection
+        # without it and look it up in GBIF again — and two lookups can pick
+        # two different vernacular names, leaving trip and master disagreeing.
+        ok, msg = flush_learned_species(sc)
+        if ok:
+            logger.info(f"Learned and saved '{sci}'.")
+        else:
+            logger.warning(f"Learned '{sci}' but could not save it yet: {msg}")
         return sci
 
     def _on_ok(self):

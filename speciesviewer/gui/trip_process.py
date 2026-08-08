@@ -1786,6 +1786,9 @@ class SpeciesCollectionDialog(QDialog):
         self.filter_text = ""
         self.FILTER_MIN_CHARS = 3
         self.dirty = False
+        # ScientificNames whose editable fields were changed this session — the
+        # caller mirrors exactly these into a trip's copy of the list.
+        self.changed_names = set()
         # dirty is reset on every save, so it can't tell the caller "something
         # was edited and saved this session". _saved_changes is sticky: set once
         # any save persists an edit, so the trip call sites can offer to re-run
@@ -2167,6 +2170,12 @@ class SpeciesCollectionDialog(QDialog):
         csv_row = self.all_rows[csv_index]
         csv_row[key] = new_value
         self.dirty = True
+        # Remember WHICH names were touched, so an edit made on the shared list
+        # can be mirrored into an active trip's copy without diffing two
+        # 19,000-row files.
+        name = (csv_row.get("ScientificName") or "").strip()
+        if name:
+            self.changed_names.add(name)
         self.save_btn.setEnabled(True)
         self.cell_colors[(row, col)] = self.COLOR_MANUAL
 

@@ -119,8 +119,26 @@ def main(args, config):
     totaltime = time.time() - starttime                
     logger.info(f'{len(MyProject.UniquePictureName_dict)} lines written for pictures to {picturefilename}.')
     
-    # also create summarizing species, when more counters are added later
-    sc.updateSpeciesCollection(os.path.join(metadatadir, "active", "speciescollection.csv"))
+    # also create summarizing species, when more counters are added later.
+    # The trip's own list is rewritten in full (it is this run's authority), and
+    # anything newly recognised is ALSO appended to the master's list, so a
+    # species looked up here is never looked up again on another machine or in
+    # the next trip. The master is required: losing that knowledge silently is
+    # exactly what this replaced.
+    trip_sc_csv = os.path.join(metadatadir, "active", "speciescollection.csv")
+    learned = sorted(getattr(sc, "learned", set()))
+    sc.updateSpeciesCollection(trip_sc_csv)
+    if learned and not MyProject.isMasterRepository():
+        master_sc_csv = os.path.join(MyProject.getMasterRepository(),
+                                     "metadata", "active", "speciescollection.csv")
+        if not os.path.exists(master_sc_csv):
+            raise SVException(
+                f"{len(learned)} newly recognised species cannot be saved: the master "
+                f"species list is not reachable at {master_sc_csv}. Reconnect the "
+                f"master and run this step again.")
+        sc.appendSpeciesCollection(master_sc_csv, learned)
+        logger.info(f"Added {len(learned)} newly recognised species to the master list.")
+    sc.learned = set()
     sp.writeSpeciesInfo(os.path.join(MyProject.getMetaDirReview(), "species.csv"), False)
     
     MyProject.addMetricsToLog(sp, RepositoryPictureCount, 

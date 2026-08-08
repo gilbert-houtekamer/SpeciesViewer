@@ -1485,6 +1485,15 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
 
     def closeEvent(self, event):
         save_window(self, self._geo_key, cols=self.columns)
+        # Species named through the editor here were buffered, not written per
+        # species; this is the end of that session.
+        try:
+            from gui.culling_species import flush_learned_species_from
+            flush_learned_species_from(
+                (getattr(self.fpr, "sc", None) if getattr(self, "fpr", None) else None,),
+                parent=self)
+        except Exception as e:
+            logger.warning(f"Saving learned species failed: {e}")
         super().closeEvent(event)
 
     # ── Batch delete by colour ────────────────────────────────────────────────

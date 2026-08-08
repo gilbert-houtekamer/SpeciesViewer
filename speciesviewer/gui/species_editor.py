@@ -670,6 +670,19 @@ class SpeciesInfoPanel(QWidget):
         self._safe_status(f"✅ Done — {n} file{'s' if n != 1 else ''} updated.")
         QApplication.processEvents()
 
+        # A commit is a decision, not a keystroke: if this named a species the
+        # collection did not know, save it NOW rather than at viewer close.
+        # Otherwise a pipeline step run while the viewer is still open reads a
+        # collection that does not have it yet and looks it up in GBIF again —
+        # which is not merely slow: two lookups can pick two different
+        # vernacular names, leaving the trip and the master disagreeing.
+        if getattr(fpr, "sc", None) is not None and getattr(fpr.sc, "learned", None):
+            try:
+                from gui.culling_species import flush_learned_species_from
+                flush_learned_species_from((fpr.sc,), parent=self)
+            except Exception as e:
+                logger.warning(f"Saving learned species failed: {e}")
+
         # Bump the committed SPECIES (without qualifiers) to the front of the
         # shared recents — so qualifier tokens like "juv" never leak into the
         # quick-pick list shared with the culling dialog.

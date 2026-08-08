@@ -11,6 +11,71 @@ import engine.projectlib
 
 from enum import Enum, auto
 
+logger = logging.getLogger("speciesviewer")
+
+# Column order of speciescollection.csv. One definition, used by the full
+# writer and the appender alike — an appended row whose columns disagree with
+# the header would be silently misread.
+SC_HEADERS = ['Level', 'ScientificName', 'DutchName', 'EnglishName', 'Up', 'Leaves']
+
+
+# Names GBIF has no answer for, shared by every SpeciesClassification in this
+# process. Per-instance it was near-useless: the GUI builds a fresh
+# classification per viewer session, so one invalid name — and the GUI allows
+# invalid names on purpose — cost a network round trip again and again. Not
+# persisted between runs: a name GBIF learns later must not stay unknown
+# forever, and a run is long enough to be worth it.
+_NAMES_NOT_FOUND = set()
+
+
+def _endsWithNewline(speciesfilename):
+    """False when the file's last line has no line ending — appending onto it
+    would glue the new row onto the old one and corrupt both."""
+    try:
+        with io.open(speciesfilename, "rb") as f:
+            if f.seek(0, os.SEEK_END) == 0:
+                return True
+            f.seek(-1, os.SEEK_END)
+            return f.read(1) in (b"\n", b"\r")
+    except OSError:
+        return True
+
+
+def appendRowsToSpeciesCollection(speciesfilename, rows):
+    """Append already-shaped CSV rows to a collection file. For callers that
+    hold rows rather than a loaded tree — the Edit Species List dialog mirroring
+    an edit into a trip's copy. A later row wins on read, so this updates."""
+    rows = [r for r in rows if r]
+    if not rows or not os.path.exists(speciesfilename):
+        return 0
+    with io.open(speciesfilename, "a", newline="", encoding='utf-8') as csvfile:
+        if not _endsWithNewline(speciesfilename):
+            csvfile.write("\r\n")
+        writer = csv.DictWriter(csvfile, fieldnames=SC_HEADERS,
+                                quoting=csv.QUOTE_MINIMAL, delimiter=';',
+                                extrasaction='ignore')
+        for row in rows:
+            writer.writerow(row)
+    logger.info(f"Appended {len(rows)} edited species row(s) to {speciesfilename}.")
+    return len(rows)
+
+
+def namesInSpeciesCollection(speciesfilename):
+    """The ScientificNames already in a collection file, without building a
+    whole SpeciesClassification. Splits on ';' exactly like
+    readSpeciesCollection, so it sees the same names the reader will."""
+    names = set()
+    try:
+        with io.open(speciesfilename, mode="r", newline="", encoding='utf-8') as f:
+            f.readline()                      # header
+            for line in f:
+                parts = line.strip().split(';')
+                if len(parts) > 1 and parts[1]:
+                    names.add(parts[1])
+    except OSError as e:
+        logger.warning(f"Could not read species collection {speciesfilename}: {e}")
+    return names
+
 
 def _flatten_name_backbone(r):
     """Adapt pygbif 0.6.6's nested name_backbone response back to the flat dict
@@ -40,7 +105,6 @@ def _flatten_name_backbone(r):
             flat[name + "Key"] = c.get("key", "")
     return flat
 
-logger = logging.getLogger("speciesviewer")
 
 # Biota, Kingdom, Phylum, Class, Order, Family, Species
 class Level(Enum):
@@ -62,7 +126,6 @@ class SpeciesClassification:
     sc_dict = {}
     dutch_dict = {}         # all species we have the Dutch name for, points to scientific name
     english_dict = {}       # all species we have the English name for, points to scientific name
-    names_not_found_list = []
 
     DUMMYSPECIES = ['vogel', 'vogels', 'bird', 'libel', 'libellen', 'onbekend', 
                     'rups', 'panama', 'californie', 'onbekend', 'sprinkhaan', 'turkey',
@@ -103,13 +166,20 @@ class SpeciesClassification:
         self.sc_dict = {}
         self.dutch_dict = {}
         self.english_dict = {}
-        self.names_not_found_list = []
+        # Species learned since this object was built, buffered rather than
+        # written per species: flushSpeciesLearned() appends them in one go
+        # when the viewer or batch run ends. Losing the buffer to a crash only
+        # costs the lookups again next run.
+        self.learned = set()
         if MyProject != None:
             MyProject.registerSpeciesClassification(self)
         return
     
     def clearDict(self):
         self.sc_dict = {}
+        # Anything learned refers to the tree just discarded; keeping it would
+        # append rows this object can no longer produce.
+        self.learned = set()
 
     def scCopy(self):
         return self.sc_dict.copy()
@@ -184,56 +254,155 @@ class SpeciesClassification:
 
                 self.sc_dict[row_dict['ScientificName']] = row_dict
 
+        # Remember which file this tree came from. Without it, a caller holding
+        # a classification cannot say where to write it back, and the species
+        # editor's flush silently reached only the master — leaving the trip's
+        # copy behind, so the very next pipeline step looked the species up in
+        # GBIF again.
+        self._source_path = speciesfilename
+
         logger.info(f"Read specification file, now create links.")
-        try:
-            for speciesname in self.sc_dict:
-                # if speciesname == 'dasyprocta punctata': 
-                #     singlestep = 1                
+        # The Leaves column on disk is NOT authoritative: every parent's Leaves
+        # list is rebuilt here from the children's Up pointers. That is what
+        # makes appending to the file safe (see appendSpeciesCollection).
+        #
+        # One try per row, deliberately. This loop used to be wrapped in a
+        # single try/except, so one row pointing at an Up that was not in the
+        # file stopped the linking for EVERY remaining species — leaving a
+        # half-linked tree behind one log line. A bad row must cost that row.
+        broken = []
+        for speciesname in self.sc_dict:
+            try:
                 species = self.sc_dict[speciesname]
                 ScientificName = species['ScientificName']
                 UpName = species['Up']
                 if UpName != "" and ScientificName not in self.sc_dict[UpName]['Leaves']:
                     self.sc_dict[UpName]['Leaves'].append(ScientificName)
-                
+
                 if not donotaddLanguageIndices:
                     # add Nederlandse naam index
-                    dutchname = species['DutchName']            
+                    dutchname = species['DutchName']
                     if dutchname != "":
                         if dutchname not in self.dutch_dict:
                             self.dutch_dict[dutchname] = ScientificName
 
                     # add Nederlandse naam index
-                    englishname = species['EnglishName']            
+                    englishname = species['EnglishName']
                     if englishname != "":
                         if englishname not in self.english_dict:
                             self.english_dict[englishname] = ScientificName
-            
-            logger.info(f'Read {len(self.sc_dict)} predefined species from {speciesfilename}.')
-        except Exception as e:
-            logger.error(f'Reading {speciesname} from {speciesfilename} failed, inconsistent reference in file: {e}')
+            except Exception as e:
+                broken.append(f"{speciesname} ({e})")
+
+        if broken:
+            shown = ", ".join(broken[:10]) + (" …" if len(broken) > 10 else "")
+            logger.error(f"{len(broken)} row(s) in {speciesfilename} have an "
+                         f"inconsistent reference and were not linked: {shown}")
+        logger.info(f'Read {len(self.sc_dict)} predefined species from {speciesfilename}.')
         return
 
     # save last version, always save last version under .csv_old  
+    def _csvRow(self, name):
+        spec_dict = self.sc_dict[name]
+        return {"Level":          spec_dict['Level'],
+                "ScientificName": spec_dict['ScientificName'],
+                "DutchName":      spec_dict['DutchName'],
+                "EnglishName":    spec_dict['EnglishName'],
+                "Up":             spec_dict['Up'],
+                "Leaves":         spec_dict['Leaves']}
+
     def writeSpeciesCollection(self, speciesfilename):
         # Write Picture CSV file
         logger.info(f'Write {len(self.sc_dict)} updated species data CSV file "{speciesfilename}".')
         with open(speciesfilename, "w", newline="", encoding='utf-8') as csvfile:
-            # needed to get column in order
-            sc_headers = ['Level', 'ScientificName', 'DutchName', 'EnglishName', 'Up', 'Leaves']                 
-            writer = csv.DictWriter(csvfile, fieldnames=sc_headers, quoting=csv.QUOTE_MINIMAL, delimiter=';')
+            writer = csv.DictWriter(csvfile, fieldnames=SC_HEADERS,
+                                    quoting=csv.QUOTE_MINIMAL, delimiter=';')
             writer.writeheader()
             for species in self.sc_dict:
-                spec_dict = self.sc_dict[species]
-                row = {}
-                row["Level"] = spec_dict['Level'] 
-                row["ScientificName"] = spec_dict['ScientificName']
-                row["DutchName"] = spec_dict['DutchName']
-                row["EnglishName"] = spec_dict['EnglishName']
-                row["Up"] = spec_dict['Up']
-                row["Leaves"] = spec_dict['Leaves']
+                writer.writerow(self._csvRow(species))
+        return
 
-                writer.writerow(row)                    
-        return   
+    # ------------------------------------------------------------------
+    # Appending, instead of rewriting the whole 2 MB file.
+    #
+    # Safe because readSpeciesCollection rebuilds every parent's Leaves from
+    # the children's Up pointers: no existing row has to change when a species
+    # is added, only its own row and any ancestor rows not yet in the file.
+    # A later duplicate wins on read, so an appended row also serves to update
+    # one (e.g. a vernacular name filled in afterwards).
+    #
+    # Matters because the master collection lives in Dropbox, and because the
+    # rewrite path (updateSpeciesCollection) has a window in which neither the
+    # file nor its .old backup is complete.
+    # ------------------------------------------------------------------
+    def ancestryOf(self, name):
+        """`name` and its ancestors, topmost first. Stops at an unknown or
+        cyclic Up rather than looping."""
+        chain = []
+        seen = set()
+        cur = name
+        while cur and cur in self.sc_dict and cur not in seen:
+            seen.add(cur)
+            chain.append(cur)
+            cur = (self.sc_dict[cur].get('Up') or "").strip()
+        chain.reverse()
+        return chain
+
+    def appendSpeciesCollection(self, speciesfilename, names):
+        """Append `names` (with any missing ancestors, ancestors first) to an
+        existing collection file. Returns the list of names actually written.
+
+        Falls back to a full write when the file does not exist yet — there is
+        nothing to append to, and a headerless fragment would be unreadable."""
+        wanted = [n for n in names if n in self.sc_dict]
+        if not wanted:
+            return []
+        if not os.path.exists(speciesfilename):
+            self.writeSpeciesCollection(speciesfilename)
+            return wanted
+
+        present = namesInSpeciesCollection(speciesfilename)
+        to_write = []
+        for name in wanted:
+            for step in self.ancestryOf(name):
+                # An ancestor already on file is left alone; the species itself
+                # is written even when present, so an enrichment lands too.
+                if step in to_write:
+                    continue
+                if step in present and step != name:
+                    continue
+                to_write.append(step)
+        if not to_write:
+            return []
+
+        with open(speciesfilename, "a", newline="", encoding='utf-8') as csvfile:
+            if not _endsWithNewline(speciesfilename):
+                csvfile.write("\r\n")
+            writer = csv.DictWriter(csvfile, fieldnames=SC_HEADERS,
+                                    quoting=csv.QUOTE_MINIMAL, delimiter=';')
+            for name in to_write:
+                writer.writerow(self._csvRow(name))
+        logger.info(f"Appended {len(to_write)} species row(s) to {speciesfilename}.")
+        return to_write
+
+    def flushSpeciesLearned(self, paths):
+        """Append everything learned this session to each collection file, once.
+        Returns {path: [names written]}.
+
+        Pass the MASTER first. On failure the exception propagates with the
+        buffer intact, so nothing has been half-written and the caller can
+        retry or report; a partial success followed by a retry only re-appends
+        rows, which a later-wins read absorbs.
+        """
+        if not self.learned:
+            return {}
+        names = sorted(self.learned)
+        written = {}
+        for path in paths:
+            if path:
+                written[path] = self.appendSpeciesCollection(path, names)
+        self.learned = set()
+        return written
 
     # merge both SpeciesCollections
     def mergeSpeciesCollections(self, newSC):
@@ -328,15 +497,22 @@ class SpeciesClassification:
 
     # Call createSpeciesRecord to add entry, and add uplink and child in up
     def addSpeciesLevel(self, level, scientificname, dutchname, englishname, upname):
+        # Every insertion into the tree passes through here, so this is the one
+        # place that can honestly answer "what did we learn this session?".
+        # Enrichments are recorded too: a later row wins on read, so appending
+        # the updated row is also how a filled-in vernacular name is persisted.
         if scientificname not in self.sc_dict:
             # create it
             self.sc_dict[scientificname] = self.createSpeciesRecord(level, scientificname, dutchname, englishname, upname)
+            self.learned.add(scientificname)
         else:
             # maybe we get more info
             if dutchname != "" and self.sc_dict[scientificname]['DutchName'] == "":
                 self.sc_dict[scientificname]['DutchName'] = dutchname
-            if englishname != "" and self.sc_dict[scientificname]['EnglishName'] == "":            
+                self.learned.add(scientificname)
+            if englishname != "" and self.sc_dict[scientificname]['EnglishName'] == "":
                 self.sc_dict[scientificname]['EnglishName'] = englishname
+                self.learned.add(scientificname)
 
         # save as a child if up is defined
         if upname != "" and scientificname not in self.sc_dict[upname]['Leaves']:            
@@ -409,7 +585,7 @@ class SpeciesClassification:
                 return normalized
             try:
                 # check if we already searched for this species
-                if subject not in self.names_not_found_list:
+                if subject not in _NAMES_NOT_FOUND:
                     # pygbif 0.6.6: param is scientificName (not name), and the
                     # response is nested — flatten it back to the old flat shape.
                     gbif = _flatten_name_backbone(species.name_backbone(scientificName=subject))
@@ -421,14 +597,18 @@ class SpeciesClassification:
                         else:
                             timesoort = time.time() - timesoort
                             logger.info(f"""The species "{subject}" is not found in the GBIF database as a scientific name, took {timesoort:.3f} seconds.""")
-                            self.names_not_found_list.append(subject)
+                            _NAMES_NOT_FOUND.add(subject)
                     else: # GUI
+                        # The batch branch above reassigns timesoort to the
+                        # elapsed time; this one never did, so it logged the
+                        # clock (…"in 1786181395.030 seconds").
+                        elapsed = time.time() - timesoort
                         if gbif['matchType'] in ['EXACT', 'FUZZY'] and gbif.get('species'):
                             if gbif['confidence'] >= 90:
                                 scientificname = self.addSpecies(gbif).lower()
-                                logger.info(f"'{subject}' matched GBIF as '{gbif['canonicalName']}' with confidence {gbif['confidence']} ({gbif['matchType']}) in {timesoort:.3f} seconds")
+                                logger.info(f"'{subject}' matched GBIF as '{gbif['canonicalName']}' with confidence {gbif['confidence']} ({gbif['matchType']}) in {elapsed:.3f} seconds")
                             else:
-                                logger.info(f"'{subject}' matched GBIF fuzzily but with low confidence ({gbif['confidence']}) in {timesoort:.3f} seconds")
+                                logger.info(f"'{subject}' matched GBIF fuzzily but with low confidence ({gbif['confidence']}) in {elapsed:.3f} seconds")
                         else:
                             logger.info(f"'{subject}' not found in GBIF with FUZZY or EXACT matching.")
                     # Cache the original input so repeated lookups don't hit GBIF again
@@ -451,8 +631,7 @@ class SpeciesClassification:
                     logger.warning("Network/GBIF unreachable — skipping online "
                                    "species lookups for the rest of this run.")
                 # Don't retry the same name again this run regardless.
-                if subject not in self.names_not_found_list:
-                    self.names_not_found_list.append(subject)
+                _NAMES_NOT_FOUND.add(subject)
         elif not nested:
             # likely a list of variables, decode it
             if len(subject.split(','))>1:

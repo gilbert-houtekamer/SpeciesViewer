@@ -396,24 +396,52 @@ def build_menu_spec(main_window):
     )
     publish_day.callback = lambda: PublishDayDialog(main_window, publish_day).exec()
 
-    # Same SpeciesCollectionDialog the Write Summary flow exposes,
-    # pointed at <tripbiotadatabase>/metadata/active/speciescollection.csv.
-    def _edit_trip_species():
+    # ONE species list. It used to be two entries on two files — "Edit Trip
+    # Species List" and the master's "Edit Species List" — and which one you
+    # happened to open decided who saw the correction. Now the shared master
+    # list is always the one edited, and an active trip's working copy is
+    # brought along so its pipeline steps see the new names too.
+    def _edit_species_list():
+        master_db = _config.get("master", "masterbiotadatabase", fallback="")
         trip_db = _config.get("trip", "tripbiotadatabase", fallback="")
-        if not trip_db:
+        # No master configured (a standalone repo) → the trip's own list IS the
+        # shared list, so edit that.
+        base = master_db or trip_db
+        if not base:
             return
-        csv_path = os.path.join(trip_db, "metadata", "active", "speciescollection.csv")
+        csv_path = os.path.join(base, "metadata", "active", "speciescollection.csv")
+        if not os.path.exists(csv_path):
+            QMessageBox.warning(main_window, "Edit Species List",
+                                f"Species list not found:\n{csv_path}")
+            return
         dlg = SpeciesCollectionDialog(main_window, csv_path)
         dlg.exec()
-        # A trip-wide name edit → offer to re-summarize all days (see
-        # MainWindow.rerun_summary_all_days). Master species edits are NOT hooked
-        # here — that's a separate pipeline.
-        if getattr(dlg, "_saved_changes", False):
+        if not getattr(dlg, "_saved_changes", False):
+            return
+
+        # Mirror the edited rows into the active trip's copy. Appending is
+        # enough: a later row wins on read, so this updates the names without
+        # rewriting the trip's file or disturbing anything else in it.
+        changed = getattr(dlg, "changed_names", set())
+        if trip_db and master_db and changed:
+            trip_csv = os.path.join(trip_db, "metadata", "active", "speciescollection.csv")
+            if os.path.exists(trip_csv):
+                try:
+                    from engine.speciesclassification import appendRowsToSpeciesCollection
+                    rows = [r for r in dlg.all_rows
+                            if (r.get("ScientificName") or "").strip() in changed]
+                    appendRowsToSpeciesCollection(trip_csv, rows)
+                except Exception as e:
+                    logger.warning(f"Could not mirror species names into the trip: {e}")
+
+        # A name change → offer to re-summarize all days so it reaches the
+        # pipeline (see MainWindow.rerun_summary_all_days).
+        if trip_db:
             main_window.rerun_summary_all_days("Species names were changed.")
 
     edit_trip_species = MenuSpec(
-        callback=_edit_trip_species,
-        title="Edit Trip Species List",
+        callback=_edit_species_list,
+        title="Edit Species List",
         enabled=has_active_trip,
         showsubdirectory=False,
     )
@@ -705,15 +733,9 @@ def build_menu_spec(main_window):
 
     # Edit the master speciescollection.csv directly — same dialog the
     # Write Summary trip flow exposes, just pointed at the master path.
-    def _edit_master_species():
-        master_db = _config.get("master", "masterbiotadatabase", fallback="")
-        if not master_db:
-            return
-        csv_path = os.path.join(master_db, "metadata", "active", "speciescollection.csv")
-        SpeciesCollectionDialog(main_window, csv_path).exec()
-
+    # Same one list as the Trip menu's entry — see _edit_species_list.
     edit_master_species = MenuSpec(
-        callback=_edit_master_species,
+        callback=_edit_species_list,
         title="Edit Species List",
         enabled=has_master,
         showsubdirectory=False,
@@ -1599,7 +1621,7 @@ def build_menu_spec(main_window):
                 tooltip="Browse this trip by taxonomy (Kingdom → Species), read-only; "
                         "drill to a species to see its pictures",
                 showsubdirectory=False),
-            "Edit Trip Species List": edit_trip_species,
+            "Edit Species List": edit_trip_species,            # same list as under Master
             "Publish Species Names": merge_trip_species,       # also under To Master
             "Count Species": count_species,
             f"{MenuSpec.separator()}_advanced": None,

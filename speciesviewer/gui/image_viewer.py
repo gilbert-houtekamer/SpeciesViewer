@@ -1398,6 +1398,20 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._culling_sc_cache = load_species_classification()
         return self._culling_sc_cache
 
+    def _flush_learned_species(self):
+        """Persist species learned during this session. Both classifications
+        this viewer may have touched: the standalone culling one, and the
+        pipeline's own (fpr.sc) when a species was named through the editor."""
+        # Never let this stop the window closing.
+        try:
+            from gui.culling_species import flush_learned_species_from
+            flush_learned_species_from(
+                (getattr(self, "_culling_sc_cache", None),
+                 getattr(self.fpr, "sc", None) if self.fpr is not None else None),
+                parent=self)
+        except Exception as e:
+            logger.warning(f"Saving learned species failed: {e}")
+
     def _open_culling_species_dialog(self, keys: set):
         """Smart species assignment for the sidecar/culling viewer (no fpr):
         write the chosen name to each selected picture's XMP:Subject."""
@@ -2263,6 +2277,9 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     def closeEvent(self, event):
         save_window(self, self._geo_key, cols=self.columns)
         self._collection.cancel_pending_loads()
+        # Species recognised during this session were buffered rather than
+        # written one at a time; save them now, in one append per file.
+        self._flush_learned_species()
         try:
             QApplication.instance().applicationStateChanged.disconnect(
                 self._on_application_state_changed)
