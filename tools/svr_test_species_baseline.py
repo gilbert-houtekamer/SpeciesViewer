@@ -47,35 +47,11 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "speciesviewer"))
 
 from engine import species_baseline as sb          # noqa: E402
+from engine import trip_verdict as tv              # noqa: E402
 import batch.svr2CountSpecies as count_species     # noqa: E402
+import batch.svr7ArchiveVerdict as archive_verdict  # noqa: E402
 
 SUMMARY_MARKER = "Species specified in this dir:"
-
-
-# ----------------------------------------------------------------------
-# The New column sits at a fixed offset in the report:
-#   counter(3) + ' ' + english(32) + dutch(40) = 76
-# Blank there means "already known". Do NOT pattern-match loosely -- the
-# first day column is also a digit and will be read as a lifer number.
-# ----------------------------------------------------------------------
-def count_lifers(report_path):
-    rows = new = 0
-    with open(report_path, encoding="utf-8") as f:
-        for line in f:
-            if not re.match(r"^ *\d+ ", line) or len(line) < 79:
-                continue
-            rows += 1
-            if line[76:79].strip().isdigit():
-                new += 1
-    return rows, new
-
-
-def report_note(report_path):
-    with open(report_path, encoding="utf-8") as f:
-        for line in f:
-            if line.startswith("Lifer baseline"):
-                return line.strip()
-    return "(no baseline note in report)"
 
 
 def trip_species(trip_repo):
@@ -153,7 +129,7 @@ def make_postmerge_master(real_master, trip, sandbox):
     return fake, added
 
 
-def run_count(trip, master):
+def sandbox_config(trip, master):
     cfg = configparser.ConfigParser()
     cfg["repository"] = {"BiotaDatabase": trip,
                          "BiotaWebRoot": "/trips/Sandbox/",
@@ -161,10 +137,45 @@ def run_count(trip, master):
     cfg["master"] = {"MasterBiotaDatabase": master, "MasterBiotaWebRoot": "/nature/"}
     cfg["project"] = {"PictureDirectory": os.path.join(trip, "unused")}
     cfg["debug"] = {"Classification": "0", "SpeciesFound": "0"}
-    count_species.main(None, cfg)
-    report = os.path.join(trip, "metadata", "reports", "Species overview.txt")
-    rows, lifers = count_lifers(report)
-    return report_note(report), rows, lifers
+    return cfg
+
+
+def run_count(trip, master):
+    """Returns (note, species_count, new_count) as the REPORT states them —
+    read back from its own Totals line, never re-derived from the columns."""
+    count_species.main(None, sandbox_config(trip, master))
+    parsed = tv.parse_report(tv.report_path(trip))
+    return parsed["note"], parsed["species_count"], parsed["new_count"]
+
+
+def write_trip_ini(trip, real_trip):
+    """The sandbox trip needs an identity for the archive step. Copy the real
+    trip's if there is one, so trip_id / fromdate / todate are exercised."""
+    src = os.path.join(real_trip, "trip.ini")
+    if os.path.isfile(src):
+        shutil.copy(src, os.path.join(trip, "trip.ini"))
+        return
+    with open(os.path.join(trip, "trip.ini"), "w", encoding="utf-8") as f:
+        f.write("[trip_config]\ntrip_id = sandboxtrip\ntrip_name = Sandbox\n"
+                "fromdate = 2026-01-01\ntodate = 2026-01-02\n")
+
+
+def archive_into(trip, master, sandbox):
+    """Run the archive step against a throwaway master and report what landed."""
+    fake_master = os.path.join(sandbox, "master_archive")
+    os.makedirs(os.path.join(fake_master, "admin"), exist_ok=True)
+    cfg = sandbox_config(trip, master)
+    cfg["master"]["MasterBiotaDatabase"] = fake_master
+    row = archive_verdict.main(None, cfg)
+    return fake_master, row
+
+
+def summary_rows(master):
+    path = tv.summary_path(master)
+    if not os.path.isfile(path):
+        return []
+    with open(path, encoding="utf-8", newline="") as f:
+        return list(csv.DictReader(f, delimiter=";"))
 
 
 def without_baseline(trip, master):
@@ -240,13 +251,49 @@ def main():
         if lifers_live != 0:
             failures.append(f"expected the live master to lose every lifer, got {lifers_live}")
 
+        # -- 3. the verdict must survive the trip (WP2) ----------------------
+        # Archives into a throwaway master; the real master is never written.
+        write_trip_ini(trip, real_trip)
+        run_count(trip, real_master)          # the verdict the merge would take
+        fake_master, row = archive_into(trip, real_master, sandbox)
+        print(f"\nArchived verdict for trip_id={row['trip_id']!r}: "
+              f"{row['new_count']} new of {row['species_count']} species "
+              f"({row['baseline']} baseline, {row['days_summarized']}/{row['days_total']} days).")
+
+        expected = [os.path.join(tv.archive_dir(fake_master),
+                                 f"{row['trip_id']} species overview.txt"),
+                    os.path.join(tv.archive_dir(fake_master),
+                                 f"{row['trip_id']} baseline.csv"),
+                    tv.summary_path(fake_master)]
+        for path in expected:
+            if os.path.isfile(path):
+                print(f"  ok  {os.path.relpath(path, fake_master)}")
+            else:
+                failures.append(f"archive did not write {path}")
+        if row["new_count"] != lifers_frozen_now:
+            failures.append(f"archived new_count {row['new_count']} != "
+                            f"report verdict {lifers_frozen_now}")
+
+        # Only the last version is relevant: re-archiving must replace, not
+        # append. This is the check that catches a summary CSV growing a
+        # duplicate row per merge attempt.
+        archive_into(trip, real_master, sandbox)
+        rows_after = summary_rows(fake_master)
+        mine = [r for r in rows_after if r.get("trip_id") == row["trip_id"]]
+        print(f"  ok  summary holds {len(mine)} row for this trip "
+              f"after 2 archive runs" if len(mine) == 1 else "")
+        if len(mine) != 1:
+            failures.append(f"re-archiving left {len(mine)} summary rows for "
+                            f"{row['trip_id']} (expected exactly 1)")
+
         print("\n" + "=" * 66)
         if failures:
             for f in failures:
                 print(f"FAIL: {f}")
         else:
             print(f"PASS: the frozen baseline holds {lifers_frozen} lifers where the "
-                  f"live master reports {lifers_live}.")
+                  f"live master reports {lifers_live}, and the verdict is "
+                  f"archived in the master.")
         return 1 if failures else 0
     finally:
         if args.keep or args.sandbox:

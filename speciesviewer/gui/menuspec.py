@@ -51,6 +51,7 @@ import batch.svMasterRebuildWeb
 import batch.svr2CountSpecies
 import batch.svr4UpdateTrips
 import batch.svr5MergeSpeciesCollections
+import batch.svr7ArchiveVerdict
 import batch.svr8RecreateTripRepository
 import batch.svr9RedoBlog
 import batch.svu2avibase
@@ -568,10 +569,31 @@ def build_menu_spec(main_window):
             'master_mode':    True,
         },
     )
+    # Step 1 runs the REGULAR Count Species — deliberately without
+    # master_mode, so it reads the trip's day summaries and the trip's frozen
+    # baseline. With master_mode it would scan the master's own review tree and
+    # report on the whole collection. It goes first because the master is still
+    # pre-trip at that moment, which is what makes the lifer verdict true.
+    def _count_and_archive(args, _config):
+        batch.svr2CountSpecies.main(args, _config)
+        batch.svr7ArchiveVerdict.main(args, _config)
+
+    master_verdict_spec = MenuSpec(
+        callback=None,
+        title="Count Species (final verdict)",
+        showsubdirectory=False,
+        batch_parms={
+            'statusname':     "",
+            'module_called':  _count_and_archive,
+            'before_msg':     "Counting species and archiving the trip's verdict...",
+            'after_msg':      "✅ Species verdict archived in the master.",
+        },
+    )
     master_pipeline_steps = [
-        ("1. Read & Summarize",                master_ingest_spec),
-        ("2. Build Master Website & Freeze",   master_build_spec),
-        ("3. Commit to Master",                master_commit_spec),
+        ("1. Count Species (final verdict)",   master_verdict_spec, "verdict"),
+        ("2. Read & Summarize",                master_ingest_spec,  "ingest"),
+        ("3. Build Master Website & Freeze",   master_build_spec,   "freeze"),
+        ("4. Commit to Master",                master_commit_spec,  "commit"),
     ]
     add_trip_pictures = MenuSpec(
         callback=None,

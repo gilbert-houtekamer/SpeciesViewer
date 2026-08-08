@@ -3635,11 +3635,15 @@ class MasterRebuildWebsiteDialog(QDialog):
 
 
 class MasterPipelineDialog(QDialog):
-    """Drive the master-side database merge — three progressive steps
-    (ingest → build+freeze → commit) inside one dialog. Each step's
+    """Drive the master-side database merge — four progressive steps
+    (count → ingest → build+freeze → commit) inside one dialog. Each step's
     button enables only after the previous turns green; failures keep
-    the current step enabled for retry. Step 3 confirms re-commit if
-    the picture directory is already in the master commit marker."""
+    the current step enabled for retry. The last step confirms re-commit if
+    the picture directory is already in the master commit marker.
+
+    Steps are declared as (label, MenuSpec, kind). The kind — not the index —
+    says which artifact on disk proves the step ran, so inserting a step never
+    silently re-points the probes at the wrong files."""
 
     PIP = {
         'pending': '⬜',
@@ -3655,7 +3659,10 @@ class MasterPipelineDialog(QDialog):
 
         self.logger = logging.getLogger("speciesviewer")
         self.passed_parent = parent
-        self.step_specs = step_specs  # list of (label, MenuSpec)
+        # list of (label, MenuSpec, kind); kind drives artifact probing
+        self.step_specs = [s if len(s) == 3 else (s[0], s[1], "")
+                           for s in step_specs]
+        self.step_kinds = [s[2] for s in self.step_specs]
 
         layout = QVBoxLayout(self)
 
@@ -3665,11 +3672,15 @@ class MasterPipelineDialog(QDialog):
         trip_root = str(Path(configured_pic).parent) if configured_pic else '?'
         info = HTMLLabel(
             "<p><b>Add the active trip's pictures to the master database.</b></p>"
-            "<p>Run the three steps in order. Each step enables the next on "
-            "success; failures stay open for retry. Step&nbsp;1 reads photo "
-            "metadata and identifies species. Step&nbsp;2 builds the master "
+            "<p>Run the four steps in order. Each step enables the next on "
+            "success; failures stay open for retry. Step&nbsp;1 counts the "
+            "trip's species and stores the result in the master — it runs "
+            "first because it must see the master as it was <i>before</i> this "
+            "trip, and it is the only record of the trip's new species that "
+            "survives retiring the trip. Step&nbsp;2 reads photo "
+            "metadata and identifies species. Step&nbsp;3 builds the master "
             "species pages (so existing pages pick up the new pictures) and "
-            "freezes the result. Step&nbsp;3 commits the frozen artifact to "
+            "freezes the result. Step&nbsp;4 commits the frozen artifact to "
             "master's active CSVs and copies pictures into master's biota tree.</p>"
             f"<p>Trip root (reads all day subdirectories): "
             f"<code>{trip_root}</code></p>"
@@ -3677,7 +3688,7 @@ class MasterPipelineDialog(QDialog):
         layout.addWidget(info)
 
         self.rows = []
-        for idx, (label, _spec) in enumerate(step_specs):
+        for idx, (label, _spec, _kind) in enumerate(self.step_specs):
             row = self._make_step_row(layout, label)
             row['button'].clicked.connect(
                 lambda _checked=False, i=idx: self._run_step(i))
@@ -3762,11 +3773,28 @@ class MasterPipelineDialog(QDialog):
             return None
         return os.path.join(master, "metadata", "review", Path(pic_dir).name)
 
+    def _verdict_archive_path(self):
+        """<master>/admin/trip_reports/<trip_id> species overview.txt — the
+        archived verdict step 1 writes."""
+        master = _config.get("master", "masterbiotadatabase", fallback="")
+        trip_db = _config.get("trip", "tripbiotadatabase", fallback="")
+        if not (master and trip_db):
+            return None
+        from utils.trip_identity import resolve
+        trip_id = resolve(trip_db, kind="trip").trip_id
+        if not trip_id:
+            return None
+        import engine.trip_verdict
+        return os.path.join(engine.trip_verdict.archive_dir(master),
+                            f"{trip_id} species overview.txt")
+
     def _artifact_mtime(self, idx):
         """Return the datetime that proves step idx ran for this trip,
-        or None if there's no evidence on disk."""
-        if idx == 2:
-            # Step 3's "artifact" is the marker entry we write after sv7.
+        or None if there's no evidence on disk. Keyed on the step's kind so
+        the probes follow the steps rather than their positions."""
+        kind = self.step_kinds[idx] if idx < len(self.step_kinds) else ""
+        if kind == "commit":
+            # The commit step's "artifact" is the marker entry we write after sv7.
             when = self._committed_at()
             if not when:
                 return None
@@ -3774,12 +3802,15 @@ class MasterPipelineDialog(QDialog):
                 return datetime.strptime(when, "%Y-%m-%d %H:%M:%S")
             except ValueError:
                 return None
-        review = self._trip_review_dir()
-        if not review:
-            return None
-        path = (os.path.join(review, "data_files.csv") if idx == 0
-                else os.path.join(review, "frozen", "frozen_data_files.csv"))
-        if not os.path.isfile(path):
+        if kind == "verdict":
+            path = self._verdict_archive_path()
+        else:
+            review = self._trip_review_dir()
+            if not review:
+                return None
+            path = (os.path.join(review, "data_files.csv") if kind == "ingest"
+                    else os.path.join(review, "frozen", "frozen_data_files.csv"))
+        if not path or not os.path.isfile(path):
             return None
         try:
             return datetime.fromtimestamp(os.path.getmtime(path))

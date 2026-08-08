@@ -32,6 +32,8 @@ result_dict = {}
 headers = []
 counter = 1
 newcounter = 1
+total_species = 0
+total_new = 0
 jpgneeded = 0
 reference_names = set()  # lowercase ScientificNames that are already in the master collection
 
@@ -124,6 +126,7 @@ def scan_files(directory, search_string, report):
 # create website based on current count setting, now to test iSpeciesThisRunCount
 def scanSpecies(sc, speciesname, report):
     global counter, newcounter, jpgneeded
+    global total_species, total_new
     global subheaderdone
     species = sc.sc_dict[speciesname]
     for leaf in species['Leaves']:
@@ -150,7 +153,12 @@ def scanSpecies(sc, speciesname, report):
                 else:
                     data_line += str(newcounter).rjust(3) + '  '
                     newcounter += 1
+                    total_new += 1
                 counter += 1
+                # counter/newcounter restart at the "Other animals and plants"
+                # subheader; these two never do, so the totals below cover the
+                # whole trip and can be read back without column arithmetic.
+                total_species += 1
                 seen = 0
                 # run by file for which we have data
                 days_line = ""
@@ -213,10 +221,13 @@ def print_headers(sc, report):
 def main(args, config):
     global starttime, SpeciesDebug, reference_names
     global result_dict, headers, counter, newcounter, jpgneeded
+    global total_species, total_new
     result_dict = {}
     headers = []
     counter = 1
     newcounter = 1
+    total_species = 0
+    total_new = 0
     jpgneeded = 0
     reference_names = set()
     starttime = time.time()
@@ -307,6 +318,10 @@ def main(args, config):
         print_headers(sc, report)
         if jpgneeded:
             print(f"\nThere are {jpgneeded} species that have no JPGs on the first occurrence of that species.", file=report)
+        # The machine-readable bottom line, and the one worth reading first.
+        # engine/trip_verdict.py reads it back rather than re-deriving the
+        # counts from the report's fixed-width columns.
+        print(f"\nTotals: {total_species} species, {total_new} new.", file=report)
 
     # print(f'{len(species_dict)} lines written for species data to "{config.get("directories","Tables").replace('"', '').replace("'", '')+'species.csv'}".')
     totaltime = time.time() - starttime      
