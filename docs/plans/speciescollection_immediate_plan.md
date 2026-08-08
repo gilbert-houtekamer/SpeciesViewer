@@ -3,7 +3,23 @@
 Backlog item 11: *"Smarter immediate update of speciescollection — update the
 recognition table the moment a species is learned."*
 
-**Status:** decisions taken 2026-08-08 (§6). Not started.
+**Status:** SHIPPED 2026-08-08 (88f0ece), verified live on test1db.
+
+Two things changed against the plan as written, both because live testing said so:
+
+- **Saved on commit, not at session end.** §6.2 said buffer for the life of the
+  viewer. A pipeline step run while the viewer is still open then reads a
+  collection without the new species and asks GBIF again — and two lookups can
+  return different vernacular names, which left the trip and the master
+  disagreeing about the Dutch name for *sciurus carolinensis*. A commit is a
+  decision rather than a keystroke, so the number of writes is still bounded by
+  the number of NEW species. Viewer close remains the safety net.
+- **No `learn()` wrapper.** The resolver was already single
+  (`getSpecies` → `addSpeciesLevel`); what was scattered was the *saving*. That
+  is now `flushSpeciesLearned()`. A wrapper would have been ceremony.
+
+An in-memory set was used rather than the SQLite staging table, as recommended
+below — nothing needs the buffer to outlive the process.
 
 ---
 

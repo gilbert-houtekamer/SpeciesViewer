@@ -167,13 +167,6 @@ reads <em>No current work planned</em>.</p>
 <h2>4. Trip-to-Master Pipeline</h2>
 <h3>To do</h3>
 <ul>
-  <li><strong>Update the species list the moment a species is learned</strong>
-    <span class="tag-open">OPEN / PLANNED</span> —
-    a species looked up once should be known everywhere, immediately. Today the species editor
-    throws its lookups away entirely, the culling viewer saves them to whichever list happens to be
-    in front of it, and the master only learns anything when you run <em>Publish Species Names</em>
-    — so the same species is looked up again and again. Decisions are settled; see
-    <a href="plans/speciescollection_immediate_plan.md">the plan</a>.</li>
   <li><strong>Export / import a trip</strong> <span class="tag-open">OPEN / NEW</span> —
     move a trip between machines as a unit. Came up while deciding what should happen when the
     master is not reachable: the answer there is "that is an error", which only holds if there is a
@@ -181,6 +174,18 @@ reads <em>No current work planned</em>.</p>
 </ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>A species is learned once, and then known everywhere</strong>
+    <span class="tag-shipped">SHIPPED</span> —
+    naming a species that was not yet in your list means a lookup on the internet. That lookup used
+    to be thrown away by the species editor, saved to whichever list happened to be in front of the
+    culling viewer, and only reached the master when you ran <em>Publish Species Names</em> by hand
+    — so the same species was looked up again in the next trip and again on the other machine.
+    A newly recognised species is now saved the moment you commit it, to the shared master list
+    <em>and</em> the trip's own copy, and the next step in the pipeline already knows it. It is
+    written by appending rather than rewriting the whole 2 MB list per species, which also spares
+    Dropbox. If the master cannot be reached you are told, and nothing is lost — reconnect and it
+    saves. <strong>Edit Species List</strong> is now a single entry (it was one per trip and one per
+    master, and which one you opened decided who saw the correction).</li>
   <li><strong>The new-species count now stays true, whatever you merge next</strong>
     <span class="tag-shipped">SHIPPED</span> —
     <em>Count Species</em> tells you which species on a trip were new to you. It used to answer that
