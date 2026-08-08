@@ -185,7 +185,11 @@ reads <em>No current work planned</em>.</p>
     written by appending rather than rewriting the whole 2 MB list per species, which also spares
     Dropbox. If the master cannot be reached you are told, and nothing is lost — reconnect and it
     saves. <strong>Edit Species List</strong> is now a single entry (it was one per trip and one per
-    master, and which one you opened decided who saw the correction).</li>
+    master, and which one you opened decided who saw the correction). This also retires the
+    planned <em>GBIF lookup disk-cache</em> — there is nothing left to re-look-up. Carrying a
+    change made on the laptop into the master still needs a merge: <em>Publish Species Names</em>
+    does that, and is now a reconciliation step rather than the only way the master ever learned
+    anything.</li>
   <li><strong>The new-species count now stays true, whatever you merge next</strong>
     <span class="tag-shipped">SHIPPED</span> —
     <em>Count Species</em> tells you which species on a trip were new to you. It used to answer that
@@ -299,14 +303,11 @@ reads <em>No current work planned</em>.</p>
 
 <!-- ============================================================ -->
 <h2>11. Performance &amp; EXIFtool</h2>
-<h3>To do</h3>
-<ul>
-  <li><strong>Smarter immediate update of <code>speciescollection</code></strong> <span class="tag-new">NEW</span> —
-    update the recognition table the moment a species is learned. This <strong>removes the need for the
-    GBIF lookup disk-cache</strong> (previously planned to persist family lookups after the parallel-worker
-    win): with the immediate update there is nothing left to re-look-up. A merge is still needed to carry a
-    change made on the laptop into the master.</li>
-</ul>
+<p class="none">No current work planned. The <em>smarter immediate update of the species
+list</em> that sat here has shipped and now lives under <strong>4. Trip-to-Master
+Pipeline</strong>, where it belongs. It also retires the planned <strong>GBIF lookup
+disk-cache</strong>: a species is saved the moment it is learned, so there is nothing left
+to re-look-up.</p>
 <h3>Parked</h3>
 <ul>
   <li><span class="tag-parked">PAUSED</span> General micro-perf sweep — the real value is the
