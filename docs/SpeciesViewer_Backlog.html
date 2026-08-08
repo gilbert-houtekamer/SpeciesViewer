@@ -165,30 +165,29 @@ reads <em>No current work planned</em>.</p>
 
 <!-- ============================================================ -->
 <h2>4. Trip-to-Master Pipeline</h2>
-<h3>To do</h3>
-<ul>
-  <li><strong>Give the older trips their baseline back</strong> <span class="tag-open">OPEN</span> —
-    trips created before this feature (Greece and everything earlier) have no frozen species list,
-    so their lifer count is judged against the master <em>as it is today</em> and the report says so
-    in plain words. The master keeps dated snapshots of its own species list
-    (<code>metadata/active/backup/&lt;date&gt;_species.csv</code>), so each old trip can be given a
-    correct <em>retroactive</em> baseline from the snapshot nearest its creation date. Same work
-    package: warn on <em>Retire Trip</em> when a trip is about to be deleted without an archived
-    verdict.</li>
-</ul>
+<p class="none">No current work planned. Complete — see below.</p>
 <h3>Done</h3>
 <ul>
-  <li><strong>New species stay countable after the master is updated</strong>
+  <li><strong>The new-species count now stays true, whatever you merge next</strong>
     <span class="tag-shipped">SHIPPED</span> —
-    <em>Count Species</em> tells you which species on a trip were new to you, by comparing the trip
-    against the master's species list. That only ever worked because the merge into the master
-    happened once, at the end, <em>after</em> you had read the report: the moment the trip's pictures
-    are in the master, its species are in the master's list and every new species silently stops
-    counting as new. Nothing recorded what the answer had been. Now the master's species list is
-    <strong>frozen into the trip when the trip is created</strong>, and Count Species judges against
-    that frozen list, so the verdict survives any number of later updates. The report states which
-    list it used and how much of the trip it covers — an unfrozen verdict never looks like a frozen
-    one, and a day that was never summarized is named rather than quietly contributing nothing.</li>
+    <em>Count Species</em> tells you which species on a trip were new to you. It used to answer that
+    by asking whether the species was in the master <em>right now</em>, which only worked as long as
+    you read the report before merging the trip: afterwards its own species were in the master and
+    every new species silently stopped being new. Nothing recorded what the answer had been.
+    A trip's new species are now judged against
+    <strong>everything the master has a picture of from before the trip's start date</strong>, worked
+    out afresh on every run. It cannot be thrown off by merging this trip, nor by merging an older
+    trip afterwards — a species first photographed in March counts as known on a May trip even if the
+    March trip only reaches the master in July, which is exactly the case that produced a wrong count
+    (48 instead of 47 on Greece) before this landed. The report names the rule it used, says how much
+    of the trip it covers, and a day that was never summarized is named rather than quietly
+    contributing nothing.</li>
+  <li><strong>Landscapes are no longer mistaken for species</strong>
+    <span class="tag-shipped">SHIPPED</span> —
+    landscape/topic entries are stored looking exactly like species (<code>2026</code>, filed under
+    <code>topics/landscape/</code>) and reach the counting code through the day summaries. They were
+    only being kept out of the report by accident, and sat in the species lists behind it. They are
+    now discarded as the summaries are read, and the report states how many it ignored.</li>
   <li><strong>The trip's species verdict now outlives the trip</strong>
     <span class="tag-shipped">SHIPPED</span> —
     <em>Merge Pictures into Master</em> starts by counting species and storing the result in the
@@ -198,7 +197,8 @@ reads <em>No current work planned</em>.</p>
     because the trip itself does not survive — retiring a trip deletes its whole repository, and
     resetting one clears the day summaries the report is built from. "How many new species did that
     trip give me?" is now a question you can still answer years later, for every trip, without
-    opening a single text file.</li>
+    opening a single text file. <em>Retire Trip</em> warns when a trip is about to be deleted with no
+    archived count, since that number cannot be recovered afterwards.</li>
 </ul>
 
 <!-- ============================================================ -->
