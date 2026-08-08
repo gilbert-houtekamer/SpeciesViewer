@@ -454,6 +454,76 @@ def count_files(path):
     return len(all_files), len(jpg_files)
 
 
+def _show_trip_not_ready(self, image_root, review_root, trip_root):
+    """The active trip cannot be shown because one of its folders isn't there.
+
+    This used to log "Invalid directory paths." — once per refresh, so a freshly
+    imported trip filled the log with a red-flag message that named no path, no
+    cause and no fix. It is usually not even an error: a trip imported from
+    another machine has no pictures until they are copied across.
+
+    So: say WHICH folder is missing and WHY, in the tab where the day table
+    would be, with a button to the setting when the setting is the problem. One
+    INFO line in the log, not a warning per refresh.
+    """
+    from utils.config import get_currentpictures_root
+
+    pictures_missing = not image_root.exists()
+    repo_missing = not review_root.exists()
+    cp_root = get_currentpictures_root()
+
+    if repo_missing:
+        headline = "This trip's folders are not on this machine."
+        detail = (f"Expected the trip's own data in {review_root}.\n\n"
+                  f"Either the Trip Database path points somewhere else, or the "
+                  f"trip has not been created/imported here yet.")
+        fix_setting = True
+    elif not cp_root:
+        headline = "The CurrentPictures root is not set on this machine."
+        detail = ("Each trip stores its picture folder relative to that root, so "
+                  "without it the pictures cannot be located at all.")
+        fix_setting = True
+    else:
+        headline = "This trip's pictures are not on this machine yet."
+        detail = (f"Expected them in {image_root}.\n\n"
+                  f"Copy the day folders there, then run Read & Summarize. "
+                  f"(If they live somewhere else, correct the CurrentPictures "
+                  f"root or the trip's picture folder.)")
+        fix_setting = False
+
+    self.logger.info(f"Active trip not ready — {headline} ({trip_root.name})")
+
+    panel = QWidget()
+    layout = QVBoxLayout(panel)
+    layout.setContentsMargins(24, 24, 24, 24)
+
+    title = QLabel(headline)
+    title.setStyleSheet(f"font-weight: bold; color: {theme.WARN};")
+    title.setWordWrap(True)
+    layout.addWidget(title)
+
+    body = QLabel(detail)
+    body.setWordWrap(True)
+    body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    layout.addWidget(body)
+
+    row = QHBoxLayout()
+    if fix_setting:
+        btn = QPushButton("Open Repositories…")
+        def _open_settings():
+            from settings.reposettings import RepoSettingsDialog
+            RepoSettingsDialog(self).exec()
+            populate_trip_overview(self)      # re-check with whatever was saved
+        btn.clicked.connect(_open_settings)
+        row.addWidget(btn)
+    row.addStretch()
+    layout.addLayout(row)
+    layout.addStretch()
+
+    self.yellow_tabs.addTab(panel, "Active Trip")
+    self.yellow_tabs.setCurrentWidget(panel)
+
+
 def populate_trip_overview(self):
     self.update_trip_label()
     # Keep the left Trips panel's active-trip ▶ marker in sync after any trip
@@ -480,7 +550,7 @@ def populate_trip_overview(self):
     review_root = trip_root / "metadata" / "review"
 
     if not image_root.exists() or not review_root.exists():
-        self.logger.warning("Invalid directory paths.")
+        _show_trip_not_ready(self, image_root, review_root, trip_root)
         return
 
     trip_name = image_root.name
