@@ -1,0 +1,37 @@
+"""Absolute paths for the tiny per-machine files one process writes and another
+process reads.
+
+ONE JOB: give every process the same absolute path for such a file, whatever
+directory it was started from.
+
+The batch steps run as separate processes from the GUI that launches them, so
+they cannot return a value; a step writes the URL it just published to a small
+file and the GUI reads it back to offer "open in browser". That handoff used a
+bare relative filename, which resolves against the *current working directory* —
+so it only worked while both processes happened to start in the repo root, and
+it dropped throwaway files into the source tree.
+
+These are runtime state, not caches: they are never relocatable through Manage
+Caches, so they deliberately do not go through cache_paths.cache_root().
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from utils.cache_paths import app_data_dir
+
+# Shared by writer and reader — a literal typed twice is a silent breakage
+# (the writer publishes, the reader finds nothing and quietly opens the site root).
+LAST_BLOG_URL = "last_blog_url.txt"
+LAST_WEBSITE_URL = "last_website_url.txt"
+
+
+def runtime_path(name: str) -> Path:
+    """Absolute path to the per-machine runtime file `name`, creating its
+    directory. Lives beside the caches under the per-OS app-data dir
+    (%LOCALAPPDATA%/SpeciesViewer on Windows, ~/Library/Application Support
+    on macOS) — local, never Dropbox, never the source tree."""
+    d = app_data_dir() / "runtime"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / name

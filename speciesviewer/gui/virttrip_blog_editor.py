@@ -258,11 +258,12 @@ class VirtTripBlogEditorDialog(QDialog):
 
     def _open_blog_in_browser(self):
         """Open the just-published blog index in a browser, the way Write Blogs does.
-        svv3 writes the relative URL to last_blog_url.txt on success."""
+        svv3 writes the relative URL to the shared runtime file on success."""
         import webbrowser
+        from utils.runtime_files import LAST_BLOG_URL, runtime_path
         base = _config.get("websettings", "base_url", fallback="https://houtekamer.com/")
         try:
-            with open("last_blog_url.txt", "r") as f:
+            with open(runtime_path(LAST_BLOG_URL), "r") as f:
                 rel = f.read().strip()
             webbrowser.open(base.rstrip("/") + rel)
         except (FileNotFoundError, OSError) as e:

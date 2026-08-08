@@ -186,7 +186,8 @@ def main(args, config):
         blog_url = MyProject.getBiotaBlogWeb() + 'blog index-nl.html'
     else:
         blog_url = MyProject.getBiotaBlogWeb() + blog.getBlogDay() + '-nl.html'
-    with open("last_blog_url.txt", "w") as f:
+    from utils.runtime_files import LAST_BLOG_URL, runtime_path
+    with open(runtime_path(LAST_BLOG_URL), "w") as f:
         f.write(blog_url)
 
     # Overrides the step's static "✅ Blog successfully created." message in the GUI

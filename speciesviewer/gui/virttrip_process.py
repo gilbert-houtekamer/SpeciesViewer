@@ -1471,7 +1471,8 @@ class VirttripWriteBlogDialog(QDialog):
     def get_blog_url(self) -> str:
         base_url = _config.get("websettings", "base_url", fallback="https://houtekamer.com/")
         try:
-            with open("last_blog_url.txt", "r") as f:
+            from utils.runtime_files import LAST_BLOG_URL, runtime_path
+            with open(runtime_path(LAST_BLOG_URL), "r") as f:
                 relative_url = f.read().strip()
             return base_url.rstrip("/") + relative_url
         except FileNotFoundError:
@@ -1582,7 +1583,8 @@ class VirttripRedoBlogDialog(QDialog):
     def get_blog_url(self) -> str:
         base_url = _config.get("websettings", "base_url", fallback="https://houtekamer.com/")
         try:
-            with open("last_blog_url.txt", "r") as f:
+            from utils.runtime_files import LAST_BLOG_URL, runtime_path
+            with open(runtime_path(LAST_BLOG_URL), "r") as f:
                 relative_url = f.read().strip()
             return base_url.rstrip("/") + relative_url
         except FileNotFoundError:
@@ -1650,7 +1652,8 @@ class VirttripBuildWebsiteDialog(QDialog):
     def get_website_url(self) -> str:
         base_url = _config.get("websettings", "base_url", fallback="https://houtekamer.com/")
         try:
-            with open("last_website_url.txt", "r") as f:
+            from utils.runtime_files import LAST_WEBSITE_URL, runtime_path
+            with open(runtime_path(LAST_WEBSITE_URL), "r") as f:
                 relative_url = f.read().strip()
             return base_url.rstrip("/") + relative_url
         except FileNotFoundError:

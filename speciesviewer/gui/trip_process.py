@@ -2282,7 +2282,8 @@ class CreateBlogDialog(QDialog):
     def get_blog_url(self):
         base_url = _config.get("websettings", "base_url", fallback="https://houtekamer.com/")
         try:
-            with open("last_blog_url.txt", "r") as f:
+            from utils.runtime_files import LAST_BLOG_URL, runtime_path
+            with open(runtime_path(LAST_BLOG_URL), "r") as f:
                 relative_url = f.read().strip()
             # relative_url is e.g. "/trips/kreta/biotablog/Blog Pictures ...-nl.html"
             return base_url.rstrip("/") + relative_url

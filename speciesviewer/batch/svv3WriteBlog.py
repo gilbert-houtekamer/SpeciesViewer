@@ -653,7 +653,8 @@ def main(args, config):
 
     # Write the blog index URL so the GUI can open it in a browser after completion.
     blog_index_url = project.getBiotaBlogWeb() + "blog index-nl.html"
-    with open("last_blog_url.txt", "w") as f:
+    from utils.runtime_files import LAST_BLOG_URL, runtime_path
+    with open(runtime_path(LAST_BLOG_URL), "w") as f:
         f.write(blog_index_url)
 
     logger.info(f"✅ svv3WriteBlog complete: {processed} day(s) published.")

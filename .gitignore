@@ -31,10 +31,8 @@ venv
 *.log
 SpeciesViewerLog.txt
 sv_gui_cache.json
-last_blog_url.txt
-# Same batch->GUI handoff as last_blog_url.txt, written by svv4BuildWebsite for
-# the Album's species overview. One line, rewritten on every publish.
-last_website_url.txt
+# (the batch->GUI URL handoff files moved out of the source tree entirely —
+#  see utils/runtime_files.py, they now live under the per-OS app-data dir)
 # Per-machine Working Days registry (utils/days_registry.py), full of absolute
 # local picture paths — meaningless on another machine.
 /days_*.json
