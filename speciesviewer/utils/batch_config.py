@@ -79,6 +79,7 @@ def generate_svconfig_ini(svconfig_path="svconfig.ini", master_mode=False,
         "smallmaster_target": _config.get("utilities", "smallmaster_target", fallback=""),
         "virttrip_export_target": _config.get("utilities", "virttrip_export_target", fallback=""),
         "trip_export_target": _config.get("utilities", "trip_export_target", fallback=""),
+        "trip_import_zip": _config.get("utilities", "trip_import_zip", fallback=""),
         # "This repository is being RESTORED from a transfer ZIP, not created
         # fresh." Two things must then not happen (see D4/D6 in the plan):
         #   - no seeding of speciescollection/lifer baseline from this machine's

@@ -97,18 +97,25 @@ def published_state(master_root, web_slug):
 
 # ── export ───────────────────────────────────────────────────────────────────
 
-def _day_folders(picture_root):
-    """The YYYY-MM-DD day folders under the trip's picture root (for the
-    manifest's copy instruction — the export never touches their contents)."""
-    if not picture_root or not os.path.isdir(picture_root):
+def _day_dirs(parent):
+    """The YYYY-MM-DD subfolders of `parent`, sorted; [] when it doesn't exist."""
+    if not parent or not os.path.isdir(parent):
         return []
     import re
     day_re = re.compile(r"^\d{4}-\d{2}-\d{2}$")
     try:
-        return sorted(d for d in os.listdir(picture_root)
-                      if day_re.match(d) and os.path.isdir(os.path.join(picture_root, d)))
+        return sorted(d for d in os.listdir(parent)
+                      if day_re.match(d) and os.path.isdir(os.path.join(parent, d)))
     except OSError:
         return []
+
+
+def _review_days(trip_root):
+    """The days this trip has actually been WORKED on — one folder per day under
+    metadata/review. Zero is a perfectly normal state (a trip prepared but not
+    yet shot), and the import uses it to know there is nothing to carry, so it
+    can stay quiet instead of recommending a copy that has no source."""
+    return _day_dirs(os.path.join(trip_root, "metadata", "review"))
 
 
 def build_manifest(trip_root, master_root="", machine="", master_web_root=""):
@@ -117,7 +124,8 @@ def build_manifest(trip_root, master_root="", machine="", master_web_root=""):
     ident = resolve(trip_root, kind="trip")
     trip_data = read_trip_ini(trip_root) or {}
     picture_root_abs = resolve_trip_picture_root(trip_root, kind="trip")
-    days = _day_folders(picture_root_abs)
+    days = _day_dirs(picture_root_abs)
+    review_days = _review_days(trip_root)
     published = published_state(master_root, ident.web_slug)
 
     cfg = ConfigParser()
@@ -152,6 +160,9 @@ def build_manifest(trip_root, master_root="", machine="", master_web_root=""):
         "picture_root": trip_data.get("picture_root", ""),
         "source_folder": picture_root_abs or "",
         "day_count": str(len(days)),
+        # Days already worked on at the source. 0 = a trip that has not been
+        # shot yet, which is normal and means the import has nothing to ask for.
+        "review_days": str(len(review_days)),
         "first_day": days[0] if days else "",
         "last_day": days[-1] if days else "",
     }
@@ -163,6 +174,7 @@ def build_manifest(trip_root, master_root="", machine="", master_web_root=""):
         "picture_root": trip_data.get("picture_root", ""),
         "source_folder": picture_root_abs or "",
         "days": len(days),
+        "review_days": len(review_days),
         "folder": cfg["trip"]["folder"],
     }
     return cfg, info
@@ -172,6 +184,11 @@ def copy_instruction(info, target_currentpictures_root=""):
     """The one manual step, spelled out (D8). Plain language: what to copy where."""
     rel = info.get("picture_root", "")
     src = info.get("source_folder", "")
+    if not info.get("days"):
+        # Nothing has been shot yet. That is a normal state for a trip prepared
+        # in advance — the whole point of preparing one — so it gets a statement
+        # of fact, not an instruction to go and copy something that isn't there.
+        return "This trip has no day folders yet, so there is nothing to copy."
     if not src:
         return ("This trip has no picture folder on this machine yet, so there is "
                 "nothing to copy.")

@@ -1,23 +1,37 @@
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFileDialog, QMessageBox, QFrame, QCheckBox
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QFileDialog, QMessageBox, QCheckBox, QTabWidget, QWidget
 )
 import logging
 from utils.config import (_config, persist_config, get_trips_root,
                           get_virttrips_root, get_currentpictures_root)
 
 class RepoSettingsDialog(QDialog):
+    """Where the master, the active trip and the active album live on THIS
+    machine.
+
+    One tab per repository: stacked in a single column the dialog grew taller
+    than a laptop screen, which pushed Save off the bottom — the one control
+    that has to be reachable.
+    """
+
     def __init__(self, parent):
         super().__init__(parent)
         self.setWindowTitle("Repositories")
-        self.setMinimumSize(600, 700)
+        # Fits a 768-high laptop screen with room to spare; the tabs keep each
+        # page short instead of the dialog growing to hold everything at once.
+        self.setMinimumSize(620, 380)
+        self.resize(660, 460)
 
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        tabs = QTabWidget()
+        outer.addWidget(tabs)
 
-        # Master section (shared by trips and virtual trips)
-        layout.addWidget(self._section_label("Master (shared)"))
+        # ── Master (shared by trips and albums) ──────────────────────────────
+        master_tab = QWidget()
+        layout = QVBoxLayout(master_tab)
         self.master_field = self._labeled_field(layout, "Database", _config.get("master", "masterbiotadatabase", fallback=""))
         browse_master_btn = QPushButton("Browse Master Database")
         browse_master_btn.clicked.connect(self.browse_master)
@@ -37,10 +51,12 @@ class RepoSettingsDialog(QDialog):
             self.master_readonly.setToolTip(
                 "Locked — this machine holds a SmallMaster subset and cannot write to the master.")
         layout.addWidget(self.master_readonly)
-        layout.addWidget(self._divider())
+        layout.addStretch()
+        tabs.addTab(master_tab, "Master")
 
-        # Active Trip section
-        layout.addWidget(self._section_label("Active Trip"))
+        # ── Active Trip ──────────────────────────────────────────────────────
+        trip_tab = QWidget()
+        layout = QVBoxLayout(trip_tab)
         self.trip_field = self._labeled_field(layout, "Database", _config.get("trip", "tripbiotadatabase", fallback=""))
         browse_trip_btn = QPushButton("Browse Trip Database")
         browse_trip_btn.clicked.connect(self.browse_trip)
@@ -58,10 +74,12 @@ class RepoSettingsDialog(QDialog):
         browse_currentpictures_btn = QPushButton("Browse CurrentPictures Root")
         browse_currentpictures_btn.clicked.connect(self.browse_currentpictures_root)
         layout.addWidget(browse_currentpictures_btn)
-        layout.addWidget(self._divider())
+        layout.addStretch()
+        tabs.addTab(trip_tab, "Trip")
 
-        # Active Virtual Trip section
-        layout.addWidget(self._section_label("Active Album"))
+        # ── Active Album ─────────────────────────────────────────────────────
+        album_tab = QWidget()
+        layout = QVBoxLayout(album_tab)
         self.virttrip_field = self._labeled_field(layout, "Database", _config.get("virttrip", "virttripbiotadatabase", fallback=""))
         browse_virttrip_btn = QPushButton("Browse Album Database")
         browse_virttrip_btn.clicked.connect(self.browse_virttrip)
@@ -71,27 +89,36 @@ class RepoSettingsDialog(QDialog):
         browse_virttrips_root_btn = QPushButton("Browse Albums Root")
         browse_virttrips_root_btn.clicked.connect(self.browse_virttrips_root)
         layout.addWidget(browse_virttrips_root_btn)
+        layout.addStretch()
+        tabs.addTab(album_tab, "Album")
 
+        # Save sits OUTSIDE the tabs: it writes every page, and it must stay
+        # visible whichever tab is open.
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
         save_btn = QPushButton("Save")
+        save_btn.setDefault(True)
         save_btn.clicked.connect(self.save_settings)
-        layout.addWidget(save_btn)
+        btn_row.addWidget(save_btn)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.close)
+        btn_row.addWidget(cancel_btn)
+        outer.addLayout(btn_row)
 
-    def _section_label(self, text):
-        lbl = QLabel(text)
-        lbl.setStyleSheet("font-weight: bold; margin-top: 4px;")
-        return lbl
+    # Label BESIDE the field, not above it: stacking them doubled the height of
+    # every row and was what made this dialog outgrow a laptop screen.
+    _LABEL_WIDTH = 190
 
     def _labeled_field(self, layout, label, value=""):
-        layout.addWidget(QLabel(label))
+        row = QHBoxLayout()
+        lbl = QLabel(label)
+        lbl.setFixedWidth(self._LABEL_WIDTH)
+        lbl.setWordWrap(True)
+        row.addWidget(lbl)
         field = QLineEdit(value)
-        layout.addWidget(field)
+        row.addWidget(field)
+        layout.addLayout(row)
         return field
-
-    def _divider(self):
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.HLine)
-        line.setFrameShadow(QFrame.Shadow.Sunken)
-        return line
 
     def browse_master(self):
         start = self.master_field.text() or ""

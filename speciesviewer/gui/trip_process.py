@@ -4267,6 +4267,15 @@ class SmallMasterDialog(QDialog):
         runner.run(self.menu_spec)
 
 
+def _as_int(value, default=0):
+    """A manifest value read back as a number — ini values are always strings,
+    and an older export may not carry the key at all."""
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
 class ExportTripDialog(QDialog):
     """Zip the active trip's admin for transfer to another machine.
 
@@ -4332,13 +4341,19 @@ class ExportTripDialog(QDialog):
             except Exception as e:
                 self.copy_label.setText(f"(could not read the trip: {e})")
         layout.addWidget(self.copy_label)
+        layout.addSpacing(8)
 
-        self.target_field = DirectoryFieldQt("Output directory (ZIP saved here)", "")
+        # Remembered across sessions: the transfer folder is the same one every
+        # time (a share, a stick), so re-picking it on every export is pure toil.
+        self.target_field = DirectoryFieldQt(
+            "Output directory (ZIP saved here)",
+            _config.get("utilities", "trip_export_target", fallback=""))
         layout.addWidget(self.target_field)
 
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
+        layout.addStretch()
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
@@ -4359,6 +4374,7 @@ class ExportTripDialog(QDialog):
         if not _config.has_section("utilities"):
             _config.add_section("utilities")
         _config["utilities"]["trip_export_target"] = target
+        persist_config()          # remembered for the next export
         runner = BatchModuleRunner(self, self.passed_parent)
         runner.run(self.menu_spec)
 
@@ -4396,21 +4412,33 @@ class ImportTripDialog(QDialog):
         info.setWordWrap(True)
         layout.addWidget(info)
 
+        # Label + field on ONE line each, so the two paths read as a compact
+        # block instead of stacking label-over-field down the dialog.
+        from PyQt6.QtWidgets import QFormLayout as _QFormLayout
+        form = _QFormLayout()
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        form.setHorizontalSpacing(10)
+        form.setVerticalSpacing(6)
+
         zip_row = QHBoxLayout()
-        zip_row.addWidget(QLabel("ZIP file:"))
-        self.zip_field = QLineEdit()
+        # Remembered across sessions — the ZIP comes from the same transfer
+        # folder every time.
+        self.zip_field = QLineEdit(_config.get("utilities", "trip_import_zip", fallback=""))
         self.zip_field.setPlaceholderText("Select a trip ZIP…")
         zip_row.addWidget(self.zip_field)
         browse_btn = QPushButton("Browse…")
         browse_btn.clicked.connect(self._browse_zip)
         zip_row.addWidget(browse_btn)
-        layout.addLayout(zip_row)
+        form.addRow("ZIP file:", zip_row)
 
         trips_root = get_trips_root()
-        layout.addWidget(QLabel("Trips root:"))
         self.root_edit = QLineEdit(trips_root or "(not configured — set it in Settings ▸ Repositories)")
         self.root_edit.setReadOnly(bool(trips_root))
-        layout.addWidget(self.root_edit)
+        form.addRow("Trips root:", self.root_edit)
+        layout.addLayout(form)
+        # Breathing room between the inputs and what the dialog tells you about
+        # them — they are different kinds of thing and should not run together.
+        layout.addSpacing(12)
 
         from gui import theme as _theme
         self.summary_label = QLabel("Select a ZIP file to see what it holds.")
@@ -4419,11 +4447,16 @@ class ImportTripDialog(QDialog):
         # This block IS the decision the user makes ("new trip or update?"), so
         # it must be as readable as the body text.
         self.summary_label.setStyleSheet(f"color: {_theme.INK_SOFT};")
+        self.summary_label.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addWidget(self.summary_label)
 
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addWidget(self.status_label)
+        # Soak up the leftover height HERE, so it never opens up as a gap
+        # between a label and its own field.
+        layout.addStretch()
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
@@ -4529,13 +4562,20 @@ class ImportTripDialog(QDialog):
             "unknown": "🌐 Publication state was unknown at export; nothing is uploaded.",
         }[published])
 
-        if man.get("picture_root"):
+        source_days = _as_int(man.get("day_count"))
+        if not source_days:
+            # A trip prepared in advance has no days yet — say so plainly and
+            # ask for nothing. Recommending a copy here sends the user looking
+            # for folders that were never supposed to exist.
+            lines.append("📁 No day folders on the source machine yet — "
+                         "nothing to copy.")
+        elif man.get("picture_root"):
             rel = man["picture_root"].replace("/", os.sep)
             cp_root = get_currentpictures_root()
             if cp_root:
                 lines.append(
-                    f"📁 Pictures belong in {_e(os.path.join(cp_root, rel))} "
-                    f"({_e(man.get('day_count', '0'))} day folders on the source machine).")
+                    f"📁 Pictures belong in {_e(os.path.normpath(os.path.join(cp_root, rel)))} "
+                    f"({source_days} day folders on the source machine).")
             else:
                 # Without this setting the trip's stored, portable picture path
                 # cannot be turned into a real folder on THIS machine — so say
@@ -4564,6 +4604,11 @@ class ImportTripDialog(QDialog):
         if not zip_path or not os.path.isfile(zip_path) or not dest or self._blocked:
             self.status_label.setText("Select a valid ZIP file first.")
             return
+
+        if not _config.has_section("utilities"):
+            _config.add_section("utilities")
+        _config.set("utilities", "trip_import_zip", zip_path)
+        persist_config()          # remembered for the next import
 
         is_update = os.path.isdir(dest) and os.path.isfile(os.path.join(dest, "trip.ini"))
         if is_update:
@@ -4662,7 +4707,13 @@ class ImportTripDialog(QDialog):
         #    and pre-escaping it here put a literal "&amp;" in the log.
         rel = (trip_data.get("picture_root") or "").replace("/", os.sep)
         cp_root = get_currentpictures_root()
-        if not cp_root and rel:
+        source_days = _as_int((self._manifest or {}).get("day_count"))
+        if not source_days:
+            # Nothing was shot on the source machine, so there is nothing to
+            # fetch and nothing to summarize. Silence beats a false to-do.
+            notes.append("This trip has no day folders yet — nothing to copy. "
+                         "Read the pictures in when you have them.")
+        elif not cp_root and rel:
             # The real reason the pictures can't be located: this machine has no
             # CurrentPictures root, so the trip's portable relative path cannot
             # be resolved. Naming the setting beats printing a placeholder.
@@ -4670,8 +4721,9 @@ class ImportTripDialog(QDialog):
                          f"root is not set on this machine, so they cannot be found. "
                          f"Set it in Settings ▸ Repositories, then re-select the trip.")
         elif not picture_root or not os.path.isdir(picture_root):
-            notes.append(f"⚠ The pictures are not here yet — copy the day folders to "
-                         f"{os.path.join(cp_root, rel)}, then run Read & Summarize.")
+            notes.append(f"⚠ The {source_days} day folders are not here yet — copy them to "
+                         f"{os.path.normpath(os.path.join(cp_root, rel))}, "
+                         f"then run Read & Summarize.")
         elif not first_day:
             notes.append(f"⚠ {picture_root} holds no day folders yet — copy them there, "
                          f"then run Read & Summarize.")
