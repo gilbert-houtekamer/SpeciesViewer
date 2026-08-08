@@ -9,6 +9,9 @@
 !species-date.csv
 !installation files/*.csv
 !installation files/*.ini
+# Plan documents are committed (they travel between machines) and some are
+# CSV working copies with review columns, so they need an exception to *.csv.
+!docs/plans/*.csv
 data/repositories/repo*
 downloaded_images/*
 
@@ -29,6 +32,14 @@ venv
 SpeciesViewerLog.txt
 sv_gui_cache.json
 last_blog_url.txt
+# Same batch->GUI handoff as last_blog_url.txt, written by svv4BuildWebsite for
+# the Album's species overview. One line, rewritten on every publish.
+last_website_url.txt
+# Per-machine Working Days registry (utils/days_registry.py), full of absolute
+# local picture paths — meaningless on another machine.
+/days_*.json
+.trash/
+xmptest/
 sysprint-recreatetrip.txt
 qt/sysprint-recreatetrip.txt
 tools/lab_out/
@@ -39,5 +50,13 @@ tools/lab_out/
 
 # app remains
 svconfig.backup.*
+
+# per-machine configuration — carries the SFTP credential, never commit.
+# utils/config.py loads sv_config_<machinename>.ini from the repo root, and
+# generate_svconfig_ini() rewrites svconfig.ini on every batch run, so both are
+# per-machine state rather than source. Anchored to the root on purpose: the
+# example copies under data/configs/ stay tracked (with a blank sftppwd).
+/svconfig.ini
+/sv_config_*.ini
 
 Species print.txt
