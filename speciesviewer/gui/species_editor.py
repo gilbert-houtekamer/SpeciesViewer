@@ -454,7 +454,13 @@ class SpeciesInfoPanel(QWidget):
             input_name = max(parts, key=len)
             validated = fpr.sc.getSpecies(input_name, fuzzy=True) if fpr else ""
             if validated:
-                self.status_label.setText(f"✅ Validated: {input_name} ({validated})")
+                # Show a name you can read, with the scientific one in brackets:
+                # "melkslang (lampropeltis triangulum)". Typing the scientific
+                # name used to echo it twice — "x (x)" — which said nothing.
+                rec = fpr.sc.sc_dict.get(validated, {}) if _sc_usable(fpr.sc) else {}
+                common = (rec.get("DutchName") or rec.get("EnglishName") or "").strip()
+                shown = f"{common} ({validated})" if common and common != validated else validated
+                self.status_label.setText(f"✅ Validated: {shown}")
                 logger.info(f"Validated species name: {input_name} → {validated}")
                 # Validate is what TEACHES us the taxon: GBIF adds the species to the
                 # collection with its whole lineage. Until it runs, a brand-new orchid is
