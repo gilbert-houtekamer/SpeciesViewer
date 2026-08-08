@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SpeciesViewer - Menu Function Overview (round 2)</title>
+<style>
+  :root { --line:#dcdce4; --head:#2d3142; --accent:#4f6d7a; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; color:#1d1f29; background:#f7f7fa; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color:#666; font-size:13px; margin-bottom:18px; }
+  .bar { position:sticky; top:0; background:#f7f7fa; padding:10px 0; z-index:5; border-bottom:1px solid var(--line); margin-bottom:14px; }
+  button { background:var(--accent); color:#fff; border:0; padding:8px 14px; border-radius:6px; cursor:pointer; font-size:13px; }
+  button:hover { background:#3d5663; }
+  .hint { color:#888; font-size:12px; margin-left:10px; }
+  .menu { margin: 18px 0 6px; font-size:16px; font-weight:700; color:var(--head);
+          border-left:5px solid var(--accent); padding-left:8px; }
+  table { width:100%; border-collapse:collapse; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  th, td { border:1px solid var(--line); padding:7px 9px; vertical-align:top; font-size:12.5px; text-align:left; }
+  th { background:var(--head); color:#fff; font-weight:600; }
+  td.fn { font-weight:600; white-space:nowrap; }
+  td.claude { color:#3d5663; background:#f3f7f8; }
+  td.think { background:#fffdf3; }
+  td.think:focus { outline:2px solid var(--accent); background:#fff; }
+  td.resp { background:#eef6ef; color:#2f5233; }
+  td.reply { background:#fff6fb; }
+  td.reply:focus { outline:2px solid #b5559a; background:#fff; }
+  col.c1{width:9%} col.c2{width:15%} col.c3{width:17%} col.c4{width:21%} col.c5{width:21%} col.c6{width:17%}
+  tr:hover td { background:#f0f4ff; }
+  tr:hover td.think { background:#fffdf3; } tr:hover td.resp { background:#eef6ef; }
+  tr:hover td.reply { background:#fff6fb; }
+</style>
+</head>
+<body>
+<h1>SpeciesViewer - Menu Function Overview <span style="font-weight:400;color:#888">(round 2)</span></h1>
+<div class="sub">From gui/menuspec.py. Yellow = your thoughts (editable). Green = Claude's reply (read-only). Pink = your new reply (editable). Export keeps all your edits.</div>
+
+<div class="bar">
+  <button onclick="exportCSV()">Download my edits as CSV</button>
+  <span class="hint">Edits live only in this tab until you export (semicolon-delimited, opens in Excel).</span>
+</div>
+
+<div id="root"></div>
+
+<script>
+// [menu, function, what, claude-organize, your-thoughts, claude-on-yours]
+const DATA = [
+[`File`,`Quit`,`Close the application (Ctrl+Q).`,`Thin menu - could host Open Trip / Recent Trips / Switch Active Trip.`,`It needs indeed some meat. We can even move Settings there, with sub-items?`,`Agree - File > Settings as a submenu matches Windows convention, and File is the natural home for Open/Switch/Recent Trip.`],
+[`Trip`,`Read SD-cards`,`Ingest from camera SD cards into CurrentPictures - front stage retiring PhotoMechanic.`,`Lift it into a top-level 'Ingest' menu rather than burying the front door in Trip.`,`True, and it must already use trip settings. So: Create Trip on top, next Read (Ingest?) SD-cards, next Read & Sum .. Write Commit.`,`You are right and I retract the separate menu: because ingest needs trip settings, keep it in Trip as the day pipeline. 'Ingest' is the better label if you later import from folders too.`],
+[`Trip`,`Create Trip`,`Start a new trip repository.`,`Keep. Could fold SD-card import into the create wizard.`,`Sets data structures, also for ingest.`,`Then it is the true step 0 - have Create Trip end with 'read SD-cards now?' so the happy path is one flow.`],
+[`Trip`,`Sync Sidecars`,`Write/refresh XMP sidecars so Lightroom etc. see the metadata.`,`'Save metadata to files' reads plainer than 'Sync Sidecars'.`,`Day scope. 'Sync LR and PL metadata', it is about the XMP and DOP.`,`Yes - 'Sync Lightroom & PhotoLab metadata' names the XMP + .dop you mean. Day scope, first day step.`],
+[`Trip`,`Read & Summarize`,`Merged step - read EXIF + write per-day data CSVs in one pass (cached).`,`Mark steps 2-6 as a numbered pipeline so the linear flow is obvious.`,`Day scope.`,`Agreed - number the day steps (1 Sync, 2 Read & Summarize, 3 Blog, 4 Website, 5 Freeze+Commit).`],
+[`Trip`,`Write Blog`,`Generate day blog pages from blog ini + selected pictures.`,`Keep.`,`Day scope.`,`Confirmed day scope.`],
+[`Trip`,`Build Website`,`Build the trip website (species pages + all-biota grid).`,`Keep.`,`Day scope.`,`Confirmed day scope.`],
+[`Trip`,`Freeze`,`Rewrite frozen data CSVs with the current-schema header.`,`Auto-run inside Commit, hide under Advanced.`,`Day scope. Freeze and Commit were split during development. Probably merge the corresponding .py files.`,`Agree on merging Freeze into Commit + the .py - one caveat: each is a separate statemachine step, so collapse their state keys too or the progress spheres get confused.`],
+[`Trip`,`Write Commit`,`Upload/commit the trip website over SFTP.`,`Keep as the pipeline endpoint.`,`see above`,`Freeze + Commit becomes one 'Publish day' action.`],
+[`Trip`,`Read Directory`,`LEGACY - read-only EXIF refresh (no summary).`,`Demote into Advanced/debug - Read & Summarize supersedes it.`,`Day scope. Debug at most; cache makes time a non-issue. Merge the .py files. Candidate to delete.`,`Agree it is a delete candidate. First confirm the Rating Editor / translation panel do not call it for a read-only refresh; if they do, repoint them at Read & Summarize.`],
+[`Trip`,`Write Summary`,`LEGACY - write data CSVs only.`,`Demote next to Read Directory under Advanced.`,`Day scope. see above`,`Same - fold/remove together with Read Directory.`],
+[`Trip`,`Edit Trip Species List`,`Edit the species list scoped to this trip.`,`Keep.`,`Trip scope.`,`Trip scope, but it is the SAME global name dictionary as the master one, opened in trip context.`],
+[`Trip`,`Count Species`,`Report species counts for the trip.`,`Keep - report only.`,`Trip scope.`,`Fine - report, trip scope.`],
+[`Trip`,`Manage Blogs`,`Manage the per-day blog ini files.`,`Merge with Redo Blogs into one 'Blogs...' dialog.`,`Trip scope.`,`Trip scope - still merge with Redo Blogs.`],
+[`Trip`,`Redo Blogs`,`Recreate the trip blog ini/pages.`,`Fold into Manage Blogs.`,`Trip scope. Has a beautify function when all trips are done - adds links.`,`Important nuance: the 'beautify / cross-links once all trips exist' is a SITE-WIDE finalize step, not per-trip. I would split it into its own 'Rebuild cross-links' action at master level.`],
+[`Trip`,`Empty Trip Data`,`Clear the trip's data without deleting the repo.`,`Group with Recreate under a Reset section + confirm.`,`Trip scope.`,`Trip scope, destructive - group + confirm.`],
+[`Trip`,`Recreate Trip`,`Rebuild the trip repository structure.`,`Keep beside Empty Trip Data, away from the daily pipeline.`,`Trip scope. Used after (1) species changes OR (2) development fixes/improvements.`,`That makes it a 'Rebuild from source-of-truth' action - put that one-liner in the dialog so it is clear when to reach for it.`],
+[`Trip`,`Retire Trip to Virtual Trip`,`ONE action - create virttrip + extract days + migrate blogs.`,`THE blessed retirement path; label it step 1; enforce name == trip basename.`,`Trip Retire task`,`Agreed it is the retire task - but see Repository Settings: I no longer think we should force the names equal.`],
+[`Trip`,`Delete Local Files Backed Up in Master...`,`Ground-truth delete - remove only files confirmed in the master.`,`Retirement step 2; running it BEFORE Add-to-Master shrinks the work.`,`Trip Retire task`,`Retire task - I still think surfacing it as the cheaper first move pays off.`],
+[`Trip`,`Rating Editor`,`Card grid to set star ratings and colour labels per picture.`,`Core review tool - ties into viewer-convergence (one UPN card + big viewer).`,`Trip scope. True, and we need this too for Master and Virtual trips.`,`Strong agree - one UPN card across trip/master/virttrip IS the convergence goal. The master/virttrip scopes are where it earns its keep (judging website-worthiness vs existing master pictures).`],
+[`Master`,`Trip to Master Dashboard...`,`Overview of the trip-to-master pipeline state.`,`Keep first, deep-link to the relevant action.`,`Trip Merge. A good first attempt I forgot about. We learned and built more.`,`Fair - rebuild it as the real 'publish a trip to master' cockpit that links the now-better-understood stages below.`],
+[`Master`,`Edit Species List`,`Edit the master species list/taxonomy.`,`Keep.`,`Master level. A dictionary of all names, mainly to add/change EN and NL names. Also under trip, same global list.`,`Key clarification: it is the GLOBAL name dictionary shared by trip + master, so it is app-global, not master scope. Could live in Settings > Species (a 'Names' editor) reachable everywhere.`],
+[`Master`,`Merge Species`,`Merge a trip's species rows into the master.`,`Collapse the four add/merge entries into one 'Add to Master...'.`,`Advertising new names from a trip before the trip is ready for release. We might even move this to Trip scope.`,`You corrected me - I retract 'consolidate'. This is 'advertise new names early', a distinct stage. Yes, move to Trip scope and rename 'Publish species names (preview)'.`],
+[`Master`,`Add trip website to master`,`Copy a trip's built website into the master site.`,`Consolidate (see Merge Species).`,`Advertising the first version of the trip, before it is ready to merge. Does not merge anything - just adds the trip to the trip lists.`,`Got it - 'advertise the trip' (adds to the trip list), no data merge. Rename 'List trip on master site' so it is obviously not a merge.`],
+[`Master`,`Add Trip Pictures to Master`,`Copy a specific trip's pictures into the master.`,`Consolidate (see Merge Species).`,`The real merge - bulk transfers, species added to the total list. Must work well; we worked a lot here.`,`Understood - THE bulk merge, the heavy operation. Rename 'Merge trip pictures into master' so it reads as the big one.`],
+[`Master`,`Add Pictures to Master...`,`Point at ANY folder, ingest to master via a micro-trip.`,`Make this the primary 'Add to Master'; demote the trip-specific variants.`,`Intended for adding species seen on a (local) birding day, without making a blog - a micro trip. Also reused to add late-named pictures from a near-empty directory.`,`So the four are four lifecycle stages: (1) preview names, (2) list the trip, (3) bulk-merge pictures, (4) ad-hoc micro-trip. Keep all four but relabel them as a 'Publish to Master' group; this one's name should signal 'ad-hoc / no trip'.`],
+[`Master`,`Trip Status Console...`,`Presence-grounded status per trip (local / master / virttrip).`,`Keep - reporting.`,`Very techie report that helps develop and validate the product.`,`Agreed - dev/validation report. Gate it behind the 'Enable debug' flag.`],
+[`Master`,`Merged Status (all machines)...`,`Cross-machine status from per-machine CSV shards.`,`Keep - reporting.`,`Very techie report.`,`Same - behind the debug flag.`],
+[`Master`,`Audit Admin (find ghost records)...`,`Find ghost/orphan records in the master admin data.`,`Move all six into a Master > Health submenu.`,`Not really master - belongs in an admin-type menu. Some/all are debug tools? See the debug flag note in Global Settings.`,`Agree - Admin/maintenance, not everyday Master. Show under an 'Admin' menu only when 'Enable debug' is on - EXCEPT Heal Admin, a real fix users may need, which stays reachable in normal mode.`],
+[`Master`,`Audit Species Counters (dry-run)...`,`Reconcile species.csv counters vs actual pictures (report only).`,`Health cluster.`,``,`Admin/debug - report only, behind the flag.`],
+[`Master`,`Species Without a Website Picture...`,`List flagged species; classify stale/raw_only/orphan.`,`Health cluster.`,``,`Admin/debug - though its card viewer half is arguably a real user tool; could surface that from the Rating Editor.`],
+[`Master`,`Rebuild Admin (dry-run compare)...`,`Recompute admin data and show the diff (no writes).`,`Health cluster - the dry-run half.`,``,`Admin - pair visually with Heal as dry-run -> apply.`],
+[`Master`,`Heal Admin (apply fixes)...`,`Apply admin removals/repoints (backed up).`,`Pair with Rebuild as dry-run -> apply.`,``,`Keep this one reachable even without debug mode - a genuine fix, not just diagnostics.`],
+[`Master`,`Clean Orphan Sidecars (move to trash)...`,`Move orphaned sidecar files to trash.`,`Health cluster.`,``,`Admin/maintenance - behind the flag.`],
+[`Virtual Trips`,`Create Virtual Trip`,`Create an empty virttrip shell (name, range, intro).`,`Steer users to 'Retire Trip to Virtual Trip'; enforce name == trip basename.`,`Why must the names be the same? The web name matters more. Two usages: (1) from 'Retire Trip to Virtual Trip'; (2) retroactive views implicit in the master (e.g. Sri Lanka, no website trip) - build blogs day by day from a template, update each manually, finally 'Add Virtual Trip to Master'.`,`The most valuable insight here. The two scenarios genuinely differ, so Create Virtual Trip should ASK 'from an existing trip' vs 'retroactive from master dates' and branch. On naming: you are right, the slug matters - I withdraw 'force names equal' (see Repository Settings).`],
+[`Virtual Trips`,`Extract Days from Master`,`Extract per-day CSVs from the master for the date range.`,`Manual block - normally done by the retire one-shot.`,`For (2) this might be needed, or include it in 'Create Virtual Trip' for both scenarios.`,`Agree - fold Extract into Create (both scenarios need the days), keep a manual re-extract for fixes. The virttrip_mode fix makes the manual path safe meanwhile.`],
+[`Virtual Trips`,`Write Virtual Trip Blogs`,`Generate the virttrip blogs (auto-create ini + build days).`,`Keep - most useful after retire has migrated blogs.`,`For (1) part of 'Retire'; feels like debugging now. For (2) needed per day. Bubbles: a different color for auto-created blogs not yet manually reviewed (2). (1) can be green automatically (text already manual).`,`Love the bubble-color idea - it mirrors your translation-validation spheres: auto-but-unreviewed = amber, reviewed/has-text = green. (1) lands green; (2) starts amber until you edit each day. That color becomes the to-do list for scenario-2.`],
+[`Virtual Trips`,`Build Virtual Trip Website`,`Build + upload the virttrip website.`,`Keep. Where the all-biota master-web-root fix landed.`,`Really a virttrip-level op; current code works. After this we need a Redo Blogs in a separate entry. Done when blogs and website are done.`,`Agreed - the 'Redo Blogs after' is the same cross-link/beautify step you flagged on the trip side. One shared 'Rebuild cross-links' concept, applied at virttrip level too.`],
+[`Virtual Trips`,`Add Virtual Trip to Master`,`Push virttrip content back into the master.`,`Verify still needed / candidate for consolidation.`,`Must advertise the virtual trip. For (1) probably a no-op?`,`Right - for (1) it is likely already in master, so detect and grey/skip it. For (2) it is the real 'advertise' step. Make the button state reflect the scenario.`],
+[`Utilities`,`AviBase`,`Create an Excel checklist to track birds seen.`,`Keep - nice standalone output.`,``,`No change - tidy standalone output.`],
+[`Utilities`,`PhotoMechanic`,`Create PhotoMechanic keyword files for the next trip.`,`Being retired by Read SD-cards - flag for removal.`,`Let's keep it, good to be open. PM and Read SD-cards are similar, but PM has rich functionality.`,`Fair - I reframe: not 'remove', but 'parallel path until SD-card ingest reaches parity'. Keeping the PM export honors existing muscle memory.`],
+[`Utilities`,`Small Master Database`,`Create smallmaster.zip (JPGs + deflated text) for a laptop.`,`Keep.`,`Secondary servers need more support, e.g. an 'Initialize a SpeciesViewer on a travelling computer'.`,`Strong yes - a 'Set up SpeciesViewer on a travelling computer' wizard (create + install + interpret) dovetails with the Mac / secondary-machine plans. Worth its own small project.`],
+[`Utilities`,`Install Small Master`,`Install a smallmaster.zip on the secondary machine.`,`Keep - pairs with the above.`,`... and interpret the install accordingly.`,`Make this the second half of that wizard (install + interpret), one guided flow rather than two loose items.`],
+[`Utilities`,`Call Testbed for trip day`,`Developer testbed for a trip day.`,`Hide behind a debug/developer flag.`,`Agreed, 'Enable debug functionality' can be a checkmark in Global Settings.`,`Agreed - that single checkbox gates Testbed + the status consoles + most of the audit cluster. One flag cleans several menus at once.`],
+[`Settings`,`Global Settings`,`App-wide settings (Ctrl+G).`,`Keep.`,``,`This is where 'Enable debug functionality' lives. Keep.`],
+[`Settings`,`Repository Settings`,`Master/trip repository paths.`,`Add explicit tripsrootdirectory + virttriprootdirectory keys.`,`It was also because the web link used ebro; ebrodb would be more logical. I am not convinced they need to be the same. Project name, file name and weblink are not consistently used in the code - not helpful.`,`You nailed the real root cause and I withdraw 'force names equal'. The fix: make THREE identifiers explicit and decoupled - (a) internal id/folder, (b) display name, (c) web slug. The code conflates them (parent() derivation, basename matching) - that is the ebro bug. Define them once and let the retire matcher key on the explicit link, not the basename. Then ebro-slug != spanjeebro-id is fine by design.`],
+[`Settings`,`Species Settings`,`Species/taxonomy settings.`,`Keep - ties to taxonomy-sequence redesign.`,``,`Keep - and the global name dictionary belongs in this neighborhood.`],
+[`Settings`,`Database Settings`,`Master SQLite cache settings (read-only toggle, etc.).`,`Keep.`,``,`No change.`],
+[`Settings`,`Decode Quality...`,`RAW decode quality for previews.`,`Keep - lives well in the ingest/preview world.`,`Agreed. I want to experiment with 75% pixel rather than 100% - a correct 100% view is challenging.`,`Good experiment - a reliable 75% 'inspect' mode may beat a flaky 100% (100% needs careful resampling/sharpening). Worth an A/B toggle in this dialog.`],
+[`Settings`,`Manage Caches...`,`Manage EXIF / preview caches (clear, prune).`,`Keep.`,``,`Keep - and absorb Rescan as a button here.`],
+[`Settings`,`Rescan master EXIF cache`,`Rebuild the master EXIF cache.`,`Could live inside Manage Caches as a button.`,`Agreed`,`Settled - fold into Manage Caches.`],
+[`Help`,`About`,`About dialog.`,`Add a link to the (future) user manual.`,`We are essentially building a manual.`,`Exactly - these descriptions ARE the manual seed. Make this CSV the single source and generate BOTH the in-app Help and the written manual from it.`],
+];
+
+const root = document.getElementById('root');
+let lastMenu = null, tbody = null;
+for (const row of DATA) {
+  const [menu, fn, what, claude, yours, resp] = row;
+  if (menu !== lastMenu) {
+    const h = document.createElement('div'); h.className='menu'; h.textContent=menu; root.appendChild(h);
+    const t = document.createElement('table');
+    t.innerHTML =
+      '<colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"></colgroup>'+
+      '<thead><tr><th>Function</th><th>What it does</th><th>Claude - reorganize</th>'+
+      '<th>Your thoughts</th><th>Claude - on your thoughts</th><th>Your reply</th></tr></thead>';
+    tbody = document.createElement('tbody'); t.appendChild(tbody); root.appendChild(t);
+    lastMenu = menu;
+  }
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td class="fn"></td><td></td><td class="claude"></td>'+
+                 '<td class="think" contenteditable="true"></td><td class="resp"></td>'+
+                 '<td class="reply" contenteditable="true"></td>';
+  tr.children[0].textContent = fn;
+  tr.children[1].textContent = what;
+  tr.children[2].textContent = claude;
+  tr.children[3].textContent = yours;
+  tr.children[4].textContent = resp;
+  tr.dataset.menu = menu;
+  tbody.appendChild(tr);
+}
+
+function csvCell(s){ return '"' + String(s).replace(/"/g,'""') + '"'; }
+function exportCSV(){
+  const rows = [["Menu","Function","What it does","Claude - how I would organize it now","Your thoughts","Claude - on your thoughts","Your reply"]];
+  document.querySelectorAll('tbody tr').forEach(tr=>{
+    rows.push([tr.dataset.menu, tr.children[0].textContent, tr.children[1].textContent,
+               tr.children[2].textContent, tr.children[3].textContent.trim(), tr.children[4].textContent,
+               tr.children[5].textContent.trim()]);
+  });
+  const csv = rows.map(r=>r.map(csvCell).join(';')).join('\r\n');
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'menu_overview_round3.csv'; a.click();
+}
+</script>
+</body>
+</html>

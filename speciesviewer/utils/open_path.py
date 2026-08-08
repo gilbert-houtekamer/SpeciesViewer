@@ -2,7 +2,8 @@
 launch an external application with a file argument.
 
 Centralises the platform branching the app needs as it moves Windows → Mac
-(see PORTABILITY_AUDIT.md section A). Keep new "open in Explorer / Finder" and
+(see docs/plans/PORTABILITY_AUDIT.md section A). Keep new "open in Explorer /
+Finder" and
 "launch DxO PhotoLab" calls going through here rather than hardcoding
 `explorer`/`os.startfile`.
 """

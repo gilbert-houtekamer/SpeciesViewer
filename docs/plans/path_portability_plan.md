@@ -1,6 +1,6 @@
 # Path separators & cross-platform paths (Windows + Apple) — plan
 
-Working doc (repo root, uncommitted), companion to `PORTABILITY_AUDIT.md`. Written
+Companion to `docs/plans/PORTABILITY_AUDIT.md`. Written
 2026-07-07 ahead of the M5 Mac. Goal: make `/` vs `\` handling **deliberate and
 consistent** so the same data and code run on Windows and macOS.
 

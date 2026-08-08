@@ -1,0 +1,75 @@
+Menu	Function	My recommendation	Your comments
+File	Settings ? Global Settings	No precondition — leave ungated.	
+File	Settings ? Repository Settings	No precondition — leave ungated.	
+File	Settings ? Species Settings	No precondition — leave ungated.	
+File	Settings ? Database Settings	No precondition — leave ungated.	
+File	Settings ? Decode Quality…	No precondition — leave ungated.	
+File	Settings ? Location Settings…	No precondition — leave ungated.	
+File	Settings ? Interfaces ? PhotoLab Location…	No precondition — leave ungated.	
+File	Settings ? Interfaces ? PhotoLab Denoise…	No precondition — leave ungated.	
+File	Settings ? Interfaces ? Sidecar Behaviour…	No precondition — leave ungated.	
+File	Settings ? Manage Caches…	No precondition — works with zero or many caches. Leave ungated.	
+File	Settings ? Rescan master EXIF cache	Walks <master>/biota — meaningless with no master path set. Grey out when no master is configured.	
+File	Developer Tools ? Trip Status Console…	"Group already hidden unless debug mode is on. Item also self-guards today (warns ""no master configured"" after a click). Promote that guard to enabled= so it's visibly grey instead."	
+File	Developer Tools ? Merged Status (all machines)…	"Same pattern as Trip Status Console — self-guards on no master; promote to enabled=."	
+File	Developer Tools ? Audit Species Counters (dry-run)…	"Same — self-guards on no master; promote to enabled=."	
+File	Developer Tools ? Clean Orphan Sidecars (move to trash)…	"Same — self-guards on no master; promote to enabled=."	
+File	Developer Tools ? Call Testbed for trip day	No guard visible in the callback at all. Verify: does it need an active trip day? If so, gate on that.	No precondition — leave ungated.
+File	Quit	No precondition — leave ungated.	
+Days	Register Existing Day…	Entry point — no precondition. Leave ungated.	
+Days	Copy Day from Card…	Entry point — no precondition. Leave ungated.	
+Days	Review & Rate Pictures…	"Self-guards today via a ""select a day first"" message. Promote to enabled= keyed on an active day being selected."	
+Days	Add to Master	Same self-guard pattern (select-a-day message). Promote to enabled= on active-day-selected.	
+Days	Remove from List	Same self-guard + info box. Promote to enabled= on active-day-selected.	
+Trips	Create Trip	Entry point — no precondition. Leave ungated.	
+Trips	Read SD-cards	Deliberately trip-independent by design (writes straight into CurrentPictures, precedes any trip structure). Leave ungated.	
+Trips	Sync Sidecars	"Has a statusname (""SyncSidecars"") but, unlike its pipeline siblings, is not wired to the StateMachine enabled-check. Looks like a gap — recommend wiring it the same way the day-pipeline items are, or confirming it's deliberately always-on."	No precondition — leave ungated for
+Trips	1. Read & Summarize	"Already gated (StateMachine ""ReadDirExif"" + explain-tooltip). No change needed."	
+Trips	2. Write Blog	"Already gated (""WriteBlog""). No change needed."	
+Trips	3. Build Website	"Already gated (""BuildWebsite""). No change needed."	
+Trips	4. Publish Day	"Already gated (""Freeze"", covers Freeze+Commit together). No change needed."	
+Trips	5. Make the Blogs Clickable	Not gated. Needs at least one day already published — a new check scanning ALL days' state, not just the current one. Flagged as new logic to write.	
+Trips	6. Manage Trip Publication…	Not gated — but it's a status+action dialog (shows what's currently listed, lets you list/unlist), so it may legitimately want to stay always open. Recommend: leave ungated.	
+Trips	"Rating Editor (shows ""Trip Species Viewer"")"	Not gated. Opens fine on an empty trip (shows nothing) — low priority. Leave ungated unless you've seen it misbehave empty.	
+Trips	Edit Trip Species List	Self-guards SILENTLY today — no active trip ? the callback just returns, no message at all. This reads as broken, not merely ungated. Recommend either a grey-out or an added message.	just requires speciescollections.csv
+Trips	Publish Species Names	Not gated. Needs BOTH an active trip and a master configured (svr5MergeSpeciesCollections reads both). Grey out unless both are set.	
+Trips	Count Species	Not gated (statusname is blank, no state tracked). Verify: does it handle a trip with zero data gracefully? If yes, leave ungated.	no effort, this needs to be redesigned when  speciescollections.csv changes
+Trips	Advanced ? Manage Blogs	Not gated. Opens fine with no blogs to manage. Leave ungated.	
+Trips	Advanced ? Empty Trip Data	Not gated, destructive. Grey out unless an active trip exists. Verify: does the dialog itself confirm before running, or does the menu click go straight through?	it does ask
+Trips	Advanced ? Recreate Trip	"Not gated, destructive-ish (rebuilds the repository structure). Same as Empty Trip Data — grey unless active trip; verify internal confirm."	it does ask, but need to make a note that I must check
+Trips	Advanced ? Legacy ? Read Directory	"Already gated (""ReadDirExif""). No change needed."	
+Trips	Advanced ? Legacy ? Write Summary	"Already gated (""WritePictures""). No change needed."	
+Trips	Advanced ? Legacy ? Freeze Data	"Already gated (""Freeze""). No change needed."	
+Trips	Advanced ? Legacy ? Write Website Commit	"Already gated (""WriteCommit""). No change needed."	
+To Master	Trip to Master Dashboard…	Not gated. Needs an active trip + a master. Recommend deferring its gating decision to the Dashboard redesign (backlog #1) rather than patching a screen that's about to be rebuilt.	
+To Master	Publish Species Names	"Same underlying MenuSpec as the Trips entry — same recommendation (grey unless trip+master configured); one fix covers both menus at once."	
+To Master	Merge Pictures into Master	"Not gated. Needs trip+master. Open question: should it REQUIRE ""Publish Species Names"" to have run first, or is running it standalone safe? Needs your call before I encode a sequencing rule."	condition: every day in the trip that has >0 JPGs are also published: enable merge
+To Master	Retire Trip to Album	Guarded only at click today (require_full_master — shows a message, doesn't grey). Grey out when no active trip, or when the master isn't the FULL master (SmallBoy). Verify: is it safe to re-run Retire if an album already exists for this trip?	contion: merge must have been written
+To Master	Delete Local Files Backed Up in Master…	Self-guards with a warning if master / trip / picture-root is missing (all three checked separately). Promote that same three-part check to enabled=.	
+To Master	? Delete Trip…	"The item from today's discussion. Not gated at all today — the dialog it opens reports blockers B1 (album exists) / B2 (album has blogs) / B3 (not the active trip), but the MENU ITEM stays clickable regardless. Recommend: enable only when B1+B2 pass (the linked Album exists and has day blogs) — wire trip_retire_scan.scan(...) into enabled=. Add a ""Force"" duplicate under Trips ? Advanced for the edge cases that need to bypass B1/B2. This is your named next step."	"the regular menu: requires both ""Merge Pictures into Master"" and ""Retire Trip to Album"" completed.   The advanced menu:  Force, no preconditions, just a BIG WARNING"
+Master	Edit Species List	"Self-guards SILENTLY — no master configured ? returns with no message. Same ""reads as broken"" issue as Edit Trip Species List. Grey out, or at minimum add a message."	just requires speciescollections.csv
+Master	Add Pictures to Master…	Not gated. Needs a master configured (AddToMasterDialog in master mode). Grey out unless master is set.	
+Master	Species Viewer…	Not gated. Needs a master configured (and the master DB built). Grey out unless master is set.	
+Master	Species Map…	Not gated. Same as Species Viewer — grey out unless master is set.	
+Master	Species Without a Website Picture…	Not gated. Verify: does master_no_display.show() already guard on no master internally? If not, grey out unless master is set.	
+Master	Maintain Master Database ? Refresh — Review…	Self-guards on no master. Promote to enabled=.	
+Master	Maintain Master Database ? Refresh — Apply…	"Self-guards on no master (separately reports ""nothing to refresh"" at runtime — that part is correct UX, not a precondition). Promote the no-master guard to enabled=; leave the ""nothing changed"" case as a runtime message."	
+Master	Maintain Master Database ? Add Missing Place Names…	Verify: does open_master_geocode() already guard on no master? If not, grey out unless master is set.	
+Master	Maintain Master Database ? Fill Picture GPS from Files…	Self-guards on no master. Promote to enabled=.	
+Albums	Find Trips in the Master…	Guarded only at click (require_full_master — shows a message for SmallBoy / no master). Promote to enabled= so it reads as grey, not click-then-message.	
+Albums	Create Album	Same pattern — guarded at click via require_full_master(). Promote to enabled=.	Create must check that there are indeed files is the selected range. If not, the Album cannot be created.
+Albums	Write Album Blogs	"Not gated. Needs an active album selected. Verify: how ""active album"" is tracked in config, so the same check can gate every Albums item below."	See above - definition ensures there are files.
+Albums	Make the Blogs Clickable	Not gated. Needs an active album with at least one blog already written.	
+Albums	Build Album Website	Not gated. Needs an active album selected.	
+Albums	Manage Album Publication…	Not gated — status+action dialog like its Trips counterpart (Manage Trip Publication). Recommend leaving ungated for the same reason.	
+Albums	Album Species Viewer	Not gated. Low priority — likely handles an empty album gracefully. Leave ungated unless proven otherwise.	
+Albums	Sync Placed GPS into the Index…	Not gated. Needs an active album selected.	
+Albums	Export Album	Not gated. Needs an active album selected.	
+Albums	Import Album	Guarded only at click (require_full_master). Promote to enabled=.	
+Albums	Delete Album…	"Not gated at the menu level. Needs an active album selected (destructive — the dialog presumably confirms internally; not verified here)."	
+Utilities	AviBase	Not gated — reads an external XLS, looks standalone. Leave ungated unless it turns out to need trip/master context.	
+Utilities	PhotoMechanic	Not gated. Verify: does it read from the active trip or the master? Gate on whichever it actually reads.	
+Utilities	Small Master Database	Not gated. Needs a master configured (svu9SmallMaster reads the master). Grey out unless master is set.	
+Utilities	Install Small Master	Not gated — and shouldn't be: it's how you BOOTSTRAP a machine that has no master yet. Leave ungated.	
+Help	Connection status…	No precondition — leave ungated.	
+Help	About	No precondition — leave ungated.	

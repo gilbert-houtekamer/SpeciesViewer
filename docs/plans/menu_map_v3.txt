@@ -1,0 +1,148 @@
+SPECIESVIEWER — MENU MAP v3  (CONSOLIDATED; rev.2 with your 2026-07-27 feedback)
+================================================================================
+Your v2 (Part-A) edits + my resolutions, revised again per your practice notes:
+  • the trip PUBLISHING cycle (make-clickable, list/manage publication) is
+    iterative — you re-run it each pass on the laptop — so it stays IN TRIP as
+    pipeline steps 5 & 6, NOT a once-only finalize.
+  • the new menu is named "To Master" (the "→" glyph was too unusual).
+  • Days "Add to Master" and Master "Add Pictures to Master…" stay SEPARATE.
+Your v2 file is untouched. Edit freely.
+
+STATUS: IMPLEMENTED 2026-07-28 (menu "Trip"→"Trips"; "To Master" name kept for now — "Merge"
+        was tried but Qt shows no tooltip on a menu-bar title, so it stayed "To Master").
+Menu bar:  File · Days · Trips · [To Master] · Master · Albums · Utilities · Help
+Legend:  ▸ submenu   ── separator   [NEW] [MOVED] [RENAMED]   ⚠ open / backlog
+
+
+FILE
+  Settings ▸                                  (unchanged)
+    …
+  Developer Tools ▸   [RENAMED from "Admin"; only shown when debug is ON]
+    Trip Status Console…
+    Merged Status (all machines)…
+    Audit Species Counters (dry-run)…
+    Clean Orphan Sidecars…
+    Call Testbed for trip day
+  ──
+  Quit                                        (Ctrl+Q)
+
+DAYS                                          (unchanged — structured "merge a whole day")
+  Register Existing Day…
+  Copy Day from Card…
+  ──
+  Review & Rate Pictures…
+  Add to Master
+  ──
+  Remove from List
+
+TRIPS  (this trip's own work — including its whole publishing cycle)
+  Create or Select Trip
+  ──
+  Read SD-cards
+  ──
+  Sync Lightroom & PhotoLab Metadata
+  ──
+  1. Read & Summarize                         (Ctrl+D)   ┐ per DAY
+  2. Write Blog                                          │ (each day)
+  3. Build Website                                       │
+  4. Publish Day                                         ┘
+  5. Make the Blogs Clickable                 ┐ whole trip — RE-RUN each pass
+  6. Manage Trip Publication…                 ┘ (list / un-list on the site index;
+                                                 replaces the one-shot "List Trip on the Site")
+  ──
+  Trip Species Viewer
+  Edit Trip Species List
+  Publish Species Names           [ALSO in To Master — advertise trip-new names to the shared list]
+  Count Species
+  ──
+  Advanced ▸   [RENAMED from "Advanced (legacy)"]
+    Manage Blogs                              [MOVED from Trip top level]
+    Empty Trip Data                           [MOVED from Trip top level]
+    Recreate Trip Repository                  [MOVED from Trip top level]
+    ──
+    Legacy ▸
+      Read Directory
+      Write Summary
+      ──
+      Freeze Data
+      Write Website Commit
+
+TO MASTER   [NEW top-level menu — the real master merge + wind-down, steps 4 & 7]
+  Trip to Master Dashboard…       ⚠ keep but REDESIGN completely (backlog)
+  ──
+  Publish Species Names           [ALSO in Trip — user voted BOTH; see backlog #5 to auto-eliminate]
+  Merge Pictures into Master                  [MOVED from Master submenu]
+  ──
+  Retire Trip to Album                        [MOVED from Trip]
+  Delete Local Files Backed Up in Master…     [MOVED from Trip]
+  ──
+  Delete Trip…                    [NEW — remove the retired trip repo; confirm first]
+
+MASTER   (the collection itself)
+  Edit Species List
+  ──
+  Add Pictures to Master…                     (free-format ingest, incl. the pool — stays)
+  ──
+  Species Viewer
+  Species Map
+  Species Without a Website Picture…
+  ──
+  Maintain Master Database ▸   [NEW submenu — the master-repair tools]
+    Refresh Master Database — Review…         [MOVED from File ▸ Admin]
+    Refresh Master Database — Apply…          [MOVED from File ▸ Admin]
+    ──
+    Add Missing Place Names…                  [MOVED from File ▸ Admin]
+    Fill Picture GPS from Files…              [MOVED from File ▸ Admin]
+
+ALBUMS
+  Find Trips in the Master…
+  Create Album
+  ──
+  Write Album Blogs
+  Make the Blogs Clickable        [RENAMED key "Recreate Album Blogs" → same as Trip]
+  Build Album Website
+  Manage Album Publication…                   [MOVED up, beside the other publish steps]
+  ──
+  Album Species Viewer            [RENAMED from "Rating Editor" — matches Trip Species Viewer]
+  ──
+  Sync Placed GPS into the Index…             (GPS-into-index fix)
+  ──
+  Export Album
+  Import Album
+  ──
+  Delete Album…
+
+UTILITIES                                     (titles unchanged for now — your call)
+  Create an Excel to keep track of birds seen.
+  Create PhotoMechanic keyword files for next trip.
+  Create Small Master Database
+  Install Small Master Database
+
+HELP                                          (unchanged)
+  Connection status…
+  About
+
+
+RESOLVED (this round)
+  • Make-clickable + Manage-Trip-Publication → Trip pipeline steps 5 & 6 (they are
+    RE-RUN every publishing pass — your practice, not a once-only finalize).
+  • Menu name = "To Master" (not "Trip → Master").
+  • Days "Add to Master" (structured, whole day) vs Master "Add Pictures to Master…"
+    (free-format pool) → keep BOTH, distinct purposes.
+  • Developer Tools rename approved; GPS fixes + Refresh DB grouped in Master ▸ Maintain.
+
+RESOLVED (this round)
+  • "Publish Species Names" lives in BOTH Trip (advertise trip-new names early) and
+    To Master (part of the merge). speciescollection = a shared reference book used by
+    everybody; this function merges names NEW to the trip into it.
+
+BACKLOG (added per your notes)
+  1. Redesign the Trip-to-Master Dashboard (keep, but make it clarify not complicate).
+  2. Grey out invalid menu options (state-machine driven; may reveal odd patterns).
+  3. One name per function across Trip / Master / Album.
+  4. Reduce the GPS "four homes" seam so the three GPS fix-tools aren't needed.
+  5. ELIMINATE "Publish Species Names": auto-propagate new species to the single
+     speciescollection — when Summarize identifies a new species, add it to the ACTIVE
+     speciescollection during the run, then fold the new species into the GLOBAL (master)
+     speciescollection at end of run (nearly free in CPU). Removes the manual step and
+     the two-place duplication above.

@@ -1,0 +1,230 @@
+SPECIESVIEWER — MENU MAP v2  (editable working copy, 2026-07-27)
+================================================================
+Labels below are what the GUI actually shows (MenuSpec.title, which
+overrides the internal dict key). Edit freely — this is your scratch copy.
+
+Legend:  ▸ = submenu     ── = separator     [NEW]/[MOVED] = proposed change
+
+
+================================================================
+PART A — CURRENT MENUS  (as built in gui/menuspec.py today)
+================================================================
+
+I made all changes in A, ignoring B
+I used *from* to say that a line will be moved, and *to* as a suffix in its destination 
+
+
+FILE
+  Settings ▸
+    Global Settings                     (Ctrl+G)
+    Repository Settings
+    Species Settings
+    Database Settings
+    Decode Quality…
+    Location Settings…
+    Interfaces to Lightroom and PhotoLab ▸
+      PhotoLab Location…
+      PhotoLab Denoise…
+      Sidecar Behaviour…
+    ──
+    Manage Caches…
+    Rescan master EXIF cache
+  Admin ▸
+    *from*  Refresh Master Database — Review…
+    *from*  Refresh Master Database — Apply…
+    ──
+    Add Missing Place Names…            <--- can you explain again why we need this
+    Fill Picture GPS from Files…        <--- can you explain again why we need this
+    (+ when debug on: Trip Status Console…, Merged Status…,
+       Audit Species Counters…, Clean Orphan Sidecars…, Call Testbed…)
+  ──
+  Quit                                  (Ctrl+Q)
+
+DAYS
+  Register Existing Day…
+  Copy Day from Card…
+  ──
+  Review & Rate Pictures…
+  Add to Master
+  ──
+  Remove from List
+
+TRIP                                    <-- too long (18 items + submenu)
+  Create or Select Trip
+  ──
+  Read SD-cards
+  ──
+  Sync Lightroom & PhotoLab Metadata
+  ──
+  1. Read & Summarize                   (Ctrl+D)
+  2. Write Blog
+  3. Build Website
+  4. Publish Day
+  5. Make the Blogs Clickable *to*   <-- after every publish blog (or integrate in 2. blog?)
+  6. List Trip on the Site *to*      <-- once (or we want Manage Trip Publication?)
+  ──
+  Trip Species Viewer
+  Edit Trip Species List
+  Count Species
+  *from* Make the Blogs Clickable
+  ──
+  *from* Manage Blogs
+  *from* Empty Trip Data
+  *from* Recreate Trip Repository
+  ──
+  *from* Retire Trip to Album                  <-- "management" (trip->master phase)
+  *from* Delete Local Files Backed Up in Master…   <-- "management"
+  ──
+  Advanced (legacy) ▸      -- becomes Advanced
+  | Manage Blogs *to*
+  | Empty Trip Data *to*
+  | Recreate Trip Repository *to*
+  | ──
+  Legacy                
+    Read Directory  
+    Write Summary
+    ──
+    Freeze Data
+    Write Website Commit
+
+TRIP TO MASTER 
+  Trip to Master Dashboard…             <-- the bridge dashboard  -- needs to be redesigned
+  -
+  Publish Species Names *to*
+  Manage Trip Publication… *new*        <--  replaces List Trip on the Site
+  Merge Pictures into Master *to*
+  -
+  Retire Trip to Album *to*
+  Delete Local Files Backed Up in Master… *to*
+  - 
+  Delete trip ... *new*                 <-- every action is in a menu.  Just check it before it is done
+
+MASTER
+  *from* Trip to Master Dashboard…             <-- the bridge dashboard  -- needs to be replaced
+  ──
+  Edit Species List
+  ──
+  * delete* Publish Trip to Master ▸          <-- these 3 belong with the retire steps
+  *from*   1. Publish Species Names
+  *from*   2. List Trip on the Site
+  *from*   3. Merge Pictures into Master
+  *from*    Manage Trip Publication…
+  Add Pictures to Master…
+  ──
+  Species Viewer
+  Species Map
+  Species Without a Website Picture…
+  -
+  Refresh Master Database — Review… *to* 
+  Refresh Master Database — Apply…  *to*
+
+ALBUMS 
+  Find Trips in the Master…
+  Create Album
+  ──
+  Write Album Blogs
+  Recreate Album Blogs                        <-- is this not the same function as "Make the Blogs Clickable", which is more descriptive
+  Build Album Website
+  Manage Album Publication…  *to*
+  ──
+  Rating Editor                               <-- should we not rename this to "Album Species Viewer" for consistency?
+  ──
+  Sync Placed GPS into the Index…             <--- can you explain again why we need this
+  ──
+  *from* Manage Album Publication…
+  ──
+  Export Album
+  Import Album
+  ──
+  Delete Album…
+
+UTILITIES                               <-- titles are full sentences (cleanup?)
+  Create an Excel to keep track of birds seen.
+  Create PhotoMechanic keyword files for next trip.
+  Create Small Master Database
+  Install Small Master Database
+
+HELP
+  Connection status…
+  About
+
+
+================================================================
+PART B — PROPOSED REORG  (new "Trip → Master" bridge menu)
+================================================================
+Menu bar:  File · Days · Trip · [Trip → Master] · Master · Albums · Utilities · Help
+Idea: Trip = do THIS trip.  Trip → Master = push it into the master & wind it
+down (architecture lifecycle steps 4–7).  Master = the collection itself.
+
+TRIP  (slimmed to the trip's own work — 13 items)
+  Create or Select Trip
+  Read SD-cards
+  Sync Lightroom & PhotoLab Metadata
+  ──
+  1. Read & Summarize                   (Ctrl+D)
+  2. Write Blog
+  3. Build Website
+  4. Publish Day
+  ──
+  Trip Species Viewer
+  Edit Trip Species List
+  Count Species
+  Make the Blogs Clickable
+  Manage Blogs
+  ──
+  Advanced (legacy) ▸
+    Read Directory
+    Write Summary
+    Freeze Data
+    Write Website Commit
+    ──
+    Empty Trip Data                     [MOVED from Trip top level]
+    Recreate Trip Repository            [MOVED from Trip top level]
+
+TRIP → MASTER   [NEW top-level menu]   (the whole "into the master" phase)
+  Trip to Master Dashboard…            [MOVED from Master]
+  ──
+  Publish Trip to Master ▸             [MOVED from Master]
+    1. Publish Species Names
+    2. List Trip on the Site
+    3. Merge Pictures into Master
+  Manage Trip Publication…            [MOVED from Master]
+  ──
+  Retire Trip to Album                 [MOVED from Trip]
+  Delete Local Files Backed Up in Master…   [MOVED from Trip]
+
+MASTER  (slimmed to the master as a collection)
+  Edit Species List
+  Add Pictures to Master…              (trip-independent direct ingest — stays)
+  ──
+  Species Viewer
+  Species Map
+  Species Without a Website Picture…
+
+DAYS / ALBUMS / UTILITIES / HELP / FILE  — unchanged in this proposal
+  (open question: move File ▸ Admin "Refresh Master Database" etc. into Master?
+   and shorten the Utilities sentence-titles?)
+
+
+OPEN QUESTIONS FOR YOU
+  1. "Trip → Master" as a top-level menu (8 menus total) — or a submenu inside
+     Trip?  Recommendation: top-level, since it best fixes "Trip is too long".
+  top-level
+  2. Menu-bar name: "Trip → Master"  /  "To Master"  /  "Publish"  ?
+  "Trip → Master"
+  3. Keep "Add Pictures to Master…" in Master (not from a trip) — agree?
+  agreed
+  4. Move master-DB maintenance (File ▸ Admin) into Master too?
+  agreed, although I am not sure about debug items, what a proper location is.
+  5. Utilities: shorten to "AviBase Checklist", "PhotoMechanic Keywords",
+     "Create Small Master", "Install Small Master"?
+  no, or at least not yet.
+
+Recommendation:
+- use options in the menu that are not valid, should be greyed.  
+  Not trivial, can follow on to the menu effort and may even reveal weird patterns
+- we need to make the naming the same for the functionally identical in trip/master/Album
+- what are the 3 line I labeled as "can you explain again why we need this". 
+  Where they something to make better, or were they to fix a new or old issue?
+- "Trip to Master Dashboard… " is not good, it can stay but must be completely redesigned.  
+  It makes things more complex than clear.  Make that a task for the backlog document.
