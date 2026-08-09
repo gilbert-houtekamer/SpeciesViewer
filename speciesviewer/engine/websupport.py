@@ -1016,6 +1016,13 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             return workstr
         elif tokenno == 121 or tokenno == 122:
             language = 'nl' if tokenno == 121 else 'en'
+            # Row labels follow the page language, like the date label below and
+            # like the trip index (token 146/147) already did. These two used to
+            # be hard-coded Dutch, so the English blog index read "Titel".
+            if language == 'nl':
+                title, soorten = 'Titel', 'Soorten'
+            else:
+                title, soorten = 'Title', 'Species'
             workstr = ''
             for logname in MyProject.Blog.getBlogDictSortedKeys():
                 blog = MyProject.Blog.getBlog(logname)
@@ -1046,16 +1053,16 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += '          <table class="w3-table w3-hoverable">\n'
                 workstr += '            <tr class="w3-win8-olive">\n'
                 if blog["SelectedGroup"] == '':
-                    workstr += f'              <th>Titel</th><td><a href="' + targetlink + '">' + blog["title_" + language] + '</td>\n'
+                    workstr += f'              <th>' + title + '</th><td><a href="' + targetlink + '">' + blog["title_" + language] + '</td>\n'
                 else:
-                    workstr += f'              <th>Titel</th><td><a href="{logname}-'+language+'.html">' + blog["title_" + language] + '</td>\n'
+                    workstr += f'              <th>' + title + '</th><td><a href="{logname}-'+language+'.html">' + blog["title_" + language] + '</td>\n'
                 workstr += '            </tr>\n'
                 workstr += '            <tr>\n'
                 workstr += '              <th></th><td>' + blog["message_" + language] + '</td>\n'
                 workstr += '            </tr>\n'
                 if blog["SelectedGroup"] != 'biota' and blog["SelectedGroup"] != "":
                     workstr += '            <tr>\n'
-                    workstr += '              <th>Soorten</th><td>' + blog["SelectedGroup"].capitalize() + '</td>\n'
+                    workstr += '              <th>' + soorten + '</th><td>' + blog["SelectedGroup"].capitalize() + '</td>\n'
                     workstr += '            </tr>\n'
                 workstr += '            <tr>\n'
                 if blog["SelectedGroup"] != "":
