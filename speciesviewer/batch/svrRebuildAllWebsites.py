@@ -151,15 +151,21 @@ def _run_step(step, cfg):
 def main(args, config):
     from utils.config import get_virttrips_root
 
-    steps = [STEP_WEBSITE]
+    # The two halves of an album refresh are independent. The species pages
+    # move JPGs (cached, but it walks the whole tree); the blogs are HTML only.
+    # After an HTML-only fix, re-running the pages costs a lot for no change.
+    steps = []
     if getattr(args, "blogs", False):
-        steps.insert(0, STEP_BLOGS)     # blogs first, then the species pages
+        steps.append(STEP_BLOGS)        # blogs first, then the species pages
+    if getattr(args, "website", True):
+        steps.append(STEP_WEBSITE)
 
     virttrips_root = get_virttrips_root()
     trips_folder = _trips_folder(config)
     # Albums and the master are independent scopes: rebuilding only the master
     # is a normal thing to want, since it owns tripindex-nl/en.html.
-    albums = _album_dirs(virttrips_root) if getattr(args, "albums", True) else []
+    albums = (_album_dirs(virttrips_root)
+              if getattr(args, "albums", True) and steps else [])
     only = (getattr(args, "only", "") or "").lower()
     if only:
         albums = [a for a in albums if only in Path(a).name.lower()]
@@ -169,7 +175,8 @@ def main(args, config):
 
     print(f"Albums root : {virttrips_root or '(not configured)'}")
     print(f"Web folder  : {trips_folder}")
-    print(f"Steps       : {', '.join(steps)}" + ("  + master site" if do_master else ""))
+    print(f"Steps       : {', '.join(steps) or '(none)'}"
+          + ("  + master site" if do_master else ""))
     print(f"Albums      : {len(albums)}\n")
     if not albums and not do_master:
         print("Nothing to rebuild.")
@@ -247,7 +254,10 @@ if __name__ == "__main__":
     parser.add_argument("--only", default="",
                         help="only albums whose folder name contains this text")
     parser.add_argument("--blogs", action="store_true",
-                        help="re-render the blogs too, not just the species pages")
+                        help="re-link the album blogs (HTML only, no pictures moved)")
+    parser.add_argument("--no-website", dest="website", action="store_false",
+                        help="skip the species pages (with --blogs: blogs only, "
+                             "the cheap path after an HTML-only fix)")
     parser.add_argument("--master", action="store_true",
                         help="rebuild the master site as well")
     parser.add_argument("--no-albums", dest="albums", action="store_false",

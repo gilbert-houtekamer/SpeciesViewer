@@ -56,10 +56,10 @@ class _Worker(QObject):
     line = pyqtSignal(str)
     finished = pyqtSignal(str)          # "" = success, else the error
 
-    def __init__(self, apply_it, blogs, master, albums):
+    def __init__(self, apply_it, blogs, master, albums, website):
         super().__init__()
         self._apply, self._blogs = apply_it, blogs
-        self._master, self._albums = master, albums
+        self._master, self._albums, self._website = master, albums, website
 
     def run(self):
         import contextlib
@@ -71,6 +71,7 @@ class _Worker(QObject):
             blogs = self._blogs
             master = self._master
             albums = self._albums
+            website = self._website
             only = ""
 
         err = ""
@@ -115,14 +116,18 @@ class RebuildAllWebsitesDialog(QDialog):
         # uploadBlog(sftpPictures=False) — so it is the cheap half of a refresh,
         # not the expensive one. On by default because it is exactly the step
         # that re-links the blogs after a template change.
+        self.pages_cb = QCheckBox(
+            "…their species pages (uploads pictures — slow, cached after the first run)")
+        self.pages_cb.setChecked(True)
         self.blogs_cb = QCheckBox(
-            "Also re-link the album blogs (HTML only — no pictures are moved)")
+            "…their blogs (HTML only — no pictures are moved)")
         self.blogs_cb.setChecked(True)
         lay.addWidget(self.albums_cb)
-        lay.addWidget(self.master_cb)
+        lay.addWidget(self.pages_cb)
         lay.addWidget(self.blogs_cb)
-        self.albums_cb.toggled.connect(self._sync_enabled)
-        self.master_cb.toggled.connect(self._sync_enabled)
+        lay.addWidget(self.master_cb)
+        for cb in (self.albums_cb, self.pages_cb, self.blogs_cb, self.master_cb):
+            cb.toggled.connect(self._sync_enabled)
 
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
@@ -152,8 +157,9 @@ class RebuildAllWebsitesDialog(QDialog):
     def _confirm_and_run(self):
         parts = []
         if self.albums_cb.isChecked():
-            parts.append("every album's species pages"
-                         + (" and blog HTML" if self.blogs_cb.isChecked() else ""))
+            bits = (["species pages"] if self.pages_cb.isChecked() else [])                  + (["blog HTML"] if self.blogs_cb.isChecked() else [])
+            if bits:
+                parts.append("every album's " + " and ".join(bits))
         if self.master_cb.isChecked():
             parts.append("the master site")
         what = " and ".join(parts)
@@ -181,7 +187,8 @@ class RebuildAllWebsitesDialog(QDialog):
         self._thread = QThread()
         self._worker = _Worker(apply_it, self.blogs_cb.isChecked(),
                                self.master_cb.isChecked(),
-                               self.albums_cb.isChecked())
+                               self.albums_cb.isChecked(),
+                               self.pages_cb.isChecked())
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.line.connect(self._append)
@@ -218,17 +225,24 @@ class RebuildAllWebsitesDialog(QDialog):
     def _sync_enabled(self):
         """With neither scope ticked there is nothing to rebuild, so neither
         button should look as if it would do something."""
-        any_scope = self.albums_cb.isChecked() or self.master_cb.isChecked()
-        self.blogs_cb.setEnabled(self.albums_cb.isChecked())
+        albums_useful = self.albums_cb.isChecked() and (
+            self.pages_cb.isChecked() or self.blogs_cb.isChecked())
+        any_scope = albums_useful or self.master_cb.isChecked()
+        for cb in (self.pages_cb, self.blogs_cb):
+            cb.setEnabled(self.albums_cb.isChecked())
         self.dry_btn.setEnabled(any_scope)
         self.run_btn.setEnabled(any_scope)
         if not any_scope:
-            self.status.setText("Tick the albums, the master site, or both.")
+            self.status.setText(
+                "Nothing selected — tick the master site, or the albums with at "
+                "least one of their two parts.")
         elif not self.status.text().startswith(("✅", "❌")):
             self.status.setText("")
 
     def _set_busy(self, busy, msg):
-        any_scope = self.albums_cb.isChecked() or self.master_cb.isChecked()
+        any_scope = (self.albums_cb.isChecked()
+                     and (self.pages_cb.isChecked() or self.blogs_cb.isChecked())
+                     ) or self.master_cb.isChecked()
         self.dry_btn.setEnabled(not busy and any_scope)
         self.run_btn.setEnabled(not busy and any_scope)
         self.status.setText(msg)
