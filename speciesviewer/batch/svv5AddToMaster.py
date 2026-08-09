@@ -29,6 +29,7 @@ if __name__ == "__main__":
     sys.path.append(modpath)
 
 import engine.projectlib
+import engine.publish_index
 import engine.triplib
 from engine import SVException
 
@@ -42,7 +43,6 @@ def main(args, config):
     web_root      = config.get("repository", "BiotaWebRoot")
     master_db     = config.get("master",     "MasterBiotaDatabase", fallback="")
     master_web    = config.get("master",     "MasterBiotaWebRoot",  fallback="/nature/")
-    base_url      = config.get("websettings","base_url",            fallback="").rstrip("/")
 
     if not master_db or not os.path.isdir(master_db):
         raise SVException(f"Master database not found: {master_db!r}")
@@ -63,26 +63,12 @@ def main(args, config):
         raise SVException(f"virttrip.ini not found in {virttrip_root!r}. "
                           "Create it via Virtual Trips → Create Virtual Trip first.")
 
-    # Fetch trip_admin.csv from the live website rather than local disk.
-    # The local master copy on SmallBoy may contain draft or stale trips that
-    # should not be published; the web is the authoritative source.
-    # Exception: pass read_from_local=true via extra_config for recovery/cleanup
-    # (edit local trip_admin.csv first, then re-upload from that cleaned copy).
-    read_from_local = config.getboolean("virttrip_addtomaster", "read_from_local",
-                                        fallback=False)
-    if read_from_local:
-        logger.info("Reading trip admin from local file (cleanup mode).")
-        trip.read_TripAdmin()
-        logger.info(f"  {len(trip.trip_dict)} existing trip(s) loaded from local.")
-    elif base_url:
-        admin_web_url = (base_url + master_web.rstrip("/")
-                         + "/includes%20web/trip_admin.csv")
-        logger.info(f"Fetching trip admin from web: {admin_web_url}")
-        trip.read_TripAdmin_from_web(admin_web_url)
-        logger.info(f"  {len(trip.trip_dict)} existing trip(s) loaded from web.")
-    else:
-        logger.warning("base_url not configured — falling back to local trip_admin.csv.")
-        trip.read_TripAdmin()
+    # Base the index on the live website rather than local disk: the local master
+    # copy on SmallBoy may contain draft or stale trips that should not be
+    # published. Shared with svr4UpdateTrips and the un-advertise path — see
+    # engine.publish_index.load_admin_base (it also carries the read_from_local
+    # recovery escape hatch).
+    engine.publish_index.load_admin_base(trip, config)
 
     trip_row = trip.readTrip(virttrip_ini)
     if not trip_row:

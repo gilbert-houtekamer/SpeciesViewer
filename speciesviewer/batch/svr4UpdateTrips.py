@@ -19,6 +19,7 @@ if __name__ == "__main__":
 import engine
 import engine.projectlib
 import engine.exceptions
+import engine.publish_index
 import engine.triplib
 
 logger = logging.getLogger("speciesviewer")
@@ -46,9 +47,25 @@ def main(args, config):
     trip = MyProject.Trip
 
     # Update the master trip admin CSV with a fresh row for the *active*
-    # trip (only). All other historic trips already in the CSV are kept
-    # untouched, so siblings still in draft on disk do not get published.
-    trip.readAndWriteTripAdmin()
+    # trip (only). All other trips already in the index are kept untouched,
+    # so siblings still in draft on disk do not get published.
+    #
+    # The base is the LIVE index, not this machine's local copy (the same rule
+    # svv5AddToMaster follows for albums). Trips are machine-specific: a laptop
+    # can hold an early copy of a trip that the big machine has since carried
+    # further, and its local master can be behind. Since the whole index is
+    # regenerated from whatever base is loaded, a stale local base would drop
+    # entries published elsewhere or resurrect ones that were removed.
+    engine.publish_index.load_admin_base(trip, config)
+    tripinifile = os.path.join(config.get("repository", "BiotaDatabase"), "trip.ini")
+    trip_row = trip.readTrip(tripinifile)
+    if not trip_row:
+        raise engine.exceptions.SVException(
+            f"Could not read trip information from {tripinifile}.")
+    trip.addTrip(trip_row)
+    trip.write_TripAdmin()
+    logger.info(f"Master trip_admin.csv updated with "
+                f"'{trip_row.get('trip_name', '?')}'.")
     # Regenerate the master tripindex pages from the now-current CSV.
     trip.updateTripIndexPage('nl')
     trip.updateTripIndexPage('en')

@@ -67,8 +67,16 @@ def read_trip_ini(trip_root: str):
     if not os.path.isfile(ini_path):
         return None  # No ini file yet
 
-    with open(ini_path, "r", encoding="utf-8") as f:
-        content = f.read()
+    # Read tolerantly, like triplib.readTrip and read_virttrip_ini: the file is
+    # UTF-8 today, but older builds wrote it back without an explicit encoding
+    # (→ cp1252 on Windows), so a trip with an accent in its title can hold
+    # cp1252 bytes. cp1252 maps every byte, so this never raises.
+    with open(ini_path, "rb") as f:
+        raw = f.read()
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        content = raw.decode("cp1252")
     parser = ConfigParser()
     parser.read_string(coerce_orphan_continuations(content))
 

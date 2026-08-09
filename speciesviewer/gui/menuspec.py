@@ -9,9 +9,9 @@ from gui.trip_process import (ReadSDCardDialog, ReadDirDialog, ReadSummarizeDial
         PublishDayDialog,
         WritePicturesDialog, CreateBlogDialog, FreezeDialog, WriteCommitDialog,
         CountSpeciesDialog, RedoTripBlogsDialog, RedoTripRepoDialog, MergeTripDialog,
-        AddTripToMasterDialog, MasterPipelineDialog, MasterRebuildWebsiteDialog, ConvertAvibaseDialog,
+        MasterPipelineDialog, MasterRebuildWebsiteDialog, ConvertAvibaseDialog,
         SyncSidecarsDialog, EmptyTripDataDialog, SpeciesCollectionDialog,
-        TestbedDialog, BlogAdminDialog, ManageTripsDialog, PhotoMechanicDialog,
+        TestbedDialog, BlogAdminDialog, PhotoMechanicDialog,
         RescanMasterCacheDialog, SmallMasterDialog, InstallSmallMasterDialog,
         ExportTripDialog, ImportTripDialog)
 from gui.virttrip_process import (VirtualTripCreationDialog,
@@ -527,24 +527,32 @@ def build_menu_spec(main_window):
     )
     merge_trip_species.callback = lambda: MergeTripDialog(main_window, merge_trip_species).exec()
 
-    add_trip_to_master = MenuSpec(
-        callback=None,
-        title="2. List Trip on the Site",
-        tooltip="Add the trip's website to the master trip index",
-        showsubdirectory=False,
-        batch_parms={
-            'statusname': "",
-            'module_called': batch.svr4UpdateTrips.main,
-            'before_msg': "Updating master trip admin and tripindex pages, then uploading ...",
-            'after_msg': "✅ Master trip admin updated and uploaded."
-        }
-    )
-    add_trip_to_master.callback = lambda: AddTripToMasterDialog(main_window, add_trip_to_master).exec()
+    # Publication of the ACTIVE trip, both directions in one dialog (the album
+    # has the identical door under Albums — same class, see gui/publish_dialog).
+    # The old preview-and-remove table over EVERY published entry now lives under
+    # Master ▸ Manage Site Publication, for listings whose repository is gone.
+    def _manage_trip_publication():
+        from gui.publish_dialog import TripPublishDialog
+        TripPublishDialog(main_window).exec()
 
     manage_trips = MenuSpec(
-        callback=lambda: ManageTripsDialog(main_window).exec(),
+        callback=_manage_trip_publication,
         title="5. Manage Trip Publication…",
+        tooltip="List this trip on the site's trip index, or remove it from there",
         enabled=has_active_trip,
+        showsubdirectory=False,
+    )
+
+    def _manage_site_publication():
+        from gui.site_publication_dialog import SitePublicationDialog
+        SitePublicationDialog(main_window).exec()
+
+    manage_site_publication = MenuSpec(
+        callback=_manage_site_publication,
+        title="Manage Site Publication…",
+        tooltip="Everything listed on the site's trip index — remove a listing "
+                "whose trip or album you can no longer open",
+        enabled=has_master,
         showsubdirectory=False,
     )
 
@@ -908,7 +916,7 @@ def build_menu_spec(main_window):
         AlbumDeleteDialog(main_window).exec()
 
     def _manage_album_publication():
-        from gui.album_publish_dialog import AlbumPublishDialog
+        from gui.publish_dialog import AlbumPublishDialog
         AlbumPublishDialog(main_window).exec()
 
     find_trips = MenuSpec(
@@ -1533,6 +1541,7 @@ def build_menu_spec(main_window):
         "Fill Picture GPS from Files…": consolidate_gps_item,
         f"{MenuSpec.separator()}_maint_web": None,
         "Rebuild Entire Website (all pages)…": rebuild_master_web_item,
+        "Manage Site Publication…": manage_site_publication,
     }
     developer_tools_menu = {
         "Trip Status Console…": trip_status_console,
