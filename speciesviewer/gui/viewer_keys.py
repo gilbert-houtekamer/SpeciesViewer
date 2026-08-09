@@ -119,15 +119,47 @@ def handle_cull_key(event, *, order, current_key, item_for_key, set_cursor, refr
 
 
 def handle_grid_arrows(event, *, order, current_key, columns, set_cursor) -> bool:
-    """Move the grid cursor with the arrow keys: Left/Right by one, Up/Down by a
-    full row (`columns`). Returns True if an arrow was handled."""
+    """Move the grid cursor: Left/Right by one, Up/Down by a full row
+    (`columns`), Ctrl+Home/Ctrl+End to the first/last picture. Returns True if
+    the key was handled.
+
+    Ctrl+Home/End move the CURSOR, not just the scrollbar, so the grid stays
+    keyboard-navigable from where you land — arrow keys continue from the first
+    or last picture rather than from wherever the cursor was left behind."""
     if text_input_focused() or not order:
         return False
+    k = event.key()
+    ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+    if ctrl and k in (Qt.Key.Key_Home, Qt.Key.Key_End):
+        set_cursor(order[0] if k == Qt.Key.Key_Home else order[-1])
+        return True
     step = {Qt.Key.Key_Left: -1, Qt.Key.Key_Right: 1,
-            Qt.Key.Key_Up: -max(1, columns), Qt.Key.Key_Down: max(1, columns)}.get(event.key())
+            Qt.Key.Key_Up: -max(1, columns), Qt.Key.Key_Down: max(1, columns)}.get(k)
     if step is None:
         return False
     cur = current_key if current_key in order else order[0]
     j = max(0, min(order.index(cur) + step, len(order) - 1))
     set_cursor(order[j])
     return True
+
+
+def handle_scroll_ends(event, scroll_area) -> bool:
+    """Ctrl+Home / Ctrl+End for a grid that has no cursor model — the Biota
+    Browser's taxon cards, which are navigated by clicking, not by a focused
+    item. Here the pair can only mean "scroll to the top / bottom".
+
+    Split from handle_grid_arrows on purpose: a cursor grid must MOVE the cursor
+    (see above), and quietly doing something different under the same keys in
+    the two kinds of grid would be worse than having two functions."""
+    if text_input_focused() or scroll_area is None:
+        return False
+    if not (event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+        return False
+    bar = scroll_area.verticalScrollBar()
+    if event.key() == Qt.Key.Key_Home:
+        bar.setValue(bar.minimum())
+        return True
+    if event.key() == Qt.Key.Key_End:
+        bar.setValue(bar.maximum())
+        return True
+    return False

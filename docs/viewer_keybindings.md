@@ -4,7 +4,12 @@ These keys work the same in all three picture viewers — the **Species Image
 Preview** grid, the **Rating Editor** grid, and the **Large Image View** — so
 culling feels identical whichever one you're in.
 
-Implementation: [`qt/gui/viewer_keys.py`](../qt/gui/viewer_keys.py) (one
+`Ctrl+Home` / `Ctrl+End` additionally work in the **Biota Browser**'s card
+grid (tree, search results and the flat all-species index). That grid has no
+focused card — it is navigated by clicking — so there the pair scrolls to the
+top / bottom rather than moving a cursor.
+
+Implementation: [`speciesviewer/gui/viewer_keys.py`](../speciesviewer/gui/viewer_keys.py) (one
 definition, called from each viewer's `keyPressEvent`). Keep this file in sync
 when bindings change.
 
@@ -26,6 +31,8 @@ when bindings change.
 |-----|--------|
 | `←` / `→` | Move the cursor one picture left / right |
 | `↑` / `↓` | Move the cursor one **row** up / down |
+| `Ctrl+Home` | Jump to the **first** picture |
+| `Ctrl+End` | Jump to the **last** picture |
 
 ## Rating, colour, and moving on
 

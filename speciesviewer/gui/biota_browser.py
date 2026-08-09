@@ -404,6 +404,16 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
 
         QTimer.singleShot(0, self._init_master)
 
+    def keyPressEvent(self, event):
+        """Ctrl+Home / Ctrl+End jump to the top / bottom of the card grid — the
+        all-species index runs to a couple of thousand cards, and the tree views
+        and search results share the same scroll area."""
+        from gui.viewer_keys import handle_scroll_ends
+        if handle_scroll_ends(event, self._scroll):
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
     def closeEvent(self, event):
         self._close_large_view()
         save_window(self, self._geo_key, cols=self.columns)
