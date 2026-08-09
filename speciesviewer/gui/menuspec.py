@@ -1816,11 +1816,11 @@ def build_menu_spec(main_window):
              "Small Master Database": small_master,
              "Install Small Master": install_small_master,
              f"{MenuSpec.separator()}_util_rebuild": None,
-             "Rebuild All Album Websites…": MenuSpec(
+             "Rebuild all Albums and the Master website…": MenuSpec(
                  callback=lambda: _rebuild_all_websites(),
-                 title="Rebuild All Album Websites…",
-                 tooltip="Re-render and re-upload every album's site, so a fix to "
-                         "a page template or the rendering code reaches them all",
+                 title="Rebuild all Albums and the Master website…",
+                 tooltip="Re-render and re-upload the album sites and/or the master, "
+                         "so a fix to a page template or the rendering code reaches them all",
                  showsubdirectory=False),
         },
         "Help": {

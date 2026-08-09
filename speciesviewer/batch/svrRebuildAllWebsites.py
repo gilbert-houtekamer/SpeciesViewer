@@ -127,6 +127,13 @@ def _config_for(album_dir, web_root, gui_cfg):
     return cfg
 
 
+def _hms(seconds):
+    """'42s' / '3m12s' — a sweep of 17 albums runs into the minutes, and a bare
+    second count stops being readable there."""
+    seconds = int(round(seconds))
+    return f"{seconds}s" if seconds < 60 else f"{seconds // 60}m{seconds % 60:02d}s"
+
+
 class _Args:
     """The batch modules take (args, config); only `config` is read inside
     main(). This stands in for the argparse namespace their CLI builds."""
@@ -216,7 +223,9 @@ def main(args, config):
                 "Sftppwd": config.get("websettings", "Sftppwd", fallback=""),
                 "base_url": config.get("websettings", "base_url", fallback=""),
             }
+            m0 = time.time()
             mod.main(_Args(), mcfg)
+            print(f"  master finished in {_hms(time.time() - m0)}")
             ok.append("(master)")
         except Exception as e:
             logger.warning(f"master rebuild failed: {e}", exc_info=True)

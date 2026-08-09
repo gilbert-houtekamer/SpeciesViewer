@@ -1,4 +1,5 @@
-"""Rebuild Every Album Website — the GUI face of batch/svrRebuildAllWebsites.
+"""Rebuild all Albums and the Master website — the GUI face of
+batch/svrRebuildAllWebsites.
 
 One job: sweep a template/code fix across every album's published site, without
 selecting each album by hand.
@@ -15,13 +16,15 @@ asks for confirmation first, because it re-renders and re-uploads every album.
 
 import io
 import logging
+import time
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox,
     QPlainTextEdit, QMessageBox,
 )
-from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, QObject, QTimer, pyqtSignal
 
+from batch.svrRebuildAllWebsites import _hms
 from widgets.small_widgets import HTMLLabel
 
 logger = logging.getLogger("speciesviewer")
@@ -86,14 +89,16 @@ class _Worker(QObject):
 class RebuildAllWebsitesDialog(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
-        self.setWindowTitle("Rebuild All Album Websites")
+        self.setWindowTitle("Rebuild all Albums and the Master website")
         self.resize(760, 520)
         self._thread = None
         self._worker = None
+        self._started = None
+        self._tick = None
 
         lay = QVBoxLayout(self)
         lay.addWidget(HTMLLabel(
-            "<p><b>Rebuild every album's website</b></p>"
+            "<p><b>Rebuild all Albums and the Master website</b></p>"
             "<p>The site is generated, so a fix to a page template or to the "
             "rendering code only reaches an album once that album is rebuilt. "
             "This re-renders and re-uploads them all, one after another.</p>"
@@ -106,8 +111,13 @@ class RebuildAllWebsitesDialog(QDialog):
         self.albums_cb = QCheckBox("Rebuild the albums")
         self.albums_cb.setChecked(True)
         self.master_cb = QCheckBox("Rebuild the master site")
+        # svv6RedoBlog rewrites blog HTML only — setSkipJPGs(True),
+        # uploadBlog(sftpPictures=False) — so it is the cheap half of a refresh,
+        # not the expensive one. On by default because it is exactly the step
+        # that re-links the blogs after a template change.
         self.blogs_cb = QCheckBox(
-            "Also re-render the album blogs (slower — re-uploads every blog picture)")
+            "Also re-link the album blogs (HTML only — no pictures are moved)")
+        self.blogs_cb.setChecked(True)
         lay.addWidget(self.albums_cb)
         lay.addWidget(self.master_cb)
         lay.addWidget(self.blogs_cb)
@@ -143,12 +153,12 @@ class RebuildAllWebsitesDialog(QDialog):
         parts = []
         if self.albums_cb.isChecked():
             parts.append("every album's species pages"
-                         + (" and blogs" if self.blogs_cb.isChecked() else ""))
+                         + (" and blog HTML" if self.blogs_cb.isChecked() else ""))
         if self.master_cb.isChecked():
             parts.append("the master site")
         what = " and ".join(parts)
         if QMessageBox.question(
-                self, "Rebuild all album websites",
+                self, "Rebuild all Albums and the Master website",
                 f"This re-renders {what} and uploads the result.\n\n"
                 "It can take a long while. Continue?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -160,7 +170,13 @@ class RebuildAllWebsitesDialog(QDialog):
         if self._thread is not None:
             return                                  # already running
         self.log.clear()
+        self._started = time.time()
         self._set_busy(True, "Rebuilding…" if apply_it else "Listing…")
+        # A sweep runs for minutes with nothing but log lines; a ticking elapsed
+        # time is how you tell "still working" from "wedged".
+        self._tick = QTimer(self)
+        self._tick.timeout.connect(self._show_elapsed)
+        self._tick.start(1000)
 
         self._thread = QThread()
         self._worker = _Worker(apply_it, self.blogs_cb.isChecked(),
@@ -176,18 +192,28 @@ class RebuildAllWebsitesDialog(QDialog):
         self.log.appendPlainText(line)
         self.log.verticalScrollBar().setValue(self.log.verticalScrollBar().maximum())
 
+    def _show_elapsed(self):
+        if self._started:
+            self.status.setText(f"Rebuilding… {_hms(time.time() - self._started)} so far")
+
     def _done(self, err, applied):
         self._thread.quit()
         self._thread.wait()
         self._thread = None
         self._worker = None
+        if self._tick is not None:
+            self._tick.stop()
+            self._tick = None
+        took = _hms(time.time() - self._started) if self._started else "?"
+        self._started = None
         self._set_busy(False, "")
         if err:
-            self.status.setText(f"❌ {err}")
+            self.status.setText(f"❌ {err}  (after {took})")
         elif applied:
-            self.status.setText("✅ Rebuild finished — check the log above for any failures.")
+            self.status.setText(
+                f"✅ Rebuild finished in {took} — check the log above for any failures.")
         else:
-            self.status.setText("Nothing was rebuilt — this was only a listing.")
+            self.status.setText(f"Nothing was rebuilt — this was only a listing ({took}).")
 
     def _sync_enabled(self):
         """With neither scope ticked there is nothing to rebuild, so neither
