@@ -747,6 +747,10 @@ def build_menu_spec(main_window):
         from gui.cache_manager import ManageCachesDialog
         ManageCachesDialog(main_window).exec()
 
+    def _rebuild_all_websites():
+        from gui.rebuild_all_dialog import RebuildAllWebsitesDialog
+        RebuildAllWebsitesDialog(main_window).exec()
+
     manage_caches = MenuSpec(
         callback=_manage_caches,
         title="Manage caches…",
@@ -1811,6 +1815,13 @@ def build_menu_spec(main_window):
              "PhotoMechanic": photo_mechanic,
              "Small Master Database": small_master,
              "Install Small Master": install_small_master,
+             f"{MenuSpec.separator()}_util_rebuild": None,
+             "Rebuild All Album Websites…": MenuSpec(
+                 callback=lambda: _rebuild_all_websites(),
+                 title="Rebuild All Album Websites…",
+                 tooltip="Re-render and re-upload every album's site, so a fix to "
+                         "a page template or the rendering code reaches them all",
+                 showsubdirectory=False),
         },
         "Help": {
             "Connection status…": MenuSpec(
