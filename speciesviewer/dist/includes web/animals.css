@@ -73,3 +73,74 @@ ul.breadcrumb li a:hover {
   color: #01447e;
   text-decoration: underline;
 }
+
+/* ==========================================================================
+   Phone layout (screens under 601px — w3.css's own "small" breakpoint).
+
+   Why this lives here and not in the page templates:
+
+   Every page of this site is a `w3-row` holding `w3-col` divs whose width is
+   an INLINE percentage — 85% article + 15% "Links" sidebar on the page shell,
+   30% photo + 70% text on each blog-index row, 25/75 on the trip index. Those
+   percentages are of the SCREEN, so they never collapse: on a phone the
+   sidebar becomes ~55px (its link text clips and shoves the page sideways)
+   while the article gets two or three words per line.
+
+   Fixing it here fixes all 14 templates AND every page already published, with
+   no HTML re-render. The cost is `!important`: nothing else beats an inline
+   style. It is confined to this block.
+
+   Everything below is inside the media query, so the computer screen renders
+   exactly as it did before — by construction, not by inspection.
+   ========================================================================== */
+@media (max-width: 600px) {
+
+  /* One column. DOM order already reads well stacked: article, then Links;
+     and per blog row, the photo above its own text. */
+  .w3-row > .w3-col {
+    width: 100% !important;
+    float: none !important;
+  }
+
+  /* Each blog row carries an inline `margin: 15px`, which at full width spends
+     30px of an already narrow screen on nothing. Keep it vertical only. */
+  .w3-row[style*="margin"] {
+    margin: 14px 0 !important;
+  }
+
+  /* The label/value table in a blog or trip row (`w3-table`, used only there —
+     species pages use `w3-table-all` and are left alone). Side by side, the
+     label column spends a quarter of the width on "Titel" / "Datum:", and the
+     message row's <th> is EMPTY yet still indents every paragraph. Stack the
+     cells and drop the empty label. */
+  table.w3-table,
+  table.w3-table tbody,
+  table.w3-table tr,
+  table.w3-table th,
+  table.w3-table td {
+    display: block;
+    width: auto;
+  }
+  table.w3-table th:empty {
+    display: none;
+  }
+  table.w3-table th {
+    padding-bottom: 2px;
+  }
+  table.w3-table td {
+    padding-top: 0;
+  }
+
+  /* 14px body text is a squint held at arm's length. */
+  p,
+  table.w3-table td {
+    font-size: 16px;
+    line-height: 1.5;
+  }
+
+  /* Last resort: nothing may push the page sideways. */
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+}
