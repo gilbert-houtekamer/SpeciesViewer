@@ -93,6 +93,17 @@ reads <em>No current work planned</em>.</p>
 <h2>2. Albums</h2>
 <h3>To do</h3>
 <ul>
+  <li><strong>Albums read the master directly — finish the job</strong>
+    <span class="tag-new">NEW</span> <span class="tag-open">OPEN</span> —
+    planned for <strong>Wednesday 2026-08-12</strong>. The overview, the Biota Browser and the
+    website build already read an album's pictures live from the master by its date range
+    (<code>batch.album_source</code>); the <em>Album Species Viewer</em> still reads the album's
+    extracted per-day CSVs and only falls back to the query when there are none
+    (<code>6330654</code>). So 15 albums show a possibly stale subset while 2 show the live truth —
+    the "stale copy" class the album re-architecture set out to remove, still alive in one viewer.
+    Make the date-range query the primary source for <strong>every</strong> album, and decide what
+    the per-day CSVs are still for. Design note:
+    <code>docs/plans/album_master_direct_plan.md</code>.</li>
   <li><strong>Albums — the smart <em>Create</em> arc</strong> <span class="tag-progress">IN PROGRESS</span> —
     the arc has shipped through Delete Album and Manage Album Publication; the one remaining step is
     folding <em>Extract Days</em> into Create's finish (WP7 scenario-2) so Create is a single flow.</li>
