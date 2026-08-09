@@ -202,7 +202,10 @@ class TripCreationDialog(QDialog):
         )
 
         layout2.addWidget(info_label23)
-        self.date_field = DateRangeFieldQt()
+        # A new trip is planned ahead: start two weeks out, run for two weeks —
+        # and moving the start drags the end along so the length is kept. An
+        # existing trip's saved range is restored below without re-triggering that.
+        self.date_field = DateRangeFieldQt(lead_days=14, span_days=14, follow_end=True)
         self.date_field.set_dates(trip_data.get("fromdate", ""), trip_data.get("todate", ""))
         layout2.addWidget(self.date_field)
 

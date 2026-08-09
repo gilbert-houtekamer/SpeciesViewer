@@ -301,7 +301,18 @@ class LabeledTextFieldQt(QWidget):
             self.field.setText(value)
 
 class DateRangeFieldQt(QWidget):
-    def __init__(self, from_date=None, to_date=None):
+    """Start/End date pair.
+
+    `lead_days` / `span_days` shape a NEW range: a trip is normally planned ahead
+    (lead_days from today) and lasts span_days. With `follow_end=True` the end
+    date keeps chasing the start — picking a new start re-sets the end to
+    start + span_days, so a trip that moves in the calendar stays the same
+    length. An album is a range over the PAST that the user dials in by hand, so
+    it leaves both off and keeps today/today+7.
+    """
+
+    def __init__(self, from_date=None, to_date=None, *,
+                 lead_days=0, span_days=7, follow_end=False):
         super().__init__()
         layout = QHBoxLayout(self)
 
@@ -319,13 +330,28 @@ class DateRangeFieldQt(QWidget):
         layout.addWidget(QLabel("End Date"))
         layout.addWidget(self.to_date)
 
+        self._span_days = span_days
+
         # Set initial values
-        self.from_date.setDate(from_date or QDate.currentDate())
-        self.to_date.setDate(to_date or QDate.currentDate().addDays(7))
+        start = from_date or QDate.currentDate().addDays(lead_days)
+        self.from_date.setDate(start)
+        self.to_date.setDate(to_date or start.addDays(span_days))
+
+        if follow_end:
+            self.from_date.dateChanged.connect(self._on_start_changed)
+
+    def _on_start_changed(self, start):
+        """Keep the end date span_days after the start. Signals are blocked so
+        loading an existing trip's saved range (set_dates) never rewrites it."""
+        self.to_date.setDate(start.addDays(self._span_days))
 
     def get_dates(self):
         return self.from_date.date().toString("yyyy-MM-dd"), self.to_date.date().toString("yyyy-MM-dd")
 
     def set_dates(self, from_str, to_str):
-        self.from_date.setDate(QDate.fromString(from_str, "yyyy-MM-dd"))
+        blocked = self.from_date.blockSignals(True)
+        try:
+            self.from_date.setDate(QDate.fromString(from_str, "yyyy-MM-dd"))
+        finally:
+            self.from_date.blockSignals(blocked)
         self.to_date.setDate(QDate.fromString(to_str, "yyyy-MM-dd"))

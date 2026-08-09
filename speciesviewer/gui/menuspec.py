@@ -1594,6 +1594,58 @@ def build_menu_spec(main_window):
                 shortcut="Ctrl+Q"
             ),
         },
+        # Every way of BROWSING a collection, in one place — the same two views
+        # (taxonomy tree, flat all-species index) over each of the three scopes.
+        # They used to be buried one per owning menu (Trips / Albums / Master),
+        # which hid them behind the pipeline actions they sit beside.
+        "Browser": {
+            "Trip Browser…": MenuSpec(
+                callback=lambda: main_window.open_trip_biota_browser(),
+                title="Trip Browser",
+                enabled=lambda: bool(_cfg("trip", "tripbiotadatabase")
+                                     or _cfg("repository", "biotadatabase")),
+                tooltip="Browse this trip by taxonomy (Kingdom → Species), read-only; "
+                        "drill to a species to see its pictures",
+                showsubdirectory=False),
+            "Trip All Species…": MenuSpec(
+                callback=lambda: main_window.open_trip_biota_browser(start_mode="allspecies"),
+                title="All Species in the Trip",
+                enabled=lambda: bool(_cfg("trip", "tripbiotadatabase")
+                                     or _cfg("repository", "biotadatabase")),
+                tooltip="Flat, searchable index of every species in this trip; "
+                        "click one to see its pictures",
+                showsubdirectory=False),
+            f"{MenuSpec.separator()}_browse_album": None,
+            "Album Browser…": MenuSpec(
+                callback=lambda: main_window.open_album_biota_browser(),
+                title="Album Browser",
+                enabled=has_active_album,
+                tooltip="Browse this album by taxonomy (Kingdom → Species), read-only; "
+                        "a live date-range window on the master",
+                showsubdirectory=False),
+            "Album All Species…": MenuSpec(
+                callback=lambda: main_window.open_album_biota_browser(start_mode="allspecies"),
+                title="All Species in the Album",
+                enabled=has_active_album,
+                tooltip="Flat, searchable index of every species in this album; "
+                        "click one to see its pictures",
+                showsubdirectory=False),
+            f"{MenuSpec.separator()}_browse_master": None,
+            "Master Browser…": MenuSpec(
+                callback=lambda: main_window.open_biota_browser(),
+                title="Master Browser",
+                enabled=has_master,
+                tooltip="Browse the master by taxonomy (Kingdom → Species); "
+                        "drill to a species to see its pictures",
+                showsubdirectory=False),
+            "Master All Species…": MenuSpec(
+                callback=lambda: main_window.open_biota_browser(start_mode="allspecies"),
+                title="All Species in the Master",
+                enabled=has_master,
+                tooltip="Flat, searchable index of every master species; "
+                        "click one to see its pictures",
+                showsubdirectory=False),
+        },
         "Days": {
             "Register existing day…": MenuSpec(
                 callback=lambda: days_process.register_existing_day(main_window),
@@ -1639,14 +1691,7 @@ def build_menu_spec(main_window):
             f"{MenuSpec.separator()}_2": None,
             # Review & edit this trip
             "Rating Editor": rating_editor,                    # shows "Trip Species Viewer"
-            "Biota Browser…": MenuSpec(
-                callback=lambda: main_window.open_trip_biota_browser(),
-                title="Biota Browser",
-                enabled=lambda: bool(_cfg("trip", "tripbiotadatabase")
-                                     or _cfg("repository", "biotadatabase")),
-                tooltip="Browse this trip by taxonomy (Kingdom → Species), read-only; "
-                        "drill to a species to see its pictures",
-                showsubdirectory=False),
+            # Browsing this trip by taxonomy lives in the Browser menu.
             "Edit Species List": edit_trip_species,            # same list as under Master
             "Publish Species Names": merge_trip_species,       # also under To Master
             "Count Species": count_species,
@@ -1694,20 +1739,8 @@ def build_menu_spec(main_window):
                 title="Species Viewer",
                 enabled=has_master,
                 showsubdirectory=False),
-            "Biota Browser…": MenuSpec(
-                callback=lambda: main_window.open_biota_browser(),
-                title="Biota Browser",
-                enabled=has_master,
-                tooltip="Browse the master by taxonomy (Kingdom → Species); "
-                        "drill to a species to see its pictures",
-                showsubdirectory=False),
-            "All Species…": MenuSpec(
-                callback=lambda: main_window.open_biota_browser(start_mode="allspecies"),
-                title="All Species",
-                enabled=has_master,
-                tooltip="Flat, searchable index of every master species; "
-                        "click one to see its pictures",
-                showsubdirectory=False),
+            # Browsing the master by taxonomy / as a flat species index lives in
+            # the Browser menu.
             "Species Map…": MenuSpec(
                 callback=lambda: main_window.open_species_map(),
                 title="Species Map",
@@ -1721,13 +1754,7 @@ def build_menu_spec(main_window):
         "Albums": {
             "Find Trips in the Master…": find_trips,
             "Create Album": virttrip_create,
-            "Biota Browser…": MenuSpec(
-                callback=lambda: main_window.open_album_biota_browser(),
-                title="Biota Browser",
-                enabled=has_active_album,
-                tooltip="Browse this album by taxonomy (Kingdom → Species), read-only; "
-                        "a live date-range window on the master",
-                showsubdirectory=False),
+            # Browsing this album by taxonomy lives in the Browser menu.
             f"{MenuSpec.separator()}_vt2": None,
             "Write Album Blogs": MenuSpec(
                 callback=lambda: VirttripWriteBlogDialog(main_window).exec(),

@@ -1469,7 +1469,7 @@ class MainWindow(QMainWindow):
             self, start_mode=start_mode, start_sci=start_sci)
         self._biota_browser_dlg.show()
 
-    def open_trip_biota_browser(self, start_sci=None):
+    def open_trip_biota_browser(self, start_sci=None, start_mode="tree"):
         """Biota Browser over the ACTIVE TRIP's repository (read-only). A trip repo
         is master-shaped, so it browses through the same MasterBiotaSource — with
         its own SQLite cache (never touching master.db) and no editing (that stays
@@ -1497,11 +1497,11 @@ class MainWindow(QMainWindow):
             existing.close()
         # Strong ref on the main window — see open_rating_editor for the why.
         self._trip_biota_browser_dlg = BiotaBrowserDialog(
-            self, repo_root=trip_root, scope_title=f"Trip · {name}",
+            self, start_mode=start_mode, repo_root=trip_root, scope_title=f"Trip · {name}",
             read_only_scope=True, cache_name=cache, start_sci=start_sci)
         self._trip_biota_browser_dlg.show()
 
-    def open_album_biota_browser(self, start_sci=None):
+    def open_album_biota_browser(self, start_sci=None, start_mode="tree"):
         """Biota Browser over the ACTIVE ALBUM (read-only). An album is a live date
         window on the master (no stored data of its own), so this reads the REAL
         master restricted to the album's fromdate..todate (from its virttrip.ini).
@@ -1543,7 +1543,7 @@ class MainWindow(QMainWindow):
             existing.close()
         # Strong ref on the main window — see open_rating_editor for the why.
         self._album_biota_browser_dlg = BiotaBrowserDialog(
-            self, scope_title=f"Album · {name}", read_only_scope=True,
+            self, start_mode=start_mode, scope_title=f"Album · {name}", read_only_scope=True,
             album_from=fromdate, album_to=todate, start_sci=start_sci)
         self._album_biota_browser_dlg.show()
 

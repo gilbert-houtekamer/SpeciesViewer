@@ -23,7 +23,7 @@ import logging
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea,
     QGridLayout, QLabel, QLineEdit, QComboBox, QSpinBox, QPushButton, QFrame,
-    QStyle,
+    QStyle, QMenu,
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
@@ -108,13 +108,17 @@ def _px_font(px):
 
 class TaxonCard(QFrame):
     """One olive-framed card — a child taxon or a species leaf. Emits its
-    scientific name on a left click."""
+    scientific name on a left click; right-click copies its names as plain text
+    (the card is the same widget in the tree and in the flat all-species index,
+    so both get it)."""
     clicked = pyqtSignal(str)
 
     def __init__(self, node, sub_html, card_w, cover_spec, loader):
         super().__init__()
         self.setObjectName("tcard")
         self._sci = node["sci"]
+        # Only the names — the card holds no reference to the node otherwise.
+        self._names = {k: node.get(k) for k in ("nl", "en", "sci")}
         self.setFixedWidth(card_w)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setStyleSheet(
@@ -205,6 +209,15 @@ class TaxonCard(QFrame):
         super().mouseReleaseEvent(event)
         if fire:
             self.clicked.emit(self._sci)
+
+    def contextMenuEvent(self, event):
+        """Right-click = copy this taxon's names. Left-click still navigates —
+        the card owns its clicks, so the names cannot be a selectable label here."""
+        from gui.name_copy import add_name_copy_actions
+        menu = QMenu(self)
+        if not add_name_copy_actions(menu, self._names):
+            return
+        menu.exec(event.globalPos())
 
 
 class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):

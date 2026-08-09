@@ -31,6 +31,7 @@ NAME_PROFILES = {
     "en_nl":     ("English / Dutch",              ["en", "nl"]),
     "nl_en":     ("Dutch / English",              ["nl", "en"]),
     "nl_en_sci": ("Dutch / English / Scientific", ["nl", "en", "sci"]),
+    "en_nl_sci": ("English / Dutch / Scientific", ["en", "nl", "sci"]),
     "en_sci":    ("English / Scientific",         ["en", "sci"]),
     "nl_sci":    ("Dutch / Scientific",           ["nl", "sci"]),
     "sci_en":    ("Scientific / English",         ["sci", "en"]),
@@ -72,8 +73,11 @@ def profile_short_label(key: str) -> str:
 
 
 def profile_keys() -> list:
-    """Profile keys in menu order."""
-    return list(NAME_PROFILES.keys())
+    """Profile keys in menu order — sorted A-Z on the menu label, so every
+    dropdown that offers them (Global Settings, Species Settings, Create Trip /
+    Album, the viewers' own combo) lists them the same, findable way. The
+    NAME_PROFILES definition order is free to stay grouped by language."""
+    return sorted(NAME_PROFILES, key=lambda k: NAME_PROFILES[k][0].casefold())
 
 
 def _chain(key: str) -> list:

@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPixmap
 from gui import theme
+from gui.name_copy import make_copyable as _make_copyable
 
 logger = logging.getLogger("speciesviewer")
 
@@ -48,6 +49,15 @@ def _group_label(mf, age, sw) -> str:
         if v:
             parts.append(m.get(v, v.capitalize()))
     return " · ".join(parts) if parts else "Unspecified"
+
+
+def _row_copy_menu(widget, names, pos):
+    """Right-click menu for a widget that carries names but owns its clicks."""
+    from PyQt6.QtWidgets import QMenu
+    from gui.name_copy import add_name_copy_actions
+    menu = QMenu(widget)
+    if add_name_copy_actions(menu, names):
+        menu.exec(widget.mapToGlobal(pos))
 
 
 def _load_qimage(path):
@@ -289,21 +299,29 @@ class SpeciesPanel(QWidget):
         ident = QWidget(); il = QVBoxLayout(ident)
         il.setContentsMargins(0, 6, 0, 6); il.setSpacing(2)
         il.addStretch(1)
+        # Title + subtitle carry all three names between them; both are copyable
+        # as plain text (right-click), for picture captions in a printed book.
+        from utils.name_profile import all_names_ordered
+        from gui.name_copy import all_three_entries
+        lines = all_names_ordered(node, host._lang)
+        extras = all_three_entries([("", t) for t, _ in lines])
+
         nm = QLabel(display)
         nm.setStyleSheet(f"color:{_INK}; font-size:28px; font-weight:700;")
         nm.setWordWrap(True)
+        _make_copyable(nm, display, extras)
         il.addWidget(nm)
         # Subtitle = the OTHER two names (all three shown across title + subtitle),
         # ordered by the display profile. This detail page is the sibling of the
         # large image viewer, which shows all three too; the profile only sets
         # which name leads. The full triple also lives in the table below.
-        from utils.name_profile import all_names_ordered
-        lines = all_names_ordered(node, host._lang)
         sub = " · ".join(t for t, _ in lines[1:])
         if sub:
             sci = QLabel(sub)
             sci.setStyleSheet(f"color:{_INK_SOFT}; font-style:italic; font-size:15px;")
             sci.setWordWrap(True)
+            _make_copyable(sci, sub,
+                           [(f'Copy "{t}"', t) for t, _ in lines[1:]] + extras)
             il.addWidget(sci)
 
         # Star rating = the best XMP star among this species' pictures (0–5).
@@ -411,7 +429,7 @@ class SpeciesPanel(QWidget):
                 ("ORDER", "ORDER"), ("CLASS", "CLASS")]
         grid = QGridLayout(); grid.setSpacing(0); grid.setContentsMargins(0, 0, 0, 0)
 
-        def cell(text, r, c, *, head=False, tag=False, italic=False):
+        def cell(text, r, c, *, head=False, tag=False, italic=False, copy_extras=None):
             lbl = QLabel(text or "—")
             lbl.setWordWrap(True)
             style = (f"border:1px solid {_LINE}; padding:6px 9px; font-size:12.5px;")
@@ -424,8 +442,16 @@ class SpeciesPanel(QWidget):
                 style += f" color:{_INK};"
                 if italic:
                     style += " font-style:italic;"
+                # Every name in this table is copyable on its own — the table is
+                # where captions for a printed photobook get picked up.
+                _make_copyable(lbl, text, copy_extras)
             lbl.setStyleSheet(style)
             grid.addWidget(lbl, r, c)
+
+        from gui.name_copy import node_names, all_three_entries
+        # Per column (rank), the "copy the whole set" entries every cell in it offers.
+        combined = {rk: all_three_entries(node_names(by_rank.get(rk)))
+                    for _lbl, rk in cols}
 
         cell("", 0, 0, head=True)
         for ci, (label, _rk) in enumerate(cols):
@@ -435,7 +461,7 @@ class SpeciesPanel(QWidget):
             for ci, (_label, rk) in enumerate(cols):
                 n = by_rank.get(rk)
                 cell((n.get(field) if n else "") or "", ri + 1, ci + 1,
-                     italic=(field == "sci"))
+                     italic=(field == "sci"), copy_extras=combined[rk])
         for ci in range(len(cols) + 1):
             grid.setColumnStretch(ci, 1 if ci else 0)
         holder = QWidget(); holder.setLayout(grid)
@@ -615,6 +641,13 @@ class SpeciesPanel(QWidget):
             row.clicked.connect(lambda _c=False, k=target: host._go(k))
         else:
             row.clicked.connect(lambda _c=False, k=target: host._open_species(k))
+
+        # Right-click a sidebar row to copy its names — the row's own click
+        # navigates, so the names here can't be selectable labels either.
+        names = {k: node.get(k) for k in ("nl", "en", "sci")}
+        row.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        row.customContextMenuRequested.connect(
+            lambda pos, _r=row, _n=names: _row_copy_menu(_r, _n, pos))
 
         cover = host._source.cover_spec(target)
         if cover is not None:
