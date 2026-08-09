@@ -27,6 +27,15 @@ SC_HEADERS = ['Level', 'ScientificName', 'DutchName', 'EnglishName', 'Up', 'Leav
 # forever, and a run is long enough to be worth it.
 _NAMES_NOT_FOUND = set()
 
+# Seconds to wait on any GBIF call. pygbif passes **kwargs straight to
+# requests.get, which has NO timeout of its own — so without this a network that
+# accepts the connection but never answers (hotel/campground wifi, a captive
+# portal) hangs the run forever instead of failing. A refused/unroutable network
+# already fails fast; this covers the half-open case. On timeout the caller
+# flags the run offline and stops looking names up, so one wait is the most this
+# ever costs.
+GBIF_TIMEOUT = 15
+
 
 def _endsWithNewline(speciesfilename):
     """False when the file's last line has no line ending — appending onto it
@@ -441,7 +450,8 @@ class SpeciesClassification:
     def getCommonVernacularNames(self, soort, rankname):
         language_counts  = {}
         key = rankname + 'Key'
-        vernacularNames = species.name_usage(key=soort[key], data='vernacularNames', rank=rankname)
+        vernacularNames = species.name_usage(key=soort[key], data='vernacularNames', rank=rankname,
+                                           timeout=GBIF_TIMEOUT)
 
         # proposed from CoPilot ok
         for v in vernacularNames['results']:
@@ -522,7 +532,8 @@ class SpeciesClassification:
     def getVernacularNames(self, soort, key):
         engels = "" 
         nederlands = ""
-        vernacularNames = species.name_usage(key=soort[key], data='vernacularNames')
+        vernacularNames = species.name_usage(key=soort[key], data='vernacularNames',
+                                           timeout=GBIF_TIMEOUT)
         for v in vernacularNames['results']:
     #       print(f'{v["vernacularName"]} in taal {v["language"]}')
             if v["language"] == "eng" and engels == "":
@@ -588,7 +599,8 @@ class SpeciesClassification:
                 if subject not in _NAMES_NOT_FOUND:
                     # pygbif 0.6.6: param is scientificName (not name), and the
                     # response is nested — flatten it back to the old flat shape.
-                    gbif = _flatten_name_backbone(species.name_backbone(scientificName=subject))
+                    gbif = _flatten_name_backbone(species.name_backbone(scientificName=subject,
+                                                                 timeout=GBIF_TIMEOUT))
                     if not fuzzy: # batch  mode
                         if gbif['matchType'] == 'EXACT' and gbif.get('species'):
                             scientificname = self.addSpecies(gbif).lower()
