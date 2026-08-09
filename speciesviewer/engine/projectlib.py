@@ -261,6 +261,14 @@ class Project:
             self.MasterRepository = ""
         # if this is a sub-repository, read trip.ini
         if self.MasterRepository != "":
+            # Imported HERE, not at module level: engine.triplib imports
+            # engine.projectlib, so a top-level import would be circular. Until
+            # now this line relied on the CALLER having imported engine.triplib
+            # first — every batch script that needs a Trip does so, except
+            # svv4BuildWebsite, which therefore only worked when something else
+            # (the GUI) had already pulled triplib in. Owning the import here
+            # fixes it for every caller instead of one.
+            import engine.triplib
             self.Trip = engine.triplib.Trip(self, config)
             if inittrip:
                 self.Trip.readAndWriteTripAdmin()                   # not sure we want this for every step?  maybe only 4 and 9?
