@@ -268,6 +268,12 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         self._species_view = "pretty"   # "pretty" (SpeciesPanel) | "tech" (grid)
         self._show_all_files = False     # pretty panel: reveal RAW-only frames
         self._history = []               # navigation back-stack (view snapshots)
+        # Flat all-species view: the filtered list, how many cards are laid
+        # out, and the ceiling that survives a re-render (column change).
+        self._all_nodes = []
+        self._all_shown = 0
+        self._all_limit = self._ALL_CAP
+        self._more_btn = None
         self._pic_cards = []
         self._pic_by_key = {}
         self._large_view = None
@@ -493,6 +499,7 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         # Only act once the query is long enough to be worth a tree scan.
         if self._mode == "species" and len(self._search.text().strip()) >= self._SEARCH_MIN:
             self._mode = "tree"
+        self._all_limit = self._ALL_CAP   # a new query starts from the top
         self._render()
 
     def _on_all_species_toggled(self, checked):
@@ -501,6 +508,7 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         self._search.blockSignals(True)
         self._search.clear()
         self._search.blockSignals(False)
+        self._all_limit = self._ALL_CAP
         if checked:
             self._mode = "allspecies"
         else:
@@ -690,6 +698,7 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         return max(150, (avail - gaps) // self.columns)
 
     def _clear_grid(self):
+        self._more_btn = None        # about to be deleted with the rest
         self._loader.cancel_all()
         if self._collection is not None:
             self._collection.cancel_pending_loads()
@@ -859,20 +868,68 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         if q:
             nodes = [n for n in nodes
                      if any(q in (n[f] or "").lower() for f in ("sci", "nl", "en"))]
-        total = len(nodes)
-        capped = nodes[:self._ALL_CAP]
-        if q:
+        # Held for "show more", which appends the next batch to the cards already
+        # on screen rather than laying the whole list out again.
+        self._all_nodes = nodes
+        self._all_shown = min(self._all_limit, len(nodes))
+        if not self._all_shown:
             self._status.setText(
-                f"{total} species match “{raw}” · {self._source.scope_label}")
-        else:
-            more = (f" (showing first {len(capped)} — type to search all)"
-                    if total > len(capped) else "")
-            self._status.setText(
-                f"All species — {total}{more} · {self._source.scope_label}")
-        if not capped:
+                f"0 species match “{raw}” · {self._source.scope_label}" if q
+                else f"All species — 0 · {self._source.scope_label}")
             self._show_empty("No species match." if q else "No species.")
             return
-        self._lay_taxon_cards(capped)
+        self._lay_taxon_cards(nodes[:self._all_shown])
+        self._update_all_footer()
+
+    def _update_all_footer(self):
+        """Status line + the "show more" row under the last card."""
+        total = len(self._all_nodes)
+        shown = self._all_shown
+        raw = self._search.text().strip()
+        scope = self._source.scope_label
+        if raw:
+            self._status.setText(f"{total} species match “{raw}” · {scope}")
+        else:
+            self._status.setText(f"All species — showing {shown} of {total} · {scope}"
+                                 if shown < total else
+                                 f"All species — {total} · {scope}")
+        if self._more_btn is not None:
+            self._more_btn.setParent(None)
+            self._more_btn.deleteLater()
+            self._more_btn = None
+        if shown >= total:
+            return
+        rest = total - shown
+        step = min(self._ALL_CAP, rest)
+        btn = QPushButton(f"Show {step} more  ({rest} still to come)")
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(
+            f"QPushButton {{ border:1px solid {_LINE}; border-radius:8px;"
+            f" padding:9px 18px; color:{_READY}; background:{_READY_BG};"
+            f" font-weight:600; }}"
+            f"QPushButton:hover {{ border-color:{_READY}; }}")
+        btn.clicked.connect(self._show_more_species)
+        self._more_btn = btn
+        row = (shown + self.columns - 1) // self.columns
+        self._grid.addWidget(btn, row, 0, 1, max(1, self.columns))
+
+    def _show_more_species(self):
+        """Append the next batch. Deliberately NOT a re-render: only the new
+        cards are built, so revealing the whole list costs the same in total as
+        showing it at once — where re-rendering each time would cost
+        400+800+1200+… card builds."""
+        start = self._all_shown
+        end = min(start + self._ALL_CAP, len(self._all_nodes))
+        if end <= start:
+            return
+        if self._more_btn is not None:
+            self._more_btn.setParent(None)
+            self._more_btn.deleteLater()
+            self._more_btn = None
+        self._lay_taxon_cards(self._all_nodes[start:end], offset=start)
+        self._all_shown = end
+        self._all_limit = end        # survives a re-render (column change, etc.)
+        self._update_all_footer()
 
     # ── tree: children ───────────────────────────────────────────────────────
     def _render_children(self):
@@ -902,11 +959,19 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
             return
         self._lay_taxon_cards(nodes)
 
-    def _lay_taxon_cards(self, nodes):
+    def _lay_taxon_cards(self, nodes, offset=0):
+        """Lay `nodes` into the grid starting at card position `offset`.
+
+        A non-zero offset APPENDS to what is already there (and leaves the scroll
+        position alone). That is what keeps "show more" linear: each batch builds
+        only its own cards, so revealing the whole master costs the same as
+        showing it in one go. Re-rendering from zero on every click would cost
+        400+800+1200+… — quadratic in the number of batches."""
         card_w = self._card_width()
         for c in range(self.columns):
             self._grid.setColumnStretch(c, 1)
-        for idx, node in enumerate(nodes):
+        for i, node in enumerate(nodes):
+            idx = offset + i
             node = dict(node)
             node["_display"] = self._display(node)
             node["_display_lines"] = self._display_lines_for(node)
@@ -924,7 +989,8 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
             # photo frame, and a short row never balloons to fill the window.
             self._grid.addWidget(card, idx // self.columns, idx % self.columns,
                                  Qt.AlignmentFlag.AlignTop)
-        QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
+        if not offset:
+            QTimer.singleShot(0, lambda: self._scroll.verticalScrollBar().setValue(0))
 
     def _show_empty(self, text):
         empty = QLabel(text)
