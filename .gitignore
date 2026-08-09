@@ -56,6 +56,10 @@ svconfig.backup.*
 # example copies under data/configs/ stay tracked (with a blank sftppwd).
 /svconfig.ini
 /sv_config_*.ini
+# ...and the copy that lands in speciesviewer/ when a batch step runs with
+# that as its working directory (running batch/*.py from there does this).
+# Same file, same SFTP credential inside, just a different cwd.
+/speciesviewer/svconfig.ini
 
 Species print.txt
 
