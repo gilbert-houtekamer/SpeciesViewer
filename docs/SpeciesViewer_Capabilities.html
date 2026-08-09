@@ -510,6 +510,35 @@ are done.</p>
     <p class="note">Cosmetic (user asked, decided leave-as-is): short-description rows on the trip index
     look “centered” only because the portrait trip image towers over one line of text — the cells are
     already left/top-aligned, not a CSS bug.</p></li>
+  <li><strong>Trip publication converges on the album dialog</strong>
+    <span class="tag-shipped">SHIPPED</span> <code>2af8a3a</code>, 2026-08-09, not yet live-verified.
+    The trip's own dialog could only ever <em>remove</em>: its list action (“2. List Trip on the Site”)
+    had quietly fallen out of every menu, so from the GUI a trip could be un-listed but never listed
+    again. Its table also showed mostly albums — which is correct, not a bug: trips and albums write
+    their row into the <strong>same</strong> <code>trip_admin.csv</code>. So the trip now gets the
+    album's dialog. <strong>Trips ▸ Manage Trip Publication</strong> acts on the active trip, shows
+    whether it is listed, and offers both directions; one <code>PublishDialog</code> class serves both
+    kinds, with only the ini reader, config section, batch modules and wording differing. Each door
+    still stays its own.
+    <p><strong>The table survives as an escape hatch</strong> — it is how a <em>failed trip</em>, whose
+    repository no longer exists to be made active, finally got removed from the index. Slimmed to
+    remove-only (the preview/diff/temp-render machinery dropped, ~520 lines) and moved to
+    <strong>Master ▸ Maintain Master Database ▸ Manage Site Publication</strong>, where showing trips
+    and albums together is the point rather than a distraction.</p>
+    <p><strong>One rule now governs all four writers of the live index</strong> (list trip, list album,
+    un-advertise, the master table): base it on the <strong>live</strong> <code>trip_admin.csv</code>,
+    never on this machine's local copy — <code>engine.publish_index.load_admin_base</code>. Trips are
+    machine-specific: an early copy of a trip can sit on the laptop while the big machine carries it
+    further, and since the WHOLE index is regenerated from whatever base is loaded, a stale local base
+    would drop entries published elsewhere or resurrect removed ones. The album path already did this;
+    listing a trip (svr4) read local until now. Accepted side effect: the local master CSV is rewritten
+    from the web, so unpublished draft rows vanish from it — they are regenerated from
+    <code>trip.ini</code> at the next publish.</p>
+    <p><strong>Offline guard:</strong> <code>read_TripAdmin_from_web</code> swallows its errors, so
+    being offline arrives as an <em>empty</em> base — which, written out, would have shrunk the local
+    <code>trip_admin.csv</code> to the single row being added (the live site was never at risk: the
+    SFTP upload fails afterwards). It now falls back to the local copy and logs why. Internet is needed
+    to <em>act</em>; both dialogs still open and report “could not reach the site” without it.</p></li>
   <li><strong>Create Album = one-flow extract + build + publish</strong>
     <span class="tag-shipped">SHIPPED</span> <code>c7b09f8</code>, 2026-07-21, arc step 4, verified on
     Gran Canaria. The user chose full publish over extract-only, so Create's finish takes the album
