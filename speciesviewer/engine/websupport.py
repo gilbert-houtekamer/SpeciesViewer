@@ -1,4 +1,5 @@
 import os
+import posixpath
 import shutil
 import subprocess
 import time
@@ -473,6 +474,51 @@ def getSpeciesNameScientificDefault(MyProject, speciesname, languageName):
         return MyProject.getSpecies(speciesname)['ScientificName'].capitalize()
     return
 
+def webJoin(*parts):
+    """Join URL segments with '/', always.
+
+    A URL is not a filesystem path. `os.path.join` on Windows emits
+    '\\trips\\gambia', which is what put backslashes inside published hrefs; on a
+    Mac the very same code emits '/trips/gambia'. Same repository, two different
+    websites. Everything that builds a link goes through here."""
+    segs = []
+    for i, p in enumerate(parts):
+        p = str(p).replace("\\", "/")
+        p = p.rstrip("/") if i == 0 else p.strip("/")
+        if p:
+            segs.append(p)
+    return "/".join(segs)
+
+
+def webParent(url_path):
+    """The containing folder of a web path: '/trips/kreta/' -> '/trips'."""
+    return posixpath.dirname(str(url_path).replace("\\", "/").rstrip("/"))
+
+
+def masterWebRoot(MyProject, fallback=""):
+    """The web root of the MASTER site, whatever project happens to be loaded.
+
+    `MyProject.getBiotaWebRoot()` is the ACTIVE repository's root: with a trip
+    loaded it is /trips/<trip>/, with an album /trips/<album>/. That is right for
+    a page that lives inside that site, and wrong for a page that lives on the
+    master — most of all tripindex-nl/en.html, which the master owns but which
+    is regenerated while a trip is active. Resolving those through the active
+    root is how /nature/tripindex-nl.html ended up loading its stylesheet from
+    /trips/kreta/.
+
+    A trip knows the master root explicitly; an album build stamps it onto the
+    project as `master_biota_web_root`. Falls back to the caller's value (the
+    active root) only when neither is available — for a master build those are
+    the same thing anyway."""
+    trip = getattr(MyProject, "Trip", None)
+    if trip is not None:
+        root = (trip.getMasterBiotaWebRoot() or "").strip()
+        if root:
+            return root
+    root = (getattr(MyProject, "master_biota_web_root", "") or "").strip()
+    return root or fallback
+
+
 def formatToken(tokenno, MyProject, species_param, file, picture):
     global config
     BiotaWebRoot = MyProject.getBiotaWebRoot()
@@ -735,6 +781,10 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 return BiotaWebRoot
         elif tokenno == 90:
             return BiotaWebRoot                     # path to current main repository or to trip
+        elif tokenno == 92:
+            # Web root of the MASTER site. Use this, not %%90%%, on any page the
+            # master owns but that may be rendered while a trip/album is loaded.
+            return masterWebRoot(MyProject, BiotaWebRoot)
         elif tokenno == 91:
             language = MyProject.getLanguage()
             if MyProject.Trip != None:
@@ -1033,7 +1083,8 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                     workstr += '          <p>(picture not found)</p>\n'
                 elif blog["SelectedGroup"] == '':
                     # this is a reference to a blog index, not to a day/project
-                    targetlink = os.path.join(Path(blog['BestJPGs']).parent,'biotablog','blog index-'+language+'.html')
+                    targetlink = webJoin(webParent(blog['BestJPGs']), 'biotablog',
+                                         'blog index-' + language + '.html')
                     workstr += f'          <a href="' + targetlink + '"><img\n'
                     workstr += '            src="' + blog['BestJPGs'] + '"\n'
                     workstr += '            class="w3-border" style="padding:8px;max-width:100%" title="Click to go to ' + blog["title_" + language] + '"></a>\n'                    
@@ -1122,6 +1173,20 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 soorten = 'Trip species'
                 title = 'Title'                
             workstr = ''
+            # Every trip lives beside the active one, so the folder that holds
+            # them is the active repository's parent ('/trips/kreta/' -> '/trips').
+            # This page is the master's, but it is regenerated while a trip or
+            # album is loaded, which is what makes that derivation work. If it
+            # ever runs from the master itself the parent is '/', and silently
+            # emitting '/braakman' would be worse than saying so.
+            trips_folder = webParent(BiotaWebRoot)
+            if trips_folder in ("", "/"):
+                # '/nature/' -> '/', i.e. the master itself: there is no sibling
+                # folder to hang the trips off.
+                logger.warning(
+                    "Trip index: cannot tell where the trips live from web root "
+                    f"'{BiotaWebRoot}' — trip links would be wrong. Regenerate "
+                    "this page with a trip or album loaded.")
             # The sort key tolerates a missing or malformed todate by
             # sending that row to the bottom — one bad row must not kill
             # the whole page.
@@ -1137,7 +1202,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
 
             for tripname in sorted_items:  # MyProject.Trip.getTripDictSortedKeys()
                 trip = MyProject.Trip.getTrip(tripname[0])
-                TripWebRoot = os.path.join(Path(BiotaWebRoot).parent, trip['trip_name'])
+                TripWebRoot = webJoin(trips_folder, trip['trip_name'])
                 # print(f'Logname {logname} {blog["BestJPGs"][0]}')
                 workstr += '   <div class="w3-row" style="margin: 15px">\n'
                 workstr += '      <div class="w3-col w3-win8-olive" style="width:25%">\n'
@@ -1171,10 +1236,7 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
             return workstr
         elif tokenno == 148 or tokenno == 149:            # banner link
             language = 'nl' if tokenno == 148 else 'en'
-            if MyProject.Trip != None:
-                directory = MyProject.Trip.getMasterBiotaWebRoot()     # path to current main repository, NOT to trip also for subdirectories
-            else:
-                directory = getattr(MyProject, 'master_biota_web_root', BiotaWebRoot)
+            directory = masterWebRoot(MyProject, BiotaWebRoot)
             workstr = '<li><a href="' + directory + 'tripindex-' + language + '.html">Trips</a></li>'
             return workstr
         elif tokenno == 150 or tokenno == 151:
