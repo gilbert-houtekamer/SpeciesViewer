@@ -1815,6 +1815,15 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                     self.fpr.upn.UniquePictureName_dict[upn_key] = upn_row
                     self._upn_day_map[upn_key] = day
 
+        # An ALBUM with no extracted day CSVs still has pictures — they live in
+        # the master, inside its date range. The rest of the album stack (the
+        # overview, the Biota Browser, the website build) was moved onto that
+        # live query; this viewer was not, so an album that never had its days
+        # extracted, or had them cleaned up, opened completely empty while the
+        # Biota Browser happily showed the same species.
+        if not self._day_objects and self._read_only:
+            self._load_album_from_master()
+
         # Fall back to active if no review days found (fully committed trip)
         if not self._day_objects:
             meta_active = self._trip_root / "metadata" / "active"
@@ -1834,6 +1843,53 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         n_days = len(self._day_objects)
         n_pics = len(self.fpr.upn.UniquePictureName_dict)
         self._status.setText(f"Trip — {n_days} day{'s' if n_days != 1 else ''}, {n_pics} pictures total")
+
+    def _load_album_from_master(self):
+        """Fill fpr from the master's own rows for this album's date range.
+
+        The same source the album overview and the Biota Browser read
+        (batch.album_source), so the three agree on what an album contains
+        instead of one of them depending on whether day CSVs happen to exist on
+        this machine. Album scope is read-only, so there is no write-back path
+        to keep in step — nothing here needs the per-day CSV objects that the
+        editable Trip scope uses for saving."""
+        from utils.virttrip_config import read_virttrip_ini
+        ini = read_virttrip_ini(str(self._trip_root)) or {}
+        fromdate = (ini.get("fromdate") or "").strip()
+        todate = (ini.get("todate") or "").strip()
+        master_root = (_config.get("master", "masterbiotadatabase", fallback="")
+                       or "").replace('"', "").replace("'", "").strip()
+        if not (fromdate and todate and master_root and Path(master_root).exists()):
+            logger.info("album viewer: no date range or master — cannot load from the master")
+            return
+
+        class _Sink:                       # what load_day_from_master() fills
+            files_dict = self.fpr.fi.files_dict
+            UniquePictureName_dict = self.fpr.upn.UniquePictureName_dict
+
+        try:
+            from batch import album_source
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                db = album_source.open_master_db(master_root)
+                days = album_source.day_labels_in_range(db, fromdate, todate)
+                sink = _Sink()
+                for day in days:
+                    before = set(sink.UniquePictureName_dict)
+                    album_source.load_day_from_master(sink, db, day)
+                    for upn_key in set(sink.UniquePictureName_dict) - before:
+                        self._upn_day_map[upn_key] = day
+                    # A day object is what the rest of the dialog counts days by;
+                    # these carry no CSV of their own, so hand it the shared
+                    # objects rather than inventing empty ones.
+                    self._day_objects[day] = (self.fpr.fi, self.fpr.upn)
+            finally:
+                QApplication.restoreOverrideCursor()
+            logger.info(f"album viewer: loaded {len(self.fpr.upn.UniquePictureName_dict)} "
+                        f"picture(s) over {len(days)} day(s) from the master "
+                        f"({fromdate} … {todate}) — no day CSVs on disk")
+        except Exception as e:
+            logger.warning(f"album viewer: master date-range load failed: {e}", exc_info=True)
 
     def _trip_name_profile_override(self) -> str | None:
         """The per-trip / per-virttrip name-profile override (from trip.ini's
