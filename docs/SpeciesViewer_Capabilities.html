@@ -1047,6 +1047,18 @@ filmstrip position, inline master comparison (via Trip+Master scope), grid↔lar
     new <code>retired_to_album</code> flag into <code>trip.ini</code> via a surgical writer + a final
     “Recording retirement” pipeline step); <em>Make the Blogs Clickable</em> enables once ≥1 day
     published. Day-scan memoised ~3&nbsp;s. Menu-reorg follow-on #2.</li>
+  <li><strong>Browser menu — the six ways of reading a collection, in one place</strong>
+    <span class="tag-shipped">DONE</span> — SHIPPED 2026-08-09 (ClaudeSpecies). The Biota Browser
+    entries used to sit one per owning menu (Trips / Albums / Master), each buried among the
+    pipeline actions it happened to share a menu with, so <em>browsing</em> read as a footnote to
+    <em>processing</em>. They now have their own top-level <strong>Browser</strong> menu, before
+    Days, holding the same two views over each of the three scopes and grouped by scope:
+    <em>Trip Browser</em> / <em>All Species in the Trip</em> · <em>Album Browser</em> /
+    <em>All Species in the Album</em> · <em>Master Browser</em> / <em>All Species in the Master</em>.
+    The flat all-species index was previously offered for the master only — it was a
+    <code>start_mode</code> argument away for the other two, since the “All species” toggle already
+    worked in every scope, so all six now exist. Removed from Trips / Albums / Master; the three
+    openers gained a <code>start_mode</code> passthrough. Menu-reorg follow-on #3.</li>
 </ul>
 <h3>To do</h3>
 <ul>
@@ -1251,11 +1263,13 @@ Full design in <code>path_portability_plan.md</code>.</p>
   which leads). The scientific name remains the stable identity everywhere (paths, keys, matching); this
   governs display only, never the website output or species editing.</p>
 <ul>
-  <li><strong>Seven profiles, one default.</strong> EN/NL (default), NL/EN, NL/EN/Sci, EN/Sci, NL/Sci,
-    Sci/EN, Sci/NL. The former plain “Scientific only” is retired and normalises to Sci/EN. Chosen in
-    Global Settings, the new <strong>Species Settings ▸ Preferred name display</strong> row (kept
-    separate from the correction “name type”), or per trip/virttrip; a viewer's own combo is a
-    per-session override. Precedence: per-view combo → per-trip → global default.</li>
+  <li><strong>Eight profiles, one default.</strong> EN/NL (default), NL/EN, NL/EN/Sci, EN/NL/Sci,
+    EN/Sci, NL/Sci, Sci/EN, Sci/NL. The former plain “Scientific only” is retired and normalises to
+    Sci/EN. Chosen in Global Settings, the new <strong>Species Settings ▸ Preferred name display</strong>
+    row (kept separate from the correction “name type”), or per trip/virttrip; a viewer's own combo is a
+    per-session override. Precedence: per-view combo → per-trip → global default. Every dropdown that
+    offers them lists them <strong>A–Z on the label</strong> — one <code>profile_keys()</code> sort
+    serves all seven combos, and each selects by key, so no stored setting shifts when the list grows.</li>
   <li><strong>Every surface follows it.</strong> Trip / Master / Album Species Viewers, the culling
     “Species Image Preview”, the large image viewer, and the Biota Browser (tree cards, all-species
     index, species page) all read the same profile. Grid cards show up to three deduped lines with the
@@ -1268,6 +1282,20 @@ Full design in <code>path_portability_plan.md</code>.</p>
   <li><strong>Detail surfaces show all three.</strong> The large image viewer and the Biota species page
     lead with the profile's primary name and list the other two beneath, so the identity is always fully
     visible; the full triple also appears in the species page's Names &amp; Classification table.</li>
+  <li><strong>Names lift out as plain text</strong> <span class="tag-shipped">SHIPPED</span> —
+    for captioning a <em>printed</em> photobook, the names have to leave the app carrying nothing but
+    their characters. One module (<code>gui/name_copy.py</code>) owns this, with a single invariant:
+    it only ever puts <code>text/plain</code> on the clipboard — no font, size or colour rides along.
+    Each name copies <strong>individually</strong> (Dutch, English, scientific), plus “all names”
+    (<code>·</code>-joined) and “all names, one per line”. Two shapes, because names sit on two kinds
+    of surface: a widget that <em>is</em> a name becomes mouse-selectable <em>and</em> right-clickable
+    (the species page — title, subtitle, and every cell of the Names &amp; Classification table); a
+    widget that <em>carries</em> a name but owns its clicks gets the right-click menu only (the Biota
+    Browser's taxon cards and the sibling/orders sidebar rows — a selectable label there would swallow
+    the mouse press and break click-to-open). The cards are one widget shared by the tree, the flat
+    all-species index and the search results, so all three views and all three scopes get it at once.
+    A taxon with only a Latin name offers that one entry and no “all names”; a nameless node shows no
+    menu.</li>
   <li><strong>Biota grid legibility.</strong> Long taxon names auto-shrink to fit (down a few px, then up
     to three lines) with reserved height so nothing clips; higher taxa keep “vernacular + scientific”
     while species follow the profile; grid cells are top-aligned so a tall neighbour can't stretch a
