@@ -28,7 +28,8 @@ USAGE  (from the speciesviewer/ directory, with it on the import path)
   python batch/svrRebuildAllWebsites.py --apply
   python batch/svrRebuildAllWebsites.py --apply --only costa
   python batch/svrRebuildAllWebsites.py --apply --blogs  # blogs too, not just species pages
-  python batch/svrRebuildAllWebsites.py --apply --master # and the master site
+  python batch/svrRebuildAllWebsites.py --apply --master # albums AND the master
+  python batch/svrRebuildAllWebsites.py --apply --master --no-albums   # master only
 """
 import argparse
 import configparser
@@ -149,7 +150,9 @@ def main(args, config):
 
     virttrips_root = get_virttrips_root()
     trips_folder = _trips_folder(config)
-    albums = _album_dirs(virttrips_root)
+    # Albums and the master are independent scopes: rebuilding only the master
+    # is a normal thing to want, since it owns tripindex-nl/en.html.
+    albums = _album_dirs(virttrips_root) if getattr(args, "albums", True) else []
     only = (getattr(args, "only", "") or "").lower()
     if only:
         albums = [a for a in albums if only in Path(a).name.lower()]
@@ -237,7 +240,9 @@ if __name__ == "__main__":
     parser.add_argument("--blogs", action="store_true",
                         help="re-render the blogs too, not just the species pages")
     parser.add_argument("--master", action="store_true",
-                        help="also rebuild the master site")
+                        help="rebuild the master site as well")
+    parser.add_argument("--no-albums", dest="albums", action="store_false",
+                        help="skip the albums (with --master: rebuild ONLY the master)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO,
                         format="%(levelname)s %(message)s")

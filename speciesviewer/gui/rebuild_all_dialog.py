@@ -53,9 +53,10 @@ class _Worker(QObject):
     line = pyqtSignal(str)
     finished = pyqtSignal(str)          # "" = success, else the error
 
-    def __init__(self, apply_it, blogs, master):
+    def __init__(self, apply_it, blogs, master, albums):
         super().__init__()
-        self._apply, self._blogs, self._master = apply_it, blogs, master
+        self._apply, self._blogs = apply_it, blogs
+        self._master, self._albums = master, albums
 
     def run(self):
         import contextlib
@@ -66,6 +67,7 @@ class _Worker(QObject):
             apply = self._apply
             blogs = self._blogs
             master = self._master
+            albums = self._albums
             only = ""
 
         err = ""
@@ -98,11 +100,19 @@ class RebuildAllWebsitesDialog(QDialog):
             "<p>Which album is active is not changed. An album that fails is "
             "reported and the sweep carries on.</p>"))
 
+        # Scope is two independent choices, not "albums, and optionally also the
+        # master": rebuilding ONLY the master is a normal thing to want (it owns
+        # tripindex-nl/en.html), and an "Also…" checkbox offers no way to say it.
+        self.albums_cb = QCheckBox("Rebuild the albums")
+        self.albums_cb.setChecked(True)
+        self.master_cb = QCheckBox("Rebuild the master site")
         self.blogs_cb = QCheckBox(
-            "Also re-render the blogs (slower — re-uploads every blog picture)")
-        self.master_cb = QCheckBox("Also rebuild the master site")
-        lay.addWidget(self.blogs_cb)
+            "Also re-render the album blogs (slower — re-uploads every blog picture)")
+        lay.addWidget(self.albums_cb)
         lay.addWidget(self.master_cb)
+        lay.addWidget(self.blogs_cb)
+        self.albums_cb.toggled.connect(self._sync_enabled)
+        self.master_cb.toggled.connect(self._sync_enabled)
 
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
@@ -130,14 +140,13 @@ class RebuildAllWebsitesDialog(QDialog):
         self.close_btn.clicked.connect(self.close)
 
     def _confirm_and_run(self):
-        extras = []
-        if self.blogs_cb.isChecked():
-            extras.append("blogs")
+        parts = []
+        if self.albums_cb.isChecked():
+            parts.append("every album's species pages"
+                         + (" and blogs" if self.blogs_cb.isChecked() else ""))
         if self.master_cb.isChecked():
-            extras.append("the master site")
-        what = "every album's species pages"
-        if extras:
-            what += " plus " + " and ".join(extras)
+            parts.append("the master site")
+        what = " and ".join(parts)
         if QMessageBox.question(
                 self, "Rebuild all album websites",
                 f"This re-renders {what} and uploads the result.\n\n"
@@ -155,7 +164,8 @@ class RebuildAllWebsitesDialog(QDialog):
 
         self._thread = QThread()
         self._worker = _Worker(apply_it, self.blogs_cb.isChecked(),
-                               self.master_cb.isChecked())
+                               self.master_cb.isChecked(),
+                               self.albums_cb.isChecked())
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.line.connect(self._append)
@@ -179,9 +189,22 @@ class RebuildAllWebsitesDialog(QDialog):
         else:
             self.status.setText("Nothing was rebuilt — this was only a listing.")
 
+    def _sync_enabled(self):
+        """With neither scope ticked there is nothing to rebuild, so neither
+        button should look as if it would do something."""
+        any_scope = self.albums_cb.isChecked() or self.master_cb.isChecked()
+        self.blogs_cb.setEnabled(self.albums_cb.isChecked())
+        self.dry_btn.setEnabled(any_scope)
+        self.run_btn.setEnabled(any_scope)
+        if not any_scope:
+            self.status.setText("Tick the albums, the master site, or both.")
+        elif not self.status.text().startswith(("✅", "❌")):
+            self.status.setText("")
+
     def _set_busy(self, busy, msg):
-        self.dry_btn.setEnabled(not busy)
-        self.run_btn.setEnabled(not busy)
+        any_scope = self.albums_cb.isChecked() or self.master_cb.isChecked()
+        self.dry_btn.setEnabled(not busy and any_scope)
+        self.run_btn.setEnabled(not busy and any_scope)
         self.status.setText(msg)
         self.setCursor(Qt.CursorShape.WaitCursor if busy else Qt.CursorShape.ArrowCursor)
 
