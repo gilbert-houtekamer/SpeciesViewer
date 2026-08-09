@@ -224,6 +224,15 @@ def main(args, config):
         project.makeAllSpeciesPage("biota", language)
         logger.info(f"  Built {language.upper()} pages.")
 
+    # Intro + all-species-link pages. A regular trip gets these from
+    # sv5BuildWebsite, the master from svMasterRebuildWeb, and a brand-new repo
+    # from sv1MakeReposity — an ALBUM was the only site that never re-rendered
+    # them, so a fix to intro-nl/en.html (or to a token they use) could never
+    # reach a published album.
+    from batch.sv5BuildWebsite import makeIntroPages
+    makeIntroPages(project)
+    logger.info("  Built intro pages (NL + EN).")
+
     logger.info(f"svv4BuildWebsite: local build complete ({days} day(s)).")
 
     # --- SFTP upload ---
@@ -281,6 +290,16 @@ def main(args, config):
             sftp.cachedUpload(src, prefix + bio_web + f"summaries/all biota species-{lang}.html",
                               preserve_mtime=True)
     logger.info("  Uploaded all-species summary pages.")
+
+    # 2b. Upload the intro pages built above (sv7WriteCommit does the same for a
+    # regular trip). Without this the album's "Biota: wat is dat?" page keeps
+    # whatever was uploaded when the repository was created.
+    for lang in ("nl", "en"):
+        src = os.path.join(biota_dir, f"intro-{lang}.html")
+        if os.path.isfile(src):
+            sftp.cachedUpload(src, prefix + bio_web + f"intro-{lang}.html",
+                              preserve_mtime=True)
+    logger.info("  Uploaded intro pages.")
 
     # 3. Resize and upload small JPGs, matching sv7WriteCommit.putRecursiveTreeWeb
     allspecies_csv = os.path.join(frozen, "allspecies.csv")
