@@ -206,7 +206,13 @@ class VirtTripInfoPanel(QWidget):
             return
         active = _config.get("virttrip", "virttripbiotadatabase", fallback="")
         if str(trip_dir) == active:
-            return  # already active
+            # Already the active album: skip the config churn, but still rebuild
+            # and re-sync the panel. This used to return outright, which made
+            # clicking the highlighted album — the obvious way to fix a panel
+            # showing the wrong scope — do nothing at all.
+            self._refresh_highlights()
+            self.on_virttrip_selected(self.main_window)
+            return
         record_gui_usage(trip_dir)
         if not _config.has_section("virttrip"):
             _config.add_section("virttrip")

@@ -139,20 +139,36 @@ class TripInfoPanel(QWidget):
                         self.tree.foregroundRole()))
 
     def handle_trip_click(self, item, column):
-        trip_dir = item.data(0, Qt.ItemDataRole.UserRole)
-        if trip_dir and (trip_dir !=  Path(_config["trip"]["tripbiotadatabase"])):
-            record_gui_usage(trip_dir)
-            trip_data = read_trip_ini(trip_dir)
-            trip_name = trip_data.get("trip_name", "").strip()
-            _config["trip"]["tripbiotadatabase"] = str(trip_dir)
-            _config["trip"]["tripbiotawebroot"] = "/trips/" + trip_name
-            _config["trip"]["tripsrootdirectory"] = str(trip_dir.parent)
-            pic = self._resolve_picturedirectory(trip_dir, trip_name)
-            if pic:
-                _config["project"]["picturedirectory"] = pic
-            persist_config()
+        # _PATH_ROLE, not UserRole. UserRole is set to the trip folder ONLY for
+        # trips that appear in trip_project_map (the 🔗 rows) and left None for
+        # every other trip — so reading it here meant clicking most trips did
+        # nothing at all, with no message. _PATH_ROLE is set for every trip row
+        # (and for no day child), and is what _refresh_highlights already uses
+        # to decide which row is the active one; the click and the highlight now
+        # agree on what a row means. VirtTripInfoPanel already did it this way.
+        trip_dir = item.data(0, _PATH_ROLE)
+        if not trip_dir:
+            return
+        if trip_dir == Path(_config["trip"]["tripbiotadatabase"]):
+            # Already the active trip: skip the config churn, but still rebuild
+            # and re-sync the panel, so clicking the highlighted trip is a way
+            # back when the yellow panel is showing another scope (it used to
+            # do nothing at all).
             self._refresh_highlights()
             self.on_trip_selected(self.main_window)
+            return
+        record_gui_usage(trip_dir)
+        trip_data = read_trip_ini(trip_dir)
+        trip_name = trip_data.get("trip_name", "").strip()
+        _config["trip"]["tripbiotadatabase"] = str(trip_dir)
+        _config["trip"]["tripbiotawebroot"] = "/trips/" + trip_name
+        _config["trip"]["tripsrootdirectory"] = str(trip_dir.parent)
+        pic = self._resolve_picturedirectory(trip_dir, trip_name)
+        if pic:
+            _config["project"]["picturedirectory"] = pic
+        persist_config()
+        self._refresh_highlights()
+        self.on_trip_selected(self.main_window)
 
     def _resolve_picturedirectory(self, trip_dir, trip_name):
         """The day folder to make active when a trip is selected. WP8: prefer the

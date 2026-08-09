@@ -521,7 +521,8 @@ def _show_trip_not_ready(self, image_root, review_root, trip_root):
     layout.addStretch()
 
     self.yellow_tabs.addTab(panel, "Active Trip")
-    self.yellow_tabs.setCurrentWidget(panel)
+    # Do NOT force this tab: the left column decides which scope shows.
+    self.sync_yellow_to_mode()
 
 
 def populate_trip_overview(self):
@@ -790,7 +791,8 @@ def populate_trip_overview(self):
     overview_widget.setLayout(layout)
 
     self.yellow_tabs.addTab(overview_widget, "Active Trip")
-    self.yellow_tabs.setCurrentWidget(overview_widget)
+    # Do NOT force this tab: the left column decides which scope shows.
+    self.sync_yellow_to_mode()
 
     self.trip_table.cellDoubleClicked.connect(self.handle_trip_table_double_click)
     self.trip_table.verticalHeader().sectionDoubleClicked.connect(self.handle_row_rerun)

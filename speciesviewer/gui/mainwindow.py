@@ -1,4 +1,5 @@
 from pathlib import Path
+import logging
 import os
 
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStatusBar, QApplication
@@ -26,6 +27,8 @@ from gui.trip_overview import populate_trip_overview
 from engine.statemachine import StateMachine
 from gui.image_viewer import ImagePreviewDialog
 from utils.gui_config import load_gui_cache  # or wherever your cache functions live
+
+logger = logging.getLogger("speciesviewer")
 
 MODE_DAY = "Day"
 MODE_TRIP = "Trip"
@@ -79,6 +82,8 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self.status_bar)        
         self.resize(1200, 900)
         self.logger = None
+        # False until the window is fully assembled — see sync_yellow_to_mode.
+        self._ui_ready = False
 
         root_field = QLineEdit()  # Shared reference across tabs
         root_field.setText(_config["trip"]["tripbiotadatabase"])        
@@ -454,24 +459,59 @@ class MainWindow(QMainWindow):
     
     _MODE_STACK_INDEX = {MODE_DAY: 0, MODE_TRIP: 1, MODE_ALBUM: 2}
 
+    def current_left_mode(self):
+        """Which of Day / Trip / Album the left column is on."""
+        for mode, btn in self._mode_buttons.items():
+            if btn.isChecked():
+                return mode
+        return MODE_TRIP
+
+    def sync_yellow_to_mode(self):
+        """Point the yellow panel at the scope the left column is on.
+
+        THE INVARIANT: the left column leads. Whatever the mode strip says, the
+        yellow panel shows that scope — Day excepted, which has no yellow panel
+        of its own yet (ch.15 Phase 1, deferred, not dropped) and so leaves it
+        alone.
+
+        This is the ONE place that chooses the yellow tab. Both overview
+        builders used to call setCurrentWidget() themselves, which meant any
+        refresh yanked the panel to its own scope regardless of the mode — most
+        sneakily the focus-refresh in _on_application_state_changed, which
+        rebuilds the TRIP overview whenever the app is re-activated and a day
+        folder changed. Sitting in Album mode, alt-tabbing away and back was
+        enough to leave the strip saying Album and the panel showing the trip.
+        """
+        mode = self.current_left_mode()
+        if mode == MODE_DAY:
+            return
+        want_title = "Active Trip" if mode == MODE_TRIP else VIRTTRIP_TAB_TITLE
+        for i in range(self.yellow_tabs.count()):
+            if self.yellow_tabs.tabText(i) == want_title:
+                self.yellow_tabs.setCurrentIndex(i)
+                return
+        # No such tab: an album that is unset or whose folder is gone makes
+        # populate_virttrip_overview remove the tab and return. Silently leaving
+        # the other scope's panel on screen is exactly the disconnect this method
+        # exists to prevent, so say so instead. Not during construction, though:
+        # the two overviews are built one after the other, so the first one
+        # legitimately runs while the other's tab does not exist yet.
+        if not self._ui_ready:
+            return
+        logger.warning(
+            f"{mode} mode is selected but there is no “{want_title}” panel to "
+            f"show — the panel below still belongs to another scope. "
+            f"Select {'a trip' if mode == MODE_TRIP else 'an album'} to rebuild it.")
+
     def _set_left_mode(self, mode):
-        """Switch which of the three left-column lists is showing, and — for
-        Trip/Album — sync the (now hidden-tab-bar) yellow panel to match, by
-        the same tab-title lookup the old active_yellow_tab restore used. Day
-        mode leaves the yellow panel showing whatever it last showed: there is
-        no day-scope overview table yet (ch.15 Phase 1, deliberately deferred,
-        not silently dropped)."""
+        """Switch which of the three left-column lists is showing, and bring the
+        yellow panel with it (see sync_yellow_to_mode for the invariant)."""
         self._left_stack.setCurrentIndex(self._MODE_STACK_INDEX.get(mode, 1))
         self._left_vertical_label.setText(mode)
         btn = self._mode_buttons.get(mode)
         if btn is not None and not btn.isChecked():
             btn.setChecked(True)
-        if mode in (MODE_TRIP, MODE_ALBUM):
-            want_title = "Active Trip" if mode == MODE_TRIP else VIRTTRIP_TAB_TITLE
-            for i in range(self.yellow_tabs.count()):
-                if self.yellow_tabs.tabText(i) == want_title:
-                    self.yellow_tabs.setCurrentIndex(i)
-                    break
+        self.sync_yellow_to_mode()
         if not _config.has_section("layout"):
             _config.add_section("layout")
         _config["layout"]["active_left_mode"] = mode
@@ -484,6 +524,7 @@ class MainWindow(QMainWindow):
         want = _config.get("layout", "active_left_mode", fallback="").strip()
         if want not in self._mode_buttons:
             want = MODE_TRIP
+        self._ui_ready = True      # both overviews exist by now
         self._set_left_mode(want)
 
     def _on_sort_alpha_clicked(self):

@@ -708,7 +708,8 @@ def populate_virttrip_overview(self):
     layout.addWidget(self.virttrip_table)
 
     self.yellow_tabs.addTab(overview_widget, TAB_TITLE)
-    self.yellow_tabs.setCurrentWidget(overview_widget)
+    # Do NOT force this tab: the left column decides which scope shows.
+    self.sync_yellow_to_mode()
 
     def _on_edit_blogs():
         _open_blog_editor(self, day_dirs, first_date, virttrip_path)
