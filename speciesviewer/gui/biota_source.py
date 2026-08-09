@@ -282,12 +282,55 @@ class MasterBiotaSource:
         return None
 
     def all_species(self) -> list[dict]:
-        """Every species with at least one master picture, scientific-name order —
-        the flat 'all species' index (backlog ch.14, item 2)."""
-        out = [n for k, n in self._by_sci.items()
-               if n["rank"] == "SPECIES" and self._pics.get(k, 0) > 0]
-        out.sort(key=lambda n: n["sci"].lower())
-        return out
+        """Every photographed species, in TAXONOMIC order — the flat 'all species'
+        index (backlog ch.14, item 2).
+
+        The order is the one a recursive walk of the tree produces: ducks with
+        ducks, herons with herons, families in their taxonomic sequence. It is
+        literally that walk, depth-first through `children()`, so the flat list
+        and the tree can never drift apart — `children()` already sorts by
+        target_path (which carries the numeric '022 eurypygiformes' sequence)
+        then scientific name, the same key the website's pages are built with.
+
+        This used to sort by scientific name. That reads as random to anyone
+        looking at the cards, because the cards show Dutch/English names: a list
+        running alligator → anas → anhinga → anolis → aramus → ardea shows up as
+        "american alligator, blauwvleugeltaling, amerikaanse slangenhalsvogel,
+        green anole, koerlan, grote zilverreiger".
+
+        Anything photographed but NOT reachable from the root is appended rather
+        than dropped, and logged: unreachable means a broken parent chain, which
+        is a data fault worth seeing, not a reason to lose a species."""
+        ordered, seen = [], set()
+        stack = [self.root()]
+        while stack:
+            key = stack.pop()
+            if key in seen:
+                continue                    # defensive: a cycle in `up`
+            seen.add(key)
+            node = self._by_sci.get(key)
+            if node is None:
+                continue
+            if node["rank"] == "SPECIES":
+                ordered.append(node)
+            # reversed: a stack pops last-in first, so push backwards to visit
+            # children in the order children() returns them
+            kids = [c["sci"].strip().lower() for c in self.children(node["sci"])]
+            stack.extend(reversed(kids))
+
+        stragglers = [n for k, n in self._by_sci.items()
+                      if n["rank"] == "SPECIES" and self._pics.get(k, 0) > 0
+                      and k not in seen]
+        if stragglers:
+            logger.warning(
+                f"all species: {len(stragglers)} photographed species are not "
+                f"reachable from the root of the tree (broken 'up' chain?) — "
+                f"listed last: {', '.join(sorted(n['sci'] for n in stragglers)[:5])}"
+                + (" …" if len(stragglers) > 5 else ""))
+            stragglers.sort(key=lambda n: ((n["target_path"] or "").lower(),
+                                           n["sci"].lower()))
+            ordered.extend(stragglers)
+        return ordered
 
     # ── rank search ─────────────────────────────────────────────────────────
     def search(self, query: str, rank: str | None = None) -> list[dict]:
