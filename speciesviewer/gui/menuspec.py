@@ -263,9 +263,14 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    # Two entries, not one screen with three jobs: Create starts empty and can only
+    # write into a folder it makes itself; Select or Update loads the trip you pick
+    # and can only write back into that one. The single "Create or Select" screen
+    # inherited the active trip's settings as defaults, which is how greecedb's
+    # identity was overwritten. See docs/plans/trip_dialog_and_ingest_lanes.md.
     trip_create = MenuSpec(
         callback=None,
-        title="Create or Select Trip",
+        title="Create Trip",
         batch_parms={
             'statusname': "MakeRepository",
             'module_called': batch.sv1MakeReposity.main,
@@ -273,7 +278,21 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Trip creation complete. Please review the log messages."
         }
     )
-    trip_create.callback = lambda: TripCreationDialog(main_window, trip_create).exec()
+    trip_create.callback = lambda: TripCreationDialog(
+        main_window, trip_create, mode="create").exec()
+
+    trip_select = MenuSpec(
+        callback=None,
+        title="Select or Update Trip…",
+        tooltip="Switch to another trip, or change this one's dates, texts and "
+                "pictures folder",
+        showsubdirectory=False,
+    )
+    # Shares trip_create's batch_parms: only Create Trip runs the repository build,
+    # and this entry does not show that button.
+    trip_select.batch_parms = trip_create.batch_parms
+    trip_select.callback = lambda: TripCreationDialog(
+        main_window, trip_select, mode="update").exec()
 
     sync_sidecars = MenuSpec(
         callback=None,
@@ -1697,6 +1716,7 @@ def build_menu_spec(main_window):
                 title="Remove from List", enabled=has_active_day, showsubdirectory=False),
         },
         "Trips": {
+            "Select or Update Trip…": trip_select,
             "Create Trip": trip_create,
             # Carrying a trip between machines is the other way to get one here:
             # prepare it on the big machine, import it on the laptop, export it

@@ -105,15 +105,25 @@ message_en = {_ini_escape(message_en)}
         return 
 
 class TripCreationDialog(QDialog):
-    def __init__(self, parent, menu_spec):
+    def __init__(self, parent, menu_spec, mode="update"):
         super().__init__(parent)
-        self.menu_spec = menu_spec        
+        self.menu_spec = menu_spec
         self.logger = parent.logger
         self.passed_parent = parent
-        self.setWindowTitle("Create Trip")
+        # ONE screen, but never two jobs at once. "create" starts EMPTY and can only
+        # write into a folder it makes itself; "update" loads the trip you picked and
+        # can only write back into that one. The old single mode did both from fields
+        # pre-filled with whichever trip happened to be active — which is how a live
+        # trip's identity got overwritten. See docs/plans/trip_dialog_and_ingest_lanes.md.
+        self.mode = mode if mode in ("create", "update") else "update"
+        self.setWindowTitle("Create Trip" if self.mode == "create"
+                            else "Select or Update Trip")
         self.resize(800, 600)
 
-        trip_root = _config.get("trip", "tripbiotadatabase", fallback="")
+        # In create mode nothing is inherited: the active trip is not a template for
+        # a new one, and a half-copied identity is worse than an empty form.
+        trip_root = ("" if self.mode == "create"
+                     else _config.get("trip", "tripbiotadatabase", fallback=""))
         trip_data = read_trip_ini(trip_root) or {}
   
         main_layout = QVBoxLayout(self)
@@ -166,7 +176,12 @@ class TripCreationDialog(QDialog):
         new_folder_row.addStretch()
         layout1.addWidget(new_folder_widget)
 
-        self.trip_web = LabeledTextFieldQt("Trip Web root", _config.get("trip", "tripbiotawebroot", fallback=""), multiline=False, inline=True)
+        # The web root is the trip's identity — trip_name/web_slug are derived from
+        # it — so in create mode it starts empty rather than carrying the last trip's.
+        self.trip_web = LabeledTextFieldQt(
+            "Trip Web root",
+            "" if self.mode == "create" else _config.get("trip", "tripbiotawebroot", fallback=""),
+            multiline=False, inline=True)
         self.trip_web.field.setMaximumWidth(300)
         trip_web_row = QWidget()
         trip_web_layout = QHBoxLayout(trip_web_row)
@@ -174,7 +189,9 @@ class TripCreationDialog(QDialog):
         trip_web_layout.addWidget(self.trip_web)
         trip_web_layout.addStretch()
         layout1.addWidget(trip_web_row)
-        self.project_path = DirectoryFieldQt("Trip pictures folder (contains the day subfolders)", _config.get("project", "picturedirectory", fallback=""))
+        self.project_path = DirectoryFieldQt(
+            "Trip pictures folder (contains the day subfolders)",
+            "" if self.mode == "create" else _config.get("project", "picturedirectory", fallback=""))
         layout1.addWidget(self.project_path)
         tabs.addTab(tab1, "Select Trip Folder")
 
@@ -307,11 +324,17 @@ class TripCreationDialog(QDialog):
         create_button = QPushButton("Create Trip")
         select_button = QPushButton("Select")
 
-        # Create (build a brand-new trip's structure) comes first; Update Trip
-        # Settings (the everyday save for an existing trip) sits after it.
+        # One job per screen: Create mode offers only Create, Update mode only the
+        # two that act on the trip you loaded. A button that does the other job is
+        # the whole reason this dialog could damage a live trip.
         btn_layout.addWidget(create_button)
         btn_layout.addWidget(write_tripini_button)
         btn_layout.addWidget(select_button)
+        if self.mode == "create":
+            write_tripini_button.setVisible(False)
+            select_button.setVisible(False)
+        else:
+            create_button.setVisible(False)
 
         main_layout.addLayout(btn_layout)
 
@@ -321,8 +344,11 @@ class TripCreationDialog(QDialog):
         select_button.clicked.connect(self.on_select)
 
         # Every field now exists → load them FROM the folder the dialog is showing,
-        # so what you read belongs to one trip. See the note at root_field.
-        self._sync_fields_to_trip_root()
+        # so what you read belongs to one trip. See the note at root_field. In
+        # create mode there is nothing to load: the form stays empty until you name
+        # the folder.
+        if self.mode == "update":
+            self._sync_fields_to_trip_root()
 
     def _sync_fields_to_trip_root(self):
         """Fill the form from the trip.ini in the currently shown Trip Root folder.
@@ -376,7 +402,10 @@ class TripCreationDialog(QDialog):
     def on_trip_root_changed(self, new_path):
         trip_data = read_trip_ini(new_path)
         if trip_data:
-            print("✅ trip.ini loaded:", new_path)
+            # logger, not print: this now runs when the dialog OPENS, and a bare
+            # print of an emoji dies with UnicodeEncodeError on a cp1252 console —
+            # which would take the whole dialog down before it appears.
+            self.logger.debug(f"trip.ini loaded: {new_path}")
             # You can now update fields like:
             # .get(), not [] — this now runs for EVERY trip the dialog opens on,
             # and an older or hand-edited trip.ini missing one key would otherwise
@@ -400,7 +429,7 @@ class TripCreationDialog(QDialog):
                 _config["project"]["picturedirectory"] = pictdir
                 self.project_path.field.setText(pictdir)
         else:
-            print("⚠️ No trip.ini found at", new_path, ", be sure to complete all tabs.")
+            self.logger.debug(f"No trip.ini at {new_path} — all tabs must be filled in.")
 
     def on_write_tripini_clicked(self):
         if not self.create_trip_ini():
@@ -419,6 +448,18 @@ class TripCreationDialog(QDialog):
         return _first_day_under(field) or field
 
     def on_create_clicked(self):
+        # Create makes its own folder as part of saving. Without this the root field
+        # still pointed at whatever it pointed at — the live-trip overwrite — because
+        # "Create Folder" was a separate step nothing forced you to take.
+        if self.mode == "create" and not self.root_field.get_text().strip():
+            if not self.new_folder_name.text().strip():
+                self.new_folder_name.setFocus()
+                self.status_label.setText(
+                    "❌ Name the new trip's folder first (e.g. kretadb).")
+                return
+            self.create_new_trip_folder()
+            if not self.root_field.get_text().strip():
+                return              # folder creation failed; status_label says why
         # Abort if trip root or project pictures folder is invalid — otherwise the
         # batch below would build a trip pointing at a non-existent picture dir.
         if not self.create_trip_ini():

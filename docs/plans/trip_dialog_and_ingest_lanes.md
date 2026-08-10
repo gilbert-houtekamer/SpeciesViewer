@@ -39,7 +39,24 @@ Trip**, **Update Trip Settings**, **Select**), all sharing one set of fields who
 defaults come from the previously active trip. Nothing on screen says which job
 you are doing, so the defaults are wrong for two of the three.
 
-**Proposed:** a short first question — *"What do you want to do?"*
+**✅ SHAPE SETTLED WITH THE USER 2026-08-10 — two menu entries, not a mode question.**
+His words: *"a Create Trip that does just that, and Select or Update Trip for the
+most common usage."* Better than the mode chooser sketched below, because the
+choice is made where choices are already made — in the menu — and neither screen
+then has to explain which of three jobs it is doing:
+
+| Entry | Shows | Defaults | Writes |
+|---|---|---|---|
+| **Create Trip…** | folder name, web slug, dates, texts | **empty** | a NEW folder + its `trip.ini` (folder created as part of saving — no window in which the root still points at a live trip) |
+| **Select or Update Trip…** | a trip picker, then that trip's settings | **the trip you picked** | its own `trip.ini`, or nothing (Select) |
+
+The guard added on 2026-08-10 (confirm when the folder holds a different
+`trip_name`) stays as the backstop, but with these two entries it should never
+fire in normal use: Create only ever writes into a folder it just made, and
+Update only ever writes into the trip it loaded.
+
+*(Original sketch, superseded by the table above — kept for the reasoning.)*
+A short first question — *"What do you want to do?"*
 
 | Mode | Defaults come from | Writes |
 |---|---|---|
