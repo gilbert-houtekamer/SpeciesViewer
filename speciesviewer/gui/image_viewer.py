@@ -2152,10 +2152,45 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         """Where blue/purple deletes are trashed. Culling mode: beside the source
         folder; fpr mode: trip .trash/<day>. Subclasses (the Add-to-Master review
         window, whose trip_root is a throwaway scratch) override this so deletes
-        go to a persistent, recoverable location instead."""
+        go to a persistent, recoverable location instead.
+
+        ⚠ image_dir is EMPTY when the viewer was opened on an explicit file list
+        (the SD-card cull hands over the copied paths, not a folder). `Path("") /
+        ".trash"` is the RELATIVE path `.trash`, so trashed originals landed in
+        whatever the process working directory happened to be — for a dev run,
+        the source repo. Fall back to the folder the pictures actually live in."""
         if self.fpr is not None and self.trip_root_dir:
             return Path(self.trip_root_dir) / ".trash" / Path(self.image_dir).name
-        return Path(self.image_dir) / ".trash"
+        base = self.image_dir or self._pictures_folder()
+        return Path(base) / ".trash"
+
+    def _pictures_folder(self) -> str:
+        """The folder the collection's pictures live in — for a viewer opened on a
+        file list, where image_dir is empty.
+
+        An SD-card cull spans several day folders, so this returns their COMMON
+        parent (the project pictures root), which is where a .trash for the whole
+        read belongs. Falls back to the first picture's own folder, and "" when
+        nothing resolves (the caller then has no safe target)."""
+        # file_directory() is the PictureCollection-level API every provider
+        # implements (rep_full_path is preview-only — asking a SidecarCollection
+        # for it raised AttributeError right where a delete needed an answer).
+        folders = []
+        for key in self._collection.all_keys():
+            try:
+                f = self._collection.file_directory(key)
+            except (ValueError, KeyError):
+                continue
+            if f and f not in folders:
+                folders.append(f)
+        if not folders:
+            return ""
+        if len(folders) == 1:
+            return folders[0]
+        try:
+            return os.path.commonpath(folders)
+        except ValueError:      # different drives — no common root
+            return folders[0]
 
     def _blog_protected_jpgs(self):
         """The set of JPG filenames published in this trip's blogs (every row's

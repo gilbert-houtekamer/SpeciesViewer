@@ -23,6 +23,7 @@ from gui.virttrip_process import (VirtualTripCreationDialog,
 from utils.config import _config, debug_enabled
 from utils.trip_config import read_trip_ini
 import gui.days_process as days_process
+import gui.unfiled_view as unfiled_view
 import os
 from settings.globalsettings import GlobalSettingsDialog
 from settings.lookfeel import LookFeelDialog
@@ -244,6 +245,23 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
     read_sdcard.callback = lambda: ReadSDCardDialog(main_window, read_sdcard).exec()
+
+    # ── The other ingest lane: a card whose trip is not decided yet. Copies into
+    # <CurrentPictures>/<year>/<year> unfiled/YYYY-MM-DD and claims nothing — no
+    # trip, no Days entry — so a stack of cards can be emptied without answering
+    # "which trip?" once per card. The inbox screen files each day afterwards.
+    read_sdcard_unfiled = MenuSpec(
+        callback=lambda: unfiled_view.read_card_into_unfiled(main_window),
+        title="Read card into unfiled…",
+        tooltip="Empty a card now, decide which trip it belongs to later",
+        showsubdirectory=False,
+    )
+    unfiled_inbox = MenuSpec(
+        callback=lambda: unfiled_view.open_unfiled_inbox(main_window),
+        title="Unfiled pictures…",
+        tooltip="Days that belong to no trip yet — file them under a trip",
+        showsubdirectory=False,
+    )
 
     trip_create = MenuSpec(
         callback=None,
@@ -1819,6 +1837,12 @@ def build_menu_spec(main_window):
             ),
         },
         "Utilities": {
+             # Emptying a card is not a trip action — the trip is exactly what is
+             # not decided yet. These two live here, away from the trip pipeline:
+             # read cards in, cull, then file each day under a trip.
+             "Read card into unfiled…": read_sdcard_unfiled,
+             "Unfiled pictures…": unfiled_inbox,
+             f"{MenuSpec.separator()}_util_unfiled": None,
         #     "BirdingBreaks": None, # PROCESS BIRDING BREAK FILES
              "AviBase": convert_avibase,
              "PhotoMechanic": photo_mechanic,

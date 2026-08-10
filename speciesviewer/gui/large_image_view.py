@@ -23,7 +23,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QTextEdit,
     QLineEdit, QSizePolicy, QScrollArea, QSplitter, QFrame, QPushButton, QToolButton,
-    QStyle, QMessageBox, QTabWidget,
+    QStyle, QMessageBox, QTabWidget, QCheckBox,
 )
 from PyQt6.QtGui import (
     QMovie, QPixmap, QImage, QGuiApplication, QShortcut, QKeySequence, QPainter, QColor,
@@ -1864,6 +1864,47 @@ class LargeImageView(QDialog):
             return
         super().keyPressEvent(event)
 
+    # ── Identity header (window title + name block) ───────────────────────────
+
+    def _refresh_identity_header(self, item, key: str):
+        """Repaint who this picture IS: the OS title, the title bar line, and the
+        name block at the top of the side panel.
+
+        Called on load AND after a species commit. It used to live inline in
+        _load_current only, so a name or a sex/age/plumage qualifier set from the
+        panel did not reach the header until you navigated away and back — the
+        edit looked like it had been forgotten while the sidecar already held it.
+
+        The name block is the detail equivalent of the Biota species page, so it
+        shows ALL THREE names at once: the profile's primary (bold) on the first
+        line, the other two (in profile order) on the second. A scientific name
+        follows the "Genus species" convention, so its leading genus letter is
+        capitalised (the resolver returns it lower-case). The sex/age/plumage
+        suffix rides the primary line."""
+        pos = f"  ({self._index + 1} of {len(self._keys)})"
+        name = item.display_name or key
+        self.setWindowTitle(name + pos)
+        # Title bar (mockup): "name · file", so the picture on screen is named
+        # right above it as well as in the OS titlebar.
+        self._titlebar_lbl.setText(f"{name}  ·  {key}")
+
+        from utils.name_profile import all_names_ordered
+        triple = getattr(item, "name_triple", None) or {"sci": getattr(item, "sci_name", "")}
+        _row = {"nl": triple.get("nl", ""), "en": triple.get("en", ""),
+                "sci": triple.get("sci", "")}
+        lines = all_names_ordered(_row, getattr(item, "name_profile", ""))
+        if not lines:
+            lines = [((item.display_name or key), False)]
+
+        def _fmt(text, is_sci):
+            return (text[0].upper() + text[1:]) if (is_sci and text) else text
+
+        _suffix = getattr(item, "qualifier_suffix", "") or ""
+        self._panel_name.setText(_fmt(*lines[0]) + _suffix)
+        _sec = " · ".join(_fmt(t, s) for t, s in lines[1:])
+        self._panel_sci.setText(_sec)
+        self._panel_sci.setVisible(bool(_sec))
+
     # ── Load the current picture ──────────────────────────────────────────────
 
     def _load_current(self):
@@ -1883,37 +1924,9 @@ class LargeImageView(QDialog):
                     and self._view_tabs.currentIndex() == self._TAB_EMBED:
                 self._load_embedded()
 
-        pos = f"  ({self._index + 1} of {len(self._keys)})"
-        name = item.display_name or key
-        self.setWindowTitle(name + pos)
-        # Title bar (mockup): "name · file", so the picture on screen is named
-        # right above it as well as in the OS titlebar.
-        self._titlebar_lbl.setText(f"{name}  ·  {key}")
         for _fs in (self._filmstrip_left, self._filmstrip_bottom):
             _fs.set_current(key, self._index, len(self._keys))
-
-        # Identity header — this is the detail equivalent of the Biota species
-        # page, so it shows ALL THREE names at once: the profile's primary (bold)
-        # on the first line, the other two (in profile order) on the second. A
-        # scientific name follows the "Genus species" convention, so its leading
-        # genus letter is capitalised (the resolver returns it lower-case). The
-        # sex/age/plumage suffix rides the primary line.
-        from utils.name_profile import all_names_ordered
-        triple = getattr(item, "name_triple", None) or {"sci": getattr(item, "sci_name", "")}
-        _row = {"nl": triple.get("nl", ""), "en": triple.get("en", ""),
-                "sci": triple.get("sci", "")}
-        lines = all_names_ordered(_row, getattr(item, "name_profile", ""))
-        if not lines:
-            lines = [((item.display_name or key), False)]
-
-        def _fmt(text, is_sci):
-            return (text[0].upper() + text[1:]) if (is_sci and text) else text
-
-        _suffix = getattr(item, "qualifier_suffix", "") or ""
-        self._panel_name.setText(_fmt(*lines[0]) + _suffix)
-        _sec = " · ".join(_fmt(t, s) for t, s in lines[1:])
-        self._panel_sci.setText(_sec)
-        self._panel_sci.setVisible(bool(_sec))
+        self._refresh_identity_header(item, key)
 
         # FILE
         self._file_key_lbl.setText(item.key)
@@ -2063,6 +2076,9 @@ class LargeImageView(QDialog):
     # ── Species section rebuild ───────────────────────────────────────────────
 
     def _rebuild_species_section(self, item, key: str):
+        # _clear_layout deletes the widgets, so drop the reference first — reading
+        # a deleted QCheckBox raises RuntimeError.
+        self._species_all_box = None
         _clear_layout(self._species_cl)
 
         # Landscape / context "blog extra": no species. Show a greyed Topic block
@@ -2122,6 +2138,19 @@ class LargeImageView(QDialog):
                 editor.committed.connect(
                     lambda subject, k=key: self._commit_inline_species(subject, k))
                 self._species_cl.addWidget(editor)
+                # Same scope affordance RATING already has ("Apply to N selected").
+                # A row of pictures of the same bird is the normal case, and without
+                # this the panel silently named only the one on screen. Built once
+                # per section and kept alive across selection changes (rebuilding it
+                # would throw away half-typed text); _update_selection_display keeps
+                # its label and visibility in step.
+                self._species_all_box = QCheckBox("")
+                self._species_all_box.setToolTip(
+                    "Off: only the picture on screen gets this species.\n"
+                    "On: every picture in the selection gets it, qualifiers included.")
+                self._species_all_box.setStyleSheet("font-size: 10px;")
+                self._species_cl.addWidget(self._species_all_box)
+                self._sync_species_all_box()
             # A master picture has no species EDITOR here (its determination is settled),
             # but its FORM is a property of the photograph and remains editable — which is
             # the whole reason the qualifier exists. Same flow as the card's right-click.
@@ -2158,17 +2187,52 @@ class LargeImageView(QDialog):
                 self._inline_sc_cache = None
         return self._inline_sc_cache
 
-    def _commit_inline_species(self, subject: str, key: str):
-        """Write the inline editor's chosen subject to THIS picture via the item's
-        own sidecar writer, then refresh the section + strips + host. Scoped to
-        the one picture on purpose — batch species-set stays on the 's'-key dialog,
-        so a range selected for some other reason isn't silently overwritten."""
-        try:
-            self._collection.item_for_key(key).set_species(subject)
-        except Exception as e:
-            logger.error(f"inline set_species failed for {key}: {e}")
+    def _sync_species_all_box(self):
+        """Keep the inline editor's scope tick in step with the selection: hidden
+        for a selection of one (there is nothing to widen to), otherwise labelled
+        with the count. Never ticks itself — widening the write stays a decision."""
+        box = getattr(self, "_species_all_box", None)
+        if box is None:
             return
-        self._on_species_committed({key})
+        try:
+            n = len(self._selected_keys)
+            cur = self._item.key if self._item is not None else None
+            show = n > 1 and cur in self._selected_keys
+            box.setVisible(show)
+            if show:
+                box.setText(f"Apply to all {n} selected pictures")
+            else:
+                box.setChecked(False)
+        except RuntimeError:            # widget already deleted by a rebuild
+            self._species_all_box = None
+
+    def _commit_inline_species(self, subject: str, key: str):
+        """Write the inline editor's chosen subject via the item's own sidecar
+        writer, then refresh the section + strips + host.
+
+        Scope: THIS picture, unless the "apply to all N selected" tick is on —
+        the same rule as the headline editor. Defaulting to one keeps a range
+        selected for some other reason from being silently renamed."""
+        keys = [key]
+        box = getattr(self, "_species_all_box", None)
+        if box is not None:
+            try:
+                if box.isChecked():
+                    keys += [k for k in self._selected_keys if k != key]
+            except RuntimeError:
+                pass
+        written = set()
+        for k in keys:
+            try:
+                self._collection.item_for_key(k).set_species(subject)
+                written.add(k)
+            except Exception as e:
+                logger.error(f"inline set_species failed for {k}: {e}")
+        if not written:
+            return
+        if len(written) > 1:
+            logger.info(f"Set species '{subject}' on {len(written)} selected pictures.")
+        self._on_species_committed(written)
 
     # ── Landscape / context "blog extra" ──────────────────────────────────────
 
@@ -2250,6 +2314,10 @@ class LargeImageView(QDialog):
     def _on_species_committed(self, upns: set):
         if self._item is not None:
             self._rebuild_species_section(self._item, self._item.key)
+            # The name block and the window title carry the species and its
+            # sex/age/plumage suffix — repaint them here, or the commit only
+            # shows up after navigating away and back.
+            self._refresh_identity_header(self._item, self._item.key)
             for k in upns:
                 self._refresh_strip_items(k)
         self.species_committed.emit(upns)
@@ -2389,6 +2457,7 @@ class LargeImageView(QDialog):
             self._apply_all_btn.setEnabled(False)
             self._apply_all_btn.setStyleSheet(
                 "font-size: 10px; color: #555; padding: 1px 4px; margin-top: 2px;")
+        self._sync_species_all_box()
         self.selection_changed.emit(set(self._selected_keys))
 
     def _clear_selection(self):

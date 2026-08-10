@@ -1151,6 +1151,47 @@ Full design in <code>path_portability_plan.md</code>.</p>
 </ul>
 
 <!-- ============================================================ -->
+<h2>11b. The unfiled inbox — emptying a stack of cards
+  <span class="tag-shipped">SHIPPED 2026-08-10</span></h2>
+<p>Reading a card used to demand a trip up front. That is the one thing you often cannot answer
+  yet: the cards come home unsorted, and which trip a day belongs to is decided later, with the
+  dates and species in front of you. Aiming that question wrong was silent, and it is what let
+  <em>Create Trip</em> overwrite a live trip's identity (see the guard added the same day).</p>
+<p><strong>Two ingest lanes now.</strong> <em>Trips ▸ Read SD-cards</em> is unchanged — a card that
+  belongs to the trip you are working on. <em>Utilities ▸ Read card into unfiled…</em> is the new
+  one: it copies into <code>&lt;CurrentPictures&gt;/&lt;year&gt;/&lt;year&gt; unfiled/YYYY-MM-DD/</code>
+  and <strong>claims nothing</strong> — no trip, no Days entry. Emptying card after card asks no
+  questions. It sits under Utilities on purpose: getting pictures off a card is not a trip action.</p>
+<ul>
+  <li><strong>The inbox is a FOLDER, not a registry</strong> (<code>engine/unfiled.py</code>).
+    <em>Utilities ▸ Unfiled pictures…</em> rescans disk every time it opens, so there is no second
+    copy of the truth to fall out of sync; move a day in Explorer and the list is simply shorter.
+    The Days registry — a different lane, meaning “ad-hoc day heading for the master, no website” —
+    is never touched.</li>
+  <li><strong>The year comes from the card.</strong> The destination defaults to the current year and
+    re-points itself once <em>Scan days</em> has read the dates, so a card of mushroom photos from
+    last autumn lands in <code>2025/2025 unfiled/</code>, not this year's inbox.</li>
+  <li><strong>Cull before you file.</strong> <em>Review &amp; cull…</em> opens the full sidecar-backed
+    grid on an unfiled day — species (incl. the landscape marker), rating, colour, GPS, headline,
+    blue/purple delete. Everything lands in the <code>.xmp</code> beside each picture, so the work
+    travels with the day when it is filed. What you throw away never reaches the trip.</li>
+  <li><strong>File under a trip</strong> moves the day folder into the trip's picture root, with trips
+    whose date range covers the day listed first. It refuses when the trip already holds that date:
+    two shoots on one date from different cards are real, and merging them silently would be
+    unrecoverable.</li>
+  <li><strong>No guessing.</strong> <code>[currentpictures] rootdirectory</code> is asked once (guess
+    pre-filled) and stored. It is the same setting that makes a trip.ini's <code>picture_root</code>
+    portable across machines, so filling it in pays off twice.</li>
+</ul>
+<p class="note"><strong>Next (designed, not built):</strong> filing should offer to <em>rename</em> the
+  day's files to the trip's convention, and should <em>merge</em> into an existing date using
+  <code>copy_card</code>'s content rules rather than refusing. ⚠ A rename must move the whole STEM
+  GROUP — <code>.xmp</code>, <code>.dop</code> and <code>_DxO.jpg</code> are matched to the RAW by
+  name, so renaming the RAW alone orphans every culling decision. And the rule that sets the timing:
+  <strong>rename while the day is unfiled, never after Read &amp; Summarize</strong>, when filenames
+  have entered the day CSVs and the master. See
+  <code>docs/plans/trip_dialog_and_ingest_lanes.md</code>.</p>
+
 <h2>12. Landscapes in the Master <span class="tag-new">NEW</span> <span class="tag-big">ARCHITECTURAL</span></h2>
 <p>Raised 2026-07-12 while adding the map's All/Species scope — “Species” drops exactly these
   pictures, which made their status visible. Today a landscape / context photo is a

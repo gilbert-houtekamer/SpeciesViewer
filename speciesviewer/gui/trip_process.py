@@ -135,6 +135,16 @@ class TripCreationDialog(QDialog):
             # "For more information about birds, visit <a href='https://avibase.bsc-eoc.org/avibase.jsp?lang=EN'>Avibase World Bird Database</a>.</p>"
         )
         layout1.addWidget(info_label)
+        # ⚠ The initial value goes in through the CONSTRUCTOR, before this signal is
+        # connected, so on_trip_root_changed never ran for it: the dialog opened
+        # showing trip A's FOLDER with trip B's web root, name, dates and texts
+        # (those come from _config / the previously active trip). And because
+        # trip_name is DERIVED from the web-root field, saving then wrote B's
+        # identity into A — that is how greecedb became "Nederland 2026".
+        # Re-selecting the same folder does not help: textChanged only fires on a
+        # CHANGE, so the stale web root cannot be cleared by hand at all.
+        # _sync_fields_to_trip_root() at the end of __init__ closes it (it needs
+        # every field to exist first, so it cannot move up here).
         self.root_field = RecentDirectoryFieldQt("Trip Root folder", trip_root)
         self.root_field.textChanged(self.on_trip_root_changed)
         layout1.addWidget(self.root_field)
@@ -306,9 +316,22 @@ class TripCreationDialog(QDialog):
         main_layout.addLayout(btn_layout)
 
         # Hook up buttons
-        write_tripini_button.clicked.connect(self.on_write_tripini_clicked)        
+        write_tripini_button.clicked.connect(self.on_write_tripini_clicked)
         create_button.clicked.connect(self.on_create_clicked)
         select_button.clicked.connect(self.on_select)
+
+        # Every field now exists → load them FROM the folder the dialog is showing,
+        # so what you read belongs to one trip. See the note at root_field.
+        self._sync_fields_to_trip_root()
+
+    def _sync_fields_to_trip_root(self):
+        """Fill the form from the trip.ini in the currently shown Trip Root folder.
+
+        Runs once at open (the constructor-set root never fired textChanged) and is
+        the same work the signal does — one path, so the two cannot drift."""
+        root = self.root_field.get_text()
+        if root:
+            self.on_trip_root_changed(root)
 
     def closeEvent(self, event):
         from gui.translation_validate import prompt_translation_locked
@@ -355,16 +378,22 @@ class TripCreationDialog(QDialog):
         if trip_data:
             print("✅ trip.ini loaded:", new_path)
             # You can now update fields like:
-            trip_name = trip_data['trip_name']
-            if "trips" not in trip_name: trip_name = "/trips/" + trip_name 
-            self.trip_web.set_text(trip_name)
-            self.trip_img_field.field.setText(trip_data['trip_picture'])
-            self.topbar_img_field.field.setText(trip_data['trip_banner'])
-            self.date_field.set_dates(trip_data["fromdate"],trip_data["todate"])
-            self.title_nl_field.field.setText(trip_data['title_nl'])
-            self.message_nl_field.field.setText(trip_data['message_nl'])
-            self.title_en_field.field.setText(trip_data['title_en'])
-            self.message_en_field.field.setText(trip_data['message_en'])
+            # .get(), not [] — this now runs for EVERY trip the dialog opens on,
+            # and an older or hand-edited trip.ini missing one key would otherwise
+            # KeyError before the dialog is even on screen.
+            trip_name = (trip_data.get('trip_name') or "").strip()
+            if trip_name:
+                if "trips" not in trip_name:
+                    trip_name = "/trips/" + trip_name
+                self.trip_web.set_text(trip_name)
+            self.trip_img_field.field.setText(trip_data.get('trip_picture', ""))
+            self.topbar_img_field.field.setText(trip_data.get('trip_banner', ""))
+            if trip_data.get("fromdate") and trip_data.get("todate"):
+                self.date_field.set_dates(trip_data["fromdate"], trip_data["todate"])
+            self.title_nl_field.field.setText(trip_data.get('title_nl', ""))
+            self.message_nl_field.field.setText(trip_data.get('message_nl', ""))
+            self.title_en_field.field.setText(trip_data.get('title_en', ""))
+            self.message_en_field.field.setText(trip_data.get('message_en', ""))
             # do we have the corresponding projects
             pictdir = get_cache_gui_section("trip_project_map", trip_name)
             if pictdir != "":
@@ -462,6 +491,40 @@ class TripCreationDialog(QDialog):
             return False
         else:
             self.root_field.clear_hint()
+
+        # ⚠ The Trip Root field opens pre-filled with the trip you are working on,
+        # and "Create Folder" (which re-points it at a NEW folder) is a separate
+        # step that nothing forces you to take. Fill this form top to bottom on a
+        # freshly opened dialog and Create Trip lands on the ACTIVE trip, replacing
+        # its identity — name, dates, picture root and description — silently,
+        # because generate_trip_ini writes the whole file. That happened for real
+        # (greecedb became "Nederland 2026"). Existence of the folder is not
+        # consent: if it already holds a DIFFERENT trip, ask.
+        existing = read_trip_ini(trip_root) or {}
+        existing_name = (existing.get("trip_name") or "").strip()
+        new_name = Path(trip_name).name
+        if existing_name and existing_name != new_name:
+            shown = (existing.get("title_nl") or "").strip() or existing_name
+            folder = os.path.basename(os.path.normpath(trip_root))
+            if QMessageBox.question(
+                    self, "This folder already holds a trip",
+                    f"“{folder}” is the trip “{shown}” ({existing_name}).\n\n"
+                    f"Saving here replaces its settings with “{new_name}” — the "
+                    f"name, the dates, the pictures folder and the description. "
+                    f"The trip's pictures and blogs are not touched.\n\n"
+                    f"To make a NEW trip instead: close this, type a folder name "
+                    f"next to “New trip folder”, press “Create Folder”, and fill "
+                    f"the form again.\n\n"
+                    f"Replace the settings of “{shown}”?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No
+                    ) != QMessageBox.StandardButton.Yes:
+                self.root_field.show_hint(
+                    "Pick an empty folder, or press “Create Folder” to make one.")
+                return False
+            self.logger.warning(
+                f"Trip settings of '{existing_name}' in {folder} replaced by "
+                f"'{new_name}' (confirmed by the user).")
 
         project_dir = self.project_path.get_path()
         if not project_dir or not os.path.isdir(project_dir):
@@ -596,18 +659,32 @@ class ReadSDCardDialog(QDialog):
     SD-card) into the project pictures directory. No rename, no date-bucketing,
     no deletion from the card — pictures already copied are skipped so re-runs
     are safe."""
-    def __init__(self, parent, menu_spec, days_mode=False):
+    def __init__(self, parent, menu_spec, days_mode=False, unfiled_mode=False):
         super().__init__(parent)
         self.menu_spec = menu_spec
         self.passed_parent = parent
         self.days_mode = days_mode   # Days lane: copy into a YYYY-MM-DD folder + register
+        # Unfiled lane: copy into <CurrentPictures>/<year>/<year> unfiled/ and claim
+        # NOTHING — no trip, no Days registry entry. Emptying a stack of cards and
+        # deciding which trip each day belongs to are separate decisions; this lane
+        # exists so the first one asks no questions. See engine/unfiled.py.
+        self.unfiled_mode = unfiled_mode
         self.logger = parent.logger
-        self.setWindowTitle("Copy Day from Card" if days_mode else "Read SD-cards")
+        self.setWindowTitle("Read card into unfiled" if unfiled_mode else
+                            "Copy Day from Card" if days_mode else "Read SD-cards")
         self.resize(700, 320)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(14)
         layout.addWidget(HTMLLabel(
+            "<p><b>Read a card into the unfiled inbox</b><br>"
+            "Copy pictures from a card into <i>&lt;year&gt; unfiled</i>, sorted into "
+            "one folder per day. <b>No trip is chosen and nothing is claimed</b> — "
+            "empty card after card now, and file the days under a trip later from "
+            "<i>Unfiled pictures</i>. Nothing is ever changed or deleted on the card, "
+            "each copy is verified, and pictures already copied are skipped, so you "
+            "can re-run this safely.</p>"
+            if unfiled_mode else
             "<p><b>Read SD-cards</b><br>"
             "Copy pictures from a folder — typically a mounted SD-card — into the "
             "project pictures directory. The filename prefix is added to each picture "
@@ -638,8 +715,17 @@ class ReadSDCardDialog(QDialog):
         dest_default = _strip_to_project_root(_config.get("project", "picturedirectory", fallback=""))
         if days_mode:
             dest_default = _config.get("days", "location", fallback="") or dest_default
+        if unfiled_mode:
+            # Derived, not chosen: the whole point of this lane is that there is no
+            # target to get wrong. Defaults to the CURRENT year and is re-pointed at
+            # the year the card actually holds once "Scan days" has read the dates.
+            from engine.unfiled import unfiled_root, currentpictures_root
+            base = currentpictures_root(dest_default)
+            dest_default = unfiled_root(base=base) if base else dest_default
         self.dest_field = DirectoryFieldQt(
-            "Days location (a YYYY-MM-DD folder is created here)" if days_mode else "Project pictures",
+            "Unfiled inbox (a YYYY-MM-DD folder is created here)" if unfiled_mode else
+            "Days location (a YYYY-MM-DD folder is created here)" if days_mode else
+            "Project pictures",
             dest_default)
         input_layout.addWidget(self.dest_field)
 
@@ -658,8 +744,9 @@ class ReadSDCardDialog(QDialog):
         self.bucket_checkbox = QCheckBox("Sort into date subfolders (YYYY-MM-DD)")
         # Remembered between runs; defaults ON (date-per-day is the normal layout).
         self.bucket_checkbox.setChecked(get_cache_gui_section("sdcard_ingest", "by_date") != "0")
-        if days_mode:
-            # A Day is a YYYY-MM-DD folder, so date-bucketing is required here.
+        if days_mode or unfiled_mode:
+            # A Day — and an unfiled day — IS a YYYY-MM-DD folder, so date-bucketing
+            # is what makes the folder, not an option.
             self.bucket_checkbox.setChecked(True)
             self.bucket_checkbox.setEnabled(False)
         date_row.addWidget(self.bucket_checkbox)
@@ -930,6 +1017,15 @@ class ReadSDCardDialog(QDialog):
             self.status_label.setText(f"❌ {error}")
             return
         self._populate_days(days)
+        # The unfiled inbox is per YEAR, and until the card is scanned we only know
+        # today's year — a card shot last December would otherwise land in the wrong
+        # one. Now that the dates are known, re-point at the year they are in.
+        if self.unfiled_mode and days:
+            from engine.unfiled import unfiled_root, currentpictures_root, year_of_day
+            year = year_of_day(days[0][0])
+            base = currentpictures_root(self.dest_field.get_path())
+            if year and base:
+                self.dest_field.field.setText(unfiled_root(year, base=base))
         self.status_label.setText(
             f"Found {total} picture(s) across {len(days)} day(s). "
             f"Tick the days to copy, then Read.")
@@ -1039,6 +1135,16 @@ class ReadSDCardDialog(QDialog):
         if not source or not os.path.isdir(source):
             self.source_field.show_hint("Please select a valid source folder.")
             return
+        if self.unfiled_mode and dest and not os.path.isdir(dest):
+            # The inbox for a year does not exist until the first card of that year
+            # is read. Making it here is the whole "asks no questions" promise —
+            # the path is derived, so there is nothing for the user to confirm.
+            try:
+                os.makedirs(dest, exist_ok=True)
+                self.logger.info(f"Created the unfiled inbox: {dest}")
+            except OSError as e:
+                self.dest_field.show_hint(f"Could not create {dest}: {e}")
+                return
         if not dest or not os.path.isdir(dest):
             self.dest_field.show_hint("Please select a valid project pictures folder.")
             return
@@ -1046,7 +1152,10 @@ class ReadSDCardDialog(QDialog):
         # The project dir tracks the active trip, so it can change unexpectedly
         # when the trip switched — warn before reading a card into a different
         # folder than last time (they can easily drift out of sync otherwise).
-        last_dest = get_cache_gui_section("sdcard_ingest", "last_dest")
+        # Not in the unfiled lane: there the destination is DERIVED from the date,
+        # so "it differs from last time" is normal (a new year, another card) and
+        # the prompt would be noise on exactly the flow that must ask nothing.
+        last_dest = "" if self.unfiled_mode else get_cache_gui_section("sdcard_ingest", "last_dest")
         if last_dest and os.path.normpath(last_dest) != os.path.normpath(dest):
             if QMessageBox.question(
                     self, "Project directory changed",
@@ -1246,11 +1355,35 @@ class ReadSDCardDialog(QDialog):
             xmp = p.with_suffix(".xmp")
             if xmp.exists():
                 targets.append((p.stem, str(xmp), [str(xmp)]))  # GPS + write both in the sidecar
+        # Skip what already HAS a place name. copy_card reports every destination
+        # file, skipped ones included, so a re-read of the same card handed the
+        # whole set here — and while the write is fill-empties-only (nothing was
+        # overwritten), it still paid a Nominatim round for pictures that were
+        # named on the first read. One batched exiftool read decides it.
+        already = 0
+        if targets:
+            from gui.geolocate import read_location_fields_batch
+            have = read_location_fields_batch([t[1] for t in targets])
+            fresh = []
+            for label, gsrc, files in targets:
+                cur = have.get(os.path.normcase(os.path.normpath(gsrc)), {})
+                if cur.get("Location") or cur.get("City"):
+                    already += 1
+                    continue
+                fresh.append((label, gsrc, files))
+            targets = fresh
         base = getattr(self, "_read_summary_msg", "")
+        if already:
+            self.logger.info(f"Location names: {already} picture(s) already had one — "
+                             f"looking up {len(targets)}.")
         if not targets:
-            # Nothing to geocode (no RAW sidecars) — the run IS finished, so the
-            # status must not stay on the "looking up…" line set by on_finished.
-            self.status_label.setText(f"✅ Done — {base}" if base else "✅ Done.")
+            # Nothing left to geocode (no RAW sidecars, or every one already had a
+            # place name) — the run IS finished, so the status must not stay on the
+            # "looking up…" line set by on_finished.
+            tail = (f" All {already} picture(s) already had place names."
+                    if already else "")
+            self.status_label.setText(
+                (f"✅ Done — {base}{tail}" if base else f"✅ Done.{tail}").strip())
             return
         self._log_phase("Looking up location names (one online lookup per new "
                         "place, the rest reuse nearby fixes)…")
