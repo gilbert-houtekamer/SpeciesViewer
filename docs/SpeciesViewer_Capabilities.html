@@ -1183,6 +1183,35 @@ Full design in <code>path_portability_plan.md</code>.</p>
   (<code>engine/websupport.py:1558</code>). A landscape shot RAW-only (ORF + <code>.xmp</code>, no
   <code>_DxO.jpg</code> yet) is correctly authored and titled but will not render in the day blog until
   PhotoLab produces its JPG — same rule as a species photo. Not a bug; expected.</p>
+<h3>Authoring a blog extra during culling — straight off the card
+  <span class="tag-shipped">SHIPPED 2026-08-10</span></h3>
+<p>The front half above lives in the large viewer, which needs a trip day. A picture can now be made a
+  blog extra <em>at the culling stage</em> — in the grid opened from <strong>Read SD-cards ▸ View
+  pictures</strong>, before any pipeline step has run — so the story is written while the shot is fresh:</p>
+<ul>
+  <li>Typing <code>landscape</code> in the culling <strong>Set species</strong> editor now resolves as the
+    marker (“🌄 landscape / context photo — no species”) instead of demanding confirmation as an unknown
+    name. The <code>isBlogExtra</code> carve-out existed only in the pipeline's
+    <code>gui/species_editor.py</code>; the culling editor (<code>gui/culling_species.py</code>, built
+    later) never got it.</li>
+  <li><strong>Editing a headline offers the marker.</strong> A headline on a picture with no subject shows
+    nowhere — the card keeps its filename and the blog skips it — because the <em>marker</em>, not the
+    headline, is what makes a blog extra. Saving one now asks “Mark this picture as a landscape / context
+    photo?”. Asked, not applied: the keyword decides species-record vs topic, and with a second topic this
+    becomes a picker.</li>
+  <li>The <strong>Headline / Description editor</strong> gained an <em>“Apply to all N selected pictures”</em>
+    tick — off by default, so a headline still lands on the one picture it titles, but a burst of the same
+    scene can share it in one go.</li>
+  <li>The Set species editor <strong>warns when the selection already contains landscapes</strong>
+    (“setting a species here replaces that”) — a landscape's subject <em>is</em> the marker, so naming a
+    species un-landscapes it. A warning, not a block: “this isn't a landscape after all” is a real
+    correction.</li>
+</ul>
+<p class="note"><strong>Worth knowing (for the manual):</strong> a landscape / context photo is also how to
+  publish a picture <em>whose species you don't know</em>. It gets a Headline and a story instead of a
+  taxon, appears in the day blog on its own terms, and stays out of the species pages and the species
+  counts — better than parking it under a wrong name or a <code>? </code>placeholder.</p>
+
 <h3>The architectural half: landscapes have a home in the master (<code>topics/</code> branch)
   <span class="tag-shipped">SHIPPED — drag path live-confirmed</span></h3>
 <p>Built in four reviewed phases (<code>c313732</code>, <code>2b3c2d6</code>, <code>a75db54</code>). The

@@ -2461,7 +2461,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         act_rate = menu.addAction(f"Set rating…  ({lbl})")
         act_fullres = menu.addAction(f"Full resolution  ({lbl})")
         act_geo = menu.addAction(f"Get location  ({lbl})")
-        # Headline / Description — per-picture text, so on the ONE clicked card.
+        # Headline / Description — normally about the ONE picture it titles; the
+        # editor offers the whole selection behind a tick (off by default).
         act_hd = None
         try:
             clicked_item = (self._collection.item_for_key(upn_key)
@@ -2471,7 +2472,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         if clicked_item is not None and (clicked_item.can_edit_headline
                                          or clicked_item.can_edit_description):
             menu.addSeparator()
-            act_hd = menu.addAction("Edit headline / description…  (this picture)")
+            act_hd = menu.addAction(f"Edit headline / description…  ({lbl})")
         menu.addSeparator()
         act_addfiles = menu.addAction(f"Add new files (scan folder)…  ({lbl})")
         chosen = menu.exec(QCursor.pos())
@@ -2486,31 +2487,46 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         elif chosen == act_geo:
             self._cull_geolocate(keys_for_action)
         elif act_hd is not None and chosen == act_hd:
-            self._edit_headline_description(upn_key)
+            self._edit_headline_description(upn_key, keys_for_action)
         elif chosen == act_addfiles:
             self._do_trip_add(keys_for_action)
 
-    def _edit_headline_description(self, upn_key: str):
-        """Open the shared Headline / Description editor for one grid card and
-        write + repaint it (the 📝 mark follows the description)."""
+    def _edit_headline_description(self, upn_key: str, keys: set | None = None):
+        """Open the shared Headline / Description editor for the clicked card and
+        write + repaint (the 📝 mark follows the description). `keys` (the
+        selection) only widens the write when "apply to all" is ticked."""
         if self._collection is None:
             return
         try:
             item = self._collection.item_for_key(upn_key)
         except (ValueError, KeyError):
             return
+        items = [item]
+        for k in (keys or set()):
+            if k == upn_key:
+                continue
+            try:
+                items.append(self._collection.item_for_key(k))
+            except (ValueError, KeyError):
+                pass
         from gui.headline_desc_dialog import (edit_headline_description,
-                                              apply_headline_description)
+                                              apply_headline_description_to)
         values = edit_headline_description(
             self, title=item.display_name or upn_key,
             headline=item.headline, description=item.description,
             can_edit_headline=item.can_edit_headline,
-            can_edit_description=item.can_edit_description)
-        if apply_headline_description(item, values):
-            card = self._cards_by_key.get(upn_key)
+            can_edit_description=item.can_edit_description,
+            n_selected=len(items))
+        written = apply_headline_description_to(items, values, parent=self)
+        for w in written:
+            card = self._cards_by_key.get(w.key)
             if card is not None:
                 card.refresh()
-            self._status.setText(f"Saved headline / description for {upn_key}")
+        if written:
+            self._status.setText(
+                f"Saved headline / description for {len(written)} picture(s)"
+                if len(written) != 1 else
+                f"Saved headline / description for {upn_key}")
 
     def _do_trip_add(self, keys: set):
         """Scan each selected TRIP picture's folder for files that belong to it

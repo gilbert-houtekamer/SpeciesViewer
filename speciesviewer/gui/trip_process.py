@@ -739,11 +739,16 @@ class ReadSDCardDialog(QDialog):
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
+        # "What to do next" note after a read. Colours come from the theme: the
+        # hard-coded pale-blue card was invisible on the dark theme — a white box
+        # with near-white text, which read as an empty panel.
+        from gui import theme
         self.pl_hint = QLabel("")
         self.pl_hint.setWordWrap(True)
         self.pl_hint.setVisible(False)
         self.pl_hint.setStyleSheet(
-            "background:#eef4ff; border:1px solid #c7d8f5; border-radius:4px;"
+            f"background:{theme.ACCENT_SOFT}; border:1px solid {theme.ACCENT_SOFT_BORDER};"
+            f"color:{theme.ACCENT_INK_SOFT}; border-radius:4px;"
             "padding:6px; font-size:11px;")
         layout.addWidget(self.pl_hint)
 
@@ -1154,6 +1159,14 @@ class ReadSDCardDialog(QDialog):
                 f"failed {summary.get('failed', 0)} "
                 f"of {summary.get('total', 0)} pictures; {summary.get('sidecars', 0)} sidecar(s).")
         cancelled = getattr(self, "_cancelled", False)
+        # The copy is only the first phase: when "Add location names" is ticked, a
+        # reverse-geocode run follows and keeps writing for another minute. Saying
+        # "Done" here made the dialog claim success while the log was still
+        # printing "master: set place names on N picture(s)" — so the copy result
+        # is reported WITHOUT the Done marker, and _add_location_names writes the
+        # real "Done" once everything has finished.
+        geocode_follows = (not cancelled and self.location_checkbox.isChecked()
+                           and bool(summary.get("targets")))
         if cancelled:
             # "Done" + a green check would read as success — flag the abort, but
             # still show that the partial copy was kept.
@@ -1163,7 +1176,9 @@ class ReadSDCardDialog(QDialog):
         else:
             msg = f"Copied {copied}{renamed_txt}, {tail}"
             self.logger.info(f"✅ Card read complete. {msg}")
-            self.status_label.setText(f"✅ Done — {msg}")
+            self.status_label.setText(
+                f"⏳ {msg} Now looking up location names…" if geocode_follows
+                else f"✅ Done — {msg}")
         self._read_summary_msg = msg
         self._set_progress("")
         self._last_targets = summary.get("targets", [])
@@ -1181,7 +1196,8 @@ class ReadSDCardDialog(QDialog):
         # On an abort, don't auto-run the network geocode or grey the day list —
         # leave it ready for a re-read to finish the rest.
         if not cancelled:
-            if self.location_checkbox.isChecked() and self._last_targets:
+            if geocode_follows:
+                QApplication.processEvents()   # paint the "looking up…" line first
                 self._add_location_names()
             self._mark_run_done()
             if self.days_mode:
@@ -1230,13 +1246,16 @@ class ReadSDCardDialog(QDialog):
             xmp = p.with_suffix(".xmp")
             if xmp.exists():
                 targets.append((p.stem, str(xmp), [str(xmp)]))  # GPS + write both in the sidecar
+        base = getattr(self, "_read_summary_msg", "")
         if not targets:
+            # Nothing to geocode (no RAW sidecars) — the run IS finished, so the
+            # status must not stay on the "looking up…" line set by on_finished.
+            self.status_label.setText(f"✅ Done — {base}" if base else "✅ Done.")
             return
         self._log_phase("Looking up location names (one online lookup per new "
                         "place, the rest reuse nearby fixes)…")
         run_geolocate_batch(self, targets, dry_run=False, overwrite=False)
         self._set_progress("")
-        base = getattr(self, "_read_summary_msg", "")
         self.status_label.setText(
             f"✅ Done — {base} Location names added." if base
             else "✅ Done — location names added.")
@@ -1268,7 +1287,10 @@ class ReadSDCardDialog(QDialog):
         cache_root = str(preview_cache_dir_for(Path(self._last_dest)))
         # Sidecar-backed culling viewer: reads/edits the XMP sidecars, no pipeline.
         collection = SidecarCollection(paths, cache_root=cache_root)
-        dlg = ImagePreviewDialog(self.passed_parent, collection=collection,
+        # mode="all": a freshly read card is RAW (+ the odd camera JPG), and the
+        # default "jpg" mode starts the grid with the JPG-only overlay ON — which
+        # on an all-RAW card showed "232 pictures" and an empty grid.
+        dlg = ImagePreviewDialog(self.passed_parent, collection=collection, mode="all",
                                  cache_root=cache_root, source_label="SD-card read — culling")
         # This dialog is launched from the Read SD-cards dialog, which runs
         # application-modal (.exec()). A modal window blocks input to every other

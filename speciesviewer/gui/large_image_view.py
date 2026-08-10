@@ -2655,7 +2655,9 @@ class LargeImageView(QDialog):
             headline=item.headline, description=item.description,
             can_edit_headline=item.can_edit_headline,
             can_edit_description=item.can_edit_description)
-        if not apply_headline_description(item, values):
+        # parent= → offer the landscape marker when a headline lands on a picture
+        # with no subject (see headline_desc_dialog.offer_landscape_marker).
+        if not apply_headline_description(item, values, parent=self):
             return
         self._original_headline = item.headline
         self._headline_edit.blockSignals(True)

@@ -678,7 +678,7 @@ class CullingSpeciesWidget(QWidget):
     cancelled = pyqtSignal()      # user abandoned an unrecognised-name commit
 
     def __init__(self, sc, current_name: str, n_pictures: int = 1, parent=None,
-                 *, embedded: bool = False):
+                 *, embedded: bool = False, n_landscape: int = 0):
         super().__init__(parent)
         self._sc = sc
         self._embedded = embedded
@@ -690,6 +690,22 @@ class CullingSpeciesWidget(QWidget):
             header = (f"Set species for {n_pictures} pictures"
                       if n_pictures != 1 else "Set species")
             layout.addWidget(QLabel(f"<b>{header}</b>"))
+
+        # Pictures in this batch that are currently landscapes / context photos.
+        # A landscape's subject IS the marker keyword, so naming a species here
+        # replaces it and the picture stops being a blog extra — the editor must
+        # say so instead of presenting an empty field as if nothing is set.
+        if n_landscape:
+            if n_landscape != n_pictures:
+                what = f"{n_landscape} of these are landscape / context photos"
+            elif n_pictures == 1:
+                what = "This picture is a landscape / context photo"
+            else:
+                what = "These are landscape / context photos"
+            note = QLabel(f"🌄 {what} — setting a species here replaces that.")
+            note.setWordWrap(True)
+            note.setStyleSheet(f"color:{theme.WARN};")
+            layout.addWidget(note)
         _hint = QLabel("Type a Dutch, English or scientific name")
         _hint.setStyleSheet(f"color:{theme.INK_SOFT}; font-size:11px;")
         layout.addWidget(_hint)
@@ -844,9 +860,20 @@ class CullingSpeciesWidget(QWidget):
         Local-only on each keystroke; GBIF only on explicit request (it blocks).
         Returns the resolved scientific name, or "" when it resolves to nothing."""
         text = self.field.text().strip()
-        if not text or self._sc is None:
+        if not text:
             self.feedback.setText("")
             self._is_known = False
+            return ""
+        # 'landscape' / 'landschap' is a DELIBERATE no-species marker (a blog
+        # extra: a landscape / context photo titled by its Headline). It resolves
+        # to no taxon by design, so it must not be reported as an unrecognised
+        # name — and must not trip the unknown-species guard in _on_ok. Same
+        # carve-out the pipeline's species editor already makes.
+        if SpeciesClassification.isBlogExtra(text):
+            self.feedback.setText(
+                "🌄 <b>landscape / context photo</b> — no species; the picture is "
+                "titled by its Headline")
+            self._is_known = True
             return ""
         # Local lookup first (no network) — runs on every keystroke.
         try:
@@ -1016,14 +1043,16 @@ class CullingSpeciesDialog(QDialog):
     (the 's' key / grid context menu). Keeps the exec() + chosen_name() API its
     callers rely on; the inline large-viewer editor uses the widget directly."""
 
-    def __init__(self, sc, current_name: str, n_pictures: int, parent=None):
+    def __init__(self, sc, current_name: str, n_pictures: int, parent=None,
+                 *, n_landscape: int = 0):
         super().__init__(parent)
         self.setWindowTitle("Set species")
         self.setMinimumWidth(560)
         self._chosen = ""
 
         layout = QVBoxLayout(self)
-        self.panel = CullingSpeciesWidget(sc, current_name, n_pictures, self)
+        self.panel = CullingSpeciesWidget(sc, current_name, n_pictures, self,
+                                          n_landscape=n_landscape)
         self.panel.committed.connect(self._on_committed)
         self.panel.cancelled.connect(self.reject)
         layout.addWidget(self.panel)

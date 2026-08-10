@@ -255,8 +255,15 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._findfile_query = ""
         self._color_filter = set()          # colour overlay (combines with the rest)
         # JPG-only overlay (combines with radio + colour + find). On by default
-        # when opened from the JPEG-Files cell (mode == "jpg").
+        # when opened from the JPEG-Files cell (mode == "jpg"). Never start it on
+        # over a collection that HAS no JPG — the overlay would hide every card
+        # and the viewer would open empty while its title said "232 pictures".
         self._jpg_only = (self.mode == "jpg")
+        if self._jpg_only and hasattr(self._collection, "jpg_keys"):
+            try:
+                self._jpg_only = bool(self._collection.jpg_keys())
+            except Exception:
+                pass
         self._find_timer = QTimer(self)     # debounce typing on big sets
         self._find_timer.setSingleShot(True)
         self._find_timer.timeout.connect(self._fire_pending_find)
@@ -1221,11 +1228,14 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             "coordinate (~30 m), so they appear on the map. Marked as placed by hand, "
             "so you can then drag them to the exact spot.")
         act_editloc = menu.addAction(f"Edit location…  ({lbl})")
-        # Headline / Description — per-picture text, so on the ONE clicked card.
+        # Headline / Description — normally about the ONE picture it titles, but a
+        # burst of the same scene can share it, so the editor offers the whole
+        # selection behind a tick (off by default). The label counts the selection
+        # like every other entry; the dialog is where the scope is chosen.
         act_hd = None
         if item is not None and (getattr(item, "can_edit_headline", False)
                                  or getattr(item, "can_edit_description", False)):
-            act_hd = menu.addAction("Edit headline / description…  (this picture)")
+            act_hd = menu.addAction(f"Edit headline / description…  ({lbl})")
         menu.addSeparator()
         # Copy GPS + place from THIS one picture; paste into the selection. Lets a
         # no-GPS shot inherit a neighbour's location when the sv2 backfill can't
@@ -1285,7 +1295,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         elif chosen == act_editloc:
             self._edit_location(keys_for_action)
         elif act_hd is not None and chosen == act_hd:
-            self._edit_headline_description(key)
+            self._edit_headline_description(key, keys_for_action)
         elif chosen == act_copy_gps:
             self._copy_gps(key)
         elif chosen == act_paste_gps:
@@ -1295,22 +1305,38 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         elif act_delete is not None and chosen == act_delete:
             self._delete_keys_ui(keys_for_action)
 
-    def _edit_headline_description(self, key: str):
-        """Open the shared Headline / Description editor for one grid card and
-        write + repaint it (the 📝 badge follows the description)."""
+    def _edit_headline_description(self, key: str, keys: set | None = None):
+        """Open the shared Headline / Description editor for the clicked card and
+        write + repaint (the 📝 badge follows the description).
+
+        The clicked card is always the one shown and the one written; `keys` (the
+        selection) only widens the write when the dialog's "apply to all" is
+        ticked."""
         try:
             item = self._collection.item_for_key(key)
         except (ValueError, KeyError):
             return
+        # Clicked picture first — apply_headline_description_to writes items[0]
+        # always and the rest only on "apply to all".
+        others = [k for k in (keys or set()) if k != key]
+        items = [item]
+        for k in others:
+            try:
+                items.append(self._collection.item_for_key(k))
+            except (ValueError, KeyError):
+                pass
         from gui.headline_desc_dialog import (edit_headline_description,
-                                              apply_headline_description)
+                                              apply_headline_description_to)
         values = edit_headline_description(
             self, title=item.display_name or key,
             headline=item.headline, description=item.description,
             can_edit_headline=getattr(item, "can_edit_headline", False),
-            can_edit_description=getattr(item, "can_edit_description", False))
-        if apply_headline_description(item, values):
-            card = self._cards_by_key.get(key)
+            can_edit_description=getattr(item, "can_edit_description", False),
+            n_selected=len(items))
+        # parent= → pictures that just got a headline but have no subject are
+        # offered the landscape marker (the headline alone shows nowhere).
+        for written in apply_headline_description_to(items, values, parent=self):
+            card = self._cards_by_key.get(written.key)
             if card is not None:
                 card.refresh()
 
@@ -1434,7 +1460,17 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             return
         from gui.culling_species import CullingSpeciesDialog
         current = item0.species if len(keys) == 1 else ""
-        dlg = CullingSpeciesDialog(self._culling_sc(), current, len(keys), self)
+        # How many of these are landscapes today — naming a species replaces the
+        # marker, so the editor warns rather than silently un-landscaping them.
+        n_landscape = 0
+        for k in keys:
+            try:
+                if self._collection.item_for_key(k).is_blog_extra:
+                    n_landscape += 1
+            except (ValueError, KeyError):
+                pass
+        dlg = CullingSpeciesDialog(self._culling_sc(), current, len(keys), self,
+                                   n_landscape=n_landscape)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             name = dlg.chosen_name()
             for k in keys:
