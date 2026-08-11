@@ -4,12 +4,13 @@ import logging
 from fastcrc import crc32
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QTableWidget,
-    QTableWidgetItem, QHeaderView, QAbstractItemView, QAbstractItemView, QCheckBox
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
+    QTableWidgetItem, QCheckBox
 )
 from pathlib import Path
 from engine.statemachine import StateMachine, NOTHING_TO_DO_PREFIX, is_nothing_to_do
 from gui import theme
+from gui.overview_table import make_overview_table
 from utils.config import _config
 from utils.virttrip_config import read_excluded_days, write_excluded_days
 
@@ -591,48 +592,32 @@ def populate_trip_overview(self):
         (j for j, c in enumerate(STATE_COLUMNS) if c["gate"] == "WriteBlog"), 1)
     excluded = read_excluded_days(trip_root)
 
-    self.trip_table = QTableWidget()
     # +1 for Translations, +1 for the trailing In-Blog column. Translations and
     # In-Blog are LAST on purpose so the state-column indices (and the
     # double-click handlers that map column -> step) are untouched. There is no
     # separate Progress column — a day's "done and locked" state is the 🔒 glyph
     # on the 3 step columns themselves (state_cell_symbol), not a 4th column.
-    self.trip_table.setColumnCount(STATE_COL_START + len(self.state_labels) + 2)
-    self.trip_table.setRowCount(len(image_days))
     header_labels = (
         ["Day", "Pictures", "JPEG\nFiles", "GPS", "Sync\nSidecars"] + self.state_labels
         + ["Trans-\nlations", "In\nBlog"]
     )
-    assert self.trip_table.columnCount() == len(header_labels), (
-        f"trip_table column count {self.trip_table.columnCount()} != "
+    assert STATE_COL_START + len(self.state_labels) + 2 == len(header_labels), (
+        f"trip_table column count {STATE_COL_START + len(self.state_labels) + 2} != "
         f"{len(header_labels)} header labels — column layout drifted.")
-    self.trip_table.setHorizontalHeaderLabels(header_labels)
-    self.trip_table.setSortingEnabled(False)
-    self.trip_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-    self.trip_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-    self.trip_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
-    self.trip_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-    # Strong selection colour — the default translucent highlight is invisible
-    # against the yellow tab background.
-    self.trip_table.setStyleSheet(f"""
-        QTableWidget::item:selected {{
-            background-color: {theme.ACCENT};
-            color: {theme.ACCENT_INK};
-        }}
-    """)
-
-
-    # Make columns resizable
-    header = self.trip_table.horizontalHeader()
-    header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-    header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-    # Pictures, JPEG Files and GPS auto-size to their content (short glyph
-    # markers like "N ✅" or "📍 3" that don't fit a stretched column).
-    header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-    header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-    header.setSectionResizeMode(GPS_COL, QHeaderView.ResizeMode.ResizeToContents)
-    header.setSectionResizeMode(translations_col, QHeaderView.ResizeMode.ResizeToContents)
-    header.setSectionResizeMode(inblog_col, QHeaderView.ResizeMode.ResizeToContents)
+    # Shared with Unfiled/Days/Album — see gui/overview_table.py. The four
+    # non-default arguments are what keeps this table behaving exactly as it did:
+    #   select="cells"    the context menu runs every pipeline cell you selected
+    #   edit_cells=False  cells here are plain QTableWidgetItems (editable by
+    #                     default); a double-click must run a step, not type
+    #   row_header=True   double-clicking the row number re-runs the day
+    #   min_section/row_height None — 10 columns have to fit a laptop
+    self.trip_table = make_overview_table(
+        header_labels, rows=len(image_days),
+        # Pictures, JPEG Files and GPS auto-size to their content (short glyph
+        # markers like "N ✅" or "📍 3" that don't fit a stretched column).
+        fit_columns=(1, 2, GPS_COL, translations_col, inblog_col),
+        min_section=None, row_height=None,
+        select="cells", edit_cells=False, row_header=True)
 
     def _paint_blog_state_excluded(row, day_name):
         """Grey the day's Write-Blog cell to show it is excluded (or leave the

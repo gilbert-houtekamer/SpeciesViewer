@@ -19,10 +19,11 @@ This module knows nothing about days, trips or the pipeline. It is styling and
 Qt boilerplate, deliberately — the moment it starts knowing what a column MEANS
 it stops being usable by the panel that needs a different column.
 
-Trip and Album predate this module and still build their tables inline
-(trip_overview.py, virttrip_overview.py). Pointing them here is a follow-up held
-back only because they are shipped and tested; the setup they duplicate is the
-setup below, so the swap is mechanical when the time comes.
+All four yellow-panel tables come from here: Unfiled, Days, Trip, Album. Trip and
+Album came second and had to adopt it without changing behaviour, which is what
+the `select` / `edit_cells` / `row_header` / `min_section` arguments are for —
+each one names a thing that differs between an eight-year-old pipeline table and
+a two-day-old inbox, rather than quietly forcing them to be the same.
 """
 
 from __future__ import annotations
@@ -42,13 +43,30 @@ MIN_SECTION_W = 74
 
 
 def make_overview_table(headers, *, rows=0, fit_columns=(), stretch_last=False,
-                        min_section=MIN_SECTION_W):
-    """A styled, non-editable day table with `headers`.
+                        min_section=MIN_SECTION_W, row_height=28,
+                        select="rows", edit_cells=True, row_header=False):
+    """A styled day table with `headers`.
 
     `fit_columns` are the indices that size to their content — short glyph
     columns like "7" or "📁" look wrong stretched. Column 0 (the day) always
     fits its content; everything else stretches to fill the panel width.
     Nothing goes narrower than `min_section`, content-sized or not.
+
+    The four knobs exist because Trip and Album came second and must not change
+    behaviour when they adopt this. Pass `None` to `min_section`/`row_height` to
+    leave Qt's own defaults alone — that is what "port without changing the look"
+    means for a table that already ships.
+
+      select      "rows"  single row at a time (Unfiled, Days, Album)
+                  "cells" extended, per-cell (Trip: its context menu runs every
+                          pipeline cell you selected, so it needs the cells)
+      edit_cells  False turns editing off at the view. Say False for any table
+                  that builds plain QTableWidgetItems — they are editable by
+                  default, and a double-click meant to run a step would open an
+                  editor over it instead.
+      row_header  True keeps the vertical header. Trip needs it VISIBLE: a
+                  double-click on a row number re-runs that day's steps
+                  (handle_row_rerun), which is unreachable if it is hidden.
     """
     table = QTableWidget()
     table.setColumnCount(len(headers))
@@ -59,14 +77,20 @@ def make_overview_table(headers, *, rows=0, fit_columns=(), stretch_last=False,
     # them to be read, and a stray header click that reorders them would break
     # the row<->folder mapping the double-click handlers rely on.
     table.setSortingEnabled(False)
-    # DoubleClicked, not NoEditTriggers: the view has to allow an editor at all
-    # for the note column to work. Which cells actually accept one is decided by
-    # ItemIsEditable, which every helper below strips unless asked.
-    table.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
-    table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-    table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+    # DoubleClicked, not NoEditTriggers, when any cell is editable: the view has
+    # to allow an editor at all for the note column to work. WHICH cells accept
+    # one is then decided by ItemIsEditable, which every helper below strips
+    # unless asked.
+    table.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked if edit_cells
+                          else QAbstractItemView.EditTrigger.NoEditTriggers)
+    if select == "cells":
+        table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
+    else:
+        table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
     table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-    table.verticalHeader().setVisible(False)
+    table.verticalHeader().setVisible(row_header)
 
     # Strong selection colour — the default translucent highlight is invisible
     # against the yellow tab background.
@@ -79,8 +103,10 @@ def make_overview_table(headers, *, rows=0, fit_columns=(), stretch_last=False,
 
     header = table.horizontalHeader()
     # Set the floor BEFORE the resize modes, so the content-sized columns are
-    # computed against it rather than shrinking past it.
-    header.setMinimumSectionSize(min_section)
+    # computed against it rather than shrinking past it. None = leave Qt's own
+    # default; a 10-column table on a laptop cannot afford a generous floor.
+    if min_section is not None:
+        header.setMinimumSectionSize(min_section)
     header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
     header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
     for col in fit_columns:
@@ -89,7 +115,8 @@ def make_overview_table(headers, *, rows=0, fit_columns=(), stretch_last=False,
     header.setStretchLastSection(stretch_last)
     # Rows sized to breathe rather than to the font's bare minimum — these tables
     # are read down a column, and a cramped row height fights that.
-    table.verticalHeader().setDefaultSectionSize(28)
+    if row_height is not None:
+        table.verticalHeader().setDefaultSectionSize(row_height)
     return table
 
 

@@ -12,11 +12,11 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTableWidget, QTableWidgetItem, QMenu, QCheckBox,
-    QHeaderView, QAbstractItemView, QMessageBox,
+    QTableWidgetItem, QMenu, QCheckBox, QMessageBox,
 )
 
 from gui import theme
+from gui.overview_table import make_overview_table
 from gui.trip_overview import PHOTO_EXTENSIONS, _verified_crc_set, _format_translations_cell
 from utils.config import _config
 from utils.virttrip_config import (read_virttrip_ini, blog_review_state,
@@ -498,27 +498,15 @@ def populate_virttrip_overview(self):
     if not day_dirs:
         return
 
-    self.virttrip_table = QTableWidget()
-    self.virttrip_table.setColumnCount(8)
-    self.virttrip_table.setRowCount(len(day_dirs))
-    self.virttrip_table.setHorizontalHeaderLabels(
-        ["Date", "Pictures", "JPEG\nFiles", "GPS", "In\nBlog", "Write\nBlog", "Build\nWebsite",
-         "Trans-\nlations"]
-    )
-    self.virttrip_table.setSortingEnabled(False)
-    self.virttrip_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-    self.virttrip_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-    self.virttrip_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-    self.virttrip_table.setStyleSheet(f"""
-        QTableWidget::item:selected {{
-            background-color: {theme.ACCENT};
-            color: {theme.ACCENT_INK};
-        }}
-    """)
-
-    header = self.virttrip_table.horizontalHeader()
-    header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-    header.setSectionResizeMode(DATE_COL, QHeaderView.ResizeMode.ResizeToContents)
+    # Shared with Unfiled/Days/Trip — see gui/overview_table.py. edit_cells=False
+    # because the cells here are plain QTableWidgetItems, which Qt makes editable
+    # by default; min_section/row_height None keeps this table's existing look.
+    self.virttrip_table = make_overview_table(
+        ["Date", "Pictures", "JPEG\nFiles", "GPS", "In\nBlog", "Write\nBlog",
+         "Build\nWebsite", "Trans-\nlations"],
+        rows=len(day_dirs), fit_columns=(DATE_COL,),
+        min_section=None, row_height=None,
+        select="rows", edit_cells=False, row_header=True)
 
     blog_dir  = virttrip_path / "metadata" / "blog"
     first_date = date.fromisoformat(day_dirs[0].name)
