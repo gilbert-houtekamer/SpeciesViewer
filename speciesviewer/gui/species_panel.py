@@ -76,29 +76,6 @@ def _parse_settings(text):
             grab(_SETTINGS_ISO), grab(_SETTINGS_DISTANCE))
 
 
-def _shutter_seconds(v):
-    """'1/2000' → 0.0005, '2.5' → 2.5. Sorts a shutter range fastest-first, which
-    is how the pair reads: '1/6400s … 1/250s'."""
-    try:
-        if "/" in v:
-            num, den = v.split("/", 1)
-            return float(num) / float(den)
-        return float(v)
-    except (ValueError, ZeroDivisionError):
-        return 0.0
-
-
-def _top_few(counted, limit=3):
-    """'NIKON D7100 (94) · D500 (46) · D90 (13) +2 more' from [(value, n), …],
-    or just the value when the photos all agree."""
-    if not counted:
-        return ""
-    if len(counted) == 1:
-        return counted[0][0]
-    head = "  ·  ".join(f"{v} ({n})" for v, n in counted[:limit])
-    return head + (f"  +{len(counted) - limit} more" if len(counted) > limit else "")
-
-
 def _row_copy_menu(widget, names, pos):
     """Right-click menu for a widget that carries names but owns its clicks."""
     from PyQt6.QtWidgets import QMenu
@@ -401,13 +378,15 @@ class SpeciesPanel(QWidget):
         chips.addStretch(1)
         wrapchips = QWidget(); wrapchips.setLayout(chips)
         il.addWidget(wrapchips)
-        exif = self._build_exif(pics)
+        # Resolved BEFORE the EXIF block, which describes the hero picture and so
+        # has to know which one it is.
+        cover = host._source.cover_spec(self._sci)
+        exif = self._build_exif(pics, cover)
         if exif is not None:
             il.addWidget(exif)
         il.addStretch(1)
         lay.addWidget(ident, 1)
 
-        cover = host._source.cover_spec(self._sci)
         if cover is not None:
             from gui.biota_browser import _load_cover_spec
             host._loader.request(lambda s=cover: _load_cover_spec(s), self._set_hero, target_w=760)
@@ -417,111 +396,84 @@ class SpeciesPanel(QWidget):
 
     # ── EXIF under the chips ─────────────────────────────────────────────────
     @staticmethod
-    def _exif_summary(pics):
-        """camera / lens / exposure / distance / size / date across a species'
-        photos — the large image viewer's EXIF block, made to survive N pictures.
+    def _hero_row(pics, cover):
+        """The picture row the hero image on this page came from.
 
-        The large viewer describes the ONE picture it is showing. A species page
-        is not one picture: platalea alba is 50 frames, buteo buteo is 154 over
-        three bodies and a decade. So every line states the value when the photos
-        agree and gives the RANGE (or the top few) when they do not. With one
-        photo each line collapses to exactly what the large viewer shows.
+        The EXIF block describes THE PICTURE YOU ARE LOOKING AT, so it has to be
+        that picture's row and not an average of the species. The cover is picked
+        as a file path (best_dir/best_jpg), so it is matched back by file name —
+        BestJPG is unique within a species. Falls back to the best-rated row, then
+        the first, so the block never silently describes nothing.
+        """
+        if not pics:
+            return None
+        if cover:
+            try:
+                from pathlib import Path as _P
+                name = _P(cover[1]).name.strip().lower()
+                for p in pics:
+                    if (p.get("BestJPG") or "").strip().lower() == name:
+                        return p
+            except (IndexError, TypeError, OSError):
+                pass
 
-        Not available here: focal length. The master stores shutter/aperture/ISO/
-        distance in one `Settings` string and no focal-length column at all, so
-        the viewer's "focal 367.0 mm @ 46.75 m" can only be half-answered — the
-        distance half, on its own line.
+        def rating(p):
+            try:
+                return int(str(p.get("Rating") or 0).strip() or 0)
+            except (TypeError, ValueError):
+                return 0
+        return max(pics, key=rating)
+
+    @staticmethod
+    def _exif_rows(row):
+        """camera / lens / exposure / distance / size / date for ONE picture —
+        the same block the large image viewer shows, for the hero photo.
+
+        Not available here: focal length. The master keeps shutter, aperture, ISO
+        and distance packed into one `Settings` string and has no focal-length
+        column at all, so the viewer's "focal 367.0 mm @ 46.75 m" can only be
+        half-answered — the distance half, on its own line.
 
         Returns [(label, value), …], only for the lines that have something.
         """
-        def distinct(field):
-            seen = {}
-            for p in pics:
-                v = (p.get(field) or "").strip()
-                if v:
-                    seen[v] = seen.get(v, 0) + 1
-            return sorted(seen.items(), key=lambda kv: (-kv[1], kv[0]))
-
-        def span(values, fmt, key=None):
-            """One value, or 'lowest … highest'. `values` are already parsed."""
-            vals = [v for v in values if v is not None]
-            if not vals:
-                return ""
-            lo, hi = min(vals, key=key), max(vals, key=key)
-            return fmt(lo) if lo == hi else f"{fmt(lo)} … {fmt(hi)}"
+        if not row:
+            return []
+        def val(field):
+            return (row.get(field) or "").strip()
 
         rows = []
-
-        cam = distinct("CameraModel")
+        cam = val("CameraModel")
         if cam:
-            rows.append(("camera", _top_few(cam)))
+            rows.append(("camera", cam))
+        # The long name is what the large viewer shows and the more useful of the
+        # two; the short one is the fallback when this picture has no long name.
+        lens = val("LensLongName") or val("LensShortName")
+        if lens:
+            rows.append(("lens", lens))
 
-        # Grouped by the SHORT name, displayed by the LONG one. The long name is
-        # what the large viewer shows and the more useful of the two, but it is
-        # not written consistently — the same lens appears both ways in the
-        # master, which would list one physical lens as two.
-        by_short = {}
-        for p in pics:
-            short = (p.get("LensShortName") or "").strip()
-            long_ = (p.get("LensLongName") or "").strip()
-            if not (short or long_):
-                continue
-            b = by_short.setdefault(short or long_, {"n": 0, "names": {}})
-            b["n"] += 1
-            name = long_ or short
-            b["names"][name] = b["names"].get(name, 0) + 1
-        if by_short:
-            # Then merged again ON the display name: two short names can resolve
-            # to one long name (a lens with and without its teleconverter suffix),
-            # and listing the identical string twice with two counts reads as a
-            # bug rather than as two lenses.
-            merged = {}
-            for b in by_short.values():
-                name = max(b["names"].items(), key=lambda kv: (kv[1], len(kv[0])))[0]
-                merged[name] = merged.get(name, 0) + b["n"]
-            lenses = sorted(merged.items(), key=lambda kv: (-kv[1], kv[0]))
-            rows.append(("lens", _top_few(lenses)))
-
-        # exposure / distance out of the one `Settings` string
-        shutters, apertures, isos, dists = [], [], [], []
-        for p in pics:
-            s, a, i, d = _parse_settings(p.get("Settings"))
-            shutters.append(s); apertures.append(a); isos.append(i); dists.append(d)
-        shot = [t for t in (
-            span([s for s in shutters if s], lambda v: f"{v}s", key=_shutter_seconds),
-            span([a for a in apertures if a], lambda v: f"f/{v}", key=float),
-            span([i for i in isos if i], lambda v: f"ISO {v}", key=int),
-        ) if t]
+        shutter, aperture, iso, dist = _parse_settings(val("Settings"))
+        shot = [t for t in (f"{shutter}s" if shutter else "",
+                            f"f/{aperture}" if aperture else "",
+                            f"ISO {iso}" if iso else "") if t]
         if shot:
             rows.append(("exposure", "  ·  ".join(shot)))
-        dist = span([d for d in dists if d], lambda v: f"{v} m", key=float)
         if dist:
-            rows.append(("distance", dist))
+            rows.append(("distance", f"{dist} m"))
 
-        # Size only when every photo agrees — a list of frame sizes is noise, and
-        # the number people want off this line is "what did this camera give me".
-        sizes = distinct("ImageSize")
-        if len(sizes) == 1:
-            jpgs = distinct("JPGSize")
-            size = sizes[0][0]
-            if len(jpgs) == 1:
-                size += f"   (JPG {jpgs[0][0]})"
-            rows.append(("size", size))
+        size = val("ImageSize")
+        jpg = val("JPGSize")
+        if size or jpg:
+            rows.append(("size", (size + (f"   (JPG {jpg})" if jpg else "")) if size
+                         else f"JPG {jpg}"))
 
-        # DateTimeOriginal is 'YYYY:MM:DD HH:MM:SS' — already sortable as text.
-        # One photo gets the time too (the large viewer shows it); several get
-        # the span of days, because 50 timestamps are not a fact about a species.
-        stamps = sorted({(p.get("DateTimeOriginal") or "").strip() for p in pics} - {""})
-        if len(stamps) == 1:
-            rows.append(("date", stamps[0][:19].replace(":", "-", 2)))
-        elif stamps:
-            days = sorted({s[:10].replace(":", "-") for s in stamps})
-            rows.append(("date", days[0] if len(days) == 1
-                         else f"{days[0]}  …  {days[-1]}"))
+        # 'YYYY:MM:DD HH:MM:SS' -> 'YYYY-MM-DD HH:MM:SS' (only the date's colons).
+        stamp = val("DateTimeOriginal")
+        if stamp:
+            rows.append(("date", stamp[:19].replace(":", "-", 2)))
         return rows
 
-    def _build_exif(self, pics):
-        rows = self._exif_summary(pics)
+    def _build_exif(self, pics, cover):
+        rows = self._exif_rows(self._hero_row(pics, cover))
         if not rows:
             return None
         box = QWidget()
