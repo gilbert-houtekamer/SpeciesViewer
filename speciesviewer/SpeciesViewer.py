@@ -119,9 +119,16 @@ def start_main():
             print(f"✅ Logging configured, logger assigned: {main_window.logger}")
 
         populate_trip_overview(main_window)  # ✅ Now logger is ready
-        # Both overviews are now built; honour the Day/Trip/Album mode the user
-        # last had active (this must run after the final populate, which forces
-        # the Active Trip tab selected).
+        # The two scan-backed lanes, so all four tabs exist before the mode is
+        # restored — otherwise starting in Unfiled or Days would find no tab and
+        # sync_yellow_to_mode would (correctly) complain.
+        from gui.days_overview import populate_days_overview
+        from gui.unfiled_overview import populate_unfiled_overview
+        populate_days_overview(main_window)
+        populate_unfiled_overview(main_window)
+        # All overviews are now built; honour the Unfiled/Day/Trip/Album mode the
+        # user last had active (this must run after the final populate, which
+        # forces its own yellow tab selected).
         main_window._restore_active_left_mode()
         splash.finish(main_window)
         main_window.show()

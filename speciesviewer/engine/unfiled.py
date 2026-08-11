@@ -17,8 +17,19 @@ there is no second copy of the truth to fall out of sync, and nothing that can
 corrupt the Days registry (a different lane, with a different meaning: an ad-hoc
 day heading for the master without a website).
 
-Filing a day = moving its directory into a trip's picture root. Cheap and safe
-BEFORE Read & Summarize, because nothing points at the old path yet.
+scan_unfiled() does READ the Days registry, to leave out a day that is already
+tracked as a Day. That is not a crack in the invariant — reading someone else's
+claim is what keeps this module from having to record one of its own. The inbox
+means "nothing claims this yet", so a day the Days lane has claimed does not
+belong in it, and un-registering that day puts it straight back. The registry
+stays the Days lane's business; this module never writes to it.
+
+A day leaves the inbox in exactly three ways, and SpeciesViewer never deletes one:
+  1. filed under a trip   — move_day_to() into the trip's picture root
+  2. tracked as a Day     — days_registry.add_day(), the folder stays where it is
+  3. moved somewhere else — move_day_to() to a folder the user picks, or by hand
+Filing (1) is cheap and safe BEFORE Read & Summarize, because nothing points at
+the old path yet.
 """
 
 from __future__ import annotations
@@ -100,15 +111,27 @@ def count_pictures(folder) -> int:
 
 
 def scan_unfiled(base: str = "") -> list[dict]:
-    """Every unfiled day currently on disk, newest first.
+    """Every UNCLAIMED day currently on disk, newest first.
 
     Walks <base>/<year>/<year> unfiled/ for each year folder present, so days
-    from several years show up in one list. Pure disk read — no cache, no state.
-    Each entry: {folder, day, year, pictures}."""
+    from several years show up in one list. Derived from disk every time — no
+    cache, no state of its own. Each entry: {folder, day, year, pictures}.
+
+    Days already registered in the Days lane are left out: tracking a day as a
+    Day does not move it, so without this the same folder would be listed by two
+    panels at once and the inbox would stop meaning "unclaimed". See the module
+    docstring — this reads that registry, it never writes it."""
     base = base or currentpictures_root()
     out: list[dict] = []
     if not base or not os.path.isdir(base):
         return out
+    try:
+        from utils.days_registry import registered_folders
+        claimed = registered_folders()
+    except Exception:
+        # A missing or unreadable Days registry must not empty the inbox: showing
+        # a day twice is a blemish, hiding pictures is a bug.
+        claimed = set()
     try:
         year_dirs = [e for e in os.scandir(base) if e.is_dir() and YEAR_RE.match(e.name)]
     except OSError:
@@ -134,6 +157,8 @@ def scan_unfiled(base: str = "") -> list[dict]:
         except OSError:
             continue
         for d in days:
+            if os.path.normcase(os.path.normpath(d.path)) in claimed:
+                continue
             out.append({"folder": d.path, "day": d.name, "year": int(ydir.name),
                         "pictures": count_pictures(d.path)})
     out.sort(key=lambda r: r["day"], reverse=True)

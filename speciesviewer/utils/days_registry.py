@@ -109,6 +109,20 @@ def find_day(folder):
     return None
 
 
+def registered_folders():
+    """Every registered day folder, normalised for comparison.
+
+    Exists so other lanes can ask "is this folder already claimed as a Day?"
+    without each growing its own copy of _norm — the unfiled inbox subtracts
+    this set so a day tracked where it lies stops being listed as unclaimed.
+    """
+    return {_norm(d["folder"]) for d in load_days()}
+
+
+def is_registered(folder):
+    return _norm(folder) in registered_folders()
+
+
 def add_day(folder):
     """Register an existing YYYY-MM-DD folder (no copying). Returns (ok, message).
     Idempotent — re-registering an existing folder just returns it."""

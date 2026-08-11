@@ -1,30 +1,36 @@
-"""Unfiled pictures — the inbox between a card and a trip.
+"""Filing an unfiled day under a trip, and the two settings that make the inbox
+possible at all.
 
-ONE JOB: show what is sitting in <CurrentPictures>/<year>/<year> unfiled/ and let
-each day be filed under a trip. The list is read from DISK every time it opens
-(engine.unfiled.scan_unfiled) — this screen owns no state, so it cannot disagree
-with what is actually there, and it never touches the Days registry.
+ONE JOB: answer "which trip does this day belong to?" and move it there.
+
+The inbox ITSELF is no longer here. It used to be a modal dialog you opened from
+Utilities; it is now the Unfiled pill in the mode strip — gui/unfiled_overview.py
+— so the days you are filing are visible in the panel while you work rather than
+in a window on top of it. Two surfaces listing the same folders could disagree
+after a move, so there is only one.
+
+What stays here is what the panel calls into:
+  _PickTripDialog          — choose the trip, or make one on the spot
+  read_card_into_unfiled   — the other way days arrive
+  ensure_currentpictures_root — the ask-once setting both depend on
 
 Filing is a directory move. Deliberately offered BEFORE Read & Summarize: at that
 point nothing in the trip or the master points at the old path, so the move costs
 nothing. Once a day has been summarised or frozen, moving it is no longer this
-screen's business.
+module's business.
 """
 
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
-    QTableWidgetItem, QAbstractItemView, QMessageBox, QComboBox, QDialogButtonBox,
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QMessageBox, QComboBox, QDialogButtonBox,
 )
-from PyQt6.QtCore import Qt
 
 from engine import unfiled
 from gui import theme
-from widgets.small_widgets import HTMLLabel
 
 
 class _PickTripDialog(QDialog):
@@ -36,26 +42,32 @@ class _PickTripDialog(QDialog):
     def __init__(self, parent, day: str, trips: list[dict]):
         super().__init__(parent)
         self.setWindowTitle("File day under a trip")
-        self.setMinimumWidth(520)
-        self._trips = trips
+        # Sized to match the rest of the app's dialogs rather than shrink-wrapping
+        # its own contents: at the minimum Qt would pick, the trip combo truncates
+        # the very date range you are here to check, and the warning wraps into a
+        # wall. Room is cheap; re-reading a squeezed line is not.
+        self.setMinimumWidth(660)
+        self._day = day
+        self._main_window = parent
         lay = QVBoxLayout(self)
+        lay.setContentsMargins(18, 18, 18, 18)
+        lay.setSpacing(12)
+
         lay.addWidget(QLabel(f"<b>{day}</b>"))
 
-        covering = [t for t in trips if t["covers"]]
-        if covering:
-            note = QLabel(f"{len(covering)} trip(s) cover this date — shown first.")
-        else:
-            note = QLabel("No trip's dates cover this day — pick one anyway, or "
-                          "widen the trip's dates first.")
-            note.setStyleSheet(f"color:{theme.WARN};")
-        note.setWordWrap(True)
-        lay.addWidget(note)
+        self.note = QLabel("")
+        self.note.setWordWrap(True)
+        lay.addWidget(self.note)
 
         self.combo = QComboBox()
-        for t in trips:
-            mark = "● " if t["covers"] else "   "
-            span = f'  ({t["fromdate"]} … {t["todate"]})' if t["fromdate"] else ""
-            self.combo.addItem(f'{mark}{t["title"]}  [{t["trip_id"]}]{span}', t)
+        self.combo.setMinimumHeight(28)
+        # Without this the combo's sizeHint is the longest trip title plus its id
+        # and date range — one verbose trip name and the dialog opens half a
+        # screen wide. Let it ask for a sane width and elide the rest; the full
+        # text is still there when the list drops down.
+        self.combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.combo.setMinimumContentsLength(48)
         lay.addWidget(self.combo)
 
         self.dest_lbl = QLabel("")
@@ -63,14 +75,86 @@ class _PickTripDialog(QDialog):
         self.dest_lbl.setStyleSheet(f"color:{theme.INK_SOFT}; font-size:11px;")
         lay.addWidget(self.dest_lbl)
         self.combo.currentIndexChanged.connect(self._show_dest)
-        self._show_dest()
+
+        lay.addStretch(1)
+        row = QHBoxLayout()
+        # The old dead end was a message box telling you to go to Trips ▸ Create
+        # Trip and come back. The day you are filing is right here, and its date
+        # is exactly what a new trip needs, so make the trip from here.
+        self.new_trip_btn = QPushButton("New trip…")
+        self.new_trip_btn.setToolTip(
+            "Create a trip for this day, then come straight back with it selected.")
+        self.new_trip_btn.clicked.connect(self._create_trip)
+        row.addWidget(self.new_trip_btn)
+        row.addStretch()
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
                                    | QDialogButtonBox.StandardButton.Cancel)
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Move day")
+        self._ok_btn = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        self._ok_btn.setText("Move day")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        lay.addWidget(buttons)
+        row.addWidget(buttons)
+        lay.addLayout(row)
+
+        self._load(trips)
+        # An explicit size, not sizeHint: the warning line appears and disappears
+        # with the trip list, so a content-driven dialog would change shape under
+        # the pointer between one day and the next.
+        self.resize(820, 330)
+
+    def _load(self, trips: list[dict]):
+        """Fill the combo from a fresh trips_covering() result. Called again
+        after a trip is created, so the new one can be preselected."""
+        self._trips = trips
+        self.combo.blockSignals(True)
+        self.combo.clear()
+        for t in trips:
+            mark = "● " if t["covers"] else "   "
+            span = f'  ({t["fromdate"]} … {t["todate"]})' if t["fromdate"] else ""
+            self.combo.addItem(f'{mark}{t["title"]}  [{t["trip_id"]}]{span}', t)
+        self.combo.blockSignals(False)
+
+        covering = [t for t in trips if t["covers"]]
+        if covering:
+            self.note.setText(f"{len(covering)} trip(s) cover this date — shown first.")
+            self.note.setStyleSheet("")
+        elif trips:
+            self.note.setText("No trip's dates cover this day — pick one anyway, "
+                              "widen the trip's dates first, or make a new trip.")
+            self.note.setStyleSheet(f"color:{theme.WARN};")
+        else:
+            self.note.setText("No trip has a pictures folder to move this day "
+                              "into. Make one with “New trip…”.")
+            self.note.setStyleSheet(f"color:{theme.WARN};")
+        self._ok_btn.setEnabled(bool(trips))
+        self._show_dest()
+
+    def _create_trip(self):
+        """Open Create Trip, then re-read the trip list and preselect what covers
+        this day. Create Trip is left exactly as it is — it starts empty and
+        inherits nothing, which is the rule that keeps it from overwriting a live
+        trip's identity — we only ask it the question and re-read the answer."""
+        from gui.trip_process import TripCreationDialog
+        mw = self._main_window
+        spec = None
+        finder = getattr(mw, "_find_trip_menu_spec", None)
+        if callable(finder):
+            spec = finder("Create Trip")
+        before = {t["trip_id"] for t in self._trips}
+        TripCreationDialog(mw, spec, mode="create").exec()
+
+        trips = unfiled.trips_covering(self._day)
+        self._load(trips)
+        # Prefer a trip that did not exist a moment ago; fall back to the first
+        # covering one. Both are guesses the user can override — the combo is
+        # still the whole list.
+        new = [i for i, t in enumerate(trips) if t["trip_id"] not in before]
+        covering = [i for i, t in enumerate(trips) if t["covers"]]
+        if new:
+            self.combo.setCurrentIndex(new[0])
+        elif covering:
+            self.combo.setCurrentIndex(covering[0])
 
     def _show_dest(self):
         t = self.combo.currentData()
@@ -78,172 +162,6 @@ class _PickTripDialog(QDialog):
 
     def chosen(self) -> dict | None:
         return self.combo.currentData()
-
-
-class UnfiledInboxDialog(QDialog):
-    """The inbox itself: one row per unfiled day, with Move to trip."""
-
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.passed_parent = parent
-        self.logger = parent.logger
-        self.setWindowTitle("Unfiled pictures")
-        self.resize(720, 420)
-
-        lay = QVBoxLayout(self)
-        lay.addWidget(HTMLLabel(
-            "<p><b>Unfiled pictures</b><br>"
-            "Days read off a card that do not belong to a trip yet. They sit in "
-            "<i>&lt;year&gt; unfiled</i> next to your trip folders and are claimed by "
-            "nothing — read more cards now and decide later.</p>"
-            "<p>File a day by moving it into a trip's pictures folder. Do that "
-            "<b>before</b> Read &amp; Summarize, while nothing points at it yet.</p>"
-        ))
-
-        self.root_lbl = QLabel("")
-        self.root_lbl.setWordWrap(True)
-        self.root_lbl.setStyleSheet(f"color:{theme.INK_SOFT}; font-size:11px;")
-        lay.addWidget(self.root_lbl)
-
-        self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["Day", "Pictures", "Folder"])
-        self.table.verticalHeader().setVisible(False)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.doubleClicked.connect(lambda *_: self.on_move())
-        lay.addWidget(self.table, 1)
-
-        self.status = QLabel("")
-        self.status.setWordWrap(True)
-        lay.addWidget(self.status)
-
-        row = QHBoxLayout()
-        self.read_btn = QPushButton("Read a card…")
-        self.read_btn.setToolTip("Copy another card into the unfiled inbox")
-        self.cull_btn = QPushButton("Review && cull…")
-        self.cull_btn.setToolTip(
-            "Open this day in the picture grid — species, rating, colour, GPS and "
-            "delete all work here; edits go into the .xmp beside each picture and "
-            "travel with the day when you file it")
-        self.move_btn = QPushButton("File under a trip…")
-        self.open_btn = QPushButton("Open folder")
-        self.refresh_btn = QPushButton("Refresh")
-        close_btn = QPushButton("Close")
-        row.addWidget(self.read_btn)
-        row.addStretch()
-        row.addWidget(self.open_btn)
-        row.addWidget(self.cull_btn)
-        row.addWidget(self.move_btn)
-        row.addWidget(self.refresh_btn)
-        row.addWidget(close_btn)
-        lay.addLayout(row)
-
-        self.read_btn.clicked.connect(self.on_read_card)
-        self.cull_btn.clicked.connect(self.on_cull)
-        self.move_btn.clicked.connect(self.on_move)
-        self.open_btn.clicked.connect(self.on_open)
-        self.refresh_btn.clicked.connect(self.reload)
-        close_btn.clicked.connect(self.accept)
-
-        self.reload()
-
-    # ── data ────────────────────────────────────────────────────────────────
-    def reload(self):
-        base = unfiled.currentpictures_root(
-            _active_picture_dir())
-        self._rows = unfiled.scan_unfiled(base)
-        self.table.setRowCount(0)
-        for r in self._rows:
-            i = self.table.rowCount()
-            self.table.insertRow(i)
-            self.table.setItem(i, 0, QTableWidgetItem(r["day"]))
-            cnt = QTableWidgetItem(str(r["pictures"]))
-            cnt.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self.table.setItem(i, 1, cnt)
-            self.table.setItem(i, 2, QTableWidgetItem(r["folder"]))
-        self.table.resizeColumnsToContents()
-        if base:
-            self.root_lbl.setText(f"Looking in: {base}\\<year>\\<year> unfiled")
-        else:
-            self.root_lbl.setText(
-                "No pictures folder configured yet — read a card into the inbox "
-                "once and it will be set.")
-        total = sum(r["pictures"] for r in self._rows)
-        self.status.setText(
-            f"{len(self._rows)} unfiled day(s), {total} picture(s)." if self._rows
-            else "Nothing unfiled — the inbox is empty.")
-        has = bool(self._rows)
-        self.move_btn.setEnabled(has)
-        self.open_btn.setEnabled(has)
-        self.cull_btn.setEnabled(has)
-        if has:
-            self.table.selectRow(0)
-
-    def _selected(self) -> dict | None:
-        i = self.table.currentRow()
-        return self._rows[i] if 0 <= i < len(self._rows) else None
-
-    # ── actions ─────────────────────────────────────────────────────────────
-    def on_read_card(self):
-        read_card_into_unfiled(self.passed_parent)
-        self.reload()
-
-    def on_open(self):
-        row = self._selected()
-        if row:
-            from utils.open_path import open_path
-            open_path(row["folder"])
-
-    def on_cull(self):
-        """Cull an unfiled day in place — the full culling grid, same as a day in
-        a trip. Everything it writes lands in the .xmp beside each picture, so the
-        work is not tied to this folder and survives the move into a trip. Culling
-        BEFORE filing is the point: what you throw away never reaches the trip."""
-        row = self._selected()
-        if not row:
-            return
-        from gui.image_viewer import ImagePreviewDialog
-        # No fpr and no trip → sidecar-backed culling mode, exactly like reviewing
-        # an SD-card folder. trip_root_dir = the day itself, so a blue/purple
-        # delete trashes into <day>/.trash and stays with the day.
-        dlg = ImagePreviewDialog(self.passed_parent, image_dir=row["folder"],
-                                 trip_root_dir=row["folder"], mode="all")
-        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
-        self.passed_parent._unfiled_cull_dlg = dlg   # keep a ref (PyQt GC)
-        dlg.finished.connect(lambda *_: self.reload())
-        dlg.show()
-        dlg.raise_()
-        dlg.activateWindow()
-
-    def on_move(self):
-        row = self._selected()
-        if not row:
-            return
-        trips = unfiled.trips_covering(row["day"])
-        if not trips:
-            QMessageBox.information(
-                self, "No trips",
-                "No trip has a pictures folder to move this day into.\n\n"
-                "Create the trip first (Trips ▸ Create Trip), then come back.")
-            return
-        dlg = _PickTripDialog(self, row["day"], trips)
-        if dlg.exec() != QDialog.DialogCode.Accepted:
-            return
-        trip = dlg.chosen()
-        if not trip:
-            return
-        ok, msg = unfiled.move_day_to(row["folder"], trip["picture_root"])
-        if not ok:
-            QMessageBox.warning(self, "Could not file this day", msg)
-            self.logger.warning(f"Unfiled → {trip['trip_id']}: {msg}")
-            self.reload()
-            return
-        self.logger.info(f"Filed {row['day']} ({row['pictures']} pictures) under "
-                         f"{trip['trip_id']}: {trip['picture_root']}")
-        self.status.setText(f"✅ {msg}")
-        self.reload()
 
 
 def _active_picture_dir() -> str:
@@ -294,9 +212,16 @@ def ensure_currentpictures_root(parent) -> str:
 
 
 def open_unfiled_inbox(main_window):
+    """Show the inbox — which now means switching the mode strip to Unfiled.
+
+    Kept as a function because the menu still offers the way in; it just no
+    longer opens a window. The pictures-root question is asked first, exactly as
+    before, since an empty panel and an unanswered setting look the same.
+    """
     if not ensure_currentpictures_root(main_window):
         return
-    UnfiledInboxDialog(main_window).exec()
+    from gui.mainwindow import MODE_UNFILED
+    main_window._set_left_mode(MODE_UNFILED)
 
 
 def read_card_into_unfiled(main_window):

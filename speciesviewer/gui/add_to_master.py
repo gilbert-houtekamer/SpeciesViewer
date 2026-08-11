@@ -208,6 +208,10 @@ class MicroTripReviewDialog(ImagePreviewDialog):
                     panel = getattr(self.main_window, "days_panel", None)
                     if panel is not None:
                         panel.rebuild()
+                    # The yellow Days panel shows the same day's ✅ — repaint it
+                    # too, or the cell keeps claiming there is work to do.
+                    from gui.days_overview import populate_days_overview
+                    populate_days_overview(self.main_window)
             except Exception as e:
                 logger.info(f"add_to_master: could not mark day done: {e}")
         except Exception as e:

@@ -14,9 +14,21 @@ from utils import days_registry
 
 
 def _refresh_panel(main_window):
+    """Repaint both surfaces that show the Days list.
+
+    The left-column list and the yellow Days table hold the same collection, so
+    anything that changes the registry has to repaint both — one of them going
+    stale is how you end up acting on a day that is no longer there.
+    """
     panel = getattr(main_window, "days_panel", None)
     if panel is not None:
         panel.rebuild()
+    if getattr(main_window, "days_table", None) is not None:
+        # Deferred: some callers are handlers ON that table, and rebuilding it
+        # replaces the widget currently emitting the signal.
+        from PyQt6.QtCore import QTimer
+        from gui.days_overview import populate_days_overview
+        QTimer.singleShot(0, lambda: populate_days_overview(main_window))
 
 
 def _active_day(main_window, action):

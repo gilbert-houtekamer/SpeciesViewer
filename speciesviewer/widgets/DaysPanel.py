@@ -106,6 +106,12 @@ class DaysPanel(QWidget):
         from utils import days_registry
         days_registry.set_active_day(folder)
         self.rebuild()
+        # The yellow Days table shows the same collection, so a selection made
+        # here has to land there too — otherwise the row you act on and the row
+        # you picked can drift apart.
+        mirror = getattr(self.main_window, "mirror_day_selection", None)
+        if callable(mirror):
+            mirror(folder)
         try:
             self.main_window.status_bar.showMessage(f"Active day: {os.path.basename(folder)}")
         except Exception:

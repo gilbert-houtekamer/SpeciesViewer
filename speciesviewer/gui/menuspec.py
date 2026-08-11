@@ -256,10 +256,13 @@ def build_menu_spec(main_window):
         tooltip="Empty a card now, decide which trip it belongs to later",
         showsubdirectory=False,
     )
+    # No longer a window: this switches the mode strip to Unfiled, where the
+    # inbox now lives as a panel. Kept in the menu because it is still how you
+    # ask for it by name when the strip is not where you are looking.
     unfiled_inbox = MenuSpec(
         callback=lambda: unfiled_view.open_unfiled_inbox(main_window),
-        title="Unfiled pictures…",
-        tooltip="Days that belong to no trip yet — file them under a trip",
+        title="Unfiled pictures",
+        tooltip="Show the unfiled inbox — days that belong to no trip yet",
         showsubdirectory=False,
     )
 

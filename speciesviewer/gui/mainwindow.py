@@ -13,10 +13,13 @@ from gui.menu import create_menubar
 from gui.menuspec import build_menu_spec
 from gui.trip_overview import populate_trip_overview
 from gui.virttrip_overview import populate_virttrip_overview, TAB_TITLE as VIRTTRIP_TAB_TITLE
+from gui.days_overview import populate_days_overview, TAB_TITLE as DAYS_TAB_TITLE
+from gui.unfiled_overview import populate_unfiled_overview, TAB_TITLE as UNFILED_TAB_TITLE
 from engine.translatelib import CachedTranslate
 from widgets.TripInfoPanel import TripInfoPanel
 from widgets.VirtTripInfoPanel import VirtTripInfoPanel
 from widgets.DaysPanel import DaysPanel
+from widgets.UnfiledPanel import UnfiledPanel
 from widgets.SidebarInfoRail import SidebarInfoRail
 from widgets.fold_chip import FoldChipButton, VerticalLabel
 from gui import theme
@@ -30,9 +33,14 @@ from utils.gui_config import load_gui_cache  # or wherever your cache functions 
 
 logger = logging.getLogger("speciesviewer")
 
+MODE_UNFILED = "Unfiled"
 MODE_DAY = "Day"
 MODE_TRIP = "Trip"
 MODE_ALBUM = "Album"
+
+# Left to right, the order pictures actually travel: off a card into the inbox,
+# claimed as a Day or filed under a Trip, published as an Album.
+_MODES = (MODE_UNFILED, MODE_DAY, MODE_TRIP, MODE_ALBUM)
 
 _LEFT_COLLAPSED_W = 44
 _RAIL_COLLAPSED_W = 44
@@ -110,7 +118,7 @@ class MainWindow(QMainWindow):
         self._mode_buttons = {}
         self._mode_group = QButtonGroup(self)
         self._mode_group.setExclusive(True)
-        for mode in (MODE_DAY, MODE_TRIP, MODE_ALBUM):
+        for mode in _MODES:
             btn = QPushButton(mode)
             btn.setCheckable(True)
             btn.setStyleSheet(_MODE_PILL_STYLE)
@@ -172,9 +180,11 @@ class MainWindow(QMainWindow):
         self.days_panel = DaysPanel(self, sort_mode=initial_sort_mode)
         self.virttrip_panel = VirtTripInfoPanel(self, populate_virttrip_overview,
                                                  sort_mode=initial_sort_mode)
-        self._left_stack.addWidget(self.days_panel)     # index 0 = Day
+        self.unfiled_panel = UnfiledPanel(self, sort_mode=initial_sort_mode)
+        self._left_stack.addWidget(self.days_panel)      # index 0 = Day
         self._left_stack.addWidget(self.trip_panel)      # index 1 = Trip
         self._left_stack.addWidget(self.virttrip_panel)  # index 2 = Album
+        self._left_stack.addWidget(self.unfiled_panel)   # index 3 = Unfiled
         left_outer.addWidget(self._left_stack, 1)
 
         # Shown instead of the stack when collapsed, so a collapsed left
@@ -457,10 +467,25 @@ class MainWindow(QMainWindow):
         persist_config()
         super().closeEvent(event)
     
-    _MODE_STACK_INDEX = {MODE_DAY: 0, MODE_TRIP: 1, MODE_ALBUM: 2}
+    _MODE_STACK_INDEX = {MODE_DAY: 0, MODE_TRIP: 1, MODE_ALBUM: 2, MODE_UNFILED: 3}
+
+    _MODE_TAB_TITLE = {
+        MODE_UNFILED: UNFILED_TAB_TITLE,
+        MODE_DAY: DAYS_TAB_TITLE,
+        MODE_TRIP: "Active Trip",
+        MODE_ALBUM: VIRTTRIP_TAB_TITLE,
+    }
+
+    # What to tell the user to do when a mode's tab is missing. Trip and Album
+    # need a selection; Unfiled and Days build from a scan and a registry, so a
+    # missing tab there is a bug, not something the user can fix.
+    _MODE_TAB_FIX = {
+        MODE_TRIP: "Select a trip to rebuild it.",
+        MODE_ALBUM: "Select an album to rebuild it.",
+    }
 
     def current_left_mode(self):
-        """Which of Day / Trip / Album the left column is on."""
+        """Which of Unfiled / Day / Trip / Album the left column is on."""
         for mode, btn in self._mode_buttons.items():
             if btn.isChecked():
                 return mode
@@ -470,22 +495,22 @@ class MainWindow(QMainWindow):
         """Point the yellow panel at the scope the left column is on.
 
         THE INVARIANT: the left column leads. Whatever the mode strip says, the
-        yellow panel shows that scope — Day excepted, which has no yellow panel
-        of its own yet (ch.15 Phase 1, deferred, not dropped) and so leaves it
-        alone.
+        yellow panel shows that scope. All four modes now have a panel — Day and
+        Unfiled were the deferred half of ch.15 Phase 1 and are no longer an
+        exception, so there is no early return for any mode.
 
-        This is the ONE place that chooses the yellow tab. Both overview
-        builders used to call setCurrentWidget() themselves, which meant any
-        refresh yanked the panel to its own scope regardless of the mode — most
-        sneakily the focus-refresh in _on_application_state_changed, which
-        rebuilds the TRIP overview whenever the app is re-activated and a day
-        folder changed. Sitting in Album mode, alt-tabbing away and back was
-        enough to leave the strip saying Album and the panel showing the trip.
+        This is the ONE place that chooses the yellow tab. The overview builders
+        used to call setCurrentWidget() themselves, which meant any refresh
+        yanked the panel to its own scope regardless of the mode — most sneakily
+        the focus-refresh in _on_application_state_changed, which rebuilds the
+        TRIP overview whenever the app is re-activated and a day folder changed.
+        Sitting in Album mode, alt-tabbing away and back was enough to leave the
+        strip saying Album and the panel showing the trip.
         """
         mode = self.current_left_mode()
-        if mode == MODE_DAY:
+        want_title = self._MODE_TAB_TITLE.get(mode)
+        if not want_title:
             return
-        want_title = "Active Trip" if mode == MODE_TRIP else VIRTTRIP_TAB_TITLE
         for i in range(self.yellow_tabs.count()):
             if self.yellow_tabs.tabText(i) == want_title:
                 self.yellow_tabs.setCurrentIndex(i)
@@ -494,23 +519,37 @@ class MainWindow(QMainWindow):
         # populate_virttrip_overview remove the tab and return. Silently leaving
         # the other scope's panel on screen is exactly the disconnect this method
         # exists to prevent, so say so instead. Not during construction, though:
-        # the two overviews are built one after the other, so the first one
-        # legitimately runs while the other's tab does not exist yet.
+        # the overviews are built one after another, so the first one
+        # legitimately runs while the others' tabs do not exist yet.
         if not self._ui_ready:
             return
         logger.warning(
             f"{mode} mode is selected but there is no “{want_title}” panel to "
             f"show — the panel below still belongs to another scope. "
-            f"Select {'a trip' if mode == MODE_TRIP else 'an album'} to rebuild it.")
+            + self._MODE_TAB_FIX.get(mode, ""))
 
     def _set_left_mode(self, mode):
-        """Switch which of the three left-column lists is showing, and bring the
+        """Switch which of the four left-column lists is showing, and bring the
         yellow panel with it (see sync_yellow_to_mode for the invariant)."""
         self._left_stack.setCurrentIndex(self._MODE_STACK_INDEX.get(mode, 1))
         self._left_vertical_label.setText(mode)
+        # Check the pill BEFORE building anything: the builders end by calling
+        # sync_yellow_to_mode(), which asks which pill is checked. Building first
+        # would have them select the tab we are leaving.
         btn = self._mode_buttons.get(mode)
         if btn is not None and not btn.isChecked():
             btn.setChecked(True)
+        # The two scan-backed lanes read the filesystem, so what they showed a
+        # moment ago may already be stale — a card was read, a day was filed in
+        # Explorer. Re-read on the way in rather than making the user hit Refresh.
+        # Trip and Album are not rebuilt here: theirs is a selection, not a scan,
+        # and rebuilding them on every mode click would be needless work.
+        if mode == MODE_UNFILED:
+            self.unfiled_panel.rebuild()
+            populate_unfiled_overview(self)
+        elif mode == MODE_DAY:
+            self.days_panel.rebuild()
+            populate_days_overview(self)
         self.sync_yellow_to_mode()
         if not _config.has_section("layout"):
             _config.add_section("layout")
@@ -518,8 +557,8 @@ class MainWindow(QMainWindow):
 
     def _restore_active_left_mode(self):
         """Re-select the mode the user last had active. Called once after
-        startup population (both overviews force their own yellow tab
-        selected as they build, so this has to run last to win) — the same
+        startup population (every overview forces its own yellow tab
+        selected as it builds, so this has to run last to win) — the same
         ordering trick the old active_yellow_tab restore used."""
         want = _config.get("layout", "active_left_mode", fallback="").strip()
         if want not in self._mode_buttons:
@@ -539,7 +578,7 @@ class MainWindow(QMainWindow):
         self._apply_sort_mode(new_mode)
 
     def _apply_sort_mode(self, mode):
-        """Re-sort all three lists (matches this app's existing "always full
+        """Re-sort all four lists (matches this app's existing "always full
         rebuild" pattern — these lists are tens of items, not master-scale).
         Persisted immediately, like the trip/album selection, not deferred to
         close — it's a real preference, cheap to save."""
@@ -551,6 +590,14 @@ class MainWindow(QMainWindow):
         self.trip_panel.rebuild(mode)
         self.days_panel.rebuild(mode)
         self.virttrip_panel.rebuild(mode)
+        self.unfiled_panel.rebuild(mode)
+        # Days and Unfiled put the same collection in the yellow table, so it
+        # re-sorts with the list — otherwise the two halves of one mode would
+        # disagree about the order.
+        if getattr(self, "days_table", None) is not None:
+            populate_days_overview(self)
+        if getattr(self, "unfiled_table", None) is not None:
+            populate_unfiled_overview(self)
 
     def _relayout_hsplitter(self):
         """Recompute the 3 hsplitter widths from the current collapse/maximize
@@ -2045,3 +2092,37 @@ class MainWindow(QMainWindow):
             if self.yellow_tabs.tabText(i) == VIRTTRIP_TAB_TITLE:
                 self.yellow_tabs.removeTab(i)
                 break
+
+    def remove_existing_days_tab(self):
+        for i in range(self.yellow_tabs.count()):
+            if self.yellow_tabs.tabText(i) == DAYS_TAB_TITLE:
+                self.yellow_tabs.removeTab(i)
+                break
+
+    def remove_existing_unfiled_tab(self):
+        for i in range(self.yellow_tabs.count()):
+            if self.yellow_tabs.tabText(i) == UNFILED_TAB_TITLE:
+                self.yellow_tabs.removeTab(i)
+                break
+
+    # ── Left list ↔ yellow table mirroring ─────────────────────────────────
+    # The left column and the yellow table show the SAME collection in the two
+    # new lanes, so a selection made in one has to land in the other. The panels
+    # call these by name (guarded with getattr), which keeps them ignorant of how
+    # the table is built.
+
+    def mirror_day_selection(self, folder):
+        table = getattr(self, "days_table", None)
+        if table is None:
+            return
+        from gui.days_overview import _FOLDER_ROLE as ROLE
+        from gui.overview_table import select_row_for_folder
+        select_row_for_folder(table, folder, role=ROLE)
+
+    def mirror_unfiled_selection(self, folder):
+        table = getattr(self, "unfiled_table", None)
+        if table is None:
+            return
+        from gui.unfiled_overview import _FOLDER_ROLE as ROLE
+        from gui.overview_table import select_row_for_folder
+        select_row_for_folder(table, folder, role=ROLE)

@@ -407,6 +407,26 @@ to re-look-up.</p>
     Trips/Albums/Days counts) replaces the old fixed album-list column; every panel (left stack,
     right rail, log console) collapses through one shared fold-chip control; yellow panel gained a
     Maximize toggle. App version bumped to 0.2.</li>
+  <li><strong>Four yellow panels: Unfiled, Days, Trip, Album</strong> <span class="tag-shipped">SHIPPED</span> —
+    the deferred half of the layout restructure above. Day and Unfiled had no yellow panel, so
+    while you worked an ingest the panel kept showing the active <em>trip</em> — the one thing you
+    were not doing. Both lanes now have one, and <code>sync_yellow_to_mode()</code> no longer has
+    its Day exception: all four modes map to a tab. Unfiled and Days differ from Trip/Album in one
+    way only — they show <em>every</em> row rather than the days of one selected thing — so the
+    left-column list is context rather than a filter, and mirrors the table's selection both ways.
+    Rows are acted on by double-click, the Trip/Album idiom. Unfiled columns: Pictures (review &amp;
+    cull), <em>File under a trip</em> (moves), <em>Track as a Day</em> (does <strong>not</strong>
+    move — a Day is any YYYY-MM-DD folder tracked by path, so <code>scan_unfiled</code> now
+    subtracts registered days and un-registering puts one straight back), <em>Move elsewhere…</em>
+    (a folder you pick). Days columns: Pictures, Add to Master (⚪/🔘/✅), Remove from list.
+    <strong>Nothing in the Unfiled lane deletes pictures</strong> — no Discard, no .trash, no
+    remove-from-list; a day leaves by being filed, tracked or moved, and the inbox holds the only
+    copy of pictures that are in no trip, no Day and not in the master. New per-day free-text note
+    (<code>engine/day_note.py</code> → <code>_dayinfo.txt</code> inside the day folder, so it
+    travels with the pictures when they are filed and works across machines). New shared table
+    factory <code>gui/overview_table.py</code>; the modal Unfiled inbox is retired and its menu
+    entry now switches to the Unfiled pill. "File day under a trip" gained a <em>New trip…</em>
+    button instead of a dead-end "create it first, then come back" message box.</li>
   <li><strong>Sort controls for Days/Trips/Albums</strong> <span class="tag-shipped">SHIPPED</span> —
     one shared A-Z/Z-A/Recent/Frequent control (not three independent per-list settings) reorders
     whichever list is showing. New per-machine usage tracking (utils/gui_config.py, extends
