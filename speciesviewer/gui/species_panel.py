@@ -14,6 +14,7 @@ the master card menu. Kept a plain QWidget (not a dialog) so it embeds inline.
 """
 
 import logging
+import re
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton, QFrame,
@@ -49,6 +50,53 @@ def _group_label(mf, age, sw) -> str:
         if v:
             parts.append(m.get(v, v.capitalize()))
     return " · ".join(parts) if parts else "Unspecified"
+
+
+_SETTINGS_SHUTTER = re.compile(r"^\s*(\S+)\s+sec\b")
+_SETTINGS_APERTURE = re.compile(r"\bF([\d.]+)")
+_SETTINGS_ISO = re.compile(r"\bISO\s*(\d+)")
+_SETTINGS_DISTANCE = re.compile(r"\bdistance\s*([\d.]+)")
+
+
+def _parse_settings(text):
+    """('1/2000', '4.0', '250', '37.4') out of the master's one Settings string.
+
+    Shape: '1/2000 sec at F4.0, ISO 250, distance 37.4 m'. When the camera wrote
+    nothing the string is still there as an empty template — ' sec at F, ISO ,
+    distance ' — so every field is matched on its own and may come back None
+    rather than trusting the commas.
+    """
+    t = (text or "").strip()
+    if not t:
+        return (None, None, None, None)
+    def grab(rx):
+        m = rx.search(t)
+        return m.group(1) if m else None
+    return (grab(_SETTINGS_SHUTTER), grab(_SETTINGS_APERTURE),
+            grab(_SETTINGS_ISO), grab(_SETTINGS_DISTANCE))
+
+
+def _shutter_seconds(v):
+    """'1/2000' → 0.0005, '2.5' → 2.5. Sorts a shutter range fastest-first, which
+    is how the pair reads: '1/6400s … 1/250s'."""
+    try:
+        if "/" in v:
+            num, den = v.split("/", 1)
+            return float(num) / float(den)
+        return float(v)
+    except (ValueError, ZeroDivisionError):
+        return 0.0
+
+
+def _top_few(counted, limit=3):
+    """'NIKON D7100 (94) · D500 (46) · D90 (13) +2 more' from [(value, n), …],
+    or just the value when the photos all agree."""
+    if not counted:
+        return ""
+    if len(counted) == 1:
+        return counted[0][0]
+    head = "  ·  ".join(f"{v} ({n})" for v, n in counted[:limit])
+    return head + (f"  +{len(counted) - limit} more" if len(counted) > limit else "")
 
 
 def _row_copy_menu(widget, names, pos):
@@ -370,14 +418,19 @@ class SpeciesPanel(QWidget):
     # ── EXIF under the chips ─────────────────────────────────────────────────
     @staticmethod
     def _exif_summary(pics):
-        """camera / lens / size / date across a species' photos.
+        """camera / lens / exposure / distance / size / date across a species'
+        photos — the large image viewer's EXIF block, made to survive N pictures.
 
-        The large image viewer shows the EXIF of the ONE picture it is showing.
-        A species page is not one picture — buteo buteo is 154 frames over three
-        camera bodies and a decade — so a single row's EXIF would be a lie
-        dressed as a fact. Each line therefore states the value when the photos
-        agree and enumerates when they do not; with one photo it collapses to
-        exactly what the large viewer shows, which is the case that prompted it.
+        The large viewer describes the ONE picture it is showing. A species page
+        is not one picture: platalea alba is 50 frames, buteo buteo is 154 over
+        three bodies and a decade. So every line states the value when the photos
+        agree and gives the RANGE (or the top few) when they do not. With one
+        photo each line collapses to exactly what the large viewer shows.
+
+        Not available here: focal length. The master stores shutter/aperture/ISO/
+        distance in one `Settings` string and no focal-length column at all, so
+        the viewer's "focal 367.0 mm @ 46.75 m" can only be half-answered — the
+        distance half, on its own line.
 
         Returns [(label, value), …], only for the lines that have something.
         """
@@ -389,22 +442,61 @@ class SpeciesPanel(QWidget):
                     seen[v] = seen.get(v, 0) + 1
             return sorted(seen.items(), key=lambda kv: (-kv[1], kv[0]))
 
-        def joined(field, limit=3):
-            vals = distinct(field)
+        def span(values, fmt, key=None):
+            """One value, or 'lowest … highest'. `values` are already parsed."""
+            vals = [v for v in values if v is not None]
             if not vals:
                 return ""
-            if len(vals) == 1:
-                return vals[0][0]
-            head = "  ·  ".join(f"{v} ({n})" for v, n in vals[:limit])
-            return head + (f"  +{len(vals) - limit} more" if len(vals) > limit else "")
+            lo, hi = min(vals, key=key), max(vals, key=key)
+            return fmt(lo) if lo == hi else f"{fmt(lo)} … {fmt(hi)}"
 
         rows = []
-        cam = joined("CameraModel")
+
+        cam = distinct("CameraModel")
         if cam:
-            rows.append(("camera", cam))
-        lens = joined("LensShortName") or joined("LensLongName")
-        if lens:
-            rows.append(("lens", lens))
+            rows.append(("camera", _top_few(cam)))
+
+        # Grouped by the SHORT name, displayed by the LONG one. The long name is
+        # what the large viewer shows and the more useful of the two, but it is
+        # not written consistently — the same lens appears both ways in the
+        # master, which would list one physical lens as two.
+        by_short = {}
+        for p in pics:
+            short = (p.get("LensShortName") or "").strip()
+            long_ = (p.get("LensLongName") or "").strip()
+            if not (short or long_):
+                continue
+            b = by_short.setdefault(short or long_, {"n": 0, "names": {}})
+            b["n"] += 1
+            name = long_ or short
+            b["names"][name] = b["names"].get(name, 0) + 1
+        if by_short:
+            # Then merged again ON the display name: two short names can resolve
+            # to one long name (a lens with and without its teleconverter suffix),
+            # and listing the identical string twice with two counts reads as a
+            # bug rather than as two lenses.
+            merged = {}
+            for b in by_short.values():
+                name = max(b["names"].items(), key=lambda kv: (kv[1], len(kv[0])))[0]
+                merged[name] = merged.get(name, 0) + b["n"]
+            lenses = sorted(merged.items(), key=lambda kv: (-kv[1], kv[0]))
+            rows.append(("lens", _top_few(lenses)))
+
+        # exposure / distance out of the one `Settings` string
+        shutters, apertures, isos, dists = [], [], [], []
+        for p in pics:
+            s, a, i, d = _parse_settings(p.get("Settings"))
+            shutters.append(s); apertures.append(a); isos.append(i); dists.append(d)
+        shot = [t for t in (
+            span([s for s in shutters if s], lambda v: f"{v}s", key=_shutter_seconds),
+            span([a for a in apertures if a], lambda v: f"f/{v}", key=float),
+            span([i for i in isos if i], lambda v: f"ISO {v}", key=int),
+        ) if t]
+        if shot:
+            rows.append(("exposure", "  ·  ".join(shot)))
+        dist = span([d for d in dists if d], lambda v: f"{v} m", key=float)
+        if dist:
+            rows.append(("distance", dist))
 
         # Size only when every photo agrees — a list of frame sizes is noise, and
         # the number people want off this line is "what did this camera give me".
@@ -416,14 +508,16 @@ class SpeciesPanel(QWidget):
                 size += f"   (JPG {jpgs[0][0]})"
             rows.append(("size", size))
 
-        # DateTimeOriginal is 'YYYY:MM:DD HH:MM:SS'; compare as strings (already
-        # sortable) and show a range when the photos span more than one day.
-        days = sorted({(p.get("DateTimeOriginal") or "").strip()[:10].replace(":", "-")
-                       for p in pics} - {""})
-        if len(days) == 1:
-            rows.append(("date", days[0]))
-        elif days:
-            rows.append(("dates", f"{days[0]}  …  {days[-1]}"))
+        # DateTimeOriginal is 'YYYY:MM:DD HH:MM:SS' — already sortable as text.
+        # One photo gets the time too (the large viewer shows it); several get
+        # the span of days, because 50 timestamps are not a fact about a species.
+        stamps = sorted({(p.get("DateTimeOriginal") or "").strip() for p in pics} - {""})
+        if len(stamps) == 1:
+            rows.append(("date", stamps[0][:19].replace(":", "-", 2)))
+        elif stamps:
+            days = sorted({s[:10].replace(":", "-") for s in stamps})
+            rows.append(("date", days[0] if len(days) == 1
+                         else f"{days[0]}  …  {days[-1]}"))
         return rows
 
     def _build_exif(self, pics):
