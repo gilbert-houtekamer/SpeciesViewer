@@ -147,13 +147,19 @@ class MicroTripReviewDialog(ImagePreviewDialog):
         if land:
             parts.append(f"{land} landscape{'' if land == 1 else 's'}")
         what = " and ".join(parts)
+        # Lead with the thing that actually happens — pictures are COPIED into the
+        # master, filed by species. The old wording opened on the filing rule for
+        # landscapes and the caveat about untagged pictures, so the main function
+        # was the one thing it never said.
         if QMessageBox.question(
                 self, "Commit to Master",
-                f"Add {what} in\n{folder}\n"
-                f"to the master and update the website?\n\n"
-                f"Landscapes are filed under topics/landscape/<year>/. Untagged "
-                f"pictures are not added. This writes to the master (undoable via "
-                f"the master .trash).",
+                f"Pictures with identified species are copied to the master and "
+                f"filed under their species; landscapes are filed under "
+                f"topics/landscape/<year>/. The website is updated to match.\n\n"
+                f"Copy {what} from\n{folder}?\n\n"
+                f"Pictures with no species and no landscape marker are left where "
+                f"they are. This writes to the master (undoable via the master "
+                f".trash).",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return

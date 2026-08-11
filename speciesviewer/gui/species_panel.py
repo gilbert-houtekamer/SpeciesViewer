@@ -353,6 +353,9 @@ class SpeciesPanel(QWidget):
         chips.addStretch(1)
         wrapchips = QWidget(); wrapchips.setLayout(chips)
         il.addWidget(wrapchips)
+        exif = self._build_exif(pics)
+        if exif is not None:
+            il.addWidget(exif)
         il.addStretch(1)
         lay.addWidget(ident, 1)
 
@@ -363,6 +366,93 @@ class SpeciesPanel(QWidget):
         else:
             self._hero_label.setText("no photo")
         return wrap
+
+    # ── EXIF under the chips ─────────────────────────────────────────────────
+    @staticmethod
+    def _exif_summary(pics):
+        """camera / lens / size / date across a species' photos.
+
+        The large image viewer shows the EXIF of the ONE picture it is showing.
+        A species page is not one picture — buteo buteo is 154 frames over three
+        camera bodies and a decade — so a single row's EXIF would be a lie
+        dressed as a fact. Each line therefore states the value when the photos
+        agree and enumerates when they do not; with one photo it collapses to
+        exactly what the large viewer shows, which is the case that prompted it.
+
+        Returns [(label, value), …], only for the lines that have something.
+        """
+        def distinct(field):
+            seen = {}
+            for p in pics:
+                v = (p.get(field) or "").strip()
+                if v:
+                    seen[v] = seen.get(v, 0) + 1
+            return sorted(seen.items(), key=lambda kv: (-kv[1], kv[0]))
+
+        def joined(field, limit=3):
+            vals = distinct(field)
+            if not vals:
+                return ""
+            if len(vals) == 1:
+                return vals[0][0]
+            head = "  ·  ".join(f"{v} ({n})" for v, n in vals[:limit])
+            return head + (f"  +{len(vals) - limit} more" if len(vals) > limit else "")
+
+        rows = []
+        cam = joined("CameraModel")
+        if cam:
+            rows.append(("camera", cam))
+        lens = joined("LensShortName") or joined("LensLongName")
+        if lens:
+            rows.append(("lens", lens))
+
+        # Size only when every photo agrees — a list of frame sizes is noise, and
+        # the number people want off this line is "what did this camera give me".
+        sizes = distinct("ImageSize")
+        if len(sizes) == 1:
+            jpgs = distinct("JPGSize")
+            size = sizes[0][0]
+            if len(jpgs) == 1:
+                size += f"   (JPG {jpgs[0][0]})"
+            rows.append(("size", size))
+
+        # DateTimeOriginal is 'YYYY:MM:DD HH:MM:SS'; compare as strings (already
+        # sortable) and show a range when the photos span more than one day.
+        days = sorted({(p.get("DateTimeOriginal") or "").strip()[:10].replace(":", "-")
+                       for p in pics} - {""})
+        if len(days) == 1:
+            rows.append(("date", days[0]))
+        elif days:
+            rows.append(("dates", f"{days[0]}  …  {days[-1]}"))
+        return rows
+
+    def _build_exif(self, pics):
+        rows = self._exif_summary(pics)
+        if not rows:
+            return None
+        box = QWidget()
+        gl = QGridLayout(box)
+        gl.setContentsMargins(0, 10, 0, 0)
+        gl.setHorizontalSpacing(14)
+        gl.setVerticalSpacing(2)
+        hdr = QLabel("EXIF")
+        hdr.setStyleSheet(f"color:{_INK_SOFT}; font-family:Consolas,monospace;"
+                          f" font-size:10px; letter-spacing:1px;")
+        gl.addWidget(hdr, 0, 0, 1, 2)
+        for r, (label, value) in enumerate(rows, start=1):
+            k = QLabel(label)
+            k.setStyleSheet(f"color:{_INK_SOFT}; font-family:Consolas,monospace; font-size:11px;")
+            k.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+            v = QLabel(value)
+            v.setWordWrap(True)
+            v.setStyleSheet(f"color:{_INK}; font-family:Consolas,monospace; font-size:11px;")
+            # Copyable like every other fact on this page — a lens name goes
+            # straight into a photobook caption.
+            _make_copyable(v, value)
+            gl.addWidget(k, r, 0)
+            gl.addWidget(v, r, 1)
+        gl.setColumnStretch(1, 1)
+        return box
 
     def _set_hero(self, px: QPixmap):
         if px is None or px.isNull() or self._hero_label is None:

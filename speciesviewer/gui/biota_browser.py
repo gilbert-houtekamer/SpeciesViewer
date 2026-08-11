@@ -19,6 +19,7 @@ Two modes share one window:
 """
 
 import logging
+import os
 
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea,
@@ -950,9 +951,47 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         self._status.setText(
             f"{title} — {n_sp} species · {n_pic} photos · {self._source.scope_label}")
         if not nodes:
-            self._show_empty("Nothing photographed here.")
+            self._show_empty(self._empty_reason())
             return
         self._lay_taxon_cards(nodes)
+
+    def _empty_reason(self) -> str:
+        """Why there is nothing to show — "Nothing photographed here." is true
+        but reads as a broken screen.
+
+        The case that actually bites: a trip whose days have been read &
+        summarized but not published. All the work is in metadata/review/, while
+        this browser reads metadata/active/ — which the Freeze step fills. So
+        1800 identified pictures can sit on disk while this says zero, and
+        nothing on screen explains the gap. Say it instead."""
+        base = "Nothing photographed here."
+        # _repo_root is set for a TRIP scope only (master and album leave it
+        # empty). Belt and braces on the master anyway: it has a metadata/review
+        # directory of its own, and explaining an empty master as an unpublished
+        # trip would be worse than saying nothing.
+        root = getattr(self, "_repo_root", "")
+        master = _config.get("master", "masterbiotadatabase", fallback="").strip()
+        if not root or (master and os.path.normcase(os.path.normpath(root))
+                        == os.path.normcase(os.path.normpath(master))):
+            return base
+        try:
+            from pathlib import Path as _P
+            review = _P(root) / "metadata" / "review"
+            if not review.is_dir():
+                return base
+            pending = sum(1 for d in review.iterdir()
+                          if d.is_dir() and (d / "data_pictures.csv").is_file()
+                          and (d / "data_pictures.csv").stat().st_size > 0)
+        except OSError:
+            return base
+        if not pending:
+            return base
+        return (f"Nothing published yet.\n\n"
+                f"This trip has {pending} day(s) read & summarized, but a day's "
+                f"pictures only reach the trip's collection when it is published "
+                f"(the “3 Publish Day” column in the trip overview).\n"
+                f"Until then they live in the day's review data, and this browser "
+                f"— which reads the published collection — has nothing to show.")
 
     # ── tree: rank search ────────────────────────────────────────────────────
     def _render_search(self):
@@ -1004,6 +1043,10 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
 
     def _show_empty(self, text):
         empty = QLabel(text)
+        # Wrapped: an empty state that can explain WHY it is empty is worth more
+        # than one that fits on a line (see _empty_reason).
+        empty.setWordWrap(True)
+        empty.setMaximumWidth(620)
         empty.setStyleSheet(f"color:{_INK_SOFT}; font-size:14px; padding:24px 6px;")
         self._grid.addWidget(empty, 0, 0)
 

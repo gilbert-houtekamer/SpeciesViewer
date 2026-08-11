@@ -27,7 +27,8 @@ from PyQt6.QtWidgets import (
     QLabel, QPushButton, QCheckBox, QWidget, QMessageBox, QSplitter, QComboBox,
     QMenu, QScrollArea, QApplication, QLineEdit, QListWidget, QListWidgetItem)
 from PyQt6.QtGui import (QPixmap, QPainter, QColor, QBrush, QPen, QFont,
-                         QPainterPath, QPolygonF, QDrag, QLinearGradient)
+                         QPainterPath, QPolygonF, QDrag, QLinearGradient,
+                         QShortcut, QKeySequence)
 from PyQt6.QtCore import Qt, QPointF, QUrl, QTimer, pyqtSignal, QMimeData, QEvent
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
@@ -1728,6 +1729,15 @@ class NoGpsTray(QWidget):
         self._body.setWidget(self._strip)
         v.addWidget(self._body)
         self._body.setVisible(False)
+
+        # Ctrl+A on the tray as a whole, not only on a focused thumbnail: after
+        # opening the map nothing in here has focus yet, and that is exactly the
+        # moment you want to grab the lot. WidgetWithChildren scope so it cannot
+        # fire while the map or the search box has focus.
+        sc = QShortcut(QKeySequence.StandardKey.SelectAll, self)
+        sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        sc.activated.connect(self.select_all)
+
         self._refresh_header()
 
     @staticmethod
@@ -1761,11 +1771,23 @@ class NoGpsTray(QWidget):
     def _refresh_header(self):
         n = len(self._cells)
         arrow = "▾" if self._body.isVisible() else "▸"
+        # The selected count is the only feedback that Ctrl+A did anything when
+        # the tray is scrolled — 123 selected thumbnails are mostly off-screen.
+        sel = len(self._selected & set(self._cells))
+        picked = f" — {sel} selected" if sel else ""
         self._toggle.setText(
-            f"{arrow}  📍 {n} without GPS — drag onto the map to place them")
+            f"{arrow}  📍 {n} without GPS{picked} — drag onto the map to place them")
 
     def _on_toggle(self, on: bool):
         self._body.setVisible(on)
+        # Expanding hands focus to the first thumbnail, which is what makes
+        # Ctrl+A (and the [ ] range keys) work straight away. Without this the
+        # shortcut is scoped to a widget that never has focus until you click a
+        # picture — i.e. it silently does nothing exactly when you first want it.
+        if on:
+            first = next((self._cells[k] for k in self._keys if k in self._cells), None)
+            if first is not None:
+                first.setFocus(Qt.FocusReason.OtherFocusReason)
         self._refresh_header()
 
     # ── selection ────────────────────────────────────────────────────────────
@@ -1788,9 +1810,25 @@ class NoGpsTray(QWidget):
         self._current_key = end
         self._repaint_selection()
 
+    def select_all(self):
+        """Ctrl+A — every picture still in the tray.
+
+        This is the common gesture, not an edge case: a card read with the GPS
+        off leaves the WHOLE day without coordinates, and they were all shot in
+        one place. Select all, drag once, done. Expands the tray if it is
+        collapsed, so the selection is visible rather than merely true."""
+        self._selected = set(self._cells)
+        self._current_key = next((k for k in self._keys if k in self._cells), None)
+        if self._selected and not self._body.isVisible():
+            self._toggle.setChecked(True)      # toggled → _on_toggle → shows body
+        self._repaint_selection()
+
     def _repaint_selection(self):
         for k, cell in self._cells.items():
             cell.set_selected(k in self._selected)
+        # One choke point for every selection change, so the header's count
+        # cannot drift from what is actually selected.
+        self._refresh_header()
 
     # ── drag ─────────────────────────────────────────────────────────────────
     def eventFilter(self, obj, ev):
@@ -1802,6 +1840,10 @@ class NoGpsTray(QWidget):
                 return True
         if t == QEvent.Type.KeyPress:
             key = self._obj_to_key.get(obj) or self._current_key
+            if (ev.key() == Qt.Key.Key_A
+                    and ev.modifiers() & Qt.KeyboardModifier.ControlModifier):
+                self.select_all()          # a cell has focus (it ate the shortcut)
+                return True
             if ev.key() == Qt.Key.Key_BracketLeft:
                 self._range_start = key                    # '[' = start of a range
                 return True
