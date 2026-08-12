@@ -91,19 +91,27 @@ reads <em>No current work planned</em>.</p>
 
 <!-- ============================================================ -->
 <h2>2. Albums</h2>
+<h3>Just landed — please confirm in the app</h3>
+<ul>
+  <li><strong>Albums read the master directly — finished</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-12) — the <em>Album Species Viewer</em> was the
+    last reader still opening an album's extracted per-day CSVs. It now reads the master live by the
+    album's date range, in <em>Album</em> scope <em>and</em> in <em>Day</em> scope, the same source the
+    overview, the Biota Browser and the website build already used. The day picker lists the days the
+    master actually has pictures on. The CSVs are no longer an album's data: they are read only on a
+    machine with no master attached, and the status line says so when that happens.
+    <br>
+    <strong>Counts move, and mostly downwards.</strong> An album now shows exactly what the master
+    holds for its dates — the pictures that were committed — while the old CSVs were the original
+    trip's full working set, culls included. Measured over all 17 albums: safari 13952 → 9356,
+    tanzania 6749 → 4772, costa-rica 6011 → 4615, orlando 1440 → 1168; unchanged for panama, Sri Lanka
+    and Tucson; and the two albums that had no day folders at all still work (brazilië 1262, kreta
+    609). Every missing picture was checked: they are simply not in the master. Species counts barely
+    move, because what was dropped are duplicate frames of species that stayed.
+    Design note: <code>docs/plans/album_master_direct_plan.md</code>.</li>
+</ul>
 <h3>To do</h3>
 <ul>
-  <li><strong>Albums read the master directly — finish the job</strong>
-    <span class="tag-new">NEW</span> <span class="tag-open">OPEN</span> —
-    planned for <strong>Wednesday 2026-08-12</strong>. The overview, the Biota Browser and the
-    website build already read an album's pictures live from the master by its date range
-    (<code>batch.album_source</code>); the <em>Album Species Viewer</em> still reads the album's
-    extracted per-day CSVs and only falls back to the query when there are none
-    (<code>6330654</code>). So 15 albums show a possibly stale subset while 2 show the live truth —
-    the "stale copy" class the album re-architecture set out to remove, still alive in one viewer.
-    Make the date-range query the primary source for <strong>every</strong> album, and decide what
-    the per-day CSVs are still for. Design note:
-    <code>docs/plans/album_master_direct_plan.md</code>.</li>
   <li><strong>Albums — the smart <em>Create</em> arc</strong> <span class="tag-progress">IN PROGRESS</span> —
     the arc has shipped through Delete Album and Manage Album Publication; the one remaining step is
     folding <em>Extract Days</em> into Create's finish (WP7 scenario-2) so Create is a single flow.</li>

@@ -1179,6 +1179,17 @@ class DeletePreviewDialog(QDialog):
         return self._pref.isChecked()
 
 
+class _MasterSink:
+    """The flat .files_dict / .UniquePictureName_dict that
+    batch.album_source.load_day_from_master() fills, backed by an fpr's Files
+    and Pictures objects (which nest them one level deeper). Holds the same dict
+    objects, so rows loaded through here land straight in fpr."""
+
+    def __init__(self, fpr):
+        self.files_dict = fpr.fi.files_dict
+        self.UniquePictureName_dict = fpr.upn.UniquePictureName_dict
+
+
 # ── Main dialog ────────────────────────────────────────────────────────────────
 
 class RatingEditorDialog(MasterCardMenuMixin, QDialog):
@@ -1240,6 +1251,13 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # opens just attach to the existing DB.
         self._master_db = None    # qt.db.master_db.MasterDB | None
         self._master_root: str | None = None
+        # Album (read-only) source: the master read live by the album's date
+        # range. Resolved once per dialog by _album_master_source() — days is
+        # None until then, [] once we know there is nothing to read.
+        self._album_db = None
+        self._album_days: list[str] | None = None
+        self._album_range: tuple[str, str] = ("", "")
+        self._album_name = ""
         self._main_window = parent   # for the "✦ Species…" jump into the Biota Browser
         self._name_to_sci: dict[str, str] = {}   # combo display name → scientific name
         self._lineage_db_obj = "unset"   # cached DB for the breadcrumb (lazy)
@@ -1430,7 +1448,10 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
 
         # ── Status bar ────────────────────────────────────────────────────────
         self._status = QLabel("Initializing…")
-        self._status.setStyleSheet("color: #555; font-size: 10px;")
+        # Was a hardcoded #555 at 10px — invisible on the dark theme. It is the
+        # line that reports what loaded and what a batch action did, so it has
+        # to be readable in both themes.
+        self._status.setStyleSheet(f"color: {_INK_SOFT}; font-size: 11px;")
         main_layout.addWidget(self._status)
 
         # ── Scroll area ───────────────────────────────────────────────────────
@@ -1454,7 +1475,11 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._sel_move_btn.clicked.connect(self._move_selection_to_species)
         _sb_layout.addWidget(self._sel_move_btn)
         if self._read_only:
-            self._sel_move_btn.hide()   # Album viewer is read-only
+            # The Album viewer never writes. Both species actions rewrite the
+            # picture's XMP and then persist through per-day CSVs an album does
+            # not own — the files are the master's. See _on_card_context_menu.
+            self._sel_species_btn.hide()
+            self._sel_move_btn.hide()
         _sb_layout.addStretch()
         _sel_clear_btn = QPushButton("Clear selection")
         _sel_clear_btn.clicked.connect(self._clear_selection)
@@ -1616,13 +1641,26 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
     # ── Initialisation helpers ────────────────────────────────────────────────
 
     def _init_day_combo(self):
-        review_root = self._trip_root / "metadata" / "review"
+        # An ALBUM's days are the days the master actually has pictures on
+        # inside its date range — not whatever review/ folders happen to exist
+        # here. Same list the album itself is built from, so Day scope narrows
+        # the Album view instead of showing a different collection.
         days = []
-        if review_root.exists():
-            days = sorted(
-                d.name for d in review_root.iterdir()
-                if d.is_dir() and re.match(r"\d{4}-\d{2}-\d{2}", d.name)
-            )
+        use_review_dirs = True
+        if self._read_only:
+            db, album_days = self._album_master_source()
+            days = list(album_days)
+            # If the master answered at all, that answer is the album's day list
+            # — an empty range means the album has no days, not that the old
+            # review/ folders are worth showing instead.
+            use_review_dirs = db is None
+        if use_review_dirs:
+            review_root = self._trip_root / "metadata" / "review"
+            if review_root.exists():
+                days = sorted(
+                    d.name for d in review_root.iterdir()
+                    if d.is_dir() and re.match(r"\d{4}-\d{2}-\d{2}", d.name)
+                )
         self._day_combo.blockSignals(True)
         self._day_combo.clear()
         for d in days:
@@ -1669,7 +1707,13 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 if not day:
                     self._status.setText("No day selected.")
                     return
-                ok = self.fpr.readTripDay(str(self._trip_root), day)
+                # An ALBUM day is a query on the master, exactly like the album
+                # as a whole; only a trip (or an album on a machine with no
+                # master) reads the day's CSVs. None = there was no master to
+                # ask, the one case that falls back.
+                ok = self._load_album_day_from_master(day) if self._read_only else None
+                if ok is None:
+                    ok = self.fpr.readTripDay(str(self._trip_root), day)
                 if not ok:
                     self._status.setText(f"No data found for {day}.")
                     return
@@ -1684,7 +1728,9 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # Species editing (SpeciesInfoPanel: Suggest / Validate / Commit) needs a
         # real SpeciesClassification on fpr.sc — readTripDay / _load_trip_scope
         # leave it as the bare {} placeholder. Load the trip's collection once.
-        if not isinstance(self.fpr.sc, SpeciesClassification):
+        # An album never edits a species, so it is spared the ~19k-row read on
+        # every reload; nothing on the display path uses sc.
+        if not self._read_only and not isinstance(self.fpr.sc, SpeciesClassification):
             try:
                 speccoll = self._trip_root / "metadata" / "active" / "speciescollection.csv"
                 self.fpr.sc = SpeciesClassification(None)
@@ -1698,18 +1744,23 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # whole panel locks (view_read_only); in Trip / Trip+Master each picture
         # from a committed day locks individually (🔒 badge, no edit/delete). See
         # gui/day_freeze.py.
-        from gui.day_freeze import day_is_frozen
         self._frozen_days: set[str] = set()
         self._day_scope_locked = False
-        if scope_day:
-            _d = self._current_day()
-            if _d and day_is_frozen(self._trip_root, _d)[0]:
-                self._frozen_days.add(_d)
-                self._day_scope_locked = True
-        else:
-            for _d in {d for d in self._upn_day_map.values() if d}:
-                if day_is_frozen(self._trip_root, _d)[0]:
+        # An ALBUM has no review days of its own to freeze — its days are the
+        # master's — and the whole viewer is read-only already, so skip the
+        # per-day probe rather than stat a folder per day for a lock that can
+        # never apply.
+        if not self._read_only:
+            from gui.day_freeze import day_is_frozen
+            if scope_day:
+                _d = self._current_day()
+                if _d and day_is_frozen(self._trip_root, _d)[0]:
                     self._frozen_days.add(_d)
+                    self._day_scope_locked = True
+            else:
+                for _d in {d for d in self._upn_day_map.values() if d}:
+                    if day_is_frozen(self._trip_root, _d)[0]:
+                        self._frozen_days.add(_d)
 
         # Build the provider collection over the freshly-loaded data. Local
         # import avoids a circular import (rating_provider imports helpers here).
@@ -1783,7 +1834,29 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 f"— select a species.")
 
     def _load_trip_scope(self):
-        """Load all review-day CSVs into fpr, keeping per-day objects for write-back."""
+        """Load the whole trip / album into fpr.
+
+        A TRIP owns its pictures: they come from its per-day review CSVs, and
+        the per-day objects are kept because write-back persists through them.
+
+        An ALBUM owns nothing. It is the window fromdate…todate onto the master,
+        so it is read from the master — the same live source the album overview,
+        the Biota Browser and the website build already use (batch.album_source).
+        Its day CSVs, where they exist at all, are an extract of that same window
+        frozen at some past moment; they are read only when this machine has no
+        master to ask, and never counted as the better answer."""
+        self._day_objects = {}
+        self.fpr.fi = Files(None)
+        self.fpr.upn = Pictures(None)
+
+        if self._read_only:
+            if self._load_album_from_master():
+                return
+            logger.info("album viewer: no master on this machine — falling back "
+                        "to the album's extracted day CSVs (a snapshot)")
+            self._set_album_window_title(
+                "⚠ old extracted day files — no master on this machine")
+
         review_root = self._trip_root / "metadata" / "review"
         days: list[str] = []
         if review_root.exists():
@@ -1791,10 +1864,6 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 d.name for d in review_root.iterdir()
                 if d.is_dir() and re.match(r"\d{4}-\d{2}-\d{2}", d.name)
             )
-
-        self._day_objects = {}
-        self.fpr.fi = Files(None)
-        self.fpr.upn = Pictures(None)
 
         for day in days:
             files_csv = review_root / day / "data_files.csv"
@@ -1815,15 +1884,6 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                     self.fpr.upn.UniquePictureName_dict[upn_key] = upn_row
                     self._upn_day_map[upn_key] = day
 
-        # An ALBUM with no extracted day CSVs still has pictures — they live in
-        # the master, inside its date range. The rest of the album stack (the
-        # overview, the Biota Browser, the website build) was moved onto that
-        # live query; this viewer was not, so an album that never had its days
-        # extracted, or had them cleaned up, opened completely empty while the
-        # Biota Browser happily showed the same species.
-        if not self._day_objects and self._read_only:
-            self._load_album_from_master()
-
         # Fall back to active if no review days found (fully committed trip)
         if not self._day_objects:
             meta_active = self._trip_root / "metadata" / "active"
@@ -1842,54 +1902,116 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
 
         n_days = len(self._day_objects)
         n_pics = len(self.fpr.upn.UniquePictureName_dict)
-        self._status.setText(f"Trip — {n_days} day{'s' if n_days != 1 else ''}, {n_pics} pictures total")
+        # In an album this line is only reached when the master was unreachable
+        # — say so, because the numbers are then an old extract, not the album.
+        note = (" — read from this album's extracted day files because no master "
+                "is available here, so it may be out of date"
+                if self._read_only else "")
+        self._status.setText(f"{self._scope_label} — {n_days} day"
+                             f"{'s' if n_days != 1 else ''}, {n_pics} pictures "
+                             f"total{note}")
 
-    def _load_album_from_master(self):
-        """Fill fpr from the master's own rows for this album's date range.
+    # ── Album: the master, read live by date range ────────────────────────────
 
-        The same source the album overview and the Biota Browser read
-        (batch.album_source), so the three agree on what an album contains
-        instead of one of them depending on whether day CSVs happen to exist on
-        this machine. Album scope is read-only, so there is no write-back path
-        to keep in step — nothing here needs the per-day CSV objects that the
-        editable Trip scope uses for saving."""
+    def _album_master_source(self):
+        """(MasterDB, [day labels]) for this ALBUM's date range, or (None, []).
+
+        The one source an album reads from, shared by every scope in this
+        dialog. Opened once per dialog: open_master_db() runs ensure_fresh(),
+        which must not be paid per day or per reload. The database is handed to
+        the Master scope as well, so switching scope does not open a second copy
+        of the same master."""
+        if self._album_days is not None:
+            return self._album_db, self._album_days
+        self._album_days = []          # a negative answer caches too
         from utils.virttrip_config import read_virttrip_ini
         ini = read_virttrip_ini(str(self._trip_root)) or {}
         fromdate = (ini.get("fromdate") or "").strip()
         todate = (ini.get("todate") or "").strip()
+        # The album's published name ("tanzania"), not its folder ("tanzaniadb")
+        # — the same name the Biota Browser puts in its title bar.
+        self._album_name = (ini.get("trip_name") or "").strip() or self._trip_root.name
         master_root = (_config.get("master", "masterbiotadatabase", fallback="")
                        or "").replace('"', "").replace("'", "").strip()
         if not (fromdate and todate and master_root and Path(master_root).exists()):
-            logger.info("album viewer: no date range or master — cannot load from the master")
-            return
-
-        class _Sink:                       # what load_day_from_master() fills
-            files_dict = self.fpr.fi.files_dict
-            UniquePictureName_dict = self.fpr.upn.UniquePictureName_dict
-
+            logger.info("album viewer: no date range, or no master on this "
+                        "machine — cannot read the album from the master")
+            return None, []
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             from batch import album_source
-            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-            try:
-                db = album_source.open_master_db(master_root)
-                days = album_source.day_labels_in_range(db, fromdate, todate)
-                sink = _Sink()
-                for day in days:
-                    before = set(sink.UniquePictureName_dict)
-                    album_source.load_day_from_master(sink, db, day)
-                    for upn_key in set(sink.UniquePictureName_dict) - before:
-                        self._upn_day_map[upn_key] = day
-                    # A day object is what the rest of the dialog counts days by;
-                    # these carry no CSV of their own, so hand it the shared
-                    # objects rather than inventing empty ones.
-                    self._day_objects[day] = (self.fpr.fi, self.fpr.upn)
-            finally:
-                QApplication.restoreOverrideCursor()
-            logger.info(f"album viewer: loaded {len(self.fpr.upn.UniquePictureName_dict)} "
-                        f"picture(s) over {len(days)} day(s) from the master "
-                        f"({fromdate} … {todate}) — no day CSVs on disk")
+            db = album_source.open_master_db(master_root)
+            self._album_days = album_source.day_labels_in_range(db, fromdate, todate)
+            self._album_db = db
+            self._album_range = (fromdate, todate)
+            if self._master_db is None:      # the Master scope wants the same DB
+                self._master_db, self._master_root = db, master_root
         except Exception as e:
-            logger.warning(f"album viewer: master date-range load failed: {e}", exc_info=True)
+            logger.warning(f"album viewer: could not open the master for "
+                           f"{fromdate} … {todate}: {e}", exc_info=True)
+            self._album_db, self._album_days = None, []
+        finally:
+            QApplication.restoreOverrideCursor()
+        return self._album_db, self._album_days
+
+    def _load_album_from_master(self) -> bool:
+        """Fill fpr with the master's rows for the album's whole date range.
+
+        True when the master answered — including with nothing, since an empty
+        range is an answer. False only when there is no master to ask, which is
+        the single case that falls back to the extracted day CSVs."""
+        db, days = self._album_master_source()
+        if db is None:
+            return False
+        from batch import album_source
+        sink = _MasterSink(self.fpr)
+        for day in days:
+            before = set(sink.UniquePictureName_dict)
+            album_source.load_day_from_master(sink, db, day)
+            for upn_key in set(sink.UniquePictureName_dict) - before:
+                self._upn_day_map[upn_key] = day
+            # _day_objects is what the dialog counts days by and — in an
+            # editable trip — what write-back persists through. An album has no
+            # CSV of its own and never writes, so a day maps to the shared
+            # merged objects: a count, not a write target.
+            self._day_objects[day] = (self.fpr.fi, self.fpr.upn)
+        n_pics = len(self.fpr.upn.UniquePictureName_dict)
+        logger.info(f"album viewer: {n_pics} picture(s) over {len(days)} day(s) "
+                    f"live from the master ({self._album_range[0]} … "
+                    f"{self._album_range[1]})")
+        self._set_album_window_title(
+            f"live from the master, {self._album_range[0]} … {self._album_range[1]}")
+        self._status.setText(
+            f"{self._scope_label} — {len(days)} day{'s' if len(days) != 1 else ''}, "
+            f"{n_pics} pictures, live from the master "
+            f"({self._album_range[0]} … {self._album_range[1]})")
+        return True
+
+    def _set_album_window_title(self, source_note: str) -> None:
+        """Say in the TITLE BAR where this album's pictures came from.
+
+        The status line cannot carry it: the very next thing every load does is
+        overwrite it with "N species loaded", and after that with the shown
+        picture count. Where an album's data comes from is not a transient
+        message — it decides whether the numbers can be trusted — so it belongs
+        somewhere that stays put."""
+        name = f" · {self._album_name}" if self._album_name else ""
+        self.setWindowTitle(
+            f"Trip Species Viewer — {self._scope_label}{name} · {source_note}")
+
+    def _load_album_day_from_master(self, day: str) -> bool | None:
+        """Day scope in an ALBUM: that one day's master pictures, from the same
+        source Album scope uses — so switching scope narrows the view instead of
+        changing where the truth comes from. None when there is no master here
+        (the caller then reads the day's CSVs); False when the day is empty."""
+        db, _days = self._album_master_source()
+        if db is None:
+            return None
+        from batch import album_source
+        self.fpr.fi = Files(None)
+        self.fpr.upn = Pictures(None)
+        album_source.load_day_from_master(_MasterSink(self.fpr), db, day)
+        return bool(self.fpr.upn.UniquePictureName_dict)
 
     def _trip_name_profile_override(self) -> str | None:
         """The per-trip / per-virttrip name-profile override (from trip.ini's
@@ -2456,9 +2578,16 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         n = len(keys_for_action)
         menu = QMenu(self)
         lbl = f"{n} picture{'s' if n != 1 else ''}"
-        act_species = menu.addAction(f"Set species…  ({lbl})")
-        act_move = menu.addAction(f"Move to existing species…  ({lbl})")
-        act_rate = menu.addAction(f"Set rating…  ({lbl})")
+        # The Album viewer looks but never touches: these pictures are the
+        # master's own files, and an album has no CSVs of its own to persist a
+        # change through. Offering the actions would be an affordance we cannot
+        # honour — the stars and colour swatches on the cards are greyed for the
+        # same reason (RatingEditorItem.can_edit_*).
+        act_species = act_move = act_rate = act_addfiles = None
+        if not self._read_only:
+            act_species = menu.addAction(f"Set species…  ({lbl})")
+            act_move = menu.addAction(f"Move to existing species…  ({lbl})")
+            act_rate = menu.addAction(f"Set rating…  ({lbl})")
         act_fullres = menu.addAction(f"Full resolution  ({lbl})")
         act_geo = menu.addAction(f"Get location  ({lbl})")
         # Headline / Description — normally about the ONE picture it titles; the
@@ -2473,9 +2602,12 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                                          or clicked_item.can_edit_description):
             menu.addSeparator()
             act_hd = menu.addAction(f"Edit headline / description…  ({lbl})")
-        menu.addSeparator()
-        act_addfiles = menu.addAction(f"Add new files (scan folder)…  ({lbl})")
+        if not self._read_only:
+            menu.addSeparator()
+            act_addfiles = menu.addAction(f"Add new files (scan folder)…  ({lbl})")
         chosen = menu.exec(QCursor.pos())
+        if chosen is None:
+            return
         if chosen == act_species:
             self._open_species_dialog_for_keys(keys_for_action)
         elif chosen == act_move:

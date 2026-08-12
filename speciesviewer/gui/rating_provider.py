@@ -371,7 +371,7 @@ class RatingEditorCollection(PictureCollection):
 
     def is_album_member(self, key: str) -> bool:
         """Full-master scope only: True when this master picture's UPN is also
-        one of the album's own (extracted) pictures."""
+        one of the album's own — i.e. it falls in the album's date range."""
         return self._master_full and key in self.fpr.upn.UniquePictureName_dict
 
     # ── master add/delete (Phase 3 of the master cache) ───────────────────────
