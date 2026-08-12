@@ -2041,9 +2041,12 @@ class MainWindow(QMainWindow):
         self._virttrip_map_dlg.show()
 
     def open_virttrip_rating_editor(self, initial_sci=None):
-        """Read-only Rating Editor over the active virtual trip (Album). Its
-        pictures are the master's shared files, so editing is off for now —
-        this is a viewer (cards, ratings, best-picks, species filter).
+        """Album Species Viewer over the active album — the master seen through
+        the album's date window, one species at a time. Day / Album / Master
+        scope are the same query with a wider window each time; Master scope is
+        the standalone Master Species Viewer with the album's own pictures
+        tagged. Editing follows the machine's master write policy, because the
+        write goes to the master (as it does in the album day viewer).
         `initial_sci` opens straight on that species (the Biota Browser's
         Edit-panel jump)."""
         from gui.rating_editor import RatingEditorDialog
@@ -2063,7 +2066,7 @@ class MainWindow(QMainWindow):
             existing.close()
         # Strong ref on the main window — see open_rating_editor for the why.
         self._virttrip_rating_editor_dlg = RatingEditorDialog(
-            self, virttrip_root, day_str=None, read_only=True, scope_label="Album",
+            self, virttrip_root, day_str=None, album_mode=True, scope_label="Album",
             initial_sci=initial_sci)
         self._virttrip_rating_editor_dlg.show()
 

@@ -700,6 +700,29 @@ class MasterSpeciesViewerDialog(MasterCardMenuMixin, QDialog):
         if card:
             card.set_cursor_focus(True)
 
+    def _move_cursor(self, upn_key: str):
+        """Move the grid cursor and bring that card into view — the keyboard
+        counterpart of clicking a card."""
+        self._on_card_cursor(upn_key)
+        card = self._cards_by_key.get(upn_key)
+        if card is not None:
+            self._scroll.ensureWidgetVisible(card)
+
+    def keyPressEvent(self, event):
+        """Keyboard navigation over the card grid: arrows by one / by a row,
+        Ctrl+Home and Ctrl+End to the first and last picture — the same keys the
+        Trip and Album viewers use, through the same helper, so a species with
+        373 master pictures is reachable without dragging the scrollbar.
+        text_input_focused() keeps the species field's own typing intact."""
+        from gui.viewer_keys import handle_grid_arrows
+        if self._cards and handle_grid_arrows(
+                event, order=[c.upn_key for c in self._cards],
+                current_key=self._last_clicked_key,
+                columns=self.columns, set_cursor=self._move_cursor):
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
     def _on_card_clicked(self, upn_key: str):
         self._on_card_cursor(upn_key)
         from gui.large_image_view import LargeImageView

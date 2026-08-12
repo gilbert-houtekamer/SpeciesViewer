@@ -316,6 +316,16 @@ class RatingEditorCollection(PictureCollection):
         # keeps False (trip cards + master-minus-trip reference).
         self._master_full = False
         self._master_keys: set[str] = set()  # keys currently shown from master
+        # An ALBUM is the master seen through a date window. Rather than loading
+        # the window's pictures into fpr, the album viewer narrows the SAME
+        # per-species master query to the UPNs the window contains: Day scope is
+        # one day's set, Album scope the whole range, Master scope None (no
+        # restriction — the species everywhere, which is the standalone Master
+        # Species Viewer). One query, three scopes, no copy of the data.
+        self._master_restrict: set[str] | None = None
+        # The album's whole UPN set, for tagging a card "from Album" in Master
+        # scope. Independent of the restriction above, which changes per scope.
+        self._album_keys: set[str] = set()
         # Lazy: don't scan all trip pictures (each jpg_path() does several
         # Path.exists() calls — thousands of filesystem stats over D:/E: and
         # Dropbox) until a species is actually selected. The dialog shows
@@ -350,6 +360,16 @@ class RatingEditorCollection(PictureCollection):
         self._master_files = {}
         self._master_keys = set()
 
+    def set_master_scope(self, restrict_to: set[str] | None,
+                         album_keys: set[str] | None = None) -> None:
+        """Narrow the per-species master query to `restrict_to` (None = no
+        narrowing), and record the album's full UPN set for the "from Album"
+        tag. This is the whole of an album scope: Day, Album and Master differ
+        only in which set is passed here."""
+        self._master_restrict = set(restrict_to) if restrict_to is not None else None
+        if album_keys is not None:
+            self._album_keys = set(album_keys)
+
     @property
     def master_read_only(self) -> bool:
         return getattr(self, "_master_read_only", True)
@@ -371,8 +391,9 @@ class RatingEditorCollection(PictureCollection):
 
     def is_album_member(self, key: str) -> bool:
         """Full-master scope only: True when this master picture's UPN is also
-        one of the album's own — i.e. it falls in the album's date range."""
-        return self._master_full and key in self.fpr.upn.UniquePictureName_dict
+        one of the album's own — i.e. it falls in the album's date range. Empty
+        for the standalone Master Species Viewer, which has no album."""
+        return self._master_full and key in self._album_keys
 
     # ── master add/delete (Phase 3 of the master cache) ───────────────────────
     def _master_file_is_jpg(self, fname: str) -> bool:
@@ -701,8 +722,17 @@ class RatingEditorCollection(PictureCollection):
         self._master_keys = set()
         self._master_upn = {}
         self._master_files = {}
-        if sci:
+        # `sci` used to be resolvable only when the master was already attached;
+        # with forced_sci a caller can name a species before that (an album
+        # rebuilding on the way to attaching), so check the DB, not just the name.
+        if sci and self._include_master and self._master_db is not None:
             pics = self._master_db.pictures_for_species(sci)
+            # An album scope narrows that to its date window (see
+            # set_master_scope). The query is the same one the Master Species
+            # Viewer runs; the window is the only difference between them.
+            if self._master_restrict is not None:
+                pics = [p for p in pics
+                        if p["UniquePictureName"] in self._master_restrict]
             # "Master" (full) scope keeps every master picture of the species;
             # Trip+Master drops the ones the trip already owns to avoid showing
             # a picture twice.
@@ -1470,7 +1500,11 @@ class RatingEditorCollection(PictureCollection):
         here. Master pictures are included only outside day scope, and are
         already limited to the loaded species (see rebuild) — so a species view
         can blue-delete master pictures too. With neither, it is trip-wide (the
-        culling default)."""
+        culling default).
+
+        An ALBUM passes day=None even in Day scope: there the master pictures
+        are the day (set_master_scope already narrowed them), so the gate would
+        exclude exactly what the user is looking at."""
         wanted = (color or "").lower()
         trip_keys = []
         for k, row in self.fpr.upn.UniquePictureName_dict.items():

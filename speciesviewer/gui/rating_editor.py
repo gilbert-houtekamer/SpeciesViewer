@@ -461,7 +461,11 @@ class PictureCard(QFrame):
             tag = QLabel(f"— from {origin} ({res}) —" if res
                          else f"— from {origin} —")
             tag.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            if from_album:
+            # Green/bold marks the pictures that belong to what you opened —
+            # this album, or this trip — so they read at a glance among the
+            # plain grey "— from master —" references they sit beside. Same cue
+            # in both viewers: green means "one of mine".
+            if from_album or not self._from_master:
                 tag.setStyleSheet("color: #2e7d32; font-size: 8px; "
                                   "font-style: italic; font-weight: bold;")
             else:
@@ -694,7 +698,11 @@ class PictureCard(QFrame):
             res = item.exif.jpg_dimensions or item.exif.dimensions
             origin = "Album" if from_album else ("master" if self._from_master else "trip")
             tag = QLabel(f"— from {origin} ({res}) —" if res else f"— from {origin} —")
-            if from_album:
+            # Green/bold marks the pictures that belong to what you opened —
+            # this album, or this trip — so they read at a glance among the
+            # plain grey "— from master —" references beside them. Same cue in
+            # both viewers: green means "one of mine".
+            if from_album or not self._from_master:
                 tag.setStyleSheet("color:#2e7d32; font-size:9px; font-style:italic; font-weight:bold;")
             else:
                 tag.setStyleSheet("color:#888; font-size:9px; font-style:italic;")
@@ -1179,17 +1187,6 @@ class DeletePreviewDialog(QDialog):
         return self._pref.isChecked()
 
 
-class _MasterSink:
-    """The flat .files_dict / .UniquePictureName_dict that
-    batch.album_source.load_day_from_master() fills, backed by an fpr's Files
-    and Pictures objects (which nest them one level deeper). Holds the same dict
-    objects, so rows loaded through here land straight in fpr."""
-
-    def __init__(self, fpr):
-        self.files_dict = fpr.fi.files_dict
-        self.UniquePictureName_dict = fpr.upn.UniquePictureName_dict
-
-
 # ── Main dialog ────────────────────────────────────────────────────────────────
 
 class RatingEditorDialog(MasterCardMenuMixin, QDialog):
@@ -1201,19 +1198,26 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
     """
 
     def __init__(self, parent, trip_root_dir: str, day_str: str = None,
-                 read_only: bool = False, scope_label: str = "Trip",
+                 album_mode: bool = False, scope_label: str = "Trip",
                  initial_sci: str = None):
         super().__init__(parent)
         # When launched from the Biota Browser's Edit panel: open straight on this
         # species (a scientific name; resolved to the combo entry after load).
         self._initial_sci = (initial_sci or "").strip() or None
-        # read_only: a whole-collection viewer (no rating/colour edits, no
-        # delete, no Trip+Master compare). Used by the Album (virtual-trip)
-        # variant, whose pictures are the master's shared files — editing them
-        # would be a master write-back, deliberately deferred.
-        self._read_only = bool(read_only)
+        # album_mode: this dialog is a window on the MASTER (a date range), not a
+        # trip that owns its pictures. Every card is a master picture, the third
+        # scope is the whole master rather than a Trip+Master compare, and the
+        # species page / lineage come from the real master. It used to also mean
+        # "read-only", which is why the flag was called that — but an album's
+        # pictures being the master's own is the reason editing WORKS here (it
+        # writes the master, like the album day viewer), not a reason to forbid
+        # it. Whether you may edit is _view_read_only, decided per load from the
+        # machine's master write policy.
+        self._album_mode = bool(album_mode)
+        self._view_read_only = self._album_mode   # until a load says otherwise
         self._scope_label = scope_label
-        self.setWindowTitle("Trip Species Viewer — " + scope_label if read_only else "Trip Species Viewer")
+        self.setWindowTitle(f"{scope_label} Species Viewer" if album_mode
+                            else "Trip Species Viewer")
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
                             | Qt.WindowType.WindowMaximizeButtonHint)
@@ -1258,6 +1262,19 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._album_days: list[str] | None = None
         self._album_range: tuple[str, str] = ("", "")
         self._album_name = ""
+        # The album window, resolved once: which UPNs are in it (per day and in
+        # total) and which species it holds. This is ALL an album keeps in
+        # memory — the pictures themselves stay in the master and arrive one
+        # species at a time through the same query the Master Species Viewer
+        # runs. _album_query says that resolution succeeded; without it (no
+        # master on this machine) the album falls back to its old extracted day
+        # CSVs, read-only.
+        self._album_upns: set[str] = set()
+        self._album_upns_by_day: dict[str, set[str]] = {}
+        self._album_species: dict[str, dict] = {}   # sci → name fields
+        self._album_query = False
+        self._album_restrict: set[str] | None = None
+        self._master_editable = False
         self._main_window = parent   # for the "✦ Species…" jump into the Biota Browser
         self._name_to_sci: dict[str, str] = {}   # combo display name → scientific name
         self._lineage_db_obj = "unset"   # cached DB for the breadcrumb (lazy)
@@ -1276,10 +1293,11 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # In the read-only Album viewer the third scope is "Master" = the
         # species' COMPLETE master set (every date). In a normal trip it is the
         # "Trip+Master" side-by-side compare.
-        self._tm_radio = QRadioButton("Master" if self._read_only else "Trip+Master")
+        self._tm_radio = QRadioButton("Master" if self._album_mode else "Trip+Master")
         self._tm_radio.setToolTip(
-            "Show this species' complete master collection (every date), read-only"
-            if self._read_only else
+            "Show this species' complete master collection (every date); the "
+            "album's own pictures are tagged"
+            if self._album_mode else
             "Also show this species' existing master pictures (read-only, greyed) "
             "alongside the trip's, to judge whether a new shot is website-worthy")
         self._scope_grp = QButtonGroup(self)
@@ -1417,9 +1435,10 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._del_purple_btn.clicked.connect(lambda: self._batch_delete_color("Purple"))
         top.addWidget(self._del_purple_btn)
 
-        # Album (read-only) viewer never deletes — the files are shared master
-        # files. Hide the cull buttons entirely.
-        if self._read_only:
+        # Start hidden in album mode; _apply_lock_ui shows them again once a load
+        # has established that this machine may write the master. In an album a
+        # cull deletes MASTER pictures (JPG-protected, master .trash, undoable).
+        if self._album_mode:
             self._del_blue_btn.hide()
             self._del_purple_btn.hide()
 
@@ -1474,11 +1493,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             "Reassign the selected pictures to an existing species")
         self._sel_move_btn.clicked.connect(self._move_selection_to_species)
         _sb_layout.addWidget(self._sel_move_btn)
-        if self._read_only:
-            # The Album viewer never writes. Both species actions rewrite the
-            # picture's XMP and then persist through per-day CSVs an album does
-            # not own — the files are the master's. See _on_card_context_menu.
-            self._sel_species_btn.hide()
+        if self._album_mode:
+            self._sel_species_btn.hide()   # re-shown by _apply_lock_ui if editable
             self._sel_move_btn.hide()
         _sb_layout.addStretch()
         _sel_clear_btn = QPushButton("Clear selection")
@@ -1524,8 +1540,11 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
     # ── Batch delete by colour ────────────────────────────────────────────────
 
     def _apply_lock_ui(self):
-        """Reflect the frozen state in the toolbar + banner after a load. Album
-        (self._read_only) already hides the edit affordances, so skip it there."""
+        """Reflect what this load may change in the toolbar + banner.
+
+        Two independent locks: a committed (frozen) trip day, and — in an album —
+        a machine that may not write the master. Either hides the actions that
+        would need the write."""
         locked = getattr(self, "_day_scope_locked", False)
         some_frozen = bool(getattr(self, "_frozen_days", set())) and not locked
         from gui.day_freeze import FROZEN_BANNER
@@ -1542,10 +1561,17 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # A fully-locked (Day scope, frozen) panel hides the cull + species-edit
         # actions. In Trip scope with only SOME frozen, they stay (they act on the
         # editable pictures; frozen keys are filtered by each handler).
-        if not self._read_only:
-            for w in (self._del_blue_btn, self._del_purple_btn,
-                      self._sel_move_btn, self._sel_species_btn):
-                w.setVisible(not locked)
+        for w in (self._del_blue_btn, self._del_purple_btn,
+                  self._sel_move_btn, self._sel_species_btn):
+            w.setVisible(not locked and not self._view_read_only)
+        if self._album_mode and self._view_read_only:
+            self._lock_banner.setText(
+                "👁 View only — this machine's master is read-only, so nothing "
+                "here can be changed."
+                if self._album_query else
+                "👁 View only — showing this album's old extracted day files; "
+                "there is no master on this machine to read or write.")
+            self._lock_banner.show()
 
     def _batch_delete_color(self, color: str):
         if not self.fpr or self._collection is None:
@@ -1571,11 +1597,25 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         else:
             scope = "this trip — all species"
 
+        # `day` gates master inclusion for a TRIP (day scope shows no master
+        # references). In an album the master pictures ARE the day — the scope
+        # already narrowed them — so the gate must not fire.
         trip_keys, master_keys = self._collection.color_matches(
-            color, species=species, day=day)
+            color, species=species, day=None if self._album_query else day)
         if not trip_keys and not master_keys:
+            # A MASTER picture is only visible to this when it survived the JPG
+            # filter — and a picture with a JPG is never deletable. So with "JPG
+            # only" on, a cull over master pictures can find nothing by
+            # construction. Say that instead of a flat "none", which reads as
+            # "there are no blue pictures" when there may be plenty.
+            hint = ("\n\nNote: “JPG only” is on, and a picture that has a JPG is "
+                    "never deleted here — so the ones a cull would remove are "
+                    "exactly the ones now hidden. Switch “JPG only” off to see "
+                    "them."
+                    if (self._jpg_only and (self._album_query
+                                            or self._tm_radio.isChecked())) else "")
             QMessageBox.information(self, f"No {color} pictures",
-                                    f"No {color.lower()} pictures in {scope}.")
+                                    f"No {color.lower()} pictures in {scope}.{hint}")
             return
 
         # A committed-day trip picture is locked — never deletable here.
@@ -1647,7 +1687,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # the Album view instead of showing a different collection.
         days = []
         use_review_dirs = True
-        if self._read_only:
+        if self._album_mode:
             db, album_days = self._album_master_source()
             days = list(album_days)
             # If the master answered at all, that answer is the album's day list
@@ -1701,20 +1741,26 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._upn_day_map = {}
         scope_day = self._day_radio.isChecked()
         tripmaster = self._tm_radio.isChecked()
+        # An ALBUM loads no pictures at all: it resolves its window once and then
+        # narrows the per-species master query to it. Only when there is no
+        # master to ask does it fall back to loading its old day CSVs.
+        self._album_query = self._album_mode and self._album_master_source()[0] is not None
+        self._master_editable = _config.get(
+            "master", "readonly", fallback="yes").strip().lower() == "no"
+        # In an album, "can I edit" is the machine's master write policy — the
+        # same gate the album day viewer uses, because the write goes to the same
+        # place. On the CSV fallback there is nothing to write to at all.
+        if self._album_mode:
+            self._view_read_only = not (self._album_query and self._master_editable)
         try:
-            if scope_day:
+            if self._album_query:
+                self._prepare_album_scope(scope_day)
+            elif scope_day:
                 day = self._current_day()
                 if not day:
                     self._status.setText("No day selected.")
                     return
-                # An ALBUM day is a query on the master, exactly like the album
-                # as a whole; only a trip (or an album on a machine with no
-                # master) reads the day's CSVs. None = there was no master to
-                # ask, the one case that falls back.
-                ok = self._load_album_day_from_master(day) if self._read_only else None
-                if ok is None:
-                    ok = self.fpr.readTripDay(str(self._trip_root), day)
-                if not ok:
+                if not self.fpr.readTripDay(str(self._trip_root), day):
                     self._status.setText(f"No data found for {day}.")
                     return
                 self._status.setText(f"Day: {day}")
@@ -1728,9 +1774,9 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # Species editing (SpeciesInfoPanel: Suggest / Validate / Commit) needs a
         # real SpeciesClassification on fpr.sc — readTripDay / _load_trip_scope
         # leave it as the bare {} placeholder. Load the trip's collection once.
-        # An album never edits a species, so it is spared the ~19k-row read on
-        # every reload; nothing on the display path uses sc.
-        if not self._read_only and not isinstance(self.fpr.sc, SpeciesClassification):
+        # An album's species come from the master, not from a trip collection,
+        # and it is spared the ~19k-row read on every reload.
+        if not self._album_mode and not isinstance(self.fpr.sc, SpeciesClassification):
             try:
                 speccoll = self._trip_root / "metadata" / "active" / "speciescollection.csv"
                 self.fpr.sc = SpeciesClassification(None)
@@ -1747,10 +1793,9 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._frozen_days: set[str] = set()
         self._day_scope_locked = False
         # An ALBUM has no review days of its own to freeze — its days are the
-        # master's — and the whole viewer is read-only already, so skip the
-        # per-day probe rather than stat a folder per day for a lock that can
-        # never apply.
-        if not self._read_only:
+        # master's — so skip the per-day probe rather than stat a folder per day
+        # for a lock that can never apply.
+        if not self._album_mode:
             from gui.day_freeze import day_is_frozen
             if scope_day:
                 _d = self._current_day()
@@ -1769,23 +1814,36 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             self.fpr, self._day_objects, self._upn_day_map,
             jpg_only=self._jpg_only, species_lang=self._species_lang,
             loader=self._loader,
-            view_read_only=(self._read_only or self._day_scope_locked),
+            view_read_only=(self._view_read_only or self._day_scope_locked),
             frozen_days=self._frozen_days,
         )
+        if self._album_query:
+            # The whole of an album scope: which UPNs the per-species master
+            # query may return, plus the album's full set for the "from Album"
+            # tag in Master scope.
+            self._collection.set_master_scope(self._album_restrict, self._album_upns)
         self._apply_lock_ui()
+        # An album is master-backed in EVERY scope — its cards come from nowhere
+        # else — so the master must be attached BEFORE the combos, whose own
+        # rebuild is the one that builds the grid. (A trip attaches after: there
+        # the master only adds reference cards to a grid it already has.)
+        if self._album_query:
+            self._attach_master(rebuild=False)
         self._populate_camera_combo()   # before species combo (its signal rebuilds cards)
         self._populate_species_combo(restore_selection=saved_species)
-        if tripmaster:
+        if tripmaster and not self._album_query:
             self._attach_master()
 
-    def _attach_master(self):
+    def _attach_master(self, rebuild: bool = True):
         """Open the master DB for Trip+Master and apply it to the live
         collection. Plan B: the master CSVs are mirrored into a per-machine
         SQLite cache (NOT in Dropbox); after the first cold rebuild every
         subsequent open is near-instant. Kept synchronous on purpose — a
         worker thread here proved fragile (QThread teardown crashes), and the
         warm path is essentially free."""
-        if not self._tm_radio.isChecked() or self._collection is None:
+        if self._collection is None:
+            return
+        if not (self._tm_radio.isChecked() or self._album_query):
             return
         if self._master_db is None:
             master_root = _config.get("master", "masterbiotadatabase", fallback="").strip()
@@ -1808,24 +1866,37 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             self._master_root = master_root
             if rebuilt:
                 logger.info("Master DB was stale and has been rebuilt.")
-        self._apply_master(self._master_db)
+        self._apply_master(self._master_db, rebuild=rebuild)
 
-    def _apply_master(self, db):
-        if self._collection is None or not self._tm_radio.isChecked():
+    def _apply_master(self, db, rebuild: bool = True):
+        if self._collection is None:
+            return
+        if not (self._tm_radio.isChecked() or self._album_query):
             return
         # Master writes are opt-in per machine (default read-only — e.g. a
         # laptop without the full master). See Repository Settings.
-        read_only = _config.get(
-            "master", "readonly", fallback="yes").strip().lower() != "no"
-        # Album viewer's "Master" scope: show the species' complete master set
-        # (full=True) and force read-only regardless of the master toggle.
-        full = self._read_only
+        read_only = not self._master_editable
+        # An album shows the species' master pictures directly (full=True) in
+        # every scope — narrowed to its date window by set_master_scope. A trip
+        # only does this in Trip+Master, where full=False keeps the trip's own
+        # cards and shows the master ones as references beside them.
+        full = self._album_mode
         self._collection.set_master(
             db, self._master_root, include=True,
-            read_only=read_only or full, full=full)
-        ro_note = " — master is read-only" if (read_only or full) else " — master editable"
+            read_only=read_only, full=full)
+        ro_note = " — master is read-only" if read_only else " — master editable"
+        if not rebuild:
+            return          # the caller's own combo pass builds the grid
         if self._species_combo.currentData() is not None:
             self._rebuild_cards()
+        elif self._album_mode:
+            # The album's own species list is the useful one in every scope,
+            # Master included: "this is what I saw here — now show me everything
+            # I have of it".
+            n_species = self._species_combo.count() - 1
+            self._status.setText(
+                f"{n_species} species in this {self._scope_label.lower()}"
+                f"{ro_note} — select one to view pictures.")
         else:
             n_master = db.picture_count()
             label = "Master" if full else "Trip + master"
@@ -1834,24 +1905,17 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 f"— select a species.")
 
     def _load_trip_scope(self):
-        """Load the whole trip / album into fpr.
+        """Load a TRIP's whole set of pictures into fpr from its per-day review
+        CSVs, keeping the per-day objects because write-back persists through
+        them. A trip owns its pictures, so this is where they live.
 
-        A TRIP owns its pictures: they come from its per-day review CSVs, and
-        the per-day objects are kept because write-back persists through them.
-
-        An ALBUM owns nothing. It is the window fromdate…todate onto the master,
-        so it is read from the master — the same live source the album overview,
-        the Biota Browser and the website build already use (batch.album_source).
-        Its day CSVs, where they exist at all, are an extract of that same window
-        frozen at some past moment; they are read only when this machine has no
-        master to ask, and never counted as the better answer."""
+        An album reaches this only on the fallback path — no master on this
+        machine to ask, so its old extracted day files are all there is."""
         self._day_objects = {}
         self.fpr.fi = Files(None)
         self.fpr.upn = Pictures(None)
 
-        if self._read_only:
-            if self._load_album_from_master():
-                return
+        if self._album_mode:
             logger.info("album viewer: no master on this machine — falling back "
                         "to the album's extracted day CSVs (a snapshot)")
             self._set_album_window_title(
@@ -1906,21 +1970,26 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # — say so, because the numbers are then an old extract, not the album.
         note = (" — read from this album's extracted day files because no master "
                 "is available here, so it may be out of date"
-                if self._read_only else "")
+                if self._album_mode else "")
         self._status.setText(f"{self._scope_label} — {n_days} day"
                              f"{'s' if n_days != 1 else ''}, {n_pics} pictures "
                              f"total{note}")
 
-    # ── Album: the master, read live by date range ────────────────────────────
+    # ── Album: the master, seen through a date window ─────────────────────────
 
     def _album_master_source(self):
-        """(MasterDB, [day labels]) for this ALBUM's date range, or (None, []).
+        """(MasterDB, [day labels]) for this ALBUM's window, or (None, []).
 
-        The one source an album reads from, shared by every scope in this
-        dialog. Opened once per dialog: open_master_db() runs ensure_fresh(),
-        which must not be paid per day or per reload. The database is handed to
-        the Master scope as well, so switching scope does not open a second copy
-        of the same master."""
+        Resolves the window ONCE per dialog and keeps only what a window is:
+        which UPNs it contains (per day and in total) and which species. The
+        pictures themselves are never loaded here — they arrive one species at a
+        time from `pictures_for_species`, narrowed by set_master_scope, which is
+        the same query the Master Species Viewer runs. That is the whole
+        difference between this viewer and that one.
+
+        Opened once because open_master_db() runs ensure_fresh(), which must not
+        be paid per day, per reload or per scope switch; the DB is handed to the
+        Master scope too, so it never opens a second copy."""
         if self._album_days is not None:
             return self._album_db, self._album_days
         self._album_days = []          # a negative answer caches too
@@ -1941,11 +2010,34 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         try:
             from batch import album_source
             db = album_source.open_master_db(master_root)
-            self._album_days = album_source.day_labels_in_range(db, fromdate, todate)
+            by_day = db.pictures_in_daterange(fromdate, todate)
+            self._album_days = sorted(by_day)
+            self._album_upns_by_day = {
+                day: {r["UniquePictureName"] for r in rows}
+                for day, rows in by_day.items()}
+            self._album_upns = set().union(*self._album_upns_by_day.values()) \
+                if self._album_upns_by_day else set()
+            # Keep the NAME fields per species, not the rows: the caption
+            # language is switchable at runtime, so the display name has to be
+            # derived each time rather than frozen here.
+            self._album_species = {}
+            for rows in by_day.values():
+                for r in rows:
+                    sci = (r.get("WetSoortNaam") or "").strip()
+                    if sci and sci not in self._album_species:
+                        self._album_species[sci] = {
+                            k: r.get(k, "") for k in
+                            ("NLSoortNaam", "EngSoortNaam", "WetSoortNaam")}
             self._album_db = db
             self._album_range = (fromdate, todate)
             if self._master_db is None:      # the Master scope wants the same DB
                 self._master_db, self._master_root = db, master_root
+            logger.info(f"album viewer: window {fromdate} … {todate} = "
+                        f"{len(self._album_upns)} master picture(s), "
+                        f"{len(self._album_days)} day(s), "
+                        f"{len(self._album_species)} species")
+            self._set_album_window_title(
+                f"live from the master, {fromdate} … {todate}")
         except Exception as e:
             logger.warning(f"album viewer: could not open the master for "
                            f"{fromdate} … {todate}: {e}", exc_info=True)
@@ -1954,38 +2046,29 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             QApplication.restoreOverrideCursor()
         return self._album_db, self._album_days
 
-    def _load_album_from_master(self) -> bool:
-        """Fill fpr with the master's rows for the album's whole date range.
+    def _prepare_album_scope(self, scope_day: bool) -> None:
+        """Set the album's scope: which of its UPNs the per-species master query
+        may return. Day = that day, Album = the whole window, Master = no
+        restriction (the species everywhere, with the album's own tagged).
 
-        True when the master answered — including with nothing, since an empty
-        range is an answer. False only when there is no master to ask, which is
-        the single case that falls back to the extracted day CSVs."""
-        db, days = self._album_master_source()
-        if db is None:
-            return False
-        from batch import album_source
-        sink = _MasterSink(self.fpr)
-        for day in days:
-            before = set(sink.UniquePictureName_dict)
-            album_source.load_day_from_master(sink, db, day)
-            for upn_key in set(sink.UniquePictureName_dict) - before:
-                self._upn_day_map[upn_key] = day
-            # _day_objects is what the dialog counts days by and — in an
-            # editable trip — what write-back persists through. An album has no
-            # CSV of its own and never writes, so a day maps to the shared
-            # merged objects: a count, not a write target.
-            self._day_objects[day] = (self.fpr.fi, self.fpr.upn)
-        n_pics = len(self.fpr.upn.UniquePictureName_dict)
-        logger.info(f"album viewer: {n_pics} picture(s) over {len(days)} day(s) "
-                    f"live from the master ({self._album_range[0]} … "
-                    f"{self._album_range[1]})")
-        self._set_album_window_title(
-            f"live from the master, {self._album_range[0]} … {self._album_range[1]}")
+        There is nothing to load — that is the point of reading the master
+        directly. fpr stays the empty shell the collection expects."""
+        self.fpr.fi = Files(None)
+        self.fpr.upn = Pictures(None)
+        if self._tm_radio.isChecked():
+            self._album_restrict = None
+            scope = "the whole master"
+        elif scope_day:
+            day = self._current_day()
+            self._album_restrict = self._album_upns_by_day.get(day, set())
+            scope = f"day {day}"
+        else:
+            self._album_restrict = self._album_upns
+            scope = f"{self._album_range[0]} … {self._album_range[1]}"
+        n = "every" if self._album_restrict is None else len(self._album_restrict)
         self._status.setText(
-            f"{self._scope_label} — {len(days)} day{'s' if len(days) != 1 else ''}, "
-            f"{n_pics} pictures, live from the master "
-            f"({self._album_range[0]} … {self._album_range[1]})")
-        return True
+            f"{self._scope_label} — {scope}, {n} master picture"
+            f"{'' if n == 1 else 's'}.")
 
     def _set_album_window_title(self, source_note: str) -> None:
         """Say in the TITLE BAR where this album's pictures came from.
@@ -1997,21 +2080,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         somewhere that stays put."""
         name = f" · {self._album_name}" if self._album_name else ""
         self.setWindowTitle(
-            f"Trip Species Viewer — {self._scope_label}{name} · {source_note}")
-
-    def _load_album_day_from_master(self, day: str) -> bool | None:
-        """Day scope in an ALBUM: that one day's master pictures, from the same
-        source Album scope uses — so switching scope narrows the view instead of
-        changing where the truth comes from. None when there is no master here
-        (the caller then reads the day's CSVs); False when the day is empty."""
-        db, _days = self._album_master_source()
-        if db is None:
-            return None
-        from batch import album_source
-        self.fpr.fi = Files(None)
-        self.fpr.upn = Pictures(None)
-        album_source.load_day_from_master(_MasterSink(self.fpr), db, day)
-        return bool(self.fpr.upn.UniquePictureName_dict)
+            f"{self._scope_label} Species Viewer{name} · {source_note}")
 
     def _trip_name_profile_override(self) -> str | None:
         """The per-trip / per-virttrip name-profile override (from trip.ini's
@@ -2053,6 +2122,21 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         trip_has_jpg: dict[str, bool] = {}   # species name → ≥1 trip JPG on disk
         self._name_to_sci = {}               # display name → scientific name
         col = self._collection
+        # An ALBUM's species are the ones its date window holds, resolved with
+        # the window itself — no pictures loaded. The "(only RAW)" flag is a
+        # trip's publication to-do and means nothing here: these pictures are
+        # already in the master.
+        if self._album_query:
+            for sci, row in self._album_species.items():
+                name = self._species_name(row)
+                if not name:
+                    continue
+                names.add(name)
+                self._name_to_sci.setdefault(name, sci)
+            for name in sorted(names, key=str.casefold):
+                self._species_combo.addItem(name, name)
+            self._species_combo.blockSignals(False)
+            return self._finish_species_combo(restore_selection)
         for upn_key, upn_row in self.fpr.upn.UniquePictureName_dict.items():
             name = self._species_name(upn_row)
             if not name:
@@ -2072,6 +2156,11 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             self._species_combo.addItem(label, name)
 
         self._species_combo.blockSignals(False)
+        self._finish_species_combo(restore_selection)
+
+    def _finish_species_combo(self, restore_selection) -> None:
+        """Pick the entry to show once the combo is filled: the one that was
+        selected before the reload, else a one-shot jump target, else nothing."""
         if restore_selection:
             idx = self._species_combo.findData(restore_selection)
             if idx >= 0:
@@ -2126,6 +2215,20 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 w.deleteLater()  # deferred deletion; avoids GC-triggered C++ cascade
         self._cards.clear()
 
+    def _rebuild_collection(self, filter_name) -> None:
+        """Re-run the collection's query for the species in view.
+
+        ALWAYS go through here. An album has no loaded rows for rebuild() to
+        resolve the scientific name from, so it must be handed in — and a
+        rebuild without it silently returns nothing, which empties the grid
+        rather than failing. (That is exactly what a re-sort after an edit did.)
+        The Master Species Viewer passes forced_sci at every one of its call
+        sites for the same reason."""
+        self._collection.rebuild(
+            filter_name,
+            forced_sci=(self._name_to_sci.get(filter_name) or None
+                        if self._album_query else None))
+
     def _rebuild_cards(self):
         if not self.fpr or self._collection is None:
             return
@@ -2148,7 +2251,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # Same for the camera filter and sort order (durable on the combos).
         self._collection.set_camera_filter(self._selected_cameras())
         self._collection.set_sort(self._sort_combo.currentData())
-        self._collection.rebuild(filter_name)
+        self._rebuild_collection(filter_name)
         n = len(self._collection)
         placement = self._grid_placement(n)
         for c in range(self.columns):
@@ -2195,7 +2298,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._lineage_db_obj = None
         try:
             from db.master_db import MasterDB
-            if self._read_only:
+            if self._album_mode:
                 root = _config.get("master", "masterbiotadatabase", fallback="").strip()
                 cache = None
             else:
@@ -2251,7 +2354,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         target = (sci or "").strip().lower()
         if not target:
             return False
-        if not self._read_only and not self._trip_radio.isChecked():
+        if not self._album_mode and not self._trip_radio.isChecked():
             self._trip_radio.setChecked(True)   # → reload at Trip scope
         for name, s in self._name_to_sci.items():
             if (s or "").strip().lower() == target:
@@ -2272,7 +2375,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         mw = self._main_window
         if mw is None:
             return
-        opener = "open_album_biota_browser" if self._read_only else "open_trip_biota_browser"
+        opener = "open_album_biota_browser" if self._album_mode else "open_trip_biota_browser"
         fn = getattr(mw, opener, None)
         if fn is not None:
             fn(start_sci=sci)
@@ -2546,12 +2649,15 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._update_selection_display()
 
     def _editable_keys(self, keys) -> set:
-        """Drop keys that can't be edited here: master reference keys (read-only
-        v1) and committed-day trip keys (frozen — 🔒, change only via Empty)."""
+        """Drop keys that can't be edited here: committed-day trip keys (frozen —
+        🔒, change only via Empty) and, in a TRIP, master keys, which are
+        read-only reference cards there. In an ALBUM every key is a master key
+        and they are precisely the ones that ARE editable — the write goes to the
+        master, which is where an album's pictures live."""
         if self._collection is None:
             return set(keys)
         return {k for k in keys
-                if not self._collection.is_master(k)
+                if (self._album_mode or not self._collection.is_master(k))
                 and not self._collection.is_frozen_day(k)}
 
     def _open_species_dialog_for_selection(self):
@@ -2562,13 +2668,18 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
     def _on_card_context_menu(self, upn_key: str):
         from PyQt6.QtWidgets import QMenu
         from PyQt6.QtGui import QCursor
-        # Master reference cards get the shared master menu, limited to the
-        # inventory ops that make sense on a reference card (add / delete). The
-        # fuller surface (qualifiers, pin, move, delete-JPG) lives in the Master
-        # Species Viewer and the album day viewer.
-        if self._collection is not None and self._collection.is_master(upn_key):
+        is_master = (self._collection is not None
+                     and self._collection.is_master(upn_key))
+        # In a TRIP a master card is a read-only reference sitting beside the
+        # trip's own pictures, so it gets the master menu alone, limited to the
+        # inventory ops that make sense on a reference (add / delete).
+        if is_master and not self._album_mode:
             self._master_context_menu(upn_key, ops={"add", "delete", "delete_file"})
             return
+        # In an ALBUM every card is a master picture and this is the ONLY card
+        # menu there is, so it carries both halves: this viewer's own actions
+        # first, then the full master surface appended (which is what
+        # _build_master_menu was written for).
         keys_for_action = (self._selected_keys
                            if upn_key in self._selected_keys and self._selected_keys
                            else {upn_key})
@@ -2578,35 +2689,70 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         n = len(keys_for_action)
         menu = QMenu(self)
         lbl = f"{n} picture{'s' if n != 1 else ''}"
-        # The Album viewer looks but never touches: these pictures are the
-        # master's own files, and an album has no CSVs of its own to persist a
-        # change through. Offering the actions would be an affordance we cannot
-        # honour — the stars and colour swatches on the cards are greyed for the
-        # same reason (RatingEditorItem.can_edit_*).
-        act_species = act_move = act_rate = act_addfiles = None
-        if not self._read_only:
-            act_species = menu.addAction(f"Set species…  ({lbl})")
-            act_move = menu.addAction(f"Move to existing species…  ({lbl})")
-            act_rate = menu.addAction(f"Set rating…  ({lbl})")
-        act_fullres = menu.addAction(f"Full resolution  ({lbl})")
-        act_geo = menu.addAction(f"Get location  ({lbl})")
-        # Headline / Description — normally about the ONE picture it titles; the
-        # editor offers the whole selection behind a tick (off by default).
-        act_hd = None
         try:
             clicked_item = (self._collection.item_for_key(upn_key)
                             if self._collection is not None else None)
         except (ValueError, KeyError):
             clicked_item = None
+
+        # ONE order, whichever viewer you right-click in: name it, judge it,
+        # look at it, describe it, manage its files, delete it. The master-only
+        # actions slot into the same blocks rather than being appended in a
+        # lump, so the menu doesn't reshuffle as you move between Trip and
+        # Album. _build_master_menu is called once per block with just that
+        # block's ops; each call appends where we are in the menu.
+        master_handlers: dict = {}
+
+        def master_block(*ops):
+            """Append this block's master actions (no-op outside album mode)."""
+            if is_master and self._album_mode:
+                master_handlers.update(
+                    self._build_master_menu(menu, upn_key, ops=set(ops)))
+
+        act_species = act_move = act_rate = act_addfiles = None
+        # 1 — naming. In a trip these are the viewer's own; in an album naming
+        # is the master's job (Move to existing species, gated on the JPG rule),
+        # and "Set species" has no album equivalent: it would persist through
+        # per-day CSVs an album does not own.
+        if not self._view_read_only and not self._album_mode:
+            act_species = menu.addAction(f"Set species…  ({lbl})")
+            act_move = menu.addAction(f"Move to existing species…  ({lbl})")
+        master_block("move")
+
+        # 2 — this picture
+        if not self._view_read_only:
+            act_rate = menu.addAction(f"Set rating…  ({lbl})")
+        act_fullres = menu.addAction(f"Full resolution  ({lbl})")
+        act_geo = menu.addAction(f"Get location  ({lbl})")
+
+        # 3 — what is written about it. Headline / Description is normally about
+        # the ONE picture it titles; the editor offers the whole selection
+        # behind a tick (off by default).
+        act_hd = None
         if clicked_item is not None and (clicked_item.can_edit_headline
                                          or clicked_item.can_edit_description):
             menu.addSeparator()
             act_hd = menu.addAction(f"Edit headline / description…  ({lbl})")
-        if not self._read_only:
+        master_block("qualifiers")
+
+        # 4 — its files
+        if not self._view_read_only and not self._album_mode:
             menu.addSeparator()
             act_addfiles = menu.addAction(f"Add new files (scan folder)…  ({lbl})")
+        master_block("add", "pin", "delete_jpg")
+
+        # 5 — removing it
+        master_block("delete", "delete_file")
+        if (is_master and self._album_mode and not master_handlers
+                and self._collection.master_read_only):
+            info = menu.addAction(
+                "Master is read-only — enable in Repository Settings")
+            info.setEnabled(False)
         chosen = menu.exec(QCursor.pos())
         if chosen is None:
+            return
+        if chosen in master_handlers:
+            master_handlers[chosen]()
             return
         if chosen == act_species:
             self._open_species_dialog_for_keys(keys_for_action)
@@ -3052,10 +3198,16 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         if self._collection is None:
             return
         filter_name = self._species_combo.currentData()
-        self._collection.rebuild(filter_name)
+        self._rebuild_collection(filter_name)
         new_order = [self._collection.item(i).key for i in range(len(self._collection))]
         old_order = [c.upn_key for c in self._cards]
         if old_order == new_order:
+            return
+        # A re-sort only re-places widgets it already has. If the query came
+        # back with keys we hold no card for, the grid would end up with holes
+        # (or empty) — rebuild from scratch instead of quietly dropping them.
+        if any(key not in self._cards_by_key for key in new_order):
+            self._rebuild_cards()
             return
 
         cards_by_key = {c.upn_key: c for c in self._cards}

@@ -35,7 +35,7 @@ from engine.exif_writer import exiftool_write
 logger = logging.getLogger("speciesviewer")
 
 # The full set of master card operations, in menu order.
-ALL_OPS = ("qualifiers", "add", "pin", "delete_jpg", "move", "delete", "delete_file")
+ALL_OPS = ("move", "qualifiers", "add", "pin", "delete_jpg", "delete", "delete_file")
 
 
 class MasterCardOpsMixin:
@@ -237,13 +237,23 @@ class MasterCardMenuMixin:
         want = set(ops) if ops is not None else set(ALL_OPS)
         handlers: dict = {}
 
+        # Naming first, then what the picture is, then its files, then removing
+        # it — the same block order the Trip and Album card menus use, so the
+        # menu does not reshuffle as you move between the three viewers.
+        if "move" in want and col.master_upn_moveable(upn_key):
+            a = menu.addAction("Move to existing species…")
+            handlers[a] = lambda: self._do_master_move(upn_key)
+
         if "qualifiers" in want:
             a = menu.addAction("Sex / age / plumage…")
             handlers[a] = lambda: self._do_master_qualifiers(upn_key)
         if "add" in want:
-            a = menu.addAction("Add new renders to the master (scan folder)")
+            # Same words as the trip viewer's own action — it is the same job
+            # (scan the picture's folder, pull in what isn't tracked yet); only
+            # the destination differs, and that is not the user's problem.
+            a = menu.addAction("Add new files (scan folder)…")
             a.setToolTip(
-                "Scan this picture's folder for a render you just made (a new JPG "
+                "Scan this picture's folder for a file you just made (a new JPG "
                 "beside the RAW, + its .dop) and add it to the master under this "
                 "picture's name — updating the best-JPG pick. It then appears here.")
             handlers[a] = lambda: self._do_master_add(upn_key)
@@ -273,10 +283,6 @@ class MasterCardMenuMixin:
                         a = dsub.addAction(f"{j['fname']}   ({j['size']})")
                         handlers[a] = (lambda fn=j["fname"]:
                                        self._do_master_delete_jpg(upn_key, fn))
-
-        if "move" in want and col.master_upn_moveable(upn_key):
-            a = menu.addAction("Move to existing species…")
-            handlers[a] = lambda: self._do_master_move(upn_key)
 
         if "delete" in want and col.master_upn_deletable(upn_key):
             menu.addSeparator()

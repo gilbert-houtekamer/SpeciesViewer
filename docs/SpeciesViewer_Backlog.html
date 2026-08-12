@@ -109,6 +109,29 @@ reads <em>No current work planned</em>.</p>
     609). Every missing picture was checked: they are simply not in the master. Species counts barely
     move, because what was dropped are duplicate frames of species that stayed.
     Design note: <code>docs/plans/album_master_direct_plan.md</code>.</li>
+  <li><strong>The Album viewer IS the Master viewer, with a date window</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-12, step A) — your own observation:
+    the two viewers already shared their engine, and the only difference was which query
+    filled the card list. So an album is now that same per-species master query narrowed
+    to the UPNs in its window — Day, Album and Master are three widths of one restriction.
+    The album loads <em>nothing</em>: tanzania's 4772 picture rows + 19655 file rows in
+    memory became one range query and two sets.
+    <br>
+    Editing came with it, because an album's cards are master cards and the master write
+    path already existed — gated on this machine's master write policy, the same gate the
+    album day viewer uses. So the cull you asked for works: mark, ✖ Blue, files go to the
+    master <code>.trash</code>. ⚠ <strong>Turn "JPG only" off first</strong> — a picture
+    with a JPG is never deleted, so that filter shows exactly the 640 you cannot cull and
+    hides the 4132 you can. All three card menus now share one order and one wording.
+    Design note: <code>docs/plans/species_viewer_convergence_plan.md</code>.</li>
+</ul>
+<h3>To do — next</h3>
+<ul>
+  <li><strong>One species viewer (step B)</strong> <span class="tag-open">OPEN</span> —
+    retire <code>master_species_viewer.py</code> into the album/trip dialog: one dialog,
+    two entry points (Album opens with a date window, Master opens with none). Brings the
+    Master Species Viewer the four card actions it still lacks (Set rating, Full
+    resolution, Get location, Edit headline / description).</li>
 </ul>
 <h3>To do</h3>
 <ul>
