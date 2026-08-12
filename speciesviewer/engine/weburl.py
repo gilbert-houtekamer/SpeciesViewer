@@ -3,7 +3,8 @@
 The site address was being assembled in three places that each knew a little of it:
 `breadcrumb.py:39` (web root + TargetPath + name + '-nl.html'),
 `regenerate_species.py:180` (same, per language), and
-`master_species_viewer.py:396` (the base_url normalisation + percent-encoding).
+the Master Species Viewer's regenerate handler (base_url normalisation +
+percent-encoding; since the viewer merge it lives in `rating_editor.py`).
 None of them could produce a whole clickable URL on its own, so anything outside the
 GUI — a report, a worklist, a CSV a human has to act on — had no way to say "here is
 the page". This module is that missing piece, and the place the convention now lives.

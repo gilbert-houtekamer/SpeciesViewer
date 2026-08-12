@@ -1,6 +1,6 @@
 # One species viewer, three windows on the master
 
-**Raised** 2026-08-12 (user) · step A **DONE** 2026-08-12 · step B **NEXT**
+**Raised** 2026-08-12 (user) · step A **DONE** 2026-08-12 · step B **DONE** 2026-08-12
 
 ## The idea, in the user's words
 
@@ -93,21 +93,66 @@ safety.** Open question left deliberately: whether ✖ Blue should scan the
 unfiltered set (the delete preview already shows thumbnails of exactly what
 would go).
 
-## Step B — one dialog (next)
+## Step B — one dialog (done)
 
-Merge `master_species_viewer.py` (839 lines) into `RatingEditorDialog`: one
-dialog, two entry points — Album (opens with a window) and Master (opens with
-none). The album already has everything that viewer has except its type-ahead
-species field, ↻ refresh and ↻ Web regenerate.
+`RatingEditorDialog` now takes `mode="trip" | "album" | "master"`, and the last
+two are the same thing at different widths:
 
-The concrete pull: the Master Species Viewer's card menu should also offer *Set
-rating*, *Full resolution*, *Get location* and *Edit headline / description*.
-Those handlers live on `RatingEditorDialog` today, so porting them means moving
-them onto the shared mixin — which is B's work, not a patch before it.
+```python
+self._album_mode  = mode in ("album", "master")   # cards come from the master
+self._master_only = mode == "master"              # …with no window
+```
+
+Master mode is an album that never narrows — `_album_restrict` stays `None`.
+`master_species_viewer.py` (839 lines) is **deleted**;
+`open_master_species_viewer` builds the merged dialog.
+
+What crossed over: the species type-ahead (an *editable combo* with a
+contains-filter completer, not a bare line edit — so every `currentData()` caller
+in the dialog is untouched and the list stays browsable), ↻ refresh, ↻ Web
+regenerate, and the species-distribution map (master mode maps every point the DB
+holds for the species, not the points of the pictures on screen; with no date
+window those are different questions).
+
+What the Master viewer gained: *Set rating*, *Full resolution*, *Get location*
+and *Edit headline / description* on the card menu, in the same order as Album
+and Trip.
+
+Details that had to be preserved rather than merged away:
+
+- **Per-mode window geometry** (`RatingEditor` / `AlbumSpeciesViewer` /
+  `MasterSpeciesViewer`) for the dialog AND the large view, so the three windows
+  stop overwriting each other's size and column count.
+- **No placeholder row in master mode.** "— Select a species —" is noise in front
+  of 2246 species where the type-ahead is the picker; the field starts empty on
+  **no** selection (index -1), deliberately not on whatever species sorts first.
+  Album and Trip keep theirs. `_species_count()` stops assuming the row exists.
+- **The cull-confirm wording**, which would otherwise have said "this trip — all
+  species" in the master.
+- **Refresh reports counts, not an inventory** — "Refreshed — 1 new file."
+  Refreshing one picture used to emit a paragraph naming every file; the names go
+  to the log.
+
+### The bug worth remembering
+
+The dialog crashed on construction in master mode: the Master radio was checked
+*after* `buttonToggled` was connected, so the handler ran and touched the day
+combo eleven lines before it existed. The existing code sets the initial radio
+**before** connecting for exactly that reason. PyQt aborts the process on an
+exception in a slot, so there was no traceback — found with `sys.settrace`.
 
 The Trip viewer stays separate: a trip genuinely owns its pictures (day CSVs,
 write-back, frozen days). It is not a window on the master and should not pretend
 to be.
+
+## What is left
+
+- ✖ Blue / ✖ Purple only see what the JPG filter shows, and a picture with a JPG
+  is never deletable — so the cull finds nothing while "JPG only" is on. The
+  dialog explains it; whether the cull should scan the unfiltered set is still
+  open (see step A).
+- *Get location* is inert in this dialog: `RatingEditorCollection` inherits the
+  base `location_targets`, which returns nothing. Pre-existing in all three modes.
 
 ## Related
 

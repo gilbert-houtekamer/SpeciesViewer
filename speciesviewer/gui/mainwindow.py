@@ -1515,7 +1515,7 @@ class MainWindow(QMainWindow):
         Needs no active trip — the species list + pictures come from the master
         DB. Editing follows the machine's master read-only policy. `initial_sci`
         opens straight on that species (the Biota Browser's Edit-panel jump)."""
-        from gui.master_species_viewer import MasterSpeciesViewerDialog
+        from gui.rating_editor import RatingEditorDialog
         master_root = _config.get("master", "masterbiotadatabase", fallback="")
         if not master_root:
             QMessageBox.warning(self, "Master Species Viewer",
@@ -1527,9 +1527,11 @@ class MainWindow(QMainWindow):
             existing.show_species(initial_sci)
             self._raise_dialog(existing)
             return
-        # Strong ref on the main window — see open_rating_editor for the why.
-        self._master_species_viewer_dlg = MasterSpeciesViewerDialog(
-            self, initial_sci=initial_sci)
+        # The same dialog the Album viewer is, opened with no date window — see
+        # docs/plans/species_viewer_convergence_plan.md. Strong ref on the main
+        # window: see open_rating_editor for the why.
+        self._master_species_viewer_dlg = RatingEditorDialog(
+            self, mode="master", initial_sci=initial_sci)
         self._master_species_viewer_dlg.show()
 
     def open_biota_browser(self, start_mode="tree", start_sci=None):

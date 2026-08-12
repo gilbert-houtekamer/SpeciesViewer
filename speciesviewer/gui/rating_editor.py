@@ -16,7 +16,7 @@ _ASSETS = Path(__file__).resolve().parent.parent / "assets"
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea, QGridLayout,
     QLabel, QFrame, QPushButton, QSpinBox, QComboBox, QSizePolicy, QCheckBox,
-    QProgressDialog, QRadioButton, QButtonGroup, QMessageBox, QStyle,
+    QProgressDialog, QRadioButton, QButtonGroup, QMessageBox, QStyle, QCompleter,
 )
 from PyQt6.QtGui import QPixmap, QImage, QGuiApplication, QIcon, QPainter, QColor
 from PyQt6.QtCore import (Qt, QTimer, QSize, QRect, QEvent, pyqtSignal, QObject,
@@ -1197,36 +1197,49 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
     computed Rate descending.
     """
 
-    def __init__(self, parent, trip_root_dir: str, day_str: str = None,
-                 album_mode: bool = False, scope_label: str = "Trip",
-                 initial_sci: str = None):
+    def __init__(self, parent, trip_root_dir: str = "", day_str: str = None,
+                 mode: str = "trip", scope_label: str = None,
+                 initial_sci: str = None, album_mode: bool = None):
         super().__init__(parent)
         # When launched from the Biota Browser's Edit panel: open straight on this
         # species (a scientific name; resolved to the combo entry after load).
         self._initial_sci = (initial_sci or "").strip() or None
-        # album_mode: this dialog is a window on the MASTER (a date range), not a
-        # trip that owns its pictures. Every card is a master picture, the third
-        # scope is the whole master rather than a Trip+Master compare, and the
-        # species page / lineage come from the real master. It used to also mean
-        # "read-only", which is why the flag was called that — but an album's
-        # pictures being the master's own is the reason editing WORKS here (it
-        # writes the master, like the album day viewer), not a reason to forbid
-        # it. Whether you may edit is _view_read_only, decided per load from the
-        # machine's master write policy.
-        self._album_mode = bool(album_mode)
+        # THREE MODES, and the last two are the same thing at different widths:
+        #
+        #   trip   — the trip owns its pictures (day CSVs, write-back, frozen days)
+        #   album  — a date window on the master: Day / Album / Master scopes
+        #   master — the master with NO window at all, one species at a time
+        #
+        # album and master are both "master-backed": every card comes from
+        # pictures_for_species(), narrowed by set_master_scope() to whatever the
+        # window allows — and master mode simply never narrows. That is the whole
+        # of what used to be a separate 839-line Master Species Viewer.
+        if album_mode is not None:          # pre-mode callers
+            mode = "album" if album_mode else "trip"
+        if mode not in ("trip", "album", "master"):
+            raise ValueError(f"unknown viewer mode {mode!r}")
+        self._mode = mode
+        self._album_mode = mode in ("album", "master")   # cards come from the master
+        self._master_only = mode == "master"             # …with no window
+        self._scope_label = scope_label or {
+            "trip": "Trip", "album": "Album", "master": "Master"}[mode]
+        # Whether you may edit is _view_read_only, decided per load from the
+        # machine's master write policy — an album's pictures being the master's
+        # own is the reason editing WORKS here, not a reason to forbid it.
         self._view_read_only = self._album_mode   # until a load says otherwise
-        self._scope_label = scope_label
-        self.setWindowTitle(f"{scope_label} Species Viewer" if album_mode
-                            else "Trip Species Viewer")
+        self.setWindowTitle(f"{self._scope_label} Species Viewer"
+                            if self._album_mode else "Trip Species Viewer")
         self.setWindowFlags(self.windowFlags()
                             | Qt.WindowType.WindowMinimizeButtonHint
                             | Qt.WindowType.WindowMaximizeButtonHint)
-        self._trip_root = Path(trip_root_dir)
+        # No root in master mode: the master needs no trip and no album.
+        self._trip_root = Path(trip_root_dir) if trip_root_dir else None
         self._initial_day = day_str
         self.fpr: FilePicture | None = None
         self.columns = 3
         # Restore per-machine remembered geometry + column count (.ini).
-        self._geo_key = "RatingEditor"
+        self._geo_key = {"trip": "RatingEditor", "album": "AlbumSpeciesViewer",
+                         "master": "MasterSpeciesViewer"}[self._mode]
         _st = restore_window(self, self._geo_key, default_size=(1000, 720))
         if _st["cols"]:
             self.columns = max(1, min(8, _st["cols"]))
@@ -1304,13 +1317,24 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._scope_grp.addButton(self._day_radio)
         self._scope_grp.addButton(self._trip_radio)
         self._scope_grp.addButton(self._tm_radio)
-        (self._day_radio if day_str else self._trip_radio).setChecked(True)
+        # Pick the starting scope BEFORE connecting: the handler reloads and
+        # touches widgets built further down.
+        (self._tm_radio if self._master_only else
+         self._day_radio if day_str else self._trip_radio).setChecked(True)
         self._scope_grp.buttonToggled.connect(self._on_scope_toggled)
-        top.addWidget(QLabel("Scope:"))
+        self._scope_label_w = QLabel("Scope:")
+        top.addWidget(self._scope_label_w)
         top.addWidget(self._day_radio)
         top.addWidget(self._trip_radio)
         top.addWidget(self._tm_radio)
         top.addSpacing(8)
+        if self._master_only:
+            # No window means no widths to choose between — the master IS the
+            # scope. (The radios stay built so the rest of the dialog can keep
+            # asking them questions; _master_only short-circuits the answers.)
+            for w in (self._scope_label_w, self._day_radio,
+                      self._trip_radio, self._tm_radio):
+                w.hide()
 
         # Day picker (visible only in Day scope)
         self._day_combo = QComboBox()
@@ -1322,6 +1346,22 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._species_combo = QComboBox()
         self._species_combo.setMinimumWidth(200)
         self._species_combo.setToolTip("Species to view")
+        if self._master_only:
+            # ~2000 species is too many to scroll: type to narrow instead. Still
+            # a combo, so every currentData() caller in this dialog is unchanged
+            # — and unlike a bare line edit you can still browse the list.
+            self._species_combo.setMinimumWidth(260)
+            self._species_combo.setEditable(True)
+            self._species_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+            self._species_combo.lineEdit().setPlaceholderText(
+                "Type a Dutch, English or scientific name…")
+            self._species_combo.setToolTip(
+                "Species to view — type any part of a Dutch, English or "
+                "scientific name")
+            comp = self._species_combo.completer()
+            comp.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            comp.setFilterMode(Qt.MatchFlag.MatchContains)
+            comp.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
         self._species_combo.currentIndexChanged.connect(self._on_species_changed)
         top.addWidget(self._species_combo)
         # Name-language profile — which of NL/EN/Sci reads out under each picture
@@ -1380,6 +1420,30 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                                   "(hero, grouped photos, siblings)")
         self._page_btn.clicked.connect(self._open_species_page)
         top.addWidget(self._page_btn)
+
+        # Master-backed only: re-read this species from disk, and republish its
+        # page. Both act on the master, so they mean nothing for a trip that owns
+        # its own pictures. Visibility follows the write policy (_apply_lock_ui).
+        self._refresh_btn = QPushButton("↻")
+        self._refresh_btn.setFixedWidth(38)
+        self._refresh_btn.setToolTip(
+            "Re-read this species from the master and repaint. "
+            "Also ingests any new file rendered into the species folder since "
+            "the last look — a fresh DxO JPG is invisible to the master until "
+            "something scans for it, which is why a regenerated page can come "
+            "back unchanged.")
+        self._refresh_btn.clicked.connect(self._on_master_refresh)
+        top.addWidget(self._refresh_btn)
+
+        self._regen_btn = QPushButton("↻ Web")
+        self._regen_btn.setToolTip(
+            "Rebuild this species' website page from the current master data and "
+            "upload it — page AND the pictures it links to — to the live site")
+        self._regen_btn.clicked.connect(self._on_master_regenerate)
+        top.addWidget(self._regen_btn)
+        if not self._album_mode:
+            self._refresh_btn.hide()
+            self._regen_btn.hide()
         top.addStretch()
 
         self._jpg_btn = QPushButton("JPG only")
@@ -1564,11 +1628,17 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         for w in (self._del_blue_btn, self._del_purple_btn,
                   self._sel_move_btn, self._sel_species_btn):
             w.setVisible(not locked and not self._view_read_only)
+        if self._album_mode:
+            # Both act on the master, so they follow the same write policy. ↻
+            # (re-read from disk) is a read for a read-only master, but the
+            # ingest half of it is not — keep the pair together.
+            self._refresh_btn.setVisible(not self._view_read_only)
+            self._regen_btn.setVisible(not self._view_read_only)
         if self._album_mode and self._view_read_only:
             self._lock_banner.setText(
                 "👁 View only — this machine's master is read-only, so nothing "
                 "here can be changed."
-                if self._album_query else
+                if self._album_query or self._master_only else
                 "👁 View only — showing this album's old extracted day files; "
                 "there is no master on this machine to read or write.")
             self._lock_banner.show()
@@ -1588,14 +1658,17 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # deleted via the master path (JPG-protected, master .trash, RO aware).
         species = self._species_combo.currentData()
         day = self._current_day() if self._day_radio.isChecked() else None
+        where = ("the whole master" if self._master_only else
+                 f"this {self._scope_label.lower()}"
+                 + ("" if self._album_mode else " + master"))
         if species and day:
             scope = f"{species} — this day ({day})"
         elif species:
-            scope = f"{species} — this trip + master"
+            scope = f"{species} — {where}"
         elif day:
             scope = f"this day ({day}) — all species"
         else:
-            scope = "this trip — all species"
+            scope = f"{where} — all species"
 
         # `day` gates master inclusion for a TRIP (day scope shows no master
         # references). In an album the master pictures ARE the day — the scope
@@ -1661,7 +1734,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                         "yes" if dlg.show_preview_pref() else "no")
 
         deleted = 0
-        if trip_deletable:
+        if trip_deletable and self._trip_root is not None:
             _t, _p, deleted = self._collection.delete_trip_keys(
                 trip_deletable, self._trip_root / ".trash", day_hint=day or "")
         m_deleted = 0
@@ -1687,7 +1760,10 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # the Album view instead of showing a different collection.
         days = []
         use_review_dirs = True
-        if self._album_mode:
+        if self._master_only:
+            self._album_master_source()     # opens the DB + the species list
+            use_review_dirs = False
+        elif self._album_mode:
             db, album_days = self._album_master_source()
             days = list(album_days)
             # If the master answered at all, that answer is the album's day list
@@ -1893,9 +1969,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             # The album's own species list is the useful one in every scope,
             # Master included: "this is what I saw here — now show me everything
             # I have of it".
-            n_species = self._species_combo.count() - 1
             self._status.setText(
-                f"{n_species} species in this {self._scope_label.lower()}"
+                f"{self._species_count()} species in this {self._scope_label.lower()}"
                 f"{ro_note} — select one to view pictures.")
         else:
             n_master = db.picture_count()
@@ -1993,23 +2068,42 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         if self._album_days is not None:
             return self._album_db, self._album_days
         self._album_days = []          # a negative answer caches too
-        from utils.virttrip_config import read_virttrip_ini
-        ini = read_virttrip_ini(str(self._trip_root)) or {}
-        fromdate = (ini.get("fromdate") or "").strip()
-        todate = (ini.get("todate") or "").strip()
-        # The album's published name ("tanzania"), not its folder ("tanzaniadb")
-        # — the same name the Biota Browser puts in its title bar.
-        self._album_name = (ini.get("trip_name") or "").strip() or self._trip_root.name
         master_root = (_config.get("master", "masterbiotadatabase", fallback="")
                        or "").replace('"', "").replace("'", "").strip()
-        if not (fromdate and todate and master_root and Path(master_root).exists()):
-            logger.info("album viewer: no date range, or no master on this "
-                        "machine — cannot read the album from the master")
+        if not (master_root and Path(master_root).exists()):
+            logger.info("species viewer: no master on this machine")
             return None, []
+        fromdate = todate = ""
+        if not self._master_only:
+            from utils.virttrip_config import read_virttrip_ini
+            ini = read_virttrip_ini(str(self._trip_root)) or {}
+            fromdate = (ini.get("fromdate") or "").strip()
+            todate = (ini.get("todate") or "").strip()
+            # The album's published name ("tanzania"), not its folder
+            # ("tanzaniadb") — the name the Biota Browser puts in its title too.
+            self._album_name = ((ini.get("trip_name") or "").strip()
+                                or self._trip_root.name)
+            if not (fromdate and todate):
+                logger.info("album viewer: no date range — cannot read the album "
+                            "from the master")
+                return None, []
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             from batch import album_source
             db = album_source.open_master_db(master_root)
+            if self._master_only:
+                # No window: there is nothing to resolve. Every species in the
+                # master is on offer and the restriction stays None, which is
+                # precisely what makes this the Master Species Viewer.
+                self._album_species = {
+                    (r.get("sci") or "").strip(): r
+                    for r in db.species_picker_rows() if (r.get("sci") or "").strip()}
+                self._album_db = db
+                if self._master_db is None:
+                    self._master_db, self._master_root = db, master_root
+                logger.info(f"master viewer: {len(self._album_species)} species, "
+                            f"no date window")
+                return self._album_db, self._album_days
             by_day = db.pictures_in_daterange(fromdate, todate)
             self._album_days = sorted(by_day)
             self._album_upns_by_day = {
@@ -2055,7 +2149,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         directly. fpr stays the empty shell the collection expects."""
         self.fpr.fi = Files(None)
         self.fpr.upn = Pictures(None)
-        if self._tm_radio.isChecked():
+        if self._master_only or self._tm_radio.isChecked():
             self._album_restrict = None
             scope = "the whole master"
         elif scope_day:
@@ -2078,6 +2172,9 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         picture count. Where an album's data comes from is not a transient
         message — it decides whether the numbers can be trusted — so it belongs
         somewhere that stays put."""
+        if self._master_only:
+            self.setWindowTitle("Master Species Viewer")
+            return
         name = f" · {self._album_name}" if self._album_name else ""
         self.setWindowTitle(
             f"{self._scope_label} Species Viewer{name} · {source_note}")
@@ -2111,7 +2208,12 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
     def _populate_species_combo(self, restore_selection=None):
         self._species_combo.blockSignals(True)
         self._species_combo.clear()
-        self._species_combo.addItem("— Select a species —", None)
+        if not self._master_only:
+            # With 2000+ species the type-ahead IS the picker, so a "— Select a
+            # species —" row at the top of the list is only noise. Master mode
+            # starts on NO selection instead (see below): an empty field showing
+            # its placeholder, rather than whatever species sorts first.
+            self._species_combo.addItem("— Select a species —", None)
 
         # Per species: does any TRIP picture have a real JPG on disk yet? A
         # species whose trip pictures are all RAW/HEIC won't appear on the
@@ -2135,6 +2237,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 self._name_to_sci.setdefault(name, sci)
             for name in sorted(names, key=str.casefold):
                 self._species_combo.addItem(name, name)
+            if self._master_only:
+                self._species_combo.setCurrentIndex(-1)   # nothing picked yet
             self._species_combo.blockSignals(False)
             return self._finish_species_combo(restore_selection)
         for upn_key, upn_row in self.fpr.upn.UniquePictureName_dict.items():
@@ -2157,6 +2261,11 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
 
         self._species_combo.blockSignals(False)
         self._finish_species_combo(restore_selection)
+
+    def _species_count(self) -> int:
+        """How many species the picker offers — the placeholder row, where there
+        is one, is not a species."""
+        return self._species_combo.count() - (0 if self._master_only else 1)
 
     def _finish_species_combo(self, restore_selection) -> None:
         """Pick the entry to show once the combo is filled: the one that was
@@ -2239,8 +2348,9 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._last_clicked_key = None
         filter_name = self._species_combo.currentData()
         if filter_name is None:
-            n_species = self._species_combo.count() - 1  # subtract placeholder
-            self._status.setText(f"{n_species} species loaded — select one to view pictures.")
+            self._status.setText(
+                f"{self._species_count()} species loaded — "
+                f"select one to view pictures.")
             self._update_crumb()
             return
         self._collection.set_species_lang(self._species_lang)
@@ -2364,6 +2474,136 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                     return True
         return False
 
+    # ── Master-backed species actions (Album + Master modes) ──────────────────
+
+    def _on_master_refresh(self):
+        """Re-read the species in view from the master, ingesting anything new
+        on disk.
+
+        The master learns about a file only when something scans for it. Render
+        a tighter crop in PhotoLab and the species folder gains a `_DxO.jpg` no
+        row anywhere mentions — so "Regenerate page" faithfully rebuilds the page
+        from the files it knows and it comes back unchanged. This closes that
+        gap. Whole species per call, never per picture: ONE folder listing + ONE
+        exiftool call."""
+        sci = self._current_sci()
+        if self._collection is None or not sci or self._master_db is None:
+            self._status.setText("Pick a species first, then refresh it.")
+            return
+        added, resized, rerated, failed = [], [], [], 0
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            self._master_db.ensure_fresh()
+            if self._master_editable:
+                pics = self._master_db.pictures_for_species(sci)
+                keys = [p["UniquePictureName"] for p in pics
+                        if p.get("UniquePictureName")]
+                try:
+                    res = self._collection.refresh_master_species(pics)
+                    added = res.get("added", []) or []
+                    resized = res.get("resized", []) or []
+                except Exception as e:
+                    failed += 1
+                    logger.warning(f"refresh: species scan failed: {e}", exc_info=True)
+                # Stars/colour an external tool wrote into a sidecar are neither
+                # a new file nor a changed pixel size, so nothing above sees
+                # them. A second batched read — again ONE exiftool call.
+                if keys:
+                    self._rebuild_collection(self._species_combo.currentData())
+                    try:
+                        rerated = self._collection.resync_master_metadata(keys)
+                    except Exception as e:
+                        logger.warning(f"refresh: metadata resync failed: {e}")
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        self._rebuild_cards()
+        # Counts, not inventories. Refreshing one picture used to produce a
+        # paragraph naming every file; the names are in the log if they are ever
+        # wanted, and the status line is one line.
+        for label, rows in (("added", added), ("corrected", resized),
+                            ("re-read", rerated)):
+            if rows:
+                logger.info(f"refresh {label}: {rows}")
+        def _n(count, noun):
+            return f"{count} {noun}{'' if count == 1 else 's'}"
+        bits = []
+        if added:
+            bits.append(_n(len(added), "new file"))
+        if resized:
+            bits.append(_n(len(resized), "corrected JPG"))
+        if rerated:
+            bits.append(_n(len(rerated), "rating/colour change"))
+        if bits:
+            self._status.setText("Refreshed — " + ", ".join(bits) + ".")
+        elif failed:
+            self._status.setText(
+                f"Refreshed — {failed} picture(s) could not be scanned (see the log).")
+        else:
+            self._status.setText("Refreshed — nothing new or changed on disk.")
+
+    def _on_master_regenerate(self):
+        """Rebuild this species' website page from the master and upload it."""
+        sci = self._current_sci()
+        if not sci or self._master_db is None:
+            QMessageBox.information(self, "Regenerate page",
+                                    "Pick a species first, then regenerate its page.")
+            return
+        name = self._species_combo.currentData() or sci
+        if QMessageBox.question(
+                self, "Regenerate species page",
+                f"Rebuild the website page for “{name}” from the current master "
+                f"data and upload it to the live website?\n\n"
+                f"This re-picks the best photos (per age/sex/plumage) and "
+                f"republishes just this species' page. It does not change your "
+                f"master pictures.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+
+        prog = QProgressDialog("Regenerating…", None, 0, 0, self)
+        prog.setWindowTitle("Regenerate species page")
+        prog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        prog.setCancelButton(None)
+        prog.setMinimumDuration(0)
+        prog.show()
+        QApplication.processEvents()
+
+        def _cb(msg):
+            prog.setLabelText(msg)
+            QApplication.processEvents()
+
+        try:
+            from engine.regenerate_species import regenerate_species_page
+            res = regenerate_species_page(sci, self._master_db, progress_cb=_cb)
+        except Exception as e:
+            logger.error(f"Regenerate species failed: {e}", exc_info=True)
+            res = {"ok": False, "error": str(e)}
+        finally:
+            prog.close()
+
+        if not res.get("ok"):
+            QMessageBox.warning(self, "Regenerate species page",
+                                res.get("error", "Regeneration failed — see the log."))
+            return
+        self._status.setText(f"Regenerated and uploaded the page for {name}.")
+        from urllib.parse import quote
+        base = _config.get("websettings", "base_url", fallback="").strip().rstrip("/")
+        if not base:
+            base = "https://houtekamer.com"
+        elif not base.startswith("http"):
+            base = "https://" + base
+        links = [f'<a href="{base + quote(u, safe="/")}">{base + u}</a>'
+                 for u in res.get("urls", [])]
+        box = QMessageBox(self)
+        box.setWindowTitle("Regenerate species page")
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setTextFormat(Qt.TextFormat.RichText)
+        box.setText(f"Done — the page for “{name}” was rebuilt and uploaded."
+                    f"<br><br>" + "<br>".join(links))
+        box.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        box.exec()
+
     def _open_species_page(self):
         """Jump to this species' pretty page in the Biota Browser, at the
         trip/album level (a fresh browser — any prior scope/day state is not
@@ -2375,7 +2615,9 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         mw = self._main_window
         if mw is None:
             return
-        opener = "open_album_biota_browser" if self._album_mode else "open_trip_biota_browser"
+        opener = ("open_biota_browser" if self._master_only else
+                  "open_album_biota_browser" if self._album_mode else
+                  "open_trip_biota_browser")
         fn = getattr(mw, opener, None)
         if fn is not None:
             fn(start_sci=sci)
@@ -2451,6 +2693,27 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
     def _on_sort_changed(self, _idx: int):
         self._rebuild_cards()
 
+    def _show_species_distribution_map(self):
+        """Every GPS point the master holds for the species in view (Master
+        mode's map — the standalone Master Species Viewer's behaviour)."""
+        sci = self._current_sci()
+        if not sci or self._master_db is None:
+            QMessageBox.information(self, "Map",
+                                    "Pick a species first, then open the map.")
+            return
+        points = self._master_db.gps_points_for_species(sci)
+        name = self._species_combo.currentData() or sci
+        if not points:
+            QMessageBox.information(
+                self, "Map",
+                f"No GPS points for {name}.\n\n"
+                f"About 40% of the master has no GPS — older material predates "
+                f"in-camera GPS. (Map-based backfill is a later phase.)")
+            return
+        from gui.map_view import MapView
+        self._map_dlg = MapView(self, self._master_db, sci, name, points)
+        self._map_dlg.show()
+
     def _on_show_map(self):
         """Plot the SHOWN pictures of this species on a map — the trip's own GPS
         points (and the master reference pictures' points in Trip+Master scope), so
@@ -2458,6 +2721,13 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         photographed; geotagging a no-GPS picture from here is a separate step (the
         write path the culling map already has, to be ported to this collection)."""
         if not self.fpr or self._collection is None:
+            return
+        # Master mode maps the species' DISTRIBUTION — every point the master has
+        # for it, straight from the DB — rather than the points of the pictures
+        # that happen to be on screen. With no date window those two questions
+        # are different, and the distribution is the one worth asking.
+        if self._master_only:
+            self._show_species_distribution_map()
             return
         keys = [c.upn_key for c in self._cards] or list(self._collection.all_keys())
         if not keys:
@@ -2558,7 +2828,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         if upn_key not in keys:
             return
         dlg = LargeImageView(self, self._collection, keys, keys.index(upn_key),
-                             settings_key="RatingEditor", auto_advance=True,
+                             settings_key=self._geo_key, auto_advance=True,
                              initial_selection=set(self._selected_keys))
         dlg.picture_changed.connect(self._on_large_view_changed)
         dlg.picture_image_changed.connect(self._on_large_view_image_changed)
