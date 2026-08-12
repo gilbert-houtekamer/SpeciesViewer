@@ -202,7 +202,11 @@ class TripInfoPanel(QWidget):
 
         menu = QMenu()
         open_action = menu.addAction("Open Trip Folder")
-        retire_action = menu.addAction("Retire trip (delete data)…")
+        # A trip whose own day data is gone is a leftover husk, not a trip to
+        # retire — same dialog, but the menu says what it will actually do.
+        gutted = not (Path(trip_dir) / "metadata" / "review").is_dir()
+        retire_action = menu.addAction("Remove trip from this machine…" if gutted
+                                       else "Retire trip (delete data)…")
         action = menu.exec(QCursor.pos())
         if action == open_action:
             if os.path.isdir(str(trip_dir)):

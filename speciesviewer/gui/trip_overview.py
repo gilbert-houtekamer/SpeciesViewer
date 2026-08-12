@@ -476,8 +476,9 @@ def _show_trip_not_ready(self, image_root, review_root, trip_root):
     if repo_missing:
         headline = "This trip's folders are not on this machine."
         detail = (f"Expected the trip's own data in {review_root}.\n\n"
-                  f"Either the Trip Database path points somewhere else, or the "
-                  f"trip has not been created/imported here yet.")
+                  f"Either the Trip Database path points somewhere else, the trip "
+                  f"has not been created/imported here yet, or it was deleted and "
+                  f"only its registration is left.")
         fix_setting = True
     elif not cp_root:
         headline = "The CurrentPictures root is not set on this machine."
@@ -517,6 +518,22 @@ def _show_trip_not_ready(self, image_root, review_root, trip_root):
             populate_trip_overview(self)      # re-check with whatever was saved
         btn.clicked.connect(_open_settings)
         row.addWidget(btn)
+    if repo_missing:
+        # The other reading of "not on this machine": the trip is GONE and what
+        # is left is its registration — a husk folder still listed in the Trips
+        # panel (that panel is a directory listing), plus remembered paths in the
+        # GUI cache. Offer the way out here, where the dead end is discovered,
+        # instead of leaving Explorer as the only option.
+        rm_btn = QPushButton("Remove this trip from this machine…")
+        def _remove_trip():
+            from gui.trip_retire import retire_trip_dialog
+            retire_trip_dialog(self, str(trip_root))
+            populate_trip_overview(self)      # repaint whatever state we ended in
+        rm_btn.clicked.connect(_remove_trip)
+        rm_btn.setToolTip("Deletes only this machine's copy and its registration. "
+                          "The master, the album and the published website are "
+                          "not touched.")
+        row.addWidget(rm_btn)
     row.addStretch()
     layout.addLayout(row)
     layout.addStretch()

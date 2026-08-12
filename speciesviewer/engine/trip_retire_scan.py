@@ -6,8 +6,11 @@
 # live in CurrentPictures + the master, so removing it reclaims duplicates — but
 # the day blogs and trip intro are narrative that must survive in the virttrip.
 #
-# Reporting only (review over auto-fix). Three blockers must pass before a delete
-# is allowed; the rest are warnings the user can acknowledge.
+# Reporting only (review over auto-fix). Three blockers describe what this machine
+# would lose; the rest are warnings. The GUI enables the delete when they pass, and
+# otherwise lets the user override the failed blockers BY NAME — a hard refusal is
+# what pushes people to delete in Explorer, which leaves a husk folder behind that
+# still shows up in the Trips panel (see `gutted` in the report).
 #   B1 virttrip exists   B2 virttrip has day blogs   B3 not the active trip
 #   W1 virttrip intro    W2 trip blogs migrated      W3 virttrip biota non-empty
 #   W4 species verdict archived in the master
@@ -32,14 +35,18 @@ def _same_path(a, b):
 
 
 def _dir_size(root):
+    """(total bytes, file count) in one walk — a leftover husk and a full trip
+    repo look identical by name, so the report has to state which one it is."""
     total = 0
+    count = 0
     for dirpath, _dirs, files in os.walk(root):
         for f in files:
+            count += 1
             try:
                 total += os.path.getsize(os.path.join(dirpath, f))
             except OSError:
                 pass
-    return total
+    return total, count
 
 
 def _blog_names(repo):
@@ -171,11 +178,20 @@ def scan(trip_db, virttrips_root, active_trip_db="", master_db=""):
 
     can_retire = all(b["passed"] for b in blockers)
     has_warnings = any(not w["passed"] for w in warnings)
+    size_bytes, n_files = _dir_size(trip_db)
+    # A trip whose own day data (metadata/review) is gone is a LEFTOVER: someone
+    # already deleted the contents outside the app, and what is listed in the
+    # Trips panel is an empty husk. The panel is a directory listing, so the row
+    # only disappears when the folder itself goes.
+    gutted = not os.path.isdir(os.path.join(trip_db, "metadata", "review"))
     return {"ok": True, "name": name, "trip_db": trip_db, "virttrip_db": virttrip_db,
             "match_method": match_method,
-            "size_bytes": _dir_size(trip_db), "n_pictures": _count_pictures(trip_db),
+            "size_bytes": size_bytes, "n_files": n_files,
+            "n_pictures": _count_pictures(trip_db),
             "unmigrated_blogs": unmigrated,
+            "trip_blogs": sorted(trip_blogs), "gutted": gutted,
             "blockers": blockers, "warnings": warnings,
+            "failed_blockers": [b["label"] for b in blockers if not b["passed"]],
             "can_retire": can_retire, "has_warnings": has_warnings}
 
 
@@ -245,7 +261,25 @@ def format_report(rep):
         f"Retire trip: {rep['name']}  (dry-run — no changes)",
         f"  trip data : {rep['trip_db']}",
         f"  virttrip  : {rep['virttrip_db'] or '(none)'}",
-        f"  size      : {_fmt_size(rep['size_bytes'])}   pictures: {rep['n_pictures']}",
+        f"  size      : {_fmt_size(rep['size_bytes'])}   files: {rep.get('n_files', 0)}"
+        f"   pictures: {rep['n_pictures']}",
+    ]
+    if rep.get("gutted"):
+        lines += [
+            "",
+            "  LEFTOVER — this trip's own day data (metadata/review) is already gone,",
+            "  so what is left is a husk that only keeps the row in the Trips panel.",
+        ]
+    # The day blogs are the one thing in here that exists nowhere else, so name
+    # every file rather than reporting a count.
+    blogs = rep.get("trip_blogs") or []
+    lines.append("")
+    if blogs:
+        lines.append(f"  Day blogs in this folder ({len(blogs)}) — deleted with it:")
+        lines += [f"    {b}" for b in blogs]
+    else:
+        lines.append("  Day blogs in this folder: none")
+    lines += [
         "",
         "  Blockers (all must pass):",
     ]
@@ -256,6 +290,13 @@ def format_report(rep):
     for w in rep["warnings"]:
         lines.append(f"    [{'OK' if w['passed'] else '!!'}] {w['label']} — {w['detail']}")
     lines.append("")
-    lines.append(f"  Verdict: {'CAN RETIRE' if rep['can_retire'] else 'BLOCKED'}"
-                 + (" (with warnings to acknowledge)" if rep['can_retire'] and rep['has_warnings'] else ""))
+    if rep["can_retire"]:
+        lines.append("  Verdict: CAN RETIRE"
+                     + (" (with warnings to acknowledge)" if rep["has_warnings"] else ""))
+    else:
+        # Not a dead end: the blockers describe what this machine would lose, and
+        # the dialog lets you override them by name. Refusing outright is what
+        # sends people to Explorer, which leaves exactly the husk above.
+        lines.append("  Verdict: BLOCKED — delete only by overriding "
+                     f"{len(rep['failed_blockers'])} blocker(s) explicitly.")
     return "\n".join(lines)
