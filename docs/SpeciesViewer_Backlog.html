@@ -60,7 +60,9 @@ reads <em>No current work planned</em>.</p>
     <li><strong>Albums — smart <em>Create</em> arc</strong> <span class="tag-progress">IN PROGRESS</span> —
       one step left: fold <em>Extract Days</em> into Create's finish (ch. 2).</li>
     <li><strong>Tracklog geotag (GPX import)</strong> — parse a logger/phone track, match photos by timestamp, write GPS (ch. 3).</li>
-    <li><strong>Map polish</strong> — day-map delete; cosmetic polish folded into ch. 15 (ch. 3).</li>
+    <li><strong>Map polish</strong> <span class="tag-shipped">SHIPPED</span> — day-map delete now
+      works on a pre-pipeline (not-yet-Read-&amp;-Summarized) day too; cosmetic polish stays
+      folded into ch. 15 (ch. 3).</li>
     <li><strong>GPM on a southern/western trip</strong> <span class="tag-shipped">VERIFIED</span> — hemisphere sign on S/W coords holds in all four quadrants (ch. 1).</li>
     <li><strong>Committed-day protection</strong> <span class="tag-shipped">SHIPPED</span> — the
       blue-delete accounting audit (ch. 14 follow-up) grew into a full fix: committed trip days are
@@ -189,9 +191,17 @@ reads <em>No current work planned</em>.</p>
     What exists today is not a substitute: the map interpolates between the photos taken just
     before and after (your own pictures as a poor-man's tracklog), which cannot help a day with
     no GPS'd photos at all.</li>
-  <li><strong>Map polish</strong> <span class="tag-open">OPEN</span> — extend map-delete to the day
-    map. Remaining cosmetic polish is folded into ch. 15. Phase 3 (rectangle-select) and Phase 4
-    (published Leaflet) are dropped — not needed with the functionality we now have.</li>
+</ul>
+<h3>Done</h3>
+<ul>
+  <li><strong>Map polish</strong> <span class="tag-shipped">SHIPPED</span> — extended map-delete to
+    the day map. It always worked once a day had been through <em>Read &amp; Summarize</em>
+    (the pipeline-CSV-backed collection); a day map opened before that step used the sidecar-backed
+    culling collection instead, which had no trash/day-lookup support at all, so <em>Delete…</em>
+    silently never appeared there. Live-verified on the laptop (2026 Zeeland / 2026-05-31): file
+    moved to trash, day recount 29→28. Remaining cosmetic polish stays folded into ch. 15. Phase 3
+    (rectangle-select) and Phase 4 (published Leaflet) were already dropped — not needed with the
+    functionality we now have.</li>
 </ul>
 <h3>Parked / rejected</h3>
 <ul>
@@ -208,15 +218,16 @@ reads <em>No current work planned</em>.</p>
 
 <!-- ============================================================ -->
 <h2>4. Trip-to-Master Pipeline</h2>
-<h3>To do</h3>
-<ul>
-  <li><strong>Export / import a trip</strong> <span class="tag-open">OPEN / NEW</span> —
-    move a trip between machines as a unit. Came up while deciding what should happen when the
-    master is not reachable: the answer there is "that is an error", which only holds if there is a
-    proper way to carry work from one machine to the other.</li>
-</ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>Export / import a trip</strong> <span class="tag-shipped">SHIPPED</span> —
+    move a trip between machines as a unit, as a small ZIP. Came up while deciding what should
+    happen when the master is not reachable: the answer there is "that is an error", which only
+    holds if there is a proper way to carry work from one machine to the other. What travels is
+    what is hard to recreate (the trip's identity) or easy to forget (its species list, lifer
+    baseline, hand-verified translations) — the pictures themselves move separately, by an ordinary
+    file copy. Bringing work back the other way uses exactly the same export and import, so there is
+    no separate "return" behaviour to trust.</li>
   <li><strong>A species is learned once, and then known everywhere</strong>
     <span class="tag-shipped">SHIPPED</span> —
     naming a species that was not yet in your list means a lookup on the internet. That lookup used
@@ -314,8 +325,6 @@ reads <em>No current work planned</em>.</p>
 <h2>9. Usability &amp; Polish</h2>
 <h3>To do</h3>
 <ul>
-  <li><strong>Force Delete Trip</strong> <span class="tag-open">OPEN</span> — the deferred
-    force-delete path (spec'd as a TODO).</li>
   <li><strong>AVI list processing upgrade</strong> <span class="tag-new">NEW</span>.</li>
 </ul>
 <h3>Parked (by design)</h3>
