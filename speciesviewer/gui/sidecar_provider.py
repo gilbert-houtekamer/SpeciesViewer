@@ -1388,6 +1388,53 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         jpg = g.get("jpg")
         return Path(jpg) if jpg and Path(jpg).exists() else None
 
+    def rep_full_path(self, key: str) -> Path:
+        """Full on-disk path of a representative file for this stem — mirrors
+        PreviewCollection.rep_full_path for the pre-pipeline (culling) backend
+        (used by the map's day lookup and the "Modified" info line)."""
+        grp = self._groups.get(key, {})
+        for kind in ("raw", "jpg", "xmp"):
+            p = grp.get(kind)
+            if p:
+                return Path(p)
+        return Path(key)
+
+    def trash_upn(self, key: str, trash_dir) -> list | None:
+        """Move ONE stem's files to `trash_dir/<key>/` and drop it from the
+        in-memory groups. HARD INVARIANT: never trash a JPG-bearing picture ->
+        returns None (protected). Returns the moved file names on success
+        (possibly empty if the files were already gone). Used by the map's
+        right-click Delete — mirrors PreviewCollection.trash_upn for the
+        pre-pipeline (culling) backend."""
+        import shutil
+        if self.read_only:
+            logger.warning(f"trash_upn refused for {key}: collection is read-only.")
+            return None
+        grp = self._groups.get(key)
+        if not grp:
+            return None
+        if grp.get("jpg"):
+            return None                      # protected — the JPG is the finished asset
+        dest = Path(trash_dir) / key
+        dest.mkdir(parents=True, exist_ok=True)
+        moved, srcs = [], []
+        for kind in ("raw", "xmp"):
+            src = grp.get(kind)
+            if src and Path(src).exists():
+                try:
+                    shutil.move(str(src), str(dest / Path(src).name))
+                    moved.append(Path(src).name)
+                    srcs.append(Path(src))
+                except Exception as e:
+                    logger.error(f"trash_upn move failed for {Path(src).name}: {e}")
+        sweep_dop(grp.get("raw"), dest)
+        self._groups.pop(key, None)
+        if grp.get("xmp"):
+            self._rows.pop(_norm(grp["xmp"]), None)
+        from utils.preview_cache import drop_for_files
+        drop_for_files(srcs)     # the RAW is gone; its cached preview is now junk
+        return moved
+
     def delete_by_color(self, color: str, trash_root: Path) -> tuple[int, int, int]:
         """Move all stems with the given color label to trash.
 

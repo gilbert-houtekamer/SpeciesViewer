@@ -2466,18 +2466,18 @@ class TripMapView(QDialog):
     # ── delete (move to trash) ───────────────────────────────────────────────
     def _day_of(self, key: str) -> str | None:
         """The day folder a UPN's files live in (their parent dir name) — used to
-        target the right per-day .trash + review CSVs on the whole-trip map."""
+        target the right per-day .trash + review CSVs on the whole-trip map.
+        Goes through rep_full_path so it works for any collection backend
+        (PreviewCollection's fpr-driven one and SidecarCollection's culling
+        one alike), not just the pipeline-CSV-backed case."""
+        rp = getattr(self._coll, "rep_full_path", None)
+        if rp is None:
+            return None
         try:
-            files = self._coll._files(key)
+            p = rp(key)
         except Exception:
             return None
-        for fname in files:
-            frow = self._coll.fpr.fi.files_dict.get(fname)
-            wf = frow.get("WindowsFileName", "") if frow else ""
-            if wf:
-                from pathlib import Path
-                return Path(wf).parent.name
-        return None
+        return Path(p).parent.name if p else None
 
     def _remove_from_day_csv(self, day: str, key: str):
         """Drop a UPN's rows from that day's data_files/data_pictures CSVs with a

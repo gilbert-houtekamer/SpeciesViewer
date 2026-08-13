@@ -734,10 +734,18 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 old.close()
             except RuntimeError:
                 pass                 # already destroyed by Qt
+        # Delete needs the REAL trip root (metadata/review/<day> lives under it) —
+        # trip_root_dir is that for a normal trip day, but the Days-lane/Unfiled
+        # ad-hoc flow reuses it to hold the day folder itself, which has no such
+        # tree. Only offer delete when trip.ini proves this is a real trip root.
+        trip_root_dir = getattr(self, "trip_root_dir", "") or ""
+        map_trip_root = (trip_root_dir
+                         if trip_root_dir and (Path(trip_root_dir) / "trip.ini").is_file()
+                         else "")
         dlg = TripMapView(self, self._collection, keys,
                           title=f"Map — {base}{suffix}",
-                          loader=self._loader, read_only=read_only,
-                          allow_geotag=geotag,
+                          loader=self._loader, trip_root=map_trip_root,
+                          read_only=read_only, allow_geotag=geotag,
                           read_only_note="These pictures live in the master database — "
                                          "this map shows them but does not change them.")
         dlg.pictures_geotagged.connect(self._on_map_geotagged)
