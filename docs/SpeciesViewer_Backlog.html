@@ -56,20 +56,24 @@ reads <em>No current work planned</em>.</p>
 
 <div class="next">
   <strong>Active shortlist:</strong>
-  <ul style="margin-bottom:0;">
-    <li><strong>Albums — smart <em>Create</em> arc</strong> <span class="tag-progress">IN PROGRESS</span> —
-      one step left: fold <em>Extract Days</em> into Create's finish (ch. 2).</li>
+  <ul>
     <li><strong>Tracklog geotag (GPX import)</strong> — parse a logger/phone track, match photos by timestamp, write GPS (ch. 3).</li>
-    <li><strong>Map polish</strong> <span class="tag-shipped">SHIPPED</span> — day-map delete now
-      works on a pre-pipeline (not-yet-Read-&amp;-Summarized) day too; cosmetic polish stays
-      folded into ch. 15 (ch. 3).</li>
-    <li><strong>GPM on a southern/western trip</strong> <span class="tag-shipped">VERIFIED</span> — hemisphere sign on S/W coords holds in all four quadrants (ch. 1).</li>
-    <li><strong>Committed-day protection</strong> <span class="tag-shipped">SHIPPED</span> — the
-      blue-delete accounting audit (ch. 14 follow-up) grew into a full fix: committed trip days are
-      now read-only, a pipeline step is blocked while a culling window has unsaved edits, and
-      <em>Build Website</em> folded into <em>Publish Day</em> (ch. 4). The last ch.-14 follow-up —
-      <strong>colour this scope's own points on the species map</strong> — is now
-      <span class="tag-shipped">SHIPPED</span> for both album and trip (ch. 14).</li>
+    <li><strong>Rating &amp; Website</strong> <span class="tag-open">OPEN</span> — no longer
+      parked: rating-formula tuning was deliberately held until viewer convergence finished, and
+      convergence is now complete (ch. 8). Ready to pick up (ch. 7).</li>
+  </ul>
+  <strong>Not planned, but relevant — don't forget:</strong>
+  <ul style="margin-bottom:0;">
+    <li><strong>The 791 already-coarse coordinates</strong> <span class="tag-open">OPEN / NEW</span> —
+      pictures whose GPS looks hand-entered but carries no record of it; a South Africa photo
+      tagged Country=Spain and a Galapagos coordinate reused across many pictures already turned up
+      as real errors (ch. 2).</li>
+    <li><strong>Taxonomy &amp; Species</strong> <span class="tag-parked">PARKED (by design)</span> —
+      sequence redesign, obscure-flag auto-detect, placeholder-species cleanup, regional
+      most-likely-birds (ch. 6).</li>
+    <li><strong>Master delete "step 3" — delete JPG-bearing UPNs</strong>
+      <span class="tag-parked">PARKED (by design)</span> — depends on Taxonomy &amp; Species (ch. 6)
+      landing first (ch. 3).</li>
   </ul>
 </div>
 
@@ -138,9 +142,6 @@ reads <em>No current work planned</em>.</p>
 </ul>
 <h3>To do</h3>
 <ul>
-  <li><strong>Albums — the smart <em>Create</em> arc</strong> <span class="tag-progress">IN PROGRESS</span> —
-    the arc has shipped through Delete Album and Manage Album Publication; the one remaining step is
-    folding <em>Extract Days</em> into Create's finish (WP7 scenario-2) so Create is a single flow.</li>
   <li><strong>The 791 already-coarse coordinates</strong> <span class="tag-open">OPEN / NEW</span> —
     pictures whose GPS looks hand-entered but carries no record of it. Report first, decide later.
     The scan already turned up two real errors worth a look: a South Africa photo tagged
@@ -148,6 +149,13 @@ reads <em>No current work planned</em>.</p>
 </ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>Albums — the smart <em>Create</em> arc</strong> <span class="tag-shipped">SHIPPED</span> —
+    finished further than planned. Create Album's finish was folded into one pipeline (extract → blog →
+    build → publish) in arc step 4, but the album re-architecture (ch. 2, S0–S6) then made the extract
+    step itself unnecessary: albums read the master live by date range, with no day-CSV snapshot to
+    extract. <em>Extract Days</em> was retired outright rather than folded in — removed from Create,
+    Retire and Import, the standalone menu item and its dialog deleted, <code>svv2ExtractDays.py</code>
+    orphaned. Create is already the single flow the arc was aiming for.</li>
   <li><strong>Auto-notice new renders while a day viewer is open</strong> <span class="tag-shipped">SHIPPED</span> —
     return to the Album/virtual-trip day viewer after a DxO/Lightroom session and a fresh JPG render the
     master doesn't track yet auto-surfaces: a green <em>+ JPG</em> link on the card (and an amber
@@ -211,7 +219,8 @@ reads <em>No current work planned</em>.</p>
     could re-export a better JPG from the RAW, so the RAW is kept too. Step 3 would be a controlled
     way to retire such a UPN anyway (e.g. once it is provably unpublished / superseded). Note: the
     <em>trip cull</em> already relaxes this for throwaway JPG-only shots that aren't blog-published —
-    the <em>master</em> case stays strict, on purpose.</li>
+    the <em>master</em> case stays strict, on purpose. Depends on <strong>Taxonomy &amp; Species</strong>
+    (ch. 6) landing first.</li>
   <li><span class="tag-parked">DEFERRED</span> Trip-side SQLite DBs — same pattern, not urgent now.</li>
   <li><span class="tag-rejected">REJECTED</span> Undo → “Restore from trash”.</li>
 </ul>
@@ -294,12 +303,17 @@ reads <em>No current work planned</em>.</p>
 </ul>
 
 <!-- ============================================================ -->
-<h2>7. Rating &amp; Website <span class="tag-parked">PARKED (by design)</span></h2>
+<h2>7. Rating &amp; Website</h2>
+<h3>To do</h3>
 <ul>
-  <li><span class="tag-parked">DEFERRED</span> <strong>Rating-formula tuning</strong> — fine-tune the
-    Rate formula at the end of viewer convergence; feeds the website best-pick.</li>
-  <li><span class="tag-parked">NEEDS DECISION</span> <strong>HEIC / PNG sidecar capture</strong> —
-    formats with no writable sidecar need a user call.</li>
+  <li><span class="tag-open">OPEN</span> <strong>Rating-formula tuning</strong> — fine-tune the Rate
+    formula (Red/Yellow/Green boost, star/size/DxO/description weights); feeds the website best-pick.
+    Was deliberately held until viewer convergence finished, so tuning wouldn't be wasted on cards the
+    convergence was still going to change — convergence is now complete (ch. 8), so this is unblocked.</li>
+  <li><span class="tag-open">NEEDS DECISION</span> <strong>HEIC / PNG sidecar capture</strong> —
+    formats with no writable sidecar, so rating/colour can't be stored durably; needs a user call
+    between a separate <code>.xmp</code> alongside the HEIC, patching the <code>.dop</code>, or
+    writing directly into the HEIC.</li>
 </ul>
 
 <!-- ============================================================ -->
@@ -308,17 +322,20 @@ reads <em>No current work planned</em>.</p>
 <h3>Parked (by design)</h3>
 <ul>
   <li><span class="tag-parked">PARKED</span> <strong>Large-viewer calling consolidation</strong> —
-    the five call sites that open <code>LargeImageView</code> (culling grid, Trip &amp; Master
-    viewers, Biota Browser, map&nbsp;&times;2) each repeat the same ~8-line single-instance
-    lifecycle: close any open view, snapshot the grid's keys, construct, store the ref, connect
-    <code>finished</code>, show. Consolidating would give one place to fix that lifecycle and a home
-    for the deferred no-GPS-tray <em>“Open in large viewer”</em>. <strong>Deferred because the
-    divergence around that core is real</strong> — per-host <code>settings_key</code>, which signals
-    each host connects, post-close behaviour (repaint-all vs re-sort), grid-vs-map key source — so a
-    single shared entry point risks a config-heavy passthrough that hides the differences, for low
-    value while everything works. <strong>Do it when a 6th caller forces it</strong> (that no-GPS-tray
-    action is the natural trigger), and keep it to a tiny mixin owning only the mechanical lifecycle,
-    leaving each host's signal wiring explicit. Full analysis in the dev notes.</li>
+    now <strong>four</strong> call sites open <code>LargeImageView</code> (culling grid, the shared
+    Trip/Album/Master rating editor, Biota Browser, map&nbsp;&times;2), down from five: the
+    one-species-viewer merge (step B) deleted <code>master_species_viewer.py</code>'s own call site,
+    folding Master mode into the rating editor's existing one. Each remaining site still repeats the
+    same ~8-line single-instance lifecycle: close any open view, snapshot the grid's keys, construct,
+    store the ref, connect <code>finished</code>, show. Consolidating would give one place to fix that
+    lifecycle and a home for the deferred no-GPS-tray <em>“Open in large viewer”</em>. <strong>Deferred
+    because the divergence around that core is real</strong> — per-host <code>settings_key</code>
+    (the merged rating editor still keys Trip/Album/Master separately for window geometry), which
+    signals each host connects, post-close behaviour (repaint-all vs re-sort), grid-vs-map key source
+    — so a single shared entry point risks a config-heavy passthrough that hides the differences, for
+    low value while everything works. <strong>Do it when a 6th caller forces it</strong> (that
+    no-GPS-tray action is the natural trigger), and keep it to a tiny mixin owning only the mechanical
+    lifecycle, leaving each host's signal wiring explicit. Full analysis in the dev notes.</li>
 </ul>
 
 <!-- ============================================================ -->
@@ -326,6 +343,17 @@ reads <em>No current work planned</em>.</p>
 <h3>To do</h3>
 <ul>
   <li><strong>AVI list processing upgrade</strong> <span class="tag-new">NEW</span>.</li>
+  <li><strong>Rebuild All Websites — apply pass never run</strong> <span class="tag-open">OPEN</span> —
+    the sweep tool (<em>Utilities ▸ Rebuild All Album Websites…</em>) shipped 2026-08-09 as a dry run
+    only. The problem it exists to fix is still live on the server: per-site <code>animals.css</code>
+    has gone stale across all 17 albums (29 site copies), and template/render fixes since made don't
+    reach an already-built site until it is rebuilt. Needs an actual apply run.</li>
+  <li><strong>Website hosting hardening leftovers</strong> <span class="tag-open">OPEN</span> —
+    lower-priority follow-ups from the 2026-08-08 WordPress compromise (core cleaned, SFTP password
+    already rotated and verified same day): plugin auto-updates are still OFF — the likely original
+    entry vector — an unused application password (<em>"Phyton plugin"</em>) is still live, and the
+    inactive <code>akismet</code> plugin is still installed (an inactive plugin's files are exactly
+    how the backdoor was reached the first time).</li>
 </ul>
 <h3>Parked (by design)</h3>
 <ul>
@@ -498,6 +526,15 @@ to re-look-up.</p>
     (Database/Sidecar/Repository/Location/RAW Settings, the geocode and translation-validate
     dialogs) already picked up Phase 1's button/focus/selection styling for free — no local
     overrides to fight, so no further work needed there.</li>
+</ul>
+<p class="next" style="margin-top:6pt;"><strong>Follow-ups:</strong></p>
+<ul>
+  <li><strong>Trip/Album Overview feature-parity — not yet tested live</strong>
+    <span class="tag-test">NEEDS TEST</span> — the six-phase parity pass (Trip's standalone GPS
+    column, Progress-column removal + lock glyph, Publish Trip / Reset Trip buttons, Write All Blogs
+    bulk button, Album's master-sourced Translations column, the shared multi-day blog editor, the
+    Write-Blog draft/reviewed dot-icon tint) is built but has not had a live end-to-end pass since
+    landing.</li>
 </ul>
 
 <!-- ============================================================ -->
