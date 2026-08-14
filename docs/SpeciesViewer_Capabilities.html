@@ -36,9 +36,9 @@
 <body>
 
 <h1>SpeciesViewer — Capabilities Added</h1>
-<div class="meta">Updated: 31 July 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer &nbsp;·&nbsp; companion to <em>SpeciesViewer — Project Backlog</em></div>
+<div class="meta">Updated: 14 August 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer &nbsp;·&nbsp; companion to <em>SpeciesViewer — Project Backlog</em></div>
 
-<p>Everything that has <strong>shipped</strong> in the SpeciesViewer nature-photo pipeline and GUI, in fixed chapter order. Its companion, <strong>SpeciesViewer — Project Backlog</strong>, holds the open work under the same chapter numbers. Two chapters that are parked by design (Taxonomy &amp; Species; Rating &amp; Website) carry no shipped work yet and live only in the Backlog.</p>
+<p>Everything that has <strong>shipped</strong> in the SpeciesViewer nature-photo pipeline and GUI, in fixed chapter order. Its companion, <strong>SpeciesViewer — Project Backlog</strong>, holds the open work under the same chapter numbers. Chapter 6, Taxonomy &amp; Species, is parked by design and carries no shipped work yet — it lives only in the Backlog. Chapter 7, Rating &amp; Website, is likewise still open-only for now, no longer parked by design now that the viewer convergence it was waiting on is complete.</p>
 
 
 
@@ -1349,6 +1349,149 @@ Full design in <code>path_portability_plan.md</code>.</p>
   what was reconstructed from RAW + <code>.xmp</code> + <code>.dop</code>. (3) <strong>Reviewed
   ingest</strong> into <code>topics/…</code>, with backup — dry-run → review → explicit apply, never an
   auto-fix.</p>
+
+<!-- ============================================================ -->
+<hr class="section-divider">
+<!-- ============================================================ -->
+<h2>13. Web viewer — searchable species pages <span class="tag-shipped">SHIPPED</span></h2>
+
+<p>The published website's species pages are static HTML with no server behind them — so a
+visitor wanting "any duck" had to scroll a page listing every species in a family, or every
+species there is. A small client-side search fixes that without needing one: type a (partial)
+string and matching cards stay, the rest hide, with a live "N of M species" count. Typing
+<code>duck</code> narrows a family listing to just the ducks; typing a full scientific name
+works exactly the same way — it is one filter, not two modes.</p>
+
+<ul>
+  <li><strong>Runs entirely on the client</strong> <span class="tag-shipped">SHIPPED</span> —
+    ~10 lines of vanilla JavaScript, no server round-trip, no build step: every species
+    <code>&lt;div&gt;</code> already carries its scientific, English and Dutch names as text,
+    so the filter is a single <code>textContent.toLowerCase()</code> match against all three
+    at once, toggling <code>display</code>. The site already runs inline scripts, so this
+    added no CSP or hosting concern.</li>
+  <li><strong>Lives on every listing page, not just one</strong> <span class="tag-shipped">SHIPPED</span> —
+    the big all-biota summary page and every taxon/family page (Vogels, Zoogdieren, Insecten…)
+    both carry it, in Dutch and English (4 templates total). Wording adapts to what the page
+    actually lists: the summary keeps "soort"/"species", a family page reads "Zoek op
+    naam…"/"Search by name…" with a unit-less counter, since a family page can be listing
+    orders rather than species.</li>
+  <li><strong>Hides itself where it isn't needed</strong> <span class="tag-shipped">SHIPPED</span> —
+    a page with fewer than 12 cards gets no search box at all; a short list doesn't need
+    filtering, so the box only earns its place once scrolling actually gets old.</li>
+</ul>
+<p class="note"><strong>Publishing has two real gotchas, both cost a rebuild cycle to learn.</strong>
+The summary page is rendered only by the site-build step (<code>sv5BuildWebsite</code> for a
+trip, <code>svv4BuildWebsite</code> for an album) — the "make blogs clickable" step does
+<em>not</em> regenerate it, so republishing the blog alone never picks up a search-box change.
+And a locally-rendered page isn't live until <em>Publish/Commit</em> runs — the upload only
+skips files whose content hasn't changed (by CRC), so a changed template still needs an actual
+publish pass, not just a rebuild. Verified live across Costa Rica, Marokko, Helgoland and
+Greece.</p>
+
+<!-- ============================================================ -->
+<h2>14. Desktop Biota Browser — the website, offline, with everything in it <span class="tag-shipped">SHIPPED</span></h2>
+
+<p>The public website necessarily shows a curated slice: one best picture per species (per
+age/sex/plumage group), and nothing at all once you're offline. The Biota Browser is the
+desktop answer to both limits — a taxonomic browser styled to look like the website, that
+reads the master (or a trip, or an album) directly off disk, so it works with no internet and
+can show every picture the collection actually holds, RAW files included. It doubles as a
+showcase of what a Qt application can look like once it stops looking like a default Qt
+application.</p>
+
+<ul>
+  <li><strong>One dialog, three scopes</strong> <span class="tag-shipped">SHIPPED</span> —
+    <strong>Master ▸ Biota Browser…</strong> is the full, editable collection; <strong>Trip ▸
+    Biota Browser…</strong> and <strong>Album ▸ Biota Browser…</strong> browse the same way
+    over a trip's own repository or an album's live date-range window, read-only (editing stays
+    in the authorized panels). A trip repo is master-shaped on disk, so it gets its own small
+    SQLite cache rather than sharing one — never touching, and never risking, the real master's
+    cache.</li>
+  <li><strong>Two ways to arrive at a species</strong> <span class="tag-shipped">SHIPPED</span> —
+    a <strong>tree</strong> mode walks Kingdom → … → Species with a rank filter, a search box
+    that works at whatever level you're standing on, a left rank rail to jump straight to an
+    ancestor, and a back-history button; an <strong>All Species</strong> flat index lists every
+    species in the collection (2248 on the real master) behind the same live search, so
+    "start typing" always works whether or not you know the taxonomy.</li>
+  <li><strong>The species page mirrors the website, on purpose</strong> <span class="tag-shipped">SHIPPED</span> —
+    click a species and you land on a pretty, read-only page: hero photo shown at its own
+    natural aspect (no forced crop into a banner), a names table, photos grouped by age/sex/
+    plumage exactly like the site groups them, a distribution map, and a sibling/order sidebar
+    for browsing sideways. A <strong>⚙ Tech panel</strong> button swaps to the same editable
+    picture grid used everywhere else in the app (rating, colour, qualifier, crop,
+    move-to-species, delete) — the pretty page for looking, the tech panel for working.</li>
+  <li><strong>"Show all files" is the whole point of doing this locally</strong>
+    <span class="tag-shipped">SHIPPED</span> — the website only ever shows the curated best JPG
+    per group. Toggling this on reveals every RAW-only frame too, marked with a small
+    <code>#</code> where a JPG exists alongside it — the full contents of the master, not the
+    subset that ever got uploaded. Only possible because the browser reads the database
+    directly instead of a rendered page.</li>
+  <li><strong>Styled like the website, not like a generic Qt dialog</strong>
+    <span class="tag-shipped">SHIPPED</span> — every photo sits in the site's own olive mat
+    (<code>#6d8764</code>), and the whole dialog runs the same ink/line palette as the Trip
+    lifecycle board rather than bare-Qt grey. It was the first place this palette got used
+    consistently enough to notice it was a real design language rather than one-off styling —
+    the seed for the app-wide theme in ch. 15.</li>
+  <li><strong>A map that goes further than the site's</strong> <span class="tag-shipped">SHIPPED</span> —
+    a species' distribution map, opened from a trip or album scope, plots the full master range
+    in the usual colour and overlays that scope's <em>own</em> pictures in amber with a legend
+    chip, so you can see at a glance which of a species' worldwide sightings are the ones from
+    this trip.</li>
+</ul>
+<p class="note">Live-confirmed on the real master (2782 taxon nodes, 74k+ pictures); the Trip
+and Album scopes were headless-verified before their first live pass, matching the standard
+this app holds every new grid to before calling it done.</p>
+
+<!-- ============================================================ -->
+<h2>15. App-wide look &amp; feel <span class="tag-shipped">SHIPPED</span></h2>
+
+<p>This chapter grew out of the Biota Browser above: building it, the Trip lifecycle board and
+the Species panel each independently invented a near-identical olive/ink palette, copy-pasted
+into each file by hand. That was the first sign a real design language already existed by
+accident — it just needed centralizing into one theme the whole app could share, including a
+proper light/dark switch. Alongside the visual pass, the main window itself got made more
+consistent: one set of four panels for every stage a picture goes through, and a layout that
+shows only what the current mode needs.</p>
+
+<ul>
+  <li><strong>One theme module for the whole app, light and dark</strong>
+    <span class="tag-shipped">SHIPPED</span> — <code>gui/theme.py</code> centralizes the tokens
+    (ink, lines, olive accent, status colours) that three files had each duplicated by hand,
+    behind one <code>QApplication</code>-level stylesheet extended from what used to be a
+    single ToolTip rule. It covers buttons, menu selection, input focus borders, and every
+    tree/list/table's selection highlight (Qt's default blue replaced app-wide by the brand
+    olive) — <code>QMessageBox</code> and every dialog's buttons inherit it for free, since Qt
+    builds them from the same button class underneath.
+    <p>A genuinely global stylesheet is also the riskiest kind of change — it cascades
+    everywhere at once — so it shipped in two deliberately separated passes: Phase 1 added the
+    shared stylesheet without touching the three already-styled files, Phase 2 migrated those
+    files onto the shared tokens (finding, and deliberately <em>keeping</em>, one real
+    difference along the way rather than silently unifying it away) and fixed the one off-brand
+    colour on the app's single highest-traffic widget, the picture card shared by the culling
+    grid, image preview, Biota Browser and Master Species Viewer alike.</p></li>
+  <li><strong>Light and dark, as a real user setting</strong> <span class="tag-shipped">SHIPPED</span> —
+    a Look &amp; Feel setting switches the whole app between the light palette above and a full
+    dark theme (Qt's Fusion style plus a matching palette for bare widgets, the same QSS tokens
+    re-pointed at dark values for everything already styled). It went through real tuning from
+    live feedback, not a guess: the first pass ran near-black and came back "very dark", so the
+    ground was lightened to a medium-dark olive-grey closer to a photo editor's own dark mode; a
+    further pass then hunted down the handful of screens that had a colour hardcoded rather than
+    themed — a white card here, black icon glyphs there, status text that stayed invisible until
+    you hovered over it — the kind of thing only live use across every screen surfaces.</li>
+  <li><strong>Four yellow panels: Unfiled, Days, Trip, Album</strong> <span class="tag-shipped">SHIPPED</span> —
+    the main window's active-work panel used to exist only for a Trip or an Album; working an
+    SD-card ingest or a stand-alone Day left it showing whichever trip happened to be active —
+    the one thing you weren't doing. All four modes now drive the same panel, built from one
+    shared table factory rather than four separate ad-hoc grids, each still showing the right
+    columns for what it is (Unfiled: file-under/track-as-day/move; Days: pictures/add-to-master;
+    Trip/Album: their existing pipeline columns).</li>
+  <li><strong>Main window layout restructure</strong> <span class="tag-shipped">SHIPPED</span> —
+    Day/Trip/Album/Unfiled unified into one mode strip that drives a shared panel stack, instead
+    of separate always-visible columns for each. A collapsible right-hand info rail (master
+    repository path, quick trip/album/day counts) replaces the old fixed sidebar, a shared
+    A-Z/Recent/Frequent sort control reorders whichever list is showing, and every panel — the
+    left stack, the right rail, the log console — collapses through one shared fold control.</li>
+</ul>
 
 <!-- ============================================================ -->
 <hr class="section-divider">

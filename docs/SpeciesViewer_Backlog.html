@@ -37,7 +37,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 5 August 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 14 August 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Open work for the SpeciesViewer nature-photo pipeline and GUI. This document holds
 only what is <strong>still to do</strong> — everything that has shipped now lives in the companion
@@ -526,6 +526,14 @@ to re-look-up.</p>
     (Database/Sidecar/Repository/Location/RAW Settings, the geocode and translation-validate
     dialogs) already picked up Phase 1's button/focus/selection styling for free — no local
     overrides to fight, so no further work needed there.</li>
+  <li><strong>Light/dark theme toggle</strong> <span class="tag-shipped">SHIPPED</span> —
+    a Look &amp; Feel setting switches the whole app to a full dark theme (Qt Fusion style +
+    palette for bare widgets, the same QSS tokens re-pointed at dark values for everything
+    already themed), not just the light palette above. Tuned from live feedback in two passes:
+    the first ground was near-black and came back "very dark", lightened to a medium-dark
+    olive-grey; a second pass hunted down hardcoded-not-themed screens that only show up once
+    you actually look at every screen in dark — a white card here, black icon glyphs there,
+    status text invisible until hovered.</li>
 </ul>
 <p class="next" style="margin-top:6pt;"><strong>Follow-ups:</strong></p>
 <ul>
