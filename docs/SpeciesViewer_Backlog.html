@@ -37,7 +37,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 14 August 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 15 August 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Open work for the SpeciesViewer nature-photo pipeline and GUI. This document holds
 only what is <strong>still to do</strong> — everything that has shipped now lives in the companion
@@ -57,10 +57,12 @@ reads <em>No current work planned</em>.</p>
 <div class="next">
   <strong>Active shortlist:</strong>
   <ul>
-    <li><strong>Tracklog geotag (GPX import)</strong> — parse a logger/phone track, match photos by timestamp, write GPS (ch. 3).</li>
-    <li><strong>Rating &amp; Website</strong> <span class="tag-open">OPEN</span> — no longer
+    <li><strong>Tracklog geotag (GPX import)</strong> <span class="tag-progress">IN PROGRESS</span> —
+      parse a logger/phone track, match photos by timestamp, write GPS (ch. 3). Active since
+      14 August 2026.</li>
+    <li><strong>Rating &amp; Website</strong> <span class="tag-progress">IN PROGRESS</span> — no longer
       parked: rating-formula tuning was deliberately held until viewer convergence finished, and
-      convergence is now complete (ch. 8). Ready to pick up (ch. 7).</li>
+      convergence is now complete (ch. 8). Active since 15 August 2026 (ch. 7).</li>
   </ul>
   <strong>Not planned, but relevant — don't forget:</strong>
   <ul style="margin-bottom:0;">
@@ -192,7 +194,8 @@ reads <em>No current work planned</em>.</p>
 <h2>3. Master Database, Editing &amp; Viewer</h2>
 <h3>To do</h3>
 <ul>
-  <li><strong>Tracklog geotag (GPX import)</strong> <span class="tag-open">OPEN</span> — a real GPX
+  <li><strong>Tracklog geotag (GPX import)</strong> <span class="tag-progress">IN PROGRESS</span> —
+    active since 14 August 2026. A real GPX
     import: parse a logger/phone track, match photos by timestamp, write GPS. This is the last
     piece of the old GPS / data-integrity umbrella still open — the rest shipped as
     <em>Get GPS from location</em>, <em>Get location</em>, and <em>Refresh Master Database</em>.
@@ -306,10 +309,14 @@ reads <em>No current work planned</em>.</p>
 <h2>7. Rating &amp; Website</h2>
 <h3>To do</h3>
 <ul>
-  <li><span class="tag-open">OPEN</span> <strong>Rating-formula tuning</strong> — fine-tune the Rate
+  <li><span class="tag-progress">IN PROGRESS</span> <strong>Rating-formula tuning</strong> — active
+    since 15 August 2026. Fine-tune the Rate
     formula (Red/Yellow/Green boost, star/size/DxO/description weights); feeds the website best-pick.
     Was deliberately held until viewer convergence finished, so tuning wouldn't be wasted on cards the
-    convergence was still going to change — convergence is now complete (ch. 8), so this is unblocked.</li>
+    convergence was still going to change — convergence is now complete (ch. 8), so this is unblocked.
+    First step shipped: colour→star fallback retuned (Red 4★, Green 1★ instead of 0★ — a colour-only
+    "keep" now reads as a real star). Still to do: recompute <code>Rate</code> across the real master
+    on Bigboy (the laptop's smallboy copy was used only to validate the formula, not to apply it).</li>
   <li><span class="tag-open">NEEDS DECISION</span> <strong>HEIC / PNG sidecar capture</strong> —
     formats with no writable sidecar, so rating/colour can't be stored durably; needs a user call
     between a separate <code>.xmp</code> alongside the HEIC, patching the <code>.dop</code>, or
