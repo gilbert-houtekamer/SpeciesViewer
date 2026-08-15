@@ -13,6 +13,22 @@ from gui import theme
 _ASSETS = str(Path(__file__).resolve().parent.parent / "assets")
 
 
+def _nearest_existing_dir(path: str) -> str:
+    """Walk up from path to the nearest directory that actually exists.
+
+    QFileDialog.getExistingDirectory can't navigate into a non-existent
+    starting path; it silently climbs to the nearest ancestor and leaves the
+    missing leaf typed in the edit box, so pre-filled-but-not-yet-created
+    paths (e.g. an unfiled-inbox folder for a new year) trip the native
+    dialog's own "does not exist" complaint on Select Folder.
+    """
+    p = Path(path.strip()) if path else None
+    while p is not None and not p.is_dir():
+        parent = p.parent
+        p = parent if parent != p else None
+    return str(p) if p else ""
+
+
 def _set_valid_glyph(label: QLabel, valid: bool):
     """Show a coloured ✓/✗ validity glyph. Replaces the old black circle-check /
     circle-x PNGs, which were invisible on the dark theme."""
@@ -167,7 +183,8 @@ class DirectoryFieldQt(QWidget):
             self.show_hint(tip)
 
     def browse(self, label):
-        path = QFileDialog.getExistingDirectory(self, f"Choose folder for {label}", self.field.text())
+        start = _nearest_existing_dir(self.field.text())
+        path = QFileDialog.getExistingDirectory(self, f"Choose folder for {label}", start)
         if path:
             self.field.setText(path)
 

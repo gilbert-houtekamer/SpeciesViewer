@@ -87,6 +87,21 @@ reads <em>No current work planned</em>.</p>
     copy/paste GPS + place keeps the hemisphere sign in all four quadrants, confirmed live
     (2026-07-31): NE Sri Lanka, SE South Africa, NW Tucson, SW Brazil. A repeatable headless
     round-trip check lives in <code>tools/svr_gpm_hemisphere_test.py</code>.</li>
+  <li><strong>Read a card: instant Scan, quieter Read progress</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-15) — three problems found in one laptop
+    test session, fixed together. <em>Browse</em> on the Unfiled inbox field failed with a native
+    "directory not found" error the first time a new year's inbox was picked, because the picker
+    opened at a folder that doesn't exist until the first card of that year is read; it now opens
+    at the nearest existing ancestor. <em>Scan days</em> no longer reads EXIF at all — it groups by
+    file mtime (free, from the directory listing already done), so the day-picker preview is
+    instant even on an unread card; the real EXIF <code>DateTimeOriginal</code> stays authoritative
+    when <em>Read</em> actually files pictures into day folders, which already had to read it for
+    the XMP sidecars regardless. <em>Read</em>'s own EXIF date pass moved off a design that
+    (invisibly) blocked on one big chunk before reporting any progress — each worker now keeps its
+    exiftool process open and pulls 100-file batches off a shared queue, so the reported rate is
+    accurate from the first update instead of climbing as buffered results drained. The dialog also
+    reports a real click-to-done summary at the end ("Copied N over D day(s) in T"), including any
+    location-lookup step that follows the copy.</li>
 </ul>
 <h3>Parked (by design)</h3>
 <ul>

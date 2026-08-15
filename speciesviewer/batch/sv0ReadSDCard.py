@@ -39,8 +39,11 @@ import hashlib
 import json
 import logging
 import os
+import queue
 import shutil
 import sys
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -345,28 +348,75 @@ class _DestIndex:
 
 # ── EXIF date helpers ─────────────────────────────────────────────────────────
 
-def _read_capture_datetimes(files, log) -> dict[str, datetime]:
-    """{normalised path: datetime} from EXIF DateTimeOriginal, batched through
-    exiftool. Files without a readable date are omitted (caller falls back to
-    file mtime). exiftool is imported lazily so copy_card stays usable without
-    it for the no-bucketing path."""
+def _read_capture_datetimes(files, log, progress_cb=None) -> dict[str, datetime]:
+    """{normalised path: datetime} from EXIF DateTimeOriginal, split across N
+    parallel exiftool workers (auto_worker_count — see project_exif_parallelism).
+    Files without a readable date are omitted (caller falls back to file mtime).
+    exiftool is imported lazily so copy_card stays usable without it for the
+    no-bucketing path.
+
+    Each worker keeps ONE exiftool process open and pulls 100-file batches off
+    a shared queue (rather than one big chunk per worker), so progress lands
+    roughly every 100 files instead of once per worker's whole share — and,
+    unlike engine.exifcache.read_metadata_parallel
+    (a generator built for cache rescans), no batch is read synchronously
+    before the others start being drained, so reported throughput doesn't
+    burst-catch-up: all workers run concurrently the whole time, so the rate
+    is accurate from the first batch. progress_cb(done, total, rate) fires
+    after each batch."""
     result = {}
     if not files:
         return result
     try:
         import exiftool
-        with exiftool.ExifToolHelper(
-            common_args=["-G", "-charset", "utf8", "-charset", "filename=utf8"],
-            encoding="utf-8", check_execute=False,
-        ) as et:
-            for meta in et.get_metadata([str(p) for p in files], params=["-DateTimeOriginal"]):
-                src = meta.get("SourceFile")
-                dt_str = meta.get("EXIF:DateTimeOriginal", "")
-                if src and dt_str:
+        from engine.exifcache import COMMON_ARGS, auto_worker_count
+        total = len(files)
+        workers = auto_worker_count(total)
+        # This pass is fast (a single tag, not a full copy) — one update per
+        # 100 files is plenty, and never more than 100 files of silence even
+        # on a big card or a slow machine.
+        batch_size = 100
+        paths = [str(p) for p in files]
+        work: queue.Queue = queue.Queue()
+        for i in range(0, total, batch_size):
+            work.put(paths[i:i + batch_size])
+
+        lock = threading.Lock()
+        start = time.time()
+        done = 0
+
+        def _worker():
+            nonlocal done
+            with exiftool.ExifToolHelper(
+                common_args=COMMON_ARGS, encoding="utf-8", check_execute=False,
+            ) as et:
+                while True:
                     try:
-                        result[_norm(src)] = datetime.strptime(dt_str[:19], "%Y:%m:%d %H:%M:%S")
-                    except ValueError:
-                        pass
+                        batch = work.get_nowait()
+                    except queue.Empty:
+                        return
+                    for meta in et.get_metadata(batch, params=["-DateTimeOriginal"]):
+                        src = meta.get("SourceFile")
+                        dt_str = meta.get("EXIF:DateTimeOriginal", "")
+                        if src and dt_str:
+                            try:
+                                dt = datetime.strptime(dt_str[:19], "%Y:%m:%d %H:%M:%S")
+                            except ValueError:
+                                continue
+                            with lock:
+                                result[_norm(src)] = dt
+                    with lock:
+                        done += len(batch)
+                        d = done
+                    if progress_cb:
+                        elapsed = time.time() - start
+                        rate = d / elapsed if elapsed > 0 else 0.0
+                        progress_cb(d, total, rate)
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(_worker) for _ in range(workers)]
+            for f in futures:
+                f.result()   # propagate any worker exception
     except Exception as e:
         log.warning(f"Could not read capture dates via exiftool ({e}); using file mtime instead.")
     return result
@@ -390,10 +440,17 @@ def _build_buckets(files, tz_offset_hours, cache: "_CardCache | None", log) -> d
             need_exif.append(f)
 
     hits = len(files) - len(need_exif)
-    if hits:
-        log.info(f"Capture dates: {hits} from cache, {len(need_exif)} need exiftool")
+    log.info(f"{len(files)} picture(s) on the card: {hits} already have a known "
+             f"date, {len(need_exif)} need to be read from EXIF.")
     if need_exif:
-        dt_map = _read_capture_datetimes(need_exif, log)
+        from engine.exifcache import _fmt_duration
+
+        def _report(done, total, rate):
+            remaining = (total - done) / rate if rate > 0 else 0
+            log.info(f"Reading capture dates: {done}/{total} "
+                      f"({rate:,.0f} files/s, ~{_fmt_duration(remaining)} left)")
+
+        dt_map = _read_capture_datetimes(need_exif, log, progress_cb=_report)
         for f in need_exif:
             key = _norm(f)
             dt = dt_map.get(key)
@@ -411,14 +468,23 @@ def _build_buckets(files, tz_offset_hours, cache: "_CardCache | None", log) -> d
 
 
 def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None):
-    """Group the card's pictures by capture day WITHOUT copying anything.
+    """Group the card's pictures by capture day WITHOUT copying anything and
+    WITHOUT reading EXIF — this is just a preview for the day-picker, so a file
+    system mtime (cheap: already known from the directory walk, no card I/O
+    beyond what rglob just did) stands in for the real capture date. Cameras
+    set a card file's mtime from their own clock at write time, so it is
+    normally right on the day; a card cache hit from a PRIOR scan/read (a real
+    EXIF date, already confirmed) is preferred over mtime where one exists.
+
+    The real EXIF DateTimeOriginal is only ever read when Read (copy_card)
+    actually files pictures into day folders — that pass was already required
+    for the XMP sidecars, so nothing extra is paid, it's just no longer paid
+    twice. The trade-off: a handful of borderline files (camera clock off, or
+    near a day boundary) could show under a slightly different day here than
+    where Read finally puts them — cosmetic only, never a data-loss risk.
 
     Returns (days, total) where `days` is a sorted list of (date_str, count) and
-    `total` is the picture count. Dates come from the card cache where available
-    so a re-scan — or a scan right before a read — is instant; only cache-miss
-    files go through one batched exiftool call, whose results are persisted to the
-    card cache so the copy that follows doesn't repeat them. Cheap on top of the
-    file walk we'd do anyway: the per-day counts are just a tally of the buckets."""
+    `total` is the picture count."""
     from collections import Counter
     log = logger or logging.getLogger("speciesviewer")
     source = Path(source)
@@ -432,23 +498,27 @@ def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None):
     if not total:
         log.info(f"No pictures found under {source}")
         return [], 0
+    log.info(f"Found {total} picture(s) on the card.")
 
     cache = _CardCache(source) if use_card_cache else None
-    buckets, _ = _build_buckets(files, tz_offset_hours, cache, log)
+    offset = timedelta(hours=tz_offset_hours or 0)
+    buckets: dict[str, str] = {}
+    for f in files:
+        entry = cache.get(f) if cache else None
+        date_str = entry.get("capture_date") if entry else None
+        if not date_str:
+            try:
+                dt = datetime.fromtimestamp(f.stat().st_mtime)
+            except OSError:
+                date_str = UNKNOWN_DATE_DIR
+            else:
+                date_str = (dt + offset).strftime("%Y-%m-%d")
+        buckets[_norm(f)] = date_str
 
-    # Persist freshly read dates (date-only, preserving any known sha) so the
-    # copy that follows is warm and doesn't re-run exiftool for the same files.
-    if cache:
-        for f in files:
-            date = buckets.get(_norm(f))
-            existing = cache.get(f)
-            if date and (existing is None or not existing.get("capture_date")):
-                cache.put(f, (existing or {}).get("sha256"), date)
-        cache.save()
-
-    counts = Counter(buckets.get(_norm(f), UNKNOWN_DATE_DIR) for f in files)
+    counts = Counter(buckets.values())
     days = sorted(counts.items())
-    log.info(f"Scanned {total} picture(s) across {len(days)} day(s) on the card.")
+    log.info(f"Scanned {total} picture(s) across {len(days)} day(s) on the card "
+             f"(from file dates — exact dates are read when you Read).")
     return days, total
 
 

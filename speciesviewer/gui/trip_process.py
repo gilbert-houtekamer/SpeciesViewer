@@ -5,7 +5,7 @@ from PyQt6.QtGui import QFont, QGuiApplication, QColor
 from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
 import logging
 import re
-import sys, os, shutil
+import sys, os, shutil, time
 from datetime import datetime
 from pathlib import Path
 import webbrowser
@@ -1037,8 +1037,8 @@ class ReadSDCardDialog(QDialog):
             return
         self.scan_btn.setEnabled(False)
         self.read_btn.setEnabled(False)
-        self._log_phase("Scanning the card for capture days — this reads every "
-                        "picture's date, so it can take a while on a full card…")
+        self._log_phase("Scanning the card for capture days — grouping by file "
+                        "date, exact dates are read when you Read…")
         self._scanned_source = os.path.normpath(source)
         self._scan_thread = QThread()
         self._scan_worker = _SDCardScanWorker(source, self._tz_offset())
@@ -1170,6 +1170,28 @@ class ReadSDCardDialog(QDialog):
                     pass
         return total
 
+    def _days_copied_count(self):
+        """Distinct YYYY-MM-DD day folders actually present among this run's
+        targets — reflects what really happened (copied + already-there), which
+        is what a "Copied N over D days" summary should report; the day-picker
+        selection alone is None when Scan was skipped ('copy every day')."""
+        from utils import days_registry
+        days = {Path(t).parent.name for t in self._last_targets
+                if days_registry.is_day_folder_name(Path(t).parent.name)}
+        return len(days)
+
+    def _elapsed_summary(self):
+        """' over N day(s) in T' suffix for the final Read status — the
+        click-to-done time the user actually experiences, including any
+        geocode step that follows the copy."""
+        start = getattr(self, "_read_start_time", None)
+        if start is None:
+            return ""
+        from engine.exifcache import _fmt_duration
+        elapsed = _fmt_duration(time.time() - start)
+        days = self._days_copied_count()
+        return f" over {days} day(s) in {elapsed}" if days else f" in {elapsed}"
+
     def on_read(self):
         source = self.source_field.get_path()
         dest = self.dest_field.get_path()
@@ -1255,6 +1277,7 @@ class ReadSDCardDialog(QDialog):
             return
 
         self._last_dest = dest
+        self._read_start_time = time.time()   # click-to-done timing for the final summary
         if self.days_mode:
             from utils.config import set_setting
             set_setting("days", "location", dest)   # remember the Days location
@@ -1317,6 +1340,7 @@ class ReadSDCardDialog(QDialog):
         # real "Done" once everything has finished.
         geocode_follows = (not cancelled and self.location_checkbox.isChecked()
                            and bool(summary.get("targets")))
+        self._last_targets = summary.get("targets", [])
         if cancelled:
             # "Done" + a green check would read as success — flag the abort, but
             # still show that the partial copy was kept.
@@ -1325,13 +1349,16 @@ class ReadSDCardDialog(QDialog):
             self.status_label.setText(f"⚠️ {msg}")
         else:
             msg = f"Copied {copied}{renamed_txt}, {tail}"
-            self.logger.info(f"✅ Card read complete. {msg}")
-            self.status_label.setText(
-                f"⏳ {msg} Now looking up location names…" if geocode_follows
-                else f"✅ Done — {msg}")
+            if geocode_follows:
+                self.logger.info(f"✅ Card read complete. {msg}")
+                self.status_label.setText(f"⏳ {msg} Now looking up location names…")
+            else:
+                # No geocode step follows, so this IS the final click-to-done state.
+                done_msg = f"{msg}{self._elapsed_summary()}"
+                self.logger.info(f"✅ Card read complete. {done_msg}")
+                self.status_label.setText(f"✅ Done — {done_msg}")
         self._read_summary_msg = msg
         self._set_progress("")
-        self._last_targets = summary.get("targets", [])
         self.view_btn.setEnabled(bool(self._last_targets))
         self.pl_btn.setEnabled(bool(self._last_targets) and bool(self._last_dest))
         if self._last_targets and not cancelled:
@@ -1423,16 +1450,18 @@ class ReadSDCardDialog(QDialog):
             # "looking up…" line set by on_finished.
             tail = (f" All {already} picture(s) already had place names."
                     if already else "")
-            self.status_label.setText(
-                (f"✅ Done — {base}{tail}" if base else f"✅ Done.{tail}").strip())
+            done = f"{base}{tail}{self._elapsed_summary()}"
+            self.status_label.setText((f"✅ Done — {done}" if base else f"✅ Done.{tail}").strip())
+            self.logger.info(f"✅ Read complete. {done}".strip())
             return
         self._log_phase("Looking up location names (one online lookup per new "
                         "place, the rest reuse nearby fixes)…")
         run_geolocate_batch(self, targets, dry_run=False, overwrite=False)
         self._set_progress("")
-        self.status_label.setText(
-            f"✅ Done — {base} Location names added." if base
-            else "✅ Done — location names added.")
+        done = f"{base} Location names added.{self._elapsed_summary()}" if base \
+            else f"Location names added.{self._elapsed_summary()}"
+        self.status_label.setText(f"✅ Done — {done}")
+        self.logger.info(f"✅ Read complete. {done}")
 
     def on_view(self):
         """Open the picture grid over the just-copied files. Uses an explicit
