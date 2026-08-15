@@ -84,11 +84,11 @@ def _compute_rate(upn_row: dict, files_dict: dict) -> int:
         # mirror label→rating copy from computeRating
         if rating_str in ("0", "") and label:
             if label == "Red":
-                rating_str = "3"
+                rating_str = "4"
             elif label == "Yellow":
                 rating_str = "2"
             elif label == "Green":
-                rating_str = "0"
+                rating_str = "1"
 
         if ext == "xmp":
             computation = 5 if not rating_str else 15 * (1 + int(rating_str))

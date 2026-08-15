@@ -1116,11 +1116,11 @@ class Project:
             if file['XMP:Rating'] in ['0', ''] and file['XMP:Label'] != '':
                 label = file['XMP:Label']
                 if label == 'Red':
-                    file['XMP:Rating'] = 3
+                    file['XMP:Rating'] = 4
                 elif label == 'Yellow':
                     file['XMP:Rating'] = 2
                 elif label == 'Green':
-                    file['XMP:Rating'] = 0
+                    file['XMP:Rating'] = 1
             #
             filetype = file['WindowsExtension']
             if filetype in ['xmp']:
@@ -1189,11 +1189,11 @@ class Project:
         if file['XMP:Rating'] in ['0', ''] and file['XMP:Label'] != '':
             label = file['XMP:Label']
             if label == 'Red':
-                file['XMP:Rating'] = 3
+                file['XMP:Rating'] = 4
             elif label == 'Yellow':
-                file['XMP:Rating'] = 2                
+                file['XMP:Rating'] = 2
             elif label == 'Green':
-                file['XMP:Rating'] = 0
+                file['XMP:Rating'] = 1
         #    
         filetype = file['WindowsExtension']
         if filetype in ['xmp','jpg', 'jpeg']:
