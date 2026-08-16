@@ -1725,6 +1725,37 @@ class MasterDB:
         MasterCheckpointWorker.get(self.master_root).notify()
         return len(pics)
 
+    def apply_altitude(self, alt_by_upn: dict) -> int:
+        """Mirror a placed altitude into the master's pictures.GPSAltitude —
+        sibling to apply_gps, same shape. `alt_by_upn` maps UPN -> signed
+        altitude in metres (negative = below sea level, e.g. a NAP polder
+        shot); stored as a plain signed decimal. Journaled as ONE entry.
+        Returns the number of pictures updated (UPNs not in the master are
+        skipped)."""
+        if not alt_by_upn:
+            return 0
+        con = self._connect()
+        pics: dict = {}
+        for upn, alt in alt_by_upn.items():
+            if not upn or alt is None:
+                continue
+            row = con.execute(
+                'SELECT 1 FROM pictures WHERE "UniquePictureName"=?', (upn,)).fetchone()
+            if row is None:
+                continue
+            pics[upn] = {"GPSAltitude": str(alt)}
+        if not pics:
+            return 0
+        entry = {"op": "altitude", "ts": time.time(), "pictures": pics, "files": {}}
+        with self._append_lock:
+            entry["seq"] = self._next_seq()
+            self._append_jsonl(entry)
+        with con:
+            for upn, fields in pics.items():
+                self._set_picture_fields(con, upn, fields)
+        MasterCheckpointWorker.get(self.master_root).notify()
+        return len(pics)
+
     def consolidate_picture_gps(self, *, apply: bool = False) -> dict:
         """Backfill pictures.GPSPosition from the file rows' CAMERA coordinate, for every
         picture whose picture row is empty but whose files carry one.

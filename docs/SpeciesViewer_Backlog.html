@@ -57,9 +57,6 @@ reads <em>No current work planned</em>.</p>
 <div class="next">
   <strong>Active shortlist:</strong>
   <ul>
-    <li><strong>Tracklog geotag (GPX import)</strong> <span class="tag-progress">IN PROGRESS</span> —
-      parse a logger/phone track, match photos by timestamp, write GPS (ch. 3). Active since
-      14 August 2026.</li>
     <li><strong>Rating &amp; Website</strong> <span class="tag-progress">IN PROGRESS</span> — no longer
       parked: rating-formula tuning was deliberately held until viewer convergence finished, and
       convergence is now complete (ch. 8). Active since 15 August 2026 (ch. 7).</li>
@@ -209,17 +206,32 @@ reads <em>No current work planned</em>.</p>
 <h2>3. Master Database, Editing &amp; Viewer</h2>
 <h3>To do</h3>
 <ul>
-  <li><strong>Tracklog geotag (GPX import)</strong> <span class="tag-progress">IN PROGRESS</span> —
-    active since 14 August 2026. A real GPX
-    import: parse a logger/phone track, match photos by timestamp, write GPS. This is the last
-    piece of the old GPS / data-integrity umbrella still open — the rest shipped as
-    <em>Get GPS from location</em>, <em>Get location</em>, and <em>Refresh Master Database</em>.
-    What exists today is not a substitute: the map interpolates between the photos taken just
-    before and after (your own pictures as a poor-man's tracklog), which cannot help a day with
-    no GPS'd photos at all.</li>
 </ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>Tracklog geotag (GPX import)</strong> <span class="tag-shipped">SHIPPED</span> —
+    live-tested 16 August 2026, both entry points. A GPX/OM-1-log tracklog is matched to
+    pictures by timestamp and fills in whatever's missing: GPS for a day the camera's GPS wasn't
+    enabled at all, and/or altitude (which the camera never records even when GPS was on) via a
+    2×SD/±5min-window cleaned rolling average. This was the last piece of the old GPS /
+    data-integrity umbrella — the rest shipped earlier as <em>Get GPS from location</em>,
+    <em>Get location</em>, and <em>Refresh Master Database</em>.
+    <br><br>
+    Two entry points, one dialog, one engine underneath: <strong>Master ▸ Maintain Master
+    Database ▸ Geotag from Tracklog…</strong> (whole master, by date range) and a
+    <strong>Geotag from tracklog…</strong> button on the Read-a-card dialog (Days/Trips/Unfiled
+    all share that one dialog class), scoped to just the pictures that read just produced —
+    useful before a day even reaches a trip or the master.
+    <br><br>
+    <strong>Two known follow-ups, not yet built:</strong> (1) the Read-Card button becomes
+    clickable right when the copy phase finishes, but if "Add location names" is also ticked, a
+    few more seconds of geocoding follow behind their own modal progress dialog — a click during
+    that window looks swallowed (not a crash, just bad timing; enable the button only once the
+    whole read, geocode included, is truly done). (2) the tracklog's point density is much finer
+    than altitude actually needs — thin the cleaned points to about one every 5 minutes before
+    correlation (altitude barely moves faster than that; it's already what the rolling average
+    smooths toward) to keep a long/dense tracklog cheap to search.</li>
+</ul>
   <li><strong>Map polish</strong> <span class="tag-shipped">SHIPPED</span> — extended map-delete to
     the day map. It always worked once a day had been through <em>Read &amp; Summarize</em>
     (the pipeline-CSV-backed collection); a day map opened before that step used the sidecar-backed

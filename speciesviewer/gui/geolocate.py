@@ -279,6 +279,35 @@ def batch_gps(paths):
     return res
 
 
+def batch_datetime_gps(paths):
+    """{normalised path: {"date": DateTimeOriginal str, "has_gps": bool}} read
+    for many files in ONE exiftool call — the tracklog-geotag dialog's read of
+    just-copied pictures (batch_gps's twin, plus the capture time correlation
+    needs). Same tag set as batch_gps, with DateTimeOriginal added."""
+    import os
+    from engine.exif_writer import run_exiftool_files
+    paths = [str(p) for p in paths if p]
+    if not paths:
+        return {}
+    out = run_exiftool_files(
+        ["-n", "-G", "-j", "-EXIF:DateTimeOriginal", "-XMP:DateTimeOriginal",
+         "-Composite:GPSLatitude", "-Composite:GPSLongitude",
+         "-XMP:GPSLatitude", "-XMP:GPSLongitude"], paths).stdout
+    rows = json.loads(out) if out.strip() else []
+    res = {}
+    for r in rows:
+        lat = r.get("Composite:GPSLatitude", r.get("XMP:GPSLatitude"))
+        lon = r.get("Composite:GPSLongitude", r.get("XMP:GPSLongitude"))
+        # A RAW/JPG reports its date under EXIF; a plain .xmp sidecar (this
+        # handler's usual input — see batch_gps's identical GPS split above)
+        # has no EXIF group at all and reports it under XMP instead.
+        date = r.get("EXIF:DateTimeOriginal", r.get("XMP:DateTimeOriginal"))
+        key = os.path.normcase(os.path.normpath(r.get("SourceFile", "")))
+        res[key] = {"date": str(date or ""),
+                   "has_gps": lat is not None and lon is not None}
+    return res
+
+
 def haversine_m(a, b):
     """Great-circle distance in metres between (lat, lon) points a and b."""
     import math
@@ -596,6 +625,63 @@ def _mirror_gps_to_master(files, lat, lon, method: str | None = None):
             MasterDB(master_root).apply_gps(gps_by_upn, method=method)
     except Exception as e:
         logger.debug(f"GPS master-mirror skipped: {e}")
+
+
+def write_altitude(files, altitude_m, *, method: str = GPS_MANUAL):
+    """Write a signed altitude in metres into the XMP of one or more files —
+    the tracklog-geotag dialog's altitude fill (camera GPS never records
+    altitude; a tracklog is the only source). Sibling to write_gps. RAW is
+    never touched; the sidecar carries it. Returns the number of files written.
+
+    GPSAltitudeRef encodes the sign SEPARATELY from GPSAltitude (which is a
+    magnitude): "0" = above sea level, "1" = below. A polder shot's altitude
+    can legitimately be negative (NAP), so getting the ref bit right matters —
+    dropping it silently turns a negative elevation positive."""
+    from engine.exif_writer import run_exiftool_files
+    files = [str(f) for f in files if f]
+    if not files or altitude_m is None:
+        return 0
+    ref = "1" if altitude_m < 0 else "0"
+    args = [f"-XMP-exif:GPSAltitude={abs(altitude_m)}",
+           f"-XMP-exif:GPSAltitudeRef={ref}", "-overwrite_original"]
+    if method:
+        args[2:2] = [f"-EXIF:GPSProcessingMethod={method}",
+                     f"-XMP:GPSProcessingMethod={method}"]
+    try:
+        r = run_exiftool_files(args, files)
+        if r.returncode != 0:
+            logger.warning(f"Altitude write returned {r.returncode}: {r.stderr.strip()}")
+            return 0
+        _mirror_altitude_to_master(files, altitude_m)
+        return len(files)
+    except Exception as e:
+        logger.warning(f"Altitude write failed: {e}")
+        return 0
+
+
+def _mirror_altitude_to_master(files, altitude_m):
+    """Best-effort: also write the just-placed altitude into the master's
+    pictures.GPSAltitude, mirroring _mirror_gps_to_master's guards exactly
+    (read-only or unconfigured master is a silent no-op — the sidecar write
+    already succeeded, so the geotag itself never fails on the mirror)."""
+    try:
+        from pathlib import Path
+        from utils.config import _config
+        master_root = (_config.get("master", "masterbiotadatabase", fallback="")
+                       or "").replace('"', "").replace("'", "").strip()
+        if not master_root or not Path(master_root).is_dir():
+            return
+        if _config.get("master", "readonly", fallback="yes").strip().lower() != "no":
+            return  # read-only master (SmallBoy) — never write
+        from engine.filecsv import deriveUniquePictureName
+        alt_by_upn = {deriveUniquePictureName(Path(f).name): altitude_m
+                     for f in files if f}
+        alt_by_upn.pop("", None)
+        if alt_by_upn:
+            from db.master_db import MasterDB
+            MasterDB(master_root).apply_altitude(alt_by_upn)
+    except Exception as e:
+        logger.debug(f"Altitude master-mirror skipped: {e}")
 
 
 # ── THROWAWAY: safe-compare dry run ───────────────────────────────────────────

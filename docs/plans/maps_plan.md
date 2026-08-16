@@ -258,3 +258,183 @@ Phase 5 (trip map) is FIRST. Then the broader **GPS & data-integrity umbrella**
 GPS backfill, (4) 2a tracklog geotag, and finally (1) purge dangling
 `data_files`/`data_pictures` entries. Original Phase 3 (rect-select) / Phase 4
 (published Leaflet) still follow.
+
+---
+
+## 2a — SHIPPED 2026-08-16 (live-tested, both entry points)
+
+Built as a **unified** tool rather than the two separate slices this addendum
+was originally written as: one dialog covers both altitude-fill (photo
+already has GPS) and full lat/lon+altitude-fill (no camera GPS at all),
+reading the same tracklog once. Two entry points share the one dialog/engine:
+**Master ▸ Maintain Master Database ▸ Geotag from Tracklog…** (whole master,
+date-range query) and a **Geotag from tracklog…** button on the Read-a-card
+dialog (`gui/trip_process.py:ReadSDCardDialog`, shared by Days/Trips/Unfiled),
+scoped to just the pictures a card read just produced — chosen over a
+yellow-panel button because it's one integration point covering all three
+lanes at the moment the files are freshest.
+
+Key files: `engine/geo.py` (parsers + `clean_altitude_series` cleaning),
+`engine/tracklog_geotag.py` (`plan`/`apply` for the master, `plan_entries`/
+`apply_entries` for a card-read's files, `MasterSource`/`FilesSource`
+adapters), `gui/tracklog_geotag_dialog.py` (the shared review-table dialog),
+`gui/geolocate.py` (`write_altitude`, `batch_datetime_gps`).
+
+**Two known follow-ups, not yet built:**
+1. The Read-Card geotag button becomes clickable as soon as the copy phase
+   finishes, but "Add location names" (if ticked) keeps running behind its
+   own modal progress dialog for a few more seconds — a click during that
+   window looks swallowed, reads as "needs a double click." Not a crash, just
+   bad enablement timing; fix is to enable the button only once the whole
+   read (geocode included) is truly done.
+2. `clean_altitude_series`/`nearest_track_point` were hardened against a
+   large/dense tracklog (two-pointer window instead of an O(n²) rescan, sum()
+   instead of the slow stdlib `statistics` module, binary search instead of a
+   linear scan) — but the deeper fix Gilbert asked for (2026-08-16) is still
+   open: **thin the cleaned points to about one every 5 minutes before
+   correlation**. Altitude barely moves faster than that — it's already what
+   the rolling average smooths toward — so a long/dense log doesn't need
+   every raw sample kept around for the search.
+
+### Original addendum below (research + build plan, kept for the reasoning trail)
+
+## 2a — altitude-source addendum (2026-08-15, research complete, ready to build)
+
+**Why this exists as its own slice of 2a:** the OM-1 already tags `GPSLatitude`/
+`GPSLongitude` live into every RAW via Bluetooth (confirmed via exiftool on
+2026-08-15 shots) — the ONE gap is `GPSAltitude`, which the camera never writes.
+A full field-test day (OM-1's own NMEA log vs a second phone tracker, both
+running alongside real shooting) proved the OM-1's own background log is
+trustworthy for altitude once cleaned — no second app, no lat/lon dependency.
+Full research + decision trail: memory `project_gps_data_integrity`
+(2026-08-14/15 entries). This slice is **narrower and buildable sooner** than
+full 2a (which still separately covers writing lat/lon from a track on days with
+NO camera GPS at all — unaffected, layers on the same machinery, see bottom).
+
+### Decided
+- **Altitude only, lat/lon untouched.** Never overwrite `GPSLatitude/Longitude`
+  from a track — the camera-tagged values are already trusted. The tracklog is
+  consulted purely for its altitude column, matched to each photo by time.
+- **Source priority: OM-1's own per-day `.log` (NMEA `$GPGGA`) is PRIMARY** — a
+  free byproduct of the same Bluetooth session that already tags lat/lon, zero
+  extra step. A companion phone-app `.gpx` (NomadTracks-class) is a **secondary/
+  fallback** source for a day the OM-1 log is missing/gappy — NOT because it's
+  more accurate (field test: matched OM-1 to a median 0.00 m / std 0.47 m once
+  both are cleaned) but because it's a second independent capture.
+- **Clean before use, always**: local-window outlier rejection (±5 min, reject
+  points where `|value − local_mean| > 2×local_stdev`) removes the shared GPS
+  altitude dropouts (both sources hit the SAME bad readings at the SAME moments
+  — a satellite-geometry event, not independent per-device noise), THEN a
+  rolling average (5–10 min window, tune at build time) over the cleaned points
+  is what actually gets assigned to a photo — never a raw nearest-single-sample
+  match, which could land inside a dropout. Validated on real data: flags ~4.3–
+  4.5% of points, leaves the rolling average sitting near the true value through
+  a −48 m dropout instead of being dragged into it.
+- **No unit/datum conversion needed.** `$GPGGA` field 9 is MSL-corrected
+  altitude by spec already (not raw WGS84 ellipsoidal height); NAP (the Dutch
+  vertical datum) matches a decent geoid model to within centimeters, well under
+  our own ~0.4–1 m residual noise floor. Write the cleaned value straight
+  through as meters.
+- **Silent-optional.** No tracklog file for a day → nothing changes, no error,
+  no GPSAltitude written. Same principle as [[project_unfiled_inbox]].
+- **Discovery convention**: a per-day tracklog file lives **inside that trip's
+  `YYYY-MM-DD` day folder** (`utils/trip_identity.py resolve_trip_picture_root`
+  — the same folder already holding `blog.ini` and the day's pictures/sidecars)
+  — sibling to the content it applies to, auto-picked-up by date, "Browse…" as
+  manual fallback if it's filed elsewhere.
+
+### What's already there to reuse (confirmed by code survey, 2026-08-15)
+- **`GPSAltitude` is ALREADY a first-class ingest field** — read via
+  `EXIF:GPSAltitude`/`findAnySourceItem` (`engine/projectlib.py`), listed in
+  `engine/csv_columns.py` + `engine/selected_fields.py GPS_FIELDS`, and already
+  round-trips into `data_pictures.csv`/the master index. **No new DB/CSV column
+  needed** — today it's just always empty because nothing ever writes it.
+- **exiftool batching convention**: `engine/exif_writer.py run_exiftool_files
+  (option_args, files, pre_args=None)` — one call per shared set of tag values,
+  via a `-@` argfile (dodges the Windows ~32KB cmdline limit), always
+  `-charset utf8`. No `-stay_open` session exists; every call is a fresh
+  `subprocess.run`. This is the wrapper `write_gps`/`write_location_batch`
+  already use — reuse it, don't invent a second one.
+- **Master mutation shape** (the "write BOTH halves" discipline, already proven
+  live on 2,415 pictures for place-names): sidecar/XMP write via the exiftool
+  wrapper, THEN mirror into `MasterDB` — `apply_gps()` (`db/master_db.py:1685`,
+  stores `GPSPosition` + provenance, one journal entry) is the closest existing
+  analog; `apply_location_fields()` (`:1506`) the other. Dry-run→apply UI
+  template: `gui/master_geocode.py MasterGeocodeDialog` — worker-thread lookup →
+  checkable review table → confirmed batched write + `backup_pictures_csv()`.
+  Reuse this shape wholesale for a new tracklog-geotag dialog, don't redesign it.
+
+### What's genuinely new to build
+1. **Track parsers** (`engine/geo.py`, PyQt-free like the rest of that module):
+   - `parse_gpx_track(path) -> list[{t_utc, lat, lon, alt}]` — GPX `<trkpt>`.
+   - `parse_om1_nmea_log(path) -> list[{t_utc, lat, lon, alt}]` — `$GPGGA` lines;
+     needs a new `nmea_coord_to_deg(value, hemisphere)` helper (ddmm.mmmm format,
+     different from `parse_gps_dms`'s exiftool-DMS-string format — don't conflate
+     the two). Date comes from the `YYYYMMDD.log` filename (one file = one day),
+     combined with the GGA time-of-day field.
+   - Both return the same shape so cleaning/correlation code is source-agnostic.
+2. **Cleaning function**: `clean_altitude_series(points, window_s=300, sd_mult=2.0)`
+   — local-window outlier flag, then rolling-average — pure function, unit-
+   testable standalone against the real 2026-08-15 logs as fixtures.
+3. **Per-photo correlation**: for a photo's `DateTimeOriginal` (⚠ **local camera
+   time** — the log's `@OM Digital Solutions/+0200/+0200` header / GPX's UTC
+   `<time>` are NOT the same clock; convert consistently, this bit tripped us up
+   by hand this session) find the cleaned rolling-average value nearest in time;
+   skip (no write) if nothing falls within a max-gap cutoff (~10–15 min, TBD) —
+   this is what makes coverage gaps silently degrade instead of writing garbage.
+   **`DateTimeOriginal` is already sitting in `data_pictures.csv`** for any
+   master-batch run — correlation is a pure in-memory pass over the index, ZERO
+   EXIF file I/O. The only file touch in the whole flow is the final write
+   (step 4) — don't build a "read every RAW's EXIF first" step, it isn't needed.
+4. **Write path — NEW, nothing today writes altitude**: `write_altitude(files,
+   altitude_m)` in `gui/geolocate.py`, sibling to `write_gps`, setting only
+   `XMP-exif:GPSAltitude` + `XMP-exif:GPSAltitudeRef` via `run_exiftool_files`.
+   ⚠ **GPSAltitudeRef encodes sign separately** (0 = above sea level, 1 = below) —
+   `GPSAltitude` itself is a magnitude. Polder shots will legitimately be
+   *below* NAP zero (our own 2026-08-15 data had −1 to −4 m stretches) — get the
+   ref bit right or a negative elevation silently becomes a positive one.
+5. **Master mirror**: extend `apply_gps()` (or add a thin sibling
+   `apply_altitude()` next to it) to also set the already-existing `GPSAltitude`
+   column, same one-journal-entry discipline as the rest of `MasterDB`.
+6. **Batch write grouping**: `run_exiftool_files` applies ONE shared set of tag
+   values to a whole batch of files (confirmed — that's how `write_gps`/
+   `write_location_batch` get their "534 calls not 2,415" economy: group files
+   by identical target value). Altitude varies more than a place-name would, but
+   the rolling-average step already makes it PIECEWISE CONSTANT across a window
+   — photos inside the same window naturally share one rounded value, so the
+   same group-by-value trick applies for free. Confirm at build time whether
+   `run_exiftool_files` can do per-file distinct values in one call (multiple
+   `-execute` blocks) as an alternative if finer granularity is wanted later.
+7. **New dialog** (e.g. `gui/master_tracklog_altitude.py`, or fold into a future
+   full 2a dialog): pick a date range / trip, auto-discover a day-folder
+   tracklog file (OM-1 `.log` preferred, `.gpx` fallback, manual Browse… override
+   if multiple/misfiled) → parse → clean → per-photo review table (proposed
+   altitude, flagged "no coverage" rows) → confirmed batch apply. Template:
+   `MasterGeocodeDialog` end to end.
+
+### Validation source: iPhone HEIC altitude (QA cross-check, not a track format)
+Confirmed live in the real database (2026-08-15, `C:\laptop\trips\safaridb\…\panthera
+leo\*.HEIC`, 2024 South Africa trip): Apple/iPhone writes `GPSAltitude` +
+`GPSAltitudeRef="Above Sea Level"` into HEIC EXIF, same MSL convention as the
+OM-1's `$GPGGA`. Sample (iPhone 12 Pro, three shots 8–31s apart, ~stationary):
+`1200.5 m / 1200.4 m / 1200.6 m` — stable to ~0.2 m, and 1200 m ASL is exactly
+right for the Highveld near Johannesburg/Pretoria. Good sanity check, but
+**anecdotal as evidence** (one device, one trip, not concurrent with the
+Aug-14/15 OM-1 test days) — noted here, not treated as proof.
+**Use, don't build for:** wherever a day's master already has HEIC shots
+alongside OM-1/tracklog coverage, diff `GPSAltitude` (HEIC) against the
+tracklog's cleaned value at the matching time/place as a free extra QA signal
+in the review table — no new parser needed, `GPSAltitude` is already an ingest
+field on both sides. **2026-08-16 (planned): user shooting iPhone photos
+alongside tomorrow's OM-1/tracklog session** — first genuinely concurrent
+same-day comparison across all three sources (OM-1 log, phone tracklog app,
+iPhone HEIC EXIF). Pick this up from that data before treating iPhone-HEIC
+cross-check as validated rather than anecdotal.
+
+### Relationship to full 2a (lat/lon-from-track, for days with no camera GPS)
+Unaffected and unblocked by any of the above — it's the same track-parser
+output (`lat, lon` are already in the parsed points, just unused here), reusing
+the ALREADY-BUILT `write_gps`/`apply_gps` for position instead of the new
+altitude writer. Can be built as a second pass over the same dialog once the
+altitude slice is live, or built first if a no-GPS day becomes the more urgent
+need — either order works, nothing above needs redoing.

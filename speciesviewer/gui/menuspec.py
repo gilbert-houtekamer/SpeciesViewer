@@ -1542,6 +1542,26 @@ def build_menu_spec(main_window):
         showsubdirectory=False,
     )
 
+    def _tracklog_geotag():
+        from gui.tracklog_geotag_dialog import open_tracklog_geotag
+        open_tracklog_geotag(main_window)
+
+    # A third data-repair tool alongside the two above: where those two fill
+    # a picture's coordinate from data the master ALREADY has (a camera file,
+    # an address lookup), this one sources GPS/altitude from an EXTERNAL
+    # tracklog file (GPX / OM-1 log) — the only way to cover a day the
+    # camera's own GPS was never enabled, and the only source for altitude
+    # (the camera never records it). Review-first like its siblings.
+    tracklog_geotag_item = MenuSpec(
+        callback=_tracklog_geotag,
+        title="Geotag from Tracklog (GPX/GPS log)…",
+        enabled=has_master,
+        tooltip="Fill missing GPS (a day the camera's GPS wasn't enabled) and/or "
+                "altitude (which the camera never records) by matching pictures "
+                "to a GPX/GPS tracklog by time",
+        showsubdirectory=False,
+    )
+
     # Force a full website re-render (every taxon/species page, not just the ones
     # changed this run) + upload — for when a SHARED TEMPLATE changed and must reach
     # all master pages at once. HTML-only + publish-only: it never freezes or commits
@@ -1579,6 +1599,7 @@ def build_menu_spec(main_window):
         f"{MenuSpec.separator()}_maint_gps": None,
         "Add Missing Place Names…": add_place_names_item,
         "Fill Picture GPS from Files…": consolidate_gps_item,
+        "Geotag from Tracklog (GPX/GPS log)…": tracklog_geotag_item,
         f"{MenuSpec.separator()}_maint_web": None,
         "Rebuild Entire Website (all pages)…": rebuild_master_web_item,
         "Manage Site Publication…": manage_site_publication,

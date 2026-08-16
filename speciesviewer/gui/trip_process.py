@@ -894,11 +894,21 @@ class ReadSDCardDialog(QDialog):
         self.pl_btn.setToolTip(
             "Open this day in DxO PhotoLab so it can create the .dop recipes "
             "(select all with Ctrl-A, then write sidecars)")
+        # Fills missing GPS (a day the camera's GPS wasn't enabled) and/or
+        # altitude (which the camera never records) for the pictures just
+        # copied, matched to a GPX/OM-1-log tracklog by time. Same enablement
+        # pattern as view_btn/pl_btn: nothing to act on until a read finishes.
+        self.geotag_btn = QPushButton("Geotag from tracklog…")
+        self.geotag_btn.setEnabled(False)
+        self.geotag_btn.setToolTip(
+            "Fill missing GPS/altitude for the pictures just read from a "
+            "GPX/GPS tracklog file, matched by time")
         self.close_btn = QPushButton("Close")
         btn_row.addWidget(self.scan_btn)
         btn_row.addWidget(self.read_btn)
         btn_row.addWidget(self.view_btn)
         btn_row.addWidget(self.pl_btn)
+        btn_row.addWidget(self.geotag_btn)
         btn_row.addWidget(self.close_btn)
         layout.addLayout(btn_row)
 
@@ -915,6 +925,7 @@ class ReadSDCardDialog(QDialog):
         self.read_btn.clicked.connect(self.on_read)
         self.view_btn.clicked.connect(self.on_view)
         self.pl_btn.clicked.connect(self.on_open_in_photolab)
+        self.geotag_btn.clicked.connect(self.on_geotag_from_tracklog)
         self.close_btn.clicked.connect(self.reject)
         self._close_connected = True   # True = Close, False = Cancel
 
@@ -965,6 +976,35 @@ class ReadSDCardDialog(QDialog):
             f"Opened {Path(folder).name} in PhotoLab — select all (Ctrl-A) and write "
             "sidecars to create the .dop recipes. If PhotoLab was already running it "
             "may still show its previous folder; browse to this day.")
+
+    def on_geotag_from_tracklog(self):
+        """Fill missing GPS/altitude for the pictures just read, matched to a
+        GPX/OM-1-log tracklog by time. Mirrors _add_location_names's target-
+        building exactly: RAWs from this read that got an .xmp sidecar (no
+        sidecar, no XMP-based write target and nothing to correlate cheaply)."""
+        targets = [t for t in (self._last_targets or []) if Path(t).is_file()]
+        xmps = []
+        for t in targets:
+            p = Path(t)
+            if p.suffix.lower() in _PL_RAW_EXTS and p.with_suffix(".xmp").exists():
+                xmps.append((p.stem, str(p.with_suffix(".xmp"))))
+        if not xmps:
+            QMessageBox.information(self, "Geotag from Tracklog",
+                                    "No RAW+XMP pictures from this read to geotag.")
+            return
+        from gui.geolocate import batch_datetime_gps
+        meta = batch_datetime_gps([x[1] for x in xmps])
+        entries, files_by_key = [], {}
+        for stem, xmp in xmps:
+            m = meta.get(os.path.normcase(os.path.normpath(xmp)))
+            if not m:
+                continue
+            entries.append({"key": stem, "date": m["date"], "has_gps": m["has_gps"]})
+            files_by_key[stem] = [xmp]
+        from engine.tracklog_geotag import FilesSource
+        from gui.tracklog_geotag_dialog import TracklogGeotagDialog
+        source = FilesSource(entries, files_by_key, "this read")
+        TracklogGeotagDialog(self, source, initial_dir=self.source_field.get_path()).exec()
 
     def _on_cancel(self):
         self._cancelled = True   # on_finished still fires with the partial summary
@@ -1361,6 +1401,7 @@ class ReadSDCardDialog(QDialog):
         self._set_progress("")
         self.view_btn.setEnabled(bool(self._last_targets))
         self.pl_btn.setEnabled(bool(self._last_targets) and bool(self._last_dest))
+        self.geotag_btn.setEnabled(bool(self._last_targets))
         if self._last_targets and not cancelled:
             self.pl_hint.setText(
                 "Next: open the day in <b>PhotoLab</b>, press <b>Ctrl-A</b> and "
