@@ -32,7 +32,7 @@ PICTURE_COL, WHEN_COL, STATUS_COL, PROPOSED_COL, GAP_COL = 0, 1, 2, 3, 4
 
 
 class _PlanThread(QThread):
-    done = pyqtSignal(list)
+    done = pyqtSignal(list, dict)
     failed = pyqtSignal(str)
 
     def __init__(self, source, points, camera_utc_offset, max_gap_s, parent=None):
@@ -42,12 +42,12 @@ class _PlanThread(QThread):
 
     def run(self):
         try:
-            rows = self._source.plan(self._points, self._offset, self._max_gap_s)
+            rows, stats = self._source.plan(self._points, self._offset, self._max_gap_s)
         except Exception as e:
             logger.exception("tracklog geotag plan failed")
             self.failed.emit(str(e))
             return
-        self.done.emit(rows)
+        self.done.emit(rows, stats)
 
 
 class _WriteThread(QThread):
@@ -77,6 +77,7 @@ class TracklogGeotagDialog(QDialog):
         self._initial_dir = initial_dir
         self._points: list[dict] = []
         self._rows: list[dict] = []
+        self._stats: dict = {}
         self._thread = None
 
         lay = QVBoxLayout(self)
@@ -210,9 +211,10 @@ class TracklogGeotagDialog(QDialog):
         self._plan_btn.setEnabled(True)
         QMessageBox.critical(self, "Geotag from Tracklog", f"Planning failed:\n{msg}")
 
-    def _on_planned(self, rows):
+    def _on_planned(self, rows, stats):
         self._thread = None
         self._rows = rows
+        self._stats = stats
         self._bar.setVisible(False)
         self._plan_btn.setEnabled(True)
         self._fill_table()
@@ -241,9 +243,7 @@ class TracklogGeotagDialog(QDialog):
         n_gps = sum(1 for r in self._rows if r["action"] == GPS_ACTION)
         n_alt = sum(1 for r in self._rows if r["proposed_alt"] is not None)
         if not self._rows:
-            self._head_note(
-                "No pictures in the tracklog's date range matched within the "
-                "15-minute cutoff — nothing to propose.")
+            self._head_note(self._empty_result_note())
         else:
             self._head_note(
                 f"<b>{len(self._rows):,} picture(s)</b> matched: "
@@ -251,6 +251,29 @@ class TracklogGeotagDialog(QDialog):
                 f"<b>{n_alt:,}</b> get an altitude. "
                 f"Untick anything that looks wrong, then press Write.")
         self._write_btn.setEnabled(bool(self._rows))
+
+    def _empty_result_note(self) -> str:
+        """Explain a zero-row plan honestly — each of the three reasons
+        _correlate() can skip a photo maps to a different message, so a blank
+        table never looks like the join silently failed."""
+        considered = self._stats.get("considered", 0)
+        if considered == 0:
+            return "No pictures to check — nothing to propose."
+        outside = self._stats.get("outside_range", 0)
+        gap = self._stats.get("gap", 0)
+        no_change = self._stats.get("no_change", 0)
+        clauses = []
+        if outside:
+            clauses.append(f"{outside:,} picture(s) fall outside this tracklog's date coverage")
+        if gap:
+            clauses.append(f"{gap:,} picture(s) didn't match within the 15-minute cutoff")
+        if no_change:
+            clauses.append(f"{no_change:,} picture(s) already have this GPS/altitude information")
+        if not clauses:
+            return "Nothing to propose."
+        if len(clauses) == 1:
+            return f"Nothing to propose: {clauses[0]}."
+        return "Nothing to propose: " + "; ".join(clauses) + "."
 
     def _head_note(self, text):
         self._head.setText(text)

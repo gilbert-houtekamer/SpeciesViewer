@@ -280,10 +280,13 @@ def batch_gps(paths):
 
 
 def batch_datetime_gps(paths):
-    """{normalised path: {"date": DateTimeOriginal str, "has_gps": bool}} read
-    for many files in ONE exiftool call — the tracklog-geotag dialog's read of
-    just-copied pictures (batch_gps's twin, plus the capture time correlation
-    needs). Same tag set as batch_gps, with DateTimeOriginal added."""
+    """{normalised path: {"date": DateTimeOriginal str, "has_gps": bool,
+    "cur_alt": float | None}} read for many files in ONE exiftool call — the
+    tracklog-geotag dialog's read of just-copied pictures (batch_gps's twin,
+    plus the capture time correlation needs). Same tag set as batch_gps, with
+    DateTimeOriginal and GPSAltitude added — the altitude lets a re-run skip
+    photos that already carry a close-enough value instead of re-proposing
+    every one of them (see engine.tracklog_geotag._altitude_already_close)."""
     import os
     from engine.exif_writer import run_exiftool_files
     paths = [str(p) for p in paths if p]
@@ -292,19 +295,26 @@ def batch_datetime_gps(paths):
     out = run_exiftool_files(
         ["-n", "-G", "-j", "-EXIF:DateTimeOriginal", "-XMP:DateTimeOriginal",
          "-Composite:GPSLatitude", "-Composite:GPSLongitude",
-         "-XMP:GPSLatitude", "-XMP:GPSLongitude"], paths).stdout
+         "-XMP:GPSLatitude", "-XMP:GPSLongitude",
+         "-Composite:GPSAltitude", "-XMP:GPSAltitude"], paths).stdout
     rows = json.loads(out) if out.strip() else []
     res = {}
     for r in rows:
         lat = r.get("Composite:GPSLatitude", r.get("XMP:GPSLatitude"))
         lon = r.get("Composite:GPSLongitude", r.get("XMP:GPSLongitude"))
+        alt = r.get("Composite:GPSAltitude", r.get("XMP:GPSAltitude"))
         # A RAW/JPG reports its date under EXIF; a plain .xmp sidecar (this
         # handler's usual input — see batch_gps's identical GPS split above)
         # has no EXIF group at all and reports it under XMP instead.
         date = r.get("EXIF:DateTimeOriginal", r.get("XMP:DateTimeOriginal"))
         key = os.path.normcase(os.path.normpath(r.get("SourceFile", "")))
+        try:
+            cur_alt = float(alt) if alt is not None else None
+        except (TypeError, ValueError):
+            cur_alt = None
         res[key] = {"date": str(date or ""),
-                   "has_gps": lat is not None and lon is not None}
+                   "has_gps": lat is not None and lon is not None,
+                   "cur_alt": cur_alt}
     return res
 
 

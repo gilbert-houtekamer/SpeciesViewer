@@ -59,32 +59,64 @@ def track_date_range(points: list[dict]):
     return lo, hi
 
 
+def _altitude_already_close(cur_alt, proposed_alt, *, rel_tol: float = 0.05,
+                            abs_tol: float = 0.5) -> bool:
+    """True if `cur_alt` (already on the photo) and `proposed_alt` (from the
+    tracklog) are close enough that re-writing would be a no-op in substance —
+    re-running the same geotag against a photo that already has an altitude
+    shouldn't re-propose it just because the rolling average recomputed a
+    float a few centimetres off. abs_tol covers low altitudes where a percent
+    tolerance would be unreasonably tight (e.g. 2.0 m vs 2.1 m near sea level)."""
+    import math
+    if cur_alt is None or proposed_alt is None:
+        return False
+    return math.isclose(cur_alt, proposed_alt, rel_tol=rel_tol, abs_tol=abs_tol)
+
+
 def _correlate(key: str, date_str: str, has_gps: bool, points: list[dict], *,
-               camera_utc_offset, max_gap_s: float, species: str = "") -> dict | None:
+               camera_utc_offset, max_gap_s: float, species: str = "",
+               cur_alt: float | None = None) -> tuple[dict | None, str | None]:
     """One picture's correlation against the cleaned track — the join Phase 1
     and the entries-based path share. `date_str` is DateTimeOriginal (local
     camera time, 'YYYY:MM:DD HH:MM:SS...'); `camera_utc_offset` is a
-    datetime.timezone. Returns a row, or None if there's nothing to propose
-    (no usable date, nothing within max_gap_s, or the photo already has GPS
-    and the track carries no altitude for it)."""
+    datetime.timezone. `cur_alt` is the photo's current GPSAltitude (if any),
+    so a re-run against an already-geotagged photo doesn't re-propose a value
+    that's already close enough.
+
+    Returns (row, reason): row is None when there's nothing to propose, and
+    `reason` then distinguishes why — for the dialog's empty-result message,
+    so it doesn't attribute a specific cause it can't actually confirm:
+      "outside_range" — the photo's time falls entirely before/after the
+                        track's own covered span (a day the track doesn't
+                        cover at all — not a near-miss, not a bug).
+      "gap"           — within the track's span, but no point fell inside
+                        max_gap_s (a genuine tracklog gap), the date was
+                        missing/unparseable, or the track carries no clean
+                        altitude at this point.
+      "no_change"     — the photo already has GPS/altitude close enough to
+                        what the track would propose."""
     import datetime as dt
     from engine.geo import nearest_track_point
 
     date_str = (date_str or "").strip()
     if not date_str:
-        return None
+        return None, "gap"
     try:
         naive = dt.datetime.strptime(date_str[:19], "%Y:%m:%d %H:%M:%S")
     except ValueError:
-        return None
+        return None, "gap"
     t_utc = naive.replace(tzinfo=camera_utc_offset).astimezone(dt.timezone.utc)
     hit = nearest_track_point(points, t_utc, max_gap_s)
     if hit is None:
-        return None
+        if points and (t_utc < points[0]["t_utc"] or t_utc > points[-1]["t_utc"]):
+            return None, "outside_range"
+        return None, "gap"
     proposed_alt = hit["alt_clean"]
     action = ALT_ACTION if has_gps else GPS_ACTION
     if action == ALT_ACTION and proposed_alt is None:
-        return None  # nothing to add for a photo that already has GPS
+        return None, "gap"  # nothing to add for a photo that already has GPS
+    if action == ALT_ACTION and _altitude_already_close(cur_alt, proposed_alt):
+        return None, "no_change"  # already has (close enough to) this altitude
     return {
         "upn": key,
         "species": species,
@@ -95,51 +127,70 @@ def _correlate(key: str, date_str: str, has_gps: bool, points: list[dict], *,
         "proposed_alt": round(proposed_alt, 1) if proposed_alt is not None else None,
         "gap_s": round(hit["gap_s"]),
         "action": action,
-    }
+    }, None
 
 
-def plan(db, points: list[dict], *, camera_utc_offset, max_gap_s: float = 900) -> list[dict]:
+def plan(db, points: list[dict], *, camera_utc_offset, max_gap_s: float = 900
+         ) -> tuple[list[dict], dict]:
     """For every master picture in the track's covered date range, correlate
     its DateTimeOriginal against the cleaned track and propose a row.
     Pictures with nothing within `max_gap_s` are simply not returned — the
     "silent-optional" cutoff, no garbage matches. Writes nothing.
 
-    Returns rows: {upn, species, when, has_gps, proposed_lat, proposed_lon,
-    proposed_alt, gap_s, action}."""
+    Returns (rows, stats): rows are {upn, species, when, has_gps, proposed_lat,
+    proposed_lon, proposed_alt, gap_s, action}; stats = {"considered": N,
+    "outside_range": N, "gap": N, "no_change": N} lets the caller explain an
+    empty result accurately (see _correlate's `reason`) instead of assuming
+    one specific cause."""
     from_date, to_date = track_date_range(points)
     if not from_date:
-        return []
+        return [], {"considered": 0}
     by_day = db.pictures_in_daterange(from_date, to_date)
 
     out: list[dict] = []
+    stats: dict = {"considered": 0}
     for day_rows in by_day.values():
         for r in day_rows:
-            row = _correlate(
+            stats["considered"] += 1
+            try:
+                cur_alt = float(r.get("GPSAltitude")) if str(r.get("GPSAltitude") or "").strip() else None
+            except ValueError:
+                cur_alt = None
+            row, reason = _correlate(
                 r["UniquePictureName"], r.get("DateTimeOriginal"),
                 bool((r.get("GPSPosition") or "").strip()), points,
                 camera_utc_offset=camera_utc_offset, max_gap_s=max_gap_s,
-                species=r.get("WetSoortNaam") or "")
+                species=r.get("WetSoortNaam") or "", cur_alt=cur_alt)
             if row is not None:
                 out.append(row)
+            elif reason:
+                stats[reason] = stats.get(reason, 0) + 1
     out.sort(key=lambda r: r["when"])
-    return out
+    return out, stats
 
 
 def plan_entries(entries: list[dict], points: list[dict], *, camera_utc_offset,
-                 max_gap_s: float = 900) -> list[dict]:
+                 max_gap_s: float = 900) -> tuple[list[dict], dict]:
     """Same correlation as plan(), over an already-known set of pictures
     instead of a master date-range query — for the Read-Card path, where the
     candidates are exactly the files a card read just produced (each entry:
-    {"key":, "date":, "has_gps":}, built by the caller from a batched exiftool
-    read, e.g. gui.geolocate.batch_datetime_gps)."""
+    {"key":, "date":, "has_gps":, "cur_alt":}, built by the caller from a
+    batched exiftool read, e.g. gui.geolocate.batch_datetime_gps).
+
+    Returns (rows, stats) — see plan()."""
     out: list[dict] = []
+    stats: dict = {"considered": 0}
     for e in entries:
-        row = _correlate(e["key"], e.get("date"), bool(e.get("has_gps")), points,
-                         camera_utc_offset=camera_utc_offset, max_gap_s=max_gap_s)
+        stats["considered"] += 1
+        row, reason = _correlate(e["key"], e.get("date"), bool(e.get("has_gps")), points,
+                                 camera_utc_offset=camera_utc_offset, max_gap_s=max_gap_s,
+                                 cur_alt=e.get("cur_alt"))
         if row is not None:
             out.append(row)
+        elif reason:
+            stats[reason] = stats.get(reason, 0) + 1
     out.sort(key=lambda r: r["when"])
-    return out
+    return out, stats
 
 
 def _write_rows(rows: list[dict], resolve_files, *, progress_cb=None) -> dict:

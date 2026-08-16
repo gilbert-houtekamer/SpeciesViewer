@@ -999,7 +999,8 @@ class ReadSDCardDialog(QDialog):
             m = meta.get(os.path.normcase(os.path.normpath(xmp)))
             if not m:
                 continue
-            entries.append({"key": stem, "date": m["date"], "has_gps": m["has_gps"]})
+            entries.append({"key": stem, "date": m["date"], "has_gps": m["has_gps"],
+                            "cur_alt": m.get("cur_alt")})
             files_by_key[stem] = [xmp]
         from engine.tracklog_geotag import FilesSource
         from gui.tracklog_geotag_dialog import TracklogGeotagDialog
