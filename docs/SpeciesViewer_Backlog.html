@@ -213,6 +213,10 @@ reads <em>No current work planned</em>.</p>
 <h2>3. Master Database, Editing &amp; Viewer</h2>
 <h3>To do</h3>
 <ul>
+  <li>Tracklog geotag row action (🛰️): live-test on the <strong>Days</strong> panel (built,
+    unclicked). <strong>Trip</strong> panel needs discussion — no row action yet, blocked on
+    porting Trip's overview table onto the shared <code>overview_table.py</code> or building
+    separate wiring. See the Tracklog geotag entry below.</li>
 </ul>
 <h3>Done</h3>
 <ul>
@@ -238,6 +242,41 @@ reads <em>No current work planned</em>.</p>
     included, is truly done, and the misleading early "✅ Card read complete." log line (printed
     before the geocode step had even started) was dropped in favour of the real "Done" once
     everything has finished.
+    <br><br>
+    <strong>Also fixed 16 August 2026:</strong> re-running the geotag over pictures it had
+    already geotagged kept re-proposing the same altitude, forcing a needless re-confirm — a
+    photo's current altitude is now compared to the proposal with a tolerance (5% relative /
+    0.5&nbsp;m absolute) and skipped when it's already close enough. The empty-result message
+    also used to blame everything on "nothing matched within the 15-minute cutoff" even when the
+    real reason was a whole day outside the tracklog's date coverage, or pictures that were
+    already geotagged — it now names the real reason (or a mix of reasons) instead of guessing.
+    <br><br>
+    <strong>Shipped 16 August 2026 — auto-discovery + camera-clock auto-detection:</strong> the
+    camera's UTC offset (needed to line a photo's local clock time up with the tracklog's UTC
+    timestamps) used to be typed by hand or guessed from the tracklog device's own header — both
+    assume the camera's clock/timezone setting is correct, which is easy to forget after
+    traveling. It's now <strong>auto-detected by correlation search</strong> against the track
+    itself (coarse 15-minute sweep, then a fine pass that also catches ordinary clock drift, not
+    just a wrong timezone) — never a guess, a day it isn't confident about is simply skipped and
+    logged. Works for both a Read's automatic pass and the manual dialog's offset field (still
+    editable/overridable by hand).
+    <br><br>
+    On top of that: a <strong>"Geotag from each day's tracklog…" checkbox</strong> on the Read
+    dialog (ticked by default once a GPS-logs root folder is configured in Settings ▸
+    Repositories) silently fills GPS/altitude per day from
+    <code>&lt;root&gt;/&lt;year&gt;/&lt;yyyymmdd&gt;.log</code> (or <code>.gpx</code>), on its own
+    thread so it never blocks the dialog. It runs <em>before</em> "Add location names", so a
+    picture that gets GPS from the tracklog also gets a place name in the same Read. And a
+    standalone <strong>🛰️ "Geotag from tracklog…" row action</strong> (icon + right-click menu)
+    on the <strong>Unfiled</strong> and <strong>Days</strong> panels runs the same logic against
+    an already-read day, independent of a card being present — opens the review dialog pre-loaded
+    with that day's auto-detected log.
+    <br><br>
+    <strong>To do:</strong> the Days-panel row action is built the same way as Unfiled's (live
+    on Unfiled, not yet clicked on Days — next session). The <strong>Trip panel doesn't have
+    this row action yet</strong>, on purpose: Trip's overview table isn't on the shared
+    component (<code>overview_table.py</code>) Unfiled/Days already share, so it needs either
+    that port finished first or its own wiring — worth discussing which before building it.
     <br><br>
     <strong>One known follow-up, not yet built:</strong> the tracklog's point density is much
     finer than altitude actually needs — thin the cleaned points to about one every 5 minutes
