@@ -13,8 +13,9 @@ Column contract (double-click a cell = do that thing to that row):
     1 Pictures        count; opens Review & cull
     2 Trip     📁     move into a trip's pictures folder
     3 Day      📅     track as a Day — WHERE IT LIES, nothing moves
-    4 Move     →      move to a folder you pick, out of SV's world
-    5 About this day  free text, the ONLY editable cell in the panel
+    4 Geotag   🛰️     Geotag from tracklog… — independent of a card read
+    5 Move     →      move to a folder you pick, out of SV's world
+    6 About this day  free text, the ONLY editable cell in the panel
 
 THE RULE: nothing here deletes pictures. There is no Discard, no .trash, no
 remove-from-list — the inbox holds the only copy of pictures that are in no trip,
@@ -41,7 +42,7 @@ from utils.open_path import open_path
 
 TAB_TITLE = "Unfiled"
 
-DAY_COL, PICT_COL, TRIP_COL, ASDAY_COL, MOVE_COL, NOTE_COL = range(6)
+DAY_COL, PICT_COL, TRIP_COL, ASDAY_COL, TRACK_COL, MOVE_COL, NOTE_COL = range(7)
 _FOLDER_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
@@ -58,9 +59,9 @@ def populate_unfiled_overview(self):
     self._unfiled_rows = rows
 
     table = make_overview_table(
-        ["Day", "Pictures", "Trip", "Day", "Move", "About this day"],
+        ["Day", "Pictures", "Trip", "Day", "Geotag", "Move", "About this day"],
         rows=len(rows),
-        fit_columns=(PICT_COL, TRIP_COL, ASDAY_COL, MOVE_COL))
+        fit_columns=(PICT_COL, TRIP_COL, ASDAY_COL, TRACK_COL, MOVE_COL))
     self.unfiled_table = table
 
     for row, entry in enumerate(rows):
@@ -80,6 +81,10 @@ def populate_unfiled_overview(self):
         table.setItem(row, ASDAY_COL, action_cell(
             "📅", "Track as a Day — the folder stays exactly where it is; it just "
                   "stops being unfiled and appears under Days"))
+
+        table.setItem(row, TRACK_COL, action_cell(
+            "🛰️", "Geotag from tracklog… — fills missing GPS/altitude for this "
+                  "day from its GPS log, independent of a card read"))
 
         table.setItem(row, MOVE_COL, action_cell(
             "→", "Move elsewhere — pick a folder; the day leaves the inbox and "
@@ -195,6 +200,8 @@ def _on_double_click(self, row, column):
         _file_under_trip(self, row, folder)
     elif column == ASDAY_COL:
         _track_as_day(self, row, folder)
+    elif column == TRACK_COL:
+        _geotag_from_tracklog(self, row, folder)
     elif column == MOVE_COL:
         _move_elsewhere(self, row, folder)
     # NOTE_COL falls through to Qt's own edit-on-double-click for that item.
@@ -262,6 +269,17 @@ def _track_as_day(self, row, folder):
     QTimer.singleShot(0, lambda: populate_days_overview(self))
 
 
+def _geotag_from_tracklog(self, row, folder):
+    """Run the tracklog geotag review dialog against this already-unfiled
+    day, independent of a card being present — the day's own auto-detected
+    GPS log (if any) is pre-loaded. A modal dialog, so the refresh after it
+    closes picks up any GPS/altitude it wrote."""
+    from gui.tracklog_geotag_dialog import open_tracklog_geotag_for_folder
+    open_tracklog_geotag_for_folder(self, folder)
+    _repopulate_later(self)
+    _refresh_panel(self)
+
+
 def _move_elsewhere(self, row, folder):
     """Move the day to a folder the user picks — the family-outing case: these
     pictures are not going to a trip, not going to the master, they just need to
@@ -315,6 +333,7 @@ def _on_context_menu(self, pos):
     menu.addSeparator()
     trip_action = menu.addAction("File under a trip…")
     day_action = menu.addAction("Track as a Day (leave it here)")
+    track_action = menu.addAction("Geotag from tracklog…")
     move_action = menu.addAction("Move elsewhere…")
     menu.addSeparator()
     describe_action = menu.addAction("Describe this day…")
@@ -329,6 +348,8 @@ def _on_context_menu(self, pos):
         _file_under_trip(self, row, folder)
     elif chosen == day_action:
         _track_as_day(self, row, folder)
+    elif chosen == track_action:
+        _geotag_from_tracklog(self, row, folder)
     elif chosen == move_action:
         _move_elsewhere(self, row, folder)
     elif chosen == describe_action:

@@ -117,6 +117,18 @@ def add_day_to_master(main_window):
     dlg.open_session(fixed_dir=folder)
 
 
+def geotag_from_tracklog(main_window):
+    """Run the tracklog geotag review dialog against the active Day,
+    independent of a card being present — the day's own auto-detected GPS
+    log (if any) is pre-loaded. Modal, so refresh after it returns."""
+    folder = _active_day(main_window, "geotag it from a tracklog")
+    if not folder:
+        return
+    from gui.tracklog_geotag_dialog import open_tracklog_geotag_for_folder
+    open_tracklog_geotag_for_folder(main_window, folder)
+    _refresh_panel(main_window)
+
+
 def remove_day_from_list(main_window):
     """Remove the active Day from the list (its pictures are left untouched)."""
     folder = getattr(main_window, "active_day_folder", "")

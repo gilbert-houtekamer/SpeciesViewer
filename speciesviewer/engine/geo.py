@@ -303,3 +303,78 @@ def nearest_track_point(points: list[dict], t_utc, max_gap_s: float):
     out = dict(points[best_i])
     out["gap_s"] = best_gap
     return out
+
+
+def estimate_camera_offset(local_dates: list[str], points: list[dict], *,
+                           coarse_step_min: int = 15, tolerance_s: float = 900,
+                           fine_step_s: int = 15, fine_tolerance_s: float = 90,
+                           min_match_fraction: float = 0.5,
+                           min_matches: int = 5) -> "_dt.timezone | None":
+    """Find the camera's UTC offset by correlation search against `points`
+    (a cleaned track, see clean_altitude_series) rather than trusting a typed
+    value or a tracklog device's own header — the camera's clock/timezone is
+    a manual, error-prone setting (easy to forget after traveling); the
+    track's own timestamps are satellite/UTC-derived and don't depend on it
+    at all. `local_dates` are raw DateTimeOriginal strings
+    ('YYYY:MM:DD HH:MM:SS...', naive camera-local time) for one correlation
+    run — usually one day's pictures, but works over a wider set too.
+
+    Two passes, using the same nearest-point join nearest_track_point does:
+      coarse — every `coarse_step_min` (default 15, since real-world
+      timezones are always a 15-minute multiple) offset from -14:00 to
+      +14:00; the offset with the most dates landing within `tolerance_s`
+      of some point wins.
+      fine — +/- coarse_step_min around the coarse winner, at `fine_step_s`
+      resolution and a tighter `fine_tolerance_s`, to also catch ordinary
+      clock drift (a camera clock running a few minutes fast/slow) — a
+      timezone-only guess could never find that.
+
+    Returns None (never a guess) when the coarse pass's best candidate
+    doesn't clear both `min_match_fraction` of the parseable dates AND the
+    absolute `min_matches` floor — a fraction alone isn't meaningful with
+    only a handful of dates (1 photo "matching" is a trivial 100%), so a
+    day with too little data is never mistaken for a confident one."""
+    import bisect
+
+    naive: list[_dt.datetime] = []
+    for s in local_dates:
+        s = (s or "").strip()
+        if not s:
+            continue
+        try:
+            naive.append(_dt.datetime.strptime(s[:19], "%Y:%m:%d %H:%M:%S"))
+        except ValueError:
+            continue
+    if not naive or not points:
+        return None
+
+    times = [p["t_utc"] for p in points]
+
+    def match_count(tz: "_dt.timezone", tol_s: float) -> int:
+        n = 0
+        for dt_naive in naive:
+            t_utc = dt_naive.replace(tzinfo=tz).astimezone(_dt.timezone.utc)
+            idx = bisect.bisect_left(times, t_utc)
+            candidates = [i for i in (idx - 1, idx) if 0 <= i < len(times)]
+            if candidates and min(abs((times[i] - t_utc).total_seconds())
+                                 for i in candidates) <= tol_s:
+                n += 1
+        return n
+
+    best_minutes, best_n = None, 0
+    span_min = 14 * 60
+    for m in range(-span_min, span_min + 1, coarse_step_min):
+        n = match_count(_dt.timezone(_dt.timedelta(minutes=m)), tolerance_s)
+        if n > best_n:
+            best_minutes, best_n = m, n
+    if best_minutes is None or best_n < min_matches or best_n < min_match_fraction * len(naive):
+        return None
+
+    fine_best_tz, fine_best_n = _dt.timezone(_dt.timedelta(minutes=best_minutes)), -1
+    window_s = coarse_step_min * 60
+    for offset_s in range(-window_s, window_s + 1, fine_step_s):
+        tz = _dt.timezone(_dt.timedelta(seconds=best_minutes * 60 + offset_s))
+        n = match_count(tz, fine_tolerance_s)
+        if n > fine_best_n:
+            fine_best_tz, fine_best_n = tz, n
+    return fine_best_tz

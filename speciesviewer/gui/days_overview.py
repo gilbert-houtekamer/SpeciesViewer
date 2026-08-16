@@ -14,9 +14,10 @@ Column contract (double-click a cell = do that thing to that row):
 
     0 Day             the date; the folder is on the item and in the tooltip
     1 Pictures        count; opens Review & rate
-    2 Add to Master   🔘 ready / ✅ already done / ⚪ folder gone
-    3 Remove          ✖ stop tracking (pictures never touched)
-    4 About this day  free text, the ONLY editable cell in the panel
+    2 Geotag   🛰️     Geotag from tracklog… — independent of a card read
+    3 Add to Master   🔘 ready / ✅ already done / ⚪ folder gone
+    4 Remove          ✖ stop tracking (pictures never touched)
+    5 About this day  free text, the ONLY editable cell in the panel
 """
 
 from __future__ import annotations
@@ -39,7 +40,7 @@ from utils.open_path import open_path
 
 TAB_TITLE = "Days"
 
-DAY_COL, PICT_COL, MASTER_COL, REMOVE_COL, NOTE_COL = range(5)
+DAY_COL, PICT_COL, TRACK_COL, MASTER_COL, REMOVE_COL, NOTE_COL = range(6)
 _FOLDER_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
@@ -53,9 +54,9 @@ def populate_days_overview(self):
     rows = [by_folder[f] for f in order_like_panel(self, by_folder.keys())]
 
     table = make_overview_table(
-        ["Day", "Pictures", "Add to\nMaster", "Remove", "About this day"],
+        ["Day", "Pictures", "Geotag", "Add to\nMaster", "Remove", "About this day"],
         rows=len(rows),
-        fit_columns=(PICT_COL, MASTER_COL, REMOVE_COL))
+        fit_columns=(PICT_COL, TRACK_COL, MASTER_COL, REMOVE_COL))
     self.days_table = table
 
     total_pictures = 0
@@ -76,6 +77,11 @@ def populate_days_overview(self):
         table.setItem(row, PICT_COL, action_cell(
             str(pictures) if exists else "—",
             "Double-click to review & rate this day's pictures",
+            inert=not exists))
+
+        table.setItem(row, TRACK_COL, action_cell(
+            "🛰️", "Geotag from tracklog… — fills missing GPS/altitude for this "
+                  "day from its GPS log, independent of a card read",
             inert=not exists))
 
         # Same sphere vocabulary as the Trip panel: ⚪ nothing to do here,
@@ -197,6 +203,8 @@ def _on_double_click(self, row, column):
 
     if column == PICT_COL:
         days_process.review_day(self)
+    elif column == TRACK_COL:
+        days_process.geotag_from_tracklog(self)
     elif column == MASTER_COL:
         days_process.add_day_to_master(self)
     elif column == REMOVE_COL:
@@ -237,6 +245,7 @@ def _on_context_menu(self, pos):
 
     menu = QMenu()
     review_action = menu.addAction("Review && rate…")
+    track_action = menu.addAction("Geotag from tracklog…")
     master_action = menu.addAction("Add to Master")
     describe_action = menu.addAction("Describe this day…")
     menu.addSeparator()
@@ -250,6 +259,8 @@ def _on_context_menu(self, pos):
     from gui import days_process
     if chosen == review_action:
         days_process.review_day(self)
+    elif chosen == track_action:
+        days_process.geotag_from_tracklog(self)
     elif chosen == master_action:
         days_process.add_day_to_master(self)
     elif chosen == describe_action:

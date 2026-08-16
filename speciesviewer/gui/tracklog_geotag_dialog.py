@@ -69,7 +69,8 @@ class _WriteThread(QThread):
 
 
 class TracklogGeotagDialog(QDialog):
-    def __init__(self, parent, source, *, initial_dir: str = ""):
+    def __init__(self, parent, source, *, initial_dir: str = "",
+                default_tracklog_paths: list[str] | None = None):
         super().__init__(parent)
         self.setWindowTitle("Geotag from Tracklog")
         self.resize(880, 560)
@@ -137,20 +138,37 @@ class TracklogGeotagDialog(QDialog):
         row.addWidget(close)
         lay.addLayout(row)
 
+        if default_tracklog_paths:
+            # Programmatic pre-load (the Unfiled/Days row action's
+            # auto-detected log) — same UI update _on_browse does after an
+            # interactive pick, minus the folder-remembering (that only makes
+            # sense for a Browse click). User still presses Plan then Write.
+            self._load_paths(default_tracklog_paths)
+
     # ── browse ────────────────────────────────────────────────────────────
     def _on_browse(self):
         from utils.gui_config import get_cache_gui_section, update_cache_gui_section
+        from utils.config import get_gpslogs_root
         # The tracklog usually lives somewhere other than the SD card (a phone
         # export folder, the OM-1 app's export location) — once one has been
-        # chosen, remember THAT folder and prefer it over initial_dir (the
-        # card's source folder, only a same-place coincidence at best).
-        start_dir = get_cache_gui_section("tracklog_geotag", "dir") or self._initial_dir
+        # chosen, remember THAT folder and prefer it over everything else.
+        # Next best (especially on a machine where nothing's been browsed
+        # yet): the configured GPS-logs root, a real hint rather than a
+        # coincidence. initial_dir (the card/day folder) is the last resort.
+        start_dir = (get_cache_gui_section("tracklog_geotag", "dir")
+                    or get_gpslogs_root() or self._initial_dir)
         paths, _ = QFileDialog.getOpenFileNames(
             self, "Choose tracklog file(s)", start_dir,
             "Tracklog files (*.gpx *.log);;GPX files (*.gpx);;OM-1 log files (*.log)")
         if not paths:
             return
         update_cache_gui_section("tracklog_geotag", "dir", os.path.dirname(paths[0]))
+        self._load_paths(paths)
+
+    def _load_paths(self, paths):
+        """Load tracklog file(s) and refresh the dialog's UI state — shared
+        by an interactive Browse and a programmatic pre-load
+        (default_tracklog_paths)."""
         try:
             self._points = self._load(paths)
         except Exception as e:
@@ -167,19 +185,22 @@ class TracklogGeotagDialog(QDialog):
 
     def _load(self, paths):
         from engine.tracklog_geotag import load_track
-        from engine.geo import om1_log_utc_offset
+        points = load_track(paths)
         if not self._offset_edit.text().strip():
-            for p in paths:
-                if p.lower().endswith(".log"):
-                    tz = om1_log_utc_offset(p)
-                    if tz is not None:
-                        total_min = int(tz.utcoffset(None).total_seconds() // 60)
-                        sign = "+" if total_min >= 0 else "-"
-                        total_min = abs(total_min)
-                        self._offset_edit.setText(
-                            f"{sign}{total_min // 60:02d}:{total_min % 60:02d}")
-                        break
-        return load_track(paths)
+            # Auto-detect the camera's UTC offset by correlation search
+            # against the track itself, rather than trusting the camera
+            # clock/timezone setting (easy to forget after traveling) or a
+            # tracklog device's own header — see engine.geo.estimate_camera_offset.
+            from engine.geo import estimate_camera_offset
+            dates = self._source.sample_dates(points)
+            tz = estimate_camera_offset(dates, points)
+            if tz is not None:
+                total_min = round(tz.utcoffset(None).total_seconds() / 60)
+                sign = "+" if total_min >= 0 else "-"
+                total_min = abs(total_min)
+                self._offset_edit.setText(
+                    f"{sign}{total_min // 60:02d}:{total_min % 60:02d}")
+        return points
 
     # ── plan ──────────────────────────────────────────────────────────────
     def _on_plan(self):
@@ -343,3 +364,43 @@ def open_tracklog_geotag(main_window):
         return
     source = MasterSource(MasterDB(root), root)
     TracklogGeotagDialog(main_window, source).exec()
+
+
+def open_tracklog_geotag_for_folder(parent, folder: str):
+    """Geotag from tracklog… for one already-unfiled/registered day folder —
+    the Unfiled/Days row action, independent of a card read. `folder` is a
+    YYYY-MM-DD folder (both lanes use that as the folder name). Scans it for
+    RAW+XMP pairs the same way ReadSDCardDialog._build_tracklog_entries does
+    for a just-read card, then opens the same review dialog, pre-loaded with
+    that day's auto-detected log file when one exists."""
+    from pathlib import Path
+    from gui.trip_process import _PL_RAW_EXTS
+    from gui.geolocate import batch_datetime_gps
+    from engine.tracklog_geotag import FilesSource, find_day_tracklog
+    from utils.config import get_gpslogs_root
+
+    folder_path = Path(folder)
+    xmps = []
+    for p in folder_path.iterdir():
+        if p.is_file() and p.suffix.lower() in _PL_RAW_EXTS and p.with_suffix(".xmp").exists():
+            xmps.append((p.stem, str(p.with_suffix(".xmp"))))
+    if not xmps:
+        QMessageBox.information(parent, "Geotag from Tracklog",
+                                "No RAW+XMP pictures in this day to geotag.")
+        return
+    meta = batch_datetime_gps([x[1] for x in xmps])
+    entries, files_by_key = [], {}
+    for stem, xmp in xmps:
+        m = meta.get(os.path.normcase(os.path.normpath(xmp)))
+        if not m:
+            continue
+        entries.append({"key": stem, "date": m["date"], "has_gps": m["has_gps"],
+                        "cur_alt": m.get("cur_alt")})
+        files_by_key[stem] = [xmp]
+
+    day = folder_path.name
+    log_path = find_day_tracklog(day, get_gpslogs_root())
+    source = FilesSource(entries, files_by_key, day)
+    TracklogGeotagDialog(
+        parent, source, initial_dir=folder,
+        default_tracklog_paths=[log_path] if log_path else None).exec()

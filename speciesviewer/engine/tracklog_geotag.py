@@ -282,6 +282,74 @@ def apply_entries(files_by_key: dict, rows: list[dict], *, progress_cb=None) -> 
            "altitude_files": result["altitude_files"]}
 
 
+def find_day_tracklog(day: str, root: str) -> str | None:
+    """`<root>/<year>/<yyyymmdd>.log` (OM-1 naming), falling back to the same
+    stem's `.gpx` (a phone-app export) — the per-day auto-discovery
+    convention for the silent Read-time geotag pass and the Unfiled/Days row
+    action. `day` is 'YYYY-MM-DD'. None if neither exists or `root` is empty."""
+    if not root or not day:
+        return None
+    year = day[:4]
+    stem = day.replace("-", "")
+    for ext in (".log", ".gpx"):
+        candidate = Path(root) / year / f"{stem}{ext}"
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def auto_geotag_entries(entries_by_day: dict[str, list[dict]], files_by_key: dict, *,
+                        root: str, max_gap_s: float = 900) -> dict:
+    """Silent, no-review counterpart to plan_entries()+apply_entries(), for
+    the Read dialog's automatic per-day tracklog pass. `entries_by_day`:
+    `{day ('YYYY-MM-DD'): [{"key":, "date":, "has_gps":, "cur_alt":}, …]}` —
+    grouped by the caller from the copy-time day-folder decision (see
+    gui/trip_process.py), NOT re-derived here from raw DateTimeOriginal.
+
+    For each day: find its log (find_day_tracklog); if found, load and clean
+    its track, then auto-detect that day's own camera UTC offset by
+    correlation search (engine.geo.estimate_camera_offset) — never a typed
+    or header value, since this path has no dialog to type one into. A day
+    with no log, or one the offset search isn't confident about, is skipped
+    — counted, never an error and never a guess.
+
+    Returns a summary dict for logging: `{"days_matched", "days_no_log",
+    "days_no_offset", "gps_files", "altitude_files", "pictures",
+    "logs_used": [filenames]}`."""
+    from engine.geo import estimate_camera_offset
+
+    summary = {"days_matched": 0, "days_no_log": 0, "days_no_offset": 0,
+              "gps_files": 0, "altitude_files": 0, "pictures": 0, "logs_used": []}
+    for day, day_entries in entries_by_day.items():
+        log_path = find_day_tracklog(day, root)
+        if not log_path:
+            summary["days_no_log"] += 1
+            continue
+        try:
+            points = load_track([log_path])
+        except ValueError as e:
+            logger.warning(f"Tracklog auto-geotag: couldn't read {log_path}: {e}")
+            summary["days_no_log"] += 1
+            continue
+        offset = estimate_camera_offset([e.get("date") for e in day_entries], points)
+        if offset is None:
+            logger.info(f"Tracklog auto-geotag: {len(day_entries)} picture(s) on {day} — "
+                       f"log found ({Path(log_path).name}) but couldn't confidently line up "
+                       f"the camera's clock, skipped.")
+            summary["days_no_offset"] += 1
+            continue
+        rows, _stats = plan_entries(day_entries, points, camera_utc_offset=offset,
+                                    max_gap_s=max_gap_s)
+        if rows:
+            result = apply_entries(files_by_key, rows)
+            summary["gps_files"] += result["gps_files"]
+            summary["altitude_files"] += result["altitude_files"]
+            summary["pictures"] += result["pictures"]
+        summary["days_matched"] += 1
+        summary["logs_used"].append(Path(log_path).name)
+    return summary
+
+
 class MasterSource:
     """Adapter over the master-scoped plan()/apply(), for TracklogGeotagDialog."""
 
@@ -295,6 +363,18 @@ class MasterSource:
 
     def apply(self, rows):
         return apply(self._db, self._master_root, rows)
+
+    def sample_dates(self, points: list[dict]) -> list[str]:
+        """Raw DateTimeOriginal strings for every master picture in the
+        track's covered date range — just enough for
+        engine.geo.estimate_camera_offset to run BEFORE plan() has a
+        confirmed offset to call with. Same date-range query plan() itself
+        runs; cheap to repeat for this."""
+        from_date, to_date = track_date_range(points)
+        if not from_date:
+            return []
+        by_day = self._db.pictures_in_daterange(from_date, to_date)
+        return [r.get("DateTimeOriginal") or "" for rows in by_day.values() for r in rows]
 
 
 class FilesSource:
@@ -314,3 +394,9 @@ class FilesSource:
 
     def apply(self, rows):
         return apply_entries(self._files_by_key, rows)
+
+    def sample_dates(self, points: list[dict]) -> list[str]:
+        """Raw DateTimeOriginal strings already held in memory — no I/O,
+        unlike MasterSource's version. `points` is accepted only to keep the
+        two adapters' signatures identical; unused here."""
+        return [e.get("date") or "" for e in self._entries]

@@ -130,6 +130,15 @@ def get_currentpictures_root() -> str:
     then fall back to the active day's parent (today's behaviour). See WP8."""
     return _config.get("currentpictures", "rootdirectory", fallback="").strip()
 
+def get_gpslogs_root() -> str:
+    """The per-machine base folder holding one GPS tracklog per capture day,
+    named `<root>/<year>/<yyyymmdd>.log` (or `.gpx`) — the convention
+    engine.tracklog_geotag.find_day_tracklog looks for. Empty when not
+    configured, in which case the auto-discovery/silent geotag pass is
+    simply unavailable (the manual "Geotag from tracklog…" flow still works
+    by browsing to a file directly)."""
+    return _config.get("gpslogs", "rootdirectory", fallback="").strip()
+
 # 🔄 Optional: Upgrade logic
 def upgrade_config_if_needed(latest_version=1.1):
     current_version = float(_config.get("Global", "config_version", fallback="0.0"))

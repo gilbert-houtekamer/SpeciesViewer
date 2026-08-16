@@ -689,6 +689,36 @@ class _SDCardScanWorker(QObject):
             self.finished.emit([], 0, str(e))
 
 
+class _TracklogAutoWorker(QObject):
+    """Runs engine.tracklog_geotag.auto_geotag_entries on a worker thread so
+    the Read dialog's silent per-day tracklog pass never blocks the GUI
+    thread — parsing tracklogs and writing GPS/altitude via exiftool across
+    several days can take real time, and this pass has no progress dialog to
+    pump the event loop the way the geocode step's does. Mirrors
+    _SDCardCopyWorker/_SDCardScanWorker."""
+    finished = pyqtSignal(dict)
+
+    def __init__(self, entries_by_day, files_by_key, root):
+        super().__init__()
+        self._entries_by_day = entries_by_day
+        self._files_by_key = files_by_key
+        self._root = root
+
+    def run(self):
+        from engine.tracklog_geotag import auto_geotag_entries
+        try:
+            summary = auto_geotag_entries(
+                self._entries_by_day, self._files_by_key, root=self._root)
+        except Exception as e:
+            # Non-fatal by design — the Read itself must still complete and
+            # move on to geocoding/Done, same as a per-picture geocode
+            # failure already doesn't abort the Read.
+            logging.getLogger("speciesviewer").warning(f"Tracklog auto-geotag failed: {e}")
+            summary = {"days_matched": 0, "days_no_log": 0, "days_no_offset": 0,
+                      "gps_files": 0, "altitude_files": 0, "pictures": 0, "logs_used": []}
+        self.finished.emit(summary)
+
+
 # RAW extensions PhotoLab opens — used to pick a sensible file to hand it when
 # opening a freshly read day (a JPG would work too, but the RAW is the picture
 # that will get the .dop recipe).
@@ -819,6 +849,23 @@ class ReadSDCardDialog(QDialog):
         self.location_checkbox.setChecked(get_cache_gui_section("sdcard_ingest", "add_location") == "1")
         input_layout.addWidget(self.location_checkbox)
 
+        # Per-day tracklog auto-geotag: silently fills GPS/altitude from
+        # <gpslogs_root>/<year>/<yyyymmdd>.log (or .gpx) BEFORE the location-names
+        # step above runs, so a picture that gets GPS here also gets a place name
+        # in the same Read (Add location names always re-reads GPS fresh off the
+        # sidecar, so sequencing alone makes this cascade — see _finish_read).
+        # No dialog, no typed offset: the camera's clock offset is auto-detected
+        # per day by correlation search against that day's own track
+        # (engine.geo.estimate_camera_offset) rather than trusted from a setting
+        # that's easy to forget after traveling.
+        from utils.config import get_gpslogs_root
+        self._gpslogs_root = get_gpslogs_root()
+        self.tracklog_checkbox = QCheckBox("Geotag from each day's tracklog…")
+        self.tracklog_checkbox.setChecked(bool(self._gpslogs_root))
+        input_layout.addWidget(self.tracklog_checkbox)
+        self.bucket_checkbox.toggled.connect(self._update_tracklog_checkbox_enabled)
+        self._update_tracklog_checkbox_enabled()
+
         # Live progress log inside this (green) block, so a long copy is visible at
         # a glance — "running while you fetch a cup of tea". Hidden when idle; the
         # one-line result still lands in the status line at the very bottom.
@@ -846,8 +893,8 @@ class ReadSDCardDialog(QDialog):
         self.all_days_checkbox.setChecked(True)
         self.all_days_checkbox.clicked.connect(self._on_all_days_clicked)
         days_layout.addWidget(self.all_days_checkbox)
-        self.days_table = QTableWidget(0, 2)
-        self.days_table.setHorizontalHeaderLabels(["Day", "Files"])
+        self.days_table = QTableWidget(0, 3)
+        self.days_table.setHorizontalHeaderLabels(["Day", "Files", "Tracklog"])
         self.days_table.verticalHeader().setVisible(False)
         self.days_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.days_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
@@ -918,6 +965,8 @@ class ReadSDCardDialog(QDialog):
         self._worker = None
         self._scan_thread = None
         self._scan_worker = None
+        self._tracklog_thread = None
+        self._tracklog_worker = None
         self._scanned_source = ""   # source the day table was built from
         self._preview_dlg = None    # the open culling grid (single instance)
 
@@ -977,31 +1026,51 @@ class ReadSDCardDialog(QDialog):
             "sidecars to create the .dop recipes. If PhotoLab was already running it "
             "may still show its previous folder; browse to this day.")
 
-    def on_geotag_from_tracklog(self):
-        """Fill missing GPS/altitude for the pictures just read, matched to a
-        GPX/OM-1-log tracklog by time. Mirrors _add_location_names's target-
-        building exactly: RAWs from this read that got an .xmp sidecar (no
-        sidecar, no XMP-based write target and nothing to correlate cheaply)."""
+    def _build_tracklog_entries(self):
+        """RAW+XMP entry list for tracklog geotag, built from this read's
+        targets — shared by the manual "Geotag from tracklog…" button and
+        the automatic per-day pass (_auto_geotag_from_tracklogs). A RAW with
+        no .xmp sidecar has no XMP-based write target and nothing to
+        correlate cheaply, so it's skipped — mirrors
+        _add_location_names's target-building exactly.
+
+        Each entry also carries "day" = the destination day-folder's name
+        (`Path(target).parent.name`, same convention `_days_copied_count`
+        already uses), for the automatic pass to know which day's log file
+        to try — None when the file didn't land in a YYYY-MM-DD folder
+        (date-subfolder bucketing off). The manual button ignores it.
+
+        Returns (entries, files_by_key)."""
+        from utils import days_registry
         targets = [t for t in (self._last_targets or []) if Path(t).is_file()]
         xmps = []
         for t in targets:
             p = Path(t)
             if p.suffix.lower() in _PL_RAW_EXTS and p.with_suffix(".xmp").exists():
-                xmps.append((p.stem, str(p.with_suffix(".xmp"))))
+                day = p.parent.name if days_registry.is_day_folder_name(p.parent.name) else None
+                xmps.append((p.stem, str(p.with_suffix(".xmp")), day))
         if not xmps:
-            QMessageBox.information(self, "Geotag from Tracklog",
-                                    "No RAW+XMP pictures from this read to geotag.")
-            return
+            return [], {}
         from gui.geolocate import batch_datetime_gps
         meta = batch_datetime_gps([x[1] for x in xmps])
         entries, files_by_key = [], {}
-        for stem, xmp in xmps:
+        for stem, xmp, day in xmps:
             m = meta.get(os.path.normcase(os.path.normpath(xmp)))
             if not m:
                 continue
             entries.append({"key": stem, "date": m["date"], "has_gps": m["has_gps"],
-                            "cur_alt": m.get("cur_alt")})
+                            "cur_alt": m.get("cur_alt"), "day": day})
             files_by_key[stem] = [xmp]
+        return entries, files_by_key
+
+    def on_geotag_from_tracklog(self):
+        """Fill missing GPS/altitude for the pictures just read, matched to a
+        GPX/OM-1-log tracklog by time."""
+        entries, files_by_key = self._build_tracklog_entries()
+        if not entries:
+            QMessageBox.information(self, "Geotag from Tracklog",
+                                    "No RAW+XMP pictures from this read to geotag.")
+            return
         from engine.tracklog_geotag import FilesSource
         from gui.tracklog_geotag_dialog import TracklogGeotagDialog
         source = FilesSource(entries, files_by_key, "this read")
@@ -1035,6 +1104,11 @@ class ReadSDCardDialog(QDialog):
         if self._scan_thread is not None and self._scan_thread.isRunning():
             self._scan_thread.quit()
             self._scan_thread.wait(5000)
+        # Same for the tracklog auto-pass — no cancel() (it's meant to be a
+        # short, silent pass), just wait for it to actually finish rather than
+        # destroy the thread out from under it.
+        if self._tracklog_thread is not None and self._tracklog_thread.isRunning():
+            self._tracklog_thread.wait(5000)
 
     def closeEvent(self, event):
         self._stop_worker()
@@ -1051,6 +1125,23 @@ class ReadSDCardDialog(QDialog):
             return float(self.tz_offset_field.get_text() or "0")
         except ValueError:
             return 0.0
+
+    def _update_tracklog_checkbox_enabled(self):
+        """Auto-geotag needs each entry grouped by its destination day-folder
+        (see _build_tracklog_entries) — meaningless without date-subfolder
+        bucketing, so disable rather than silently no-op without it."""
+        bucketed = self.bucket_checkbox.isChecked()
+        enabled = bool(self._gpslogs_root) and bucketed
+        self.tracklog_checkbox.setEnabled(enabled)
+        if not self._gpslogs_root:
+            self.tracklog_checkbox.setToolTip(
+                "Configure a GPS logs folder in Settings ▸ Repositories first")
+        elif not bucketed:
+            self.tracklog_checkbox.setToolTip(
+                "Needs \"Sort into date subfolders\" ticked — each day's tracklog "
+                "match depends on which day-folder a picture landed in")
+        else:
+            self.tracklog_checkbox.setToolTip("")
 
     def _set_progress(self, text):
         """Live progress in the green block (shown only while something runs)."""
@@ -1114,6 +1205,7 @@ class ReadSDCardDialog(QDialog):
 
     def _populate_days(self, days):
         """Fill the day table with one checkable row per (date, count), all ticked."""
+        from engine.tracklog_geotag import find_day_tracklog
         self.days_table.blockSignals(True)
         self.days_table.setRowCount(0)
         for date_str, count in days:
@@ -1127,6 +1219,19 @@ class ReadSDCardDialog(QDialog):
             cnt_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             cnt_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.days_table.setItem(r, 1, cnt_item)
+            # Pure "does a log file exist for this day" preview — no offset
+            # estimation here (that needs the full picture set and only runs
+            # during the actual auto-geotag pass), just visibility into
+            # coverage before Read is pressed instead of finding out after.
+            # Blank (not "none found") when no GPS logs root is configured at
+            # all — that's a settings gap, not a per-day miss.
+            track_text = ""
+            if self._gpslogs_root:
+                log_path = find_day_tracklog(date_str, self._gpslogs_root)
+                track_text = f"✓ {Path(log_path).name}" if log_path else "— none found"
+            track_item = QTableWidgetItem(track_text)
+            track_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self.days_table.setItem(r, 2, track_item)
         self.days_table.blockSignals(False)
         self.days_container.setVisible(bool(days))
         self.days_container.setEnabled(True)   # a fresh scan re-enables a greyed block
@@ -1381,6 +1486,13 @@ class ReadSDCardDialog(QDialog):
         # real "Done" once everything has finished.
         geocode_follows = (not cancelled and self.location_checkbox.isChecked()
                            and bool(summary.get("targets")))
+        # Same reasoning as geocode_follows below, plus: the auto-geotag pass
+        # writes into the same sidecars the manual "Geotag from tracklog…"
+        # button would — computed here (not just where it's acted on further
+        # down) so the button's enablement can account for it too.
+        tracklog_follows = (not cancelled and self.tracklog_checkbox.isChecked()
+                            and self.tracklog_checkbox.isEnabled()
+                            and bool(summary.get("targets")))
         self._last_targets = summary.get("targets", [])
         if cancelled:
             # "Done" + a green check would read as success — flag the abort, but
@@ -1407,10 +1519,11 @@ class ReadSDCardDialog(QDialog):
         self.view_btn.setEnabled(bool(self._last_targets))
         self.pl_btn.setEnabled(bool(self._last_targets) and bool(self._last_dest))
         # Geotag-from-tracklog writes GPS/altitude into the same sidecars the
-        # geocode step is about to fill place names into — enabling it here would
-        # let the two runs race on the same .xmp files. Hold off until the
-        # geocode phase (if any) has actually finished; see _add_location_names.
-        self.geotag_btn.setEnabled(bool(self._last_targets) and not geocode_follows)
+        # geocode step (and now the automatic tracklog pass) is about to fill —
+        # enabling it here would let two runs race on the same .xmp files. Hold
+        # off until everything that follows has actually finished; see _finish_read.
+        self.geotag_btn.setEnabled(
+            bool(self._last_targets) and not geocode_follows and not tracklog_follows)
         if self._last_targets and not cancelled:
             self.pl_hint.setText(
                 "Next: open the day in <b>PhotoLab</b>, press <b>Ctrl-A</b> and "
@@ -1423,12 +1536,71 @@ class ReadSDCardDialog(QDialog):
         # On an abort, don't auto-run the network geocode or grey the day list —
         # leave it ready for a re-read to finish the rest.
         if not cancelled:
-            if geocode_follows:
-                QApplication.processEvents()   # paint the "looking up…" line first
-                self._add_location_names()
-            self._mark_run_done()
-            if self.days_mode:
-                self._register_ingested_days()
+            if tracklog_follows:
+                self._start_tracklog_auto_pass(geocode_follows)
+            else:
+                self._finish_read(geocode_follows)
+
+    def _start_tracklog_auto_pass(self, geocode_follows):
+        """Kick off the silent per-day auto-geotag pass on its own QThread
+        (_TracklogAutoWorker) BEFORE finishing the read. This must run
+        before the location-names step: "Add location names" always
+        re-reads each picture's GPS fresh off its sidecar (never a value
+        captured earlier in the Read), so a picture that gets GPS written
+        here picks up a place name in the same run too — sequencing alone
+        makes that cascade, no extra plumbing needed."""
+        entries, files_by_key = self._build_tracklog_entries()
+        entries_by_day: dict = {}
+        for e in entries:
+            if e.get("day"):
+                entries_by_day.setdefault(e["day"], []).append(e)
+        if not entries_by_day:
+            self._finish_read(geocode_follows)
+            return
+        self.status_label.setText(
+            self.status_label.text() + "  ⏳ Now geotagging from each day's tracklog…")
+        QApplication.processEvents()   # paint that line before the worker starts
+        self._tracklog_thread = QThread()
+        self._tracklog_worker = _TracklogAutoWorker(entries_by_day, files_by_key, self._gpslogs_root)
+        self._tracklog_worker.moveToThread(self._tracklog_thread)
+        self._tracklog_thread.started.connect(self._tracklog_worker.run)
+        self._tracklog_worker.finished.connect(
+            lambda summary: self._on_tracklog_auto_finished(summary, geocode_follows))
+        self._tracklog_thread.start()
+
+    def _on_tracklog_auto_finished(self, summary, geocode_follows):
+        self._tracklog_thread.quit()
+        self._tracklog_thread.wait()
+        matched = summary.get("days_matched", 0)
+        no_log = summary.get("days_no_log", 0)
+        no_offset = summary.get("days_no_offset", 0)
+        logs = ", ".join(summary.get("logs_used", []))
+        parts = []
+        if matched:
+            parts.append(f"{matched} day(s) matched ({logs})" if logs else f"{matched} day(s) matched")
+        if no_log:
+            parts.append(f"{no_log} day(s) had no matching log")
+        if no_offset:
+            parts.append(f"{no_offset} day(s) skipped (camera clock offset not confident)")
+        detail = "; ".join(parts) if parts else "nothing to do"
+        self.logger.info(
+            f"Tracklog auto-geotag: wrote GPS to {summary.get('gps_files', 0)}, "
+            f"altitude to {summary.get('altitude_files', 0)} picture(s). {detail}.")
+        self._finish_read(geocode_follows)
+
+    def _finish_read(self, geocode_follows):
+        """Whatever must happen once the read — and any auto-geotag pass
+        that ran first — is truly done: the location-names step (if
+        ticked), greying the day selection, and Days-lane registration.
+        Split out of on_finished so both the immediate path (no auto-geotag)
+        and _on_tracklog_auto_finished can reach it."""
+        if geocode_follows:
+            QApplication.processEvents()   # paint the "looking up…" line first
+            self._add_location_names()
+        self.geotag_btn.setEnabled(bool(self._last_targets))
+        self._mark_run_done()
+        if self.days_mode:
+            self._register_ingested_days()
 
     def _register_ingested_days(self):
         """After a Days-lane card copy, register each YYYY-MM-DD folder the copy
@@ -1503,7 +1675,6 @@ class ReadSDCardDialog(QDialog):
             done = f"{base}{tail}{self._elapsed_summary()}"
             self.status_label.setText((f"✅ Done — {done}" if base else f"✅ Done.{tail}").strip())
             self.logger.info(f"✅ Read complete. {done}".strip())
-            self.geotag_btn.setEnabled(bool(self._last_targets))
             return
         self._log_phase("Looking up location names (one online lookup per new "
                         "place, the rest reuse nearby fixes)…")
@@ -1513,7 +1684,6 @@ class ReadSDCardDialog(QDialog):
             else f"Location names added.{self._elapsed_summary()}"
         self.status_label.setText(f"✅ Done — {done}")
         self.logger.info(f"✅ Read complete. {done}")
-        self.geotag_btn.setEnabled(bool(self._last_targets))
 
     def on_view(self):
         """Open the picture grid over the just-copied files. Uses an explicit
