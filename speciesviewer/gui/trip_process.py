@@ -1390,7 +1390,11 @@ class ReadSDCardDialog(QDialog):
         else:
             msg = f"Copied {copied}{renamed_txt}, {tail}"
             if geocode_follows:
-                self.logger.info(f"✅ Card read complete. {msg}")
+                # Not "done" yet — the geocode phase below is still to come, and a
+                # premature ✅/"complete" here read as success while the log kept
+                # printing for another minute. _add_location_names owns the real
+                # "Done" line once the whole run (copy + geocode) has finished.
+                self.logger.info(f"Card copied. {msg} Looking up location names…")
                 self.status_label.setText(f"⏳ {msg} Now looking up location names…")
             else:
                 # No geocode step follows, so this IS the final click-to-done state.
@@ -1401,7 +1405,11 @@ class ReadSDCardDialog(QDialog):
         self._set_progress("")
         self.view_btn.setEnabled(bool(self._last_targets))
         self.pl_btn.setEnabled(bool(self._last_targets) and bool(self._last_dest))
-        self.geotag_btn.setEnabled(bool(self._last_targets))
+        # Geotag-from-tracklog writes GPS/altitude into the same sidecars the
+        # geocode step is about to fill place names into — enabling it here would
+        # let the two runs race on the same .xmp files. Hold off until the
+        # geocode phase (if any) has actually finished; see _add_location_names.
+        self.geotag_btn.setEnabled(bool(self._last_targets) and not geocode_follows)
         if self._last_targets and not cancelled:
             self.pl_hint.setText(
                 "Next: open the day in <b>PhotoLab</b>, press <b>Ctrl-A</b> and "
@@ -1494,6 +1502,7 @@ class ReadSDCardDialog(QDialog):
             done = f"{base}{tail}{self._elapsed_summary()}"
             self.status_label.setText((f"✅ Done — {done}" if base else f"✅ Done.{tail}").strip())
             self.logger.info(f"✅ Read complete. {done}".strip())
+            self.geotag_btn.setEnabled(bool(self._last_targets))
             return
         self._log_phase("Looking up location names (one online lookup per new "
                         "place, the rest reuse nearby fixes)…")
@@ -1503,6 +1512,7 @@ class ReadSDCardDialog(QDialog):
             else f"Location names added.{self._elapsed_summary()}"
         self.status_label.setText(f"✅ Done — {done}")
         self.logger.info(f"✅ Read complete. {done}")
+        self.geotag_btn.setEnabled(bool(self._last_targets))
 
     def on_view(self):
         """Open the picture grid over the just-copied files. Uses an explicit

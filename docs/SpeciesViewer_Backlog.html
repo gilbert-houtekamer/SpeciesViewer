@@ -223,14 +223,19 @@ reads <em>No current work planned</em>.</p>
     all share that one dialog class), scoped to just the pictures that read just produced —
     useful before a day even reaches a trip or the master.
     <br><br>
-    <strong>Two known follow-ups, not yet built:</strong> (1) the Read-Card button becomes
-    clickable right when the copy phase finishes, but if "Add location names" is also ticked, a
-    few more seconds of geocoding follow behind their own modal progress dialog — a click during
-    that window looks swallowed (not a crash, just bad timing; enable the button only once the
-    whole read, geocode included, is truly done). (2) the tracklog's point density is much finer
-    than altitude actually needs — thin the cleaned points to about one every 5 minutes before
-    correlation (altitude barely moves faster than that; it's already what the rolling average
-    smooths toward) to keep a long/dense tracklog cheap to search.</li>
+    <strong>Fixed 16 August 2026:</strong> the Read-Card "Geotag from tracklog…" button used to
+    become clickable right when the copy phase finished, but if "Add location names" was also
+    ticked, a few more seconds of geocoding followed behind their own modal progress dialog — a
+    click during that window looked swallowed (not a crash, just bad timing; both write GPS-related
+    fields into the same .xmp). The button now stays disabled until the whole read, geocode
+    included, is truly done, and the misleading early "✅ Card read complete." log line (printed
+    before the geocode step had even started) was dropped in favour of the real "Done" once
+    everything has finished.
+    <br><br>
+    <strong>One known follow-up, not yet built:</strong> the tracklog's point density is much
+    finer than altitude actually needs — thin the cleaned points to about one every 5 minutes
+    before correlation (altitude barely moves faster than that; it's already what the rolling
+    average smooths toward) to keep a long/dense tracklog cheap to search.</li>
 </ul>
   <li><strong>Map polish</strong> <span class="tag-shipped">SHIPPED</span> — extended map-delete to
     the day map. It always worked once a day had been through <em>Read &amp; Summarize</em>
