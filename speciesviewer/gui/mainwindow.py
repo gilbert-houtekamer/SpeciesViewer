@@ -728,7 +728,7 @@ class MainWindow(QMainWindow):
         # the jpgs==0 gate that blocks Write Blog — stays stuck at whatever it
         # read the first time, since it was never re-painted here before.
         if row is not None:
-            image_root = Path(_config.get("project", "picturedirectory")).parent
+            image_root = self._trip_picture_root()
             day_path = image_root / day_name
             self.trip_table.setItem(
                 row, 1, _format_total_files_item(day_path, review_root))
@@ -807,6 +807,19 @@ class MainWindow(QMainWindow):
             return False
         return True
 
+    def _trip_picture_root(self) -> Path:
+        """The active trip's picture root — the folder holding its YYYY-MM-DD
+        day subdirs. Reads trip.ini's explicit `picture_root` (WP8) so this
+        doesn't depend on [project] picturedirectory, which drifts every time
+        the Unfiled lane or another trip is visited and previously got
+        blindly `.parent`'d, silently corrupting it back into config (the
+        "2026 Goeree folder missing from the path" bug). Falls back to the
+        historic parent-of-active-day for trips that predate WP8."""
+        from utils.trip_identity import resolve_trip_picture_root
+        trip_root = _config.get("trip", "tripbiotadatabase", fallback="")
+        root = resolve_trip_picture_root(trip_root, kind="trip") if trip_root else ""
+        return Path(root) if root else Path(_config.get("project", "picturedirectory")).parent
+
     def handle_trip_table_double_click(self, row, column):
         from gui.trip_overview import GPS_COL, SYNC_COL, STATE_COL_START, STATE_COLUMNS
         # Translations column: open the per-day validation panel. No separate
@@ -833,7 +846,7 @@ class MainWindow(QMainWindow):
         action_label = action_item.text().replace("\n", " ")  # e.g., "Write Blog"
 
         # Update PictureDirectory
-        project_root = Path(_config.get("project", "picturedirectory")).parent
+        project_root = self._trip_picture_root()
         new_dir = project_root / day_str
         _config.set("project", "picturedirectory", str(new_dir))
 
@@ -936,7 +949,7 @@ class MainWindow(QMainWindow):
         day_str = day_item.text()
 
         # Point config at this day's directory
-        project_root = Path(_config.get("project", "picturedirectory")).parent
+        project_root = self._trip_picture_root()
         new_dir = project_root / day_str
         _config.set("project", "picturedirectory", str(new_dir))
 
@@ -1027,7 +1040,7 @@ class MainWindow(QMainWindow):
 
         action_label = self.trip_table.horizontalHeaderItem(column).text().replace("\n", " ")
 
-        project_root = Path(_config.get("project", "picturedirectory")).parent
+        project_root = self._trip_picture_root()
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
 
         before_msg, after_msg = col["before"], col["after"]
@@ -1105,7 +1118,7 @@ class MainWindow(QMainWindow):
         from gui.batch import ColumnBatchRunner
         from utils.batch_config import generate_svconfig_ini
 
-        project_root = Path(_config.get("project", "picturedirectory")).parent
+        project_root = self._trip_picture_root()
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
 
         trip_menu = self.menu_spec.get("Trips", {})
@@ -1166,7 +1179,7 @@ class MainWindow(QMainWindow):
         if not selected:
             return
 
-        project_root = Path(_config.get("project", "picturedirectory")).parent
+        project_root = self._trip_picture_root()
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
         trip_menu = self.menu_spec.get("Trips", {})
 
@@ -1320,7 +1333,7 @@ class MainWindow(QMainWindow):
             ) != QMessageBox.StandardButton.Yes:
                 return
 
-        project_root = Path(_config.get("project", "picturedirectory")).parent
+        project_root = self._trip_picture_root()
         _config.set("project", "picturedirectory", str(project_root / day_name))
         generate_svconfig_ini()
         module_config = configparser.ConfigParser()
@@ -1361,7 +1374,7 @@ class MainWindow(QMainWindow):
         if not trip_root_str:
             return
         trip_root = Path(trip_root_str)
-        project_root = Path(_config.get("project", "picturedirectory")).parent
+        project_root = self._trip_picture_root()
 
         eligible = []
         for row in range(self.trip_table.rowCount()):

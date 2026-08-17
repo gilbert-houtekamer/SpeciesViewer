@@ -294,6 +294,18 @@ reads <em>No current work planned</em>.</p>
     stops querying immediately and logs one clear line instead ("Nominatim unreachable… re-run
     'Get location' once you're back online"), leaving whatever it already resolved written.
     <br><br>
+    <strong>Fixed 17 August 2026 — Trip Overview could open the wrong picture folder:</strong>
+    double-clicking a day's Pictures/JPEG/GPS cell (or the right-click "run selected"/"rerun"
+    actions) derived the trip's picture folder from whatever <code>[project] picturedirectory</code>
+    happened to still be set to — which drifts every time another lane (Unfiled, a different trip)
+    is visited — instead of asking the trip itself. Surfaced as a "Species Image Preview — 0
+    pictures, Directory not found" dialog with the trip's own folder (e.g. <code>2026 Goeree</code>)
+    silently missing from the path; the wrong value could even get written back into config, making
+    it stick. All eight Trip Overview handlers in <code>mainwindow.py</code> now resolve the
+    picture root from the trip's own <code>trip.ini</code> (<code>picture_root</code>, the same
+    value <code>TripInfoPanel</code> already trusted when selecting a trip from the sidebar)
+    instead of guessing from stale state.
+    <br><br>
     <strong>One known follow-up, not yet built:</strong> the tracklog's point density is much
     finer than altitude actually needs — thin the cleaned points to about one every 5 minutes
     before correlation (altitude barely moves faster than that; it's already what the rolling
