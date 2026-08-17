@@ -39,6 +39,12 @@ from typing import Callable, Iterable
 
 from engine.csv_columns import PICTURE_FIELDS, DATA_FILE_FIELDS, SPECIES_FIELDS
 from engine.handling import resolve_path
+# The master CSVs live in Dropbox, whose sync client briefly opens the
+# destination and turns an otherwise-valid os.replace into WinError 5. Seen
+# 2026-08-17: the checkpoint worker died with "Access is denied:
+# data_pictures.csv.tmp -> data_pictures.csv" mid-Read. Same helper the EXIF
+# cache has used for the same reason.
+from engine.exifcache import _replace_with_retry
 
 logger = logging.getLogger("speciesviewer")
 
@@ -1524,6 +1530,20 @@ class MasterDB:
         if not clean:
             return 0
         con = self._connect()
+        # Only UPNs the master actually holds — same filter apply_provenance uses.
+        # A card Read geocodes pictures that are NOT in the master yet (they reach
+        # it later, via Add to Master), so every one of those 352 updates matched
+        # no row: the journal entry, the replay and a 44 MB data_pictures.csv
+        # rewrite all ran to change nothing. That pointless rewrite is what hit
+        # the Dropbox lock on 2026-08-17.
+        present = {}
+        for upn, fields in clean.items():
+            if con.execute('SELECT 1 FROM pictures WHERE "UniquePictureName"=?',
+                           (upn,)).fetchone() is not None:
+                present[upn] = fields
+        if not present:
+            return 0
+        clean = present
         entry = {"op": "set_location", "ts": time.time(), "pictures": clean}
         with self._append_lock:
             entry["seq"] = self._next_seq()
@@ -2264,7 +2284,7 @@ class MasterDB:
         tmp = target.with_suffix(target.suffix + ".tmp")
         p.picturefile = str(tmp)
         p.write_project_summary()
-        os.replace(tmp, target)
+        _replace_with_retry(tmp, target)
 
     def _rewrite_files_csv(self, con: sqlite3.Connection, target: Path) -> None:
         from engine.filecsv import Files
@@ -2276,7 +2296,7 @@ class MasterDB:
         tmp = target.with_suffix(target.suffix + ".tmp")
         f.filename = str(tmp)
         f.write_project_files()
-        os.replace(tmp, target)
+        _replace_with_retry(tmp, target)
 
     def _species_row_to_dict(self, row: sqlite3.Row) -> dict:
         """Shape a species DB row for the CSV writer: Leaves/JPGmap JSON → list
@@ -2305,7 +2325,7 @@ class MasterDB:
             writer.writeheader()
             for r in rows:
                 writer.writerow(self._species_row_to_dict(r))
-        os.replace(tmp, target)
+        _replace_with_retry(tmp, target)
 
     @staticmethod
     def _entry_is_stale(e: dict, pics_mtime: float, files_mtime: float,
