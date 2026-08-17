@@ -2409,9 +2409,34 @@ class MasterDB:
             con = self._connect()
             pics_csv, files_csv = self._pictures_csv(), self._files_csv()
             spec_csv = self._species_csv()
-            pics_mtime = pics_csv.stat().st_mtime if pics_csv.exists() else 0.0
-            files_mtime = files_csv.stat().st_mtime if files_csv.exists() else 0.0
-            spec_mtime = spec_csv.stat().st_mtime if spec_csv.exists() else 0.0
+
+            # The stale gate must fire for a FOREIGN rewrite of a master CSV only.
+            # Our own checkpoint rewrite is not one: it regenerates the CSV *from
+            # the DB*, so a journalled write is either already in that file or
+            # still pending in the DB, and replaying it is idempotent either way.
+            # Without this, a batch journalled WHILE the previous checkpoint was
+            # writing the 44 MB data_pictures.csv came back with a ts older than
+            # the CSV we ourselves had just produced, and was voided wholesale
+            # (2026-08-17, geocode backfill: 2 of 7 entries dropped).
+            #
+            # _written_mtime is stamped ONLY by the rewrite below, so it means
+            # "this exact file came out of a checkpoint". rebuild() DROPs the meta
+            # table, so after a rebuild-from-CSV the key is gone and the gate is
+            # strict again — an imported CSV is authoritative and must still void
+            # older entries.
+            meta = self._meta(con)
+
+            def _gate_mtime(csv_path: Path, key: str) -> float:
+                if not csv_path.exists():
+                    return 0.0
+                on_disk = self._csv_mtime(csv_path)
+                if on_disk and meta.get(f"{key}_written_mtime") == on_disk:
+                    return 0.0  # we wrote this file — nothing foreign happened
+                return csv_path.stat().st_mtime
+
+            pics_mtime = _gate_mtime(pics_csv, "pictures_csv")
+            files_mtime = _gate_mtime(files_csv, "files_csv")
+            spec_mtime = _gate_mtime(spec_csv, "species_csv")
             max_seq = max(e.get("seq", 0) for e in entries)
             dirty_pics = dirty_files = dirty_species = False
             with con:
@@ -2465,13 +2490,18 @@ class MasterDB:
                 self._rewrite_species_csv(con, spec_csv)
             # Refresh stored mtimes for whatever we rewrote so the next
             # is_stale() check doesn't see our own write as an external change.
+            # _written_mtime records the SAME string, marking the file as ours so
+            # the gate above can tell our rewrite from a foreign one next time.
             updates = []
             if dirty_pics:
-                updates.append(("pictures_csv_mtime", self._csv_mtime(pics_csv)))
+                m = self._csv_mtime(pics_csv)
+                updates += [("pictures_csv_mtime", m), ("pictures_csv_written_mtime", m)]
             if dirty_files:
-                updates.append(("files_csv_mtime", self._csv_mtime(files_csv)))
+                m = self._csv_mtime(files_csv)
+                updates += [("files_csv_mtime", m), ("files_csv_written_mtime", m)]
             if dirty_species and spec_csv.exists():
-                updates.append(("species_csv_mtime", self._csv_mtime(spec_csv)))
+                m = self._csv_mtime(spec_csv)
+                updates += [("species_csv_mtime", m), ("species_csv_written_mtime", m)]
             if updates:
                 with con:
                     con.executemany(
