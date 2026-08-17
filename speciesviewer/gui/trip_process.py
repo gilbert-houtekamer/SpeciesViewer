@@ -780,10 +780,27 @@ class ReadSDCardDialog(QDialog):
         self.source_field = DirectoryFieldQt("Card / source folder", saved_source)
         input_layout.addWidget(self.source_field)
 
-        # picturedirectory points at a day folder (.../<project>/YYYY-MM-DD) for
-        # historic reasons; the card target is the project root, so strip a
-        # trailing date component for the default.
-        dest_default = _strip_to_project_root(_config.get("project", "picturedirectory", fallback=""))
+        # WP8: ASK THE TRIP where its pictures live. [project] picturedirectory
+        # drifts every time another lane (Unfiled, another trip) is visited, and
+        # stripping its trailing day is only correct while it still points inside
+        # this trip. On 2026-08-17 it had drifted to D:\CurrentPictures\2026\
+        # 2026-08-14 — a day directly under the YEAR — so stripping the date gave
+        # the year folder and a whole card landed next to "2026 Goeree" instead of
+        # inside it, with a green tick and no complaint. Same root cause as the
+        # Trip Overview fix earlier that day (ed5ccb4), which covered mainwindow's
+        # eight handlers but not this dialog.
+        # trip.ini's picture_root is the authority; the old derivation stays as the
+        # fallback for pre-WP8 trips and for days/unfiled mode, which have no trip.
+        self.trip_picture_root = ""
+        if not (days_mode or unfiled_mode):
+            from utils.trip_identity import resolve_trip_picture_root
+            trip_root = _config.get("trip", "tripbiotadatabase", fallback="")
+            if trip_root:
+                self.trip_picture_root = resolve_trip_picture_root(
+                    trip_root, kind="trip", active_picturedirectory="") or ""
+
+        dest_default = self.trip_picture_root or _strip_to_project_root(
+            _config.get("project", "picturedirectory", fallback=""))
         if days_mode:
             dest_default = _config.get("days", "location", fallback="") or dest_default
         if unfiled_mode:
@@ -799,6 +816,19 @@ class ReadSDCardDialog(QDialog):
             "Project pictures",
             dest_default)
         input_layout.addWidget(self.dest_field)
+
+        # Guard: the ✓ only says "this folder exists", which is exactly how a whole
+        # card ended up NEXT TO the trip instead of inside it. When a trip is active,
+        # say plainly whether the target is that trip's picture root.
+        from gui import theme as _th
+        self.dest_note = QLabel("")
+        self.dest_note.setWordWrap(True)
+        self.dest_note.setStyleSheet(f"color: {_th.WARN}; font-size: 9pt;")
+        self.dest_note.setVisible(False)
+        input_layout.addWidget(self.dest_note)
+        if self.trip_picture_root:
+            self.dest_field.textChanged(self._check_dest_is_trip)
+            self._check_dest_is_trip()
 
         # Prefix default = the year (e.g. '2026') unless a previous run saved one;
         # the user typically extends it to '2026 Zeeland'. Year is taken from the
@@ -1125,6 +1155,30 @@ class ReadSDCardDialog(QDialog):
             return float(self.tz_offset_field.get_text() or "0")
         except ValueError:
             return 0.0
+
+    def _check_dest_is_trip(self):
+        """Warn when the card would land outside the active trip's picture root.
+
+        A green ✓ only means the folder exists. It said nothing when the target
+        was the YEAR folder rather than the trip inside it, so 352 pictures were
+        filed one level too high without a word. This names the mismatch before
+        Read, and does not block it — reading into another folder on purpose is
+        legitimate (a fresh trip, a scratch import)."""
+        want = Path(self.trip_picture_root)
+        try:
+            got = Path(self.dest_field.get_path())
+            same = os.path.normcase(os.path.normpath(str(got))) == \
+                   os.path.normcase(os.path.normpath(str(want)))
+        except (OSError, ValueError):
+            same = False
+        if same:
+            self.dest_note.setVisible(False)
+            return
+        self.dest_note.setText(
+            f"⚠ This is not the pictures folder of the open trip "
+            f"({want.name}). Pictures will be filed in the folder above, "
+            f"not in the trip. Expected: {want}")
+        self.dest_note.setVisible(True)
 
     def _update_tracklog_checkbox_enabled(self):
         """Auto-geotag needs each entry grouped by its destination day-folder
