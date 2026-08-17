@@ -113,13 +113,23 @@ def read_location_fields(path):
     return fields
 
 
+class GeoConnectivityError(Exception):
+    """Nominatim could not be reached at all (DNS failure / connection refused /
+    timeout) — distinct from a query that reached the server and just returned
+    nothing useful. Lets a batch caller stop hammering a dead network with one
+    query per remaining place instead of repeating the same failure hundreds of
+    times (e.g. hotel wifi drops mid-batch)."""
+
+
 def reverse_geocode(lat, lon, *, lang="en", zoom=14, timeout=10):
     """Raw Nominatim reverse-geocode result (dict), or None on failure.
     `lang` (accept-language) controls the script of the names — without it
     Nominatim returns the local language (e.g. Greek), so "en"/"nl" is what makes
-    the names usable in a caption. zoom ~14 lands around village/suburb level."""
+    the names usable in a caption. zoom ~14 lands around village/suburb level.
+    Raises GeoConnectivityError when the network itself is the problem (as
+    opposed to a bad/empty response), so callers can fail fast."""
+    import requests
     try:
-        import requests
         r = requests.get(
             "https://nominatim.openstreetmap.org/reverse",
             params={"format": "jsonv2", "lat": lat, "lon": lon,
@@ -127,6 +137,8 @@ def reverse_geocode(lat, lon, *, lang="en", zoom=14, timeout=10):
             headers={"User-Agent": _USER_AGENT}, timeout=timeout)
         r.raise_for_status()
         return r.json()
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+        raise GeoConnectivityError(str(e)) from e
     except Exception as e:
         logger.warning(f"Nominatim reverse-geocode failed for {lat},{lon}: {e}")
         return None
@@ -775,7 +787,7 @@ def run_geolocate_batch(parent, targets, *, lang=None, zoom=None, min_move_m=100
 
     class _Worker(QObject):
         progress = pyqtSignal(int, str)
-        finished = pyqtSignal(int, int, int, str)  # queried, written, total, csv_path
+        finished = pyqtSignal(int, int, int, str, bool)  # queried, written, total, csv_path, network_down
 
         def __init__(self):
             super().__init__()
@@ -802,8 +814,14 @@ def run_geolocate_batch(parent, targets, *, lang=None, zoom=None, min_move_m=100
             place_files = {}                                # idx -> [files]
             queried = written = 0
             compare_rows = []
+            # Two consecutive connection-level failures (not just an empty/odd
+            # result) mean Nominatim is unreachable, not that this one place is
+            # awkward — stop querying rather than repeat the same failure once
+            # per remaining place (e.g. hotel wifi drops mid-batch).
+            consecutive_conn_fail = 0
+            network_down = False
             for i, (label, gps_source, files) in enumerate(targets, 1):
-                if self._cancel:
+                if self._cancel or network_down:
                     break
                 self.progress.emit(i, label)
                 latlon = gps_map.get(os.path.normcase(os.path.normpath(gps_source))) if gps_source else None
@@ -816,7 +834,21 @@ def run_geolocate_batch(parent, targets, *, lang=None, zoom=None, min_move_m=100
                 else:
                     if queried > 0:
                         time.sleep(throttle_s)              # honour ≤1 req/s
-                    res = reverse_geocode(*latlon, lang=lang, zoom=zoom)
+                    try:
+                        res = reverse_geocode(*latlon, lang=lang, zoom=zoom)
+                        consecutive_conn_fail = 0
+                    except GeoConnectivityError as e:
+                        queried += 1
+                        consecutive_conn_fail += 1
+                        if consecutive_conn_fail >= 2:
+                            network_down = True
+                            logger.warning(
+                                f"Place lookup stopped — Nominatim unreachable ({e}). "
+                                f"Skipping remaining lookups this run; re-run 'Get location' "
+                                f"once you're back online.")
+                            break
+                        logger.debug(f"Place lookup connection failed for {label}: {e}")
+                        continue
                     fields = place_fields(res)
                     addr = (res or {}).get("address", {})
                     queried += 1
@@ -835,7 +867,7 @@ def run_geolocate_batch(parent, targets, *, lang=None, zoom=None, min_move_m=100
                 for idx, files in place_files.items():
                     written += write_location_batch(files, cache[idx][1], overwrite=overwrite)
             csv_path = _write_compare_csv(compare_rows) if (dry_run and compare_rows) else ""
-            self.finished.emit(queried, written, len(targets), csv_path)
+            self.finished.emit(queried, written, len(targets), csv_path, network_down)
 
     dlg = QProgressDialog(f"Looking up locations for {len(targets)} pictures…",
                           "Cancel", 0, len(targets), parent)
@@ -850,7 +882,7 @@ def run_geolocate_batch(parent, targets, *, lang=None, zoom=None, min_move_m=100
                                              dlg.setLabelText(f"{i} / {len(targets)}\n{name}")))
     dlg.canceled.connect(worker.cancel)
 
-    def on_finished(queried, written, total, csv_path):
+    def on_finished(queried, written, total, csv_path, network_down):
         thread.quit()
         thread.wait()
         if on_done is not None:
@@ -870,6 +902,10 @@ def run_geolocate_batch(parent, targets, *, lang=None, zoom=None, min_move_m=100
                     f"{total} pictures written to:\n{csv_path}\n\n({queried} Nominatim queries.)")
             except Exception:
                 pass
+        elif network_down:
+            logger.info(f"Get location: wrote {written}/{total} pictures "
+                        f"({queried} Nominatim queries) — stopped early, Nominatim unreachable. "
+                        f"Re-run 'Get location' once you're back online.")
         else:
             logger.info(f"Get location: wrote {written}/{total} pictures "
                         f"({queried} Nominatim queries; the rest reused nearby fixes).")
@@ -896,7 +932,10 @@ if __name__ == "__main__":
         print(f"GPS: {lat:.6f}, {lon:.6f}")
     else:
         print(__doc__); sys.exit(1)
-    res = reverse_geocode(lat, lon)
+    try:
+        res = reverse_geocode(lat, lon)
+    except GeoConnectivityError as e:
+        print(f"Reverse-geocode failed — Nominatim unreachable: {e}"); sys.exit(1)
     if not res:
         print("Reverse-geocode failed (offline / blocked / rate-limited?)."); sys.exit(1)
     print("\ndisplay_name:", res.get("display_name", ""))

@@ -214,9 +214,12 @@ reads <em>No current work planned</em>.</p>
 <h3>To do</h3>
 <ul>
   <li>Tracklog geotag row action (🛰️): live-test on the <strong>Days</strong> panel (built,
-    unclicked). <strong>Trip</strong> panel needs discussion — no row action yet, blocked on
-    porting Trip's overview table onto the shared <code>overview_table.py</code> or building
-    separate wiring. See the Tracklog geotag entry below.</li>
+    unclicked). <strong>Trip</strong> panel is missing only the standalone row action and the
+    🛰️ status icon in its overview table — the automatic Read-time geotag (the "Geotag from
+    each day's tracklog…" checkbox) already works for Trip reads too, since Days/Trips/Unfiled
+    all share the same Read-a-card dialog. The row action is blocked on porting Trip's overview
+    table onto the shared <code>overview_table.py</code> or building separate wiring. See the
+    Tracklog geotag entry below.</li>
 </ul>
 <h3>Done</h3>
 <ul>
@@ -274,9 +277,22 @@ reads <em>No current work planned</em>.</p>
     <br><br>
     <strong>To do:</strong> the Days-panel row action is built the same way as Unfiled's (live
     on Unfiled, not yet clicked on Days — next session). The <strong>Trip panel doesn't have
-    this row action yet</strong>, on purpose: Trip's overview table isn't on the shared
-    component (<code>overview_table.py</code>) Unfiled/Days already share, so it needs either
-    that port finished first or its own wiring — worth discussing which before building it.
+    this row action or the 🛰️ status icon yet</strong>, on purpose: Trip's overview table isn't
+    on the shared component (<code>overview_table.py</code>) Unfiled/Days already share, so it
+    needs either that port finished first or its own wiring — worth discussing which before
+    building it. To be clear, this is a missing <em>icon and shortcut</em>, not a missing
+    <em>capability</em>: a Trip's Read already runs the same auto-geotag as Days/Unfiled, since
+    all three share one Read-a-card dialog — confirmed working live 17 August 2026 (2026 Goeree,
+    3 days, all tracklogs auto-matched, GPS + altitude written).
+    <br><br>
+    <strong>Fixed 17 August 2026 — Nominatim connectivity fail-fast:</strong> a dropped hotel
+    wifi connection during "Add location names" used to hammer every remaining distinct place
+    with the same doomed request, one per place, each logging its own identical
+    <code>HTTPSConnectionPool… Max retries exceeded</code> line — accurate for the first failure,
+    pure noise after that. <code>reverse_geocode()</code> now distinguishes a connection-level
+    failure (DNS/refused/timeout) from an ordinary empty result; after two in a row the batch
+    stops querying immediately and logs one clear line instead ("Nominatim unreachable… re-run
+    'Get location' once you're back online"), leaving whatever it already resolved written.
     <br><br>
     <strong>One known follow-up, not yet built:</strong> the tracklog's point density is much
     finer than altitude actually needs — thin the cleaned points to about one every 5 minutes

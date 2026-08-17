@@ -2663,10 +2663,13 @@ class TripMapView(QDialog):
     def _geocode(self, lat: float, lon: float) -> tuple[str, dict]:
         """Reverse-geocode (lat, lon) → (display place string, location fields),
         under a wait cursor. Shared by place + move."""
-        from gui.geolocate import reverse_geocode, place_fields
+        from gui.geolocate import reverse_geocode, place_fields, GeoConnectivityError
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            fields = place_fields(reverse_geocode(lat, lon)) or {}
+            try:
+                fields = place_fields(reverse_geocode(lat, lon)) or {}
+            except GeoConnectivityError:
+                fields = {}   # offline — still place/move the pin, just without a name
         finally:
             QApplication.restoreOverrideCursor()
         return self._place_str(fields, lat, lon), fields
