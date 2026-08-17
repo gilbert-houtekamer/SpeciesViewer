@@ -1532,7 +1532,10 @@ class MasterDB:
             for upn, fields in clean.items():
                 self._set_picture_fields(con, upn, fields)
         MasterCheckpointWorker.get(self.master_root).notify()
-        logger.info(f"master: set place names on {len(clean)} picture(s).")
+        # DEBUG, not INFO: internal bookkeeping of one batch out of many. The
+        # caller reports the user-facing total ("Get location: wrote 352/352"),
+        # and eight of these buried it in the log panel.
+        logger.debug(f"master: set place names on {len(clean)} picture(s).")
         return len(clean)
 
     def apply_provenance(self, prov_by_upn: dict) -> int:
@@ -1562,7 +1565,9 @@ class MasterDB:
             for upn, fields in present.items():
                 self._set_picture_fields(con, upn, fields)
         MasterCheckpointWorker.get(self.master_root).notify()
-        logger.info(f"master: set provenance on {len(present)} picture(s).")
+        # DEBUG for the same reason as set_location above: per-batch bookkeeping,
+        # not a result. The place-sync caller reports the user-facing total.
+        logger.debug(f"master: set provenance on {len(present)} picture(s).")
         return len(present)
 
     def pictures_missing_place_or_provenance(self, from_date=None,
@@ -2509,7 +2514,10 @@ class MasterDB:
                         updates)
             self._truncate_jsonl(max_seq)
             n = len(entries)
-            logger.info(f"master checkpoint: {n} pending write(s) flushed to CSV.")
+            # DEBUG: the checkpoint worker is debounced and lands SECONDS after the
+            # action that triggered it, so at INFO it arrived after the "✅ …
+            # complete" line and read like unfinished work. Failures still warn.
+            logger.debug(f"master checkpoint: {n} pending write(s) flushed to CSV.")
             return n
 
     def recover_if_needed(self) -> int:

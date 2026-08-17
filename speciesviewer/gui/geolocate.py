@@ -874,6 +874,15 @@ def run_geolocate_batch(parent, targets, *, lang=None, zoom=None, min_move_m=100
     dlg.setWindowTitle("Get location")
     dlg.setMinimumDuration(0)
     dlg.setWindowModality(Qt.WindowModality.WindowModal)
+    # autoClose/autoReset default to TRUE: reaching the maximum closes the dialog,
+    # which ends the exec() below and hands control back to the caller. The worker
+    # reports progress==len(targets) BEFORE the write loop ("Writing location
+    # names…"), so the dialog vanished and Read SD-cards logged "✅ Read complete"
+    # while the XMP/master writes were still running — 11 seconds of work after the
+    # completion line, and the "Writing…" label was never visible. Only
+    # on_finished's dlg.close() may end this dialog now.
+    dlg.setAutoClose(False)
+    dlg.setAutoReset(False)
     thread = QThread(parent)
     worker = _Worker()
     worker.moveToThread(thread)
