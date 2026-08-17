@@ -187,13 +187,15 @@ class TracklogGeotagDialog(QDialog):
         from engine.tracklog_geotag import load_track
         points = load_track(paths)
         if not self._offset_edit.text().strip():
-            # Auto-detect the camera's UTC offset by correlation search
-            # against the track itself, rather than trusting the camera
-            # clock/timezone setting (easy to forget after traveling) or a
-            # tracklog device's own header — see engine.geo.estimate_camera_offset.
-            from engine.geo import estimate_camera_offset
+            # The camera's own recorded UTC offset (EXIF OffsetTimeOriginal,
+            # carried into the sidecar), not a correlation guess. A stale time
+            # ZONE setting doesn't spoil this: changing a camera's zone moves the
+            # clock and the offset together, so the offset still converts its
+            # clock to correct UTC. Left blank when the pictures don't state one,
+            # so the field reads as "you must tell me" rather than as an answer.
+            from engine.geo import camera_offset_from_dates
             dates = self._source.sample_dates(points)
-            tz = estimate_camera_offset(dates, points)
+            tz = camera_offset_from_dates(dates)
             if tz is not None:
                 total_min = round(tz.utcoffset(None).total_seconds() / 60)
                 sign = "+" if total_min >= 0 else "-"

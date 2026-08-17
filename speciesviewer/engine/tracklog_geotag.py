@@ -306,17 +306,23 @@ def auto_geotag_entries(entries_by_day: dict[str, list[dict]], files_by_key: dic
     grouped by the caller from the copy-time day-folder decision (see
     gui/trip_process.py), NOT re-derived here from raw DateTimeOriginal.
 
-    For each day: find its log (find_day_tracklog); if found, load and clean
-    its track, then auto-detect that day's own camera UTC offset by
-    correlation search (engine.geo.estimate_camera_offset) — never a typed
-    or header value, since this path has no dialog to type one into. A day
-    with no log, or one the offset search isn't confident about, is skipped
-    — counted, never an error and never a guess.
+    For each day: find its log (find_day_tracklog); if found, load and clean its
+    track, then take the camera's UTC offset FROM THE PICTURES THEMSELVES
+    (engine.geo.camera_offset_from_dates, i.e. EXIF OffsetTimeOriginal carried
+    into the sidecar). A day with no log, or whose pictures don't state their
+    offset, is skipped — counted, never an error and never a guess.
+
+    This used to correlation-search the offset instead. That search cannot work
+    on a short session: 202 Goeree pictures spanning 34 minutes against a 9.5-hour
+    track made 22 different offsets score a perfect 202/202, so the answer was
+    decided by scan order — it returned the bottom edge of a 9-hour tie (-06:14),
+    and 24 pictures were geotagged 8.6 km from where they were taken. The camera
+    had recorded the correct offset (+01:00) in every single file all along.
 
     Returns a summary dict for logging: `{"days_matched", "days_no_log",
     "days_no_offset", "gps_files", "altitude_files", "pictures",
     "logs_used": [filenames]}`."""
-    from engine.geo import estimate_camera_offset
+    from engine.geo import camera_offset_from_dates
 
     summary = {"days_matched": 0, "days_no_log": 0, "days_no_offset": 0,
               "gps_files": 0, "altitude_files": 0, "pictures": 0, "logs_used": []}
@@ -331,11 +337,12 @@ def auto_geotag_entries(entries_by_day: dict[str, list[dict]], files_by_key: dic
             logger.warning(f"Tracklog auto-geotag: couldn't read {log_path}: {e}")
             summary["days_no_log"] += 1
             continue
-        offset = estimate_camera_offset([e.get("date") for e in day_entries], points)
+        offset = camera_offset_from_dates([e.get("date") for e in day_entries])
         if offset is None:
             logger.info(f"Tracklog auto-geotag: {len(day_entries)} picture(s) on {day} — "
-                       f"log found ({Path(log_path).name}) but couldn't confidently line up "
-                       f"the camera's clock, skipped.")
+                       f"log found ({Path(log_path).name}) but the pictures don't record "
+                       f"the camera's UTC offset, so their times can't be placed on the "
+                       f"track. Skipped — use Geotag from tracklog… to set it by hand.")
             summary["days_no_offset"] += 1
             continue
         rows, _stats = plan_entries(day_entries, points, camera_utc_offset=offset,
@@ -367,9 +374,9 @@ class MasterSource:
     def sample_dates(self, points: list[dict]) -> list[str]:
         """Raw DateTimeOriginal strings for every master picture in the
         track's covered date range — just enough for
-        engine.geo.estimate_camera_offset to run BEFORE plan() has a
-        confirmed offset to call with. Same date-range query plan() itself
-        runs; cheap to repeat for this."""
+        engine.geo.camera_offset_from_dates to read the camera's own UTC
+        offset BEFORE plan() has a confirmed offset to call with. Same
+        date-range query plan() itself runs; cheap to repeat for this."""
         from_date, to_date = track_date_range(points)
         if not from_date:
             return []

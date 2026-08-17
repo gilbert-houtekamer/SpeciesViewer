@@ -98,11 +98,50 @@ def parse_utc_offset(s: str) -> "_dt.timezone | None":
     return _dt.timezone(delta)
 
 
+# "2026:08:14 10:34:01+01:00" / "…10:34:01.62+01:00" / "…Z" — a capture time
+# that carries its own zone, which is what a sidecar written since 2026-08-17
+# holds (see sv0ReadSDCard._write_sidecars).
+_DATE_OFFSET_RE = re.compile(r"([+-]\d{2}:?\d{2}|Z)\s*$")
+
+
+def camera_offset_from_dates(dates) -> "_dt.timezone | None":
+    """The camera's OWN UTC offset, read from capture-time strings that carry
+    one — no correlation, no guess, no track needed.
+
+    This is what EXIF 2.31's OffsetTimeOriginal records, and it is the value the
+    tracklog geotag needs to make a picture's time absolute. Measured on 2026
+    Goeree: using it puts a picture's camera GPS within a 2 m median of the track
+    position at the same instant, where correlation search had them 8.6 km apart.
+
+    Returns None when no date carries an offset (a pre-EXIF-2.31 camera, or an
+    older sidecar), or when the ones that do DISAGREE — two cameras set to
+    different zones is not something one offset can describe, and a caller that
+    can only apply one must be told rather than handed a majority vote.
+
+    Note this is the offset the camera was SET to, which is right for converting
+    its clock to UTC even when the zone is stale — changing a camera's time zone
+    moves the displayed clock and the recorded offset together, so UTC survives.
+    What it cannot detect is a hand-set or drifting clock."""
+    found = set()
+    for s in dates:
+        m = _DATE_OFFSET_RE.search((s or "").strip())
+        if not m:
+            continue
+        token = m.group(1)
+        tz = _dt.timezone.utc if token == "Z" else parse_utc_offset(token)
+        if tz is not None:
+            found.add(tz.utcoffset(None))
+    return _dt.timezone(found.pop()) if len(found) == 1 else None
+
+
 def om1_log_utc_offset(path) -> "_dt.timezone | None":
-    """The UTC offset an OM-1 `.log` file's timestamps were written in, read
-    from its own header line, or None if the header isn't present. Lets the
-    tracklog dialog default the "camera UTC offset" field for free when the
-    chosen file is an OM-1 log."""
+    """The UTC offset recorded in an OM-1 `.log` file's header, or None when
+    the header isn't present.
+
+    This is the LOGGING DEVICE's own local zone. It is NOT the zone the file's
+    timestamps are written in — NMEA times are always UTC (see
+    parse_om1_nmea_log). Read it to report or cross-check which zone the phone
+    thought it was in; never to interpret a timestamp."""
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as fh:
             for _ in range(20):
@@ -121,20 +160,55 @@ def parse_om1_nmea_log(path) -> list[dict]:
     """Parse an OM-1 companion app's per-day NMEA log (`YYYYMMDD.log`,
     `$GPGGA` fix lines) into [{"t_utc", "lat", "lon", "alt"}, …].
 
-    The date comes from the filename (one file = one day); each `$GPGGA`
-    line supplies only a time-of-day, combined with that date and the
-    header's UTC-offset (`om1_log_utc_offset`) to produce an absolute UTC
-    timestamp. `$GPGGA` field 9 (altitude) is MSL-corrected already — see
-    the addendum in maps_plan.md, no further datum conversion is applied.
-    Lines with fix quality 0 (no fix) are skipped."""
+    NMEA TIMES ARE UTC. `$GPGGA` field 1 and `$GPRMC` field 1 are both UTC by
+    specification, and the header's `@OM Digital Solutions/+0200/+0200` records
+    the PHONE's local zone, not the meaning of those timestamps. Until
+    2026-08-17 this parser stamped each fix with the header offset and
+    converted, moving the whole track EARLIER by that offset — two hours for a
+    Dutch summer log. Nothing complained: the shifted track still looked like a
+    normal day, and every geotag taken from it was silently two hours out.
+
+    The UTC date comes from `$GPRMC` field 9 (ddmmyy). The filename is only a
+    fallback because it is the phone's LOCAL day: a log running past UTC
+    midnight would stamp its later fixes a day early. A time-of-day that jumps
+    backwards is a UTC midnight rollover and advances the date.
+
+    `$GPGGA` field 9 (altitude) is MSL-corrected already — see the addendum in
+    maps_plan.md, no further datum conversion is applied. Lines with fix
+    quality 0 (no fix) are skipped."""
     from pathlib import Path
     name = Path(path).stem
     m = _LOG_DATE_RE.search(name)
-    if not m:
-        raise ValueError(f"can't find a YYYYMMDD date in log filename: {name}")
-    day = _dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-    offset = om1_log_utc_offset(path) or _dt.timezone.utc
+    file_day = (_dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+                if m else None)
+
+    # $GPRMC normally FOLLOWS the first $GPGGA, so the log's own UTC date can't
+    # be picked up inline for the very first fix — find it first.
+    rmc_day = None
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if not line.startswith("$GPRMC"):
+                    continue
+                f = line.strip().split(",")
+                if len(f) > 9 and len(f[9]) == 6 and f[9].isdigit():
+                    try:                       # ddmmyy
+                        rmc_day = _dt.date(2000 + int(f[9][4:6]),
+                                           int(f[9][2:4]), int(f[9][0:2]))
+                    except ValueError:
+                        rmc_day = None
+                    if rmc_day:
+                        break
+    except OSError:
+        pass
+
+    day = rmc_day or file_day
+    if day is None:
+        raise ValueError(
+            f"no $GPRMC date and no YYYYMMDD date in log filename: {name}")
+
     out: list[dict] = []
+    prev_tod = None
     with open(path, "r", encoding="utf-8", errors="replace") as fh:
         for line in fh:
             line = line.strip()
@@ -152,10 +226,14 @@ def parse_om1_nmea_log(path) -> list[dict]:
                 alt = float(f[9]) if f[9] else None
             except (ValueError, IndexError):
                 continue
-            local_dt = _dt.datetime.combine(
-                day, _dt.time(hh, mm, int(ss), int((ss % 1) * 1e6)), tzinfo=offset)
-            out.append({"t_utc": local_dt.astimezone(_dt.timezone.utc),
-                       "lat": lat, "lon": lon, "alt": alt})
+            tod = hh * 3600 + mm * 60 + ss
+            if prev_tod is not None and tod < prev_tod - 1.0:
+                day += _dt.timedelta(days=1)       # crossed UTC midnight
+            prev_tod = tod
+            out.append({"t_utc": _dt.datetime.combine(
+                            day, _dt.time(hh, mm, int(ss), int((ss % 1) * 1e6)),
+                            tzinfo=_dt.timezone.utc),
+                        "lat": lat, "lon": lon, "alt": alt})
     out.sort(key=lambda p: p["t_utc"])
     return out
 
@@ -304,77 +382,3 @@ def nearest_track_point(points: list[dict], t_utc, max_gap_s: float):
     out["gap_s"] = best_gap
     return out
 
-
-def estimate_camera_offset(local_dates: list[str], points: list[dict], *,
-                           coarse_step_min: int = 15, tolerance_s: float = 900,
-                           fine_step_s: int = 15, fine_tolerance_s: float = 90,
-                           min_match_fraction: float = 0.5,
-                           min_matches: int = 5) -> "_dt.timezone | None":
-    """Find the camera's UTC offset by correlation search against `points`
-    (a cleaned track, see clean_altitude_series) rather than trusting a typed
-    value or a tracklog device's own header — the camera's clock/timezone is
-    a manual, error-prone setting (easy to forget after traveling); the
-    track's own timestamps are satellite/UTC-derived and don't depend on it
-    at all. `local_dates` are raw DateTimeOriginal strings
-    ('YYYY:MM:DD HH:MM:SS...', naive camera-local time) for one correlation
-    run — usually one day's pictures, but works over a wider set too.
-
-    Two passes, using the same nearest-point join nearest_track_point does:
-      coarse — every `coarse_step_min` (default 15, since real-world
-      timezones are always a 15-minute multiple) offset from -14:00 to
-      +14:00; the offset with the most dates landing within `tolerance_s`
-      of some point wins.
-      fine — +/- coarse_step_min around the coarse winner, at `fine_step_s`
-      resolution and a tighter `fine_tolerance_s`, to also catch ordinary
-      clock drift (a camera clock running a few minutes fast/slow) — a
-      timezone-only guess could never find that.
-
-    Returns None (never a guess) when the coarse pass's best candidate
-    doesn't clear both `min_match_fraction` of the parseable dates AND the
-    absolute `min_matches` floor — a fraction alone isn't meaningful with
-    only a handful of dates (1 photo "matching" is a trivial 100%), so a
-    day with too little data is never mistaken for a confident one."""
-    import bisect
-
-    naive: list[_dt.datetime] = []
-    for s in local_dates:
-        s = (s or "").strip()
-        if not s:
-            continue
-        try:
-            naive.append(_dt.datetime.strptime(s[:19], "%Y:%m:%d %H:%M:%S"))
-        except ValueError:
-            continue
-    if not naive or not points:
-        return None
-
-    times = [p["t_utc"] for p in points]
-
-    def match_count(tz: "_dt.timezone", tol_s: float) -> int:
-        n = 0
-        for dt_naive in naive:
-            t_utc = dt_naive.replace(tzinfo=tz).astimezone(_dt.timezone.utc)
-            idx = bisect.bisect_left(times, t_utc)
-            candidates = [i for i in (idx - 1, idx) if 0 <= i < len(times)]
-            if candidates and min(abs((times[i] - t_utc).total_seconds())
-                                 for i in candidates) <= tol_s:
-                n += 1
-        return n
-
-    best_minutes, best_n = None, 0
-    span_min = 14 * 60
-    for m in range(-span_min, span_min + 1, coarse_step_min):
-        n = match_count(_dt.timezone(_dt.timedelta(minutes=m)), tolerance_s)
-        if n > best_n:
-            best_minutes, best_n = m, n
-    if best_minutes is None or best_n < min_matches or best_n < min_match_fraction * len(naive):
-        return None
-
-    fine_best_tz, fine_best_n = _dt.timezone(_dt.timedelta(minutes=best_minutes)), -1
-    window_s = coarse_step_min * 60
-    for offset_s in range(-window_s, window_s + 1, fine_step_s):
-        tz = _dt.timezone(_dt.timedelta(seconds=best_minutes * 60 + offset_s))
-        n = match_count(tz, fine_tolerance_s)
-        if n > fine_best_n:
-            fine_best_tz, fine_best_n = tz, n
-    return fine_best_tz

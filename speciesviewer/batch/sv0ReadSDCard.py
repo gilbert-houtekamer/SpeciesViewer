@@ -536,8 +536,24 @@ def _write_sidecars(raw_paths, log, progress_cb=None) -> int:
         return 0
     from engine.exif_writer import run_exiftool_files
     from engine.exifcache import auto_worker_count
+    # DateTimeOriginal is re-sourced WITH the camera's UTC offset appended, e.g.
+    # "2026:08:14 10:34:01+01:00". `-xmp:all<all` alone drops it, because EXIF
+    # keeps the offset in a separate tag (OffsetTimeOriginal, EXIF 2.31) — and
+    # the tracklog geotag reads the SIDECAR, so it was structurally blind to the
+    # one value that makes a picture's time absolute, and fell back to guessing
+    # the offset by correlation (which put 24 Goeree pictures 8.6 km out).
+    #
+    # Two properties, both measured before adopting this:
+    #   - Additive. Every existing reader takes date[:19] and still sees
+    #     "2026:08:14 10:34:01". No master CSV row has ever carried a zone
+    #     (75,050 checked), so nothing historic needs rewriting.
+    #   - Degrades. On a pre-EXIF-2.31 camera with no offset tag the expression
+    #     simply doesn't fire and the plain date written by -xmp:all<all stands.
+    #     It can never leave a sidecar with no DateTimeOriginal at all.
     opts = ["-tagsfromfile", "@", "-xmp:all<all",
-            "-XMP-exif:SubjectDistance<Olympus:FocusDistance#", "-o", "%d%f.xmp"]
+            "-XMP-exif:SubjectDistance<Olympus:FocusDistance#",
+            "-XMP-exif:DateTimeOriginal<${DateTimeOriginal}${OffsetTimeOriginal}",
+            "-o", "%d%f.xmp"]
 
     n = len(todo)
     workers = auto_worker_count(n)

@@ -303,7 +303,13 @@ class SidecarItem(PictureItem):
 
     @property
     def date(self) -> str:
-        return str(self._row.get("DateTimeOriginal", "") or "")
+        # [:19] because a sidecar written since 2026-08-17 carries the camera's
+        # UTC offset ("2026:08:14 10:34:01+01:00" — see
+        # sv0ReadSDCard._write_sidecars). This is the DISPLAY value; showing the
+        # zone here would just make the card's date line longer and ragged
+        # against older days. Whoever needs the offset reads it from the sidecar
+        # itself (engine.geo.camera_offset_from_dates).
+        return str(self._row.get("DateTimeOriginal", "") or "")[:19]
 
     @property
     def has_jpg(self) -> bool:

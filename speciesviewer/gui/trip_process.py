@@ -884,10 +884,10 @@ class ReadSDCardDialog(QDialog):
         # step above runs, so a picture that gets GPS here also gets a place name
         # in the same Read (Add location names always re-reads GPS fresh off the
         # sidecar, so sequencing alone makes this cascade — see _finish_read).
-        # No dialog, no typed offset: the camera's clock offset is auto-detected
-        # per day by correlation search against that day's own track
-        # (engine.geo.estimate_camera_offset) rather than trusted from a setting
-        # that's easy to forget after traveling.
+        # No dialog, no typed offset: the camera's UTC offset is read from the
+        # pictures themselves (EXIF OffsetTimeOriginal, carried into the sidecar
+        # — engine.geo.camera_offset_from_dates). A day whose pictures don't
+        # state one is skipped rather than guessed at.
         from utils.config import get_gpslogs_root
         self._gpslogs_root = get_gpslogs_root()
         self.tracklog_checkbox = QCheckBox("Geotag from each day's tracklog…")
