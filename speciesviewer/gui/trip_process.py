@@ -932,6 +932,17 @@ class ReadSDCardDialog(QDialog):
         self.days_table.horizontalHeader().setStretchLastSection(True)
         self.days_table.itemChanged.connect(self._on_day_item_changed)
         days_layout.addWidget(self.days_table)
+        # Camera-clock check, filled by _check_camera_clock after a scan. Hidden
+        # unless there is something to say — a note that is always there stops
+        # being read.
+        self.clock_note = QLabel("")
+        self.clock_note.setWordWrap(True)
+        self.clock_note.setTextFormat(Qt.TextFormat.RichText)
+        self.clock_note.setStyleSheet(
+            f"color: {_th.WARN}; font-size: 9pt; padding: 6px 8px;"
+            f"border: 1px solid {_th.WARN}; border-radius: 4px;")
+        self.clock_note.setVisible(False)
+        days_layout.addWidget(self.clock_note)
         self.days_container.setVisible(False)
         layout.addWidget(self.days_container)
 
@@ -1156,6 +1167,111 @@ class ReadSDCardDialog(QDialog):
         except ValueError:
             return 0.0
 
+    @staticmethod
+    def _fmt_offset(tz) -> str:
+        """A datetime.timezone as 'UTC+02:00' — the form the camera menu uses."""
+        mins = round(tz.utcoffset(None).total_seconds() / 60)
+        sign = "+" if mins >= 0 else "-"
+        mins = abs(mins)
+        return f"UTC{sign}{mins // 60:02d}:{mins % 60:02d}"
+
+    def _card_camera_offset(self, source):
+        """The UTC offset the camera was SET to, sampled from the card.
+
+        One exiftool call over a handful of files — the offset is a single camera
+        setting, so a sample answers it. None when the files don't record one (a
+        pre-EXIF-2.31 camera) or when they disagree (two bodies on different
+        zones), in which case there is nothing to compare and we stay quiet."""
+        import json
+        from engine.geo import camera_offset_from_dates
+        from engine.exif_writer import run_exiftool_files
+        try:
+            files = []
+            for p in Path(source).rglob("*"):
+                if p.is_file() and p.suffix.lower() in _PL_RAW_EXTS | {".jpg", ".jpeg"}:
+                    files.append(str(p))
+                    if len(files) >= 8:
+                        break
+            if not files:
+                return None
+            out = run_exiftool_files(
+                ["-j", "-DateTimeOriginal", "-OffsetTimeOriginal"], files).stdout
+            rows = json.loads(out) if out.strip() else []
+            return camera_offset_from_dates(
+                [f"{r.get('DateTimeOriginal', '')}{r.get('OffsetTimeOriginal', '')}"
+                 for r in rows])
+        except Exception as e:                 # a check must never break the scan
+            self.logger.debug(f"camera clock check skipped: {e}")
+            return None
+
+    def _check_camera_clock(self, days):
+        """Compare the camera's own time zone with a second opinion, and say so.
+
+        The camera's zone is a manual setting that is easy to forget after
+        travelling — but forgetting it does NOT spoil geotagging, because
+        changing a zone moves the clock and the recorded offset together, so UTC
+        survives (measured on 2026 Goeree: 2 m). What it does spoil is the LOCAL
+        time written into every picture, and which day-folder a shot near
+        midnight lands in. So this reports rather than blocks.
+
+        Second opinion, in order: the day's own tracklog header (the phone, which
+        updates its zone by itself), else this computer's current zone. The
+        laptop is the weaker source — it says where you are NOW, not where you
+        were — so its wording is hedged."""
+        import datetime as _dt
+        from engine.tracklog_geotag import find_day_tracklog
+        self.clock_note.setVisible(False)
+        source = self.source_field.get_path()
+        if not source or not days:
+            return
+        cam = self._card_camera_offset(source)
+        if cam is None:
+            return
+
+        true_tz, from_log = None, False
+        if self._gpslogs_root:
+            from engine.geo import om1_log_utc_offset
+            seen = set()
+            for date_str, _count in days:
+                log_path = find_day_tracklog(date_str, self._gpslogs_root)
+                tz = om1_log_utc_offset(log_path) if log_path else None
+                if tz is not None:
+                    seen.add(tz.utcoffset(None))
+            if len(seen) == 1:
+                true_tz, from_log = _dt.timezone(seen.pop()), True
+        if true_tz is None:
+            true_tz = _dt.datetime.now().astimezone().tzinfo
+
+        if true_tz is None:
+            return
+
+        # Set the field WHENEVER both offsets are known, including when they
+        # agree — the delta is then 0. Returning early on agreement would leave
+        # the value remembered from the last card in place, so the day after
+        # correcting the camera's zone the folders would still be shifted by the
+        # old correction. The note stays quiet; only the value is kept honest.
+        delta_h = (true_tz.utcoffset(None) - cam.utcoffset(None)).total_seconds() / 3600
+        self.tz_offset_field.field.setText(f"{delta_h:g}")
+        if not delta_h:
+            return
+        who = ("this day's tracklog says the local zone was"
+               if from_log else "this computer is currently on")
+        self.clock_note.setText(
+            f"<b>⚠ The camera's clock is set to another time zone.</b><br>"
+            f"The pictures say the camera was on <b>{self._fmt_offset(cam)}</b>, "
+            f"but {who} <b>{self._fmt_offset(true_tz)}</b> — a difference of "
+            f"{delta_h:+.0f} hour(s).<br>"
+            f"Positions are unaffected: geotagging uses the camera's own UTC, "
+            f"which stays correct when only the zone is stale. What is off by "
+            f"{delta_h:+.0f} h is the local time recorded in each picture. "
+            f"Timezone offset below has been set to <b>{delta_h:g}</b> so the "
+            f"day folders still follow real local time.")
+        self.clock_note.setVisible(True)
+        self.logger.info(
+            f"Camera clock: pictures say {self._fmt_offset(cam)}, "
+            f"{'tracklog' if from_log else 'this computer'} says "
+            f"{self._fmt_offset(true_tz)} — timezone offset set to {delta_h:g} h.")
+
     def _check_dest_is_trip(self):
         """Warn when the card would land outside the active trip's picture root.
 
@@ -1244,6 +1360,7 @@ class ReadSDCardDialog(QDialog):
             self.status_label.setText(f"❌ {error}")
             return
         self._populate_days(days)
+        self._check_camera_clock(days)
         # The unfiled inbox is per YEAR, and until the card is scanned we only know
         # today's year — a card shot last December would otherwise land in the wrong
         # one. Now that the dates are known, re-point at the year they are in.
