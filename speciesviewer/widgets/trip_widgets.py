@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QLabel, QLineEdit, QTextEdit, QPushButton, QComboBox,
     QFileDialog, QVBoxLayout, QDateEdit
 )
-from PyQt6.QtCore import Qt, QDate
+from PyQt6.QtCore import Qt, QDate, QEvent
 from PyQt6.QtGui import QPixmap
 import os
 from pathlib import Path
@@ -35,6 +35,37 @@ def _set_valid_glyph(label: QLabel, valid: bool):
     label.setText("✓" if valid else "✗")
     label.setStyleSheet(
         f"color: {theme.DONE_FG if valid else '#e0574a'}; font-size: 15px; font-weight: bold;")
+
+class _RevalidateOnActivate:
+    """Re-run update_status() whenever the containing window regains focus.
+
+    "Does this directory exist?" is a live filesystem question, but the field
+    only ever asked it when the dialog was built and whenever its text changed.
+    Open Read SD-cards before the card reader has enumerated the drive — or
+    plug the card in while the dialog is already up — and the ✗ from that first
+    check stuck there forever, so a perfectly valid card folder looked invalid
+    until you retyped the path. Alt-tabbing back from Explorer now re-checks.
+
+    Mix in BEFORE QWidget so showEvent/eventFilter resolve here first. Qt drops
+    an event filter automatically when the filter object is destroyed, so the
+    filter never outlives the field it belongs to.
+    """
+
+    _activation_filter_on = None
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        win = self.window()
+        # Re-install if the field has been re-parented into another window.
+        if win is not None and self._activation_filter_on is not win:
+            win.installEventFilter(self)
+            self._activation_filter_on = win
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.WindowActivate:
+            self.update_status()
+        return super().eventFilter(obj, event)
+
 
 class ImageFileFieldQt(QWidget):
     def __init__(self, label, expected_size, root_field, icon_path=_ASSETS):
@@ -134,7 +165,7 @@ class ImageFileFieldQt(QWidget):
         self.hint_label.setVisible(False)
            
 
-class DirectoryFieldQt(QWidget):
+class DirectoryFieldQt(_RevalidateOnActivate, QWidget):
     def __init__(self, label, initial_path="", icon_path=_ASSETS):
         super().__init__()
         self.icon_path = icon_path
@@ -172,7 +203,9 @@ class DirectoryFieldQt(QWidget):
         return QPixmap(os.path.join(self.icon_path, icon_file)) # .scaled(24, 24, Qt.AspectRatioMode.KeepAspectRatio)
 
     def update_status(self):
-        path = self.field.text()
+        # strip() to match get_path(): without it a pasted path with a trailing
+        # space showed a permanent ✗ even though the Read itself ran fine.
+        path = self.field.text().strip()
         valid = os.path.isdir(path)
         _set_valid_glyph(self.status_icon, valid)
         tip = "Directory exists" if valid else "Directory not found or invalid"
@@ -199,7 +232,7 @@ class DirectoryFieldQt(QWidget):
         self.hint_label.setVisible(False)
 
 
-class RecentDirectoryFieldQt(QWidget):
+class RecentDirectoryFieldQt(_RevalidateOnActivate, QWidget):
     def __init__(self, label, initial_path="", section="recent_projects", icon_path=_ASSETS):
         super().__init__()
         self.icon_path = icon_path
