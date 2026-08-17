@@ -15,8 +15,14 @@ from utils.config import _config
 from utils.virttrip_config import read_excluded_days, write_excluded_days
 
 GPS_COL = 3
-SYNC_COL = 4
-STATE_COL_START = 5
+# Geotag (🛰️) sits right after GPS: it is the ANSWER to what the GPS column
+# reports. Not a pipeline step — a row action, like Sync Sidecars beside it, and
+# the same one Unfiled and Days already offer (unfiled_overview's TRACK_COL).
+# Every column from here on is addressed through these constants, never a
+# literal, so inserting one only moves the numbers below.
+GEOTAG_COL = 4
+SYNC_COL = 5
+STATE_COL_START = 6
 
 # ── Trip-overview pipeline state columns ─────────────────────────────────────
 # Single source of truth shared by trip_overview (rendering) and mainwindow
@@ -342,6 +348,39 @@ def _format_gps_item(day_path, review_root):
     return item
 
 
+def _format_geotag_item(day_name, gpslogs_root):
+    """Build the Geotag (🛰️) cell for one day.
+
+    The glyph is not just decoration: it says whether this day's tracklog was
+    actually FOUND in the GPS logs folder, so the column doesn't promise an
+    action it can't complete. Found → 🛰️, ready to run with the log pre-loaded.
+    Not found → a dimmed 🛰️ that still opens the dialog, because browsing to a
+    log by hand (a phone GPX, a log filed under another name) is exactly what
+    that dialog is for. Costs one path lookup per day."""
+    from PyQt6.QtGui import QColor
+    from gui.overview_table import action_cell
+    log_path = ""
+    if gpslogs_root:
+        try:
+            from engine.tracklog_geotag import find_day_tracklog
+            log_path = find_day_tracklog(day_name, gpslogs_root) or ""
+        except Exception:      # discovery is a convenience, never a blocker
+            log_path = ""
+    if log_path:
+        return action_cell("🛰️", f"Geotag from tracklog — fills missing GPS and "
+                                 f"altitude for this day from {Path(log_path).name}.")
+    item = action_cell("🛰️",
+                       "Geotag from tracklog — no log found for this day in the GPS "
+                       "logs folder. Opens anyway so you can browse for a GPX or log "
+                       "file yourself."
+                       if gpslogs_root else
+                       "Geotag from tracklog — no GPS logs folder configured "
+                       "(Settings ▸ Repositories). Opens so you can browse for a "
+                       "GPX or log file yourself.")
+    item.setForeground(QColor(theme.INK_FAINT))   # theme-aware, readable on both
+    return item
+
+
 def refresh_day_health(main_window, day_name):
     """Re-read data_pictures.csv for `day_name` and update its Pictures and
     GPS cells. Called from ImagePreviewDialog.closeEvent so the table
@@ -608,6 +647,10 @@ def populate_trip_overview(self):
     blog_state_col = STATE_COL_START + next(
         (j for j, c in enumerate(STATE_COLUMNS) if c["gate"] == "WriteBlog"), 1)
     excluded = read_excluded_days(trip_root)
+    # Resolved once for the whole table, not per row — the Geotag cell only needs
+    # to know where to look for each day's log.
+    from utils.config import get_gpslogs_root
+    gpslogs_root = get_gpslogs_root()
 
     # +1 for Translations, +1 for the trailing In-Blog column. Translations and
     # In-Blog are LAST on purpose so the state-column indices (and the
@@ -615,7 +658,8 @@ def populate_trip_overview(self):
     # separate Progress column — a day's "done and locked" state is the 🔒 glyph
     # on the 3 step columns themselves (state_cell_symbol), not a 4th column.
     header_labels = (
-        ["Day", "Pictures", "JPEG\nFiles", "GPS", "Sync\nSidecars"] + self.state_labels
+        ["Day", "Pictures", "JPEG\nFiles", "GPS", "Geo-\ntag", "Sync\nSidecars"]
+        + self.state_labels
         + ["Trans-\nlations", "In\nBlog"]
     )
     assert STATE_COL_START + len(self.state_labels) + 2 == len(header_labels), (
@@ -632,7 +676,7 @@ def populate_trip_overview(self):
         header_labels, rows=len(image_days),
         # Pictures, JPEG Files and GPS auto-size to their content (short glyph
         # markers like "N ✅" or "📍 3" that don't fit a stretched column).
-        fit_columns=(1, 2, GPS_COL, translations_col, inblog_col),
+        fit_columns=(1, 2, GPS_COL, GEOTAG_COL, translations_col, inblog_col),
         min_section=None, row_height=None,
         select="cells", edit_cells=False, row_header=True)
 
@@ -664,6 +708,7 @@ def populate_trip_overview(self):
         self.trip_table.setItem(i, 2, jpgs_item)
 
         self.trip_table.setItem(i, GPS_COL, _format_gps_item(day, review_root))
+        self.trip_table.setItem(i, GEOTAG_COL, _format_geotag_item(day.name, gpslogs_root))
 
         # Sync Sidecars column — not persisted, starts as ⚪
         sync_item = QTableWidgetItem("⚪")

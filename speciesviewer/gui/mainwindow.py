@@ -821,7 +821,8 @@ class MainWindow(QMainWindow):
         return Path(root) if root else Path(_config.get("project", "picturedirectory")).parent
 
     def handle_trip_table_double_click(self, row, column):
-        from gui.trip_overview import GPS_COL, SYNC_COL, STATE_COL_START, STATE_COLUMNS
+        from gui.trip_overview import (GPS_COL, GEOTAG_COL, SYNC_COL,
+                                       STATE_COL_START, STATE_COLUMNS)
         # Translations column: open the per-day validation panel. No separate
         # Progress column exists (see trip_overview.state_cell_symbol) — this is
         # the first trailing non-action column after the 3 state columns.
@@ -897,6 +898,17 @@ class MainWindow(QMainWindow):
             self.image_viewer_dialog = ImagePreviewDialog(self, image_dir=str(new_dir), trip_root_dir=str(trip_root), mode="all", start_no_gps=True)
             self.image_viewer_dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
             self.image_viewer_dialog.show()
+
+        # Geotag column — the same per-day action Unfiled and Days already run
+        # (open_tracklog_geotag_for_folder), pointed at this trip's day folder.
+        # Modal, so refreshing afterwards picks up whatever GPS/altitude it wrote
+        # and repaints the GPS cell beside it.
+        elif column == GEOTAG_COL:
+            # Shared with the context-menu entry. Repaints the row afterwards; the
+            # GPS cell beside it reads data_pictures.csv and the geotag writes XMP
+            # sidecars only, so that count legitimately doesn't move until
+            # Read & Summarize runs again.
+            self._run_trip_geotag(day_str)
 
         # Batch action
         else:
@@ -1163,20 +1175,71 @@ class MainWindow(QMainWindow):
         runner = ColumnBatchRunner(self, self, "Sync Sidecars", day_steps, lambda: None)
         runner.start()
 
-    def handle_trip_table_context_menu(self, pos):
-        """Right-click on the Trip Overview: offer to run the user's selected pipeline cells."""
+    def _new_trip_context_menu(self):
+        """A QMenu parented to the main window, so it doesn't inherit the yellow
+        background from yellow_tabs (which made hovered text unreadable)."""
         from PyQt6.QtWidgets import QMenu
+        menu = QMenu(self)
+        menu.setStyleSheet(
+            f"QMenu {{ background-color: {theme.SURFACE}; color: {theme.INK}; }}")
+        return menu
+
+    def _add_trip_geotag_action(self, menu, day_str):
+        """Add the per-day "Geotag from tracklog…" entry, or None when the click
+        wasn't on a day row.
+
+        Per ROW, not per cell: unlike the pipeline steps it needs no selection,
+        so it is offered alongside the run-selection entry rather than inside it.
+        Same action as the 🛰️ column and as the Unfiled/Days row action."""
+        if not day_str:
+            return None
+        if not menu.isEmpty():
+            menu.addSeparator()
+        return menu.addAction(f"Geotag from tracklog… ({day_str})")
+
+    def _run_trip_geotag(self, day_str):
+        """Open the tracklog geotag review for one trip day (🛰️ column and the
+        context-menu entry share this)."""
+        from gui.tracklog_geotag_dialog import open_tracklog_geotag_for_folder
+        day_dir = self._trip_picture_root() / day_str
+        if not day_dir.is_dir():
+            self.logger.warning(
+                f"Geotag from tracklog: {day_dir} is not on this machine.")
+            return
+        _config.set("project", "picturedirectory", str(day_dir))
+        trip_root = Path(_config.get("trip", "tripbiotadatabase"))
+        review_day = trip_root / "metadata" / "review" / day_str
+        sm = StateMachine(str(trip_root), str(review_day), readState=True)
+        open_tracklog_geotag_for_folder(self, str(day_dir))
+        self.refresh_trip_row(sm, day_str)
+
+    def handle_trip_table_context_menu(self, pos):
+        """Right-click on the Trip Overview: offer to run the user's selected
+        pipeline cells, plus the per-day actions that need no selection."""
         from gui.trip_overview import STATE_COL_START, STATE_COLUMNS
         from gui.batch import ColumnBatchRunner
         from utils.batch_config import generate_svconfig_ini
 
         state_col_end = STATE_COL_START + len(self.state_labels) - 1
 
+        # The day under the cursor — per-row actions don't care what is selected.
+        clicked_row = self.trip_table.indexAt(pos).row()
+        clicked_item = self.trip_table.item(clicked_row, 0) if clicked_row >= 0 else None
+        clicked_day = clicked_item.text() if clicked_item else ""
+
         selected = [
             idx for idx in self.trip_table.selectedIndexes()
             if STATE_COL_START <= idx.column() <= state_col_end
         ]
         if not selected:
+            # No pipeline cells selected used to mean NO menu at all. The per-day
+            # actions still apply, so offer them on their own.
+            menu = self._new_trip_context_menu()
+            geo_action = self._add_trip_geotag_action(menu, clicked_day)
+            if geo_action is None:
+                return
+            if menu.exec(self.trip_table.viewport().mapToGlobal(pos)) == geo_action:
+                self._run_trip_geotag(clicked_day)
             return
 
         project_root = self._trip_picture_root()
@@ -1272,14 +1335,14 @@ class MainWindow(QMainWindow):
                     "needs_reset":  needs_reset,
                 })
 
-        # Parent the menu to the main window so it doesn't inherit the yellow
-        # background from yellow_tabs (which made hovered text unreadable).
-        menu = QMenu(self)
-        menu.setStyleSheet(f"QMenu {{ background-color: {theme.SURFACE}; color: {theme.INK}; }}")
+        menu = self._new_trip_context_menu()
         if not day_steps:
             disabled = menu.addAction("No eligible steps in selection")
             disabled.setEnabled(False)
-            menu.exec(self.trip_table.viewport().mapToGlobal(pos))
+            geo_action = self._add_trip_geotag_action(menu, clicked_day)
+            chosen = menu.exec(self.trip_table.viewport().mapToGlobal(pos))
+            if geo_action is not None and chosen == geo_action:
+                self._run_trip_geotag(clicked_day)
             return
 
         n_cells = len(day_steps)
@@ -1293,7 +1356,11 @@ class MainWindow(QMainWindow):
         if skipped:
             label += f"  — {skipped} ineligible skipped"
         run_action = menu.addAction(label)
+        geo_action = self._add_trip_geotag_action(menu, clicked_day)
         chosen = menu.exec(self.trip_table.viewport().mapToGlobal(pos))
+        if geo_action is not None and chosen == geo_action:
+            self._run_trip_geotag(clicked_day)
+            return
         if chosen != run_action:
             return
 

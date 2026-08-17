@@ -275,15 +275,28 @@ reads <em>No current work planned</em>.</p>
     an already-read day, independent of a card being present — opens the review dialog pre-loaded
     with that day's auto-detected log.
     <br><br>
+    <strong>Done 17 August 2026 — the Trip panel now has it too.</strong> A <strong>Geotag
+    column (🛰️)</strong> sits directly after GPS in the Trip Overview — it is the answer to what
+    the GPS column reports — plus a <strong>"Geotag from tracklog… (day)" right-click entry</strong>
+    on any day row, so it is menu-and-click like the other lanes. Both run the same
+    <code>open_tracklog_geotag_for_folder()</code> that Unfiled and Days already used, pointed at
+    the clicked day's folder; nothing new was written to make this work. The
+    <code>overview_table.py</code> port turned out <em>not</em> to be a prerequisite after all:
+    every Trip column from GPS onwards is addressed through named constants rather than literal
+    indexes, so inserting one only renumbered three of them.
+    <br><br>
+    The glyph reports whether that day's log was actually <em>found</em>: a normal 🛰️ opens the
+    review dialog with the log pre-loaded, a dimmed one says no log exists for that day in the
+    GPS-logs folder but still opens, because browsing to a phone GPX by hand is exactly what that
+    dialog is for. Note the GPS count beside it does not move after a geotag — that column reads
+    <code>data_pictures.csv</code> while the geotag writes XMP sidecars, so it catches up on the
+    next Read &amp; Summarize.
+    <br><br>
     <strong>To do:</strong> the Days-panel row action is built the same way as Unfiled's (live
-    on Unfiled, not yet clicked on Days — next session). The <strong>Trip panel doesn't have
-    this row action or the 🛰️ status icon yet</strong>, on purpose: Trip's overview table isn't
-    on the shared component (<code>overview_table.py</code>) Unfiled/Days already share, so it
-    needs either that port finished first or its own wiring — worth discussing which before
-    building it. To be clear, this is a missing <em>icon and shortcut</em>, not a missing
-    <em>capability</em>: a Trip's Read already runs the same auto-geotag as Days/Unfiled, since
-    all three share one Read-a-card dialog — confirmed working live 17 August 2026 (2026 Goeree,
-    3 days, all tracklogs auto-matched, GPS + altitude written).
+    on Unfiled, not yet clicked on Days — next session). To be clear, none of this was ever a
+    missing <em>capability</em>, only an icon and a shortcut: a Trip's Read already ran the same
+    auto-geotag as Days/Unfiled, since all three share one Read-a-card dialog — confirmed working
+    live 17 August 2026 (2026 Goeree, 3 days, all tracklogs auto-matched, GPS + altitude written).
     <br><br>
     <strong>Fixed 17 August 2026 — Nominatim connectivity fail-fast:</strong> a dropped hotel
     wifi connection during "Add location names" used to hammer every remaining distinct place
