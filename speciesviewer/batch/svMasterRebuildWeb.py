@@ -26,6 +26,12 @@ It is HTML-only and publish-only:
 Output routing is the standard "New" → ReviewFrozen()/biota; force_all only
 changes SELECTION, not where pages land, so the existing upload path
 (sv7WriteCommit.putRecursiveTreeWeb, which ships frozen/biota) is used unchanged.
+
+That upload path also refreshes 'includes web/animals.css' + the map library
+(sv7WriteCommit.putSharedWebAssets). It has to: the master's stylesheet was
+written once when the master repository was created and no rebuild ever replaced
+it, so a CSS fix reached every album (svv4BuildWebsite uploads it) but never the
+master site itself.
 """
 
 import argparse

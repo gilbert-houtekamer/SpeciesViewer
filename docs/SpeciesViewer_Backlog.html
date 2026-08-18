@@ -467,17 +467,36 @@ reads <em>No current work planned</em>.</p>
 <h3>To do</h3>
 <ul>
   <li><strong>AVI list processing upgrade</strong> <span class="tag-new">NEW</span>.</li>
-  <li><strong>Rebuild All Websites — apply pass never run</strong> <span class="tag-open">OPEN</span> —
-    the sweep tool (<em>Utilities ▸ Rebuild All Album Websites…</em>) shipped 2026-08-09 as a dry run
-    only. The problem it exists to fix is still live on the server: per-site <code>animals.css</code>
-    has gone stale across all 17 albums (29 site copies), and template/render fixes since made don't
-    reach an already-built site until it is rebuilt. Needs an actual apply run.</li>
+  <li><strong>FTP cache is invisible in Manage Caches</strong> <span class="tag-new">NEW</span> —
+    <em>Utilities ▸ Manage Caches</em> shows the four local caches (full-res, previews, EXIF day/trip,
+    EXIF master) but not the upload caches, so the one cache that decides whether a publish re-sends a
+    file cannot be seen, sized or cleared — and it is not even obvious where it lives. Each repository
+    keeps its own <code>admin/FTPcache.json</code> (target path → name + size/CRC), which is what makes
+    a rebuild 97% cached. Worth a tab of its own: one row per trip/album/master, with the file count
+    and a Clear that forces a full re-upload of that site.</li>
   <li><strong>Website hosting hardening leftovers</strong> <span class="tag-open">OPEN</span> —
     lower-priority follow-ups from the 2026-08-08 WordPress compromise (core cleaned, SFTP password
     already rotated and verified same day): plugin auto-updates are still OFF — the likely original
     entry vector — an unused application password (<em>"Phyton plugin"</em>) is still live, and the
     inactive <code>akismet</code> plugin is still installed (an inactive plugin's files are exactly
     how the backdoor was reached the first time).</li>
+</ul>
+<h3>Done</h3>
+<ul>
+  <li><strong>Rebuild All Websites — the apply pass has now run</strong>
+    <span class="tag-shipped">VERIFIED</span> (2026-08-18) — the sweep tool shipped 2026-08-09 as a dry
+    run only; it has now been applied live on BigBoy. All 17 albums were rebuilt (species pages + blog
+    HTML) in one clean run, then the master separately: 2249 species pages re-rendered and uploaded in
+    5m48s, with 97% of the JPG transfers served from the FTP cache. Confirmed afterwards that
+    <code>/nature/includes web/animals.css</code> on the server is byte-identical to the shipped
+    stylesheet.
+    <br>One code gap was found and closed first: the master rebuild never uploaded
+    <code>includes web/</code> at all, so a stylesheet fix could reach every album (the album build
+    ships it) but never the master site. The publish path
+    (<code>sv7WriteCommit.putSharedWebAssets</code>) now refreshes <code>animals.css</code> and the map
+    library on every publish — which also covers a plain trip's <em>Publish Day</em>, the case that
+    had no refresh path at all. Only the text assets: the ~14 MB of category JPGs in the same folder
+    are already on every site and change by hand.</li>
 </ul>
 <h3>Parked (by design)</h3>
 <ul>

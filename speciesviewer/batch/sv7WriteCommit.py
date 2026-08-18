@@ -67,6 +67,43 @@ def commitProjectFiles(MyProject):
     shutil.copy(os.path.join(frozendir, "species.csv"),              os.path.join(activedir, "species.csv"))
     return
 
+# The stylesheet and the map library are SHARED by every rendered page, but each
+# site carries its own copy under '<site>/includes web/'. Only repository
+# creation (sv1MakeReposity) and the album build (svv4BuildWebsite) ever wrote
+# them, so a fix to animals.css reached a trip or the master only if someone
+# remembered to run one-off/push_animals_css.py. Publishing HTML that depends on
+# a stylesheet without ever refreshing that stylesheet is the bug; the CSS now
+# ships WITH the pages.
+#
+# Only the text assets. The category JPGs in the same folder are ~14 MB, change
+# by hand once a year, and are already on every site from creation - re-shipping
+# them on every publish would cost far more than it can ever fix.
+SHARED_WEB_ASSETS = ("animals.css", "leaflet.css", "leaflet.js")
+
+
+def putSharedWebAssets(MyProject, sftp):
+    """Refresh '<site>/includes web/' with the shipped stylesheet + map library.
+
+    cachedUpload compares a CRC of the content for non-JPGs, so this transfers
+    nothing at all once a site is current, and exactly the changed file after a
+    stylesheet fix. A missing remote 'includes web' heals itself: cachedUpload
+    creates the parent and retries."""
+    src_dir = Path(__file__).parent.parent / "dist" / "includes web"
+    target = sftp.remotePrefix() + MyProject.getBiotaWebRoot() + "includes web"
+    sent = 0
+    for name in SHARED_WEB_ASSETS:
+        src = src_dir / name
+        if not src.is_file():
+            logger.warning(f"Shared web asset missing, not uploaded: {src}")
+            continue
+        if not sftp.cachedUpload(str(src), target + "/" + name, preserve_mtime=True):
+            sent += 1
+    if sent:
+        logger.info(f"Refreshed {sent} shared web asset(s) (stylesheet / map library).")
+    else:
+        logger.info("Shared web assets (stylesheet / map library) were already current.")
+
+
 def putRecursiveTreeWeb(MyProject, config):
     password = config.get("websettings","Sftppwd").strip("'")
     sftp = engine.sftplib.Sftp(
@@ -80,6 +117,7 @@ def putRecursiveTreeWeb(MyProject, config):
     sftp.connect()
     fromdisk = MyProject.ReviewFrozen()
     toweb = sftp.remotePrefix() + MyProject.getBiotaWebRoot()
+    putSharedWebAssets(MyProject, sftp)
     sftp.put_r_portable(os.path.join(fromdisk, 'biota/'), toweb + 'biota/', preserve_mtime=True)
 
     fromintro = MyProject.getBiotaDir()
