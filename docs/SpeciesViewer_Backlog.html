@@ -319,11 +319,10 @@ reads <em>No current work planned</em>.</p>
     value <code>TripInfoPanel</code> already trusted when selecting a trip from the sidebar)
     instead of guessing from stale state.
     <br><br>
-    <strong>One known follow-up, not yet built:</strong> the tracklog's point density is much
-    finer than altitude actually needs — thin the cleaned points to about one every 5 minutes
-    before correlation (altitude barely moves faster than that; it's already what the rolling
-    average smooths toward) to keep a long/dense tracklog cheap to search.</li>
-</ul>
+    <strong>The follow-up that was proposed here — thinning the tracklog's points — was measured
+    on 18 August 2026 and dropped</strong>; see
+    <a href="#capture-time">17. Capture time &amp; time zones</a> for the numbers and for the
+    reason the original framing was wrong (the same points serve position, not just altitude).</li>
   <li><strong>Map polish</strong> <span class="tag-shipped">SHIPPED</span> — extended map-delete to
     the day map. It always worked once a day had been through <em>Read &amp; Summarize</em>
     (the pipeline-CSV-backed collection); a day map opened before that step used the sidecar-backed
@@ -736,6 +735,26 @@ UTC offset. Treating these as one thing caused everything below.</p>
     location→timezone lookup</em>, which would settle the Nikon daylight-saving ambiguity for any
     picture with GPS. Full reasoning and the archive survey:
     <code>docs/plans/timezone_plan.md</code>.</li>
+  <li><strong>Thinning the tracklog's points</strong> <span class="tag-parked">NOT WORTH IT NOW</span>
+    (measured 18 August 2026) — the old note proposed thinning the cleaned track to about one point
+    every 5 minutes before correlation, on the grounds that altitude barely moves faster than that.
+    Measured on the largest real log (4,341 points over 8.2 h, one every 6.8 s): parsing costs
+    <strong>10.6 ms</strong>, and the altitude cleaning <strong>285 ms</strong> — 65 µs per point,
+    and it scales <em>linearly</em> (verified to 69,456 points), so there is no hidden blow-up. The
+    whole current log collection is four files and under a second in total. Nothing to win.
+    <br><br>
+    There is also a flaw in the original idea: the same point list serves <em>position</em> lookup,
+    not just altitude. Thinning before correlation would trade the sub-metre placement we now get
+    for a saving nobody can feel. If a multi-day GPX ever makes a Read visibly slow, the right
+    shape is to thin only the input to the <em>altitude cleaning</em> — that is where all the cost
+    is — and keep full density for position. The trigger to revisit: roughly 70,000 points costs
+    4.4 s, so a multi-day phone log at 1 Hz (a few hundred thousand points) is where it starts to
+    show.
+    <br><br>
+    Worth noting the accuracy side <em>cannot</em> be settled from this trip's data: the pictures
+    were taken from near-static positions (a whole day spans 150 m), so thinning changes almost
+    nothing and the numbers wobble without trend. That is evidence it would not hurt
+    <em>this</em> kind of shooting, not evidence that it is safe in general.</li>
   <li><strong>No bulk rewrite of existing timestamps</strong> <span class="tag-parked">DECIDED</span> —
     all 75,050 master rows carry bare local time and not one carries a zone. Those values are
     correct <em>as local readings</em>. Recovering instants for the archive is a re-read of RAWs
