@@ -213,13 +213,10 @@ reads <em>No current work planned</em>.</p>
 <h2>3. Master Database, Editing &amp; Viewer</h2>
 <h3>To do</h3>
 <ul>
-  <li>Tracklog geotag row action (🛰️): live-test on the <strong>Days</strong> panel (built,
-    unclicked). <strong>Trip</strong> panel is missing only the standalone row action and the
-    🛰️ status icon in its overview table — the automatic Read-time geotag (the "Geotag from
-    each day's tracklog…" checkbox) already works for Trip reads too, since Days/Trips/Unfiled
-    all share the same Read-a-card dialog. The row action is blocked on porting Trip's overview
-    table onto the shared <code>overview_table.py</code> or building separate wiring. See the
-    Tracklog geotag entry below.</li>
+  <li>Nothing open here — the tracklog geotag row action that used to sit in this list shipped on
+    the <strong>Trip</strong> panel on 17 August 2026 (🛰️ column plus a right-click entry), and
+    the one remaining live-test moved to
+    <a href="#capture-time">17. Capture time &amp; time zones</a>.</li>
 </ul>
 <h3>Done</h3>
 <ul>
@@ -735,6 +732,10 @@ UTC offset. Treating these as one thing caused everything below.</p>
     location→timezone lookup</em>, which would settle the Nikon daylight-saving ambiguity for any
     picture with GPS. Full reasoning and the archive survey:
     <code>docs/plans/timezone_plan.md</code>.</li>
+  <li><strong>Live-test the 🛰️ row action on the Days panel</strong> — built the same way as
+    Unfiled's and never clicked. Small: open a Day, double-click the 🛰️ cell, confirm the review
+    dialog opens on that day with its own log pre-loaded. The equivalent on <strong>Trip</strong>
+    and <strong>Unfiled</strong> has been used live; Days is the last of the three.</li>
   <li><strong>Thinning the tracklog's points</strong> <span class="tag-parked">NOT WORTH IT NOW</span>
     (measured 18 August 2026) — the old note proposed thinning the cleaned track to about one point
     every 5 minutes before correlation, on the grounds that altitude barely moves faster than that.
