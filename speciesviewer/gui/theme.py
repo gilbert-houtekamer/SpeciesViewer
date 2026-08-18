@@ -235,6 +235,24 @@ def build_base_qss() -> str:
             border-color: {ACCENT};
         }}
 
+        /* A disabled tick box kept the full-strength label and the ACCENT-green
+           box, so an option that could not be clicked looked exactly like one
+           that could (the album sub-options under "Rebuild the albums"). Grey
+           the label and drain the box; the checkmark stays visible, because a
+           disabled option still has to show whether it is on or off. */
+        QCheckBox:disabled, QRadioButton:disabled {{
+            color: {INK_FAINT};
+        }}
+        QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {{
+            border-color: {LOCKED_BORDER};
+            background-color: {LOCKED_BG};
+        }}
+        QCheckBox::indicator:checked:disabled,
+        QRadioButton::indicator:checked:disabled {{
+            background-color: {LOCKED_BORDER};
+            border-color: {LOCKED_BORDER};
+        }}
+
         QProgressBar {{
             border: 1px solid {LINE};
             border-radius: 4px;

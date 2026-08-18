@@ -148,6 +148,30 @@ def _run_step(step, cfg):
     mod.main(_Args(), cfg)
 
 
+def _master_species_count(config):
+    """How many master species have a picture - the size of a master rebuild.
+
+    Read straight from the master's committed species.csv rather than by loading
+    the whole project: the listing has to stay instant, and the count from the
+    very file the rebuild renders from is honest enough for a preview. Returns
+    None when it cannot be read, and the caller then says "every species page"
+    rather than inventing a number."""
+    master_db = config.get("master", "masterbiotadatabase", fallback="")
+    path = os.path.join(master_db, "metadata", "active", "species.csv")
+    if not os.path.isfile(path):
+        return None
+    try:
+        import csv
+        with open(path, newline="", encoding="utf-8") as f:
+            return sum(1 for row in csv.DictReader(f, delimiter=";")
+                       if (row.get("Level") or "").strip().upper().endswith("SPECIES")
+                       and (int(row.get("iPicturesWithJPGsThisRun") or 0)
+                            + int(row.get("iPicturesWithJPGsCollection") or 0)) > 0)
+    except Exception as e:
+        logger.warning(f"could not count the master species in {path}: {e}")
+        return None
+
+
 def main(args, config):
     from utils.config import get_virttrips_root
 
@@ -173,20 +197,28 @@ def main(args, config):
     apply_it = getattr(args, "apply", False)
     do_master = getattr(args, "master", False)
 
-    print(f"Albums root : {virttrips_root or '(not configured)'}")
-    print(f"Web folder  : {trips_folder}")
-    print(f"Steps       : {', '.join(steps) or '(none)'}"
-          + ("  + master site" if do_master else ""))
-    print(f"Albums      : {len(albums)}\n")
-    if not albums and not do_master:
+    # Describe only the scopes actually in play. A master-only run used to print
+    # the albums root, the web folder and "Albums: 0" above one bare path - three
+    # lines about the half that was switched off, and none of them a sentence.
+    album_scope = bool(albums or (getattr(args, "albums", True) and steps))
+    if not album_scope and not do_master:
         print("Nothing to rebuild.")
         return 0
 
-    for a in albums:
-        print(f"  {Path(a).name:28} -> {_album_web_root(a, trips_folder)}")
+    if album_scope:
+        what = " and ".join("species pages" if st == STEP_WEBSITE else "blog HTML"
+                            for st in steps) or "nothing"
+        print(f"Rebuilding {what} for {len(albums)} album(s) under {trips_folder}, "
+              f"read from {virttrips_root or '(albums root not configured)'}:")
+        for a in albums:
+            print(f"  {Path(a).name:28} -> {_album_web_root(a, trips_folder)}")
     if do_master:
-        print(f"  {'(master site)':28} -> "
-              f"{config.get('master', 'masterbiotawebroot', fallback='/nature/')}")
+        master_web = config.get('master', 'masterbiotawebroot', fallback='/nature/')
+        n = _master_species_count(config)
+        how_many = f"all {n} species pages" if n else "every species page"
+        print(f"{chr(10) if album_scope else ''}Re-rendering {how_many} of the master "
+              f"and copying them to {master_web}, together with the all-species "
+              f"overviews and the stylesheet.")
 
     if not apply_it:
         print("\nDRY RUN — nothing was rebuilt. Re-run with --apply.")
