@@ -105,3 +105,9 @@ def add_species_info(avibase_dict, sc, sp):
                 f"Scientific name updated for '{label}': "
                 f"'{original_scname}' → '{entry['scname']}'"
             )
+
+        if entry["nlname"] == '':
+            sc_entry = sc.sc_dict.get(entry["scname"].lower())
+            if sc_entry and sc_entry.get("DutchName"):
+                entry["nlname"] = sc_entry["DutchName"]
+
