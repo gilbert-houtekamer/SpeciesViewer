@@ -172,7 +172,37 @@ otherwise cannot be resolved.
 | `9c2ebb6` | Dropbox lock retry on master CSV rewrites; no journal entry for a batch matching no master row |
 | `42f1dc3` | Read-time warning when the camera's zone disagrees with the tracklog/laptop, and the Timezone offset field fills itself from the difference |
 
-Verified live on 2026 Goeree, all three days re-read: sidecars carry `+01:00`,
-the offset is read with no track involved, 352/352 pictures have GPS, and the
-distance from each picture to the track at its own timestamp is **2.0 m / 10.1 m
-/ 51.9 m** median. The same measurement before the fix was 8.6 km.
+### How the fix was verified — and how it must be measured
+
+The obvious measurement is wrong. Comparing *every* picture's GPS against the
+track gives a flattering ~2 m median, because on this trip **185 of 202 pictures
+already carried camera GPS** and those match the track whether or not the geotag
+works. They drown the ones that matter.
+
+The measurement that means something isolates pictures whose RAW has **no** GPS
+but whose sidecar does — the ones we actually placed. Same card, same track,
+pre-fix folder versus post-fix folder:
+
+| 2026-08-14 folder | sidecars zoned | camera GPS | **tracklog GPS** |
+|---|---|---|---|
+| pre-fix (16:26) | 0 / 202 | 2.0 m median | **8,585.6 m** |
+| post-fix (20:54) | 202 / 202 | 2.0 m median | **0.2 m** |
+
+Note the camera-GPS column is identical in both. Any future check of a geotag
+must split these two populations, or it will report success it hasn't earned.
+
+Separately confirmed: nothing in SpeciesViewer strips the offset once written.
+Every sidecar writer was run against a freshly zoned sidecar — place names (all
+three overwrite/protect branches), rating, colour label, species subject — and
+all preserve it.
+
+Operational note: the app must be **restarted** to pick up code changes. A Read
+performed in a session started before an edit silently runs the old code, which
+is how two pre-fix day folders came to exist alongside the corrected ones.
+
+## Decided: GPSProcessingMethod stays MANUAL on tracklog GPS
+
+Tracklog-derived coordinates are stamped `MANUAL`, which lets the map drag them.
+Kept deliberately: it preserves flexibility and does not disable functions when a
+tracklog turns out to be less perfect than hoped. **Revisit Q1 2027**, after two
+big trips have exercised it.
