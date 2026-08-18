@@ -37,7 +37,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 15 August 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 18 August 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Open work for the SpeciesViewer nature-photo pipeline and GUI. This document holds
 only what is <strong>still to do</strong> — everything that has shipped now lives in the companion
@@ -55,12 +55,31 @@ reads <em>No current work planned</em>.</p>
 <span class="tag-rejected">REJECTED</span> decided against (won't build).</p>
 
 <div class="next">
-  <strong>Active shortlist:</strong>
+  <strong>Active shortlist — week of 18 August 2026: QA &amp; documentation.</strong>
   <ul>
-    <li><strong>Rating &amp; Website</strong> <span class="tag-progress">IN PROGRESS</span> — no longer
-      parked: rating-formula tuning was deliberately held until viewer convergence finished, and
-      convergence is now complete (ch. 8). Active since 15 August 2026 (ch. 7).</li>
+    <li><strong>Usability QA</strong> <span class="tag-progress">IN PROGRESS</span> — the three open
+      items in ch. 9: the AVI list processing upgrade, the FTP cache that cannot be seen in Manage
+      Caches, and the website hosting hardening leftovers. All three are known and accepted as this
+      week's work.</li>
+    <li><strong>Documentation</strong> <span class="tag-progress">IN PROGRESS</span> — the two
+      documents no longer line up. <em>Capabilities Added</em> has no chapter for <strong>17. Capture
+      time &amp; time zones</strong>, the tracklog geotagging and camera-clock work of 16–17 August
+      and the largest thing to ship this month; the <strong>Trip/Album overview parity</strong> work
+      has no chapter either and still needs a home (ch. 4? ch. 15?). Chapter placement is a call to
+      make before anything is written.</li>
   </ul>
+  <strong>Finished, off the list:</strong>
+  <ul>
+    <li><strong>Rating &amp; Website</strong> <span class="tag-shipped">DONE</span> — the formula
+      tuning that had been in progress since 15 August is complete, applied to the real master on
+      BigBoy and confirmed by a validation run on 18 August 2026 (ch. 7).</li>
+  </ul>
+  <strong>New — ch. 18 Away from home — trip readiness:</strong> the things that only bite when the
+  nearest spare drive or second computer is thousands of kilometres away. Its first two items (free
+  space, and reserving room for the card's own ingest cache) are QA-shaped and belong in this week
+  if anything does.
+  <br><strong>Deliberately not scheduled in the coming month:</strong> ch. 6 Taxonomy &amp; Species
+  and ch. 17 Capture time &amp; time zones. Both work as they stand; revisit after mid-September.
   <strong>Not planned, but relevant — don't forget:</strong>
   <ul style="margin-bottom:0;">
     <li><strong>The 791 already-coarse coordinates</strong> <span class="tag-open">OPEN / NEW</span> —
@@ -409,6 +428,7 @@ reads <em>No current work planned</em>.</p>
 
 <!-- ============================================================ -->
 <h2>6. Taxonomy &amp; Species <span class="tag-parked">PARKED (by design)</span></h2>
+<p class="note">Not scheduled in the coming month (agreed 18 August 2026).</p>
 <ul>
   <li><span class="tag-parked">PARKED</span> <strong>Sequence redesign</strong> — replace the
     “040 passeriformes” prefix with a Sequence float column (eBird TAXON_ORDER).</li>
@@ -423,20 +443,31 @@ reads <em>No current work planned</em>.</p>
 <h2>7. Rating &amp; Website</h2>
 <h3>To do</h3>
 <ul>
-  <li><span class="tag-progress">IN PROGRESS</span> <strong>Rating-formula tuning</strong> — active
-    since 15 August 2026. Fine-tune the Rate
-    formula (Red/Yellow/Green boost, star/size/DxO/description weights); feeds the website best-pick.
-    Was deliberately held until viewer convergence finished, so tuning wouldn't be wasted on cards the
-    convergence was still going to change — convergence is now complete (ch. 8), so this is unblocked.
-    First step shipped: colour→star fallback retuned (Red 4★, Green 1★ instead of 0★ — a colour-only
-    "keep" now reads as a real star). Count Species follows the same rule now: a species with a
-    JPG is no longer flagged <em>Needed</em> just because the JPG carries no stars — <em>Needed</em>
-    means no JPG at all, only RAW or HEIC. Still to do: recompute <code>Rate</code> across the real master
-    on Bigboy (the laptop's smallboy copy was used only to validate the formula, not to apply it).</li>
   <li><span class="tag-open">NEEDS DECISION</span> <strong>HEIC / PNG sidecar capture</strong> —
     formats with no writable sidecar, so rating/colour can't be stored durably; needs a user call
     between a separate <code>.xmp</code> alongside the HEIC, patching the <code>.dop</code>, or
     writing directly into the HEIC.</li>
+</ul>
+<h3>Done</h3>
+<ul>
+  <li><strong>Rating-formula tuning</strong> <span class="tag-shipped">VERIFIED</span>
+    (18 August 2026) — finished, applied to the real master and validated. The Rate formula decides
+    which picture of a species the website shows, which is why it was held back deliberately until
+    viewer convergence finished (ch. 8) rather than tuned against cards that were still going to
+    change.
+    <br><br>What changed: the colour→star fallback was retuned so that a colour-only “keep”
+    reads as a real star. <strong>Red now counts as 4★ and Green as 1★</strong> (they were 3★
+    and 0★), Yellow stays 2★, and Blue and Purple stay out of the mapping on purpose — Blue means
+    “decide later”, not “good”. The fallback only fires for a file carrying no explicit star rating,
+    so nothing already rated by hand moved. <em>Count Species</em> was brought in line with the same
+    reading: a species holding a JPG is no longer reported as <em>Needed</em> merely because that JPG
+    carries no stars — <em>Needed</em> now means there is no JPG at all, only RAW or HEIC.
+    <br><br>Until today the formula had only been checked against the laptop's smallboy copy, which was
+    never enough to apply it — many RAWs exist only on BigBoy. It has now been run and validated
+    against the real master there. Because a picture's Rate is computed as the page renders
+    (<code>websupport.computeRatingFile</code>), the full site rebuild of the same day (ch. 9)
+    republished every species page under the new formula, master and all 17 albums alike, so what the
+    site shows and what the viewers show now agree.</li>
 </ul>
 
 <!-- ============================================================ -->
@@ -719,6 +750,8 @@ to re-look-up.</p>
 
 <!-- ============================================================ -->
 <h2 id="capture-time">17. Capture time &amp; time zones</h2>
+<p class="note">Not scheduled in the coming month (agreed 18 August 2026) — what shipped works
+and is measured; the storage decision below is deliberately left to sit.</p>
 
 <p>A photo's capture time is really <em>two</em> facts: <strong>the instant</strong> (a point on the
 world's timeline, which decides where a tracklog says you were standing) and <strong>the local
@@ -810,6 +843,153 @@ UTC offset. Treating these as one thing caused everything below.</p>
     each picture — and the calendar day, which is why the <em>Timezone offset</em> field now fills
     itself in from the difference instead of being typed by hand each time.</li>
 </ul>
+
+
+<!-- ============================================================ -->
+<h2 id="trip-readiness">18. Away from home — trip readiness</h2>
+
+<p>Everything in this chapter only bites when the nearest spare drive, second computer or willing
+helper is a few thousand kilometres away. None of it is a missing feature in the ordinary sense
+— the pipeline works — and that is exactly why these items never came up: at home each one has an
+easy way out. Raised and scoped 18 August 2026.</p>
+
+<p>Two risks were considered and <strong>dismissed on the facts</strong>, so they are not on the
+list. <em>Losing pictures</em>: there are plenty of SD cards and no expectation of filling them, so
+the cards stay as the original copy for the whole trip — the RAWs are never the thing at risk.
+<em>Working offline</em>: each operation already gates on its own real dependency (publishing on
+SFTP, species lookup on GBIF, place names on Nominatim), so a hotel with no wifi degrades rather
+than breaks. What is genuinely exposed is the <strong>work</strong>: the culling decisions, species
+identifications, locations and blog text that exist only on the laptop.</p>
+
+<p class="note"><strong>How this chapter gets built — keep it simple.</strong> In ten years no
+memory card was ever lost; what <em>was</em> lost were CurrentPictures directories, when
+SpeciesViewer went rogue and deleted files. That is the honest risk record, and it points the
+opposite way from clever design: a sophisticated feature carries failure modes nobody saw coming,
+and the more carefully specified an item on this list becomes, the more expensive and the more
+dangerous it gets. So each item below is to be built as the <strong>smallest independent function
+that nothing else depends on</strong> — something the daily flow neither calls nor notices, that can
+be run, ignored or deleted without consequence. Where an item as written here is more elaborate than
+that, the write-up is the ambition, not the build order: cut it down first. <em>Too good means we get
+nothing.</em></p>
+
+<h3>To do</h3>
+<ul>
+  <li><strong>Nothing watches free space, and a failed copy doesn't stop a Read</strong>
+    <span class="tag-open">OPEN</span> <span class="tag-bug">RISK</span> — the highest item here.
+    No part of the program ever asks the operating system how much room is left. In the card copy, a
+    failure on one file logs a warning and adds one to a counter; the dialog then reports its
+    ordinary <em>“Copied N, skipped M, failed K”</em> line, in the same tone whether K is zero or
+    eight hundred. A laptop drive that fills up in week three therefore produces a Read that looks
+    like every other Read, with a number in the middle of a sentence as the only sign. Two fixes,
+    both small: <strong>ask for the free space before copying</strong> and compare it against the
+    bytes actually planned — the copy list is already built and every file's size is known — so it
+    is refused or warned up front instead of discovered file by file; and <strong>make a non-zero
+    failure count a visibly different outcome</strong>, never a plain “Copied”. The same free-space
+    check is worth having wherever the program writes in bulk: freeze, adding to the master,
+    building previews.</li>
+
+  <li><strong>Reserve room on the card for its own ingest cache</strong>
+    <span class="tag-open">OPEN / NEW</span> — SpeciesViewer keeps a small state file on the card
+    itself (<code>.sv_ingest_cache.json</code>, in the folder being read) holding each file's
+    checksum and capture date. It is what makes a second Read of the same card fast, and it travels
+    <em>with the card</em>, which is the point: read a card on the laptop and later on BigBoy and
+    both know what was already imported. It is small — a few hundred kilobytes for a couple of
+    thousand files — but it is saved by writing a temporary copy first and then renaming, so a save
+    briefly needs room for <em>two</em> of them. On a card with nothing left the write fails, and the
+    failure is swallowed deliberately, because the same code must tolerate a write-protected card.
+    Nothing is lost; the card simply re-hashes itself from scratch every time, which is exactly the
+    kind of slow annoyance one does not want in the field.
+    <br><br><strong>The idea:</strong> keep a small dummy file on the card as reserved space — delete
+    it when the cache is about to be written, write, then put it back. A few megabytes is ample.
+    Points to settle when building it: the dummy must be restored <em>after</em> the cache write, and
+    if that restore fails then the card really is full and the program should say so once rather than
+    silently; it needs a name the scan can never mistake for a picture; and it should be removable
+    cleanly, since a card handed to somebody else shouldn't carry a mysterious blob.
+    <br><br><strong>Read this one against the rule above before building it.</strong> Reserving
+    space means SpeciesViewer <em>deleting a file on the card</em> — and the card is the medium
+    holding the only original copy of the pictures. The dummy is ours and the deletion is tiny, but
+    it is the same class of action as the one that actually cost data in the past, and it runs on
+    every card, every read. The two simple alternatives cost nothing and risk nothing: notice that
+    the save failed and <strong>say so</strong>, leaving the person to free up room; or keep the
+    cache on the laptop and stop writing to the card at all. Neither is as good. Both are safe.
+    <br><br>Two things worth deciding alongside it. The swallowed write failure should become a
+    <strong>visible one-line warning</strong> when the card <em>is</em> writable but the save still
+    failed — that is a real symptom, not a normal condition. And the fallback for a card that can
+    never be written: keep the cache on the laptop instead, keyed by a card fingerprint, the way the
+    destination hash cache already works. That loses the travelling property, which is why it is a
+    fallback and not the design.</li>
+
+  <li><strong>Back up the day's work to a spare card — one ZIP per day</strong>
+    <span class="tag-open">OPEN / NEW</span> — the cards keep the pictures safe, so this is not a
+    picture backup: it is a backup of <em>the work</em>. A fortnight of culling, identification,
+    locations and blog text lives on a single laptop, and re-doing it is a fortnight of evenings
+    nobody gets back. There are two very large spare cards to write it to.
+    <br><br><strong>Shape:</strong> one ZIP per day, written to a chosen removable card, holding that
+    day's metadata (the XMP sidecars, any <code>.dop</code>, the day's CSVs and its blog text) and the
+    pictures worth keeping — <em>green and better</em>, which is what the culling already decided.
+    Per-day is the right grain: a day unchanged since the last run is skipped entirely, so a nightly
+    backup costs only what was actually worked on. It pairs with the existing trip export, which
+    already ships the trip's identity, species collection, lifer baseline and translation cache in
+    kilobytes — the two together are a real restore rather than a pile of files.
+    <br><br>Of everything in this chapter this is the item that best fits the rule above: it reads
+    the trip and writes a ZIP somewhere else, and nothing in the pipeline calls it, waits for it or
+    breaks when it is skipped. Which also means the simplest possible version — every changed day,
+    metadata only, no cleverness about what changed — is worth having on its own, before any of the
+    refinements below.
+    <br><br><strong>Decisions to make first:</strong> (a) one level or two — a metadata-only backup
+    is tiny enough to run every evening without thinking, while metadata-plus-pictures is the one
+    that survives a stolen laptop; (b) whether “green and better” means the RAW, the derived JPG, or
+    whichever exists; (c) how a day is judged unchanged (a stamp per day, the way the upload cache
+    already avoids re-sending files); (d) that the ZIPs should be <em>stored</em> rather than
+    compressed — RAWs and JPGs do not shrink, so compression only costs time. And one rule to write
+    into the design: the restore direction gets tested before the trip, not after it, because a
+    backup nobody has restored from is a belief rather than a backup.</li>
+
+  <li><strong>“Undo last delete” still has no button</strong> <span class="tag-open">OPEN</span> —
+    the machinery exists and works: a delete moves files to a trash folder with a manifest, and a
+    single call puts them back. Nothing in the interface calls it. Bulk delete by colour is precisely
+    the evening job in a hotel room after a long day, and it is the one action with no way back from
+    the keyboard.</li>
+
+  <li><strong>The log is erased at every start, and lands wherever the program was launched from</strong>
+    <span class="tag-open">OPEN</span> — <code>studio.log</code> is opened in “write” mode under a
+    plain relative name, so every start throws away the previous session and the file's location
+    depends on how the program happened to be started. Something odd happens on Tuesday, the program
+    is restarted, and by Wednesday there is nothing left to look at — which matters far more when
+    there is no second machine to reproduce it on. Give it an absolute location beside the other
+    application data, and keep the last handful of sessions instead of one.</li>
+
+  <li><strong>Rehearse the whole trip once, on the laptop, before leaving</strong>
+    <span class="tag-test">NEEDS TEST</span> — several paths a trip depends on are built but have
+    never been used in anger. <em>Create Trip</em> and <em>Select or Update Trip</em> were split into
+    two one-directional dialogs after Create Trip overwrote a live trip's identity, and both have
+    been verified to open but not driven end to end. Trip and Album overview parity has not been
+    exercised live. The virtual-trip preview path is import-verified only. And the trip export /
+    import round trip — the thing that eventually carries the trip home — has never been run in both
+    directions. One evening covers it: create a trip, read a card into it, cull a day, write a blog,
+    publish it, export it, import it back. Cheaper than any single feature on this list, and it is
+    how the remaining surprises get found.</li>
+
+  <li><strong>Show how old the SmallMaster snapshot is</strong> <span class="tag-open">OPEN</span> —
+    on the road, whether a species is a lifer and which names get suggested both depend on the master
+    snapshot carried on the laptop. Nothing shows when that snapshot was taken, so a stale one gives
+    quietly wrong verdicts with no visible symptom. A date on screen is enough; refreshing it before
+    departure belongs on the checklist below.</li>
+
+  <li><strong>“Did this card arrive complete?”</strong> <span class="tag-open">OPEN</span>
+    <span class="tag-parked">lower priority</span> — every copied file is already checksummed at the
+    destination and a mismatch already raises, so the program knows whether a card arrived intact; it
+    just never says so. One closing line — <em>all N files from this card are verified present</em>
+    — turns that into something a person can rely on. Lower priority than it first looked: with the
+    cards kept as the original copy for the whole trip, nothing irreversible hangs on the answer.</li>
+</ul>
+
+<h3>Checklist before departure</h3>
+<p>Not work items — the things to do in the week before, once the above have been decided: refresh
+the SmallMaster snapshot and confirm its date shows; rehearse the round trip described above;
+confirm the backup card is formatted and that its restore direction has actually been tried; check
+free space against the trip's expected volume; and confirm the camera's clock and time zone match
+where you are going — the Read dialog now warns, but knowing beforehand is better.</p>
 
 </body>
 </html>
