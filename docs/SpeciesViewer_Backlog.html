@@ -258,11 +258,11 @@ reads <em>No current work planned</em>.</p>
     camera's UTC offset (needed to line a photo's local clock time up with the tracklog's UTC
     timestamps) used to be typed by hand or guessed from the tracklog device's own header — both
     assume the camera's clock/timezone setting is correct, which is easy to forget after
-    traveling. It's now <strong>auto-detected by correlation search</strong> against the track
-    itself (coarse 15-minute sweep, then a fine pass that also catches ordinary clock drift, not
-    just a wrong timezone) — never a guess, a day it isn't confident about is simply skipped and
-    logged. Works for both a Read's automatic pass and the manual dialog's offset field (still
-    editable/overridable by hand).
+    traveling. It was then <strong>auto-detected by correlation search</strong> against the track
+    itself. <span class="tag-shipped">SUPERSEDED 17 August 2026</span> — that search turned out to
+    be unable to answer the question on a short session, and it was replaced by reading the offset
+    the camera itself records. See <a href="#capture-time">17. Capture time &amp; time zones</a>
+    for what went wrong and what replaced it.
     <br><br>
     On top of that: a <strong>"Geotag from each day's tracklog…" checkbox</strong> on the Read
     dialog (ticked by default once a GPS-logs root folder is configured in Settings ▸
@@ -699,6 +699,76 @@ to re-look-up.</p>
     stretches a card's photo frame and a short row never balloons to fill the window.</li>
   <li><strong>Balanced Species-Settings confirmation</strong> <span class="tag-shipped">SHIPPED</span> —
     dropped the oversized system icon for a compact centred message.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="capture-time">17. Capture time &amp; time zones</h2>
+
+<p>A photo's capture time is really <em>two</em> facts: <strong>the instant</strong> (a point on the
+world's timeline, which decides where a tracklog says you were standing) and <strong>the local
+reading</strong> (the wall clock where you stood, which decides the day folder and what a caption
+says). A camera records the local reading; the instant is only recoverable if it also recorded its
+UTC offset. Treating these as one thing caused everything below.</p>
+
+<h3>To do</h3>
+<ul>
+  <li><strong>Decide how capture time is stored</strong> — the one open decision, and a big one,
+    because it touches sidecars, <code>data_files.csv</code>, the website and the master.
+    Today the instant is known but only lives in the sidecar; nothing downstream uses it.
+    Three shapes were considered:
+    <ul>
+      <li><strong>A — keep the camera's own reading and offset</strong> (what ships today):
+        <code>10:30:55+01:00</code>. Faithful, identical to the RAW, instant correct. The local
+        reading is the <em>camera's</em> wall clock, which may not be the one you stood under.</li>
+      <li><strong>B — normalise to true local time</strong>: <code>11:30:55+02:00</code>. Same
+        instant, displayed time matches reality. But it writes an <em>inference</em> into every
+        picture, the sidecar then disagrees with the RAW forever (PhotoLab reads both), and with no
+        tracklog for the day we would be guessing the zone again.</li>
+      <li><strong>C — store the instant explicitly</strong>: a UTC column alongside the untouched
+        local time. Nothing reinterpreted, both facts first-class, old rows simply empty. Costs a
+        column and a pass through <code>sv2ReadDirExif</code>.</li>
+    </ul>
+    Nothing forces this now: a zoned value cannot currently reach the CSVs (<code>sv2</code> reads
+    the EXIF group, which only comes from RAWs we never write), so the two parsers that would
+    choke on a zone are safe until we deliberately send them one. Related and folded into the same
+    decision: <em>where a day's true zone lives</em> (it may not be recoverable later, though the
+    day-folder name already records its practical effect), and <em>whether to add offline
+    location→timezone lookup</em>, which would settle the Nikon daylight-saving ambiguity for any
+    picture with GPS. Full reasoning and the archive survey:
+    <code>docs/plans/timezone_plan.md</code>.</li>
+  <li><strong>No bulk rewrite of existing timestamps</strong> <span class="tag-parked">DECIDED</span> —
+    all 75,050 master rows carry bare local time and not one carries a zone. Those values are
+    correct <em>as local readings</em>. Recovering instants for the archive is a re-read of RAWs
+    that can be done later, for whatever subset actually needs it.</li>
+</ul>
+
+<h3>Done</h3>
+<ul>
+  <li><strong>Tracklog geotagging now uses the camera's own clock offset</strong>
+    <span class="tag-shipped">SHIPPED</span> (17 August 2026) — pictures geotagged from a tracklog
+    could land <strong>kilometres</strong> from where they were taken, and nothing looked wrong,
+    because both the right and the wrong coordinates were plausible places on the same island.
+    Two independent causes. First, the OM-1 log's timestamps were read as local time when NMEA
+    times are always UTC, which moved the whole track two hours; the log's own date is now used as
+    well, so a track running past midnight UTC no longer stamps its later fixes a day early.
+    Second — and the real problem — the camera's clock offset was <em>searched for</em> by
+    correlating photo times against the track. On a short session that question has no answer: 202
+    pictures spanning 34 minutes against a 9½-hour track made 22 different offsets fit perfectly,
+    so the result was decided by which one happened to be tried first. The camera had recorded the
+    correct offset in every single file all along; it was simply being dropped when the XMP sidecar
+    was written. The sidecar now carries it, and the search is gone — a day whose pictures don't
+    state an offset is skipped with a message instead of guessed at.
+    <br><br>
+    Measured on the same card and tracklog, counting <em>only</em> the pictures that actually got
+    their GPS from the track: <strong>8,585 m out before, 0.2 m after</strong>.</li>
+  <li><strong>Camera-clock warning before a Read</strong> <span class="tag-shipped">SHIPPED</span>
+    (17 August 2026) — after <em>Scan days</em>, the dialog compares the camera's own time zone
+    against the day's tracklog (or, failing that, this computer) and says plainly when they
+    disagree, before any copying starts. It also explains what is <em>not</em> affected: a stale
+    zone does not spoil positions, because changing a camera's zone moves its clock and its
+    recorded offset together, so UTC survives. What it does affect is the local time written into
+    each picture — and the calendar day, which is why the <em>Timezone offset</em> field now fills
+    itself in from the difference instead of being typed by hand each time.</li>
 </ul>
 
 </body>
