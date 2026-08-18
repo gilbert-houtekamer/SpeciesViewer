@@ -148,6 +148,7 @@ def scanSpecies(sc, speciesname, report):
             scientific = species['ScientificName'].lower()
             if scientific in result_dict:
                 best_rating = 0
+                has_jpg = False
                 if sc.sc_dict[sc.sc_dict[species['Up']]['Up']]['Up'] != 'aves' and not subheaderdone:
                     print(f"\nOther animals and plants:\n", file=report)
                     counter = 1
@@ -182,6 +183,7 @@ def scanSpecies(sc, speciesname, report):
                     # if header in result_dict[species['ScientificName']][0]:
                     #     info = result_dict[species['ScientificName']][header]
                             if info[1][1] > '0':        # JPGs
+                                has_jpg = True
                                 if info[1][2] > '0':    # best rating
                                     summary = str(info[1][2]) + '  '
                                     if int(info[1][2]) > best_rating: best_rating = int(info[1][2])
@@ -204,6 +206,13 @@ def scanSpecies(sc, speciesname, report):
                 data_line += f"{days_line} {seen:3} "               
                 if best_rating > 0:
                     data_line += f" {best_rating:3}"
+                elif has_jpg:
+                    # A JPG exists, it just carries no stars. In the
+                    # colours-only culling workflow that is normal (Blue/Purple
+                    # and unlabelled keeps score zero), and the picture is there
+                    # to publish - so this is NOT "Needed". Needed means no JPG
+                    # at all: only RAW or HEIC.
+                    data_line += '   j'
                 elif scientific not in reference_names:
                     data_line += '   Needed     '
                 print(data_line, file=report)
@@ -217,7 +226,8 @@ def print_headers(sc, report):
     print(f'\n\n', file=report)
     print(f'Legend per day:  F = first day, RAW only (no JPG yet)  x = RAW only (JPG exists on earlier day)', file=report)
     print(f'                 j = JPG exists but unrated            2..5 = best star rating that day', file=report)
-    print(f'Summary:         # = days seen, Best = overall best rating, Needed = new species, no rated JPG yet\n', file=report)
+    print(f'Summary:         # = days seen, Best = overall best rating (j = JPG exists but unrated)', file=report)
+    print(f'                 Needed = new species with no JPG at all yet, only RAW or HEIC\n', file=report)
     counter = 0
     header_line = ' '.ljust(36+40) + 'New '
     for header in headers:
