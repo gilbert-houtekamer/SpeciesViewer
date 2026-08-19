@@ -498,9 +498,7 @@ reads <em>No current work planned</em>.</p>
 <ul>
   <li><strong>AVI list processing — the last rough edges</strong> <span class="tag-open">OPEN</span> —
     both list formats now read correctly and the step defends itself (see Done
-    below); what remains is around the edges rather than in the reading. <em>PhotoMechanic</em> still opens a fixed <code>avibase.csv</code>
-    with the old fixed-shape reader, so it ignores both the file you picked and the
-    columns you marked — the two steps should share one source.
+    below); what remains is around the edges rather than in the reading.
     A workbook with several sheets reads the first one
     (it says so in the log, but it cannot yet be chosen). And a list that arrives
     without Dutch names leans entirely on the species database to fill them in —
@@ -509,6 +507,22 @@ reads <em>No current work planned</em>.</p>
 </ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>PhotoMechanic works from the same list as the checklist</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-19) — it opened a fixed
+    <code>avibase.csv</code> with the fixed layout while the checklist read
+    whichever list you picked, with the columns you marked. Once the lists became
+    free-form that left two silent outcomes: keyword files describing a different
+    list than the checklist, or — for a list pasted from AviBase — nothing
+    usable at all. For the Pantanal list it meant <strong>0 Dutch and 923 English
+    keywords out of a file nobody chose</strong>; it now writes <strong>439 and
+    439</strong> from the list actually in use.
+    <br>Both steps call one reader, which resolves the picked file and chooses the
+    fixed layout or the marked columns exactly once, and writes in the log which of
+    the two it used. The dialog names the list it will use and how it will be read,
+    rather than leaving that to be discovered: no list set, or the fixed layout
+    aimed at something it cannot read, is refused with what to do about it. And a
+    list that yields no Dutch names at all says so, because an empty keyword file
+    looks exactly like a working one until PhotoMechanic loads it.</li>
   <li><strong>Reading a list the wrong way now says so</strong>
     <span class="tag-shipped">SHIPPED</span> (2026-08-19) — the morning's two
     false alarms, both of them silence rather than breakage.
