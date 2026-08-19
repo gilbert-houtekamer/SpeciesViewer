@@ -48,6 +48,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from utils.disk_space import check_free_space
+
 UNKNOWN_DATE_DIR = "unknown-date"
 
 _COPY_WORKERS = 4   # parallel copy threads; card I/O is the bottleneck, 4 keeps pipeline full
@@ -672,7 +674,8 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     )
     total = len(files)
     summary = {"total": total, "copied": 0, "skipped": 0, "deselected": 0,
-               "renamed": 0, "conflict": 0, "failed": 0, "bytes": 0}
+               "renamed": 0, "conflict": 0, "failed": 0, "bytes": 0,
+               "failed_names": [], "planned_bytes": 0, "error": ""}
     targets = []   # destination paths now present (copied or already-there)
 
     log.info(f"Found {total} picture(s) under {source}")
@@ -750,6 +753,26 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
         except OSError as e:
             log.warning(f"❌ Failed to plan copy for {src.name}: {e}")
             summary["failed"] += 1
+            summary["failed_names"].append(src.name)
+
+    # ── Pre-flight: does what we are about to copy actually fit? ──────────
+    # Phase 1 knows the exact file list, so the byte total is exact too. A
+    # short disk stops the run here, with nothing copied — better than
+    # discovering it 800 files in, when every remaining copy fails one by one.
+    if to_copy and not (should_cancel and should_cancel()):
+        planned_bytes = 0
+        for src, _target, _sha in to_copy:
+            try:
+                planned_bytes += src.stat().st_size
+            except OSError:
+                pass
+        summary["planned_bytes"] = planned_bytes
+        space_error = check_free_space(dest, planned_bytes,
+                                       what=f"Copying {len(to_copy)} picture(s)")
+        if space_error:
+            log.error(f"❌ {space_error} Nothing was copied.")
+            summary["error"] = space_error
+            to_copy = []              # nothing gets copied; caches below still save
 
     # ── Phase 2: parallel copy ─────────────────────────────────────────────
     # Submit all copies at once so the OS can pipeline card reads with SSD
@@ -781,6 +804,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                 except OSError as e:
                     log.warning(f"❌ Failed to copy {src.name}: {e}")
                     summary["failed"] += 1
+                    summary["failed_names"].append(src.name)
 
                 if should_cancel and should_cancel():
                     for f in future_map:
@@ -795,7 +819,8 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
 
     # ── XMP sidecars ──────────────────────────────────────────────────────
     summary["sidecars"] = 0
-    if write_sidecars and not (should_cancel and should_cancel()):
+    if (write_sidecars and not summary["error"]
+            and not (should_cancel and should_cancel())):
         raw_targets = [t for t in targets if Path(t).suffix.lower() in RAW_EXTENSIONS]
         if raw_targets:
             n_xmp = len(raw_targets)
@@ -823,11 +848,21 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                     progress(total, total, f"Caching XMP metadata… {folder.name}")
                 build_cache_for_folder(folder, xmps)
 
-    log.info(
+    line = (
         f"Card read summary — copied {summary['copied']} (of which {summary['renamed']} renamed), "
         f"skipped {summary['skipped']}, deselected {summary['deselected']}, "
         f"failed {summary['failed']} of {total}; {summary['sidecars']} sidecar(s)."
     )
+    # A run that lost files must never end on a plain INFO line that reads the
+    # same as a clean one — see the matching ⚠️ marker in the Read dialog.
+    if summary["error"]:
+        log.error(f"❌ {line} ABORTED: {summary['error']}")
+    elif summary["failed"]:
+        names = ", ".join(summary["failed_names"][:5])
+        more = " …" if len(summary["failed_names"]) > 5 else ""
+        log.warning(f"⚠️ {line} FAILED file(s): {names}{more}")
+    else:
+        log.info(line)
     summary["targets"] = targets
     return summary
 

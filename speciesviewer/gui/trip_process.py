@@ -666,7 +666,10 @@ class _SDCardCopyWorker(QObject):
                 progress=lambda done, total, name: self.progress.emit(done, total, name),
                 should_cancel=lambda: self._cancel,
             )
-            self.finished.emit(summary, "")
+            # A pre-flight abort (not enough free space) comes back as a normal
+            # return with summary["error"] set — route it down the error path so
+            # the dialog shows it in red and no follow-on phase runs.
+            self.finished.emit(summary, summary.get("error", ""))
         except Exception as e:
             self.finished.emit({}, str(e))
 
@@ -1510,6 +1513,24 @@ class ReadSDCardDialog(QDialog):
         days = self._days_copied_count()
         return f" over {days} day(s) in {elapsed}" if days else f" in {elapsed}"
 
+    def _done_marker(self):
+        """'✅ Done —' for a clean read; a warning marker when the copy phase
+        lost pictures. Every phase that can write the final status line goes
+        through this, so a Read with failures can never end up looking like a
+        success just because the geocode step finished cleanly."""
+        failed = getattr(self, "_read_failed", 0)
+        if failed:
+            return f"⚠️ Done, but {failed} picture(s) FAILED to copy —"
+        return "✅ Done —"
+
+    def _log_read_done(self, text):
+        """Closing log line for a finished Read, at the level the outcome
+        deserves — see _done_marker."""
+        if getattr(self, "_read_failed", 0):
+            self.logger.warning(f"⚠️ Read complete WITH FAILURES. {text}")
+        else:
+            self.logger.info(f"✅ Read complete. {text}")
+
     def on_read(self):
         source = self.source_field.get_path()
         dest = self.dest_field.get_path()
@@ -1601,6 +1622,7 @@ class ReadSDCardDialog(QDialog):
             set_setting("days", "location", dest)   # remember the Days location
         self._include_dates = include_dates
         self._cancelled = False
+        self._read_failed = 0
         self.read_btn.setEnabled(False)
         self.view_btn.setEnabled(False)
         self.status_label.setText("")
@@ -1638,7 +1660,18 @@ class ReadSDCardDialog(QDialog):
         if error:
             self.logger.warning(f"❌ Card read failed: {error}")
             self.status_label.setText(f"❌ {error}")
+            self._set_progress("")
             return
+        # Held on the dialog because the final "Done" line is written by
+        # whichever phase finishes last (here, or _add_location_names) — every
+        # one of them must show the same marker.
+        self._read_failed = summary.get("failed", 0)
+        if self._read_failed:
+            names = summary.get("failed_names", [])
+            listed = ", ".join(names[:5]) + (" …" if len(names) > 5 else "")
+            self.logger.warning(
+                f"⚠️ {self._read_failed} picture(s) could NOT be copied: {listed} — "
+                f"re-run the Read; pictures already copied are skipped.")
         renamed = summary.get("renamed", 0)
         renamed_txt = f" ({renamed} renamed)" if renamed else ""
         deselected = summary.get("deselected", 0)
@@ -1684,8 +1717,8 @@ class ReadSDCardDialog(QDialog):
             else:
                 # No geocode step follows, so this IS the final click-to-done state.
                 done_msg = f"{msg}{self._elapsed_summary()}"
-                self.logger.info(f"✅ Card read complete. {done_msg}")
-                self.status_label.setText(f"✅ Done — {done_msg}")
+                self._log_read_done(done_msg)
+                self.status_label.setText(f"{self._done_marker()} {done_msg}")
         self._read_summary_msg = msg
         self._set_progress("")
         self.view_btn.setEnabled(bool(self._last_targets))
@@ -1845,8 +1878,10 @@ class ReadSDCardDialog(QDialog):
             tail = (f" All {already} picture(s) already had place names."
                     if already else "")
             done = f"{base}{tail}{self._elapsed_summary()}"
-            self.status_label.setText((f"✅ Done — {done}" if base else f"✅ Done.{tail}").strip())
-            self.logger.info(f"✅ Read complete. {done}".strip())
+            marker = self._done_marker()
+            self.status_label.setText(
+                (f"{marker} {done}" if base else f"{marker[:-2]}.{tail}").strip())
+            self._log_read_done(done.strip())
             return
         self._log_phase("Looking up location names (one online lookup per new "
                         "place, the rest reuse nearby fixes)…")
@@ -1854,8 +1889,8 @@ class ReadSDCardDialog(QDialog):
         self._set_progress("")
         done = f"{base} Location names added.{self._elapsed_summary()}" if base \
             else f"Location names added.{self._elapsed_summary()}"
-        self.status_label.setText(f"✅ Done — {done}")
-        self.logger.info(f"✅ Read complete. {done}")
+        self.status_label.setText(f"{self._done_marker()} {done}")
+        self._log_read_done(done)
 
     def on_view(self):
         """Open the picture grid over the just-copied files. Uses an explicit
