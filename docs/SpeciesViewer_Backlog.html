@@ -1306,5 +1306,103 @@ confirm the backup card is formatted and that its restore direction has actually
 free space against the trip's expected volume; and confirm the camera's clock and time zone match
 where you are going — the Read dialog now warns, but knowing beforehand is better.</p>
 
+<h2 id="refactors">19. Refactors worth doing — after the trip</h2>
+
+<p>A chapter for work that makes the program <em>smaller</em> rather than better. Nothing here adds
+a capability, fixes a defect or speeds anything up; the payoff is fewer lines to read the next time
+something goes wrong, and fewer places for the same bug to hide twice. That is a real payoff, but a
+slow one, so nothing in this chapter should be started before the trip. Afterwards it is worth being
+pushed on.</p>
+
+<p class="note"><strong>Why this chapter exists.</strong> The Python in this repository went from
+about 17,700 lines at the end of March 2026 to about 88,600 today — five times larger, across some
+870 commits. Much of that is genuine capability: the master database, the maps, the viewers, the
+Biota browser, the culling lane. Some of it is scaffolding that was right at the time and has since
+been outgrown. Line count measures neither, which is exactly why the items below need judgement
+rather than a target — and why the honest test for each is <em>“would the next person tracking a bug
+through this have an easier time?”</em>, never <em>“how many lines does it remove?”</em></p>
+
+<h3>Almost certainly dead — verify, then delete</h3>
+
+<p>A scan for modules that no other Python file mentions by name turned up the following. The scan
+is naive — something loaded dynamically or named only in a string would not show up — so each needs
+a look before it goes. Together they are roughly 900 lines outside the one-off and future folders.</p>
+
+<ul>
+  <li><code>speciesviewer/app.py</code> — 36 lines, and not the application. It is the PyQt tutorial
+    example, complete with a button marked <em>“Push for Window”</em> and a window that shows a
+    random number. The real entry point is <code>SpeciesViewer.py</code>. Anybody opening the
+    repository for the first time and looking for the app will open this file.</li>
+  <li><code>engine/master_add.py</code> (173), <code>engine/topics_scan.py</code> (207),
+    <code>engine/statslib.py</code> (140), <code>engine/admin_audit.py</code> (83),
+    <code>engine/weburl.py</code> (62), <code>gui/layout_colorwidget.py</code> (12) — no other
+    module names any of them. Several are plausibly superseded rather than abandoned:
+    <code>master_add</code> by the drag-drop pool, <code>admin_audit</code> by the heal toolset.
+    Worth confirming that the replacement really does cover the ground before removing.</li>
+  <li><code>test_driver.py</code> (9) and <code>test_driver_all_csv.py</code> (136) — scaffolding
+    from before the GUI could drive the pipeline itself.</li>
+  <li><code>one-off/</code> (7 files, 995 lines) and <code>batch-future/</code> (4 files, 689 lines)
+    are honestly named and can stay; they are only listed so the scan's output is complete.</li>
+</ul>
+
+<h3>The same job done twice</h3>
+
+<ul>
+  <li><strong>Four overview panels, two implementations.</strong> Unfiled and Days already sit on
+    the shared table; Trip and Album still carry their own. The shared one is the newer and better
+    of the two, so this is finishing a move rather than starting one — and until it is finished
+    every column added has to be added twice. Today's back-up column is a case in point.</li>
+  <li><strong>The large viewer and the picture card.</strong> Parked deliberately, with a good rule
+    attached: consolidate when a sixth caller forces it, not before. Worth re-counting the callers
+    after the trip to see whether that moment has arrived.</li>
+  <li><strong>The per-site stylesheet, copied 29 times.</strong> Each published album carries its
+    own copy, so a change to the shared look means 29 rewrites and any site not rebuilt drifts. This
+    one is the most likely of all of these to cause a visible bug rather than merely cost reading
+    time.</li>
+</ul>
+
+<h3>Modules that have outgrown one file</h3>
+
+<p>Size alone is not a defect, and splitting for the sake of it makes things worse. But three files
+are now large enough that finding anything in them is a search rather than a scroll, and all three
+are places where bugs have actually been fixed more than once:</p>
+
+<ul>
+  <li><code>gui/trip_process.py</code> — <strong>5,416 lines</strong>. It holds the Read-SD-card
+    dialog, the blog dialogs, the trip creation and selection dialogs and much else. These are
+    unrelated jobs that happen to live together.</li>
+  <li><code>gui/rating_editor.py</code> (3,504) and <code>gui/map_view.py</code> (2,981) — both
+    single subjects, so the case is weaker; note them and leave them unless working in one becomes
+    genuinely unpleasant.</li>
+</ul>
+
+<h3>Structural loose ends</h3>
+
+<ul>
+  <li><strong>The two trip roots are implicit.</strong> Both the repository root and the picture
+    root are derived by walking up from a day folder, which is why a drifting picture directory once
+    filed a whole card one level too high without complaint. They should be explicit keys. This one
+    has already caused real damage once, so it is the strongest candidate in the chapter — arguably
+    it belongs in a bug chapter rather than this one.</li>
+  <li><strong>Configuration files have never been inventoried.</strong> There is no single statement
+    of which <code>.ini</code> and <code>.json</code> exist, which are per-machine, which travel
+    with a trip and which are throwaway caches. Today's work needed that answer twice — once to
+    decide where the card prefix should live, once to decide that the settings snapshot may carry
+    the GUI cache but must never carry the file holding the website password. Both were answered by
+    reading source. A one-page table would have answered both.</li>
+  <li><strong>Persisted paths are the Mac blocker.</strong> Paths stored on one machine are parsed
+    with the host's path rules, so a Windows-authored setting read on macOS is the thing most likely
+    to break first. Relevant only when the second machine actually arrives.</li>
+</ul>
+
+<h3>How to approach this chapter</h3>
+
+<p>One item at a time, each on its own, each verified by the program still starting and the day's
+work still running. Deleting is the one operation in this repository with a genuinely bad history,
+so anything in the first section gets confirmed before it goes, not after. And the order should
+follow risk rather than size: the implicit trip roots and the 29 stylesheet copies can still cause a
+visible fault, while a dead 62-line module can sit there for another year doing nothing worse than
+being read once by mistake.</p>
+
 </body>
 </html>
