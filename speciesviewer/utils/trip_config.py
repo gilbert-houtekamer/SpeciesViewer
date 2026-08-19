@@ -90,6 +90,12 @@ def read_trip_ini(trip_root: str):
         "web_slug": parser.get("trip_config", "web_slug", fallback=""),
         # WP8: trip's picture root, relative to per-machine CurrentPictures root
         "picture_root": parser.get("trip_config", "picture_root", fallback=""),
+        # The filename prefix the cards were read with ("2026 Goeree" →
+        # "2026 Goeree - N8140001.ORF"). Recorded here because trip.ini is the
+        # only copy that leaves this machine — svr6ExportTrip ships the file
+        # verbatim — and re-reading cards with a different prefix orphans every
+        # sidecar. Empty on pre-existing trips; the Read dialog fills it in.
+        "picture_prefix": parser.get("trip_config", "picture_prefix", fallback=""),
         "fromdate": parser.get("trip_config", "fromdate", fallback=""),
         "todate": parser.get("trip_config", "todate", fallback=""),
         # Lifecycle milestone, stamped by Retire Trip to Album; read by the

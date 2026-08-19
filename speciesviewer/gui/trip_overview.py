@@ -22,7 +22,10 @@ GPS_COL = 3
 # literal, so inserting one only moves the numbers below.
 GEOTAG_COL = 4
 SYNC_COL = 5
-STATE_COL_START = 6
+# Back up (💾) is a row action like the two beside it, not a pipeline step: it
+# writes one ZIP of the day's WORK to a spare card and never touches a RAW.
+BACKUP_COL = 6
+STATE_COL_START = 7
 
 # ── Trip-overview pipeline state columns ─────────────────────────────────────
 # Single source of truth shared by trip_overview (rendering) and mainwindow
@@ -348,6 +351,48 @@ def _format_gps_item(day_path, review_root):
     return item
 
 
+def _format_backup_item(day_dir):
+    """Build the Back-up (💾) cell for one day.
+
+    Like the geotag glyph beside it, the cell reports rather than decorates: it
+    says whether this day's work is already on the card, so the column answers
+    "what is protected?" at a glance instead of only offering an action.
+
+    Costs one directory scan plus one small read from the day's existing ZIP —
+    the manifest, through the central directory, not the whole archive.
+    """
+    from PyQt6.QtGui import QColor
+    from gui.overview_table import action_cell
+    from gui.work_backup_dialog import backup_location
+    dest = backup_location()
+    if not dest:
+        item = action_cell("💾", "Back up the day's work — no backup folder chosen "
+                                 "yet. Opens so you can pick one (a spare card).")
+        item.setForeground(QColor(theme.INK_FAINT))
+        return item
+    try:
+        from engine import work_backup as wb
+        st = wb.day_status(day_dir, dest)
+    except Exception:      # a report, never a blocker
+        return action_cell("💾", "Back up the day's work.")
+    if st["state"] == "current":
+        return action_cell("💾", f"Work backed up {st['reason']}.")
+    if st["state"] == "stale":
+        item = action_cell("💾", f"Work has changed since the last backup "
+                                 f"({st['reason']}). Click to back it up again.")
+        item.setForeground(QColor(theme.WARN))
+        return item
+    if st["state"] == "empty":
+        item = action_cell("💾", "Nothing to back up yet — this day has no "
+                                 "sidecars, JPGs or blog text.")
+        item.setForeground(QColor(theme.INK_FAINT))
+        return item
+    item = action_cell("💾", "The work on this day has NEVER been backed up. "
+                             "Click to write it to the backup folder.")
+    item.setForeground(QColor(theme.WARN))
+    return item
+
+
 def _format_geotag_item(day_name, gpslogs_root):
     """Build the Geotag (🛰️) cell for one day.
 
@@ -658,7 +703,8 @@ def populate_trip_overview(self):
     # separate Progress column — a day's "done and locked" state is the 🔒 glyph
     # on the 3 step columns themselves (state_cell_symbol), not a 4th column.
     header_labels = (
-        ["Day", "Pictures", "JPEG\nFiles", "GPS", "Geo-\ntag", "Sync\nSidecars"]
+        ["Day", "Pictures", "JPEG\nFiles", "GPS", "Geo-\ntag", "Sync\nSidecars",
+         "Back\nup"]
         + self.state_labels
         + ["Trans-\nlations", "In\nBlog"]
     )
@@ -676,7 +722,7 @@ def populate_trip_overview(self):
         header_labels, rows=len(image_days),
         # Pictures, JPEG Files and GPS auto-size to their content (short glyph
         # markers like "N ✅" or "📍 3" that don't fit a stretched column).
-        fit_columns=(1, 2, GPS_COL, GEOTAG_COL, translations_col, inblog_col),
+        fit_columns=(1, 2, GPS_COL, GEOTAG_COL, BACKUP_COL, translations_col, inblog_col),
         min_section=None, row_height=None,
         select="cells", edit_cells=False, row_header=True)
 
@@ -715,6 +761,7 @@ def populate_trip_overview(self):
         sync_item.setToolTip("Not yet run.")
         sync_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self.trip_table.setItem(i, SYNC_COL, sync_item)
+        self.trip_table.setItem(i, BACKUP_COL, _format_backup_item(day))
 
         # Match statemachine folder
         review_day = review_root / day.name

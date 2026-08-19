@@ -1,6 +1,11 @@
 # Per-day backup of the WORK to a spare card
 
-Backlog ch. 18 item 3. Agreed with Gilbert 2026-08-19; no code written yet.
+Backlog ch. 18 item 3. Agreed with Gilbert 2026-08-19.
+
+**Status: the BACKUP half is built and working; RESTORE is not written yet.**
+Steps 0-2 of the build order below are done. Real run on 2026 North Greece:
+3217 files, 309 MB of ZIPs, about two minutes to a 16 GB card; the second run
+skipped everything in seconds.
 
 ## Why
 
@@ -32,16 +37,36 @@ The earlier write-up asked whether to have a thin nightly and a fat weekly.
 The ratio above makes that choice moot — always take everything. But a second
 artifact *is* needed, and it already exists.
 
-**1. One ZIP per day** — the day's work, keyed to the day folder:
+**1. One ZIP per day** — the day's work, keyed to the day folder, under a
+folder per trip:
 
 ```
-2026 Goeree - 2026-08-14.zip
-  manifest.json              2 KB
-  *.xmp        (152 files)  1.2 MB   deflated
-  *.dop        ( 48 files)  0.3 MB   deflated
-  *.jpg        ( 41 files)   82 MB   stored
-  blog.ini                   1 KB
+SV BACKUP (H:)
+  2026 North Greece\
+      2026 North Greece - 2026-05-04.zip
+        manifest.json              2 KB
+        *.xmp        (152 files)  1.2 MB   deflated
+        *.dop        ( 48 files)  0.3 MB   deflated
+        *.jpg        ( 41 files)   82 MB   stored
+        blog.ini                   1 KB
+      … 11 more days
+      settings\  sv_gui_cache-bigboy.json
+  2026 Goeree\
+      2026 Goeree - 2026-08-14.zip …
 ```
+
+A card collects several trips over time and a flat root of forty ZIPs is not
+something you can read, so each trip gets a folder and a restore points at one.
+The ZIP names stay trip-qualified anyway: a ZIP copied out of its folder should
+still say what it is. Backups written before this layout are **moved** into
+their folder on the next run — a rename on the same card, instant, verified
+byte-for-byte — never re-zipped.
+
+The settings copy is named by **machine**, not by trip: the GUI cache is
+per-machine state, so two trips from one laptop should not make two copies of
+the same thing, while the laptop and BigBoy must not overwrite each other.
+`svconfig.ini` is deliberately excluded — it holds `Sftppwd`, and a website
+password does not belong on a card that travels in a camera bag.
 
 **2. One trip ZIP** — `svr6ExportTrip`, which already writes trip.ini, the
 species collection, the **lifer baseline** and the translation cache, in
@@ -142,6 +167,26 @@ shape whatever the reasoning.
 **Restore gets tested before departure, not after.** A backup nobody has
 restored from is a belief rather than a backup.
 
+## Learned while building
+
+**The manifest is written LAST, from the files that actually went in.** The
+first version wrote it up front, so a backup in which every file failed to be
+added produced a ZIP holding nothing but a manifest *claiming all of them* — and
+replaced the good ZIP with it. Now a file that could not be read is simply
+absent from the manifest, which makes the day read as stale on the next run and
+retry itself. If nothing at all gets in, the write raises and the previous ZIP
+is left untouched.
+
+That is the load-bearing rule of the module: **the manifest is the truth about
+what the ZIP contains.** Staleness detection then does the rest, with no extra
+bookkeeping and nothing to go out of date.
+
+**A gap to close before restore can work.** The backup currently writes day ZIPs
+and the settings copy, but *not* the trip ZIP (`svr6ExportTrip`). Without it a
+restore has the culling but no trip.ini, no species collection and no lifer
+baseline. Folding the export into the same run is small and belongs with the
+backup, not with the restore.
+
 ## Decided
 
 - **One ZIP per day, overwritten** via `.tmp` + rename, so an interrupted
@@ -158,13 +203,19 @@ restored from is a belief rather than a backup.
 
 Smallest independent piece first; nothing in the daily flow calls any of it.
 
-0. Persist `picture_prefix` into `trip.ini`, and pre-fill the Read dialog from
-   it. Independent of everything below, useful on its own, and it closes the
-   hole above whether or not the rest ever gets built.
-1. `backup_day(day_dir, dest) -> summary` — plain function, zips one day, writes
-   the manifest including the observed prefix. Runnable from a script, no GUI.
-2. "Back up the day's work" action, plus a per-trip sweep that skips unchanged
-   days by manifest comparison.
+0. **DONE** — `picture_prefix` persisted into `trip.ini`, Read dialog pre-fills
+   from it. `trip_transfer` copies trip.ini verbatim (`zf.write(abs_path, rel)`),
+   so the trip export carries the prefix with no change to the export at all.
+   Side benefit: switching trips used to offer the PREVIOUS trip's prefix.
+1. **DONE** — `engine/work_backup.py`. `backup_day` / `backup_days` /
+   `day_status` / `observed_prefix` / `copy_settings_snapshot`, no GUI.
+2. **DONE** — a 💾 column in the Trip overview beside Geotag, one cell per day,
+   the glyph reporting state (backed up / changed / never / nothing to back up)
+   rather than only offering an action. Clicking opens a picker with that day
+   ticked and the others one tick away; days needing a backup are pre-ticked, so
+   "back up whatever changed today" is one click. Worker thread, and the same
+   free-space pre-flight the card read has.
+2b. **TODO** — fold `svr6ExportTrip` into the same run (see the gap above).
 3. `restore_report(zip, day_dir)` — **read-only**, prints what a restore would
    do. This is the prefix guardrail's home.
 4. The restore itself, driven by that report.

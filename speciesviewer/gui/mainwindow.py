@@ -864,7 +864,7 @@ class MainWindow(QMainWindow):
         return Path(root) if root else Path(_config.get("project", "picturedirectory")).parent
 
     def handle_trip_table_double_click(self, row, column):
-        from gui.trip_overview import (GPS_COL, GEOTAG_COL, SYNC_COL,
+        from gui.trip_overview import (GPS_COL, GEOTAG_COL, SYNC_COL, BACKUP_COL,
                                        STATE_COL_START, STATE_COLUMNS)
         # Translations column: open the per-day validation panel. No separate
         # Progress column exists (see trip_overview.state_cell_symbol) — this is
@@ -952,6 +952,17 @@ class MainWindow(QMainWindow):
             # sidecars only, so that count legitimately doesn't move until
             # Read & Summarize runs again.
             self._run_trip_geotag(day_str)
+
+        # Back up column — one ZIP of this day's WORK to a spare card. Opens the
+        # picker with this day ticked, so a single click backs up the day you
+        # clicked, and the other days are one tick away. Modal, then the row is
+        # repainted so the glyph shows the new state.
+        elif column == BACKUP_COL:
+            from gui.work_backup_dialog import BackupWorkDialog
+            trip_days = sorted(d for d in Path(new_dir).parent.iterdir() if d.is_dir())
+            BackupWorkDialog(self, trip_days, preselect=str(new_dir)).exec()
+            sm = StateMachine(str(trip_root), str(review_day), readState=True)
+            self.refresh_trip_row(sm, day_str)
 
         # Batch action
         else:

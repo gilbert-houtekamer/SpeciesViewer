@@ -834,11 +834,25 @@ class ReadSDCardDialog(QDialog):
             self.dest_field.textChanged(self._check_dest_is_trip)
             self._check_dest_is_trip()
 
-        # Prefix default = the year (e.g. '2026') unless a previous run saved one;
-        # the user typically extends it to '2026 Zeeland'. Year is taken from the
-        # project-root name when it starts with one, else the current year.
+        # Prefix default, in order: the OPEN TRIP's own prefix from trip.ini, then
+        # whatever the last run used, then the year.
+        #
+        # trip.ini comes first because it is the only copy that survives this
+        # machine. The prefix used to live solely in sv_gui_cache.json, so a
+        # restore on a new laptop had nothing to go on — and re-reading the cards
+        # with a slightly different prefix orphans every sidecar, which looks
+        # exactly like a mass deletion. It also fixes a smaller everyday bug:
+        # switching trips used to offer the PREVIOUS trip's prefix.
+        trip_prefix = ""
+        if not (days_mode or unfiled_mode):
+            trip_root_for_ini = _config.get("trip", "tripbiotadatabase", fallback="").strip()
+            if trip_root_for_ini:
+                from utils.trip_config import read_trip_ini
+                trip_prefix = ((read_trip_ini(trip_root_for_ini) or {})
+                               .get("picture_prefix", "") or "").strip()
         self.prefix_field = LabeledTextFieldQt(
-            "Filename prefix", saved_prefix or _default_year(dest_default), inline=True
+            "Filename prefix",
+            trip_prefix or saved_prefix or _default_year(dest_default), inline=True
         )
         input_layout.addWidget(self.prefix_field)
 
@@ -1620,6 +1634,7 @@ class ReadSDCardDialog(QDialog):
         if self.days_mode:
             from utils.config import set_setting
             set_setting("days", "location", dest)   # remember the Days location
+        self._remember_trip_prefix(prefix, dest)
         self._include_dates = include_dates
         self._cancelled = False
         self._read_failed = 0
@@ -1648,6 +1663,43 @@ class ReadSDCardDialog(QDialog):
         self._worker.progress.connect(self.on_progress)
         self._worker.finished.connect(self.on_finished)
         self._thread.start()
+
+    def _remember_trip_prefix(self, prefix, dest):
+        """Record the filename prefix in the open trip's trip.ini.
+
+        Only when the card is actually landing in THAT trip's picture folder —
+        a read into the Days lane or a scratch folder says nothing about the
+        trip's naming and must not overwrite it.
+
+        Worth the trouble because trip.ini travels: svr6ExportTrip already ships
+        it, so the trip export starts carrying the prefix with no change to the
+        export at all. Best-effort — a trip without a trip.ini is not an error
+        here, and failing to record it must never stop a card read.
+        """
+        prefix = (prefix or "").strip()
+        if not prefix or not self.trip_picture_root:
+            return
+        try:
+            same = os.path.normcase(os.path.normpath(str(dest))) ==                    os.path.normcase(os.path.normpath(str(self.trip_picture_root)))
+        except (OSError, ValueError):
+            return
+        if not same:
+            return
+        trip_root = _config.get("trip", "tripbiotadatabase", fallback="").strip()
+        if not trip_root:
+            return
+        try:
+            from utils.trip_config import read_trip_ini, set_trip_flag
+            current = ((read_trip_ini(trip_root) or {}).get("picture_prefix", "") or "").strip()
+            if current == prefix:
+                return
+            if set_trip_flag(trip_root, "picture_prefix", prefix):
+                self.logger.info(
+                    f"Recorded the filename prefix '{prefix}' in this trip — it "
+                    f"travels with the trip export, so a restore on another "
+                    f"machine reads the cards the same way.")
+        except Exception as e:      # never block a card read over bookkeeping
+            self.logger.warning(f"Could not record the filename prefix: {e}")
 
     def on_progress(self, done, total, name):
         self._set_progress(f"Copying {done}/{total}: {name}")

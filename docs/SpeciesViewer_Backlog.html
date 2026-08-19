@@ -1184,30 +1184,45 @@ nothing.</em></p>
     travelling property, which is why it is a fallback and not the design.</li>
 
   <li><strong>Back up the day's work to a spare card — one ZIP per day</strong>
-    <span class="tag-open">OPEN / NEW</span> — the cards keep the pictures safe, so this is not a
-    picture backup: it is a backup of <em>the work</em>. A fortnight of culling, identification,
-    locations and blog text lives on a single laptop, and re-doing it is a fortnight of evenings
-    nobody gets back. There are two very large spare cards to write it to.
-    <br><br><strong>Shape:</strong> one ZIP per day, written to a chosen removable card, holding that
-    day's metadata (the XMP sidecars, any <code>.dop</code>, the day's CSVs and its blog text) and the
-    pictures worth keeping — <em>green and better</em>, which is what the culling already decided.
-    Per-day is the right grain: a day unchanged since the last run is skipped entirely, so a nightly
-    backup costs only what was actually worked on. It pairs with the existing trip export, which
-    already ships the trip's identity, species collection, lifer baseline and translation cache in
-    kilobytes — the two together are a real restore rather than a pile of files.
-    <br><br>Of everything in this chapter this is the item that best fits the rule above: it reads
-    the trip and writes a ZIP somewhere else, and nothing in the pipeline calls it, waits for it or
-    breaks when it is skipped. Which also means the simplest possible version — every changed day,
-    metadata only, no cleverness about what changed — is worth having on its own, before any of the
-    refinements below.
-    <br><br><strong>Decisions to make first:</strong> (a) one level or two — a metadata-only backup
-    is tiny enough to run every evening without thinking, while metadata-plus-pictures is the one
-    that survives a stolen laptop; (b) whether “green and better” means the RAW, the derived JPG, or
-    whichever exists; (c) how a day is judged unchanged (a stamp per day, the way the upload cache
-    already avoids re-sending files); (d) that the ZIPs should be <em>stored</em> rather than
-    compressed — RAWs and JPGs do not shrink, so compression only costs time. And one rule to write
-    into the design: the restore direction gets tested before the trip, not after it, because a
-    backup nobody has restored from is a belief rather than a backup.</li>
+    <span class="tag-progress">HALF BUILT — backup works, restore not written</span> — the cards
+    keep the pictures safe, so this is not a picture backup: it is a backup of <em>the work</em>. A
+    fortnight of culling, identification, locations and blog text lives on a single laptop, and
+    re-doing it is a fortnight of evenings nobody gets back. There are two very large spare cards to
+    write it to.
+    <br><br><strong>The measurement that settled the design.</strong> A real day — 202 pictures —
+    is 4.1 GB of RAW and 1.6 MB of sidecars. Two and a half thousand to one. At that ratio there is
+    no argument for a thin nightly backup and a fat occasional one: take everything, every time.
+    Adding the rendered JPGs at about 2 MB each still leaves a fortnight fitting several times over
+    on a 16 GB card. The first real run bore it out — a whole trip, 3217 files, came to 309 MB and
+    about two minutes, and the second run finished in seconds because nothing had changed.
+    <br><br><strong>What a day's ZIP holds:</strong> the sidecars that carry every culling decision,
+    the PhotoLab recipes, the rendered JPGs and the day's blog text. Never a RAW — those stay on the
+    cards, which is the whole premise. Each trip gets its own folder on the card, so the card lists
+    trips rather than forty anonymous ZIP files.
+    <br><br><strong>How it knows what changed</strong> is the quiet cleverness of the thing. Each
+    ZIP carries a small index of what went into it, and the next run compares the folder against
+    that index. It notices <em>deletions</em> — which is the entire point, since culling is mostly
+    deleting — where the obvious "has anything been modified lately?" test would miss them
+    completely. The same index also records every picture filename that existed, and the filename
+    prefix the cards were read with, both of which the restore will need.
+    <br><br><strong>A hole closed on the way.</strong> That prefix — the <em>“2026 Goeree”</em> in
+    <em>“2026 Goeree - N8140001.ORF”</em> — turned out to live in exactly one place: a per-machine
+    scratch file that never leaves the laptop. Lose the laptop and it is gone, and re-reading the
+    cards with even a slightly different prefix would orphan every sidecar and look precisely like a
+    mass deletion. It is now recorded with the trip itself, so it travels with the trip export, and
+    the Read dialog offers the right one automatically. A smaller everyday bug went with it:
+    switching trips used to suggest the previous trip's prefix.
+    <br><br><strong>In use</strong> it is a column in the trip overview beside Geotag, one cell per
+    day. The symbol reports rather than decorates — backed up, changed since, never, nothing to back
+    up — so the question <em>“what is protected?”</em> is answered at a glance instead of only when
+    asked. Clicking opens a picker with that day ticked and the others one tick away, and whatever
+    has changed is pre-ticked, so the evening job is one click.
+    <br><br><span class="tag-open">STILL OPEN</span> two things. The trip's own identity file —
+    species list and lifer baseline, a few kilobytes — is not yet written alongside the day ZIPs,
+    and without it a restore would recover the culling but not the lifer verdicts. And the
+    <strong>restore itself is not written</strong>. One rule stands from the day this was drafted:
+    the restore direction gets tested before the trip, not after it, because a backup nobody has
+    restored from is a belief rather than a backup.</li>
 
   <li><strong>Putting a deleted picture back</strong> <span class="tag-shipped">SHIPPED</span>
     (2026-08-19) — the machinery already existed and worked: a delete moves files to a trash folder
