@@ -4395,6 +4395,26 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
             describe_roles(dialog.roles, dialog.first_data_row))
         self.status_label.setText("")
 
+    def _fixed_layout_complaint(self, source):
+        """Why the fixed AviBase layout cannot read this file, or None."""
+        from engine.avibaselib import sniff_delimiter
+        if os.path.splitext(source)[1].lower() in (".xlsx", ".xlsm"):
+            return ("\u274c A spreadsheet cannot be read with the fixed AviBase "
+                    "layout \u2014 choose \u201cColumns I marked myself\u201d.")
+        try:
+            with open(source, encoding="utf-8-sig", errors="replace") as f:
+                lines = f.read().splitlines()[:50]
+        except OSError as err:
+            return f"\u274c Cannot read {os.path.basename(source)}: {err}"
+        found = sniff_delimiter(lines)
+        if found == ";":
+            return None
+        named = {"\t": "tabs", ",": "commas", "|": "bars"}.get(found, found)
+        return (f"\u274c {os.path.basename(source)} is separated by {named}, and the "
+                f"fixed AviBase layout expects semicolons \u2014 it would produce a "
+                f"checklist of headings with no species. Choose \u201cColumns I "
+                f"marked myself\u201d and mark the columns.")
+
     def _paste_source(self):
         """A list copied from the AviBase page, saved beside the trip and marked
         up in one go — the columns always need a look, so go straight there."""
@@ -4431,6 +4451,16 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
                 f"in {self.trip_root})."
             )
             return
+
+        if self._current_format() == "avibase":
+            # The fixed layout reads semicolon-separated text and nothing else.
+            # An .xlsx or a tab-separated paste would come out as a checklist of
+            # section headings with no species in it, which is a puzzle to
+            # receive rather than an error.
+            complaint = self._fixed_layout_complaint(source)
+            if complaint:
+                self.status_label.setText(complaint)
+                return
 
         if self._current_format() == "birdingbreaks" and not self._saved_columns()[0]:
             self.status_label.setText(

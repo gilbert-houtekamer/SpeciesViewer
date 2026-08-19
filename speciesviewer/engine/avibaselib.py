@@ -101,6 +101,21 @@ def read_avibase(triproot, filename):
             except Exception:
                 pass
 
+    if not any(entry.get("number") != -1 for entry in avibase_dict.values()):
+        # Every line became a section heading, which means the file is not
+        # semicolon-separated at all. Saying so beats writing a checklist that
+        # holds nothing but grey group rows.
+        found = sniff_delimiter(open(file_path, encoding="utf-8-sig",
+                                     errors="replace").read().splitlines()[:50])
+        named = {"\t": "tabs", ";": "semicolons", ",": "commas",
+                 "|": "bars"}.get(found, found)
+        raise ValueError(
+            f"No species found in '{os.path.basename(file_path)}' with the fixed "
+            f"AviBase layout, which expects semicolons between the names. This "
+            f"file is separated by {named}. Choose \u201cColumns I marked "
+            f"myself\u201d and mark the columns instead."
+        )
+
     return avibase_dict
 
 
@@ -345,7 +360,7 @@ def parse_rows(rows, roles, first_data_row=1, source="the list"):
         species += 1
 
     logger.info(f"Read {species} species and {headings} section headings "
-                f"from '{source}'.")
+                f"from '{source}', starting at row {first_data_row}.")
     if duplicates:
         logger.warning(f"{duplicates} rows repeat a name already in the list; "
                        f"the last of each is kept.")

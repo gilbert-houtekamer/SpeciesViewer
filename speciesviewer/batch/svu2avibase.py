@@ -45,6 +45,27 @@ def readConfig():
 
 
 
+def _refuse_if_open(xlsx_path):
+    """Stop before the work if the checklist cannot be written.
+
+    The step opens the checklist when it is done, so the previous one is
+    usually still open in Excel — which holds the file and makes the write
+    fail. Left as a raw "Permission denied", that looks like the step ignored
+    the settings, because the window on screen still shows the OLD checklist.
+    """
+    if not os.path.exists(xlsx_path):
+        return
+    try:
+        with open(xlsx_path, "a"):
+            pass
+    except PermissionError:
+        raise RuntimeError(
+            f"'{os.path.basename(xlsx_path)}' is open in Excel, so it cannot be "
+            f"rewritten. Close it and run the step again \u2014 nothing has been "
+            f"changed, and what you see in Excel is the previous checklist."
+        ) from None
+
+
 # caller
 def createRawCSV(temp_csv_file):
     groep = 0
@@ -549,11 +570,17 @@ def main(args, config):
 
     # get date from trip file
     if MyProject.Trip:
-        # Source list format: 'avibase' (English in column 0) or
-        # 'birdingbreaks' (sequence number in column 0). Both currently parse
-        # the same way — column 0 is the dict key, column 1 scientific,
-        # column 2 Dutch — but the choice is logged so source-format quirks
-        # can be diagnosed and the dispatch is in place for future readers.
+        # Two readers, and the format setting picks which one runs: 'avibase' is
+        # the fixed semicolon layout, 'birdingbreaks' reads whatever columns the
+        # user marked (gui/avibase_columns.py) and so copes with a spreadsheet
+        # or a tab-separated paste. The choice is logged, because reading a list
+        # the wrong way is quiet — it yields headings and no species.
+        trip_name = MyProject.Trip.tripname
+        safe_trip_name = re.sub(r'[<>:"/\\|?*]+', '-', trip_name).strip(' .-') or "avibase"
+        xlsx_path = os.path.join(MyProject.Repository,
+                                 f"{safe_trip_name}-checklist.xlsx")
+        _refuse_if_open(xlsx_path)
+
         source_format = config.get("avibase", "source_format", fallback="avibase")
         logger.info(f"Reading AviBase source list using '{source_format}' format.")
         phone_layout = config.getboolean("avibase", "phone_layout", fallback=False)
@@ -581,13 +608,6 @@ def main(args, config):
         add_species_info(avibase_dict, sc, Reference_sp)
         temp_csv_file = os.path.join(MyProject.Repository, "soorten-temp.csv")
         createRawCSV(temp_csv_file)
-        trip_name = MyProject.Trip.tripname
-        # Filesystem-safe trip name for the output file
-        safe_trip_name = re.sub(r'[<>:"/\\|?*]+', '-', trip_name).strip(' .-')
-        if not safe_trip_name:
-            safe_trip_name = "avibase"
-        xlsx_path = os.path.join(MyProject.Repository,
-                                 f"{safe_trip_name}-checklist.xlsx")
 
         fromdate_str = MyProject.Trip.trip_dict[trip_name]['fromdate']
         todate_str = MyProject.Trip.trip_dict[trip_name]['todate']
