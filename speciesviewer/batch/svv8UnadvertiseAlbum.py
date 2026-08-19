@@ -22,6 +22,7 @@ if __name__ == "__main__":
     sys.path.append(modpath)
 
 import engine.publish_index
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -36,7 +37,7 @@ if __name__ == "__main__":
                         default=os.environ.get("SVCONFIG", "svconfig.ini"))
     args = parser.parse_args()
     config = configparser.ConfigParser()
-    config.read(args.config)
+    read_ini(config, args.config)
     logging.basicConfig(level=logging.INFO)
     try:
         main(args, config)

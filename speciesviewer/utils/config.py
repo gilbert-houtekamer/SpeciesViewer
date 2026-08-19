@@ -2,6 +2,7 @@ import configparser
 import os
 import platform
 from pathlib import Path
+from utils.ini_io import read_ini
 
 # 🖥️ Get machine name
 MACHINE_NAME = platform.node().lower()
@@ -18,7 +19,9 @@ _config = configparser.ConfigParser()
 if not os.path.exists(CONFIG_PATH):
     with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
         f.write('[Global]\nconfig_version=1.0\nusername=\n[Repositories]\nrepo_paths=\n')
-_config.read(CONFIG_PATH)
+# UTF-8 both ways — persist_config writes UTF-8, so anything else here would
+# corrupt accented paths on a machine whose locale is not UTF-8 (Windows).
+read_ini(_config, CONFIG_PATH)
 
 # ✅ Centralized write function
 def persist_config():

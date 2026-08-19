@@ -68,13 +68,14 @@ import batch.svv3WriteBlog
 import batch.svv4BuildWebsite
 import batch.svv7ExportVirtualTrip
 import engine.exifcache as exifcache
+from utils.ini_io import read_ini
 
 
 def build_menu_spec(main_window):
     # Load config and statemachine
     generate_svconfig_ini()
     module_config = configparser.ConfigParser()
-    module_config.read("svconfig.ini")
+    read_ini(module_config, "svconfig.ini")
 
     sm = StateMachine(
         module_config.get("repository", "BiotaDatabase"),

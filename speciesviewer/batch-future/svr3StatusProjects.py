@@ -29,13 +29,14 @@ import engine
 import engine.projectlib
 import engine.exceptions
 import engine.statemachine
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
 # read parameters, but will be overwritten probably
 def readConfig():
     config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
+    read_ini(config, INI_LOCATION)
     return config
 
 def getAllProjectStatus(directory):
@@ -108,7 +109,7 @@ if __name__ == "__main__":
     # get configuration
     INI_LOCATION = args.config
     config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
+    read_ini(config, INI_LOCATION)
     # init the logging subsystem
     logging.basicConfig(level=logging.INFO)
     # call the actual code

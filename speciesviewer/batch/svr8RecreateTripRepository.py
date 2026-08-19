@@ -34,6 +34,7 @@ import batch.sv4WriteBlog
 import batch.sv5BuildWebsite
 import batch.sv6Freeze
 import batch.sv7WriteCommit
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 # create file handler which logs even debug messages
@@ -44,7 +45,7 @@ logger.addHandler(fh)
 # read parameters, but will be overwritten probably
 def readConfig():
     config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
+    read_ini(config, INI_LOCATION)
     return config
 
 # def getConfigFileLines(file):
@@ -140,7 +141,7 @@ if __name__ == "__main__":
     # get configuration
     INI_LOCATION = args.config
     config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
+    read_ini(config, INI_LOCATION)
     # init the logging subsystem
     logging.basicConfig(level=logging.INFO)
     # call the actual code

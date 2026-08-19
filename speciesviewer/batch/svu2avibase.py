@@ -28,7 +28,9 @@ import engine.specieslib
 import engine.speciesclassification
 from engine.specieslib import Level
 import engine.triplib
-from engine.avibaselib import read_avibase, add_species_info, resolve_source_list
+from engine.avibaselib import (read_avibase, add_species_info, resolve_source_list,
+                              read_birdingbreaks, parse_roles, decode_delimiter)
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 avibase_dict = {}
@@ -37,7 +39,7 @@ Reference_sp = None
 # read parameters, but will be overwritten probably
 def readConfig():
     config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
+    read_ini(config, INI_LOCATION)
     return config
 
 
@@ -564,7 +566,18 @@ def main(args, config):
             MyProject.Repository, config.get("avibase", "source_file", fallback="")
         )
         logger.info(f"Species list read from {source_list}")
-        avibase_dict.update(read_avibase(MyProject.Repository, source_list))
+        column_roles = parse_roles(config.get("avibase", "columns", fallback=""))
+        if source_format == "birdingbreaks" and column_roles:
+            # The columns the user marked on this very file, so the spreadsheet
+            # the tour operator sent can be read exactly as it arrived.
+            avibase_dict.update(read_birdingbreaks(
+                source_list,
+                column_roles,
+                first_data_row=config.getint("avibase", "data_start_row", fallback=1),
+                delimiter=decode_delimiter(config.get("avibase", "delimiter", fallback="")),
+            ))
+        else:
+            avibase_dict.update(read_avibase(MyProject.Repository, source_list))
         add_species_info(avibase_dict, sc, Reference_sp)
         temp_csv_file = os.path.join(MyProject.Repository, "soorten-temp.csv")
         createRawCSV(temp_csv_file)
@@ -616,7 +629,7 @@ if __name__ == "__main__":
     # get configuration
     INI_LOCATION = args.config
     config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
+    read_ini(config, INI_LOCATION)
     # init the logging subsystem
     logging.basicConfig(level=logging.INFO)
     # call the actual code

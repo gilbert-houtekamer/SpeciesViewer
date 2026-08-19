@@ -34,6 +34,7 @@ import engine.exceptions
 import engine.statemachine
 import engine.triplib
 from engine import SVException
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -118,7 +119,7 @@ if __name__ == "__main__":
     # get configuration
     INI_LOCATION = args.config
     config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
+    read_ini(config, INI_LOCATION)
 
     main(args, config)
 

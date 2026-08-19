@@ -26,6 +26,7 @@ from engine.specieslib import Level
 import engine.exceptions
 import engine.statemachine
 import engine.triplib
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -398,7 +399,7 @@ if __name__ == "__main__":
     # get configuration
     INI_LOCATION = args.config
     config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
+    read_ini(config, INI_LOCATION)
     # define state machine and see if we can run this step
     statemachine = engine.statemachine.StateMachine(config.get("repository","BiotaDatabase"), config.get("project","PictureDirectory"))
     # call the actual code

@@ -55,6 +55,7 @@ from engine.specieslib import Level
 import engine.statemachine
 import batch.sv7WriteCommit as sv7WriteCommit
 from batch.sv5BuildWebsite import makeIntroPages
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -137,5 +138,5 @@ if __name__ == "__main__":
     parser.add_argument("--config", type=str, default="svconfig.ini")
     cli_args = parser.parse_args()
     cfg = configparser.ConfigParser()
-    cfg.read(cli_args.config)
+    read_ini(cfg, cli_args.config)
     main(cli_args, cfg)

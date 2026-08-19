@@ -31,6 +31,7 @@ import engine
 import engine.projectlib
 import engine.specieslib
 import engine.speciesclassification
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -95,7 +96,7 @@ if __name__ == "__main__":
     # get configuration
     INI_LOCATION = args.config
     config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
+    read_ini(config, INI_LOCATION)
     # init the logging subsystem
     logging.basicConfig(level=logging.INFO)
     # call the actual code

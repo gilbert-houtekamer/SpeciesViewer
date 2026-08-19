@@ -26,6 +26,7 @@ import engine.exceptions
 import engine.statemachine
 import engine.triplib
 from engine import SVException
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -79,10 +80,7 @@ def main(args, config):
         # in blog text doesn't trip InvalidInterpolationError. Encoding is
         # independent of the parser class — UTF-8 (é, à, etc.) handled fine.
         blogconfig = configparser.RawConfigParser()
-        try:
-            blogconfig.read(bloginifile, encoding="utf-8")
-        except UnicodeDecodeError:
-            blogconfig.read(bloginifile, encoding="latin-1")
+        read_ini(blogconfig, bloginifile)
         # set the parameters
         only_new = blogconfig.getboolean("blog_config","only_new")
         minimum_score = blogconfig.getint("blog_config","minimum_score")
@@ -208,7 +206,7 @@ if __name__ == "__main__":
     # get configuration
     INI_LOCATION = args.config
     config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
+    read_ini(config, INI_LOCATION)
     # define state machine and see if we can run this step
     statemachine = engine.statemachine.StateMachine(config.get("repository","BiotaDatabase"), config.get("project","PictureDirectory"))
     # call the actual code

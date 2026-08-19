@@ -3,6 +3,7 @@
 import configparser
 import re
 from pathlib import Path
+from utils.ini_io import read_ini
 
 CONFIG_FILE = "sv_config.ini"
 
@@ -36,27 +37,27 @@ def coerce_orphan_continuations(text: str) -> str:
 
 def get_trips():
     config = configparser.ConfigParser()
-    config.read(CONFIG_FILE)
+    read_ini(config, CONFIG_FILE)
     return config.get("trips", "names", fallback="").split(",")
 
 def add_trip(name):
     config = configparser.ConfigParser()
-    config.read(CONFIG_FILE)
+    read_ini(config, CONFIG_FILE)
     trips = config.get("trips", "names", fallback="").split(",")
     if name not in trips:
         trips.append(name)
     config["trips"] = {"names": ",".join(trips)}
-    with open(CONFIG_FILE, "w") as f:
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         config.write(f)
 
 def remove_trip(name):
     config = configparser.ConfigParser()
-    config.read(CONFIG_FILE)
+    read_ini(config, CONFIG_FILE)
     trips = config.get("trips", "names", fallback="").split(",")
     if name in trips:
         trips.remove(name)
     config["trips"] = {"names": ",".join(trips)}
-    with open(CONFIG_FILE, "w") as f:
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         config.write(f)
 
 def read_trip_ini(trip_root: str):
@@ -128,9 +129,7 @@ def trip_blog_review_state(ini_path) -> bool:
 
     cfg = configparser.RawConfigParser()
     try:
-        cfg.read(str(path), encoding="utf-8")
-    except UnicodeDecodeError:
-        cfg.read(str(path), encoding="latin-1")
+        read_ini(cfg, path)
     except configparser.Error:
         return True
 

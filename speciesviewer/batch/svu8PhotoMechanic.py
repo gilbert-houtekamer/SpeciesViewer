@@ -20,6 +20,7 @@ import engine.projectlib
 import engine.specieslib
 import engine.speciesclassification
 from engine.avibaselib import read_avibase, add_species_info
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -135,7 +136,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     config = configparser.ConfigParser()
-    config.read(args.config)
+    read_ini(config, args.config)
     logging.basicConfig(level=logging.INFO)
     try:
         main(args, config)

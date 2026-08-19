@@ -21,13 +21,14 @@ import engine.projectlib
 import engine.exceptions
 import engine.publish_index
 import engine.triplib
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
 # read parameters, but will be overwritten probably
 def readConfig():
     config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
+    read_ini(config, INI_LOCATION)
     return config
 
 def main(args, config):
@@ -101,7 +102,7 @@ if __name__ == "__main__":
     # get configuration
     INI_LOCATION = args.config
     config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
+    read_ini(config, INI_LOCATION)
     # init the logging subsystem
     logging.basicConfig(level=logging.INFO)
     # call the actual code

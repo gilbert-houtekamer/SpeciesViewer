@@ -27,6 +27,7 @@ if __name__ == "__main__":
 
 from utils.virttrip_config import read_virttrip_ini
 from engine.handling import resolve_path
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -194,7 +195,7 @@ if __name__ == "__main__":
                         help="Extract days from the master database based on the virttrip.ini date range. ")
     args = parser.parse_args()
     config = configparser.ConfigParser()
-    config.read(args.config)
+    read_ini(config, args.config)
     logging.basicConfig(level=logging.INFO)
     try:
         main(args, config)

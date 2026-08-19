@@ -21,6 +21,7 @@
 import os
 import csv
 import logging
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -358,7 +359,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config = configparser.ConfigParser()
-    config.read(args.config)
+    read_ini(config, args.config)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     def _clean(s):

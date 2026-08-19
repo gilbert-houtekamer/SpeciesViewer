@@ -2,6 +2,7 @@ import configparser
 import os
 import re
 from pathlib import Path
+from utils.ini_io import read_ini
 
 _SECTION_RE = re.compile(r'^\s*\[.+\]\s*$')
 _KEYVAL_RE  = re.compile(r'^[^\s\[;#][^=:]*[=:]')
@@ -36,7 +37,7 @@ def blog_review_state(ini_path) -> str:
 
     cfg = configparser.RawConfigParser()
     try:
-        cfg.read(str(path), encoding="utf-8")
+        read_ini(cfg, str(path))
     except (UnicodeDecodeError, configparser.Error):
         cfg = None
     if cfg is not None and cfg.has_option("blog_config", "reviewed"):

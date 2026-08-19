@@ -32,6 +32,7 @@ import engine.projectlib
 import engine.publish_index
 import engine.triplib
 from engine import SVException
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -116,7 +117,7 @@ if __name__ == "__main__":
                         default=os.environ.get("SVCONFIG", "svconfig.ini"))
     args = parser.parse_args()
     config = configparser.ConfigParser()
-    config.read(args.config)
+    read_ini(config, args.config)
     logging.basicConfig(level=logging.INFO)
     try:
         main(args, config)

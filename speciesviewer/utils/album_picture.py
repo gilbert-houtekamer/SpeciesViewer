@@ -16,6 +16,7 @@ import shutil
 from pathlib import Path
 
 from PIL import Image
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -39,7 +40,7 @@ def cover_name_for(root) -> str:
             continue
         try:
             cp = configparser.ConfigParser()
-            cp.read(ini, encoding="utf-8")
+            read_ini(cp, ini)
             name = (cp.get("trip_config", "trip_picture", fallback="") or "").strip()
             if name:
                 return name

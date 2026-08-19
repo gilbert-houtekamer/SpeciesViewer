@@ -18,6 +18,7 @@ import shutil
 import tempfile
 import configparser
 import logging
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -221,7 +222,7 @@ def regenerate_species_page(scientific_name, master_db, progress_cb=None, upload
     tmp_cfg = os.path.join(tempfile.gettempdir(), "sv_regenspecies_svconfig.ini")
     generate_svconfig_ini(svconfig_path=tmp_cfg, master_mode=True)
     config = configparser.ConfigParser()
-    config.read(tmp_cfg)
+    read_ini(config, tmp_cfg)
 
     _p("Loading the master…")
     MyProject = engine.projectlib.Project(

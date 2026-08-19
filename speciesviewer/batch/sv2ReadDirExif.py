@@ -34,6 +34,7 @@ from engine.exif_writer import exiftool_write
 import engine.exceptions
 import engine.statemachine
 import engine.exifcache as exifcache
+from utils.ini_io import read_ini
 
 IGNOREEXTENSIONS = ['txt', 'ico', 'html']
 
@@ -584,7 +585,7 @@ if __name__ == "__main__":
     # get configuration
     INI_LOCATION = args.config
     config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
+    read_ini(config, INI_LOCATION)
     # init the logging subsystem
     logging.basicConfig(level=logging.INFO)
     # define state machine and see if we can run this step

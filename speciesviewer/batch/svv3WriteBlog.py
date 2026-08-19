@@ -50,6 +50,7 @@ import engine.bloglib
 import engine.triplib
 from engine import SVException
 from utils.virttrip_config import read_virttrip_ini
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -264,10 +265,7 @@ def _patch_ini_titles(ini_path: Path, day_num: int, loc_nl: str, loc_en: str) ->
 def _read_blog_ini(ini_path: Path) -> dict:
     """Read a blog ini file and return a flat dict of relevant keys."""
     cfg = configparser.RawConfigParser()
-    try:
-        cfg.read(str(ini_path), encoding="utf-8")
-    except UnicodeDecodeError:
-        cfg.read(str(ini_path), encoding="latin-1")
+    read_ini(cfg, ini_path)
 
     def _u8(section, key, fallback=""):
         val = cfg.get(section, key, fallback=fallback)
@@ -666,7 +664,7 @@ if __name__ == "__main__":
                         default=os.environ.get("SVCONFIG", "svconfig.ini"))
     args = parser.parse_args()
     config = configparser.ConfigParser()
-    config.read(args.config)
+    read_ini(config, args.config)
     logging.basicConfig(level=logging.INFO)
     try:
         main(args, config)

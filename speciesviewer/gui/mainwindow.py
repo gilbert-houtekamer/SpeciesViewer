@@ -30,6 +30,7 @@ from gui.trip_overview import populate_trip_overview
 from engine.statemachine import StateMachine
 from gui.image_viewer import ImagePreviewDialog
 from utils.gui_config import load_gui_cache  # or wherever your cache functions live
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -1006,7 +1007,7 @@ class MainWindow(QMainWindow):
         # Build (module_called, statusname, before_msg, after_msg) list from menu specs
         generate_svconfig_ini()
         module_config = configparser.ConfigParser()
-        module_config.read("svconfig.ini")
+        read_ini(module_config, "svconfig.ini")
 
         steps_to_run = []
         for sname, label, bmsg, amsg in completed:
@@ -1404,7 +1405,7 @@ class MainWindow(QMainWindow):
         _config.set("project", "picturedirectory", str(project_root / day_name))
         generate_svconfig_ini()
         module_config = configparser.ConfigParser()
-        module_config.read("svconfig.ini")
+        read_ini(module_config, "svconfig.ini")
         sm = StateMachine(str(trip_root), str(review_day), readState=True)
         steps = [
             (batch.sv2ReadDirExif.main, "ReadDirExif",
@@ -1690,7 +1691,7 @@ class MainWindow(QMainWindow):
         if ini.exists():
             cp = configparser.ConfigParser()
             try:
-                cp.read(ini, encoding="utf-8")
+                read_ini(cp, ini)
                 fromdate = cp.get("trip_config", "fromdate", fallback="").strip()
                 todate = cp.get("trip_config", "todate", fallback="").strip()
                 name = cp.get("trip_config", "trip_name", fallback="").strip()

@@ -33,6 +33,7 @@ import logging
 import os
 import re
 from pathlib import Path
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -249,7 +250,7 @@ def _read_existing_virttrips(virttrip_root: str) -> list[dict]:
         try:
             import configparser
             cp = configparser.ConfigParser()
-            cp.read(ini, encoding="utf-8")
+            read_ini(cp, ini)
             start = _norm_date(cp.get("trip_config", "fromdate", fallback=""))
             end = _norm_date(cp.get("trip_config", "todate", fallback=""))
             name = cp.get("trip_config", "trip_name", fallback=child.name).strip()

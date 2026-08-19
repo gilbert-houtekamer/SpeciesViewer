@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QCheckBox, QHBoxLayout, QLabel, QLineEdit,
     QMessageBox, QPushButton, QSpinBox, QTextEdit, QVBoxLayout, QWidget,
 )
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -76,10 +77,7 @@ class _DayTab(QWidget):
     @staticmethod
     def _load(ini_path: Path) -> dict:
         cfg = configparser.RawConfigParser()
-        try:
-            cfg.read(str(ini_path), encoding="utf-8")
-        except UnicodeDecodeError:
-            cfg.read(str(ini_path), encoding="latin-1")
+        read_ini(cfg, ini_path)
 
         def _u8(section, key, fallback=""):
             val = cfg.get(section, key, fallback=fallback)
@@ -300,10 +298,7 @@ class _DayTab(QWidget):
         stays amber even though Save All wrote it — otherwise one click would
         bless every draft in the trip and the amber flag would mean nothing."""
         cfg = configparser.RawConfigParser()
-        try:
-            cfg.read(str(self.ini_path), encoding="utf-8")
-        except UnicodeDecodeError:
-            cfg.read(str(self.ini_path), encoding="latin-1")
+        read_ini(cfg, self.ini_path)
 
         for section in ("blog_config", "blog_selection", "blog_text"):
             if not cfg.has_section(section):

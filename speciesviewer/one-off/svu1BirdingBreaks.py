@@ -27,6 +27,7 @@ import engine.specieslib
 import engine.speciesclassification
 from engine.specieslib import Level
 import engine.triplib
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 bb_dict = {}
@@ -39,7 +40,7 @@ Reference_sp = None
 # read parameters, but will be overwritten probably
 def readConfig():
     config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
+    read_ini(config, INI_LOCATION)
     return config
 
 def readBirdingBreaksList():
@@ -196,7 +197,7 @@ if __name__ == "__main__":
     # get configuration
     INI_LOCATION = args.config
     config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
+    read_ini(config, INI_LOCATION)
     # init the logging subsystem
     logging.basicConfig(level=logging.INFO)
     # call the actual code

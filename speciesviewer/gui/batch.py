@@ -20,6 +20,7 @@ from engine.statemachine import StateMachine, NOTHING_TO_DO_PREFIX, is_nothing_t
 # change (e.g. the 1.–5. numbering). Sync Sidecars is not a pipeline state
 # column — it's the hardcoded SYNC_COL header — so it's added explicitly.
 from gui.trip_overview import STATE_COLUMNS
+from utils.ini_io import read_ini
 
 _EXPECTED_CELLS = {"SyncSidecars": "Sync\nSidecars"}
 for _col in STATE_COLUMNS:
@@ -118,7 +119,10 @@ class BatchModuleRunner:
         generate_svconfig_ini(master_mode=master_mode, virttrip_mode=virttrip_mode)
         args = None
         module_config = configparser.ConfigParser()
-        module_config.read("svconfig.ini")
+        # read_ini, not plain .read: batch_config writes this file as UTF-8, and
+        # reading it in the locale encoding turned a path like "Brazilië" into
+        # mojibake that no longer named a file that exists.
+        read_ini(module_config, "svconfig.ini")
 
         # Inject any caller-supplied config overrides (e.g. minimum_score from dialog)
         for (section, key, value) in batch_parms.get("extra_config", []):
@@ -433,7 +437,7 @@ class ColumnBatchRunner:
         generate_svconfig_ini()
 
         module_config = configparser.ConfigParser()
-        module_config.read("svconfig.ini")
+        read_ini(module_config, "svconfig.ini")   # UTF-8, as it was written
 
         review_day = trip_root / "metadata" / "review" / day_str
         sm = StateMachine(str(trip_root), str(review_day), readState=True)

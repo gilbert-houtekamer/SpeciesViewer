@@ -18,6 +18,7 @@ if __name__ == "__main__":
 
 from engine.sidecarlib import sync_sidecars
 import engine.projectlib
+from utils.ini_io import read_ini
 
 RAW_EXTENSIONS = {'.orf', '.nef', '.nrw', '.heic'}
 logger = logging.getLogger("speciesviewer")
@@ -96,7 +97,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     config = configparser.ConfigParser()
-    config.read(args.config)
+    read_ini(config, args.config)
     logging.basicConfig(level=logging.INFO)
     try:
         main(args, config)

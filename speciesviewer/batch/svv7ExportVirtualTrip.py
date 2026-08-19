@@ -31,6 +31,7 @@ if __name__ == "__main__":
     sys.path.append(modpath)
 
 from engine.exceptions import SVException
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -97,7 +98,7 @@ if __name__ == "__main__":
     parser.add_argument("--target", required=True, help="Target directory to write the ZIP into")
     args = parser.parse_args()
     config = configparser.ConfigParser()
-    config.read(args.config)
+    read_ini(config, args.config)
     if not config.has_section("utilities"):
         config.add_section("utilities")
     config["utilities"]["virttrip_export_target"] = args.target

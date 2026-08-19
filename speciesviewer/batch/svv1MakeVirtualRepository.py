@@ -6,6 +6,7 @@ import configparser
 import logging
 import argparse
 from pathlib import Path
+from utils.ini_io import read_ini
 
 if __name__ == "__main__":
     scriptpath = os.path.dirname(__file__)
@@ -75,7 +76,7 @@ if __name__ == "__main__":
                         help="Module Configuration File")
     args = parser.parse_args()
     config = configparser.ConfigParser()
-    config.read(args.config)
+    read_ini(config, args.config)
     logging.basicConfig(level=logging.INFO)
     try:
         main(args, config)

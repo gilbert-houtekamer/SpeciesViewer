@@ -24,6 +24,7 @@ import logging
 import configparser
 
 from utils.trip_identity import resolve, find_linked_virttrip
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -62,7 +63,7 @@ def _ini_has_intro(ini_path):
         return False
     cfg = configparser.ConfigParser()
     try:
-        cfg.read(ini_path, encoding="utf-8")
+        read_ini(cfg, ini_path)
     except Exception:
         return False
     for sect in cfg.sections():

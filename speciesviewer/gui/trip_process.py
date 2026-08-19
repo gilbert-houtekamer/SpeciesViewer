@@ -2086,7 +2086,7 @@ class ReadSummarizeDialog(QDialog):
 
         generate_svconfig_ini()
         module_config = configparser.ConfigParser()
-        module_config.read("svconfig.ini")
+        read_ini(module_config, "svconfig.ini")
 
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
         review_day = trip_root / "metadata" / "review" / selected_subdir
@@ -2215,7 +2215,7 @@ class PublishDayDialog(QDialog):
 
         generate_svconfig_ini()
         module_config = configparser.ConfigParser()
-        module_config.read("svconfig.ini")
+        read_ini(module_config, "svconfig.ini")
 
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
         review_day = trip_root / "metadata" / "review" / selected_subdir
@@ -2835,6 +2835,7 @@ from PyQt6.QtWidgets import (
 )
 from configparser import ConfigParser, RawConfigParser
 from pathlib import Path
+from utils.ini_io import read_ini
 
 class CreateBlogDialog(QDialog):
     def __init__(self, parent, menu_spec):
@@ -2857,10 +2858,7 @@ class CreateBlogDialog(QDialog):
 
         # Load or create default ini
         if self.ini_path.exists():
-            try:
-                self.parser.read(self.ini_path, encoding="utf-8")
-            except UnicodeDecodeError:
-                self.parser.read(self.ini_path, encoding="latin-1")
+            read_ini(self.parser, self.ini_path)
         else:
             self._create_default_ini()
             with open(self.ini_path, "w", encoding="utf-8") as f:
@@ -3489,7 +3487,7 @@ class BlogAdminDialog(QDialog):
                 worker_logger = logging.getLogger("speciesviewer")
 
                 cfg = _cp.ConfigParser()
-                cfg.read("svconfig.ini")
+                read_ini(cfg, "svconfig.ini")
 
                 worker_logger.info("Manage Blogs: initializing project for index rebuild...")
                 project = engine.projectlib.Project(
@@ -4251,6 +4249,13 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
         source_row.addWidget(self.source_field)
         source_row.addWidget(browse_source_btn)
 
+        # Which columns hold what - only a Birding Breaks list needs this; an
+        # AviBase list has a fixed shape the old reader already knows.
+        self.columns_btn = QPushButton("Columns…")
+        self.columns_btn.clicked.connect(self._edit_columns)
+        self.columns_summary = QLabel("")
+        self.columns_summary.setWordWrap(True)
+
         # Source-list format dropdown.
         self.reader_dropdown = QComboBox()
         for _, label in self.READER_OPTIONS:
@@ -4282,16 +4287,23 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
         self.first_lang_label = QLabel("First column language (phone layout)")
         self._sync_first_lang_enabled()
         self.phone_layout_checkbox.toggled.connect(lambda _checked: self._sync_first_lang_enabled())
+        self.reader_dropdown.currentIndexChanged.connect(
+            lambda _idx: self._sync_columns_row())
 
         layout = self.layout()
         anchor = layout.indexOf(self.info_text)
         layout.insertWidget(anchor, QLabel("Species list file"))
         layout.insertLayout(anchor + 1, source_row)
         layout.insertWidget(anchor + 2, QLabel("Source list format"))
-        layout.insertWidget(anchor + 3, self.reader_dropdown)
-        layout.insertWidget(anchor + 4, self.phone_layout_checkbox)
-        layout.insertWidget(anchor + 5, self.first_lang_label)
-        layout.insertWidget(anchor + 6, self.first_lang_dropdown)
+        format_row = QHBoxLayout()
+        format_row.addWidget(self.reader_dropdown)
+        format_row.addWidget(self.columns_btn)
+        layout.insertLayout(anchor + 3, format_row)
+        layout.insertWidget(anchor + 4, self.columns_summary)
+        layout.insertWidget(anchor + 5, self.phone_layout_checkbox)
+        layout.insertWidget(anchor + 6, self.first_lang_label)
+        layout.insertWidget(anchor + 7, self.first_lang_dropdown)
+        self._sync_columns_row()
 
     @staticmethod
     def _same_folder(a, b):
@@ -4324,9 +4336,59 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
                      else str(self.trip_root))
         path, _ = QFileDialog.getOpenFileName(
             self, "Select the trip's bird list", start_dir,
-            "Species lists (*.csv);;All files (*)")
+            "Species lists (*.xlsx *.xlsm *.csv);;Spreadsheets (*.xlsx *.xlsm);;"
+            "Text lists (*.csv *.txt);;All files (*)")
         if path:
-            self.source_field.setText(path)
+            self.source_field.setText(os.path.normpath(path))
+
+    def _current_format(self):
+        return self.READER_OPTIONS[self.reader_dropdown.currentIndex()][0]
+
+    def _saved_columns(self):
+        """The remembered column map. Unlike the file path this is NOT tied to a
+        trip: Birding Breaks sends the same shape every time, so the map used
+        last time is the best starting point for the next trip."""
+        from engine.avibaselib import parse_roles, decode_delimiter
+        roles = parse_roles(_config.get("avibase", "columns", fallback=""))
+        first_row = _config.getint("avibase", "data_start_row", fallback=1)
+        delimiter = decode_delimiter(_config.get("avibase", "delimiter", fallback=""))
+        return roles, first_row, delimiter
+
+    def _sync_columns_row(self):
+        """The column map belongs to the Birding Breaks reader only, so the
+        button and its summary are hidden for an AviBase list rather than
+        offered and then ignored."""
+        from gui.avibase_columns import describe_roles
+        is_bb = self._current_format() == "birdingbreaks"
+        self.columns_btn.setVisible(is_bb)
+        self.columns_summary.setVisible(is_bb)
+        if is_bb:
+            roles, first_row, _ = self._saved_columns()
+            self.columns_summary.setText(describe_roles(roles, first_row))
+
+    def _edit_columns(self):
+        from gui.avibase_columns import ColumnMappingDialog, describe_roles
+        from engine.avibaselib import format_roles, encode_delimiter
+        source = self.source_field.text().strip()
+        if not source or not os.path.isfile(source):
+            self.status_label.setText(
+                "❌ Pick the bird list first with Browse… — the columns are "
+                "marked on the file itself."
+            )
+            return
+        roles, first_row, delimiter = self._saved_columns()
+        dialog = ColumnMappingDialog(self, source, roles, first_row, delimiter)
+        if not dialog.exec():
+            return
+        if not _config.has_section("avibase"):
+            _config.add_section("avibase")
+        _config["avibase"]["columns"] = format_roles(dialog.roles)
+        _config["avibase"]["data_start_row"] = str(dialog.first_data_row)
+        _config["avibase"]["delimiter"] = encode_delimiter(dialog.delimiter)
+        persist_config()
+        self.columns_summary.setText(
+            describe_roles(dialog.roles, dialog.first_data_row))
+        self.status_label.setText("")
 
     def _sync_first_lang_enabled(self):
         enabled = self.phone_layout_checkbox.isChecked()
@@ -4342,6 +4404,14 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
                 f"❌ Pick the bird list first with Browse… "
                 f"(nothing found as {os.path.basename(self._default_source_file())} "
                 f"in {self.trip_root})."
+            )
+            return
+
+        if self._current_format() == "birdingbreaks" and not self._saved_columns()[0]:
+            self.status_label.setText(
+                "❌ Open Columns… first and mark which column holds the "
+                "sequence number and the names — a Birding Breaks list has no "
+                "fixed shape."
             )
             return
 
@@ -4814,7 +4884,7 @@ class ImportTripDialog(QDialog):
                 try:
                     generate_svconfig_ini()
                     module_config = _cp.ConfigParser()
-                    module_config.read("svconfig.ini")
+                    read_ini(module_config, "svconfig.ini")
                     module_config.set("repository", "BiotaDatabase", dest)
                     # No web root → sv1's whole SFTP block is skipped. Importing a
                     # trip must never touch the website.

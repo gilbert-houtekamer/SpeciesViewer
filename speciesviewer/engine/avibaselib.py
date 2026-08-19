@@ -1,11 +1,23 @@
 """Shared helpers for reading and enriching an AviBase/BirdingBreaks species list."""
 
+import csv
 import os
+import re
 import logging
 
 logger = logging.getLogger("speciesviewer")
 
 DEFAULT_SOURCE_LIST = "avibase.csv"
+
+# What a column in a Birding Breaks list can hold. Anything not marked is
+# ignored — that is how the day boxes and spacer columns stay out of the way.
+ROLE_KEYS = ("seq", "en", "nl", "sc")
+ROLE_LABELS = {
+    "seq": "sequence number",
+    "en":  "English name",
+    "nl":  "Dutch name",
+    "sc":  "scientific name",
+}
 
 
 def resolve_source_list(triproot, configured=""):
@@ -135,3 +147,196 @@ def add_species_info(avibase_dict, sc, sp):
             if sc_entry and sc_entry.get("DutchName"):
                 entry["nlname"] = sc_entry["DutchName"]
 
+
+
+# ── Birding Breaks lists ────────────────────────────────────────────────────
+# What arrives from the tour operator is a spreadsheet with title rows above the
+# real header and a box per trip day beside each species. Rather than insist on
+# one shape, the user marks what each column holds (gui/avibase_columns.py) and
+# the reader below follows that map.
+
+def format_roles(roles):
+    """Column map as one config line: "0=seq,2=en,3=sc"."""
+    return ",".join(f"{col}={role}"
+                    for col, role in sorted((roles or {}).items())
+                    if role in ROLE_KEYS)
+
+
+def parse_roles(spec):
+    """Column map back from its config line. Unreadable entries are dropped."""
+    roles = {}
+    for part in (spec or "").split(","):
+        if "=" not in part:
+            continue
+        col, _, role = part.partition("=")
+        role = role.strip()
+        try:
+            col = int(col.strip())
+        except ValueError:
+            continue
+        if role in ROLE_KEYS:
+            roles[col] = role
+    return roles
+
+
+def encode_delimiter(delimiter):
+    """A delimiter as a config-safe word. An .ini value cannot carry a bare tab
+    — it would be written out and read back as nothing at all."""
+    if not delimiter:
+        return ""
+    return "tab" if delimiter == "\t" else delimiter
+
+
+def decode_delimiter(text):
+    """The delimiter back from config. Empty means: work it out from the file."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    return "\t" if text.lower() == "tab" else text[0]
+
+
+def sniff_delimiter(sample_lines):
+    """Which delimiter a text list uses. A candidate that appears the same
+    number of times on every line beats one that is frequent on a single line."""
+    best, best_score = ";", -1
+    for cand in (";", ",", "	", "|"):
+        counts = [ln.count(cand) for ln in sample_lines if ln.strip()]
+        if not counts or max(counts) == 0:
+            continue
+        score = min(counts) * 10 + sum(counts) / len(counts)
+        if score > best_score:
+            best, best_score = cand, score
+    return best
+
+
+def _cell_text(value):
+    """Spreadsheet cell as the text the user sees — an integer stays "12",
+    not "12.0", because that column is usually the sequence number."""
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def _load_spreadsheet_rows(path, limit=None):
+    from openpyxl import load_workbook
+    wb = load_workbook(path, read_only=True, data_only=True)
+    try:
+        sheets = wb.worksheets
+        ws = sheets[0]
+        if len(sheets) > 1:
+            logger.warning(
+                f"'{os.path.basename(path)}' holds {len(sheets)} sheets; reading "
+                f"the first one, '{ws.title}'."
+            )
+        rows = []
+        for row in ws.iter_rows(values_only=True):
+            rows.append([_cell_text(c) for c in row])
+            if limit and len(rows) >= limit:
+                break
+        return rows
+    finally:
+        wb.close()
+
+
+def _load_text_rows(path, delimiter=None, limit=None):
+    with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
+        lines = f.read().splitlines()
+    if not delimiter:
+        delimiter = sniff_delimiter(lines[:50])
+    rows = [[cell.strip() for cell in row]
+            for row in csv.reader(lines, delimiter=delimiter)]
+    return (rows[:limit] if limit else rows), delimiter
+
+
+def load_source_rows(path, delimiter=None, limit=None):
+    """A species list as rows of plain text, spreadsheet or delimited file alike.
+
+    Returns (rows, delimiter) — the delimiter is None for a spreadsheet, and for
+    a text file it is the one sniffed, so the dialog can show what it settled on.
+    `limit` reads only the first rows, which is all a preview needs.
+    """
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            f"No species list found at '{path}'. Use Browse… to pick the list."
+        )
+    if os.path.splitext(path)[1].lower() in (".xlsx", ".xlsm"):
+        return _load_spreadsheet_rows(path, limit), None
+    return _load_text_rows(path, delimiter, limit)
+
+
+def read_birdingbreaks(path, roles, first_data_row=1, delimiter=None):
+    """Read a Birding Breaks list using the columns the user marked.
+
+    Returns the same dict shape as read_avibase, so everything downstream —
+    name enrichment and the Excel writer — is untouched. A list without Dutch
+    names is fine: add_species_info fills those from the classification.
+    """
+    by_role = {}
+    for col, role in (roles or {}).items():
+        if role in ROLE_KEYS:
+            by_role[role] = int(col)
+    if not any(role in by_role for role in ("en", "nl", "sc")):
+        raise ValueError(
+            "No name column marked in the species list — open Columns… and say "
+            "which column holds the English, Dutch or scientific name."
+        )
+
+    rows, _ = load_source_rows(path, delimiter)
+
+    def cell(row, role):
+        idx = by_role.get(role)
+        if idx is None or idx >= len(row):
+            return ""
+        return (row[idx] or "").strip()
+
+    avibase_dict = {}
+    number = 1
+    species = headings = duplicates = 0
+
+    for row in rows[max(0, first_data_row - 1):]:
+        en, nl, sc = cell(row, "en"), cell(row, "nl"), cell(row, "sc")
+        if not (en or nl or sc):
+            continue
+        key = en or sc or nl
+        digits = re.sub(r"\D", "", cell(row, "seq"))
+
+        if not sc and not digits:
+            # A family or region printed on its own line. Kept, because the
+            # checklist uses these to group the species below them.
+            avibase_dict[key] = {
+                "enname": key, "scname": "", "nlname": "",
+                "status": "", "english": "", "number": -1,
+            }
+            headings += 1
+            continue
+
+        if key in avibase_dict:
+            duplicates += 1
+        seq = int(digits) if digits else number
+        avibase_dict[key] = {
+            "enname":       key,
+            "scname":       sc,
+            "nlname":       nl,
+            "status":       "",
+            "english":      en,
+            "number":       seq,
+            "gezien":       0,
+            "foto":         0,
+            "knownspecies": False,
+        }
+        number = seq + 1
+        species += 1
+
+    logger.info(f"Read {species} species and {headings} section headings "
+                f"from '{os.path.basename(path)}'.")
+    if duplicates:
+        logger.warning(f"{duplicates} rows repeat a name already in the list; "
+                       f"the last of each is kept.")
+    if not species:
+        raise ValueError(
+            f"No species read from '{os.path.basename(path)}' — check in Columns… "
+            f"which row the species start on and which columns hold the names."
+        )
+    return avibase_dict

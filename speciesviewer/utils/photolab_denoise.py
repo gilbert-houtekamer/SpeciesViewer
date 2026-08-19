@@ -26,6 +26,7 @@ import configparser
 import logging
 
 from utils.config import CONFIG_DIR
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -70,7 +71,7 @@ def _load() -> configparser.ConfigParser:
     cp.optionxform = str
     if INI_PATH.exists():
         try:
-            cp.read(INI_PATH, encoding="utf-8")
+            read_ini(cp, INI_PATH)
         except Exception as e:
             logger.warning(f"photolab_denoise.ini unreadable ({e}); using defaults.")
     changed = False

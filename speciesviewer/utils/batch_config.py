@@ -72,6 +72,9 @@ def generate_svconfig_ini(svconfig_path="svconfig.ini", master_mode=False,
     }
     cfg["avibase"] = {
         "source_file":       _config.get("avibase", "source_file",       fallback=""),
+        "columns":           _config.get("avibase", "columns",           fallback=""),
+        "data_start_row":    _config.get("avibase", "data_start_row",    fallback="1"),
+        "delimiter":         _config.get("avibase", "delimiter",         fallback=""),
         "source_format":     _config.get("avibase", "source_format",     fallback="avibase"),
         "phone_layout":      _config.get("avibase", "phone_layout",      fallback="false"),
         "first_column_lang": _config.get("avibase", "first_column_lang", fallback="nl"),

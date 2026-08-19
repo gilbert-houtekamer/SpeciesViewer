@@ -25,6 +25,7 @@ from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt,
                                    RecentDirectoryFieldQt, DirectoryFieldQt, ImageFileFieldQt)
 
 import batch.svv1MakeVirtualRepository
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -130,7 +131,7 @@ def _common_blog_min_score(virttrip_root):
     for fn in _glob.glob(os.path.join(blog_dir, "blog_*.ini")):
         cfg = _cp.RawConfigParser()
         try:
-            cfg.read(fn, encoding="utf-8")
+            read_ini(cfg, fn)
             scores.add(cfg.getint("blog_config", "minimum_score", fallback=25))
         except Exception:
             pass
@@ -411,7 +412,7 @@ def retire_trip_to_virttrip(parent):
 
     tc = _cp.ConfigParser()
     try:
-        tc.read(trip_ini, encoding="utf-8")
+        read_ini(tc, trip_ini)
     except Exception as e:
         QMessageBox.warning(parent, "Retire Trip", f"Could not read trip.ini: {e}")
         return
@@ -498,7 +499,7 @@ def retire_trip_to_virttrip(parent):
                               source_trip_id=trip_id)
         generate_svconfig_ini(virttrip_mode=True)
         mcfg = _cp.ConfigParser()
-        mcfg.read("svconfig.ini")
+        read_ini(mcfg, "svconfig.ini")
     except Exception as e:
         logger.warning(f"Retire trip setup failed: {e}")
         QMessageBox.critical(parent, "Retire Trip", f"Setup failed: {e}")
@@ -1042,7 +1043,7 @@ class VirtualTripCreationDialog(QDialog):
         try:
             generate_svconfig_ini(virttrip_mode=True)
             mcfg = _cp.ConfigParser()
-            mcfg.read("svconfig.ini")
+            read_ini(mcfg, "svconfig.ini")
         except Exception as e:
             self.passed_parent.logger.warning(f"Create Album setup failed: {e}")
             QMessageBox.critical(self, "Create Album", f"Setup failed: {e}")

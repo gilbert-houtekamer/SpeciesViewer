@@ -27,6 +27,7 @@ from engine.specieslib import Level
 import engine.triplib
 import engine.species_baseline
 import engine.topics
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 result_dict = {}
@@ -42,7 +43,7 @@ reference_names = set()  # lowercase ScientificNames that are already in the mas
 # read parameters, but will be overwritten probably
 def readConfig():
     config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
+    read_ini(config, INI_LOCATION)
     return config
 
 def scan_files(directory, search_string, report, sc=None):
@@ -394,7 +395,7 @@ if __name__ == "__main__":
     # get configuration
     INI_LOCATION = args.config
     config = configparser.ConfigParser()
-    config.read(INI_LOCATION)
+    read_ini(config, INI_LOCATION)
     # init the logging subsystem
     logging.basicConfig(level=logging.INFO)
     # call the actual code

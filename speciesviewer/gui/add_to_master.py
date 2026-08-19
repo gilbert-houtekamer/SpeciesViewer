@@ -26,6 +26,7 @@ from PyQt6.QtGui import (
 
 from utils.config import _config, persist_config
 from gui.image_viewer import ImagePreviewDialog
+from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
 
@@ -169,7 +170,7 @@ class MicroTripReviewDialog(ImagePreviewDialog):
         generate_svconfig_ini(svconfig_path=tmp_cfg, master_mode=True,
                               single_dir=folder, recurse=recurse)
         cfg = configparser.ConfigParser()
-        cfg.read(tmp_cfg)
+        read_ini(cfg, tmp_cfg)
 
         steps = [
             ("Reading & recognising species", sv2.main),
