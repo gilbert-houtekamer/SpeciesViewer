@@ -80,15 +80,50 @@ A small `manifest.json` inside each ZIP: every file's name, size and mtime,
   silently misses — and deletions are the entire point of culling.
 - **Restore knows which RAWs should be there**, which is the reconcile below.
 
-## The prefix trap — must fail loudly
+## The prefix — currently unrecoverable, must be saved
 
-Files are named `2026 Goeree - N8140001.ORF`. On a restore the cards are re-read,
-and if the prefix is typed even slightly differently **every XMP orphans and it
-looks exactly like "I deleted everything"**.
+Files are named `2026 Goeree - N8140001.ORF`. `target_name` builds that as
+`f"{prefix} - {src_name}"`, so the separator is a literal `" - "` and the prefix
+is recoverable from any filename by splitting on the first one.
 
-The manifest catches it: *0 of 202 RAWs matched — the prefix differs*. This must
-refuse, not proceed. (See memory `feedback_qa_as_guardrails`: an unexpected value
-is a bug signal, and the invariant should be visible.)
+**Where the prefix lives today: `sv_gui_cache.json` only.**
+
+```json
+"sdcard_ingest": { "prefix": "2026 Goeree", "source": "H:/DCIM/101OMSYS", ... }
+```
+
+That is a per-machine GUI cache. It is **not** in `trip.ini` (which holds
+`trip_name`, `picture_root`, `web_slug`, the dates and the blog text, but no
+prefix), not in the trip repository, and not in anything `svr6ExportTrip`
+carries. **On a fresh machine the prefix is gone** — reconstructable only by
+reading it off a filename by eye. If the cards are then re-read with a slightly
+different prefix, every XMP orphans and it looks exactly like *"I deleted
+everything"*.
+
+So the prefix gets recorded in three places, each with a different job:
+
+1. **`trip.ini` → `picture_prefix`.** It is trip identity, the same class as
+   `trip_name` and `picture_root` which are already there. Being in trip.ini
+   means `svr6ExportTrip` carries it **for free** — the export already ships
+   trip.ini, so there is no new plumbing in the export at all.
+2. **The day manifest — the *observed* prefix**, derived from the filenames
+   actually present rather than from a setting. This is the authoritative copy:
+   it stays true if trip.ini is edited later, and it covers the case no setting
+   can describe — a day read with a *different* prefix, which happens with a
+   second body or a correction mid-trip.
+3. **Pre-fill on the Read dialog** from `trip.ini` when a trip is selected,
+   falling back to the GUI cache as now. This is what makes a restore work
+   without remembering anything: select the restored trip and the prefix is
+   already right.
+
+**trip.ini is convenience; the manifest is truth.** If they disagree the
+manifest wins and the restore says so.
+
+The reconcile then has a real check to make rather than a guess: *0 of 202 RAWs
+matched — the backup was written with prefix `2026 Goeree`, these files use
+`2026 Goeree trip`.* That must refuse, not proceed. (See memory
+`feedback_qa_as_guardrails`: an unexpected value is a bug signal, and the
+invariant should be visible.)
 
 ## Restore: report first, never silent
 
@@ -123,8 +158,11 @@ restored from is a belief rather than a backup.
 
 Smallest independent piece first; nothing in the daily flow calls any of it.
 
+0. Persist `picture_prefix` into `trip.ini`, and pre-fill the Read dialog from
+   it. Independent of everything below, useful on its own, and it closes the
+   hole above whether or not the rest ever gets built.
 1. `backup_day(day_dir, dest) -> summary` — plain function, zips one day, writes
-   the manifest. Runnable from a script, no GUI.
+   the manifest including the observed prefix. Runnable from a script, no GUI.
 2. "Back up the day's work" action, plus a per-trip sweep that skips unchanged
    days by manifest comparison.
 3. `restore_report(zip, day_dir)` — **read-only**, prints what a restore would
