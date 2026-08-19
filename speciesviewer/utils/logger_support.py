@@ -45,7 +45,11 @@ class LogHandler(logging.Handler):
         # HTML tags by appendHtml (Qt's parser can silently swallow them).
         safe = html.escape(msg)
 
-        if "may have a typo" in msg or "correct it" in msg or "GPS missing" in msg:
+        if ("may have a typo" in msg or "correct it" in msg or "GPS missing" in msg
+                or record.levelno >= logging.ERROR):
+            # ERROR was the one level with no colour at all: it printed in the
+            # same ink as a routine INFO line, which is the exact failure this
+            # panel exists to prevent.
             safe = f'<span style="color:{_ALERT};"><b>{safe}</b></span>'
         elif record.levelno == logging.WARNING:
             safe = f'<span style="color:{_WARN};"><b>{safe}</b></span>'

@@ -130,14 +130,18 @@ class _CardCache:
     """
 
     _FILENAME = ".sv_ingest_cache.json"
+    _RESERVE  = ".sv_ingest_reserve"
+    _RESERVE_BYTES = 1 << 20      # 1 MB — ample for several thousand entries
     _VERSION  = 1
 
-    def __init__(self, source_root: Path):
+    def __init__(self, source_root: Path, logger=None):
         self._root  = Path(source_root)
         self._path  = self._root / self._FILENAME
+        self._log   = logger or logging.getLogger("speciesviewer")
         self._dirty = False
         self._data: dict[str, dict] = {}
         self._load()
+        self._make_reserve()
 
     def _load(self):
         try:
@@ -188,18 +192,92 @@ class _CardCache:
         self._data[key] = entry
         self._dirty = True
 
-    def save(self):
-        """Flush to disk atomically.  Silently skips on read-only media."""
-        if not self._dirty:
-            return
+    # ── Reserved space on the card ────────────────────────────────────────
+    # A card that is full to the last megabyte cannot save its own cache: the
+    # save writes a .tmp and renames, so it briefly needs room for TWO copies.
+    # With 18 MB RAWs the space left over on a full card is effectively uniform
+    # in [0, 18 MB), so roughly one card in eighteen ends up with under a
+    # megabyte spare — across the ten-odd cards of a trip that is close to a
+    # coin flip, which is why this is worth having at all.
+    #
+    # So a 1 MB dummy sits on the card and is spent ONLY once a save has
+    # actually failed. That ordering is the whole point. The obvious
+    # alternative — delete the dummy before every write, put it back after —
+    # would have SpeciesViewer deleting a file on the card on every single
+    # read, and the card holds the only original copy of the pictures. Here the
+    # destructive step exists only on the one path where it is what saves you.
+    #
+    # The reserve is laid down at load time, i.e. at the start of a read,
+    # because that is when the card is most likely to still have room: a card
+    # read at lunch and again that evening gets its reserve while it is half
+    # empty and spends it when it is full.
+
+    @property
+    def _reserve_path(self) -> Path:
+        return self._root / self._RESERVE
+
+    def _make_reserve(self) -> bool:
+        """Lay down the reserve if it is not already there. Failure is a normal
+        condition and stays silent: a write-protected card cannot have one, and
+        neither can a card that is already too full. Nothing is lost either
+        way — the reserve is an optimisation, never a prerequisite."""
+        path = self._reserve_path
+        try:
+            if path.exists() and path.stat().st_size >= self._RESERVE_BYTES:
+                return True
+            with open(path, "wb") as f:
+                f.write(bytes(self._RESERVE_BYTES))
+            return True
+        except OSError:
+            return False
+
+    def _spend_reserve(self) -> bool:
+        """Delete the reserve so a retried save has room. True only when one was
+        actually removed — which is also proof that the card is writable."""
+        try:
+            if self._reserve_path.exists():
+                self._reserve_path.unlink()
+                return True
+        except OSError:
+            pass
+        return False
+
+    def _write(self) -> bool:
+        """One atomic attempt: .tmp then rename. False on any OS refusal."""
         try:
             tmp = self._path.with_suffix(".tmp")
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump({"version": self._VERSION, "files": self._data},
                           f, separators=(",", ":"))
             tmp.replace(self._path)
+            return True
         except OSError:
-            pass
+            return False
+
+    def save(self):
+        """Flush to disk atomically. Silently skips on read-only media.
+
+        On a card with no room left the first attempt fails; the reserve is then
+        spent and the save retried once. A failure AFTER the reserve was spent
+        IS reported — the card proved itself writable by giving the reserve up,
+        so that is a real symptom rather than the read-only case this method's
+        original silence was there to tolerate."""
+        if not self._dirty:
+            return
+        if self._write():
+            self._make_reserve()      # keep it stocked for the next read
+            return
+        if not self._spend_reserve():
+            return                    # read-only card, or never had a reserve — quiet, as before
+        if self._write():
+            self._log.warning(
+                f"⚠️ The card at {self._root} is full — spent the reserved megabyte "
+                f"to save its ingest cache. It will be restored when the card has room.")
+            self._make_reserve()      # normally fails while the card is still full; harmless
+            return
+        self._log.warning(
+            f"⚠️ Could not save the ingest cache on {self._root}, even after freeing "
+            f"the reserve — the next read of this card will re-scan it from scratch.")
 
 
 # ── Destination dedup index ───────────────────────────────────────────────────
@@ -502,7 +580,7 @@ def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None):
         return [], 0
     log.info(f"Found {total} picture(s) on the card.")
 
-    cache = _CardCache(source) if use_card_cache else None
+    cache = _CardCache(source, logger=log) if use_card_cache else None
     offset = timedelta(hours=tz_offset_hours or 0)
     buckets: dict[str, str] = {}
     for f in files:
@@ -680,7 +758,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
 
     log.info(f"Found {total} picture(s) under {source}")
 
-    cache = _CardCache(source) if use_card_cache else None
+    cache = _CardCache(source, logger=log) if use_card_cache else None
 
     # ── Resolve date buckets ──────────────────────────────────────────────
     # Needed for the subfolder layout AND for an include_dates day filter.

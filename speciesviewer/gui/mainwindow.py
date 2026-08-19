@@ -359,6 +359,48 @@ class MainWindow(QMainWindow):
         )
 
         self._prune_preview_cache_daily()
+        # _report_drive_space() is NOT called here — self.logger is only assigned
+        # after this constructor returns, so the report would log into a handler
+        # that does not exist yet. SpeciesViewer.launch_main_window calls it.
+
+    def _report_drive_space(self):
+        """State how full every drive is, once, when the program starts.
+
+        The counterpart to the pre-flight check in the card read: rather than
+        only refusing a copy at the moment it would fail, say where things stand
+        on a day when nothing is going wrong yet — which is when a filling drive
+        is still cheap to deal with. One line per local or removable volume;
+        under 10% free comes out as a warning, under 5% as an alarm, and the log
+        panel colours those by level on its own.
+
+        In a daemon thread for the same reason the cache prune is: a card reader
+        or a drive that has spun down can take seconds to answer, and the
+        start-up path must never wait on one. Nothing here writes."""
+        import threading
+
+        def _work():
+            try:
+                from utils.disk_space import report_volumes, format_volume_row
+                rows = report_volumes()
+            except Exception as e:
+                if self.logger:
+                    self.logger.warning(f"Could not read drive space: {e}")
+                return
+            if not self.logger or not rows:
+                return
+            low = sum(1 for r in rows if r["level"] != "ok")
+            tail = f", {low} low on space" if low else ""
+            self.logger.info(f"Drive space — {len(rows)} volume(s){tail}:")
+            for row in rows:
+                line = "   " + format_volume_row(row)
+                if row["level"] == "alert":
+                    self.logger.error(line)
+                elif row["level"] == "warn":
+                    self.logger.warning(line)
+                else:
+                    self.logger.info(line)
+
+        threading.Thread(target=_work, daemon=True, name="drive-space").start()
 
     def _prune_preview_cache_daily(self):
         """Keep the preview cache bounded, once a day, without being asked.

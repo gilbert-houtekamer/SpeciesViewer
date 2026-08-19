@@ -1118,45 +1118,70 @@ nothing.</em></p>
     is now a single call to the shared check.</li>
 
   <li><strong>Say how full every drive is, at start-up</strong>
-    <span class="tag-open">OPEN / NEW</span> — the counterpart to the check above, and the cheaper
-    half. Rather than only refusing a copy at the moment it would fail, the program should state the
-    situation once, unprompted, when it starts: one line per volume with its size, its free space and
-    the free percentage. On BigBoy that is five drives, plus whatever card happens to be in the
-    reader. Below ten per cent free reads as a warning, below five per cent as an alarm. It answers
-    the question before it is asked, it costs nothing, and unlike the pre-flight check it is visible
-    on a day when nothing is going wrong yet — which is exactly when a drive filling up is still
-    cheap to deal with.</li>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-19) — the counterpart to the check above, and
+    the cheaper half. Rather than only refusing a copy at the moment it would fail, the program now
+    states the situation once, unprompted, when it starts: one line per volume with its size, its
+    free space and the free percentage. On BigBoy that is five drives plus whatever card happens to
+    be in the reader. Below ten per cent free reads as a warning, below five per cent as an alarm.
+    It answers the question before it is asked, and unlike the pre-flight check it is visible on a
+    day when nothing is going wrong yet — which is exactly when a drive filling up is still cheap to
+    deal with.
+    <br><br>Network drives are deliberately left out: asking a disconnected share how big it is can
+    take seconds, and nothing on the start-up path may wait that long. Empty card-reader slots are
+    skipped for a related reason — asking them at all can raise Windows' own <em>“there is no disk in
+    the drive”</em> box, which is silenced across the sweep. The whole report runs off to one side
+    while the program carries on starting, so a drive that has spun down delays nothing.
+    <br><br>One thing turned up while building it: the log panel had no colour for errors at all.
+    Warnings were tinted, and two specific phrases were painted red, but an <em>error</em> printed in
+    exactly the same ink as a routine line — which is the failure this panel exists to prevent.
+    Errors are now red everywhere in the program, not just here.</li>
 
   <li><strong>Reserve room on the card for its own ingest cache</strong>
-    <span class="tag-open">OPEN / NEW</span> — SpeciesViewer keeps a small state file on the card
-    itself (<code>.sv_ingest_cache.json</code>, in the folder being read) holding each file's
-    checksum and capture date. It is what makes a second Read of the same card fast, and it travels
-    <em>with the card</em>, which is the point: read a card on the laptop and later on BigBoy and
-    both know what was already imported. It is small — a few hundred kilobytes for a couple of
-    thousand files — but it is saved by writing a temporary copy first and then renaming, so a save
-    briefly needs room for <em>two</em> of them. On a card with nothing left the write fails, and the
-    failure is swallowed deliberately, because the same code must tolerate a write-protected card.
-    Nothing is lost; the card simply re-hashes itself from scratch every time, which is exactly the
-    kind of slow annoyance one does not want in the field.
-    <br><br><strong>The idea:</strong> keep a small dummy file on the card as reserved space — delete
-    it when the cache is about to be written, write, then put it back. A few megabytes is ample.
-    Points to settle when building it: the dummy must be restored <em>after</em> the cache write, and
-    if that restore fails then the card really is full and the program should say so once rather than
-    silently; it needs a name the scan can never mistake for a picture; and it should be removable
-    cleanly, since a card handed to somebody else shouldn't carry a mysterious blob.
-    <br><br><strong>Read this one against the rule above before building it.</strong> Reserving
-    space means SpeciesViewer <em>deleting a file on the card</em> — and the card is the medium
-    holding the only original copy of the pictures. The dummy is ours and the deletion is tiny, but
-    it is the same class of action as the one that actually cost data in the past, and it runs on
-    every card, every read. The two simple alternatives cost nothing and risk nothing: notice that
-    the save failed and <strong>say so</strong>, leaving the person to free up room; or keep the
-    cache on the laptop and stop writing to the card at all. Neither is as good. Both are safe.
-    <br><br>Two things worth deciding alongside it. The swallowed write failure should become a
-    <strong>visible one-line warning</strong> when the card <em>is</em> writable but the save still
-    failed — that is a real symptom, not a normal condition. And the fallback for a card that can
-    never be written: keep the cache on the laptop instead, keyed by a card fingerprint, the way the
-    destination hash cache already works. That loses the travelling property, which is why it is a
-    fallback and not the design.</li>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-19) — SpeciesViewer keeps a
+    small state file on the card itself (<code>.sv_ingest_cache.json</code>, in the folder being
+    read) holding each file's checksum and capture date. It is what makes a second Read of the same
+    card fast, and it travels <em>with the card</em>, which is the point: read a card on the laptop
+    and later on BigBoy and both know what was already imported. It is small — a few hundred
+    kilobytes for a couple of thousand files — but it is saved by writing a temporary copy first and
+    then renaming, so a save briefly needs room for <em>two</em> of them. On a card with nothing left
+    the write fails, and the failure was swallowed deliberately, because the same code must tolerate
+    a write-protected card. Nothing was lost; the card simply re-hashed itself from scratch every
+    time, which is exactly the kind of slow annoyance one does not want in the field.
+    <br><br><strong>Is it worth guarding at all?</strong> Arithmetic first, because it decided the
+    answer. Pictures are about 18 MB, so the space left over on a card shot to the end is essentially
+    a random amount between nothing and one picture — under a megabyte roughly one card in eighteen.
+    Per card that is negligible. Across the ten or so cards a long trip fills it is about a coin
+    flip, and it lands on the evening you least want to spend twenty minutes re-hashing.
+    <br><br><strong>What was built.</strong> A one-megabyte dummy file lives on the card, and it is
+    deleted <em>only after a save has actually failed</em>: try to save, fail, spend the reserve,
+    try once more, put the reserve back. The ordering is the entire design. The obvious alternative —
+    delete the dummy before every write and restore it afterwards — would have SpeciesViewer deleting
+    a file on the card on <em>every single read</em>, and the card holds the only original copy of the
+    pictures. That is the same class of action that has actually cost data here before. This way the
+    destructive step exists only on the one path where it is what saves you; on every ordinary read
+    nothing on the card is touched.
+    <br><br>The reserve is laid down at the start of a read, which is when the card is most likely to
+    still have room. On a good day a card can go from empty to full, and it typically gets read more
+    than once along the way: the lunchtime read leaves the reserve while the card is half empty, and
+    the evening read spends it.
+    <br><br>The other idea considered was to pad the cache file itself to its maximum expected size so
+    it never has to grow. It does not survive contact with how the file is saved: the temporary copy
+    means two copies exist at once regardless, so padding to maximum needs <em>twice</em> the maximum
+    — worse, not better. It only helps if the atomic save is abandoned as well, and then an
+    interrupted write leaves a corrupt cache. Survivable, since it is only a cache, but it trades a
+    certain small cost for an occasional total one.
+    <br><br>The swallowed failure is now a <strong>visible one-line warning</strong>, but only when
+    the card proved itself writable by giving the reserve up. A write-protected card stays as quiet
+    as it always was, which is the normal condition the original silence existed for — no
+    guesswork or error-code sniffing was needed to tell the two apart.
+    <br><br>One honest caveat on the testing: every branch was proven, but the full-card branch was
+    proven by making the save fail on purpose, not by filling a real card to within a megabyte. The
+    behaviour is right; the first genuine encounter will still be in the field.
+    <br><br><span class="tag-open">STILL OPEN</span> the dummy has a name no scan can mistake for a
+    picture, but nothing yet <em>removes</em> it on request — a card handed to somebody else still
+    carries it. And the laptop-side fallback for a card that can never be written (a cache keyed by
+    card fingerprint, the way the destination hash cache already works) remains unbuilt; it loses the
+    travelling property, which is why it is a fallback and not the design.</li>
 
   <li><strong>Back up the day's work to a spare card — one ZIP per day</strong>
     <span class="tag-open">OPEN / NEW</span> — the cards keep the pictures safe, so this is not a
