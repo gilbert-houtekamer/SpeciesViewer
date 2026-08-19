@@ -497,15 +497,23 @@ reads <em>No current work planned</em>.</p>
 <h3>To do</h3>
 <ul>
   <li><strong>AVI list processing upgrade</strong> <span class="tag-new">NEW</span>.</li>
-  <li><strong>Website hosting hardening leftovers</strong> <span class="tag-open">OPEN</span> —
-    lower-priority follow-ups from the 2026-08-08 WordPress compromise (core cleaned, SFTP password
-    already rotated and verified same day): plugin auto-updates are still OFF — the likely original
-    entry vector — an unused application password (<em>"Phyton plugin"</em>) is still live, and the
-    inactive <code>akismet</code> plugin is still installed (an inactive plugin's files are exactly
-    how the backdoor was reached the first time).</li>
 </ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>Website hosting hardening finished</strong> <span class="tag-shipped">SHIPPED</span>
+    (2026-08-19) — the last three follow-ups from the 2026-08-08 compromise are closed:
+    <strong>plugin auto-updates are now ON</strong> (an outdated plugin was the likely entry vector,
+    so this was the real gap), the unused application password <em>"Phyton plugin"</em> is
+    <strong>deleted</strong>, and the inactive <code>akismet</code> plugin is
+    <strong>gone</strong> — an inactive plugin still has files that answer a direct URL, which is
+    exactly how the backdoor was reached the first time. Together with the earlier work (fake plugin
+    and three injected admin accounts removed, WordPress 6.5.9 → 7.0.3, five unused themes deleted,
+    SFTP password rotated and verified) the site now updates itself and carries no dormant code.
+    <br>Auto-updates are confirmed from the outside as well: WordPress now mails
+    <em>&ldquo;deze plugins zijn automatisch ge&uuml;pdatet&rdquo;</em> almost daily. Admin access to
+    <em>houtekamer.com/wp-login.php</em> was briefly lost &mdash; the long password set on 2026-08-08
+    was refused &mdash; and is <strong>restored</strong> after a password change, so the console can
+    again be used to watch for a repeat.</li>
   <li><strong>The upload caches are visible at last</strong> <span class="tag-shipped">SHIPPED</span>
     (2026-08-19) — <em>File ▸ Settings ▸ Manage caches…</em> now has two tabs. The first is the
     familiar one (full-res, previews, EXIF day/trip, EXIF master); the new <strong>Upload caches</strong>
