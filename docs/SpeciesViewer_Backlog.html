@@ -500,10 +500,8 @@ reads <em>No current work planned</em>.</p>
     the list now reads as it arrives (see Done below), but the surrounding code is
     not finished. <em>PhotoMechanic</em> still opens a fixed <code>avibase.csv</code>
     with the old fixed-shape reader, so it ignores both the file you picked and the
-    columns you marked — the two steps should share one source. The
-    <em>Source list format</em> labels still say “English in column 0” and
-    “sequence number in column 0”, which stopped being true the moment the
-    columns became yours to mark. A workbook with several sheets reads the first one
+    columns you marked — the two steps should share one source.
+    A workbook with several sheets reads the first one
     (it says so in the log, but it cannot yet be chosen). And a list that arrives
     without Dutch names leans entirely on the species database to fill them in —
     it would help to be told how many stayed empty rather than finding out in the
@@ -511,6 +509,33 @@ reads <em>No current work planned</em>.</p>
 </ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>An AviBase list can simply be pasted in</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-19) — AviBase will produce a
+    list for any taxonomy, any second language and any region, which is exactly the
+    other half of how a trip list arrives. That output used to go through Notepad
+    and a saved file before the app would look at it, and then only if its columns
+    happened to sit where the old reader expected.
+    <br><strong>Paste…</strong> sits beside Browse… : paste what you copied from
+    the page, give it a name, and it is saved in the trip data folder and taken
+    straight to Columns… . While you paste it counts what it sees — <em>“439
+    species, 64 section headings, 439 with a second-language name”</em> — using the
+    very code that will read the file afterwards, so the preview cannot flatter the
+    result. It writes a real file rather than holding the text in memory: the list
+    is still there for a rebuild months later, on a machine with no connection. An
+    existing file is never replaced without asking, and text that is not a list is
+    refused with an explanation rather than saved.
+    <br>Two things had to change for AviBase's own layout. It prints a heading and
+    a blank line between every family, which left its columns barely half filled
+    and dismissed as not being columns at all. And it gives two name columns — the
+    English name and whichever second language was asked for — where only one was
+    ever recognised; nothing in the shape of a word distinguishes Dutch from
+    English, so order decides and the preview shows the result for correcting.
+    There is also a new <em>status or note</em> column role, because AviBase's
+    <em>Near-threatened</em> belongs in the checklist's Notes column.
+    <br>The <em>Source list format</em> choice now names the reader that runs —
+    the fixed AviBase layout, or the columns you marked — instead of describing
+    where the list came from and promising a column order that is no longer fixed.
+    Both readers stay.</li>
   <li><strong>The bird list reads as it arrives</strong> <span class="tag-shipped">SHIPPED</span>
     (2026-08-19) — the checklist step used to insist on a file called
     <code>avibase.csv</code> holding exactly two columns, which meant hand-massaging
