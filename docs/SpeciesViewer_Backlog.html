@@ -496,9 +496,9 @@ reads <em>No current work planned</em>.</p>
 <h2>9. Usability &amp; Polish</h2>
 <h3>To do</h3>
 <ul>
-  <li><strong>AVI list processing — what is still rough</strong> <span class="tag-open">OPEN</span> —
-    the list now reads as it arrives (see Done below), but the surrounding code is
-    not finished. <em>PhotoMechanic</em> still opens a fixed <code>avibase.csv</code>
+  <li><strong>AVI list processing — the last rough edges</strong> <span class="tag-open">OPEN</span> —
+    both list formats now read correctly and the step defends itself (see Done
+    below); what remains is around the edges rather than in the reading. <em>PhotoMechanic</em> still opens a fixed <code>avibase.csv</code>
     with the old fixed-shape reader, so it ignores both the file you picked and the
     columns you marked — the two steps should share one source.
     A workbook with several sheets reads the first one
@@ -509,6 +509,37 @@ reads <em>No current work planned</em>.</p>
 </ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>Reading a list the wrong way now says so</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-19) — the morning's two
+    false alarms, both of them silence rather than breakage.
+    <br><strong>The wrong reader.</strong> Choosing <em>Fixed AviBase layout</em>
+    for a list that came from AviBase is the obvious move, and it was wrong: that
+    reader splits on semicolons, the AviBase page gives tabs, so all 503 lines
+    became unsplittable “section headings” and the checklist came out as
+    grey group rows with not one species in it. The fixed reader now refuses to
+    return a list with no species and names the separator it actually found, and
+    the dialog stops that combination — and a spreadsheet, which it can never
+    read — before the run starts.
+    <br><strong>The stale window.</strong> Then a run appeared to ignore the
+    <em>species start on row</em> setting: the checklist on screen was missing its
+    first two species. It was not ignoring anything. The step opens the workbook
+    when it finishes, so the next run finds Excel holding the file, and the write
+    fails; what stays on screen is the previous checklist, which reads exactly
+    like a setting that did not take. Three timestamps told the story — settings
+    saved at 11:40:11.663, the workbook written at 11:40:12.469 by the earlier
+    run, and a newer run's config at 11:40:12.530 that never produced a file.
+    The step now checks the target <em>before</em> doing the work and says
+    “it is open in Excel, close it and run again — nothing has been
+    changed, and what you see is the previous checklist”. The reader also
+    logs which row it started from, so next time the log answers the question on
+    its own.
+    <br><strong>A list that starts with a heading.</strong> The second Birding
+    Breaks list for the trip has no header row at all, only day numbers, so the
+    column guess had nothing to anchor to and swept the workbook's title in as a
+    species group. Without a header row the species themselves now say where they
+    start, and the guess steps back over the section headings directly above them
+    — <code>RHEIFORMES: Rheidae</code> belongs inside the list, a title
+    separated by blank rows does not.</li>
   <li><strong>An AviBase list can simply be pasted in</strong>
     <span class="tag-shipped">SHIPPED</span> (2026-08-19) — AviBase will produce a
     list for any taxonomy, any second language and any region, which is exactly the
