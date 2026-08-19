@@ -1,6 +1,35 @@
 import html
 import logging
+import logging.handlers
+from pathlib import Path
+
 from PyQt6.QtCore import QObject, pyqtSignal
+
+# How many previous sessions of studio.log are kept alongside the current one.
+# One file per run, not per size: away from home the interesting log is usually
+# the one from the run BEFORE the one you are staring at.
+LOG_SESSIONS_KEPT = 5
+
+
+def log_path() -> Path:
+    """Absolute path of studio.log.
+
+    It used to be the bare relative name "studio.log", which meant the file
+    landed wherever SpeciesViewer happened to be launched from — the repo root
+    from VS Code, somewhere else entirely from a shortcut — so there was no
+    answer to "where is the log?". It now lives beside the other per-machine
+    state, under the same per-OS app-data root the caches use.
+
+    Falls back to the working directory if that root cannot be created, because
+    a program that will not start because it cannot open its log file is worse
+    than one with a log in an awkward place."""
+    try:
+        from utils.cache_paths import app_data_dir
+        d = app_data_dir() / "logs"
+        d.mkdir(parents=True, exist_ok=True)
+        return d / "studio.log"
+    except OSError:
+        return Path("studio.log").resolve()
 
 # Filter to suppress noisy ExifTool output
 class SuppressExifToolOutput(logging.Filter):
@@ -94,9 +123,21 @@ def init_logger(log_widget):
     logger.addFilter(warning_counter)
     logger.warning_counter = warning_counter  # Attach for easy access    
 
-    # output handler
-    # File output
-    fh = logging.FileHandler("studio.log", mode="w", encoding="utf-8")
+    # File output. One log file per session, with the previous LOG_SESSIONS_KEPT
+    # kept beside it: the old mode="w" wiped the file on every start, so the
+    # moment you restarted to look at what went wrong, the evidence was gone.
+    # maxBytes=0 means this handler NEVER rotates on its own — the single
+    # rollover below is the whole rotation policy, so each file is exactly one
+    # run. delay=True keeps the stream shut until the rollover has renamed it.
+    path = log_path()
+    fh = logging.handlers.RotatingFileHandler(
+        str(path), maxBytes=0, backupCount=LOG_SESSIONS_KEPT,
+        encoding="utf-8", delay=True)
+    try:
+        if path.exists() and path.stat().st_size:
+            fh.doRollover()
+    except OSError:
+        pass    # a second instance holding the file: append rather than fail
     fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s]: %(message)s"))
     logger.addHandler(fh)
 
@@ -117,6 +158,12 @@ def init_logger(log_widget):
     # GUI output
     gui_handler = LogHandler(log_widget)
     logger.addHandler(gui_handler)
+
+    # Say where the file is, every run. The log moved out of the launch
+    # directory, so this line is the only thing that makes it findable — and it
+    # is the first thing you want when asking someone to send you their log.
+    logger.info(f"Log file: {path}  (previous {LOG_SESSIONS_KEPT} run(s) kept "
+                f"alongside as studio.log.1 …)")
 
     # Global filters
     logger.addFilter(SuppressExifToolOutput())

@@ -41,7 +41,7 @@ import logging
 import shutil
 import subprocess
 import time
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from utils.paths import to_fs_path
@@ -766,6 +766,84 @@ def _write_snapshot(master_root: Path, batch: str, snapshot: dict) -> None:
     sp = _snapshot_path(master_root, batch)
     sp.parent.mkdir(parents=True, exist_ok=True)
     sp.write_text(json.dumps(snapshot, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+# Manifest ops that undo_delete() can reverse. "move_species" also lands in the
+# same manifest and is undone by undo_move(), so it must never be offered here.
+_DELETE_OPS = ("delete_upn", "delete_file", "delete_jpg")
+
+
+def restorable_batches(master_root) -> list[dict]:
+    """Every delete that can STILL be put back, newest first.
+
+    Reads the trash manifest — the record of what is actually recoverable —
+    rather than the snapshots folder, which also holds move batches and says
+    nothing about whether the files are still in the trash.
+
+    "Still" is the load-bearing word, and it is answered by one test: at least
+    one of the batch's trashed files is present. Empty trash removes them, and
+    an undo has already moved them back, so neither an emptied nor an
+    already-undone batch appears here. No extra bookkeeping, and nothing to go
+    stale — which also means the list is correct after a restore without being
+    told a restore happened.
+
+    Known gap: a delete whose files were already missing from disk (DB rows
+    only) writes no manifest rows at all, so it cannot be found here. It also
+    has nothing to restore but the rows, which is the case least worth listing.
+    """
+    import csv
+    master_root = Path(master_root)
+    mp = _manifest_path(master_root)
+    if not mp.exists():
+        return []
+    try:
+        with open(mp, newline="", encoding="utf-8") as fh:
+            rows = [r for r in csv.DictReader(fh, delimiter=";")
+                    if r.get("op") in _DELETE_OPS and r.get("batch")]
+    except OSError:
+        return []
+
+    batches: dict[str, list[dict]] = {}
+    for r in rows:
+        batches.setdefault(r["batch"], []).append(r)
+
+    out = []
+    # Batch ids are "<YYYY-MM-DD>_<epoch-ms>", so newest-first is a plain
+    # reverse sort — the millisecond field is fixed width within a date.
+    for batch in sorted(batches, reverse=True):
+        brows = batches[batch]
+        live = [r for r in brows
+                if r.get("trashed_path") and Path(r["trashed_path"]).exists()]
+        if not live:
+            continue                      # emptied, or already restored
+        if not _snapshot_path(master_root, batch).exists():
+            continue                      # no snapshot, nothing to re-insert
+        size = 0
+        for r in live:
+            try:
+                size += Path(r["trashed_path"]).stat().st_size
+            except OSError:
+                pass
+        try:
+            when = datetime.fromtimestamp(int(brows[0]["ts"]))
+        except (KeyError, ValueError, OSError):
+            when = None
+        out.append({
+            "batch": batch,
+            "ops":   sorted({r["op"] for r in brows}),
+            "upns":  sorted({r.get("upn", "") for r in brows if r.get("upn")}),
+            "files": [Path(r["orig_abspath"]).name for r in live],
+            "paths": [Path(r["trashed_path"]) for r in live],
+            "bytes": size,
+            "when":  when,
+        })
+    return out
+
+
+def last_delete_batch(master_root) -> dict | None:
+    """The most recent delete that can still be put back, or None."""
+    found = restorable_batches(master_root)
+    return found[0] if found else None
 
 
 def undo_delete(db, master_root, batch: str) -> dict:

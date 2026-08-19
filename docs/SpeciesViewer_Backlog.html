@@ -1209,19 +1209,55 @@ nothing.</em></p>
     into the design: the restore direction gets tested before the trip, not after it, because a
     backup nobody has restored from is a belief rather than a backup.</li>
 
-  <li><strong>“Undo last delete” still has no button</strong> <span class="tag-open">OPEN</span> —
-    the machinery exists and works: a delete moves files to a trash folder with a manifest, and a
-    single call puts them back. Nothing in the interface calls it. Bulk delete by colour is precisely
-    the evening job in a hotel room after a long day, and it is the one action with no way back from
-    the keyboard.</li>
+  <li><strong>Putting a deleted picture back</strong> <span class="tag-shipped">SHIPPED</span>
+    (2026-08-19) — the machinery already existed and worked: a delete moves files to a trash folder
+    with a manifest, and a single call puts them back. Nothing in the interface called it, so in
+    practice an accidental delete was permanent whatever the trash still held. Bulk delete by colour
+    is precisely the evening job in a hotel room after a long day, and it was the one action with no
+    way back.
+    <br><br><strong>What was built</strong> is a picker rather than the single “undo last” button the
+    line above imagined. Deletes stack — put one back and the next one is waiting — and popping that
+    stack a dialog at a time tells you nothing about what else is underneath. The screen lists every
+    delete the trash can still reverse, newest first, with the date, the picture, how many files and
+    how large; tick any number and they all go back in one pass.
+    <br><br>The thumbnail is the point of the whole screen. A name like
+    <code>2025 tanzania-nb069275</code> does not say which bird you threw away, and the pixel size
+    matters more than one would guess: among the 27 pictures sitting in the trash today are several
+    2000×270 and 539×100 banner strips — web headers, deliberately deleted — which from the name
+    alone look exactly like the photographs above them. RAW files are previewed from the JPEG the
+    camera embedded, and that is labelled as such, because a preview is smaller than the sensor image
+    and quoting its size as the picture's would understate every RAW in the list.
+    <br><br>One design note worth keeping. The list is rebuilt from the trash every time, never
+    patched: a delete appears because its files are still in the trash, and disappears because they
+    are not. Emptying the trash and restoring a picture both remove it by the same test, so the
+    screen cannot drift out of step with the disk, and cannot offer the same picture twice — with no
+    bookkeeping to get out of date.
+    <br><br>The Database panel was tidied at the same time. The trash size line and its two buttons
+    now sit together under a <em>Trashed images</em> heading, because <em>Empty trash</em> is the one
+    action that makes restoring impossible and belongs in the same eyeful. The two Restores were
+    given names that tell them apart — <em>Restore backup</em> rolls the master files back to a
+    snapshot, <em>Restore images</em> puts deleted pictures back. The section covering the write-back
+    queue was renamed too: called <em>Pending writes</em>, it read as though the database were having
+    trouble writing, when the truth is the opposite — the edit is safely in the database and what is
+    outstanding is copying it back into the master CSVs. And the <em>Save</em> button was removed: it
+    covered exactly one field on a panel where every other control acts immediately, so it implied
+    unsaved state that was never there. That field now saves when you leave it.</li>
 
   <li><strong>The log is erased at every start, and lands wherever the program was launched from</strong>
-    <span class="tag-open">OPEN</span> — <code>studio.log</code> is opened in “write” mode under a
-    plain relative name, so every start throws away the previous session and the file's location
-    depends on how the program happened to be started. Something odd happens on Tuesday, the program
-    is restarted, and by Wednesday there is nothing left to look at — which matters far more when
-    there is no second machine to reproduce it on. Give it an absolute location beside the other
-    application data, and keep the last handful of sessions instead of one.</li>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-19) — <code>studio.log</code> was opened in
+    “write” mode under a plain relative name, so every start threw away the previous session and the
+    file's location depended on how the program happened to be started. Something odd happens on
+    Tuesday, the program is restarted, and by Wednesday there is nothing left to look at — which
+    matters far more when there is no second machine to reproduce it on.
+    <br><br>It now lives at a fixed address beside the other per-machine application data, and the
+    last five sessions are kept alongside the current one. The rotation is deliberately by
+    <em>session</em> rather than by size: away from home the log worth reading is usually the one
+    from the run before the one being stared at, and a size-based scheme would happily fill all five
+    slots from a single chatty afternoon. If a second copy of the program is holding the file, the
+    rotation is skipped and the new run appends rather than refusing to start.
+    <br><br>The log also announces its own location on every start, which is the small piece that
+    makes the rest useful: the file moved out of the launch directory, so that line is now the answer
+    to “where is the log?” — and the first thing wanted when asking somebody to send one.</li>
 
   <li><strong>Rehearse the whole trip once, on the laptop, before leaving</strong>
     <span class="tag-test">NEEDS TEST</span> — several paths a trip depends on are built but have

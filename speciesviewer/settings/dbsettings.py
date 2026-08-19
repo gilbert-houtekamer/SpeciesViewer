@@ -62,8 +62,7 @@ class DatabaseSettingsDialog(QDialog):
             ("built", "Last built"),
             ("pics_mtime", "pictures CSV mtime"),
             ("files_mtime", "files CSV mtime"),
-            ("pending", "Pending master writes"),
-            ("trash", "Trash (deleted, recoverable)"),
+            ("pending", "Changes not yet copied back"),
         ):
             val = QLabel("—")
             val.setWordWrap(True)
@@ -105,7 +104,7 @@ class DatabaseSettingsDialog(QDialog):
             "a snapshot of a broken master would eventually push out the last good one.")
         backup_btn.clicked.connect(self._backup_now)
         hrow.addWidget(backup_btn)
-        restore_btn = QPushButton("Restore…")
+        restore_btn = QPushButton("Restore backup…")
         restore_btn.clicked.connect(self._restore)
         hrow.addWidget(restore_btn)
         hrow.addStretch(1)
@@ -113,12 +112,29 @@ class DatabaseSettingsDialog(QDialog):
 
         layout.addWidget(self._divider())
 
-        # Configurable stuck-pending-writes threshold.
+        # ── Write-back ────────────────────────────────────────────────────────
+        # The first header here said "Pending writes", which read as though
+        # SQLite were having trouble writing. It is the opposite: the edit is
+        # already safely in the database, and what is outstanding is copying it
+        # back into the canonical master CSVs. Normal for a few seconds after an
+        # edit; only a count that stays up is a symptom.
+        layout.addWidget(self._section_label("Writing changes back to the master"))
+        explain = QLabel(
+            "An edit goes into the database first, then a worker copies it back "
+            "into the master CSV files. A count that stays above zero means that "
+            "copy-back is stuck — usually the master path being unreachable.")
+        explain.setWordWrap(True)
+        layout.addWidget(explain)
         warn_row = QHBoxLayout()
-        warn_row.addWidget(QLabel("Warn if pending writes older than (seconds):"))
+        warn_row.addWidget(QLabel("Warn if changes stay uncopied for longer than (seconds):"))
         self._warn_secs = QLineEdit(
             _config.get("masterdb", "pending_warn_seconds", fallback="30"))
         self._warn_secs.setFixedWidth(80)
+        # Saved when you leave the field, not by a Save button. This is the only
+        # editable setting on a panel where every other control acts at once, and
+        # a lone "Save" down in the corner read as if it committed the whole
+        # dialog — it never did.
+        self._warn_secs.editingFinished.connect(self._save_warn_secs)   # no Save button
         warn_row.addWidget(self._warn_secs)
         warn_row.addStretch(1)
         layout.addLayout(warn_row)
@@ -130,14 +146,49 @@ class DatabaseSettingsDialog(QDialog):
         rebuild_btn = QPushButton("Rebuild master DB")
         rebuild_btn.clicked.connect(self._rebuild)
         btn_row.addWidget(rebuild_btn)
-        purge_btn = QPushButton("Empty trash…")
-        purge_btn.clicked.connect(self._purge_trash)
-        btn_row.addWidget(purge_btn)
         btn_row.addStretch(1)
-        save_btn = QPushButton("Save")
-        save_btn.clicked.connect(self._save)
-        btn_row.addWidget(save_btn)
         layout.addLayout(btn_row)
+
+        layout.addWidget(self._divider())
+
+        # ── Trashed images ────────────────────────────────────────────────────
+        # Its own section because it is its own subject: files that are deleted
+        # from the master but still on disk. The size line and the two buttons
+        # that act on it belong in one eyeful — particularly Empty trash, which
+        # is what makes Restore deleted impossible.
+        layout.addWidget(self._section_label("Trashed images"))
+        tform = QFormLayout()
+        val = QLabel("—")
+        val.setWordWrap(True)
+        self._values["trash"] = val
+        tform.addRow(QLabel("Deleted, still recoverable:"), val)
+        layout.addLayout(tform)
+
+        trash_row = QHBoxLayout()
+        undo_btn = QPushButton("Restore images…")
+        undo_btn.setToolTip(
+            "Pick deleted master pictures out of the trash and put them back.\n"
+            "Only possible while the deleted files are still in the trash —\n"
+            "Empty trash discards them for good.")
+        undo_btn.clicked.connect(self._undo_last_delete)
+        trash_row.addWidget(undo_btn)
+        purge_btn = QPushButton("Empty trash…")
+        purge_btn.setToolTip(
+            "Permanently remove every trashed file. Nothing can be restored\n"
+            "afterwards.")
+        purge_btn.clicked.connect(self._purge_trash)
+        trash_row.addWidget(purge_btn)
+        trash_row.addStretch(1)
+        layout.addLayout(trash_row)
+
+        layout.addWidget(self._divider())
+
+        close_row = QHBoxLayout()
+        close_row.addStretch(1)
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.close)
+        close_row.addWidget(close_btn)
+        layout.addLayout(close_row)
 
         # Live refresh while the dialog is open.
         self._timer = QTimer(self)
@@ -436,6 +487,26 @@ class DatabaseSettingsDialog(QDialog):
         QMessageBox.information(self, "Flush", f"Flushed {n} pending write(s).")
         self._refresh()
 
+    def _undo_last_delete(self):
+        """Open the trash picker.
+
+        The engine could always undo a delete — master_mutate.undo_delete has
+        worked for a while — but nothing in the program could reach it, so in
+        practice an accidental delete was permanent whatever the trash still
+        held. Deletes stack, so the screen is a list rather than a one-shot
+        "undo last": popping the stack a dialog at a time says nothing about
+        what else is down there.
+
+        It belongs beside Restore and Empty trash: those are the master's other
+        recovery actions, and Empty trash is the one button that takes this
+        possibility away, so the two want to be in the same eyeful.
+        """
+        if not self._master_root:
+            return
+        from settings.trash_restore import RestoreTrashDialog
+        RestoreTrashDialog(self, self._master_root).exec()
+        self._refresh()
+
     def _purge_trash(self):
         if not self._master_root:
             return
@@ -477,16 +548,27 @@ class DatabaseSettingsDialog(QDialog):
                                 f"Master DB rebuilt — {n} pictures indexed.")
         self._refresh()
 
-    def _save(self):
+    def _save_warn_secs(self):
+        """Persist the warn threshold as soon as the field is left.
+
+        There used to be a Save button here, and it covered this one field while
+        every other control on the panel acted immediately — so it looked like
+        the dialog had unsaved state that it never had. A rejected value is put
+        back to what is stored rather than left sitting there looking accepted.
+        """
+        text = self._warn_secs.text().strip()
+        stored = _config.get("masterdb", "pending_warn_seconds", fallback="30")
+        if text == stored:
+            return
+        try:
+            int(text)
+        except ValueError:
+            QMessageBox.warning(self, "Write-back",
+                                "The warning threshold must be a whole number of seconds.")
+            self._warn_secs.setText(stored)
+            return
         if not _config.has_section("masterdb"):
             _config.add_section("masterdb")
-        try:
-            int(self._warn_secs.text())
-        except ValueError:
-            QMessageBox.warning(self, "Save", "Warn threshold must be a whole number.")
-            return
-        _config.set("masterdb", "pending_warn_seconds", self._warn_secs.text().strip())
+        _config.set("masterdb", "pending_warn_seconds", text)
         persist_config()
-        QMessageBox.information(self, "Success", "Database settings saved")
-        logger.info("Database (SQLite) settings updated.")
-        self.close()
+        logger.info(f"Pending-write warning threshold set to {text}s.")
