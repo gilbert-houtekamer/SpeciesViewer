@@ -4213,8 +4213,8 @@ class MergeTripDialog(BaseTripModuleDialog):
 
 class ConvertAvibaseDialog(BaseTripModuleDialog):
     READER_OPTIONS = [
-        ("avibase",       "AviBase  (English in column 0)"),
-        ("birdingbreaks", "Birding Breaks  (sequence number in column 0)"),
+        ("avibase",       "Fixed AviBase layout  (English;scientific;Dutch)"),
+        ("birdingbreaks", "Columns I marked myself  (any list)"),
     ]
     LANG_OPTIONS = [
         ("nl", "Dutch"),
@@ -4245,9 +4245,14 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
             "No list picked yet — Browse… to the CSV you downloaded")
         browse_source_btn = QPushButton("Browse…")
         browse_source_btn.clicked.connect(self._browse_source)
+        paste_source_btn = QPushButton("Paste…")
+        paste_source_btn.setToolTip(
+            "Paste a list copied from the AviBase page; it is saved beside the trip")
+        paste_source_btn.clicked.connect(self._paste_source)
         source_row = QHBoxLayout()
         source_row.addWidget(self.source_field)
         source_row.addWidget(browse_source_btn)
+        source_row.addWidget(paste_source_btn)
 
         # Which columns hold what - only a Birding Breaks list needs this; an
         # AviBase list has a fixed shape the old reader already knows.
@@ -4389,6 +4394,26 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
         self.columns_summary.setText(
             describe_roles(dialog.roles, dialog.first_data_row))
         self.status_label.setText("")
+
+    def _paste_source(self):
+        """A list copied from the AviBase page, saved beside the trip and marked
+        up in one go — the columns always need a look, so go straight there."""
+        from gui.avibase_paste import PasteListDialog
+        dialog = PasteListDialog(self, self.trip_root)
+        if not dialog.exec() or not dialog.saved_path:
+            return
+        self.source_field.setText(os.path.normpath(dialog.saved_path))
+        # A pasted list is read by the marked-columns reader, never by the fixed
+        # layout — pick that here so Run Step cannot use the wrong one.
+        for idx, (key, _) in enumerate(self.READER_OPTIONS):
+            if key == "birdingbreaks":
+                self.reader_dropdown.setCurrentIndex(idx)
+                break
+        if not _config.has_section("avibase"):
+            _config.add_section("avibase")
+        _config["avibase"]["columns"] = ""      # this file has its own shape
+        self._sync_columns_row()
+        self._edit_columns()
 
     def _sync_first_lang_enabled(self):
         enabled = self.phone_layout_checkbox.isChecked()

@@ -11,12 +11,13 @@ DEFAULT_SOURCE_LIST = "avibase.csv"
 
 # What a column in a Birding Breaks list can hold. Anything not marked is
 # ignored — that is how the day boxes and spacer columns stay out of the way.
-ROLE_KEYS = ("seq", "en", "nl", "sc")
+ROLE_KEYS = ("seq", "en", "nl", "sc", "st")
 ROLE_LABELS = {
     "seq": "sequence number",
     "en":  "English name",
     "nl":  "Dutch name",
     "sc":  "scientific name",
+    "st":  "status or note",
 }
 
 
@@ -240,14 +241,19 @@ def _load_spreadsheet_rows(path, limit=None):
         wb.close()
 
 
-def _load_text_rows(path, delimiter=None, limit=None):
-    with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
-        lines = f.read().splitlines()
+def rows_from_text(text, delimiter=None, limit=None):
+    """Rows out of delimited text — a file's contents or a paste, same thing."""
+    lines = (text or "").splitlines()
     if not delimiter:
         delimiter = sniff_delimiter(lines[:50])
     rows = [[cell.strip() for cell in row]
             for row in csv.reader(lines, delimiter=delimiter)]
     return (rows[:limit] if limit else rows), delimiter
+
+
+def _load_text_rows(path, delimiter=None, limit=None):
+    with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
+        return rows_from_text(f.read(), delimiter, limit)
 
 
 def load_source_rows(path, delimiter=None, limit=None):
@@ -267,11 +273,21 @@ def load_source_rows(path, delimiter=None, limit=None):
 
 
 def read_birdingbreaks(path, roles, first_data_row=1, delimiter=None):
-    """Read a Birding Breaks list using the columns the user marked.
+    """Read a list from disk using the columns the user marked.
 
     Returns the same dict shape as read_avibase, so everything downstream —
     name enrichment and the Excel writer — is untouched. A list without Dutch
     names is fine: add_species_info fills those from the classification.
+    """
+    rows, _ = load_source_rows(path, delimiter)
+    return parse_rows(rows, roles, first_data_row, os.path.basename(path))
+
+
+def parse_rows(rows, roles, first_data_row=1, source="the list"):
+    """The marked columns turned into species, wherever the rows came from.
+
+    Split from reading a file so that a pasted list can be counted with exactly
+    the code that will later read it — a preview that lies is worse than none.
     """
     by_role = {}
     for col, role in (roles or {}).items():
@@ -282,8 +298,6 @@ def read_birdingbreaks(path, roles, first_data_row=1, delimiter=None):
             "No name column marked in the species list — open Columns… and say "
             "which column holds the English, Dutch or scientific name."
         )
-
-    rows, _ = load_source_rows(path, delimiter)
 
     def cell(row, role):
         idx = by_role.get(role)
@@ -297,6 +311,7 @@ def read_birdingbreaks(path, roles, first_data_row=1, delimiter=None):
 
     for row in rows[max(0, first_data_row - 1):]:
         en, nl, sc = cell(row, "en"), cell(row, "nl"), cell(row, "sc")
+        status = cell(row, "st")
         if not (en or nl or sc):
             continue
         key = en or sc or nl
@@ -319,7 +334,7 @@ def read_birdingbreaks(path, roles, first_data_row=1, delimiter=None):
             "enname":       key,
             "scname":       sc,
             "nlname":       nl,
-            "status":       "",
+            "status":       status,
             "english":      en,
             "number":       seq,
             "gezien":       0,
@@ -330,13 +345,13 @@ def read_birdingbreaks(path, roles, first_data_row=1, delimiter=None):
         species += 1
 
     logger.info(f"Read {species} species and {headings} section headings "
-                f"from '{os.path.basename(path)}'.")
+                f"from '{source}'.")
     if duplicates:
         logger.warning(f"{duplicates} rows repeat a name already in the list; "
                        f"the last of each is kept.")
     if not species:
         raise ValueError(
-            f"No species read from '{os.path.basename(path)}' — check in Columns… "
-            f"which row the species start on and which columns hold the names."
+            f"No species read from '{source}' — check in Columns… which row the "
+            f"species start on and which columns hold the names."
         )
     return avibase_dict

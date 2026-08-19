@@ -146,7 +146,8 @@ class ColumnMappingDialog(QDialog):
             self.status_label.setText(f"Separator detected: {shown}")
 
         if not self.roles:
-            self.roles, self.first_data_row = self._guess()
+            self.roles, self.first_data_row = guess_columns(
+                self._rows, os.path.basename(self.path))
 
         self.row_spin.setMaximum(max(1, len(self._rows)))
         self.row_spin.blockSignals(True)
@@ -155,7 +156,7 @@ class ColumnMappingDialog(QDialog):
         self._build_table()
 
     def _column_count(self):
-        return max((len(r) for r in self._rows), default=0)
+        return _column_count(self._rows)
 
     def _build_table(self):
         ncols = self._column_count()
@@ -199,103 +200,6 @@ class ColumnMappingDialog(QDialog):
                 if item is not None:
                     item.setForeground(_MUTED if muted else QColor())
 
-    # ── guessing ────────────────────────────────────────────────────────────
-    def _guess(self):
-        """A first stab at the map, so a familiar list needs one look and OK.
-
-        Two clues, in order: the words in a header row above the species
-        (Birding Breaks writes “Engelse naam” / “Wetenschappelijke
-        naam”), and failing that the shape of the cells — digits are a
-        sequence number, “Genus species” is a scientific name, other
-        text is a name column. Dutch and English cannot be told apart by shape,
-        so a text column is only called Dutch when the header says so.
-        """
-        roles, first_row, from_header = {}, 1, False
-
-        for r, row in enumerate(self._rows[:12], start=1):
-            found = {}
-            for col, cell in enumerate(row):
-                text = (cell or "").strip().lower()
-                if not text:
-                    continue
-                for key, words in _EXACT_HINTS.items():
-                    if text in words:
-                        found.setdefault(col, key)
-                for key, words in _FRAGMENT_HINTS.items():
-                    if any(word in text for word in words):
-                        found.setdefault(col, key)
-            if len(found) >= 2:            # a real header row, not one stray word
-                roles = dict(found)
-                first_row = r + 1
-                from_header = True
-                break
-
-        data = self._rows[first_row - 1:first_row + 19]
-        taken = set(roles.values())
-        for col in range(self._column_count()):
-            if col in roles:
-                continue
-            cells = [(row[col] if col < len(row) else "").strip() for row in data]
-            filled = [c for c in cells if c]
-            if len(filled) < max(2, len(cells) // 2):
-                continue
-            if all(c.replace(".", "").isdigit() for c in filled):
-                key = "seq"
-            elif sum(1 for c in filled if _looks_scientific(c)) >= len(filled) * 0.6:
-                key = "sc"
-            else:
-                key = "en"
-            if key not in taken:
-                roles[col] = key
-                taken.add(key)
-
-        if not from_header:
-            # Some lists arrive with no header row at all — only day numbers above
-            # the species. Then the species themselves say where they start.
-            first_row = self._first_species_row(roles) or first_row
-
-        if roles:
-            logger.info(f"Column guess for '{os.path.basename(self.path)}': "
-                        f"{describe_roles(roles, first_row)}")
-        return roles, first_row
-
-    def _cell(self, row, roles, role):
-        for col, marked in roles.items():
-            if marked == role:
-                return (row[col] if col < len(row) else "").strip()
-        return ""
-
-    def _first_species_row(self, roles):
-        """Which row the species start on, read off the rows themselves.
-
-        The first row that reads like a species, then back up over the section
-        headings sitting directly above it — "RHEIFORMES: Rheidae" is part of the
-        list and belongs inside it, while the workbook's own title, separated by a
-        blank row, stays outside. Returns None when nothing looks like a species.
-        """
-        species_at = None
-        for r, row in enumerate(self._rows, start=1):
-            sc = self._cell(row, roles, "sc")
-            seq = self._cell(row, roles, "seq")
-            if _looks_scientific(sc) or (sc and any(c.isdigit() for c in seq)):
-                species_at = r
-                break
-        if species_at is None:
-            return None
-
-        first = species_at
-        while first > 1:
-            above = [self._cell(self._rows[first - 2], roles, role)
-                     for role in ("seq", "en", "nl", "sc")]
-            filled = [c for c in above if c]
-            # A heading is one lone piece of text in the marked columns. Two of
-            # them is a header row; none of them is a blank or a day-number row.
-            if len(filled) == 1 and not filled[0].replace(".", "").isdigit():
-                first -= 1
-            else:
-                break
-        return first
-
     # ── reacting ────────────────────────────────────────────────────────────
     def _on_role_changed(self, col):
         role = self._combos[col].currentData()
@@ -329,6 +233,133 @@ class ColumnMappingDialog(QDialog):
             return
         self.first_data_row = self.row_spin.value()
         self.accept()
+
+
+# ── guessing ────────────────────────────────────────────────────────────
+def guess_columns(rows, source="the list"):
+    """A first stab at the map, so a familiar list needs one look and OK.
+
+    Two clues, in order: the words in a header row above the species
+    (Birding Breaks writes “Engelse naam” / “Wetenschappelijke
+    naam”), and failing that the shape of the cells — digits are a
+    sequence number, “Genus species” is a scientific name, other
+    text is a name column. Dutch and English cannot be told apart by shape,
+    so a text column is only called Dutch when the header says so.
+    """
+    roles, first_row, from_header = {}, 1, False
+
+    for r, row in enumerate(rows[:12], start=1):
+        found = {}
+        for col, cell in enumerate(row):
+            text = (cell or "").strip().lower()
+            if not text:
+                continue
+            for key, words in _EXACT_HINTS.items():
+                if text in words:
+                    found.setdefault(col, key)
+            for key, words in _FRAGMENT_HINTS.items():
+                if any(word in text for word in words):
+                    found.setdefault(col, key)
+        if len(found) >= 2:            # a real header row, not one stray word
+            roles = dict(found)
+            first_row = r + 1
+            from_header = True
+            break
+
+    # Rows with something in them. A list with a heading and a blank line
+    # between every family (AviBase prints them that way) leaves a column
+    # half empty, which used to be read as "not a column at all".
+    data = [row for row in rows[first_row - 1:first_row + 39]
+            if any((c or "").strip() for c in row)]
+    taken = set(roles.values())
+    text_columns = []
+    for col in range(_column_count(rows)):
+        if col in roles:
+            continue
+        cells = [(row[col] if col < len(row) else "").strip() for row in data]
+        filled = [c for c in cells if c]
+        if len(filled) < 3:            # a stray value is not a column
+            continue
+        if all(c.replace(".", "").isdigit() for c in filled):
+            key = "seq"
+        elif sum(1 for c in filled if _looks_scientific(c)) >= len(filled) * 0.6:
+            key = "sc"
+        else:
+            text_columns.append(col)
+            continue
+        if key not in taken:
+            roles[col] = key
+            taken.add(key)
+
+    # The first text column is the English name. A second one is the second
+    # language the list was asked for — Dutch, in every list here. Shape
+    # cannot tell those two apart, so order decides, and the preview shows
+    # the result for correcting.
+    for col in text_columns:
+        key = "en" if "en" not in taken else ("nl" if "nl" not in taken else None)
+        if key is None:
+            break
+        roles[col] = key
+        taken.add(key)
+
+    if not from_header:
+        # Some lists arrive with no header row at all — only day numbers above
+        # the species. Then the species themselves say where they start.
+        first_row = _first_species_row(rows, roles) or first_row
+
+    if roles:
+        logger.info(f"Column guess for '{source}': "
+                    f"{describe_roles(roles, first_row)}")
+    return roles, first_row
+
+def _cell(row, roles, role):
+    for col, marked in roles.items():
+        if marked == role:
+            return (row[col] if col < len(row) else "").strip()
+    return ""
+
+def _first_species_row(rows, roles):
+    """Which row the species start on, read off the rows themselves.
+
+    The first row that reads like a species, then back up over the section
+    headings sitting directly above it — "RHEIFORMES: Rheidae" is part of the
+    list and belongs inside it, while the workbook's own title, separated by a
+    blank row, stays outside. Returns None when nothing looks like a species.
+    """
+    species_at = None
+    for r, row in enumerate(rows, start=1):
+        sc = _cell(row, roles, "sc")
+        seq = _cell(row, roles, "seq")
+        if _looks_scientific(sc) or (sc and any(c.isdigit() for c in seq)):
+            species_at = r
+            break
+    if species_at is None:
+        return None
+
+    # Walk up from there. A section heading above the species belongs to the
+    # list and comes with it; a header row (two marked cells side by side)
+    # does not, and neither does anything beyond a gap of two blank rows —
+    # which is what separates a workbook's title from its contents.
+    first, blanks = species_at, 0
+    for r in range(species_at - 1, 0, -1):
+        above = [_cell(rows[r - 1], roles, role)
+                 for role in ROLE_KEYS]
+        filled = [c for c in above if c]
+        if len(filled) >= 2:
+            break
+        if not filled:
+            blanks += 1
+            if blanks >= 2:
+                break
+            continue                  # one blank line inside a list is normal
+        if filled[0].replace(".", "").isdigit():
+            break                     # a stray number, not a heading
+        first, blanks = r, 0
+    return first
+
+
+def _column_count(rows):
+    return max((len(r) for r in rows), default=0)
 
 
 def _looks_scientific(text):
