@@ -19,8 +19,8 @@ if __name__ == "__main__":
 import engine.projectlib
 import engine.specieslib
 import engine.speciesclassification
-from engine.avibaselib import (add_species_info, read_configured_list,
-                              configured_list_label)
+from engine.avibaselib import (add_species_info, read_list_file,
+                              selected_list_files)
 from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
@@ -88,11 +88,38 @@ def main(args, config):
         os.path.join(metadatadir, "active", "speciescollection.csv"), False
     )
 
-    # The same list the checklist step reads, read the same way — picked file,
-    # marked columns and all. It used to open a fixed avibase.csv with the fixed
-    # layout, which since the lists became free-form meant it either read a
-    # different list than the checklist or nothing at all.
-    avibase_dict = read_configured_list(MyProject.Repository, config)
+    # Every species list this trip holds, merged. Keywords are for typing a name
+    # while culling, where nobody wants to swap keyword sets between the legs of
+    # one trip — so this covers the trip, not whichever list the checklist step
+    # happens to be pointed at. Each file is read with the columns marked for it.
+    trip_slug = MyProject.Trip.tripname if MyProject.Trip else ""
+    sources = selected_list_files(MyProject.Repository, config, trip_slug)
+    if not sources:
+        raise RuntimeError(
+            f"No species list found in {MyProject.Repository}. Put the list "
+            f"there, or pick one in Utilities ▸ AviBase, and run this again."
+        )
+
+    avibase_dict = {}
+    for source in sources:
+        try:
+            one = read_list_file(source, config)
+        except Exception as err:
+            # One unreadable list must not cost the keywords of the others.
+            logger.warning(f"Skipped '{os.path.basename(source)}': {err}")
+            continue
+        species = sum(1 for v in one.values() if v.get("number") != -1)
+        fresh = sum(1 for k in one if k not in avibase_dict)
+        logger.info(f"{os.path.basename(source)}: {species} species, "
+                    f"{fresh} not already in the set.")
+        avibase_dict.update(one)
+
+    if not avibase_dict:
+        raise RuntimeError(
+            "None of the species lists in the trip folder could be read — see "
+            "the warnings above for which, and mark their columns in "
+            "Utilities ▸ AviBase ▸ Columns…."
+        )
     add_species_info(avibase_dict, sc, Reference_sp)
 
     # Collect Dutch and English names — skip section headers (number == -1)
@@ -116,22 +143,19 @@ def main(args, config):
             f"PhotoMechanic settings directory not found, writing to {output_dir}"
         )
 
+    # One set per trip, since the set now holds every list the trip has.
     trip_name = MyProject.Trip.tripname if MyProject.Trip else "trip"
-    # Named after the list as well as the trip: PhotoMechanic shows one keyword
-    # set per file, and a trip with a list per leg wants one set per leg rather
-    # than whichever list happened to run last.
-    label = configured_list_label(config)
-    stem = f"{trip_name} {label}" if label else trip_name
 
-    nl_path = os.path.join(output_dir, f"{stem} nl.snap")
-    en_path = os.path.join(output_dir, f"{stem} en.snap")
+    nl_path = os.path.join(output_dir, f"{trip_name} nl.snap")
+    en_path = os.path.join(output_dir, f"{trip_name} en.snap")
 
     write_photomechanic_snap(dutch_names, nl_path)
     write_photomechanic_snap(english_names, en_path)
 
     totaltime = time.time() - starttime
     logger.info(
-        f"PhotoMechanic snap files created in {totaltime:.1f}s: "
+        f"PhotoMechanic snap files created in {totaltime:.1f}s from "
+        f"{len(sources)} species list{'s' if len(sources) != 1 else ''}: "
         f"{len(set(dutch_names))} Dutch, {len(set(english_names))} English keywords."
     )
     if not dutch_names:

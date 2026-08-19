@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox,
     QTabWidget, QWidget, QVBoxLayout, QComboBox, QLineEdit, QFormLayout, QSizePolicy, QFileDialog, QDateEdit, QTextEdit,
-    QTableWidget, QTableWidgetItem, QAbstractItemView, QStyledItemDelegate, QMessageBox, QFrame, QApplication)
+    QTableWidget, QTableWidgetItem, QAbstractItemView, QStyledItemDelegate, QMessageBox, QFrame, QApplication,
+    QListWidget, QListWidgetItem)
 from PyQt6.QtGui import QFont, QGuiApplication, QColor
 from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
 import logging
@@ -4345,6 +4346,7 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
             "Text lists (*.csv *.txt);;All files (*)")
         if path:
             self.source_field.setText(os.path.normpath(path))
+            self._sync_columns_row()      # another file, possibly another shape
 
     def _current_format(self):
         return self.READER_OPTIONS[self.reader_dropdown.currentIndex()][0]
@@ -4353,7 +4355,12 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
         """The remembered column map. Unlike the file path this is NOT tied to a
         trip: Birding Breaks sends the same shape every time, so the map used
         last time is the best starting point for the next trip."""
-        from engine.avibaselib import parse_roles, decode_delimiter
+        from engine.avibaselib import parse_roles, decode_delimiter, column_map_for
+        source = self.source_field.text().strip() if hasattr(self, "source_field") else ""
+        if source:
+            saved = column_map_for(_config, source)
+            if saved:
+                return saved
         roles = parse_roles(_config.get("avibase", "columns", fallback=""))
         first_row = _config.getint("avibase", "data_start_row", fallback=1)
         delimiter = decode_delimiter(_config.get("avibase", "delimiter", fallback=""))
@@ -4390,6 +4397,13 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
         _config["avibase"]["columns"] = format_roles(dialog.roles)
         _config["avibase"]["data_start_row"] = str(dialog.first_data_row)
         _config["avibase"]["delimiter"] = encode_delimiter(dialog.delimiter)
+        # ...and against this file by name, because a trip can hold several
+        # lists and PhotoMechanic reads them all in one run.
+        from engine.avibaselib import COLUMN_MAP_SECTION, format_column_map
+        if not _config.has_section(COLUMN_MAP_SECTION):
+            _config.add_section(COLUMN_MAP_SECTION)
+        _config[COLUMN_MAP_SECTION][os.path.basename(source)] = format_column_map(
+            dialog.roles, dialog.first_data_row, dialog.delimiter)
         persist_config()
         self.columns_summary.setText(
             describe_roles(dialog.roles, dialog.first_data_row))
@@ -4473,60 +4487,79 @@ class PhotoMechanicDialog(BaseTripModuleDialog):
             menu_spec,
             title="Create PhotoMechanic keyword files for next trip.",
             info_text=(
-                "Writes two PhotoMechanic keyword files from the trip's bird list — "
-                "one with Dutch names, one with English — into the PhotoMechanic "
-                "keywords folder."
+                "Writes two PhotoMechanic keyword files — one with Dutch names, "
+                "one with English — into the PhotoMechanic keywords folder. They "
+                "hold the names from every list ticked below, so one keyword set "
+                "covers the whole trip."
             ),
             subdirectory=False
         )
-        # Which list, spelled out. This step used to read a fixed avibase.csv of
-        # its own, so it could quietly describe a different list than the
-        # checklist did. It now reads whatever Utilities ▸ AviBase is set to, and
-        # says so rather than leaving that to be discovered.
+        # Every list the trip holds, because a keyword set you have to swap
+        # between the legs of one trip is a keyword set that gets in the way.
+        # Each is read with the columns marked for it, so lists of different
+        # shapes can go into one set.
         self.root_caption.setText("Trip data folder")
         self.root_label.setText(str(self.trip_root))
-        self.source_summary = QLabel("")
-        self.source_summary.setWordWrap(True)
+
+        self.lists_widget = QListWidget()
+        self.lists_widget.setMaximumHeight(150)
         layout = self.layout()
         anchor = layout.indexOf(self.info_text)
-        layout.insertWidget(anchor, QLabel("Species list (set in Utilities ▸ AviBase)"))
-        layout.insertWidget(anchor + 1, self.source_summary)
-        self._describe_source()
+        layout.insertWidget(anchor, QLabel("Species lists in this trip"))
+        layout.insertWidget(anchor + 1, self.lists_widget)
+        self._fill_lists()
 
-    def _describe_source(self):
-        source = _config.get("avibase", "source_file", fallback="").strip()
-        if source and os.path.isfile(source):
-            marked = (_config.get("avibase", "source_format", fallback="avibase")
-                      == "birdingbreaks"
-                      and _config.get("avibase", "columns", fallback="").strip())
-            how = "the columns marked for it" if marked else "the fixed AviBase layout"
-            from engine.avibaselib import configured_list_label
-            label = configured_list_label(_config)
-            named = f" {label}" if label else ""
-            self.source_summary.setText(
-                f"{source}  —  read with {how}\n"
-                f"Writes “<trip>{named} nl.snap” and “<trip>{named} en.snap”."
+    def _fill_lists(self):
+        """Name every list with what it would contribute, so the choice is made
+        on what is in the files rather than on their names."""
+        from engine.avibaselib import trip_list_files, read_list_file
+        chosen = [n.strip().lower()
+                  for n in _config.get("avibase", "pm_lists", fallback="").split("|")
+                  if n.strip()]
+        self.lists_widget.clear()
+        for path in trip_list_files(self.trip_root, os.path.basename(self.trip_root)):
+            name = os.path.basename(path)
+            try:
+                species = read_list_file(path, _config)
+                count = sum(1 for v in species.values() if v.get("number") != -1)
+                text = f"{name}   —   {count} species"
+                readable = count > 0
+            except Exception as err:
+                text = f"{name}   —   cannot be read ({err.__class__.__name__})"
+                readable = False
+            item = QListWidgetItem(text)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            ticked = readable and (not chosen or name.lower() in chosen)
+            item.setCheckState(Qt.CheckState.Checked if ticked
+                               else Qt.CheckState.Unchecked)
+            item.setData(Qt.ItemDataRole.UserRole, name)
+            if not readable:
+                item.setForeground(QColor("#8a8a8a"))
+            self.lists_widget.addItem(item)
+
+        if self.lists_widget.count() == 0:
+            self.status_label.setText(
+                "❌ No species list in the trip data folder. Add one with "
+                "Utilities ▸ AviBase (Browse… or Paste…) and come back."
             )
-        else:
-            self.source_summary.setText(
-                "Not set yet — open Utilities ▸ AviBase and pick the list there "
-                "first; both steps work from the same one."
-            )
+
+    def _ticked_lists(self):
+        return [self.lists_widget.item(i).data(Qt.ItemDataRole.UserRole)
+                for i in range(self.lists_widget.count())
+                if self.lists_widget.item(i).checkState() == Qt.CheckState.Checked]
 
     def on_write(self):
-        source = _config.get("avibase", "source_file", fallback="").strip()
-        if not source or not os.path.isfile(source):
+        ticked = self._ticked_lists()
+        if not ticked:
             self.status_label.setText(
-                "❌ No species list to work from. Open Utilities ▸ AviBase, pick "
-                "the list there, and run this again — both steps read the same list."
+                "❌ Tick at least one species list — the keyword files are built "
+                "from the names in them."
             )
             return
-        if _config.get("avibase", "source_format", fallback="avibase") == "avibase":
-            from gui.avibase_columns import fixed_layout_complaint
-            complaint = fixed_layout_complaint(source)
-            if complaint:
-                self.status_label.setText(complaint)
-                return
+        if not _config.has_section("avibase"):
+            _config.add_section("avibase")
+        _config["avibase"]["pm_lists"] = "|".join(ticked)
+        persist_config()
         super().on_write()
 
 

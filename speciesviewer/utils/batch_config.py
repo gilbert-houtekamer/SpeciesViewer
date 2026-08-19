@@ -72,6 +72,7 @@ def generate_svconfig_ini(svconfig_path="svconfig.ini", master_mode=False,
     }
     cfg["avibase"] = {
         "source_file":       _config.get("avibase", "source_file",       fallback=""),
+        "pm_lists":          _config.get("avibase", "pm_lists",          fallback=""),
         "columns":           _config.get("avibase", "columns",           fallback=""),
         "data_start_row":    _config.get("avibase", "data_start_row",    fallback="1"),
         "delimiter":         _config.get("avibase", "delimiter",         fallback=""),
@@ -79,6 +80,11 @@ def generate_svconfig_ini(svconfig_path="svconfig.ini", master_mode=False,
         "phone_layout":      _config.get("avibase", "phone_layout",      fallback="false"),
         "first_column_lang": _config.get("avibase", "first_column_lang", fallback="nl"),
     }
+    # The column map of every list seen so far, keyed by file name: PhotoMechanic
+    # merges several lists in one run and they do not share a shape.
+    if _config.has_section("avibase_columns"):
+        cfg["avibase_columns"] = dict(_config.items("avibase_columns"))
+
     cfg["utilities"] = {
         "smallmaster_target": _config.get("utilities", "smallmaster_target", fallback=""),
         "virttrip_export_target": _config.get("utilities", "virttrip_export_target", fallback=""),
