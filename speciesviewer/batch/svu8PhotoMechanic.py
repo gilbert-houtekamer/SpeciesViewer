@@ -122,18 +122,50 @@ def main(args, config):
         )
     add_species_info(avibase_dict, sc, Reference_sp)
 
-    # Collect Dutch and English names — skip section headers (number == -1)
-    dutch_names = []
-    english_names = []
+    # One keyword per SPECIES, not one per spelling, and the spelling is the one
+    # this collection already uses. Two operators can call the same bird "Bank
+    # Swallow" and "Sand Martin", or differ only over a hyphen, and a keyword
+    # typed in the field is worth most when it matches the name the pipeline
+    # will look for afterwards. add_species_info has already filled `english`
+    # from the species database wherever it knows the bird, so an entry that
+    # carries one is preferred over one that only carries the operator's word.
+    by_species = {}      # scientific name -> {"en", "nl", "from_database"}
+    nameless = []        # entries with no scientific name to group on
     for entry in avibase_dict.values():
         if entry.get("number") == -1:
             continue
-        nl = entry.get("nlname", "").strip()
-        if nl:
-            dutch_names.append(nl)
+        sc = entry.get("scname", "").strip().lower()
         en = (entry.get("english") or entry.get("enname", "")).strip()
+        nl = entry.get("nlname", "").strip()
+        if not sc:
+            nameless.append((en, nl))
+            continue
+        known = bool(entry.get("english", "").strip())
+        held = by_species.get(sc)
+        if held is None:
+            by_species[sc] = {"en": en, "nl": nl, "from_database": known,
+                              "spellings": {en} if en else set()}
+            continue
         if en:
-            english_names.append(en)
+            held["spellings"].add(en)
+        if known and not held["from_database"]:
+            held["en"], held["from_database"] = en, True     # the database wins
+        held["nl"] = held["nl"] or nl
+
+    disagreed = [(sc, sorted(v["spellings"])) for sc, v in by_species.items()
+                 if len(v["spellings"]) > 1]
+    if disagreed:
+        logger.info(
+            f"{len(disagreed)} species are spelled differently across these "
+            f"lists; each keeps one keyword, in the spelling this collection uses."
+        )
+        for sc, spellings in sorted(disagreed)[:10]:
+            logger.info(f"   {sc}: {' | '.join(spellings)}")
+
+    dutch_names = [v["nl"] for v in by_species.values() if v["nl"]]
+    english_names = [v["en"] for v in by_species.values() if v["en"]]
+    dutch_names += [nl for _, nl in nameless if nl]
+    english_names += [en for en, _ in nameless if en]
 
     # Output directory: configurable, default to PhotoMechanic settings dir
     output_dir = config.get("photomechanic", "output_dir", fallback=_PM_SETTINGS_DIR)
