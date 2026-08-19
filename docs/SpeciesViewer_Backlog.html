@@ -1089,18 +1089,43 @@ nothing.</em></p>
 <h3>To do</h3>
 <ul>
   <li><strong>Nothing watches free space, and a failed copy doesn't stop a Read</strong>
-    <span class="tag-open">OPEN</span> <span class="tag-bug">RISK</span> — the highest item here.
-    No part of the program ever asks the operating system how much room is left. In the card copy, a
-    failure on one file logs a warning and adds one to a counter; the dialog then reports its
-    ordinary <em>“Copied N, skipped M, failed K”</em> line, in the same tone whether K is zero or
-    eight hundred. A laptop drive that fills up in week three therefore produces a Read that looks
-    like every other Read, with a number in the middle of a sentence as the only sign. Two fixes,
-    both small: <strong>ask for the free space before copying</strong> and compare it against the
-    bytes actually planned — the copy list is already built and every file's size is known — so it
-    is refused or warned up front instead of discovered file by file; and <strong>make a non-zero
-    failure count a visibly different outcome</strong>, never a plain “Copied”. The same free-space
-    check is worth having wherever the program writes in bulk: freeze, adding to the master,
-    building previews.</li>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-19) — was the highest item here. No part of
+    the program ever asked the operating system how much room was left. In the card copy, a failure
+    on one file logged a warning and added one to a counter; the dialog then reported its ordinary
+    <em>“Copied N, skipped M, failed K”</em> line, in the same tone whether K was zero or eight
+    hundred. A laptop drive that filled up in week three therefore produced a Read that looked like
+    every other Read, with a number in the middle of a sentence as the only sign.
+    <br><br><strong>What was built.</strong> A free-space question is now asked <em>before</em> the
+    copying starts, at the one moment the answer can be exact: the card read works in two phases,
+    and by the end of the first one the program knows precisely which files it is going to write and
+    how many bytes that is. If they do not fit — with a gigabyte of working room left over for
+    sidecars, caches and simply not running the machine to zero — the read stops there and says so
+    in plain numbers: <em>needs 42.3 GB, only 11.1 GB free, nothing was copied</em>. Nothing is
+    half-done and the card is untouched. What the first phase already worked out is still saved, so
+    once room has been freed the re-read picks up quickly and skips whatever did get copied.
+    <br><br>The second half is about tone. A read that lost pictures no longer ends on a green
+    <em>Done</em>. It ends on a warning that counts the losses, names the first few files, and says
+    the obvious useful thing — run the Read again, what already arrived will be skipped. This
+    mattered more than it sounds: the closing line is written by whichever step finishes last, and
+    when place-name lookup ran after the copy it used to report its own clean success over the top of
+    a failed copy. All the endings now share one marker, so that cannot happen.
+    <br><br>One judgement worth recording: a single unreadable file does <em>not</em> abort the read.
+    It finishes, copies everything it can, and reports loudly. A bad sector on one frame should not
+    end a two-thousand-picture import. Only the up-front space check refuses outright, and it refuses
+    before anything has been written.
+    <br><br><span class="tag-open">STILL OPEN</span> the same check wherever else the program writes
+    in bulk: freeze, adding to the master, building previews. Each knows its own byte total, so each
+    is now a single call to the shared check.</li>
+
+  <li><strong>Say how full every drive is, at start-up</strong>
+    <span class="tag-open">OPEN / NEW</span> — the counterpart to the check above, and the cheaper
+    half. Rather than only refusing a copy at the moment it would fail, the program should state the
+    situation once, unprompted, when it starts: one line per volume with its size, its free space and
+    the free percentage. On BigBoy that is five drives, plus whatever card happens to be in the
+    reader. Below ten per cent free reads as a warning, below five per cent as an alarm. It answers
+    the question before it is asked, it costs nothing, and unlike the pre-flight check it is visible
+    on a day when nothing is going wrong yet — which is exactly when a drive filling up is still
+    cheap to deal with.</li>
 
   <li><strong>Reserve room on the card for its own ingest cache</strong>
     <span class="tag-open">OPEN / NEW</span> — SpeciesViewer keeps a small state file on the card
