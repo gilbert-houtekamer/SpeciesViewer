@@ -28,8 +28,7 @@ import engine.specieslib
 import engine.speciesclassification
 from engine.specieslib import Level
 import engine.triplib
-from engine.avibaselib import (read_avibase, add_species_info, resolve_source_list,
-                              read_birdingbreaks, parse_roles, decode_delimiter)
+from engine.avibaselib import add_species_info, read_configured_list
 from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
@@ -61,7 +60,7 @@ def _refuse_if_open(xlsx_path):
     except PermissionError:
         raise RuntimeError(
             f"'{os.path.basename(xlsx_path)}' is open in Excel, so it cannot be "
-            f"rewritten. Close it and run the step again \u2014 nothing has been "
+            f"rewritten. Close it and run the step again — nothing has been "
             f"changed, and what you see in Excel is the previous checklist."
         ) from None
 
@@ -581,30 +580,11 @@ def main(args, config):
                                  f"{safe_trip_name}-checklist.xlsx")
         _refuse_if_open(xlsx_path)
 
-        source_format = config.get("avibase", "source_format", fallback="avibase")
-        logger.info(f"Reading AviBase source list using '{source_format}' format.")
         phone_layout = config.getboolean("avibase", "phone_layout", fallback=False)
         first_column_lang = config.get("avibase", "first_column_lang", fallback="nl").strip().lower()
         if first_column_lang not in ("nl", "en"):
             first_column_lang = "nl"
-        # Which list to read: the one picked in the dialog, else avibase.csv in
-        # the trip's own data folder (NOT the picture folder).
-        source_list = resolve_source_list(
-            MyProject.Repository, config.get("avibase", "source_file", fallback="")
-        )
-        logger.info(f"Species list read from {source_list}")
-        column_roles = parse_roles(config.get("avibase", "columns", fallback=""))
-        if source_format == "birdingbreaks" and column_roles:
-            # The columns the user marked on this very file, so the spreadsheet
-            # the tour operator sent can be read exactly as it arrived.
-            avibase_dict.update(read_birdingbreaks(
-                source_list,
-                column_roles,
-                first_data_row=config.getint("avibase", "data_start_row", fallback=1),
-                delimiter=decode_delimiter(config.get("avibase", "delimiter", fallback="")),
-            ))
-        else:
-            avibase_dict.update(read_avibase(MyProject.Repository, source_list))
+        avibase_dict.update(read_configured_list(MyProject.Repository, config))
         add_species_info(avibase_dict, sc, Reference_sp)
         temp_csv_file = os.path.join(MyProject.Repository, "soorten-temp.csv")
         createRawCSV(temp_csv_file)

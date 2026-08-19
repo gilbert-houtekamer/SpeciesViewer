@@ -4396,24 +4396,8 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
         self.status_label.setText("")
 
     def _fixed_layout_complaint(self, source):
-        """Why the fixed AviBase layout cannot read this file, or None."""
-        from engine.avibaselib import sniff_delimiter
-        if os.path.splitext(source)[1].lower() in (".xlsx", ".xlsm"):
-            return ("\u274c A spreadsheet cannot be read with the fixed AviBase "
-                    "layout \u2014 choose \u201cColumns I marked myself\u201d.")
-        try:
-            with open(source, encoding="utf-8-sig", errors="replace") as f:
-                lines = f.read().splitlines()[:50]
-        except OSError as err:
-            return f"\u274c Cannot read {os.path.basename(source)}: {err}"
-        found = sniff_delimiter(lines)
-        if found == ";":
-            return None
-        named = {"\t": "tabs", ",": "commas", "|": "bars"}.get(found, found)
-        return (f"\u274c {os.path.basename(source)} is separated by {named}, and the "
-                f"fixed AviBase layout expects semicolons \u2014 it would produce a "
-                f"checklist of headings with no species. Choose \u201cColumns I "
-                f"marked myself\u201d and mark the columns.")
+        from gui.avibase_columns import fixed_layout_complaint
+        return fixed_layout_complaint(source)
 
     def _paste_source(self):
         """A list copied from the AviBase page, saved beside the trip and marked
@@ -4489,12 +4473,55 @@ class PhotoMechanicDialog(BaseTripModuleDialog):
             menu_spec,
             title="Create PhotoMechanic keyword files for next trip.",
             info_text=(
-                "Generates two PhotoMechanic .snap keyword files from the AviBase species list: "
-                "one with Dutch names and one with English names. "
-                "Files are written to the PhotoMechanic IPTCKeywordsSettings folder."
+                "Writes two PhotoMechanic keyword files from the trip's bird list — "
+                "one with Dutch names, one with English — into the PhotoMechanic "
+                "keywords folder."
             ),
             subdirectory=False
         )
+        # Which list, spelled out. This step used to read a fixed avibase.csv of
+        # its own, so it could quietly describe a different list than the
+        # checklist did. It now reads whatever Utilities ▸ AviBase is set to, and
+        # says so rather than leaving that to be discovered.
+        self.root_caption.setText("Trip data folder")
+        self.root_label.setText(str(self.trip_root))
+        self.source_summary = QLabel("")
+        self.source_summary.setWordWrap(True)
+        layout = self.layout()
+        anchor = layout.indexOf(self.info_text)
+        layout.insertWidget(anchor, QLabel("Species list (set in Utilities ▸ AviBase)"))
+        layout.insertWidget(anchor + 1, self.source_summary)
+        self._describe_source()
+
+    def _describe_source(self):
+        source = _config.get("avibase", "source_file", fallback="").strip()
+        if source and os.path.isfile(source):
+            marked = (_config.get("avibase", "source_format", fallback="avibase")
+                      == "birdingbreaks"
+                      and _config.get("avibase", "columns", fallback="").strip())
+            how = "the columns marked for it" if marked else "the fixed AviBase layout"
+            self.source_summary.setText(f"{source}  —  read with {how}")
+        else:
+            self.source_summary.setText(
+                "Not set yet — open Utilities ▸ AviBase and pick the list there "
+                "first; both steps work from the same one."
+            )
+
+    def on_write(self):
+        source = _config.get("avibase", "source_file", fallback="").strip()
+        if not source or not os.path.isfile(source):
+            self.status_label.setText(
+                "❌ No species list to work from. Open Utilities ▸ AviBase, pick "
+                "the list there, and run this again — both steps read the same list."
+            )
+            return
+        if _config.get("avibase", "source_format", fallback="avibase") == "avibase":
+            from gui.avibase_columns import fixed_layout_complaint
+            complaint = fixed_layout_complaint(source)
+            if complaint:
+                self.status_label.setText(complaint)
+                return
+        super().on_write()
 
 
 class SmallMasterDialog(QDialog):

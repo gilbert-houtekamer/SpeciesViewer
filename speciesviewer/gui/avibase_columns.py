@@ -38,6 +38,33 @@ _FRAGMENT_HINTS = {
 }
 
 
+def fixed_layout_complaint(path):
+    """Why the fixed AviBase layout cannot read this file, or None.
+
+    The fixed reader splits on semicolons. Handed a spreadsheet or the
+    tab-separated text the AviBase page produces, it does not fail — it returns
+    a list in which every line became a section heading, and the checklist comes
+    out with no species in it at all.
+    """
+    from engine.avibaselib import sniff_delimiter
+    if os.path.splitext(path)[1].lower() in (".xlsx", ".xlsm"):
+        return ("❌ A spreadsheet cannot be read with the fixed AviBase layout — "
+                "choose “Columns I marked myself”.")
+    try:
+        with open(path, encoding="utf-8-sig", errors="replace") as f:
+            lines = f.read().splitlines()[:50]
+    except OSError as err:
+        return f"❌ Cannot read {os.path.basename(path)}: {err}"
+    found = sniff_delimiter(lines)
+    if found == ";":
+        return None
+    named = {"\t": "tabs", ",": "commas", "|": "bars"}.get(found, found)
+    return (f"❌ {os.path.basename(path)} is separated by {named}, and the fixed "
+            f"AviBase layout expects semicolons — it would produce a checklist of "
+            f"headings with no species. Choose “Columns I marked myself” "
+            f"and mark the columns.")
+
+
 def column_title(index):
     """0 -> A, 25 -> Z, 26 -> AA — the column names the user reads in Excel."""
     title = ""

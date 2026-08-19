@@ -112,8 +112,8 @@ def read_avibase(triproot, filename):
         raise ValueError(
             f"No species found in '{os.path.basename(file_path)}' with the fixed "
             f"AviBase layout, which expects semicolons between the names. This "
-            f"file is separated by {named}. Choose \u201cColumns I marked "
-            f"myself\u201d and mark the columns instead."
+            f"file is separated by {named}. Choose “Columns I marked "
+            f"myself” and mark the columns instead."
         )
 
     return avibase_dict
@@ -296,6 +296,34 @@ def read_birdingbreaks(path, roles, first_data_row=1, delimiter=None):
     """
     rows, _ = load_source_rows(path, delimiter)
     return parse_rows(rows, roles, first_data_row, os.path.basename(path))
+
+
+def read_configured_list(triproot, config):
+    """The trip's species list, read the way the settings say to read it.
+
+    ONE JOB, for every step that needs the list. The checklist and the
+    PhotoMechanic keyword files must work from the same species in the same
+    order — a keyword file describing a list the checklist never saw is worse
+    than no keyword file, because nothing about it looks wrong.
+    """
+    source_format = config.get("avibase", "source_format", fallback="avibase")
+    source_list = resolve_source_list(
+        triproot, config.get("avibase", "source_file", fallback=""))
+    roles = parse_roles(config.get("avibase", "columns", fallback=""))
+    marked = source_format == "birdingbreaks" and bool(roles)
+
+    logger.info(
+        f"Species list {source_list}, read with "
+        f"{'the columns marked for it' if marked else 'the fixed AviBase layout'}."
+    )
+    if marked:
+        return read_birdingbreaks(
+            source_list,
+            roles,
+            first_data_row=config.getint("avibase", "data_start_row", fallback=1),
+            delimiter=decode_delimiter(config.get("avibase", "delimiter", fallback="")),
+        )
+    return read_avibase(triproot, source_list)
 
 
 def parse_rows(rows, roles, first_data_row=1, source="the list"):

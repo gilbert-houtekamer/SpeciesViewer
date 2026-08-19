@@ -19,7 +19,7 @@ if __name__ == "__main__":
 import engine.projectlib
 import engine.specieslib
 import engine.speciesclassification
-from engine.avibaselib import read_avibase, add_species_info
+from engine.avibaselib import add_species_info, read_configured_list
 from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
@@ -87,7 +87,11 @@ def main(args, config):
         os.path.join(metadatadir, "active", "speciescollection.csv"), False
     )
 
-    avibase_dict = read_avibase(MyProject.Repository, "avibase.csv")
+    # The same list the checklist step reads, read the same way — picked file,
+    # marked columns and all. It used to open a fixed avibase.csv with the fixed
+    # layout, which since the lists became free-form meant it either read a
+    # different list than the checklist or nothing at all.
+    avibase_dict = read_configured_list(MyProject.Repository, config)
     add_species_info(avibase_dict, sc, Reference_sp)
 
     # Collect Dutch and English names — skip section headers (number == -1)
@@ -124,6 +128,14 @@ def main(args, config):
         f"PhotoMechanic snap files created in {totaltime:.1f}s: "
         f"{len(set(dutch_names))} Dutch, {len(set(english_names))} English keywords."
     )
+    if not dutch_names:
+        # Worth saying out loud: a keyword file with no Dutch names in it looks
+        # exactly like a working one until it is loaded in PhotoMechanic.
+        logger.warning(
+            "No Dutch names in this list, so the Dutch keyword file is empty. "
+            "Mark a Dutch name column in Utilities ▸ AviBase ▸ Columns…, or use "
+            "a list that carries one."
+        )
 
 
 if __name__ == "__main__":
