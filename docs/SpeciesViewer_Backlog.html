@@ -496,10 +496,64 @@ reads <em>No current work planned</em>.</p>
 <h2>9. Usability &amp; Polish</h2>
 <h3>To do</h3>
 <ul>
-  <li><strong>AVI list processing upgrade</strong> <span class="tag-new">NEW</span>.</li>
+  <li><strong>AVI list processing — what is still rough</strong> <span class="tag-open">OPEN</span> —
+    the list now reads as it arrives (see Done below), but the surrounding code is
+    not finished. <em>PhotoMechanic</em> still opens a fixed <code>avibase.csv</code>
+    with the old fixed-shape reader, so it ignores both the file you picked and the
+    columns you marked — the two steps should share one source. The
+    <em>Source list format</em> labels still say “English in column 0” and
+    “sequence number in column 0”, which stopped being true the moment the
+    columns became yours to mark. A workbook with several sheets reads the first one
+    (it says so in the log, but it cannot yet be chosen). And a list that arrives
+    without Dutch names leans entirely on the species database to fill them in —
+    it would help to be told how many stayed empty rather than finding out in the
+    spreadsheet.</li>
 </ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>The bird list reads as it arrives</strong> <span class="tag-shipped">SHIPPED</span>
+    (2026-08-19) — the checklist step used to insist on a file called
+    <code>avibase.csv</code> holding exactly two columns, which meant hand-massaging
+    the spreadsheet the tour operator sends into shape for every trip. Now the
+    spreadsheet goes in as it is.
+    <br><strong>Browse… picks the list</strong>, <code>.xlsx</code> or
+    <code>.csv</code>, and the dialog shows the folder it truly reads from — the
+    trip <em>data</em> folder, not the picture folder it used to display while
+    looking somewhere else entirely. The pick is remembered together with the trip
+    it was made for, so switching trips can never build one trip’s checklist
+    from another trip’s list.
+    <br><strong>Columns… shows the first 50 rows and asks what each column
+    holds</strong> — sequence number, English name, Dutch name, scientific name,
+    or not used — with the row the species start on set explicitly and the title
+    rows above it greyed out as you change it. It guesses first: a header row saying
+    “Engelse naam” / “Wetenschappelijke naam” gives away the
+    columns, and failing that the cells do (digits are a sequence number,
+    “Genus species” a scientific name), so a familiar list needs one look
+    and OK. Reading the real Brazil workbook straight through produced 923 species,
+    the same as the hand-made CSV — which is the check that mattered.
+    <br>The AviBase reader is untouched, and its fixed shape still applies:
+    Columns… appears only for a Birding Breaks list. The Excel writer, formulas
+    and layouts are untouched as well.</li>
+  <li><strong>An accented path no longer defeats a batch step</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-19) — found by picking a
+    file called <em>Checklist Zuidoost Brazilië 2026 REGUA.xlsx</em>: the step
+    reported it did not exist. It did. The app writes its <code>.ini</code> files as
+    UTF-8 but read them back in the machine’s own encoding, so
+    <em>Brazilië</em> arrived as <em>BraziliÄ«</em> — a path
+    naming no file at all. A Windows-only fault: macOS already reads UTF-8, which is
+    worth remembering with a Mac in the plans.
+    <br>Reading a config is now one job in one place, tolerant by design: UTF-8
+    first, falling back to the older Windows encoding for files written before that
+    was settled, and saying in the log which file to re-save. That tolerance was not
+    theoretical — a 2024 Marokko <code>blog.ini</code> on disk is in the old
+    encoding, and eight places in the code would have <em>crashed</em> on it by
+    demanding UTF-8. Six other places had each hand-rolled the same fallback
+    privately; they now share the one. Two writers that saved in the machine
+    encoding — how such a file comes to exist — were pinned to UTF-8.
+    <br>84 places across 55 files read their config through it, every one of the 267
+    <code>.ini</code> files on the work disks was read back to check, and one file
+    turned out to start with a stray <code>h</code> before its first section
+    header — a typo from years ago, now removed.</li>
   <li><strong>Website hosting hardening finished</strong> <span class="tag-shipped">SHIPPED</span>
     (2026-08-19) — the last three follow-ups from the 2026-08-08 compromise are closed:
     <strong>plugin auto-updates are now ON</strong> (an outdated plugin was the likely entry vector,
@@ -605,7 +659,7 @@ to re-look-up.</p>
 </ul>
 
 <!-- ============================================================ -->
-<h2>13. Web viewer <span class="tag-shipped">SHIPPED</h2>
+<h2>13. Web viewer <span class="tag-shipped">SHIPPED</span></h2>
 <ul>
   <li><strong>Search on the “all biota species” page</strong> <span class="tag-complete">CLOSED</span> —
     add a search box to
