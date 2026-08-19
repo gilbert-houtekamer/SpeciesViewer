@@ -6,6 +6,12 @@ independently-clearable rows — day/trip (Read Directory) and master scan — s
 you can forget all trips without discarding the expensive master cache (or vice
 versa).  Each carries its own rebuild warning; clearing takes a cache's whole
 .bak ring, or load_cache would just recover from a backup.
+
+A second tab shows the UPLOAD caches, which are a different animal: they are not
+per-machine app data but one `admin/FTPcache.json` per repository, holding what
+each website has already sent to the web server.  The questions are the same
+though — how big is it, where does it live, how do I throw it away — so they
+belong in the same dialog.  See engine.ftp_cache_admin for the numbers.
 """
 
 from __future__ import annotations
@@ -16,8 +22,9 @@ from pathlib import Path
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPainter, QPen, QBrush
 from PyQt6.QtWidgets import (
-    QDialog, QDialogButtonBox, QFileDialog, QGroupBox, QHBoxLayout, QLabel,
-    QMessageBox, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
+    QAbstractItemView, QDialog, QDialogButtonBox, QFileDialog, QGroupBox,
+    QHBoxLayout, QHeaderView, QLabel, QMessageBox, QPushButton, QSizePolicy,
+    QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
 )
 
 _COLORS = [
@@ -27,6 +34,13 @@ _COLORS = [
 ]
 
 _SLICE_NAMES = ["Full-res images", "Preview thumbnails", "EXIF metadata"]
+
+_LOCAL_TAB = "Local caches"
+
+# Column order of the upload-cache table.
+_UP_SITE, _UP_KIND, _UP_FILES, _UP_SIZE, _UP_WHERE, _UP_CLEAR = range(6)
+
+_KIND_LABEL = {"master": "Master", "trip": "Trip", "album": "Album"}
 
 
 def _fmt(b: int) -> str:
@@ -78,23 +92,30 @@ class _PieWidget(QWidget):
 
 
 class ManageCachesDialog(QDialog):
-    """Single dialog to inspect, relocate, and selectively clear the three
-    per-machine caches (full-res, preview, EXIF). Each cache resolves its
-    location live through utils.cache_paths, so paths track relocations made
-    here without the dialog needing to be told where anything lives.
+    """Single dialog to inspect, relocate, and selectively clear every cache the
+    application keeps: the three per-machine ones (full-res, preview, EXIF) on
+    the first tab, and the per-website upload caches on the second. Each local
+    cache resolves its location live through utils.cache_paths, so paths track
+    relocations made here without the dialog needing to be told where anything
+    lives; the upload caches are re-scanned from disk on every refresh.
     """
 
     def __init__(self, parent):
         super().__init__(parent)
         self.setWindowTitle("Manage Caches")
-        self.setMinimumWidth(500)
+        self.setMinimumWidth(680)
         self._build_ui()
         self._refresh()
 
     # ── UI construction ───────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        self._tabs = QTabWidget()
+        outer.addWidget(self._tabs)
+
+        local_page = QWidget()
+        root = QVBoxLayout(local_page)
         root.setSpacing(12)
 
         # ── top: pie + legend ─────────────────────────────────────────────────
@@ -255,7 +276,15 @@ class ManageCachesDialog(QDialog):
             if edit_btn is not None:
                 edit_btn.clicked.connect(lambda _, r=row: self._on_edit(r))
 
+        root.addStretch()
+        self._tabs.addTab(local_page, _LOCAL_TAB)
+        self._tabs.addTab(self._build_upload_page(), "Upload caches")
+        self._tabs.currentChanged.connect(self._on_tab_changed)
+
         # ── bottom buttons ────────────────────────────────────────────────────
+        # Clear All belongs to the local tab only: every upload cache is a
+        # separate website, and one button that forces a full re-upload of all of
+        # them is an offer nobody wants. Hidden, not disabled, on the upload tab.
         btns = QHBoxLayout()
         self._clear_all_btn = QPushButton("Clear All")
         self._clear_all_btn.clicked.connect(self._on_clear_all)
@@ -265,7 +294,143 @@ class ManageCachesDialog(QDialog):
         close.setDefault(True)
         close.clicked.connect(self.accept)
         btns.addWidget(close)
-        root.addLayout(btns)
+        outer.addLayout(btns)
+
+    def _on_tab_changed(self, index: int) -> None:
+        self._clear_all_btn.setVisible(self._tabs.tabText(index) == _LOCAL_TAB)
+
+    # ── upload caches (one per published website) ─────────────────────────────
+
+    def _build_upload_page(self) -> QWidget:
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setSpacing(8)
+
+        intro = QLabel(
+            "Every trip, album and the master keeps a list of the files it has "
+            "already sent to the web server, so publishing again only uploads "
+            "what changed — that is why rebuilding a site is mostly instant. "
+            "Clearing a list leaves the website itself untouched, but the next "
+            "publish of that site uploads every file again. Each list lives in "
+            "the site's own folder, as admin/FTPcache.json.")
+        intro.setWordWrap(True)
+        intro.setStyleSheet("color: grey; font-size: 11px;")
+        lay.addWidget(intro)
+
+        self._up_table = QTableWidget(0, 6)
+        self._up_table.setHorizontalHeaderLabels(
+            ["Website", "Kind", "Files sent", "Size", "Site folder", ""])
+        self._up_table.setWordWrap(False)   # one line per site; long paths elide
+        self._up_table.verticalHeader().setVisible(False)
+        self._up_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows)
+        self._up_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers)
+        hh = self._up_table.horizontalHeader()
+        hh.setSectionResizeMode(_UP_SITE, QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(_UP_KIND, QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(_UP_FILES, QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(_UP_SIZE, QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(_UP_WHERE, QHeaderView.ResizeMode.Stretch)
+        hh.setSectionResizeMode(_UP_CLEAR, QHeaderView.ResizeMode.ResizeToContents)
+        lay.addWidget(self._up_table)
+
+        self._up_summary = QLabel()
+        self._up_summary.setStyleSheet("color: grey; font-size: 11px;")
+        lay.addWidget(self._up_summary)
+        return page
+
+    def _upload_rows(self) -> list[dict]:
+        """Every repository this machine knows about — the master, the trips
+        root, the albums root, plus the active trip/album in case they live
+        outside those roots (a machine may have no roots configured)."""
+        from engine import ftp_cache_admin
+        from utils.config import _config, get_trips_root, get_virttrips_root
+        extra = [
+            (_config.get("trip", "tripbiotadatabase", fallback=""), "trip"),
+            (_config.get("virttrip", "virttripbiotadatabase", fallback=""), "album"),
+        ]
+        return ftp_cache_admin.list_caches(
+            master_root=_config.get("master", "masterbiotadatabase", fallback=""),
+            trips_root=get_trips_root(),
+            virttrips_root=get_virttrips_root(),
+            extra=extra)
+
+    def _refresh_uploads(self) -> None:
+        from engine import ftp_cache_admin
+        rows = self._upload_rows()
+        t = self._up_table
+        t.setRowCount(len(rows))
+        for i, r in enumerate(rows):
+            if not r["exists"]:
+                files, tip = "nothing sent yet", "This site has no upload list — the next publish uploads every file."
+            elif r["entries"] is None:
+                files, tip = "unreadable", f"The list could not be read ({r['error']}). Clear it to start over."
+            else:
+                files, tip = f"{r['entries']:,}", "Files the web server already has."
+
+            name = QTableWidgetItem(r["name"])
+            name.setToolTip(r["path"])
+            t.setItem(i, _UP_SITE, name)
+            t.setItem(i, _UP_KIND, QTableWidgetItem(_KIND_LABEL.get(r["kind"], r["kind"])))
+            fi = QTableWidgetItem(files)
+            fi.setToolTip(tip)
+            fi.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            if not r["exists"] or r["entries"] is None:
+                fi.setForeground(QColor("#888888"))
+            t.setItem(i, _UP_FILES, fi)
+            si = QTableWidgetItem(_fmt(r["bytes"]) if r["exists"] else "")
+            si.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            t.setItem(i, _UP_SIZE, si)
+            where = QTableWidgetItem(r["repo_root"])
+            where.setToolTip(r["path"])
+            t.setItem(i, _UP_WHERE, where)
+
+            btn = QPushButton("Clear")
+            btn.setEnabled(r["exists"])
+            btn.setStyleSheet("QPushButton { padding: 2px 10px; }")
+            btn.clicked.connect(lambda _, row=r: self._on_clear_upload(row))
+            t.setCellWidget(i, _UP_CLEAR, btn)
+
+        if not rows:
+            self._up_summary.setText(
+                "No master, trips or albums are configured on this machine — "
+                "nothing has been published from here yet.")
+            return
+        present, entries, size = ftp_cache_admin.totals(rows)
+        self._up_summary.setText(
+            f"{len(rows)} website(s) · {present} with an upload list · "
+            f"{entries:,} file(s) the server already has · {_fmt(size)} on disk")
+
+    def _on_clear_upload(self, row: dict) -> None:
+        """Forget one site's uploads. Deliberately per-site and confirmed: the
+        cost is not the deleted file (a few hundred KB) but the hours-long full
+        re-upload it schedules for the next publish."""
+        from engine import ftp_cache_admin
+        kind = _KIND_LABEL.get(row["kind"], row["kind"]).lower()
+        known = ("" if row["entries"] is None else
+                 f"It remembers {row['entries']:,} file(s) the web server "
+                 f"already has.\n\n")
+        if QMessageBox.question(
+                self, "Clear upload list",
+                f"Clear the upload list of {kind} “{row['name']}”?\n\n{known}"
+                f"The website stays exactly as it is — but the next publish of "
+                f"this {kind} re-uploads every file, which takes much longer.\n\n"
+                f"{row['path']}"
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            cleared = ftp_cache_admin.clear(row["repo_root"])
+        except OSError as e:
+            # Most likely a sync client holding the file open, or a read-only
+            # (unplugged/offline) repository — say so instead of crashing.
+            QMessageBox.warning(self, "Clear upload list",
+                                f"Could not clear the upload list:\n{e}")
+            return
+        if not cleared:
+            QMessageBox.information(self, "Clear upload list",
+                                    "There was nothing left to clear.")
+        self._refresh_uploads()
 
     # ── stats helpers ─────────────────────────────────────────────────────────
 
@@ -362,6 +527,7 @@ class ManageCachesDialog(QDialog):
 
         self._pie.set_values(pie_sizes)
         self._clear_all_btn.setEnabled(any(r["_total"] > 0 for r in self._rows))
+        self._refresh_uploads()
 
     # ── clear actions ─────────────────────────────────────────────────────────
 

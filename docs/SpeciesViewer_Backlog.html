@@ -37,7 +37,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 18 August 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 19 August 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Open work for the SpeciesViewer nature-photo pipeline and GUI. This document holds
 only what is <strong>still to do</strong> — everything that has shipped now lives in the companion
@@ -57,10 +57,10 @@ reads <em>No current work planned</em>.</p>
 <div class="next">
   <strong>Active shortlist — week of 18 August 2026: QA &amp; documentation.</strong>
   <ul>
-    <li><strong>Usability QA</strong> <span class="tag-progress">IN PROGRESS</span> — the three open
-      items in ch. 9: the AVI list processing upgrade, the FTP cache that cannot be seen in Manage
-      Caches, and the website hosting hardening leftovers. All three are known and accepted as this
-      week's work.</li>
+    <li><strong>Usability QA</strong> <span class="tag-progress">IN PROGRESS</span> — two open items
+      left in ch. 9: the AVI list processing upgrade and the website hosting hardening leftovers. The
+      third — the FTP cache that could not be seen in <em>Manage Caches</em> — shipped on 19 August
+      2026 and is off the list.</li>
     <li><strong>Documentation</strong> <span class="tag-progress">IN PROGRESS</span> — the two
       documents no longer line up. <em>Capabilities Added</em> has no chapter for <strong>17. Capture
       time &amp; time zones</strong>, the tracklog geotagging and camera-clock work of 16–17 August
@@ -497,13 +497,6 @@ reads <em>No current work planned</em>.</p>
 <h3>To do</h3>
 <ul>
   <li><strong>AVI list processing upgrade</strong> <span class="tag-new">NEW</span>.</li>
-  <li><strong>FTP cache is invisible in Manage Caches</strong> <span class="tag-new">NEW</span> —
-    <em>Utilities ▸ Manage Caches</em> shows the four local caches (full-res, previews, EXIF day/trip,
-    EXIF master) but not the upload caches, so the one cache that decides whether a publish re-sends a
-    file cannot be seen, sized or cleared — and it is not even obvious where it lives. Each repository
-    keeps its own <code>admin/FTPcache.json</code> (target path → name + size/CRC), which is what makes
-    a rebuild 97% cached. Worth a tab of its own: one row per trip/album/master, with the file count
-    and a Clear that forces a full re-upload of that site.</li>
   <li><strong>Website hosting hardening leftovers</strong> <span class="tag-open">OPEN</span> —
     lower-priority follow-ups from the 2026-08-08 WordPress compromise (core cleaned, SFTP password
     already rotated and verified same day): plugin auto-updates are still OFF — the likely original
@@ -513,6 +506,22 @@ reads <em>No current work planned</em>.</p>
 </ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>The upload caches are visible at last</strong> <span class="tag-shipped">SHIPPED</span>
+    (2026-08-19) — <em>File ▸ Settings ▸ Manage caches…</em> now has two tabs. The first is the
+    familiar one (full-res, previews, EXIF day/trip, EXIF master); the new <strong>Upload caches</strong>
+    tab lists every published website — the master, each trip, each album — with the number of files
+    the web server already has, the size of the list, the folder it lives in, and a <em>Clear</em>
+    that forces a full re-upload of that one site. A site that has never published reads
+    <em>nothing sent yet</em>, a half-written list reads <em>unreadable</em> and can be cleared to
+    start over, and <em>Clear All</em> deliberately stays on the local tab: one button that re-uploads
+    every site is an offer nobody wants.
+    <br>The sizes are far smaller than one would guess, and that is the whole design:
+    <strong>the cache stores no picture data, only a checksum</strong> — per uploaded target path
+    just the source file name plus its size (JPGs) or CRC32 (everything else). BigBoy's 25 sites
+    remember 47,827 uploaded files in 13.9&nbsp;MB all together, the master's 16,635 of them in
+    5&nbsp;MB, and reading all 24 lists takes 0.2&nbsp;s — so the tab is instant and those few
+    megabytes are what make a full rebuild 97% cached. The counting and clearing live in a new,
+    Qt-free <code>engine/ftp_cache_admin.py</code>, so the numbers can be checked without the GUI.</li>
   <li><strong>Rebuild All Websites — the apply pass has now run</strong>
     <span class="tag-shipped">VERIFIED</span> (2026-08-18) — the sweep tool shipped 2026-08-09 as a dry
     run only; it has now been applied live on BigBoy. All 17 albums were rebuilt (species pages + blog
