@@ -210,7 +210,7 @@ class ColumnMappingDialog(QDialog):
         text is a name column. Dutch and English cannot be told apart by shape,
         so a text column is only called Dutch when the header says so.
         """
-        roles, first_row = {}, 1
+        roles, first_row, from_header = {}, 1, False
 
         for r, row in enumerate(self._rows[:12], start=1):
             found = {}
@@ -227,6 +227,7 @@ class ColumnMappingDialog(QDialog):
             if len(found) >= 2:            # a real header row, not one stray word
                 roles = dict(found)
                 first_row = r + 1
+                from_header = True
                 break
 
         data = self._rows[first_row - 1:first_row + 19]
@@ -248,10 +249,52 @@ class ColumnMappingDialog(QDialog):
                 roles[col] = key
                 taken.add(key)
 
+        if not from_header:
+            # Some lists arrive with no header row at all — only day numbers above
+            # the species. Then the species themselves say where they start.
+            first_row = self._first_species_row(roles) or first_row
+
         if roles:
             logger.info(f"Column guess for '{os.path.basename(self.path)}': "
                         f"{describe_roles(roles, first_row)}")
         return roles, first_row
+
+    def _cell(self, row, roles, role):
+        for col, marked in roles.items():
+            if marked == role:
+                return (row[col] if col < len(row) else "").strip()
+        return ""
+
+    def _first_species_row(self, roles):
+        """Which row the species start on, read off the rows themselves.
+
+        The first row that reads like a species, then back up over the section
+        headings sitting directly above it — "RHEIFORMES: Rheidae" is part of the
+        list and belongs inside it, while the workbook's own title, separated by a
+        blank row, stays outside. Returns None when nothing looks like a species.
+        """
+        species_at = None
+        for r, row in enumerate(self._rows, start=1):
+            sc = self._cell(row, roles, "sc")
+            seq = self._cell(row, roles, "seq")
+            if _looks_scientific(sc) or (sc and any(c.isdigit() for c in seq)):
+                species_at = r
+                break
+        if species_at is None:
+            return None
+
+        first = species_at
+        while first > 1:
+            above = [self._cell(self._rows[first - 2], roles, role)
+                     for role in ("seq", "en", "nl", "sc")]
+            filled = [c for c in above if c]
+            # A heading is one lone piece of text in the marked columns. Two of
+            # them is a header row; none of them is a blank or a day-number row.
+            if len(filled) == 1 and not filled[0].replace(".", "").isdigit():
+                first -= 1
+            else:
+                break
+        return first
 
     # ── reacting ────────────────────────────────────────────────────────────
     def _on_role_changed(self, col):
