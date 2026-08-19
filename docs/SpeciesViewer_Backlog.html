@@ -437,6 +437,33 @@ reads <em>No current work planned</em>.</p>
   <li><span class="tag-parked">PARKED</span> <strong>Placeholder-species cleanup</strong> — the
     “? &lt;name&gt;” placeholders, coordinated cleanup.</li>
   <li><span class="tag-parked">PARKED</span> <strong>Regional most-likely-birds</strong> (eBird).</li>
+  <li><span class="tag-parked">PARKED</span> <strong>Aliases for common names</strong> — the
+    collection settled on its own names (IOC 10.5 with GBIF), and every list from outside
+    disagrees somewhere. Comparing the two Brazil lists put a number on it:
+    <strong>86 of the 576 birds they share are named differently</strong>, and merging all four
+    lists in the trip found 98. Three different problems wear the same face:
+    <ul>
+      <li><strong>Spelling convention</strong> — <em>Gray/Grey</em>, <em>Golden-Plover</em>
+        against <em>Golden Plover</em>. Mechanical, and the widest slice of the 98.</li>
+      <li><strong>A genuinely different name</strong> for the same bird —
+        <em>Bank Swallow</em> against <em>Sand Martin</em>, <em>Mealy Amazon</em> against
+        <em>Mealy Parrot</em>. No rule derives one from the other; it has to be recorded.</li>
+      <li><strong>A split or lump</strong>, where an old name does not mean one species any
+        more. This is the dangerous one: an alias that guesses here silently files a photo
+        under the wrong bird.</li>
+    </ul>
+    <strong>The shape:</strong> a table of <em>alias → scientific name</em>, per language,
+    with where it came from, living beside the other species metadata and learned as we go —
+    when a list's name does not resolve but its scientific name does, that pairing is an alias
+    worth offering to keep. <strong>Two rules</strong> hold it together: an alias points at a
+    <em>scientific</em> name and never at another common name, so no chains form; and an alias
+    that would be ambiguous after a split is refused rather than guessed — better to leave a
+    name unresolved than to file it under the wrong species.
+    <br><strong>Where it would pay:</strong> reading a tour operator's list, keywords typed in
+    the field coming back through the pipeline, the waarneming.nl import, and searching for a
+    species by a name you happen to remember. Until then the checklist and keyword steps do the
+    narrow version of this — group by scientific name and keep our own spelling — which handles
+    the first two kinds but knows nothing about splits.</li>
 </ul>
 
 <!-- ============================================================ -->
@@ -507,6 +534,22 @@ reads <em>No current work planned</em>.</p>
 </ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>Keywords in our own spelling, one per species</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-19) — merging the trip's lists put some
+    birds in the keyword file twice, because the operators do not agree on names: of the 576
+    species the two Brazil workbooks share, <strong>86 are named differently</strong>, and
+    across all four lists 98 are. Some of that is <em>Gray</em> against <em>Grey</em> or a
+    hyphen; some is a different name entirely, like <em>Bank Swallow</em> against
+    <em>Sand Martin</em>.
+    <br>Keywords are now grouped by scientific name and keep the spelling this collection
+    uses — the name enrichment has already rewritten the English name from the species
+    database wherever it knows the bird, so that one wins over the operator's word. The Brazil
+    set goes from 1484 keywords to <strong>1386</strong>, and the differing spellings are
+    listed in the log so it stays visible which lists disagree. This matters past tidiness: a
+    keyword typed in the field comes back through the pipeline later, and one that matches
+    <code>species.csv</code> is one less unrecognised species downstream.
+    <br>It is the narrow version of the alias system now written up in ch. 6 — it handles
+    spelling and alternative names, and knows nothing about splits.</li>
   <li><strong>Outputs carry the name of the list they came from</strong>
     <span class="tag-shipped">SHIPPED</span> (2026-08-19) — the checklist and the
     keyword files were named after the trip alone, from when a trip had exactly
