@@ -28,7 +28,7 @@ import engine.specieslib
 import engine.speciesclassification
 from engine.specieslib import Level
 import engine.triplib
-from engine.avibaselib import read_avibase, add_species_info
+from engine.avibaselib import read_avibase, add_species_info, resolve_source_list
 
 logger = logging.getLogger("speciesviewer")
 avibase_dict = {}
@@ -558,7 +558,13 @@ def main(args, config):
         first_column_lang = config.get("avibase", "first_column_lang", fallback="nl").strip().lower()
         if first_column_lang not in ("nl", "en"):
             first_column_lang = "nl"
-        avibase_dict.update(read_avibase(MyProject.Repository, "avibase.csv"))
+        # Which list to read: the one picked in the dialog, else avibase.csv in
+        # the trip's own data folder (NOT the picture folder).
+        source_list = resolve_source_list(
+            MyProject.Repository, config.get("avibase", "source_file", fallback="")
+        )
+        logger.info(f"Species list read from {source_list}")
+        avibase_dict.update(read_avibase(MyProject.Repository, source_list))
         add_species_info(avibase_dict, sc, Reference_sp)
         temp_csv_file = os.path.join(MyProject.Repository, "soorten-temp.csv")
         createRawCSV(temp_csv_file)

@@ -5,6 +5,21 @@ import logging
 
 logger = logging.getLogger("speciesviewer")
 
+DEFAULT_SOURCE_LIST = "avibase.csv"
+
+
+def resolve_source_list(triproot, configured=""):
+    """Full path of the species list to read for this trip.
+
+    A list picked in the dialog wins; without one, the historical default
+    `avibase.csv` in the trip's own data folder. The path is returned whether
+    or not it exists, so the caller can name it in an error message.
+    """
+    configured = (configured or "").strip()
+    if configured:
+        return os.path.abspath(os.path.expanduser(configured))
+    return os.path.join(triproot, DEFAULT_SOURCE_LIST)
+
 
 def read_avibase(triproot, filename):
     """Read AviBase CSV and return a dict keyed by enname (column 0).
@@ -15,6 +30,15 @@ def read_avibase(triproot, filename):
     file_path = os.path.join(triproot, filename)
     number = 1
     avibase_dict = {}
+
+    if not os.path.isfile(file_path):
+        # Named in full, because the folder the list is expected in is not the
+        # folder the pictures live in — that mix-up is the usual cause.
+        raise FileNotFoundError(
+            f"No species list found at '{file_path}'. Use Browse… to pick the "
+            f"list, or put {DEFAULT_SOURCE_LIST} in the trip data folder "
+            f"'{triproot}'."
+        )
 
     with open(file_path, "r", encoding="utf-8") as f:
         for line in f.read().split("\n"):

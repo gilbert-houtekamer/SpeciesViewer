@@ -4228,9 +4228,29 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
             parent,
             menu_spec,
             title="Create an Excel to keep track of birds seen.",
-            info_text="Create an Excel to keep track of birds seen.",
+            info_text=(
+                "Reads the trip's bird list and writes an Excel checklist beside "
+                "it in the trip data folder, with a column per trip day."
+            ),
             subdirectory=False
         )
+        # The bird list lives in the trip's DATA folder, not with the pictures.
+        # The base dialog shows the picture folder, which sent the eye to the
+        # wrong place while the step read somewhere else entirely.
+        self.root_caption.setText("Trip data folder")
+        self.root_label.setText(str(self.trip_root))
+
+        # Which list to read. Browse… rather than a fixed avibase.csv: the list
+        # arrives from AviBase or Birding Breaks under whatever name it came with.
+        self.source_field = QLineEdit(self._initial_source_file())
+        self.source_field.setPlaceholderText(
+            "No list picked yet — Browse… to the CSV you downloaded")
+        browse_source_btn = QPushButton("Browse…")
+        browse_source_btn.clicked.connect(self._browse_source)
+        source_row = QHBoxLayout()
+        source_row.addWidget(self.source_field)
+        source_row.addWidget(browse_source_btn)
+
         # Source-list format dropdown.
         self.reader_dropdown = QComboBox()
         for _, label in self.READER_OPTIONS:
@@ -4265,11 +4285,48 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
 
         layout = self.layout()
         anchor = layout.indexOf(self.info_text)
-        layout.insertWidget(anchor, QLabel("Source list format"))
-        layout.insertWidget(anchor + 1, self.reader_dropdown)
-        layout.insertWidget(anchor + 2, self.phone_layout_checkbox)
-        layout.insertWidget(anchor + 3, self.first_lang_label)
-        layout.insertWidget(anchor + 4, self.first_lang_dropdown)
+        layout.insertWidget(anchor, QLabel("Species list file"))
+        layout.insertLayout(anchor + 1, source_row)
+        layout.insertWidget(anchor + 2, QLabel("Source list format"))
+        layout.insertWidget(anchor + 3, self.reader_dropdown)
+        layout.insertWidget(anchor + 4, self.phone_layout_checkbox)
+        layout.insertWidget(anchor + 5, self.first_lang_label)
+        layout.insertWidget(anchor + 6, self.first_lang_dropdown)
+
+    @staticmethod
+    def _same_folder(a, b):
+        if not a or not b:
+            return False
+        return (os.path.normcase(os.path.abspath(a)) ==
+                os.path.normcase(os.path.abspath(b)))
+
+    def _default_source_file(self):
+        return os.path.join(self.trip_root, "avibase.csv")
+
+    def _initial_source_file(self):
+        """The list to start from: the one picked last time FOR THIS TRIP, else
+        avibase.csv in the trip data folder, else nothing.
+
+        A path remembered for a different trip is ignored on purpose — reusing it
+        would quietly build this trip's checklist from the previous trip's list.
+        """
+        saved = _config.get("avibase", "source_file", fallback="").strip()
+        saved_trip = _config.get("avibase", "source_trip", fallback="").strip()
+        if (saved and os.path.isfile(saved)
+                and self._same_folder(saved_trip, self.trip_root)):
+            return saved
+        default = self._default_source_file()
+        return default if os.path.isfile(default) else ""
+
+    def _browse_source(self):
+        current = self.source_field.text().strip()
+        start_dir = (os.path.dirname(current) if current
+                     else str(self.trip_root))
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select the trip's bird list", start_dir,
+            "Species lists (*.csv);;All files (*)")
+        if path:
+            self.source_field.setText(path)
 
     def _sync_first_lang_enabled(self):
         enabled = self.phone_layout_checkbox.isChecked()
@@ -4277,11 +4334,26 @@ class ConvertAvibaseDialog(BaseTripModuleDialog):
         self.first_lang_label.setEnabled(enabled)
 
     def on_write(self):
+        # Say which file is missing before the step runs — the batch module can
+        # only report a path, and a path is what confused this in the first place.
+        source = self.source_field.text().strip()
+        if not source or not os.path.isfile(source):
+            self.status_label.setText(
+                f"❌ Pick the bird list first with Browse… "
+                f"(nothing found as {os.path.basename(self._default_source_file())} "
+                f"in {self.trip_root})."
+            )
+            return
+
         if not _config.has_section("avibase"):
             _config.add_section("avibase")
+        _config["avibase"]["source_file"] = source
+        # Remembered together with the trip it belongs to — see _initial_source_file.
+        _config["avibase"]["source_trip"] = str(self.trip_root)
         _config["avibase"]["source_format"] = self.READER_OPTIONS[self.reader_dropdown.currentIndex()][0]
         _config["avibase"]["phone_layout"] = "true" if self.phone_layout_checkbox.isChecked() else "false"
         _config["avibase"]["first_column_lang"] = self.LANG_OPTIONS[self.first_lang_dropdown.currentIndex()][0]
+        persist_config()          # the pick survives a restart
         super().on_write()
 
 
