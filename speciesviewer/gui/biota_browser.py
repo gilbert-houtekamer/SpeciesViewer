@@ -261,6 +261,9 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
 
         self._loader = AsyncImageLoader(self)
         self._source = None
+        # The effective query the current screen was drawn for; None until the
+        # first render, so that one always happens.
+        self._last_query = None
         self._cur = None            # current node scientific name
         self._mode = "tree"         # "tree" | "species"
         self._collection = None     # RatingEditorCollection (full master), for species mode
@@ -504,11 +507,35 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         self.columns = value
         self._render()
 
+    def _effective_query(self) -> str:
+        """The query as the renderers see it: below _SEARCH_MIN it is nothing.
+
+        One definition, used by both the dispatch and the keystroke handler, so
+        "what counts as a search" cannot drift between deciding to render and
+        deciding what to render.
+        """
+        raw = self._search.text().strip()
+        return raw if len(raw) >= self._SEARCH_MIN else ""
+
     def _on_search_changed(self, _t):
         # A search is a query over the current view; leave an open species view
         # (but keep the flat all-species list — there the box just filters it).
         # Only act once the query is long enough to be worth a tree scan.
-        if self._mode == "species" and len(self._search.text().strip()) >= self._SEARCH_MIN:
+        q = self._effective_query()
+        # Typing the first two letters cannot change what is on screen, because
+        # a below-minimum query IS the empty query. Rendering anyway re-laid the
+        # full 400-card page for every one of those keystrokes — half a second
+        # each on the master's 2250 species — which is what froze the window.
+        # Skipping the no-op render is the fix; suppressing only the FILTER was
+        # not, since the relayout cost is the same either way.
+        if q == self._last_query:
+            # The cards are already right. Only the "type 3 letters" hint may
+            # need to appear or go, and that is a label (plus the show-more
+            # button), never a relayout — so it stays cheap.
+            if self._mode == "allspecies":
+                self._update_all_footer()
+            return
+        if self._mode == "species" and q:
             self._mode = "tree"
         self._all_limit = self._ALL_CAP   # a new query starts from the top
         self._render()
@@ -729,6 +756,9 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
     def _render(self):
         if self._source is None:
             return
+        # What this pass is about to draw — see _on_search_changed, which skips a
+        # keystroke that would redraw the same thing.
+        self._last_query = self._effective_query()
         self._clear_grid()
         self._all_btn.setChecked(self._mode == "allspecies")
         # The rank rail makes sense only while browsing the tree; the sidebar only
@@ -740,7 +770,7 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         self._rebuild_rail()
         if self._mode == "allspecies":
             self._render_all_species()
-        elif len(self._search.text().strip()) >= self._SEARCH_MIN:
+        elif self._last_query:
             self._render_search()
         elif self._mode == "species":
             if self._species_view == "tech":
@@ -874,7 +904,11 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
     # ── flat: all species ────────────────────────────────────────────────────
     def _render_all_species(self):
         raw = self._search.text().strip()
-        q = raw.lower()
+        # The same minimum the tree search has always used. This branch is
+        # reached BEFORE the _SEARCH_MIN test in _render, so it used to filter
+        # on a single character — which matches almost every species and lays
+        # out a full page of cards on every keystroke, freezing the window.
+        q = self._effective_query().lower()
         nodes = self._source.all_species()
         if q:
             nodes = [n for n in nodes
@@ -898,7 +932,13 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         shown = self._all_shown
         raw = self._search.text().strip()
         scope = self._source.scope_label
-        if raw:
+        if raw and len(raw) < self._SEARCH_MIN:
+            # Typed something, but not enough to search on — say so, otherwise
+            # the unfiltered list looks like the box is being ignored.
+            self._status.setText(
+                f"All species — {total} · {scope}   (type {self._SEARCH_MIN} "
+                f"letters to search)")
+        elif raw:
             self._status.setText(f"{total} species match “{raw}” · {scope}")
         else:
             self._status.setText(f"All species — showing {shown} of {total} · {scope}"
