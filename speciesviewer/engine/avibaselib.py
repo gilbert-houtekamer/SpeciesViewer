@@ -298,6 +298,35 @@ def read_birdingbreaks(path, roles, first_data_row=1, delimiter=None):
     return parse_rows(rows, roles, first_data_row, os.path.basename(path))
 
 
+def configured_list_label(config):
+    """What to call the outputs made from this list, or "" for the old default.
+
+    A trip used to have one list, so naming a checklist after the trip was
+    unambiguous. A trip can now have several — one per region or per leg — and
+    without this they would all write the same file, each run quietly replacing
+    the last. Empty for plain avibase.csv, so trips that never picked a list keep
+    the names they have.
+    """
+    source = (config.get("avibase", "source_file", fallback="") or "").strip()
+    if not source:
+        return ""
+    stem = os.path.splitext(os.path.basename(source))[0].strip()
+    if stem.lower() in ("", "avibase"):
+        return ""
+    for bad in '<>:"/\\|?*':
+        stem = stem.replace(bad, "-")
+    # The operator's own file names carry words that say nothing here: the
+    # output is already a checklist, and already sits in a trip with a year.
+    # "Checklist Fotoreis Brazilië 2026" is worth keeping as "Fotoreis Brazilië".
+    stem = re.sub(r"\b(checklist|soortenlijst|list)\b", " ", stem, flags=re.IGNORECASE)
+    stem = re.sub(r"\b(19|20)\d{2}\b", " ", stem)
+    stem = re.sub(r"[\s_]+", " ", stem).strip(" .-")
+    if len(stem) > 24:                     # a file name, not a sentence
+        cut = stem[:24].rsplit(" ", 1)[0]
+        stem = (cut or stem[:24]).strip(" .-")
+    return stem
+
+
 def read_configured_list(triproot, config):
     """The trip's species list, read the way the settings say to read it.
 

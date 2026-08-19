@@ -28,7 +28,8 @@ import engine.specieslib
 import engine.speciesclassification
 from engine.specieslib import Level
 import engine.triplib
-from engine.avibaselib import add_species_info, read_configured_list
+from engine.avibaselib import (add_species_info, read_configured_list,
+                              configured_list_label)
 from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
@@ -576,8 +577,12 @@ def main(args, config):
         # the wrong way is quiet — it yields headings and no species.
         trip_name = MyProject.Trip.tripname
         safe_trip_name = re.sub(r'[<>:"/\\|?*]+', '-', trip_name).strip(' .-') or "avibase"
-        xlsx_path = os.path.join(MyProject.Repository,
-                                 f"{safe_trip_name}-checklist.xlsx")
+        # The list this checklist was made from is part of its name, so a trip
+        # with a list per leg keeps a checklist per leg instead of one file that
+        # each run replaces.
+        label = configured_list_label(config)
+        stem = f"{safe_trip_name}-{label}" if label else safe_trip_name
+        xlsx_path = os.path.join(MyProject.Repository, f"{stem}-checklist.xlsx")
         _refuse_if_open(xlsx_path)
 
         phone_layout = config.getboolean("avibase", "phone_layout", fallback=False)

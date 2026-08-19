@@ -19,7 +19,8 @@ if __name__ == "__main__":
 import engine.projectlib
 import engine.specieslib
 import engine.speciesclassification
-from engine.avibaselib import add_species_info, read_configured_list
+from engine.avibaselib import (add_species_info, read_configured_list,
+                              configured_list_label)
 from utils.ini_io import read_ini
 
 logger = logging.getLogger("speciesviewer")
@@ -116,9 +117,14 @@ def main(args, config):
         )
 
     trip_name = MyProject.Trip.tripname if MyProject.Trip else "trip"
+    # Named after the list as well as the trip: PhotoMechanic shows one keyword
+    # set per file, and a trip with a list per leg wants one set per leg rather
+    # than whichever list happened to run last.
+    label = configured_list_label(config)
+    stem = f"{trip_name} {label}" if label else trip_name
 
-    nl_path = os.path.join(output_dir, f"{trip_name} nl.snap")
-    en_path = os.path.join(output_dir, f"{trip_name} en.snap")
+    nl_path = os.path.join(output_dir, f"{stem} nl.snap")
+    en_path = os.path.join(output_dir, f"{stem} en.snap")
 
     write_photomechanic_snap(dutch_names, nl_path)
     write_photomechanic_snap(english_names, en_path)

@@ -4500,7 +4500,13 @@ class PhotoMechanicDialog(BaseTripModuleDialog):
                       == "birdingbreaks"
                       and _config.get("avibase", "columns", fallback="").strip())
             how = "the columns marked for it" if marked else "the fixed AviBase layout"
-            self.source_summary.setText(f"{source}  —  read with {how}")
+            from engine.avibaselib import configured_list_label
+            label = configured_list_label(_config)
+            named = f" {label}" if label else ""
+            self.source_summary.setText(
+                f"{source}  —  read with {how}\n"
+                f"Writes “<trip>{named} nl.snap” and “<trip>{named} en.snap”."
+            )
         else:
             self.source_summary.setText(
                 "Not set yet — open Utilities ▸ AviBase and pick the list there "
