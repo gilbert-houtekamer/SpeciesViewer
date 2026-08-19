@@ -507,6 +507,36 @@ reads <em>No current work planned</em>.</p>
 </ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>Outputs carry the name of the list they came from</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-19) — the checklist and the
+    keyword files were named after the trip alone, from when a trip had exactly
+    one list called <code>avibase.csv</code>. Brazil has four, so each run
+    replaced the last, which is why the trip folder held hand-renamed copies
+    (<code>…-REGUA-checklist.xlsx</code>, <code>…-fotoreis-checklist.xlsx</code>).
+    That convention is now the app's: <code>brazil2026db-pantanal-checklist.xlsx</code>.
+    The operator's own file names are trimmed first — <em>“Checklist
+    Fotoreis Brazilië 2026”</em> becomes <em>“Fotoreis Brazilië”</em>,
+    since the output is already a checklist in a trip that already has a year —
+    and capped at 24 characters on a word boundary. A trip that never picked a
+    list keeps the names it has.</li>
+  <li><strong>One keyword set for the whole trip</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-19) — PhotoMechanic read
+    one list: first a fixed <code>avibase.csv</code>, then whichever list the
+    checklist step was pointed at. But keywords are for typing a species name
+    while culling, and nobody wants to swap keyword sets between the legs of one
+    trip. It now shows every list in the trip folder with what each holds —
+    1067, 923, 923 and 439 species — all ticked by default, and merges them into
+    one pair of <code>.snap</code> files named after the trip. Files the app
+    writes there are excluded, so a run cannot feed on its own output, and an
+    unreadable list costs a warning rather than the keywords of all the others.
+    <br>The counts shown are worth reading: <code>avibase.csv</code> contributes
+    <strong>0 new names</strong>, which is how you learn it is a duplicate of the
+    REGUA list and can be unticked.
+    <br>Lists do not share a shape, so the column map is now remembered
+    <strong>per file</strong> rather than once globally, and a list nobody opened
+    Columns… on is read with the guess rather than dropped. The checklist step
+    picks up the same per-file map, which quietly fixes something else: switching
+    the picked list no longer reads it through the shape of the previous one.</li>
   <li><strong>PhotoMechanic works from the same list as the checklist</strong>
     <span class="tag-shipped">SHIPPED</span> (2026-08-19) — it opened a fixed
     <code>avibase.csv</code> with the fixed layout while the checklist read
