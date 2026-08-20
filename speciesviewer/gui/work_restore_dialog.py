@@ -44,12 +44,12 @@ class RestoreWorkDialog(QDialog):
 
         outer = QVBoxLayout(self)
         outer.addWidget(QLabel(
-            "Puts back the culling, species, locations, crops and blog text a "
-            "backup card holds. Pictures are never written or deleted — read the "
-            "SD-cards for those, before or after, in any order."))
+            "Puts back the culling, species, locations, crops and blog text the "
+            "<b>work card</b> holds. Pictures are never written or deleted — read "
+            "the SD-cards for those, before or after, in any order."))
 
         row = QHBoxLayout()
-        row.addWidget(QLabel("Backup card / folder:"))
+        row.addWidget(QLabel("Work card / folder:"))
         self._src_label = QLabel(self._default_source() or "— not chosen —")
         self._src_label.setWordWrap(True)
         row.addWidget(self._src_label, 1)
@@ -110,7 +110,7 @@ class RestoreWorkDialog(QDialog):
 
     def _choose(self):
         start = self._default_source() or str(Path.home())
-        got = QFileDialog.getExistingDirectory(self, "Backup card or folder", start)
+        got = QFileDialog.getExistingDirectory(self, "Work card or folder", start)
         if got:
             self._src_label.setText(got)
             self._reload()
@@ -139,8 +139,8 @@ class RestoreWorkDialog(QDialog):
         if not src or not Path(src).is_dir():
             self._abandon(f"❌ {src or 'No folder'} is not there. If a drive letter "
                           f"moved — inserting an SD-card can take the one the "
-                          f"backup card had — press Choose and point at it again."
-                          if src else "Choose the folder or card holding the backups.")
+                          f"work card had — press Choose and point at it again."
+                          if src else "Choose the work card, or the folder holding the backups.")
             return
 
         want = self._picture_root.name if self._picture_root else ""
@@ -154,10 +154,10 @@ class RestoreWorkDialog(QDialog):
         if not mine:
             names = ", ".join(t["folder"] or "(root)" for t in trips) or "nothing"
             # The likeliest cause by far, and the one that actually happened:
-            # inserting an SD-card takes the drive letter the backup card had,
+            # inserting an SD-card takes the drive letter the work card had,
             # so the same path now points at the wrong volume.
             hint = ("  If you have just inserted an SD-card it may have taken "
-                    "this drive letter — press Choose and pick the backup card "
+                    "this drive letter — press Choose and pick the work card "
                     "again." if names == "nothing" else "")
             self._abandon(f"❌ No backup for this trip in {src}. "
                           f"It holds: {names}.{hint}")

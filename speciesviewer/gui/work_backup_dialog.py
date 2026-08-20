@@ -119,12 +119,12 @@ class BackupWorkDialog(QDialog):
 
         outer = QVBoxLayout(self)
         outer.addWidget(QLabel(
-            "The cards keep the pictures. This backs up the <b>work</b> — culling "
+            "The SD-cards keep the pictures. This backs up the <b>work</b> — culling "
             "colours, species, locations, crops, blog text and the rendered JPGs — "
-            "as one ZIP per day."))
+            "onto the <b>work card</b>, as one ZIP per day."))
 
         dest_row = QHBoxLayout()
-        dest_row.addWidget(QLabel("Backup folder:"))
+        dest_row.addWidget(QLabel("Work card / folder:"))
         self._dest_label = QLabel(backup_location() or "— not chosen —")
         self._dest_label.setWordWrap(True)
         dest_row.addWidget(self._dest_label, 1)
@@ -246,7 +246,7 @@ class BackupWorkDialog(QDialog):
 
     def _choose_dest(self):
         start = backup_location() or str(Path.home())
-        chosen = QFileDialog.getExistingDirectory(self, "Backup folder", start)
+        chosen = QFileDialog.getExistingDirectory(self, "Work card or folder", start)
         if not chosen:
             return
         set_backup_location(chosen)
