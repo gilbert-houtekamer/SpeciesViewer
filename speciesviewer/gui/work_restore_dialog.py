@@ -44,9 +44,11 @@ class RestoreWorkDialog(QDialog):
 
         outer = QVBoxLayout(self)
         outer.addWidget(QLabel(
-            "Puts back the culling, species, locations, crops and blog text the "
-            "<b>SV INDEX</b> card holds. Pictures are never written or deleted — read "
-            "the SD-cards for those, before or after, in any order."))
+            "Puts back everything except the pictures themselves: the culling "
+            "colours, species names, locations, crops, blog text <b>and the "
+            "rendered JPGs</b>, from the <b>SV INDEX</b> card.<br>"
+            "The RAW pictures come from the trip's SD-cards — read those before "
+            "or after this, in any order. Nothing here writes or deletes a picture."))
 
         row = QHBoxLayout()
         row.addWidget(QLabel("SV INDEX card / folder:"))
@@ -188,6 +190,16 @@ class RestoreWorkDialog(QDialog):
                   f"backed up{self._made_when(info)}.", warn=False)
         self._enable(True)
         self._fill()
+        # Remember the surviving pictures NOW, while the card is readable. With
+        # one card reader the SD-card read that follows will have taken this
+        # card's slot, and without this the filter would have nothing to read.
+        try:
+            per_day = {d["day"]: (d["manifest"] or {}).get("raws") or []
+                       for d in self._trip["days"]}
+            wr.save_survivor_cache(self._trip_root,
+                                   {k: v for k, v in per_day.items() if v})
+        except Exception:
+            pass
 
     @staticmethod
     def _made_when(info):
@@ -249,9 +261,10 @@ class RestoreWorkDialog(QDialog):
         initial = int(manifest.get("raws_initial") or 0)
         culled = initial - len(raws)
         if culled > 0:
-            return f", {culled} culled (of {initial} picture(s))"
+            return (f"  ·  covers {len(raws)} kept picture(s); {culled} of "
+                    f"{initial} were culled")
         if raws:
-            return f", {len(raws)} picture(s), none culled"
+            return f"  ·  covers {len(raws)} picture(s)"
         return ""
 
     def _cull_totals(self, rows):
@@ -361,13 +374,15 @@ class RestoreWorkDialog(QDialog):
         kept, culled = self._cull_totals(picked)
         self._reload()
         cull_line = (
-            f"The backup lists {kept} picture(s) for these days; {culled} were "
-            f"culled during the trip.\n\nRead the SD-cards with “Skip "
-            f"pictures deleted during the trip” ticked and those {culled} will "
-            f"not come back."
-            if culled else
-            "Pictures are untouched — read the SD-cards, then use “Check "
-            "pictures…” to see what the culling had removed.")
+            f"The metadata and JPGs are back for the {kept} picture(s) that "
+            f"survived the culling"
+            + (f"; {culled} culled picture(s) are deliberately not covered."
+               if culled else ".")
+            + f"\n\nNext: read the trip's SD-cards to bring back the RAW "
+              f"pictures themselves. Which pictures were kept is now remembered "
+              f"on this machine, so you can take the SV INDEX card out — leave "
+              f"“Skip pictures deleted during the trip” ticked and the culled "
+              f"ones will not return.")
         QMessageBox.information(
             self, "Restore work from a card",
             f"{totals['days']} day(s): {totals['written']} file(s) written, "

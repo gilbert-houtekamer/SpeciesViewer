@@ -1399,6 +1399,7 @@ class ReadSDCardDialog(QDialog):
         """Offer to re-apply the culling, when this trip has a backup to read it
         from. Hidden otherwise — there is nothing to promise."""
         self._survivors = {}
+        self._survivors_from_cache = False
         box = getattr(self, "recull_checkbox", None)
         if box is None:
             return
@@ -1411,13 +1412,21 @@ class ReadSDCardDialog(QDialog):
                 self._survivors = wr.survivor_filter(
                     dest, trip_root=trip_root,
                     picture_root_name=Path(self.trip_picture_root).name)
+            # The SV INDEX card is usually NOT in the machine right now — with
+            # one reader, inserting the SD-card takes it out. The restore screen
+            # remembers the list while the card IS readable, and that copy is
+            # what makes the filter work at read time.
+            if not self._survivors and trip_root:
+                self._survivors = wr.load_survivor_cache(trip_root)
+                self._survivors_from_cache = bool(self._survivors)
         except Exception:
             self._survivors = {}
         n = len(self._survivors)
         box.setVisible(bool(n))
         if n:
-            box.setText(f"Skip pictures deleted during the trip "
-                        f"(this trip's backup covers {n} day(s))")
+            kept = sum(len(v) for v in self._survivors.values())
+            box.setText(f"Skip pictures deleted during the trip — copy only the "
+                        f"{kept} picture(s) kept across {n} day(s)")
 
     def _describe_card(self):
         """Say what the inserted card has already been read into.

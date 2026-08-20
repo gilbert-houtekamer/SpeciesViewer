@@ -33,6 +33,7 @@ Three ideas carry the design:
 
 from __future__ import annotations
 
+import json
 import logging
 import zipfile
 import zlib
@@ -273,6 +274,68 @@ def survivor_filter(dest_dir, trip_root=None, picture_root_name="") -> dict:
         raws = (d["manifest"] or {}).get("raws") or []
         if raws:
             out[d["day"]] = {n.lower() for n in raws}
+    return out
+
+
+# ── surviving-picture cache ───────────────────────────────────────────────────
+# The card holding the manifests and the SD-card holding the pictures are often
+# the SAME DRIVE LETTER, because there is one reader: swapping one in takes the
+# other out. So the survivor list has to be captured while the SV INDEX card is
+# present and kept on the laptop, or the card read that follows has nothing to
+# filter by and quietly un-culls the trip.
+#
+# It lives in the trip repository, so it belongs to the trip rather than to the
+# machine, and travels with it.
+SURVIVOR_CACHE_REL = "admin/survivors.json"
+
+
+def survivor_cache_path(trip_root) -> Path:
+    return Path(trip_root) / SURVIVOR_CACHE_REL
+
+
+def save_survivor_cache(trip_root, per_day: dict, logger_=None) -> int:
+    """Remember which pictures each day still held, per the SV INDEX card.
+
+    Written when the card IS readable — opening the restore screen is enough.
+    Merged rather than replaced: a card read for one day must not erase what is
+    known about the others.
+    """
+    log = logger_ or logger
+    if not trip_root or not per_day:
+        return 0
+    path = survivor_cache_path(trip_root)
+    data = {}
+    try:
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8")).get("days", {})
+    except (OSError, ValueError):
+        data = {}
+    for day, names in per_day.items():
+        data[day] = sorted(names)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(
+            {"version": 1, "saved": datetime.now().isoformat(timespec="seconds"),
+             "days": data}, ensure_ascii=False, indent=1), encoding="utf-8")
+    except OSError as e:
+        log.warning(f"Could not save the surviving-picture list: {e}")
+        return 0
+    log.info(f"Remembered which pictures survived the culling for "
+             f"{len(per_day)} day(s) — the SD-cards can now be read without "
+             f"the SV INDEX card present.")
+    return len(per_day)
+
+
+def load_survivor_cache(trip_root) -> dict:
+    """{day: {name, …}} remembered earlier, or {} — lower-cased for matching."""
+    try:
+        raw = json.loads(survivor_cache_path(trip_root).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    for day, names in (raw.get("days") or {}).items():
+        if names:
+            out[day] = {str(n).lower() for n in names}
     return out
 
 
