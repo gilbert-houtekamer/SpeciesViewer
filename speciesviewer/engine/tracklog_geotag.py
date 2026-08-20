@@ -319,14 +319,31 @@ def auto_geotag_entries(entries_by_day: dict[str, list[dict]], files_by_key: dic
     and 24 pictures were geotagged 8.6 km from where they were taken. The camera
     had recorded the correct offset (+01:00) in every single file all along.
 
+    A day whose pictures already all have GPS and altitude is counted as
+    "days_complete" and left alone — see the check itself for why that has to
+    come before everything else.
+
     Returns a summary dict for logging: `{"days_matched", "days_no_log",
-    "days_no_offset", "gps_files", "altitude_files", "pictures",
-    "logs_used": [filenames]}`."""
+    "days_no_offset", "days_complete", "gps_files", "altitude_files",
+    "pictures", "logs_used": [filenames]}`."""
     from engine.geo import camera_offset_from_dates
 
     summary = {"days_matched": 0, "days_no_log": 0, "days_no_offset": 0,
+              "days_complete": 0,
               "gps_files": 0, "altitude_files": 0, "pictures": 0, "logs_used": []}
     for day, day_entries in entries_by_day.items():
+        # Nothing to add is not a failure. A day whose pictures all carry GPS
+        # AND an altitude is already done — that is the normal state of a
+        # RESTORED day, where the sidecars come back from the backup with the
+        # geotagging the trip already did. Checked before the offset is even
+        # needed, because otherwise such a day reported "log found but the
+        # pictures don't record the camera's UTC offset — skipped", which reads
+        # as lost GPS when in fact there was never any work to do.
+        if all(e.get("has_gps") and e.get("cur_alt") is not None for e in day_entries):
+            logger.info(f"Tracklog auto-geotag: {len(day_entries)} picture(s) on {day} — "
+                       f"all of them already have GPS and altitude, nothing to add.")
+            summary["days_complete"] += 1
+            continue
         log_path = find_day_tracklog(day, root)
         if not log_path:
             summary["days_no_log"] += 1

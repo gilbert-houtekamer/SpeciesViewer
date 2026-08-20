@@ -2128,14 +2128,18 @@ class ReadSDCardDialog(QDialog):
         matched = summary.get("days_matched", 0)
         no_log = summary.get("days_no_log", 0)
         no_offset = summary.get("days_no_offset", 0)
+        complete = summary.get("days_complete", 0)
         logs = ", ".join(summary.get("logs_used", []))
         parts = []
         if matched:
             parts.append(f"{matched} day(s) matched ({logs})" if logs else f"{matched} day(s) matched")
+        if complete:
+            parts.append(f"{complete} day(s) already had GPS and altitude")
         if no_log:
             parts.append(f"{no_log} day(s) had no matching log")
         if no_offset:
-            parts.append(f"{no_offset} day(s) skipped (camera clock offset not confident)")
+            parts.append(f"{no_offset} day(s) skipped — their pictures don't record "
+                         f"the camera's UTC offset")
         detail = "; ".join(parts) if parts else "nothing to do"
         self.logger.info(
             f"Tracklog auto-geotag: wrote GPS to {summary.get('gps_files', 0)}, "
