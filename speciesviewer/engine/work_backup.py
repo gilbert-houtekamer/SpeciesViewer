@@ -56,7 +56,15 @@ WORK_EXTS = {".xmp", ".dop"}
 JPG_EXTS = {".jpg", ".jpeg"}
 # Loose per-day files worth carrying. blog.ini is written into the day folder
 # (sv4WriteBlog reads it from the project path, which IS the day).
-EXTRA_NAMES = {"blog.ini"}
+EXTRA_NAMES = {"blog.ini", ".sv_sidecar_cache.json"}
+
+# Files that ride along in the ZIP but must NOT make a day look stale. The
+# sidecar cache is derived from the XMPs beside it and is rewritten whenever the
+# culling viewer re-reads them, so treating it as work would have a day going
+# stale for a change nobody made. Backed up because rebuilding it costs an
+# exiftool pass over every sidecar on the restoring machine; ignored for
+# staleness because it says nothing about whether the WORK moved.
+DERIVED_NAMES = {".sv_sidecar_cache.json"}
 # Only to record WHICH pictures existed — these are never put in the ZIP.
 # HEIC belongs here: a phone-shot day is a real day (638 of them in 2026 Kreta),
 # and leaving the format out meant its pictures were missing from the manifest,
@@ -263,13 +271,16 @@ def day_status(day_dir, dest_dir) -> dict:
     now = build_manifest(scan)
     changed = 0
     for name, meta in now["files"].items():
+        if name.lower() in DERIVED_NAMES:
+            continue
         prev = old.get("files", {}).get(name)
         if prev is None or prev.get("size") != meta["size"] \
                 or prev.get("mtime_ns") != meta["mtime_ns"]:
             changed += 1
     # Deletions are the point of culling, so a file that has GONE counts as a
     # change just as loudly as one that appeared.
-    removed = set(old.get("files", {})) - set(now["files"])
+    removed = ({n for n in old.get("files", {}) if n.lower() not in DERIVED_NAMES}
+               - set(now["files"]))
     raws_changed = list(old.get("raws", [])) != list(now["raws"])
     if changed or removed or raws_changed:
         bits = []
@@ -428,6 +439,42 @@ def trip_matches_days(trip_root, day_dirs) -> tuple[bool, str]:
         return False, (f"these days are in {Path(got).name}, but the open trip's "
                        f"pictures are in {Path(want).name}")
     return True, ""
+
+
+def ensure_trip_tz_offset(trip_root, logger_=None) -> str:
+    """Backfill trip.ini's tz_offset from this machine's last card read.
+
+    Like the prefix it is only recorded when a card is READ, so trips that
+    already exist carry none — and unlike the prefix it cannot be re-derived
+    from the files, because a picture on disk does not say what offset put it in
+    that folder. This machine's last value is the only surviving evidence, so it
+    is copied across once and thereafter the trip owns it.
+
+    Only fills a BLANK value; an offset already recorded is never changed.
+    """
+    log = logger_ or logger
+    if not trip_root:
+        return ""
+    try:
+        from utils.trip_config import read_trip_ini, set_trip_flag
+        current = ((read_trip_ini(str(trip_root)) or {})
+                   .get("tz_offset", "") or "").strip()
+        if current:
+            return current
+        from utils.gui_config import get_cache_gui_section
+        tz = (get_cache_gui_section("sdcard_ingest", "tz_offset") or "").strip()
+    except Exception:
+        return ""
+    if not tz:
+        return ""
+    try:
+        if set_trip_flag(str(trip_root), "tz_offset", tz):
+            log.info(f"Recorded this trip's timezone offset ({tz}h) from this "
+                     f"machine's last card read — it now travels with the backup.")
+            return tz
+    except Exception as e:
+        log.warning(f"Backup: could not record the timezone offset: {e}")
+    return ""
 
 
 def ensure_trip_prefix(trip_root, day_dirs, logger_=None) -> str:

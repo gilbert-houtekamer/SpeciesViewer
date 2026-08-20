@@ -96,6 +96,12 @@ def read_trip_ini(trip_root: str):
         # verbatim — and re-reading cards with a different prefix orphans every
         # sidecar. Empty on pre-existing trips; the Read dialog fills it in.
         "picture_prefix": parser.get("trip_config", "picture_prefix", fallback=""),
+        # Hours added to capture time before a picture is filed into its day
+        # folder. A property of WHERE THE TRIP WAS, so it belongs with the trip
+        # and not in a per-machine cache: rebuild the days on another machine
+        # without it and near-midnight shots land in the wrong folder — which
+        # then reads as a mass deletion when a backup is matched against them.
+        "tz_offset": parser.get("trip_config", "tz_offset", fallback=""),
         "fromdate": parser.get("trip_config", "fromdate", fallback=""),
         "todate": parser.get("trip_config", "todate", fallback=""),
         # Lifecycle milestone, stamped by Retire Trip to Album; read by the

@@ -88,6 +88,7 @@ class _BackupWorker(QObject):
                     # recorded — otherwise the finished trips, the ones most
                     # likely to need restoring, would never carry one.
                     wb.ensure_trip_prefix(self._trip_root, self._days)
+                    wb.ensure_trip_tz_offset(self._trip_root)
                     out["identity"] = wb.backup_trip_identity(
                         self._trip_root, trip_folder,
                         master_root=_config.get("master", "masterbiotadatabase", fallback=""),

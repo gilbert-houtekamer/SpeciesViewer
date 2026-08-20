@@ -845,6 +845,7 @@ class ReadSDCardDialog(QDialog):
         # switching trips used to offer the PREVIOUS trip's prefix.
         trip_prefix = ""
         self._trip_recorded_prefix = ""
+        self._trip_recorded_tz = ""
         if not (days_mode or unfiled_mode):
             trip_root_for_ini = _config.get("trip", "tripbiotadatabase", fallback="").strip()
             if trip_root_for_ini:
@@ -852,6 +853,8 @@ class ReadSDCardDialog(QDialog):
                 trip_prefix = ((read_trip_ini(trip_root_for_ini) or {})
                                .get("picture_prefix", "") or "").strip()
                 self._trip_recorded_prefix = trip_prefix
+                self._trip_recorded_tz = ((read_trip_ini(trip_root_for_ini) or {})
+                                          .get("tz_offset", "") or "").strip()
         self.prefix_field = LabeledTextFieldQt(
             "Filename prefix",
             trip_prefix or saved_prefix or _default_year(dest_default), inline=True
@@ -886,9 +889,14 @@ class ReadSDCardDialog(QDialog):
             self.bucket_checkbox.setEnabled(False)
         date_row.addWidget(self.bucket_checkbox)
         date_row.addSpacing(20)
+        # Offset default, in order: the OPEN TRIP's own, then the last run's,
+        # then zero — the same precedence as the prefix above, and for the same
+        # reason: it decides which day folder a picture lands in, so it has to
+        # survive this machine.
         self.tz_offset_field = LabeledTextFieldQt(
             "Timezone offset (hours)",
-            get_cache_gui_section("sdcard_ingest", "tz_offset") or "0", inline=True)
+            self._trip_recorded_tz
+            or get_cache_gui_section("sdcard_ingest", "tz_offset") or "0", inline=True)
         self.tz_offset_field.field.setMaximumWidth(60)
         _tz_tip = ("Added to the camera's clock only when choosing each photo's date "
                    "folder. Set it when the camera time is on a different timezone than "
@@ -1708,7 +1716,7 @@ class ReadSDCardDialog(QDialog):
         if self.days_mode:
             from utils.config import set_setting
             set_setting("days", "location", dest)   # remember the Days location
-        self._remember_trip_prefix(prefix, dest)
+        self._remember_trip_read_settings(prefix, tz_offset, dest)
         self._include_dates = include_dates
         self._cancelled = False
         self._read_failed = 0
@@ -1738,8 +1746,10 @@ class ReadSDCardDialog(QDialog):
         self._worker.finished.connect(self.on_finished)
         self._thread.start()
 
-    def _remember_trip_prefix(self, prefix, dest):
-        """Record the filename prefix in the open trip's trip.ini.
+    def _remember_trip_read_settings(self, prefix, tz_offset, dest):
+        """Record the filename prefix AND the timezone offset in the open trip's
+        trip.ini — the two settings that decide what a picture is called and
+        which day it lands in, and so the two a rebuild cannot do without.
 
         Only when the card is actually landing in THAT trip's picture folder —
         a read into the Days lane or a scratch folder says nothing about the
@@ -1751,7 +1761,7 @@ class ReadSDCardDialog(QDialog):
         here, and failing to record it must never stop a card read.
         """
         prefix = (prefix or "").strip()
-        if not prefix or not self.trip_picture_root:
+        if not self.trip_picture_root:
             return
         try:
             same = os.path.normcase(os.path.normpath(str(dest))) ==                    os.path.normcase(os.path.normpath(str(self.trip_picture_root)))
@@ -1764,16 +1774,22 @@ class ReadSDCardDialog(QDialog):
             return
         try:
             from utils.trip_config import read_trip_ini, set_trip_flag
-            current = ((read_trip_ini(trip_root) or {}).get("picture_prefix", "") or "").strip()
-            if current == prefix:
-                return
-            if set_trip_flag(trip_root, "picture_prefix", prefix):
+            data = read_trip_ini(trip_root) or {}
+            wrote = []
+            if prefix and (data.get("picture_prefix", "") or "").strip() != prefix:
+                if set_trip_flag(trip_root, "picture_prefix", prefix):
+                    wrote.append(f"prefix '{prefix}'")
+            tz = str(tz_offset).strip()
+            if tz and (data.get("tz_offset", "") or "").strip() != tz:
+                if set_trip_flag(trip_root, "tz_offset", tz):
+                    wrote.append(f"timezone offset {tz}h")
+            if wrote:
                 self.logger.info(
-                    f"Recorded the filename prefix '{prefix}' in this trip — it "
-                    f"travels with the trip export, so a restore on another "
-                    f"machine reads the cards the same way.")
+                    f"Recorded this trip's {' and '.join(wrote)} — they travel "
+                    f"with the trip backup, so a restore on another machine reads "
+                    f"the cards the same way and files them into the same days.")
         except Exception as e:      # never block a card read over bookkeeping
-            self.logger.warning(f"Could not record the filename prefix: {e}")
+            self.logger.warning(f"Could not record the trip's read settings: {e}")
 
     def on_progress(self, done, total, name):
         self._set_progress(f"Copying {done}/{total}: {name}")
