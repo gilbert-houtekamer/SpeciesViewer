@@ -875,8 +875,10 @@ class MainWindow(QMainWindow):
             if day_item:
                 self.open_translation_validator(day_item.text())
             return
-        # Ignore the trailing In-Blog column and the Day column / headers.
-        if column > translations_col or column < 1:
+        # Ignore the Day column / headers, and anything past Translations —
+        # except Back up, which now sits last (it is the evening job, so that is
+        # where it belongs in the day's timeline) and is still clickable.
+        if (column > translations_col and column != BACKUP_COL) or column < 1:
             return
 
         day_item = self.trip_table.item(row, 0)
@@ -960,7 +962,8 @@ class MainWindow(QMainWindow):
         elif column == BACKUP_COL:
             from gui.work_backup_dialog import BackupWorkDialog
             trip_days = sorted(d for d in Path(new_dir).parent.iterdir() if d.is_dir())
-            BackupWorkDialog(self, trip_days, preselect=str(new_dir)).exec()
+            BackupWorkDialog(self, trip_days, preselect=str(new_dir),
+                             trip_root=str(trip_root)).exec()
             sm = StateMachine(str(trip_root), str(review_day), readState=True)
             self.refresh_trip_row(sm, day_str)
 

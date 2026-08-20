@@ -671,12 +671,30 @@ def _write_sidecars(raw_paths, log, progress_cb=None) -> int:
 
 # ── Naming helpers ────────────────────────────────────────────────────────────
 
+# The one naming convention: "<prefix> - <original camera name>". The separator
+# is a space, a hyphen and a space — chosen over Lightroom's space-less style
+# because it stays readable in a folder listing and in Explorer search.
+PREFIX_JOIN = " - "
+
+
 def target_name(src_name, prefix=""):
-    """Destination filename. With a prefix the original name is preserved and
-    prepended: 'IMG_1234.CR3' → '2026 Zeeland - IMG_1234.CR3'.  The prefix is
-    what makes names unique across cards/runs, so re-running is idempotent."""
-    prefix = (prefix or "").strip()
-    return f"{prefix} - {src_name}" if prefix else src_name
+    """Destination filename: '<prefix> - <original>', e.g. 'IMG_1234.CR3' →
+    '2026 Zeeland - IMG_1234.CR3'. The original name is always preserved; the
+    prefix is what makes names unique across cards and runs, so re-running is
+    idempotent.
+
+    A name that ALREADY carries this prefix is left alone. Without that, a file
+    which has been round-tripped through another program — Lightroom exports
+    under its own naming, and re-importing one is easy to do by accident —
+    comes back as "2026 Kreta - 2026 Kreta - IMG_1.jpg", and no later pass can
+    tell that apart from a deliberate name. Cheap to prevent, awkward to undo.
+    """
+    prefix = (prefix or "").strip().rstrip(" -")
+    if not prefix:
+        return src_name
+    if src_name.startswith(prefix) and src_name[len(prefix):len(prefix) + 1] in (" ", "-"):
+        return src_name
+    return f"{prefix}{PREFIX_JOIN}{src_name}"
 
 
 def _norm(path) -> str:

@@ -844,17 +844,33 @@ class ReadSDCardDialog(QDialog):
         # exactly like a mass deletion. It also fixes a smaller everyday bug:
         # switching trips used to offer the PREVIOUS trip's prefix.
         trip_prefix = ""
+        self._trip_recorded_prefix = ""
         if not (days_mode or unfiled_mode):
             trip_root_for_ini = _config.get("trip", "tripbiotadatabase", fallback="").strip()
             if trip_root_for_ini:
                 from utils.trip_config import read_trip_ini
                 trip_prefix = ((read_trip_ini(trip_root_for_ini) or {})
                                .get("picture_prefix", "") or "").strip()
+                self._trip_recorded_prefix = trip_prefix
         self.prefix_field = LabeledTextFieldQt(
             "Filename prefix",
             trip_prefix or saved_prefix or _default_year(dest_default), inline=True
         )
         input_layout.addWidget(self.prefix_field)
+        # Says what the files will be called, and flags only the two things
+        # worth flagging: a character the filesystem will refuse, and a prefix
+        # that differs from the rest of the trip. The second is informational on
+        # purpose — a sub-trip gets its own prefix deliberately (so it is
+        # findable in Explorer, and so a body that wraps its counter at 9999
+        # still produces unique names), so this must never block.
+        self.prefix_note = QLabel("")
+        self.prefix_note.setWordWrap(True)
+        self.prefix_note.setStyleSheet(f"color: {_th.INK_SOFT}; font-size: 9pt;")
+        input_layout.addWidget(self.prefix_note)
+        # LabeledTextFieldQt has no textChanged of its own — connect to the
+        # QLineEdit it wraps, the way the rest of this dialog reaches .field.
+        self.prefix_field.field.textChanged.connect(lambda *_: self._check_prefix())
+        self._check_prefix()
 
         # Date bucketing: copy into dest/<YYYY-MM-DD>/ using EXIF capture time,
         # shifted by the timezone offset BEFORE the date is taken so near-midnight
@@ -1290,6 +1306,56 @@ class ReadSDCardDialog(QDialog):
             f"{'tracklog' if from_log else 'this computer'} says "
             f"{self._fmt_offset(true_tz)} — timezone offset set to {delta_h:g} h.")
 
+    # An ALLOW-list, not a ban-list. Letters and digits (any language — isalnum
+    # accepts "Curaçao" and "Zuid-Afrika" alike), plus space, hyphen and
+    # underscore, which is everything the real prefixes have ever used.
+    #
+    # A ban-list would have to guess at what hurts. The period is the clearest
+    # reason not to guess: it is perfectly legal in a filename, so no filesystem
+    # would object, and it would quietly break every piece of code that reads an
+    # extension or a stem — which in this program is most of them. The other
+    # quiet ones are the delimiters the CSVs and the web layer use.
+    _PREFIX_EXTRA_OK = " -_"
+
+    def _check_prefix(self):
+        """Preview the resulting filename; refuse anything but letters, digits,
+        space, hyphen and underscore, and note a prefix that differs from the
+        one this trip already uses."""
+        from batch.sv0ReadSDCard import target_name
+        from gui import theme as _th
+        raw = self.prefix_field.get_text() or ""
+        example = target_name("IMG_1234.CR3", raw)
+        bad = sorted({c for c in raw
+                      if not (c.isalnum() or c in self._PREFIX_EXTRA_OK)})
+        if bad:
+            shown = " ".join(repr(c) if c.isspace() else c for c in bad)
+            hint = ("  A period would break every part of the program that reads "
+                    "a file extension." if "." in bad else "")
+            self.prefix_note.setText(
+                f"⚠ {shown} cannot be used in a filename prefix — letters, "
+                f"digits, spaces, - and _ only.{hint}")
+            self.prefix_note.setStyleSheet(f"color: {_th.WARN}; font-size: 9pt;")
+            self.prefix_note.setVisible(True)
+            self._set_read_enabled(False)
+            return
+        note = f"Files will be named:  {example}"
+        known = (self._trip_recorded_prefix or "").strip()
+        if known and raw.strip().rstrip(" -") and raw.strip().rstrip(" -") != known:
+            note += (f"    ·  this trip's other days use “{known}” — fine for a "
+                     f"sub-trip, just checking it is deliberate.")
+        self.prefix_note.setText(note)
+        self.prefix_note.setStyleSheet(f"color: {_th.INK_SOFT}; font-size: 9pt;")
+        self.prefix_note.setVisible(True)
+        self._set_read_enabled(True)
+
+    def _set_read_enabled(self, ok):
+        """Read is refused outright on a bad prefix — the point of an allow-list
+        is that the name never gets made. Guarded with getattr because
+        _check_prefix runs once during construction, before the buttons exist."""
+        btn = getattr(self, "read_btn", None)
+        if btn is not None:
+            btn.setEnabled(ok)
+
     def _check_dest_is_trip(self):
         """Warn when the card would land outside the active trip's picture root.
 
@@ -1546,6 +1612,14 @@ class ReadSDCardDialog(QDialog):
             self.logger.info(f"✅ Read complete. {text}")
 
     def on_read(self):
+        # Backstop for the disabled button: a prefix that failed the allow-list
+        # must never reach target_name, whatever route got here.
+        raw_prefix = self.prefix_field.get_text() or ""
+        if any(not (c.isalnum() or c in self._PREFIX_EXTRA_OK) for c in raw_prefix):
+            self.status_label.setText(
+                "❌ The filename prefix contains a character that is not allowed — "
+                "letters, digits, spaces, - and _ only.")
+            return
         source = self.source_field.get_path()
         dest = self.dest_field.get_path()
         if not source or not os.path.isdir(source):

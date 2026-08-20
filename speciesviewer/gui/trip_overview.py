@@ -22,9 +22,9 @@ GPS_COL = 3
 # literal, so inserting one only moves the numbers below.
 GEOTAG_COL = 4
 SYNC_COL = 5
-# Back up (💾) is a row action like the two beside it, not a pipeline step: it
-# writes one ZIP of the day's WORK to a spare card and never touches a RAW.
-BACKUP_COL = 6
+# In Blog sits here — before the pipeline steps — because it is a decision about
+# the day, taken early, that step 2 (Write Blog) then obeys.
+INBLOG_COL = 6
 STATE_COL_START = 7
 
 # ── Trip-overview pipeline state columns ─────────────────────────────────────
@@ -60,6 +60,13 @@ STATE_COLUMNS = [
      "after": "✅ Day published."},
 ]
 STATE_LABELS = [c["label"] for c in STATE_COLUMNS]
+
+# Back up (💾) is a row action like Geotag and Sync Sidecars, not a pipeline
+# step — it writes one ZIP of the day's WORK to a spare card and never touches a
+# RAW. It sits LAST because that is where it falls in the day's timeline: the
+# evening job, after everything else has been done.
+TRANSLATIONS_COL = STATE_COL_START + len(STATE_COLUMNS)
+BACKUP_COL = TRANSLATIONS_COL + 1
 
 
 # A day without JPGs can never grow a blog, so that 🚫 cell is dead (not
@@ -687,7 +694,7 @@ def populate_trip_overview(self):
     # indices and the double-click handlers that map column -> step stay
     # untouched. Unticking a day (e.g. the 'iphone' folder) keeps it out of the
     # blog — sv4WriteBlog then drops it from the index, like an empty day.
-    inblog_col = STATE_COL_START + len(self.state_labels) + 1
+    inblog_col = INBLOG_COL
     # The "Write Blog" state cell to grey out immediately when a day is excluded.
     blog_state_col = STATE_COL_START + next(
         (j for j, c in enumerate(STATE_COLUMNS) if c["gate"] == "WriteBlog"), 1)
@@ -704,9 +711,9 @@ def populate_trip_overview(self):
     # on the 3 step columns themselves (state_cell_symbol), not a 4th column.
     header_labels = (
         ["Day", "Pictures", "JPEG\nFiles", "GPS", "Geo-\ntag", "Sync\nSidecars",
-         "Back\nup"]
+         "In\nBlog"]
         + self.state_labels
-        + ["Trans-\nlations", "In\nBlog"]
+        + ["Trans-\nlations", "Back\nup"]
     )
     assert STATE_COL_START + len(self.state_labels) + 2 == len(header_labels), (
         f"trip_table column count {STATE_COL_START + len(self.state_labels) + 2} != "

@@ -305,19 +305,67 @@ def make_backup(db, master_root, *, force: bool = False) -> dict:
             "seconds": dt, "pruned": pruned}
 
 
+def _sweep_backup_husks(master_root) -> int:
+    """Remove EMPTY directories in the backup folder.
+
+    When a prune was blocked halfway, it deleted a backup's files and then
+    failed on the directory itself — leaving an empty husk that list_backups no
+    longer recognises as a backup (it requires a .csv.gz), so prune could never
+    target it again and it lingered for ever. That is how one 2026-07-29 folder
+    survived weeks of start-ups while producing a warning about itself.
+
+    Only ever removes a directory with NOTHING in it, files or folders. An empty
+    directory inside the master's backup folder is by definition not a backup,
+    so this cannot reach anything that matters however the folder got its name.
+    """
+    from engine.album_delete import _rmtree_retry
+    root = backup_root(master_root)
+    if not root.is_dir():
+        return 0
+    swept = 0
+    for d in root.iterdir():
+        try:
+            if not d.is_dir() or any(d.iterdir()):
+                continue
+        except OSError:
+            continue
+        if _rmtree_retry(d):
+            logger.info(f"master backup: swept the empty leftover folder {d.name}.")
+            swept += 1
+    return swept
+
+
 def prune(master_root, keep: int = KEEP_BACKUPS) -> int:
-    """Keep the newest `keep` daily backups."""
+    """Keep the newest `keep` daily backups.
+
+    Retries, because the master lives in Dropbox and Dropbox keeps a handle on a
+    folder for a moment while it syncs the deletion — long enough for the first
+    rmtree to fail with WinError 32 and short enough to be gone a fraction of a
+    second later. That produced a scary-looking warning at every start-up about
+    a folder that was already empty. Reuses the album delete's helper rather
+    than growing a second opinion about how long Dropbox needs.
+
+    A prune that genuinely cannot finish is still only housekeeping — the
+    backups it failed to drop are old ones, so it stays a warning and the next
+    run tries again.
+    """
+    from engine.album_delete import _rmtree_retry
+    # Husks are not backups, so they are counted apart — saying "pruned 4
+    # backup(s)" when four empty folders were swept would misreport what
+    # happened to the history.
+    swept = _sweep_backup_husks(master_root)
     backups = list_backups(master_root)
     dropped = 0
     for b in backups[keep:]:
-        try:
-            shutil.rmtree(b["path"])
+        if _rmtree_retry(b["path"]):
             dropped += 1
-        except OSError as e:
-            logger.warning(f"master backup prune: cannot remove {b['path']}: {e}")
+        else:
+            logger.warning(f"master backup prune: {Path(b['path']).name} is still "
+                           f"held by another process (Dropbox syncing?) — it will "
+                           f"be retried on the next start.")
     if dropped:
         logger.info(f"master backup: pruned {dropped} backup(s) older than the last {keep}.")
-    return dropped
+    return dropped + swept
 
 
 def backup_due(master_root) -> bool:

@@ -57,28 +57,65 @@ JPG_EXTS = {".jpg", ".jpeg"}
 # Loose per-day files worth carrying. blog.ini is written into the day folder
 # (sv4WriteBlog reads it from the project path, which IS the day).
 EXTRA_NAMES = {"blog.ini"}
-# Only to record WHICH pictures existed — RAWs are never put in the ZIP.
-RAW_EXTS = {".cr3", ".cr2", ".nef", ".arw", ".raf", ".dng", ".orf", ".rw2"}
+# Only to record WHICH pictures existed — these are never put in the ZIP.
+# HEIC belongs here: a phone-shot day is a real day (638 of them in 2026 Kreta),
+# and leaving the format out meant its pictures were missing from the manifest,
+# so a restore could not tell a culled one from a kept one.
+SOURCE_EXTS = {".cr3", ".cr2", ".nef", ".arw", ".raf", ".dng", ".orf", ".rw2",
+               ".heic", ".heif"}
 
-PREFIX_SEP = " - "      # target_name's separator; see the module note
+# Separators a prefix can be joined with. target_name writes " - " today, but
+# trips on disk use both "2026 Goeree - N8140001.ORF" and
+# "2026 North Greece-IMG_4527.HEIC", so neither can be assumed.
+PREFIX_SEPS = " -"
 
 
 def observed_prefix(names) -> str:
-    """The filename prefix these files were read with, or "" if they carry none.
+    """The filename prefix these pictures were read with, or "" if none.
 
-    Taken from the files themselves, never from a setting — that is the whole
-    point. Names WITHOUT the separator are ignored rather than fatal: a day
-    legitimately holds loose files that never carried a prefix (blog.ini), and
-    letting one of those zero the answer would be silly. Returns "" when no name
-    carries a prefix, and when the ones that do disagree — a day whose files
-    disagree has no single prefix, and a guess would be worse than an admission.
+    Read off the files, never out of a setting — that is the whole point, and it
+    is why no separator can be assumed: real trips on disk use " - "
+    (2026 Goeree) and "-" (2026 North Greece) alike, and the prefix is not always
+    the folder name either (2026 Zomer's pictures are "2026 juni Waldenlaan - …").
+
+    **Majority, not unanimity.** Real day folders contain hand-named files
+    sitting beside the machine-named ones — "short 2026 Kreta-N3130792.ORF.dop",
+    "2026 Kreta Lois olijfgaard 1.jpg" — and any rule that needs every name to
+    agree either returns nothing or, worse, returns a truncated prefix that
+    still looks plausible: the common start of those two Kreta names cut at its
+    last separator gives "2026", which is wrong and would pass a naive check.
+
+    So: every separator position in every name proposes a candidate, each
+    candidate is scored by how many names actually begin with it followed by a
+    separator, and the winner is the best-supported — longest breaking a tie,
+    which is what promotes "2026 Kreta" over the "2026" it contains. A candidate
+    must be backed by more than half the names, so a day with no convention
+    ("IMG_1234.HEIC") or two rival ones yields "" rather than a guess.
+
+    Underscore is deliberately not a separator: "IMG_1234.HEIC" would otherwise
+    hand back "IMG".
     """
-    prefixes = set()
+    names = [n for n in names if n]
+    if not names:
+        return ""
+    candidates = set()
     for n in names:
-        head, sep, _rest = n.partition(PREFIX_SEP)
-        if sep:
-            prefixes.add(head)
-    return prefixes.pop() if len(prefixes) == 1 else ""
+        for i, ch in enumerate(n):
+            if ch in PREFIX_SEPS and i:
+                head = n[:i].rstrip(PREFIX_SEPS)
+                if head:
+                    candidates.add(head)
+    if not candidates:
+        return ""
+    best, best_score = "", (0, 0)
+    for cand in candidates:
+        support = sum(1 for n in names
+                      if len(n) > len(cand) and n.startswith(cand)
+                      and n[len(cand)] in PREFIX_SEPS)
+        score = (support, len(cand))
+        if score > best_score:
+            best, best_score = cand, score
+    return best if best_score[0] * 2 > len(names) else ""
 
 
 def scan_day(day_dir) -> dict:
@@ -97,7 +134,7 @@ def scan_day(day_dir) -> dict:
             work.append(p)
         elif ext in JPG_EXTS:
             jpgs.append(p)
-        elif ext in RAW_EXTS:
+        elif ext in SOURCE_EXTS:
             raws.append(p.name)
         elif p.name.lower() in EXTRA_NAMES:
             extras.append(p)
@@ -107,7 +144,9 @@ def scan_day(day_dir) -> dict:
         "trip": day_dir.parent.name,
         "payload": payload,
         "raws": raws,
-        "prefix": observed_prefix([p.name for p in payload] + raws),
+        # Derived from the PICTURES only — a loose blog.ini carries no prefix
+        # and would drag the common start down to nothing.
+        "prefix": observed_prefix([p.name for p in work + jpgs] + raws),
     }
 
 
@@ -141,7 +180,7 @@ def zip_name(scan: dict) -> str:
     folder: a ZIP that gets copied out of its folder should still say what it is.
     """
     trip = scan["trip"].strip()
-    return f"{trip}{PREFIX_SEP}{scan['day']}.zip" if trip else f"{scan['day']}.zip"
+    return f"{trip} - {scan['day']}.zip" if trip else f"{scan['day']}.zip"
 
 
 def trip_dir(dest_dir, scan: dict) -> Path:
@@ -355,6 +394,166 @@ def backup_days(day_dirs, dest_dir, skip_unchanged=True,
             out["errors"].append(
                 f"{d.name}: {res['failed']} file(s) unreadable, left out of the backup")
         out["results"].append(res)
+    return out
+
+
+# ── Trip identity ─────────────────────────────────────────────────────────────
+
+TRACKLOG_SUBDIR = "tracklogs"
+TRACKLOG_EXTS = {".gpx", ".log", ".nmea", ".txt", ".fit"}
+
+
+def trip_matches_days(trip_root, day_dirs) -> tuple[bool, str]:
+    """Is `trip_root` really the trip these day folders belong to?
+
+    A guard, not a convenience. The identity ZIP carries the lifer baseline, and
+    writing one trip's baseline into another trip's backup folder would be found
+    only at restore, when it is too late to notice. In the GUI the two always
+    agree — the overview shows the active trip's days — so a mismatch means
+    something upstream is already wrong, which is exactly when a silent write is
+    worst. Compare the trip's OWN picture root (trip.ini's, via the resolver)
+    against where the days actually live.
+    """
+    if not trip_root or not day_dirs:
+        return False, "no trip selected"
+    try:
+        from utils.trip_identity import resolve_trip_picture_root
+        want = resolve_trip_picture_root(str(trip_root), kind="trip") or ""
+    except Exception as e:
+        return False, f"could not resolve the trip's picture root ({e})"
+    if not want:
+        return False, "the trip has no picture root"
+    got = str(Path(day_dirs[0]).parent)
+    if os.path.normcase(os.path.normpath(want)) != os.path.normcase(os.path.normpath(got)):
+        return False, (f"these days are in {Path(got).name}, but the open trip's "
+                       f"pictures are in {Path(want).name}")
+    return True, ""
+
+
+def ensure_trip_prefix(trip_root, day_dirs, logger_=None) -> str:
+    """Backfill trip.ini's picture_prefix from the filenames already on disk.
+
+    The prefix is recorded when a card is READ, so a trip whose cards were all
+    read before that existed — which is every trip that exists today — would
+    never get one, and the trips most likely to need restoring are exactly the
+    finished ones. The day folders already hold the answer: files are named
+    "<prefix> - <camera name>", so it can simply be observed.
+
+    Only fills a BLANK value; it never corrects a prefix already recorded,
+    because that is a decision worth making by hand.
+
+    Days are allowed to DISAGREE, and the most common one wins. A trip can hold
+    several prefixes on purpose — sub-trips get their own so they are findable
+    in Explorer, and a body that wraps its counter at 9999 (the D500 over a
+    whole trip, the Olympus within a day) needs a second one to keep names
+    unique. What trip.ini holds is therefore the DEFAULT the Read dialog offers,
+    not a rule the trip obeys; the day-by-day truth lives in each backup's
+    manifest, which records what its own files actually show.
+    """
+    log = logger_ or logger
+    if not trip_root:
+        return ""
+    try:
+        from utils.trip_config import read_trip_ini, set_trip_flag
+        current = ((read_trip_ini(str(trip_root)) or {})
+                   .get("picture_prefix", "") or "").strip()
+    except Exception:
+        return ""
+    if current:
+        return current
+    from collections import Counter
+    seen = Counter(p for p in (scan_day(d)["prefix"] for d in day_dirs) if p)
+    if not seen:
+        return ""
+    prefix, n = seen.most_common(1)[0]
+    if len(seen) > 1:
+        others = ", ".join(f"{k} ({v})" for k, v in seen.most_common()[1:])
+        log.info(f"Backup: this trip uses more than one filename prefix — "
+                 f"recording the commonest, '{prefix}' ({n} day(s)); also seen: "
+                 f"{others}. Each day's backup records its own.")
+    try:
+        if set_trip_flag(str(trip_root), "picture_prefix", prefix):
+            log.info(f"Recorded this trip's filename prefix '{prefix}' from the "
+                     f"pictures on disk — it now travels with the trip backup.")
+            return prefix
+    except Exception as e:
+        log.warning(f"Backup: could not record the filename prefix: {e}")
+    return ""
+
+
+def backup_trip_identity(trip_root, dest_trip_dir, master_root="",
+                         master_web_root="", logger_=None) -> dict:
+    """The trip's own ZIP beside the day ZIPs — trip.ini, the species
+    collection, the LIFER BASELINE and the translation cache. Kilobytes.
+
+    Reuses `svr6ExportTrip`'s engine (engine.trip_transfer.export_trip) rather
+    than assembling a second opinion about what a trip's identity is; that
+    module already owns the question, down to importing the result on the other
+    side.
+
+    Day ZIPs alone are NOT a restore. They carry every culling decision and no
+    lifer verdicts, and the baseline is the one file that must never be
+    regenerated from a partial master — so a backup without this is a backup
+    that quietly loses the answer to "was this a new species for me?".
+
+    Cheap enough to redo on every run, so it is never out of step with the days
+    beside it. Best-effort: a trip without a trip.ini is reported, not raised.
+    """
+    log = logger_ or logger
+    try:
+        from engine import trip_transfer
+        info = trip_transfer.export_trip(
+            str(trip_root), str(dest_trip_dir),
+            master_root=master_root, master_web_root=master_web_root)
+    except Exception as e:
+        log.warning(f"Backup: could not write the trip identity ZIP: {e}")
+        return {"written": False, "reason": str(e), "path": None}
+    log.info(f"Backed up trip identity → {Path(info['zip_path']).name} "
+             f"({info['size_kb']:.0f} KB)")
+    return {"written": True, "path": info["zip_path"],
+            "kb": info["size_kb"], "included": info.get("included", []),
+            "missing": info.get("missing", []), "reason": ""}
+
+
+def backup_tracklogs(gpslogs_root, dest_trip_dir, logger_=None) -> dict:
+    """Copy the GPS tracklogs in beside the trip ZIP.
+
+    They live in one folder on the laptop and nowhere else, and every picture
+    that has not been geotagged yet depends on them — lose them mid-trip and
+    those days can never get their positions. A megabyte or so, so the whole
+    folder is copied rather than worked out which log belongs to which day.
+
+    Only files that changed are re-copied, on size + mtime, so a nightly run
+    over an unchanged folder does nothing.
+    """
+    log = logger_ or logger
+    out = {"copied": 0, "skipped": 0, "bytes": 0}
+    if not gpslogs_root:
+        return out
+    src_root = Path(gpslogs_root)
+    if not src_root.is_dir():
+        return out
+    dest = Path(dest_trip_dir) / TRACKLOG_SUBDIR
+    for src in sorted(src_root.rglob("*")):
+        if not src.is_file() or src.suffix.lower() not in TRACKLOG_EXTS:
+            continue
+        target = dest / src.relative_to(src_root)
+        try:
+            st = src.stat()
+            if target.exists():
+                ts = target.stat()
+                if ts.st_size == st.st_size and int(ts.st_mtime) == int(st.st_mtime):
+                    out["skipped"] += 1
+                    continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, target)
+            out["copied"] += 1
+            out["bytes"] += st.st_size
+        except OSError as e:
+            log.warning(f"Backup: could not copy tracklog {src.name}: {e}")
+    if out["copied"]:
+        log.info(f"Backed up {out['copied']} tracklog(s), "
+                 f"{out['bytes']/1024:.0f} KB.")
     return out
 
 
