@@ -120,13 +120,29 @@ def main(args, config):
                     logger.warning(f"  ZIP metadata failed {fname}: {e}")
                     errors += 1
 
+        # ── the snapshot's own date, written LAST ────────────────────────────
+        # On the laptop this copy answers "is this a lifer?" and feeds the
+        # species suggestions, and a stale copy answers both confidently and
+        # wrongly with nothing to notice. So the ZIP carries its date, at the
+        # root, where extracting it to the master directory files it correctly
+        # with no install-side step to forget. Last, and from the counts that
+        # actually went in — a stamp written up front can describe a ZIP that
+        # never finished.
+        from engine.smallmaster_stamp import STAMP_NAME, stamp_json
+        zf.writestr(STAMP_NAME,
+                    stamp_json(source_root=source_root,
+                               biota_files=copied_pics,
+                               metadata_files=copied_meta),
+                    compress_type=zipfile.ZIP_DEFLATED)
+
     elapsed = time.time() - starttime
     warn = f", {errors} errors" if errors else ""
     zip_mb = os.path.getsize(zip_path) / 1024 / 1024
     msg = (
         f"SmallMaster ZIP done in {elapsed:.1f}s: "
         f"{copied_pics} biota files + {copied_meta} metadata files, "
-        f"{zip_mb:.0f} MB → {zip_path}{warn}"
+        f"{zip_mb:.0f} MB, snapshot dated {time.strftime('%d %b %Y %H:%M')} "
+        f"→ {zip_path}{warn}"
     )
     logger.info(msg)
     return msg

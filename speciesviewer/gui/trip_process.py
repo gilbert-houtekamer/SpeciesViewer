@@ -5550,6 +5550,14 @@ class InstallSmallMasterDialog(QDialog):
         self.contents_label.setStyleSheet("color: #555; font-style: italic;")
         layout.addWidget(self.contents_label)
 
+        # How old the ZIP is, and how old what is already here is — the two
+        # dates the decision to install actually turns on.
+        self.age_label = QLabel("")
+        self.age_label.setWordWrap(True)
+        self.age_label.setTextFormat(Qt.TextFormat.RichText)
+        self.age_label.setVisible(False)
+        layout.addWidget(self.age_label)
+
         self.delete_check = QCheckBox("Delete ZIP file after successful install")
         layout.addWidget(self.delete_check)
 
@@ -5599,8 +5607,37 @@ class InstallSmallMasterDialog(QDialog):
                 f"Metadata ({len(meta)}): {meta_str}  |  "
                 f"ZIP: {size_mb:.0f} MB"
             )
+            self._show_snapshot_ages(zip_path)
         except Exception as e:
             self.contents_label.setText(f"Cannot read ZIP: {e}")
+            self.age_label.setVisible(False)
+
+    def _show_snapshot_ages(self, zip_path):
+        """Say how old the ZIP is, and how old what is already installed is.
+
+        The question this screen exists to answer is "is this newer than what I
+        have?", and until now neither half of that was on the screen. Both dates
+        together also make the honest case for NOT installing: a ZIP older than
+        the copy on the laptop would take the master backwards.
+        """
+        from engine import smallmaster_stamp as _st
+        from gui import theme as _th
+        zip_info = _st.read_zip_stamp(zip_path)
+        target = self.target_edit.text().strip()
+        here = _st.read_stamp(target) or _st.estimate_from_files(target)
+        parts = [f"<b>This ZIP:</b> {_st.describe(zip_info)}"]
+        if here:
+            parts.append(f"<b>Installed now:</b> {_st.describe(here)}")
+        else:
+            parts.append("<b>Installed now:</b> nothing here yet")
+        backwards = (zip_info and here
+                     and (_st.age_days(zip_info) or 0) > (_st.age_days(here) or 0) + 1)
+        if backwards:
+            parts.append("<b>⚠ this ZIP is OLDER than the copy already installed</b>")
+        self.age_label.setText(" &nbsp;|&nbsp; ".join(parts))
+        colour = _th.WARN if backwards else _th.INK_SOFT
+        self.age_label.setStyleSheet(f"color: {colour};")
+        self.age_label.setVisible(True)
 
     def _on_install(self):
         import tempfile as _tmp
@@ -5707,7 +5744,15 @@ class InstallSmallMasterDialog(QDialog):
         _config.set("master", "readonly_locked", "yes")
         persist_config()
 
-        msg = f"✅ Installed in {elapsed:.0f}s → {target}{merged_note}{db_note}"
+        from engine import smallmaster_stamp as _st
+        stamp = _st.read_stamp(target)
+        stamp_note = f"  Snapshot {_st.describe(stamp)}." if stamp else                      "  (this ZIP carries no snapshot date — made before they existed)"
+        msg = f"✅ Installed in {elapsed:.0f}s → {target}{merged_note}{db_note}{stamp_note}"
+        # The status bar carries this date from now on; repaint it here rather
+        # than making the user restart to see what they just installed.
+        main = self.parent()
+        if hasattr(main, "update_master_snapshot_label"):
+            main.update_master_snapshot_label()
         if self.delete_check.isChecked():
             try:
                 os.remove(zip_path)

@@ -340,9 +340,17 @@ class MainWindow(QMainWindow):
             except ValueError:
                 pass
         
+        # On a laptop the master is a SNAPSHOT, and its age decides whether the
+        # lifer verdicts and species suggestions can be believed. It sits beside
+        # the trip name because it is the same kind of fact: which data am I
+        # looking at right now. Empty (and hidden) on a machine holding the real
+        # master, which has no snapshot date and needs none.
+        self.master_snapshot_label = QLabel("")
+        self.status_bar.addPermanentWidget(self.master_snapshot_label)
         self.trip_label = QLabel("")
         self.status_bar.addPermanentWidget(self.trip_label)
         self.update_trip_label()
+        self.update_master_snapshot_label()
         self.status_bar.showMessage("Ready")
 
         # Restore virtual trip overview if one was active at last close
@@ -2230,6 +2238,62 @@ class MainWindow(QMainWindow):
         trip_path = _config.get("trip", "tripbiotadatabase", fallback="")
         trip_name = Path(trip_path).name if trip_path else "None"
         self.trip_label.setText(f"Trip: {trip_name}")
+
+    def update_master_snapshot_label(self):
+        """Put the SmallMaster snapshot's age in the status bar, or hide it.
+
+        Shown when this machine holds a snapshot — either because the installed
+        copy carries its date, or because the machine is locked read-only, which
+        is what an install does and is the one durable sign of a SmallMaster.
+        In that second case the date is estimated from the metadata files and
+        says so in the tooltip, because a guess presented as a fact is worse
+        than no date at all.
+        """
+        from engine import smallmaster_stamp as _st
+        label = getattr(self, "master_snapshot_label", None)
+        if label is None:
+            return
+        root = _config.get("master", "masterbiotadatabase", fallback="")
+        info = _st.read_stamp(root)
+        if info is None and _config.get("master", "readonly_locked", fallback="") == "yes":
+            info = _st.estimate_from_files(root)
+        if info is None:
+            label.setVisible(False)
+            label.setToolTip("")
+            return
+        from gui import theme as _th
+        lvl = _st.level(info)
+        colour = {"alert": _th.ALERT, "warn": _th.WARN}.get(lvl, _th.INK_SOFT)
+        label.setText(f"Master snapshot: {_st.describe(info, short=True)}")
+        label.setStyleSheet(f"color: {colour}; padding-right: 8px;")
+        label.setToolTip(
+            _st.describe(info) + "\n\n"
+            "Lifer verdicts and species suggestions come from this copy of the "
+            "master. Refresh it (Utilities ▸ Install Small Master) if it is "
+            "older than the pictures you are culling.")
+        label.setVisible(True)
+
+    def _report_master_snapshot(self):
+        """One start-up line for the same fact, so it is in the log a day later
+        when the question is "what did it know at the time?". Silent on a
+        machine with the real master."""
+        from engine import smallmaster_stamp as _st
+        if not self.logger:
+            return
+        root = _config.get("master", "masterbiotadatabase", fallback="")
+        info = _st.read_stamp(root)
+        if info is None and _config.get("master", "readonly_locked", fallback="") == "yes":
+            info = _st.estimate_from_files(root)
+        if info is None:
+            return
+        line = f"Master snapshot on this machine: {_st.describe(info)}."
+        lvl = _st.level(info)
+        if lvl == "alert":
+            self.logger.error(line + " Refresh it before trusting lifer verdicts.")
+        elif lvl == "warn":
+            self.logger.warning(line + " Worth refreshing before a trip.")
+        else:
+            self.logger.info(line)
 
     def remove_existing_overview_tab(self):
         for i in range(self.yellow_tabs.count()):

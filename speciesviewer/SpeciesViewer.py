@@ -119,6 +119,7 @@ def start_main():
             print(f"✅ Logging configured, logger assigned: {main_window.logger}")
 
         main_window._report_drive_space()     # ✅ needs the logger, hence here
+        main_window._report_master_snapshot()  # ✅ same reason
         populate_trip_overview(main_window)  # ✅ Now logger is ready
         # The two scan-backed lanes, so all four tabs exist before the mode is
         # restored — otherwise starting in Unfiled or Days would find no tab and
