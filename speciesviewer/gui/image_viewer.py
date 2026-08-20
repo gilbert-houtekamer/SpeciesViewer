@@ -1561,26 +1561,44 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             stars = star_w.rating
             color = color_w.color
             key_list = list(keys)
-            progress = QProgressDialog("Updating…", None, 0, len(key_list), self)
+            progress = QProgressDialog("Updating…", None, 0, len(key_list) + 1, self)
             progress.setWindowTitle("Updating pictures")
             progress.setMinimumDuration(0)
             progress.show()
-            for i, k in enumerate(key_list):
-                progress.setValue(i)
-                progress.setLabelText(f"Updating {i + 1} of {len(key_list)}…")
+
+            def _tick(done, total):
+                progress.setValue(done)
+                progress.setLabelText(
+                    f"Collecting {done} of {total}…" if done < total
+                    else f"Writing {total} picture(s) in one go…")
                 QApplication.processEvents()
-                try:
-                    item = self._collection.item(self._collection.index_of(k))
-                    item.set_rating(stars)
-                    if color:
-                        item.set_color(color)
-                    card = self._cards_by_key.get(k)
-                    if card:
-                        card.refresh()
-                    self._notify_large_view(k)
-                except (ValueError, IndexError):
-                    pass
-            progress.setValue(len(key_list))
+
+            # ONE exiftool call for the whole selection, and the stars and the
+            # colour in the SAME call. Doing them per picture and separately
+            # meant two process spawns each — ~270 ms apiece, so about 43
+            # seconds for eighty pictures, nearly all of it starting exiftool.
+            batched = getattr(self._collection, "apply_many", None)
+            if batched is not None:
+                batched(key_list, new_stars=stars,
+                        new_color=(color or None), progress=_tick)
+            else:
+                for i, k in enumerate(key_list):
+                    _tick(i, len(key_list))
+                    try:
+                        item = self._collection.item(self._collection.index_of(k))
+                        item.set_rating(stars)
+                        if color:
+                            item.set_color(color)
+                    except (ValueError, IndexError):
+                        pass
+
+            # Repaint after the write, not between writes.
+            for k in key_list:
+                card = self._cards_by_key.get(k)
+                if card:
+                    card.refresh()
+                self._notify_large_view(k)
+            progress.setValue(len(key_list) + 1)
 
     def _cull_set_cursor(self, key):
         prev = self._cards_by_key.get(self._last_clicked_key) if self._last_clicked_key else None

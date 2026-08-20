@@ -1378,6 +1378,118 @@ class PreviewCollection(PictureCollection):
             logger.error(f"Preview apply: failed to persist CSV(s): {e}")
         return new_rate
 
+    def apply_many(self, upn_keys, *, new_stars: int | None = None,
+                   new_color: str | None = None, progress=None) -> int:
+        """apply() for a whole selection, in ONE exiftool call.
+
+        Measured before writing: a single exiftool_write costs ~270 ms, almost
+        all of it spawning the process, while rewriting a day CSV costs 1 ms. So
+        rating 80 pictures the old way — one apply() for the stars and another
+        for the colour, each spawning exiftool — was ~160 spawns and about 43
+        seconds. The CSVs were never the problem.
+
+        exiftool takes any number of files per invocation, and run_exiftool_files
+        passes them through an argfile so the command line cannot overflow. One
+        spawn does the lot.
+
+        HEIC/PNG-only pictures keep the per-picture path: the value goes INTO the
+        image, so they cannot share a single call. There are usually none.
+
+        progress(done, total) is called while the file list is gathered — the
+        cheap part; the write that follows is one step.
+        """
+        if self.read_only:
+            logger.warning("apply_many refused: collection is read-only.")
+            return 0
+        keys = [k for k in upn_keys if self.fpr.upn.UniquePictureName_dict.get(k)]
+        if not keys:
+            return 0
+
+        dxo_raw_exts = ("orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng")
+        batch_paths, touched_rows, raw_paths, heic_keys = [], [], [], []
+
+        for i, key in enumerate(keys):
+            if progress:
+                progress(i, len(keys))
+            upn_row = self.fpr.upn.UniquePictureName_dict[key]
+            if new_stars is not None:
+                upn_row["Rating"] = str(new_stars)
+            if new_color is not None:
+                upn_row["Label"] = new_color
+            if self._heic_only_upn(key):
+                heic_keys.append(key)
+                continue
+            for fname in (upn_row.get("Files") or []):
+                frow = self.fpr.fi.files_dict.get(fname)
+                if not frow:
+                    continue
+                ext = frow.get("WindowsExtension", "").lower()
+                if ext in dxo_raw_exts:
+                    raw_paths.append(frow.get("WindowsFileName", ""))
+                    continue
+                if ext not in ("xmp", "jpg", "jpeg"):
+                    continue
+                if ext == "xmp" and not color_rating_to_xmp_enabled():
+                    continue          # suppressed in .xmp; internal state still set
+                fpath = Path(frow.get("WindowsFileName", ""))
+                if fpath.exists():
+                    batch_paths.append(str(fpath))
+                touched_rows.append(frow)
+
+        args = []
+        if new_stars is not None:
+            args.append(f"-XMP:Rating={new_stars}")
+        if new_color is not None:
+            args.append(f"-XMP:Label={new_color}")
+
+        wrote = False
+        if args and batch_paths:
+            from engine.exif_writer import run_exiftool_files
+            try:
+                res = run_exiftool_files(args + ["-overwrite_original"], batch_paths)
+                wrote = True
+                if getattr(res, "returncode", 0):
+                    logger.warning(
+                        f"apply_many: exiftool reported a problem over "
+                        f"{len(batch_paths)} file(s): "
+                        f"{(res.stderr or '').strip()[:300]}")
+            except Exception as e:
+                logger.error(f"apply_many: exiftool write failed: {e}")
+
+        # Internal rows only after the write was attempted, so the cached state
+        # and the files agree.
+        for frow in touched_rows:
+            if new_stars is not None:
+                frow["XMP:Rating"] = str(new_stars)
+            if new_color is not None:
+                frow["XMP:Label"] = new_color
+
+        if color_rating_to_dop_enabled():
+            for rp in raw_paths:
+                if rp:
+                    try:
+                        push_metadata_to_dop(rp, color=new_color, rating=new_stars)
+                    except Exception as e:
+                        logger.warning(f"apply_many: .dop write failed for {rp}: {e}")
+
+        # HEIC-only ones go the single-picture route, CSVs and all.
+        for key in heic_keys:
+            self.apply(key, new_stars=new_stars, new_color=new_color)
+
+        for key in keys:
+            upn_row = self.fpr.upn.UniquePictureName_dict[key]
+            upn_row["Rate"] = str(_compute_rate(upn_row, self.fpr.fi.files_dict))
+
+        try:
+            self.fpr.upn.write_project_summary()
+            if wrote:
+                self.fpr.fi.write_project_files()
+        except Exception as e:
+            logger.error(f"apply_many: failed to persist CSV(s): {e}")
+        if progress:
+            progress(len(keys), len(keys))
+        return len(keys)
+
     def _heic_only_upn(self, upn_key: str) -> bool:
         """True when the picture has no JPG and no RAW — i.e. HEIC-only /
         PNG-only. Those carry rating/colour in the HEIC/PNG itself; everything
