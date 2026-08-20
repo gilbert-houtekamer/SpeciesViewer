@@ -2,6 +2,7 @@ import logging
 import os
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 from typing import Iterable, Union
 
@@ -12,15 +13,89 @@ logger = logging.getLogger("speciesviewer")
 # in command-line args (e.g. ü) are silently replaced with '?'. Passing the same
 # args via -@ argfile avoids the transcode: exiftool reads the file's raw bytes
 # and respects -charset utf8.
+# ── persistent writer ─────────────────────────────────────────────────────────
+# Starting exiftool costs ~270 ms; the write itself costs almost nothing. That is
+# invisible in a batch (one spawn for the lot) but it IS the delay felt when
+# culling one picture at a time in the large viewer — colour, next, colour, next.
+# One stay_open process, kept for the life of the app, removes it.
+#
+# encoding="utf-8" is not optional. The argfile below exists because Windows
+# transcodes argv through the ANSI code page and silently turns "ü" into "?";
+# stay_open passes arguments over a pipe instead, and this is what makes that
+# pipe UTF-8. Same protection, different route.
+#
+# Mirrors gui/preview_extract's reader: a lock, a lazy start, and a drop on any
+# failure so the next call restarts clean.
+_writer_lock = threading.Lock()
+_writer = None
+
+
+def _get_writer():
+    """A running ExifToolHelper for writing. Caller must hold _writer_lock."""
+    global _writer
+    if _writer is not None and _writer.running:
+        return _writer
+    import exiftool
+    _writer = exiftool.ExifToolHelper(
+        common_args=["-charset", "utf8", "-charset", "filename=utf8"],
+        encoding="utf-8", check_execute=False)
+    _writer.run()
+    return _writer
+
+
+def _drop_writer():
+    """Tear down a wedged writer. Caller must hold _writer_lock."""
+    global _writer
+    try:
+        if _writer is not None and _writer.running:
+            _writer.terminate()
+    except Exception:
+        pass
+    _writer = None
+
+
+def close_persistent_writer():
+    """Shut the shared writer down (app exit). Safe to call when none is open."""
+    with _writer_lock:
+        _drop_writer()
+
+
+def _write_via_persistent(filepath, args) -> bool:
+    """One write through the shared process. False means 'not done' — the
+    caller then falls back to a fresh subprocess, so a broken helper can never
+    turn into a lost edit."""
+    with _writer_lock:
+        try:
+            et = _get_writer()
+            out = et.execute(*args, str(filepath)) or ""
+        except Exception as e:
+            logger.warning(f"persistent exiftool write failed for "
+                           f"{Path(filepath).name}: {e}")
+            _drop_writer()
+            return False
+        # check_execute=False, so a failure is reported in the text rather than
+        # raised. "0 image files updated" is a failure with a zero exit code —
+        # exactly the kind that would otherwise pass unnoticed.
+        if "updated" not in out or out.strip().startswith("Error"):
+            logger.warning(f"persistent exiftool write did not update "
+                           f"{Path(filepath).name}: {out.strip()[:200]}")
+            return False
+        return True
+
+
 def exiftool_write(
     filepath: Union[str, Path],
     exif_args: Iterable[str],
     *,
     overwrite_original: bool = True,
+    persistent: bool = True,
 ) -> None:
     args = list(exif_args)
     if overwrite_original:
         args.append("-overwrite_original")
+
+    if persistent and _write_via_persistent(filepath, args):
+        return
 
     fd, tmp_path = tempfile.mkstemp(prefix="exiftool_args_", suffix=".txt", text=False)
     try:

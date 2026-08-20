@@ -508,6 +508,14 @@ class MainWindow(QMainWindow):
         _config["layout"]["split_sizes_horizontal"] = ",".join(str(s) for s in self.hsplitter.sizes())
         save_window(self, "MainWindow")   # the window's own size/position
         persist_config()
+        # The shared write-side exiftool stays open for the life of the app so a
+        # single colour or rating costs 11 ms instead of 270. Shut it down here
+        # rather than leaving an orphan process behind.
+        try:
+            from engine.exif_writer import close_persistent_writer
+            close_persistent_writer()
+        except Exception:
+            pass
         super().closeEvent(event)
     
     _MODE_STACK_INDEX = {MODE_DAY: 0, MODE_TRIP: 1, MODE_ALBUM: 2, MODE_UNFILED: 3}
