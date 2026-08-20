@@ -97,6 +97,7 @@ if sys.platform == "win32":
 
     _DRIVE_REMOVABLE = 2
     _DRIVE_FIXED     = 3
+    _DRIVE_REMOTE    = 4
 
     def _win_drive_kind(root: str) -> int:
         return ctypes.windll.kernel32.GetDriveTypeW(root)
@@ -112,6 +113,31 @@ if sys.platform == "win32":
         except OSError:
             return ""
         return buf.value if ok else ""
+
+
+def is_network_path(path) -> bool:
+    """Is this path on a network share? False when it cannot be told cheaply.
+
+    Worth knowing before a long write: a job that takes two minutes to a local
+    disk can take an hour over wifi, and a dropped connection halfway leaves a
+    part-written file. Only the answer "yes, certainly" is acted on — anything
+    unclear is treated as local, because a false warning about the drive you
+    always use is worse than no warning at all.
+    """
+    if not path:
+        return False
+    text = str(path)
+    if text.startswith("\\\\") or text.startswith("//"):
+        return True                       # UNC, e.g. //server/share
+    if sys.platform != "win32":
+        return False                      # no cheap equivalent worth the risk
+    root = os.path.splitdrive(os.path.abspath(text))[0]
+    if not root:
+        return False
+    try:
+        return _win_drive_kind(root + "\\") == _DRIVE_REMOTE
+    except OSError:
+        return False
 
 
 def _candidate_volumes() -> list[tuple[str, str]]:

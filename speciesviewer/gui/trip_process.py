@@ -4973,10 +4973,12 @@ class SmallMasterDialog(QDialog):
         info = QLabel(
             "<b>Create SmallMaster ZIP</b><br>"
             "Writes <tt>smallmaster.zip</tt> into the selected directory.  "
-            "The ZIP contains only JPG and XMP files from <tt>biota/</tt>, "
+            "The ZIP contains the JPGs from <tt>biota/</tt> and their sidecars, "
             "plus all CSVs from <tt>metadata/active/</tt> "
             "(data_files, data_pictures, species, speciescollection…).  "
-            "RAW files and web output are excluded.  "
+            "RAW files, web output and sidecars for pictures with no JPG are "
+            "left out — the laptop cannot show those pictures, and reads their "
+            "rating and camera data from the CSVs anyway.  "
             "Use <i>Install Small Master</i> on the laptop to unpack it."
         )
         info.setWordWrap(True)
@@ -5517,7 +5519,7 @@ class InstallSmallMasterDialog(QDialog):
 
         info = QLabel(
             "<b>Install SmallMaster from a ZIP file</b><br>"
-            "Extracts <tt>biota/</tt> (JPG + XMP species images) and "
+            "Extracts <tt>biota/</tt> (species JPGs and their sidecars) and "
             "<tt>metadata/active/</tt> (data_files, data_pictures, species, "
             "speciescollection…) to the configured master directory.  "
             "Existing files are overwritten; nothing else is removed.  "
