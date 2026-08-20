@@ -373,7 +373,7 @@ def _format_backup_item(day_dir):
     from gui.work_backup_dialog import backup_location
     dest = backup_location()
     if not dest:
-        item = action_cell("💾", "Back up the day's work — no work card chosen yet. "
+        item = action_cell("💾", "Back up the day's work — no SV INDEX card chosen yet. "
                                  "Opens so you can pick one.")
         item.setForeground(QColor(theme.INK_FAINT))
         return item
@@ -395,7 +395,7 @@ def _format_backup_item(day_dir):
         item.setForeground(QColor(theme.INK_FAINT))
         return item
     item = action_cell("💾", "The work on this day has NEVER been backed up. "
-                             "Click to write it to the work card.")
+                             "Click to write it to the SV INDEX card.")
     item.setForeground(QColor(theme.WARN))
     return item
 

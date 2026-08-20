@@ -898,7 +898,7 @@ def build_menu_spec(main_window):
     def _restore_work():
         """Import Trip's larger sibling: the trip identity is only the first
         part of coming home — the days' culling is the rest, and it lives on the
-        work card rather than in the trip export."""
+        SV INDEX card rather than in the trip export."""
         from gui.work_restore_dialog import RestoreWorkDialog
         from utils.trip_identity import resolve_trip_picture_root
         trip_root = _config.get("trip", "tripbiotadatabase", fallback="").strip()

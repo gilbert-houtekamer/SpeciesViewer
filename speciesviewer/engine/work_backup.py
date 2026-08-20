@@ -163,13 +163,22 @@ def _file_stat(p: Path) -> dict:
     return {"size": st.st_size, "mtime_ns": st.st_mtime_ns}
 
 
-def build_manifest(scan: dict) -> dict:
+def build_manifest(scan: dict, previous: dict | None = None) -> dict:
+    """`previous` is the manifest being replaced, used only to carry forward
+    raws_initial — how many pictures this day EVER held. Today's picture list
+    shrinks as culling proceeds, so without a high-water mark there is nothing
+    left to say how many were thrown away, and a restore cannot tell you how
+    many of the card's pictures it is about to leave behind."""
     files = {}
     for p in scan["payload"]:
         try:
             files[p.name] = _file_stat(p)
         except OSError:
             pass
+    prev = previous or {}
+    initial = max(int(prev.get("raws_initial") or 0),
+                  len(prev.get("raws") or []),
+                  len(scan["raws"]))
     return {
         "version": MANIFEST_VERSION,
         "day": scan["day"],
@@ -177,6 +186,9 @@ def build_manifest(scan: dict) -> dict:
         "prefix": scan["prefix"],
         "created": datetime.now().isoformat(timespec="seconds"),
         "raws": scan["raws"],
+        # High-water mark, never decreasing: raws_initial - len(raws) is how
+        # many pictures the culling removed, cumulatively.
+        "raws_initial": initial,
         "files": files,
     }
 
@@ -313,6 +325,7 @@ def backup_day(day_dir, dest_dir, logger_=None) -> dict:
 
     migrate_flat_zip(dest_dir, scan)
     out_dir = trip_dir(dest_dir, scan)
+    prev_manifest = read_manifest(out_dir / zip_name(scan))   # for raws_initial
     out_dir.mkdir(parents=True, exist_ok=True)
     final = out_dir / zip_name(scan)
     tmp = final.with_suffix(".tmp")
@@ -343,8 +356,8 @@ def backup_day(day_dir, dest_dir, logger_=None) -> dict:
             # manifest written up front would claim files the ZIP does not hold.
             partial = dict(scan, payload=added)
             zf.writestr(MANIFEST_NAME,
-                        json.dumps(build_manifest(partial), ensure_ascii=False,
-                                   indent=1))
+                        json.dumps(build_manifest(partial, previous=prev_manifest),
+                                   ensure_ascii=False, indent=1))
         os.replace(tmp, final)
     except OSError:
         try:

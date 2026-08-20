@@ -45,11 +45,11 @@ class RestoreWorkDialog(QDialog):
         outer = QVBoxLayout(self)
         outer.addWidget(QLabel(
             "Puts back the culling, species, locations, crops and blog text the "
-            "<b>work card</b> holds. Pictures are never written or deleted — read "
+            "<b>SV INDEX</b> card holds. Pictures are never written or deleted — read "
             "the SD-cards for those, before or after, in any order."))
 
         row = QHBoxLayout()
-        row.addWidget(QLabel("Work card / folder:"))
+        row.addWidget(QLabel("SV INDEX card / folder:"))
         self._src_label = QLabel(self._default_source() or "— not chosen —")
         self._src_label.setWordWrap(True)
         row.addWidget(self._src_label, 1)
@@ -110,7 +110,7 @@ class RestoreWorkDialog(QDialog):
 
     def _choose(self):
         start = self._default_source() or str(Path.home())
-        got = QFileDialog.getExistingDirectory(self, "Work card or folder", start)
+        got = QFileDialog.getExistingDirectory(self, "SV INDEX card or folder", start)
         if got:
             self._src_label.setText(got)
             self._reload()
@@ -139,8 +139,8 @@ class RestoreWorkDialog(QDialog):
         if not src or not Path(src).is_dir():
             self._abandon(f"❌ {src or 'No folder'} is not there. If a drive letter "
                           f"moved — inserting an SD-card can take the one the "
-                          f"work card had — press Choose and point at it again."
-                          if src else "Choose the work card, or the folder holding the backups.")
+                          f"SV INDEX card had — press Choose and point at it again."
+                          if src else "Choose the SV INDEX card, or the folder holding the backups.")
             return
 
         want = self._picture_root.name if self._picture_root else ""
@@ -154,10 +154,10 @@ class RestoreWorkDialog(QDialog):
         if not mine:
             names = ", ".join(t["folder"] or "(root)" for t in trips) or "nothing"
             # The likeliest cause by far, and the one that actually happened:
-            # inserting an SD-card takes the drive letter the work card had,
+            # inserting an SD-card takes the drive letter the SV INDEX card had,
             # so the same path now points at the wrong volume.
             hint = ("  If you have just inserted an SD-card it may have taken "
-                    "this drive letter — press Choose and pick the work card "
+                    "this drive letter — press Choose and pick the SV INDEX card "
                     "again." if names == "nothing" else "")
             self._abandon(f"❌ No backup for this trip in {src}. "
                           f"It holds: {names}.{hint}")
@@ -171,6 +171,18 @@ class RestoreWorkDialog(QDialog):
                           f"Nothing will be restored. Open the matching trip first.")
             return
         self._ok = True
+        # Remember it, the same way the backup dialog does. Without this the
+        # Read dialog could not find the card afterwards, so its "skip pictures
+        # deleted during the trip" tick never appeared — restoring on a fresh
+        # machine and then reading the cards silently un-culled the trip.
+        # Only after the identity matched, so pointing at the wrong folder to
+        # look cannot clobber the setting.
+        try:
+            from gui.work_backup_dialog import backup_location, set_backup_location
+            if backup_location() != src:
+                set_backup_location(src)
+        except Exception:
+            pass
         self._say(f"✅ Card matches the open trip — “{info.get('trip_name') or ''}” "
                   f"({info.get('trip_id')}), {len(self._trip['days'])} day(s) "
                   f"backed up{self._made_when(info)}.", warn=False)
@@ -218,9 +230,39 @@ class RestoreWorkDialog(QDialog):
                 txt = ", ".join(bits)
             else:
                 txt = "nothing to do — everything here already matches"
+            txt += self._cull_note(plan.get("manifest") or {})
             self._table.setItem(i, 4, QTableWidgetItem(txt))
         self._table.blockSignals(False)
         self._update_summary()
+
+    @staticmethod
+    def _cull_note(manifest) -> str:
+        """", 181 culled (of 202 picture(s))" — what this day lost to culling.
+
+        The manifest's picture list shrinks as pictures are thrown away and
+        raws_initial is the high-water mark, so the difference IS the cull. It
+        belongs on this screen because it says what the SD-card read that
+        follows will leave behind — otherwise the number is invisible until the
+        pictures simply fail to appear.
+        """
+        raws = manifest.get("raws") or []
+        initial = int(manifest.get("raws_initial") or 0)
+        culled = initial - len(raws)
+        if culled > 0:
+            return f", {culled} culled (of {initial} picture(s))"
+        if raws:
+            return f", {len(raws)} picture(s), none culled"
+        return ""
+
+    def _cull_totals(self, rows):
+        """(pictures the backup lists, pictures culled) over the given rows."""
+        kept = culled = 0
+        for i in rows:
+            man = self._plans.get(self._table.item(i, 1).text(), {}).get("manifest") or {}
+            raws = man.get("raws") or []
+            kept += len(raws)
+            culled += max(0, int(man.get("raws_initial") or 0) - len(raws))
+        return kept, culled
 
     # ── selection ─────────────────────────────────────────────────────────
 
@@ -242,10 +284,14 @@ class RestoreWorkDialog(QDialog):
         for i in picked:
             c = self._plans[self._table.item(i, 1).text()].get("counts", {})
             new += c.get(wr.NEW, 0); diff += c.get(wr.DIFFERS, 0); same += c.get(wr.SAME, 0)
+        kept, culled = self._cull_totals(picked)
+        tail = (f"  The backup lists {kept} picture(s); {culled} were culled and "
+                f"will not be read back." if culled else
+                (f"  The backup lists {kept} picture(s)." if kept else ""))
         self._summary.setText(
             f"{len(picked)} of {self._table.rowCount()} day(s) selected — "
             f"{new} file(s) to write, {diff} that differ, {same} already identical "
-            f"(those are skipped, not rewritten).")
+            f"(those are skipped, not rewritten).{tail}")
 
     # ── actions ───────────────────────────────────────────────────────────
 
@@ -312,14 +358,21 @@ class RestoreWorkDialog(QDialog):
         finally:
             QApplication.restoreOverrideCursor()
 
+        kept, culled = self._cull_totals(picked)
         self._reload()
+        cull_line = (
+            f"The backup lists {kept} picture(s) for these days; {culled} were "
+            f"culled during the trip.\n\nRead the SD-cards with “Skip "
+            f"pictures deleted during the trip” ticked and those {culled} will "
+            f"not come back."
+            if culled else
+            "Pictures are untouched — read the SD-cards, then use “Check "
+            "pictures…” to see what the culling had removed.")
         QMessageBox.information(
             self, "Restore work from a card",
             f"{totals['days']} day(s): {totals['written']} file(s) written, "
             f"{totals['identical']} already identical (left untouched), "
-            f"{totals['kept']} kept as they were.\n\n"
-            f"Pictures are untouched — read the SD-cards, then use "
-            f"“Check pictures…” to see what the culling had removed.")
+            f"{totals['kept']} kept as they were.\n\n{cull_line}")
 
     def _check_pictures(self):
         """Read-only comparison of the pictures on disk against the backup."""
