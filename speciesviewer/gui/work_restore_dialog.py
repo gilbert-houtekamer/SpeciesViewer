@@ -64,16 +64,16 @@ class RestoreWorkDialog(QDialog):
         self._banner.setWordWrap(True)
         outer.addWidget(self._banner)
 
-        self._table = QTableWidget(0, 5)
+        self._table = QTableWidget(0, 6)
         self._table.setHorizontalHeaderLabels(
-            ["", "Day", "In backup", "Already here", "To restore"])
+            ["", "Day", "In backup", "Already here", "Pictures", "To restore"])
         self._table.verticalHeader().setVisible(False)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         hh = self._table.horizontalHeader()
-        for i in (0, 1, 2, 3):
+        for i in (0, 1, 2, 3, 4):
             hh.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
-        hh.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        hh.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
         self._table.itemChanged.connect(lambda *_: self._update_summary())
         outer.addWidget(self._table, 1)
 
@@ -89,6 +89,13 @@ class RestoreWorkDialog(QDialog):
         n.clicked.connect(lambda: self._set_all(False))
         btns.addWidget(n)
         btns.addStretch(1)
+        self._read_btn = QPushButton("Read SD-cards…")
+        self._read_btn.setToolTip(
+            "Bring the RAW pictures back from the trip's SD-cards, without "
+            "leaving this screen.\nThe SV INDEX card can be out — which pictures "
+            "survived the culling is already remembered.")
+        self._read_btn.clicked.connect(self._read_cards)
+        btns.addWidget(self._read_btn)
         self._check_btn = QPushButton("Check pictures…")
         self._check_btn.setToolTip(
             "Compare the pictures on disk against what the backup recorded — "
@@ -233,6 +240,7 @@ class RestoreWorkDialog(QDialog):
             self._table.setItem(i, 1, QTableWidgetItem(d["day"]))
             self._table.setItem(i, 2, QTableWidgetItem(str(len(plan.get("files", [])))))
             self._table.setItem(i, 3, QTableWidgetItem(str(c.get(wr.SAME, 0))))
+            self._table.setItem(i, 4, self._pictures_item(d["day"]))
             if todo:
                 bits = []
                 if c.get(wr.NEW):
@@ -243,9 +251,68 @@ class RestoreWorkDialog(QDialog):
             else:
                 txt = "nothing to do — everything here already matches"
             txt += self._cull_note(plan.get("manifest") or {})
-            self._table.setItem(i, 4, QTableWidgetItem(txt))
+            self._table.setItem(i, 5, QTableWidgetItem(txt))
         self._table.blockSignals(False)
         self._update_summary()
+
+    def _pictures_item(self, day) -> QTableWidgetItem:
+        """"21 of 21" — pictures on disk against what the backup says survived.
+
+        The number that actually answers "is this day back?" while cards go in
+        one after another. Read from the DAY FOLDER and the manifest already in
+        memory, never from the SV INDEX card — by the time the SD-cards are
+        being read that card is out of the machine.
+        """
+        man = (self._plans.get(day) or {}).get("manifest") or {}
+        want = len(man.get("raws") or [])
+        here = 0
+        folder = (self._picture_root / day) if self._picture_root else None
+        if folder and folder.is_dir():
+            try:
+                here = sum(1 for p in folder.iterdir()
+                           if p.is_file() and p.suffix.lower() in wb.SOURCE_EXTS)
+            except OSError:
+                here = 0
+        item = QTableWidgetItem(f"{here} of {want}" if want else str(here))
+        if want:
+            item.setToolTip(
+                f"{here} picture(s) in the day folder; the backup lists {want}. "
+                f"Read the trip's SD-cards to bring the rest back."
+                if here < want else
+                f"All {want} picture(s) the backup lists are here.")
+        return item
+
+    def _refresh_pictures(self):
+        """Update ONLY the picture counts. Deliberately does not touch the card:
+        after a card read the SV INDEX card is usually gone, and a full reload
+        would blank the screen it is standing in."""
+        self._table.blockSignals(True)
+        for i in range(self._table.rowCount()):
+            day = self._table.item(i, 1).text()
+            self._table.setItem(i, 4, self._pictures_item(day))
+        self._table.blockSignals(False)
+
+    def _read_cards(self):
+        """Open Read SD-cards from here, then update the picture counts.
+
+        Cards go in one after another, and having to close this screen and find
+        another menu between each one is the goat trail. The SV INDEX card is
+        almost certainly out of the machine by now, which is exactly why the
+        refresh afterwards reads the day folders rather than the card."""
+        try:
+            from gui.trip_process import ReadSDCardDialog
+        except Exception as e:
+            QMessageBox.warning(self, "Read SD-cards", f"Could not open it:\n{e}")
+            return
+        parent = self.parent()
+        spec = getattr(parent, "menu_spec", {}) or {}
+        holder = None
+        for group in spec.values():
+            if isinstance(group, dict) and "Read SD-cards" in group:
+                holder = group["Read SD-cards"]
+                break
+        ReadSDCardDialog(parent if parent is not None else self, holder).exec()
+        self._refresh_pictures()
 
     @staticmethod
     def _cull_note(manifest) -> str:
