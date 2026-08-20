@@ -775,7 +775,7 @@ def card_history(source) -> list[dict]:
 
 def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0,
               skip_if_on_disk=True, write_sidecars=True, use_card_cache=True,
-              include_dates=None, trip_stamp=None,
+              include_dates=None, include_names=None, trip_stamp=None,
               logger=None, progress=None, should_cancel=None):
     """Copy picture files from `source` (recursively) into `dest`.
 
@@ -793,6 +793,12 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     include_dates     - optional set of 'YYYY-MM-DD' strings; when given, files
                         whose capture-day is not in the set are skipped entirely
                         (see scan_days). Independent of bucket_by_date.
+    include_names     - optional {day: {filename, …}} allow-list, per day, of
+                        TARGET names (i.e. already prefixed). A day present in
+                        the mapping copies only those files; a day ABSENT from
+                        it copies everything. That asymmetry is the point: it
+                        lets a restore re-apply the culling for days the backup
+                        knows, without silently dropping a day it has never seen.
     trip_stamp        - optional {"trip_id":…, "trip":…} recorded ON THE CARD
                         with this read, so the card can later say which trip it
                         was read into and when. See _CardCache.record_read.
@@ -814,6 +820,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     total = len(files)
     summary = {"total": total, "copied": 0, "skipped": 0, "deselected": 0,
                "renamed": 0, "conflict": 0, "failed": 0, "bytes": 0,
+               "culled": 0,
                "failed_names": [], "planned_bytes": 0, "error": ""}
     targets = []   # destination paths now present (copied or already-there)
 
@@ -825,7 +832,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     # ── Resolve date buckets ──────────────────────────────────────────────
     # Needed for the subfolder layout AND for an include_dates day filter.
     # Cache reduces exiftool to only new/changed files; updated below after copy.
-    if bucket_by_date or include_dates is not None:
+    if bucket_by_date or include_dates is not None or include_names:
         buckets, cached_dates_for_new = _build_buckets(
             files, tz_offset_hours, cache, log)
     else:
@@ -853,10 +860,22 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
 
         # Day filter: skip files whose capture-day wasn't selected — before any
         # dedup/hash/copy work, so deselected days cost nothing.
-        if include_dates is not None and \
-                buckets.get(_norm(src), UNKNOWN_DATE_DIR) not in include_dates:
+        src_day = buckets.get(_norm(src), UNKNOWN_DATE_DIR)
+        if include_dates is not None and src_day not in include_dates:
             summary["deselected"] += 1
             continue
+
+        # Restore filter: this day's backup recorded which pictures survived the
+        # culling, so the ones it does not name are the ones deleted during the
+        # trip. Skipping them here beats copying and removing them afterwards —
+        # gigabytes never move, and a culled picture never touches the disk. A
+        # day the backup has never heard of is copied in full.
+        if include_names:
+            allowed = include_names.get(src_day)
+            if allowed is not None and \
+                    target_name(src.name, prefix).lower() not in allowed:
+                summary["culled"] += 1
+                continue
 
         try:
             cached = cache.get(src) if cache else None
@@ -1001,6 +1020,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     line = (
         f"Card read summary — copied {summary['copied']} (of which {summary['renamed']} renamed), "
         f"skipped {summary['skipped']}, deselected {summary['deselected']}, "
+        f"culled {summary['culled']}, "
         f"failed {summary['failed']} of {total}; {summary['sidecars']} sidecar(s)."
     )
     # A run that lost files must never end on a plain INFO line that reads the

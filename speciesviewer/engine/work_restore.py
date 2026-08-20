@@ -240,6 +240,42 @@ def reconcile_day(day_dir, manifest) -> dict:
             "recorded": len(recorded), "culled": extra, "missing": missing}
 
 
+def survivor_filter(dest_dir, trip_root=None, picture_root_name="") -> dict:
+    """{day: {picture filename, …}} — what each backed-up day still held.
+
+    Handed to `copy_card(include_names=…)`, this makes a card read re-apply the
+    culling: the pictures a day's backup does not name are the ones deleted
+    during the trip, so they are never copied back. Names are lower-cased and in
+    TARGET form (already prefixed), which is what copy_card compares against.
+
+    Only days the backup knows appear here — a day the cards hold and the backup
+    has never seen is deliberately absent, so copy_card copies it in full. A
+    filter that silently dropped an unknown day would turn "I backed up late"
+    into "those pictures were never imported".
+
+    Returns {} when there is no usable backup, which disables the filter
+    entirely rather than filtering against nothing.
+    """
+    found = find_backups(dest_dir, picture_root_name)
+    trips = found["trips"]
+    mine = [t for t in trips if picture_root_name and t["folder"] == picture_root_name]         or (trips if len(trips) == 1 else [])
+    if not mine:
+        return {}
+    entry = mine[0]
+    if trip_root is not None:
+        ok, _why, _info = verify_trip(entry["identity"], trip_root)
+        if not ok:
+            # Another trip's survivor list would delete this trip's pictures by
+            # omission. Silence is the only safe answer.
+            return {}
+    out = {}
+    for d in entry["days"]:
+        raws = (d["manifest"] or {}).get("raws") or []
+        if raws:
+            out[d["day"]] = {n.lower() for n in raws}
+    return out
+
+
 def prefix_matches(day_dir, manifest) -> tuple[bool, str]:
     """Guard against a re-read done with the wrong filename prefix.
 

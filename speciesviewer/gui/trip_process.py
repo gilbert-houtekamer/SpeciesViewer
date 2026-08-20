@@ -642,7 +642,8 @@ class _SDCardCopyWorker(QObject):
     finished = pyqtSignal(dict, str)       # summary, errorstring ("" == clean)
 
     def __init__(self, source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0,
-                 write_sidecars=True, include_dates=None, trip_stamp=None):
+                 write_sidecars=True, include_dates=None, trip_stamp=None,
+                 include_names=None):
         super().__init__()
         self._source = source
         self._dest = dest
@@ -652,6 +653,7 @@ class _SDCardCopyWorker(QObject):
         self._write_sidecars = write_sidecars
         self._include_dates = include_dates
         self._trip_stamp = trip_stamp
+        self._include_names = include_names
         self._cancel = False
 
     def cancel(self):
@@ -665,6 +667,7 @@ class _SDCardCopyWorker(QObject):
                 bucket_by_date=self._bucket_by_date, tz_offset_hours=self._tz_offset_hours,
                 write_sidecars=self._write_sidecars, include_dates=self._include_dates,
                 trip_stamp=self._trip_stamp,
+                include_names=self._include_names,
                 progress=lambda done, total, name: self.progress.emit(done, total, name),
                 should_cancel=lambda: self._cancel,
             )
@@ -950,6 +953,21 @@ class ReadSDCardDialog(QDialog):
         input_layout.addWidget(self.tracklog_checkbox)
         self.bucket_checkbox.toggled.connect(self._update_tracklog_checkbox_enabled)
         self._update_tracklog_checkbox_enabled()
+
+        # Re-apply the culling on a restore. A card holds every frame ever shot,
+        # including the ones deleted during the trip, so a plain re-read undoes
+        # a fortnight of culling. The backup recorded which pictures each day
+        # still held; ticked, those are the only ones copied.
+        self._survivors = {}
+        self.recull_checkbox = QCheckBox("Skip pictures deleted during the trip")
+        self.recull_checkbox.setToolTip(
+            "Uses this trip's backup to copy only the pictures a day still had "
+            "when it was last backed up.\nA day the backup has never seen is "
+            "always copied in full.")
+        self.recull_checkbox.setChecked(True)
+        self.recull_checkbox.setVisible(False)
+        input_layout.addWidget(self.recull_checkbox)
+        self._refresh_recull()
 
         # Live progress log inside this (green) block, so a long copy is visible at
         # a glance — "running while you fetch a cup of tea". Hidden when idle; the
@@ -1376,6 +1394,30 @@ class ReadSDCardDialog(QDialog):
         btn = getattr(self, "read_btn", None)
         if btn is not None:
             btn.setEnabled(ok)
+
+    def _refresh_recull(self):
+        """Offer to re-apply the culling, when this trip has a backup to read it
+        from. Hidden otherwise — there is nothing to promise."""
+        self._survivors = {}
+        box = getattr(self, "recull_checkbox", None)
+        if box is None:
+            return
+        try:
+            from gui.work_backup_dialog import backup_location
+            from engine import work_restore as wr
+            dest = backup_location()
+            trip_root = _config.get("trip", "tripbiotadatabase", fallback="").strip()
+            if dest and trip_root and self.trip_picture_root:
+                self._survivors = wr.survivor_filter(
+                    dest, trip_root=trip_root,
+                    picture_root_name=Path(self.trip_picture_root).name)
+        except Exception:
+            self._survivors = {}
+        n = len(self._survivors)
+        box.setVisible(bool(n))
+        if n:
+            box.setText(f"Skip pictures deleted during the trip "
+                        f"(this trip's backup covers {n} day(s))")
 
     def _describe_card(self):
         """Say what the inserted card has already been read into.
@@ -1809,9 +1851,16 @@ class ReadSDCardDialog(QDialog):
         )
 
         self._thread = QThread()
+        # Re-read the filter now rather than trusting what was computed when the
+        # dialog opened: a backup may have been taken in between.
+        self._refresh_recull()
+        use_filter = (self._survivors
+                      if (self.recull_checkbox.isVisible()
+                          and self.recull_checkbox.isChecked()) else None)
         self._worker = _SDCardCopyWorker(source, dest, prefix, bucket_by_date, tz_offset,
                                          write_sidecars, include_dates=include_dates,
-                                         trip_stamp=self._trip_stamp())
+                                         trip_stamp=self._trip_stamp(),
+                                         include_names=use_filter)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.progress.connect(self.on_progress)
@@ -1890,10 +1939,13 @@ class ReadSDCardDialog(QDialog):
         renamed_txt = f" ({renamed} renamed)" if renamed else ""
         deselected = summary.get("deselected", 0)
         deselected_txt = f", {deselected} day-deselected" if deselected else ""
+        culled = summary.get("culled", 0)
+        culled_txt = (f", {culled} not copied (deleted during the trip)"
+                      if culled else "")
         copied = summary.get("copied", 0)
         # Shared tail — what was kept is reported the same whether the run finished
         # or was aborted (the files already copied are verified and kept).
-        tail = (f"skipped {summary.get('skipped', 0)}{deselected_txt}, "
+        tail = (f"skipped {summary.get('skipped', 0)}{deselected_txt}{culled_txt}, "
                 f"failed {summary.get('failed', 0)} "
                 f"of {summary.get('total', 0)} pictures; {summary.get('sidecars', 0)} sidecar(s).")
         cancelled = getattr(self, "_cancelled", False)
