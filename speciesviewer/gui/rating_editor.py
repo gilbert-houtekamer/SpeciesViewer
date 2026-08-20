@@ -289,6 +289,25 @@ _DISCARD_GREYED_TIP = ("Has a JPG — kept for the website and a future DxO "
                        "re-export, so it can't be a deletion candidate.")
 
 
+def _snapshot_suffix() -> str:
+    """"  ·  snapshot 20 Aug 2026 (9 days old)" for the read-only banner, or "".
+
+    A read-only master on this machine is a SmallMaster copy, and this screen is
+    where its age actually costs something: it is the history a lifer verdict is
+    judged against and the pictures a cull is compared with. The status bar
+    carries the same date, but the eyeful that matters is the one you are
+    reading. Empty when there is no snapshot to date — never a guessed date.
+    """
+    from engine import smallmaster_stamp as _st
+    root = _config.get("master", "masterbiotadatabase", fallback="")
+    info = _st.read_stamp(root)
+    if info is None and _config.get("master", "readonly_locked", fallback="") == "yes":
+        info = _st.estimate_from_files(root)
+    if info is None:
+        return ""
+    return "  ·  snapshot " + _st.describe(info, short=True)
+
+
 def stamp_crop_marker(px: QPixmap) -> QPixmap:
     """Return a copy of the thumbnail with a small '#' chip in the top-left corner
     — the visual cue that this picture carries a crop (ours / PhotoLab / Lightroom).
@@ -1637,7 +1656,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         if self._album_mode and self._view_read_only:
             self._lock_banner.setText(
                 "👁 View only — this machine's master is read-only, so nothing "
-                "here can be changed."
+                "here can be changed." + _snapshot_suffix()
                 if self._album_query or self._master_only else
                 "👁 View only — showing this album's old extracted day files; "
                 "there is no master on this machine to read or write.")
