@@ -1321,11 +1321,66 @@ nothing.</em></p>
     publish it, export it, import it back. Cheaper than any single feature on this list, and it is
     how the remaining surprises get found.</li>
 
-  <li><strong>Show how old the SmallMaster snapshot is</strong> <span class="tag-open">OPEN</span> —
-    on the road, whether a species is a lifer and which names get suggested both depend on the master
-    snapshot carried on the laptop. Nothing shows when that snapshot was taken, so a stale one gives
-    quietly wrong verdicts with no visible symptom. A date on screen is enough; refreshing it before
-    departure belongs on the checklist below.</li>
+  <li><strong>Show how old the SmallMaster snapshot is</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-20) — on the road, whether a species is a
+    lifer and which names get suggested both depend on the master snapshot carried on the laptop.
+    Nothing showed when that snapshot was taken, so a stale one gave quietly wrong verdicts with no
+    visible symptom: the answer simply differed from the one the full master would have given, and
+    looked exactly as confident.
+    <br><br><strong>The date now travels with the copy.</strong> The export writes it into the ZIP
+    itself, at the root, so unpacking the ZIP into the master directory files it correctly — there
+    is no separate step that can be skipped, and no per-machine settings file to lose. It is
+    written last, from the counts that actually went in, for the same reason the day-backup manifest
+    is: a stamp made up front can describe a ZIP that never finished.
+    <br><br><strong>Four places show it,</strong> which sounds like three too many until you notice
+    they answer different questions. The install dialog shows <em>both</em> dates before anything is
+    unpacked — this ZIP against what is already installed — and says so in amber when the ZIP is the
+    older of the two, which is the mistake worth catching. The status bar carries the age beside the
+    trip name, amber past thirty days and red past ninety, because "which data am I looking at" is
+    the same kind of fact as which trip is open. The start-up log records it so that a week later the
+    question <em>what did it know at the time?</em> is still answerable. And the Master Species
+    Viewer's read-only banner carries it too: that screen is where the age actually costs something,
+    since it is the history a lifer verdict is judged against.
+    <br><br>A copy made before any of this existed is not left blank. The ZIP falls back to its own
+    file date, an installed copy to the date on its metadata files, and both say plainly that they
+    are estimates — a guess presented as a fact is worse than no date at all. That paid off within
+    the hour: the first real install reported the copy already on the laptop as <em>20 days old —
+    31 Jul 2026 (estimated from the date on the metadata files)</em>, which was correct.
+    <br><br><strong>The transfer, which is what the exercise really turned up.</strong> Making a
+    fresh snapshot to test with took <strong>forty minutes over wifi</strong>, and while it ran the
+    program could only say <em>“12,000 files added to ZIP…”</em> — a number that cannot tell you
+    whether that is nearly done or barely started. So the export now counts before it copies: one
+    walk collects the list, the run opens with <em>“26,352 biota file(s), 20.7 GB to write”</em>,
+    and progress reads <em>“13,000 of 26,352 files (49%), 10.2 GB of 20.7 GB, 19m10s gone, ~19m43s
+    left at 9 MB/s”</em>. The estimate is made from bytes rather than files, because the tree mixes
+    4 MB photographs with 4 KB sidecars and a file-count percentage would promise a finish time that
+    drifts as the mix changes. Progress ticks every 500 files <em>or</em> five seconds, whichever
+    comes first: the old rule was fine on a local disk and minutes of silence on a slow one, which is
+    exactly where reassurance is wanted. Times read as <em>40m10s</em>, not <em>2410.9s</em>.
+    <br><br>Writing to a share also now says so before the hour is spent rather than after, since a
+    dropped connection leaves a half-written ZIP that still looks like a file. Only a certain answer
+    warns; a false warning about the drive you always use is worse than none. The numbers make the
+    case on their own: the same job took <strong>1m28s to an SSD</strong> against forty minutes over
+    wifi, and the install on the laptop took 39 seconds.
+    <br><br><strong>Then a question worth asking of any backup: what is actually in it?</strong> Of
+    73,061 sidecars in the master, 62,741 belonged to pictures with no JPG — pictures the laptop
+    cannot display at all. Each was traced: the ratings, camera data and dimensions on those cards
+    come from <code>metadata/active</code>, not from the sidecar; the <em>(no image)</em> card is
+    drawn from a CSV row and looks identical either way; the crop mark reads the DxO recipe, which
+    is not in the ZIP, and otherwise falls back to a size comparison from the CSV; and the machine is
+    locked read-only, so nothing ever writes one back. They were 70% of the file count and 3% of the
+    bytes. Leaving them out takes the ZIP from 89,093 files to 26,352 — barely smaller, but the file
+    count is what the install pays for.
+    <br><br>One detail earned its keep. Deciding which sidecar belongs to a picture uses the
+    master's <em>own</em> rule rather than a plain name match, so that <code>dsc_0620-small.jpg</code>
+    and <code>dsc_0620_DxO.jpg</code> both count as the picture for <code>dsc_0620.xmp</code>. A
+    plain match would have silently dropped 2,521 sidecars that do belong to a picture you can see.
+    A configuration key restores the old everything-in behaviour for anyone who wants it.
+    <br><br><strong>One thing deliberately not built:</strong> a tool to delete the sidecars already
+    sitting on the laptop from previous installs. It would recover 0.74 GB, and it would do so by
+    walking the master tree deleting files — the one class of action with a bad record here. If the
+    laptop is ever to be cleaned, deleting <code>biota/</code> and re-installing is simpler, safer
+    and easier to check.</li>
 
   <li><strong>“Did this card arrive complete?”</strong> <span class="tag-open">OPEN</span>
     <span class="tag-parked">lower priority</span> — every copied file is already checksummed at the
