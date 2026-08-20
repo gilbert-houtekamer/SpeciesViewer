@@ -642,7 +642,7 @@ class _SDCardCopyWorker(QObject):
     finished = pyqtSignal(dict, str)       # summary, errorstring ("" == clean)
 
     def __init__(self, source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0,
-                 write_sidecars=True, include_dates=None):
+                 write_sidecars=True, include_dates=None, trip_stamp=None):
         super().__init__()
         self._source = source
         self._dest = dest
@@ -651,6 +651,7 @@ class _SDCardCopyWorker(QObject):
         self._tz_offset_hours = tz_offset_hours
         self._write_sidecars = write_sidecars
         self._include_dates = include_dates
+        self._trip_stamp = trip_stamp
         self._cancel = False
 
     def cancel(self):
@@ -663,6 +664,7 @@ class _SDCardCopyWorker(QObject):
                 self._source, self._dest, prefix=self._prefix,
                 bucket_by_date=self._bucket_by_date, tz_offset_hours=self._tz_offset_hours,
                 write_sidecars=self._write_sidecars, include_dates=self._include_dates,
+                trip_stamp=self._trip_stamp,
                 progress=lambda done, total, name: self.progress.emit(done, total, name),
                 should_cancel=lambda: self._cancel,
             )
@@ -825,6 +827,17 @@ class ReadSDCardDialog(QDialog):
         # card ended up NEXT TO the trip instead of inside it. When a trip is active,
         # say plainly whether the target is that trip's picture root.
         from gui import theme as _th
+        # What this card has already been read into. Reading a card twice is
+        # harmless (dedup is by content) but was silent, and with a dozen cards
+        # going in in random order "have I done this one?" is the question that
+        # actually gets asked.
+        self.card_note = QLabel("")
+        self.card_note.setWordWrap(True)
+        self.card_note.setStyleSheet(f"color: {_th.INK_SOFT}; font-size: 9pt;")
+        self.card_note.setVisible(False)
+        input_layout.addWidget(self.card_note)
+        self.source_field.textChanged(lambda *_: self._describe_card())
+
         self.dest_note = QLabel("")
         self.dest_note.setWordWrap(True)
         self.dest_note.setStyleSheet(f"color: {_th.WARN}; font-size: 9pt;")
@@ -1364,6 +1377,63 @@ class ReadSDCardDialog(QDialog):
         if btn is not None:
             btn.setEnabled(ok)
 
+    def _describe_card(self):
+        """Say what the inserted card has already been read into.
+
+        A different TRIP is the one worth colouring: on a restore that is the
+        card that would file a Brazil day into Goeree. Reading the same card
+        into the same trip again is normal and merely informative — it is how a
+        card being topped up mid-trip is meant to work.
+        """
+        from gui import theme as _th
+        src = self.source_field.get_path()
+        if not src or not Path(src).is_dir():
+            self.card_note.setVisible(False)
+            return
+        try:
+            from batch.sv0ReadSDCard import card_history
+            hist = card_history(src)
+        except Exception:
+            hist = []
+        if not hist:
+            self.card_note.setVisible(False)
+            return
+        last = hist[0]
+        when = (last.get("when") or "")[:16].replace("T", " ")
+        trip = last.get("trip") or last.get("trip_id") or "another trip"
+        n = last.get("copied", 0)
+        mine = (self._trip_stamp() or {}).get("trip_id")
+        theirs = last.get("trip_id")
+        if mine and theirs and mine != theirs:
+            self.card_note.setText(
+                f"⚠ This card was last read into a DIFFERENT trip — “{trip}” on "
+                f"{when} ({n} picture(s)). Reading it here files those pictures "
+                f"into the open trip instead.")
+            self.card_note.setStyleSheet(f"color: {_th.WARN}; font-size: 9pt;")
+        else:
+            self.card_note.setText(
+                f"This card was last read into “{trip}” on {when} "
+                f"({n} picture(s) copied). Reading it again only picks up what is new.")
+            self.card_note.setStyleSheet(f"color: {_th.INK_SOFT}; font-size: 9pt;")
+        self.card_note.setVisible(True)
+
+    def _trip_stamp(self):
+        """Identity written onto the card with a read, so it can say later which
+        trip it went into. None outside a trip (Days/Unfiled have no identity to
+        claim, and stamping one would be a lie)."""
+        if not self.trip_picture_root:
+            return None
+        trip_root = _config.get("trip", "tripbiotadatabase", fallback="").strip()
+        if not trip_root:
+            return None
+        try:
+            from utils.trip_config import read_trip_ini
+            data = read_trip_ini(trip_root) or {}
+        except Exception:
+            data = {}
+        return {"trip_id": data.get("trip_id") or Path(trip_root).name,
+                "trip": Path(self.trip_picture_root).name}
+
     def _check_dest_is_trip(self):
         """Warn when the card would land outside the active trip's picture root.
 
@@ -1739,7 +1809,8 @@ class ReadSDCardDialog(QDialog):
 
         self._thread = QThread()
         self._worker = _SDCardCopyWorker(source, dest, prefix, bucket_by_date, tz_offset,
-                                         write_sidecars, include_dates=include_dates)
+                                         write_sidecars, include_dates=include_dates,
+                                         trip_stamp=self._trip_stamp())
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.progress.connect(self.on_progress)

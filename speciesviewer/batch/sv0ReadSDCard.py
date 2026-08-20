@@ -140,6 +140,7 @@ class _CardCache:
         self._log   = logger or logging.getLogger("speciesviewer")
         self._dirty = False
         self._data: dict[str, dict] = {}
+        self._reads: list[dict] = []
         self._load()
         self._make_reserve()
 
@@ -150,8 +151,32 @@ class _CardCache:
                     raw = json.load(f)
                 if raw.get("version") == self._VERSION:
                     self._data = raw.get("files", {})
+                    self._reads = raw.get("reads", [])
         except Exception:
             self._data = {}
+            self._reads = []
+
+    # ── read history ──────────────────────────────────────────────────────
+    # Which trip this card was read into, and when. It lives ON THE CARD, with
+    # the checksums, so it travels: the answer to "have I done this one?" is
+    # carried by the object in your hand, not by a laptop that may be gone.
+    #
+    # Reading a card twice is already harmless — dedup is by content, so a
+    # second pass copies nothing — but it was also silent, and on a restore with
+    # a dozen cards going in in random order "have I done this one?" is the
+    # question that actually gets asked. This is what lets it be answered.
+    _KEEP_READS = 5
+
+    def history(self) -> list[dict]:
+        """Past reads of this card, newest first."""
+        return list(reversed(getattr(self, "_reads", [])))
+
+    def record_read(self, stamp: dict):
+        """Append one read. Capped, so a card used all season stays small."""
+        if not stamp:
+            return
+        self._reads = (getattr(self, "_reads", []) + [stamp])[-self._KEEP_READS:]
+        self._dirty = True
 
     def _key(self, path: Path) -> str:
         """Relative path string, forward slashes, lowercase (Windows fs is case-insensitive)."""
@@ -247,7 +272,8 @@ class _CardCache:
         try:
             tmp = self._path.with_suffix(".tmp")
             with open(tmp, "w", encoding="utf-8") as f:
-                json.dump({"version": self._VERSION, "files": self._data},
+                json.dump({"version": self._VERSION, "files": self._data,
+                           "reads": getattr(self, "_reads", [])},
                           f, separators=(",", ":"))
             tmp.replace(self._path)
             return True
@@ -734,9 +760,23 @@ def _next_free_name(target: Path, reserved: set | None = None) -> Path:
 
 # ── Main entry point ─────────────────────────────────────────────────────────
 
+def card_history(source) -> list[dict]:
+    """What this card has already been read into, newest first — [] if unknown.
+
+    Read-only and cheap: one small JSON off the card. Answers "have I done this
+    one?" from the card itself, which is the only place that can answer it after
+    a laptop is replaced.
+    """
+    try:
+        return _CardCache(Path(source), logger=logging.getLogger("speciesviewer")).history()
+    except Exception:
+        return []
+
+
 def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0,
               skip_if_on_disk=True, write_sidecars=True, use_card_cache=True,
-              include_dates=None, logger=None, progress=None, should_cancel=None):
+              include_dates=None, trip_stamp=None,
+              logger=None, progress=None, should_cancel=None):
     """Copy picture files from `source` (recursively) into `dest`.
 
     prefix            - optional filename prefix (see target_name).
@@ -753,6 +793,9 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     include_dates     - optional set of 'YYYY-MM-DD' strings; when given, files
                         whose capture-day is not in the set are skipped entirely
                         (see scan_days). Independent of bucket_by_date.
+    trip_stamp        - optional {"trip_id":…, "trip":…} recorded ON THE CARD
+                        with this read, so the card can later say which trip it
+                        was read into and when. See _CardCache.record_read.
     progress(done, total, name) - optional callback, called per file before copy.
     should_cancel()             - optional callable; return True to stop early.
 
@@ -777,6 +820,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     log.info(f"Found {total} picture(s) under {source}")
 
     cache = _CardCache(source, logger=log) if use_card_cache else None
+    summary["previous_reads"] = cache.history() if cache else []
 
     # ── Resolve date buckets ──────────────────────────────────────────────
     # Needed for the subfolder layout AND for an include_dates day filter.
@@ -911,6 +955,16 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     if dest_index is not None:
         dest_index.save_cache()   # persist any newly computed dest hashes
     if cache:
+        # Stamp the card with what this read did, BEFORE saving: a card that
+        # comes back in a fortnight can then say so itself.
+        if trip_stamp and not (should_cancel and should_cancel()):
+            cache.record_read({**trip_stamp,
+                               "when": now_str,
+                               "dest": str(dest),
+                               "prefix": prefix,
+                               "copied": summary["copied"],
+                               "skipped": summary["skipped"],
+                               "total": total})
         cache.save()              # persist card SHA + dates for new files
 
     # ── XMP sidecars ──────────────────────────────────────────────────────
