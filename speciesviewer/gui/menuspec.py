@@ -895,6 +895,26 @@ def build_menu_spec(main_window):
         title="Import Trip",
     )
 
+    def _restore_work():
+        """Import Trip's larger sibling: the trip identity is only the first
+        part of coming home — the days' culling is the rest, and it lives on the
+        backup card rather than in the trip export."""
+        from gui.work_restore_dialog import RestoreWorkDialog
+        from utils.trip_identity import resolve_trip_picture_root
+        trip_root = _config.get("trip", "tripbiotadatabase", fallback="").strip()
+        if not trip_root:
+            QMessageBox.warning(main_window, "Restore work from a card",
+                                "Open the trip you want to restore into first.")
+            return
+        pic = resolve_trip_picture_root(trip_root, kind="trip")
+        RestoreWorkDialog(main_window, trip_root, pic).exec()
+
+    restore_work = MenuSpec(
+        callback=_restore_work,
+        title="Restore Work from Card",
+        enabled=has_active_trip,
+    )
+
     export_virttrip = MenuSpec(
         callback=None,
         title="Export Album",
@@ -1748,6 +1768,7 @@ def build_menu_spec(main_window):
             # back when you come home.
             "Export Trip…": export_trip,
             "Import Trip…": import_trip,
+            "Restore Work from Card…": restore_work,
             f"{MenuSpec.separator()}_setup0": None,
             "Read SD-cards": read_sdcard,
             f"{MenuSpec.separator()}_setup": None,
