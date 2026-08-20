@@ -996,8 +996,16 @@ class ReadSDCardDialog(QDialog):
         self.all_days_checkbox.setChecked(True)
         self.all_days_checkbox.clicked.connect(self._on_all_days_clicked)
         days_layout.addWidget(self.all_days_checkbox)
-        self.days_table = QTableWidget(0, 3)
-        self.days_table.setHorizontalHeaderLabels(["Day", "Files", "Tracklog"])
+        self.days_table = QTableWidget(0, 5)
+        self.days_table.setHorizontalHeaderLabels(
+            ["Day", "Files", "Deleted", "Kept", "Tracklog"])
+        for _col, _tip in ((1, "Pictures on the card for this day — every frame "
+                               "shot, including the ones culled since"),
+                           (2, "Deleted during the trip — the card still holds "
+                               "them, this trip's backup says they went"),
+                           (3, "Still there at the last backup — the ones a "
+                               "re-read copies back")):
+            self.days_table.horizontalHeaderItem(_col).setToolTip(_tip)
         self.days_table.verticalHeader().setVisible(False)
         self.days_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.days_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
@@ -1427,6 +1435,7 @@ class ReadSDCardDialog(QDialog):
             kept = sum(len(v) for v in self._survivors.values())
             box.setText(f"Skip pictures deleted during the trip — copy only the "
                         f"{kept} picture(s) kept across {n} day(s)")
+        self._refresh_cull_columns()
 
     def _describe_card(self):
         """Say what the inserted card has already been read into.
@@ -1604,6 +1613,7 @@ class ReadSDCardDialog(QDialog):
             cnt_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             cnt_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.days_table.setItem(r, 1, cnt_item)
+            self._set_cull_cells(r, date_str, count)
             # Pure "does a log file exist for this day" preview — no offset
             # estimation here (that needs the full picture set and only runs
             # during the actual auto-geotag pass), just visibility into
@@ -1616,7 +1626,8 @@ class ReadSDCardDialog(QDialog):
                 track_text = f"✓ {Path(log_path).name}" if log_path else "— none found"
             track_item = QTableWidgetItem(track_text)
             track_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            self.days_table.setItem(r, 2, track_item)
+            self.days_table.setItem(r, 4, track_item)
+        self._show_cull_columns()
         self.days_table.blockSignals(False)
         self.days_container.setVisible(bool(days))
         self.days_container.setEnabled(True)   # a fresh scan re-enables a greyed block
@@ -1633,6 +1644,57 @@ class ReadSDCardDialog(QDialog):
         want_h = max(self.sizeHint().height(), self.minimumSizeHint().height())
         want_w = max(self.width(), self.minimumSizeHint().width())
         self.resize(want_w, want_h)
+
+    def _kept_on_day(self, date_str):
+        """How many pictures this day still held at its last backup, or None when
+        the backup has never seen the day (which is not the same as "none left")."""
+        names = self._survivors.get(date_str)
+        return len(names) if names else None
+
+    def _set_cull_cells(self, row, date_str, count):
+        """Fill the Deleted/Kept pair for one day.
+
+        The card keeps every frame ever shot, so "Files" is the shooting count,
+        not what a re-read brings back — 202 on the card against 21 still wanted.
+        A day this trip's backup knows says exactly how many survived the
+        culling; a day it has never seen leaves both cells blank rather than
+        claiming nothing was deleted.
+        """
+        kept = self._kept_on_day(date_str)
+        for col, value in ((2, None if kept is None else max(count - kept, 0)),
+                           (3, kept)):
+            item = QTableWidgetItem("" if value is None else str(value))
+            item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self.days_table.setItem(row, col, item)
+
+    def _show_cull_columns(self):
+        """Show Deleted/Kept only when the backup covers a day on the card — two
+        permanently empty columns are noise on a normal mid-trip card read."""
+        known = any(self._kept_on_day(self.days_table.item(r, 0).text()) is not None
+                    for r in range(self.days_table.rowCount())
+                    if self.days_table.item(r, 0) is not None)
+        self.days_table.setColumnHidden(2, not known)
+        self.days_table.setColumnHidden(3, not known)
+
+    def _refresh_cull_columns(self):
+        """Re-read the Deleted/Kept pair from the current survivor list — a backup
+        taken (or a card inserted) while this dialog is open changes the answer."""
+        table = getattr(self, "days_table", None)
+        if table is None or table.rowCount() == 0:
+            return
+        table.blockSignals(True)
+        for r in range(table.rowCount()):
+            day_item, cnt_item = table.item(r, 0), table.item(r, 1)
+            if day_item is None or cnt_item is None:
+                continue
+            try:
+                count = int(cnt_item.text())
+            except ValueError:
+                continue
+            self._set_cull_cells(r, day_item.text(), count)
+        self._show_cull_columns()
+        table.blockSignals(False)
 
     def _size_days_table(self):
         """Make the day table exactly tall enough for its rows, up to a cap (then
@@ -1691,14 +1753,26 @@ class ReadSDCardDialog(QDialog):
                 if self.days_table.item(r, 0).checkState() == Qt.CheckState.Checked}
 
     def _selected_file_count(self):
-        """Sum the file counts of the ticked day rows."""
+        """Pictures the ticked days would copy.
+
+        Where the culling is being re-applied that is the day's survivor count,
+        not its file count — otherwise the confirm box offers to copy 352
+        pictures and 94 arrive.
+        """
+        recull = (self.recull_checkbox.isVisible()
+                  and self.recull_checkbox.isChecked())
         total = 0
         for r in range(self.days_table.rowCount()):
-            if self.days_table.item(r, 0).checkState() == Qt.CheckState.Checked:
-                try:
-                    total += int(self.days_table.item(r, 1).text())
-                except ValueError:
-                    pass
+            if self.days_table.item(r, 0).checkState() != Qt.CheckState.Checked:
+                continue
+            kept = self._kept_on_day(self.days_table.item(r, 0).text()) if recull else None
+            if kept is not None:
+                total += kept
+                continue
+            try:
+                total += int(self.days_table.item(r, 1).text())
+            except ValueError:
+                pass
         return total
 
     def _days_copied_count(self):
