@@ -3296,10 +3296,17 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                     progress.setLabelText(f"Updating {i + 1} of {len(key_list)}…")
                     QApplication.processEvents()
                 try:
-                    item = self._collection.item(self._collection.index_of(key))
-                    item.set_rating(stars)
-                    if color:
-                        item.set_color(color)
+                    # ONE apply, not two. set_rating() followed by set_color()
+                    # spawns exiftool twice per picture at ~270 ms a spawn;
+                    # apply() has always taken both values in one write.
+                    apply = getattr(self._collection, "apply", None)
+                    if apply is not None:
+                        apply(key, new_stars=stars, new_color=(color or None))
+                    else:
+                        item = self._collection.item(self._collection.index_of(key))
+                        item.set_rating(stars)
+                        if color:
+                            item.set_color(color)
                     card = self._cards_by_key.get(key)
                     if card:
                         card.refresh()
