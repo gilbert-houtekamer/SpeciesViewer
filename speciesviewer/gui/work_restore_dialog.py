@@ -121,6 +121,15 @@ class RestoreWorkDialog(QDialog):
 
     # ── load + identity ───────────────────────────────────────────────────
 
+    def _abandon(self, message):
+        """Leave the screen saying one thing. The table is already empty here,
+        and the summary must be emptied WITH it: it used to keep the previous
+        card's counts, so a dialog showing no days still claimed "1 of 3 day(s)
+        selected, 49 already identical"."""
+        self._say(message)
+        self._enable(False)
+        self._update_summary()
+
     def _reload(self):
         self._table.setRowCount(0)
         self._plans = {}
@@ -128,8 +137,10 @@ class RestoreWorkDialog(QDialog):
         self._ok = False
         src = self._source()
         if not src or not Path(src).is_dir():
-            self._say("Choose the folder or card holding the backups.", warn=False)
-            self._enable(False)
+            self._abandon(f"❌ {src or 'No folder'} is not there. If a drive letter "
+                          f"moved — inserting an SD-card can take the one the "
+                          f"backup card had — press Choose and point at it again."
+                          if src else "Choose the folder or card holding the backups.")
             return
 
         want = self._picture_root.name if self._picture_root else ""
@@ -142,18 +153,22 @@ class RestoreWorkDialog(QDialog):
             trips if len(trips) == 1 else [])
         if not mine:
             names = ", ".join(t["folder"] or "(root)" for t in trips) or "nothing"
-            self._say(f"❌ No single backup to restore from on this card. "
-                      f"It holds: {names}.")
-            self._enable(False)
+            # The likeliest cause by far, and the one that actually happened:
+            # inserting an SD-card takes the drive letter the backup card had,
+            # so the same path now points at the wrong volume.
+            hint = ("  If you have just inserted an SD-card it may have taken "
+                    "this drive letter — press Choose and pick the backup card "
+                    "again." if names == "nothing" else "")
+            self._abandon(f"❌ No backup for this trip in {src}. "
+                          f"It holds: {names}.{hint}")
             return
         self._trip = mine[0]
 
         ok, why, info = wr.verify_trip(self._trip["identity"], self._trip_root)
         if not ok:
             # The one refusal on this screen. Everything stays disabled.
-            self._say(f"❌ This card does not belong to the open trip — {why}. "
-                      f"Nothing will be restored. Open the matching trip first.")
-            self._enable(False)
+            self._abandon(f"❌ This card does not belong to the open trip — {why}. "
+                          f"Nothing will be restored. Open the matching trip first.")
             return
         self._ok = True
         self._say(f"✅ Card matches the open trip — “{info.get('trip_name') or ''}” "

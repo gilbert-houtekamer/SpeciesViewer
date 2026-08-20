@@ -1413,7 +1413,8 @@ class ReadSDCardDialog(QDialog):
         else:
             self.card_note.setText(
                 f"This card was last read into “{trip}” on {when} "
-                f"({n} picture(s) copied). Reading it again only picks up what is new.")
+                f"({n} picture(s) copied). Reading it again copies anything not "
+                f"already on disk — including pictures deleted since.")
             self.card_note.setStyleSheet(f"color: {_th.INK_SOFT}; font-size: 9pt;")
         self.card_note.setVisible(True)
 
