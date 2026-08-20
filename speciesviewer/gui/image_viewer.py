@@ -1481,11 +1481,21 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                                    n_landscape=n_landscape)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             name = dlg.chosen_name()
-            for k in keys:
+            # One exiftool call for the whole selection where the collection
+            # can do it — twenty-two pictures one at a time is twenty-two
+            # process spawns, ~270 ms each, for a write that takes no time.
+            batched = getattr(self._collection, "write_tag_many", None)
+            if batched is not None:
                 try:
-                    self._collection.item_for_key(k).set_species(name)
+                    batched(list(keys), "XMP:Subject", name, "Subject")
                 except Exception as e:
-                    logger.error(f"set_species failed for {k}: {e}")
+                    logger.error(f"set_species (batched) failed: {e}")
+            else:
+                for k in keys:
+                    try:
+                        self._collection.item_for_key(k).set_species(name)
+                    except Exception as e:
+                        logger.error(f"set_species failed for {k}: {e}")
             self.refresh_after_species_change(set(keys))
             self._clear_selection()
 

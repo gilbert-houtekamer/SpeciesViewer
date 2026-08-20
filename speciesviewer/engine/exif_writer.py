@@ -49,6 +49,51 @@ def exiftool_write(
             pass
 
 
+def exiftool_write_batch(items, *, overwrite_original: bool = True) -> int:
+    """Write DIFFERENT tags to many files in ONE exiftool run.
+
+    `items` is [(filepath, [args…]), …]. run_exiftool_files covers the common
+    case where every file gets the SAME value; this covers the other one — a GPS
+    backfill gives each picture its own coordinates, so there is nothing to
+    share.
+
+    Uses -@ argfile with -execute between commands: exiftool runs each command
+    in sequence inside a single process. Spawning exiftool costs ~270 ms and the
+    write itself almost nothing, so N files go from N spawns to one.
+
+    Everything travels in the argfile, which is also what keeps a long file list
+    clear of the Windows command-line limit. Returns the number of commands sent.
+    """
+    items = [(str(f), list(a)) for f, a in items if a]
+    if not items:
+        return 0
+
+    fd, tmp_path = tempfile.mkstemp(prefix="exiftool_batch_", suffix=".txt", text=False)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as tmp:
+            for filepath, args in items:
+                for arg in args:
+                    tmp.write(arg + "\n")
+                if overwrite_original:
+                    tmp.write("-overwrite_original\n")
+                tmp.write(filepath + "\n")
+                tmp.write("-execute\n")
+        cmd = ["exiftool", "-charset", "utf8", "-charset", "filename=utf8",
+               "-@", tmp_path]
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              text=True, encoding="utf-8")
+        if proc.returncode:
+            logger.warning(
+                f"exiftool batch write: {len(items)} command(s), exit "
+                f"{proc.returncode}: {(proc.stderr or '').strip()[:300]}")
+        return len(items)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+
 def run_exiftool_files(option_args, files, *, pre_args=None):
     """Run exiftool with `option_args` over many `files`, passing EVERYTHING
     (options + file paths) through a -@ argfile. This avoids the OS command-line

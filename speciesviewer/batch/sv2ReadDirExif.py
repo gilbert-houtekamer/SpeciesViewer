@@ -432,6 +432,8 @@ def main(args, config):
         # to the target's XMP sibling, and write the new fields to disk.
         # GPS and location are handled independently — a donor with only GPS
         # still gets GPS written, even if it has no city/location text yet.
+        # Collected and written in ONE exiftool run at the end of the loop.
+        pending_gps_writes: list = []
         gps_xmp_written_count = 0
         location_xmp_written_count = 0
         xmp_already_complete_count = 0
@@ -474,21 +476,28 @@ def main(args, config):
                 parts.append("GPS")
             if wrote_location:
                 parts.append("location")
-            try:
-                exiftool_write(xmp_filepath, exif_args)
-                logger.info(
-                    f"GPS backfill: wrote {' + '.join(parts)} to "
-                    f"{target_xmp.get('File:FileName', '?')}"
-                )
-                if wrote_gps:
-                    gps_xmp_written_count += 1
-                if wrote_location:
-                    location_xmp_written_count += 1
-            except subprocess.CalledProcessError as e:
-                logger.warning(
-                    f"GPS backfill: failed to write "
-                    f"{target_xmp.get('File:FileName', '?')}: {e.stderr}"
-                )
+            # Queued, not written here: every picture gets its OWN coordinates,
+            # so there is no shared value to write once — but exiftool can still
+            # do the lot in a single process (see exiftool_write_batch). Spawning
+            # it per picture cost ~270 ms each, which on a day of backfills was
+            # nearly all of the step's time.
+            pending_gps_writes.append((xmp_filepath, exif_args))
+            logger.info(
+                f"GPS backfill: queued {' + '.join(parts)} for "
+                f"{target_xmp.get('File:FileName', '?')}"
+            )
+            if wrote_gps:
+                gps_xmp_written_count += 1
+            if wrote_location:
+                location_xmp_written_count += 1
+
+        if pending_gps_writes:
+            from engine.exif_writer import exiftool_write_batch
+            t0 = time.time()
+            n = exiftool_write_batch(pending_gps_writes)
+            logger.info(f"GPS backfill: wrote {n} sidecar(s) in one exiftool run "
+                        f"({time.time() - t0:.1f}s).")
+            pending_gps_writes.clear()
 
         if sibling_fill_count:
             logger.info(

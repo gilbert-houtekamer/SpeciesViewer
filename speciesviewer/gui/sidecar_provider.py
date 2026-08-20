@@ -1539,6 +1539,112 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         except Exception as e:
             logger.warning(f"description master mirror failed for {upn}: {e}")
 
+    def write_tag_many(self, stems, tag: str, value: str, row_key: str) -> int:
+        """write_tag for a whole selection, in ONE exiftool call.
+
+        Same measurement that drove the culling grid: an exiftool_write costs
+        ~270 ms, nearly all of it spawning the process, so twenty-two pictures
+        one at a time is six seconds of process startup. exiftool takes any
+        number of files per run and run_exiftool_files passes them through an
+        argfile, so the command line cannot overflow however big the selection.
+
+        The per-stem parts that are NOT exiftool — the master mirror, the .dop
+        push — stay in a loop; they are cheap. The sidecar cache is written once
+        per folder at the end instead of once per picture: it is ~100 KB, and
+        re-serialising it twenty-two times to record twenty-two fields is work
+        for its own sake.
+        """
+        stems = [s for s in stems if s]
+        if not stems:
+            return 0
+        is_colorrating = tag in ("XMP:Rating", "XMP:Label")
+
+        # Cheap per-picture channels first, exactly as write_tag does them.
+        for stem in stems:
+            if is_colorrating:
+                if (getattr(self, "_master_db", None) is not None
+                        and stem in self._master_upn):
+                    self._mirror_rating_to_master(stem, tag, value)
+                if color_rating_to_dop_enabled():
+                    raw = self.raw_path(stem)
+                    if raw:
+                        if tag == "XMP:Label":
+                            push_metadata_to_dop(str(raw), color=value)
+                        else:
+                            try:
+                                push_metadata_to_dop(str(raw), rating=int(value))
+                            except ValueError:
+                                pass
+                        self._image_sigs[stem] = self._image_sig(stem)
+            elif (tag == "XMP:Description"
+                    and getattr(self, "_master_db", None) is not None
+                    and stem in self._master_upn):
+                self._mirror_description_to_master(stem, value)
+
+        suppress = is_colorrating and not color_rating_to_xmp_enabled()
+
+        # Resolve every sidecar, creating the path for a group that has none.
+        targets = []
+        for stem in stems:
+            grp = self._groups.get(stem, {})
+            xmp = grp.get("xmp")
+            if xmp is None:
+                src = self._source_file(stem)
+                if not src:
+                    continue
+                xmp = Path(src).with_suffix(".xmp")
+                if not suppress:
+                    grp["xmp"] = xmp
+            targets.append(Path(xmp))
+
+        if suppress:
+            # Value lives in the .dop; keep it in memory so this session shows it.
+            for xmp in targets:
+                self._rows.setdefault(_norm(xmp), {"SourceFile": str(xmp)})[row_key] = value
+            return len(targets)
+        if not targets:
+            return 0
+
+        from engine.exif_writer import run_exiftool_files
+        try:
+            res = run_exiftool_files([f"-{tag}={value}", "-overwrite_original"],
+                                     [str(t) for t in targets])
+            if getattr(res, "returncode", 0):
+                logger.warning(f"Sidecar batch write reported a problem over "
+                               f"{len(targets)} file(s): "
+                               f"{(res.stderr or '').strip()[:300]}")
+        except Exception as e:
+            logger.error(f"Sidecar batch write failed: {e}")
+            return 0
+
+        from engine.sidecar_cache import SidecarCache
+        touched = set()
+        for xmp in targets:
+            self._rows.setdefault(_norm(xmp), {"SourceFile": str(xmp)})[row_key] = value
+            folder = xmp.parent
+            if folder not in self._caches:
+                self._caches[folder] = SidecarCache(folder)
+            self._caches[folder].put_field(xmp, row_key, value)
+            touched.add(folder)
+        for folder in touched:
+            self._caches[folder].save()      # once per folder, not once per file
+        return len(targets)
+
+    def apply_many(self, upn_keys, *, new_stars: int | None = None,
+                   new_color: str | None = None, progress=None) -> int:
+        """Batch rating/colour for the sidecar viewer — the shape the culling
+        grid's bulk dialog looks for, so it gets the same one-call write here."""
+        keys = [k for k in upn_keys if k]
+        if not keys:
+            return 0
+        if new_stars is not None:
+            self.write_tag_many(keys, "XMP:Rating", str(new_stars), "Rating")
+        if new_color is not None:
+            self.write_tag_many(keys, "XMP:Label", new_color, "Label")
+        if progress:
+            progress(len(keys), len(keys))
+        return len(keys)
+
     def write_tag(self, stem: str, tag: str, value: str, row_key: str) -> None:
         """Write one metadata tag for the stem, honouring Sidecar Behaviour.
 
