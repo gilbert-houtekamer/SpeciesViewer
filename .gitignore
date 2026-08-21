@@ -65,3 +65,6 @@ Species print.txt
 
 # Backups written by one-off/push_animals_css.py --apply (local rollback copies)
 speciesviewer/one-off/animals_css_backup_*/
+
+# Exported reference PDFs (Markdown PDF extension)
+docs/pdf/
