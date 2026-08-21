@@ -1,26 +1,27 @@
 
 
 # picture handling
-exif
-opencv-python
 pyexiftool
 # Pillow: imported at module scope (engine/websupport.py, engine/statslib.py,
 # widgets/trip_widgets.py) and used to normalise cached previews. It was only ever
 # present as a transitive dependency of pillow-heif — declare what we actually use.
 Pillow
 pillow-heif
-# rawpy (libraw, LGPL-2.1/CDDL-1.0) — full-resolution RAW decode for the 100% view
+# rawpy (libraw, LGPL-2.1/CDDL-1.0) — full-resolution RAW decode for the 100% view.
+# Keep the packaged build one-FOLDER so raw_r.dll stays a replaceable file — see NOTICE.md.
 rawpy
-configparser
+# numpy and opencv are imported directly by gui/fullres.py (not just transitively).
+numpy
+opencv-python
 pygbif
-pysftp
 deep-translator
 langdetect
 fastcrc
 openpyxl
 
 # UI
-flet
+# PyQt6 is GPL-3.0-or-commercial, which is why SpeciesViewer itself is GPL-3.0.
+# See NOTICE.md.
 PyQt6
 
 
