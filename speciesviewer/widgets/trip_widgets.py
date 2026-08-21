@@ -67,6 +67,18 @@ class _RevalidateOnActivate:
         return super().eventFilter(obj, event)
 
 
+def _preview_box(expected_size, max_w=440, max_h=132):
+    """Screen size of a preview for an image of expected_size.
+
+    Both shapes have to look right in the same dialog: the 600x450 trip
+    picture is bounded by the height, the 2000x270 banner by the width, so
+    the box is the expected size scaled down to fit inside both limits.
+    """
+    w, h = expected_size
+    scale = min(max_w / w, max_h / h, 1.0)
+    return max(1, round(w * scale)), max(1, round(h * scale))
+
+
 class ImageFileFieldQt(QWidget):
     def __init__(self, label, expected_size, root_field, icon_path=_ASSETS):
         super().__init__()
@@ -80,6 +92,16 @@ class ImageFileFieldQt(QWidget):
         self.browse_btn = QPushButton("Browse")
         self.status_icon = QLabel()
         self.hint_label = QLabel("")
+
+        # A thumbnail of whatever the path currently points at. It lives in
+        # this widget (so validate() can keep it in step with the ✓/✗) but is
+        # NOT in this widget's row — the dialog parks it beside the
+        # description text, where there is room for it. See image_field_row().
+        self.preview = QLabel()
+        self.preview.setFixedSize(*_preview_box(expected_size))
+        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._preview_src = None      # path last loaded, to skip re-decoding
+        self._clear_preview()
 
         # Initial UI Setup
         _set_valid_glyph(self.status_icon, False)
@@ -134,13 +156,43 @@ class ImageFileFieldQt(QWidget):
         _set_valid_glyph(self.status_icon, True)
         self.status_icon.setToolTip("")
         self.clear_hint()
+        self._show_preview(full_path)
         return True
 
     def _invalidate(self, message: str) -> bool:
         _set_valid_glyph(self.status_icon, False)
         self.status_icon.setToolTip(message)
         self.show_hint(message)
+        self._clear_preview()
         return False
+
+    def _show_preview(self, full_path: str):
+        """Paint the thumbnail. validate() runs on every keystroke, so the
+        decode is skipped when the path has not actually moved."""
+        if self._preview_src == full_path and self.preview.pixmap() is not None:
+            return
+        pixmap = QPixmap(full_path)
+        if pixmap.isNull():
+            self._clear_preview()
+            return
+        self.preview.setText("")
+        self.preview.setPixmap(pixmap.scaled(
+            self.preview.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation))
+        self.preview.setStyleSheet(f"border: 1px solid {theme.LINE};")
+        self.preview.setToolTip(full_path)
+        self._preview_src = full_path
+
+    def _clear_preview(self):
+        """An empty frame rather than a hidden one: the reserved space tells
+        you the shape the picture is supposed to have."""
+        self._preview_src = None
+        self.preview.clear()
+        self.preview.setText("no preview")
+        self.preview.setToolTip("")
+        self.preview.setStyleSheet(
+            f"border: 1px dashed {theme.LINE}; color: {theme.INK_FAINT}; font-size: 9pt;")
 
     def pick_file(self):
         root_path = self.root_field.get_text()
@@ -163,7 +215,21 @@ class ImageFileFieldQt(QWidget):
 
     def clear_hint(self):
         self.hint_label.setVisible(False)
-           
+
+
+def image_field_row(info_label, image_field) -> QWidget:
+    """Description text on the left, that field's live preview on the right.
+
+    The description paragraph leaves half a dialog of empty space next to it;
+    the preview goes there so the Images tab does not grow a row taller.
+    """
+    row = QWidget()
+    layout = QHBoxLayout(row)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.addWidget(info_label, 1)
+    layout.addWidget(image_field.preview, 0, Qt.AlignmentFlag.AlignTop)
+    return row
+
 
 class DirectoryFieldQt(_RevalidateOnActivate, QWidget):
     def __init__(self, label, initial_path="", icon_path=_ASSETS):

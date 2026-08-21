@@ -15,7 +15,7 @@ from gui.batch import BatchModuleRunner  # Assuming batch handler is here
 from utils.config import set_trip_settings, _config, get_trips_root, persist_config
 from utils.trip_config import read_trip_ini
 from widgets.small_widgets import HTMLLabel
-from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, RecentDirectoryFieldQt, ImageFileFieldQt)
+from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, DirectoryFieldQt, RecentDirectoryFieldQt, ImageFileFieldQt, image_field_row)
 from engine.translatelib import CachedTranslate
 from utils.gui_config import update_cache_gui_section, get_cache_gui_section
 from gui.trip_overview import populate_trip_overview
@@ -206,9 +206,9 @@ class TripCreationDialog(QDialog):
             "Required dimensions: <b>600×450 pixels</b>.</p>"
         )
 
-        layout2.addWidget(info_label21)        
         self.trip_img_field = ImageFileFieldQt("Trip Image", (600, 450), self.root_field)
-        self.trip_img_field.field.setText(trip_data.get("trip_picture", "")) 
+        self.trip_img_field.field.setText(trip_data.get("trip_picture", ""))
+        layout2.addWidget(image_field_row(info_label21, self.trip_img_field))
         layout2.addWidget(self.trip_img_field)
 
         info_label22 = HTMLLabel(
@@ -218,9 +218,9 @@ class TripCreationDialog(QDialog):
             "Required dimensions: <b>2000×270 pixels</b>.</p>"
         )
 
-        layout2.addWidget(info_label22)                  
         self.topbar_img_field = ImageFileFieldQt("Top Web Bar", (2000, 270), self.root_field)
         self.topbar_img_field.field.setText(trip_data.get("trip_banner", ""))
+        layout2.addWidget(image_field_row(info_label22, self.topbar_img_field))
         layout2.addWidget(self.topbar_img_field)
 
         info_label23 = HTMLLabel(

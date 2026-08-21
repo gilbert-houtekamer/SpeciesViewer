@@ -22,7 +22,8 @@ import batch.svv6RedoBlog
 from gui.menu import MenuSpec
 from widgets.small_widgets import HTMLLabel
 from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt,
-                                   RecentDirectoryFieldQt, DirectoryFieldQt, ImageFileFieldQt)
+                                   RecentDirectoryFieldQt, DirectoryFieldQt, ImageFileFieldQt,
+                                   image_field_row)
 
 import batch.svv1MakeVirtualRepository
 from utils.ini_io import read_ini
@@ -655,22 +656,22 @@ class VirtualTripCreationDialog(QDialog):
         # ── Tab 2: Images & Dates ──────────────────────────────────────────────
         tab2 = QWidget()
         layout2 = QVBoxLayout(tab2)
-        layout2.addWidget(HTMLLabel(
+        self.trip_img_field = ImageFileFieldQt("Album picture", (600, 450), self.root_field)
+        self.trip_img_field.field.setText(trip_data.get("trip_picture", ""))
+        layout2.addWidget(image_field_row(HTMLLabel(
             "<p><b>Album picture</b><br>"
             "This picture represents the album in the trip listings on the website.<br>"
             "Required dimensions: <b>600×450 pixels</b>.</p>"
-        ))
-        self.trip_img_field = ImageFileFieldQt("Album picture", (600, 450), self.root_field)
-        self.trip_img_field.field.setText(trip_data.get("trip_picture", ""))
+        ), self.trip_img_field))
         layout2.addWidget(self.trip_img_field)
 
-        layout2.addWidget(HTMLLabel(
+        self.topbar_img_field = ImageFileFieldQt("Web banner", (2000, 270), self.root_field)
+        self.topbar_img_field.field.setText(trip_data.get("trip_banner", ""))
+        layout2.addWidget(image_field_row(HTMLLabel(
             "<p><b>Web banner</b><br>"
             "This banner runs across the top of every blog and species page of this album.<br>"
             "Required dimensions: <b>2000×270 pixels</b>.</p>"
-        ))
-        self.topbar_img_field = ImageFileFieldQt("Web banner", (2000, 270), self.root_field)
-        self.topbar_img_field.field.setText(trip_data.get("trip_banner", ""))
+        ), self.topbar_img_field))
         layout2.addWidget(self.topbar_img_field)
 
         layout2.addWidget(HTMLLabel(
