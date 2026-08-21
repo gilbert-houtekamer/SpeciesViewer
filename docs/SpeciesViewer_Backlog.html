@@ -37,7 +37,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 19 August 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 21 August 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Open work for the SpeciesViewer nature-photo pipeline and GUI. This document holds
 only what is <strong>still to do</strong> — everything that has shipped now lives in the companion
@@ -1494,6 +1494,276 @@ so anything in the first section gets confirmed before it goes, not after. And t
 follow risk rather than size: the implicit trip roots and the 29 stylesheet copies can still cause a
 visible fault, while a dead 62-line module can sit there for another year doing nothing worse than
 being read once by mistake.</p>
+
+<hr class="section-divider">
+
+<!-- ============================================================ -->
+
+<h2 id="installable">20. Installable SpeciesViewer — publishing v1</h2>
+
+<p>SpeciesViewer is good enough to be useful to somebody else. Nothing in this chapter makes it
+better at its job; the whole chapter is about the distance between <em>a program that works on
+BigBoy and SmallBoy</em> and <em>a program a stranger can install</em>. That distance is mostly
+not packaging. The model is a small, clean public repository that offers both the source and a
+ready-made download — for example
+<code>github.com/SlavomirDurej/claude-usage-widget</code> — and the honest observation is that
+such a repository is easy to produce for a 500-line widget and considerably harder for 88,000
+lines that assume a photo pipeline, a master database and a website.</p>
+
+<p class="note"><strong>Who v1 is for.</strong> Worth deciding early, because it sets the bar for
+everything below. SpeciesViewer assumes DxO PhotoLab, a master repository, an SFTP-published
+website and a way of working built up over two years. The realistic first audience is
+<em>people who want to read the code</em>, plus one or two photographers walked through it in
+person — not a general public. A v1 that gets a second machine, or one friend, running is a
+success. A v1 aimed at anonymous strangers will fail on the first-run problem below and take the
+reputation of the project with it.</p>
+
+<h3>The first-run problem — the real blocker</h3>
+
+<p><span class="tag-open">OPEN</span> Today the per-machine configuration lives <em>in the
+repository root</em>, named <code>sv_config_&lt;machinename&gt;.ini</code>, created as an empty
+<code>[Global]</code> stub when it is missing (<code>utils/config.py</code>). That is fine for a
+clone in <code>d:\code</code> and wrong for anything installed: an application directory is not
+writable, and a file keyed on the machine's name is a development convenience rather than a
+distribution design. Configuration has to move to the per-OS application-data directory — the
+same place <code>utils/runtime_files.py</code> already uses for the batch-to-GUI handoff files —
+before an installed build can work at all.</p>
+
+<p><span class="tag-open">OPEN</span> The harder half of the same problem: <strong>what does
+SpeciesViewer do on a machine with no data?</strong> No master, no trip, no website, no species
+collection. Every panel it opens today assumes at least one of those exists. The options are a
+starter profile shipped with the download (an empty master, one demo day, the species tree), or a
+guided first-run wizard in the style of the existing <em>Install SmallMaster</em> dialog, or
+both. This is more work than the packaging is, and none of the packaging is worth doing until it
+is answered.</p>
+
+<h3>The package itself</h3>
+
+<p><span class="tag-open">OPEN</span> <strong>ZIP or EXE.</strong> PyInstaller is already in
+<code>requirements.txt</code> and no spec file exists yet. A one-folder PyInstaller build zipped
+up is the cheapest thing that can honestly be called an install, and it keeps the third-party
+DLLs as separate files — which, as the licence section notes, is the safer arrangement anyway.
+A true installer (Inno Setup or MSI) is a second step, not a first one.</p>
+
+<p><span class="tag-open">OPEN</span> <strong>exiftool is a hard prerequisite and is not a pip
+install.</strong> It is a separate binary that SpeciesViewer drives through
+<code>PyExifTool</code>, and essentially nothing works without it — ingest, sidecars, ratings,
+previews. Three choices: bundle the Windows binary in the download (its licence permits this),
+have first run detect its absence and offer to fetch it, or document it as a manual prerequisite
+and fail with a clear message. The middle option is the most work and the best experience; the
+last is acceptable for v1 <em>if</em> the failure message actually names the problem.</p>
+
+<p><span class="tag-open">OPEN</span> <strong>Python version and platform.</strong> Development
+is on Python 3.12 on Windows 11. The download is Windows-only for v1; the source runs anywhere
+the dependencies do, with the Mac caveat already recorded in ch.10 and ch.19 (persisted paths
+parsed with the host's path rules). Say both plainly in the README rather than leaving a visitor
+to discover it.</p>
+
+<h3>Third-party code and the licence</h3>
+
+<p>This is less open than it looks. <strong>PyQt6 is offered under GPL v3 or a commercial
+licence</strong>, so any distributed SpeciesViewer must be GPL-3.0. The repository's
+<code>LICENSE</code> is already GPL-3.0, which means the decision is made and correct. It also
+means the instinct towards a &ldquo;non-profit use only&rdquo; condition cannot be acted on: such
+a clause would make SpeciesViewer non-free and would breach PyQt's own terms. GPL-3.0 already
+achieves the thing actually wanted — anybody may use and modify it, but nobody may take it
+closed.</p>
+
+<p class="note"><strong>Code licences and data licences are different questions.</strong> There
+is no Creative Commons <em>code</em> anywhere in the stack. CC governs <em>content</em>, and
+SpeciesViewer does consume content: OpenStreetMap tiles and Nominatim place names (ODbL, with an
+attribution requirement and a usage policy), GBIF occurrence and taxonomy data (CC-BY family,
+per-dataset), and the photographs themselves, which remain the photographer's. The map view
+already shows OSM attribution; the published species pages and the README need the GBIF
+citation, and the two obligations should be stated in one place.</p>
+
+<p><span class="tag-shipped">DONE 21 Aug</span> <strong>NOTICE / THIRD-PARTY file
+written.</strong> Not a licence decision — an inventory, and the one deliverable this section
+really needed. <code>NOTICE.md</code> now covers the seventeen direct runtime packages, the
+native libraries inside their wheels, the vendored <code>leaflet.js</code> (BSD-2-Clause) under
+<code>dist/includes web/</code>, exiftool (Perl Artistic / GPL, Phil Harvey) and the online
+services with terms of their own (OSM/Nominatim, GBIF, Avibase, Google Translate). Most are
+permissive and uncontroversial: MIT, BSD or Apache-2.0 for <code>exif</code>, Pillow,
+<code>pygbif</code>, <code>openpyxl</code>, <code>fastcrc</code>, <code>langdetect</code>,
+<code>deep-translator</code>, <code>requests</code>, <code>pysftp</code> and OpenCV. Paramiko is
+LGPL-2.1-or-later and PyQt6's Qt libraries are LGPL v3 — both compatible with a GPL-3.0
+application.</p>
+
+<p><span class="tag-new">NEW</span> <strong>Two dependencies checked, both resolved into
+build rules</strong> (21 August 2026) — neither needs a licence argument, and both constrain how
+the binary is built:</p>
+<ul>
+  <li><code>pillow-heif</code>'s own <code>LICENSES_bundled.txt</code> states it plainly:
+    <em>&ldquo;License for pillow-heif binary wheels: GPLv2, due to base library licenses.&rdquo;</em>
+    The cause is <code>libx265</code> — the HEVC <strong>encoder</strong>, present in the installed
+    wheel as <code>libx265-215-*.dll</code>. GPL-2.0-only and GPL-3.0 do not mix. But
+    SpeciesViewer only ever <em>decodes</em> HEIC, in two places in
+    <code>gui/preview_provider.py</code>, so the rule is simply <strong>exclude
+    <code>libx265</code> from the packaged build</strong>. That removes the question rather than
+    answering it, at no cost.</li>
+  <li><code>rawpy</code> is MIT and wraps LibRaw (LGPL-2.1 or CDDL-1.0), shipped as a separate
+    <code>raw_r.dll</code>. Dynamically linked it is uncontroversial; statically bound into a
+    single executable it would not be. The rule: <strong>one-FOLDER PyInstaller build, never
+    one-file</strong>, so the library stays a file the user can replace. The same rule keeps
+    Qt6, libheif and libde265 (all LGPL v3) straightforward.</li>
+</ul>
+
+<h3>The repository is personalised</h3>
+
+<p><span class="tag-bug">BUG</span> <strong>The User-Agent is a personal e-mail address.</strong>
+<code>gui/geolocate.py</code> and <code>gui/map_view.py</code> both send
+<code>SpeciesViewer/1.0 (gilbert@houtekamer.com)</code> to Nominatim and to the OSM tile servers.
+Every user's traffic would be attributed to one person, and OSM enforces its usage policy by
+blocking User-Agents — so a handful of new users could get the author's own map view cut off.
+The contact has to come from configuration, with a sensible project-level default.</p>
+
+<p><span class="tag-open">OPEN</span> <strong>Hardcoded site and account details.</strong>
+<code>username='houtekamercom'</code>, <code>houtfp.ssh.transip.me</code> and the remote path
+<code>/data/sites/web/houtekamercom/www</code> appear literally in seven modules
+(<code>sv1MakeReposity</code>, <code>sv7WriteCommit</code>, <code>bloglib</code>,
+<code>regenerate_species</code>, <code>sftplib</code>, <code>trip_registry</code>,
+<code>triplib</code>). No credential is committed — the <code>.gitignore</code> handles that
+carefully — but the defaults are somebody's personal hosting. They belong in the site
+configuration.</p>
+
+<p><span class="tag-open">OPEN</span> <strong>Sweep the tree for private data before it goes
+public.</strong> <code>data/configs/</code> holds sixteen real machine and trip configurations
+with local absolute paths; <code>days_bigboy.json</code>, <code>sv_gui_cache.json</code> and the
+loose <code>.txt</code> and <code>.log</code> files in the root are runtime residue. Most are
+already ignored, but ignored is not the same as absent from history. Decide what the public
+repository's root looks like — this is a presentation question as much as a privacy one.</p>
+
+<h3>Structuring the repository for publication</h3>
+
+<p><span class="tag-open">OPEN</span> A visitor's first thirty seconds are the README and the
+top-level file listing. Today the README is two lines and the root holds a dozen working files.
+The minimum: a README that says what SpeciesViewer is, who it is for and what it needs; a
+screenshot or two (the Biota browser and a species page do more than paragraphs); the existing
+<em>Capabilities</em> document linked rather than buried; <code>CONTRIBUTING</code>,
+<code>NOTICE</code> and a short install page. Three items borrowed from ch.19 belong here
+too — deleting <code>speciesviewer/app.py</code> (the PyQt tutorial file with the &ldquo;Push for
+Window&rdquo; button, which is exactly what a curious visitor opens first), the configuration
+inventory a new user needs in order to know what to fill in, and the per-site stylesheet
+duplication.</p>
+
+<p class="note"><strong>Note on ch.19.</strong> The rest of that chapter should <em>not</em> be a
+prerequisite for publishing. It is slow-payoff internal tidying whose value does not change
+whether the repository is public or private; only those three items are genuinely forced by
+having an audience.</p>
+
+<h3>Letting other people contribute</h3>
+
+<p><span class="tag-open">OPEN</span> This needs no design. A public GitHub repository already
+gives anybody the ability to fork, branch and open a pull request, with review before anything
+merges. The only real decisions are which branch is the published one — <code>ClaudeSpecies</code>
+is the working branch today, and <code>main</code> should become what the world sees — and a
+short <code>CONTRIBUTING.md</code> saying what a good pull request looks like. Direct write
+access to the repository is not something to hand out.</p>
+
+<h3>Suggested order</h3>
+
+<ol>
+  <li>Decide who v1 is for, and what a zero-data machine does. Everything else follows from
+    these two answers.</li>
+  <li>Move the configuration out of the repository root; de-personalise the User-Agent and the
+    site defaults.</li>
+  <li><s>Write the NOTICE file and settle the two dependency questions.</s>
+    <span class="tag-shipped">DONE 21 Aug</span> — <code>NOTICE.md</code>; both questions became
+    build rules (no libx265, one-folder only). <code>requirements.txt</code> cleaned at the same
+    time: <code>flet</code>, <code>exif</code> and <code>configparser</code> were declared but
+    imported nowhere, and <code>numpy</code>/<code>opencv-python</code> were used directly but
+    undeclared.</li>
+  <li>Build the PyInstaller one-folder ZIP; decide the exiftool arrangement.</li>
+  <li>Clean the repository root, write the README and the install page, delete
+    <code>app.py</code>.</li>
+  <li>Publish <code>main</code>, tag v1, attach the ZIP as a release.</li>
+</ol>
+
+<hr class="section-divider">
+
+<!-- ============================================================ -->
+
+<h2 id="modern-raw">21. Modern Nikon, Canon and Sony bodies</h2>
+
+<p>SpeciesViewer was built around Olympus files and grew Nikon support alongside them. Nothing in
+it is deliberately single-brand, but everything in it has only ever been <em>proven</em> on two
+brands, and the places where a camera's identity leaks into the code are known. Supporting current
+Nikon, Canon and Sony bodies properly is a prerequisite for the users chapter 20 hopes to attract:
+a photographer whose files do not open will not stay to read the architecture document.</p>
+
+<h3>The four places a RAW file is touched</h3>
+
+<p>Adding a brand is not one job. A file passes through four independent mechanisms, and a body
+can fail at any one of them while working at the other three:</p>
+
+<ul>
+  <li><strong>Capture date at ingest</strong> — read through exiftool, which supports essentially
+    every body promptly. Lowest risk.</li>
+  <li><strong>Sidecar creation</strong> — <code>sv0ReadSDCard._write_sidecars</code> does a
+    blanket <code>-xmp:all&lt;all</code> copy plus <em>one hand-mapped field</em>,
+    <code>-XMP-exif:SubjectDistance&lt;Olympus:FocusDistance#</code>. That single line is the
+    clearest statement of the problem: focus distance for Nikon, Canon and Sony lives under each
+    maker's own tag and is silently absent today. The parked question in ch.1 about a curated
+    field list is the same question seen from the other side.</li>
+  <li><strong>Embedded preview extraction</strong> — the fast path that makes culling usable.
+    Nikon embeds a full-size JPEG; Canon and Sony embed previews of varying size and, on some
+    bodies, only a small one. Where the embedded preview is too small, the viewer has to fall
+    back to a full decode and the twelve-fold speed advantage disappears. Worth measuring per
+    body rather than assuming.</li>
+  <li><strong>Full-resolution decode</strong> — <code>rawpy</code>/LibRaw, for the 100% view and
+    for JPG creation. This is where genuinely new formats fail, and where the fix is a library
+    version rather than SpeciesViewer code.</li>
+</ul>
+
+<h3>The formats that are actually hard</h3>
+
+<p><span class="tag-new">NEW</span> Three known trouble spots, all in the decode path:</p>
+<ul>
+  <li><strong>Canon CR3</strong> — a different container from CR2; needs a recent LibRaw. Canon
+    also produces HEIF (<code>.HIF</code>) on some bodies, which collides with the unresolved HEIC
+    sidecar question in ch.7 — a HEIF original has nowhere durable to store a rating.</li>
+  <li><strong>Nikon High Efficiency NEF</strong> (the HE / HE* modes on Z bodies) — compressed
+    with a scheme that older LibRaw builds cannot read at all.</li>
+  <li><strong>Sony lossless-compressed ARW</strong> — several generations of compression, added
+    to LibRaw at different times.</li>
+</ul>
+
+<p>In each case the honest answer is likely &ldquo;pin a newer rawpy&rdquo; rather than write
+code — but that has to be established with a real file, and a clear failure message matters when
+the answer is no.</p>
+
+<h3>The extension lists have drifted</h3>
+
+<p><span class="tag-bug">BUG</span> Five separate literal sets of RAW extensions exist in the
+tree and they do not agree. <code>sv0ReadSDCard</code> knows eight
+(<code>cr3 cr2 nef arw raf dng orf rw2</code>); <code>filepicture</code> and
+<code>topics_scan</code> know their own variants; <code>svu5SyncSidecars</code> knows only
+<code>orf, nef, nrw, heic</code>. A Canon or Sony file therefore ingests correctly and then
+falls out of the sidecar sync. One canonical table, imported everywhere, is a small change and a
+precondition for testing any new brand honestly.</p>
+
+<h3>A test corpus, and a repeatable test</h3>
+
+<p><span class="tag-open">OPEN</span> Sample RAW files are freely available and cover exactly the
+bodies in question: <strong>rawsamples.ch</strong> (unedited originals, older and newer Canon,
+Nikon and Sony), <strong>pixls.us</strong> (a large community repository contributed specifically
+for software developers and testers, with clear licensing) and the <strong>DPReview</strong>
+sample galleries (real-world and studio scenes with downloadable RAWs across all major brands).
+Between them a corpus of perhaps twenty files covering four generations of each brand is an
+afternoon's downloading.</p>
+
+<p><span class="tag-open">OPEN</span> What makes it worth having is a <strong>per-body
+checklist</strong> run as a tool rather than by hand: for each sample file, does the date read,
+does a sidecar get written with the fields the viewer needs, is an embedded preview present and
+how large, does a full decode succeed, and how long does each take. One row per body, red or
+green per column. That table is also the honest answer to a future user asking &ldquo;does it
+work with my camera?&rdquo; — and it belongs in the published repository, which is why this
+chapter follows ch.20 rather than preceding it.</p>
+
+<p class="note"><strong>What this chapter does not cover.</strong> DxO PhotoLab's own support for
+a body is DxO's business, not SpeciesViewer's — but the <code>.dop</code> lane assumes PhotoLab
+can open the file, so a body PhotoLab does not support is a body whose denoise step simply does
+not exist. Worth stating in the checklist rather than discovering mid-trip.</p>
 
 </body>
 </html>
