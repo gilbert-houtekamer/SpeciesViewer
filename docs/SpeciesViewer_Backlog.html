@@ -1480,7 +1480,20 @@ are places where bugs have actually been fixed more than once:</p>
     with a trip and which are throwaway caches. Today's work needed that answer twice — once to
     decide where the card prefix should live, once to decide that the settings snapshot may carry
     the GUI cache but must never carry the file holding the website password. Both were answered by
-    reading source. A one-page table would have answered both.</li>
+    reading source. A one-page table would have answered both.
+    <span class="tag-shipped">DONE</span> 2026-08-21 &mdash;
+    <code>docs/configuration_inventory.md</code>: nine scopes, one row per file with
+    format, contents, may-it-be-copied and what-happens-if-lost, plus a six-step list for
+    deciding where a <em>new</em> setting belongs. It absorbed the older
+    <code>config_state_files.md</code>, which is gone &mdash; two lists of the same files is how a
+    doc set goes stale. Building it turned up six <strong>Known irregularities</strong> worth
+    reading before the rest of this chapter is planned: most of them are the same defect chapter 20
+    calls the first-run problem, seen from the file side. The machine config, the days registry, the
+    denoise ini and the log all live in the repository root because <code>CONFIG_DIR</code> is the
+    source tree; <code>sv_gui_cache.json</code> is worse still, resolving against the working
+    directory, and a second orphan copy of it already exists from a launch out of another folder.
+    Moving configuration to the per-OS application-data directory therefore closes an item in both
+    chapters at once, and the inventory is the list of what has to move.</li>
   <li><strong>Persisted paths are the Mac blocker.</strong> Paths stored on one machine are parsed
     with the host's path rules, so a Windows-authored setting read on macOS is the thing most likely
     to break first. Relevant only when the second machine actually arrives.</li>
@@ -1527,7 +1540,12 @@ clone in <code>d:\code</code> and wrong for anything installed: an application d
 writable, and a file keyed on the machine's name is a development convenience rather than a
 distribution design. Configuration has to move to the per-OS application-data directory — the
 same place <code>utils/runtime_files.py</code> already uses for the batch-to-GUI handoff files —
-before an installed build can work at all.</p>
+before an installed build can work at all. <strong>The list of what has to move now exists:</strong>
+<code>docs/configuration_inventory.md</code> → <em>Known irregularities</em>, written for the
+chapter 19 item. It names every file that lands in the source tree today, and one that is worse
+than the rest — <code>sv_gui_cache.json</code> resolves against the <em>working directory</em>
+rather than <code>CONFIG_DIR</code>, so a launch from another folder silently starts a second,
+empty cache. That has already happened on BigBoy. Fixing this closes an item in both chapters.</p>
 
 <p><span class="tag-open">OPEN</span> The harder half of the same problem: <strong>what does
 SpeciesViewer do on a machine with no data?</strong> No master, no trip, no website, no species
