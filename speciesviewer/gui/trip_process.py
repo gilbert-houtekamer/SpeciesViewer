@@ -188,6 +188,26 @@ class TripCreationDialog(QDialog):
         trip_web_layout = QHBoxLayout(trip_web_row)
         trip_web_layout.setContentsMargins(0, 0, 0, 0)
         trip_web_layout.addWidget(self.trip_web)
+        if self.mode != "create":
+            # The web root IS the trip's public address: trip_name and web_slug
+            # are cut from it, and the master trip index keys its row on that
+            # slug. Retype it on an existing trip and the site keeps the old
+            # folder and the old index row while the trip starts publishing to
+            # a new one — a dead link on the public trip list that nothing in
+            # the app can clean up afterwards, because "unadvertise" looks for
+            # the NEW slug. It happened once (brazil2026db → brazil2026), and a
+            # form field you fill in top to bottom is no place for it. Set at
+            # creation; renaming later is a deliberate trip to Settings.
+            from gui import theme
+            self.trip_web.field.setReadOnly(True)
+            self.trip_web.field.setStyleSheet(
+                f"color: {theme.INK_FAINT}; background: transparent; "
+                f"border: 1px solid {theme.LINE};")
+            # Grey and unresponsive already says "you cannot type here"; a label
+            # spelling out WHY answers a question nobody asked while filling in
+            # a form. The reason waits in the tooltip for whoever goes looking.
+            self.trip_web.field.setToolTip(
+                "The website link is defined when the website is created.")
         trip_web_layout.addStretch()
         layout1.addWidget(trip_web_row)
         self.project_path = DirectoryFieldQt(
