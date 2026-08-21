@@ -9,8 +9,8 @@ This document is about the listing half: the one CSV that drives it, the seven
 places its key is written down, and the one mistake that cannot be undone by
 any button in the app.
 
-Companion reference: [config_state_files.md](config_state_files.md) for every
-other persistent file.
+Companion reference: [configuration_inventory.md](configuration_inventory.md)
+for every other persistent file.
 
 ---
 

@@ -83,5 +83,5 @@ fallback) and buckets it `jpg_ok` / `raw_fallback` / `black`. Investigating the
   only reads, and writes a report.) The master DB cache (`master.db`) rebuilds
   itself on next use.
 
-See also [`config_state_files.md`](config_state_files.md) for the file layout
+See also [`configuration_inventory.md`](configuration_inventory.md) for the file layout
 and [`data_structures.md`](data_structures.md) for the CSV schemas.

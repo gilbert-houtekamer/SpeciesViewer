@@ -19,7 +19,6 @@ Start here when you are looking for "which file explains X".
 | [SpeciesViewer_DataFlow.md](SpeciesViewer_DataFlow.md) | Where pictures live, how a trip flows into the master, and why the delete step is the last arrow. **Read this first.** |
 | [data_structures.md](data_structures.md) | The four CSVs that hold all biological knowledge and picture metadata, and how they reference each other. |
 | [configuration_inventory.md](configuration_inventory.md) | Which `.ini`, `.json` and `.csv` files exist, which are per-machine, which travel with a trip, which are throwaway — and where a new setting belongs. |
-| [config_state_files.md](config_state_files.md) | Every persistent file the application reads or writes, by scope, with a delete-safety verdict for each. |
 | [trip_index_publication.md](trip_index_publication.md) | How a trip gets *listed* on the website — the web slug's seven homes, why the live index is always the base, and how to repair a listing by hand. |
 | [SpeciesViewer architecture pictures.pptx](SpeciesViewer%20architecture%20pictures.pptx) | The hand-drawn architecture slides (PDF alongside). |
 

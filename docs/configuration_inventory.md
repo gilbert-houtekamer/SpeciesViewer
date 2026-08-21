@@ -10,11 +10,16 @@ camera card may carry the GUI cache (it may) or the file holding the website
 password (it must not) — and both were settled by reading source. This is the
 table that answers them without reading source.
 
-Companion documents: [config_state_files.md](config_state_files.md) for the
-fuller prose on delete-safety, [data_structures.md](data_structures.md) for how
-the four picture CSVs reference each other, and
+This document replaces the older `config_state_files.md`, whose delete-safety
+verdicts and machine-config key list are folded in below. Companion documents:
+[data_structures.md](data_structures.md) for how the four picture CSVs
+reference each other, and
 [trip_index_publication.md](trip_index_publication.md) for the one file whose
 authoritative copy lives on the website.
+
+**Reading the verdict column.** 🟢 rebuilt automatically, no risk. 🟡 rebuilds,
+but costs time or loses convenience state. 🔴 canonical — loss is permanent, or
+breaks an undo.
 
 ---
 
@@ -98,6 +103,25 @@ text. The work-backup written to a camera card therefore copies
 | `sv_gui_cache.json` | json | Convenience state: `recent_projects`, `trip_project_map`, `sdcard_ingest` (**the card prefix**), `culling_species` (last-20 species LRU), `usage_stats`. **No credentials** — which is why this one may ride along on a card. | ✅ | 🟢 rebuilt by use |
 | `studio.log` | text | This run's log; truncated at launch. | ✅ | 🟢 |
 
+### What lives inside `sv_config_<hostname>.ini`
+
+| Section | Key examples | Purpose |
+|---------|-------------|---------|
+| `[Global]` | `config_version`, `dxo_path`, `debug_tools` | App-wide defaults |
+| `[Master]` | `masterbiotadatabase`, `masterbiotawebroot`, `readonly` | Path to the master collection |
+| `[Trip]` | `tripbiotadatabase`, `tripbiotawebroot` | Active trip: database path and **web slug** |
+| `[VirtTrip]` | `virttripbiotadatabase`, `virttripbiotawebroot` | Active album |
+| `[project]` | `picturedirectory` | The day folder currently being worked on |
+| `[websettings]` | `Sftppwd`, `base_url` | **The credential.** Why this file never leaves the machine |
+| `[fullres]` | `algorithm`, `fbdd`, `bright`, `denoise`, `scale` | RAW decode quality for the 100% view |
+| `[preview]` | `max_long_edge` (3200), `quality` (90) | Size the embedded camera previews are normalised to. `0` = keep whatever the camera embedded |
+| `[avibase]` | `source_format`, `phone_layout`, `first_column_lang`, `columns` | Excel checklist export, plus the per-list column map in `[avibase_columns]` |
+| `[masterdb]` | `pending_warn_seconds`, `checkpoint_debounce_seconds` | SQLite write-queue behaviour |
+| `[performance]` | `exif_workers` | Parallel exiftool workers. `auto` ≈ physical cores, capped 16. Hardware-dependent, hence machine scope |
+| `[caches]` | cache-root overrides | Where the app-data caches actually live |
+| `[WindowState]` | `<dialog>_x/_y/_w/_h`, `_vsplit`, `_hsplit` | Per-dialog geometry, one entry per window |
+| `[PhotoSorter]` | `last_source_folder`, `last_dest_folder` | Last SD-card and destination paths |
+
 ## Ephemeral — rewritten before it is read
 
 | File | Format | Holds | Copy? | Lose it? |
@@ -129,7 +153,8 @@ text. The work-backup written to a camera card therefore copies
 | `metadata/active/data_files.csv` | csv | One row per physical file. | 🔴 canonical |
 | `metadata/active/species.csv` | csv | Per-species record: counts, best JPG, target path. | 🔴 canonical |
 | `metadata/active/speciescollection.csv` | csv | Taxonomy with parent/child links and vernacular names. | 🔴 canonical |
-| `metadata/active/backup/<date>/*.csv.gz` | csv.gz | Daily snapshot of the three CSVs + `manifest.json` with row counts and the consistency verdict. Refused when the master fails its check. | 🔴 self-pruning |
+| `metadata/active/backup/<date>/*.csv.gz` | csv.gz | Daily snapshot of the three master CSVs (154 MB raw → ~7.3 MB, ~1 s), taken silently at startup and pruned to the newest 14; `manifest.json` records the row counts and the consistency verdict at the time. **A backup is REFUSED when the master fails its check** — a snapshot of a broken master would eventually push the last good one out of the rotation. | 🔴 never by hand — it prunes itself; Database Settings ▸ Restore… puts one back |
+| `metadata/active/backup/pre-restore-*/` | csv.gz | The CSVs a Restore replaced, so a restore is itself reversible. | 🟡 only once you are certain the restore was right |
 | `metadata/cache/exif_cache.json`, `exif_cache_master.json` | json | EXIF cache, immutable (RAW by name+size) and mutable (XMP/JPG by path+mtime) buckets, three rotating `.bak`s. | 🟡 full re-scan |
 | `admin/trip_admin.csv` | csv | Every trip **and** album listed on the public Trips page. **A mirror** — the live copy on the website is authoritative. See [trip_index_publication.md](trip_index_publication.md). | 🟡 restored from the live site |
 | `admin/blog_admin.csv` | csv | Merged blog metadata across trips. | 🔴 |
@@ -140,7 +165,9 @@ text. The work-backup written to a camera card therefore copies
 | `admin/status/display_status.csv` | csv | The "no website picture" report: stale / raw-only / orphan. | 🟢 regenerated |
 | `tripindex-nl.html`, `tripindex-en.html` (master **root**) | html | The generated public Trips page, rendered from `trip_admin.csv` and uploaded to `/nature/`. | 🟢 regenerated |
 | `smallmaster.json` | json | Snapshot stamp inside `smallmaster.zip`: when this SmallMaster was taken. | 🟢 |
-| `.trash/trash_manifest.csv`, `.trash/snapshots/<batch>.json` | csv/json | The undo record for every delete. | 🔴 |
+| `.trash/trash_manifest.csv` | csv | Audit log of every delete: timestamp, UPN, original path, trash path, batch ID. | 🔴 it is the undo record |
+| `.trash/<date>/<upn>/` | files | The trashed picture files themselves (RAW + XMP + sidecar; JPGs are never trashed). | 🔴 only remove to free space, once certain |
+| `.trash/snapshots/<batch>.json` | json | The DB rows removed in one batch delete, for `undo_delete()`. | 🔴 |
 
 ## Trip scope — travels with the trip
 
@@ -151,7 +178,8 @@ text. The work-backup written to a camera card therefore copies
 | `metadata/frozen/frozen_data_*.csv`, `allspecies.csv` | csv | The reviewed snapshot the commit promotes to `active/`. | 🔴 |
 | `metadata/backup/<date>_data_*.csv` | csv | Pre-commit checkpoints. | 🟡 |
 | `metadata/blog/blog_<label>.ini` | ini | Per-day blog draft of an **album** (title, message, selection). | 🔴 hand-written text |
-| `metadata/initialize/master_species_baseline.csv` | csv | The master's species list frozen at trip creation. Fallback for the lifer count when a trip has no `fromdate`. | 🟡 |
+| `metadata/initialize/master_species_baseline.csv` | csv | The master's species list frozen at trip creation. A **fallback only**: Count Species normally judges "new to me" against everything the master has a picture of from before the trip's `fromdate`. Written once by `sv1MakeReposity`; Reset Trip does not touch `initialize/`. | 🟢 for any trip with a `fromdate`; 🔴 for one without — it would otherwise fall back to the live master and report zero lifers |
+| `metadata/reports/Species overview.txt` | txt | The latest Count Species report for this trip; the merge archives a copy into the master. | 🟢 regenerated, as long as `metadata/review/` still holds the day summaries |
 | `admin/blog_admin.csv` | csv | Per-day blog metadata for a **trip**. | 🔴 hand-written text |
 | `admin/TransCache.csv` | csv | This trip's own translation cache; exported with it. | 🟢 |
 | `admin/FTPcache.json` | json | Remote directory listing, to skip redundant uploads. Deliberately **not** exported. | 🟢 |
@@ -223,6 +251,12 @@ source, not a suspicion.
    remote directory, but it is stored in the trip, so it travels and then
    describes uploads that this machine never made. It is excluded from trip
    exports for that reason.
+
+## Deletion cheat sheet
+
+| 🟢 Safe to delete | `studio.log`, `sv_gui_cache.json`, `svconfig.ini`, `fullres_cache/`, `preview_cache/`, `runtime/*.txt`, `FTPcache.json`, `speclist.*`, `TransCache.csv`, `display_status.csv`, `.sv_sidecar_cache.json`, `.sv_ingest_cache.json`, `exif_cache*.bak*`, `master.db-wal`, `master.db-shm`, `metadata/reports/*` |
+| 🟡 Caution | `sv_config_<host>.ini` (paths + password), `days_<host>.json`, `master.db` (slow rebuild), `exif_cache*.json` (slow re-scan), `statemachine.ini` (re-runs every step), `metadata/frozen/`, `metadata/backup/`, `admin/trip_admin.csv`, `admin/survivors.json`, `master_species_baseline.csv` |
+| 🔴 Never delete | `data_pictures.csv`, `data_files.csv`, `species.csv`, `speciescollection.csv`, `trip.ini`, `virttrip.ini`, `blog.ini`, `blog_admin.csv`, `master.wal.jsonl`, `.trash/**`, `admin/trip_species_summary.csv`, `admin/trip_reports/**`, `*.xmp`, `*.dop` |
 
 ## Rules for adding one
 
