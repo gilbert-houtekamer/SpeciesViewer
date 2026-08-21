@@ -1537,6 +1537,14 @@ guided first-run wizard in the style of the existing <em>Install SmallMaster</em
 both. This is more work than the packaging is, and none of the packaging is worth doing until it
 is answered.</p>
 
+<p class="note"><strong>The cheapest way to answer it: build a second master.</strong> A fresh
+master with its own database, on a machine already to hand, <em>is</em> a new-user simulation. It
+needs no installer, no packaging and no stranger &mdash; and it turns &ldquo;what does
+SpeciesViewer do with no data?&rdquo; from a design argument into an afternoon of watching where
+it stops. Every gap found that way is a gap a real first user would have hit, and the ones that
+never surface were never worth designing for. This should come before any of the packaging work
+below.</p>
+
 <h3>The package itself</h3>
 
 <p><span class="tag-open">OPEN</span> <strong>ZIP or EXE.</strong> PyInstaller is already in
@@ -1633,6 +1641,62 @@ loose <code>.txt</code> and <code>.log</code> files in the root are runtime resi
 already ignored, but ignored is not the same as absent from history. Decide what the public
 repository's root looks like — this is a presentation question as much as a privacy one.</p>
 
+<h3>Identity — the About screen and an icon</h3>
+
+<p>Everything above is about whether SpeciesViewer <em>runs</em> on somebody else's machine. This
+section is about whether it looks like a finished product when it does. The two are judged in the
+first ten seconds and only one of them is currently true.</p>
+
+<p><span class="tag-open">OPEN</span> <strong>The About dialog is scaffolding.</strong>
+<code>dialogs/setting.py</code> is nineteen lines and reads, in full,
+<code>&quot;🚀 Species Viewer 0.1 with PyQt6 &mdash; (c) 2025 Gilbert Inc.&quot;</code>. A rocket
+that has nothing to do with the subject, a version number that was never true, a joke company
+name, and the one fact a user does not care about — which GUI toolkit it was written with.
+It should say the name, a real version, one line about what the program is, the copyright, and a
+plain sentence that this is free software under GPL-3.0 with a link to the licence.</p>
+
+<p><span class="tag-open">OPEN</span> <strong>Credits belong there too, but one level down.</strong>
+A second pane behind a <em>&ldquo;Third-party licences and credits…&rdquo;</em> button, which
+<strong>renders <code>NOTICE.md</code> at runtime</strong> rather than repeating it. Qt's
+<code>QTextBrowser</code> reads Markdown natively and can hand links to the system browser, so the
+file the repository publishes <em>is</em> the screen the user sees and the two cannot drift apart.
+Updating the credits then means editing one Markdown file, which is the only version of this that
+will still be accurate in a year. The OpenStreetMap attribution belongs on that pane as well —
+it is already correct in the map view, but About is where anybody checking will look first.</p>
+
+<p><span class="tag-bug">BUG</span> <strong>There is no version string anywhere in the tree.</strong>
+Not a constant, not a module attribute — the <code>0.1</code> in the About dialog is a literal in
+that one file. A single <code>__version__</code> that the About screen, the packaged build and the
+release tag all read is a precondition for tagging v1 at all, and it is a ten-minute job that
+nobody will remember to do at the end.</p>
+
+<p><span class="tag-open">OPEN</span> <strong>The application has no icon.</strong> No
+<code>setWindowIcon()</code> call exists anywhere, which is why Windows falls back to the Python
+icon in the taskbar. What is needed:</p>
+
+<ul>
+  <li><strong>Draw once at 1024&times;1024</strong> and derive the rest. A Windows
+    <code>.ico</code> should embed 16, 20, 24, 32, 40, 48, 64 and 256; a macOS <code>.icns</code>
+    wants 16, 32, 128, 256 and 512 each with an @2x variant, which is where the 1024 master earns
+    its keep. In the application, <code>QIcon</code> can take the <code>.ico</code> or several
+    PNGs and picks per context.</li>
+  <li><strong>Two drawings, not one resize.</strong> Below roughly 32 pixels detail turns to mud.
+    Icons that survive have a detailed form for 48 and above and a deliberately simplified mark —
+    fewer elements, thicker strokes, higher contrast — for 32 and below. This is a design
+    decision, not an export setting, and it is the part that gets skipped.</li>
+  <li><strong>On Windows, <code>setWindowIcon()</code> is not enough.</strong>
+    <code>SetCurrentProcessExplicitAppUserModelID</code> has to be called before the first window
+    appears, or Windows groups the process under Python and shows Python's icon whatever the
+    window icon says.</li>
+</ul>
+
+<p class="note"><strong>A starting point for the mark.</strong> The splash screen
+(<code>assets/svsplash.jpg</code>) is already one of the author's own photographs — a dune
+sow-thistle in marram grass, yellow on pale sand. That is an identity, and a usable one: a warm
+yellow-and-sand icon would stand out in a taskbar that is otherwise blue and grey. It also avoids
+the obvious trap of choosing a bird, which would under-sell a program that handles plants, fungi,
+insects and dragonflies just as well.</p>
+
 <h3>Structuring the repository for publication</h3>
 
 <p><span class="tag-open">OPEN</span> A visitor's first thirty seconds are the README and the
@@ -1674,6 +1738,8 @@ access to the repository is not something to hand out.</p>
     imported nowhere, and <code>numpy</code>/<code>opencv-python</code> were used directly but
     undeclared.</li>
   <li>Build the PyInstaller one-folder ZIP; decide the exiftool arrangement.</li>
+  <li>Give the program an identity: a real <code>__version__</code>, an About screen that
+    renders <code>NOTICE.md</code>, and an icon.</li>
   <li>Clean the repository root, write the README and the install page, delete
     <code>app.py</code>.</li>
   <li>Publish <code>main</code>, tag v1, attach the ZIP as a release.</li>
