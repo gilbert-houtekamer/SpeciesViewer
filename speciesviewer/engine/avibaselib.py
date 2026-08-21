@@ -624,9 +624,21 @@ def parse_rows(rows, roles, first_data_row=1, source="the list"):
     the code that will later read it — a preview that lies is worse than none.
     """
     by_role = {}
-    for col, role in (roles or {}).items():
-        if role in ROLE_KEYS:
-            by_role[role] = int(col)
+    ignored = []
+    for col, role in sorted((roles or {}).items()):
+        if role not in ROLE_KEYS:
+            continue
+        if role in by_role:
+            # The leftmost column marked for a job wins. A map carried over
+            # from a wider list can still name a column this file does not
+            # have; letting that one win reads every name as blank, and the
+            # whole list then looks like section headings.
+            ignored.append(f"{column_title(int(col))} {ROLE_LABELS[role]}")
+            continue
+        by_role[role] = int(col)
+    if ignored:
+        logger.warning(f"More than one column marked for the same job; "
+                       f"ignoring {', '.join(ignored)}.")
     if not any(role in by_role for role in ("en", "nl", "sc")):
         raise ValueError(
             "No name column marked in the species list — open Columns… and say "

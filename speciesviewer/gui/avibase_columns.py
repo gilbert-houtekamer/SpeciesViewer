@@ -156,6 +156,10 @@ class ColumnMappingDialog(QDialog):
 
     def _build_table(self):
         ncols = self._column_count()
+        # A map remembered from a wider list can point past this file's last
+        # column. Drop those now, so what the user confirms describes the file
+        # in front of them and no invisible column keeps claiming a job.
+        self.roles = {c: r for c, r in self.roles.items() if c < ncols}
         self.table.clear()
         self.table.setColumnCount(ncols)
         self.table.setRowCount(len(self._rows) + 1)
