@@ -256,6 +256,8 @@ class TripCreationDialog(QDialog):
         self.date_field = DateRangeFieldQt(lead_days=14, span_days=14, follow_end=True)
         self.date_field.set_dates(trip_data.get("fromdate", ""), trip_data.get("todate", ""))
         layout2.addWidget(self.date_field)
+        from gui.range_check_view import check_range_row
+        layout2.addLayout(check_range_row(self, self.date_field, "trip"))
 
         info_label24 = HTMLLabel(
             "<p><b>Preferred names</b><br>"
