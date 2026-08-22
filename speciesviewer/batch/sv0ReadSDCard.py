@@ -723,6 +723,78 @@ def target_name(src_name, prefix=""):
     return f"{prefix}{PREFIX_JOIN}{src_name}"
 
 
+SIDECAR_SUFFIXES = {".xmp", ".dop"}
+
+
+class _SidecarIndex:
+    """Finds the sidecars sitting beside a source picture, case-insensitively.
+
+    Why this exists: a real SD card holds no sidecars, so the copy was only ever
+    built to move pictures and GENERATE fresh sidecars at the destination. But
+    the source field accepts any folder, and a folder you have already culled
+    holds .xmp files carrying the species, stars and colours you set. Copying
+    the pictures without them would leave every copy untagged while the work sat
+    in the old folder — silently, and unrecoverably once the source was tidied
+    up. So sidecars travel WITH their picture.
+
+    The two shapes differ and neither is guessable from the other:
+      .xmp REPLACES the picture's extension   (DSC_1.ORF  → DSC_1.xmp)
+      .dop APPENDS to the whole filename      (DSC_1.ORF  → DSC_1.ORF.dop)
+    Case varies by who wrote the file (cameras and PhotoLab disagree, and this
+    project's own folders hold '.XMP'), so the index is keyed lowercase — off
+    Windows a plain `.exists()` on the wrong case simply misses.
+
+    One `iterdir` per directory, cached: a flat month folder is ~1300 pictures in
+    ONE directory, and a per-file probe would walk it 1300 times.
+    """
+
+    def __init__(self):
+        self._dirs: dict[str, dict[str, Path]] = {}
+
+    def _names(self, directory: Path) -> dict:
+        key = str(directory).lower()
+        cached = self._dirs.get(key)
+        if cached is None:
+            cached = {}
+            try:
+                for p in directory.iterdir():
+                    # Suffix FIRST: it is a free string test, while is_file() is a
+                    # stat. On a real SD card nothing matches, so a card read pays
+                    # one listing and zero stats instead of one per picture — over
+                    # USB, on a 2000-file card, that ordering is the difference
+                    # between free and a few seconds.
+                    if p.suffix.lower() in SIDECAR_SUFFIXES and p.is_file():
+                        cached[p.name.lower()] = p
+            except OSError:
+                pass                       # unreadable dir → no sidecars, not a crash
+            self._dirs[key] = cached
+        return cached
+
+    def for_picture(self, src: Path) -> list:
+        names = self._names(src.parent)
+        found = [names.get(f"{src.stem}.xmp".lower()),
+                 names.get(f"{src.name}.dop".lower())]
+        return [p for p in found if p is not None]
+
+
+def sidecar_target(picture_target: Path, sidecar: Path) -> Path:
+    """Where a carried sidecar lands: beside its picture's FINAL name.
+
+    The final name matters — the copy may auto-rename a picture whose target
+    name is already taken by a different shot, and a sidecar left on the old
+    stem is an orphan the moment that happens.
+
+    The suffix is normalised to lowercase because `_write_sidecars` decides
+    whether to generate one with `with_suffix('.xmp').exists()`. That check is
+    case-sensitive off Windows, so a carried '.XMP' would be missed there and a
+    blank generated sidecar would land beside it — two sidecars for one RAW,
+    with the empty one winning on some readers.
+    """
+    if sidecar.suffix.lower() == ".dop":
+        return picture_target.parent / (picture_target.name + ".dop")
+    return picture_target.with_suffix(".xmp")
+
+
 def _norm(path) -> str:
     """Normalised key for matching exiftool's SourceFile against our paths
     (handles / vs \\ and case-insensitive Windows filesystems)."""
@@ -851,6 +923,23 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     to_copy: list[tuple[Path, Path, str | None]] = []  # (src, target, cached_sha)
     reserved: set[Path] = set()   # targets already assigned this run (not yet on disk)
 
+    # Sidecars that must travel with their picture (see _SidecarIndex). Planned
+    # alongside the pictures — including for pictures ALREADY at the destination,
+    # which is the repair case: a folder copied before this existed has the
+    # pictures but none of the culling, and a re-run should complete it.
+    sidecar_index = _SidecarIndex()
+    sidecar_plan: list[tuple[Path, Path]] = []          # (src_sidecar, target)
+
+    def _plan_sidecars(src_picture: Path, picture_target: Path) -> None:
+        for sc in sidecar_index.for_picture(src_picture):
+            target_sc = sidecar_target(Path(picture_target), sc)
+            # NEVER overwrite a sidecar already at the destination. It may hold
+            # work done there since — the derived-file rule this project learned
+            # the hard way — and skipping instead makes a re-run idempotent.
+            if target_sc.exists():
+                continue
+            sidecar_plan.append((sc, target_sc))
+
     for i, src in enumerate(files, 1):
         if should_cancel and should_cancel():
             log.warning("⏹ Card read cancelled by user.")
@@ -886,6 +975,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                 if match is not None:
                     summary["skipped"] += 1
                     targets.append(str(match))
+                    _plan_sidecars(src, match)
                     continue
 
             target_dir = (dest / buckets.get(_norm(src), UNKNOWN_DATE_DIR)
@@ -896,6 +986,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                 if target.exists() and _already_copied(src, target, src_hash=cached_sha):
                     summary["skipped"] += 1
                     targets.append(str(target))
+                    _plan_sidecars(src, target)
                     continue
                 # Same name, different content (dual-slot cameras that restart frame
                 # numbers, or two new files with the same target name queued in this
@@ -908,6 +999,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
             target.parent.mkdir(parents=True, exist_ok=True)
             reserved.add(target)
             to_copy.append((src, target, cached_sha))
+            _plan_sidecars(src, target)
 
         except OSError as e:
             log.warning(f"❌ Failed to plan copy for {src.name}: {e}")
@@ -925,6 +1017,11 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                 planned_bytes += src.stat().st_size
             except OSError:
                 pass
+        for _sc_src, _sc_target in sidecar_plan:
+            try:
+                planned_bytes += _sc_src.stat().st_size
+            except OSError:
+                pass
         summary["planned_bytes"] = planned_bytes
         space_error = check_free_space(dest, planned_bytes,
                                        what=f"Copying {len(to_copy)} picture(s)")
@@ -932,6 +1029,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
             log.error(f"❌ {space_error} Nothing was copied.")
             summary["error"] = space_error
             to_copy = []              # nothing gets copied; caches below still save
+            sidecar_plan = []         # …and no sidecar lands without its picture
 
     # ── Phase 2: parallel copy ─────────────────────────────────────────────
     # Submit all copies at once so the OS can pipeline card reads with SSD
@@ -985,6 +1083,41 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                                "skipped": summary["skipped"],
                                "total": total})
         cache.save()              # persist card SHA + dates for new files
+
+    # ── Phase 2b: carry the source's own sidecars ─────────────────────────
+    # Deliberately BEFORE the generator below: _write_sidecars only creates an
+    # .xmp for a RAW that has none, so a sidecar carried here is what survives,
+    # and the picture keeps the species/stars/colours it arrived with. Do this
+    # the other way round and every carried sidecar loses to a blank one.
+    #
+    # Sequential and unthreaded: these are a few KB each, next to multi-MB RAWs
+    # already copied in parallel — a second thread pool would cost more to start
+    # than the whole phase takes.
+    summary["sidecars_copied"] = 0
+    if sidecar_plan and not (should_cancel and should_cancel()):
+        for i, (sc_src, sc_target) in enumerate(sidecar_plan, 1):
+            if should_cancel and should_cancel():
+                log.warning("⏹ Cancelled while copying sidecars.")
+                break
+            if progress:
+                progress(total, total,
+                         f"Copying sidecars… {i}/{len(sidecar_plan)}  {sc_src.name}")
+            try:
+                # The picture copy may have failed, in which case its sidecar has
+                # nothing to belong to — an orphan sidecar reads as a picture that
+                # went missing, which is worse than no sidecar at all.
+                if not sc_target.parent.is_dir():
+                    continue
+                shutil.copy2(sc_src, sc_target)
+                summary["sidecars_copied"] += 1
+            except OSError as e:
+                log.warning(f"❌ Failed to copy sidecar {sc_src.name}: {e}")
+                summary["failed"] += 1
+                summary["failed_names"].append(sc_src.name)
+        if summary["sidecars_copied"]:
+            log.info(f"Carried {summary['sidecars_copied']} existing sidecar(s) "
+                     f"(.xmp/.dop) across with their pictures — the species, "
+                     f"ratings and colours already set travel with the copy.")
 
     # ── XMP sidecars ──────────────────────────────────────────────────────
     summary["sidecars"] = 0

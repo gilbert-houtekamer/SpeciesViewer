@@ -2050,9 +2050,17 @@ class ReadSDCardDialog(QDialog):
         copied = summary.get("copied", 0)
         # Shared tail — what was kept is reported the same whether the run finished
         # or was aborted (the files already copied are verified and kept).
+        # Carried sidecars are reported SEPARATELY from generated ones: they are
+        # the culling work (species, stars, colours) coming across from a source
+        # folder that had already been worked on, and rolling them into one
+        # "N sidecars" number would hide exactly the thing worth confirming.
+        carried = summary.get("sidecars_copied", 0)
+        carried_txt = (f" {carried} existing sidecar(s) carried across with their "
+                       f"pictures." if carried else "")
         tail = (f"skipped {summary.get('skipped', 0)}{deselected_txt}{culled_txt}, "
                 f"failed {summary.get('failed', 0)} "
-                f"of {summary.get('total', 0)} pictures; {summary.get('sidecars', 0)} sidecar(s).")
+                f"of {summary.get('total', 0)} pictures; "
+                f"{summary.get('sidecars', 0)} sidecar(s).{carried_txt}")
         cancelled = getattr(self, "_cancelled", False)
         # The copy is only the first phase: when "Add location names" is ticked, a
         # reverse-geocode run follows and keeps writing for another minute. Saying
