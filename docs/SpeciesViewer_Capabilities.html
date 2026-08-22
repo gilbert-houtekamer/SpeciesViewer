@@ -401,6 +401,37 @@ are done.</p>
     <code>2013_panama</code>). The report is <strong>modeless</strong> — it is a list you work beside —
     re-scans after a Create, and has a Refresh button. Performance: ONE table scan aggregated in Python =
     <strong>0.19 s</strong>; a first version doing three scans per candidate took 7.1 s.</p></li>
+  <li><strong>Check Range — what the master already holds for these dates</strong>
+    <span class="tag-shipped">SHIPPED</span> — 2026-08-22. The companion to <em>Find Trips</em>:
+    that one answers <em>“what range?”</em>, this one answers <em>“is this range already taken?”</em>.
+    A <strong>Check Range…</strong> button sits under the date fields in <strong>both</strong>
+    Create Trip and Create Album, and opens a read-only report in two parts.
+    <p><strong>Every day in the range</strong> — pictures, JPGs, species, where, and the column that
+    earns its place: <strong>what took them</strong>. A picture count alone cannot tell “that week is
+    covered” from “that week is phone snaps only”, and it certainly cannot tell you the range holds no
+    photographs at all. A master picture with <em>no camera model</em> is almost always a
+    <strong>waarneming.nl determination record</strong> — a name kept against a sighting, not a photo you
+    took — so the report says <em>“n × no camera”</em> out loud rather than leaving the cell blank, because
+    blank reads as “nothing here” when the truth is “nothing <em>of mine</em> here”. Days with real
+    photographs are bold, days holding only records are grey, empty days fainter still; empty days are
+    listed on purpose, since they are where unsorted pictures would land. (Over 400 days the empty rows
+    are dropped so they cannot drown the report.)</p>
+    <p><strong>Which trips and albums already cover it</strong> — merged from three sources so neither
+    half of the truth is missing: trip folders on disk, album folders on disk, and the master’s
+    <code>trip_admin.csv</code> (which also catches something published from another machine). A thing
+    found twice is one row, marked as both. No overlap at all says so in green.</p>
+    <p>Report-only by design — narrowing the dates, keeping them, or dropping the idea stays entirely a
+    human decision; there is no auto-fix and nothing is written. Two live findings on its first real run:
+    summer 2023 looked like 192 pictures but <strong>158 of them have no camera</strong> and only 34 (two
+    days, an OM-1) are photographs — so that period is effectively unphotographed in the master. And the
+    Create Trip dialog’s own default range collided with the live <code>brazil2026</code> trip
+    (15 days shared), which matters more than the reporting it was built for, given Create Trip pre-fills
+    its root from the <em>active</em> trip and once overwrote a live one.</p>
+    <p>Code: <code>engine/range_check.py</code> (the report) + <code>gui/range_check_view.py</code>
+    (the dialog and the shared button row, so the wording cannot drift apart between the two Create
+    dialogs). The day query reuses <code>MasterDB.pictures_in_daterange</code> — the same one an album
+    itself is built on — and the trip list reuses <code>trip_finder</code>’s reader rather than a second
+    parser for the same file.</p></li>
   <li><strong>GUI vocabulary: “Album” replaces “virtual trip”</strong> <span class="tag-shipped">SHIPPED</span> —
     <code>961e5f8</code> / <code>f72126a</code>. <em>Virtual trip</em> describes how the thing is BUILT;
     <em>album</em> describes what it IS. <strong>Labels only</strong>: menus, dialog titles, buttons,
