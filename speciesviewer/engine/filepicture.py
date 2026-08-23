@@ -15,7 +15,7 @@ import subprocess
 import json
 import ast
 import pdb  # For debugging
-from utils.raw_extensions import DXO_RAW, bare
+from utils.raw_extensions import DXO_RAW, RAW_OR_HEIC, bare
 
 
 logger = logging.getLogger("speciesviewer")
@@ -127,7 +127,7 @@ class FilePicture:
         except KeyError:
             logger.warning(f"updateDescription: no CSV row for {filename}")
             return 0
-        raw_exts = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng", "heic"}
+        raw_exts = bare(RAW_OR_HEIC)  # canonical table — see utils/raw_extensions.py
         files_written = 0
         for f_key, f_row in self.fi.files_dict.items():
             if f_row.get("UniquePictureName") != upn_name:
@@ -163,7 +163,7 @@ class FilePicture:
         except KeyError:
             logger.warning(f"updateHeadline: no CSV row for {filename}")
             return 0
-        raw_exts = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng", "heic"}
+        raw_exts = bare(RAW_OR_HEIC)  # canonical table — see utils/raw_extensions.py
         files_written = 0
         for f_key, f_row in self.fi.files_dict.items():
             if f_row.get("UniquePictureName") != upn_name:
@@ -201,7 +201,7 @@ class FilePicture:
         except KeyError:
             logger.warning(f"updateLabel: no CSV row for {filename}")
             return 0
-        raw_exts = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng", "heic"}
+        raw_exts = bare(RAW_OR_HEIC)  # canonical table — see utils/raw_extensions.py
         dxo_raw_exts = bare(DXO_RAW)  # canonical table — see utils/raw_extensions.py
         files_written = 0
         raw_path = None

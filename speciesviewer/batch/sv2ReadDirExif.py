@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import exiftool
 import logging
+from utils.raw_extensions import RAW, JPEG, CAMERA_PHOTO, bare
 
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
@@ -72,8 +73,7 @@ def _append_dop_rows(all_rows, root, recurse):
 # Real photo types whose Headline/Description we translate. Excludes PNG etc.,
 # so Apple's auto "Screenshot" headline on a .PNG isn't flagged. Mirrors
 # qt/gui/trip_overview.py PHOTO_EXTENSIONS.
-TRANSLATABLE_EXTENSIONS = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf",
-                           "dng", "heic", "jpg", "jpeg"}
+TRANSLATABLE_EXTENSIONS = bare(CAMERA_PHOTO)  # canonical table — see utils/raw_extensions.py
 logger = logging.getLogger("speciesviewer")
 
 
@@ -277,7 +277,7 @@ def main(args, config):
         GPS_BRACKET_MAX_DISTANCE_M = 100
         GPS_FIELDS = ["EXIF:GPSLatitude", "EXIF:GPSLongitude", "Composite:GPSPosition", "EXIF:GPSAltitude"]
         LOCATION_FIELDS = ["XMP:Location", "XMP:City", "XMP:State", "XMP:Country"]
-        WARN_EXTENSIONS = {"orf", "arw", "cr2", "cr3", "nef", "rw2", "raf", "dng", "jpg", "jpeg"}
+        WARN_EXTENSIONS = bare(RAW | JPEG)  # canonical table; HEIC deliberately out
 
         def _parse_dt(row):
             dt_str = row.get("EXIF:DateTimeOriginal", "")

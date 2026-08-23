@@ -8,6 +8,7 @@ import os
 import sys
 import time
 import logging
+from utils.raw_extensions import RAW_OR_HEIC
 
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
@@ -20,7 +21,7 @@ from engine.sidecarlib import sync_sidecars
 import engine.projectlib
 from utils.ini_io import read_ini
 
-RAW_EXTENSIONS = {'.orf', '.nef', '.nrw', '.heic'}
+RAW_EXTENSIONS = RAW_OR_HEIC  # canonical table — see utils/raw_extensions.py
 logger = logging.getLogger("speciesviewer")
 
 

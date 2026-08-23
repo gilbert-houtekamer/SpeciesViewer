@@ -262,3 +262,67 @@ Verified end to end against `2016-07-23` (299 NEF + 35 NRW + 66 JPG):
 **Deliberately held back from Phase 2**: `tools/svr_purge_phantom_pictures.py:49` and
 `tools/svr_thumbnail_damage_scan.py:40`. A tool with *purge* in its name gets the same
 care as Phase 4 regardless of how simple the diff looks.
+
+**Phase 3 (batch lane) — DONE, awaiting a live run.** `sv0ReadSDCard:89` -> `RAW`,
+`svu5SyncSidecars:23` -> `RAW_OR_HEIC` (his "can be any RAW"), `sv2ReadDirExif:75`
+-> `bare(CAMERA_PHOTO)`. The user-facing "it needs adding to RAW_EXTENSIONS" message in
+sv0 now names `utils/raw_extensions.py` instead of a local symbol that no longer exists.
+
+`sv2ReadDirExif:280 WARN_EXTENSIONS` was **removed from the audit's EXEMPT list and
+migrated**. Calling it "a warning, not a classification" was wrong: it decides which
+files ought to have GPS, which is exactly a classification, and `.nrw` missing meant a
+Coolpix raw with no coordinates was never warned about. It is now `bare(RAW | JPEG)` —
+HEIC stays out, preserving today's behaviour.
+
+`CAMERA_PHOTO = RAW_OR_HEIC | JPEG` was added to the table: a photo a CAMERA produced,
+as against `PICTURE` which includes PNG and TIFF. The distinction is real — an Apple
+`.png` screenshot carries an auto "Screenshot" headline that must not be translated.
+
+**Phase 4 (PICTURE / RAW_OR_HEIC sets) — DONE, awaiting a live run.** Twelve sites:
+`filepicture` x3, `admin_rebuild` x2, `master_no_display`, `trip_thumbs`, `unfiled`,
+`biota_source`, `map_view`, `trip_overview`, `trip_process:2452`.
+
+Two traps caught by reading rather than by the audit:
+
+* `master_no_display:102` calls `p.lower().endswith(_RAW_EXTS)`. `str.endswith` requires
+  a **tuple** — a frozenset raises `TypeError`. Kept as `tuple(RAW_OR_HEIC)`.
+* `map_view:78 _IMAGE_EXTS` was **also missing `.cr3` and `.raf`** — a sixth instance of
+  the Canon hole, in the map, not caught by the earlier 5-element grouping because it is
+  a different value set.
+
+`trip_thumbs:23 _RAW_EXT` has **no reader anywhere in the tree** — apparently dead. It
+was migrated rather than deleted; removing it is a separate decision.
+
+**Audit offenders 33 -> 4.** All modules import, `compileall` clean.
+
+The remaining 4 are exactly the ones held back on purpose:
+`trip_delete_scan:30`, `work_backup:72`, `tools/svr_purge_phantom_pictures:49`,
+`tools/svr_thumbnail_damage_scan:40` — what gets deleted and what gets backed up. Own
+review, own dry-run, own commit.
+
+**Phase 4b — the Trip Overview count.** Live testing found the table still reading 342
+for a day the pipeline had just written 377 rows for. Not staleness:
+`trip_overview._count_pictures` imported **`PICTURE_EXTS` from
+`engine.trip_delete_scan`** — the one set held back precisely because it is
+delete-sensitive. A read-only display count depending on the DELETE scanner's constant
+is a coupling with teeth: every other list learned `.nrw` and this one could not, because
+the file it borrowed from was off-limits.
+
+Fixed by decoupling, not by touching the delete scanner: `_count_pictures` now uses
+`PICTURE` like everything else. It was the ONLY consumer of that constant outside its own
+module. Verified against every day of varen2016 — each day's increase equals exactly the
+number of `.nrw` in that folder, **218 pictures recovered across the trip**, the same 218
+the card left behind in 2016.
+
+### ⚠ A NARROWING waiting in the delete phase
+
+`trip_delete_scan.PICTURE_EXTS` contains **`.raw`**, which the canonical table does not.
+Migrating it to `PICTURE` would REMOVE `.raw` from a delete scanner's idea of what a
+picture is — the dangerous direction, and exactly the shape of the `.nrw` incident.
+There are currently **0 `.raw` files** under CurrentPictures, so nothing is at risk today.
+**RESOLVED 2026-08-23: `.raw` added to `RAW`** (user approved). The delete phase is now a
+pure widening with no judgement calls left in it, which is the whole point — a mechanical
+substitution should never be able to narrow a delete scanner.
+
+**Live-confirmed 2026-08-23.** Trip Overview reads 377 for 2016-07-23 and 445 for
+2016-07-17. Phases 1, 2a, 2b, 3, 4 and 4b committed.

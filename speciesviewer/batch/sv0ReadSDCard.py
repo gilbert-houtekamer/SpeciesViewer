@@ -49,6 +49,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from utils.disk_space import check_free_space
+from utils.raw_extensions import RAW
 
 UNKNOWN_DATE_DIR = "unknown-date"
 
@@ -86,8 +87,7 @@ else:
 # absence meant a card holding NRWs copied the JPGs and left every raw behind,
 # saying nothing. The pipeline itself needs no change: engine.exifcache filters
 # by a DENY list, and nrw is not on it, so exiftool reads these normally.
-RAW_EXTENSIONS = {".cr3", ".cr2", ".nef", ".nrw", ".arw", ".raf", ".dng", ".orf",
-                  ".rw2"}
+RAW_EXTENSIONS = RAW  # canonical table — see utils/raw_extensions.py
 PICTURE_EXTENSIONS = RAW_EXTENSIONS | {
     ".jpg", ".jpeg", ".heic", ".heif", ".png", ".tif", ".tiff",       # stills
     ".mp4", ".mov",                                                    # video
@@ -140,7 +140,8 @@ def _warn_ignored(ignored, source, log):
         return
     log.warning(f"Not copied from {source}: {describe_ignored(ignored)} — these "
                 f"file types are not recognised as pictures. If one of them is a "
-                f"camera format you shoot, it needs adding to RAW_EXTENSIONS "
+                f"camera format you shoot, it needs adding to RAW in "
+                f"utils/raw_extensions.py "
                 f"before this card is formatted.")
 
 

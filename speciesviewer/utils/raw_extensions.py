@@ -38,6 +38,7 @@ from pathlib import Path
 #   .dng  IN  — a raw format in its own right (vendor-independent; PureRAW output).
 #   .ori  IN  — OM System's uncompressed sibling of .orf. Was in NO list before.
 #   .nrw  IN  — Nikon Coolpix. Was in 1 list of 39; that is what cost 218 pictures.
+#   .raw  IN  — approved 2026-08-23 so the delete phase stays a pure widening.
 #   .pef / .srw  OUT — Pentax and Samsung. Nobody here shoots either, and the ch.21
 #                      per-body checklist must not claim support never tested. Adding
 #                      one back is now a one-line change to one file.
@@ -51,6 +52,11 @@ RAW = frozenset({
     ".orf",   # Olympus / OM System
     ".ori",   # OM System, uncompressed sibling of .orf
     ".raf",   # Fujifilm
+    ".raw",   # generic (older Panasonic/Leica). Kept ONLY because
+              # engine.trip_delete_scan listed it: dropping it would have
+              # NARROWED a delete scanner's idea of what a picture is, which
+              # is the direction that cost 218 files once already. There are
+              # 0 on disk today; the cost of keeping it is nil.
     ".rw2",   # Panasonic
 })
 
@@ -78,6 +84,11 @@ RAW_OR_HEIC = RAW | HEIC
 #: actual Coolpix support has not been tested — there are real .nrw files in the
 #: master to settle it with.
 DXO_RAW = RAW - {".nrw"}
+
+#: A photo a CAMERA produced — the originals plus their JPGs, but never a
+#: screenshot or a scan. The distinction is real: a .png Apple screenshot carries
+#: an auto "Screenshot" headline that must not be queued for translation.
+CAMERA_PHOTO = RAW_OR_HEIC | JPEG
 
 #: Anything we can display.
 PICTURE = RAW_OR_HEIC | JPEG | OTHER_IMAGE

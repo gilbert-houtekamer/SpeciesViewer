@@ -13,6 +13,7 @@ from gui import theme
 from gui.overview_table import make_overview_table
 from utils.config import _config
 from utils.virttrip_config import read_excluded_days, write_excluded_days
+from utils.raw_extensions import CAMERA_PHOTO, PICTURE, bare
 
 GPS_COL = 3
 # Geotag (🛰️) sits right after GPS: it is the ANSWER to what the GPS column
@@ -177,8 +178,7 @@ def state_cell_item(sm, col, jpgs, day_path=None):
 # affirmative filter in ImagePreviewDialog.discover_images. _day_health uses
 # the same set so its no-GPS count aligns with the dialog's view (PNG
 # screenshots and other non-image rows in data_files.csv are ignored).
-PHOTO_EXTENSIONS = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng",
-                    "heic", "jpg", "jpeg"}
+PHOTO_EXTENSIONS = bare(CAMERA_PHOTO)  # canonical table — see utils/raw_extensions.py
 
 # Families whose location must be hidden on the public site (GPS stripped from
 # the website copy). Keep in sync with engine/websupport.py OBSCURE_FAMILIES.
@@ -285,10 +285,16 @@ def _count_pictures(day_path):
     and its XMP sidecar / DxO render share one UPN, so they count once (not as
     separate files)."""
     from engine.filecsv import deriveUniquePictureName
-    from engine.trip_delete_scan import PICTURE_EXTS
     # Count only primary images, not sidecars: an orphan .xmp/.dop is not a
-    # picture, and a present one shares its RAW's UPN anyway.
-    primary = PICTURE_EXTS - {".xmp", ".dop"}
+    # picture, and a present one shares its RAW's UPN anyway — and PICTURE
+    # holds no sidecar extensions, so no subtraction is needed.
+    #
+    # This used to import PICTURE_EXTS from engine.trip_delete_scan. A display
+    # count has no business depending on the DELETE scanner's constant, and the
+    # coupling had teeth: when every other list learned .nrw, this one did not,
+    # and the Pictures column read 342 for a day the pipeline had just written
+    # 377 rows for. Same table as everyone else now.
+    primary = PICTURE
     upns = set()
     for f in day_path.glob("*"):
         if f.is_file() and f.suffix.lower() in primary:

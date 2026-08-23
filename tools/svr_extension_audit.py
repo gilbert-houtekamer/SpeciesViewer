@@ -30,8 +30,6 @@ CANONICAL = ("speciesviewer/utils/raw_extensions.py", "tools/svr_extension_audit
 # Sets that legitimately list extensions but are NOT a RAW-membership test. Each entry
 # is (file, symbol, why). If you add one, the "why" is the point of the entry.
 EXEMPT = {
-    ("speciesviewer/batch/sv2ReadDirExif.py", "WARN_EXTENSIONS"):
-        "drives a warning message, not a classification",
     ("speciesviewer/engine/exifcache.py", "IMMUTABLE_EXTENSIONS"):
         "'EXIF that never changes' — correlates with RAW-ness but is a different question",
     ("speciesviewer/engine/projectlib.py", "findBestItem()"):

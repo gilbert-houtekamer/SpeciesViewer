@@ -20,11 +20,11 @@ import shutil
 import datetime
 import logging
 from engine.handling import deriveUniquePictureName
+from utils.raw_extensions import RAW_OR_HEIC, PICTURE
 
 logger = logging.getLogger("speciesviewer")
 
-_IMG_EXTS = {".orf", ".nef", ".cr2", ".cr3", ".arw", ".rw2", ".raf", ".pef",
-             ".dng", ".jpg", ".jpeg", ".heic", ".png", ".tif", ".tiff"}
+_IMG_EXTS = PICTURE  # canonical table — see utils/raw_extensions.py
 
 
 def _norm(p):
@@ -321,8 +321,7 @@ def execute_heal(master_repo, do_remove=True, do_repoint=True, do_species=True,
 # ── Display-status scan ("black image" suspects) ────────────────────────────────
 
 # The GUI extracts a thumbnail from these when a picture's BestJPG is missing.
-_RAW_FALLBACK_EXTS = {".orf", ".nef", ".cr2", ".cr3", ".arw", ".rw2", ".raf",
-                      ".pef", ".dng", ".heic"}
+_RAW_FALLBACK_EXTS = RAW_OR_HEIC  # canonical table — see utils/raw_extensions.py
 
 
 def scan_display_status(master_repo, out_csv=None):

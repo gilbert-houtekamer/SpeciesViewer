@@ -16,11 +16,12 @@ import os
 import io
 import csv
 import logging
+from utils.raw_extensions import RAW
 
 logger = logging.getLogger("speciesviewer")
 
 _JPG_EXT = (".jpg", ".jpeg")
-_RAW_EXT = (".orf", ".nef", ".dng", ".raf", ".cr2", ".cr3", ".arw", ".rw2", ".pef")
+_RAW_EXT = tuple(RAW)  # NOTE: no reader found in this module — see plan  # canonical table — see utils/raw_extensions.py
 
 
 def _safe(name):

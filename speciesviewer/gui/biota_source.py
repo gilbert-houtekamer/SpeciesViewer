@@ -19,6 +19,7 @@ Node dict (what the browser consumes):
 
 import logging
 from pathlib import Path
+from utils.raw_extensions import RAW
 
 logger = logging.getLogger("speciesviewer")
 
@@ -32,7 +33,7 @@ RANK_LABEL = {"BIOTA": "Biota", "KINGDOM": "Kingdom", "PHYLUM": "Phylum",
 
 # RAW extensions whose embedded preview can stand in for a cover (mirrors
 # gui.rating_provider._RAW_EXTS, kept local so the model needs no GUI import).
-_RAW_EXTS = {".nef", ".orf", ".cr2", ".cr3", ".arw", ".rw2", ".raf", ".dng", ".pef"}
+_RAW_EXTS = RAW  # canonical table — see utils/raw_extensions.py
 
 
 def _rank_of(level: str) -> str:

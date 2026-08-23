@@ -39,14 +39,14 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path
+from utils.raw_extensions import PICTURE
 
 DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 YEAR_RE = re.compile(r"^\d{4}$")
 
 # Pictures we count when reporting what is in a day (video is deliberately out —
 # the counter answers "how many photos", the same question the trip overview asks).
-PICTURE_EXTS = {".orf", ".nef", ".cr2", ".cr3", ".arw", ".rw2", ".raf", ".dng",
-                ".jpg", ".jpeg", ".heic", ".heif", ".png", ".tif", ".tiff"}
+PICTURE_EXTS = PICTURE  # canonical table — see utils/raw_extensions.py
 
 UNFILED_SUFFIX = "unfiled"
 

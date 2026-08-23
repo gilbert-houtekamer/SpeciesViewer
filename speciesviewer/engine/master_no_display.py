@@ -16,12 +16,12 @@ import csv
 import ast
 import logging
 from utils.ini_io import read_ini
+from utils.raw_extensions import RAW_OR_HEIC
 
 logger = logging.getLogger("speciesviewer")
 
 _JPG_EXTS = (".jpg", ".jpeg")
-_RAW_EXTS = (".orf", ".nef", ".cr2", ".cr3", ".arw", ".rw2", ".raf", ".dng",
-             ".pef", ".srw", ".heic")
+_RAW_EXTS = tuple(RAW_OR_HEIC)  # tuple: .endswith() below requires one  # canonical table — see utils/raw_extensions.py
 
 
 def _parse_files(raw):

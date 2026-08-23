@@ -19,7 +19,7 @@ from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, Director
 from engine.translatelib import CachedTranslate
 from utils.gui_config import update_cache_gui_section, get_cache_gui_section
 from gui.trip_overview import populate_trip_overview
-from utils.raw_extensions import RAW, DXO_RAW
+from utils.raw_extensions import RAW, DXO_RAW, PICTURE
 
 def generate_trip_ini(
     trip_root: str,
@@ -2449,8 +2449,7 @@ class ReadSDCardDialog(QDialog):
         from gui.sidecar_provider import SidecarCollection
         from gui.preview_provider import preview_cache_dir_for
         # Only formats the grid can render (still images + RAW); skip video.
-        viewable_exts = {".jpg", ".jpeg", ".heic", ".heif", ".png",
-                         ".nef", ".orf", ".cr2", ".cr3", ".arw", ".rw2", ".raf", ".dng"}
+        viewable_exts = PICTURE  # canonical table — see utils/raw_extensions.py
         paths = [p for p in self._last_targets if Path(p).suffix.lower() in viewable_exts]
         if not paths:
             self.status_label.setText("No viewable pictures to preview.")

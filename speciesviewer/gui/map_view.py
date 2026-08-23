@@ -33,6 +33,7 @@ from PyQt6.QtCore import Qt, QPointF, QUrl, QTimer, pyqtSignal, QMimeData, QEven
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
 from gui import theme
+from utils.raw_extensions import PICTURE, bare
 
 logger = logging.getLogger("speciesviewer")
 
@@ -75,8 +76,7 @@ _CONF_COLOR = {"high": "#2e7d32", "medium": "#f9a825", "low": "#d32f2f",
 # Sidecar-only records (orphan .dop/.xmp with no picture — e.g. an early
 # blue-delete that removed the RAW/JPG but left the .dop behind) can't be placed
 # anywhere meaningful and only clutter the "without GPS" tray.
-_IMAGE_EXTS = {"orf", "nef", "cr2", "arw", "rw2", "dng", "jpg", "jpeg",
-               "heic", "heif", "png", "tif", "tiff"}
+_IMAGE_EXTS = bare(PICTURE)  # was ALSO missing .cr3 and .raf  # canonical table — see utils/raw_extensions.py
 
 # Travel-path ramp. Days are ORDINAL (ordered), not categorical, so this is ONE hue
 # light→dark carrying the trip's PROGRESSION (day 1 light → last day dark) — not 20
