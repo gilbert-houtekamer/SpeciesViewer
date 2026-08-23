@@ -15,6 +15,7 @@ from gui.image_loader import AsyncImageLoader
 from gui.preview_provider import PreviewCollection, FileListPreviewCollection, preview_cache_dir_for
 from gui.master_ops import MasterCardMenuMixin
 from gui.rating_editor import PictureCard
+from utils.raw_extensions import RAW_OR_HEIC
 
 logger = logging.getLogger("speciesviewer")
 
@@ -616,7 +617,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     def discover_images(self, image_dir):
         """File discovery for the no-metadata day-folder mode (no fpr)."""
         path = Path(image_dir)
-        raw_exts = {".nef", ".orf", ".cr2", ".arw", ".rw2", ".heic"}
+        raw_exts = RAW_OR_HEIC  # canonical table — see utils/raw_extensions.py
         if not path.is_dir():
             return []
         if self.mode == "jpg":

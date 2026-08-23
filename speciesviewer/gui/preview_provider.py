@@ -34,10 +34,11 @@ from engine.sidecarlib import push_metadata_to_dop
 from utils.sidecar_policy import (
     color_rating_to_xmp_enabled, color_rating_to_dop_enabled,
 )
+from utils.raw_extensions import RAW, DXO_RAW, bare
 
 logger = logging.getLogger("speciesviewer")
 
-_RAW_EXTS = {".nef", ".orf", ".cr2", ".arw", ".rw2"}
+_RAW_EXTS = RAW  # canonical table; was missing .cr3/.dng/.raf — see utils/raw_extensions.py
 
 
 def preview_cache_dir_for(src_folder: Path) -> Path:
@@ -1333,7 +1334,7 @@ class PreviewCollection(PictureCollection):
         else:
             # ORF·XMP / JPG — write XMP:Rating/Label into the existing files via
             # exiftool (those are LR-style and already read by DxO).
-            dxo_raw_exts = ("orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng")
+            dxo_raw_exts = bare(DXO_RAW)  # canonical table — see utils/raw_extensions.py
             raw_path = None
             for fname in files:
                 frow = self.fpr.fi.files_dict.get(fname)
@@ -1405,7 +1406,7 @@ class PreviewCollection(PictureCollection):
         if not keys:
             return 0
 
-        dxo_raw_exts = ("orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng")
+        dxo_raw_exts = bare(DXO_RAW)  # canonical table — see utils/raw_extensions.py
         batch_paths, touched_rows, raw_paths, heic_keys = [], [], [], []
 
         for i, key in enumerate(keys):
@@ -1494,7 +1495,7 @@ class PreviewCollection(PictureCollection):
         """True when the picture has no JPG and no RAW — i.e. HEIC-only /
         PNG-only. Those carry rating/colour in the HEIC/PNG itself; everything
         else (RAW owns a Lightroom XMP, or has a JPG) keeps the exiftool path."""
-        raws = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng"}
+        raws = bare(RAW)  # canonical table — see utils/raw_extensions.py
         for fname in self._files(upn_key):
             frow = self.fpr.fi.files_dict.get(fname)
             if not frow:

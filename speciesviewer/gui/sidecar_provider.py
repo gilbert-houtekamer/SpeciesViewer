@@ -35,10 +35,11 @@ from utils.sidecar_policy import (
     color_rating_to_xmp_enabled, color_rating_to_dop_enabled,
 )
 from engine.handling import deriveUniquePictureName
+from utils.raw_extensions import RAW
 
 logger = logging.getLogger("speciesviewer")
 
-_RAW_EXTS = {".cr3", ".cr2", ".nef", ".arw", ".raf", ".dng", ".orf", ".rw2"}
+_RAW_EXTS = RAW  # canonical table — see utils/raw_extensions.py
 _JPG_EXTS = {".jpg", ".jpeg"}
 
 # Render-suffix markers (lowercased) that deriveUniquePictureName strips. Used to

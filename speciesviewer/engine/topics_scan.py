@@ -24,10 +24,11 @@ from engine.filecsv import Files
 from engine.speciesclassification import SpeciesClassification
 from engine.specieslib import Species
 from engine import topics, sidecarlib
+from utils.raw_extensions import RAW, bare
 
 logger = logging.getLogger("speciesviewer")
 
-_RAW_EXTS = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng"}
+_RAW_EXTS = bare(RAW)  # canonical table — see utils/raw_extensions.py
 
 # Candidate status codes.
 READY = "ready"                     # resolves to a target and has a JPG

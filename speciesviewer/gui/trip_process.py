@@ -19,6 +19,7 @@ from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, Director
 from engine.translatelib import CachedTranslate
 from utils.gui_config import update_cache_gui_section, get_cache_gui_section
 from gui.trip_overview import populate_trip_overview
+from utils.raw_extensions import RAW, DXO_RAW
 
 def generate_trip_ini(
     trip_root: str,
@@ -754,7 +755,7 @@ class _TracklogAutoWorker(QObject):
 # RAW extensions PhotoLab opens — used to pick a sensible file to hand it when
 # opening a freshly read day (a JPG would work too, but the RAW is the picture
 # that will get the .dop recipe).
-_PL_RAW_EXTS = {".orf", ".nef", ".cr2", ".cr3", ".arw", ".rw2", ".raf", ".dng"}
+_PL_RAW_EXTS = DXO_RAW  # canonical table — see utils/raw_extensions.py
 
 
 # Day-table columns. Named because a sixth column shifted every index below it,
@@ -2382,7 +2383,7 @@ class ReadSDCardDialog(QDialog):
         """Reverse-geocode the just-copied RAWs and write place names into their
         XMP sidecars (real write, fill-empties-only)."""
         from gui.geolocate import run_geolocate_batch
-        raw_exts = {".cr3", ".cr2", ".nef", ".arw", ".raf", ".dng", ".orf", ".rw2"}
+        raw_exts = RAW  # canonical table — see utils/raw_extensions.py
         targets = []
         for t in self._last_targets:
             p = Path(t)

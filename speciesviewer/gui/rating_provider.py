@@ -32,8 +32,9 @@ from engine.sidecarlib import push_metadata_to_dop
 from utils.sidecar_policy import (
     color_rating_to_xmp_enabled, color_rating_to_dop_enabled,
 )
+from utils.raw_extensions import RAW, DXO_RAW, bare
 
-_DXO_RAW_EXTS = ("orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng")
+_DXO_RAW_EXTS = bare(DXO_RAW)  # canonical table — see utils/raw_extensions.py
 
 # The camera filter's value for a picture that never had a camera. NOT "" — an empty
 # string was silently dropped by both the combo and the filter set, so the 1,421 master
@@ -43,7 +44,7 @@ NO_CAMERA = "\x00no-camera"
 
 logger = logging.getLogger("speciesviewer")
 
-_RAW_EXTS = {".nef", ".orf", ".cr2", ".arw", ".rw2"}
+_RAW_EXTS = RAW  # canonical table; was missing .cr3/.dng/.raf — see utils/raw_extensions.py
 
 
 class RatingEditorItem(PictureItem):

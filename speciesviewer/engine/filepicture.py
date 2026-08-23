@@ -15,6 +15,7 @@ import subprocess
 import json
 import ast
 import pdb  # For debugging
+from utils.raw_extensions import DXO_RAW, bare
 
 
 logger = logging.getLogger("speciesviewer")
@@ -201,7 +202,7 @@ class FilePicture:
             logger.warning(f"updateLabel: no CSV row for {filename}")
             return 0
         raw_exts = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng", "heic"}
-        dxo_raw_exts = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "dng"}
+        dxo_raw_exts = bare(DXO_RAW)  # canonical table — see utils/raw_extensions.py
         files_written = 0
         raw_path = None
         for f_key, f_row in self.fi.files_dict.items():

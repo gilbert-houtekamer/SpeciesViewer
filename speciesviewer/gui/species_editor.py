@@ -17,6 +17,7 @@ from engine.filepicture import FilePicture, format_subject_for_xmp
 from engine.speciesclassification import Level, SpeciesClassification
 from utils.config import _config
 from gui import theme
+from utils.raw_extensions import RAW_OR_HEIC
 
 logger = logging.getLogger("speciesviewer")
 
@@ -44,7 +45,7 @@ def is_widget_alive(widget):
         return False
 
 
-raw_exts = [".nef", ".orf", ".cr2", ".arw", ".rw2", ".heic"]
+raw_exts = RAW_OR_HEIC  # canonical table — see utils/raw_extensions.py
 
 
 def _subject_name_and_quals(raw):

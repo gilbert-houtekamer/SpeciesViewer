@@ -40,6 +40,7 @@ logger = logging.getLogger("speciesviewer")
 # a "Look & feel" setting can re-tint them (read at import → restart to apply).
 # Re-exported here because many modules import COLORS/COLOR_HEX from rating_editor.
 from gui.label_colors import COLORS, COLOR_HEX, COLOR_SCHEMES  # noqa: F401
+from utils.raw_extensions import RAW
 
 # Framed-card palette (the Biota-browser look) — sourced from the shared theme
 # so light/dark and the app-wide olive stay in one place.
@@ -3340,7 +3341,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         files = row.get("Files", [])
         if not isinstance(files, list):
             return None
-        raw_exts_set = {".nef", ".orf", ".cr2", ".arw", ".rw2"}
+        raw_exts_set = RAW  # canonical table — see utils/raw_extensions.py
         fallback = None
         for fname in files:
             frow = self.fpr.fi.files_dict.get(fname)
