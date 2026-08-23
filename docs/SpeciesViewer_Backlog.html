@@ -1829,9 +1829,59 @@ can fail at any one of them while working at the other three:</p>
     to LibRaw at different times.</li>
 </ul>
 
-<p>In each case the honest answer is likely &ldquo;pin a newer rawpy&rdquo; rather than write
-code — but that has to be established with a real file, and a clear failure message matters when
-the answer is no.</p>
+<p><span class="tag-shipped">MEASURED 23 Aug</span> Established with real files, against
+SpeciesViewer's own <code>.venv</code> — exiftool 12.81, rawpy 0.27.0, <strong>LibRaw
+0.22.1</strong>. Of 30 samples covering every body and mode below, <strong>29 decode and one
+kind of file does not</strong>:</p>
+
+<ul>
+  <li><strong>Canon CR3 is fine.</strong> EOS R5, R5 Mark II and R7, RAW and CRAW, full-frame and
+    crop — all decode, in 0.6&ndash;1.1 s. No newer LibRaw required.</li>
+  <li><strong>Sony ARW is fine.</strong> A1, A1 II (lossless <em>and</em> lossy), A9 III and
+    A7R V all decode. The several generations of compression are simply not a problem at 0.22.1.</li>
+  <li><strong>Nikon HE / HE* does not decode — and no upgrade will fix it.</strong> All six High
+    Efficiency files fail (Z 8, Z 9, Z 50 II) while every Lossless file from the same body
+    succeeds. HE is intoPIX TicoRAW, which LibRaw cannot read without a licensed module. So
+    &ldquo;pin a newer rawpy&rdquo;, the answer this chapter expected, is the <em>wrong</em>
+    answer here. There is no version to pin.</li>
+</ul>
+
+<p>That matters much less than it sounds. Every HE / HE* file still carries a <strong>full-size
+8256&times;5504 JPEG of about 6 MB</strong> in <code>JpgFromRaw</code>, which
+<code>preview_extract</code> pulls out in 0.03 s — so culling, rating, thumbnails, the large
+viewer and Create JPG all behave normally on a Z 8 or Z 9. Only our own full decode is missing,
+and what that needs is an honest message rather than code.</p>
+
+<p class="note"><strong>ExifTool calls every HE NEF an NRW.</strong> A Z 9 file named
+<code>.NEF</code> reports <code>FileType: NRW</code> and <code>FileTypeExtension: nrw</code>,
+because HE uses the NRW-style container. Sitting directly on top of the <code>.nrw</code>
+incident below, that is a trap worth naming: classify by the on-disk extension, never by
+ExifTool's file type. <code>NEFCompression</code> is the reliable discriminator — 3 is Lossless,
+13 is High Efficiency, 14 is High Efficiency*.</p>
+
+<h3>Two things the corpus found that were not on the list</h3>
+
+<p><span class="tag-bug">BUG</span> <strong>A Canon R5 Mark II can embed an HEVC preview instead
+of a JPEG, and we then render a blank card.</strong> Two of the four R5 II samples — the two shot
+in Canon's HDR-PQ variant (<code>CompressorVersion: CanonCR3_003</code>,
+<code>ColorSpace: n/a</code>) — contain no JPEG at all; their <code>PreviewImage</code> and
+<code>ThumbnailImage</code> are both H.265 bitstreams. <code>extract_preview_bytes()</code> hands
+29 KB of HEVC straight to Qt without checking it, Qt cannot decode it, and the card comes up
+empty with nothing in the log saying why. The raw data itself decodes perfectly, and the other
+two R5 II files are ordinary JPEG-preview CR3s — so an R5 II owner would see some pictures appear
+and some not, depending on how each was shot. The fix is small: check for <code>FF D8 FF</code>
+before accepting an embed, fall through to the next tag, and fall back to a LibRaw decode rather
+than to nothing.</p>
+
+<p><span class="tag-bug">BUG</span> <strong>The largest-embedded-preview logic quietly stops
+working on CR3 and RW2.</strong> <code>embed_lengths()</code> asks exiftool for
+<code>&lt;tag&gt;Length</code>, and CR3 and RW2 expose no <code>*Length</code> tags whatsoever —
+so it returns an empty dict and <code>extract_preview_bytes()</code> falls back to plain
+<code>_EMBED_TAGS</code> order. That is precisely the first-tag-wins behaviour commit
+<code>3d0e490</code> was written to remove. It happens to pick correctly on Canon and incorrectly
+on Panasonic, where the G9 II puts a 1920&times;1440 preview in <code>JpgFromRaw</code> and its
+real 5776&times;4336 one in <code>JpgFromRaw2</code> — a tag not in the list at all. We cache the
+small one, below even the 3200 px normalisation target.</p>
 
 <h3>The extension lists have drifted</h3>
 
@@ -1863,13 +1913,24 @@ done when the canonical table is built.</p>
 
 <h3>A test corpus, and a repeatable test</h3>
 
-<p><span class="tag-open">OPEN</span> Sample RAW files are freely available and cover exactly the
-bodies in question: <strong>rawsamples.ch</strong> (unedited originals, older and newer Canon,
-Nikon and Sony), <strong>pixls.us</strong> (a large community repository contributed specifically
-for software developers and testers, with clear licensing) and the <strong>DPReview</strong>
-sample galleries (real-world and studio scenes with downloadable RAWs across all major brands).
-Between them a corpus of perhaps twenty files covering four generations of each brand is an
-afternoon's downloading.</p>
+<p><span class="tag-shipped">DONE 23 Aug</span> <strong>The corpus exists.</strong> 30 files,
+1.16 GB, in <code>d:/code/camerafiles</code> — deliberately outside any git repository, with a
+<code>README.md</code> carrying the full per-file table and a <code>download.py</code> that
+re-fetches the whole set idempotently and verifies every sha256.</p>
+
+<p>All of it came from <strong>raw.pixls.us</strong>; the other two sources turned out not to be
+needed. <strong>rawsamples.ch</strong> has no modern Canon or Nikon body at all. The
+<strong>DPReview</strong> galleries do, but pixls wins on the point that actually matters here —
+it carries <em>every compression mode per body</em>, which is the whole question, and it publishes
+a machine-readable index of 2016 rows at
+<code>raw.pixls.us/json/getrepository.php?set=all</code>, so the selection can be scripted instead
+of clicked. Everything on it is CC0.</p>
+
+<p>Covered: Nikon Z 8, Z 9, Z 50 II, Z 50 and Z 7II &middot; Canon EOS R5 Mark II, R5 and R7
+&middot; Sony A1, A1 II, A9 III and A7R V &middot; OM System OM-1 Mark II and OM-1 (including
+<code>.ORI</code>) &middot; Panasonic G9 II. Both ends of the interesting range are present — 45 MP
+full frame and 20 MP DX/MFT — and each Nikon body appears in all three of its compression
+modes.</p>
 
 <p><span class="tag-open">OPEN</span> What makes it worth having is a <strong>per-body
 checklist</strong> run as a tool rather than by hand: for each sample file, does the date read,
@@ -1879,10 +1940,21 @@ green per column. That table is also the honest answer to a future user asking &
 work with my camera?&rdquo; — and it belongs in the published repository, which is why this
 chapter follows ch.20 rather than preceding it.</p>
 
+<p>Every measurement that tool would make has now been made once, by hand, and sits in
+<code>analysis.json</code> beside the corpus: per file, the embedded previews and their pixel
+dimensions, whether the date reads, whether LibRaw decodes, and how long each step takes. What
+does not exist is the <em>repeatable</em> form of it.</p>
+
 <p class="note"><strong>What this chapter does not cover.</strong> DxO PhotoLab's own support for
 a body is DxO's business, not SpeciesViewer's — but the <code>.dop</code> lane assumes PhotoLab
 can open the file, so a body PhotoLab does not support is a body whose denoise step simply does
-not exist. Worth stating in the checklist rather than discovering mid-trip.</p>
+not exist. Worth stating in the checklist rather than discovering mid-trip.
+<span class="tag-shipped">CHECKED 23 Aug</span> Every file in the new corpus was opened in
+PhotoLab by hand, and all of them render: the Z 8 and Z 9 in all three modes with HE and HE*
+included, and all four R5 Mark II files including the HDR-PQ pair. They get the full correction
+palette, and Lens Sharpness Optimization is active — an optical module is loaded, not merely a
+bare decode. For these bodies the denoise step exists, and <strong>the HE decode gap is
+SpeciesViewer's alone</strong>: it does not propagate into the pipeline.</p>
 
 </body>
 </html>
