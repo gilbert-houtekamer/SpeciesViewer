@@ -629,6 +629,41 @@ def _build_buckets(files, tz_offset_hours, cache: "_CardCache | None", log) -> d
     return buckets, cached_dt
 
 
+def pictures_on_disk_by_day(dest):
+    """{day: picture count} already sitting in the destination's day folders.
+
+    Answers "what did I already read?" across sessions, which neither the card
+    nor the run summary can: the summary describes ONE run, and reopening the
+    dialog forgets it. Reading a card over several sittings — three days now,
+    three more after lunch — is normal, and without this the day table looks
+    identical whether a day is safely on disk or has never been touched.
+
+    Counted, not content-matched: one listing per day folder, no hashing. It is
+    an indicator for the eye, and the copy itself still verifies every file by
+    content before skipping it, so a wrong count here can never cause a picture
+    to be missed.
+    """
+    root = Path(dest) if dest else None
+    if not root or not root.is_dir():
+        return {}
+    out = {}
+    try:
+        children = list(root.iterdir())
+    except OSError:
+        return {}
+    for day_dir in children:
+        if not day_dir.is_dir():
+            continue
+        try:
+            n = sum(1 for f in day_dir.iterdir()
+                    if f.suffix.lower() in PICTURE_EXTENSIONS and f.is_file())
+        except OSError:
+            continue
+        if n:
+            out[day_dir.name] = n
+    return out
+
+
 def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None):
     """Group the card's pictures by capture day WITHOUT copying anything and
     WITHOUT reading EXIF — this is just a preview for the day-picker, so a file

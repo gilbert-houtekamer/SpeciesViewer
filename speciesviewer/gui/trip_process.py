@@ -1029,9 +1029,11 @@ class ReadSDCardDialog(QDialog):
             ["Day", "Files", "Copied", "Deleted", "Kept", "Tracklog"])
         for _col, _tip in ((FILES_COL, "Pictures on the card for this day — every "
                                        "frame shot, including the ones culled since"),
-                           (COPIED_COL, "What is on disk for this day after the "
-                                        "read — whether this run copied it or an "
-                                        "earlier one already had it"),
+                           (COPIED_COL, "What is on disk for this day — filled "
+                                        "from the destination when you Scan, and "
+                                        "from the run when you Read. A tick means "
+                                        "the day is fully there; \"60 of 104\" "
+                                        "means it is not"),
                            (DELETED_COL, "Deleted during the trip — the card still "
                                          "holds them, this trip's backup says they went"),
                            (KEPT_COL, "Still there at the last backup — the ones a "
@@ -1636,6 +1638,14 @@ class ReadSDCardDialog(QDialog):
     def _populate_days(self, days):
         """Fill the day table with one checkable row per (date, count), all ticked."""
         from engine.tracklog_geotag import find_day_tracklog
+        from batch.sv0ReadSDCard import pictures_on_disk_by_day
+        # ONE listing of the destination for the whole table, not one per row.
+        try:
+            on_disk = pictures_on_disk_by_day(self.dest_field.get_path())
+        except Exception as e:                  # a bad/absent dest must not kill the scan
+            self.logger.info(f"Read SD-cards: could not read the destination "
+                             f"folder for already-copied counts: {e}")
+            on_disk = {}
         self.days_table.blockSignals(True)
         self.days_table.setRowCount(0)
         for date_str, count in days:
@@ -1664,12 +1674,30 @@ class ReadSDCardDialog(QDialog):
             track_item = QTableWidgetItem(track_text)
             track_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             self.days_table.setItem(r, TRACK_COL, track_item)
-            # A fresh scan describes the card, not the last run — leave Copied
-            # empty rather than showing a previous read's numbers against it.
-            blank = QTableWidgetItem("")
-            blank.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            self.days_table.setItem(r, COPIED_COL, blank)
-        self.days_table.setColumnHidden(COPIED_COL, True)
+            # What is ALREADY on disk for this day, read from the destination
+            # rather than from the last run — the run is forgotten when the
+            # dialog closes, the day folders are not. Without this, a card read
+            # spread over two sittings shows nothing on the second one.
+            have = on_disk.get(date_str, 0)
+            if not have:
+                text = ""
+            elif have >= count:
+                text = f"{have} ✓"
+            else:
+                # Partial: say so rather than tick it. Fewer on disk than on the
+                # card is the interesting case (an interrupted read, or pictures
+                # culled since), and a tick would hide it.
+                text = f"{have} of {count}"
+            disk_item = QTableWidgetItem(text)
+            disk_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            disk_item.setTextAlignment(Qt.AlignmentFlag.AlignRight
+                                       | Qt.AlignmentFlag.AlignVCenter)
+            self.days_table.setItem(r, COPIED_COL, disk_item)
+            # Nothing left to do for a day already complete — untick it so Read
+            # targets what is actually missing. Still tickable by hand.
+            if have >= count:
+                day_item.setCheckState(Qt.CheckState.Unchecked)
+        self.days_table.setColumnHidden(COPIED_COL, not on_disk)
         self._show_cull_columns()
         self.days_table.blockSignals(False)
         self.days_container.setVisible(bool(days))
@@ -1742,10 +1770,11 @@ class ReadSDCardDialog(QDialog):
                         text = (f"{text} · {failed} failed" if text
                                 else f"{failed} failed")
                 else:
-                    # A day that was not ticked: it has no tally, and a blank
-                    # cell is the honest answer — it was not read, which is not
-                    # the same as nothing being there.
-                    text = ""
+                    # A day this run did not touch. Leave whatever the scan put
+                    # there — a day already complete from an earlier sitting
+                    # reads "104 ✓", and blanking it here would erase the very
+                    # answer this column exists to give.
+                    continue
                 item = QTableWidgetItem(text)
                 item.setFlags(Qt.ItemFlag.ItemIsEnabled)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignRight
@@ -2120,7 +2149,8 @@ class ReadSDCardDialog(QDialog):
         # the culling work (species, stars, colours) coming across from a source
         # folder that had already been worked on, and rolling them into one
         # "N sidecars" number would hide exactly the thing worth confirming.
-        self._fill_copied_column(summary.get("per_day") or {})
+        self._last_per_day = summary.get("per_day") or {}
+        self._fill_copied_column(self._last_per_day)
         carried = summary.get("sidecars_copied", 0)
         carried_txt = (f" {carried} existing sidecar(s) carried across with their "
                        f"pictures." if carried else "")
@@ -2281,11 +2311,36 @@ class ReadSDCardDialog(QDialog):
                 self.status_label.text() + f"  ·  {len(folders)} day(s) added to the Days list.")
 
     def _mark_run_done(self):
-        """Grey the day selection after a completed run, as a visible 'done' cue.
-        Re-scanning (or reopening the dialog) brings it back, possibly with a
-        different selection."""
-        if self.days_container.isVisible():
-            self.days_container.setEnabled(False)
+        """Mark the days that just landed and leave the block USABLE.
+
+        This used to grey the whole day selection as a "done" cue, which made
+        reading a card in batches impossible: after three days you could not
+        tick three more without re-scanning first. Reading a big card over
+        several sittings is normal, so that cue cost more than it told you —
+        and the Copied column now says "104 ✓" per day, which is a better cue
+        than a greyed panel because it says WHICH days and how many.
+
+        Completed days are unticked so the next Read naturally targets what is
+        left. A day with any failure stays ticked: it is exactly the one to try
+        again.
+        """
+        table = getattr(self, "days_table", None)
+        if table is None:
+            return
+        per_day = getattr(self, "_last_per_day", None) or {}
+        table.blockSignals(True)
+        try:
+            for r in range(table.rowCount()):
+                day_item = table.item(r, DAY_COL)
+                if day_item is None:
+                    continue
+                tally = per_day.get(day_item.text()) or {}
+                done = (tally.get("copied", 0) + tally.get("skipped", 0)) > 0
+                if done and not tally.get("failed", 0):
+                    day_item.setCheckState(Qt.CheckState.Unchecked)
+        finally:
+            table.blockSignals(False)
+        self._refresh_all_days_checkbox()
 
     def _add_location_names(self):
         """Reverse-geocode the just-copied RAWs and write place names into their
