@@ -81,11 +81,67 @@ else:
         shutil.copy2(src, dest)
 
 # Lower-case extensions (incl. dot) we treat as "pictures" worth ingesting.
-RAW_EXTENSIONS = {".cr3", ".cr2", ".nef", ".arw", ".raf", ".dng", ".orf", ".rw2"}
+# .nrw is Nikon's Coolpix raw (P7800 and friends) — a format that IS shot here
+# and already recognised elsewhere in the codebase (svu5SyncSidecars). Its
+# absence meant a card holding NRWs copied the JPGs and left every raw behind,
+# saying nothing. The pipeline itself needs no change: engine.exifcache filters
+# by a DENY list, and nrw is not on it, so exiftool reads these normally.
+RAW_EXTENSIONS = {".cr3", ".cr2", ".nef", ".nrw", ".arw", ".raf", ".dng", ".orf",
+                  ".rw2"}
 PICTURE_EXTENSIONS = RAW_EXTENSIONS | {
     ".jpg", ".jpeg", ".heic", ".heif", ".png", ".tif", ".tiff",       # stills
     ".mp4", ".mov",                                                    # video
 }
+
+
+def scan_source(source):
+    """ONE walk of the source → (pictures, ignored) where `ignored` is
+    {extension: count} for files this ingest will NOT take.
+
+    The ignored tally exists because the silent version of this cost real data:
+    a card of 3863 files reported "2413 pictures" and said nothing about the
+    other 1450, of which 218 were Nikon .nrw raws that simply were not on the
+    recognised list. A count that quietly excludes things reads as a complete
+    count. This project has been bitten by exactly this before — see the note on
+    engine.work_backup.SOURCE_EXTS, where a missing format left pictures out of
+    a restore manifest.
+
+    Sidecars are NOT counted as ignored: they travel with their picture rather
+    than on their own (see _SidecarIndex). Dot-files are tool caches, never
+    pictures, and are not worth reporting either.
+    """
+    pictures, ignored = [], {}
+    for p in source.rglob("*"):
+        try:
+            if not p.is_file():
+                continue
+        except OSError:                    # unreadable entry — not something to copy
+            continue
+        if p.name.startswith(".") or p.name == _CardCache._FILENAME:
+            continue
+        ext = p.suffix.lower()
+        if ext in PICTURE_EXTENSIONS:
+            pictures.append(p)
+        elif ext not in SIDECAR_SUFFIXES:
+            ignored[ext or "(no extension)"] = ignored.get(ext or "(no extension)", 0) + 1
+    return sorted(pictures), ignored
+
+
+def describe_ignored(ignored) -> str:
+    """'218 .nrw, 34 .jpg_original' — most numerous first, so the biggest
+    surprise is the first thing read."""
+    return ", ".join(f"{n} {ext}" for ext, n in
+                     sorted(ignored.items(), key=lambda kv: (-kv[1], kv[0])))
+
+
+def _warn_ignored(ignored, source, log):
+    """Say what is being left behind, once, where it will be seen."""
+    if not ignored:
+        return
+    log.warning(f"Not copied from {source}: {describe_ignored(ignored)} — these "
+                f"file types are not recognised as pictures. If one of them is a "
+                f"camera format you shoot, it needs adding to RAW_EXTENSIONS "
+                f"before this card is formatted.")
 
 
 # ── File hashing ──────────────────────────────────────────────────────────────
@@ -589,21 +645,20 @@ def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None):
     near a day boundary) could show under a slightly different day here than
     where Read finally puts them — cosmetic only, never a data-loss risk.
 
-    Returns (days, total) where `days` is a sorted list of (date_str, count) and
-    `total` is the picture count."""
+    Returns (days, total, ignored) where `days` is a sorted list of
+    (date_str, count), `total` is the picture count, and `ignored` is
+    {extension: count} for what this ingest will not take."""
     from collections import Counter
     log = logger or logging.getLogger("speciesviewer")
     source = Path(source)
-    files = sorted(
-        p for p in source.rglob("*")
-        if p.is_file()
-        and p.suffix.lower() in PICTURE_EXTENSIONS
-        and p.name != _CardCache._FILENAME
-    )
+    files, ignored = scan_source(source)
     total = len(files)
+    # Before the copy, not after: this is the moment the answer can still change
+    # what you do (point at a different folder, add the format, keep the card).
+    _warn_ignored(ignored, source, log)
     if not total:
         log.info(f"No pictures found under {source}")
-        return [], 0
+        return [], 0, ignored
     log.info(f"Found {total} picture(s) on the card.")
 
     cache = _CardCache(source, logger=log) if use_card_cache else None
@@ -625,7 +680,7 @@ def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None):
     days = sorted(counts.items())
     log.info(f"Scanned {total} picture(s) across {len(days)} day(s) on the card "
              f"(from file dates — exact dates are read when you Read).")
-    return days, total
+    return days, total, ignored
 
 
 # ── XMP sidecars ─────────────────────────────────────────────────────────────
@@ -883,12 +938,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     source = Path(source)
     dest   = Path(dest)
 
-    files = sorted(
-        p for p in source.rglob("*")
-        if p.is_file()
-        and p.suffix.lower() in PICTURE_EXTENSIONS
-        and p.name != _CardCache._FILENAME   # never copy the cache file itself
-    )
+    files, ignored = scan_source(source)
     total = len(files)
     summary = {"total": total, "copied": 0, "skipped": 0, "deselected": 0,
                "renamed": 0, "conflict": 0, "failed": 0, "bytes": 0,
@@ -897,6 +947,8 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     targets = []   # destination paths now present (copied or already-there)
 
     log.info(f"Found {total} picture(s) under {source}")
+    summary["ignored"] = ignored
+    _warn_ignored(ignored, source, log)
 
     cache = _CardCache(source, logger=log) if use_card_cache else None
     summary["previous_reads"] = cache.history() if cache else []
@@ -929,6 +981,17 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     # pictures but none of the culling, and a re-run should complete it.
     sidecar_index = _SidecarIndex()
     sidecar_plan: list[tuple[Path, Path]] = []          # (src_sidecar, target)
+
+    # Per-day tally for the dialog's day table. The run summary counts the whole
+    # run, which cannot answer the per-day question actually being asked — "is
+    # this day safely on disk?" — because a re-read reports 0 copied for a day
+    # that is completely present.
+    per_day: dict[str, dict] = {}
+
+    def _tally(src_path: Path, key: str) -> None:
+        day = buckets.get(_norm(src_path), UNKNOWN_DATE_DIR)
+        slot = per_day.setdefault(day, {"copied": 0, "skipped": 0, "failed": 0})
+        slot[key] += 1
 
     def _plan_sidecars(src_picture: Path, picture_target: Path) -> None:
         for sc in sidecar_index.for_picture(src_picture):
@@ -974,6 +1037,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                 match = dest_index.find_match(src, src_hash=cached_sha)
                 if match is not None:
                     summary["skipped"] += 1
+                    _tally(src, "skipped")
                     targets.append(str(match))
                     _plan_sidecars(src, match)
                     continue
@@ -985,6 +1049,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
             if target.exists() or target in reserved:
                 if target.exists() and _already_copied(src, target, src_hash=cached_sha):
                     summary["skipped"] += 1
+                    _tally(src, "skipped")
                     targets.append(str(target))
                     _plan_sidecars(src, target)
                     continue
@@ -1051,6 +1116,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                 try:
                     src_hash = future.result()   # OSError on size mismatch
                     summary["copied"] += 1
+                    _tally(src, "copied")
                     summary["bytes"] += target.stat().st_size
                     targets.append(str(target))
                     if dest_index is not None:
@@ -1061,6 +1127,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                 except OSError as e:
                     log.warning(f"❌ Failed to copy {src.name}: {e}")
                     summary["failed"] += 1
+                    _tally(src, "failed")
                     summary["failed_names"].append(src.name)
 
                 if should_cancel and should_cancel():
@@ -1093,6 +1160,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     # Sequential and unthreaded: these are a few KB each, next to multi-MB RAWs
     # already copied in parallel — a second thread pool would cost more to start
     # than the whole phase takes.
+    summary["per_day"] = per_day
     summary["sidecars_copied"] = 0
     if sidecar_plan and not (should_cancel and should_cancel()):
         for i, (sc_src, sc_target) in enumerate(sidecar_plan, 1):

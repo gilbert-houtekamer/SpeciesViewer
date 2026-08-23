@@ -704,7 +704,7 @@ class _SDCardCopyWorker(QObject):
 class _SDCardScanWorker(QObject):
     """Groups the card's pictures by capture day (no copy) on a worker thread so
     the dialog stays responsive while the card is walked / dates are read."""
-    finished = pyqtSignal(list, int, str)   # days [(date, count)], total, error
+    finished = pyqtSignal(list, int, dict, str)   # days [(date, count)], total, ignored, error
 
     def __init__(self, source, tz_offset_hours=0.0):
         super().__init__()
@@ -714,10 +714,11 @@ class _SDCardScanWorker(QObject):
     def run(self):
         try:
             from batch.sv0ReadSDCard import scan_days
-            days, total = scan_days(self._source, tz_offset_hours=self._tz_offset_hours)
-            self.finished.emit(days, total, "")
+            days, total, ignored = scan_days(self._source,
+                                             tz_offset_hours=self._tz_offset_hours)
+            self.finished.emit(days, total, ignored, "")
         except Exception as e:
-            self.finished.emit([], 0, str(e))
+            self.finished.emit([], 0, {}, str(e))
 
 
 class _TracklogAutoWorker(QObject):
@@ -754,6 +755,11 @@ class _TracklogAutoWorker(QObject):
 # opening a freshly read day (a JPG would work too, but the RAW is the picture
 # that will get the .dop recipe).
 _PL_RAW_EXTS = {".orf", ".nef", ".cr2", ".cr3", ".arw", ".rw2", ".raf", ".dng"}
+
+
+# Day-table columns. Named because a sixth column shifted every index below it,
+# and the old magic numbers were spread across six methods.
+(DAY_COL, FILES_COL, COPIED_COL, DELETED_COL, KEPT_COL, TRACK_COL) = range(6)
 
 
 class ReadSDCardDialog(QDialog):
@@ -1018,15 +1024,18 @@ class ReadSDCardDialog(QDialog):
         self.all_days_checkbox.setChecked(True)
         self.all_days_checkbox.clicked.connect(self._on_all_days_clicked)
         days_layout.addWidget(self.all_days_checkbox)
-        self.days_table = QTableWidget(0, 5)
+        self.days_table = QTableWidget(0, 6)
         self.days_table.setHorizontalHeaderLabels(
-            ["Day", "Files", "Deleted", "Kept", "Tracklog"])
-        for _col, _tip in ((1, "Pictures on the card for this day — every frame "
-                               "shot, including the ones culled since"),
-                           (2, "Deleted during the trip — the card still holds "
-                               "them, this trip's backup says they went"),
-                           (3, "Still there at the last backup — the ones a "
-                               "re-read copies back")):
+            ["Day", "Files", "Copied", "Deleted", "Kept", "Tracklog"])
+        for _col, _tip in ((FILES_COL, "Pictures on the card for this day — every "
+                                       "frame shot, including the ones culled since"),
+                           (COPIED_COL, "What is on disk for this day after the "
+                                        "read — whether this run copied it or an "
+                                        "earlier one already had it"),
+                           (DELETED_COL, "Deleted during the trip — the card still "
+                                         "holds them, this trip's backup says they went"),
+                           (KEPT_COL, "Still there at the last backup — the ones a "
+                                      "re-read copies back")):
             self.days_table.horizontalHeaderItem(_col).setToolTip(_tip)
         self.days_table.verticalHeader().setVisible(False)
         self.days_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -1594,7 +1603,7 @@ class ReadSDCardDialog(QDialog):
         self._scan_worker.finished.connect(self.on_scan_finished)
         self._scan_thread.start()
 
-    def on_scan_finished(self, days, total, error):
+    def on_scan_finished(self, days, total, ignored, error):
         self._scan_thread.quit()
         self._scan_thread.wait()
         self.scan_btn.setEnabled(True)
@@ -1615,9 +1624,14 @@ class ReadSDCardDialog(QDialog):
             base = currentpictures_root(self.dest_field.get_path())
             if year and base:
                 self.dest_field.field.setText(unfiled_root(year, base=base))
+        note = ""
+        if ignored:
+            from batch.sv0ReadSDCard import describe_ignored
+            note = (f"  ⚠ Not recognised as pictures, so NOT copied: "
+                    f"{describe_ignored(ignored)}.")
         self.status_label.setText(
             f"Found {total} picture(s) across {len(days)} day(s). "
-            f"Tick the days to copy, then Read.")
+            f"Tick the days to copy, then Read.{note}")
 
     def _populate_days(self, days):
         """Fill the day table with one checkable row per (date, count), all ticked."""
@@ -1630,11 +1644,11 @@ class ReadSDCardDialog(QDialog):
             day_item = QTableWidgetItem(date_str)
             day_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
             day_item.setCheckState(Qt.CheckState.Checked)
-            self.days_table.setItem(r, 0, day_item)
+            self.days_table.setItem(r, DAY_COL, day_item)
             cnt_item = QTableWidgetItem(str(count))
             cnt_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             cnt_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self.days_table.setItem(r, 1, cnt_item)
+            self.days_table.setItem(r, FILES_COL, cnt_item)
             self._set_cull_cells(r, date_str, count)
             # Pure "does a log file exist for this day" preview — no offset
             # estimation here (that needs the full picture set and only runs
@@ -1645,10 +1659,17 @@ class ReadSDCardDialog(QDialog):
             track_text = ""
             if self._gpslogs_root:
                 log_path = find_day_tracklog(date_str, self._gpslogs_root)
-                track_text = f"✓ {Path(log_path).name}" if log_path else "— none found"
+                track_text = (f"✓ {Path(log_path).name}" if log_path
+                              else "— no tracklog found")
             track_item = QTableWidgetItem(track_text)
             track_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            self.days_table.setItem(r, 4, track_item)
+            self.days_table.setItem(r, TRACK_COL, track_item)
+            # A fresh scan describes the card, not the last run — leave Copied
+            # empty rather than showing a previous read's numbers against it.
+            blank = QTableWidgetItem("")
+            blank.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self.days_table.setItem(r, COPIED_COL, blank)
+        self.days_table.setColumnHidden(COPIED_COL, True)
         self._show_cull_columns()
         self.days_table.blockSignals(False)
         self.days_container.setVisible(bool(days))
@@ -1683,21 +1704,66 @@ class ReadSDCardDialog(QDialog):
         claiming nothing was deleted.
         """
         kept = self._kept_on_day(date_str)
-        for col, value in ((2, None if kept is None else max(count - kept, 0)),
-                           (3, kept)):
+        for col, value in ((DELETED_COL, None if kept is None else max(count - kept, 0)),
+                           (KEPT_COL, kept)):
             item = QTableWidgetItem("" if value is None else str(value))
             item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.days_table.setItem(row, col, item)
 
+    def _fill_copied_column(self, per_day):
+        """Show, per day, what is on disk after the read.
+
+        The number is copied + skipped, NOT this run's copies. "Skipped" here
+        means the picture was already at the destination, verified by content —
+        so it is present, and a day that was fully read an hour ago is just as
+        safely on disk as one read a minute ago. Reporting the literal this-run
+        figure would show a re-read as "0", which reads as failure at exactly
+        the moment you are checking that nothing was missed.
+
+        Failures are never folded into that tick: a day with even one failed
+        copy says so, because that is the row worth going back to.
+        """
+        table = getattr(self, "days_table", None)
+        if table is None or not per_day:
+            return
+        table.blockSignals(True)
+        try:
+            for r in range(table.rowCount()):
+                day_item = table.item(r, DAY_COL)
+                if day_item is None:
+                    continue
+                tally = per_day.get(day_item.text())
+                if tally:
+                    present = tally.get("copied", 0) + tally.get("skipped", 0)
+                    failed = tally.get("failed", 0)
+                    text = f"{present} ✓" if present else ""
+                    if failed:
+                        text = (f"{text} · {failed} failed" if text
+                                else f"{failed} failed")
+                else:
+                    # A day that was not ticked: it has no tally, and a blank
+                    # cell is the honest answer — it was not read, which is not
+                    # the same as nothing being there.
+                    text = ""
+                item = QTableWidgetItem(text)
+                item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignRight
+                                      | Qt.AlignmentFlag.AlignVCenter)
+                table.setItem(r, COPIED_COL, item)
+            table.setColumnHidden(COPIED_COL, False)
+        finally:
+            table.blockSignals(False)
+        self._size_days_table()
+
     def _show_cull_columns(self):
         """Show Deleted/Kept only when the backup covers a day on the card — two
         permanently empty columns are noise on a normal mid-trip card read."""
-        known = any(self._kept_on_day(self.days_table.item(r, 0).text()) is not None
+        known = any(self._kept_on_day(self.days_table.item(r, DAY_COL).text()) is not None
                     for r in range(self.days_table.rowCount())
-                    if self.days_table.item(r, 0) is not None)
-        self.days_table.setColumnHidden(2, not known)
-        self.days_table.setColumnHidden(3, not known)
+                    if self.days_table.item(r, DAY_COL) is not None)
+        self.days_table.setColumnHidden(DELETED_COL, not known)
+        self.days_table.setColumnHidden(KEPT_COL, not known)
 
     def _refresh_cull_columns(self):
         """Re-read the Deleted/Kept pair from the current survivor list — a backup
@@ -1707,7 +1773,7 @@ class ReadSDCardDialog(QDialog):
             return
         table.blockSignals(True)
         for r in range(table.rowCount()):
-            day_item, cnt_item = table.item(r, 0), table.item(r, 1)
+            day_item, cnt_item = table.item(r, DAY_COL), table.item(r, FILES_COL)
             if day_item is None or cnt_item is None:
                 continue
             try:
@@ -1738,12 +1804,12 @@ class ReadSDCardDialog(QDialog):
         """Master checkbox: tick all days unless they're all ticked (then clear)."""
         n = self.days_table.rowCount()
         all_on = n > 0 and all(
-            self.days_table.item(r, 0).checkState() == Qt.CheckState.Checked
+            self.days_table.item(r, DAY_COL).checkState() == Qt.CheckState.Checked
             for r in range(n))
         target = Qt.CheckState.Unchecked if all_on else Qt.CheckState.Checked
         self.days_table.blockSignals(True)
         for r in range(n):
-            self.days_table.item(r, 0).setCheckState(target)
+            self.days_table.item(r, DAY_COL).setCheckState(target)
         self.days_table.blockSignals(False)
         self._refresh_all_days_checkbox()
 
@@ -1754,7 +1820,7 @@ class ReadSDCardDialog(QDialog):
         """Reflect the rows in the master checkbox (checked / partial / unchecked)."""
         n = self.days_table.rowCount()
         checked = sum(1 for r in range(n)
-                      if self.days_table.item(r, 0).checkState() == Qt.CheckState.Checked)
+                      if self.days_table.item(r, DAY_COL).checkState() == Qt.CheckState.Checked)
         if checked == 0:
             state = Qt.CheckState.Unchecked
         elif checked == n:
@@ -1771,8 +1837,8 @@ class ReadSDCardDialog(QDialog):
         n = self.days_table.rowCount()
         if n == 0:
             return None
-        return {self.days_table.item(r, 0).text() for r in range(n)
-                if self.days_table.item(r, 0).checkState() == Qt.CheckState.Checked}
+        return {self.days_table.item(r, DAY_COL).text() for r in range(n)
+                if self.days_table.item(r, DAY_COL).checkState() == Qt.CheckState.Checked}
 
     def _selected_file_count(self):
         """Pictures the ticked days would copy.
@@ -1785,14 +1851,14 @@ class ReadSDCardDialog(QDialog):
                   and self.recull_checkbox.isChecked())
         total = 0
         for r in range(self.days_table.rowCount()):
-            if self.days_table.item(r, 0).checkState() != Qt.CheckState.Checked:
+            if self.days_table.item(r, DAY_COL).checkState() != Qt.CheckState.Checked:
                 continue
-            kept = self._kept_on_day(self.days_table.item(r, 0).text()) if recull else None
+            kept = self._kept_on_day(self.days_table.item(r, DAY_COL).text()) if recull else None
             if kept is not None:
                 total += kept
                 continue
             try:
-                total += int(self.days_table.item(r, 1).text())
+                total += int(self.days_table.item(r, FILES_COL).text())
             except ValueError:
                 pass
         return total
@@ -2054,6 +2120,7 @@ class ReadSDCardDialog(QDialog):
         # the culling work (species, stars, colours) coming across from a source
         # folder that had already been worked on, and rolling them into one
         # "N sidecars" number would hide exactly the thing worth confirming.
+        self._fill_copied_column(summary.get("per_day") or {})
         carried = summary.get("sidecars_copied", 0)
         carried_txt = (f" {carried} existing sidecar(s) carried across with their "
                        f"pictures." if carried else "")
