@@ -1883,33 +1883,80 @@ on Panasonic, where the G9 II puts a 1920&times;1440 preview in <code>JpgFromRaw
 real 5776&times;4336 one in <code>JpgFromRaw2</code> — a tag not in the list at all. We cache the
 small one, below even the 3200 px normalisation target.</p>
 
-<h3>The extension lists have drifted</h3>
+<h3>The extension lists have drifted &mdash; fixed</h3>
 
-<p><span class="tag-bug">BUG</span> <strong>31 separate literal sets</strong> of RAW extensions
-exist in the tree and they do not agree — measured 2026-08-23, not estimated; an earlier count of
-five was badly short. They are spread across <code>sv0ReadSDCard</code>, <code>sv2ReadDirExif</code>
-(twice), <code>admin_rebuild</code> (twice), <code>exifcache</code>, <code>filepicture</code>
-(four times), <code>preview_provider</code> (four times), <code>trip_process</code> (three times),
-<code>rating_provider</code>, <code>rating_editor</code>, <code>sidecar_provider</code>,
-<code>topics_scan</code>, <code>trip_delete_scan</code>, <code>trip_thumbs</code>,
-<code>unfiled</code>, <code>work_backup</code>, <code>master_no_display</code>,
-<code>biota_source</code>, <code>image_viewer</code>, <code>map_view</code> and
-<code>trip_overview</code>. One canonical table, imported everywhere, is a small change and a
-precondition for testing any new brand honestly.</p>
+<p><span class="tag-bug">BUG</span> <strong>39 separate literal sets</strong> of RAW extensions
+existed in the tree, in 25 files, with <strong>20 distinct values</strong> &mdash; measured
+2026-08-23 with an <code>ast</code> sweep, not estimated. The first count here said 31, and an
+earlier one said five; both were short. They did not agree with each other, and the disagreement
+was not decorative.</p>
 
-<p class="note"><strong>This is not hypothetical, and it is not only about new brands.</strong>
+<p><span class="tag-shipped">SHIPPED 23 Aug</span> on branch <code>SpeciesViewer03</code>.
+<code>speciesviewer/utils/raw_extensions.py</code> is now the only place in the tree where a RAW
+extension appears as a literal: <code>RAW</code>, <code>HEIC</code>, <code>JPEG</code>,
+<code>OTHER_IMAGE</code> and the derived <code>RAW_OR_HEIC</code>, <code>DXO_RAW</code>,
+<code>CAMERA_PHOTO</code> and <code>PICTURE</code>, plus <code>is_raw()</code>,
+<code>is_picture()</code> and <code>ext_of()</code>, which take a <code>Path</code> or a bare
+string in any case. <strong>35 of the 39 sets are migrated.</strong>
+<code>tools/svr_extension_audit.py</code> re-runs the sweep and exits 1 while anything outside the
+table hard-codes extensions; its exemption list requires a stated reason per entry. Without that
+check the whole exercise decays &mdash; set number 40 gets written next month. Design and the full
+inventory are in <code>docs/plans/raw_extension_table.md</code>.</p>
+
+<p>The decisions behind the table: <strong>HEIC is its own set, not part of RAW</strong>
+(PhotoLab 9 accepts it but treats it as a JPG; whether it is a raw for our purposes is the open
+ch.7 sidecar question, which now has one place to be answered). <strong><code>.dng</code> stays
+in</strong> &mdash; it is a raw format in its own right and what PureRAW emits, and
+&ldquo;keep <code>.dop</code>, drop <code>.dng</code>&rdquo; is a <em>retention</em> policy, a
+different layer. Expressing a retention rule by leaving an extension out of a classification set
+is precisely how the <code>.nrw</code> incident happened. <code>.ori</code> and <code>.raw</code>
+added; <code>.pef</code> and <code>.srw</code> dropped, because the per-body checklist below must
+not claim support that has never been tested.</p>
+
+<p><span class="tag-bug">BUG</span> <strong>What the consolidation found was worse than untidy.</strong>
+<code>{".nef", ".orf", ".cr2", ".arw", ".rw2"}</code> &mdash; no <code>.cr3</code> &mdash; was the
+live test in <strong>six</strong> places: <code>preview_provider</code>, <code>rating_provider</code>,
+<code>rating_editor</code>, <code>image_viewer</code>, <code>species_editor</code> and
+<code>map_view</code>. Every Canon mirrorless body since 2018 shoots CR3, so a Canon owner's
+pictures were half-invisible &mdash; in the grid, the rating editor, the viewer and the map.
+<code>preview_provider</code> defined <em>both</em> lists: a CR3 was a RAW for the PhotoLab path
+and not a RAW for the preview path, in the same module. That compounds the R5 Mark II HEVC-preview
+bug above &mdash; one stops the preview being found, the other stops it being decoded.</p>
+
+<p class="note"><strong>The <code>.nrw</code> story, finished.</strong>
 On 2026-08-23 a test card of 3863 files reported &ldquo;2413 pictures&rdquo; and copied them.
-The missing 1450 included <strong>218 Nikon <code>.nrw</code></strong> raws — a Coolpix format
-already shot here, with pictures of it in the master — which were silently left behind because
-<code>sv0ReadSDCard.RAW_EXTENSIONS</code> did not list it. Nothing was said; the count that
-excluded them simply read as the whole card. Had the card been formatted afterwards, those
-pictures would have been gone. <em>Fixed for ingest</em> (<code>.nrw</code> added, plus a report
-of every file type an ingest is <em>not</em> taking, shown at scan time). <strong>30 of the 31
-lists still lack it</strong>, so an NRW now arrives and flows through the pipeline but is invisible
-to work-backup manifests, trip-delete accounting, thumbnails and best-picture selection. That
-partial state is deliberate — a 30-file sweep days before a trip was not a change to make
-unreviewed — but it is exactly the drift this section is about, and it should be the first thing
-done when the canonical table is built.</p>
+The missing 1450 included <strong>218 Nikon <code>.nrw</code></strong> raws &mdash; a Coolpix format
+already shot here, with pictures of it in the master &mdash; silently left behind because
+<code>sv0ReadSDCard.RAW_EXTENSIONS</code> did not list it. Fixing ingest alone was not enough, and
+the live test proved it: opening the 2016 varen day folder, the viewer enumerated the 35 NRW files
+and then dropped them one step later, because <code>sidecar_provider</code> did not know the
+extension either &mdash; the picture existed with no displayable file. <strong>Two gates in series;
+one fixed reads exactly like none fixed.</strong> With both open, that day went from 342 pictures to
+377, and across varen2016 <strong>218 pictures came back</strong> &mdash; the same 218 the card left
+behind, each day's increase matching its folder exactly.</p>
+
+<p class="note"><strong>Two traps worth writing down.</strong> These sets are <em>not</em> all
+dotted: the ones testing the CSV's <code>WindowsExtension</code> column are bare
+(<code>"nef"</code>), the ones testing <code>Path.suffix</code> are dotted. Substituting the wrong
+form matches <em>nothing</em> and fails silently &mdash; a far quieter bug than the one being
+fixed, so <code>bare()</code> converts in one place. And <code>str.endswith()</code> requires a
+real <strong>tuple</strong>, not a frozenset, which <code>master_no_display.py</code> relies on.</p>
+
+<p><span class="tag-open">OPEN</span> <strong>Four sets remain outside the table, deliberately:</strong>
+<code>trip_delete_scan</code>, <code>work_backup</code> and the two <code>tools/svr_purge*</code>
+scripts &mdash; what gets <em>deleted</em> and what gets <em>backed up</em>. They get their own
+review, their own dry-run against a real trip, and their own commit; nothing there is applied off a
+code reading. <code>.raw</code> was added to <code>RAW</code> for exactly this reason: it appears in
+<code>trip_delete_scan</code> and nowhere else, so a mechanical substitution would have <em>removed</em>
+it from a delete scanner's idea of what a picture is. A refactor must never be able to narrow a
+delete path.</p>
+
+<p class="note"><strong>A coupling worth remembering.</strong> The Trip Overview's Pictures column
+read 342 for a day the pipeline had just written 377 rows for. Not staleness:
+<code>trip_overview._count_pictures</code> imported <code>PICTURE_EXTS</code> from
+<code>engine.trip_delete_scan</code>, so a read-only display count depended on the delete scanner's
+constant &mdash; and could not be fixed while that file was held back for safety. The caution and
+the bug had the same cause. Decoupled; it was the only consumer outside its own module.</p>
 
 <h3>A test corpus, and a repeatable test</h3>
 
