@@ -1714,7 +1714,43 @@ class ReadSDCardDialog(QDialog):
         # taller than the hint suggested.
         want_h = max(self.sizeHint().height(), self.minimumSizeHint().height())
         want_w = max(self.width(), self.minimumSizeHint().width())
-        self.resize(want_w, want_h)
+        self._resize_within_screen(want_w, want_h)
+
+    def _resize_within_screen(self, want_w, want_h):
+        """Resize, but never ask the window manager for something it will refuse.
+
+        Qt asks, Windows clamps to the work area, and Qt then logs
+        "QWindowsWindow::setGeometry: Unable to set geometry ..." — a warning
+        that never reaches the GUI, so it is pure terminal noise for the user
+        while looking like a real fault in the log. The request is what is wrong,
+        not the answer: the window's FRAME (title bar and borders) counts against
+        the work area, and a dialog already sitting near an edge has less room
+        than the screen is wide.
+
+        So: clamp the size to what the work area can actually hold, then, if
+        growing has pushed the frame off an edge, move it back on-screen. Only
+        ever moved when it would otherwise be partly invisible.
+        """
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        if screen is None:                       # headless / no screen — nothing to clamp to
+            self.resize(want_w, want_h)
+            return
+        avail = screen.availableGeometry()
+        frame = self.frameGeometry()
+        # Window decorations are outside width()/height() but inside the work area.
+        chrome_w = max(frame.width() - self.width(), 0)
+        chrome_h = max(frame.height() - self.height(), 0)
+        self.resize(min(want_w, avail.width() - chrome_w),
+                    min(want_h, avail.height() - chrome_h))
+
+        frame = self.frameGeometry()
+        if avail.contains(frame):
+            return
+        frame.moveLeft(max(avail.left(), min(frame.left(),
+                                             avail.right() - frame.width() + 1)))
+        frame.moveTop(max(avail.top(), min(frame.top(),
+                                           avail.bottom() - frame.height() + 1)))
+        self.move(frame.topLeft())
 
     def _kept_on_day(self, date_str):
         """How many pictures this day still held at its last backup, or None when
