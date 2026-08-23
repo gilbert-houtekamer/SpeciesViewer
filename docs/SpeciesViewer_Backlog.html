@@ -1434,7 +1434,24 @@ a look before it goes. Together they are roughly 900 lines outside the one-off a
     from before the GUI could drive the pipeline itself.</li>
   <li><code>one-off/</code> (7 files, 995 lines) and <code>batch-future/</code> (4 files, 689 lines)
     are honestly named and can stay; they are only listed so the scan's output is complete.</li>
+  <li><strong>Dead <em>values</em>, not just dead files.</strong>
+    <code>sv0ReadSDCard._build_buckets</code> returns
+    <code>cached_dates_for_new</code> — every capture date it just read from EXIF — and
+    <code>copy_card</code> assigns it and never uses it. Dates are therefore cached only for files
+    that get <em>copied</em>, so a day you deselect has its real capture date read, thrown away, and
+    re-read on every future scan of that card. It also keeps that day grouped in the scan by
+    <em>file</em> date rather than capture date, which for a JPG exported from a raw later is the
+    export date. That matters more than it sounds: making JPGs days, months or years after the shot
+    is the normal way of working here, so the wrong grouping is the common case, not the odd one.
+    Deleting the variable is a one-line fix; <em>using</em> it is the better one.</li>
 </ul>
+
+<p class="note"><strong>&ldquo;Dead&rdquo; here often means dormant.</strong> Several of the modules
+above are not abandoned so much as waiting — <code>engine/topics_scan.py</code> is the clear case,
+and it is expected to get a second life rather than a deletion (see the topics work in ch.12).
+So the verdict for this section is <em>verify, then decide</em>: delete what is genuinely
+superseded, and leave a short note on anything parked for a purpose, so the next scan does not keep
+re-proposing it.</p>
 
 <h3>The same job done twice</h3>
 
@@ -1818,13 +1835,31 @@ the answer is no.</p>
 
 <h3>The extension lists have drifted</h3>
 
-<p><span class="tag-bug">BUG</span> Five separate literal sets of RAW extensions exist in the
-tree and they do not agree. <code>sv0ReadSDCard</code> knows eight
-(<code>cr3 cr2 nef arw raf dng orf rw2</code>); <code>filepicture</code> and
-<code>topics_scan</code> know their own variants; <code>svu5SyncSidecars</code> knows only
-<code>orf, nef, nrw, heic</code>. A Canon or Sony file therefore ingests correctly and then
-falls out of the sidecar sync. One canonical table, imported everywhere, is a small change and a
+<p><span class="tag-bug">BUG</span> <strong>31 separate literal sets</strong> of RAW extensions
+exist in the tree and they do not agree — measured 2026-08-23, not estimated; an earlier count of
+five was badly short. They are spread across <code>sv0ReadSDCard</code>, <code>sv2ReadDirExif</code>
+(twice), <code>admin_rebuild</code> (twice), <code>exifcache</code>, <code>filepicture</code>
+(four times), <code>preview_provider</code> (four times), <code>trip_process</code> (three times),
+<code>rating_provider</code>, <code>rating_editor</code>, <code>sidecar_provider</code>,
+<code>topics_scan</code>, <code>trip_delete_scan</code>, <code>trip_thumbs</code>,
+<code>unfiled</code>, <code>work_backup</code>, <code>master_no_display</code>,
+<code>biota_source</code>, <code>image_viewer</code>, <code>map_view</code> and
+<code>trip_overview</code>. One canonical table, imported everywhere, is a small change and a
 precondition for testing any new brand honestly.</p>
+
+<p class="note"><strong>This is not hypothetical, and it is not only about new brands.</strong>
+On 2026-08-23 a test card of 3863 files reported &ldquo;2413 pictures&rdquo; and copied them.
+The missing 1450 included <strong>218 Nikon <code>.nrw</code></strong> raws — a Coolpix format
+already shot here, with pictures of it in the master — which were silently left behind because
+<code>sv0ReadSDCard.RAW_EXTENSIONS</code> did not list it. Nothing was said; the count that
+excluded them simply read as the whole card. Had the card been formatted afterwards, those
+pictures would have been gone. <em>Fixed for ingest</em> (<code>.nrw</code> added, plus a report
+of every file type an ingest is <em>not</em> taking, shown at scan time). <strong>30 of the 31
+lists still lack it</strong>, so an NRW now arrives and flows through the pipeline but is invisible
+to work-backup manifests, trip-delete accounting, thumbnails and best-picture selection. That
+partial state is deliberate — a 30-file sweep days before a trip was not a change to make
+unreviewed — but it is exactly the drift this section is about, and it should be the first thing
+done when the canonical table is built.</p>
 
 <h3>A test corpus, and a repeatable test</h3>
 
