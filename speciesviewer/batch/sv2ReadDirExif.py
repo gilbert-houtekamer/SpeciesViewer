@@ -30,6 +30,7 @@ if __name__ == "__main__":
 
 from engine import COLUMN_NAMES, SELECTED_FIELDS, SVException
 import engine.projectlib
+from engine.focus_distance import focus_distance
 from engine.handling import deriveUniquePictureName, relativize_path
 from engine.exif_writer import exiftool_write
 import engine.exceptions
@@ -243,6 +244,15 @@ def main(args, config):
                     selected_field == "-imagesize" and "Composite:ImageSize_1" in d
                 ):
                     row["ImageSize"] = d["Composite:ImageSize_1"]
+
+            # One focus distance, whatever the maker called it. Canon writes a range
+            # and Sony an exiftool composite, neither of which lands in the loop
+            # above because neither has a CSV column of its own — on purpose, since
+            # COLUMN_NAMES.values() is the CSV header and a new column is a schema
+            # change to every data_pictures.csv in the library.
+            merged_distance = focus_distance(d)
+            if merged_distance:
+                row["MakerNotes:FocusDistance"] = merged_distance
 
             # find unique identifier for all files based on a file click
             row["UniquePictureName"] = deriveUniquePictureName(

@@ -41,9 +41,18 @@ SELECTED_FIELDS = [
     "-aperture",
     "-ExposureProgram",
     "-SensitivityType",
+    # Focus distance, five makers, four different homes. Nikon and Olympus write a
+    # single value; Sony's is an exiftool composite; Canon writes a RANGE and no
+    # single value at all. engine/focus_distance.py merges whichever is present into
+    # the one MakerNotes:FocusDistance column the blog and the info panel read — the
+    # three below deliberately have no COLUMN_NAMES entry, so they are read but never
+    # become CSV columns of their own. (Panasonic records none: see that module.)
     "-Nikon:FocusDistance",
     "-Olympus:FocusDistance",
     "-SubjectDistance",
+    "-Canon:FocusDistanceUpper",
+    "-Canon:FocusDistanceLower",
+    "-Composite:FocusDistance2",
     "-dof",
     "-imagesize",
     "-GPSAltitude",

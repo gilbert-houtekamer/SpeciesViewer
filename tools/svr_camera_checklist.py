@@ -98,8 +98,10 @@ def check_focus(paths) -> dict:
 
     Measured by asking exiftool for the REAL request list the master EXIF scan uses
     (engine.selected_fields.SELECTED_FIELDS) and looking for the two column names the
-    blog and the info panels actually read, MakerNotes:FocusDistance and
-    EXIF:SubjectDistance. Not by checking the XMP sidecar, which is a different and
+    blog and the info panels actually read, via
+    engine.focus_distance.focus_distance() — the same merge the master scan applies,
+    so Canon's range and Sony's composite count as captured here exactly when they
+    count as captured in the CSV. Not by checking the XMP sidecar, which is a different and
     narrower path: the sidecar maps only Olympus, but the master scan requests
     -Nikon:FocusDistance too, and both come back under the MakerNotes group. Asking
     the sidecar would have reported a red mark for every Nikon while a D500's focus
@@ -117,10 +119,8 @@ def check_focus(paths) -> dict:
         rows = json.loads(proc.stdout or "[]")
     except json.JSONDecodeError:
         return {p: False for p in paths}
-    got = {}
-    for r in rows:
-        got[Path(r["SourceFile"])] = bool(r.get("MakerNotes:FocusDistance")
-                                          or r.get("EXIF:SubjectDistance"))
+    from engine.focus_distance import focus_distance
+    got = {Path(r["SourceFile"]): bool(focus_distance(r)) for r in rows}
     return {p: got.get(p, False) for p in paths}
 
 
@@ -331,28 +331,37 @@ def render(bodies: list, rows: list, v: dict) -> str:
     if focus_bad:
         add("## Known gaps")
         add("")
-        add(f"**Focus distance is captured for Nikon and Olympus, not for Canon, "
-            f"Sony or Panasonic** ({len(focus_bad)} of the {len(bodies)} rows here). "
-            "Every maker hides it somewhere different, and the master scan asks for "
-            "two of those places:")
+        makers = sorted({b["body"].split()[0].title() for b in focus_bad})
+        add(f"**Focus distance is missing on {', '.join(makers)}** "
+            f"({len(focus_bad)} of the {len(bodies)} rows here) — because those "
+            "files do not contain it, not because nothing asks. Every maker keeps "
+            "it somewhere different, and `engine/focus_distance.py` merges all four "
+            "shapes into the single value the website and the info panel read:")
         add("")
-        add("| Maker | Where the file keeps it | Asked for? |")
+        add("| Maker | Where the file keeps it | Read |")
         add("|---|---|:-:|")
-        add("| Nikon | `Nikon:FocusDistance` | ✅ |")
-        add("| Olympus / OM System | `Olympus:FocusDistance` | ✅ |")
-        add("| Canon | `Canon:FocusDistanceUpper` / `Lower` — a *range*, not a value | "
-            "❌ |")
-        add("| Sony | `Composite:FocusDistance2` — derived by exiftool | ❌ |")
-        add("| Panasonic | nothing (only `HyperfocalDistance`, a lens property) | — |")
+        add("| Nikon | `Nikon:FocusDistance` — a single value | ✅ |")
+        add("| Olympus / OM System | `Olympus:FocusDistance` — a single value | ✅ |")
+        add("| Sony | `Composite:FocusDistance2` — derived by exiftool | ✅ |")
+        add("| Canon | `FocusDistanceUpper` / `Lower` — a **range**, no single "
+            "value | ✅ averaged |")
+        add("| Panasonic | nothing. Only `HyperfocalDistance`, which is a property "
+            "of the lens and aperture, not of what the camera focused on | — |")
         add("")
-        add("Canon and Sony are therefore *addressable* — the number is in the file "
-            "under a name nothing asks for. Panasonic is not; it is genuinely absent. "
-            "The distinction matters, and a single red mark would have hidden it.")
+        add("Canon's two bounds are averaged. The true subject distance is not quite "
+            "the midpoint — depth of field is asymmetric about the plane of focus, so "
+            "it sits slightly nearer — but the bounds are centimetres apart at the "
+            "distances that matter, and a simple number that can be checked beats a "
+            "formula that cannot.")
         add("")
-        add("Note that the XMP sidecar written at ingest is narrower still: it maps "
-            "only `Olympus:FocusDistance`. That does not show up in this column, "
-            "because the website and the info panels read the master scan's fields, "
-            "not the sidecar.")
+        add("Panasonic is the one genuine absence: there is nothing in the file to "
+            "read. Reporting `HyperfocalDistance` instead would fill the field with "
+            "a number that answers a different question.")
+        add("")
+        add("> The XMP sidecar written at ingest is narrower than any of this — it "
+            "maps only `Olympus:FocusDistance`. That does not show up in this column, "
+            "because the website and the info panels read the master scan's fields "
+            "rather than the sidecar.")
         add("")
 
     notes = [b for b in bodies if b["notes"]]
