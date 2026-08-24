@@ -44,9 +44,11 @@ from db.master_db import MasterDB, MasterCheckpointWorker   # noqa: E402
 from db import master_mutate                                # noqa: E402
 from utils.config import _config                            # noqa: E402
 from utils.paths import to_fs_path                          # noqa: E402
+from utils.raw_extensions import RAW, bare                  # noqa: E402
 
 DEST = Path(r"D:\maybe look at\pictures without species, removed from master")
-_RAW_EXTS = {"nef", "orf", "cr2", "cr3", "arw", "rw2", "raf", "dng"}
+_RAW_EXTS = bare(RAW)  # canonical table; a UPN WITH a raw is kept, so this widens
+                       # what is protected from purge, never what is purged
 
 
 def _abs(fr: dict) -> Path | None:

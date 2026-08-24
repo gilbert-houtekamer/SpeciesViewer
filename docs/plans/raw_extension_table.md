@@ -326,3 +326,84 @@ substitution should never be able to narrow a delete scanner.
 
 **Live-confirmed 2026-08-23.** Trip Overview reads 377 for 2016-07-23 and 445 for
 2016-07-17. Phases 1, 2a, 2b, 3, 4 and 4b committed.
+
+---
+
+## Phase 5 — the delete/backup sets. DONE 2026-08-24, awaiting a live run.
+
+Done last and separately, and the dry-run justified that immediately.
+
+**The naive substitution would have been a regression.** `trip_delete_scan.PICTURE_EXTS`
+deliberately contains `.xmp` and `.dop` — a delete that takes the RAW must take its
+sidecars too. Substituting plain `PICTURE` would have REMOVED them, leaving orphaned
+sidecars after every delete. `SIDECAR = {".xmp", ".dop"}` was added to the table and the
+site is now `PICTURE | SIDECAR`. This is the second narrowing the delete phase caught
+(`.raw` was the first) and the reason it was never a mechanical sweep.
+
+**Dry-run, live trip (varen2016, 4769 files), before vs after:**
+
+```
+ADDS    .nrw .ori        REMOVES  (nothing)
+deletable_files     0 ->    0   (+0)     nothing new becomes deletable
+other_files       220 ->    2   (-218)   the NRW stop being "unrecognised"
+keep_files       4769 -> 4987   (+218)   they become PROTECTED
+keep_pictures    2560 -> 2560   (+0)
+```
+
+**`keep_pictures` not moving exposed a latent bug.** Those 218 pictures were already known
+to the scanner through their `.xmp`; only the RAW was invisible. Since the documented rule
+is *a file is deletable iff its UPN is in the master*, the old set could have deleted an
+NRW's `.xmp` while the `.NRW` sat in `other` — **sidecar deleted, RAW orphaned**. Only 5
+`.nrw` rows exist in the master (of 162,181) so exposure was tiny, and nothing in this trip
+is master-backed so it cannot be demonstrated here, but it follows from the documented
+behaviour. The widening closes it.
+
+`work_backup.SOURCE_EXTS` -> `RAW_OR_HEIC`. It is the "which pictures existed" manifest,
+never zipped; HEIC was added to it for exactly this reason ("a restore could not tell a
+culled one from a kept one"), and NRW had the same hole.
+
+`svr_purge_phantom_pictures._RAW_EXTS` -> `bare(RAW)`. Checked the direction first:
+`(keep if d["raws"] else purge)` — having a raw means KEEP, so widening moves candidates
+*out* of the purge list. `svr_thumbnail_damage_scan.RAW_EXTS` -> `bare(RAW)`.
+
+**A mistake worth recording:** inserting the import into the "first import block" broke
+both tools — they call `sys.path.insert` *after* their stdlib imports (and
+`svr_thumbnail_damage_scan` did it inside `main()`), so `utils` was not importable yet.
+Caught by running `--help` on each, which is why tools get smoke-tested and not just
+imported. `svr_thumbnail_damage_scan`'s path setup is now hoisted to module level, matching
+its sibling.
+
+**Audit: 0 offenders.** `compileall` clean, every module imports, both tools run.
+Five exemptions remain, each with a stated reason.
+
+### Still open
+
+* `trip_thumbs._RAW_EXT` has no reader anywhere — dead, migrated not deleted.
+* `.ori` remains believed, not proven: no `.ori` file exists here to test with.
+* ~~The dry-run could not exercise the *newly deletable* case~~ — **DONE.** Re-run across
+  all five trips in `naturedb/admin/master_commits.csv` (Extramadura, tanzania,
+  Costa Rica, Braakman, Kreta). Result: **`deletable_files` 0 -> 0 on every one**, adds
+  `.nrw`/`.ori`, removes nothing. The only movement in the whole corpus is a single file.
+* **`.ori` is now PROVEN, not believed.** `2025 Tanzania-NB142314.ORI` (22 MB, OM System,
+  Nov 2025) is the one real `.ori` on disk. Under the old set it was *unrecognised*; under
+  the new one it moves to **keep/protected** and does not become deletable. That is the
+  whole change across five merged trips: `other_files` 233 -> 232, `keep_files` 1565 -> 1566.
+
+### What the scan still calls "other" — checked, nothing missing
+
+```
+.mov 133  .mp4 1    video
+.ini 66   .pdf 11   .aae 11   .docx 3   .json 3   .psd 2   .txt 1
+.orf_xmp 1
+```
+
+No picture format is being missed. Two observations, neither acted on:
+
+* **Video is never deletable.** 134 `.mov`/`.mp4` sit in merged trips and this scan is
+  picture-only, so trip cleanup will never reclaim their space. Deliberate or not, it is
+  worth knowing before wondering where the disk went.
+* **`.aae` (11) are Apple edit sidecars.** They arguably belong with their HEIC the way
+  `.xmp`/`.dop` ride with a RAW — i.e. possibly `SIDECAR` material. Out of scope here;
+  needs a decision, not a guess.
+* `2025 Tanzania-NB142314.orf_xmp` is a malformed sidecar name (its `.orf` is gone, the
+  `.ORI` remains). One file, unrelated to this work.

@@ -90,6 +90,13 @@ DXO_RAW = RAW - {".nrw"}
 #: an auto "Screenshot" headline that must not be queued for translation.
 CAMERA_PHOTO = RAW_OR_HEIC | JPEG
 
+#: The metadata files that ride ALONGSIDE a picture. Not pictures themselves, but
+#: part of one: a delete that takes the RAW must take these too, or it leaves
+#: orphans behind. engine.trip_delete_scan is why this is named here -- its
+#: PICTURE_EXTS includes them deliberately, and a mechanical substitution of
+#: PICTURE would have silently dropped them (caught by dry-run, 2026-08-24).
+SIDECAR = frozenset({".xmp", ".dop"})
+
 #: Anything we can display.
 PICTURE = RAW_OR_HEIC | JPEG | OTHER_IMAGE
 

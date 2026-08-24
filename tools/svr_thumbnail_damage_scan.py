@@ -34,10 +34,14 @@ import sqlite3
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "speciesviewer"))
+
+from utils.raw_extensions import RAW, bare                  # noqa: E402
+
 # The exact sizes jpgResizeCopy writes — its signature.
 THUMB_SIZES = ("600x450", "450x600", "600x600")
 
-RAW_EXTS = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf"}
+RAW_EXTS = bare(RAW)  # canonical table — see utils/raw_extensions.py
 
 
 def main() -> int:
@@ -46,7 +50,6 @@ def main() -> int:
     ap.add_argument("--report-dir", default="thumbnail_damage_report")
     args = ap.parse_args()
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "speciesviewer"))
     from db.master_db import db_path
 
     con = sqlite3.connect(str(db_path()))

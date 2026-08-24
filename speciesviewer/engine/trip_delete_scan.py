@@ -16,22 +16,33 @@
 #   - No "keep unidentified" filter: if a file is backed up in the master it is
 #     deletable regardless of whether its picture carries a species.
 #
-# This module ONLY reports. It never removes anything.
+# WHAT REMOVES, AND WHAT DOES NOT. `scan_trip` and `write_detail_csv` only
+# report -- they walk the disk and decide, and touch nothing. `execute_scan_delete`
+# is the ONLY function here that removes files (os.remove on each `deletable`
+# entry, then prunes emptied directories). It is called from the Trips menu
+# (gui/menuspec.py) and the add-to-master flow (gui/add_to_master.py), always
+# after the user has seen the report.
+#
+# This header used to claim the module never removed anything. That was true when
+# the rethink was written and stopped being true when the applier landed -- a
+# wrong comment in the one file where a wrong comment is most expensive.
+# Corrected 2026-08-24.
 
 import os
 import csv
 import logging
 from utils.ini_io import read_ini
+from utils.raw_extensions import PICTURE, SIDECAR
 
 logger = logging.getLogger("speciesviewer")
 
 # File kinds we consider part of a picture (everything else - blog.ini, txt,
 # Thumbs.db, … - is reported as "other" and never proposed for deletion).
-PICTURE_EXTS = {
-    ".orf", ".nef", ".raw", ".cr2", ".cr3", ".arw", ".rw2", ".dng", ".raf",
-    ".jpg", ".jpeg", ".heic", ".heif", ".png", ".tif", ".tiff",
-    ".xmp", ".dop",
-}
+# Canonical table. SIDECAR is NOT decoration here: a delete that takes the RAW must
+# take its .xmp/.dop too, and substituting plain PICTURE would have left orphaned
+# sidecars behind. Caught by the dry-run, 2026-08-24 -- the reason this file was
+# migrated last and separately rather than in the mechanical sweep.
+PICTURE_EXTS = PICTURE | SIDECAR
 # Sub-directories inside a day folder that hold derived/aux data, not originals.
 SKIP_DIRS = {"facebook", "frozen", "metadata", ".preview_cache", ".trash",
              ".thumbnails", "thumbs"}

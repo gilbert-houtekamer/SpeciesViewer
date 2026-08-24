@@ -43,6 +43,7 @@ import shutil
 import zipfile
 from datetime import datetime
 from pathlib import Path
+from utils.raw_extensions import RAW_OR_HEIC
 
 logger = logging.getLogger("speciesviewer")
 
@@ -69,8 +70,7 @@ DERIVED_NAMES = {".sv_sidecar_cache.json"}
 # HEIC belongs here: a phone-shot day is a real day (638 of them in 2026 Kreta),
 # and leaving the format out meant its pictures were missing from the manifest,
 # so a restore could not tell a culled one from a kept one.
-SOURCE_EXTS = {".cr3", ".cr2", ".nef", ".arw", ".raf", ".dng", ".orf", ".rw2",
-               ".heic", ".heif"}
+SOURCE_EXTS = RAW_OR_HEIC  # canonical table — see utils/raw_extensions.py
 
 # Separators a prefix can be joined with. target_name writes " - " today, but
 # trips on disk use both "2026 Goeree - N8140001.ORF" and
