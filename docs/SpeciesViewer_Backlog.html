@@ -2154,6 +2154,43 @@ D500, D7500 and D90 added, six files, all sha256-verified. Every one is green in
 4288&times;2848 preview, so the special case still earns its place and the largest-embed rework
 above did not quietly break the oldest body in the library.</p>
 
+<h3>What the CC0 corpus could not see</h3>
+
+<p><span class="tag-bug">BUG</span> <span class="tag-open">OPEN</span> <strong>A photograph shot
+vertically on a Canon renders 90&deg; sideways.</strong> Canon and Nikon disagree about who applies
+the rotation. Nikon writes the embedded preview <em>already rotated</em> and marks the file
+<code>Orientation: normal</code>. Canon leaves the embed landscape &mdash; 8192&times;5464, with no
+orientation tag of its own &mdash; and puts <code>Orientation: Rotate 270 CW</code> in IFD0, which
+SpeciesViewer reads <em>nowhere</em>: every occurrence of the word in the tree is a Qt splitter.
+Confirmed visually on a real frame, not inferred from dimensions.</p>
+
+<p>It has never surfaced because the live library is Nikon and Olympus, both of which pre-rotate,
+and because a vertical frame is rare here &mdash; the master holds 162,181 files and almost none
+are portrait. It would surface the first time a Canon owner turned the camera on its side. The fix
+is narrow and must stay narrow: rotate only when the file says rotated <em>and</em> the embed is
+still landscape, so Canon is corrected and Nikon, which already did the work, is never
+double-rotated. It has to apply in one place for grid cards, the Camera JPEG tab, website thumbs
+and Create JPG &mdash; a sideways <code>.jpg</code> written beside the RAW would reach the
+website. Olympus, Sony and Panasonic are untested: no portrait sample exists for them.</p>
+
+<p class="note"><strong>The corpus had a systematic blind spot, and this is the lesson worth
+keeping.</strong> All 36 CC0 files are shot in landscape, and every Nikon Z 8 / Z 9 sample on
+pixls is a wide-angle landscape. A test set assembled to vary the <em>format</em> &mdash; body,
+compression mode, bit depth &mdash; held everything about the <em>photograph</em> constant without
+anyone deciding to. No amount of further pixls downloading would have found this; three real
+photographs found it in a minute. Sample sets need to vary what the picture <em>is</em>, not only
+how it is encoded.</p>
+
+<p class="note"><strong>Provenance is now mixed, and tracked.</strong> Three files were added by
+hand: two Nikon Z 8 frames shot with the AF-S 500mm f/5.6E PF through an FTZ adapter
+(photographylife.com) and one vertical Canon R5 Mark II frame (dpreview.com). The Nikons closed
+the focus-distance question &mdash; both report 3.98 m and 3.76 m, so the adapter path carries it
+and the lens was never the variable &mdash; and the Canon is a third <code>CanonCR3_001</code>
+data point, confirming the HDR-PQ blank card is a shooting mode and not the body. Unlike the pixls
+files these are review-gallery samples, <strong>not CC0 and not redistributable</strong>;
+<code>download.py</code> cannot reproduce them. Recorded in the corpus README, and
+<code>camera_support.md</code> no longer claims the whole set is CC0.</p>
+
 <p class="note"><strong>No single red mark means &ldquo;unsupported&rdquo;</strong>, and the
 document says so in its own words. Each column has an independent fallback: a body with a red
 Preview still culls correctly, just slower; a body with a red Decode still shows every picture at

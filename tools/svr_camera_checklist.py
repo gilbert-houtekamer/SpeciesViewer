@@ -384,10 +384,13 @@ def render(bodies: list, rows: list, v: dict) -> str:
     add("")
     add("---")
     add("")
-    add("*Regenerate with `python tools/svr_camera_checklist.py`. The sample corpus "
-        "is not in this repository (1.16 GB); it is fetched from "
-        "[raw.pixls.us](https://raw.pixls.us/) — all files CC0 — by the `download.py` "
-        "that lives beside it.*")
+    add("*Regenerate with `python tools/svr_camera_checklist.py`. The sample corpus is "
+        "not in this repository; most of it is fetched from "
+        "[raw.pixls.us](https://raw.pixls.us/) — CC0, sha256-verified — by the "
+        "`download.py` that lives beside it. A few files come from manufacturer "
+        "review galleries instead, for behaviour pixls cannot cover (it has no "
+        "vertically-shot frame at all); those are evaluation samples, are not "
+        "redistributable, and are listed in the corpus README.*")
     return "\n".join(L) + "\n"
 
 
