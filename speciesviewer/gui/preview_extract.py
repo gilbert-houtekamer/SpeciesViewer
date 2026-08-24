@@ -105,10 +105,23 @@ def _is_jpeg(data: bytes) -> bool:
 _announced_no_embed = set()
 
 
+def format_camera_label(make: str, model: str) -> str:
+    """"Canon EOS R5 Mark II" from a Make/Model pair — ONE definition of how a body
+    is named, shared with the per-body camera checklist so a body cannot appear under
+    two different names in the log and in the support table."""
+    make, model = (make or "").strip(), (model or "").strip()
+    # Canon writes Model "Canon EOS R5 Mark II" (make already in it); Sony writes
+    # make "SONY" and model "ILCE-1M2" (it is not), so only prefix when it adds
+    # something rather than stuttering.
+    if make and model and not model.upper().startswith(make.split()[0].upper()):
+        return f"{make} {model}"
+    return model or make
+
+
 def _camera_label(src: Path) -> str:
-    """"Canon EOS R5 Mark II" — the body, for a log line a person has to read.
-    Empty when exiftool cannot say. Only called on the (rare, already slow) decode
-    path, so the extra metadata read costs nothing that matters."""
+    """The body that took this file, for a log line a person has to read. Empty when
+    exiftool cannot say. Only called on the (rare, already slow) decode path, so the
+    extra metadata read costs nothing that matters."""
     with _lock:
         try:
             et = _get_helper()
@@ -121,13 +134,7 @@ def _camera_label(src: Path) -> str:
         name = k.split(":")[-1]
         if name in ("Make", "Model"):
             got[name] = str(v).strip()
-    make, model = got.get("Make", ""), got.get("Model", "")
-    # Canon writes Model "Canon EOS R5 Mark II" (make already in it); Sony writes
-    # make "SONY" and model "ILCE-1M2" (it is not), so only prefix when it adds
-    # something rather than stuttering.
-    if make and model and not model.upper().startswith(make.split()[0].upper()):
-        return f"{make} {model}"
-    return model or make
+    return format_camera_label(got.get("Make", ""), got.get("Model", ""))
 
 
 def embed_lengths(src: Path) -> dict:

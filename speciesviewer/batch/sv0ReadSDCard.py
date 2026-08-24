@@ -721,6 +721,23 @@ def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None):
 
 # ── XMP sidecars ─────────────────────────────────────────────────────────────
 
+def sidecar_opts(out_pattern: str = "%d%f.xmp") -> list:
+    """The exiftool options that create one XMP sidecar per RAW.
+
+    A function rather than an inline list so the per-body camera checklist
+    (tools/svr_camera_checklist.py) can run the REAL tag expressions against a
+    corpus file, writing to a scratch directory instead of beside the source.
+    A checklist that retyped these would drift from what ingest actually does and
+    would then certify a body on the strength of a copy — which is the same
+    mistake as a second hard-coded extension list.
+
+    ``out_pattern`` is exiftool's -o target; the default writes beside the RAW."""
+    return ["-tagsfromfile", "@", "-xmp:all<all",
+            "-XMP-exif:SubjectDistance<Olympus:FocusDistance#",
+            "-XMP-exif:DateTimeOriginal<${DateTimeOriginal}${OffsetTimeOriginal}",
+            "-o", out_pattern]
+
+
 def _write_sidecars(raw_paths, log, progress_cb=None) -> int:
     """Create one XMP sidecar per RAW that lacks one.
 
@@ -747,10 +764,7 @@ def _write_sidecars(raw_paths, log, progress_cb=None) -> int:
     #   - Degrades. On a pre-EXIF-2.31 camera with no offset tag the expression
     #     simply doesn't fire and the plain date written by -xmp:all<all stands.
     #     It can never leave a sidecar with no DateTimeOriginal at all.
-    opts = ["-tagsfromfile", "@", "-xmp:all<all",
-            "-XMP-exif:SubjectDistance<Olympus:FocusDistance#",
-            "-XMP-exif:DateTimeOriginal<${DateTimeOriginal}${OffsetTimeOriginal}",
-            "-o", "%d%f.xmp"]
+    opts = sidecar_opts()
 
     n = len(todo)
     workers = auto_worker_count(n)
