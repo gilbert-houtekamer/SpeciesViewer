@@ -1859,7 +1859,7 @@ incident below, that is a trap worth naming: classify by the on-disk extension, 
 ExifTool's file type. <code>NEFCompression</code> is the reliable discriminator — 3 is Lossless,
 13 is High Efficiency, 14 is High Efficiency*.</p>
 
-<h3>Two things the corpus found that were not on the list &mdash; one fixed</h3>
+<h3>Two things the corpus found that were not on the list &mdash; both fixed</h3>
 
 <p><span class="tag-bug">BUG</span> <strong>A Canon R5 Mark II can embed an HEVC preview instead
 of a JPEG, and we then render a blank card.</strong> Two of the four R5 II samples — the two shot
@@ -1918,6 +1918,33 @@ so it returns an empty dict and <code>extract_preview_bytes()</code> falls back 
 on Panasonic, where the G9 II puts a 1920&times;1440 preview in <code>JpgFromRaw</code> and its
 real 5776&times;4336 one in <code>JpgFromRaw2</code> — a tag not in the list at all. We cache the
 small one, below even the 3200 px normalisation target.</p>
+
+<p><span class="tag-shipped">SHIPPED 24 Aug</span> on branch <code>SpeciesViewer03</code>, and
+the general fix turned out to be smaller than the specific one deserved. Rather than adding
+<code>JpgFromRaw2</code> to the list — which would have fixed Panasonic and left the mechanism
+broken — <code>embed_lengths()</code> now asks exiftool <code>-preview:all</code> and reads the
+byte count out of its own &ldquo;(Binary data <em>N</em> bytes)&rdquo; line. That number is
+available on <em>every</em> format, so the hard-coded tag list stops being the thing that decides
+anything; it survives only as a safety net for a body whose embeds exiftool somehow does not
+report.</p>
+
+<p>Measured across the corpus, the selection changes for <strong>exactly one body</strong>: the
+G9 II now caches a 3200&times;2402 preview normalised down from its real 5776&times;4336 embed,
+where before it cached 1920&times;1440 verbatim. Canon, Nikon, Sony and Olympus all pick the same
+tag as before — Canon was picking correctly by <em>accident</em>, which is why nothing looked
+wrong while the mechanism underneath it was dead.</p>
+
+<p class="note"><strong>The two fixes needed each other.</strong> <code>-preview:all</code>
+reports embeds the old list never named — the Z 9 also offers <code>PreviewTIFF</code> and
+<code>ThumbnailTIFF</code>, which are not JPEGs. A week ago, discovering those would have handed
+Qt a TIFF and produced the blank card this chapter opened with. The magic-check shipped above
+skips them for free, so widening the search became safe at exactly the moment it became
+possible.</p>
+
+<p class="note"><strong>And it is the same lesson as the extension table, one layer down.</strong>
+A hand-typed list of tag names drifts away from what real cameras write in precisely the way a
+hand-typed list of file extensions did. Both were discovered the same way — a new body arrived and
+the list did not know about it. The answer both times was to derive the list rather than type it.</p>
 
 <h3>The extension lists have drifted &mdash; fixed</h3>
 
