@@ -2156,22 +2156,32 @@ above did not quietly break the oldest body in the library.</p>
 
 <h3>What the CC0 corpus could not see</h3>
 
-<p><span class="tag-bug">BUG</span> <span class="tag-open">OPEN</span> <strong>A photograph shot
-vertically on a Canon renders 90&deg; sideways.</strong> Canon and Nikon disagree about who applies
-the rotation. Nikon writes the embedded preview <em>already rotated</em> and marks the file
-<code>Orientation: normal</code>. Canon leaves the embed landscape &mdash; 8192&times;5464, with no
-orientation tag of its own &mdash; and puts <code>Orientation: Rotate 270 CW</code> in IFD0, which
-SpeciesViewer reads <em>nowhere</em>: every occurrence of the word in the tree is a Qt splitter.
-Confirmed visually on a real frame, not inferred from dimensions.</p>
+<p><span class="tag-bug">BUG</span> <strong>Every photograph shot vertically rendered 90&deg;
+sideways.</strong> Cameras do <em>not</em> rotate the pixels they embed. They write the preview the
+way the sensor read it &mdash; landscape &mdash; and record the turn in the file's
+<code>Orientation</code> tag, which SpeciesViewer read <em>nowhere</em>: every occurrence of the
+word in the tree was a Qt splitter. Confirmed visually on a real frame, not inferred from
+dimensions.</p>
 
-<p>It has never surfaced because the live library is Nikon and Olympus, both of which pre-rotate,
-and because a vertical frame is rare here &mdash; the master holds 162,181 files and almost none
-are portrait. It would surface the first time a Canon owner turned the camera on its side. The fix
-is narrow and must stay narrow: rotate only when the file says rotated <em>and</em> the embed is
-still landscape, so Canon is corrected and Nikon, which already did the work, is never
-double-rotated. It has to apply in one place for grid cards, the Camera JPEG tab, website thumbs
-and Create JPG &mdash; a sideways <code>.jpg</code> written beside the RAW would reach the
-website. Olympus, Sony and Panasonic are untested: no portrait sample exists for them.</p>
+<p class="note"><strong>The first diagnosis was wrong, and how it was wrong is the useful part.</strong>
+It said Nikon pre-rotates and only Canon was affected &mdash; a conclusion drawn from the single
+portrait file findable in the master, a D90 frame with a portrait embed and
+<code>Orientation: normal</code>. That file had evidently been rotated in post, so it described a
+converter's output rather than a camera's. Asked directly, a portrait <strong>D500</strong> carries
+<code>Orientation 6</code> with a landscape 5568&times;3712 <code>JpgFromRaw</code>, exactly like the
+R5 Mark II's <code>Orientation 8</code> with a landscape 8192&times;5464 one. One file that happened
+to be atypical produced a confident, brand-specific, and entirely false story. Two files asked on
+purpose corrected it in a minute.</p>
+
+<p><span class="tag-shipped">SHIPPED 24 Aug</span> <code>preview_extract._upright()</code>, applied
+in <code>extract_preview_bytes</code> so grid cards, the Camera JPEG tab, website thumbs, Create JPG
+and the restore dialog are all covered by one change &mdash; a sideways <code>.jpg</code> written
+beside a RAW would otherwise reach the website. The orientation rides along with the existing
+<code>-preview:all</code> call, so it costs no extra read. Two safety properties, both measured
+across the corpus: a landscape photograph is returned <strong>byte-for-byte untouched</strong> (41
+files, 3 rotated, 0 landscape re-encoded), and an embed that is <em>already</em> portrait while the
+tag still asks for a quarter turn is left alone, so a file some converter has rotated can never be
+turned twice.</p>
 
 <p class="note"><strong>The corpus had a systematic blind spot, and this is the lesson worth
 keeping.</strong> All 36 CC0 files are shot in landscape, and every Nikon Z 8 / Z 9 sample on
@@ -2181,9 +2191,16 @@ anyone deciding to. No amount of further pixls downloading would have found this
 photographs found it in a minute. Sample sets need to vary what the picture <em>is</em>, not only
 how it is encoded.</p>
 
-<p class="note"><strong>Provenance is now mixed, and tracked.</strong> Three files were added by
+<p class="note"><strong>The table now has a <em>Vertical</em> column</strong>, because this is the
+one property a sample library cannot supply and the only way the gap stays visible. It reads
+&ldquo;&mdash;&rdquo; &mdash; not tested, which is not the same as passing &mdash; for every body
+without a vertical frame, and the document lists those bodies by name so the gap can be closed one
+photograph at a time. Only the R5 Mark II and the D500 are green today.</p>
+
+<p class="note"><strong>Provenance is now mixed, and tracked.</strong> Five files were added by
 hand: two Nikon Z 8 frames shot with the AF-S 500mm f/5.6E PF through an FTZ adapter
-(photographylife.com) and one vertical Canon R5 Mark II frame (dpreview.com). The Nikons closed
+(photographylife.com), one vertical Canon R5 Mark II frame (dpreview.com), and two vertical D500
+frames from his own library. The Nikons closed
 the focus-distance question &mdash; both report 3.98 m and 3.76 m, so the adapter path carries it
 and the lens was never the variable &mdash; and the Canon is a third <code>CanonCR3_001</code>
 data point, confirming the HDR-PQ blank card is a shooting mode and not the body. Unlike the pixls
