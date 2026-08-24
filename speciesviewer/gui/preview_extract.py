@@ -83,6 +83,64 @@ _EMBED_TAGS = ("JpgFromRaw", "PreviewImage", "OtherImage", "ThumbnailImage")
 # exiftool prints every embedded image as "Tag : (Binary data N bytes, use -b ...)".
 # That line is the ONE place a byte count is available for every format.
 _BINARY_LINE = re.compile(r"^(\w+)\s*:\s*\(Binary data (\d+) bytes", re.M)
+_ORIENT_LINE = re.compile(r"^Orientation\s*:\s*(\d+)\s*$", re.M)
+
+# A camera turned on its side does NOT rotate the pixels it embeds. It writes the
+# preview the way the sensor read it — landscape — and records the turn in the file's
+# Orientation tag. Nikon, Canon and (presumably) the rest all behave this way: a
+# portrait D500 frame carries Orientation 6 with a landscape 5568x3712 JpgFromRaw,
+# and a portrait R5 II frame carries Orientation 8 with a landscape 8192x5464 one.
+# Nothing in SpeciesViewer read that tag, so every vertical photograph rendered 90
+# degrees sideways. It stayed invisible only because almost nothing in the library is
+# shot vertically.
+#
+# PIL's own table, the same one ImageOps.exif_transpose uses. Orientation 1 (and a
+# missing tag) means upright, so it is deliberately absent.
+def _transpose_for(orientation: int):
+    from PIL import Image
+    return {
+        2: Image.Transpose.FLIP_LEFT_RIGHT,
+        3: Image.Transpose.ROTATE_180,
+        4: Image.Transpose.FLIP_TOP_BOTTOM,
+        5: Image.Transpose.TRANSPOSE,
+        6: Image.Transpose.ROTATE_270,
+        7: Image.Transpose.TRANSVERSE,
+        8: Image.Transpose.ROTATE_90,
+    }.get(orientation)
+
+
+# Orientations that turn the frame a quarter turn, i.e. the ones that swap width and
+# height. Used to spot an embed on which the rotation has ALREADY been applied.
+_QUARTER_TURNS = (5, 6, 7, 8)
+
+
+def _upright(data: bytes, orientation: int) -> bytes | None:
+    """Rotate an embedded JPEG to how the photograph should be seen. Returns None when
+    there is nothing to do, so the caller keeps the original bytes untouched and the
+    common case — every landscape photograph — costs no decode and no re-encode.
+
+    Refuses to rotate an embed that is ALREADY portrait while the file asks for a
+    quarter turn. That combination means something has rotated the pixels before us (a
+    RAW converter re-writing the file, say), and applying the tag again would leave the
+    picture on its other side. Never double-rotate is the whole safety rule here."""
+    op = _transpose_for(orientation)
+    if op is None:
+        return None
+    from io import BytesIO
+    from PIL import Image
+    try:
+        with Image.open(BytesIO(data)) as im:
+            if orientation in _QUARTER_TURNS and im.height > im.width:
+                return None           # already upright; the tag is stale, not a job
+            out = BytesIO()
+            # 95, not the preview quality: this re-encode is not the place to lose
+            # detail, and whatever caches the result normalises it afterwards anyway.
+            im.transpose(op).convert("RGB").save(out, "JPEG", quality=95,
+                                                 optimize=True)
+            return out.getvalue()
+    except Exception as e:
+        logger.warning(f"Could not straighten a rotated preview: {e}")
+        return None
 
 # Not every embed is a JPEG. The Canon EOS R5 Mark II, shooting the HDR-PQ style CR3
 # (CompressorVersion CanonCR3_003), embeds its preview and thumbnail as an HEVC
@@ -156,21 +214,33 @@ def embed_lengths(src: Path) -> dict:
 
     ``-a`` keeps duplicates across groups; if a name appears twice we keep the larger,
     since that is the one worth extracting."""
+    return _embed_info(src)[0]
+
+
+def _embed_info(src: Path) -> tuple[dict, int]:
+    """({tag: byte length}, orientation) in ONE metadata call.
+
+    Orientation rides along with the embed listing because it costs nothing there and
+    the caller needs both to hand back an upright picture. ``-n`` makes it the number
+    (1..8) rather than "Rotate 270 CW"; 1 means upright, and a file that does not
+    report it at all is treated as upright too."""
     src_s = str(src)
     with _lock:
         try:
             et = _get_helper()
-            out = et.execute("-a", "-s", "-preview:all", src_s)
+            out = et.execute("-a", "-s", "-n", "-preview:all", "-Orientation", src_s)
         except Exception as e:
             logger.warning(f"Could not read embed lengths for {src.name}: {e}")
             _drop_helper()
-            return {}
+            return {}, 1
     lengths = {}
     for tag, n in _BINARY_LINE.findall(out or ""):
         n = int(n)
         if n > lengths.get(tag, 0):
             lengths[tag] = n
-    return {t: n for t, n in lengths.items() if n > 0}
+    m = _ORIENT_LINE.search(out or "")
+    return ({t: n for t, n in lengths.items() if n > 0},
+            int(m.group(1)) if m else 1)
 
 
 def extract_preview_bytes(src: Path) -> bytes | None:
@@ -185,8 +255,12 @@ def extract_preview_bytes(src: Path) -> bytes | None:
     guesswork entirely — see embed_lengths() for why it asks the file rather than a
     list of tag names, which is what let the same bug come back on CR3 and RW2.
 
-    What comes back is ALWAYS a JPEG: embeds that are not one are skipped and named
-    in the log, so "no embedded JPEG" is a stated fact rather than a silent blank.
+    What comes back is ALWAYS a JPEG, and always the right way up: embeds that are not
+    a JPEG are skipped and named in the log, so "no embedded JPEG" is a stated fact
+    rather than a silent blank, and a frame shot with the camera on its side is
+    rotated to how it should be seen (cameras embed the sensor's landscape view and
+    record the turn in a tag — see _upright). A landscape photograph, which is nearly
+    all of them, is returned byte-for-byte as the camera wrote it.
     Callers that want a picture regardless should use ``preview_jpeg_bytes``, which
     falls back to decoding the RAW.
 
@@ -194,7 +268,7 @@ def extract_preview_bytes(src: Path) -> bytes | None:
     worker threads at once (they queue on the lock rather than each spawning a
     process)."""
     src_s = str(src)
-    lengths = embed_lengths(src)
+    lengths, orientation = _embed_info(src)
     # Every discovered embed, biggest first — then any classic tag exiftool did not
     # report, so a body whose embeds -preview:all somehow misses can still not do
     # worse than the old list did. Those extra reads only happen if everything
@@ -202,6 +276,7 @@ def extract_preview_bytes(src: Path) -> bytes | None:
     order = sorted(lengths, key=lengths.get, reverse=True) + \
             [t for t in _EMBED_TAGS if t not in lengths]
     rejected = []
+    found = None
     with _lock:
         try:
             et = _get_helper()
@@ -216,11 +291,20 @@ def extract_preview_bytes(src: Path) -> bytes | None:
                     rejected.append(f"{tag} ({len(data)} bytes, "
                                     f"starts {data[:4].hex()})")
                     continue
-                return data
+                found = data
+                break
         except Exception as e:
             logger.warning(f"Preview extraction failed for {src.name}: {e}")
             _drop_helper()
             return None
+    if found is not None:
+        # Straighten OUTSIDE the lock — a rotate is a decode and a re-encode, and
+        # must not hold the one exiftool the rest of the grid is queueing on.
+        straightened = _upright(found, orientation)
+        if straightened is not None:
+            logger.debug(f"{src.name}: rotated the preview upright "
+                         f"(Orientation {orientation})")
+        return straightened if straightened is not None else found
     if rejected:
         # Which tag held what is diagnostic detail — it means nothing to a person
         # reading the log, and the caller says the useful sentence. Debug only.

@@ -124,6 +124,28 @@ def check_focus(paths) -> dict:
     return {p: got.get(p, False) for p in paths}
 
 
+def check_orientation(path: Path) -> tuple[bool, bool]:
+    """(was shot vertically, came back upright).
+
+    Cameras embed the sensor's landscape view and record the turn in a tag, so a
+    vertical frame is the one case where the preview must be transformed rather than
+    handed over. It is also the case no CC0 sample set covers: every file on
+    raw.pixls.us is shot in landscape, which is how a 90-degree rendering bug
+    survived unseen. Bodies with no vertical sample are reported as untested, not as
+    passing."""
+    from io import BytesIO
+    from PIL import Image
+    from gui.preview_extract import _embed_info, extract_preview_bytes
+    _, orientation = _embed_info(path)
+    if orientation not in (5, 6, 7, 8):
+        return False, True                 # not a vertical frame; nothing to get wrong
+    data = extract_preview_bytes(path)
+    if not data:
+        return True, False
+    with Image.open(BytesIO(data)) as im:
+        return True, im.height > im.width
+
+
 def check_preview(path: Path) -> dict:
     """Does a USABLE preview come out, and how big, and how long. 'Usable' is the
     point: an embed that is present but not a JPEG (the R5 II's HEVC) is a failure,
@@ -186,6 +208,7 @@ def measure(corpus: Path, scratch: Path) -> list:
         m = meta.get(p, {})
         written, has_date = sidecars.get(p, (False, False))
         prev, dec = check_preview(p), check_decode(p)
+        vertical, upright = check_orientation(p)
         rows.append({
             "file": p.name,
             "body": _label(m),
@@ -198,6 +221,7 @@ def measure(corpus: Path, scratch: Path) -> list:
             # describes the thumbnail and reads "JPEG (old-style)", which says
             # something confidently untrue about the raw data.
             "mode": str(m.get("NEFCompression") or m.get("CompressorVersion") or ""),
+            "vertical": vertical, "upright": upright,
             "date": bool(m.get("DateTimeOriginal")),
             "sidecar": written and has_date,
             "focus": focus.get(p, False),
@@ -230,8 +254,11 @@ def by_body(rows: list) -> list:
         def verdict(key):
             good = sum(1 for r in rs if r[key])
             return OK if good == len(rs) else BAD if good == 0 else PARTIAL
+        verticals = [r for r in rs if r["vertical"]]
         out.append({
             "body": body, "format": fmt, "files": len(rs),
+            "vertical": (OK if all(r["upright"] for r in verticals)
+                         else BAD) if verticals else None,
             "date": verdict("date"), "sidecar": verdict("sidecar"),
             "focus": verdict("focus"),
             "preview": verdict("preview_ok"), "decode": verdict("decode_ok"),
@@ -279,16 +306,17 @@ def render(bodies: list, rows: list, v: dict) -> str:
         f"across {len({b['body'] for b in bodies})} bodies.")
     add("")
     add("| Body | Format | Files | Date | Sidecar | Focus dist. | Preview | Decode | "
-        "Preview time | Decode time |")
-    add("|---|---|--:|:-:|:-:|:-:|:-:|:-:|--:|--:|")
+        "Vertical | Preview time | Decode time |")
+    add("|---|---|--:|:-:|:-:|:-:|:-:|:-:|:-:|--:|--:|")
     for b in bodies:
+        vert = _MARK[b["vertical"]] if b["vertical"] else "—"
         add(f"| {b['body']} | {b['format']} | {b['files']} | "
             f"{_MARK[b['date']]} | {_MARK[b['sidecar']]} | {_MARK[b['focus']]} | "
-            f"{_MARK[b['preview']]} | {_MARK[b['decode']]} | "
+            f"{_MARK[b['preview']]} | {_MARK[b['decode']]} | {vert} | "
             f"{b['preview_secs']:.2f} s | {b['decode_secs']:.2f} s |")
     add("")
     add("✅ every sample passed &nbsp;·&nbsp; ⚠️ some passed &nbsp;·&nbsp; "
-        "❌ none passed")
+        "❌ none passed &nbsp;·&nbsp; — not tested")
     add("")
     add("> **Body names are the camera's own.** These are the `Model` strings the "
         "cameras write into their files, not marketing names — so the Z 7II calls "
@@ -318,6 +346,16 @@ def render(bodies: list, rows: list, v: dict) -> str:
     add("| **Decode** | Does LibRaw decode the sensor data? | The 100% view and "
         "Create JPG fall back to the embedded JPEG. DxO PhotoLab is unaffected — it "
         "does its own decoding. |")
+    add("| **Vertical** | Does a frame shot with the camera on its side come back the "
+        "right way up? | The picture appears rotated 90°. |")
+    add("")
+    add("**Vertical needs its own column because it is the one thing a sample "
+        "library cannot supply.** Cameras embed the sensor's landscape view and "
+        "record the turn in a tag; the preview has to be transformed rather than "
+        "simply handed over. Every file on raw.pixls.us is shot in landscape, so a "
+        "90° rendering bug survived a 36-file corpus untouched and was found by the "
+        "first real vertical photograph put in front of it. A — here means no "
+        "vertical sample exists for that body, which is not the same as passing.")
     add("")
     add("**No single ❌ above means \"unsupported\".** Each column has a fallback, and "
         "the fallbacks are independent — which is the whole reason for measuring them "
@@ -362,6 +400,18 @@ def render(bodies: list, rows: list, v: dict) -> str:
             "maps only `Olympus:FocusDistance`. That does not show up in this column, "
             "because the website and the info panels read the master scan's fields "
             "rather than the sidecar.")
+        add("")
+
+    untested = [b for b in bodies if not b["vertical"]]
+    if untested:
+        add("## Still wanted: a vertical frame")
+        add("")
+        add("One photograph taken with the camera turned on its side, from each of "
+            "these, would close the last untested column. Any subject; the content "
+            "does not matter, only that the camera was rotated:")
+        add("")
+        for b in untested:
+            add(f"- **{b['body']}** ({b['format']})")
         add("")
 
     notes = [b for b in bodies if b["notes"]]
