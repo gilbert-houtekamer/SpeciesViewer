@@ -1859,7 +1859,7 @@ incident below, that is a trap worth naming: classify by the on-disk extension, 
 ExifTool's file type. <code>NEFCompression</code> is the reliable discriminator — 3 is Lossless,
 13 is High Efficiency, 14 is High Efficiency*.</p>
 
-<h3>Two things the corpus found that were not on the list</h3>
+<h3>Two things the corpus found that were not on the list &mdash; one fixed</h3>
 
 <p><span class="tag-bug">BUG</span> <strong>A Canon R5 Mark II can embed an HEVC preview instead
 of a JPEG, and we then render a blank card.</strong> Two of the four R5 II samples — the two shot
@@ -1872,6 +1872,42 @@ two R5 II files are ordinary JPEG-preview CR3s — so an R5 II owner would see s
 and some not, depending on how each was shot. The fix is small: check for <code>FF D8 FF</code>
 before accepting an embed, fall through to the next tag, and fall back to a LibRaw decode rather
 than to nothing.</p>
+
+<p><span class="tag-shipped">SHIPPED 24 Aug</span> on branch <code>SpeciesViewer03</code>, and
+the bug was worse than written above. <code>extract_preview_to()</code> did not merely fail: its
+&ldquo;downscale failed, cache it full size&rdquo; branch — written for a preview of the wrong
+<em>size</em> — swallowed one of the wrong <em>format</em>, wrote the 29 KB of HEVC into the
+preview cache under a <code>.jpg</code> name, and <strong>returned success</strong>. Since a
+cache entry that exists is never re-extracted, the blank card was <em>permanent</em>, not just
+first-render. Three independent pieces now: <code>extract_preview_bytes()</code> magic-checks
+every embed and is guaranteed to return a JPEG or nothing; <code>decode_preview_jpeg()</code>
+renders one from a <code>half_size</code> LibRaw decode, deliberately outside the exiftool lock
+so a multi-second decode cannot stall every other thumbnail in the grid; and
+<code>preview_jpeg_bytes()</code> combines the two for callers whose job is simply
+&ldquo;show this picture&rdquo;.</p>
+
+<p>Verified across all 30 corpus files: the two broken R5 II files now render at
+3200&times;2136 in about a second, cached like any other preview, and the other 28 are
+byte-identical to before. Existing poisoned cache entries are 29 KB, so the
+<em>Remove low-res</em> button in Manage Caches already clears them — no cache versioning was
+needed.</p>
+
+<p class="note"><strong>Two judgement calls worth recording.</strong> The large viewer's
+<em>Camera JPEG</em> tab deliberately keeps the strict function and keeps saying
+&ldquo;This RAW carries no embedded JPEG&rdquo;: quietly substituting our own render under a
+label that claims the camera's would be the exact lie that tab exists to prevent. And
+<em>Create JPG</em> decodes at <strong>full</strong> size rather than preview size — that file
+becomes the picture's usable image and can end up on the website, so a 3200 px render where
+every other body gets a full-size one would have been a silent downgrade in the one file that
+matters most.</p>
+
+<p>The log wording changed too, and the lesson generalises beyond this bug. The first attempt
+said <code>skipped non-JPEG ThumbnailImage (29112 bytes, starts 00000014)</code> — true, and
+useless to a person. Tag, byte and magic detail is now debug-only; the one line shown normally
+names the <em>body</em> rather than the file and is emitted once per camera and format, however
+many pictures pass: <em>&ldquo;Canon EOS R5 Mark II pictures in CR3 format have no embedded JPEG
+— reading the photo from the RAW itself instead, at 3200&times;2136.&rdquo;</em> Four lines
+became one, and a 400-file folder still logs one.</p>
 
 <p><span class="tag-bug">BUG</span> <strong>The largest-embedded-preview logic quietly stops
 working on CR3 and RW2.</strong> <code>embed_lengths()</code> asks exiftool for
