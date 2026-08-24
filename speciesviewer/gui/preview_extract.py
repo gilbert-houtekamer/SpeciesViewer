@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import atexit
 import logging
+import re
 import threading
 from pathlib import Path
 
@@ -70,7 +71,18 @@ def _drop_helper():
 # a tiny ~600px one on Nikons); OtherImage is where the old D90 puts its embed (it has
 # no PreviewImage or ThumbnailImage at all, which is why those files used to render
 # black); ThumbnailImage is the 160x120 last resort.
+#
+# This is now only a SAFETY NET. embed_lengths() asks exiftool what a file actually
+# carries instead of consulting this list, because a typed-out list of tag names drifts
+# away from what real cameras write in exactly the way a typed-out list of file
+# extensions did (see utils/raw_extensions.py). The G9 II is the proof: it puts a
+# 1920x1440 preview in JpgFromRaw and its real 5776x4336 one in JpgFromRaw2, a tag
+# that was never in this tuple, so we cached the small one and never knew.
 _EMBED_TAGS = ("JpgFromRaw", "PreviewImage", "OtherImage", "ThumbnailImage")
+
+# exiftool prints every embedded image as "Tag : (Binary data N bytes, use -b ...)".
+# That line is the ONE place a byte count is available for every format.
+_BINARY_LINE = re.compile(r"^(\w+)\s*:\s*\(Binary data (\d+) bytes", re.M)
 
 # Not every embed is a JPEG. The Canon EOS R5 Mark II, shooting the HDR-PQ style CR3
 # (CompressorVersion CanonCR3_003), embeds its preview and thumbnail as an HEVC
@@ -120,25 +132,38 @@ def _camera_label(src: Path) -> str:
 
 def embed_lengths(src: Path) -> dict:
     """{tag: byte length} for the embedded images this RAW actually carries. ONE
-    metadata call, no binary — cheap enough to ask before extracting."""
+    metadata call, no binary — cheap enough to ask before extracting.
+
+    Asks ``-preview:all`` and reads the byte count out of exiftool's own
+    "(Binary data N bytes)" line, rather than asking for ``<tag>Length`` on a list of
+    tags we typed out ourselves. Two reasons, both measured on the corpus:
+
+    * **CR3 and RW2 expose no ``*Length`` tags at all.** The old probe returned an
+      empty dict for both, so "largest wins" silently degraded to first-tag-wins —
+      the exact behaviour 3d0e490 was written to remove. It happened to pick right
+      on Canon and wrong on Panasonic.
+    * **It finds tags we never listed.** The G9 II's real 5776x4336 preview lives in
+      ``JpgFromRaw2``; the Z 9 also reports ``PreviewTIFF`` and ``ThumbnailTIFF``.
+      Discovering them costs nothing now that every candidate is magic-checked — the
+      TIFFs are simply skipped like the R5 II's HEVC.
+
+    ``-a`` keeps duplicates across groups; if a name appears twice we keep the larger,
+    since that is the one worth extracting."""
     src_s = str(src)
     with _lock:
         try:
             et = _get_helper()
-            res = et.get_tags([src_s], tags=[t + "Length" for t in _EMBED_TAGS])[0]
+            out = et.execute("-a", "-s", "-preview:all", src_s)
         except Exception as e:
             logger.warning(f"Could not read embed lengths for {src.name}: {e}")
             _drop_helper()
             return {}
-    out = {}
-    for k, v in res.items():
-        for t in _EMBED_TAGS:
-            if k.endswith(t + "Length"):
-                try:
-                    out[t] = int(v)
-                except (TypeError, ValueError):
-                    pass
-    return {t: n for t, n in out.items() if n > 0}
+    lengths = {}
+    for tag, n in _BINARY_LINE.findall(out or ""):
+        n = int(n)
+        if n > lengths.get(tag, 0):
+            lengths[tag] = n
+    return {t: n for t, n in lengths.items() if n > 0}
 
 
 def extract_preview_bytes(src: Path) -> bytes | None:
@@ -150,7 +175,8 @@ def extract_preview_bytes(src: Path) -> bytes | None:
     handed back the 70 KB one, and we cached a soft little preview while a far better
     image sat in the same file. Asking exiftool for the lengths first is one extra
     metadata call (no binary, through the same persistent process) and removes the
-    guesswork entirely.
+    guesswork entirely — see embed_lengths() for why it asks the file rather than a
+    list of tag names, which is what let the same bug come back on CR3 and RW2.
 
     What comes back is ALWAYS a JPEG: embeds that are not one are skipped and named
     in the log, so "no embedded JPEG" is a stated fact rather than a silent blank.
@@ -162,7 +188,11 @@ def extract_preview_bytes(src: Path) -> bytes | None:
     process)."""
     src_s = str(src)
     lengths = embed_lengths(src)
-    order = ([max(lengths, key=lengths.get)] if lengths else []) + \
+    # Every discovered embed, biggest first — then any classic tag exiftool did not
+    # report, so a body whose embeds -preview:all somehow misses can still not do
+    # worse than the old list did. Those extra reads only happen if everything
+    # discovered has already failed, which on the whole corpus is never.
+    order = sorted(lengths, key=lengths.get, reverse=True) + \
             [t for t in _EMBED_TAGS if t not in lengths]
     rejected = []
     with _lock:
