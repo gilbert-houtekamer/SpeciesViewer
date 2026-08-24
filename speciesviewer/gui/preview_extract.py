@@ -72,6 +72,51 @@ def _drop_helper():
 # black); ThumbnailImage is the 160x120 last resort.
 _EMBED_TAGS = ("JpgFromRaw", "PreviewImage", "OtherImage", "ThumbnailImage")
 
+# Not every embed is a JPEG. The Canon EOS R5 Mark II, shooting the HDR-PQ style CR3
+# (CompressorVersion CanonCR3_003), embeds its preview and thumbnail as an HEVC
+# bitstream instead — the bytes start with a `CISZ`/`hvcC` box, not FF D8 FF. We used
+# to hand those straight to Qt/PIL, which decode nothing, so the card came up blank
+# with no log line saying why; worse, extract_preview_to() then wrote the HEVC into
+# the preview cache under a .jpg name and reported success, so the blank card STUCK.
+# Checking three bytes costs nothing and keeps every consumer's assumption true: what
+# this module returns is always a JPEG.
+_JPEG_MAGIC = b"\xff\xd8\xff"
+
+
+def _is_jpeg(data: bytes) -> bool:
+    return bool(data) and data[:3] == _JPEG_MAGIC
+
+
+# A body that embeds no JPEG embeds none for the whole shoot, so saying it per
+# picture would put 400 identical lines in the log for one folder. Say it ONCE per
+# camera+format; the per-file detail is still there under debug logging.
+_announced_no_embed = set()
+
+
+def _camera_label(src: Path) -> str:
+    """"Canon EOS R5 Mark II" — the body, for a log line a person has to read.
+    Empty when exiftool cannot say. Only called on the (rare, already slow) decode
+    path, so the extra metadata read costs nothing that matters."""
+    with _lock:
+        try:
+            et = _get_helper()
+            res = et.get_tags([str(src)], tags=["Make", "Model"])[0]
+        except Exception:
+            _drop_helper()
+            return ""
+    got = {}
+    for k, v in res.items():
+        name = k.split(":")[-1]
+        if name in ("Make", "Model"):
+            got[name] = str(v).strip()
+    make, model = got.get("Make", ""), got.get("Model", "")
+    # Canon writes Model "Canon EOS R5 Mark II" (make already in it); Sony writes
+    # make "SONY" and model "ILCE-1M2" (it is not), so only prefix when it adds
+    # something rather than stuttering.
+    if make and model and not model.upper().startswith(make.split()[0].upper()):
+        return f"{make} {model}"
+    return model or make
+
 
 def embed_lengths(src: Path) -> dict:
     """{tag: byte length} for the embedded images this RAW actually carries. ONE
@@ -107,6 +152,11 @@ def extract_preview_bytes(src: Path) -> bytes | None:
     metadata call (no binary, through the same persistent process) and removes the
     guesswork entirely.
 
+    What comes back is ALWAYS a JPEG: embeds that are not one are skipped and named
+    in the log, so "no embedded JPEG" is a stated fact rather than a silent blank.
+    Callers that want a picture regardless should use ``preview_jpeg_bytes``, which
+    falls back to decoding the RAW.
+
     Serialised through one persistent exiftool, so it is safe to call from many
     worker threads at once (they queue on the lock rather than each spawning a
     process)."""
@@ -114,18 +164,31 @@ def extract_preview_bytes(src: Path) -> bytes | None:
     lengths = embed_lengths(src)
     order = ([max(lengths, key=lengths.get)] if lengths else []) + \
             [t for t in _EMBED_TAGS if t not in lengths]
+    rejected = []
     with _lock:
         try:
             et = _get_helper()
             for tag in order:
                 data = et.execute("-b", f"-{tag}", src_s, raw_bytes=True)
-                if data:
-                    return data
-            return None
+                if not data:
+                    continue
+                if not _is_jpeg(data):
+                    # Not a JPEG (the R5 II's HEVC embeds) — keep looking. A body
+                    # can carry both: 7883.CR3 has JPEGs in every slot, 7881.CR3
+                    # only HEVC in ThumbnailImage.
+                    rejected.append(f"{tag} ({len(data)} bytes, "
+                                    f"starts {data[:4].hex()})")
+                    continue
+                return data
         except Exception as e:
             logger.warning(f"Preview extraction failed for {src.name}: {e}")
             _drop_helper()
             return None
+    if rejected:
+        # Which tag held what is diagnostic detail — it means nothing to a person
+        # reading the log, and the caller says the useful sentence. Debug only.
+        logger.debug(f"{src.name}: skipped non-JPEG embed(s) {', '.join(rejected)}")
+    return None
 
 
 # One reference size for every camera body. The embedded JPEG we cache varies
@@ -196,29 +259,113 @@ def normalise_jpeg_bytes(data: bytes, max_edge: int, quality: int) -> bytes | No
         return out.getvalue()
 
 
+def decode_preview_jpeg(src: Path, max_edge: int, quality: int) -> bytes | None:
+    """Render a JPEG by DECODING the RAW, for the files that carry no embedded JPEG
+    at all. Returns None if LibRaw cannot read the file. ``max_edge = 0`` means full
+    size — what Create JPG wants, since that file can end up on the website.
+
+    This is the slow lane and deliberately so — seconds, not the ~30 ms of an embed
+    read — but it only runs for a RAW with nothing to extract, and the caller caches
+    the result, so it is paid once per file. The alternative is a blank card.
+
+    ``half_size`` skips demosaicing (one RGB pixel per Bayer quad), which is several
+    times faster and still lands well above ``max_edge`` on any modern body: the
+    R5 II's 8192px sensor halves to 4096 against a 3200px target. It is only used
+    when it actually stays above the target, so a small or heavily cropped sensor
+    still gets a full decode rather than a preview softer than the OM-1 reference.
+
+    Deliberately NOT routed through gui/fullres.py: that decodes at the user's
+    Image-Processing settings (80% of the full sensor, optional denoise) into the
+    full-res cache. This wants one small predictable JPEG in the preview cache.
+
+    Runs OUTSIDE ``_lock`` — a multi-second decode must not hold the one exiftool
+    that every other thumbnail in the grid is queueing on."""
+    try:
+        import rawpy
+        from io import BytesIO
+        from PIL import Image
+        with rawpy.imread(str(src)) as raw:
+            # sizes.width/height, not raw_width/raw_height: the visible image is
+            # what postprocess returns, and the sensor's masked margins are not
+            # pixels we would ever show.
+            half = max_edge > 0 and max(raw.sizes.width,
+                                        raw.sizes.height) >= max_edge * 2
+            rgb = raw.postprocess(use_camera_wb=True, half_size=half,
+                                  output_color=rawpy.ColorSpace.sRGB)
+        im = Image.fromarray(rgb)
+        if max_edge > 0:
+            im.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
+        out = BytesIO()
+        im.save(out, "JPEG", quality=quality, optimize=True)
+        logger.debug(f"{src.name}: decoded the RAW for a preview "
+                     f"({im.size[0]}x{im.size[1]}, half_size={half})")
+        key = (_camera_label(src), src.suffix.upper().lstrip("."))
+        if key not in _announced_no_embed:
+            _announced_no_embed.add(key)
+            body = f"{key[0]} pictures" if key[0] else "Pictures"
+            logger.info(f"{body} in {key[1]} format have no embedded JPEG — "
+                        f"reading the photo from the RAW itself instead, "
+                        f"at {im.size[0]}x{im.size[1]}.")
+        return out.getvalue()
+    except Exception as e:
+        # Nikon High Efficiency NEF lands here (LibRaw cannot decode TicoRAW), but
+        # those files all carry a full-size embedded JPEG, so they never get this far.
+        logger.warning(f"Could not decode {src.name} for a preview: {e}")
+        return None
+
+
+def preview_jpeg_bytes(src: Path) -> bytes | None:
+    """A JPEG for this RAW whatever it takes: the embedded one if there is one,
+    otherwise a decode. None only when the file yields neither.
+
+    Use this where the job is "show me this picture". Use ``extract_preview_bytes``
+    where the job is specifically "the CAMERA's own JPEG" — the large viewer's
+    Camera JPEG tab, which should keep saying the RAW has none rather than quietly
+    substituting our render under a label that claims otherwise."""
+    data = extract_preview_bytes(src)
+    if data:
+        return data
+    max_edge, quality = preview_limits()
+    # max_edge 0 means "cache the embed verbatim", which cannot apply when there is
+    # no embed — fall back to the reference size rather than decoding full sensor.
+    return decode_preview_jpeg(src, max_edge or PREVIEW_MAX_LONG_EDGE, quality)
+
+
 def extract_preview_to(src: Path, cache_path: Path) -> bool:
     """Extract ``src``'s embedded preview, normalise it to one size, and write it to
     ``cache_path``. Returns True on success; nothing is written (so a later call can
-    retry) when the file has no extractable preview.
+    retry) when the file yields no preview at all.
+
+    A RAW with no embedded JPEG falls back to a decode rather than to a blank card.
+    That is the slow lane, but it lands in the cache like any other preview, so a
+    body that needs it is slow once per picture rather than broken forever.
 
     The resize lives HERE and not in extract_preview_bytes, for two reasons:
     engine/trip_thumbs.py calls the bytes function and does its own downscale to
     1000px (it would resize twice), and gui/rating_provider.py writes into the same
     preview cache through THIS function — so putting it here covers both writers and
     nothing can slip verbatim bytes into the cache behind our back."""
-    data = extract_preview_bytes(src)
-    if not data:
-        return False
     max_edge, quality = preview_limits()
-    try:
-        smaller = normalise_jpeg_bytes(data, max_edge, quality)
-        if smaller is not None:
-            data = smaller
-    except Exception as e:
-        # A preview of the wrong SIZE beats a blank card: fall back to the original
-        # bytes rather than failing the extraction outright.
-        logger.warning(f"Preview downscale failed for {src.name} "
-                       f"(caching it full size): {e}")
+    data = extract_preview_bytes(src)
+    if data:
+        try:
+            smaller = normalise_jpeg_bytes(data, max_edge, quality)
+            if smaller is not None:
+                data = smaller
+        except Exception as e:
+            # A preview of the wrong SIZE beats a blank card: fall back to the
+            # original bytes rather than failing the extraction outright. Safe only
+            # because extract_preview_bytes guarantees a JPEG — this branch used to
+            # be the route by which the R5 II's HEVC got written into the cache
+            # under a .jpg name, turning one blank card into a permanent one.
+            logger.warning(f"Preview downscale failed for {src.name} "
+                           f"(caching it full size): {e}")
+    else:
+        # Nothing embedded to extract (the R5 II's HDR-PQ CR3). Decode the RAW so
+        # the card shows the picture; cached, so the cost is paid once.
+        data = decode_preview_jpeg(src, max_edge or PREVIEW_MAX_LONG_EDGE, quality)
+        if not data:
+            return False
     try:
         cache_path.write_bytes(data)
         return True

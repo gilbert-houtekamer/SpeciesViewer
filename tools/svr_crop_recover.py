@@ -190,7 +190,7 @@ def main() -> int:
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "speciesviewer"))
     from db.master_db import db_path
-    from gui.preview_extract import extract_preview_bytes
+    from gui.preview_extract import preview_jpeg_bytes
 
     con = sqlite3.connect(str(db_path()))
     con.row_factory = sqlite3.Row
@@ -218,7 +218,7 @@ def main() -> int:
             break
         examined += 1
         try:
-            data = extract_preview_bytes(Path(c["raw"]))
+            data = preview_jpeg_bytes(Path(c["raw"]))
             if not data:
                 continue
             embed = Image.open(BytesIO(data))

@@ -202,8 +202,10 @@ class RestoreTrashDialog(QDialog):
         if path.suffix.lower() in _JPG_EXTS:
             pm = QPixmap(str(path))
             return pm if not pm.isNull() else None
-        from gui.preview_extract import extract_preview_bytes
-        data = extract_preview_bytes(path)
+        # Embed-or-decode: this thumbnail is how you decide whether to restore a
+        # file, so it has to show the picture even when the RAW embeds no JPEG.
+        from gui.preview_extract import preview_jpeg_bytes
+        data = preview_jpeg_bytes(path)
         if not data:
             return None
         pm = QPixmap()

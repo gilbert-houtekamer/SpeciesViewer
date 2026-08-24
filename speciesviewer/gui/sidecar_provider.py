@@ -1025,10 +1025,17 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         existing = self.jpg_path(key)
         if existing is not None and key not in self._created_blog_jpgs:
             return {"status": "skipped", "jpg": str(existing)}
-        from gui.preview_extract import extract_preview_bytes
+        from gui.preview_extract import extract_preview_bytes, decode_preview_jpeg
         data = extract_preview_bytes(raw)   # LARGEST embed — full-size on Nikon, 3200px on OM-1
         if not data:
-            return {"status": "failed", "reason": "no embedded preview"}
+            # No embedded JPEG at all (the R5 II's HDR-PQ CR3). Decode the RAW —
+            # at FULL size (max_edge 0), not the 3200px preview size: this JPG
+            # becomes the picture's usable image and can end up on the website, so
+            # it has to match what Create JPG gives every other body.
+            data = decode_preview_jpeg(raw, 0, 95)
+        if not data:
+            return {"status": "failed", "reason": "no preview, and the RAW "
+                                                  "could not be decoded"}
         try:
             from io import BytesIO
             from PIL import Image

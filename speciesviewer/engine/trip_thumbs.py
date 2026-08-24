@@ -68,9 +68,12 @@ def _make_thumb(src, dest, max_px=1000):
         if ext in _JPG_EXT or ext == ".png":
             im = Image.open(src)
         else:
-            from gui.preview_extract import extract_preview_bytes
+            # Embed-or-decode: a website thumbnail is "show this picture", so a
+            # body that embeds no JPEG (R5 II HDR-PQ CR3) must not leave a hole in
+            # the trip console.
+            from gui.preview_extract import preview_jpeg_bytes
             from pathlib import Path
-            data = extract_preview_bytes(Path(src))
+            data = preview_jpeg_bytes(Path(src))
             if not data:
                 return False
             im = Image.open(io.BytesIO(data))
