@@ -94,6 +94,23 @@ PICTURE_EXTENSIONS = RAW_EXTENSIONS | {
 }
 
 
+# Directories the FILESYSTEM writes on a card, not the camera. Windows puts
+# "System Volume Information" (IndexerVolumeGuid, WPSettings.dat) on every card
+# it ever mounts; macOS adds .Spotlight-V100 / .fseventsd / .Trashes. Nothing in
+# them is ever a picture, and counting their contents made a freshly formatted
+# 112-picture card report "NOT copied: 1 (no extension), 1 .dat" — a warning
+# that invites the reader to add .dat to the RAW table. They are PRUNED from the
+# walk rather than filtered per file, so the walk never descends into them at
+# all (on Windows that descent is also the one that tends to raise on
+# permissions). Their own dot-names would not have been enough: the junk sits
+# one level DOWN, in files whose names are perfectly ordinary.
+HOUSEKEEPING_DIRS = {
+    "system volume information", "$recycle.bin", "recycler",     # Windows
+    ".spotlight-v100", ".fseventsd", ".trashes",                 # macOS
+    ".temporaryitems", ".documentrevisions-v100",
+}
+
+
 def scan_source(source):
     """ONE walk of the source → (pictures, ignored) where `ignored` is
     {extension: count} for files this ingest will NOT take.
@@ -111,19 +128,20 @@ def scan_source(source):
     pictures, and are not worth reporting either.
     """
     pictures, ignored = [], {}
-    for p in source.rglob("*"):
-        try:
-            if not p.is_file():
+    # os.walk, not rglob, for the one thing rglob cannot do: prune a directory
+    # before descending into it. It also hands back files and directories
+    # already separated, so the per-file is_file() stat is gone — over USB, on a
+    # 2000-file card, that stat is not free.
+    for dirpath, dirnames, filenames in os.walk(source):
+        dirnames[:] = [d for d in dirnames if d.lower() not in HOUSEKEEPING_DIRS]
+        for name in filenames:
+            if name.startswith(".") or name == _CardCache._FILENAME:
                 continue
-        except OSError:                    # unreadable entry — not something to copy
-            continue
-        if p.name.startswith(".") or p.name == _CardCache._FILENAME:
-            continue
-        ext = p.suffix.lower()
-        if ext in PICTURE_EXTENSIONS:
-            pictures.append(p)
-        elif ext not in SIDECAR_SUFFIXES:
-            ignored[ext or "(no extension)"] = ignored.get(ext or "(no extension)", 0) + 1
+            ext = Path(name).suffix.lower()
+            if ext in PICTURE_EXTENSIONS:
+                pictures.append(Path(dirpath) / name)
+            elif ext not in SIDECAR_SUFFIXES:
+                ignored[ext or "(no extension)"] = ignored.get(ext or "(no extension)", 0) + 1
     return sorted(pictures), ignored
 
 
