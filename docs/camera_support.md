@@ -6,22 +6,22 @@ Which cameras SpeciesViewer has actually been tested against, and what works on 
 
 | Body | Format | Files | Date | Sidecar | Focus dist. | Preview | Decode | Preview time | Decode time |
 |---|---|--:|:-:|:-:|:-:|:-:|:-:|--:|--:|
-| Canon EOS R5 | CR3 | 2 | ✅ | ✅ | ❌ | ✅ | ✅ | 0.21 s | 1.04 s |
-| Canon EOS R5m2 | CR3 | 4 | ✅ | ✅ | ❌ | ⚠️ | ✅ | 0.08 s | 0.80 s |
-| Canon EOS R7 | CR3 | 2 | ✅ | ✅ | ❌ | ✅ | ✅ | 0.06 s | 0.82 s |
-| NIKON Z 50 | NEF | 2 | ✅ | ✅ | ❌ | ✅ | ✅ | 0.05 s | 0.81 s |
-| NIKON Z 7_2 | NEF | 2 | ✅ | ✅ | ❌ | ✅ | ✅ | 0.05 s | 1.19 s |
-| NIKON Z 8 | NEF | 3 | ✅ | ✅ | ❌ | ✅ | ⚠️ | 0.05 s | 0.49 s |
-| NIKON Z 9 | NEF | 3 | ✅ | ✅ | ❌ | ✅ | ⚠️ | 0.05 s | 0.48 s |
-| NIKON Z50_2 | NEF | 3 | ✅ | ✅ | ❌ | ✅ | ⚠️ | 0.06 s | 0.43 s |
-| OM-1 | ORF | 1 | ✅ | ✅ | ✅ | ✅ | ✅ | 0.04 s | 0.91 s |
-| OM-1MarkII | ORF | 1 | ✅ | ✅ | ✅ | ✅ | ✅ | 0.03 s | 0.89 s |
-| OM-1MarkII | ORI | 1 | ✅ | ✅ | ✅ | ✅ | ✅ | 0.03 s | 0.91 s |
-| Panasonic DC-G9M2 | RW2 | 1 | ✅ | ✅ | ❌ | ✅ | ✅ | 0.06 s | 0.85 s |
-| SONY ILCE-1 | ARW | 1 | ✅ | ✅ | ❌ | ✅ | ✅ | 0.10 s | 1.15 s |
-| SONY ILCE-1M2 | ARW | 2 | ✅ | ✅ | ❌ | ✅ | ✅ | 0.06 s | 1.39 s |
-| SONY ILCE-7RM5 | ARW | 1 | ✅ | ✅ | ❌ | ✅ | ✅ | 0.07 s | 1.32 s |
-| SONY ILCE-9M3 | ARW | 1 | ✅ | ✅ | ❌ | ✅ | ✅ | 0.06 s | 0.69 s |
+| Canon EOS R5 | CR3 | 2 | ✅ | ✅ | ❌ | ✅ | ✅ | 0.20 s | 0.96 s |
+| Canon EOS R5m2 | CR3 | 4 | ✅ | ✅ | ❌ | ⚠️ | ✅ | 0.07 s | 0.72 s |
+| Canon EOS R7 | CR3 | 2 | ✅ | ✅ | ❌ | ✅ | ✅ | 0.06 s | 0.74 s |
+| NIKON Z 50 | NEF | 2 | ✅ | ✅ | ✅ | ✅ | ✅ | 0.04 s | 0.73 s |
+| NIKON Z 7_2 | NEF | 2 | ✅ | ✅ | ✅ | ✅ | ✅ | 0.04 s | 1.09 s |
+| NIKON Z 8 | NEF | 3 | ✅ | ✅ | ✅ | ✅ | ⚠️ | 0.05 s | 0.45 s |
+| NIKON Z 9 | NEF | 3 | ✅ | ✅ | ✅ | ✅ | ⚠️ | 0.05 s | 0.45 s |
+| NIKON Z50_2 | NEF | 3 | ✅ | ✅ | ✅ | ✅ | ⚠️ | 0.05 s | 0.40 s |
+| OM-1 | ORF | 1 | ✅ | ✅ | ✅ | ✅ | ✅ | 0.03 s | 0.85 s |
+| OM-1MarkII | ORF | 1 | ✅ | ✅ | ✅ | ✅ | ✅ | 0.03 s | 0.83 s |
+| OM-1MarkII | ORI | 1 | ✅ | ✅ | ✅ | ✅ | ✅ | 0.02 s | 0.83 s |
+| Panasonic DC-G9M2 | RW2 | 1 | ✅ | ✅ | ❌ | ✅ | ✅ | 0.05 s | 0.75 s |
+| SONY ILCE-1 | ARW | 1 | ✅ | ✅ | ❌ | ✅ | ✅ | 0.10 s | 1.03 s |
+| SONY ILCE-1M2 | ARW | 2 | ✅ | ✅ | ❌ | ✅ | ✅ | 0.05 s | 1.26 s |
+| SONY ILCE-7RM5 | ARW | 1 | ✅ | ✅ | ❌ | ✅ | ✅ | 0.07 s | 1.22 s |
+| SONY ILCE-9M3 | ARW | 1 | ✅ | ✅ | ❌ | ✅ | ✅ | 0.05 s | 0.60 s |
 
 ✅ every sample passed &nbsp;·&nbsp; ⚠️ some passed &nbsp;·&nbsp; ❌ none passed
 
@@ -35,7 +35,7 @@ A RAW passes through five independent mechanisms, and a body can fail at one whi
 |---|---|---|
 | **Date** | Does `DateTimeOriginal` read? | Nothing works. Pictures are filed by day. |
 | **Sidecar** | Does an XMP sidecar get written, carrying the date? | Ratings, colour labels and GPS have nowhere to live. |
-| **Focus dist.** | Does that sidecar carry `SubjectDistance`? | A single informational EXIF field is missing. Nothing in the pipeline depends on it. |
+| **Focus dist.** | Does a focus distance reach the picture's fields? | The distance line is blank on the website and in the info panel. Nothing else depends on it. |
 | **Preview** | Does a *usable* preview come out — a real JPEG, not merely some embed? | Culling falls back to a full decode: still correct, roughly 30× slower. |
 | **Decode** | Does LibRaw decode the sensor data? | The 100% view and Create JPG fall back to the embedded JPEG. DxO PhotoLab is unaffected — it does its own decoding. |
 
@@ -43,7 +43,19 @@ A RAW passes through five independent mechanisms, and a body can fail at one whi
 
 ## Known gaps
 
-**Focus distance is Olympus-only** (13 of the 16 rows here are missing it). Sidecar creation does a blanket `-xmp:all<all` copy plus exactly one hand-mapped field, `-XMP-exif:SubjectDistance<Olympus:FocusDistance#`. Every other maker keeps focus distance under its own tag, so the expression does not fire. Nothing in the pipeline reads the field today — it is recorded here because a table that quietly omitted it would be the kind of claim this document exists to avoid.
+**Focus distance is captured for Nikon and Olympus, not for Canon, Sony or Panasonic** (8 of the 16 rows here). Every maker hides it somewhere different, and the master scan asks for two of those places:
+
+| Maker | Where the file keeps it | Asked for? |
+|---|---|:-:|
+| Nikon | `Nikon:FocusDistance` | ✅ |
+| Olympus / OM System | `Olympus:FocusDistance` | ✅ |
+| Canon | `Canon:FocusDistanceUpper` / `Lower` — a *range*, not a value | ❌ |
+| Sony | `Composite:FocusDistance2` — derived by exiftool | ❌ |
+| Panasonic | nothing (only `HyperfocalDistance`, a lens property) | — |
+
+Canon and Sony are therefore *addressable* — the number is in the file under a name nothing asks for. Panasonic is not; it is genuinely absent. The distinction matters, and a single red mark would have hidden it.
+
+Note that the XMP sidecar written at ingest is narrower still: it maps only `Olympus:FocusDistance`. That does not show up in this column, because the website and the info panels read the master scan's fields, not the sidecar.
 
 ## Failures in detail
 

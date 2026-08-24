@@ -12,8 +12,9 @@ can fail at one and work at the other four:
 
   date      DateTimeOriginal reads (ingest cannot file a picture without it)
   sidecar   an XMP sidecar gets written, carrying the date forward
-  focus     that sidecar carries SubjectDistance — Olympus-only today, by design
-            of one hand-mapped exiftool expression; see sv0ReadSDCard.sidecar_opts
+  focus     a focus distance reaches the pipeline, measured through the master
+            scan's own field list — Nikon and Olympus yes, Canon and Sony no
+            (they store it under names nothing asks for), Panasonic not at all
   preview   a USABLE preview comes out, i.e. a real JPEG, not merely some embed
   decode    LibRaw decodes the sensor data
 
@@ -82,19 +83,45 @@ def check_sidecars(paths, scratch: Path) -> dict:
     present = [x for x in made.values() if x.exists()]
     fields = {}
     if present:
-        proc = run_exiftool_files(["-j", "-DateTimeOriginal", "-SubjectDistance"],
-                                  present)
+        proc = run_exiftool_files(["-j", "-DateTimeOriginal"], present)
         try:
             for r in json.loads(proc.stdout or "[]"):
                 fields[Path(r["SourceFile"])] = r
         except json.JSONDecodeError:
             pass
-    out = {}
-    for p, xmp in made.items():
-        f = fields.get(xmp, {})
-        out[p] = (xmp.exists(), bool(f.get("DateTimeOriginal")),
-                  bool(f.get("SubjectDistance")))
-    return out
+    return {p: (xmp.exists(), bool(fields.get(xmp, {}).get("DateTimeOriginal")))
+            for p, xmp in made.items()}
+
+
+def check_focus(paths) -> dict:
+    """{path: captured} — does the pipeline get a focus distance for this file?
+
+    Measured by asking exiftool for the REAL request list the master EXIF scan uses
+    (engine.selected_fields.SELECTED_FIELDS) and looking for the two column names the
+    blog and the info panels actually read, MakerNotes:FocusDistance and
+    EXIF:SubjectDistance. Not by checking the XMP sidecar, which is a different and
+    narrower path: the sidecar maps only Olympus, but the master scan requests
+    -Nikon:FocusDistance too, and both come back under the MakerNotes group. Asking
+    the sidecar would have reported a red mark for every Nikon while a D500's focus
+    distance was visibly sitting on the published website."""
+    from engine.exif_writer import run_exiftool_files
+    from engine.selected_fields import SELECTED_FIELDS
+    from engine.exifcache import COMMON_ARGS
+    # COMMON_ARGS carries -G (group 0), which is what makes the key read
+    # "MakerNotes:FocusDistance". -G1 would give "Nikon:FocusDistance" instead and
+    # every Nikon row would come back red — imported rather than retyped for exactly
+    # that reason.
+    proc = run_exiftool_files(["-j"] + list(COMMON_ARGS) + list(SELECTED_FIELDS),
+                              paths)
+    try:
+        rows = json.loads(proc.stdout or "[]")
+    except json.JSONDecodeError:
+        return {p: False for p in paths}
+    got = {}
+    for r in rows:
+        got[Path(r["SourceFile"])] = bool(r.get("MakerNotes:FocusDistance")
+                                          or r.get("EXIF:SubjectDistance"))
+    return {p: got.get(p, False) for p in paths}
 
 
 def check_preview(path: Path) -> dict:
@@ -150,11 +177,14 @@ def measure(corpus: Path, scratch: Path) -> list:
     print("  metadata read", flush=True)
     sidecars = check_sidecars(raws, scratch)
     print("  sidecars written and read back", flush=True)
+    focus = check_focus(raws)
+    print("  focus distance checked through the master scan's own field list",
+          flush=True)
 
     rows = []
     for i, p in enumerate(raws, 1):
         m = meta.get(p, {})
-        written, has_date, has_focus = sidecars.get(p, (False, False, False))
+        written, has_date = sidecars.get(p, (False, False))
         prev, dec = check_preview(p), check_decode(p)
         rows.append({
             "file": p.name,
@@ -170,7 +200,7 @@ def measure(corpus: Path, scratch: Path) -> list:
             "mode": str(m.get("NEFCompression") or m.get("CompressorVersion") or ""),
             "date": bool(m.get("DateTimeOriginal")),
             "sidecar": written and has_date,
-            "focus": has_focus,
+            "focus": focus.get(p, False),
             "preview_ok": prev["ok"], "preview_size": prev["size"],
             "preview_secs": prev["secs"], "preview_note": prev["note"],
             "decode_ok": dec["ok"], "decode_size": dec["size"],
@@ -279,8 +309,9 @@ def render(bodies: list, rows: list, v: dict) -> str:
         "filed by day. |")
     add("| **Sidecar** | Does an XMP sidecar get written, carrying the date? | "
         "Ratings, colour labels and GPS have nowhere to live. |")
-    add("| **Focus dist.** | Does that sidecar carry `SubjectDistance`? | A single "
-        "informational EXIF field is missing. Nothing in the pipeline depends on it. |")
+    add("| **Focus dist.** | Does a focus distance reach the picture's fields? | "
+        "The distance line is blank on the website and in the info panel. Nothing "
+        "else depends on it. |")
     add("| **Preview** | Does a *usable* preview come out — a real JPEG, not merely "
         "some embed? | Culling falls back to a full decode: still correct, roughly "
         "30× slower. |")
@@ -300,14 +331,28 @@ def render(bodies: list, rows: list, v: dict) -> str:
     if focus_bad:
         add("## Known gaps")
         add("")
-        add(f"**Focus distance is Olympus-only** ({len(focus_bad)} of the "
-            f"{len(bodies)} rows here are missing it). Sidecar creation does a blanket "
-            "`-xmp:all<all` copy plus exactly one hand-mapped field, "
-            "`-XMP-exif:SubjectDistance<Olympus:FocusDistance#`. Every other maker "
-            "keeps focus distance under its own tag, so the expression does not fire. "
-            "Nothing in the pipeline reads the field today — it is recorded here "
-            "because a table that quietly omitted it would be the kind of claim this "
-            "document exists to avoid.")
+        add(f"**Focus distance is captured for Nikon and Olympus, not for Canon, "
+            f"Sony or Panasonic** ({len(focus_bad)} of the {len(bodies)} rows here). "
+            "Every maker hides it somewhere different, and the master scan asks for "
+            "two of those places:")
+        add("")
+        add("| Maker | Where the file keeps it | Asked for? |")
+        add("|---|---|:-:|")
+        add("| Nikon | `Nikon:FocusDistance` | ✅ |")
+        add("| Olympus / OM System | `Olympus:FocusDistance` | ✅ |")
+        add("| Canon | `Canon:FocusDistanceUpper` / `Lower` — a *range*, not a value | "
+            "❌ |")
+        add("| Sony | `Composite:FocusDistance2` — derived by exiftool | ❌ |")
+        add("| Panasonic | nothing (only `HyperfocalDistance`, a lens property) | — |")
+        add("")
+        add("Canon and Sony are therefore *addressable* — the number is in the file "
+            "under a name nothing asks for. Panasonic is not; it is genuinely absent. "
+            "The distinction matters, and a single red mark would have hidden it.")
+        add("")
+        add("Note that the XMP sidecar written at ingest is narrower still: it maps "
+            "only `Olympus:FocusDistance`. That does not show up in this column, "
+            "because the website and the info panels read the master scan's fields, "
+            "not the sidecar.")
         add("")
 
     notes = [b for b in bodies if b["notes"]]

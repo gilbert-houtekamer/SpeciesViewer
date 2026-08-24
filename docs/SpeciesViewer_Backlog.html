@@ -2089,13 +2089,33 @@ same body succeed. The per-file table names the discriminator in both cases —
 <code>CanonCR3_003</code> failing beside <code>CanonCR3_001</code> passing is visible rather than
 mysterious.</p>
 
-<p class="note"><strong>The column the table added that the hand run did not have.</strong>
-Focus distance is <strong>green on Olympus and red on all four other makers</strong> — the first
-measured confirmation of what the chapter above predicted from reading one line of code. That
-single hand-mapped expression, <code>-XMP-exif:SubjectDistance&lt;Olympus:FocusDistance#</code>,
-is the whole of it. Nothing in the pipeline reads the field today, so this costs nothing yet; it
-is in the table because a support matrix that quietly omitted the one thing known to be
-brand-specific would be exactly the claim this document exists to avoid.</p>
+<p class="note"><strong>The column the table added — and the correction it needed.</strong>
+Focus distance first came out <em>red on every maker but Olympus</em>, which matched what this
+chapter predicted from reading the one hand-mapped sidecar expression
+<code>-XMP-exif:SubjectDistance&lt;Olympus:FocusDistance#</code>. It was wrong, and a published
+D500 blog page showing a focus distance is what caught it: the checklist was measuring the XMP
+<em>sidecar</em>, while the website and the info panels read the <strong>master scan's</strong>
+fields — and <code>selected_fields.SELECTED_FIELDS</code> asks for
+<code>-Nikon:FocusDistance</code> as well as the Olympus one, both arriving as
+<code>MakerNotes:FocusDistance</code>. Corrected to measure the path the website actually uses:
+<strong>green on Nikon and Olympus, red on Canon, Sony and Panasonic</strong>.</p>
+
+<p class="note"><strong>And the three reds are not the same red.</strong> The number is in the
+Canon and Sony files under names nothing asks for — Canon keeps a <em>range</em>
+(<code>FocusDistanceUpper</code>/<code>Lower</code>, e.g. 0.99–1.14 m), Sony an exiftool
+<em>composite</em> (<code>Composite:FocusDistance2</code>). Both are addressable in one line of
+<code>selected_fields</code>. Panasonic genuinely has none: only <code>HyperfocalDistance</code>,
+which is a property of the lens and aperture, not of what the camera focused on. A matrix that
+collapsed &ldquo;not asked for&rdquo; and &ldquo;not there&rdquo; into one mark would have hidden
+exactly the difference that decides whether it is worth fixing.</p>
+
+<p class="note"><strong>Two lessons, both about measuring the right thing.</strong> The bug was
+not in the measurement but in <em>which path</em> was measured — a checklist can be perfectly
+accurate about the wrong mechanism. And the first fix attempt used <code>-G1</code>, which
+returns <code>Nikon:FocusDistance</code> rather than <code>MakerNotes:FocusDistance</code>,
+turning every Nikon red again; importing <code>exifcache.COMMON_ARGS</code> instead of retyping
+the flag is what settled it. Both failures were caught by a value that looked wrong, not by a
+test.</p>
 
 <p class="note"><strong>No single red mark means &ldquo;unsupported&rdquo;</strong>, and the
 document says so in its own words. Each column has an independent fallback: a body with a red
