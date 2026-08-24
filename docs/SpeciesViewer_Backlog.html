@@ -1803,9 +1803,12 @@ can fail at any one of them while working at the other three:</p>
   <li><strong>Sidecar creation</strong> — <code>sv0ReadSDCard._write_sidecars</code> does a
     blanket <code>-xmp:all&lt;all</code> copy plus <em>one hand-mapped field</em>,
     <code>-XMP-exif:SubjectDistance&lt;Olympus:FocusDistance#</code>. That single line is the
-    clearest statement of the problem: focus distance for Nikon, Canon and Sony lives under each
-    maker's own tag and is silently absent today. The parked question in ch.1 about a curated
-    field list is the same question seen from the other side.</li>
+    clearest statement of the problem: every maker keeps focus distance under its own tag.
+    <span class="tag-shipped">RESOLVED 24 Aug</span> for the path that matters &mdash; the master
+    scan now merges all four shapes (see below). The <em>sidecar</em> expression above is still
+    Olympus-only, which costs nothing while the website and the panels read the master fields.
+    The parked question in ch.1 about a curated field list is the same question seen from the
+    other side.</li>
   <li><strong>Embedded preview extraction</strong> — the fast path that makes culling usable.
     Nikon embeds a full-size JPEG; Canon and Sony embed previews of varying size and, on some
     bodies, only a small one. Where the embedded preview is too small, the viewer has to fall
@@ -2116,6 +2119,40 @@ returns <code>Nikon:FocusDistance</code> rather than <code>MakerNotes:FocusDista
 turning every Nikon red again; importing <code>exifcache.COMMON_ARGS</code> instead of retyping
 the flag is what settled it. Both failures were caught by a value that looked wrong, not by a
 test.</p>
+
+<p><span class="tag-shipped">SHIPPED 24 Aug</span> <strong>Canon and Sony focus distance now
+reach the picture.</strong> <code>engine/focus_distance.py</code> has one job: turn whatever the
+maker recorded into the single <code>MakerNotes:FocusDistance</code> value the blog
+(<code>projectlib.getDistance</code>) and the info panel (<code>picture_provider</code>) already
+read. Nikon and Olympus write one value, Sony's is an exiftool composite, and Canon writes only a
+<em>range</em> &mdash; <code>FocusDistanceUpper</code> and <code>FocusDistanceLower</code>, e.g.
+0.99 and 1.14 m &mdash; which is averaged. The true distance is not quite the midpoint, since
+depth of field is asymmetric about the plane of focus, but the bounds are centimetres apart and a
+number that can be checked beats a formula that cannot. Panasonic stays red and should: it
+records none, and putting <code>HyperfocalDistance</code> there would answer a different
+question.</p>
+
+<p class="note"><strong>No CSV schema change, deliberately.</strong>
+<code>COLUMN_NAMES.values()</code> <em>is</em> the master CSV header, so a new column would be a
+schema change to every <code>data_pictures.csv</code> in the library. The three new tags are added
+to <code>SELECTED_FIELDS</code> only &mdash; read, merged, never given a column of their own.
+Header verified unchanged at 53 columns. What does change is the EXIF cache fingerprint, so the
+next Read &amp; Summarize re-reads rather than hitting cache; on the big master that is one pass
+of roughly five minutes, once.</p>
+
+<p><span class="tag-shipped">SHIPPED 24 Aug</span> <strong>The table now covers the bodies that
+actually took the pictures.</strong> The corpus was built to answer &ldquo;what about the bodies
+we do not own?&rdquo; and answered nothing about the ones we do. Counted against
+<code>master.db</code> &mdash; 162,181 files &mdash; the gaps were large: <strong>D7100 at 13.3%
+and D500 at 7.7%</strong> were both absent, and the D7100 is the bigger share of the two. D7100,
+D500, D7500 and D90 added, six files, all sha256-verified. Every one is green in every column.</p>
+
+<p class="note"><strong>The D90 was the one worth testing.</strong>
+<code>preview_extract</code> carries a special case for it &mdash; it has no
+<code>PreviewImage</code> and no <code>ThumbnailImage</code> at all, only
+<code>OtherImage</code>, which is why those files once rendered black. It now extracts a full
+4288&times;2848 preview, so the special case still earns its place and the largest-embed rework
+above did not quietly break the oldest body in the library.</p>
 
 <p class="note"><strong>No single red mark means &ldquo;unsupported&rdquo;</strong>, and the
 document says so in its own words. Each column has an independent fallback: a body with a red
