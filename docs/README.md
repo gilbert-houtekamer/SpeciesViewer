@@ -8,6 +8,7 @@ Start here when you are looking for "which file explains X".
 |---|---|
 | [SpeciesViewer_Capabilities.html](SpeciesViewer_Capabilities.html) | What the application can do, chapter by chapter — the manual. |
 | [SpeciesViewer_Backlog.html](SpeciesViewer_Backlog.html) | What is planned, in progress, or parked, and why. |
+| [camera_support.md](camera_support.md) | Which cameras have actually been tested, and what works on each — measured, not asserted. Regenerate with `tools/svr_camera_checklist.py`. |
 | [viewer_keybindings.md](viewer_keybindings.md) | Every key that works in the three picture viewers. |
 | [create_render_procedure.md](create_render_procedure.md) | Getting a DxO PhotoLab render as far as the website — the order of steps matters. |
 | [refresh_master_database.md](refresh_master_database.md) | The admin reconcile: when the master's CSVs drift from what is on disk. |

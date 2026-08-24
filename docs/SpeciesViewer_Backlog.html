@@ -1960,7 +1960,7 @@ extension appears as a literal: <code>RAW</code>, <code>HEIC</code>, <code>JPEG<
 <code>OTHER_IMAGE</code> and the derived <code>RAW_OR_HEIC</code>, <code>DXO_RAW</code>,
 <code>CAMERA_PHOTO</code> and <code>PICTURE</code>, plus <code>is_raw()</code>,
 <code>is_picture()</code> and <code>ext_of()</code>, which take a <code>Path</code> or a bare
-string in any case. <strong>35 of the 39 sets are migrated.</strong>
+string in any case. <strong>All 39 sets are migrated.</strong>
 <code>tools/svr_extension_audit.py</code> re-runs the sweep and exits 1 while anything outside the
 table hard-codes extensions; its exemption list requires a stated reason per entry. Without that
 check the whole exercise decays &mdash; set number 40 gets written next month. Design and the full
@@ -2005,7 +2005,8 @@ form matches <em>nothing</em> and fails silently &mdash; a far quieter bug than 
 fixed, so <code>bare()</code> converts in one place. And <code>str.endswith()</code> requires a
 real <strong>tuple</strong>, not a frozenset, which <code>master_no_display.py</code> relies on.</p>
 
-<p><span class="tag-open">OPEN</span> <strong>Four sets remain outside the table, deliberately:</strong>
+<p><span class="tag-shipped">SHIPPED 24 Aug</span> <strong>The last four sets were held back
+deliberately, then migrated on their own terms:</strong>
 <code>trip_delete_scan</code>, <code>work_backup</code> and the two <code>tools/svr_purge*</code>
 scripts &mdash; what gets <em>deleted</em> and what gets <em>backed up</em>. They get their own
 review, their own dry-run against a real trip, and their own commit; nothing there is applied off a
@@ -2013,6 +2014,16 @@ code reading. <code>.raw</code> was added to <code>RAW</code> for exactly this r
 <code>trip_delete_scan</code> and nowhere else, so a mechanical substitution would have <em>removed</em>
 it from a delete scanner's idea of what a picture is. A refactor must never be able to narrow a
 delete path.</p>
+
+<p>They were migrated last, after a dry-run across <em>every</em> trip in
+<code>naturedb/admin/master_commits.csv</code>: <code>deletable_files</code> went 0 &rarr; 0 on all
+five, and exactly one file in the whole corpus changed state. Doing them separately paid for
+itself twice, because a mechanical substitution would have silently <em>narrowed</em> two sets.
+<code>.raw</code> was one. The other was <code>.xmp</code> / <code>.dop</code>:
+<code>trip_delete_scan</code>'s picture set includes sidecars <em>on purpose</em>, since a delete
+that takes the RAW must take them too — hence <code>SIDECAR</code> in the table and
+<code>PICTURE | SIDECAR</code> at that one site. Neither was visible from reading the code.
+<code>tools/svr_extension_audit.py</code> now reports <strong>0 offenders</strong>.</p>
 
 <p class="note"><strong>A coupling worth remembering.</strong> The Trip Overview's Pictures column
 read 342 for a day the pipeline had just written 377 rows for. Not staleness:
@@ -2042,7 +2053,7 @@ of clicked. Everything on it is CC0.</p>
 full frame and 20 MP DX/MFT — and each Nikon body appears in all three of its compression
 modes.</p>
 
-<p><span class="tag-open">OPEN</span> What makes it worth having is a <strong>per-body
+<p><span class="tag-shipped">SHIPPED 24 Aug</span> What makes it worth having is a <strong>per-body
 checklist</strong> run as a tool rather than by hand: for each sample file, does the date read,
 does a sidecar get written with the fields the viewer needs, is an embedded preview present and
 how large, does a full decode succeed, and how long does each take. One row per body, red or
@@ -2054,6 +2065,43 @@ chapter follows ch.20 rather than preceding it.</p>
 <code>analysis.json</code> beside the corpus: per file, the embedded previews and their pixel
 dimensions, whether the date reads, whether LibRaw decodes, and how long each step takes. What
 does not exist is the <em>repeatable</em> form of it.</p>
+
+<p><span class="tag-shipped">SHIPPED 24 Aug</span> <code>tools/svr_camera_checklist.py</code>
+runs the corpus and writes <code>docs/camera_support.md</code> — one row per body and format,
+green or red per column, with the version of exiftool and LibRaw it was measured against printed
+at the top. That table is in git; the 1.16 GB of samples is not.</p>
+
+<p>It measures through SpeciesViewer's own code rather than a re-implementation, which is the
+part that makes it worth trusting: the RAW extensions come from
+<code>utils/raw_extensions.py</code>, the preview from <code>gui/preview_extract.py</code>, and
+the sidecar from the exact exiftool expressions ingest uses — <code>_write_sidecars</code>' option
+list was lifted into <code>sv0ReadSDCard.sidecar_opts()</code> so the checklist can point it at a
+scratch directory instead of writing beside the corpus. A checklist that retyped any of those
+would certify the copy rather than the product, which is the same failure as a second hard-coded
+extension list.</p>
+
+<p>What the first run establishes, on 30 files across 15 bodies: <strong>date and sidecar are
+green everywhere</strong>; preview is green everywhere except the R5 Mark II, which is amber
+because two of its four files are the HDR-PQ pair; decode is green everywhere except the three
+Nikon Z bodies, amber because their HE and HE* files fail while their Lossless files from the
+same body succeed. The per-file table names the discriminator in both cases —
+<code>NEFCompression</code> for Nikon, <code>CompressorVersion</code> for Canon, so
+<code>CanonCR3_003</code> failing beside <code>CanonCR3_001</code> passing is visible rather than
+mysterious.</p>
+
+<p class="note"><strong>The column the table added that the hand run did not have.</strong>
+Focus distance is <strong>green on Olympus and red on all four other makers</strong> — the first
+measured confirmation of what the chapter above predicted from reading one line of code. That
+single hand-mapped expression, <code>-XMP-exif:SubjectDistance&lt;Olympus:FocusDistance#</code>,
+is the whole of it. Nothing in the pipeline reads the field today, so this costs nothing yet; it
+is in the table because a support matrix that quietly omitted the one thing known to be
+brand-specific would be exactly the claim this document exists to avoid.</p>
+
+<p class="note"><strong>No single red mark means &ldquo;unsupported&rdquo;</strong>, and the
+document says so in its own words. Each column has an independent fallback: a body with a red
+Preview still culls correctly, just slower; a body with a red Decode still shows every picture at
+full size, because the camera's own JPEG is in the file. Collapsing five mechanisms into one
+yes/no is precisely what would make the answer dishonest.</p>
 
 <p class="note"><strong>What this chapter does not cover.</strong> DxO PhotoLab's own support for
 a body is DxO's business, not SpeciesViewer's — but the <code>.dop</code> lane assumes PhotoLab
