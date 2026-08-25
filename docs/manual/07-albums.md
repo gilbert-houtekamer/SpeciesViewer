@@ -124,6 +124,10 @@ Because an album is a window on the master, **edits here mirror into the master
 database**. This is the intended way to keep improving a journey's pictures after
 the trip repository is long gone.
 
+Its scopes and filters are in
+[10. The viewers](10-viewers.md#the-species-viewers) — note especially that in an
+album a colour-delete removes **master** pictures, not working copies.
+
 ### Sync Placed GPS into the Index…
 
 *Needs: an active album.*

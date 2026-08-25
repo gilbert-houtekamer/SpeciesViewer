@@ -75,7 +75,9 @@ It is the same viewer as the [Trip Species Viewer](04-trips.md) and the
 [Album Species Viewer](07-albums.md), pointed at a different scope. What you
 learn in one applies to all three.
 
-Its keys are in [viewer_keybindings.md](../viewer_keybindings.md).
+Its scopes, filters and the master card context menu are in
+[10. The viewers](10-viewers.md#the-species-viewers); its keys are in
+[viewer_keybindings.md](../viewer_keybindings.md).
 
 ## Species Map
 

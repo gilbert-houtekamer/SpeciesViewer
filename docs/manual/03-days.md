@@ -50,8 +50,9 @@ Opens the review viewer on the active day's folder, in **culling mode**: your
 edits — star ratings, colour labels, species names, GPS and location — are
 written straight to the sidecars in that folder.
 
-This is the same viewer used everywhere else in the application. Its keys are
-documented in [viewer_keybindings.md](../viewer_keybindings.md).
+This is the same viewer used everywhere else in the application. Its filters and
+controls are in [10. The viewers](10-viewers.md#the-culling-grid); its keys are
+in [viewer_keybindings.md](../viewer_keybindings.md).
 
 > There is no separate "commit" for a Day. Culling mode writes as you go.
 

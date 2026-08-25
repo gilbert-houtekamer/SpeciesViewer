@@ -229,7 +229,9 @@ where you can change star ratings, colour labels and the species assignment
 itself, with the changes written back to the files.
 
 This is arguably the most valuable single screen in the trip menu — it is where a
-trip's identifications actually get corrected.
+trip's identifications actually get corrected. Its scopes, filters and bulk
+actions are documented in
+[10. The viewers](10-viewers.md#the-species-viewers).
 
 > **Frozen days open read-only.** Once a day has been committed, its cards are
 > not editable; this is a guard, not a bug.

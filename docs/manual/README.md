@@ -52,12 +52,109 @@ walkthroughs are a separate document, still to be written.
 | 8 | [Utilities](08-utilities.md) | Card-to-inbox ingest, external-tool helpers, site-wide rebuilds. |
 | 9 | [Help](09-help.md) | Connection status and version info. |
 
+## Across the menus
+
+| Chapter | Covers |
+|---|---|
+| [10. The viewers](10-viewers.md) | The four picture surfaces — Biota Browser, Species Viewers, culling grid, Large Image View — and what every filter means. |
+
 ## Appendices
 
 | Appendix | Answers |
 |---|---|
 | [A — Why is this greyed out?](appendix-a-greyed-out.md) | Every gating rule in the menu, in one table. |
 | [B — The pipeline steps and their batch modules](appendix-b-batch-modules.md) | Which `sv*` script each menu item runs, for reading the log. |
+
+## Giving feedback on it
+
+Write notes **in the chapter files, where the problem is**. A note in a separate
+document has to describe *where* it applies, which is slow to write and easy to
+get wrong; a note in place costs nothing to aim.
+
+Mark each one with `GH:` at the start of a blockquote:
+
+```markdown
+> GH: Wrong — Species Settings is only the GBIF timeout and the
+> placeholder prefix. The name languages are in Look & Feel.
+```
+
+That is the whole convention. `> **GH:**` works too if you prefer it bold while
+typing. Notes may run several lines; keep the `>` on each.
+
+| It gets you | |
+|---|---|
+| **Loud in the built page** | An orange callout with a `GH` tag — impossible to mistake for manual prose |
+| **Listed in the sidebar** | A note count and a jump-link to each one, so you can review your own notes afterwards |
+| **Extractable** | `python tools/svr_manual_build.py --feedback` prints every note with `file:line` |
+
+Two kinds of note are worth making, and they are different:
+
+- **"This is wrong"** — say what is actually true, if you know. That is a
+  correction and I can just apply it.
+- **"This confused me"** — no fix needed. If the manual is unclear the
+  application may be too, which is the more valuable finding of the two.
+
+Where you are confident and it is a small factual fix, **just edit the prose
+directly** — no marker needed. Save `GH:` for what needs discussing.
+
+> Notes are ordinary Markdown, so nothing breaks if you leave one in. The
+> `--feedback` list is how they get found again.
+
+## Reading it as one document (and as a PDF)
+
+The chapters are separate files so they stay mergeable and quick to edit. To read
+the manual as a **single page** instead:
+
+```
+python tools/svr_manual_build.py --open
+```
+
+That writes `SpeciesViewer_Manual.html` next to these files and opens it. It is
+one self-contained page — a sticky chapter/section sidebar, a filter box that
+narrows the sidebar as you type, and the current section highlighted as you
+scroll. Lighter than an editor, and it renders the tables and diagrams.
+
+**For a PDF:** open that page and print to PDF (`Ctrl+P` → *Save as PDF*). The
+print stylesheet drops the sidebar, starts each chapter on a new page, and keeps
+tables and diagrams from splitting across pages.
+
+The HTML is not committed — it is a one-command rebuild from the Markdown, which
+stays the source of truth. Run the build again after editing a chapter.
+
+| Option | Does |
+|---|---|
+| `--open` | Open the result in your browser |
+| `--out PATH` | Write somewhere other than the default |
+| `--vendor-mermaid` | Download mermaid.js once, so later builds need no network |
+| `--no-mermaid` | Omit the diagram script (diagrams stay as code blocks) |
+| `--feedback` | List the `GH:` review notes with `file:line`, and exit |
+
+### Reading it offline
+
+**Building never needs internet** — the script only reads Markdown and writes
+HTML. The diagrams are the only thing that might: by default the page loads
+mermaid.js from a CDN when you *open* it.
+
+Run this once, while you have a connection:
+
+```
+python tools/svr_manual_build.py --vendor-mermaid
+```
+
+It saves mermaid.js to `docs/manual/_assets/` (3 MB, MIT, not tracked in git),
+and from then on every build **inlines** it. The page becomes one genuinely
+self-contained file — no network, on a plane or anywhere else. The build says
+which mode it used:
+
+```
+Diagrams: inlined — works offline.
+```
+
+The trade is size: ~155 KB with the CDN, ~3.4 MB inlined. Irrelevant locally,
+and the file is gitignored either way.
+
+> Without the vendored copy and without a network, the diagrams degrade to
+> readable code blocks rather than breaking the page.
 
 ## Related documents
 

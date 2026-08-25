@@ -51,3 +51,7 @@ The whole collection. This is the browser you will use most: it is the answer to
   it. It has a search box.
 
 Both end at the same place: a species and its pictures.
+
+> Every control in the browser — the rank filter, the search box, the rank rail
+> and the two modes — is documented in
+> [10. The viewers](10-viewers.md#the-biota-browser).
