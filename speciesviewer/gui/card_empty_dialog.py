@@ -230,7 +230,13 @@ class EmptyCardDialog(QDialog):
         """The card's own answer, read before anything is re-checked — that is the
         question being asked when a card is picked up at all."""
         already = ce.clear_verdict(self._card)
-        self._identity.setText(f"<b>{already}</b>" if already else "")
+        warn = ce.clear_stamp_warning(self._card)
+        bits = []
+        if already:
+            bits.append(f"<b>{already}</b>")
+        if warn:
+            bits.append(f"<b>⚠ {warn}</b>")
+        self._identity.setText("<br>".join(bits))
         self._summary.setText("Press Check card.")
 
     def _choose_keeper(self):
@@ -279,6 +285,9 @@ class EmptyCardDialog(QDialog):
         cleared = ce.clear_verdict(self._card)
         if cleared:
             bits.append(f"<b>{cleared}</b>")
+        stale = ce.clear_stamp_warning(self._card)
+        if stale:
+            bits.append(f"<b>⚠ {stale}</b>")
         if last:
             bits.append(f"Last read into <b>{last.get('trip', '?')}</b> on "
                         f"{str(last.get('when', '?'))[:10]}.")

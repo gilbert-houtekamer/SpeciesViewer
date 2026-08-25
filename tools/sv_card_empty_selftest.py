@@ -246,5 +246,41 @@ _raw.pop("emptied", None)
 r11b = ce.classify_card(card, project)
 assert not ce.nothing_to_do(r11b) and r11b["blockers"], "no history -> still blocks"
 print("   a roster-less card with no empty history still blocks")
+
+# -- 12. a keeper card wiped by hand must not leave ghosts -------------------
+# SV_KEEPERS.json lives at the root and survives a folder being deleted in
+# Explorer, so it went on describing a folder that was gone -- the same
+# ghost-record problem the source card's roster had. And a source card kept
+# claiming "safe to format, saved to X" after X had been emptied, which is the
+# one route around every safeguard here: a confident message sending someone to
+# Explorer.
+write_card()
+r12 = ce.classify_card(card, project)
+ce.consolidate(r12, keeper2, "2026 Test", "card 09")
+marker = json.loads((keeper2 / ce.KEEPER_MARKER).read_text(encoding="utf-8"))
+folders = [c["folder"] for c in marker["cards"]]
+print("=== 12. marker lists:", folders)
+assert "2026 Test - card 09" in folders
+assert marker["cards"][-1]["card_id"], "the keeper card must record WHICH card"
+
+shutil.rmtree(keeper2 / "2026 Test - card 09")          # tidied up in Explorer
+ce.consolidate(r12, keeper2, "2026 Test", "card 10")     # any later write prunes
+folders = [c["folder"] for c in json.loads(
+    (keeper2 / ce.KEEPER_MARKER).read_text(encoding="utf-8"))["cards"]]
+print("   after the folder was deleted, marker lists:", folders)
+assert "2026 Test - card 09" not in folders, "a vanished folder must be pruned"
+
+ce.stamp_cleared(card, "2026 Test", str(keeper2), {"copied": 1}, r12,
+                 folder="2026 Test - card 10")
+assert ce.clear_stamp_warning(card) == "", "intact backup -> no warning"
+shutil.rmtree(keeper2 / "2026 Test - card 10")
+warn = ce.clear_stamp_warning(card)
+print("   backup gone ->", warn[:58])
+assert warn, "a vanished backup must warn"
+missing = ce.clear_stamp_warning(card)
+(keeper2 / "gone").mkdir()
+shutil.rmtree(keeper2)                                   # keeper card unplugged
+assert ce.clear_stamp_warning(card) == "", "unplugged is unknown, not wrong"
+print("   keeper card absent -> silent (absent is not empty)")
 print("\nALL CHECKS PASSED")
 shutil.rmtree(base, ignore_errors=True)

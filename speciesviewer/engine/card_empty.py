@@ -646,6 +646,15 @@ def write_keeper_marker(keeper_root, trip_name, card_label, report, summary):
         existing = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         existing = {"version": 1, "cards": []}
+    # The identity of the card these pictures CAME FROM, minted now if it has
+    # none. It was previously read from the report, which is written before the
+    # source card is ever stamped — so it was always "" on a first run, and the
+    # keeper card could not say which physical card a folder came from. That is
+    # the one question a folder on a shelf cannot answer for itself.
+    cid = (report.get("identity") or {}).get("card_id", "")
+    if not cid and report.get("card"):
+        cid = ensure_card_id(report["card"])
+
     entry = {
         "folder": card_folder_name(trip_name, card_label),
         "trip": trip_name,
@@ -653,13 +662,21 @@ def write_keeper_marker(keeper_root, trip_name, card_label, report, summary):
         "metadata_as_of": datetime.now().isoformat(timespec="seconds"),
         "files": int(summary.get("copied", 0)) + int(summary.get("skipped", 0)),
         "frames_on_card": len(report.get("files", [])),
-        "card_id": (report.get("identity") or {}).get("card_id", ""),
+        "card_id": cid,
         "note": ("RAWs here are final. The .xmp/.dop/.jpg are a snapshot of that "
                  "date — a later work backup, if one exists, is newer and should "
                  "be restored FIRST."),
     }
-    existing["cards"] = [c for c in existing.get("cards", [])
-                         if c.get("folder") != entry["folder"]] + [entry]
+    # Keep only entries whose folder is still ON the card. Wipe a keeper card in
+    # Explorer and this file survives at the root, describing folders that are
+    # gone — the same ghost-record problem the source card's roster had, and it
+    # showed up the first time a keeper card was cleaned by hand. A record that
+    # outlives what it describes is worse than no record.
+    root = Path(keeper_root)
+    kept = [c for c in existing.get("cards", [])
+            if c.get("folder") != entry["folder"]
+            and (root / str(c.get("folder", ""))).is_dir()]
+    existing["cards"] = kept + [entry]
     try:
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(existing, indent=1), encoding="utf-8")
@@ -723,6 +740,37 @@ def stamp_cleared(card_root, trip_name, keeper_card, summary, report,
         return False
     logger.info(f"✅ Card stamped CLEAR — {landed} picture(s) are on {keeper_card}.")
     return True
+
+
+def clear_stamp_warning(card_root) -> str:
+    """'' unless the card claims a backup that is provably no longer there.
+
+    A clear stamp is a record of something that WAS true. Meanwhile the keeper
+    card is a separate object that can be wiped in Explorer by someone tidying
+    up, and nothing tells the source card about it — so a card can go on saying
+    "safe to format, 112 pictures were saved to H:" after H: has been emptied.
+
+    Deleting is already protected: plan_delete re-checks every file on the
+    keeper card at the right size and refuses to delete what it cannot find. So
+    this cannot lose pictures. What it can do is let a confident message send
+    someone to Explorer to delete the card by hand, which is the exact route
+    around every safeguard here.
+
+    Deliberately silent when the keeper card is NOT mounted: absent is not the
+    same as empty, and a warning that cries wolf every time a card is out of the
+    reader is a warning nobody reads. It speaks only when the keeper root is
+    right there and the folder is missing from it.
+    """
+    stamp = (read_card_index(card_root) or {}).get("cleared") or {}
+    keeper, folder = stamp.get("keeper_card"), stamp.get("folder")
+    if not keeper or not folder:
+        return ""                    # nothing claimed, or a stamp from before
+    root = Path(keeper)
+    if not root.is_dir() or (root / folder).is_dir():
+        return ""                    # not plugged in, or still there
+    return (f"This card says its pictures were saved to {keeper}, but the folder "
+            f"\"{folder}\" is not there any more. Check before you delete "
+            f"anything from this card.")
 
 
 def clear_verdict(card_root) -> str:
