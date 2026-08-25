@@ -928,7 +928,11 @@ def build_menu_spec(main_window):
                                 "Open the trip the card was read into first.")
             return
         pic = resolve_trip_picture_root(trip_root, kind="trip")
-        EmptyCardDialog(main_window, Path(trip_root).name, pic).exec()
+        # The PICTURE folder's name ("2026 North Greece"), not the repo id
+        # ("greecedb"). This ends up written on a physical card that gets read
+        # months later, and it should match the prefix on every file inside it.
+        EmptyCardDialog(main_window, Path(pic).name or Path(trip_root).name,
+                        pic).exec()
 
     empty_card = MenuSpec(
         callback=_empty_card,

@@ -21,9 +21,13 @@
 #     against it passes by not existing — and that frame is the one this whole
 #     module exists to protect.
 #   - A card with no roster is UNKNOWN, never clear. Absence of evidence blocks.
-#   - SV never formats and never deletes on the source card. It writes a "clear"
-#     stamp into the card's own json; that is the entire extent of its authority
-#     there. The format is done by hand, in the camera.
+#   - SV never FORMATS the source card. It does delete pictures from it — see
+#     delete_from_card — but only ones just verified on the keeper card, only on
+#     a separate explicit request, and never a file it does not recognise. The
+#     original "never deletes" rule was there because the card holds the only
+#     original, which a verified copy is exactly what stops being true; doing it
+#     here is also safer than doing it by hand, because every card looks alike
+#     and a tool that stops at "safe to format" invites the wrong one to be wiped.
 #   - The stamp is written LAST, from the files that actually landed — the work
 #     backup learned this when a manifest written up front produced a ZIP
 #     claiming files it did not contain, and replaced the good one.
@@ -37,6 +41,22 @@ from pathlib import Path
 logger = logging.getLogger("speciesviewer")
 
 CARD_CACHE_NAME = ".sv_ingest_cache.json"
+CARD_RESERVE_NAME = ".sv_ingest_reserve"
+KEEPER_MARKER = "SV_KEEPERS.json"
+
+# Renders that belong to a picture. They are DERIVED and in principle
+# re-creatable from the RAW plus the .dop — but only by the PhotoLab version
+# that made them (denoise codes are per-version and forward-incompatible), and
+# only at minutes per frame. Measured on a real card: every sidecar and render
+# together came to 0.6% of the RAW payload, which is why there is no setting for
+# this. A choice that can only ever move the total by half a percent is not a
+# choice, it is a question asked on every run forever.
+RENDER_EXTS = frozenset({".jpg", ".jpeg"})
+
+# What a re-run is allowed to REPLACE on the keeper card. The RAW never changes;
+# species names, colours and renders keep changing for days afterwards, so a
+# keeper card that could not catch up would freeze on the day it was made.
+REFRESH_EXTS = frozenset({".xmp", ".dop"}) | RENDER_EXTS
 
 # Colour labels, lower-cased. Red/Yellow/Green survive; Blue/Purple are a death
 # sentence that is not always carried out immediately, which is why CONDEMNED is
@@ -107,7 +127,69 @@ def card_identity(index) -> dict:
     reads = (index or {}).get("reads") or []
     return {"last_read": reads[-1] if reads else None,
             "reads": len(reads),
+            "card_id": card_id(index),
+            "volume_serial": (index or {}).get("volume_serial", ""),
             "cleared": (index or {}).get("cleared")}
+
+
+def volume_serial(card_root) -> str:
+    """The filesystem's own serial for this volume, '' where it cannot be had.
+
+    Corroboration only, never the identity itself: it is free on Windows
+    (GetVolumeInformationW is already called for the label) and awkward
+    elsewhere, and this project is going to the Mac. The identity that counts is
+    `card_id`, which we write ourselves and which therefore works everywhere.
+    """
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(261)
+        serial = ctypes.c_ulong(0)
+        root = str(Path(card_root))
+        if not root.endswith(("\\", "/")):
+            root += "\\"
+        ok = ctypes.windll.kernel32.GetVolumeInformationW(
+            ctypes.c_wchar_p(root), buf, ctypes.sizeof(buf) // 2,
+            ctypes.byref(serial), None, None, None, 0)
+        return f"{serial.value:08X}" if ok else ""
+    except Exception:
+        return ""            # not Windows, or a volume that will not answer
+
+
+def card_id(index) -> str:
+    """The card's own identity, '' if it has never been given one."""
+    return str((index or {}).get("card_id") or "")
+
+
+def ensure_card_id(card_root) -> str:
+    """Give this card a permanent identity, creating one the first time.
+
+    ⚠ WRITES to the card, so it is called only where we are already writing —
+    never from classification, which must stay a read-only question.
+
+    Why the card needs a name of its own: all the cards look alike, the drive
+    letter is whatever the reader handed out this time, and the volume label is
+    often blank. Once files start being DELETED on the strength of a check, "is
+    this the same card I checked?" stops being a nicety. A UUID in the card's
+    own record answers it on any machine and any platform.
+    """
+    path = Path(card_root) / CARD_CACHE_NAME
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    if raw.get("card_id"):
+        return str(raw["card_id"])
+    import uuid
+    raw["card_id"] = str(uuid.uuid4())
+    raw.setdefault("volume_serial", volume_serial(card_root))
+    raw.setdefault("first_seen", datetime.now().isoformat(timespec="seconds"))
+    try:
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(raw, separators=(",", ":")), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        return ""
+    return raw["card_id"]
 
 
 def card_fullness(card_root) -> dict:
@@ -440,11 +522,36 @@ def plan_consolidation(report, keeper_root, trip_name, card_label,
         # keeper card as "p100.orf" — renamed, un-prefixed, and no longer the
         # name its .xmp and .dop are matched to by the rest of the pipeline.
         name = row.get("laptop_name") or Path(row["path"]).name
+        src = Path(row["path"])
         if row["verdict"] == KEEPER:
-            pairs.append((Path(row["path"]), base / day / name))
+            target_dir = base / day
         elif row["verdict"] == CONDEMNED and include_condemned:
-            pairs.append((Path(row["path"]), base / "condemned" / day / name))
+            target_dir = base / "condemned" / day
+        else:
+            continue
+        pairs.append((src, target_dir / name))
+        # The whole stem group, not just the RAW. .xmp and .dop travel by
+        # themselves (copy_known_files carries them); the renders do not, and
+        # without them the card restores your work but not your pictures.
+        for render in _renders_beside(src):
+            pairs.append((render, target_dir / render.name))
     return pairs
+
+
+def _renders_beside(raw: Path) -> list[Path]:
+    """'N5040004_DxO.jpg', 'N5040004_DxO-small.jpg' — the JPGs belonging to one
+    RAW. Matched as the stem exactly, or the stem followed by '_', so that
+    N504000 can never swallow N5040004's renders."""
+    out = []
+    try:
+        for sib in raw.parent.iterdir():
+            if sib.suffix.lower() not in RENDER_EXTS:
+                continue
+            if sib.stem == raw.stem or sib.stem.startswith(raw.stem + "_"):
+                out.append(sib)
+    except OSError:
+        pass
+    return sorted(out)
 
 
 def consolidate(report, keeper_root, trip_name, card_label,
@@ -464,16 +571,74 @@ def consolidate(report, keeper_root, trip_name, card_label,
         return {"error": "", "copied": 0, "total": 0,
                 "note": "Nothing to copy — no kept pictures from this card."}
 
+    # Pre-flight, at the one moment the byte total is exact. A keeper card that
+    # cannot hold the job should say so before it is half written — and this is
+    # also the ONLY place the size of the renders is a real question. It is a
+    # constraint when it happens, never a preference set in advance.
+    from utils.disk_space import check_free_space
+    need = 0
+    for src, _dest in pairs:
+        try:
+            need += src.stat().st_size
+        except OSError:
+            pass
+    problem = check_free_space(keeper_root, need,
+                               what=f"Saving {len(pairs)} file(s)")
+    if problem:
+        return {"error": problem, "copied": 0, "total": len(pairs)}
+
     from batch.sv0ReadSDCard import copy_known_files
-    log.info(f"Consolidating {len(pairs)} picture(s) to "
+    log.info(f"Consolidating {len(pairs)} file(s) to "
              f"{card_folder_name(trip_name, card_label)}…")
     summary = copy_known_files(pairs, logger=log, progress=progress,
-                               should_cancel=should_cancel)
+                               should_cancel=should_cancel,
+                               refresh_exts=REFRESH_EXTS)
     summary["planned"] = len(pairs)
+    if not summary.get("error") and not summary.get("failed"):
+        write_keeper_marker(keeper_root, trip_name, card_label, report, summary)
     return summary
 
 
-def stamp_cleared(card_root, trip_name, keeper_card, summary, report) -> bool:
+def write_keeper_marker(keeper_root, trip_name, card_label, report, summary):
+    """Say, on the keeper card, what this folder is — written LAST, from what
+    actually landed.
+
+    It records the date the METADATA was as of, which is the honest part: the
+    RAWs on a keeper card are final, but species names, colours and renders keep
+    changing for days afterwards. A restore should know that these sidecars are a
+    snapshot and that the daily work backup, if there is one, is newer. Do not
+    turn this into a claim about the pictures being current — it is a claim about
+    when they were copied.
+    """
+    path = Path(keeper_root) / KEEPER_MARKER
+    try:
+        existing = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        existing = {"version": 1, "cards": []}
+    entry = {
+        "folder": card_folder_name(trip_name, card_label),
+        "trip": trip_name,
+        "written": datetime.now().isoformat(timespec="seconds"),
+        "metadata_as_of": datetime.now().isoformat(timespec="seconds"),
+        "files": int(summary.get("copied", 0)) + int(summary.get("skipped", 0)),
+        "frames_on_card": len(report.get("files", [])),
+        "card_id": (report.get("identity") or {}).get("card_id", ""),
+        "note": ("RAWs here are final. The .xmp/.dop/.jpg are a snapshot of that "
+                 "date — a later work backup, if one exists, is newer and should "
+                 "be restored FIRST."),
+    }
+    existing["cards"] = [c for c in existing.get("cards", [])
+                         if c.get("folder") != entry["folder"]] + [entry]
+    try:
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(existing, indent=1), encoding="utf-8")
+        tmp.replace(path)
+    except OSError as e:
+        logger.warning(f"Could not write {KEEPER_MARKER}: {e}")
+
+
+def stamp_cleared(card_root, trip_name, keeper_card, summary, report,
+                  folder="") -> bool:
     """Write the verdict back onto the SOURCE card, so the object in your hand
     answers "safe to format?" without the laptop — the same principle as the 1 MB
     reserve.
@@ -491,6 +656,11 @@ def stamp_cleared(card_root, trip_name, keeper_card, summary, report) -> bool:
                        "cleanly. The card keeps its pictures.")
         return False
 
+    # BEFORE the read, not inside the dict below: ensure_card_id writes the file
+    # itself, so minting it after `raw` was loaded would have this function write
+    # its stale copy straight back over the new id.
+    cid = ensure_card_id(card_root)
+
     path = Path(card_root) / CARD_CACHE_NAME
     try:
         with open(path, encoding="utf-8") as f:
@@ -500,8 +670,13 @@ def stamp_cleared(card_root, trip_name, keeper_card, summary, report) -> bool:
 
     raw["cleared"] = {
         "when": datetime.now().isoformat(timespec="seconds"),
+        "card_id": cid,
         "trip": trip_name,
         "keeper_card": str(keeper_card),
+        # The folder the copy actually went into, so a delete tomorrow looks in
+        # the same place rather than re-deriving a name that may have drifted
+        # (the volume label is not always readable, and the fallback is a date).
+        "folder": folder,
         "keepers": landed,
         "discarded": sum(report["counts"].get(v, 0)
                          for v in (EXECUTED, PRESUMED, CONDEMNED)),
@@ -536,3 +711,142 @@ def clear_verdict(card_root) -> str:
     return (f"CLEAR — safe to format. {stamp.get('keepers', '?')} picture(s) were "
             f"saved to {stamp.get('keeper_card', '?')} on "
             f"{str(stamp.get('when', '?'))[:10]}.")
+
+
+# ── Emptying the card ─────────────────────────────────────────────────────────
+# The plan said SV never deletes on the source card. That rule was there because
+# the card holds the ONLY original — which a verified copy is precisely the thing
+# that stops being true. Doing it here rather than by hand is also the safer
+# option, and for the reason the whole feature exists: every card looks the same,
+# and a tool that stops at "safe to format" and leaves the doing to you is
+# inviting the wrong card to be wiped. What follows re-proves the case at the
+# moment of deletion rather than trusting a report from five minutes ago.
+
+
+def plan_delete(card_root, report, keeper_root, trip_name, card_label) -> dict:
+    """What could be deleted from the card, and what could not — no deletion.
+
+    A card file may go only when it is accounted for AND, where a copy was
+    supposed to be made, that copy is verifiably there. The two are different
+    questions and both are asked:
+
+      - keepers and condemned frames were COPIED, so their file must be found on
+        the keeper card at the right size. Anything else is a hole in the copy.
+      - executed and presumed frames were DISCARDED on purpose. There is no copy
+        and there should not be one; deleting them is carrying out the decision
+        already made. They are counted separately so the confirmation can say how
+        many pictures are about to exist nowhere.
+      - anything not in the roster — the .dat files, System Volume Information,
+        a stray from another camera — is never touched and is reported, so the
+        survivors are visible rather than silent.
+    """
+    base = Path(keeper_root) / card_folder_name(trip_name, card_label)
+    out = {"delete": [], "no_copy": [], "unverified": [], "unknown": [],
+           "bytes": 0, "card_id": ""}
+    index = read_card_index(card_root)
+    if not index:
+        out["error"] = "This card has no record of what was on it."
+        return out
+    out["card_id"] = card_id(index)
+    roster = card_roster(index)
+
+    by_rel = {r["rel"]: r for r in report.get("files", [])}
+    for rel, entry in roster.items():
+        row = by_rel.get(rel)
+        on_card = Path(card_root) / rel
+        if not on_card.exists() or row is None:
+            continue                       # already gone, or not in this report
+        verdict = row["verdict"]
+        if verdict in (KEEPER, CONDEMNED):
+            name = row.get("laptop_name") or row["name"]
+            day = row.get("day") or "unknown-date"
+            where = (base / day / name if verdict == KEEPER
+                     else base / "condemned" / day / name)
+            try:
+                ok = where.exists() and where.stat().st_size == on_card.stat().st_size
+            except OSError:
+                ok = False
+            (out["delete"] if ok else out["unverified"]).append(str(on_card))
+            if ok:
+                out["bytes"] += entry.get("size") or 0
+        elif verdict in (EXECUTED, PRESUMED):
+            out["delete"].append(str(on_card))
+            out["no_copy"].append(str(on_card))
+            out["bytes"] += entry.get("size") or 0
+        else:
+            out["unverified"].append(str(on_card))
+
+    known = {str(Path(card_root) / rel).lower() for rel in roster}
+    try:
+        for f in Path(card_root).iterdir():
+            if f.is_file() and not f.name.startswith(".") \
+                    and str(f).lower() not in known:
+                out["unknown"].append(str(f))
+    except OSError:
+        pass
+    return out
+
+
+def delete_from_card(card_root, plan, expect_card_id="", logger_=None) -> dict:
+    """Carry out `plan`, then prune the card's record to match.
+
+    ⚠ Refuses if the card in the slot is not the card the plan was made for.
+    Cards are swapped between one step and the next — that is the whole reason
+    they are hard to tell apart — and this is the one operation where being
+    wrong cannot be undone.
+
+    The card's own record SURVIVES, pruned. It is tempting to wipe it along with
+    everything else (that is what deleting by hand does), but it carries the
+    card's identity and its read history, and those are what make the NEXT empty
+    safe: a card whose id is thrown away every cycle is a stranger every time.
+    The entries for the deleted files go, so the card is not left claiming to
+    hold pictures it no longer has — which is exactly the mess a manual delete
+    leaves behind, and which would break the clear stamp on the next trip.
+    """
+    log = logger_ or logger
+    out = {"deleted": 0, "failed": 0, "bytes": 0, "error": ""}
+    if plan.get("error"):
+        out["error"] = plan["error"]
+        return out
+
+    here = card_id(read_card_index(card_root))
+    if expect_card_id and here != expect_card_id:
+        out["error"] = ("This is not the card that was checked — its identity "
+                        "does not match. Nothing has been deleted.")
+        log.error(f"❌ {out['error']} (expected {expect_card_id}, found {here or 'none'})")
+        return out
+
+    root = Path(card_root)
+    gone = set()
+    for name in plan.get("delete", []):
+        f = Path(name)
+        try:
+            size = f.stat().st_size
+            f.unlink()
+            gone.add(str(f.relative_to(root)).replace("\\", "/").lower())
+            out["deleted"] += 1
+            out["bytes"] += size
+        except OSError as e:
+            out["failed"] += 1
+            log.warning(f"Could not delete {f.name} from the card: {e}")
+
+    # Prune the record LAST, and only of what actually went.
+    path = root / CARD_CACHE_NAME
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw["files"] = {k: v for k, v in (raw.get("files") or {}).items()
+                        if k not in gone}
+        raw.pop("cleared", None)          # the stamp described a card that is now empty
+        raw.setdefault("emptied", []).append({
+            "when": datetime.now().isoformat(timespec="seconds"),
+            "deleted": out["deleted"],
+        })
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(raw, separators=(",", ":")), encoding="utf-8")
+        tmp.replace(path)
+    except (OSError, ValueError) as e:
+        log.warning(f"Deleted the pictures but could not update the card's record: {e}")
+
+    log.info(f"🧹 Deleted {out['deleted']} file(s) from {card_root} "
+             f"({out['bytes'] / 1e9:.2f} GB freed).")
+    return out

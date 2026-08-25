@@ -10,8 +10,9 @@ Two cards are in play and they are not interchangeable:
     was ever physically on it, and one card looks exactly like another.
   - the KEEPER CARD is where the pictures worth keeping go, off the laptop.
 
-SpeciesViewer never formats the card and never deletes anything on it. The most
-it writes there is a note saying the card is clear. The format is yours to do.
+SpeciesViewer never formats the card. It will delete the pictures from it, but
+only ones it has just verified on the keeper card, only as a separate second
+click, and never the files it does not recognise.
 
 Nothing is remembered between openings: the card is re-checked every time, so
 the screen cannot disagree with what is in the slot.
@@ -125,9 +126,11 @@ class EmptyCardDialog(QDialog):
             "Before a card can be re-used, every picture on it has to have been "
             "dealt with — either kept, or deliberately thrown away. This checks the "
             "card against <b>{}</b>, copies the pictures you kept onto a second "
-            "card, and then notes on the card itself that it is safe to format."
-            "<br><br>SpeciesViewer never formats the card and never deletes "
-            "anything on it.".format(self._trip_name or "this trip")))
+            "card, and then notes on the card itself that it is safe to re-use."
+            "<br><br>Deleting the pictures from the card afterwards is a separate "
+            "step, offered only once the copies have been verified. Files "
+            "SpeciesViewer does not recognise are never touched."
+            .format(self._trip_name or "this trip")))
 
         self._card = card_location()
         self._card_label = QLabel(self._card or "— choose the card you want to empty —")
@@ -173,6 +176,12 @@ class EmptyCardDialog(QDialog):
         self._copy_btn.setEnabled(False)
         self._copy_btn.clicked.connect(self._copy)
         btns.addWidget(self._copy_btn)
+        self._empty_btn = QPushButton("Delete them from the card…")
+        self._empty_btn.setToolTip("Only offered once the pictures are verified "
+                                   "on the keeper card")
+        self._empty_btn.setEnabled(False)
+        self._empty_btn.clicked.connect(self._empty_card)
+        btns.addWidget(self._empty_btn)
         self._close_btn = QPushButton("Close")
         self._close_btn.clicked.connect(self.accept)
         btns.addWidget(self._close_btn)
@@ -252,10 +261,17 @@ class EmptyCardDialog(QDialog):
 
         ident = report.get("identity") or {}
         last = ident.get("last_read") or {}
+        bits = []
+        # The clear verdict FIRST and in bold: it is the answer to the question
+        # the user is holding the card to ask. It used to be overwritten by the
+        # "last read into" line, which is background by comparison.
+        cleared = ce.clear_verdict(self._card)
+        if cleared:
+            bits.append(f"<b>{cleared}</b>")
         if last:
-            self._identity.setText(
-                f"This card was last read into <b>{last.get('trip', '?')}</b> on "
-                f"{str(last.get('when', '?'))[:10]}.")
+            bits.append(f"Last read into <b>{last.get('trip', '?')}</b> on "
+                        f"{str(last.get('when', '?'))[:10]}.")
+        self._identity.setText("<br>".join(bits))
 
         lines = [ln for ln in ce.format_report(report)][1:]
         ok = ce.can_empty(report)
@@ -277,6 +293,10 @@ class EmptyCardDialog(QDialog):
                 + "<br><br>" + "<br>".join(lines) + tail)
         self._copy_btn.setEnabled(ok)
         self._attn_btn.setEnabled(bool(self._attention_paths()))
+        # Deleting is offered only for a card that has ALREADY been saved — this
+        # session or a previous one. It is never part of the same click as the
+        # copy: the copy is reversible, this is not.
+        self._empty_btn.setEnabled(bool(ce.clear_verdict(self._card)))
 
     def _fill_table(self, report):
         days = report.get("days") or {}
@@ -415,18 +435,89 @@ class EmptyCardDialog(QDialog):
 
         # The stamp is written LAST, from what actually landed.
         stamped = ce.stamp_cleared(self._card, self._trip_name,
-                                   keeper_location(), out, self._report)
+                                   keeper_location(), out, self._report,
+                                   folder=ce.card_folder_name(self._trip_name,
+                                                              self._card_name()))
         if stamped:
             self._summary.setText(
                 f"✅ {msg}<br><br><b>{landed} picture(s) are now on the keeper "
                 f"card. This card is CLEAR — safe to format.</b><br>"
                 f"Format it in the camera; SpeciesViewer will not.")
             self._identity.setText(f"<b>{ce.clear_verdict(self._card)}</b>")
+            self._empty_btn.setEnabled(True)
         else:
             self._summary.setText(
                 f"⚠️ {msg}<br><br>The card could not be marked as clear (it may be "
                 f"write-protected). The pictures are safely copied, but check the "
                 f"card again before you format it.")
+
+    # ── emptying the card ─────────────────────────────────────────────────
+
+    def _empty_card(self):
+        """Delete the pictures we have verified copies of. Separate click,
+        separate confirmation, and the plan is rebuilt from what is on the card
+        RIGHT NOW rather than from the report on screen."""
+        # Give the card an identity if it has none (cards stamped before ids
+        # existed have none), BEFORE the plan is built — so the id is on the card
+        # for the whole window in which a swap would matter.
+        ce.ensure_card_id(self._card)
+        stamp = (ce.read_card_index(self._card) or {}).get("cleared") or {}
+        folder = stamp.get("folder") or ce.card_folder_name(self._trip_name,
+                                                            self._card_name())
+        keeper = stamp.get("keeper_card") or keeper_location()
+        # card_folder_name is re-applied by plan_delete, so hand it the label
+        # half of the folder that was actually used.
+        label = folder[len(self._trip_name) + 3:] if folder.startswith(
+            self._trip_name + " - ") else ""
+        plan = ce.plan_delete(self._card, self._report, keeper,
+                              self._trip_name, label)
+        if plan.get("error"):
+            QMessageBox.warning(self, "Empty a card", plan["error"])
+            return
+        if not plan["delete"]:
+            QMessageBox.information(
+                self, "Empty a card",
+                "There is nothing on this card that is safe to delete — either "
+                "it is already empty, or the copies could not be found where "
+                "they were expected.")
+            return
+
+        from utils.disk_space import human_bytes
+        lines = [f"Delete {len(plan['delete'])} file(s) from {self._card}, "
+                 f"freeing {human_bytes(plan['bytes'])}?"]
+        if plan["no_copy"]:
+            # The one thing that must not be glossed: these exist nowhere else.
+            lines.append(f"\n⚠ {len(plan['no_copy'])} of them were thrown away "
+                         f"during culling and exist nowhere else. Deleting them "
+                         f"is final.")
+        if plan["unverified"]:
+            lines.append(f"\n{len(plan['unverified'])} file(s) will be KEPT — no "
+                         f"verified copy was found for them.")
+        if plan["unknown"]:
+            lines.append(f"\n{len(plan['unknown'])} file(s) are not ours and will "
+                         f"be left alone.")
+        lines.append("\nThe card keeps its own record, so it still knows which "
+                     "card it is next time.")
+        if QMessageBox.question(
+                self, "Empty a card", "\n".join(lines),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+
+        res = ce.delete_from_card(self._card, plan,
+                                  expect_card_id=plan.get("card_id", ""))
+        if res.get("error"):
+            QMessageBox.warning(self, "Empty a card", res["error"])
+            self._summary.setText(f"❌ {res['error']}")
+            return
+        self._summary.setText(
+            f"🧹 Deleted {res['deleted']} file(s), {human_bytes(res['bytes'])} "
+            f"freed. The card is ready to shoot on again."
+            + (f" {res['failed']} could not be deleted." if res.get("failed") else ""))
+        self._empty_btn.setEnabled(False)
+        self._copy_btn.setEnabled(False)
+        self._table.setRowCount(0)
+        self._identity.setText("")
 
     # ── plumbing ──────────────────────────────────────────────────────────
 

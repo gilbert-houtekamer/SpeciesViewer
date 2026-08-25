@@ -66,6 +66,9 @@ for name, label, where, ingested in FRAMES:
     blob = (name * 500).encode()
     roster[name.lower()] = {"size": len(blob), "mtime_ns": 1, "sha256": "x",
                             "capture_date": day}
+    # The card holds the actual frames too, or the delete step has nothing to
+    # work on — the roster alone is only half a card.
+    (card / name).write_bytes(blob)
     if ingested:
         roster[name.lower()]["last_copied"] = "2026-05-04T20:00:00"
     if where == "day":
@@ -159,6 +162,69 @@ r7 = ce.classify_card(card, elsewhere)
 show("7. classified against the wrong folder", r7)
 assert not ce.can_empty(r7), "a card matching nothing MUST block"
 assert any("could be found" in b for b in r7["blockers"]), r7["blockers"]
+
+
+# -- 8. the whole stem group travels, not just the RAW -----------------------
+# The renders are a fraction of a percent of the payload and hours of DeepPRIME
+# to remake, so they go. Without them the card restores your work but not your
+# pictures.
+(project / day / (PREFIX + " - P100_DxO.jpg")).write_bytes(b"render" * 100)
+(project / day / (PREFIX + " - P100_DxO-small.jpg")).write_bytes(b"small" * 50)
+(project / day / (PREFIX + " - P1000_DxO.jpg")).write_bytes(b"decoy" * 50)
+keeper2 = base / "KEEPER2"
+keeper2.mkdir()
+write_card()
+r8 = ce.classify_card(card, project)
+s8 = ce.consolidate(r8, keeper2, "2026 Test", "card 03")
+names8 = sorted(f.name for f in keeper2.rglob("*") if f.is_file())
+print("=== 8. stem group")
+for n in names8:
+    print("   " + n)
+assert any(n.endswith("P100_DxO.jpg") for n in names8), "the render must travel"
+assert any(n.endswith("P100_DxO-small.jpg") for n in names8), "so must the web render"
+assert not any("P1000_DxO" in n for n in names8), "P100 must not swallow P1000's render"
+assert (keeper2 / ce.KEEPER_MARKER).exists(), "the keeper card must describe itself"
+marker = json.loads((keeper2 / ce.KEEPER_MARKER).read_text(encoding="utf-8"))
+assert marker["cards"][0]["metadata_as_of"], "the marker must date its metadata"
+
+# -- 9. a re-run REFRESHES the fluent files but never re-copies the RAW ------
+kd = keeper2 / "2026 Test - card 03" / day
+raw_before = (kd / (PREFIX + " - P100.ORF")).stat().st_mtime_ns
+(project / day / (PREFIX + " - P100.xmp")).write_text(
+    XMP.format(label="Green", rating=5), encoding="utf-8")
+s9 = ce.consolidate(r8, keeper2, "2026 Test", "card 03")
+xmp_after = (kd / (PREFIX + " - P100.xmp")).read_text(encoding="utf-8")
+raw_after = (kd / (PREFIX + " - P100.ORF")).stat().st_mtime_ns
+print("=== 9. re-run: copied=%s skipped=%s" % (s9["copied"], s9["skipped"]))
+assert "<xmp:Rating>5<" in xmp_after, "a corrected sidecar must reach the card"
+assert raw_before == raw_after, "the RAW must not be re-copied"
+
+# -- 10. delete only what is verifiably copied, and never the strays ---------
+(card / "IMG_STRAY.dat").write_bytes(b"not ours")
+plan = ce.plan_delete(card, r8, keeper2, "2026 Test", "card 03")
+print("=== 10. delete plan: %d to delete, %d with no copy anywhere, "
+      "%d unverified, %d not ours"
+      % (len(plan["delete"]), len(plan["no_copy"]),
+         len(plan["unverified"]), len(plan["unknown"])))
+assert plan["unknown"] and plan["unknown"][0].endswith("IMG_STRAY.dat")
+assert len(plan["no_copy"]) == 2, plan["no_copy"]
+
+bad = ce.delete_from_card(card, plan, expect_card_id="not-this-card")
+print("   wrong card ->", bad["error"][:64])
+assert bad["deleted"] == 0 and bad["error"]
+
+cid = ce.ensure_card_id(card)
+res = ce.delete_from_card(card, plan, expect_card_id=cid)
+left = sorted(f.name for f in card.iterdir())
+print("   deleted %d, left on card: %s" % (res["deleted"], left))
+assert res["failed"] == 0
+assert "IMG_STRAY.dat" in left, "a file we do not own must survive"
+assert ce.CARD_CACHE_NAME in left, "the card must keep its identity"
+after = ce.read_card_index(card)
+assert ce.card_id(after) == cid, "identity must survive the empty"
+assert not after["files"], "roster must be pruned, still holds %s" % after["files"]
+assert after.get("emptied"), "the empty must be recorded on the card"
+print("   roster pruned, identity kept, empty recorded")
 
 print("\nALL CHECKS PASSED")
 shutil.rmtree(base, ignore_errors=True)

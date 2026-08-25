@@ -157,9 +157,9 @@ would do it. Out of scope for v1.
 
 ## ⭐ Rules that must not be undone
 
-- **SV never formats and never deletes on the source card.** It writes the clear
-  stamp; that is the whole of its authority there. The format is done by hand,
-  by you, in the camera.
+- **SV never FORMATS the source card.** It *does* delete pictures from it —
+  revised 2026-08-25, below — but only ones just verified on the keeper card,
+  only on a separate explicit request, and never a file it does not recognise.
 - **The stamp is written LAST, from what actually landed on the keeper card** —
   the work-backup lesson, where a manifest written up front produced a ZIP
   claiming files it did not have, and replaced the good one.
@@ -186,6 +186,69 @@ without any of the rest.
    condemned into `condemned\`. Verified copy and dedup come for free.
 4. **The clear stamp**, written last from the copy's actual result.
 5. **The dialog** — verdict table per day, the two gates, Consolidate button.
+
+## Revised 2026-08-25 — after the first real run
+
+His three observations, all acted on:
+
+**"The keepers are complete, they are old."** The split that matters: RAW is
+immutable, JPG and metadata are **fluent** — species names get corrected and
+renders get made for days after a card is consolidated, while SV INDEX is
+refreshed daily and the keeper card is not. Three consequences:
+
+- The restore order in ch.18 already handles it. `restore_day` only overwrites a
+  differing file with the caller's consent, and the keeper-card copy never
+  overwrites an existing sidecar, so *ZIPs first, keeper card second* lands the
+  fresh metadata and silently skips the stale. Reverse the order and you get
+  asked instead. Do not "simplify" either half.
+- `SV_KEEPERS.json` records **metadata_as_of**, so a card states its own
+  staleness rather than implying currency.
+- A re-run now **refreshes** `.xmp` / `.dop` / `.jpg` and never re-copies the
+  RAW (`copy_known_files(refresh_exts=…)`). The "never overwrite a sidecar" rule
+  exists because a destination may hold work done *there* — true of a picture
+  folder, false of a keeper card. So "top up the keeper card" is a ~12 MB
+  evening job, not a rewrite.
+
+**No checkbox for what to copy.** Measured on the real card: sidecars 0.13%,
+`.dop` 0.06%, renders 0.42% — **0.60% of the RAW payload, all in**. A setting
+that can only move the total by half a percent is not a choice, it is a question
+asked forever, and one you would have to be right about in advance about a card
+you rely on months later. Same conclusion the work backup reached at 2500:1. The
+one legitimate size question is *"will this fit?"*, which is a **constraint**:
+`check_free_space` now runs as a pre-flight at the moment the byte total is
+exact.
+
+**Card identity.** There was none; the drive letter is whatever the reader
+handed out and the volume label is often blank. `ensure_card_id` mints a UUID
+into the card's own record, with the Windows volume serial alongside as
+corroboration. It is written where we are already writing, never by
+classification, which stays read-only.
+
+**Deleting after a verified copy — added, with teeth.** He never formats, he
+deletes by hand, so the tool stopping at "safe to format" was inviting the wrong
+card to be wiped. `plan_delete` / `delete_from_card`:
+
+- a separate click, never bundled with the copy;
+- keepers and condemned frames must be **found on the keeper card at the right
+  size** — anything else is reported as unverified and survives;
+- executed/presumed frames have no copy by design, and are counted separately so
+  the confirmation can say how many pictures are about to exist nowhere;
+- **refuses if the card id does not match** the plan — cards get swapped between
+  one step and the next, and this is the one irreversible operation;
+- files not in the roster (`.dat`, `System Volume Information`) are never
+  touched, and are counted so the survivors are visible.
+
+**The card keeps its own record, pruned.** Deleting by hand takes the `.sv`
+files too; doing it here keeps them and removes only the entries for the files
+that went. The identity and read history are what make the *next* empty safe — a
+card whose id is discarded every cycle is a stranger every time — and a card
+left claiming to hold pictures it no longer has would break the clear stamp on
+the next trip. Known gap, inherited from the reserve: a card handed to someone
+else still carries this record.
+
+**Folder naming.** The keeper folder uses the PICTURE folder's name
+("2026 North Greece"), not the repo id ("greecedb"): it is written on a physical
+card read months later and should match the prefix on every file inside it.
 
 ## Out of scope for v1
 

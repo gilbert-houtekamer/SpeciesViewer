@@ -950,7 +950,8 @@ def _next_free_name(target: Path, reserved: set | None = None) -> Path:
 
 # ── Copying an explicit list ──────────────────────────────────────────────────
 
-def copy_known_files(pairs, logger=None, progress=None, should_cancel=None) -> dict:
+def copy_known_files(pairs, logger=None, progress=None, should_cancel=None,
+                     refresh_exts=frozenset()) -> dict:
     """Copy an explicit list of (source, destination) pictures, sidecars included.
 
     `copy_card` is the right tool for a CARD: unknown contents, capture dates
@@ -973,12 +974,23 @@ def copy_known_files(pairs, logger=None, progress=None, should_cancel=None) -> d
     use by DIFFERENT content is auto-renamed rather than overwritten — the same
     rule copy_card follows, for the same reason.
 
+    `refresh_exts` names the extensions for which a differing destination is
+    REPLACED instead of renamed. It exists for the keeper-card case, where the
+    RAW is immutable but the sidecars and renders are not: species names get
+    corrected and JPGs get made for days after a card is consolidated, so a
+    keeper card that could never catch up would freeze on the day it was
+    written. The usual "never overwrite a sidecar at the destination" rule is
+    there because the destination may hold work done THERE — which is true of a
+    picture folder and false of a keeper card, where nothing edits anything and
+    the laptop is unambiguously the source. Empty by default, so no other caller
+    is affected.
+
     Returns a copy_card-shaped summary so either can be reported the same way.
     """
     log = logger or logging.getLogger("speciesviewer")
     summary = {"total": len(pairs), "copied": 0, "skipped": 0, "renamed": 0,
-               "failed": 0, "bytes": 0, "sidecars": 0, "failed_names": [],
-               "error": "", "targets": []}
+               "refreshed": 0, "failed": 0, "bytes": 0, "sidecars": 0,
+               "failed_names": [], "error": "", "targets": []}
     sidecar_index = _SidecarIndex()
     sidecar_plan: list[tuple[Path, Path]] = []
     reserved: set[Path] = set()
@@ -996,16 +1008,22 @@ def copy_known_files(pairs, logger=None, progress=None, should_cancel=None) -> d
                 if dest.exists() and _already_copied(src, dest):
                     summary["skipped"] += 1
                     summary["targets"].append(str(dest))
-                    _plan_carried_sidecars(sidecar_index, src, dest, sidecar_plan)
+                    _plan_carried_sidecars(sidecar_index, src, dest, sidecar_plan,
+                                           refresh_exts)
                     continue
-                dest = _next_free_name(dest, reserved)
-                summary["renamed"] += 1
+                if dest.suffix.lower() in refresh_exts:
+                    dest.unlink(missing_ok=True)      # the laptop is the source
+                    summary["refreshed"] += 1
+                else:
+                    dest = _next_free_name(dest, reserved)
+                    summary["renamed"] += 1
             reserved.add(dest)
             _copy_and_hash_dest(src, dest)
             summary["copied"] += 1
             summary["bytes"] += dest.stat().st_size
             summary["targets"].append(str(dest))
-            _plan_carried_sidecars(sidecar_index, src, dest, sidecar_plan)
+            _plan_carried_sidecars(sidecar_index, src, dest, sidecar_plan,
+                                   refresh_exts)
         except OSError as e:
             summary["failed"] += 1
             summary["failed_names"].append(src.name)
@@ -1030,13 +1048,14 @@ def copy_known_files(pairs, logger=None, progress=None, should_cancel=None) -> d
 
 
 def _plan_carried_sidecars(index, src_picture: Path, picture_target: Path,
-                           plan: list) -> None:
-    """Queue this picture's sidecars for copying, never overwriting one that is
-    already at the destination — it may hold work done there since, which is the
-    derived-file rule this project learned the hard way."""
+                           plan: list, refresh_exts=frozenset()) -> None:
+    """Queue this picture's sidecars for copying. A sidecar already at the
+    destination is left alone — it may hold work done there since, which is the
+    derived-file rule this project learned the hard way — unless the caller has
+    declared this destination one it owns outright (see refresh_exts)."""
     for sc in index.for_picture(src_picture):
         target_sc = sidecar_target(Path(picture_target), sc)
-        if not target_sc.exists():
+        if not target_sc.exists() or target_sc.suffix.lower() in refresh_exts:
             plan.append((sc, target_sc))
 
 
