@@ -32,21 +32,40 @@ from utils.disk_space import human_bytes
 
 CONFIG_SECTION = "emptycard"
 CONFIG_KEY = "keeper_location"
+CONFIG_KEY_CARD = "card_location"
 
 # Columns of the per-day table. "Needs attention" is last but it is the one that
 # decides the outcome, so it is also the only one that ever gets a colour.
 DAY_COL, ON_CARD_COL, KEPT_COL, MARKED_COL, GONE_COL, ATTN_COL = range(6)
 
 
+def _remembered(key: str) -> str:
+    return _config.get(CONFIG_SECTION, key, fallback="").strip()
+
+
+def _remember(key: str, path: str):
+    if not _config.has_section(CONFIG_SECTION):
+        _config.add_section(CONFIG_SECTION)
+    _config.set(CONFIG_SECTION, key, path.strip())
+    persist_config()
+
+
 def keeper_location() -> str:
-    return _config.get(CONFIG_SECTION, CONFIG_KEY, fallback="").strip()
+    return _remembered(CONFIG_KEY)
 
 
 def set_keeper_location(path: str):
-    if not _config.has_section(CONFIG_SECTION):
-        _config.add_section(CONFIG_SECTION)
-    _config.set(CONFIG_SECTION, CONFIG_KEY, path.strip())
-    persist_config()
+    _remember(CONFIG_KEY, path)
+
+
+def card_location() -> str:
+    """The card slot last used. A drive letter is a weak thing to remember — the
+    reader may hand out a different one next time — but it is the same one all
+    day on one machine, and re-typing it for every card of a trip is the kind of
+    friction that stops a safety step being used at all. Re-checked on every
+    open, never trusted: if it is gone, the field simply starts empty."""
+    remembered = _remembered(CONFIG_KEY_CARD)
+    return remembered if remembered and Path(remembered).is_dir() else ""
 
 
 class _CheckWorker(QObject):
@@ -70,6 +89,12 @@ class _CopyWorker(QObject):
     def __init__(self, report, keeper_root, trip_name, card_label, condemned):
         super().__init__()
         self._args = (report, keeper_root, trip_name, card_label, condemned)
+        self._cancel = False
+
+    def cancel(self):
+        """Asked for when the window is closing. The copy stops between files;
+        whatever has already landed stays, and a re-run finishes the job."""
+        self._cancel = True
 
     def run(self):
         report, keeper_root, trip_name, card_label, condemned = self._args
@@ -77,6 +102,7 @@ class _CopyWorker(QObject):
             out = ce.consolidate(
                 report, keeper_root, trip_name, card_label,
                 include_condemned=condemned,
+                should_cancel=lambda: self._cancel,
                 progress=lambda d, t, n: self.progress.emit(d, t, n))
             self.finished.emit(out, "")
         except Exception as e:
@@ -91,6 +117,7 @@ class EmptyCardDialog(QDialog):
         self._project = str(project_root or "")
         self._report: dict = {}
         self._thread = None
+        self._preview = None
         self.resize(820, 560)
 
         outer = QVBoxLayout(self)
@@ -102,7 +129,8 @@ class EmptyCardDialog(QDialog):
             "<br><br>SpeciesViewer never formats the card and never deletes "
             "anything on it.".format(self._trip_name or "this trip")))
 
-        self._card_label = QLabel("— choose the card you want to empty —")
+        self._card = card_location()
+        self._card_label = QLabel(self._card or "— choose the card you want to empty —")
         outer.addLayout(self._path_row("Card to empty:", self._card_label,
                                        self._choose_card))
         self._keeper_label = QLabel(keeper_location() or "— not chosen —")
@@ -134,6 +162,12 @@ class EmptyCardDialog(QDialog):
         self._check_btn = QPushButton("Check card")
         self._check_btn.clicked.connect(self._check)
         btns.addWidget(self._check_btn)
+        self._attn_btn = QPushButton("Deal with these in SpeciesViewer…")
+        self._attn_btn.setToolTip("Open the pictures still needing a colour, so you "
+                                  "can set one here instead of in PhotoLab")
+        self._attn_btn.setEnabled(False)
+        self._attn_btn.clicked.connect(self._open_attention)
+        btns.addWidget(self._attn_btn)
         btns.addStretch(1)
         self._copy_btn = QPushButton("Save the keepers…")
         self._copy_btn.setEnabled(False)
@@ -144,7 +178,8 @@ class EmptyCardDialog(QDialog):
         btns.addWidget(self._close_btn)
         outer.addLayout(btns)
 
-        self._card = ""
+        if self._card:
+            self._show_clear_verdict()
 
     # ── pickers ───────────────────────────────────────────────────────────
 
@@ -163,14 +198,18 @@ class EmptyCardDialog(QDialog):
         if not path:
             return
         self._card = path
+        _remember(CONFIG_KEY_CARD, path)
         self._card_label.setText(path)
         self._report = {}
         self._copy_btn.setEnabled(False)
+        self._attn_btn.setEnabled(False)
         self._table.setRowCount(0)
-        # Read the card's own verdict straight away: a card that was already
-        # emptied should say so before anything is re-checked, because that is
-        # the question being asked when a card is picked up at all.
-        already = ce.clear_verdict(path)
+        self._show_clear_verdict()
+
+    def _show_clear_verdict(self):
+        """The card's own answer, read before anything is re-checked — that is the
+        question being asked when a card is picked up at all."""
+        already = ce.clear_verdict(self._card)
         self._identity.setText(f"<b>{already}</b>" if already else "")
         self._summary.setText("Press Check card.")
 
@@ -227,11 +266,17 @@ class EmptyCardDialog(QDialog):
                 "emptied.<br>" + "<br>".join(lines)
                 + (f"<br>⚠️ {warn}" if warn else ""))
         else:
+            unreachable = report["counts"].get(ce.UNACCOUNTED, 0)
+            tail = ""
+            if unreachable:
+                tail = (f"<br><br>{unreachable} of these are only on the card and "
+                        f"cannot be opened from here — read the card in first.")
             self._summary.setText(
                 "❌ This card is <b>not</b> ready to be emptied:<br>"
                 + "<br>".join(f"• {b}" for b in report.get("blockers", []))
-                + "<br><br>" + "<br>".join(lines))
+                + "<br><br>" + "<br>".join(lines) + tail)
         self._copy_btn.setEnabled(ok)
+        self._attn_btn.setEnabled(bool(self._attention_paths()))
 
     def _fill_table(self, report):
         days = report.get("days") or {}
@@ -257,6 +302,53 @@ class EmptyCardDialog(QDialog):
                 if col == ATTN_COL and attn:
                     item.setForeground(Qt.GlobalColor.red)
                 self._table.setItem(r, col, item)
+
+    # ── deal with the stragglers, without leaving SV ──────────────────────
+
+    def _attention_paths(self) -> list[str]:
+        """The pictures holding this card back, that we can actually show.
+
+        A frame that never reached the laptop has nothing to open — it exists
+        only on the card — so it is excluded here and called out separately. It
+        is also the one case this button cannot solve: the fix for it is to read
+        the card again, not to set a colour.
+        """
+        return [r["path"] for r in self._report.get("files", [])
+                if r["verdict"] in ce.BLOCKING and r.get("path")]
+
+    def _open_attention(self):
+        """Open the culling grid over exactly those pictures, so a colour can be
+        set here rather than in PhotoLab, and re-check when it closes."""
+        paths = self._attention_paths()
+        if not paths:
+            return
+        from gui.image_viewer import ImagePreviewDialog
+        from gui.sidecar_provider import SidecarCollection
+        from gui.preview_provider import preview_cache_dir_for
+
+        cache_root = str(preview_cache_dir_for(Path(self._project)))
+        collection = SidecarCollection(paths, cache_root=cache_root)
+        # mode="all": these are RAWs, and the default JPG-only overlay would show
+        # a count with an empty grid under it.
+        dlg = ImagePreviewDialog(self, collection=collection, mode="all",
+                                 cache_root=cache_root,
+                                 source_label="Still to deal with before this card "
+                                              "can be emptied")
+        # This dialog runs application-modal, and a modal window blocks input to
+        # every other window EXCEPT one that is itself modal and higher on the
+        # stack. Without this the grid appears and cannot be scrolled or closed.
+        dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
+        dlg.finished.connect(self._after_attention)
+        self._preview = dlg                  # keep a reference; a local would be GC'd
+        dlg.show()
+
+    def _after_attention(self, *_):
+        """Straight back to the check. Setting the last colour and then having to
+        find the button again is exactly the moment to close the loop for the
+        user — and the sidecar cache notices the changed .xmp on its own."""
+        self._preview = None
+        if self.isVisible():          # not on the way out — see closeEvent
+            self._check()
 
     # ── copy ──────────────────────────────────────────────────────────────
 
@@ -357,8 +449,29 @@ class EmptyCardDialog(QDialog):
         if on:
             self._copy_btn.setEnabled(False)
 
-    def _stop_thread(self):
-        if self._thread is not None:
-            self._thread.quit()
-            self._thread.wait()
-            self._thread = None
+    def _stop_thread(self, timeout_ms=5000):
+        """Quit and WAIT. The wait is the crux: without it Qt tears down a
+        QThread whose run() is still going and the process dies with "QThread:
+        Destroyed while thread is still running" — the same trap the card
+        reader's Cancel had to solve. Bounded, so a wedged worker cannot hang
+        the close."""
+        if self._thread is None:
+            return
+        worker = getattr(self, "_worker", None)
+        if worker is not None and hasattr(worker, "cancel"):
+            worker.cancel()
+        self._thread.quit()
+        self._thread.wait(timeout_ms)
+        self._thread = None
+
+    def closeEvent(self, event):
+        self._stop_thread()
+        super().closeEvent(event)
+
+    def reject(self):
+        self._stop_thread()
+        super().reject()
+
+    def accept(self):
+        self._stop_thread()
+        super().accept()
