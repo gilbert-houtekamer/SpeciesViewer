@@ -119,10 +119,19 @@ class EmptyCardDialog(QDialog):
         self._report: dict = {}
         self._thread = None
         self._preview = None
-        self.resize(820, 560)
+        # Opens at about two thirds of a laptop screen. Do not ask for less than
+        # the button row's own minimum (~1010 px): the layout wins that argument
+        # silently, and a resize() nobody honours is worse than no resize() at
+        # all, because the next person changes the number instead of the cause.
+        self.resize(1040, 620)
 
         outer = QVBoxLayout(self)
-        outer.addWidget(QLabel(
+        # ⚠ WORD WRAP, or this paragraph sets the width of the whole window. A
+        # QLabel without it reports the width of its longest unbroken line as
+        # its minimum — 3288 px for this text — and minimumSizeHint beats
+        # resize(), so the dialog opened wider than a laptop screen no matter
+        # what size was asked for. Every long label on this dialog wraps.
+        intro = QLabel(
             "Before a card can be re-used, every picture on it has to have been "
             "dealt with — either kept, or deliberately thrown away. This checks the "
             "card against <b>{}</b>, copies the pictures you kept onto a second "
@@ -130,7 +139,9 @@ class EmptyCardDialog(QDialog):
             "<br><br>Deleting the pictures from the card afterwards is a separate "
             "step, offered only once the copies have been verified. Files "
             "SpeciesViewer does not recognise are never touched."
-            .format(self._trip_name or "this trip")))
+            .format(self._trip_name or "this trip"))
+        intro.setWordWrap(True)
+        outer.addWidget(intro)
 
         self._card = card_location()
         self._card_label = QLabel(self._card or "— choose the card you want to empty —")
@@ -165,7 +176,7 @@ class EmptyCardDialog(QDialog):
         self._check_btn = QPushButton("Check card")
         self._check_btn.clicked.connect(self._check)
         btns.addWidget(self._check_btn)
-        self._attn_btn = QPushButton("Deal with these in SpeciesViewer…")
+        self._attn_btn = QPushButton("Deal with these here…")
         self._attn_btn.setToolTip("Open the pictures still needing a colour, so you "
                                   "can set one here instead of in PhotoLab")
         self._attn_btn.setEnabled(False)
@@ -176,7 +187,7 @@ class EmptyCardDialog(QDialog):
         self._copy_btn.setEnabled(False)
         self._copy_btn.clicked.connect(self._copy)
         btns.addWidget(self._copy_btn)
-        self._empty_btn = QPushButton("Delete them from the card…")
+        self._empty_btn = QPushButton("Delete from the card…")
         self._empty_btn.setToolTip("Only offered once the pictures are verified "
                                    "on the keeper card")
         self._empty_btn.setEnabled(False)
