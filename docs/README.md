@@ -6,7 +6,8 @@ Start here when you are looking for "which file explains X".
 
 | Document | Answers |
 |---|---|
-| [SpeciesViewer_Capabilities.html](SpeciesViewer_Capabilities.html) | What the application can do, chapter by chapter — the manual. |
+| [manual/](manual/) | **The reference manual.** One chapter per menu, every item explained, plus the Day/Trip/Album/Master concepts and a "why is this greyed out" table. |
+| [SpeciesViewer_Capabilities.html](SpeciesViewer_Capabilities.html) | What the application can do, chapter by chapter — the capability history. |
 | [SpeciesViewer_Backlog.html](SpeciesViewer_Backlog.html) | What is planned, in progress, or parked, and why. |
 | [camera_support.md](camera_support.md) | Which cameras have actually been tested, and what works on each — measured, not asserted. Regenerate with `tools/svr_camera_checklist.py`. |
 | [viewer_keybindings.md](viewer_keybindings.md) | Every key that works in the three picture viewers. |
