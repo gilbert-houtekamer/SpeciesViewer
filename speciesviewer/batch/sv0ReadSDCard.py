@@ -35,6 +35,7 @@
 # uses clonefile/fcopyfile.  SHA256 is hashed from the SSD dest (500 MB/s),
 # not the card (~60 MB/s).
 
+import errno
 import hashlib
 import json
 import logging
@@ -133,7 +134,16 @@ def scan_source(source):
     # already separated, so the per-file is_file() stat is gone — over USB, on a
     # 2000-file card, that stat is not free.
     for dirpath, dirnames, filenames in os.walk(source):
-        dirnames[:] = [d for d in dirnames if d.lower() not in HOUSEKEEPING_DIRS]
+        # Dot-DIRECTORIES are pruned as well as the named ones. Dot-FILES were
+        # always skipped, but the walk still descended into dot-folders, and the
+        # files inside them have perfectly ordinary names. The case that matters
+        # is `.trash`: culling MOVES a condemned stem to <day>/.trash/<stem>/
+        # rather than unlinking it, so pointing a read at a folder you have
+        # already culled — the very case _SidecarIndex exists for — copied every
+        # deleted picture straight back in. Nothing this project puts behind a
+        # dot is ever an ingest source.
+        dirnames[:] = [d for d in dirnames
+                       if not d.startswith(".") and d.lower() not in HOUSEKEEPING_DIRS]
         for name in filenames:
             if name.startswith(".") or name == _CardCache._FILENAME:
                 continue
@@ -936,6 +946,98 @@ def _next_free_name(target: Path, reserved: set | None = None) -> Path:
         if not cand.exists() and (reserved is None or cand not in reserved):
             return cand
         n += 1
+
+
+# ── Copying an explicit list ──────────────────────────────────────────────────
+
+def copy_known_files(pairs, logger=None, progress=None, should_cancel=None) -> dict:
+    """Copy an explicit list of (source, destination) pictures, sidecars included.
+
+    `copy_card` is the right tool for a CARD: unknown contents, capture dates
+    that have to be read, a destination that may already hold the same shot
+    under a different name. None of that applies once the caller has decided,
+    file by file, what is copied and where — which is what emptying a card does
+    (see engine/card_empty.py). Routing that through copy_card would force an
+    exiftool date pass and a whole-destination hash index to answer a question
+    already answered, and `use_card_cache` would drop an ingest cache AND a 1 MB
+    reserve into every one of the laptop's day folders on the way past.
+
+    It lives HERE, beside copy_card, rather than in the caller, because the parts
+    worth reusing are exactly the fiddly ones and they are private to this
+    module: `_SidecarIndex` (the .xmp and .dop carrying the culling work must
+    travel with their picture, and the two have different naming shapes) and
+    `_copy_and_hash_dest` (verified copy).
+
+    Idempotent: a destination that is already byte-identical is skipped, so a
+    re-run after a cancel or a full card finishes the job. A destination name in
+    use by DIFFERENT content is auto-renamed rather than overwritten — the same
+    rule copy_card follows, for the same reason.
+
+    Returns a copy_card-shaped summary so either can be reported the same way.
+    """
+    log = logger or logging.getLogger("speciesviewer")
+    summary = {"total": len(pairs), "copied": 0, "skipped": 0, "renamed": 0,
+               "failed": 0, "bytes": 0, "sidecars": 0, "failed_names": [],
+               "error": "", "targets": []}
+    sidecar_index = _SidecarIndex()
+    sidecar_plan: list[tuple[Path, Path]] = []
+    reserved: set[Path] = set()
+
+    for i, (src, dest) in enumerate(pairs, 1):
+        if should_cancel and should_cancel():
+            log.warning("⏹ Copy cancelled by user.")
+            break
+        src, dest = Path(src), Path(dest)
+        if progress:
+            progress(i, len(pairs), src.name)
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if dest.exists() or dest in reserved:
+                if dest.exists() and _already_copied(src, dest):
+                    summary["skipped"] += 1
+                    summary["targets"].append(str(dest))
+                    _plan_carried_sidecars(sidecar_index, src, dest, sidecar_plan)
+                    continue
+                dest = _next_free_name(dest, reserved)
+                summary["renamed"] += 1
+            reserved.add(dest)
+            _copy_and_hash_dest(src, dest)
+            summary["copied"] += 1
+            summary["bytes"] += dest.stat().st_size
+            summary["targets"].append(str(dest))
+            _plan_carried_sidecars(sidecar_index, src, dest, sidecar_plan)
+        except OSError as e:
+            summary["failed"] += 1
+            summary["failed_names"].append(src.name)
+            log.error(f"Could not copy {src.name}: {e}")
+            # ENOSPC on the target is not one file's problem, it is the end of
+            # the run — carrying on would produce a failure line per remaining
+            # picture and bury the one that matters.
+            if getattr(e, "errno", None) == errno.ENOSPC:
+                summary["error"] = (f"The target ran out of space after "
+                                    f"{summary['copied']} picture(s).")
+                log.error(f"❌ {summary['error']}")
+                break
+
+    for sc_src, sc_dest in sidecar_plan:
+        try:
+            sc_dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(sc_src, sc_dest)
+            summary["sidecars"] += 1
+        except OSError as e:
+            log.warning(f"Could not copy sidecar {sc_src.name}: {e}")
+    return summary
+
+
+def _plan_carried_sidecars(index, src_picture: Path, picture_target: Path,
+                           plan: list) -> None:
+    """Queue this picture's sidecars for copying, never overwriting one that is
+    already at the destination — it may hold work done there since, which is the
+    derived-file rule this project learned the hard way."""
+    for sc in index.for_picture(src_picture):
+        target_sc = sidecar_target(Path(picture_target), sc)
+        if not target_sc.exists():
+            plan.append((sc, target_sc))
 
 
 # ── Main entry point ─────────────────────────────────────────────────────────
