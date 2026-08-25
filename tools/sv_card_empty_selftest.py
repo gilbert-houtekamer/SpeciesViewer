@@ -226,5 +226,25 @@ assert not after["files"], "roster must be pruned, still holds %s" % after["file
 assert after.get("emptied"), "the empty must be recorded on the card"
 print("   roster pruned, identity kept, empty recorded")
 
+
+# -- 11. an emptied card is DONE, not broken --------------------------------
+# It keeps its record with the file entries pruned, so "no roster + an emptied
+# event" is a finished job. Reporting that as a red NOT SAFE TO EMPTY was wrong
+# about what had happened.
+r11 = ce.classify_card(card, project)
+show("11. the card we just emptied", r11)
+assert ce.nothing_to_do(r11), "an emptied card must read as done"
+assert not r11["blockers"], r11["blockers"]
+assert not ce.can_empty(r11), "done is not the same as ready"
+assert "ready to shoot on" in " ".join(ce.format_report(r11))
+
+# and a card with a record but no roster and no empty event still blocks
+import json as _j
+_raw = _j.loads((card / ce.CARD_CACHE_NAME).read_text(encoding="utf-8"))
+_raw.pop("emptied", None)
+(card / ce.CARD_CACHE_NAME).write_text(_j.dumps(_raw), encoding="utf-8")
+r11b = ce.classify_card(card, project)
+assert not ce.nothing_to_do(r11b) and r11b["blockers"], "no history -> still blocks"
+print("   a roster-less card with no empty history still blocks")
 print("\nALL CHECKS PASSED")
 shutil.rmtree(base, ignore_errors=True)

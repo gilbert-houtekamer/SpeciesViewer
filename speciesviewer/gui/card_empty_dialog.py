@@ -271,9 +271,26 @@ class EmptyCardDialog(QDialog):
         if last:
             bits.append(f"Last read into <b>{last.get('trip', '?')}</b> on "
                         f"{str(last.get('when', '?'))[:10]}.")
+        emptied = ident.get("emptied") or []
+        if emptied:
+            bits.append(f"Last emptied on {str(emptied[-1].get('when', '?'))[:10]} "
+                        f"({emptied[-1].get('deleted', '?')} picture(s) deleted).")
         self._identity.setText("<br>".join(bits))
 
         lines = [ln for ln in ce.format_report(report)][1:]
+
+        # An already-emptied card is neither ready nor blocked: it is done. It
+        # gets its own, quiet answer rather than a red refusal.
+        if ce.nothing_to_do(report):
+            # `lines` already has the "last read into" line trimmed off the
+            # front — the identity label above shows that, and repeating it
+            # under the table reads as a stutter.
+            self._summary.setText("<br>".join(lines))
+            self._copy_btn.setEnabled(False)
+            self._attn_btn.setEnabled(False)
+            self._empty_btn.setEnabled(False)
+            return
+
         ok = ce.can_empty(report)
         if ok:
             warn = ce.fullness_warning(report)

@@ -128,6 +128,7 @@ def card_identity(index) -> dict:
     return {"last_read": reads[-1] if reads else None,
             "reads": len(reads),
             "card_id": card_id(index),
+            "emptied": (index or {}).get("emptied") or [],
             "volume_serial": (index or {}).get("volume_serial", ""),
             "cleared": (index or {}).get("cleared")}
 
@@ -337,7 +338,19 @@ def classify_card(card_root, project_root, logger_=None) -> dict:
 
     roster = card_roster(index)
     if not roster:
-        report["blockers"].append("The card's ingest record is empty.")
+        # A card SV itself emptied is not a failure, it is a finished job. It
+        # keeps its record (identity and history) with the file entries pruned,
+        # so "no roster + an emptied event" is the signature of a card that is
+        # ready to shoot on — and reporting that in red, under the heading NOT
+        # SAFE TO EMPTY, was simply wrong about what had happened.
+        emptied = report["identity"].get("emptied") or []
+        if emptied:
+            report["already_empty"] = True
+            report["emptied_last"] = emptied[-1]
+        else:
+            report["blockers"].append(
+                "The card's ingest record lists no pictures, and it has no record "
+                "of ever having been emptied.")
         return report
 
     live, trashed = index_project(project_root)
@@ -461,10 +474,21 @@ def fullness_warning(report, threshold_pct=99.0) -> str:
             f"You can go ahead anyway.")
 
 
+def nothing_to_do(report) -> bool:
+    """True for a card SV has already emptied — neither ready nor blocked."""
+    return bool(report.get("already_empty"))
+
+
 def can_empty(report) -> bool:
-    """True when every frame on the card has a verdict. The fullness rule is
-    deliberately not consulted here — it is advice, this is the gate."""
-    return bool(report.get("roster")) and not report.get("blockers")
+    """True when every frame on the card has a verdict AND there are frames to
+    act on. The fullness rule is deliberately not consulted here — it is advice,
+    this is the gate.
+
+    An already-emptied card is excluded explicitly: it has a record and no
+    blockers, so it satisfied the old test and would have offered to save
+    keepers it no longer holds. Done is not the same as ready."""
+    return (bool(report.get("roster")) and not report.get("blockers")
+            and not report.get("already_empty"))
 
 
 def format_report(report) -> list[str]:
@@ -480,6 +504,13 @@ def format_report(report) -> list[str]:
         c = ident["cleared"]
         out.append(f"Already cleared on {str(c.get('when', '?'))[:10]} — "
                    f"{c.get('keepers', '?')} picture(s) went to {c.get('keeper_card', '?')}.")
+    if report.get("already_empty"):
+        last = report.get("emptied_last") or {}
+        out.append(f"This card is empty. SpeciesViewer emptied it on "
+                   f"{str(last.get('when', '?'))[:10]}, deleting "
+                   f"{last.get('deleted', '?')} picture(s). Nothing to do — it is "
+                   f"ready to shoot on again.")
+        return out
     if not report.get("roster"):
         out.extend(report.get("blockers") or [])
         return out

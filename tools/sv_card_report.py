@@ -59,6 +59,9 @@ def main():
             print(f"  {n}")
 
     print()
+    if card_empty.nothing_to_do(report):
+        print("This card is already empty — nothing to do.")
+        return 0
     if card_empty.can_empty(report):
         print("✅ Every frame on this card has a verdict — it can be emptied.")
         warn = card_empty.fullness_warning(report)
