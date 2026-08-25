@@ -1,7 +1,11 @@
 # Emptying an SD card safely
 
-Feature branch `sv_empty_sdcard`. Agreed with Gilbert 2026-08-24, to be built
-2026-08-25. Nothing here is written yet.
+Feature branch `sv_empty_sdcard`. Agreed with Gilbert 2026-08-24.
+
+**Status 2026-08-25: all six build steps written, engine tested, GUI untested
+live.** `engine/card_empty.py` + `gui/card_empty_dialog.py` +
+`tools/sv_card_report.py` (headless report) + `tools/sv_card_empty_selftest.py`
+(seven checks, temp folders only). Menu: **Trips ▸ Empty a Card**.
 
 ## Why
 
@@ -189,12 +193,37 @@ Formatting anything. Auto-detecting which volume is a keeper card. A laptop-side
 registry of cleared cards (needs the fingerprint). Retiring the work backup's
 `survivors.json` — see below.
 
-## Open question, to settle before step 3
+## Settled 2026-08-25: survivors.json stays
 
-A keeper card **is** the survivor list, materialised: re-reading one copies only
-keepers by construction, so `survivors.json` has nothing to do for a card that
-has been consolidated. The work-backup ZIP still earns its place — it carries
-species, blog text, lifer status and the CSVs, not merely which files survived —
-but two mechanisms that both answer "which frames survived" will eventually
-disagree. Decide deliberately whether a consolidated card retires the survivor
-filter for its days, rather than letting them drift.
+His call — *"I do like the survivors.json"*. The keeper card does **not** retire
+the survivor filter for its days; both mechanisms stay. They agree by
+construction rather than by coordination: a keeper card holds only survivors, so
+re-reading one gives the filter nothing to remove, and the filter still covers
+every card that has *not* been consolidated. Nothing in this feature writes to
+`survivors.json` or reads it.
+
+## Found while building
+
+Two defects the design did not anticipate, both fixed, both in
+`tools/sv_card_empty_selftest.py` as checks 7 and 3:
+
+- **The prefix bridge.** Card names are un-prefixed (`N5040114.ORF`), laptop
+  names are prefixed. With no bridge nothing matched — and "matched nothing"
+  presents as "every frame was deliberately deleted", which is the verdict that
+  says *safe to format*. `derive_prefixes()` works the prefix out from the two
+  name sets, and a card matching NOTHING now blocks outright. The first real
+  card passed only by luck: it had been built by copying already-prefixed files
+  back onto a card, so the two names were identical.
+- **Case.** The roster is keyed lower-case, because a Windows filesystem is.
+  Copying under that key renamed `P100.ORF` to `p100.orf` on the keeper card,
+  breaking the name its `.xmp` and `.dop` are matched to.
+
+And one pre-existing bug fixed on the way: `scan_source` skipped dot-FILES but
+descended into dot-DIRECTORIES, so pointing a card read at an already-culled
+folder copied everything in `.trash` back.
+
+**`Grey`** turned out to be a sixth label value in the wild. It exists only as a
+hardcoded swatch on the viewer's colour-filter bar (`image_viewer.py`), is not
+in `label_colors.COLORS`, and carries no keep-or-discard meaning — so it blocks,
+and the report names it instead of calling it "no colour set". Worth deciding
+separately what Grey is *for*.

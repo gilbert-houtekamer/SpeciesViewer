@@ -915,6 +915,30 @@ def build_menu_spec(main_window):
         enabled=has_active_trip,
     )
 
+    def _empty_card():
+        """The other end of Read SD-cards: a card whose pictures have all been
+        judged can have its keepers saved to a second card and then be re-used.
+        Needs the trip because the verdicts live beside the trip's pictures."""
+        from pathlib import Path
+        from gui.card_empty_dialog import EmptyCardDialog
+        from utils.trip_identity import resolve_trip_picture_root
+        trip_root = _config.get("trip", "tripbiotadatabase", fallback="").strip()
+        if not trip_root:
+            QMessageBox.warning(main_window, "Empty a card",
+                                "Open the trip the card was read into first.")
+            return
+        pic = resolve_trip_picture_root(trip_root, kind="trip")
+        EmptyCardDialog(main_window, Path(trip_root).name, pic).exec()
+
+    empty_card = MenuSpec(
+        callback=_empty_card,
+        title="Empty a Card",
+        tooltip="Check that a card's pictures are all dealt with, save the "
+                "keepers to a second card, and mark it safe to format",
+        enabled=has_active_trip,
+        showsubdirectory=False,
+    )
+
     export_virttrip = MenuSpec(
         callback=None,
         title="Export Album",
@@ -1771,6 +1795,7 @@ def build_menu_spec(main_window):
             "Restore Work from Card…": restore_work,
             f"{MenuSpec.separator()}_setup0": None,
             "Read SD-cards": read_sdcard,
+            "Empty a Card": empty_card,
             f"{MenuSpec.separator()}_setup": None,
             "Sync Sidecars": sync_sidecars,
             f"{MenuSpec.separator()}_pipeline": None,
