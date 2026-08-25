@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QAbstractItemView, QDialog, QFileDialog, QHBoxLayout, QHeaderView, QLabel,
     QLineEdit, QMessageBox, QProgressBar, QPushButton, QTableWidget,
     QTableWidgetItem, QVBoxLayout)
+from gui.widgets import wrapped
 
 logger = logging.getLogger("speciesviewer")
 
@@ -100,7 +101,7 @@ class TracklogGeotagDialog(QDialog):
         lay.addLayout(browse_row)
 
         offset_row = QHBoxLayout()
-        offset_row.addWidget(QLabel(
+        offset_row.addWidget(wrapped(
             "Camera time zone offset (e.g. +02:00) — the camera's clock has no "
             "stored offset, so this is needed to line photo times up with the "
             "tracklog's UTC times:"))

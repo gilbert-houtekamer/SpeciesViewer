@@ -33,6 +33,7 @@ from PyQt6.QtCore import Qt, QPointF, QUrl, QTimer, pyqtSignal, QMimeData, QEven
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
 from gui import theme
+from gui.widgets import wrapped
 
 logger = logging.getLogger("speciesviewer")
 
@@ -1598,7 +1599,7 @@ class PlaceSearchDialog(QDialog):
         self.chosen: dict | None = None
 
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel(
+        lay.addWidget(wrapped(
             "Type the name of the place — a hotel, a reserve, a village, a lake.\n"
             "Pick a result to drop a pin there; you can still drag the pin to the "
             "exact spot before placing."))
