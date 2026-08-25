@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
 from engine import work_backup as wb
 from utils.config import _config, persist_config
 from utils.disk_space import check_free_space, human_bytes
+from gui.widgets import wrapped
 
 CONFIG_SECTION = "backup"
 CONFIG_KEY = "location"
@@ -118,7 +119,7 @@ class BackupWorkDialog(QDialog):
         self.resize(760, 480)
 
         outer = QVBoxLayout(self)
-        outer.addWidget(QLabel(
+        outer.addWidget(wrapped(
             "The SD-cards keep the pictures. This backs up the <b>work</b> — culling "
             "colours, species, locations, crops, blog text and the rendered JPGs — "
             "onto the <b>SV INDEX</b> card, as one ZIP per day."))

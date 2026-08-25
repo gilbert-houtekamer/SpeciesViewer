@@ -1075,6 +1075,11 @@ SFTP, species lookup on GBIF, place names on Nominatim), so a hotel with no wifi
 than breaks. What is genuinely exposed is the <strong>work</strong>: the culling decisions, species
 identifications, locations and blog text that exist only on the laptop.</p>
 
+<p class="note"><strong>Where this premise runs out &mdash; see chapter 22.</strong> &ldquo;The
+cards keep the pictures&rdquo; holds only while there is a spare card in the bag. Emptying a
+finished card, once every frame on it is provably accounted for, is how the premise is bought back
+rather than abandoned.</p>
+
 <p class="note"><strong>How this chapter gets built — keep it simple.</strong> In ten years no
 memory card was ever lost; what <em>was</em> lost were CurrentPictures directories, when
 SpeciesViewer went rogue and deleted files. That is the honest risk record, and it points the
@@ -2237,6 +2242,133 @@ included, and all four R5 Mark II files including the HDR-PQ pair. They get the 
 palette, and Lens Sharpness Optimization is active — an optical module is loaded, not merely a
 bare decode. For these bodies the denoise step exists, and <strong>the HE decode gap is
 SpeciesViewer's alone</strong>: it does not propagate into the pipeline.</p>
+
+
+<h2 id="empty-card">22. Emptying a card, safely</h2>
+
+<p>Chapter 18 settled that <strong>the cards keep the pictures</strong>: there are plenty of them,
+there is no expectation of filling them, and so the RAWs are never the thing at risk. That premise
+is not reopened here &mdash; it is <em>bought back</em>. It holds only while there is a spare card
+in the bag, and a long trip eventually runs out. This chapter is how a finished card becomes a
+blank one again without guessing about a single frame.</p>
+
+<p class="note"><strong>Not a backup.</strong> Nothing is copied that has not already been judged.
+The mirror-everything backup dismissed in chapter 18 stays dismissed; what is built here moves only
+the frames you decided to keep, and only after proving that every other frame on the card was
+thrown away on purpose.</p>
+
+<h3>What was built</h3>
+<ul>
+  <li><strong>The gate: every frame on the card must have a verdict</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-25) &mdash; the feature is the check; the
+    copying is the easy part. Before a card may be emptied, each picture it holds must be either
+    <em>kept</em> or <em>deliberately thrown away</em>. Anything else stops it dead.
+    <br><br><strong>The roster is the card's own record, never the laptop's day folder.</strong>
+    This is the whole safety argument in one sentence. A frame that was shot and never copied is
+    <em>absent</em> from the day folder, so a check against the folder passes it by not existing
+    &mdash; and that frame is precisely the one this feature exists to protect. Every card SV has
+    read carries <code>.sv_ingest_cache.json</code>, listing every file it ever showed us, and the
+    per-file <code>last_copied</code> stamp separates <em>ingested and then discarded</em> from
+    <em>never ingested at all</em>. A card SV has never read has no roster, and a card with no
+    roster is unknown, never clear: absence of evidence blocks.
+    <br><br>Seven verdicts, of which three refuse: never ingested, not yet culled, and a name that
+    matched a file of a different size. The rest are outcomes &mdash; kept, marked for deletion but
+    not yet deleted, deleted (found in the trash), and deleted (gone from the laptop entirely).
+    Culling <em>moves</em> a condemned stem to <code>.trash</code> with its <code>.xmp</code>
+    rather than unlinking it, so an executed sentence is evidence rather than inference.</li>
+
+  <li><strong>Two cards, and the source card is the witness</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-25) &mdash; the card being emptied is in a
+    slot for its <em>roster and identity</em>, not as a copy source. The pictures come off the
+    laptop, because that is where the prefixed names and the sidecars carrying the culling work
+    live. Two readers, then &mdash; unlike the work backup, which was shaped by having only one.</li>
+
+  <li><strong>The keeper card holds the complete state of those frames</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-25) &mdash; RAW, <code>.xmp</code>,
+    <code>.dop</code> and the rendered JPGs, in day folders under one folder per source card. It is
+    self-sufficient: dropped into a trip directory it is ready for Read &amp; Summarize, with no ZIP
+    and no survivor list involved. That is structurally simpler than restoring from the SV INDEX
+    card, which needs three artifacts in the right order; the two restore paths are different
+    animals and are deliberately kept apart.
+    <br><br><strong>There is no setting for what to copy, and that is the design.</strong> Measured
+    on a real card: sidecars 0.13% of the RAW payload, <code>.dop</code> 0.06%, renders 0.42%
+    &mdash; <strong>0.60% for everything</strong>. A choice that can only ever move the total by
+    half a percent is not a choice, it is a question asked on every run forever, and one you would
+    have to answer correctly in advance about a card you rely on months later. The payoff is
+    lopsided too: leaving the renders behind saves twelve megabytes and can cost hours of DeepPRIME.
+    This is the same arithmetic that settled thin-versus-fat in chapter 18 at 2500:1. The one
+    legitimate size question is <em>will it fit</em>, which is a constraint rather than a
+    preference, and is asked as a free-space pre-flight at the moment the byte total is exact.</li>
+
+  <li><strong>The keepers are complete, and they are old</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-25) &mdash; the observation that shaped the
+    rest. RAW is immutable; species names, colours and renders stay <em>fluent</em> for days after a
+    card is consolidated, while the SV INDEX card is refreshed daily and a keeper card is not. So a
+    keeper card states its own staleness in <code>SV_KEEPERS.json</code> (<em>metadata as of</em>),
+    and a re-run <strong>refreshes</strong> the sidecars and renders while never re-copying a RAW
+    &mdash; topping up a keeper card is a twelve-megabyte evening job. The usual rule that a sidecar
+    at the destination is never overwritten exists because that destination may hold work done
+    <em>there</em>; on a keeper card nothing edits anything, and the laptop is unambiguously the
+    source.
+    <br><br>The restore order in chapter 18 already handles the overlap: the ZIP restore only
+    overwrites a differing file with consent, and the card read never overwrites an existing
+    sidecar, so <em>work backup first, keeper card second</em> lands the fresh metadata and silently
+    skips the stale. Reverse the order and you are asked instead. Neither half should be
+    &ldquo;simplified&rdquo;.</li>
+
+  <li><strong>A card that knows which card it is</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-25) &mdash; there was no such thing before.
+    The drive letter is whatever the reader handed out this time and the volume label is often
+    blank, which is the original complaint: every card in the bag looks identical. A UUID is now
+    minted into the card's own record the first time it matters, with the Windows volume serial
+    alongside as corroboration. It is written only where SV is already writing &mdash; never by the
+    check, which stays a read-only question.</li>
+
+  <li><strong>Deleting the pictures, after the copy is verified</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-08-25) &mdash; the original rule was that SV
+    never deletes on the source card, because the card holds the only original. A verified copy is
+    exactly what stops that being true. And in practice cards here are emptied by hand rather than
+    formatted, so a tool that stopped at <em>&ldquo;safe to format&rdquo;</em> and left the doing to
+    a human was inviting the wrong card to be wiped &mdash; the very problem the chapter opens with.
+    <br><br>It has teeth. A separate click, never bundled with the copy. Keepers must be found on
+    the keeper card <em>at the right size</em> or they survive and are reported. Frames discarded
+    during culling have no copy by design, and are counted separately so the confirmation can say
+    how many pictures are about to exist nowhere. It <strong>refuses outright if the card's identity
+    does not match the plan</strong>, because cards get swapped between one step and the next and
+    this is the one irreversible operation. Files not in the roster &mdash; a stray
+    <code>.dat</code>, Windows' own <code>System Volume Information</code> &mdash; are never
+    touched, and are counted so their survival is visible rather than silent.
+    <br><br><strong>The card keeps its own record, pruned.</strong> Deleting by hand takes the
+    <code>.sv</code> files too; doing it here keeps them and removes only the entries for files that
+    actually went. The identity and the read history are what make the <em>next</em> empty safe, and
+    a card left claiming to hold pictures it no longer has would break its clear stamp on the next
+    trip. SpeciesViewer still never formats anything.</li>
+</ul>
+
+<h3>Proven, and not yet proven</h3>
+
+<p><strong>The whole cycle has been run on real hardware</strong> (2026-08-25): a 2 GB card of 112
+Olympus frames checked against the trip, saved to a 60 GB keeper card &mdash; 112 RAW, 112
+<code>.xmp</code>, 112 <code>.dop</code>, 2.0 GB, byte sizes matching the laptop &mdash; then
+emptied. The card came back 0.1% full, its roster pruned to nothing, its identity and read history
+intact, and the reserve megabyte and Windows' own folder untouched.</p>
+
+<p class="note"><strong>The bug that nearly shipped, and what caught it.</strong> Card filenames are
+un-prefixed (<code>N5040114.ORF</code>); the laptop's are prefixed. With no bridge between them
+nothing matched &mdash; and <em>matched nothing</em> presents in the counts as <em>every frame was
+deliberately deleted</em>, which is the verdict that says the card is ready to empty. The first real
+card passed the test anyway, because it had been built by copying already-prefixed files back onto a
+card, so the two names happened to be identical. The fix is a prefix derived from the two name sets;
+the lesson is the guardrail added beside it, which now refuses when <em>not one</em> frame can be
+matched, on the grounds that this is far more likely to be the wrong folder than a card whose every
+picture was thrown away. A test rig that is too tidy proves nothing.</p>
+
+<p class="note"><strong>Not covered.</strong> There is no laptop-side list of which cards are clear
+&mdash; the answer lives on each card and is read when it is in a slot, which is the point, but it
+does mean you cannot survey the bag without inserting each one. A card handed to someone else still
+carries its record, naming trips; that gap is inherited from the reserve megabyte and is unchanged.
+And the ordering that keeps a fresh work backup ahead of a stale keeper card is true today because
+of how the two restores happen to be written, not because anything enforces it.</p>
 
 </body>
 </html>

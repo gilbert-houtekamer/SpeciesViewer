@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 
 from engine.avibaselib import rows_from_text, parse_rows
 from gui.avibase_columns import guess_columns, describe_roles
+from gui.widgets import wrapped
 
 logger = logging.getLogger("speciesviewer")
 
@@ -34,7 +35,7 @@ class PasteListDialog(QDialog):
         self.saved_path = None
 
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(
+        layout.addWidget(wrapped(
             "Select the list on the AviBase page, copy it, and paste it here. "
             "It is saved in the trip data folder, so it stays available for a "
             "later run."

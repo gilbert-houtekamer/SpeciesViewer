@@ -29,6 +29,7 @@ from engine import work_restore as wr
 from gui import theme as _th
 from utils.config import _config
 from utils.disk_space import human_bytes
+from gui.widgets import wrapped
 
 
 class RestoreWorkDialog(QDialog):
@@ -43,7 +44,7 @@ class RestoreWorkDialog(QDialog):
         self.resize(940, 560)
 
         outer = QVBoxLayout(self)
-        outer.addWidget(QLabel(
+        outer.addWidget(wrapped(
             "Puts back everything except the pictures themselves: the culling "
             "colours, species names, locations, crops, blog text <b>and the "
             "rendered JPGs</b>, from the <b>SV INDEX</b> card.<br>"

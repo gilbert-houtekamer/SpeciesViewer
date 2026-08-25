@@ -28,6 +28,7 @@ from gui.blog_day_tab import (_DayTab, _GENERATED_DEFAULT_SCORE,
                               DRAFT_DOT, REVIEWED_DOT, DISABLED_DOT)
 from utils.config import _config
 from utils.trip_config import trip_blog_review_state
+from gui.widgets import wrapped
 
 logger = logging.getLogger("speciesviewer")
 
@@ -90,7 +91,7 @@ class TripBlogEditorDialog(QDialog):
             self._tabs.append(tab)
 
         if not self._tabs:
-            layout.addWidget(QLabel(
+            layout.addWidget(wrapped(
                 "No blog ini files found yet.\n"
                 "Click 'Write All Blogs', or double-click a day's '2 Write Blog' "
                 "column, to create one first."

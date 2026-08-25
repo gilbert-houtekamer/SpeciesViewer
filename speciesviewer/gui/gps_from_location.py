@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QHeaderView, QLabel, QMessageBox,
     QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
 )
+from gui.widgets import wrapped
 
 logger = logging.getLogger("speciesviewer")
 
@@ -104,7 +105,7 @@ class GpsFromLocationDialog(QDialog):
         self._rows: list = []
 
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel(
+        lay.addWidget(wrapped(
             "These pictures have a written place but no GPS. Each place was looked up "
             "once.\n\nThe coordinate is where the PLACE is, to about 30 m — good enough "
             "to put the pictures on the map, not where the bird was. Afterwards, open "
