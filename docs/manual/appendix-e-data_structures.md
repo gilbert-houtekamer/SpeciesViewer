@@ -1,4 +1,4 @@
-# Core data structures
+# Appexdix E — Core data structures
 
 This is a developer reference for the four CSV files that hold all the project's
 biological knowledge and picture metadata, and the four in-memory dictionaries

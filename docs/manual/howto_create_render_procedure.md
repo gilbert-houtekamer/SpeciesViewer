@@ -1,4 +1,4 @@
-# Create a render that the master picks up (DxO PhotoLab)
+# How to: Create a render that the master picks up (DxO PhotoLab)
 
 The order of steps matters. A JPG render only reaches the website if PhotoLab
 actually ingests your crop/recipe **and** the master then registers the new

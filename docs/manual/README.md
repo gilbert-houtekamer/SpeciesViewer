@@ -64,6 +64,20 @@ walkthroughs are a separate document, still to be written.
 |---|---|
 | [A — Why is this greyed out?](appendix-a-greyed-out.md) | Every gating rule in the menu, in one table. |
 | [B — The pipeline steps and their batch modules](appendix-b-batch-modules.md) | Which `sv*` script each menu item runs, for reading the log. |
+| [C — Dataflow and architecture](appendix-c-data-architecture.md) | Data flow and where files go. |
+| [D — Camera support](appendix-d-camera_support.md) | Support for cameras and the validate models. |
+| [E — Data structures](appendix-e-data_structures.md) | This is a developer reference for the four CSV files that hold all the project's biological knowledge and picture metadata, and the four in-memory dictionaries they map to. |
+
+> GH: I added appendendices (above) and how-to's (below) with relevant information.  I did not cross reference.
+
+## How to's
+
+| How to's | What is described |
+|---|---|
+| [How to: Refresh Master Database (admin reconcile)](howto_refresh_master_database.md) | Explanation in a growing product. |
+| [How to: How a trip gets listed on the website](howto_trip_index_publication.md) | The relation of trips, album and publication. |
+| [How to: Create a render that the master picks up (DxO PhotoLab)](howto_create_render_procedure.md) | How to make sure that an added JPG is published. |
+
 
 ## Giving feedback on it
 

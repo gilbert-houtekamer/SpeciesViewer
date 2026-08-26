@@ -1,4 +1,4 @@
-# How a trip gets listed on the website
+# How to: How a trip gets listed on the website
 
 A trip's own website (`/trips/<slug>/` — blogs, species pages, pictures) and the
 **listing that links to it** from `/nature/tripindex-nl.html` are two different

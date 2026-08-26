@@ -1,4 +1,4 @@
-# Refresh Master Database (admin reconcile)
+# How to: Refresh Master Database (admin reconcile)
 
 Over time the master metadata (`metadata/active/data_files.csv` and
 `data_pictures.csv`) drifts out of sync with what is actually on disk under
@@ -17,7 +17,7 @@ Orphan Sidecars*.)
 
 | Item | Destructive? | What it does |
 |---|---|---|
-| **Refresh Master Database — Review…** | No | Scans the `biota/` tree once and reports what a refresh *would* change. Always shows a fast summary; then optionally writes the full suggested CSVs + a black-image scan for inspection. Writes only into `admin/status/review_<timestamp>/`. |
+| **Refresh Master Database — Review…** | No | Scans the `biota/` tree once and reports what a refdocs\refresh_master_database.mdresh *would* change. Always shows a fast summary; then optionally writes the full suggested CSVs + a black-image scan for inspection. Writes only into `admin/status/review_<timestamp>/`. |
 | **Refresh Master Database — Apply…** | **Yes** | Backs up both CSVs to `admin/status/backup/`, then rewrites them with the reconcile. The only destructive Admin action. |
 
 Non-debug builds show just these two. *Audit Species Counters* and *Clean Orphan
