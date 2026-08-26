@@ -9,7 +9,7 @@ This document is about the listing half: the one CSV that drives it, the seven
 places its key is written down, and the one mistake that cannot be undone by
 any button in the app.
 
-Companion reference: [configuration_inventory.md](configuration_inventory.md)
+Companion reference: [configuration_inventory.md](../configuration_inventory.md)
 for every other persistent file.
 
 ---
@@ -17,14 +17,14 @@ for every other persistent file.
 ## One string, seven homes
 
 Everything below is the same identity — the trip's **web slug** — copied along
-a chain. You type it once, in **Trip ▸ Create Trip**, as a full web root
+a chain. You type it once, in **Trips ▸ Create Trip**, as a full web root
 (`/trips/brazil2026`); everything downstream keeps either that path or its last
 segment.
 
 | Where it lives | Form | Written by |
 |---|---|---|
 | **Trip Web root** field, Select or Update Trip | `/trips/brazil2026` | you — **once, at create** (read-only afterwards) |
-| `sv_config_<host>.ini` `[trip] tripbiotawebroot` | `/trips/brazil2026` | that dialog, and Settings ▸ Repositories |
+| `sv_config_<host>.ini` `[trip] tripbiotawebroot` | `/trips/brazil2026` | that dialog, and File ▸ Settings ▸ Repository Settings |
 | `svconfig.ini` `[repository] BiotaWebRoot` | `/trips/brazil2026` | `generate_svconfig_ini()`, **regenerated before every batch run** |
 | `<trip>/trip.ini` `trip_name` **and** `web_slug` | `brazil2026` | `generate_trip_ini()` — `Path(webroot).name` |
 | `<master>/admin/trip_admin.csv`, column **6** | `brazil2026` | the four index writers below |
@@ -113,7 +113,7 @@ to remove"* and leaves the old row exactly where it was.
 
 Which is why **Trip Web root is read-only in update mode** (grey, with the
 reason in its tooltip). Create mode is where the slug is chosen. Renaming later
-is a deliberate visit to **Settings ▸ Repositories**, followed by the repair
+is a deliberate visit to **File ▸ Settings ▸ Repository Settings**, followed by the repair
 below — and it is worth avoiding: a slug that is already on the public web has
 been indexed by search engines and may sit in somebody's bookmarks.
 
@@ -135,7 +135,7 @@ becomes the base for the next run, so everything downstream falls into place.
    fields contain semicolons inside quotes, so a round-trip through a
    spreadsheet can change far more than you asked for.
 3. **Upload it back**, overwriting.
-4. **List the trip** — Trip ▸ *5. Manage Trip Publication…* ▸ **List Trip on the
+4. **List the trip** — Trips ▸ *5. Manage Trip Publication…* ▸ **List Trip on the
    Site**. It fetches your corrected base, refreshes that row instead of
    duplicating it (same key now), regenerates both tripindex pages, and uploads
    all three files. Your local `admin/trip_admin.csv` is rewritten from the same

@@ -211,7 +211,7 @@ machine published is not silently dropped.
 
 > **The web slug is immutable once created.** Renaming a trip's display title is
 > safe; its address on the site is not something that can be changed afterwards.
-> See [trip_index_publication.md](../trip_index_publication.md).
+> See [the trip-index how-to](howto_trip_index_publication.md).
 >
 > A listing whose trip or album you can no longer open is repaired from
 > [Master ▸ Maintain Master Database ▸ Manage Site Publication…](06-master.md).

@@ -66,8 +66,8 @@ stamp, the best-JPG pick, the website — reads what PhotoLab actually wrote, so
 the crop/recipe never made it into the export, none of it can recover the intent.
 
 Related code: the crop writer and the *open in DxO* launch live in
-[`gui/large_image_view.py`](../speciesviewer/gui/large_image_view.py); the
+[`gui/large_image_view.py`](../../speciesviewer/gui/large_image_view.py); the
 new-render detector is `pending_renders` in
-[`gui/sidecar_provider.py`](../speciesviewer/gui/sidecar_provider.py), backed by
+[`gui/sidecar_provider.py`](../../speciesviewer/gui/sidecar_provider.py), backed by
 `untracked_renders_for_upns` in
-[`db/master_mutate.py`](../speciesviewer/db/master_mutate.py).
+[`db/master_mutate.py`](../../speciesviewer/db/master_mutate.py).

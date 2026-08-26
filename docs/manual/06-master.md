@@ -159,7 +159,7 @@ Afterwards, re-run **Count Species** to refresh the per-species totals; the
 master's SQLite cache rebuilds itself.
 
 > More detail, including when the admin drifts in the first place, is in
-> [refresh_master_database.md](../refresh_master_database.md).
+> [the Refresh how-to](howto_refresh_master_database.md).
 
 ### Add Missing Place Names…
 

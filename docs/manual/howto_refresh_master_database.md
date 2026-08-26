@@ -5,9 +5,9 @@ Over time the master metadata (`metadata/active/data_files.csv` and
 `biota/`: an import records a file that never lands, a picture is moved to
 another species folder, an old path string gets mangled. **Refresh Master
 Database** compares the two and offers to reconcile them. It lives under
-**File ▸ Admin** and is backed by
-[`engine/admin_rebuild.py`](../speciesviewer/engine/admin_rebuild.py); the menu
-wiring is in [`gui/menuspec.py`](../speciesviewer/gui/menuspec.py).
+**Master ▸ Maintain Master Database** and is backed by
+[`engine/admin_rebuild.py`](../../speciesviewer/engine/admin_rebuild.py); the menu
+wiring is in [`gui/menuspec.py`](../../speciesviewer/gui/menuspec.py).
 
 It is metadata-only — it edits the two CSVs, and **never deletes or moves an
 image file**. (Moving stray sidecars to trash is a separate action, *Clean
@@ -17,7 +17,7 @@ Orphan Sidecars*.)
 
 | Item | Destructive? | What it does |
 |---|---|---|
-| **Refresh Master Database — Review…** | No | Scans the `biota/` tree once and reports what a refdocs\refresh_master_database.mdresh *would* change. Always shows a fast summary; then optionally writes the full suggested CSVs + a black-image scan for inspection. Writes only into `admin/status/review_<timestamp>/`. |
+| **Refresh Master Database — Review…** | No | Scans the `biota/` tree once and reports what a refresh *would* change. Always shows a fast summary; then optionally writes the full suggested CSVs + a black-image scan for inspection. Writes only into `admin/status/review_<timestamp>/`. |
 | **Refresh Master Database — Apply…** | **Yes** | Backs up both CSVs to `admin/status/backup/`, then rewrites them with the reconcile. The only destructive Admin action. |
 
 Non-debug builds show just these two. *Audit Species Counters* and *Clean Orphan
@@ -67,7 +67,7 @@ fallback) and buckets it `jpg_ok` / `raw_fallback` / `black`. Investigating the
    looked at the wrong embedded-JPEG tag. Old D90 NEFs carry no
    `PreviewImage`/`ThumbnailImage`; their JPEG sits under `OtherImage` /
    `JpgFromRaw`. Fixed in
-   [`gui/preview_extract.py`](../speciesviewer/gui/preview_extract.py) by trying
+   [`gui/preview_extract.py`](../../speciesviewer/gui/preview_extract.py) by trying
    those tags largest-first. This is a code fix, independent of any data change.
 
 ## Safety and recovery
@@ -83,5 +83,5 @@ fallback) and buckets it `jpg_ok` / `raw_fallback` / `black`. Investigating the
   only reads, and writes a report.) The master DB cache (`master.db`) rebuilds
   itself on next use.
 
-See also [`configuration_inventory.md`](configuration_inventory.md) for the file layout
-and [`data_structures.md`](data_structures.md) for the CSV schemas.
+See also [`configuration_inventory.md`](../configuration_inventory.md) for the file layout
+and [Appendix E](appendix-e-data_structures.md) for the CSV schemas.

@@ -2,7 +2,7 @@
 
 *How data moves: from the camera to the master.*
 Verified against the code on 2026-07-27 (incorporates the review rounds of that
-week). For the deeper four-CSV data model, see [data_structures.md](data_structures.md).
+week). For the deeper four-CSV data model, see [Appendix E](appendix-e-data_structures.md).
 
 ---
 
@@ -80,8 +80,9 @@ Each of these is a real, distinct operation in the GUI — a genuine sequence.
    sidecars. (The 'blue / purple delete' that drops weak shots happens here.)
 2. **Develop.** PhotoLab / Lightroom produce JPG renders, `.dop` and `.xmp`
    alongside the RAWs.
-3. **Trip pipeline (per day).** Read & Summarize → Write Blog → Build Website →
-   **Publish Day** (Freeze + Commit). Copies the *developed* species files into
+3. **Trip pipeline (per day).** Read & Summarize → Write Blog →
+   **Publish Day** (Freeze + Commit; Freeze builds the website, so the old
+   separate Build Website step is gone). Copies the *developed* species files into
    the trip repo (`copy_gate="jpg"`). Undeveloped species are *not* copied here.
 4. **Publish Trip to Master.** Three parts: publish species names → list the trip
    on the site → **Merge Pictures into Master**. The merge runs the same pipeline
@@ -129,7 +130,7 @@ modes, and why the copy gate is chosen by mode:
 The same four structures are used in every repository. Two describe **biology**
 (what species exist), two describe **your photos** (what files you have). They
 meet at exactly one join: a scientific-name string. (Full detail:
-[data_structures.md](data_structures.md).)
+[Appendix E](appendix-e-data_structures.md).)
 
 | CSV | In-memory | Holds |
 |---|---|---|

@@ -120,7 +120,10 @@ def inline(text: str, link_rewriter=None) -> str:
 
 _HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 _FENCE = re.compile(r"^```\s*(\w*)\s*$")
-_TABLE_SEP = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$")
+# Alignment cells can be as short as ":-:" (one dash), which GitHub accepts —
+# so this takes "-+", not "-{2,}". Only ever tested against the line AFTER a
+# row containing "|", so a loose match cannot swallow a list item.
+_TABLE_SEP = re.compile(r"^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$")
 _LIST_ITEM = re.compile(r"^(\s*)([-*]|\d+\.)\s+(.*)$")
 
 

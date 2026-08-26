@@ -12,9 +12,9 @@ table that answers them without reading source.
 
 This document replaces the older `config_state_files.md`, whose delete-safety
 verdicts and machine-config key list are folded in below. Companion documents:
-[data_structures.md](data_structures.md) for how the four picture CSVs
+[manual/appendix-e-data_structures.md](manual/appendix-e-data_structures.md) for how the four picture CSVs
 reference each other, and
-[trip_index_publication.md](trip_index_publication.md) for the one file whose
+[manual/howto_trip_index_publication.md](manual/howto_trip_index_publication.md) for the one file whose
 authoritative copy lives on the website.
 
 **Reading the verdict column.** 🟢 rebuilt automatically, no risk. 🟡 rebuilds,
@@ -156,7 +156,7 @@ text. The work-backup written to a camera card therefore copies
 | `metadata/active/backup/<date>/*.csv.gz` | csv.gz | Daily snapshot of the three master CSVs (154 MB raw → ~7.3 MB, ~1 s), taken silently at startup and pruned to the newest 14; `manifest.json` records the row counts and the consistency verdict at the time. **A backup is REFUSED when the master fails its check** — a snapshot of a broken master would eventually push the last good one out of the rotation. | 🔴 never by hand — it prunes itself; Database Settings ▸ Restore… puts one back |
 | `metadata/active/backup/pre-restore-*/` | csv.gz | The CSVs a Restore replaced, so a restore is itself reversible. | 🟡 only once you are certain the restore was right |
 | `metadata/cache/exif_cache.json`, `exif_cache_master.json` | json | EXIF cache, immutable (RAW by name+size) and mutable (XMP/JPG by path+mtime) buckets, three rotating `.bak`s. | 🟡 full re-scan |
-| `admin/trip_admin.csv` | csv | Every trip **and** album listed on the public Trips page. **A mirror** — the live copy on the website is authoritative. See [trip_index_publication.md](trip_index_publication.md). | 🟡 restored from the live site |
+| `admin/trip_admin.csv` | csv | Every trip **and** album listed on the public Trips page. **A mirror** — the live copy on the website is authoritative. See [manual/howto_trip_index_publication.md](manual/howto_trip_index_publication.md). | 🟡 restored from the live site |
 | `admin/blog_admin.csv` | csv | Merged blog metadata across trips. | 🔴 |
 | `admin/TransCache.csv` | csv | Translation cache (NL↔EN), master-wide. A trip carries its own; they are never merged across repositories. | 🟢 re-translated |
 | `admin/trip_species_summary.csv` | csv | One row per trip: species, lifers, date range, which counting rule applied. Survives the trip repo. | 🔴 not regenerable |

@@ -1,5 +1,8 @@
 # Concepts
 
+> The same story at a lower level — the physical repositories, the copy gates
+> and the delete arrow — is [Appendix C](appendix-c-data-architecture.md).
+
 Everything in SpeciesViewer happens inside one of four **scopes**. Almost every
 question of the form *"why can't I click that?"* or *"where did my pictures
 go?"* is really a question about which scope you are in and what that scope

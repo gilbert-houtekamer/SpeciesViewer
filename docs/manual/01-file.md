@@ -54,6 +54,9 @@ How RAW files are turned into the pictures you look at — the render scale and
 brightness handling used by the viewers. Raise it if previews look soft, lower it
 if browsing feels slow.
 
+> Whether a given camera body decodes at all is measured, not assumed — see
+> [Appendix D](appendix-d-camera_support.md).
+
 ### Location Settings…
 
 Geocoding and place-name behaviour: how a coordinate becomes "Lesvos, Greece".

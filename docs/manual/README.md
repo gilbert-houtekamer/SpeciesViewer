@@ -1,24 +1,4 @@
-README.md is the index. Then:
-
-00-concepts.md — Day, Trip, Album, Master: what each owns, how long it lives, and the lifecycle diagram tying them together. Plus the Unfiled inbox and the main window (mode strip → left column → yellow panel).
-Nine chapters, in menu order: File, Browser, Days, Trips, To Master, Master, Albums, Utilities, Help. Every item covered; length scaled to how much explanation each needs.
-Appendix A — every gating rule in one table, plus a six-step "diagnose a dead menu" list.
-Appendix B — menu item → sv* module, for reading the log.
-I wrote it from gui/menuspec.py, using the displayed MenuSpec.title rather than the dict key where they differ (so it says Sync Lightroom & PhotoLab Metadata, not Sync Sidecars), and verified every batch module name against batch/.
-
-Your "Add Species to Master" point landed — it's called out in both Concepts and the Master chapter as the door that can build a species website without a trip ever existing.
-
-Four things I noticed while writing
-These are the inconsistencies the exercise was meant to surface:
-
-Two Album items aren't gated. Manage Album Publication… and Album Species Viewer stay clickable with no active album, unlike every other album item. Flagged inline in the Albums chapter.
-Two Utilities items are labelled as sentences. "Create an Excel to keep track of birds seen." and "Create PhotoMechanic keyword files for next trip." — full stops and all, sitting beside terse labels everywhere else.
-Ellipsis convention is inconsistent. Trip to Master Dashboard opens a dialog but has no …; Empty a Card and Create Trip likewise. Elsewhere the … is used faithfully.
-"Make the Blogs Clickable" appears twice (Trips step 4, Albums) doing analogous-but-different things — correct, but the manual had to explain each separately, which is a hint the names could distinguish scope.
-Where I'm likely wrong
-I marked Species Settings as (inferred) — I described it from its dialog name, not its contents. Database Settings and Look & Feel are thin for the same reason. The Days chapter's claim that culling mode "writes as you go" with no separate commit is inferred from the docstring, not from watching it run.
-
-I did not commit — per your rule, that's after you've read it.# SpeciesViewer — Reference Manual
+# SpeciesViewer — Reference Manual
 
 A menu-by-menu reference. One chapter per top-level menu, in the order the
 menus appear, and within each chapter the items in the order they appear.
@@ -64,19 +44,32 @@ walkthroughs are a separate document, still to be written.
 |---|---|
 | [A — Why is this greyed out?](appendix-a-greyed-out.md) | Every gating rule in the menu, in one table. |
 | [B — The pipeline steps and their batch modules](appendix-b-batch-modules.md) | Which `sv*` script each menu item runs, for reading the log. |
-| [C — Dataflow and architecture](appendix-c-data-architecture.md) | Data flow and where files go. |
-| [D — Camera support](appendix-d-camera_support.md) | Support for cameras and the validate models. |
-| [E — Data structures](appendix-e-data_structures.md) | This is a developer reference for the four CSV files that hold all the project's biological knowledge and picture metadata, and the four in-memory dictionaries they map to. |
+| [C — Dataflow and architecture](appendix-c-data-architecture.md) | Where pictures physically live and how they move between the four repositories. Tells the same story as [Concepts](00-concepts.md) at a lower level. |
+| [D — Camera support](appendix-d-camera_support.md) | Which camera bodies have been **measured**, and what works on each. Generated — regenerate with `tools/svr_camera_checklist.py`. |
+| [E — Developer reference: Data structures](appendix-e-data_structures.md) | **Developer-facing.** The four CSVs that hold the project's biological knowledge and picture metadata, and the in-memory dictionaries they map to. |
 
-> GH: I added appendendices (above) and how-to's (below) with relevant information.  I did not cross reference.
+> **On the appendices.** These were written separately, before the manual, and
+> gathered here because they are the material that already existed. They are not
+> a designed set. C deliberately overlaps [Concepts](00-concepts.md) — it is the
+> lower-level telling of the same story, and useful as a check on whether the
+> user-level version got it right. E is developer-facing and sits here because
+> there is nowhere better, not because a user needs it.
 
 ## How to's
 
-| How to's | What is described |
+Task-shaped rather than reference-shaped: *do this, in this order, or PhotoLab
+ignores your crop*. That makes them the closest thing here to the use-case
+document that is still to be written.
+
+| How to | What is described |
 |---|---|
-| [How to: Refresh Master Database (admin reconcile)](howto_refresh_master_database.md) | Explanation in a growing product. |
-| [How to: How a trip gets listed on the website](howto_trip_index_publication.md) | The relation of trips, album and publication. |
-| [How to: Create a render that the master picks up (DxO PhotoLab)](howto_create_render_procedure.md) | How to make sure that an added JPG is published. |
+| [Refresh Master Database (admin reconcile)](howto_refresh_master_database.md) | When the master's CSVs drift from what is on disk, and how Review/Apply reconcile them. Detail behind [Master ▸ Maintain Master Database](06-master.md). |
+| [How a trip gets listed on the website](howto_trip_index_publication.md) | The web slug's seven homes, why the live index is always the base, and the one mistake no button can undo. Detail behind the two *Manage … Publication* dialogs ([Trips](04-trips.md), [Albums](07-albums.md)). |
+| [Create a render that the master picks up (DxO PhotoLab)](howto_create_render_procedure.md) | Getting a JPG render as far as the website — the order matters. Explains the `+ JPG` badge in [The viewers](10-viewers.md). |
+
+> **These three are provisional.** They may move to a separate task-oriented
+> manual, or be dropped if the application turns out to explain itself well
+> enough. They are here for now because the text exists and is accurate.
 
 
 ## Giving feedback on it
@@ -174,15 +167,14 @@ and the file is gitignored either way.
 
 These are not part of the manual but answer neighbouring questions:
 
-- [../SpeciesViewer_DataFlow.md](../SpeciesViewer_DataFlow.md) — where pictures
-  physically live and how they move. The architectural companion to
-  [Concepts](00-concepts.md).
-- [../data_structures.md](../data_structures.md) — the CSVs behind it all.
+- [Appendix C](appendix-c-data-architecture.md) — where pictures physically live
+  and how they move. The architectural companion to [Concepts](00-concepts.md).
+- [Appendix E](appendix-e-data_structures.md) — the CSVs behind it all.
 - [../viewer_keybindings.md](../viewer_keybindings.md) — every key in the
   picture viewers, which this manual does not repeat.
 - [../configuration_inventory.md](../configuration_inventory.md) — which setting
   lives in which file.
-- [../refresh_master_database.md](../refresh_master_database.md) — the detail
-  behind Master ▸ Maintain Master Database.
-- [../trip_index_publication.md](../trip_index_publication.md) — the detail
-  behind the two "Manage … Publication" dialogs.
+- [The Refresh how-to](howto_refresh_master_database.md) — the detail behind
+  Master ▸ Maintain Master Database.
+- [The trip-index how-to](howto_trip_index_publication.md) — the detail behind
+  the two "Manage … Publication" dialogs.

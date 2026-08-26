@@ -7,6 +7,9 @@ Clickable"). This table translates.
 It is also the honest picture of which menu items are *one* action and which are
 a chain — useful when a step half-fails.
 
+> What these steps read and write — the four CSVs and their columns — is
+> [Appendix E](appendix-e-data_structures.md).
+
 ## The trip pipeline
 
 | Menu item | Runs | Statemachine key |
