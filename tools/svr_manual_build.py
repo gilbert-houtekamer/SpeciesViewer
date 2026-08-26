@@ -62,18 +62,42 @@ def _first_words(text: str, limit: int = 60) -> str:
 
 # ── chapter order ────────────────────────────────────────────────────────────
 
+def group_of(p: Path) -> str:
+    """Which band of the manual a file belongs to. Drives both the running
+    order and the headings in the sidebar, so the two cannot disagree."""
+    stem = p.stem.lower()
+    if stem == "readme":
+        return "front"
+    if re.match(r"^\d", stem):
+        return "chapters"
+    if stem.startswith("appendix"):
+        return "appendices"
+    if stem.startswith("howto"):
+        return "howto"
+    return "other"
+
+
+# Running order, and the sidebar heading each band gets. Matches the order the
+# README itself lists them in — chapters, appendices, then the how-tos, which
+# are the provisional material and sit last.
+GROUP_ORDER = ["front", "chapters", "appendices", "howto", "other"]
+GROUP_LABEL = {
+    "front": "",
+    "chapters": "Chapters",
+    "appendices": "Appendices",
+    "howto": "How to",
+    "other": "Also here",
+}
+
+
 def chapter_files(manual_dir: Path) -> list[Path]:
-    """README first, then the numbered chapters, then the appendices.
+    """README first, then chapters, appendices, and the how-tos.
 
     Derived from the filenames rather than a hard-coded list, so a new chapter
     is picked up by being named in the pattern — nothing to keep in sync.
     """
     files = sorted(p for p in manual_dir.glob("*.md"))
-    readme = [p for p in files if p.stem.lower() == "readme"]
-    numbered = [p for p in files if re.match(r"^\d", p.stem)]
-    appendix = [p for p in files if p.stem.lower().startswith("appendix")]
-    rest = [p for p in files if p not in readme + numbered + appendix]
-    return readme + numbered + rest + appendix
+    return [p for g in GROUP_ORDER for p in files if group_of(p) == g]
 
 
 def slugify(text: str) -> str:
@@ -338,6 +362,11 @@ body{margin:0;background:var(--bg);color:var(--ink);
 #toc a.lvl2{padding-left:16px;font-size:12.5px}
 #toc a.lvl3{padding-left:30px;font-size:12px;color:var(--ink-soft)}
 #toc a.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.tocgroup{margin:16px 0 4px;padding:3px 6px 3px;font:700 10px/1.2 sans-serif;
+  letter-spacing:.13em;text-transform:uppercase;color:var(--ink-soft);
+  border-top:1px solid var(--line);padding-top:8px}
+.tocgroup:first-child{margin-top:4px;border-top:0}
+.tocgroup.hide{display:none}
 #toc a.hide{display:none}
 
 /* content */
@@ -414,9 +443,19 @@ blockquote.ghnote a{color:#a8331a}
 JS = """
 const toc=document.getElementById('toc');
 const links=[...toc.querySelectorAll('a')];
+const groups=[...toc.querySelectorAll('.tocgroup')];
 document.getElementById('filter').addEventListener('input',e=>{
   const q=e.target.value.trim().toLowerCase();
   links.forEach(a=>a.classList.toggle('hide', q && !a.textContent.toLowerCase().includes(q)));
+  // A band heading with nothing left under it is noise — hide it too.
+  groups.forEach(g=>{
+    let n=g.nextElementSibling, any=false;
+    while(n && !n.classList.contains('tocgroup')){
+      if(n.tagName==='A' && !n.classList.contains('hide')){any=true;break;}
+      n=n.nextElementSibling;
+    }
+    g.classList.toggle('hide', !any);
+  });
 });
 const heads=[...document.querySelectorAll('main h1,main h2,main h3')];
 const byId=Object.fromEntries(links.map(a=>[a.getAttribute('href').slice(1),a]));
@@ -431,6 +470,18 @@ const obs=new IntersectionObserver(es=>{
   });
 },{rootMargin:'0px 0px -75% 0px'});
 heads.forEach(h=>obs.observe(h));
+
+function syncToHash(){
+  const id=decodeURIComponent(location.hash.slice(1));
+  const a=byId[id];
+  if(!a) return;
+  links.forEach(x=>x.classList.remove('on'));
+  a.classList.add('on');
+  toc.scrollTop=Math.max(0,a.offsetTop-toc.clientHeight/2);
+}
+addEventListener('hashchange',syncToHash);
+addEventListener('load',()=>setTimeout(syncToHash,0));
+if(location.hash) setTimeout(syncToHash,0);
 """
 
 
@@ -445,7 +496,7 @@ def build(manual_dir: Path, out: Path, mermaid: bool = True) -> Path:
     # chapters share heading names ("Make the Blogs Clickable").
     chapter_slug = {p.name: p.stem.lower() for p in files}
 
-    toc: list[tuple[int, str, str]] = []
+    toc: list[tuple[int, str, str, str]] = []
     bodies: list[str] = []
 
     for p in files:
@@ -462,20 +513,26 @@ def build(manual_dir: Path, out: Path, mermaid: bool = True) -> Path:
                 return f"#{t}--{frag}" if frag else f"#{t}"
             return href      # ../ links stay relative to the manual folder
 
-        def heading(level, text, _c=cslug):
+        def heading(level, text, _c=cslug, _g=group_of(p)):
             anchor = f"{_c}" if level == 1 else f"{_c}--{slugify(text)}"
             if level <= 3:
-                toc.append((level, anchor, text))
+                toc.append((level, anchor, text, _g))
             return anchor
 
         md = p.read_text(encoding="utf-8")
         bodies.append(f'<section class="chapter">'
                       + convert(md, rewrite, heading) + "</section>")
 
-    toc_html = "".join(
-        f'<a class="lvl{lvl}" href="#{anchor}">{html.escape(text)}</a>'
-        for lvl, anchor, text in toc
-    )
+    # One heading per band, emitted when the band changes — so "How to" and
+    # "Appendices" are findable in a 175-entry list instead of blending into it.
+    parts, seen = [], None
+    for lvl, anchor, text, group in toc:
+        if group != seen:
+            seen = group
+            if GROUP_LABEL.get(group):
+                parts.append(f'<div class="tocgroup">{GROUP_LABEL[group]}</div>')
+        parts.append(f'<a class="lvl{lvl}" href="#{anchor}">{html.escape(text)}</a>')
+    toc_html = "".join(parts)
 
     notes_html = ""
     if _NOTES:
