@@ -678,7 +678,8 @@ class CullingSpeciesWidget(QWidget):
     cancelled = pyqtSignal()      # user abandoned an unrecognised-name commit
 
     def __init__(self, sc, current_name: str, n_pictures: int = 1, parent=None,
-                 *, embedded: bool = False, n_landscape: int = 0):
+                 *, embedded: bool = False, n_landscape: int = 0,
+                 preset_summary: str = ""):
         super().__init__(parent)
         self._sc = sc
         self._embedded = embedded
@@ -709,6 +710,16 @@ class CullingSpeciesWidget(QWidget):
         _hint = QLabel("Type a Dutch, English or scientific name")
         _hint.setStyleSheet(f"color:{theme.INK_SOFT}; font-size:11px;")
         layout.addWidget(_hint)
+
+        # What the selection already carries (multi-picture case): "★ name — set
+        # on 1 of 16" when one picture is named and the rest blank, or a "Mixed:"
+        # list when several names are present. Lets a fast guide name one frame,
+        # then select the burst and have that name pre-filled here.
+        if preset_summary:
+            _psum = QLabel(preset_summary)
+            _psum.setWordWrap(True)
+            _psum.setStyleSheet(f"color:{theme.WARN}; font-size:11px;")
+            layout.addWidget(_psum)
 
         # An incoming subject may already carry qualifiers ("blauwborst, female");
         # keep only the species name in the field and pre-select the toggles below.
@@ -1044,7 +1055,7 @@ class CullingSpeciesDialog(QDialog):
     callers rely on; the inline large-viewer editor uses the widget directly."""
 
     def __init__(self, sc, current_name: str, n_pictures: int, parent=None,
-                 *, n_landscape: int = 0):
+                 *, n_landscape: int = 0, preset_summary: str = ""):
         super().__init__(parent)
         self.setWindowTitle("Set species")
         self.setMinimumWidth(560)
@@ -1052,7 +1063,8 @@ class CullingSpeciesDialog(QDialog):
 
         layout = QVBoxLayout(self)
         self.panel = CullingSpeciesWidget(sc, current_name, n_pictures, self,
-                                          n_landscape=n_landscape)
+                                          n_landscape=n_landscape,
+                                          preset_summary=preset_summary)
         self.panel.committed.connect(self._on_committed)
         self.panel.cancelled.connect(self.reject)
         layout.addWidget(self.panel)

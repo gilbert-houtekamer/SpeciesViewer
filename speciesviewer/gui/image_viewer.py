@@ -848,11 +848,17 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         except Exception:
             return None
 
-    def _all_pictures_suffix(self, total: int) -> str:
+    def _all_pictures_suffix(self, total: int, shown: int | None = None) -> str:
+        """The 'All' radio's label. With nothing hidden it reads 'all N pictures';
+        once a colour / find / JPG overlay narrows the sheet it reads
+        'M of N pictures', so a culling pass can see how many survived."""
+        head = (f"{shown} of {total} pictures"
+                if shown is not None and shown < total
+                else f"all {total} pictures")
         present = self._present_count()
         if present is not None and present < total:
-            return f"all {total} pictures ({present} with files, {total - present} missing)"
-        return f"all {total} pictures"
+            head += f" ({present} with files, {total - present} missing)"
+        return head
 
     def _overlay_title_parts(self) -> list[str]:
         """Colour + find descriptors appended to the radio's label so the title
@@ -871,13 +877,14 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     def _update_title_for_filter(self):
         base = f"Species Image Preview ({self._viewer_label})"
         total = len(self._base_keys())
+        shown = len(self._visible_keys())
         overlays = self._overlay_title_parts()
         if not self.fpr:
             radio = ""
             if self._active_filter == "no_gps":
                 radio = f"{self._no_gps_count()} missing GPS"
             elif self._active_filter == "all":
-                radio = f"all {total} pictures"
+                radio = self._all_pictures_suffix(total, shown)
             suffix = " · ".join(p for p in ([radio] + overlays) if p)
             self.setWindowTitle(f"{base} — {suffix}" if suffix else base)
             return
@@ -889,9 +896,11 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         elif self._active_filter == "species":
             radio = f"{self._species_count()} with a species"
         elif self._active_filter == "all":
-            radio = self._all_pictures_suffix(total)
+            radio = self._all_pictures_suffix(total, shown)
         elif overlays:
-            radio = ""  # no radio chosen but a search/colour is on → show just that
+            # No radio chosen, just a search/colour overlay — still say how many
+            # pictures it matches.
+            radio = f"{shown} of {total} pictures"
         else:
             radio = f"clean day — click All to view {total} pictures"
         suffix = " · ".join(p for p in ([radio] + overlays) if p)
@@ -1468,7 +1477,32 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         if not getattr(item0, "can_edit_species", False):
             return
         from gui.culling_species import CullingSpeciesDialog
-        current = item0.species if len(keys) == 1 else ""
+        # Pre-fill from what the selection already carries. A fast guide names one
+        # frame of a burst; selecting the burst afterwards should offer that name
+        # rather than a blank field. One distinct name → offer it (flagged when
+        # not every picture has it); several → list them and keep the field blank
+        # so a stray Enter can't overwrite the odd one out.
+        current, preset_summary = "", ""
+        if len(keys) == 1:
+            current = item0.species
+        else:
+            named = []
+            for k in keys:
+                try:
+                    s = (self._collection.item_for_key(k).species or "").strip()
+                except (ValueError, KeyError):
+                    s = ""
+                if s:
+                    named.append(s)
+            distinct = sorted(set(named))
+            if len(distinct) == 1:
+                current = distinct[0]
+                if len(named) < len(keys):
+                    preset_summary = (f"★ {distinct[0]} — set on "
+                                      f"{len(named)} of {len(keys)}; the rest are blank")
+            elif len(distinct) > 1:
+                preset_summary = ("Mixed — " + ", ".join(distinct)
+                                  + f"  ({len(named)} of {len(keys)} named)")
         # How many of these are landscapes today — naming a species replaces the
         # marker, so the editor warns rather than silently un-landscaping them.
         n_landscape = 0
@@ -1479,7 +1513,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             except (ValueError, KeyError):
                 pass
         dlg = CullingSpeciesDialog(self._culling_sc(), current, len(keys), self,
-                                   n_landscape=n_landscape)
+                                   n_landscape=n_landscape,
+                                   preset_summary=preset_summary)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             name = dlg.chosen_name()
             # One exiftool call for the whole selection where the collection

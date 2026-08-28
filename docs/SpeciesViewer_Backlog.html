@@ -37,7 +37,7 @@
 <body>
 
 <h1>SpeciesViewer — Project Backlog</h1>
-<div class="meta">Updated: 21 August 2026 &nbsp;·&nbsp; Branch: ClaudeSpecies &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
+<div class="meta">Updated: 28 August 2026 &nbsp;·&nbsp; Branch: SpeciesViewer03 &nbsp;·&nbsp; Author: Gilbert Houtekamer</div>
 
 <p>Open work for the SpeciesViewer nature-photo pipeline and GUI. This document holds
 only what is <strong>still to do</strong> — everything that has shipped now lives in the companion
@@ -2369,6 +2369,53 @@ does mean you cannot survey the bag without inserting each one. A card handed to
 carries its record, naming trips; that gap is inherited from the reserve megabyte and is unchanged.
 And the ordering that keeps a fresh work backup ahead of a stale keeper card is true today because
 of how the two restores happen to be written, not because anything enforces it.</p>
+
+<!-- ============================================================ -->
+<h2 id="brazil-feedback">23. Brazil trip &mdash; field feedback</h2>
+
+<p>Notes raised while culling the 2026 Brazil take on the road &mdash; kept together as one
+chapter because they came from real use rather than planning. Small, and mostly already done;
+recorded so the trigger and the reasoning survive.</p>
+
+<ul>
+  <li><strong>Species picker pre-fills from the selection</strong>
+      <span class="tag-shipped">SHIPPED</span> &mdash; in a guided setting the guide names one
+      frame of a burst to go fast; the culler then selects the whole burst and expects that
+      name to carry. <em>Set species&hellip;</em> now inspects the selection: one distinct name
+      &rarr; it is pre-filled, flagged <code>&#9733; name &mdash; set on 1 of 16; the rest are
+      blank</code> when not every picture has it; two or more different names &rarr; the field
+      is left blank with a <code>Mixed &mdash; a, b (5 of 16 named)</code> line, so a stray
+      Enter cannot overwrite the odd one out. Lightroom's convention, adapted.
+      <span class="note">Culling (pre-pipeline) path only &mdash; the pipeline's own
+      multi-picture species panel already lists each file's current name.</span></li>
+
+  <li><strong>Filtered count in the grid title</strong>
+      <span class="tag-shipped">SHIPPED</span> &mdash; after a first culling pass the colour
+      filter (Green/Red/Yellow) hides the rest, but the title still read <em>all 393
+      pictures</em> with no way to see how many survived. It now reads
+      <code>127 of 393 pictures &middot; colour Green/Red/Yellow</code> whenever a colour /
+      find / JPG overlay narrows the sheet; unchanged when nothing is hidden.</li>
+
+  <li><strong>Camera-JPEG zoom held across auto-advance</strong>
+      <span class="tag-shipped">SHIPPED</span> &mdash; judging a burst for sharpness at 1:1 in
+      the large viewer's <em>Camera JPEG</em> tab: applying a colour label auto-advances, and
+      the view used to snap back to fit. It now keeps the zoom the user set and lands on the
+      same spot, so ten near-identical frames can be checked without re-zooming each one.
+      Double-click, or scroll fully out, returns to fit and releases the hold.</li>
+
+  <li><strong>More than one tracklog per day</strong>
+      <span class="tag-test">NEEDS TEST</span> &mdash; the phone names every GPS export after
+      the day only (<code>20260828.log</code>), so an afternoon session overwrites the
+      morning's unless it is renamed by hand. Auto-discovery now accepts <em>any</em> file in
+      <code>&lt;gpslogs&gt;/&lt;year&gt;/</code> whose name starts with the day's
+      <code>yyyymmdd</code> stem &mdash; <code>20260828a.log</code>,
+      <code>20260828-afternoon.log</code>, <code>20260828_2.gpx</code> &mdash; and merges every
+      match before correlating. A digit straight after the stem is rejected, so a neighbouring
+      day cannot slip in on a shared prefix. The Read-SD day table shows
+      <code>&#10003; name (+1)</code> when more than one is found.
+      <span class="note">The single-log callers (the day-overview satellite glyph, the
+      card-clock UTC-offset probe) still take the first match; only the geotag passes merge.</span></li>
+</ul>
 
 </body>
 </html>
