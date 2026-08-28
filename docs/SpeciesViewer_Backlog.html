@@ -2443,6 +2443,20 @@ recorded so the trigger and the reasoning survive.</p>
       <span class="note">Same lesson as the earlier googletrans retirement: an unofficial
       scraped endpoint breaks on its own schedule. The fallback makes that a quality dip, not an
       outage. <code>pip install -U deep-translator</code> may also restore Google directly.</span></li>
+
+  <li><strong><code>g</code> / <code>h</code> &mdash; the keepers colour filter in one rebuild</strong>
+      <span class="tag-shipped">SHIPPED</span> &mdash; after a first culling pass you want to see
+      only Red+Yellow+Green, but clicking the three toolbar swatches is three separate grid
+      rebuilds (~2&nbsp;s each on a 478-card sheet &mdash; the window locks up between them).
+      <code>g</code> now sets Red+Yellow+Green in a <em>single</em> rebuild (press again to clear
+      when it is exactly those three); <code>h</code> clears the colour filter. Both go through
+      the toolbar bar, so its swatches light up to match; ignored while a text field has focus.
+      Works in both the SD-card culling grid and the pipeline Species Image Preview (one class).
+      <span class="note">New <code>ColorFilterBar.set_selection()</code> replaces the whole
+      selection and notifies once. A debounce that also skips intermediate rebuilds on rapid
+      changes was considered and left &mdash; <code>g</code> is the cheap 90% win; a slow
+      <em>single</em> rebuild is a separate &ldquo;make the grid build yield properly&rdquo;
+      task.</span></li>
 </ul>
 
 </body>

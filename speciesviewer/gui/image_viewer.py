@@ -50,7 +50,7 @@ class ColorFilterBar(QWidget):
             btn.setFixedSize(16, 16)  # Slightly smaller for tighter layout
             btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             btn.setCheckable(True)
-            btn.setToolTip(f"Filter by {name}")
+            btn.setToolTip(f"Filter by {name}\n(g = Red+Yellow+Green in one go, h = clear)")
             btn.setStyleSheet(f"""
                 QPushButton {{
                     background-color: transparent;
@@ -75,6 +75,16 @@ class ColorFilterBar(QWidget):
 
         active_colors = self.selected_colors if self.selected_colors else None
         self.on_filter_changed(active_colors)
+
+    def set_selection(self, colors):
+        """Replace the whole colour selection and notify ONCE. A keyboard
+        shortcut that turns on Red+Yellow+Green must rebuild the grid a single
+        time, not once per colour. `colors` = iterable of names, or None to clear."""
+        wanted = {c for c in (colors or ()) if c in self.buttons}
+        self.selected_colors = set(wanted)
+        for name, btn in self.buttons.items():
+            btn.setChecked(name in wanted)
+        self.on_filter_changed(wanted or None)
 
 
 class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
@@ -2024,6 +2034,21 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 and (event.modifiers() & Qt.KeyboardModifier.ControlModifier)
                 and not text_input_focused()):
             self._clear_selection()
+            event.accept()
+            return
+        # g — the keepers filter (Red+Yellow+Green) in ONE rebuild, toggling off
+        # when it is already exactly that; h — clear the colour filter. Doing the
+        # three colours from the toolbar is three separate grid rebuilds.
+        if (event.key() in (Qt.Key.Key_G, Qt.Key.Key_H)
+                and not (event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+                and not text_input_focused()):
+            bar = getattr(self, "color_filter_bar", None)
+            if bar is not None:
+                keepers = {"Red", "Yellow", "Green"}
+                if event.key() == Qt.Key.Key_H:
+                    bar.set_selection(None)
+                else:
+                    bar.set_selection(None if self._color_filter == keepers else keepers)
             event.accept()
             return
         k = event.key()
