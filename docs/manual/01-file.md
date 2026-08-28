@@ -10,6 +10,9 @@ only touch caches — which are always rebuildable.
 | Developer Tools ▸ … | | *Only visible when debug is enabled* |
 | Quit | `Ctrl+Q` | |
 
+> GH: kind of strange we follow the File menu entries, but nothing can be opened or saved.
+> We might use multi-master support that we plan as ch 20 to make SV installable (rather than grown), and at least have open Select and Create master,
+
 ---
 
 ## Settings
@@ -30,7 +33,9 @@ is built, so **toggling it takes effect after a restart**.
 
 ### Look & Feel…
 
-Fonts, colours and layout density for the GUI. Cosmetic only.
+Fonts, colours and layout density for the GUI. .
+
+> GE: "Cosmetic only" to "By configuring the viewer can show the data that helps the most with culling"
 
 ### Repository Settings
 
@@ -38,11 +43,17 @@ Where the repositories are: the master, the trips root, the albums root, and the
 local pictures root. This is the single most consequential settings dialog —
 most "nothing is enabled" states trace back to a path here being empty.
 
+> GH: This needs a chart or diagram.  Probably done after ch 20 installation is done.
+
 ### Species Settings
 
 How species names are handled: which languages are shown and in what order, and
 how names are resolved. *(inferred — verify against the dialog.)*
 
+> GH: the dialog has 3 settings:
+> The first defines what the scope is of a species change.  When we have a misspelled name, this can by changed for just that occurrence, all that day or the entire trip.  The latter is probably never tested.  I suggest to remove the functionality, the viewers make it hard to enter wrong species name.
+> The second allows to accept just one language.  Again, the search is so fast that all languages can be supported.  It also sometimes allow for short names, eg "koereiger" instead of "western cattle egret" 
+> the third option is needed, but Look & Feel may be an OK place? 
 ### Database Settings
 
 The master's SQLite read-cache and related database behaviour. The cache is a
@@ -98,9 +109,15 @@ routine Read & Summarize.
 Run it after a large external change to the master's files. It is slow — it is a
 full pass over the collection.
 
+> GH: Rescan master EXIF cache is somewhat similar to the "Maintain Master Repository" in
+> master and "Rebuild all Albums and the master website". There are no duplicates, but we >  /> need think about how to present / organize.  Not all functions should be enabled for a r/o 
+> master (smallmaster).  Clearly a Backlog item.
+
 ---
 
 ## Developer Tools
+
+> GH: review r/o master vs real master.
 
 **Only present when "Enable debug functionality" is on** in Global Settings, and
 only after a restart. These are diagnostics: they report, they do not repair.
@@ -124,6 +141,8 @@ It asks two questions first:
 
 This is the answer to "is it safe to delete this trip?" across a two-machine
 setup.
+
+> gh: That question is now mostly automated, although the complexity of r/o laptop and a master is not. This is really debug for the developers.
 
 ### Merged Status (all machines)…
 
@@ -157,10 +176,14 @@ Their now-dangling rows in the master admin are cleared by the next
 **Refresh Master Database — Apply**, so the natural order is: clean orphans,
 then refresh-apply.
 
+> GH: the smallmaster has still many XMPs without images. Another example only the r/w master?
+
 ### Call Testbed for trip day
 
 A developer hook that runs the testbed batch against a chosen trip day. Not
 useful in normal operation.
+
+> GH: we should remove this from the code.  You do these things with standalone tests.
 
 ---
 

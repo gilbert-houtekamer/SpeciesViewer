@@ -2,6 +2,8 @@
 
 The light lane. A **Day** is a single `YYYY-MM-DD` folder of pictures with no
 trip, no repository and no website — reviewed, and then added to the master.
+> gh: This means that the images are to the master, and the website is updated
+> with the new species uploaded or better pictures based on the rating.
 
 Use it for the local outing: an afternoon at the reserve, a garden moth trap, a
 walk that produced four species worth keeping. Creating a trip for that would be
@@ -42,6 +44,9 @@ running in "days mode": date-bucketing is on (so a card holding three dates
 produces three day folders), and the folders it creates are registered when the
 copy finishes.
 
+> GH: when you use the "View Pictures" button, you will see all days imported.  
+> After you close the SD-card dialog you can cull them per day.
+
 ## Review & Rate Pictures…
 
 *Needs: an active day.*
@@ -55,6 +60,10 @@ controls are in [10. The viewers](10-viewers.md#the-culling-grid); its keys are
 in [viewer_keybindings.md](../viewer_keybindings.md).
 
 > There is no separate "commit" for a Day. Culling mode writes as you go.
+y?
+> GH: I disagree, but the table headers do not help.  
+> "Add to master" does commit?  What did you want to y?
+
 
 ## Add to Master
 

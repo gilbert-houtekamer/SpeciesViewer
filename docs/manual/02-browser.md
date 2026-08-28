@@ -2,10 +2,13 @@
 
 One menu, one idea: **reading a collection**. The same two views over each of the
 three scopes that have a collection worth browsing.
+> GH: i would say "viewing" rather than "reading"
 
 These used to be buried one per owning menu — the trip browser under Trips, the
 master browser under Master — which hid them behind the pipeline actions they sat
 beside. Browsing is not a pipeline step, so it gets its own menu.
+> GH: it does not have to be history book.  We might say that it provides a 
+> functionality similar to the website, but local and not limited to a subset of the JPS.
 
 | View | What it gives you |
 |---|---|
@@ -40,6 +43,8 @@ content, filtered to those dates. Nothing is copied.
 
 The whole collection. This is the browser you will use most: it is the answer to
 "have I photographed this before, and what did I get?"
+
+> GH: How hard is to add Master+Trip as the 4th option, like we have in the trip species viever in the trip menu. A backlog item of course.
 
 ---
 

@@ -19,12 +19,20 @@ owns. Learn these four and the menus stop being arbitrary.
 | **Master** | `…\naturedb` | **Yes — the one copy that lasts** | Yes — `/nature` | Permanent |
 | **Album** | `…\virttrips\<name>` | **No pictures at all** | Yes — `/trips/<slug>` | Permanent, cheap |
 
+> GH: trip - "A **copy** of the developed species pictures" is quite true.  I would say:
+> "The originals for the trip are in a CurrentPictures subdirectory.  The trip temporary stores copies for JPGs published on the trip website"
+> trip - "**Transient.** Retired once the master has it".  To me, transient is things in seconds.  I suggest:
+> "Working area until the trip picture are added to the master, and a corresponing album is created."
+> "**Yes — the one copy that lasts**"  => "**Yes — the permanent picture storage**" 
+> "**No pictures at all**" => "None. Its pages are built from the master."
+
 The single most important sentence in this manual:
 
 > **The Master is the only copy that lasts.** The trip repository is scaffolding,
 > the album is a query, and the local working files get deleted on purpose once
 > the master physically holds them. If something must survive, it must be in the
 > master.
+
 
 ---
 
@@ -34,15 +42,21 @@ A **Day** is one date's folder of pictures, registered in a list so the
 application can find it again. Nothing more. There is no repository, no
 metadata tree, no blog and no website.
 
-Use a Day for the local birding afternoon: you shot 300 frames, you want to
+Use a Day for the local birding morning: you shot 300 frames, you want to
 cull them, identify what is in them, and put the keepers in the master. Building
 a whole trip for that would be ceremony with no payoff.
+
+> GH: The typical use is when you go to a site with the objective to find a single species.
 
 The Day lane is deliberately short: **register or copy in → review & rate →
 Add to Master**. That is the whole life of a Day. See [Chapter 3](03-days.md).
 
 A Day is *not* a step on the way to a Trip. It is a parallel, lighter route to
-the same destination (the master).
+the same destination (the master). 
+> GH: It does provide the same update of the website when new species are added, or nicer picture are found for existing species.
+
+> GH: It is quite conceivable that you prefer this light approach.  Keep in mind
+> though you cannot generate a blog, not generate an overview page of the species you have seen. 
 
 ## Trip
 
@@ -66,11 +80,21 @@ its pictures are merged into the master, the trip repository is dead weight and
 gets retired to an Album and deleted. This surprises people, so to be explicit:
 deleting a trip is a *normal, intended* end of life, not a failure.
 
+> GE: "A trip is **transient by design**" is true, but is not how it should be presented.
+> Wearing my marketing head, the desciption below is just about as valid and factual correct:
+> A trip is concept that allows you to cull, organize and present without making mistakes that 
+> cannot impact the master. When you are happy about the trip organization and presentation, you
+> can move the pictures from the picture directory to the master.  
+> The blogs and trip species list are autimatically migrated to an Album, using the same web address.
+
+
 Two roots matter and are easy to confuse:
 
-- The **trip repository** (`…\trips\kretadb`) — metadata and website files.
+- The **trip repository** (`…\trips\kretadb`) — metadata and website files
+> GH: , the bookkeeping needed to allow the culling and build the trip website.
 - The **picture root** (`D:\CurrentPictures\2026\2026 Crete`) — the actual RAW
   files you are culling, one `YYYY-MM-DD` folder per day.
+> Gh: Even though the picture root is not part of the trip, SpeciesViewer will delete pictures as part of the culling.
 
 ## Master
 
@@ -86,6 +110,11 @@ It is fed from **two** directions, which is worth knowing because it explains wh
    across from the trip's frozen metadata.
 2. Straight from local — the *undeveloped* RAWs of identified species come
    across directly, bypassing the trip repo.
+> GH: what do you mean with "direct"?  All RAWs will have a species name, location.  
+> The trip is not limited to what is published.  The to-master process moves what the 
+> trip has selected: species, "landscapes";
+> The trip is primary way to get files in the master, days support that too, in the same way: 
+> RAW and JPGs, and updating website.
 
 And through two more doors that skip trips entirely: **Days ▸ Add to Master**,
 and **Master ▸ Add Pictures to Master**.
@@ -104,7 +133,9 @@ website is built, the pages are rendered from the master's files.
 
 That is what makes albums cheap and safe: nothing is copied back into the
 master, an album can be deleted and rebuilt, and its content updates itself when
-the underlying master pictures change.
+the underlying master pictures change. 
+
+> GE: The blogs are lost when an album is deleted.
 
 Albums arrive two ways:
 
@@ -118,6 +149,9 @@ Albums arrive two ways:
 > folder names still say `virttrip`. Same thing. You will see `virttrips\` on
 > disk and `[virttrip]` in `svconfig.ini`.
 
+> GH: rename "virttrip" to "album": I feel album matches the real album that people make.  
+> Even though you say the is user mamual, you do mention to virttip that is rather invisible. 
+> tis must become a backlog item, in ch 19.
 ---
 
 ## How the four fit together
@@ -147,6 +181,9 @@ flowchart LR
     class MASTER m;
 ```
 
+> GH: there should be a direct line from trip to album, as that will be the normal process.
+> I also wonder if the text from master to lbum more belongs to the direct line, with the one from master say something "like deliver pictures"
+
 The full lifecycle, with the menu that owns each stage:
 
 | Stage | Menu | What happens |
@@ -161,7 +198,10 @@ The full lifecycle, with the menu that owns each stage:
 
 Steps 6 and 7 are independent once step 5 is done. Doing 6 first is the calmer
 order: the reporting is in place before anything gets deleted.
-
+> GH: I feel the table mixes function. I would add utilities as a note; it can feed either day or trip. 
+> Since the unfiles is introduced below as unfiled, you can also introduce it there, usimg the sane term (unfiled)
+> I like the table better when you give trips and days their own columns.  Day has 1/2/3/5, 3/5 are integrated, 
+> but that's ok for a high-level table.
 ---
 
 ## The Unfiled inbox
@@ -192,8 +232,12 @@ The window has three regions:
   per day, with a column per pipeline step. This is where most day-by-day work
   actually happens: right-click a row for its actions, or run a whole column.
 
+> GH: it is time to change Yellow Panel to Main Window, or something like that.
+
 > **The invariant:** the left column leads. The yellow panel always shows the
 > scope the mode strip is on.
+
+> GH: That is true, at the same time when yiu active Days/Trips or Album is would be good when the left column follows the yellow panel - a backlog item
 
 Two habits that pay off immediately:
 
@@ -211,3 +255,5 @@ Many menu items depend on there being an **active trip**, **active album**, or
 config, so it survives a restart). If a whole run of menu items looks dead, the
 usual cause is that nothing is active in the scope they belong to — see
 [Appendix A](appendix-a-greyed-out.md).
+
+> GH: , or because prereq are not met.  eg try to publish a day that was read.

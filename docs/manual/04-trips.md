@@ -31,6 +31,8 @@ organised in five blocks, separated by dividers:
 | Count Species | | An active trip |
 | Advanced ▸ … | | (see below) |
 
+
+> gh: I need to think about short keys while using SV.  Right now there a just few in the menu, what does not feel too useful.
 ---
 
 ## Getting a trip
@@ -40,15 +42,24 @@ organised in five blocks, separated by dividers:
 Switches to another trip, or changes the current one's dates, texts and pictures
 folder. It loads the trip you pick and can only write back into that one.
 
+> gh: typically I create a trip with dummy pictures and text, mostly before the trip
+> started the story is yet to evolve.  The text above can reflect that more.
+
 ### Create Trip
 
 Starts empty, and can only write into a folder it creates itself.
+
+> gh: explain the function is to define the webroot and directories with pictures.
+> the rest can be changed as we good.
 
 > **Why these are two entries and not one screen.** They used to be a single
 > "Create or Select" dialog, which pre-filled its fields from the *active* trip.
 > That is how a live trip's identity was once overwritten by creating a new one.
 > Two dialogs, each able to write to exactly one place, removes the trap. See
 > [plans/trip_dialog_and_ingest_lanes.md](../plans/trip_dialog_and_ingest_lanes.md).
+
+> gh: this is a history lesson.  When such lesson happens this can result in a textbox 
+> with a hint, or in a product fix/improvement.  In that it should describe the new functions as if we made a  good design in the first round.
 
 Create Trip is also the step that builds the trip's repository structure — the
 `sv1MakeRepository` batch. Select or Update deliberately does not offer that
@@ -66,7 +77,9 @@ machine, export, import on the laptop.
 
 ### Import Trip
 
-Unpacks a trip export on this machine.
+Unpacks a trip export on this machine. 
+> gh: Use this if you want copy the picture day directories outside SV, eg because
+> you have a fast netwerk connection.
 
 ### Restore Work from Card
 
@@ -80,6 +93,10 @@ Re-reading the card re-applies the ratings, colour labels and species names you
 assigned while travelling, onto the pictures in the trip you have open.
 
 Open the trip you want to restore into **first**; the dialog needs it.
+
+> gh: shouldn't we say someting about the included SD-reader?  To me this section is
+> easy to understand.  Or maybe I am still not clear what the best procedure will in
+> practice.
 
 ---
 
@@ -102,6 +119,11 @@ reports files it ignored, and shows a per-day count as it goes.
 > **And a rule learned the hard way:** old flat folders of mixed dates should go
 > in via *Add Pictures to Master* (plus an Album for the range), never through the
 > card reader.
+
+> gh: another case where we learned the hardware, eg
+> When you have a collection of species that are ordered by day, you can use read 
+> and process it via *Add Pictures to Master* (plus an Album for the range).  Never use the card reader for this.
+> this an idea that is shown with a lightbulb in some manuals 
 
 ### Empty a Card
 
@@ -131,6 +153,8 @@ think.
 Run it after a development session, before Read & Summarize — otherwise the
 pipeline summarises stale metadata.
 
+> gh: this needed because Lightroom does not monitor changes by other products, and becasse while
+> PhotoLab imports only a few XMP changes. The Sync function supports only cropping and light corrections.  
 ---
 
 ## The pipeline
@@ -156,6 +180,8 @@ Each step is gated by a **statemachine**: a step is only clickable when its
 predecessor has run for that day. If a step is greyed, hover it — the tooltip
 explains what is missing.
 
+> gh: statemachine is for the tech manual.  Or a diagram.
+
 ### 1. Read & Summarize — `Ctrl+D`
 
 Reads the day's picture directory (EXIF, sidecars, species names) and writes the
@@ -172,7 +198,8 @@ understands". Re-run it any time; it is not destructive.
 ### 2. Write Blog
 
 Generates the day's blog entry from its species and pictures. The result is a
-draft you can then edit.
+draft you can then edit.  
+> gh: recreate the blog as often as you like, eg when you found more species to add or change the introduction.  The selection of the picture to show is made by SV based on the ratings. Every species gets just one image per male, female or juvenile.  You can specify a minimum rating such that only the best pictures are shown.
 
 ### 3. Publish Day
 
@@ -182,6 +209,11 @@ no longer exists.
 
 Freezing is what makes a day's data final and quotable — it is the snapshot the
 master merge later reads from.
+
+> gh: the days must be frozen in order.  Once froze and published that day cannot 
+> be rerun.  The Reset function will unfreeze (free) all days again, such that you can 
+> incorporate the latest pictures you want to show.  
+> the recommendation not to publish until you feel that day is fairly complete.
 
 > The individual **Freeze Data** and **Write Website Commit** steps still exist
 > under *Advanced ▸ Legacy*, for the rare case where you want only one of them.
@@ -266,6 +298,9 @@ permanent vocabulary.
 This item also appears in [To Master](05-to-master.md) — it is the same action,
 listed in both places because it is both "finish the trip" and "start the merge".
 
+> gh: this only needed when the trip came from a different computer, on the same this 
+> no longer needed.
+
 ### Count Species
 
 *Needs: an active trip.*
@@ -294,11 +329,15 @@ The delete-a-blog tool: lists the trip's blog entries and lets you remove one.
 Empties the trip's data so it can be customised again from scratch. The trip
 keeps existing; its accumulated pipeline data does not.
 
+> gh: this is now also on the yellow panel.  It's purpose is to generate the blog and species, such that it is refreshed.  No custamization is lost, and published blog and trip species are not impacted. After the reset, it is possible to refresh the website.
+
 ### Recreate Trip Repository
 
 *Needs: an active trip.*
 
 Deletes the existing repository and rebuilds it. Heavier than Reset.
+
+> gh: the function rebuilds all webreports.  This is most useful when there have been code changes (not applicable to users), and add a few pictures or change species names while you are otherwise happy with the website for the trip.  
 
 > Both of these throw away work. The pictures in `CurrentPictures` are not
 > touched, but everything the pipeline built about them is.
