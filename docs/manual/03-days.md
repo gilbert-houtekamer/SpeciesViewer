@@ -2,20 +2,20 @@
 
 The light lane. A **Day** is a single `YYYY-MM-DD` folder of pictures with no
 trip, no repository and no website — reviewed, and then added to the master.
-> gh: This means that the images are to the master, and the website is updated
-> with the new species uploaded or better pictures based on the rating.
+Adding it to the master also updates the master website: new species appear, and
+where a Day brings a better-rated picture it replaces the current one.
 
 Use it for the local outing: an afternoon at the reserve, a garden moth trap, a
 walk that produced four species worth keeping. Creating a trip for that would be
 all ceremony and no payoff.
 
-| Item | Needs |
-|---|---|
-| Register Existing Day… | |
-| Copy Day from Card… | |
-| Review & Rate Pictures… | An active day |
-| Add to Master | An active day |
-| Remove from List | An active day |
+| Item | Needs | What it does |
+|---|---|---|
+| Register Existing Day… | | Point at a folder; nothing is copied |
+| Copy Day from Card… | | Copy off a card into dated folders |
+| Review & Rate Pictures… | An active day | Cull, rate, name, geotag |
+| Add to Master | An active day | **The commit** — copies keepers into the master |
+| Remove from List | An active day | Forget the folder; pictures untouched |
 
 The whole lane in one line:
 
@@ -44,8 +44,8 @@ running in "days mode": date-bucketing is on (so a card holding three dates
 produces three day folders), and the folders it creates are registered when the
 copy finishes.
 
-> GH: when you use the "View Pictures" button, you will see all days imported.  
-> After you close the SD-card dialog you can cull them per day.
+The dialog's **View Pictures** button shows everything just imported, across all
+the day folders it made; once you close the dialog you cull each day on its own.
 
 ## Review & Rate Pictures…
 
@@ -59,10 +59,9 @@ This is the same viewer used everywhere else in the application. Its filters and
 controls are in [10. The viewers](10-viewers.md#the-culling-grid); its keys are
 in [viewer_keybindings.md](../viewer_keybindings.md).
 
-> There is no separate "commit" for a Day. Culling mode writes as you go.
-y?
-> GH: I disagree, but the table headers do not help.  
-> "Add to master" does commit?  What did you want to y?
+> Culling writes as you go — there is no *save* step for your ratings and names.
+> The commit that matters is **Add to Master**: until you run it, nothing has
+> left the day folder.
 
 
 ## Add to Master

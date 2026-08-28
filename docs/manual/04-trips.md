@@ -31,8 +31,6 @@ organised in five blocks, separated by dividers:
 | Count Species | | An active trip |
 | Advanced ▸ … | | (see below) |
 
-
-> gh: I need to think about short keys while using SV.  Right now there a just few in the menu, what does not feel too useful.
 ---
 
 ## Getting a trip
@@ -42,28 +40,21 @@ organised in five blocks, separated by dividers:
 Switches to another trip, or changes the current one's dates, texts and pictures
 folder. It loads the trip you pick and can only write back into that one.
 
-> gh: typically I create a trip with dummy pictures and text, mostly before the trip
-> started the story is yet to evolve.  The text above can reflect that more.
-
 ### Create Trip
 
-Starts empty, and can only write into a folder it creates itself.
+Create Trip is where you set the two things that stay fixed for the life of the
+trip — its **web address** and its **picture directory** — and scaffold the
+repository (the `sv1MakeRepository` batch). Everything else (dates, titles, blog
+text) you change later with *Select or Update*, which deliberately does not offer
+the scaffold button.
 
-> gh: explain the function is to define the webroot and directories with pictures.
-> the rest can be changed as we good.
+In practice you often create a trip *before* you travel — placeholder dates, a
+stub blog, no pictures yet — and let it fill in as the journey happens.
 
-> **Why these are two entries and not one screen.** They used to be a single
-> "Create or Select" dialog, which pre-filled its fields from the *active* trip.
-> That is how a live trip's identity was once overwritten by creating a new one.
-> Two dialogs, each able to write to exactly one place, removes the trap. See
-> [plans/trip_dialog_and_ingest_lanes.md](../plans/trip_dialog_and_ingest_lanes.md).
-
-> gh: this is a history lesson.  When such lesson happens this can result in a textbox 
-> with a hint, or in a product fix/improvement.  In that it should describe the new functions as if we made a  good design in the first round.
-
-Create Trip is also the step that builds the trip's repository structure — the
-`sv1MakeRepository` batch. Select or Update deliberately does not offer that
-button.
+> **Why two entries and not one screen.** Each dialog can write to exactly one
+> place: *Create* only into a folder it makes itself, *Select or Update* only
+> into the trip you pick. Keeping them apart means creating a new trip can never
+> reach into the one you already have open.
 
 ### Export Trip
 
@@ -77,9 +68,9 @@ machine, export, import on the laptop.
 
 ### Import Trip
 
-Unpacks a trip export on this machine. 
-> gh: Use this if you want copy the picture day directories outside SV, eg because
-> you have a fast netwerk connection.
+Unpacks a trip export on this machine. The pictures are not in the export — if
+you are moving a trip between machines on a fast network, copy the picture day
+folders across yourself and use Import Trip for the trip's identity.
 
 ### Restore Work from Card
 
@@ -92,11 +83,9 @@ card rather than in the trip export.
 Re-reading the card re-applies the ratings, colour labels and species names you
 assigned while travelling, onto the pictures in the trip you have open.
 
-Open the trip you want to restore into **first**; the dialog needs it.
-
-> gh: shouldn't we say someting about the included SD-reader?  To me this section is
-> easy to understand.  Or maybe I am still not clear what the best procedure will in
-> practice.
+The card is the SV INDEX card you wrote while travelling (see *Empty a Card*);
+read it back through any card reader. Open the trip you want to restore into
+**first**; the dialog needs it.
 
 ---
 
@@ -115,15 +104,11 @@ reports files it ignored, and shows a per-day count as it goes.
 > **The other lane.** If you do not yet know which trip a card belongs to, use
 > [Utilities ▸ Read card into unfiled…](08-utilities.md) instead. It asks nothing
 > and claims nothing.
->
-> **And a rule learned the hard way:** old flat folders of mixed dates should go
-> in via *Add Pictures to Master* (plus an Album for the range), never through the
-> card reader.
 
-> gh: another case where we learned the hardware, eg
-> When you have a collection of species that are ordered by day, you can use read 
-> and process it via *Add Pictures to Master* (plus an Album for the range).  Never use the card reader for this.
-> this an idea that is shown with a lightbulb in some manuals 
+> 💡 **Tip.** A flat folder of mixed dates — an old shoot, a batch someone sent
+> you, a set of pictures ordered by day — goes into the master through
+> *Master ▸ Add Pictures to Master* (add an Album for the date range if you want
+> a page for it). The card reader is for cards, not for folders like these.
 
 ### Empty a Card
 
@@ -153,8 +138,10 @@ think.
 Run it after a development session, before Read & Summarize — otherwise the
 pipeline summarises stale metadata.
 
-> gh: this needed because Lightroom does not monitor changes by other products, and becasse while
-> PhotoLab imports only a few XMP changes. The Sync function supports only cropping and light corrections.  
+It is needed because Lightroom does not watch for edits made by other programs,
+and PhotoLab reads back only some XMP fields. The sync covers crops and light
+corrections — not the full development recipe.
+
 ---
 
 ## The pipeline
@@ -176,11 +163,8 @@ flowchart LR
 > once, run a whole column, and see which step each day has reached. The menu
 > entries exist for when you want to ask for a step by name.
 
-Each step is gated by a **statemachine**: a step is only clickable when its
-predecessor has run for that day. If a step is greyed, hover it — the tooltip
-explains what is missing.
-
-> gh: statemachine is for the tech manual.  Or a diagram.
+Each step unlocks only when the one before it has run for that day. A greyed step
+means its predecessor is still pending — hover it and the tooltip says which.
 
 ### 1. Read & Summarize — `Ctrl+D`
 
@@ -197,9 +181,11 @@ understands". Re-run it any time; it is not destructive.
 
 ### 2. Write Blog
 
-Generates the day's blog entry from its species and pictures. The result is a
-draft you can then edit.  
-> gh: recreate the blog as often as you like, eg when you found more species to add or change the introduction.  The selection of the picture to show is made by SV based on the ratings. Every species gets just one image per male, female or juvenile.  You can specify a minimum rating such that only the best pictures are shown.
+Generates the day's blog entry from its species and pictures — a draft you then
+edit. Re-run it whenever you like: after identifying more species, or to pick up
+a rewritten introduction. SpeciesViewer chooses the pictures by rating, one per
+species (and one each for male, female and juvenile where those are marked). Set
+a minimum rating to keep the blog to your best frames only.
 
 ### 3. Publish Day
 
@@ -210,10 +196,10 @@ no longer exists.
 Freezing is what makes a day's data final and quotable — it is the snapshot the
 master merge later reads from.
 
-> gh: the days must be frozen in order.  Once froze and published that day cannot 
-> be rerun.  The Reset function will unfreeze (free) all days again, such that you can 
-> incorporate the latest pictures you want to show.  
-> the recommendation not to publish until you feel that day is fairly complete.
+Days freeze in date order, and a published day cannot be re-run on its own. If
+you need to bring in more pictures afterwards, **Reset Trip** frees all the days
+again so you can re-publish from a clean state. Because of that, publish a day
+only when you are fairly sure it is complete.
 
 > The individual **Freeze Data** and **Write Website Commit** steps still exist
 > under *Advanced ▸ Legacy*, for the rare case where you want only one of them.
@@ -298,8 +284,9 @@ permanent vocabulary.
 This item also appears in [To Master](05-to-master.md) — it is the same action,
 listed in both places because it is both "finish the trip" and "start the merge".
 
-> gh: this only needed when the trip came from a different computer, on the same this 
-> no longer needed.
+On a single machine this step is usually a no-op: the species list is already the
+master's (see *Edit Species List* above). It matters when the trip was built on
+another machine and carries names the master has not seen.
 
 ### Count Species
 
@@ -326,21 +313,23 @@ The delete-a-blog tool: lists the trip's blog entries and lets you remove one.
 
 *Needs: an active trip.*
 
-Empties the trip's data so it can be customised again from scratch. The trip
-keeps existing; its accumulated pipeline data does not.
-
-> gh: this is now also on the yellow panel.  It's purpose is to generate the blog and species, such that it is refreshed.  No custamization is lost, and published blog and trip species are not impacted. After the reset, it is possible to refresh the website.
+Rebuilds the trip's generated data — the per-day summaries — from the current
+pictures and species, and frees the frozen days so the pipeline picks up changes
+you have made. Also available from the yellow panel. Your customisations are
+kept: hand-edited blog text and the trip species list are not touched, and
+anything already published stays up. After a reset you can refresh the website.
 
 ### Recreate Trip Repository
 
 *Needs: an active trip.*
 
-Deletes the existing repository and rebuilds it. Heavier than Reset.
+Rebuilds the trip's repository and every generated page from scratch. Heavier
+than Reset. Useful after adding a few pictures or renaming species when the site
+is otherwise the way you want it — and after a SpeciesViewer update that changed
+how pages are built (not something that affects you day to day).
 
-> gh: the function rebuilds all webreports.  This is most useful when there have been code changes (not applicable to users), and add a few pictures or change species names while you are otherwise happy with the website for the trip.  
-
-> Both of these throw away work. The pictures in `CurrentPictures` are not
-> touched, but everything the pipeline built about them is.
+> The pictures in `CurrentPictures` are never touched by either action — only the
+> data and pages the pipeline generated from them.
 
 ### Advanced ▸ Legacy
 
