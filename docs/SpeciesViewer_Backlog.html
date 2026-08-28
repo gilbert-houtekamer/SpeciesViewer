@@ -2453,10 +2453,12 @@ recorded so the trigger and the reasoning survive.</p>
       the toolbar bar, so its swatches light up to match; ignored while a text field has focus.
       Works in both the SD-card culling grid and the pipeline Species Image Preview (one class).
       <span class="note">New <code>ColorFilterBar.set_selection()</code> replaces the whole
-      selection and notifies once. A debounce that also skips intermediate rebuilds on rapid
-      changes was considered and left &mdash; <code>g</code> is the cheap 90% win; a slow
-      <em>single</em> rebuild is a separate &ldquo;make the grid build yield properly&rdquo;
-      task.</span></li>
+      selection and notifies once. Like <code>s</code> / <code>f</code>, the key needs grid
+      focus &mdash; it does nothing right after the window opens (focus is on the search box)
+      until a card is clicked; accepted, since a card is usually already selected. A debounce
+      that also skips intermediate rebuilds on rapid changes was considered and left &mdash;
+      <code>g</code> is the cheap 90% win; a slow <em>single</em> rebuild is a separate
+      &ldquo;make the grid build yield properly&rdquo; task.</span></li>
 </ul>
 
 </body>

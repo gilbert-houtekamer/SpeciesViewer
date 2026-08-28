@@ -2043,6 +2043,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 and not (event.modifiers() & Qt.KeyboardModifier.ControlModifier)
                 and not text_input_focused()):
             bar = getattr(self, "color_filter_bar", None)
+            logger.debug(f"g/h colour filter: key={event.key()} bar={bar is not None} "
+                         f"current={sorted(self._color_filter)}")
             if bar is not None:
                 keepers = {"Red", "Yellow", "Green"}
                 if event.key() == Qt.Key.Key_H:
