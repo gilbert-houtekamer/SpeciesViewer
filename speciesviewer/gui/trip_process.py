@@ -518,26 +518,41 @@ class TripCreationDialog(QDialog):
         nl_message = self.message_nl_field.get_text()
 
         # Force NL->EN; auto-detection misfires on short proper-noun titles.
-        translated_title = self.passed_parent.translator.cachedTranslate(nl_title, language='nl')
-        translated_message = self.passed_parent.translator.cachedTranslate(nl_message, language='nl')
+        tr = self.passed_parent.translator
+        tr.last_error = None
+        translated_title = tr.cachedTranslate(nl_title, language='nl')
+        translated_message = tr.cachedTranslate(nl_message, language='nl')
 
         self.title_en_field.set_text(translated_title)
         self.message_en_field.set_text(translated_message)
 
-        self.logger.info("✅ Translated Dutch to English using Google Translate.")
+        self._report_translation(tr, "Dutch to English")
 
     def translate_english_to_dutch(self):
         en_title = self.title_en_field.get_text()
         en_message = self.message_en_field.get_text()
 
         # Force EN->NL; auto-detection misfires on short proper-noun titles.
-        translated_title = self.passed_parent.translator.cachedTranslate(en_title, language='en')
-        translated_message = self.passed_parent.translator.cachedTranslate(en_message, language='en')
+        tr = self.passed_parent.translator
+        tr.last_error = None
+        translated_title = tr.cachedTranslate(en_title, language='en')
+        translated_message = tr.cachedTranslate(en_message, language='en')
 
         self.title_nl_field.set_text(translated_title)
         self.message_nl_field.set_text(translated_message)
 
-        self.logger.info("✅ Translated English to Dutch using Google Translate.")        
+        self._report_translation(tr, "English to Dutch")
+
+    def _report_translation(self, tr, direction: str):
+        """✅ only when the live call actually succeeded — cachedTranslate
+        swallows a network failure and hands back the original text, so an
+        unconditional success line was reporting a no-op as done."""
+        if tr.last_error:
+            self.logger.warning(
+                f"⚠ Translation incomplete ({direction}) — Google Translate "
+                f"returned nothing; kept the original text. ({tr.last_error})")
+        else:
+            self.logger.info(f"✅ Translated {direction}.")
 
     def create_trip_ini(self):
         trip_root = self.root_field.get_text()
@@ -3516,13 +3531,15 @@ class CreateBlogDialog(QDialog):
             # Force the source language (this button is always NL->EN). Auto-
             # detection misfires on short, proper-noun-heavy titles like
             # "Dag 8: De Nestos Delta en Nestos kloof" and leaves them untranslated.
-            translated_title = self.passed_parent.translator.cachedTranslate(nl_title, language='nl')
-            translated_message = self.passed_parent.translator.cachedTranslate(nl_message, language='nl')
+            tr = self.passed_parent.translator
+            tr.last_error = None
+            translated_title = tr.cachedTranslate(nl_title, language='nl')
+            translated_message = tr.cachedTranslate(nl_message, language='nl')
 
             self.title_en.setText(translated_title)
             self.message_en.setPlainText(translated_message)
 
-            self.logger.info("✅ Translated Dutch to English using Google Translate.")
+            self._report_translation(tr, "Dutch to English")
         except Exception as e:
             self.logger.error(f"❌ Translation failed: {e}")
 
@@ -3533,15 +3550,27 @@ class CreateBlogDialog(QDialog):
 
             # Force the source language (this button is always EN->NL); see the
             # NL->EN handler for why auto-detection is unreliable on short titles.
-            translated_title = self.passed_parent.translator.cachedTranslate(en_title, language='en')
-            translated_message = self.passed_parent.translator.cachedTranslate(en_message, language='en')
+            tr = self.passed_parent.translator
+            tr.last_error = None
+            translated_title = tr.cachedTranslate(en_title, language='en')
+            translated_message = tr.cachedTranslate(en_message, language='en')
 
             self.title_nl.setText(translated_title)
             self.message_nl.setPlainText(translated_message)
 
-            self.logger.info("✅ Translated English to Dutch using Google Translate.")
+            self._report_translation(tr, "English to Dutch")
         except Exception as e:
             self.logger.error(f"❌ Translation failed: {e}")
+
+    def _report_translation(self, tr, direction: str):
+        """✅ only when the live call actually succeeded — cachedTranslate
+        swallows a network failure and returns the original text."""
+        if tr.last_error:
+            self.logger.warning(
+                f"⚠ Translation incomplete ({direction}) — Google Translate "
+                f"returned nothing; kept the original text. ({tr.last_error})")
+        else:
+            self.logger.info(f"✅ Translated {direction}.")
 
 
     def _create_dutch_tab(self):

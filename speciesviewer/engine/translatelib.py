@@ -33,6 +33,11 @@ class CachedTranslate:
         # so there is no persistent translator object to hold here.
         self.admindir = os.path.join(treedir, 'admin')
         self._dirty = False
+        # Set to str by cachedTranslate whenever a LIVE translation call failed
+        # (cache hits never touch it). A caller that wants to report accurately
+        # resets it to None before its batch, then checks it after — the network
+        # failure is otherwise swallowed and the original text returned.
+        self.last_error = None
         self.readTranslationache()
 
     def readTranslationache(self):
@@ -130,18 +135,71 @@ class CachedTranslate:
             from_lang, to_lang = 'nl', 'en'
         else:
             from_lang, to_lang = 'en', 'nl'
-        try:
-            translated = GoogleTranslator(source=from_lang, target=to_lang).translate(text)
-            if not translated:
-                return text
-            translatedText = translated.replace('.', '. ').replace('.  ', '. ')
-        except Exception as e:
-            logger.warning(f"Translation failed, returning original text: {e}")
+        translated = self._live_translate(text, from_lang, to_lang)
+        if not translated:
+            logger.warning(f"Translation failed, returning original text: {self.last_error}")
             return text
+        translatedText = translated.replace('.', '. ').replace('.  ', '. ')
         self.translation_cache[int(crctext)] = {
             'translation': translatedText, 'source_lang': from_lang, 'verified': False}
         self._dirty = True
         return translatedText
+
+    # MyMemory wants region-tagged codes and caps a request at 500 characters.
+    _MYMEM_REGION = {'nl': 'nl-NL', 'en': 'en-GB'}
+    _MYMEM_LIMIT = 480
+
+    def _live_translate(self, text, from_lang, to_lang):
+        """One live translation. Google first (best quality); if its unofficial
+        endpoint is down — which it is, periodically, by design — fall back to
+        MyMemory, a real documented API. Returns '' when both fail, with the
+        reason in self.last_error; '' is never cached, so it retries next run."""
+        try:
+            out = GoogleTranslator(source=from_lang, target=to_lang).translate(text)
+            if out:
+                return out
+            self.last_error = "Google Translate returned nothing"
+        except Exception as e:
+            self.last_error = f"Google Translate: {e}"
+        try:
+            from deep_translator import MyMemoryTranslator
+            mm = MyMemoryTranslator(source=self._MYMEM_REGION.get(from_lang, from_lang),
+                                    target=self._MYMEM_REGION.get(to_lang, to_lang))
+            parts = self._split_for_limit(text, self._MYMEM_LIMIT)
+            out = "".join(mm.translate(p) for p in parts)
+            if out:
+                logger.info(f"Translation: Google unavailable ({self.last_error}); "
+                            f"used MyMemory instead.")
+                self.last_error = None
+                return out
+        except Exception as e:
+            self.last_error = f"{self.last_error}; MyMemory: {e}"
+        return ""
+
+    @staticmethod
+    def _split_for_limit(text, limit):
+        """Break `text` into <=limit-char pieces at sentence, then word,
+        boundaries — for translators that cap a single request."""
+        if len(text) <= limit:
+            return [text]
+        import re
+        out, buf = [], ""
+        for piece in re.split(r'(?<=\. )', text):
+            if len(buf) + len(piece) <= limit:
+                buf += piece
+                continue
+            if buf:
+                out.append(buf)
+                buf = ""
+            while len(piece) > limit:
+                cut = piece.rfind(' ', 0, limit)
+                cut = cut if cut > 0 else limit
+                out.append(piece[:cut])
+                piece = piece[cut:].lstrip()
+            buf = piece
+        if buf:
+            out.append(buf)
+        return out
 
     def getBothLanguages(self, nederlands, english):
         # two languages => pass

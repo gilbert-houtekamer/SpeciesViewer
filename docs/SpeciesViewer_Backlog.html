@@ -2428,6 +2428,21 @@ recorded so the trigger and the reasoning survive.</p>
       <span class="note">Definition is the simple one: &ldquo;never in the master&rdquo;, not
       &ldquo;new since this trip started&rdquo;. Mid-trip the two coincide, and the date-scoped
       version is a later refinement on the same wiring.</span></li>
+
+  <li><strong>Translation: MyMemory fallback + honest success line</strong>
+      <span class="tag-shipped">SHIPPED</span> &mdash; <code>deep-translator</code>'s
+      <code>GoogleTranslator</code> scrapes Google's web page, and Google had blocked it again
+      &mdash; every blog line came back untranslated. Two fixes: (1) <code>_live_translate()</code>
+      falls back to <strong>MyMemory</strong> (a real API, same package, no new dependency) when
+      Google returns nothing, chunking text past MyMemory's 500-char cap on sentence / word
+      boundaries; (2) the trip blog dialogs no longer print <code>&#9989; Translated&hellip;</code>
+      unconditionally &mdash; <code>cachedTranslate</code> swallowed the failure and handed back
+      the original text, so a no-op read as done. <code>CachedTranslate.last_error</code> now
+      carries the reason and the caller prints <code>&#9989;</code> or
+      <code>&#9888; Translation incomplete&hellip;</code> accordingly.
+      <span class="note">Same lesson as the earlier googletrans retirement: an unofficial
+      scraped endpoint breaks on its own schedule. The fallback makes that a quality dip, not an
+      outage. <code>pip install -U deep-translator</code> may also restore Google directly.</span></li>
 </ul>
 
 </body>
