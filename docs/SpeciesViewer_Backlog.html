@@ -2415,6 +2415,19 @@ recorded so the trigger and the reasoning survive.</p>
       <code>&#10003; name (+1)</code> when more than one is found.
       <span class="note">The single-log callers (the day-overview satellite glyph, the
       card-clock UTC-offset probe) still take the first match; only the geotag passes merge.</span></li>
+
+  <li><strong>&ldquo;NEW SPECIES&rdquo; tag in the large viewer</strong>
+      <span class="tag-shipped">SHIPPED</span> &mdash; a small amber tag on the SPECIES section
+      header when the current picture's species resolves to a scientific name the master has
+      <em>no picture of</em> &mdash; a first for the collection, spotted while culling. The
+      master's <code>species.csv</code> is read once per window and cached, so navigation stays
+      instant; a SmallMaster laptop works too (it carries the full <code>metadata/active/</code>,
+      only the images are a subset) with the tag then reading against the snapshot date.
+      Shown only while culling (a master picture is never new), and only once the species is
+      actually resolved &mdash; a half-typed name shows nothing.
+      <span class="note">Definition is the simple one: &ldquo;never in the master&rdquo;, not
+      &ldquo;new since this trip started&rdquo;. Mid-trip the two coincide, and the date-scoped
+      version is a later refinement on the same wiring.</span></li>
 </ul>
 
 </body>

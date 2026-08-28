@@ -1066,6 +1066,17 @@ class LargeImageView(QDialog):
 
         # SPECIES section (container rebuilt on each picture)
         sec_species = _CollapsibleSection("SPECIES", setting_key="species")
+        # "NEW SPECIES" — rides the section header when the master has never had a
+        # picture of this species (a first for the collection). Shown only while
+        # culling; kept alive across picture changes, toggled per picture.
+        self._new_species_badge = QLabel("NEW SPECIES")
+        self._new_species_badge.setStyleSheet(
+            f"font-family:{_MONO}; font-size:9px; font-weight:700; letter-spacing:1px;"
+            f" color:#7a4b00; background:#ffd873; border-radius:3px; padding:1px 6px;")
+        self._new_species_badge.setToolTip(
+            "The master has no picture of this species yet — a first for your collection.")
+        self._new_species_badge.hide()
+        sec_species.add_trailing_widget(self._new_species_badge)
         self._species_container = QWidget()
         self._species_cl = QVBoxLayout(self._species_container)
         self._species_cl.setContentsMargins(0, 0, 0, 0)
@@ -2181,6 +2192,58 @@ class LargeImageView(QDialog):
         # Offer marking this photo as a landscape / context photo wherever the
         # subject is writable (fpr editor OR the item's own species writer).
         self._add_mark_landscape_button(item, key)
+
+        self._refresh_new_species_badge(item)
+
+    def _master_species_names(self):
+        """Scientific names the master already has a picture of — read once from
+        its species.csv and cached for the life of this window. None when no
+        master is configured or its list can't be read, so the 'NEW SPECIES'
+        badge is never shown on a guess.
+
+        A SmallMaster laptop is fine here: it copies the whole metadata/active/
+        folder (species.csv included) — only the JPG/XMP images are a subset —
+        so the list is the full master's, just as of the snapshot date."""
+        if hasattr(self, "_master_species_cache"):
+            return self._master_species_cache
+        names = None
+        try:
+            master = (get_setting("master", "masterbiotadatabase", fallback="") or "").strip()
+            if master:
+                from engine.species_baseline import collect_master_species
+                got, _zero, _topic = collect_master_species(master)
+                names = got or None
+                logger.info(f"NEW SPECIES badge: {len(got)} species with pictures "
+                            f"read from {master}\\metadata\\active\\species.csv")
+            else:
+                logger.info("NEW SPECIES badge: disabled (no master configured)")
+        except Exception as e:
+            logger.info(f"NEW SPECIES badge: master species list unavailable ({e})")
+        self._master_species_cache = names
+        return names
+
+    def _refresh_new_species_badge(self, item):
+        """Toggle the SPECIES-header 'NEW SPECIES' tag: on when this picture's
+        species resolves to a scientific name the master has never had a picture
+        of. Culling only (a master picture is by definition not new); hidden when
+        the species isn't resolved yet or there's no master to compare to."""
+        badge = getattr(self, "_new_species_badge", None)
+        if badge is None:
+            return
+        is_new = False
+        if not getattr(item, "from_master", False):
+            names = self._master_species_names()
+            if names:
+                sci = ""
+                triple = getattr(item, "name_triple", None)
+                if isinstance(triple, dict):
+                    sci = (triple.get("sci") or "").strip().lower()
+                if not sci:
+                    sci = (getattr(item, "sci_name", "") or "").strip().lower()
+                is_new = bool(sci) and sci not in names
+                logger.debug(f"NEW SPECIES badge: subject={getattr(item, 'species', '')!r} "
+                             f"sci={sci!r} in_master={bool(sci) and sci in names} → new={is_new}")
+        badge.setVisible(is_new)
 
     def _inline_species_sc(self):
         """The species collection backing the inline culling editor. Reuse the
