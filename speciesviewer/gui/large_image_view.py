@@ -559,6 +559,8 @@ class _FullResView(QScrollArea):
         self._zoomable = bool(zoomable)
         self._scale = 1.0          # display px per image px
         self._fit = False          # currently fit-to-window (track window resizes)
+        self._zoom_locked = False  # user zoomed past fit → carry that zoom to the
+                                   # next picture (culling a burst at 1:1)
         self._overlay = None       # bottom-left: source + size
         self._hint = None          # top-left: how to zoom/pan
         if self._zoomable:
@@ -587,10 +589,20 @@ class _FullResView(QScrollArea):
         self._pixmap = pixmap
         self._label.setText("")
         if self._zoomable:
-            self._fit = True
-            self._scale = self._fit_scale()
-            self._render_scaled()
-            self._center_on((0.5, 0.5))
+            fit = self._fit_scale()
+            if self._zoom_locked and self._scale > fit + 1e-4:
+                # Keep the zoom the user set on the previous picture and land on
+                # the same spot (point), so a burst can be checked at 1:1 without
+                # re-zooming after every colour label.
+                self._scale = min(1.0, self._scale)
+                self._fit = False
+                self._render_scaled()
+                self._center_on(point)
+            else:
+                self._fit = True
+                self._scale = fit
+                self._render_scaled()
+                self._center_on((0.5, 0.5))
             if self._hint is not None:
                 self._hint.adjustSize()
                 self._hint.show()
@@ -654,6 +666,7 @@ class _FullResView(QScrollArea):
         fy = (self.verticalScrollBar().value() + ay) / old_h
         self._scale = new_scale
         self._fit = abs(new_scale - self._fit_scale()) < 1e-4
+        self._zoom_locked = not self._fit
         self._render_scaled()
         new_w = max(1.0, self._pixmap.width() * self._scale)
         new_h = max(1.0, self._pixmap.height() * self._scale)
@@ -679,6 +692,7 @@ class _FullResView(QScrollArea):
         else:
             self._scale = self._fit_scale()
             self._fit = True
+            self._zoom_locked = False
             self._render_scaled()
             self._center_on((0.5, 0.5))
             self._emit_point()
