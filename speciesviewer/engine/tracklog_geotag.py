@@ -282,20 +282,43 @@ def apply_entries(files_by_key: dict, rows: list[dict], *, progress_cb=None) -> 
            "altitude_files": result["altitude_files"]}
 
 
-def find_day_tracklog(day: str, root: str) -> str | None:
-    """`<root>/<year>/<yyyymmdd>.log` (OM-1 naming), falling back to the same
-    stem's `.gpx` (a phone-app export) — the per-day auto-discovery
-    convention for the silent Read-time geotag pass and the Unfiled/Days row
-    action. `day` is 'YYYY-MM-DD'. None if neither exists or `root` is empty."""
+def find_day_tracklogs(day: str, root: str) -> list[str]:
+    """Every tracklog for `day` in `<root>/<year>/` — OM-1 `.log` and phone
+    `.gpx` files whose name STARTS WITH the day's `yyyymmdd` stem.
+
+    `<yyyymmdd>.log` is the common case, but a phone names every export just
+    after the date, so a second session the same day would overwrite the
+    first. Anything appended after the stem is accepted — `<yyyymmdd>a.log`,
+    `<yyyymmdd>-afternoon.log`, `<yyyymmdd>_2.gpx` — and all matches are loaded
+    and merged. `day` is 'YYYY-MM-DD'. `.log` files sort before `.gpx`, then by
+    name. Empty list when the folder or `root` is missing, or nothing matches."""
     if not root or not day:
-        return None
+        return []
     year = day[:4]
     stem = day.replace("-", "")
-    for ext in (".log", ".gpx"):
-        candidate = Path(root) / year / f"{stem}{ext}"
-        if candidate.is_file():
-            return str(candidate)
-    return None
+    folder = Path(root) / year
+    if not folder.is_dir():
+        return []
+    out: list[str] = []
+    for p in folder.iterdir():
+        if not p.is_file() or p.suffix.lower() not in (".log", ".gpx"):
+            continue
+        if not p.name.startswith(stem):
+            continue
+        # The character right after the date stem must not be a digit, so a
+        # neighbouring day can't slip in on a shared numeric prefix.
+        if p.name[len(stem):len(stem) + 1].isdigit():
+            continue
+        out.append(str(p))
+    return sorted(out, key=lambda s: (Path(s).suffix.lower() != ".log", Path(s).name))
+
+
+def find_day_tracklog(day: str, root: str) -> str | None:
+    """The first tracklog for `day` (see find_day_tracklogs) — for callers that
+    only need to know whether one exists, or a name to show. The geotag passes
+    use find_day_tracklogs and merge every match. None if there is none."""
+    logs = find_day_tracklogs(day, root)
+    return logs[0] if logs else None
 
 
 def auto_geotag_entries(entries_by_day: dict[str, list[dict]], files_by_key: dict, *,
@@ -306,8 +329,9 @@ def auto_geotag_entries(entries_by_day: dict[str, list[dict]], files_by_key: dic
     grouped by the caller from the copy-time day-folder decision (see
     gui/trip_process.py), NOT re-derived here from raw DateTimeOriginal.
 
-    For each day: find its log (find_day_tracklog); if found, load and clean its
-    track, then take the camera's UTC offset FROM THE PICTURES THEMSELVES
+    For each day: find its log(s) (find_day_tracklogs — every file whose name
+    starts with the day's stem); if found, load and clean the merged track,
+    then take the camera's UTC offset FROM THE PICTURES THEMSELVES
     (engine.geo.camera_offset_from_dates, i.e. EXIF OffsetTimeOriginal carried
     into the sidecar). A day with no log, or whose pictures don't state their
     offset, is skipped — counted, never an error and never a guess.
@@ -344,20 +368,21 @@ def auto_geotag_entries(entries_by_day: dict[str, list[dict]], files_by_key: dic
                        f"all of them already have GPS and altitude, nothing to add.")
             summary["days_complete"] += 1
             continue
-        log_path = find_day_tracklog(day, root)
-        if not log_path:
+        log_paths = find_day_tracklogs(day, root)
+        if not log_paths:
             summary["days_no_log"] += 1
             continue
+        names = ", ".join(Path(p).name for p in log_paths)
         try:
-            points = load_track([log_path])
+            points = load_track(log_paths)
         except ValueError as e:
-            logger.warning(f"Tracklog auto-geotag: couldn't read {log_path}: {e}")
+            logger.warning(f"Tracklog auto-geotag: couldn't read {names}: {e}")
             summary["days_no_log"] += 1
             continue
         offset = camera_offset_from_dates([e.get("date") for e in day_entries])
         if offset is None:
             logger.info(f"Tracklog auto-geotag: {len(day_entries)} picture(s) on {day} — "
-                       f"log found ({Path(log_path).name}) but the pictures don't record "
+                       f"log found ({names}) but the pictures don't record "
                        f"the camera's UTC offset, so their times can't be placed on the "
                        f"track. Skipped — use Geotag from tracklog… to set it by hand.")
             summary["days_no_offset"] += 1
@@ -370,7 +395,7 @@ def auto_geotag_entries(entries_by_day: dict[str, list[dict]], files_by_key: dic
             summary["altitude_files"] += result["altitude_files"]
             summary["pictures"] += result["pictures"]
         summary["days_matched"] += 1
-        summary["logs_used"].append(Path(log_path).name)
+        summary["logs_used"].extend(Path(p).name for p in log_paths)
     return summary
 
 

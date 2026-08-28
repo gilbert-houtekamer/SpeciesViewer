@@ -379,7 +379,7 @@ def open_tracklog_geotag_for_folder(parent, folder: str):
     from pathlib import Path
     from gui.trip_process import _PL_RAW_EXTS
     from gui.geolocate import batch_datetime_gps
-    from engine.tracklog_geotag import FilesSource, find_day_tracklog
+    from engine.tracklog_geotag import FilesSource, find_day_tracklogs
     from utils.config import get_gpslogs_root
 
     folder_path = Path(folder)
@@ -402,8 +402,8 @@ def open_tracklog_geotag_for_folder(parent, folder: str):
         files_by_key[stem] = [xmp]
 
     day = folder_path.name
-    log_path = find_day_tracklog(day, get_gpslogs_root())
+    log_paths = find_day_tracklogs(day, get_gpslogs_root())
     source = FilesSource(entries, files_by_key, day)
     TracklogGeotagDialog(
         parent, source, initial_dir=folder,
-        default_tracklog_paths=[log_path] if log_path else None).exec()
+        default_tracklog_paths=log_paths or None).exec()

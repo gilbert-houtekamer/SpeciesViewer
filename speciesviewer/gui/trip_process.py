@@ -1638,7 +1638,7 @@ class ReadSDCardDialog(QDialog):
 
     def _populate_days(self, days):
         """Fill the day table with one checkable row per (date, count), all ticked."""
-        from engine.tracklog_geotag import find_day_tracklog
+        from engine.tracklog_geotag import find_day_tracklogs
         from batch.sv0ReadSDCard import pictures_on_disk_by_day
         # ONE listing of the destination for the whole table, not one per row.
         try:
@@ -1669,9 +1669,13 @@ class ReadSDCardDialog(QDialog):
             # all — that's a settings gap, not a per-day miss.
             track_text = ""
             if self._gpslogs_root:
-                log_path = find_day_tracklog(date_str, self._gpslogs_root)
-                track_text = (f"✓ {Path(log_path).name}" if log_path
-                              else "— no tracklog found")
+                logs = find_day_tracklogs(date_str, self._gpslogs_root)
+                if not logs:
+                    track_text = "— no tracklog found"
+                elif len(logs) == 1:
+                    track_text = f"✓ {Path(logs[0]).name}"
+                else:
+                    track_text = f"✓ {Path(logs[0]).name} (+{len(logs) - 1})"
             track_item = QTableWidgetItem(track_text)
             track_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             self.days_table.setItem(r, TRACK_COL, track_item)
