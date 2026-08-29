@@ -463,6 +463,12 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         # ON the master, not a copy), so they may be edited on the read-only day
         # viewer too. Species RE-DETERMINATION stays out — that belongs in the master.
         self.allow_edit = bool(allow_edit)
+        # A colour / rating edit that does not reach disk is otherwise silent —
+        # the card repaints optimistically and the value is lost on close. These
+        # record every write that failed; the host dialog sets `on_write_error`
+        # to a callback(msg) so the user is told the moment it happens.
+        self._write_failures: list[dict] = []
+        self.on_write_error = None
         # Master inventory binding (album day viewer only). Empty until bind_master();
         # the shared MasterCardOpsMixin reads these to gate + drive pin/move/delete/add
         # against the master DB. Keyed by UPN, exactly like _groups
@@ -1618,11 +1624,19 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
             res = run_exiftool_files([f"-{tag}={value}", "-overwrite_original"],
                                      [str(t) for t in targets])
             if getattr(res, "returncode", 0):
+                reason = f"exiftool exit {res.returncode}: {(res.stderr or '').strip()[:200]}"
                 logger.warning(f"Sidecar batch write reported a problem over "
-                               f"{len(targets)} file(s): "
-                               f"{(res.stderr or '').strip()[:300]}")
+                               f"{len(targets)} file(s): {reason}")
+                if is_colorrating:
+                    for stem in stems:
+                        self._note_write_failure(stem, tag, value, reason)
         except Exception as e:
-            logger.error(f"Sidecar batch write failed: {e}")
+            reason = f"{type(e).__name__}: {e}"
+            if is_colorrating:
+                for stem in stems:
+                    self._note_write_failure(stem, tag, value, reason)
+            else:
+                logger.error(f"Sidecar batch write failed: {reason}")
             return 0
 
         from engine.sidecar_cache import SidecarCache
@@ -1652,6 +1666,45 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         if progress:
             progress(len(keys), len(keys))
         return len(keys)
+
+    _CHANNEL_NAME = {"XMP:Label": "colour", "XMP:Rating": "rating"}
+
+    def _note_write_failure(self, stem: str, tag: str, value: str, reason: str) -> None:
+        """One place a non-persisted colour/rating edit is recorded and surfaced.
+        Logs LOUD (greppable), keeps a record, and calls the host's on_write_error
+        so a dialog pops immediately — the edit did not reach disk."""
+        what = self._CHANNEL_NAME.get(tag, tag)
+        msg = (f"{what} {value!r} for {stem} was NOT saved to disk — {reason}. "
+               f"The card shows it, but closing the app now would lose it.")
+        logger.error(f"SIDECAR WRITE FAILURE: {msg}")
+        self._write_failures.append(
+            {"stem": stem, "tag": tag, "value": value, "reason": reason})
+        cb = getattr(self, "on_write_error", None)
+        if callable(cb):
+            try:
+                cb(msg)
+            except Exception as e:
+                logger.warning(f"on_write_error callback raised: {e}")
+
+    def _write_sidecar_tag(self, xmp_path, tag: str, value: str) -> tuple[bool, str]:
+        """exiftool_write with a short retry — a .xmp briefly held by PhotoLab or
+        mid Dropbox-sync is the common transient failure and clears in a second.
+        Returns (ok, reason); reason is '' on success."""
+        import time
+        last = ""
+        for attempt in range(3):
+            try:
+                exiftool_write(Path(xmp_path), [f"-{tag}={value}"])
+                if attempt:
+                    logger.info(f"sidecar write for {Path(xmp_path).name} "
+                                f"succeeded on attempt {attempt + 1}")
+                return True, ""
+            except Exception as e:
+                last = f"{type(e).__name__}: {e}"
+                logger.warning(f"sidecar write attempt {attempt + 1}/3 failed for "
+                               f"{Path(xmp_path).name}: {last}")
+                time.sleep(0.4 * (attempt + 1))
+        return False, last
 
     def write_tag(self, stem: str, tag: str, value: str, row_key: str) -> None:
         """Write one metadata tag for the stem, honouring Sidecar Behaviour.
@@ -1703,6 +1756,10 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
             # No sidecar yet (e.g. a JPG-only group) — drop one beside the source.
             src = self._source_file(stem)
             if not src:
+                if is_colorrating:
+                    self._note_write_failure(
+                        stem, tag, value,
+                        "no .xmp sidecar and no source file to create one beside")
                 return
             xmp = Path(src).with_suffix(".xmp")
             if not suppress:
@@ -1712,10 +1769,15 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
             # current culling session still shows it (it's live in the .dop).
             self._rows.setdefault(_norm(xmp), {"SourceFile": str(xmp)})[row_key] = value
             return
-        try:
-            exiftool_write(Path(xmp), [f"-{tag}={value}"])
-        except Exception as e:
-            logger.error(f"Sidecar write failed for {Path(xmp).name}: {e}")
+        ok, reason = self._write_sidecar_tag(xmp, tag, value)
+        if not ok:
+            # Keep the value in memory so the session view stays consistent, but
+            # the user must know it never reached disk.
+            self._rows.setdefault(_norm(Path(xmp)), {"SourceFile": str(xmp)})[row_key] = value
+            if is_colorrating:
+                self._note_write_failure(stem, tag, value, reason)
+            else:
+                logger.error(f"Sidecar write failed for {Path(xmp).name}: {reason}")
             return
         # Update in-memory row
         self._rows.setdefault(_norm(xmp), {"SourceFile": str(xmp)})[row_key] = value

@@ -2448,17 +2448,37 @@ recorded so the trigger and the reasoning survive.</p>
       <span class="tag-shipped">SHIPPED</span> &mdash; after a first culling pass you want to see
       only Red+Yellow+Green, but clicking the three toolbar swatches is three separate grid
       rebuilds (~2&nbsp;s each on a 478-card sheet &mdash; the window locks up between them).
-      <code>g</code> now sets Red+Yellow+Green in a <em>single</em> rebuild (press again to clear
-      when it is exactly those three); <code>h</code> clears the colour filter. Both go through
-      the toolbar bar, so its swatches light up to match; ignored while a text field has focus.
-      Works in both the SD-card culling grid and the pipeline Species Image Preview (one class).
+      <code>g</code> sets Red+Yellow+Green in a <em>single</em> rebuild and toggles back off when
+      the filter is already exactly those three; <code>h</code> clears the colour filter from
+      <em>any</em> state in one press (kept alongside the toggle deliberately &mdash; <code>g,g</code>
+      only clears if you started on the keepers, and after sending more frames to Blue you want a
+      guaranteed one-key &ldquo;show everything again&rdquo;). Both go through the toolbar bar, so
+      its swatches light up to match; ignored while a text field has focus. Works in both the
+      SD-card culling grid and the pipeline Species Image Preview (one class).
       <span class="note">New <code>ColorFilterBar.set_selection()</code> replaces the whole
-      selection and notifies once. Like <code>s</code> / <code>f</code>, the key needs grid
-      focus &mdash; it does nothing right after the window opens (focus is on the search box)
-      until a card is clicked; accepted, since a card is usually already selected. A debounce
-      that also skips intermediate rebuilds on rapid changes was considered and left &mdash;
-      <code>g</code> is the cheap 90% win; a slow <em>single</em> rebuild is a separate
-      &ldquo;make the grid build yield properly&rdquo; task.</span></li>
+      selection and notifies once. <code>g</code> <em>replaces</em> rather than adds &mdash; a
+      hand-picked Blue filter is dropped when you press it; that is a known edge, not yet worth a
+      union/difference toggle. Like <code>s</code> / <code>f</code>, the key needs grid focus
+      &mdash; it does nothing right after the window opens (focus is on the search box) until a
+      card is clicked; accepted, since a card is usually already selected. A debounce that also
+      skips intermediate rebuilds on rapid changes was considered and left &mdash; <code>g</code>
+      is the cheap 90% win; a slow <em>single</em> rebuild is a separate &ldquo;make the grid
+      build yield properly&rdquo; task.</span></li>
+
+  <li><strong>Culling colour / rating write failures are now loud</strong>
+      <span class="tag-shipped">SHIPPED</span> &mdash; raised after losing a few colour labels on
+      app close. A swatch click in the culling grid / large viewer writes the <code>.xmp</code>
+      synchronously, but every failure path in <code>SidecarCollection.write_tag</code> /
+      <code>write_tag_many</code> was silent: the card repainted optimistically, nothing reached
+      disk, one log line. Now the exiftool write <strong>retries 3&times;</strong>
+      (0.4/0.8/1.2&nbsp;s &mdash; a PhotoLab or Dropbox lock clears in about that long), and a
+      persistent failure logs <code>SIDECAR WRITE FAILURE</code> with the real reason, keeps the
+      value in memory, and fires a host callback that pops a <em>modal</em> &ldquo;Edit not
+      saved&rdquo; dialog plus a status-bar counter. Culling stops until the user has seen it.
+      <span class="note">The pipeline (fpr) preview is unaffected &mdash; its <code>apply()</code>
+      always writes the day CSV, so a failed sidecar write there degrades sync but loses nothing.
+      The original loss could not be reproduced; the fix is defensive and, whatever the cause,
+      will now name it.</span></li>
 </ul>
 
 </body>

@@ -216,6 +216,12 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._collection.set_crop_hints(self._crop_hints)
         if hasattr(self._collection, "set_name_hints"):
             self._collection.set_name_hints(self._name_hints, self._name_profile)
+        # A colour / rating edit whose sidecar write fails is otherwise silent
+        # (the card repaints anyway). Surface it the moment it happens so a lost
+        # edit is impossible to miss. Also covers a large viewer opened from here
+        # — it shares this collection.
+        if hasattr(self._collection, "on_write_error"):
+            self._collection.on_write_error = self._on_sidecar_write_error
 
         # In a real trip cull, Blue/Purple (discard) may be set on a JPG-bearing
         # picture — the JPG can be culled unless published in a blog (enforced at
@@ -2455,6 +2461,23 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 and not getattr(self, "_day_frozen", False))
 
     # ── Close ───────────────────────────────────────────────────────────────
+    def _on_sidecar_write_error(self, msg: str):
+        """A colour / rating edit did not reach disk. Modal on purpose — culling
+        stops until the user has seen it, because the alternative is closing the
+        app and silently losing the label."""
+        self._write_error_count = getattr(self, "_write_error_count", 0) + 1
+        try:
+            self.status_label.setText(
+                f"⚠ {self._write_error_count} colour/rating edit(s) NOT saved — see the log")
+        except Exception:
+            pass
+        from PyQt6.QtWidgets import QMessageBox
+        QMessageBox.warning(
+            self, "Edit not saved",
+            f"{msg}\n\nLikely a file lock — PhotoLab open on this folder, or "
+            f"Dropbox mid-sync. Close whatever has the .xmp open and set the "
+            f"label again; the retry already waited a moment and still failed.")
+
     def closeEvent(self, event):
         save_window(self, self._geo_key, cols=self.columns)
         self._collection.cancel_pending_loads()
