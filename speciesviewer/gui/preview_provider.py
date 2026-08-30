@@ -399,6 +399,16 @@ class PreviewCollection(PictureCollection):
         # Baseline image signatures so refresh can tell a re-crop / new render
         # (re-decode) from a colour/rating text edit.
         self._img_sigs: dict = {k: self._img_sig(k) for k in self.all_keys()}
+        # A single colour/rating edit rewrites BOTH day CSVs (data_pictures ≈ N
+        # rows, data_files ≈ 2N). Tagging one card at a time on a 1000+ picture
+        # day, that is the felt lag — so apply() only MARKS the CSVs dirty and a
+        # debounced flush_csv() (host timer + focus-out + close + any real
+        # refresh) does the write once the burst settles.
+        self._csv_dirty_summary = False
+        self._csv_dirty_files = False
+        # Our own .xmp write trips the folder watcher ~400 ms later; that echo is
+        # not an external edit and must not trigger a full disk re-read.
+        self._self_write_ts = 0.0
 
     # ── ordering ──────────────────────────────────────────────────────────
     def rebuild(self, keys: list[str] | None = None) -> None:
@@ -827,6 +837,36 @@ class PreviewCollection(PictureCollection):
                     out.append(str(dop))
         return out
 
+    # ── deferred day-CSV writes (colour/rating burst while culling) ───────────
+    def flush_csv(self) -> None:
+        """Persist the day CSVs if a colour/rating edit left them dirty. Cheap
+        no-op otherwise. Called on the host debounce, on focus-out, on close,
+        and at the top of refresh()."""
+        if not (self._csv_dirty_summary or self._csv_dirty_files):
+            return
+        try:
+            if self._csv_dirty_summary:
+                self.fpr.upn.write_project_summary()
+            if self._csv_dirty_files:
+                self.fpr.fi.write_project_files()
+            self._csv_dirty_summary = self._csv_dirty_files = False
+        except Exception as e:
+            logger.error(f"Preview: failed to persist day CSV(s): {e}")
+
+    def has_pending_csv(self) -> bool:
+        return bool(self._csv_dirty_summary or self._csv_dirty_files)
+
+    def consume_self_write_echo(self) -> bool:
+        """True when a watch-driven refresh is just the echo of a colour/rating
+        write we made in the last ~2 s — the caller may then skip the disk
+        re-read (the in-memory rows are already current). Clears the marker, so
+        a genuine external edit arriving afterwards still gets a real refresh."""
+        import time as _time
+        if self._self_write_ts and (_time.monotonic() - self._self_write_ts) < 2.0:
+            self._self_write_ts = 0.0
+            return True
+        return False
+
     def refresh(self) -> set:
         """Re-read XMP:Label / XMP:Rating that an external tool (PhotoLab,
         Lightroom) wrote, and update the in-memory fpr rows so the open viewer
@@ -834,6 +874,7 @@ class PreviewCollection(PictureCollection):
         re-read via exiftool. Returns the changed UPN keys; persists the summary
         CSV so the change survives close + reaches downstream steps."""
         import os
+        self.flush_csv()   # land any debounced edits before we re-read/re-persist
         self._image_changed = set()
         changed = set()
         to_read = []
@@ -1378,12 +1419,15 @@ class PreviewCollection(PictureCollection):
         new_rate = _compute_rate(upn_row, self.fpr.fi.files_dict)
         upn_row["Rate"] = str(new_rate)
 
-        try:
-            self.fpr.upn.write_project_summary()
-            if wrote_file:
-                self.fpr.fi.write_project_files()
-        except Exception as e:
-            logger.error(f"Preview apply: failed to persist CSV(s): {e}")
+        # The file(s) were written synchronously above (the durable copy); the day
+        # CSVs are just a projection of the in-memory rows, so defer them — the
+        # host flushes on a short debounce, on focus-out, on close, and before any
+        # real refresh. See flush_csv().
+        self._csv_dirty_summary = True
+        if wrote_file:
+            self._csv_dirty_files = True
+        import time as _time
+        self._self_write_ts = _time.monotonic()
         return new_rate
 
     def apply_many(self, upn_keys, *, new_stars: int | None = None,
@@ -1488,12 +1532,17 @@ class PreviewCollection(PictureCollection):
             upn_row = self.fpr.upn.UniquePictureName_dict[key]
             upn_row["Rate"] = str(_compute_rate(upn_row, self.fpr.fi.files_dict))
 
+        # A bulk edit is a deliberate one-shot — persist now (and this write
+        # covers any single-edit dirt buffered earlier, so clear those flags).
         try:
             self.fpr.upn.write_project_summary()
             if wrote:
                 self.fpr.fi.write_project_files()
+            self._csv_dirty_summary = self._csv_dirty_files = False
         except Exception as e:
             logger.error(f"apply_many: failed to persist CSV(s): {e}")
+        import time as _time
+        self._self_write_ts = _time.monotonic()
         if progress:
             progress(len(keys), len(keys))
         return len(keys)

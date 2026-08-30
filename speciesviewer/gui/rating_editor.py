@@ -211,8 +211,37 @@ class StarWidget(QWidget):
         self._refresh()
 
 
+class _SwatchButton(QPushButton):
+    """A colour swatch that also reports a genuine double-click.
+
+    Qt delivers press→click→dblClick→click for a double-click on a
+    QAbstractButton, so the trailing click is swallowed here — a double-click
+    ends up as exactly one toggle (from the first click) plus one
+    `doubleClicked`, never an accidental un-toggle."""
+
+    doubleClicked = pyqtSignal()
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self._swallow_release = False
+
+    def mouseDoubleClickEvent(self, e):
+        self._swallow_release = True
+        self.doubleClicked.emit()
+        e.accept()
+
+    def mouseReleaseEvent(self, e):
+        if self._swallow_release:
+            self._swallow_release = False
+            self.setDown(False)
+            e.accept()
+            return
+        super().mouseReleaseEvent(e)
+
+
 class ColorSelector(QWidget):
-    color_changed = pyqtSignal(str)  # emits color name, or "" when cleared
+    color_changed = pyqtSignal(str)         # emits color name, or "" when cleared
+    color_double_clicked = pyqtSignal(str)  # a swatch was double-clicked ("set + move on")
 
     def __init__(self, initial_color: str = "", parent=None):
         super().__init__(parent)
@@ -223,10 +252,10 @@ class ColorSelector(QWidget):
         self._buttons: dict[str, QPushButton] = {}
         for name in COLORS:
             hc = COLOR_HEX[name]
-            btn = QPushButton()
+            btn = _SwatchButton()
             btn.setFixedSize(16, 16)
             btn.setCheckable(True)
-            btn.setToolTip(name)
+            btn.setToolTip(f"{name}  ·  double-click: set and drop from the current filter")
             btn.setStyleSheet(f"""
                 QPushButton {{
                     background-color: transparent;
@@ -247,6 +276,7 @@ class ColorSelector(QWidget):
                 }}
             """)
             btn.clicked.connect(lambda _, n=name: self._on_click(n))
+            btn.doubleClicked.connect(lambda n=name: self._on_double_click(n))
             layout.addWidget(btn)
             self._buttons[name] = btn
         self._refresh()
@@ -255,6 +285,15 @@ class ColorSelector(QWidget):
         self._color = "" if self._color == name else name
         self._refresh()
         self.color_changed.emit(self._color)
+
+    def _on_double_click(self, name: str):
+        """Double-click always SETS `name` (the first click of the pair may have
+        toggled it off), then tells the host this was a deliberate commit."""
+        if self._color != name:
+            self._color = name
+            self._refresh()
+            self.color_changed.emit(self._color)
+        self.color_double_clicked.emit(name)
 
     def _refresh(self):
         for name, btn in self._buttons.items():
@@ -389,6 +428,7 @@ class PictureCard(QFrame):
     status_clicked = pyqtSignal(str)      # key — status icon clicked → open SpeciesInfoDialog
     notes_clicked = pyqtSignal(str)       # key — 📝 clicked → open Headline/Description editor
     render_clicked = pyqtSignal(str)      # key — amber ➕ clicked → register new render in master
+    color_double_committed = pyqtSignal(str)  # key — colour swatch double-clicked ("tagged, move on")
 
     def __init__(self, item: PictureItem, card_width: int, parent=None,
                  *, show_status: bool = False, show_kind_tag: bool = False,
@@ -525,6 +565,7 @@ class PictureCard(QFrame):
         self._color_sel = ColorSelector(item.color)
         if item.can_edit_color:
             self._color_sel.color_changed.connect(self._on_color_changed)
+            self._color_sel.color_double_clicked.connect(self._on_color_double_clicked)
         else:
             self._color_sel.setEnabled(False)
         if item.has_jpg and not getattr(item, "discard_allowed", False):
@@ -745,6 +786,7 @@ class PictureCard(QFrame):
         self._color_sel = ColorSelector(item.color)
         if item.can_edit_color:
             self._color_sel.color_changed.connect(self._on_color_changed)
+            self._color_sel.color_double_clicked.connect(self._on_color_double_clicked)
         else:
             self._color_sel.setEnabled(False)
         if item.has_jpg and not getattr(item, "discard_allowed", False):
@@ -1011,6 +1053,15 @@ class PictureCard(QFrame):
         self._update_thumb_style()
         self.update_rate_display(self._item.rate)
         self.card_changed.emit(self.upn_key)
+
+    def _on_color_double_clicked(self, color: str):
+        """A swatch was double-clicked. ColorSelector emits color_changed first,
+        so the colour is already written by the time we get here; just tell the
+        host it was a deliberate "tagged, move on" so it can drop the card from
+        the current filtered view."""
+        if self._item.color != color:
+            self._on_color_changed(color)
+        self.color_double_committed.emit(self.upn_key)
 
     def update_rate_display(self, new_rate):
         if self._framed:

@@ -324,7 +324,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 "Re-read colours, ratings and metadata changed by another tool "
                 "(PhotoLab, Lightroom) — also F5, and automatic when this window "
                 "regains focus.")
-            self.refresh_button.clicked.connect(self.refresh_from_disk)
+            self.refresh_button.clicked.connect(lambda: self.refresh_from_disk("manual"))
             dir_layout.addWidget(self.refresh_button)
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setEnabled(False)
@@ -1002,6 +1002,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             card.status_clicked.connect(self._open_species_dialog)
             card.notes_clicked.connect(self._edit_headline_description)
             card.render_clicked.connect(self._register_pending_render)
+            card.color_double_committed.connect(self._on_swatch_double_committed)
+            card.card_changed.connect(self._note_collection_write)
             self.grid_layout.addWidget(card, r, col, 1, span)
             self._cards.append(card)
             self._cards_by_key[item.key] = card
@@ -1127,6 +1129,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # The viewer wrote the edit via the provider; repaint that card's frame +
         # badges (preview keeps capture order, so no re-sort).
         self._day_edited = True     # non-frozen day: offer a re-read on close
+        self._note_collection_write()   # large-view edit also defers its CSV write
         card = self._cards_by_key.get(key)
         if card:
             card.refresh()
@@ -1678,14 +1681,71 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             c.refresh()
         self._notify_large_view(key)
 
-    def refresh_from_disk(self):
+    def _on_swatch_double_committed(self, key):
+        """A colour swatch was double-clicked on a card. The colour is already
+        written; if the new colour means the card no longer matches the active
+        filter, drop it from the grid live (no full rebuild) so the user can
+        keep going and watch the "N of M" count fall — no Refresh, no wait."""
+        self._note_collection_write()    # the write is deferred — start the flush debounce
+        if key not in self._cards_by_key:
+            return
+        if key in set(self._visible_keys()):
+            return                       # still in scope (e.g. no colour filter on)
+        self._drop_card_live(key)
+
+    def _drop_card_live(self, key):
+        """Remove one card from the grid and re-flow the survivors in place —
+        the cheap alternative to _rebuild_grid_from_keys (no PictureCard
+        re-creation, no thumbnail reloads). The provider collection is left
+        alone; the next Refresh / filter change re-syncs it."""
+        card = self._cards_by_key.pop(key, None)
+        if card is None:
+            return
+        try:
+            idx = self._cards.index(card)
+        except ValueError:
+            idx = len(self._cards)
+        else:
+            self._cards.pop(idx)
+        self._selected_keys.discard(key)
+        if self._last_clicked_key == key:
+            self._last_clicked_key = None
+        self.grid_layout.removeWidget(card)
+        card.deleteLater()
+        # Re-flow only the cards AFTER the gap — the ones before keep their cell.
+        ncols = max(1, self.columns)
+        for i in range(idx, len(self._cards)):
+            c = self._cards[i]
+            self.grid_layout.removeWidget(c)
+            self.grid_layout.addWidget(c, i // ncols, i % ncols, 1, 1)
+        self._placement = self._grid_placement(len(self._cards))
+        self._update_selection_display()
+        self._update_title_for_filter()
+        self._notify_large_view(key)
+
+    def refresh_from_disk(self, source: str = "manual"):
         """Re-read sidecar metadata an external tool changed (PhotoLab / LR colour,
         rating, …) and repaint just the affected cards — keeps scroll + selection.
         Cheap: only files whose mtime changed are re-read. No-op for collections
-        without on-disk sidecars."""
+        without on-disk sidecars.
+
+        `source="watch"` marks the call as coming from the folder watcher: our
+        own colour/rating write trips it ~400 ms later, and that echo is not an
+        external edit — skip the full disk re-read (the rows are already current).
+        F5 / the Refresh button / regaining focus still do a real refresh."""
         coll = self._collection
         if coll is None or not getattr(coll, "supports_external_refresh", False):
             return
+        if source == "watch":
+            echo = getattr(coll, "consume_self_write_echo", None)
+            if callable(echo) and echo():
+                self._rearm_sidecar_watch()
+                return
+        # A real refresh is about to re-read and re-persist — land any debounced
+        # CSV writes first so disk and memory agree.
+        flush = getattr(coll, "flush_csv", None)
+        if callable(flush):
+            flush()
         try:
             changed = coll.refresh()
         except Exception as e:
@@ -1704,6 +1764,19 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._notify_large_view(k, reload_image=(k in image_changed))
         logger.info(f"Refreshed {len(changed)} picture(s) from disk (external edits).")
 
+    def _flush_collection_csv(self):
+        """Persist the collection's debounced day-CSV writes now."""
+        f = getattr(self._collection, "flush_csv", None)
+        if callable(f):
+            f()
+
+    def _note_collection_write(self, *_):
+        """A card/large-view edit wrote through the collection — (re)start the
+        debounce so the day CSVs land shortly after the burst settles."""
+        t = getattr(self, "_csv_flush_timer", None)
+        if t is not None:
+            t.start()
+
     def _setup_sidecar_watch(self, image_dir):
         """Watch the day folder + its .xmp sidecars so an external colour/rating
         write (PhotoLab, Lightroom) refreshes the grid the moment it lands —
@@ -1718,7 +1791,13 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._fs_debounce = QTimer(self)
         self._fs_debounce.setSingleShot(True)
         self._fs_debounce.setInterval(400)
-        self._fs_debounce.timeout.connect(self.refresh_from_disk)
+        self._fs_debounce.timeout.connect(lambda: self.refresh_from_disk("watch"))
+        # Colour/rating edits defer their day-CSV write (see PreviewCollection);
+        # flush ~1.2 s after the burst settles. Also flushed on focus-out/close.
+        self._csv_flush_timer = QTimer(self)
+        self._csv_flush_timer.setSingleShot(True)
+        self._csv_flush_timer.setInterval(1200)
+        self._csv_flush_timer.timeout.connect(self._flush_collection_csv)
         self._fs_watcher = QFileSystemWatcher(self)
         paths = list(self._collection.sidecar_paths())
         if image_dir and Path(image_dir).is_dir():
@@ -2195,6 +2274,12 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             logger.warning(f"No-GPS refresh: failed to persist CSV(s): {e}")
 
     def _on_application_state_changed(self, state):
+        if state != Qt.ApplicationState.ApplicationActive:
+            # Leaving the app (usually to PhotoLab/LR) — land any deferred
+            # colour/rating CSV writes now so the other tool / a crash can't
+            # find the day CSVs behind the sidecars.
+            self._flush_collection_csv()
+            return
         if state == Qt.ApplicationState.ApplicationActive:
             self._refresh_no_gps_from_disk()
             self.refresh_from_disk()   # culling viewer: pick up PhotoLab/LR colour edits
@@ -2481,6 +2566,9 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     def closeEvent(self, event):
         save_window(self, self._geo_key, cols=self.columns)
         self._collection.cancel_pending_loads()
+        # Land any debounced colour/rating day-CSV writes before we tear down or
+        # trigger the pipeline re-read below.
+        self._flush_collection_csv()
         # Species recognised during this session were buffered rather than
         # written one at a time; save them now, in one append per file.
         self._flush_learned_species()
