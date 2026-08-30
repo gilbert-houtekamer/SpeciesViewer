@@ -302,12 +302,13 @@ class _StripItem(QWidget):
         self._thumb_lbl.reposition()
 
     def _repaint_border(self):
-        """Paint the frame: colour label (or always olive per the viewer's frame
-        setting); current cell = white ring, selected = blue ring."""
+        """Paint the frame: colour label (grey when unlabelled, or always olive
+        per the viewer's frame setting); current cell = white ring, selected =
+        blue ring."""
         if self._cfg.get("frame") == "olive":
             c = theme.ACCENT
         else:
-            c = color_to_css(self._item.color) or theme.ACCENT
+            c = color_to_css(self._item.color) or theme.FRAME_UNRATED
         if self._current:
             ring = "border:2px solid #fff;"
         elif self._selected:

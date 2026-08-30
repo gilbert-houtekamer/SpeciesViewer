@@ -35,6 +35,7 @@ _LIGHT = dict(
     INK="#1c211b", INK_SOFT="#59634f", INK_MUTED="#5b6b56", INK_FAINT="#8b9784",
     LINE="#d7ddce", SURFACE="#ffffff", SURFACE_2="#eef1ea", BG="#f5f7f3",
     ROW_HOVER="#eef0ea", NEUTRAL_GRAY="#777777",
+    FRAME_UNRATED="#b0b0b0",  # picture frame for an unlabelled card — plain grey, deliberately not the olive ACCENT
     ACCENT="#6d8764", ACCENT_RGB="109, 135, 100", ACCENT_HOVER="#5c7454",
     ACCENT_SOFT="#e3ead9", ACCENT_SOFT_BORDER="#c9d6bb",
     ACCENT_INK="#ffffff", ACCENT_INK_SOFT="#2f3f29",
@@ -52,6 +53,7 @@ _DARK = dict(
     INK="#ecefe6", INK_SOFT="#bcc2b1", INK_MUTED="#a6ad99", INK_FAINT="#969d88",
     LINE="#565a4c", SURFACE="#393c34", SURFACE_2="#454840", BG="#2c2e28",
     ROW_HOVER="#454840", NEUTRAL_GRAY="#a6af9b",
+    FRAME_UNRATED="#75786f",  # picture frame for an unlabelled card — plain grey, deliberately not the olive ACCENT
     ACCENT="#8fa681", ACCENT_RGB="143, 166, 129", ACCENT_HOVER="#9fb691",
     ACCENT_SOFT="#3f4a37", ACCENT_SOFT_BORDER="#56634c",
     ACCENT_INK="#f3f6ee", ACCENT_INK_SOFT="#d6e2ca",
@@ -74,6 +76,7 @@ SURFACE_2 = _T["SURFACE_2"]   # subtle off-surface bg (table headers, chips, hov
 BG = _T["BG"]
 ROW_HOVER = _T["ROW_HOVER"]   # subtle hover background for a not-yet-selected row/pill
 NEUTRAL_GRAY = _T["NEUTRAL_GRAY"]  # a plain (non-olive-tinted) secondary-label grey
+FRAME_UNRATED = _T["FRAME_UNRATED"]  # thick picture frame for an unlabelled card (was the olive ACCENT — too close to the green label)
 
 # Brand accent (olive — matches the published website's own photo-frame color)
 ACCENT = _T["ACCENT"]

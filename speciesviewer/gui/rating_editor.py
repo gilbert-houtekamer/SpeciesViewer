@@ -44,7 +44,8 @@ from utils.raw_extensions import RAW
 
 # Framed-card palette (the Biota-browser look) — sourced from the shared theme
 # so light/dark and the app-wide olive stay in one place.
-_FRAME = theme.ACCENT           # olive picture frame (unlabelled)
+_FRAME = theme.ACCENT           # olive picture frame (viewers set to "always olive")
+_UNRATED_FRAME = theme.FRAME_UNRATED  # grey frame for an unlabelled card — olive read too close to the green label
 _MAT = theme.SURFACE            # white mat inside the frame
 _INK = theme.INK
 _INK_SOFT = theme.INK_SOFT
@@ -787,12 +788,14 @@ class PictureCard(QFrame):
 
     def _update_frame_color(self):
         """Paint the thick frame. Per the viewer's frame setting: the colour label
-        floods it (olive when unlabelled), or it's always olive."""
+        floods it (grey when unlabelled), or it's always olive."""
         if getattr(self, "_corner_cfg", {}).get("frame") == "olive":
             bg = _FRAME
         else:
             hexc = COLOR_HEX.get((self._frame_color or "").capitalize())
-            bg = hexc or _FRAME
+            # No colour label -> a neutral grey frame, not the olive accent
+            # (which sat too close to the green label at a glance).
+            bg = hexc or _UNRATED_FRAME
         self._pframe.setStyleSheet(f"QFrame#pframe {{ background:{bg}; border-radius:8px; }}")
 
     def _paint_colour_dot(self):
