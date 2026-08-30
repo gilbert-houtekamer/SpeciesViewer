@@ -631,6 +631,10 @@ class SpeciesClassification:
                 # timeout (a pygbif/GBIF-API change once hid here for ages as a
                 # fake "timeout"). Log the actual type+message once per run.
                 import requests as _requests
+                # A raised lookup is NOT the same as "GBIF has no such name":
+                # count it so the caller can avoid telling the user to fix a
+                # spelling that was never actually checked.
+                self._gbif_lookup_errors = getattr(self, "_gbif_lookup_errors", 0) + 1
                 if not getattr(self, "_gbif_error_logged", False):
                     self._gbif_error_logged = True
                     logger.warning(f"GBIF lookup failed for '{subject}' "

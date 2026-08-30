@@ -13,7 +13,10 @@ rawpy
 # numpy and opencv are imported directly by gui/fullres.py (not just transitively).
 numpy
 opencv-python
-pygbif
+# pygbif 0.6.6 changed name_backbone: request param name -> scientificName and a
+# nested response shape (engine/speciesclassification.py adapts to it). Older
+# 0.6.x raise TypeError on that call, so pin the version the code targets.
+pygbif==0.6.6
 deep-translator
 langdetect
 fastcrc

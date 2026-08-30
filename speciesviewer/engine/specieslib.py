@@ -119,6 +119,7 @@ class Species:
                 # make sure all up's also exist
                 self.addParents(scinstance)
             return scientificname
+        return None   # unresolved: not in any table and GBIF gave no match
 
     def addParents(self, scinstance):
         next = self.sc.sc_dict[scinstance['Up']]['ScientificName']

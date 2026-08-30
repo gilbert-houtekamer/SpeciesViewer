@@ -893,8 +893,25 @@ class Project:
                         logger.warning(f"""The species "{subject_in_jpg}" is not found in the GBIF database as a scientific name for "{upn['UniquePictureName']}".""")
                         picture['errormessage'] = f"""The species "{subject_in_jpg}" is not found in the GBIF database as a scientific name for "{upn['UniquePictureName']}"."""
                     elif scientificname == None:
-                        logger.warning(f"""Species "{subject_in_jpg}" may have a typo in "{thisfile['WindowsFileName']}", correct it.""")
-                        picture['errormessage'] = f"""Species "{subject_in_jpg}" may have a typo in "{thisfile['WindowsFileName']}", correct it."""
+                        # "not resolved" has two very different causes: a real
+                        # typo GBIF rejected, or a GBIF lookup that never ran
+                        # (API/library break, offline). Only accuse the user of
+                        # a typo when the name was actually checked — otherwise
+                        # one broken call turns every unknown name into a false
+                        # "correct it".
+                        gbif_broken = (getattr(getattr(sp, "sc", None), "_gbif_lookup_errors", 0) > 0
+                                       or getattr(getattr(sp, "sc", None), "_gbif_offline", False))
+                        if gbif_broken:
+                            if not getattr(self, "_gbif_unverified_warned", False):
+                                self._gbif_unverified_warned = True
+                                logger.warning("GBIF species lookup is unavailable this run — "
+                                               "unrecognised names are flagged as UNVERIFIED, not typos. "
+                                               "Re-run once GBIF is reachable to validate them.")
+                            msg = f"""Species "{subject_in_jpg}" could not be verified (GBIF lookup unavailable) in "{thisfile['WindowsFileName']}"."""
+                        else:
+                            msg = f"""Species "{subject_in_jpg}" may have a typo in "{thisfile['WindowsFileName']}", correct it."""
+                        logger.warning(msg)
+                        picture['errormessage'] = msg
                     else:
                         try:           
                             species = MyMagic.getSpecies(scientificname)
