@@ -16,8 +16,20 @@ from gui.preview_provider import PreviewCollection, FileListPreviewCollection, p
 from gui.master_ops import MasterCardMenuMixin
 from gui.rating_editor import PictureCard
 from utils.raw_extensions import RAW_OR_HEIC
+from utils.config import get_setting, set_setting
 
 logger = logging.getLogger("speciesviewer")
+
+# "Start with" subsets for the culling grid: which colour labels to load on
+# open, so a resumed cull never pays the full-day build (see docs/plans/
+# culling_grid_performance.md). "review" = everything not yet marked for
+# deletion (blue/purple); "all" = no colour filter.
+_START_SUBSETS = {
+    "unrated": {"Grey"},
+    "review":  {"Grey", "Red", "Yellow", "Green"},
+    "all":     set(),
+}
+_START_SUBSET_LABEL = {"unrated": "Unrated", "review": "To review", "all": "All"}
 
 def ensure_path(obj):
     return Path(obj) if isinstance(obj, str) else obj
@@ -85,6 +97,15 @@ class ColorFilterBar(QWidget):
         for name, btn in self.buttons.items():
             btn.setChecked(name in wanted)
         self.on_filter_changed(wanted or None)
+
+    def reflect(self, colors):
+        """Sync the visual selection to `colors` WITHOUT notifying — for setting
+        the bar's state from code that will trigger its own rebuild (the start
+        subset applied at open, before the grid exists)."""
+        wanted = {c for c in (colors or ()) if c in self.buttons}
+        self.selected_colors = set(wanted)
+        for name, btn in self.buttons.items():
+            btn.setChecked(name in wanted)
 
 
 class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
@@ -494,6 +515,31 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
 
         layout.addLayout(controls_layout)
 
+        # ── "Start with" bar — pick the subset to load, so a resumed cull never
+        #    pays the full-day build. Only where the collection can filter by
+        #    colour label (fpr + sidecar culling collections).
+        self._start_bar = None
+        self._start_subset = "unrated"
+        self._start_bar_active = False
+        if hasattr(self._collection, "color_keys"):
+            self._start_bar = QWidget()
+            _sbl = QHBoxLayout(self._start_bar)
+            _sbl.setContentsMargins(4, 2, 4, 2)
+            _sbl.setSpacing(8)
+            _sbl.addWidget(QLabel("Start with:"))
+            self._subset_btns = {}
+            for kind in ("unrated", "review", "all"):
+                b = QPushButton(_START_SUBSET_LABEL[kind])
+                b.setCheckable(True)
+                b.clicked.connect(lambda _=False, k=kind: self._apply_start_subset(k))
+                _sbl.addWidget(b)
+                self._subset_btns[kind] = b
+            self._subset_summary = QLabel("")
+            self._subset_summary.setStyleSheet("color:#888;")
+            _sbl.addWidget(self._subset_summary)
+            _sbl.addStretch()
+            layout.addWidget(self._start_bar)
+
         # ── Selection bar (hidden until ≥1 card is selected) ─────────────────
         self._sel_bar = QWidget()
         _sb_layout = QHBoxLayout(self._sel_bar)
@@ -579,36 +625,33 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self.no_gps_only = True
             initial_keys = no_gps_keys
         elif self.fpr:
-            # Clean day: nothing to warn about and no missing GPS, so there is
-            # no subset worth opening on — show everything.
-            #
-            # This used to open with NO filter at all and an empty grid, on the
-            # grounds that a big day would be hard to cancel. It reads as a
-            # broken window rather than a clean day, and the loader is
-            # cancellable (Cancel in the toolbar; cancel_pending_loads on
-            # close), so the caution was costing more than it saved. Note that
-            # pictures without a species name are NOT a warning — a day can be
-            # clean and still be mostly unnamed, which is the normal state
-            # before culling.
-            self._active_filter = "all"
-            self.all_btn.setChecked(True)
-            self.show_all = True
-            initial_keys = self._base_keys()
+            # Clean day (no warnings, no missing GPS) — the normal culling case.
+            # Open into the remembered "Start with" subset (default: Unrated) so
+            # a resumed cull loads only the ~20% still to decide, not the whole
+            # day. A fresh day is all-unrated, so it still loads everything —
+            # the win shows up exactly when resuming. "All" is one click away.
+            # (This branch used to force self._base_keys() = the full build.)
+            initial_keys = self._init_start_subset()
         else:
-            self._active_filter = "all"
-            self.all_btn.setChecked(True)
-            self.show_all = True
-            initial_keys = self._base_keys()
+            initial_keys = self._init_start_subset()
 
         # Opened from the JPEG-Files cell: come up with All + JPG both selected
         # (the JPG subset is a small, explicit set, so auto-loading it is fine
-        # even on an otherwise "don't auto-load" clean day).
+        # even on an otherwise "don't auto-load" clean day). The start subset
+        # would fight the explicit JPG request — clear it here.
         if self._jpg_only and hasattr(self._collection, "jpg_keys"):
             self._active_filter = "all"
             self.all_btn.setChecked(True)
             self.show_all = True
+            self._color_filter = set()
+            if getattr(self, "color_filter_bar", None) is not None:
+                self.color_filter_bar.reflect(None)
+            self._refresh_start_bar()
+            self._start_bar_active = False
             initial_keys = self._visible_keys()
 
+        if self._start_bar is not None:
+            self._start_bar.setVisible(self._start_bar_active)
         self._update_title_for_filter()
         if initial_keys is not None:
             QTimer.singleShot(0, lambda: self._rebuild_grid_from_keys(initial_keys))
@@ -688,7 +731,80 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
 
     def _apply_filters(self):
         self._update_title_for_filter()
+        self._refresh_start_bar()
         self._rebuild_grid_from_keys(self._visible_keys())
+
+    # ── "Start with" subset ────────────────────────────────────────────────
+    def _colour_counts(self) -> dict:
+        """{'Grey': n, 'Red': n, …} over the whole day — how many pictures carry
+        each label. In-memory colour lookups, cheap even on a 1000+ picture day."""
+        coll = self._collection
+        out = {}
+        for name in ("Grey", "Red", "Yellow", "Green", "Blue", "Purple"):
+            try:
+                out[name] = len(coll.color_keys({name}))
+            except Exception:
+                out[name] = 0
+        return out
+
+    def _init_start_subset(self):
+        """Set the colour filter to the remembered start subset and return the
+        keys to build. Falls back to the whole day when the collection can't
+        filter by colour. Called from the open-filter cascade."""
+        if not hasattr(self._collection, "color_keys"):
+            return self._base_keys()
+        kind = get_setting("culling", "start_subset", fallback="unrated")
+        if kind not in _START_SUBSETS:
+            kind = "unrated"
+        self._start_bar_active = True
+        self._active_filter = "all"
+        self.all_btn.setChecked(True)
+        self.show_all = True
+        # If the remembered subset is empty (a finished day reopened) but the day
+        # has pictures, widen until something shows — better than a blank grid.
+        for candidate in (kind, "review", "all"):
+            self._start_subset = candidate
+            self._color_filter = set(_START_SUBSETS[candidate])
+            keys = self._visible_keys()
+            if keys or not self._base_keys():
+                kind = candidate
+                break
+        if getattr(self, "color_filter_bar", None) is not None:
+            self.color_filter_bar.reflect(self._color_filter or None)
+        self._refresh_start_bar()
+        return keys
+
+    def _apply_start_subset(self, kind: str):
+        """A 'Start with' button was clicked — set the colour filter, remember
+        the choice, and rebuild once."""
+        if kind not in _START_SUBSETS:
+            return
+        self._start_subset = kind
+        set_setting("culling", "start_subset", kind)
+        self._color_filter = set(_START_SUBSETS[kind])
+        if getattr(self, "color_filter_bar", None) is not None:
+            self.color_filter_bar.reflect(self._color_filter or None)
+        self._active_filter = "all"
+        self.all_btn.setChecked(True)
+        self.show_all = True
+        self._apply_filters()
+
+    def _refresh_start_bar(self):
+        """Relabel the 'Start with' buttons with live counts and mark the one
+        that matches the current colour filter."""
+        bar = getattr(self, "_start_bar", None)
+        if bar is None:
+            return
+        c = self._colour_counts()
+        n_unrated = c["Grey"]
+        n_review = c["Grey"] + c["Red"] + c["Yellow"] + c["Green"]
+        n_all = len(self._base_keys())
+        labels = {"unrated": n_unrated, "review": n_review, "all": n_all}
+        for kind, btn in self._subset_btns.items():
+            btn.setText(f"{_START_SUBSET_LABEL[kind]} ({labels[kind]})")
+            btn.setChecked(set(_START_SUBSETS[kind]) == set(self._color_filter))
+        self._subset_summary.setText(
+            f"·  {c['Blue']} blue · {c['Purple']} purple already set")
 
     def _on_jpg_toggled(self, checked):
         self._jpg_only = checked
