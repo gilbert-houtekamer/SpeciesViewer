@@ -3053,7 +3053,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 master_handlers.update(
                     self._build_master_menu(menu, upn_key, ops=set(ops)))
 
-        act_species = act_move = act_rate = act_addfiles = None
+        act_species = act_move = act_rate = act_addfiles = act_create_jpg = None
         # 1 — naming. In a trip these are the viewer's own; in an album naming
         # is the master's job (Move to existing species, gated on the JPG rule),
         # and "Set species" has no album equivalent: it would persist through
@@ -3067,6 +3067,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         if not self._view_read_only:
             act_rate = menu.addAction(f"Set rating…  ({lbl})")
         act_fullres = menu.addAction(f"Full resolution  ({lbl})")
+        if hasattr(self._collection, "create_blog_jpg") and not self._album_mode:
+            act_create_jpg = menu.addAction(f"Create JPG (embedded + crop)  ({lbl})")
         act_geo = menu.addAction(f"Get location  ({lbl})")
 
         # 3 — what is written about it. Headline / Description is normally about
@@ -3106,6 +3108,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             self._open_batch_rate_dialog(keys_for_action)
         elif chosen == act_fullres:
             self._cull_full_res(keys_for_action)
+        elif act_create_jpg is not None and chosen == act_create_jpg:
+            self._create_blog_jpg(keys_for_action)
         elif chosen == act_geo:
             self._cull_geolocate(keys_for_action)
         elif act_hd is not None and chosen == act_hd:
@@ -3460,6 +3464,43 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             return
         from gui.fullres import run_fullres_batch
         run_fullres_batch(self, raws)
+
+    def _create_blog_jpg(self, keys=None):
+        """Bake a website-ready JPG beside each selected RAW from its embedded
+        preview + crop (no scaling) — a quick blog picture. Skips a picture that
+        already has a JPG so nothing is clobbered."""
+        if not hasattr(self._collection, "create_blog_jpg"):
+            return
+        keys = keys if keys else self._cull_keys_target()
+        order = [c.upn_key for c in self._cards]
+        ordered = [k for k in order if k in keys] or list(keys)
+        created_paths, skipped, no_raw, failed, made = [], 0, 0, 0, []
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            for k in ordered:
+                res = self._collection.create_blog_jpg(k)
+                st = res.get("status")
+                if st == "created":
+                    created_paths.append(res.get("jpg"))
+                    made.append(k)
+                elif st == "skipped":
+                    skipped += 1
+                elif st == "no_raw":
+                    no_raw += 1
+                else:
+                    failed += 1
+        finally:
+            QApplication.restoreOverrideCursor()
+        for k in made:
+            card = self._cards_by_key.get(k)
+            if card:
+                card.refresh()
+                try:
+                    card.reload_thumbnail()   # the card now shows the baked JPG
+                except (AttributeError, RuntimeError):
+                    pass
+        from gui.create_jpg_result import show_create_jpg_result
+        show_create_jpg_result(self, created_paths, skipped, no_raw, failed)
 
     def _cull_geolocate(self, keys=None):
         """Reverse-geocode the selection (else focused picture) in display order

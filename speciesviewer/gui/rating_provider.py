@@ -336,6 +336,10 @@ class RatingEditorCollection(PictureCollection):
         # a species' whole grid isn't re-reading sidecars; cleared on rebuild and
         # invalidated per key on set_crop.
         self._crop_flag_cache: dict[str, bool] = {}
+        # JPGs baked in-session by Create JPG (embedded preview + crop). Not in
+        # the trip CSVs until the next Read & Summarize, so jpg_path() consults
+        # this so the card can show the new image right away.
+        self._blog_jpgs: dict[str, Path] = {}
 
     # ── master reference wiring ───────────────────────────────────────────
     def set_master(self, master_db, master_root, *, include: bool = True,
@@ -951,6 +955,9 @@ class RatingEditorCollection(PictureCollection):
     def jpg_path(self, upn_key: str) -> Path | None:
         if upn_key in self._master_keys:
             return self._master_jpg_path(upn_key)
+        baked = self._blog_jpgs.get(upn_key)
+        if baked is not None and baked.exists():
+            return baked
         row = self.fpr.upn.UniquePictureName_dict.get(upn_key, {})
         best = row.get("BestJPGPathName", "")
         if best:
@@ -1170,6 +1177,55 @@ class RatingEditorCollection(PictureCollection):
     def exif_for(self, upn_key: str) -> ExifSummary:
         upn = self._upn_row(upn_key)
         return exif_from_rows(upn, self._rep_file_row(upn_key))
+
+    def create_blog_jpg(self, upn_key: str) -> dict:
+        """Bake a website-ready JPG beside the RAW from the camera's embedded
+        preview + the sidecar crop (NO scaling) — the quick trip-blog picture,
+        same as the culling viewer's Create JPG. `<stem>.jpg` folds onto the UPN
+        on the next Read & Summarize.
+
+        Returns {'status': 'created'|'skipped'|'no_raw'|'failed', ...}. Skips a
+        picture that already has a tracked JPG (camera / DxO) so nothing is
+        clobbered; our own bake is untracked, so a re-run overwrites it (e.g.
+        after re-cropping). Master reference cards are read-only here."""
+        if upn_key in self._master_keys:
+            return {"status": "skipped"}
+        raw = self.raw_path(upn_key)
+        if raw is None:
+            return {"status": "no_raw"}
+        if self.jpg_path(upn_key) is not None and upn_key not in self._blog_jpgs:
+            return {"status": "skipped", "jpg": str(self.jpg_path(upn_key))}
+        out = raw.with_suffix(".jpg")
+        from gui.preview_extract import extract_preview_bytes, decode_preview_jpeg
+        from gui.picture_provider import crop_for
+        data = extract_preview_bytes(raw)   # LARGEST embed (full-size on Nikon, 3200px on OM-1)
+        if not data:
+            data = decode_preview_jpeg(raw, 0, 95)   # no embed (R5 II HDR-PQ) → full RAW decode
+        if not data:
+            return {"status": "failed",
+                    "reason": "no preview, and the RAW could not be decoded"}
+        xmp = raw.with_suffix(".xmp")
+        try:
+            from io import BytesIO
+            from PIL import Image
+            im = Image.open(BytesIO(data)).convert("RGB")
+            crop = crop_for(raw, xmp if xmp.exists() else None)
+            if crop:
+                w, h = im.size
+                x  = max(0, min(w - 1, round(crop.get("left", 0.0)   * w)))
+                y  = max(0, min(h - 1, round(crop.get("top", 0.0)    * h)))
+                cw = max(1, min(w - x, round(crop.get("width", 1.0)  * w)))
+                ch = max(1, min(h - y, round(crop.get("height", 1.0) * h)))
+                im = im.crop((x, y, x + cw, y + ch))
+            im.save(str(out), "JPEG", quality=92, optimize=True)
+        except Exception as e:
+            logger.warning(f"Create JPG failed for {raw.name}: {e}")
+            return {"status": "failed", "reason": str(e)}
+        self._blog_jpgs[upn_key] = out
+        self._crop_flag_cache.pop(upn_key, None)   # image is now the baked JPG
+        logger.info(f"Blog JPG created → {out.name} "
+                    f"({im.size[0]}×{im.size[1]}, {'cropped' if crop else 'full frame'}).")
+        return {"status": "created", "jpg": str(out), "size": im.size, "cropped": bool(crop)}
 
     # ── write-back (rating/colour), with per-day CSV routing ──────────────
     def apply(self, upn_key: str, *, new_stars: int | None = None,
