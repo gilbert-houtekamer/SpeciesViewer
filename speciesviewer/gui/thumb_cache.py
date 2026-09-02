@@ -38,6 +38,15 @@ class ThumbCache:
         self._d: "OrderedDict[tuple, QPixmap]" = OrderedDict()
         self._max = max_bytes
         self._bytes = 0
+        # coarse hit/miss tally for a "how warm was this build" log line
+        self.stat_ram = self.stat_disk = self.stat_decode = 0
+
+    def reset_stats(self):
+        self.stat_ram = self.stat_disk = self.stat_decode = 0
+
+    def stats_line(self, total: int) -> str:
+        return (f"{total} cards — {self.stat_ram} RAM, {self.stat_disk} disk, "
+                f"{self.stat_decode} decoded")
 
     def get(self, key, width, sig):
         k = (key, width, sig)
@@ -135,14 +144,17 @@ def cached_thumb_request(cache: ThumbCache, loader, key, target_w, sig,
         return
     hit = cache.get(key, target_w, sig)
     if hit is not None:
+        cache.stat_ram += 1
         on_ready(hit)
         return
     if disk_dir is not None and stem:
         dpx = load_disk_thumb(disk_dir, stem, target_w)
         if dpx is not None:
+            cache.stat_disk += 1
             cache.put(key, target_w, sig, dpx)
             on_ready(dpx)
             return
+    cache.stat_decode += 1
 
     def _store(px, k=key, w=target_w, s=sig, dd=disk_dir, st=stem):
         cache.put(k, w, s, px)
