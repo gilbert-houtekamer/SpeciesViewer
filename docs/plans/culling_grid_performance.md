@@ -8,20 +8,28 @@ a Brazil day (1194 pictures).
 
 ## STATUS
 
+All of steps 1–3 + 2C + the follow-ups below are **merged to `SpeciesViewer03`**
+(`62f3715`, branch `sv_culling_grid_showhide` deleted). What they buy:
+**filter-cycling within a session** (`g` / `h` / grey / find) is fast — show/hide,
+no rebuild, no decode. **First open / first widen to a bigger set** is still
+slow: it creates 500–720 card widgets, and 2C only removes the *decode* on top
+of that. Fast first-open needs **step 4** (fewer widgets).
+
 | Step | What | State |
 |------|------|-------|
-| **1** | Open into a "Start with" subset + counts bar | **SHIPPED `fd8405c` (live-tested OK)** — `image_viewer.py`, no branch |
-| **2A** | Grid width fills the window + `grid_columns` global + truncation fix + stable row height | **SHIPPED (live-tested)** — `image_viewer.py`, `rating_editor.py`, no branch |
-| **2B** | In-RAM scaled-thumbnail cache, grid + filmstrip, with crop invalidation | **SHIPPED (live-tested)** — `gui/thumb_cache.py`, no branch |
-| 2C | Persistent on-disk thumbnail cache at the stable width | **BUILT, pending test** — branch, `gui/thumb_cache.py` + providers, in the existing per-folder preview cache |
-| 3 | Filter = show/hide, build cards once (lazy) | **BUILT, pending test** — branch `sv_culling_grid_showhide`, `image_viewer.py` only |
-| — | Thumbnail aspect from the day's own images (not fixed 3:2) | **BUILT, pending test** — branch |
-| — | Preview dialog: own taskbar button + reject too-small saved geometry | **BUILT, pending test** — branch |
-| — | Look & Feel: "Culling grid" section (columns / fill % / Start-with default) | **BUILT, pending test** — branch |
-| 4 | Viewport virtualization (recycle ~40 cards) | not started — **own branch**, the real scalability answer, only if 3 isn't enough |
-| 5 | Cheaper card (one custom-painted widget) | not started — only if 3+4 fall short |
+| **1** | Open into a "Start with" subset + counts bar | **SHIPPED** `fd8405c`, live-tested |
+| **2A** | Grid width + `grid_columns` global + truncation fix + stable row height + width snapped to 16 px | **SHIPPED** `62f3715`, live-tested |
+| **2B** | In-RAM scaled-thumbnail cache, grid + filmstrip, crop invalidation | **SHIPPED**, live-tested |
+| **2C** | Persistent on-disk thumbnails in the per-folder preview cache | **SHIPPED, needs a clean re-test** — the width snap (2A) was needed before it could hit; a build now logs `N cards — X RAM, Y disk, Z decoded` |
+| **3** | Filter = show/hide, build cards once (lazy) | **SHIPPED**, live-tested (filter-cycling fast; first open/widen still builds widgets) |
+| — | Thumbnail aspect sampled from the day's own images (not fixed 3:2) | **SHIPPED** `28d88ed` |
+| — | Preview dialog: own taskbar button + `⤢` reset-size + reject a saved geometry small in both dims | **SHIPPED** |
+| — | Look & Feel: "Culling grid" section (columns / fill % / Start-with default) | **SHIPPED** |
+| **4** | Viewport virtualization (recycle ~40 cards) | **NEXT — own branch.** The fix for slow first-open: only ever build ~40 cards |
+| 5 | Cheaper card (one custom-painted widget) | not started — only if 4 falls short |
 | 6 | Lazy controls (paint stars/swatches, real widgets on hover) | not started — scoped version of 5 |
 | 7 | Hoist per-widget stylesheets into one shared sheet | not started — cheap, low risk, any time |
+| — | Preview-cache size cap (% of free disk, LRU to fit) | requested 2026-09-02 — `utils/preview_cache` hygiene, separate follow-up |
 
 ---
 
