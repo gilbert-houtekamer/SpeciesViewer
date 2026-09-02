@@ -16,7 +16,17 @@ def restore_window(dialog, key, default_size=None):
     it onto a visible screen, and return the saved state dict so the caller can
     use state["cols"] before building its grid."""
     st = get_window_state(key)
-    if st["w"] and st["h"]:
+    # A saved geometry far smaller than the caller's intended default is almost
+    # always a stray Windows snap (Win+arrow) that got persisted — restoring it
+    # leaves the user in a half-window with no obvious way back. Fall back to the
+    # default in that case; a deliberately-small window (small default) is
+    # unaffected because the comparison is relative to the default.
+    saved_ok = bool(st["w"] and st["h"])
+    if saved_ok and default_size:
+        dw, dh = default_size
+        if st["w"] * st["h"] < 0.35 * dw * dh:
+            saved_ok = False
+    if saved_ok:
         x = st["x"] if st["x"] is not None else dialog.x()
         y = st["y"] if st["y"] is not None else dialog.y()
         dialog.setGeometry(x, y, st["w"], st["h"])

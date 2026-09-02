@@ -941,8 +941,22 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         self._image_changed = {s for s in new_sigs if new_sigs[s] != self._image_sigs.get(s)}
         self._image_sigs = new_sigs
         for s in self._image_changed:
-            self._thumb_cache.invalidate(s)
+            self._drop_thumb_caches(s)
         return text_changed | self._image_changed
+
+    def _drop_thumb_caches(self, stem):
+        """Forget every cached thumbnail (RAM + on-disk) for one picture."""
+        self._thumb_cache.invalidate(stem)
+        src = self._source_file(stem)
+        raw = self._groups.get(stem, {}).get("raw")
+        from gui.thumb_cache import drop_disk_thumbs
+        seen = set()
+        for p in (src, raw):
+            if p:
+                p = Path(p)
+                if p.stem not in seen:
+                    seen.add(p.stem)
+                    drop_disk_thumbs(self._cache_dir_for(p), p.stem)
 
     def sidecar_paths(self) -> list:
         """Files to watch for external edits: each .xmp (colour/rating/location)
@@ -1067,7 +1081,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         g["jpg"] = str(out)
         self._jpg_dims_cache.pop(str(out), None)
         self._image_sigs[key] = self._image_sig(key)   # display source is now the JPG
-        self._thumb_cache.invalidate(key)
+        self._drop_thumb_caches(key)
         logger.info(f"Blog JPG created → {out.name} "
                     f"({im.size[0]}×{im.size[1]}, {'cropped' if crop else 'full frame'}).")
         return {"status": "created", "jpg": str(out), "size": im.size, "cropped": bool(crop)}
@@ -1244,7 +1258,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
                 g["xmp"] = xmp
         self._crop_cache.pop(stem, None)
         self._image_sigs[stem] = self._image_sig(stem)
-        self._thumb_cache.invalidate(stem)   # a crop can land in the .xmp, which the sig doesn't see
+        self._drop_thumb_caches(stem)   # a crop can land in the .xmp, which the sig doesn't see
         return res
 
     # ── master inventory binding (album day viewer) ───────────────────────────
@@ -1413,8 +1427,11 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         # the straight-through branch and are never cached alongside the cropped
         # display pixmap.
         sig = self._image_sigs.get(stem)   # source + mtimes; changes on re-crop / new render
+        disk_dir = self._cache_dir_for(Path(src)) if src else None
+        stem_name = Path(src).stem if src else None
         cached_thumb_request(self._thumb_cache, self._loader, stem,
-                             target_w, sig, produce, on_ready)
+                             target_w, sig, produce, on_ready,
+                             disk_dir=disk_dir, stem=stem_name)
 
     def jpg_path(self, key: str):
         g = self._groups.get(key, {})

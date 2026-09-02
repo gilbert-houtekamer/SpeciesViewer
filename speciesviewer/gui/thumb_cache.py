@@ -15,7 +15,9 @@ column count and a fill %), so the same width is asked for every rebuild and
 across sessions.
 """
 
+import glob as _glob
 from collections import OrderedDict
+from pathlib import Path
 
 from PyQt6.QtGui import QPixmap
 
@@ -72,13 +74,62 @@ class ThumbCache:
         self._bytes = 0
 
 
+# ── persistent (on-disk) scaled thumbnails ──────────────────────────────────
+# Step 2C: written as `<stem>@<width>.jpg` INSIDE the existing per-folder
+# preview cache dir, so they inherit its 90-day LRU + "folder gone -> evicted"
+# hygiene and show under "Preview thumbnails" in Manage Caches. Only meaningful
+# because the grid card width is deterministic (same width asked every session).
+
+def disk_thumb_path(cache_dir: Path, stem: str, width: int) -> Path:
+    return Path(cache_dir) / f"{stem}@{int(width)}.jpg"
+
+
+def load_disk_thumb(cache_dir, stem, width):
+    p = disk_thumb_path(cache_dir, stem, width)
+    if not p.exists():
+        return None
+    px = QPixmap(str(p))
+    if px.isNull():
+        return None
+    try:
+        from utils import preview_cache
+        preview_cache.touch(p)   # share the big-preview LRU stamp
+    except Exception:
+        pass
+    return px
+
+
+def save_disk_thumb(cache_dir, stem, width, px: QPixmap) -> None:
+    if px is None or px.isNull():
+        return
+    try:
+        Path(cache_dir).mkdir(parents=True, exist_ok=True)
+        px.save(str(disk_thumb_path(cache_dir, stem, width)), "JPEG", 90)
+    except Exception:
+        pass
+
+
+def drop_disk_thumbs(cache_dir, stem) -> None:
+    """Delete every `<stem>@*.jpg` — call when a picture's image changes
+    (re-crop / new render / Create JPG)."""
+    try:
+        for f in _glob.glob(str(Path(cache_dir) / (_glob.escape(str(stem)) + "@*.jpg"))):
+            try:
+                Path(f).unlink()
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+
 def cached_thumb_request(cache: ThumbCache, loader, key, target_w, sig,
-                         produce, on_ready) -> None:
-    """Serve `key` at `target_w` from `cache` if present (synchronous), else run
-    `produce` on `loader` and cache the scaled result.
+                         produce, on_ready, disk_dir=None, stem=None) -> None:
+    """Serve `key` at `target_w` from RAM, then disk, else run `produce` on
+    `loader` and cache the scaled result in both.
 
     `target_w` falsy -> straight through with no caching (full-size / crop-tool
-    requests, which must stay uncropped / unscaled)."""
+    requests, which must stay uncropped / unscaled). `disk_dir`+`stem` enable
+    the persistent layer (2C); omit them for RAM-only."""
     if not target_w:
         loader.request(produce, on_ready, target_w=target_w)
         return
@@ -86,6 +137,16 @@ def cached_thumb_request(cache: ThumbCache, loader, key, target_w, sig,
     if hit is not None:
         on_ready(hit)
         return
-    loader.request(
-        produce, on_ready, target_w=target_w,
-        on_cache=lambda px, k=key, w=target_w, s=sig: cache.put(k, w, s, px))
+    if disk_dir is not None and stem:
+        dpx = load_disk_thumb(disk_dir, stem, target_w)
+        if dpx is not None:
+            cache.put(key, target_w, sig, dpx)
+            on_ready(dpx)
+            return
+
+    def _store(px, k=key, w=target_w, s=sig, dd=disk_dir, st=stem):
+        cache.put(k, w, s, px)
+        if dd is not None and st:
+            save_disk_thumb(dd, st, w, px)
+
+    loader.request(produce, on_ready, target_w=target_w, on_cache=_store)

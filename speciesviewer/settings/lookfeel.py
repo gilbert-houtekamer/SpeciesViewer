@@ -13,11 +13,11 @@ import logging
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QRadioButton, QButtonGroup,
-    QPushButton, QWidget, QFrame, QComboBox, QGridLayout,
+    QPushButton, QWidget, QFrame, QComboBox, QGridLayout, QSpinBox,
 )
 from PyQt6.QtCore import Qt
 
-from utils.config import get_setting, set_setting, persist_config
+from utils.config import get_setting, set_setting, get_int_setting, persist_config
 from gui import theme
 from gui.label_colors import COLORS, COLOR_SCHEMES, active_scheme_name
 from gui.card_layout import (CORNER_OPTIONS, FRAME_OPTIONS, VIEWERS,
@@ -101,9 +101,11 @@ class LookFeelDialog(QDialog):
         (self._dark_rb if theme.is_dark() else self._light_rb).setChecked(True)
 
         self._build_corner_section(lay)
+        self._build_culling_section(lay)
 
         note = QLabel("↻  Colour scheme + theme apply after restarting SpeciesViewer; "
-                      "card corners apply the next time you open a viewer.")
+                      "card corners + culling-grid settings apply the next time you "
+                      "open a viewer.")
         note.setWordWrap(True)
         note.setStyleSheet(f"color:{theme.INK_SOFT}; font-size:11px; padding-top:6px;")
         lay.addWidget(note)
@@ -168,6 +170,47 @@ class LookFeelDialog(QDialog):
         self._cc_current = self._cc_viewer.currentData()
         self._load_corners(self._cc_current)
 
+    # ── Culling grid — images per row, grid width, "Start with" default ──────
+    def _build_culling_section(self, lay):
+        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"color:{theme.LINE}; margin:6px 0;")
+        lay.addWidget(sep)
+        lay.addWidget(_section("CULLING GRID"))
+
+        g = QGridLayout()
+        g.setContentsMargins(0, 4, 0, 0)
+        g.setHorizontalSpacing(14); g.setVerticalSpacing(6)
+
+        g.addWidget(QLabel("Images per row:"), 0, 0)
+        self._cg_cols = QSpinBox()
+        self._cg_cols.setRange(1, 10)
+        self._cg_cols.setValue(max(1, min(10, get_int_setting("culling", "grid_columns", 5))))
+        g.addWidget(self._cg_cols, 0, 1)
+
+        g.addWidget(QLabel("Grid width (% of window):"), 1, 0)
+        self._cg_fill = QSpinBox()
+        self._cg_fill.setRange(40, 100)
+        self._cg_fill.setSuffix(" %")
+        self._cg_fill.setValue(max(40, min(100, get_int_setting("culling", "grid_fill_pct", 100))))
+        g.addWidget(self._cg_fill, 1, 1)
+
+        g.addWidget(QLabel("Open a day showing:"), 2, 0)
+        self._cg_start = QComboBox()
+        for key, label in (("unrated", "Unrated only"),
+                           ("review", "To review (unrated + R/Y/G)"),
+                           ("all", "All pictures")):
+            self._cg_start.addItem(label, key)
+        cur = get_setting("culling", "start_subset", fallback="unrated")
+        self._cg_start.setCurrentIndex(max(0, self._cg_start.findData(cur)))
+        g.addWidget(self._cg_start, 2, 1)
+
+        gwrap = QWidget(); gwrap.setLayout(g); lay.addWidget(gwrap)
+
+    def _save_culling(self):
+        set_setting("culling", "grid_columns", self._cg_cols.value())
+        set_setting("culling", "grid_fill_pct", self._cg_fill.value())
+        set_setting("culling", "start_subset", self._cg_start.currentData())
+
     def _load_corners(self, vk):
         st = self._cc_state[vk]
         for pos, combo in self._cc_corners.items():
@@ -200,6 +243,7 @@ class LookFeelDialog(QDialog):
         self._grab_corners()
         for vk, cfg in self._cc_state.items():
             set_corner_config(vk, cfg)
+        self._save_culling()
         persist_config()
         logger.info("Look & feel: scheme='%s', theme='%s', corners saved.", name, theme_val)
         self.accept()

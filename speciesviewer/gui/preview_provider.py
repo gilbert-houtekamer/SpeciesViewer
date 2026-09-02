@@ -937,9 +937,20 @@ class PreviewCollection(PictureCollection):
         self._image_changed = {k for k in new_sigs if new_sigs[k] != self._img_sigs.get(k)}
         self._img_sigs = new_sigs
         for k in self._image_changed:
-            self._thumb_cache.invalidate(k)
+            self._drop_thumb_caches(k)
         changed |= self._image_changed
         return changed
+
+    def _drop_thumb_caches(self, key):
+        """Forget every cached thumbnail (RAM + on-disk) for one picture — its
+        image changed (re-crop / new render / Create JPG)."""
+        self._thumb_cache.invalidate(key)
+        from gui.thumb_cache import drop_disk_thumbs
+        seen = set()
+        for p in (self._display_source(key), self._raw_path(key)):
+            if p is not None and p.stem not in seen:
+                seen.add(p.stem)
+                drop_disk_thumbs(preview_cache_dir_for(p.parent), p.stem)
 
     def has_disk_file(self, upn_key: str) -> bool:
         """True if at least one of the UPN's real files (not a stray .dop) is
@@ -1117,8 +1128,11 @@ class PreviewCollection(PictureCollection):
             return None
         from gui.thumb_cache import cached_thumb_request
         sig = self._img_sigs.get(upn_key)   # source + mtimes; changes on re-crop / new render
+        disk_dir = preview_cache_dir_for(src.parent) if src is not None else None
+        stem = src.stem if src is not None else None
         cached_thumb_request(self._thumb_cache, self._loader, upn_key,
-                             target_w, sig, produce, on_ready)
+                             target_w, sig, produce, on_ready,
+                             disk_dir=disk_dir, stem=stem)
 
     def crop_present(self, upn_key: str) -> bool:
         """True if this picture carries a crop, for the card's "#" marker. Checks
@@ -1167,7 +1181,7 @@ class PreviewCollection(PictureCollection):
         from engine.sidecarlib import suggest_crop
         res = suggest_crop(str(raw), crop)
         self._img_sigs[upn_key] = self._img_sig(upn_key)
-        self._thumb_cache.invalidate(upn_key)   # a crop can land in the .xmp, which the sig doesn't see
+        self._drop_thumb_caches(upn_key)   # a crop can land in the .xmp, which the sig doesn't see
         return res
 
     def create_blog_jpg(self, upn_key: str) -> dict:
@@ -1220,7 +1234,7 @@ class PreviewCollection(PictureCollection):
         if getattr(self, "_pic_folders", None) is not None:
             self._pic_folders.add(out.parent)
         self._img_sigs[upn_key] = self._img_sig(upn_key)
-        self._thumb_cache.invalidate(upn_key)   # a crop can land in the .xmp, which the sig doesn't see
+        self._drop_thumb_caches(upn_key)   # a crop can land in the .xmp, which the sig doesn't see
         logger.info(f"Blog JPG created → {out.name} "
                     f"({im.size[0]}×{im.size[1]}, {'cropped' if crop else 'full frame'}).")
         return {"status": "created", "jpg": str(out), "size": im.size, "cropped": bool(crop)}
@@ -1252,7 +1266,7 @@ class PreviewCollection(PictureCollection):
         if getattr(self, "_pic_folders", None) is not None:
             self._pic_folders.add(out.parent)
         self._img_sigs[upn_key] = self._img_sig(upn_key)
-        self._thumb_cache.invalidate(upn_key)   # a crop can land in the .xmp, which the sig doesn't see
+        self._drop_thumb_caches(upn_key)   # a crop can land in the .xmp, which the sig doesn't see
         logger.info(f"HEIC crop baked → {out.name} (full-res JPG).")
         return {"jpg_created": True, "baked_jpg": True, "jpg": str(out)}
 
@@ -1786,5 +1800,7 @@ class FileListPreviewCollection(PictureCollection):
             return None
         from gui.thumb_cache import cached_thumb_request
         # A static file list — no per-key image signature to track.
+        src = Path(key)
         cached_thumb_request(self._thumb_cache, self._loader, key,
-                             target_w, None, produce, on_ready)
+                             target_w, None, produce, on_ready,
+                             disk_dir=self._cache_dir_for(src), stem=src.stem)

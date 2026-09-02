@@ -142,6 +142,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._name_hints = name_hints or {}
         self._name_profile = name_profile or ""
         self.setWindowFlags(self.windowFlags()
+                            | Qt.WindowType.Window        # own taskbar button — a minimised
+                                                          # preview window must be findable
                             | Qt.WindowType.WindowMinimizeButtonHint
                             | Qt.WindowType.WindowMaximizeButtonHint)
         self.mode = mode
@@ -1084,13 +1086,14 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         vw = self.scroll_area.viewport().width()
         if vw < 120:                     # not laid out yet — sane fallback
             vw = 1100
+        pct = max(40, min(100, get_int_setting("culling", "grid_fill_pct", 100)))
         # During the batched build the viewport can still be reported one
         # scrollbar-width too wide (the always-on bar's space is not subtracted
         # until the first proper layout), which made cards too big and clipped
         # the last column. Subtract it defensively + a few px slack: the row can
         # then only UNDERshoot the viewport, never overflow.
         sb = self.scroll_area.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
-        usable = vw - sb - 6
+        usable = int(vw * pct / 100) - sb - 6
         return max(160, (usable - spacing * (ncols - 1)) // ncols)
 
     def _apply_grid_width(self):
@@ -1139,12 +1142,33 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._cards_by_key.clear()
         self._cards.clear()
 
+    def _card_aspect(self) -> float:
+        """Width/height to reserve for every card's thumbnail — sampled once
+        from the day's own images (usually 4:3), so a single-camera trip fits
+        with no side bands. Cached; 3:2 fallback."""
+        a = getattr(self, "_card_aspect_cache", None)
+        if a is not None:
+            return a
+        a = 1.5
+        for k in self._base_keys()[:8]:
+            try:
+                w, h = (int(x) for x in
+                        self._collection.item_for_key(k).exif.dimensions.lower().split("x")[:2])
+                if w > 0 and h > 0:
+                    a = round(max(0.6, min(2.2, w / h)), 3)
+                    break
+            except Exception:
+                continue
+        self._card_aspect_cache = a
+        return a
+
     def _make_card(self, item, card_w, show_status):
         """Build one PictureCard and wire its signals — shared by the hard
         rebuild and the show/hide filter's lazy build. Parented to grid_widget
         so it's never briefly a top-level window before the layout takes it."""
         card = PictureCard(item, card_w, self.grid_widget, show_status=show_status,
-                           framed=True, viewer_key="preview")
+                           framed=True, viewer_key="preview",
+                           thumb_aspect=self._card_aspect())
         card.card_clicked.connect(self._on_card_cursor)
         card.card_double_clicked.connect(self._open_large_view)
         card.card_right_clicked.connect(self._on_card_context_menu)

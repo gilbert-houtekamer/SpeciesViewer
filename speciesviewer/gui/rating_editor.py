@@ -432,8 +432,13 @@ class PictureCard(QFrame):
 
     def __init__(self, item: PictureItem, card_width: int, parent=None,
                  *, show_status: bool = False, show_kind_tag: bool = False,
-                 framed: bool = False, viewer_key: str = "species"):
+                 framed: bool = False, viewer_key: str = "species",
+                 thumb_aspect: float = 1.5):
         super().__init__(parent)
+        # Width/height the framed thumbnail area reserves. Default 3:2; the
+        # culling grid passes the day's own sampled aspect (usually 4:3) so a
+        # single-camera trip fits with no letterbox bands.
+        self._thumb_aspect = thumb_aspect if thumb_aspect and thumb_aspect > 0 else 1.5
         self.setObjectName("PictureCard")
         self._item = item
         self.upn_key = item.key
@@ -652,11 +657,12 @@ class PictureCard(QFrame):
 
         target_w = max(80, card_width - 20)
         self._thumb_target_w = target_w
-        # Fixed thumbnail height (3:2), reserved up front — the row must NOT grow
-        # or shrink as images stream in (that jitter made a big-day load look
-        # slower than it is). A portrait shot is scaled down to fit and
-        # letterboxed, not allowed to push the row taller.
-        self._thumb_fixed_h = max(70, target_w * 2 // 3)
+        # Fixed thumbnail height, reserved up front — the row must NOT grow or
+        # shrink as images stream in (that jitter made a big-day load look
+        # slower than it is). Aspect is the day's sampled one (4:3 etc.); an
+        # image of a different aspect is scaled to fit and letterboxed, not
+        # allowed to push the row taller.
+        self._thumb_fixed_h = max(70, round(target_w / self._thumb_aspect))
         self._thumb = _FramedPhoto()
         self._thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumb.setFixedHeight(self._thumb_fixed_h)

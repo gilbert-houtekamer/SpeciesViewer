@@ -13,8 +13,11 @@ a Brazil day (1194 pictures).
 | **1** | Open into a "Start with" subset + counts bar | **SHIPPED `fd8405c` (live-tested OK)** — `image_viewer.py`, no branch |
 | **2A** | Grid width fills the window + `grid_columns` global + truncation fix + stable row height | **SHIPPED (live-tested)** — `image_viewer.py`, `rating_editor.py`, no branch |
 | **2B** | In-RAM scaled-thumbnail cache, grid + filmstrip, with crop invalidation | **SHIPPED (live-tested)** — `gui/thumb_cache.py`, no branch |
-| 2C | Persistent on-disk thumbnail cache at the stable width | not started — trip-scoped lifetime (see below) |
+| 2C | Persistent on-disk thumbnail cache at the stable width | **BUILT, pending test** — branch, `gui/thumb_cache.py` + providers, in the existing per-folder preview cache |
 | 3 | Filter = show/hide, build cards once (lazy) | **BUILT, pending test** — branch `sv_culling_grid_showhide`, `image_viewer.py` only |
+| — | Thumbnail aspect from the day's own images (not fixed 3:2) | **BUILT, pending test** — branch |
+| — | Preview dialog: own taskbar button + reject too-small saved geometry | **BUILT, pending test** — branch |
+| — | Look & Feel: "Culling grid" section (columns / fill % / Start-with default) | **BUILT, pending test** — branch |
 | 4 | Viewport virtualization (recycle ~40 cards) | not started — **own branch**, the real scalability answer, only if 3 isn't enough |
 | 5 | Cheaper card (one custom-painted widget) | not started — only if 3+4 fall short |
 | 6 | Lazy controls (paint stars/swatches, real widgets on hover) | not started — scoped version of 5 |
@@ -173,27 +176,27 @@ reusable if the same width is asked for every time.
 
 ---
 
-## Step 2C — persistent on-disk thumbnail cache at the stable width   (not started)
+## Step 2C — persistent on-disk thumbnail cache   (BUILT — branch, pending test)
 
-Now that `card_w` is deterministic we *can* write a small `<key>@<w>.jpg`
-alongside the existing preview cache and load that directly (tiny, fast decode)
-instead of decoding + smooth-scaling the big preview. This makes the **first**
-open of a day after a restart fast too, not just later rebuilds within a session.
+Written as `<stem>@<width>.jpg` **inside the existing per-folder preview cache
+dir** (`utils/preview_cache.cache_dir_for`, AppData, keyed by a hash of the
+source folder). Inherits that cache's 90-day LRU + "folder gone → evicted"
+hygiene for free, and shows under **Preview thumbnails** in Manage Caches. No
+new infrastructure.
 
-Lifetime / hygiene (user, 2026-09-01):
+- `gui/thumb_cache.py`: `disk_thumb_path` / `load_disk_thumb` (touches the
+  shared LRU stamp on a hit) / `save_disk_thumb` / `drop_disk_thumbs`.
+  `cached_thumb_request(..., disk_dir=, stem=)` checks RAM → disk → decode; a
+  fresh decode is written to **both** RAM and disk.
+- The three culling collections pass `disk_dir` + `stem`. Invalidation is one
+  method — `_drop_thumb_caches(key)` — that clears the RAM entry AND
+  `drop_disk_thumbs` for both the display-source and the RAW stem; called from
+  `set_crop` / `create_blog_jpg` / `_bake_heic_crop` / `refresh`.
+- `utils/preview_cache.drop_for_files` extended to also unlink `<stem>@*.jpg`,
+  so a blue/purple-delete takes the thumbnails with it.
 
-- **Trip-scoped.** A trip's thumbnail cache lives for the age of the trip; when
-  the trip is deleted, its thumbnails go with it. Same principle as the preview
-  cache's "unplugged drive ≡ deleted trip" rule
-  (`project_preview_cache_hygiene`).
-- **Follow deletions.** When a blue/purple-delete moves files to trash, drop
-  their cached thumbnails too (the delete paths already know the affected keys).
-- Falls back to the RAM path (2B) on a miss; invalidated the same way (the
-  image-signature is part of the on-disk name or a sidecar).
-
-Deferred: it is real infrastructure (cache dir keyed to the trip, an LRU/age
-sweep, invalidation wired into the crop / render / delete paths). Do 3 first
-unless first-open-after-restart becomes the felt problem.
+Effect: a close + reopen of a day is now fast — the first pass loads small JPGs
+from disk instead of re-decoding + smooth-scaling the big previews.
 
 ---
 

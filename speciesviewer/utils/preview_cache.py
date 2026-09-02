@@ -120,16 +120,22 @@ def drop_for_files(paths) -> int:
     """Drop the cached previews of source pictures WE are deleting. Returns the
     number removed. A JPG has no cache entry (it is its own preview) and a stem
     with no entry is simply a miss, so this is safe to call with any file list."""
+    import glob as _glob
     removed = 0
     for p in paths:
         p = Path(p)
-        cached = cache_dir_for(p.parent) / (p.stem + ".jpg")
-        try:
-            if cached.is_file():
-                cached.unlink()
-                removed += 1
-        except OSError:
-            pass
+        d = cache_dir_for(p.parent)
+        # the full-size preview <stem>.jpg AND any scaled thumbnails
+        # <stem>@<width>.jpg written beside it (see gui/thumb_cache.py)
+        targets = [d / (p.stem + ".jpg")]
+        targets += [Path(x) for x in _glob.glob(str(d / (_glob.escape(p.stem) + "@*.jpg")))]
+        for cached in targets:
+            try:
+                if cached.is_file():
+                    cached.unlink()
+                    removed += 1
+            except OSError:
+                pass
     if removed:
         logger.info(f"preview cache: dropped {removed} preview(s) for deleted pictures.")
     return removed
