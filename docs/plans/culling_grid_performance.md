@@ -14,8 +14,8 @@ a Brazil day (1194 pictures).
 | **2A** | Grid width fills the window + `grid_columns` global + truncation fix + stable row height | **SHIPPED (live-tested)** — `image_viewer.py`, `rating_editor.py`, no branch |
 | **2B** | In-RAM scaled-thumbnail cache, grid + filmstrip, with crop invalidation | **SHIPPED (live-tested)** — `gui/thumb_cache.py`, no branch |
 | 2C | Persistent on-disk thumbnail cache at the stable width | not started — trip-scoped lifetime (see below) |
-| 3 | Filter = show/hide, build cards once | not started — **own branch** (risky rearchitecture) |
-| 4 | Viewport virtualization (recycle ~40 cards) | not started — **own branch**, the real scalability answer |
+| 3 | Filter = show/hide, build cards once (lazy) | **BUILT, pending test** — branch `sv_culling_grid_showhide`, `image_viewer.py` only |
+| 4 | Viewport virtualization (recycle ~40 cards) | not started — **own branch**, the real scalability answer, only if 3 isn't enough |
 | 5 | Cheaper card (one custom-painted widget) | not started — only if 3+4 fall short |
 | 6 | Lazy controls (paint stars/swatches, real widgets on hover) | not started — scoped version of 5 |
 | 7 | Hoist per-widget stylesheets into one shared sheet | not started — cheap, low risk, any time |
@@ -197,22 +197,49 @@ unless first-open-after-restart becomes the felt problem.
 
 ---
 
-## Step 3 — filter = show/hide, build cards once   (own branch)
+## Step 3 — filter = show/hide, build cards once (lazy)   (BUILT — branch `sv_culling_grid_showhide`)
 
-Build all cards for the loaded set **once**; on every `g` / `h` / grey / find /
-JPG-toggle after that, don't tear down — `card.setVisible(in_filter)` and
-re-flow the visible ones in the grid. No widget creation/destruction, no
-re-decode (pixmaps stay). `h` → ~1–2 s; other filter keystrokes near-instant.
-This is `_drop_card_live`'s reflow trick generalised.
+Decisions (user, 2026-09-02): **Step 3 only**, defer Step 4 until we see if this
+is enough. **Lazy / incremental** card build — never destroy — so Step 1's fast
+"open into the ~20 % subset" survives. **Culling `ImagePreviewDialog` only** —
+the Trip/Master/Album species grid (`rating_editor`) keeps the rebuild path
+(it shows one species at a time, ~35 cards).
 
-Cost: ~35k widgets + pixmaps resident for the session (rough guess 300–600 MB
-for a 1200-pic day — measure). Fine on the laptop for the day sizes today;
-pairs with step 1 (the "once" build is the subset, not 1194) and is superseded
-by step 4 for very large days. Risky because it changes the shared grid
-lifecycle — hence its own branch.
+As built (`gui/image_viewer.py`, all in the dialog — `PictureCard` untouched):
 
-The QGridLayout with explicit (row, col) over ~240 rows is itself a cost;
-consider a flow layout or manual positioning as part of this step.
+- `_cards_by_key` is now the **persistent** store of every card built this
+  session; `_cards` is the currently-**visible**, ordered subset that all the
+  nav / selection / keyboard code already keys off.
+- Two paths:
+  - `_rebuild_grid_from_keys` — **HARD**: destroy every card, build from
+    scratch. Used on open, on a column-count / card-width change, on resize
+    settle, and on an album master change.
+  - `_show_filtered` — **SOFT** (what `_apply_filters` now calls): sort the
+    visible keys (`_collection.rebuild`), lazily build any **not-yet-seen**
+    card (`_build_missing_batch`, batched + cancellable, hidden and out of the
+    layout), then `_reflow_visible` — detach every card, re-add exactly the
+    visible ones in order, `hide()` the rest. No widget destruction, no
+    thumbnail re-decode (the RAM cache from 2B serves them).
+- `_drop_card_live` (double-click-a-swatch → leave the filter) now **hides**
+  the card instead of destroying it, so re-widening shows it again instantly.
+- `_grid_busy` / `_pending_filter` guard against a filter change landing
+  mid-build (coalesced to the final state).
+- Deleted pictures: `_reflow_visible` prunes cards whose key left
+  `_base_keys()` and `deleteLater()`s them.
+
+Expected: the first widen to a bigger set in a session pays a one-time lazy
+build of the delta (with the wait dialog); every filter cycle after that —
+`g` / `h` / grey / find / JPG — is pure re-flow (target ≈ 1 s on the
+1194-pic day, vs ~40 s).
+
+Cost held for the session: up to a whole day of cards (~35 k widgets for 1194)
++ the capped pixmap cache. Accepted for current day sizes; Step 4 is the answer
+for multi-thousand-picture days.
+
+**Watch in testing:** the re-flow does ~N `removeWidget` + ~visible `addWidget`
+on the `QGridLayout` per filter change — if that itself is slow on a big day,
+that is the signal to move to Step 4 (drop `QGridLayout` for manual
+positioning) rather than push this further.
 
 ---
 
