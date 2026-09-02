@@ -1225,6 +1225,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # visibly as cards + thumbnails stream in (re-enabled in _finalize_load
         # and the empty-grid return below). The wait dialog covers the wait.
         self._grid_busy = True
+        import time as _t
+        self._build_t0 = _t.monotonic()
         tc = getattr(self._collection, "_thumb_cache", None)
         if tc is not None:
             tc.reset_stats()
@@ -1285,7 +1287,9 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._grid_busy = False
         tc = getattr(self._collection, "_thumb_cache", None)
         if tc is not None and self._cards:
-            logger.info("Culling grid built: %s", tc.stats_line(len(self._cards)))
+            import time as _t
+            dt = _t.monotonic() - getattr(self, "_build_t0", _t.monotonic())
+            logger.info("Culling grid built in %.1f s: %s", dt, tc.stats_line(len(self._cards)))
         # Restore the scroll position after a rebuild meant to keep the user's place
         # (a delete): the grid rebuilds from the top, so without this it snaps up and
         # the app looks like it 'lost its location'. Deferred one tick so the final
@@ -1314,6 +1318,11 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._rebuild_grid_from_keys(visible_keys)
             return
         self._grid_busy = True
+        import time as _t
+        self._build_t0 = _t.monotonic()
+        tc = getattr(self._collection, "_thumb_cache", None)
+        if tc is not None:
+            tc.reset_stats()
         self._collection.rebuild(list(visible_keys))
         self._show_order = [self._collection.item(i).key
                             for i in range(len(self._collection))]
@@ -1332,6 +1341,9 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         else:
             self._reflow_visible(self._show_order)
             self._grid_busy = False
+            dt = _t.monotonic() - self._build_t0
+            logger.debug("Culling filter: re-flow only, %d shown in %.2f s",
+                         len(self._cards), dt)
             if getattr(self, "_pending_filter", False):
                 self._pending_filter = False
                 QTimer.singleShot(0, self._apply_filters)
@@ -1357,6 +1369,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         if not self.cancelled and self._build_qi < len(q):
             QTimer.singleShot(0, self._build_missing_batch)
             return
+        n_built = self._build_qi
         self._build_queue = []
         self._reflow_visible(self._show_order)
         self.grid_widget.setUpdatesEnabled(True)
@@ -1364,6 +1377,12 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.cancel_button.setEnabled(False)
         self.wait_dialog.close()
         self._grid_busy = False
+        tc = getattr(self._collection, "_thumb_cache", None)
+        if tc is not None:
+            import time as _t
+            dt = _t.monotonic() - getattr(self, "_build_t0", _t.monotonic())
+            logger.info("Culling filter: +%d new card(s) in %.1f s, %d shown — %s",
+                        n_built, dt, len(self._cards), tc.stats_line(n_built))
         if getattr(self, "_pending_filter", False):
             self._pending_filter = False
             QTimer.singleShot(0, self._apply_filters)
