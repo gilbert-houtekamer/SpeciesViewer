@@ -383,6 +383,11 @@ class PreviewCollection(PictureCollection):
         from utils.name_profile import effective_profile
         self._name_profile = effective_profile()
         self._loader = loader or AsyncImageLoader()
+        # Scaled-thumbnail cache, shared with the large-viewer filmstrip via this
+        # same collection: a colour-filter rebuild re-attaches pixmaps instead of
+        # re-decoding every preview. Keyed by (key, width, image signature).
+        from gui.thumb_cache import ThumbCache
+        self._thumb_cache = ThumbCache()
         self._order: list[str] = []
         self.rebuild()
         # Baseline the colour/rating sidecar mtimes NOW (the fpr matches disk at
@@ -931,6 +936,8 @@ class PreviewCollection(PictureCollection):
         new_sigs = {k: self._img_sig(k) for k in self.all_keys()}
         self._image_changed = {k for k in new_sigs if new_sigs[k] != self._img_sigs.get(k)}
         self._img_sigs = new_sigs
+        for k in self._image_changed:
+            self._thumb_cache.invalidate(k)
         changed |= self._image_changed
         return changed
 
@@ -1108,7 +1115,10 @@ class PreviewCollection(PictureCollection):
                     return None
                 return apply_crop(img, crop) if crop else img
             return None
-        self._loader.request(produce, on_ready, target_w=target_w)
+        from gui.thumb_cache import cached_thumb_request
+        sig = self._img_sigs.get(upn_key)   # source + mtimes; changes on re-crop / new render
+        cached_thumb_request(self._thumb_cache, self._loader, upn_key,
+                             target_w, sig, produce, on_ready)
 
     def crop_present(self, upn_key: str) -> bool:
         """True if this picture carries a crop, for the card's "#" marker. Checks
@@ -1157,6 +1167,7 @@ class PreviewCollection(PictureCollection):
         from engine.sidecarlib import suggest_crop
         res = suggest_crop(str(raw), crop)
         self._img_sigs[upn_key] = self._img_sig(upn_key)
+        self._thumb_cache.invalidate(upn_key)   # a crop can land in the .xmp, which the sig doesn't see
         return res
 
     def create_blog_jpg(self, upn_key: str) -> dict:
@@ -1209,6 +1220,7 @@ class PreviewCollection(PictureCollection):
         if getattr(self, "_pic_folders", None) is not None:
             self._pic_folders.add(out.parent)
         self._img_sigs[upn_key] = self._img_sig(upn_key)
+        self._thumb_cache.invalidate(upn_key)   # a crop can land in the .xmp, which the sig doesn't see
         logger.info(f"Blog JPG created → {out.name} "
                     f"({im.size[0]}×{im.size[1]}, {'cropped' if crop else 'full frame'}).")
         return {"status": "created", "jpg": str(out), "size": im.size, "cropped": bool(crop)}
@@ -1240,6 +1252,7 @@ class PreviewCollection(PictureCollection):
         if getattr(self, "_pic_folders", None) is not None:
             self._pic_folders.add(out.parent)
         self._img_sigs[upn_key] = self._img_sig(upn_key)
+        self._thumb_cache.invalidate(upn_key)   # a crop can land in the .xmp, which the sig doesn't see
         logger.info(f"HEIC crop baked → {out.name} (full-res JPG).")
         return {"jpg_created": True, "baked_jpg": True, "jpg": str(out)}
 
@@ -1702,6 +1715,8 @@ class FileListPreviewCollection(PictureCollection):
         self._paths = [Path(p) for p in paths]
         self._cache_root = Path(cache_root) if cache_root else None
         self._loader = loader or AsyncImageLoader()
+        from gui.thumb_cache import ThumbCache
+        self._thumb_cache = ThumbCache()
         self._order: list[str] = [str(p) for p in self._paths]
         # {key (=str path) -> has a crop}, precomputed by the host from the day CSV
         # sizes: a flat path list carries no RAW-vs-JPG dimensions to judge it from.
@@ -1769,4 +1784,7 @@ class FileListPreviewCollection(PictureCollection):
                 img = QImage(str(p))
                 return img if not img.isNull() else None
             return None
-        self._loader.request(produce, on_ready, target_w=target_w)
+        from gui.thumb_cache import cached_thumb_request
+        # A static file list — no per-key image signature to track.
+        cached_thumb_request(self._thumb_cache, self._loader, key,
+                             target_w, None, produce, on_ready)

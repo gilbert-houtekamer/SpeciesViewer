@@ -16,7 +16,7 @@ from gui.preview_provider import PreviewCollection, FileListPreviewCollection, p
 from gui.master_ops import MasterCardMenuMixin
 from gui.rating_editor import PictureCard
 from utils.raw_extensions import RAW_OR_HEIC
-from utils.config import get_setting, set_setting
+from utils.config import get_setting, set_setting, get_int_setting
 
 logger = logging.getLogger("speciesviewer")
 
@@ -30,6 +30,10 @@ _START_SUBSETS = {
     "all":     set(),
 }
 _START_SUBSET_LABEL = {"unrated": "Unrated", "review": "To review", "all": "All"}
+
+# Images-per-row is a GLOBAL setting (every day opens the same), so the card
+# width — and therefore the cached thumbnail width — is stable across sessions.
+_GRID_COLUMNS_DEFAULT = 5
 
 def ensure_path(obj):
     return Path(obj) if isinstance(obj, str) else obj
@@ -177,12 +181,19 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.wait_dialog.setMinimumDuration(0)
         self.wait_dialog.show()
 
-        self.columns = 3
-        # Restore per-machine remembered geometry + column count (.ini).
+        # Column count is a GLOBAL setting now (shared by every day you open), not
+        # per-window — so the card width, and therefore the cached thumbnail
+        # width, stays the same session to session.
+        self.columns = max(1, min(10, get_int_setting(
+            "culling", "grid_columns", _GRID_COLUMNS_DEFAULT)))
         self._geo_key = "SpeciesPreview"
-        _st = restore_window(self, self._geo_key, default_size=(800, 600))
-        if _st["cols"]:
-            self.columns = max(1, min(10, _st["cols"]))
+        # Default to ~fill-% of the screen on first open so the grid fits without
+        # a horizontal scrollbar; a remembered geometry still wins.
+        _scr = QApplication.primaryScreen()
+        _sg = _scr.availableGeometry() if _scr else None
+        _default_size = ((int(_sg.width() * 0.92), int(_sg.height() * 0.88))
+                         if _sg else (1200, 800))
+        restore_window(self, self._geo_key, default_size=_default_size)
 
         # ── Load project metadata (fpr) if present ─────────────────────────
         projectname = Path(self.image_dir).name
@@ -305,6 +316,11 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._find_timer = QTimer(self)     # debounce typing on big sets
         self._find_timer.setSingleShot(True)
         self._find_timer.timeout.connect(self._fire_pending_find)
+        self._resize_timer = QTimer(self)   # debounce window resize → re-fit the grid
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.setInterval(160)
+        self._resize_timer.timeout.connect(self._on_resize_settled)
+        self._built_card_w = -1
         self._pending_find = None
         self._find_min_chars = 2            # don't search on a single character
         # Multi-select state
@@ -562,6 +578,12 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # rows stay top-aligned instead of expanding to fill the viewport).
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
+        # A culling grid always scrolls vertically, so keep the bar ON always:
+        # otherwise viewport().width() is ~17 px wider while the grid is still
+        # short (during the batched build), _grid_card_width computes cards too
+        # wide, and the last column is clipped once the bar finally appears.
+        self.scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self._scroll_content = QWidget()
         _scroll_content = self._scroll_content
         _scroll_vbox = QVBoxLayout(_scroll_content)
@@ -570,6 +592,10 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.grid_widget = QWidget()
         self.grid_layout = QGridLayout(self.grid_widget)
         self.grid_layout.setSpacing(6)
+        # Without this the default layout margins (~9 px each side) ate into the
+        # width _grid_placement budgeted from the viewport, so the last column
+        # was always clipped on the right.
+        self.grid_layout.setContentsMargins(0, 0, 0, 0)
         _scroll_vbox.addWidget(self.grid_widget)
         _scroll_vbox.addStretch(1)
         self.scroll_area.setWidget(_scroll_content)
@@ -1039,18 +1065,58 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.setWindowTitle(f"{base} — {suffix}" if suffix else base)
 
     # ── Grid build (batched so a big day stays responsive) ──────────────────
-    def _grid_placement(self, total: int):
-        """Return (row, col, span=1, card_w) for each of `total` positions —
-        card width is viewport / columns regardless of how many are shown."""
+    def _grid_card_width(self) -> int:
+        """Card width = viewport width ÷ columns (minus the gaps). Uses the
+        scroll area's VIEWPORT — inside the scrollbar and frame — so the grid
+        fills the window edge to edge with no leftover margin and no clipped
+        last column. Column count is a global setting and the window geometry is
+        remembered, so this is stable session to session (which is what lets the
+        thumbnail cache hit)."""
         ncols = max(1, self.columns)
         spacing = self.grid_layout.spacing()
+        vw = self.scroll_area.viewport().width()
+        if vw < 120:                     # not laid out yet — sane fallback
+            vw = 1100
+        # During the batched build the viewport can still be reported one
+        # scrollbar-width too wide (the always-on bar's space is not subtracted
+        # until the first proper layout), which made cards too big and clipped
+        # the last column. Subtract it defensively + a few px slack: the row can
+        # then only UNDERshoot the viewport, never overflow.
         sb = self.scroll_area.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
-        frame = 2 * self.scroll_area.frameWidth()
-        avail = self.scroll_area.width() - sb - frame - spacing
-        if avail < 100:
-            avail = 760
-        card_w = max(120, (avail - spacing * (ncols - 1)) // ncols)
+        usable = vw - sb - 6
+        return max(160, (usable - spacing * (ncols - 1)) // ncols)
+
+    def _apply_grid_width(self):
+        """Pin the grid to exactly columns × card_w + gaps so it can never be
+        wider than the viewport (no clipped last column, no horizontal
+        scrollbar), regardless of column-stretch rounding."""
+        ncols = max(1, self.columns)
+        spacing = self.grid_layout.spacing()
+        cw = self._grid_card_width()
+        self.grid_widget.setFixedWidth(ncols * cw + (ncols - 1) * spacing)
+
+    def _grid_placement(self, total: int):
+        """(row, col, span=1, card_w) for each of `total` positions."""
+        ncols = max(1, self.columns)
+        card_w = self._grid_card_width()
         return [(idx // ncols, idx % ncols, 1, card_w) for idx in range(total)]
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        t = getattr(self, "_resize_timer", None)
+        if t is not None:
+            t.start()
+
+    def _on_resize_settled(self):
+        """The window stopped resizing — rebuild the visible grid at the new
+        card width if it moved enough to matter (a warm cache makes this cheap).
+        Also settles the first-open case where the viewport wasn't final when
+        the initial build ran."""
+        if not self._cards:
+            return
+        if abs(self._grid_card_width() - self._built_card_w) <= 6:
+            return
+        self._rebuild_grid_from_keys([c.upn_key for c in self._cards])
 
     def _clear_grid(self):
         self._collection.cancel_pending_loads()  # drop in-flight thumbnail loads
@@ -1065,6 +1131,10 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._cards.clear()
 
     def _rebuild_grid_from_keys(self, keys):
+        # Freeze painting for the whole batched build so the grid doesn't reflow
+        # visibly as cards + thumbnails stream in (re-enabled in _finalize_load
+        # and the empty-grid return below). The wait dialog covers the wait.
+        self.grid_widget.setUpdatesEnabled(False)
         self._clear_grid()
         self._selected_keys.clear()
         self._bracket_left = None
@@ -1076,6 +1146,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._build_index = 0
         n = len(self._collection)
         if n == 0:
+            self.grid_widget.setUpdatesEnabled(True)
             self.cancel_button.setEnabled(False)
             self.wait_dialog.close()
             if self._color_filter or self._find_query or self._findfile_query:
@@ -1089,6 +1160,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             else:
                 QMessageBox.warning(self, "No Images", "No pictures found, or none selected.")
             return
+        self._apply_grid_width()
+        self._built_card_w = self._grid_card_width()
         self._placement = self._grid_placement(n)
         for c in range(self.columns):
             self.grid_layout.setColumnStretch(c, 1)
@@ -1130,6 +1203,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._finalize_load()
 
     def _finalize_load(self):
+        self.grid_widget.setUpdatesEnabled(True)
+        self.grid_widget.update()
         self.cancel_button.setEnabled(False)
         self.wait_dialog.close()
         # Restore the scroll position after a rebuild meant to keep the user's place
@@ -1148,6 +1223,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
 
     def on_column_changed(self, value):
         self.columns = value
+        set_setting("culling", "grid_columns", value)   # global — every day opens the same
         self._update_title_for_filter()
         # Rebuild with the currently-displayed keys at the new card width.
         if self._cards:

@@ -10,8 +10,10 @@ a Brazil day (1194 pictures).
 
 | Step | What | State |
 |------|------|-------|
-| **1** | Open into a "Start with" subset + counts bar | **SHIPPED (pending live test)** — `image_viewer.py`, no branch |
-| 2 | In-RAM thumbnail (QPixmap) cache | not started — no branch, do on `main`/`SpeciesViewer03` |
+| **1** | Open into a "Start with" subset + counts bar | **SHIPPED `fd8405c` (live-tested OK)** — `image_viewer.py`, no branch |
+| **2A** | Grid width fills the window + `grid_columns` global + truncation fix + stable row height | **SHIPPED (live-tested)** — `image_viewer.py`, `rating_editor.py`, no branch |
+| **2B** | In-RAM scaled-thumbnail cache, grid + filmstrip, with crop invalidation | **SHIPPED (live-tested)** — `gui/thumb_cache.py`, no branch |
+| 2C | Persistent on-disk thumbnail cache at the stable width | not started — trip-scoped lifetime (see below) |
 | 3 | Filter = show/hide, build cards once | not started — **own branch** (risky rearchitecture) |
 | 4 | Viewport virtualization (recycle ~40 cards) | not started — **own branch**, the real scalability answer |
 | 5 | Cheaper card (one custom-painted widget) | not started — only if 3+4 fall short |
@@ -103,14 +105,95 @@ sticks across reopen; **All** still works (slow, as before); focused opens
 
 ---
 
-## Step 2 — in-RAM thumbnail cache   (next, no branch)
+## Step 2 — stable sizing + in-RAM thumbnail cache   (SHIPPED, live-tested with fixes)
 
-Keep `{upn_key: QPixmap}` on the collection (or a bounded `QPixmapCache`), so a
-rebuild re-attaches the existing pixmap instantly instead of re-decoding from
-disk. Does **not** fix widget churn, so `h` still rebuilds ~35k widgets — but
-`h` drops from ~40 s to ~20–25 s, and first scroll / large-view round-trips get
-faster too. Independent, small, useful on its own. Invalidate an entry when the
-picture's image signature changes (re-crop, new render, Create JPG).
+Caching and stable sizing are the same problem: a cached scaled pixmap is only
+reusable if the same width is asked for every time.
+
+### 2A — grid card width fills the window, stable across sessions
+
+- **`grid_columns`** is a **global** `[culling]` setting now (default 5). The
+  `Per row:` spinner writes it, so every day opens with the same column count.
+- `_grid_card_width()` = `viewport_width ÷ columns − gaps`, using the scroll
+  area's **viewport** (inside the scrollbar + frame). The grid fills the window
+  edge to edge — no leftover right margin, no clipped last column. Stable across
+  sessions because the window geometry is remembered and the column count is
+  global. (A first attempt sized to a fixed % of the *screen* — it left a big
+  right margin when the window wasn't exactly that wide. Viewport-relative +
+  remembered geometry gets the stability without the gap.)
+- **Fit fix:** `grid_layout.setContentsMargins(0,0,0,0)` (default ~9 px margins
+  were eating the budgeted width); vertical scrollbar `ScrollBarAlwaysOn`;
+  `_grid_card_width` subtracts a scrollbar width + slack defensively (the
+  viewport is still reported one scrollbar too wide during the batched build);
+  `_apply_grid_width` pins `grid_widget` to exactly `columns × card_w + gaps` so
+  it can never exceed the viewport; and a debounced `resizeEvent`
+  (`_on_resize_settled`) rebuilds the visible grid at the new width when the
+  window is resized — or when the first-open viewport wasn't final yet. Net: the
+  grid always fits with a small even right margin, no clipped last column, no
+  horizontal scrollbar.
+- **No visible reflow during the build:** `grid_widget.setUpdatesEnabled(False)`
+  for the whole batched build, re-enabled at `_finalize_load`. On a warm cache
+  every card + thumbnail is set synchronously, so the new grid appears in one
+  paint. (A cold first load still trickles thumbnails in afterwards — fixed row
+  height keeps that calm; fully eliminating it needs a fixed *card* height,
+  which comes with step 3/4.)
+- **Stable row height during load:** the thumbnail area is a fixed 3:2 height
+  reserved up front; a portrait shot is scaled down to fit and letterboxed, not
+  allowed to push the row taller. Rows no longer jitter as images stream in.
+- First open with no remembered geometry defaults to ~92 % of the screen.
+- Known, accepted: if you change `Per row:` while a *focused* view (missing-GPS,
+  warnings) is showing, that view keeps the old width until reopened; the next
+  full open applies the new column count everywhere.
+
+### 2B — in-RAM scaled-pixmap cache
+
+- `gui/thumb_cache.py`: `ThumbCache` keyed by `(key, target_w, image_sig)`,
+  evicted by a **byte budget** (`_MAX_BYTES = 500 MB` — self-tunes to screen /
+  column count; holds a full ~1200-pic day's grid + filmstrip). `image_sig` is
+  the collection's existing "image changed" signature (`_img_sigs` /
+  `_image_sigs` — source + `.dop` mtimes).
+- **Explicit `invalidate(key)`** on top of the sig, called from `set_crop`,
+  `create_blog_jpg`, `_bake_heic_crop`, and `refresh()` — because a crop on a
+  picture with **no `.dop`** is written to the `.xmp`, which the signature does
+  not stat, so the sig alone would keep serving the stale uncropped pixmap
+  (found in testing: cropped image correct in the large viewer, stale in the
+  grid + filmstrip). A colour/rating edit does NOT invalidate.
+- One `ThumbCache` per collection (`PreviewCollection`, `SidecarCollection`,
+  `FileListPreviewCollection`), so the grid AND the large-viewer filmstrip
+  (same collection, fixed 144 px) share it for free.
+- `AsyncImageLoader.request(..., on_cache=…)` — `_deliver` stores the finished
+  pixmap **before** the target-widget-alive check, so a result still lands in
+  the cache even when the card that asked for it was torn down by the rebuild
+  in flight. `on_cache` captures the cache, never a widget.
+- Effect (confirmed live): a colour set is immediate; the second and later
+  filter rebuilds re-attach pixmaps with no decode. Widget churn is still there
+  (steps 3–4), so `h` is not instant yet, but the decode half is gone.
+
+**Not done:** persistent on-disk cache — step 2C.
+
+---
+
+## Step 2C — persistent on-disk thumbnail cache at the stable width   (not started)
+
+Now that `card_w` is deterministic we *can* write a small `<key>@<w>.jpg`
+alongside the existing preview cache and load that directly (tiny, fast decode)
+instead of decoding + smooth-scaling the big preview. This makes the **first**
+open of a day after a restart fast too, not just later rebuilds within a session.
+
+Lifetime / hygiene (user, 2026-09-01):
+
+- **Trip-scoped.** A trip's thumbnail cache lives for the age of the trip; when
+  the trip is deleted, its thumbnails go with it. Same principle as the preview
+  cache's "unplugged drive ≡ deleted trip" rule
+  (`project_preview_cache_hygiene`).
+- **Follow deletions.** When a blue/purple-delete moves files to trash, drop
+  their cached thumbnails too (the delete paths already know the affected keys).
+- Falls back to the RAM path (2B) on a miss; invalidated the same way (the
+  image-signature is part of the on-disk name or a sidecar).
+
+Deferred: it is real infrastructure (cache dir keyed to the trip, an LRU/age
+sweep, invalidation wired into the crop / render / delete paths). Do 3 first
+unless first-open-after-restart becomes the felt problem.
 
 ---
 

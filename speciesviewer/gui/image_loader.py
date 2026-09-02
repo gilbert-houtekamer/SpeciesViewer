@@ -36,18 +36,19 @@ PixmapCallback = Callable[[QPixmap], None]
 
 
 class _LoaderSignals(QObject):
-    # callback, QImage, generation
-    done = pyqtSignal(object, object, int)
+    # callback, QImage, generation, on_cache (or None)
+    done = pyqtSignal(object, object, int, object)
 
 
 class _LoadTask(QRunnable):
-    def __init__(self, producer, target_w, on_ready, gen, signals):
+    def __init__(self, producer, target_w, on_ready, gen, signals, on_cache=None):
         super().__init__()
         self._producer = producer
         self._target_w = target_w
         self._on_ready = on_ready
         self._gen = gen
         self._signals = signals
+        self._on_cache = on_cache
 
     def run(self):
         try:
@@ -57,7 +58,8 @@ class _LoadTask(QRunnable):
         if img is not None and not img.isNull() and self._target_w:
             if img.width() > self._target_w:
                 img = img.scaledToWidth(self._target_w, Qt.TransformationMode.SmoothTransformation)
-        self._signals.done.emit(self._on_ready, img if img is not None else QImage(), self._gen)
+        self._signals.done.emit(self._on_ready, img if img is not None else QImage(),
+                                self._gen, self._on_cache)
 
 
 class AsyncImageLoader(QObject):
@@ -75,13 +77,34 @@ class AsyncImageLoader(QObject):
         self._gen += 1
 
     def request(self, producer: ImageProducer, on_ready: PixmapCallback,
-                target_w: int | None = None) -> None:
-        task = _LoadTask(producer, target_w, on_ready, self._gen, self._signals)
+                target_w: int | None = None, on_cache=None) -> None:
+        """`on_cache`, if given, is called on the GUI thread with the finished
+        QPixmap BEFORE the target-widget-alive check — so the result is stored
+        in a shared cache even if the widget that asked for it is already gone.
+        It must not touch a widget (capture the collection / cache, not a card)."""
+        task = _LoadTask(producer, target_w, on_ready, self._gen, self._signals, on_cache)
         self._pool.start(task)
 
-    def _deliver(self, on_ready, qimage, gen):
+    def _deliver(self, on_ready, qimage, gen, on_cache=None):
         if gen != self._gen:
             return  # stale — the view moved on
+
+        # The widget that asked for this image may be GONE by now: the map rebuilds
+        # its filmstrip and no-GPS tray on every refresh, and closing a dialog
+        # destroys its cards mid-load. Neither bumps the generation, so the guard
+        # above does not catch it, and painting into a deleted C++ object raises
+        # RuntimeError. Drop the result instead — the widget it was for no longer
+        # exists, so there is nothing to show and nothing to fix.
+        px = QPixmap.fromImage(qimage) if (qimage is not None and not qimage.isNull()) else QPixmap()
+
+        # Cache the finished pixmap first — the callback owner (a card) may be
+        # gone, but the cache is not, and re-decoding on the next rebuild is
+        # exactly what this avoids.
+        if on_cache is not None and not px.isNull():
+            try:
+                on_cache(px)
+            except Exception as e:
+                logger.debug(f"thumb cache put skipped: {e}")
 
         # The widget that asked for this image may be GONE by now: the map rebuilds
         # its filmstrip and no-GPS tray on every refresh, and closing a dialog
@@ -93,7 +116,6 @@ class AsyncImageLoader(QObject):
         if isinstance(owner, QObject) and sip.isdeleted(owner):
             return
 
-        px = QPixmap.fromImage(qimage) if (qimage is not None and not qimage.isNull()) else QPixmap()
         try:
             on_ready(px)
         except RuntimeError as e:

@@ -652,9 +652,14 @@ class PictureCard(QFrame):
 
         target_w = max(80, card_width - 20)
         self._thumb_target_w = target_w
+        # Fixed thumbnail height (3:2), reserved up front — the row must NOT grow
+        # or shrink as images stream in (that jitter made a big-day load look
+        # slower than it is). A portrait shot is scaled down to fit and
+        # letterboxed, not allowed to push the row taller.
+        self._thumb_fixed_h = max(70, target_w * 2 // 3)
         self._thumb = _FramedPhoto()
         self._thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._thumb.setFixedHeight(max(70, target_w * 2 // 3))
+        self._thumb.setFixedHeight(self._thumb_fixed_h)
         self._thumb.setText("…")
         self._thumb.setCursor(Qt.CursorShape.PointingHandCursor)
         self._thumb.mousePressEvent = lambda e: (
@@ -1161,15 +1166,22 @@ class PictureCard(QFrame):
     def set_thumbnail(self, px: QPixmap):
         if px.isNull():
             self._thumb.setText("(no image)")
-        else:
-            # +6 leaves room for the 3px frame border so the pixmap isn't clipped
-            self._thumb.setFixedHeight(px.height() + 6)
-            # Framed cards carry the crop signal as a ⌗ mark in the text line, so
-            # the '#' is NOT stamped on the image (it also read as "has a JPG",
-            # which the corner format badge now covers). Legacy keeps the stamp.
-            if getattr(self._item, "has_crop", False) and not self._framed:
-                px = stamp_crop_marker(px)
+            self._update_thumb_style()
+            return
+        if self._framed:
+            # Keep the reserved height; scale a too-tall (portrait) thumb down to
+            # fit so the row height never shifts during load.
+            fh = getattr(self, "_thumb_fixed_h", self._thumb.height())
+            if fh > 0 and px.height() > fh:
+                px = px.scaledToHeight(fh, Qt.TransformationMode.SmoothTransformation)
             self._thumb.setPixmap(px)
+            self._update_thumb_style()
+            return
+        # Legacy card: grow the label to the image, keep the '#' crop stamp.
+        self._thumb.setFixedHeight(px.height() + 6)   # +6 for the 3px frame border
+        if getattr(self._item, "has_crop", False):
+            px = stamp_crop_marker(px)
+        self._thumb.setPixmap(px)
         self._update_thumb_style()
 
 

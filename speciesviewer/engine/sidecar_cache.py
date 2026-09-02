@@ -247,4 +247,6 @@ def build_cache_for_folder(folder: Path, xmp_paths: list[Path]) -> None:
         if src:
             cache.put(Path(src), row)
     cache.save()
-    logger.info(f"Sidecar cache: {len(rows)} entries written for {folder.name}")
+    # One line per folder during a card read is noise in the log panel — the
+    # card-read summary already reports the sidecar count.
+    logger.debug(f"Sidecar cache: {len(rows)} entries written for {folder.name}")

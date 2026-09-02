@@ -484,6 +484,8 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         self._pending_renders: dict[str, list] = {}
         self._cache_root = Path(cache_root) if cache_root else None
         self._loader = loader or AsyncImageLoader()
+        from gui.thumb_cache import ThumbCache
+        self._thumb_cache = ThumbCache()   # shared with the large-viewer filmstrip
         # Group input picture files by their unique-picture name. Using
         # deriveUniquePictureName (not the raw stem) folds DxO/PureRaw renders
         # and -small thumbnails onto their source RAW — otherwise e.g.
@@ -938,6 +940,8 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         new_sigs = {s: self._image_sig(s) for s in self._groups}
         self._image_changed = {s for s in new_sigs if new_sigs[s] != self._image_sigs.get(s)}
         self._image_sigs = new_sigs
+        for s in self._image_changed:
+            self._thumb_cache.invalidate(s)
         return text_changed | self._image_changed
 
     def sidecar_paths(self) -> list:
@@ -1062,6 +1066,8 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         self._created_blog_jpgs.add(key)
         g["jpg"] = str(out)
         self._jpg_dims_cache.pop(str(out), None)
+        self._image_sigs[key] = self._image_sig(key)   # display source is now the JPG
+        self._thumb_cache.invalidate(key)
         logger.info(f"Blog JPG created → {out.name} "
                     f"({im.size[0]}×{im.size[1]}, {'cropped' if crop else 'full frame'}).")
         return {"status": "created", "jpg": str(out), "size": im.size, "cropped": bool(crop)}
@@ -1238,6 +1244,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
                 g["xmp"] = xmp
         self._crop_cache.pop(stem, None)
         self._image_sigs[stem] = self._image_sig(stem)
+        self._thumb_cache.invalidate(stem)   # a crop can land in the .xmp, which the sig doesn't see
         return res
 
     # ── master inventory binding (album day viewer) ───────────────────────────
@@ -1401,7 +1408,13 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
                     return None
                 return apply_crop(img, crop) if crop else img
             return None
-        self._loader.request(produce, on_ready, target_w=target_w)
+        from gui.thumb_cache import cached_thumb_request
+        # Uncropped (crop-tool) requests come with target_w=None, so they take
+        # the straight-through branch and are never cached alongside the cropped
+        # display pixmap.
+        sig = self._image_sigs.get(stem)   # source + mtimes; changes on re-crop / new render
+        cached_thumb_request(self._thumb_cache, self._loader, stem,
+                             target_w, sig, produce, on_ready)
 
     def jpg_path(self, key: str):
         g = self._groups.get(key, {})
