@@ -149,12 +149,14 @@ class StarWidget(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(1)
+        # One stylesheet parse for the widget instead of one per star per repaint
+        # (this is on the hot path — a big-day grid builds thousands of these).
+        self.setStyleSheet("QPushButton { font-size:15px; border:none; padding:0; }")
         self._buttons: list[QPushButton] = []
         for i in range(1, 6):
             btn = QPushButton()
             btn.setFlat(True)
             btn.setFixedSize(22, 22)
-            btn.setStyleSheet("font-size: 15px; border: none; padding: 0;")
             btn.clicked.connect(lambda _, n=i: self._on_click(n))
             btn.installEventFilter(self)   # hover-preview: fill as the pointer moves
             layout.addWidget(btn)
@@ -194,10 +196,14 @@ class StarWidget(QWidget):
         self._paint(self._rating, preview=False)
 
     def _paint(self, upto: int, *, preview: bool):
-        colour = "color:#e6a92e;" if preview else ""
+        # The static look lives on the widget's stylesheet; only the transient
+        # hover-preview tint is a per-button override, so a normal (re)paint sets
+        # NO stylesheets at all.
+        ov = "color:#e6a92e;" if preview else ""
         for i, btn in enumerate(self._buttons):
             btn.setText("★" if i < upto else "☆")
-            btn.setStyleSheet(f"font-size: 15px; border: none; padding: 0; {colour}")
+            if btn.styleSheet() != ov:
+                btn.setStyleSheet(ov)
 
     @property
     def rating(self) -> int:
@@ -249,32 +255,24 @@ class ColorSelector(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(3)
-        self._buttons: dict[str, QPushButton] = {}
+        # One stylesheet parse for the whole selector (per-swatch rules keyed by
+        # objectName) instead of one big 4-rule sheet per button — this builds
+        # thousands of times on a big-day grid.
+        parts = ["QPushButton { background-color: transparent; border-radius: 8px; }",
+                 "QPushButton:disabled { border: 2px dashed #cccccc; }",
+                 "QPushButton:checked:disabled { background-color:#cccccc; border:2px solid #eeeeee; }"]
         for name in COLORS:
             hc = COLOR_HEX[name]
+            parts.append(f"QPushButton#sw_{name} {{ border: 2px solid {hc}; }}")
+            parts.append(f"QPushButton#sw_{name}:checked {{ background-color:{hc}; border:2px solid white; }}")
+        self.setStyleSheet("\n".join(parts))
+        self._buttons: dict[str, QPushButton] = {}
+        for name in COLORS:
             btn = _SwatchButton()
+            btn.setObjectName(f"sw_{name}")
             btn.setFixedSize(16, 16)
             btn.setCheckable(True)
             btn.setToolTip(f"{name}  ·  double-click: set and drop from the current filter")
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: transparent;
-                    border: 2px solid {hc};
-                    border-radius: 8px;
-                }}
-                QPushButton:checked {{
-                    background-color: {hc};
-                    border: 2px solid white;
-                }}
-                QPushButton:disabled {{
-                    background-color: transparent;
-                    border: 2px dashed #cccccc;
-                }}
-                QPushButton:checked:disabled {{
-                    background-color: #cccccc;
-                    border: 2px solid #eeeeee;
-                }}
-            """)
             btn.clicked.connect(lambda _, n=name: self._on_click(n))
             btn.doubleClicked.connect(lambda n=name: self._on_double_click(n))
             layout.addWidget(btn)

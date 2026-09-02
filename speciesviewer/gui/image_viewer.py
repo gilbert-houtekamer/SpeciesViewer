@@ -1258,7 +1258,11 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._build_next_batch()
 
     def _build_next_batch(self):
-        BATCH = 20
+        # Bigger batches = fewer event-loop yields between them; each yield does a
+        # deferred layout pass + wait-dialog pulse, which measured as ~100 ms and
+        # was most of the "other" time in the build log. The wait dialog is modal,
+        # so a ~1 s freeze per batch is fine.
+        BATCH = 100
         import time as _t
         # Preview (fpr) hosts always show the status/📝/📍 row; a collection can
         # opt in too (the culling grid does — it carries species/desc/GPS itself).
@@ -1362,7 +1366,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 QTimer.singleShot(0, self._apply_filters)
 
     def _build_missing_batch(self):
-        BATCH = 30
+        BATCH = 100
         show_status = self.fpr is not None or getattr(self._collection, "show_status_badges", False)
         card_w = self._grid_card_width()
         q = self._build_queue
