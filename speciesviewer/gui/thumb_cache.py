@@ -40,13 +40,15 @@ class ThumbCache:
         self._bytes = 0
         # coarse hit/miss tally for a "how warm was this build" log line
         self.stat_ram = self.stat_disk = self.stat_decode = 0
+        self.stat_disk_ms = 0.0   # wall time spent loading small JPGs off disk
 
     def reset_stats(self):
         self.stat_ram = self.stat_disk = self.stat_decode = 0
+        self.stat_disk_ms = 0.0
 
     def stats_line(self, total: int) -> str:
-        return (f"{total} cards — {self.stat_ram} RAM, {self.stat_disk} disk, "
-                f"{self.stat_decode} decoded")
+        return (f"{total} cards — {self.stat_ram} RAM, {self.stat_disk} disk "
+                f"({self.stat_disk_ms/1000:.1f} s), {self.stat_decode} decoded")
 
     def get(self, key, width, sig):
         k = (key, width, sig)
@@ -148,7 +150,10 @@ def cached_thumb_request(cache: ThumbCache, loader, key, target_w, sig,
         on_ready(hit)
         return
     if disk_dir is not None and stem:
+        import time as _t
+        _t0 = _t.perf_counter()
         dpx = load_disk_thumb(disk_dir, stem, target_w)
+        cache.stat_disk_ms += (_t.perf_counter() - _t0) * 1000
         if dpx is not None:
             cache.stat_disk += 1
             cache.put(key, target_w, sig, dpx)

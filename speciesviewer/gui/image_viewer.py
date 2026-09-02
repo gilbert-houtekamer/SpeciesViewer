@@ -1227,6 +1227,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._grid_busy = True
         import time as _t
         self._build_t0 = _t.monotonic()
+        self._t_construct = self._t_layout = 0.0
         tc = getattr(self._collection, "_thumb_cache", None)
         if tc is not None:
             tc.reset_stats()
@@ -1258,6 +1259,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
 
     def _build_next_batch(self):
         BATCH = 20
+        import time as _t
         # Preview (fpr) hosts always show the status/📝/📍 row; a collection can
         # opt in too (the culling grid does — it carries species/desc/GPS itself).
         show_status = self.fpr is not None or getattr(self._collection, "show_status_badges", False)
@@ -1269,8 +1271,12 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             idx = self._build_index
             item = self._collection.item(idx)
             r, col, span, card_w = self._placement[idx]
+            _c0 = _t.perf_counter()
             card = self._make_card(item, card_w, show_status)
+            _c1 = _t.perf_counter()
             self.grid_layout.addWidget(card, r, col, 1, span)
+            self._t_construct = getattr(self, "_t_construct", 0.0) + (_c1 - _c0)
+            self._t_layout = getattr(self, "_t_layout", 0.0) + (_t.perf_counter() - _c1)
             self._cards.append(card)
             self._cards_by_key[item.key] = card
             self._build_index += 1
@@ -1289,7 +1295,14 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         if tc is not None and self._cards:
             import time as _t
             dt = _t.monotonic() - getattr(self, "_build_t0", _t.monotonic())
-            logger.info("Culling grid built in %.1f s: %s", dt, tc.stats_line(len(self._cards)))
+            tcon = getattr(self, "_t_construct", 0.0)
+            tlay = getattr(self, "_t_layout", 0.0)
+            other = max(0.0, dt - tcon - tlay)
+            logger.info(
+                "Culling grid built in %.1f s: %s  ·  card build %.1f s "
+                "(disk-load %.1f s of that), layout %.1f s, other %.1f s",
+                dt, tc.stats_line(len(self._cards)), tcon,
+                tc.stat_disk_ms / 1000, tlay, other)
         # Restore the scroll position after a rebuild meant to keep the user's place
         # (a delete): the grid rebuilds from the top, so without this it snaps up and
         # the app looks like it 'lost its location'. Deferred one tick so the final
