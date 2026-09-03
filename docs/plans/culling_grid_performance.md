@@ -6,29 +6,48 @@ a Brazil day (1194 pictures).
 
 ---
 
-## STATUS
+## STATUS — PAUSED 2026-09-02 at a good-enough state
 
 All of steps 1–3 + 2C + the follow-ups below are **merged to `SpeciesViewer03`**
-(`62f3715`, branch `sv_culling_grid_showhide` deleted). What they buy:
-**filter-cycling within a session** (`g` / `h` / grey / find) is fast — show/hide,
-no rebuild, no decode. **First open / first widen to a bigger set** is still
-slow: it creates 500–720 card widgets, and 2C only removes the *decode* on top
-of that. Fast first-open needs **step 4** (fewer widgets).
+(latest `f638ea1`, branch `sv_culling_grid_showhide` deleted).
+
+**Bottom line (measured, user-confirmed):**
+- **Filter-cycling within a session** (`g` / `h` / grey / find) — **fast**, show/hide,
+  no rebuild, no decode. This is the daily loop and it works.
+- **First open / reopen** of a ~900-pic day — **~14 s** (~8–9 s into the Unrated
+  subset). NOT improved by the cheap levers. It is the raw cost of building
+  **~30 Qt objects per card** (13 buttons, ~8 labels, ~8 layouts, ~18 signal
+  connections, event filters). ~11 ms/card, scales with object count.
+- 2C works (`0 decoded` on warm reopens); it only removed the decode, which was
+  never the bottleneck. Cold OS-file-cache can still spike disk-load to ~6 s on
+  the first open of a day per boot.
+
+Tried and **did not help** (kept anyway, harmless):
+- Build batch 20 → 100: "other" −1.5 s only; the residue is the deferred
+  `QGridLayout` geometry pass (it moved out of `layout=0.0` into "other").
+- Hoisting `StarWidget` / `ColorSelector` stylesheets to one parse each: **no
+  measurable dent** — Qt's CSS parse of a tiny sheet is cheap; the cost is the
+  object count, not parsing.
+
+**To move first-open, next time:** step 6 (~30–40 % off card build, bounded to
+`PictureCard`) or step 4 (the real fix). Not worth trip time.
 
 | Step | What | State |
 |------|------|-------|
-| **1** | Open into a "Start with" subset + counts bar | **SHIPPED** `fd8405c`, live-tested |
-| **2A** | Grid width + `grid_columns` global + truncation fix + stable row height + width snapped to 16 px | **SHIPPED** `62f3715`, live-tested |
-| **2B** | In-RAM scaled-thumbnail cache, grid + filmstrip, crop invalidation | **SHIPPED**, live-tested |
-| **2C** | Persistent on-disk thumbnails in the per-folder preview cache | **SHIPPED, needs a clean re-test** — the width snap (2A) was needed before it could hit; a build now logs `N cards — X RAM, Y disk, Z decoded` |
-| **3** | Filter = show/hide, build cards once (lazy) | **SHIPPED**, live-tested (filter-cycling fast; first open/widen still builds widgets) |
-| — | Thumbnail aspect sampled from the day's own images (not fixed 3:2) | **SHIPPED** `28d88ed` |
-| — | Preview dialog: own taskbar button + `⤢` reset-size + reject a saved geometry small in both dims | **SHIPPED** |
+| **1** | Open into a "Start with" subset + counts bar | **SHIPPED** |
+| **2A** | Grid width + `grid_columns` global + truncation fix + stable row height + width snapped to 16 px | **SHIPPED** |
+| **2B** | In-RAM scaled-thumbnail cache, grid + filmstrip, crop invalidation | **SHIPPED** |
+| **2C** | Persistent on-disk thumbnails in the per-folder preview cache | **SHIPPED**, verified hitting (`X disk, 0 decoded`) |
+| **3** | Filter = show/hide, build cards once (lazy) | **SHIPPED** — filter-cycling fast; first open/widen still builds widgets |
+| — | Thumbnail aspect sampled from the day's own images (not fixed 3:2) | **SHIPPED** |
+| — | Preview dialog: taskbar button + `⤢` reset-size + reject a saved geometry small in both dims | **SHIPPED** |
 | — | Look & Feel: "Culling grid" section (columns / fill % / Start-with default) | **SHIPPED** |
-| **4** | Viewport virtualization (recycle ~40 cards) | **NEXT — own branch.** The fix for slow first-open: only ever build ~40 cards |
+| — | Build-time instrumentation in the log (`built in N s … card build / layout / other`) | **SHIPPED** — leave it, it's cheap and useful |
+| **4** | Viewport virtualization (recycle ~40 cards) | not started — the real first-open fix; own branch; can KEEP `QGridLayout` (it's not the bottleneck) |
 | 5 | Cheaper card (one custom-painted widget) | not started — only if 4 falls short |
-| 6 | Lazy controls (paint stars/swatches, real widgets on hover) | not started — scoped version of 5 |
-| 7 | Hoist per-widget stylesheets into one shared sheet | not started — cheap, low risk, any time |
+| **6** | Lazy controls (paint stars/swatches, real widgets on hover) | not started — **the next cheap-ish lever**, ~30–40 % off card build, bounded to `PictureCard` |
+| 7 | Hoist per-widget stylesheets into one shared sheet | **DONE for StarWidget/ColorSelector (`f638ea1`) — no measurable gain, don't bother with the rest** |
+| — | Persistent process-level `ThumbCache` (module singleton, keep byte budget) | not started — cheap; immunises 2nd+ open in a session from cold OS-file-cache |
 | — | Preview-cache size cap (% of free disk, LRU to fit) | requested 2026-09-02 — `utils/preview_cache` hygiene, separate follow-up |
 
 ---
