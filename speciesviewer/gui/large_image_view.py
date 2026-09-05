@@ -312,7 +312,7 @@ class _StripItem(QWidget):
         if self._current:
             ring = "border:2px solid #fff;"
         elif self._selected:
-            ring = "border:2px solid #2255cc;"
+            ring = f"border:2px solid {theme.SELECT_MULTI};"
         else:
             ring = ""
         self._frame.setStyleSheet(f"QFrame#scell {{ background:{c}; {ring} border-radius:5px; }}")
@@ -1888,6 +1888,14 @@ class LargeImageView(QDialog):
             self._clear_selection()
             event.accept()
             return
+        if (k == Qt.Key.Key_D and not desc_focused
+                and event.modifiers() & Qt.KeyboardModifier.ControlModifier
+                and self._selected_keys):
+            # Same "deselect all" as the grids' Ctrl+D — Esc does it too, but
+            # this keeps the binding consistent across all three viewers.
+            self._clear_selection()
+            event.accept()
+            return
         super().keyPressEvent(event)
 
     # ── Identity header (window title + name block) ───────────────────────────
@@ -2456,21 +2464,40 @@ class LargeImageView(QDialog):
         self.picture_navigated.emit(key)
 
     def _on_filmstrip_context(self, key: str):
-        """Right-click a filmstrip cell → a small menu with Delete. Acts on the
-        current selection when the clicked cell is part of it, else on that one
-        picture. The host does the actual trashing (same protection as the grid)
-        and calls drop_keys() with what it removed."""
+        """Right-click a filmstrip cell → Set species… / Set rating… / Delete, a
+        second way into the same batch ops as the '[' ... ']' selection bar. Acts
+        on the current selection when the clicked cell is part of it, else on
+        that one picture. Delete still goes through the host (same protection
+        as the grid) via drop_keys()."""
         from PyQt6.QtWidgets import QMenu
         from PyQt6.QtGui import QCursor
-        if not self._allow_delete or key not in self._keys:
+        if key not in self._keys:
             return
         keys = (set(self._selected_keys)
                 if key in self._selected_keys and self._selected_keys else {key})
         n = len(keys)
+        rep = self._collection.item_for_key(key)
         menu = QMenu(self)
-        act_del = menu.addAction(f"🗑 Delete  ({n} picture{'s' if n != 1 else ''})")
-        if menu.exec(QCursor.pos()) is act_del:
+        act_species = act_rating = act_del = None
+        if getattr(rep, "can_edit_species", False):
+            act_species = menu.addAction(f"Set species…  ({n} picture{'s' if n != 1 else ''})")
+        if getattr(rep, "can_edit_rating", False) or getattr(rep, "can_edit_color", False):
+            act_rating = menu.addAction(f"Set rating…  ({n} picture{'s' if n != 1 else ''})")
+        if self._allow_delete:
+            if act_species or act_rating:
+                menu.addSeparator()
+            act_del = menu.addAction(f"🗑 Delete  ({n} picture{'s' if n != 1 else ''})")
+        if not menu.actions():
+            return
+        chosen = menu.exec(QCursor.pos())
+        if chosen is None:
+            return
+        if chosen is act_del:
             self.delete_requested.emit(keys)
+        elif chosen is act_species:
+            self._batch_species(keys)
+        elif chosen is act_rating:
+            self._batch_rating(keys)
 
     def drop_keys(self, deleted):
         """Remove trashed pictures from this viewer: drop them from the key list and
@@ -2593,9 +2620,12 @@ class LargeImageView(QDialog):
         for k in changed:
             self.picture_changed.emit(k)
 
-    def _batch_species(self):
-        # Default to the currently-viewed picture when nothing is multi-selected.
-        keys = set(self._selected_keys) or ({self._item.key} if self._item else set())
+    def _batch_species(self, keys=None):
+        # Default to the selection bar's target: whatever's multi-selected, else
+        # the currently-viewed picture. A caller with its own target (the
+        # filmstrip right-click menu) passes keys explicitly.
+        if keys is None:
+            keys = set(self._selected_keys) or ({self._item.key} if self._item else set())
         if not keys:
             return
         fpr = None
@@ -2667,19 +2697,23 @@ class LargeImageView(QDialog):
                     logger.error(f"set_species failed for {k}: {e}")
             self._on_species_committed(set(keys))
 
-    def _batch_rating(self):
-        if not self._selected_keys:
+    def _batch_rating(self, keys=None):
+        # Default to the selection bar's target; a caller with its own target
+        # (the filmstrip right-click menu) passes keys explicitly.
+        if keys is None:
+            keys = set(self._selected_keys)
+        if not keys:
             return
         # The selection bar's "Set rating…" is always visible, but a read-only
         # viewer with no edit carve-out must not batch-write to the master. Edit
         # flags are per-collection, so one representative item answers for all.
-        rep = self._collection.item_for_key(next(iter(self._selected_keys)))
+        rep = self._collection.item_for_key(next(iter(keys)))
         can_rate = getattr(rep, "can_edit_rating", False)
         can_color = getattr(rep, "can_edit_color", False)
         if not (can_rate or can_color):
             return
         from PyQt6.QtWidgets import QDialogButtonBox
-        n = len(self._selected_keys)
+        n = len(keys)
         dlg = QDialog(self)
         dlg.setWindowTitle(
             f"Set rating / color — {n} picture{'s' if n != 1 else ''}")
@@ -2716,7 +2750,7 @@ class LargeImageView(QDialog):
         color = color_w.color
         if not _star_touched[0] and not _color_touched[0]:
             return  # user didn't interact with anything
-        key_list = list(self._selected_keys)
+        key_list = list(keys)
         total = len(key_list)
 
         # Progress dialog — modal so user can't trigger re-sorts mid-write.
@@ -2762,7 +2796,7 @@ class LargeImageView(QDialog):
         for k in changed:
             self.picture_changed.emit(k)
         cur_key = self._keys[self._index] if self._keys else None
-        if cur_key and cur_key in self._selected_keys:
+        if cur_key and cur_key in keys:
             self._load_current()
 
     # ── Edits ─────────────────────────────────────────────────────────────────

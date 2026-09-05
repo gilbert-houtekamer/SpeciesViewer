@@ -20,10 +20,15 @@ when bindings change.
 | `[` | Set the start of a selection range at the focused picture |
 | `]` | Set the end of a selection range at the focused picture |
 | `Ctrl+A` | Select all pictures (grids) |
-| `Ctrl+D` | Deselect all (grids) |
+| `Ctrl+D` | Deselect all (grids; also Large Image View, same as `Esc`) |
 | `Esc` | Clear the selection |
 
 (`[` … `]` select an inclusive range in display order.)
+
+In the **Large Image View**, right-clicking a filmstrip thumbnail is a second
+way in: it opens **Set species…** / **Set rating…** for the current
+selection (or just that one picture, if nothing's selected) — no need to
+remember `[` / `]` first.
 
 ## Moving the cursor (grids)
 

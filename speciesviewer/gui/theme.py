@@ -113,6 +113,13 @@ ACTIVE_FG = _T["ACTIVE_FG"]   # the current/active item in the nav lists
 # Plain neutral background used by the left-column list panels.
 PANEL_BG = _T["PANEL_BG"]
 
+# Multi-picture selection ring for framed culling cards (Species Image Preview
+# grid + the Large Image View filmstrip) — a light brown, deliberately far from
+# both the app-wide olive ACCENT (already "selected" everywhere else, but too
+# close to the Green rating colour here) and the "Blue" rating colour. Same
+# hex in both themes — it's a status colour, not a themed surface tone.
+SELECT_MULTI = "#B97A57"
+
 # Previously duplicated verbatim in TripInfoPanel/DaysPanel/SidebarInfoRail/VirtTripInfoPanel.
 FONT_MONO = "font-size: 10pt; font-family: Consolas, monospace;"
 

@@ -681,7 +681,6 @@ class PictureCard(QFrame):
         self._corner_cfg = corner_config(self._viewer_key)
         self._rate_lbl = _corner_badge("", rate=True)   # updated by update_rate_display
         self._colour_dot = None
-        self._attn = self._compute_attention() if self._show_status else False
         self._attn_badge = None
 
         for pos in ("tl", "bl", "br", "tr"):
@@ -862,14 +861,6 @@ class PictureCard(QFrame):
             self._colour_dot.setVisible(False)
 
     # ── framed preview (culling) status ──────────────────────────────────────
-    def _compute_attention(self) -> bool:
-        """True when this culling card needs a decision — unset/uncertain species
-        or missing GPS. Frozen (committed) cards are read-only, so never flagged."""
-        it = self._item
-        if getattr(it, "frozen", False):
-            return False
-        return (not it.species) or bool(it.error_msg) or (not it.has_gps)
-
     def _attn_badge_spec(self):
         """(text, clickable) for the top-right Attention badge — species issues
         first (clickable → SpeciesInfoDialog), then missing GPS. ('', False) when
@@ -927,8 +918,8 @@ class PictureCard(QFrame):
                 or getattr(self._item, "can_edit_description", False))
 
     def _refresh_framed_status(self):
-        """Repaint the preview-only bits (location line, Attention badge, red
-        frame) after an edit such as a species commit or a GPS backfill."""
+        """Repaint the preview-only bits (location line, Attention badge) after
+        an edit such as a species commit or a GPS backfill."""
         if not self._show_status:
             return
         self._refresh_location_line()
@@ -937,8 +928,6 @@ class PictureCard(QFrame):
             self._attn_badge.setText(text)
             self._attn_badge.setVisible(bool(text))
             self._thumb.reposition()
-        self._attn = self._compute_attention()
-        self._update_frame_style()   # red border on/off
 
     def _refresh_status_badges(self):
         """Set the status icon + description/GPS badges from the live item.
@@ -1118,15 +1107,14 @@ class PictureCard(QFrame):
             # selection border; the picture's colour label lives on the inner
             # frame, not here.
             if self._selected:
+                # Same brown as the Large Image View filmstrip's multi-select
+                # ring (theme.SELECT_MULTI) — not the app-wide olive ACCENT,
+                # which read as a thin, easy-to-miss line here.
                 self.setStyleSheet(f"QFrame#PictureCard {{ background:{_SURFACE};"
-                                   f" border:2px solid {theme.ACCENT}; border-radius:9px; }}")
+                                   f" border:2px solid {theme.SELECT_MULTI}; border-radius:9px; }}")
             elif self._cursor:
                 self.setStyleSheet(f"QFrame#PictureCard {{ background:{_SURFACE};"
                                    f" border:1px solid #333; border-radius:9px; }}")
-            elif getattr(self, "_attn", False):
-                # a culling card that needs a decision — subtle amber-red edge
-                self.setStyleSheet(f"QFrame#PictureCard {{ background:{_SURFACE};"
-                                   f" border:2px solid {theme.WARN}; border-radius:9px; }}")
             elif self._from_master:
                 # a master REFERENCE card — subtly off the normal surface so it
                 # reads as "existing" (theme-aware; was a hardcoded light grey)
