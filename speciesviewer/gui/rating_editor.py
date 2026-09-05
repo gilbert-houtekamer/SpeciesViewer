@@ -18,7 +18,8 @@ from PyQt6.QtWidgets import (
     QLabel, QFrame, QPushButton, QSpinBox, QComboBox, QSizePolicy, QCheckBox,
     QProgressDialog, QRadioButton, QButtonGroup, QMessageBox, QStyle, QCompleter,
 )
-from PyQt6.QtGui import QPixmap, QImage, QGuiApplication, QIcon, QPainter, QColor
+from PyQt6.QtGui import (QPixmap, QImage, QGuiApplication, QIcon, QPainter, QColor,
+                         QPen, QFont)
 from PyQt6.QtCore import (Qt, QTimer, QSize, QRect, QEvent, pyqtSignal, QObject,
                           QRunnable, QThreadPool)
 
@@ -412,6 +413,138 @@ def _corner_badge(text: str, *, bold: bool = False, rate: bool = False,
     return lbl
 
 
+class _ControlStrip(QWidget):
+    """Painted stars + colour dots for a framed culling card — ONE widget in
+    place of StarWidget (7 objects) + ColorSelector (7). Click a star to set the
+    rating, a dot to toggle the colour, double-click a dot to set it and signal
+    "tagged, move on".
+
+    Keyboard rating/colour never touched the real widgets either (it writes
+    through the PictureItem and repaints), so nothing is lost. The signal +
+    set_rating / set_color / set_disabled_colors surface matches the two widgets
+    it replaces, so PictureCard.refresh() drives it the same way.
+
+    Step 6 Tier 1 of docs/plans/culling_grid_performance.md — a big-day grid
+    builds thousands of these, and 12 of the ~14 sub-widgets per card were here.
+    """
+
+    rating_changed = pyqtSignal(int)
+    color_changed = pyqtSignal(str)         # "" when cleared
+    color_double_clicked = pyqtSignal(str)  # set + drop from the current filter
+
+    _STAR_ADV = 20   # px per star cell
+    _DOT_D = 15      # dot diameter
+    _DOT_ADV = 19    # px per dot cell (dot + gap)
+    _MID_GAP = 10    # min gap between the star block and the dot block
+
+    def __init__(self, rating, color, *, can_rate: bool, can_color: bool,
+                 disabled_colors=(), parent=None):
+        super().__init__(parent)
+        self._rating = int(rating or 0)
+        self._color = color or ""
+        self._can_rate = can_rate
+        self._can_color = can_color
+        self._disabled = set(disabled_colors or ())
+        self.setFixedHeight(22)
+        self.setMinimumWidth(self._STAR_ADV * 5 + self._MID_GAP
+                             + self._DOT_ADV * len(COLORS))
+        if can_rate or can_color:
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    # geometry — identical math in paint and hit-test
+    def _star_rects(self):
+        h = self.height()
+        return [QRect(i * self._STAR_ADV, 0, self._STAR_ADV, h) for i in range(5)]
+
+    def _dot_rects(self):
+        y = (self.height() - self._DOT_D) // 2
+        x0 = max(self._STAR_ADV * 5 + self._MID_GAP,
+                 self.width() - self._DOT_ADV * len(COLORS))
+        pad = (self._DOT_ADV - self._DOT_D) // 2
+        return [(name, QRect(x0 + i * self._DOT_ADV + pad, y, self._DOT_D, self._DOT_D))
+                for i, name in enumerate(COLORS)]
+
+    def paintEvent(self, _e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        f = QFont(p.font())
+        f.setPixelSize(15)
+        p.setFont(f)
+        p.setPen(QColor(theme.INK if self._can_rate else theme.INK_FAINT))
+        for i, r in enumerate(self._star_rects()):
+            p.drawText(r, Qt.AlignmentFlag.AlignCenter,
+                       "★" if i < self._rating else "☆")
+        if not self._can_color:
+            p.setOpacity(0.4)   # read-only card (frozen day) — dots visible, inert
+        for name, r in self._dot_rects():
+            hexc = QColor(COLOR_HEX.get(name, "#888888"))
+            if name in self._disabled:
+                pen = QPen(QColor("#cccccc"), 2)
+                pen.setStyle(Qt.PenStyle.DashLine)
+                p.setPen(pen)
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.drawEllipse(r)
+            elif name == self._color:
+                p.setPen(QPen(QColor("#ffffff"), 2))
+                p.setBrush(hexc)
+                p.drawEllipse(r)
+            else:
+                p.setPen(QPen(hexc, 2))
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.drawEllipse(r.adjusted(1, 1, -1, -1))
+        p.end()
+
+    def mousePressEvent(self, e):
+        pos = e.position().toPoint()
+        if self._can_rate:
+            for i, r in enumerate(self._star_rects()):
+                if r.contains(pos):
+                    n = i + 1
+                    self._rating = n - 1 if self._rating >= n else n
+                    self.update()
+                    self.rating_changed.emit(self._rating)
+                    return
+        if self._can_color:
+            for name, r in self._dot_rects():
+                if r.contains(pos) and name not in self._disabled:
+                    self._color = "" if self._color == name else name
+                    self.update()
+                    self.color_changed.emit(self._color)
+                    return
+
+    def mouseDoubleClickEvent(self, e):
+        if not self._can_color:
+            return
+        pos = e.position().toPoint()
+        for name, r in self._dot_rects():
+            if r.contains(pos) and name not in self._disabled:
+                if self._color != name:
+                    self._color = name
+                    self.update()
+                    self.color_changed.emit(self._color)
+                self.color_double_clicked.emit(name)
+                return
+
+    # external sync — mirrors StarWidget.set_rating / ColorSelector.set_color
+    def set_rating(self, n):
+        n = max(0, min(5, int(n or 0)))
+        if n != self._rating:
+            self._rating = n
+            self.update()
+
+    def set_color(self, c):
+        c = c or ""
+        if c != self._color:
+            self._color = c
+            self.update()
+
+    def set_disabled_colors(self, names, tooltip: str = ""):
+        d = set(names or ())
+        if d != self._disabled:
+            self._disabled = d
+            self.update()
+
+
 class PictureCard(QFrame):
     """Thumbnail + star rating + color selector + rate label for one picture.
 
@@ -466,6 +599,7 @@ class PictureCard(QFrame):
         self._crop_badge = None
         self._desc_badge = None
         self._gps_badge = None
+        self._ctrl_strip = None   # painted stars+dots (framed culling card only)
 
         if framed:
             self._frame_color = item.color
@@ -787,27 +921,47 @@ class PictureCard(QFrame):
             ml.addWidget(tag)
         outer.addWidget(meta)
 
-        # controls: clickable stars (left) + colour swatches (right)
+        # controls: clickable stars (left) + colour dots (right)
         controls = QWidget()
         cl = QHBoxLayout(controls)
         cl.setContentsMargins(10, 2, 10, 10)
         cl.setSpacing(6)
-        self._stars = StarWidget(item.rating)
-        if item.can_edit_rating:
-            self._stars.rating_changed.connect(self._on_rating_changed)
+        greyed = (("Blue", "Purple")
+                  if item.has_jpg and not getattr(item, "discard_allowed", False)
+                  else ())
+        if self._show_status:
+            # Culling grid: one painted strip instead of StarWidget + ColorSelector
+            # (12 fewer sub-widgets per card). _stars / _color_sel both point at
+            # it so refresh() and the update_*_display helpers work unchanged.
+            self._ctrl_strip = _ControlStrip(
+                item.rating, item.color,
+                can_rate=item.can_edit_rating, can_color=item.can_edit_color,
+                disabled_colors=greyed)
+            if item.can_edit_rating:
+                self._ctrl_strip.rating_changed.connect(self._on_rating_changed)
+            if item.can_edit_color:
+                self._ctrl_strip.color_changed.connect(self._on_color_changed)
+                self._ctrl_strip.color_double_clicked.connect(self._on_color_double_clicked)
+            self._stars = self._color_sel = self._ctrl_strip
+            cl.addWidget(self._ctrl_strip)
+            cl.addStretch()
         else:
-            self._stars.setEnabled(False)
-        cl.addWidget(self._stars)
-        cl.addStretch()
-        self._color_sel = ColorSelector(item.color)
-        if item.can_edit_color:
-            self._color_sel.color_changed.connect(self._on_color_changed)
-            self._color_sel.color_double_clicked.connect(self._on_color_double_clicked)
-        else:
-            self._color_sel.setEnabled(False)
-        if item.has_jpg and not getattr(item, "discard_allowed", False):
-            self._color_sel.set_disabled_colors(("Blue", "Purple"), _DISCARD_GREYED_TIP)
-        cl.addWidget(self._color_sel)
+            self._stars = StarWidget(item.rating)
+            if item.can_edit_rating:
+                self._stars.rating_changed.connect(self._on_rating_changed)
+            else:
+                self._stars.setEnabled(False)
+            cl.addWidget(self._stars)
+            cl.addStretch()
+            self._color_sel = ColorSelector(item.color)
+            if item.can_edit_color:
+                self._color_sel.color_changed.connect(self._on_color_changed)
+                self._color_sel.color_double_clicked.connect(self._on_color_double_clicked)
+            else:
+                self._color_sel.setEnabled(False)
+            if greyed:
+                self._color_sel.set_disabled_colors(greyed, _DISCARD_GREYED_TIP)
+            cl.addWidget(self._color_sel)
         outer.addWidget(controls)
 
         self._update_frame_style()   # base surface + selection border
