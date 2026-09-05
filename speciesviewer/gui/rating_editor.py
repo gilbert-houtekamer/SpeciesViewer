@@ -18,7 +18,8 @@ from PyQt6.QtWidgets import (
     QLabel, QFrame, QPushButton, QSpinBox, QComboBox, QSizePolicy, QCheckBox,
     QProgressDialog, QRadioButton, QButtonGroup, QMessageBox, QStyle, QCompleter,
 )
-from PyQt6.QtGui import QPixmap, QImage, QGuiApplication, QIcon, QPainter, QColor
+from PyQt6.QtGui import (QPixmap, QImage, QGuiApplication, QIcon, QPainter, QColor,
+                         QPen, QFont)
 from PyQt6.QtCore import (Qt, QTimer, QSize, QRect, QEvent, pyqtSignal, QObject,
                           QRunnable, QThreadPool)
 
@@ -412,6 +413,138 @@ def _corner_badge(text: str, *, bold: bool = False, rate: bool = False,
     return lbl
 
 
+class _ControlStrip(QWidget):
+    """Painted stars + colour dots for a framed culling card — ONE widget in
+    place of StarWidget (7 objects) + ColorSelector (7). Click a star to set the
+    rating, a dot to toggle the colour, double-click a dot to set it and signal
+    "tagged, move on".
+
+    Keyboard rating/colour never touched the real widgets either (it writes
+    through the PictureItem and repaints), so nothing is lost. The signal +
+    set_rating / set_color / set_disabled_colors surface matches the two widgets
+    it replaces, so PictureCard.refresh() drives it the same way.
+
+    Step 6 Tier 1 of docs/plans/culling_grid_performance.md — a big-day grid
+    builds thousands of these, and 12 of the ~14 sub-widgets per card were here.
+    """
+
+    rating_changed = pyqtSignal(int)
+    color_changed = pyqtSignal(str)         # "" when cleared
+    color_double_clicked = pyqtSignal(str)  # set + drop from the current filter
+
+    _STAR_ADV = 20   # px per star cell
+    _DOT_D = 15      # dot diameter
+    _DOT_ADV = 19    # px per dot cell (dot + gap)
+    _MID_GAP = 10    # min gap between the star block and the dot block
+
+    def __init__(self, rating, color, *, can_rate: bool, can_color: bool,
+                 disabled_colors=(), parent=None):
+        super().__init__(parent)
+        self._rating = int(rating or 0)
+        self._color = color or ""
+        self._can_rate = can_rate
+        self._can_color = can_color
+        self._disabled = set(disabled_colors or ())
+        self.setFixedHeight(22)
+        self.setMinimumWidth(self._STAR_ADV * 5 + self._MID_GAP
+                             + self._DOT_ADV * len(COLORS))
+        if can_rate or can_color:
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    # geometry — identical math in paint and hit-test
+    def _star_rects(self):
+        h = self.height()
+        return [QRect(i * self._STAR_ADV, 0, self._STAR_ADV, h) for i in range(5)]
+
+    def _dot_rects(self):
+        y = (self.height() - self._DOT_D) // 2
+        x0 = max(self._STAR_ADV * 5 + self._MID_GAP,
+                 self.width() - self._DOT_ADV * len(COLORS))
+        pad = (self._DOT_ADV - self._DOT_D) // 2
+        return [(name, QRect(x0 + i * self._DOT_ADV + pad, y, self._DOT_D, self._DOT_D))
+                for i, name in enumerate(COLORS)]
+
+    def paintEvent(self, _e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        f = QFont(p.font())
+        f.setPixelSize(15)
+        p.setFont(f)
+        p.setPen(QColor(theme.INK if self._can_rate else theme.INK_FAINT))
+        for i, r in enumerate(self._star_rects()):
+            p.drawText(r, Qt.AlignmentFlag.AlignCenter,
+                       "★" if i < self._rating else "☆")
+        if not self._can_color:
+            p.setOpacity(0.4)   # read-only card (frozen day) — dots visible, inert
+        for name, r in self._dot_rects():
+            hexc = QColor(COLOR_HEX.get(name, "#888888"))
+            if name in self._disabled:
+                pen = QPen(QColor("#cccccc"), 2)
+                pen.setStyle(Qt.PenStyle.DashLine)
+                p.setPen(pen)
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.drawEllipse(r)
+            elif name == self._color:
+                p.setPen(QPen(QColor("#ffffff"), 2))
+                p.setBrush(hexc)
+                p.drawEllipse(r)
+            else:
+                p.setPen(QPen(hexc, 2))
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.drawEllipse(r.adjusted(1, 1, -1, -1))
+        p.end()
+
+    def mousePressEvent(self, e):
+        pos = e.position().toPoint()
+        if self._can_rate:
+            for i, r in enumerate(self._star_rects()):
+                if r.contains(pos):
+                    n = i + 1
+                    self._rating = n - 1 if self._rating >= n else n
+                    self.update()
+                    self.rating_changed.emit(self._rating)
+                    return
+        if self._can_color:
+            for name, r in self._dot_rects():
+                if r.contains(pos) and name not in self._disabled:
+                    self._color = "" if self._color == name else name
+                    self.update()
+                    self.color_changed.emit(self._color)
+                    return
+
+    def mouseDoubleClickEvent(self, e):
+        if not self._can_color:
+            return
+        pos = e.position().toPoint()
+        for name, r in self._dot_rects():
+            if r.contains(pos) and name not in self._disabled:
+                if self._color != name:
+                    self._color = name
+                    self.update()
+                    self.color_changed.emit(self._color)
+                self.color_double_clicked.emit(name)
+                return
+
+    # external sync — mirrors StarWidget.set_rating / ColorSelector.set_color
+    def set_rating(self, n):
+        n = max(0, min(5, int(n or 0)))
+        if n != self._rating:
+            self._rating = n
+            self.update()
+
+    def set_color(self, c):
+        c = c or ""
+        if c != self._color:
+            self._color = c
+            self.update()
+
+    def set_disabled_colors(self, names, tooltip: str = ""):
+        d = set(names or ())
+        if d != self._disabled:
+            self._disabled = d
+            self.update()
+
+
 class PictureCard(QFrame):
     """Thumbnail + star rating + color selector + rate label for one picture.
 
@@ -466,6 +599,7 @@ class PictureCard(QFrame):
         self._crop_badge = None
         self._desc_badge = None
         self._gps_badge = None
+        self._ctrl_strip = None   # painted stars+dots (framed culling card only)
 
         if framed:
             self._frame_color = item.color
@@ -727,87 +861,115 @@ class PictureCard(QFrame):
                     self._thumb.add_badge(_corner_badge(txt, bold=(datum == "format")), pos)
         self.update_rate_display(item.rate)
 
-        # meta lines: up to three species-name lines per the display profile —
-        # deduped, the scientific one italic, the sex/age/plumage suffix on the
-        # primary (first) line. Held in a sub-layout so a refresh can rebuild them.
-        meta = QWidget()
-        ml = QVBoxLayout(meta)
-        ml.setContentsMargins(10, 8, 10, 2)
-        ml.setSpacing(1)
-        self._name_holder = QVBoxLayout()
-        self._name_holder.setContentsMargins(0, 0, 0, 0)
-        self._name_holder.setSpacing(1)
-        self._name_labels = []
-        ml.addLayout(self._name_holder)
-        self._populate_name_lines()
-        # location line (preview/culling only): place name or "No GPS data available"
-        self._lbl_location = None
-        if getattr(item, "show_location_line", False):
-            self._lbl_location = QLabel()
-            self._lbl_location.setWordWrap(True)
-            ml.addWidget(self._lbl_location)
-            self._refresh_location_line()
-        # filename + file-types (left, mono, JPG token greened) with a right-aligned
-        # "⌗ Crop" mark. Crop is its own concept (independent of JPG), so the format
-        # reads off the corner and no '#' is stamped on framed thumbnails.
-        key_row = QHBoxLayout()
-        key_row.setContentsMargins(0, 0, 0, 0)
-        key_row.setSpacing(8)
-        self._lbl_key = QLabel(self._key_line_text())
-        self._lbl_key.setStyleSheet(f"color:{_INK_SOFT}; font-family:Consolas,monospace; font-size:9.5px;")
-        self._lbl_key.setWordWrap(True)
-        self._lbl_key.setToolTip(self._item.key)
-        key_row.addWidget(self._lbl_key, 1)
-        self._lbl_crop = QLabel()
-        self._lbl_crop.setStyleSheet(f"color:{_FRAME}; font-family:Consolas,monospace;"
-                                     f" font-size:9.5px; font-weight:700;")
-        # 📝 on this line is a link to the Headline/Description editor (⌗ Crop is
-        # not — it's just a marker).
-        self._lbl_crop.setTextInteractionFlags(
-            Qt.TextInteractionFlag.LinksAccessibleByMouse)
-        self._lbl_crop.linkActivated.connect(self._on_crop_link)
-        key_row.addWidget(self._lbl_crop, 0,
-                          Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
-        ml.addLayout(key_row)
-        self._refresh_crop_mark()
-        # origin tag only when kinds are mixed (Trip+Master) or a master/album ref
-        from_album = getattr(item, "from_album", False)
-        if self._from_master or self._show_kind_tag or from_album:
-            res = item.exif.jpg_dimensions or item.exif.dimensions
-            origin = "Album" if from_album else ("master" if self._from_master else "trip")
-            tag = QLabel(f"— from {origin} ({res}) —" if res else f"— from {origin} —")
-            # Green/bold marks the pictures that belong to what you opened —
-            # this album, or this trip — so they read at a glance among the
-            # plain grey "— from master —" references beside them. Same cue in
-            # both viewers: green means "one of mine".
-            if from_album or not self._from_master:
-                tag.setStyleSheet("color:#2e7d32; font-size:9px; font-style:italic; font-weight:bold;")
-            else:
-                tag.setStyleSheet("color:#888; font-size:9px; font-style:italic;")
-            ml.addWidget(tag)
-        outer.addWidget(meta)
+        # meta text: name lines + location + filename/marks + origin tag.
+        # Culling grid (show_status): ONE rich-text label — the grid builds
+        # thousands and this block was 4-7 QLabels + 3 sub-layouts + a wrapper.
+        # Species viewers (few cards) keep the multi-label layout, whose refresh
+        # only rebuilds the name sub-layout.
+        self._meta_collapsed = self._show_status
+        if self._meta_collapsed:
+            self._name_holder = None
+            self._name_labels = []
+            self._lbl_location = self._lbl_key = self._lbl_crop = None
+            self._lbl_meta = QLabel()
+            self._lbl_meta.setTextFormat(Qt.TextFormat.RichText)
+            self._lbl_meta.setWordWrap(True)
+            self._lbl_meta.setContentsMargins(10, 8, 10, 2)
+            self._lbl_meta.setTextInteractionFlags(
+                Qt.TextInteractionFlag.LinksAccessibleByMouse)
+            self._lbl_meta.linkActivated.connect(self._on_crop_link)
+            self._lbl_name = self._lbl_meta   # external code may reference _lbl_name
+            outer.addWidget(self._lbl_meta)
+            self._rebuild_meta_html()
+        else:
+            self._lbl_meta = None
+            meta = QWidget()
+            ml = QVBoxLayout(meta)
+            ml.setContentsMargins(10, 8, 10, 2)
+            ml.setSpacing(1)
+            self._name_holder = QVBoxLayout()
+            self._name_holder.setContentsMargins(0, 0, 0, 0)
+            self._name_holder.setSpacing(1)
+            self._name_labels = []
+            ml.addLayout(self._name_holder)
+            self._populate_name_lines()
+            self._lbl_location = None
+            if getattr(item, "show_location_line", False):
+                self._lbl_location = QLabel()
+                self._lbl_location.setWordWrap(True)
+                ml.addWidget(self._lbl_location)
+                self._refresh_location_line()
+            key_row = QHBoxLayout()
+            key_row.setContentsMargins(0, 0, 0, 0)
+            key_row.setSpacing(8)
+            self._lbl_key = QLabel(self._key_line_text())
+            self._lbl_key.setStyleSheet(f"color:{_INK_SOFT}; font-family:Consolas,monospace; font-size:9.5px;")
+            self._lbl_key.setWordWrap(True)
+            self._lbl_key.setToolTip(self._item.key)
+            key_row.addWidget(self._lbl_key, 1)
+            self._lbl_crop = QLabel()
+            self._lbl_crop.setStyleSheet(f"color:{_FRAME}; font-family:Consolas,monospace;"
+                                         f" font-size:9.5px; font-weight:700;")
+            self._lbl_crop.setTextInteractionFlags(
+                Qt.TextInteractionFlag.LinksAccessibleByMouse)
+            self._lbl_crop.linkActivated.connect(self._on_crop_link)
+            key_row.addWidget(self._lbl_crop, 0,
+                              Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+            ml.addLayout(key_row)
+            self._refresh_crop_mark()
+            from_album = getattr(item, "from_album", False)
+            if self._from_master or self._show_kind_tag or from_album:
+                res = item.exif.jpg_dimensions or item.exif.dimensions
+                origin = "Album" if from_album else ("master" if self._from_master else "trip")
+                tag = QLabel(f"— from {origin} ({res}) —" if res else f"— from {origin} —")
+                if from_album or not self._from_master:
+                    tag.setStyleSheet("color:#2e7d32; font-size:9px; font-style:italic; font-weight:bold;")
+                else:
+                    tag.setStyleSheet("color:#888; font-size:9px; font-style:italic;")
+                ml.addWidget(tag)
+            outer.addWidget(meta)
 
-        # controls: clickable stars (left) + colour swatches (right)
+        # controls: clickable stars (left) + colour dots (right)
         controls = QWidget()
         cl = QHBoxLayout(controls)
         cl.setContentsMargins(10, 2, 10, 10)
         cl.setSpacing(6)
-        self._stars = StarWidget(item.rating)
-        if item.can_edit_rating:
-            self._stars.rating_changed.connect(self._on_rating_changed)
+        greyed = (("Blue", "Purple")
+                  if item.has_jpg and not getattr(item, "discard_allowed", False)
+                  else ())
+        if self._show_status:
+            # Culling grid: one painted strip instead of StarWidget + ColorSelector
+            # (12 fewer sub-widgets per card). _stars / _color_sel both point at
+            # it so refresh() and the update_*_display helpers work unchanged.
+            self._ctrl_strip = _ControlStrip(
+                item.rating, item.color,
+                can_rate=item.can_edit_rating, can_color=item.can_edit_color,
+                disabled_colors=greyed)
+            if item.can_edit_rating:
+                self._ctrl_strip.rating_changed.connect(self._on_rating_changed)
+            if item.can_edit_color:
+                self._ctrl_strip.color_changed.connect(self._on_color_changed)
+                self._ctrl_strip.color_double_clicked.connect(self._on_color_double_clicked)
+            self._stars = self._color_sel = self._ctrl_strip
+            cl.addWidget(self._ctrl_strip)
+            cl.addStretch()
         else:
-            self._stars.setEnabled(False)
-        cl.addWidget(self._stars)
-        cl.addStretch()
-        self._color_sel = ColorSelector(item.color)
-        if item.can_edit_color:
-            self._color_sel.color_changed.connect(self._on_color_changed)
-            self._color_sel.color_double_clicked.connect(self._on_color_double_clicked)
-        else:
-            self._color_sel.setEnabled(False)
-        if item.has_jpg and not getattr(item, "discard_allowed", False):
-            self._color_sel.set_disabled_colors(("Blue", "Purple"), _DISCARD_GREYED_TIP)
-        cl.addWidget(self._color_sel)
+            self._stars = StarWidget(item.rating)
+            if item.can_edit_rating:
+                self._stars.rating_changed.connect(self._on_rating_changed)
+            else:
+                self._stars.setEnabled(False)
+            cl.addWidget(self._stars)
+            cl.addStretch()
+            self._color_sel = ColorSelector(item.color)
+            if item.can_edit_color:
+                self._color_sel.color_changed.connect(self._on_color_changed)
+                self._color_sel.color_double_clicked.connect(self._on_color_double_clicked)
+            else:
+                self._color_sel.setEnabled(False)
+            if greyed:
+                self._color_sel.set_disabled_colors(greyed, _DISCARD_GREYED_TIP)
+            cl.addWidget(self._color_sel)
         outer.addWidget(controls)
 
         self._update_frame_style()   # base surface + selection border
@@ -816,10 +978,82 @@ class PictureCard(QFrame):
             self._thumb_loaded = True
             item.request_thumbnail(target_w, self.set_thumbnail)
 
+    @staticmethod
+    def _esc(s: str) -> str:
+        return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    def _crop_marks_list(self) -> list:
+        """'⌗ Crop' / 📝 / '+ JPG' marks for the filename line — shared by the
+        collapsed meta label and the multi-label layout's _lbl_crop."""
+        marks = []
+        if getattr(self._item, "has_crop", False):
+            marks.append("⌗ Crop")
+        if self._show_status and self._item.description:
+            if self._notes_editable():
+                marks.append('<a href="notes" style="text-decoration:none;"'
+                             ' title="Edit headline / description">📝</a>')
+            else:
+                marks.append("📝")
+        if getattr(self._item, "has_pending_render", False):
+            names = getattr(self._item, "pending_render_names", []) or []
+            plural = "s" if len(names) != 1 else ""
+            marks.append(
+                f'<a href="render" style="color:#2e7d32;text-decoration:none;'
+                f'font-weight:700;" title="New render{plural} on disk, not in the '
+                f'master yet — click to add">+ JPG</a>')
+        return marks
+
+    def _rebuild_meta_html(self) -> None:
+        """Compose the culling card's whole meta block — name lines, location,
+        filename + marks, origin tag — into the one rich-text label."""
+        if getattr(self, "_lbl_meta", None) is None:
+            return
+        it = self._item
+        lines = getattr(it, "display_lines", None) or [
+            ((it.display_name or it.key)
+             + (getattr(it, "qualifier_suffix", "") or ""), False)]
+        name_bits = []
+        for i, (text, is_sci) in enumerate(lines):
+            esc = self._esc(text)
+            if i == 0:
+                name_bits.append(
+                    f'<span style="color:{_INK};font-weight:600;font-size:14px;">{esc}</span>')
+            else:
+                st = f"color:{_INK_SOFT};font-size:11px;" + ("font-style:italic;" if is_sci else "")
+                name_bits.append(f'<span style="{st}">{esc}</span>')
+        bits = ["<br>".join(name_bits)]
+        if getattr(it, "show_location_line", False):
+            loc = it.location_line()
+            col = "#999999" if loc == "No GPS data available" else "#2e7d32"
+            bits.append(f'<span style="color:{col};font-size:9px;font-style:italic;">'
+                        f'{self._esc(loc)}</span>')
+        line = (f'<span style="color:{_INK_SOFT};font-family:Consolas,monospace;'
+                f'font-size:9px;">{self._key_line_text()}</span>')
+        marks = self._crop_marks_list()
+        if marks:
+            line += (f'&nbsp;&nbsp;<span style="color:{_FRAME};'
+                     f'font-family:Consolas,monospace;font-size:9px;font-weight:700;">'
+                     + "&nbsp;&nbsp;".join(marks) + '</span>')
+        bits.append(line)
+        from_album = getattr(it, "from_album", False)
+        if self._from_master or self._show_kind_tag or from_album:
+            res = it.exif.jpg_dimensions or it.exif.dimensions
+            origin = "Album" if from_album else ("master" if self._from_master else "trip")
+            txt = f"— from {origin} ({res}) —" if res else f"— from {origin} —"
+            mine = from_album or not self._from_master
+            st = ("color:#2e7d32;font-size:9px;font-style:italic;font-weight:bold;"
+                  if mine else "color:#888888;font-size:9px;font-style:italic;")
+            bits.append(f'<span style="{st}">{self._esc(txt)}</span>')
+        self._lbl_meta.setText("<br>".join(bits))
+        self._lbl_meta.setToolTip(it.key)
+
     def _populate_name_lines(self) -> None:
         """(Re)build the framed card's name lines from the item's display_lines:
         the first line is the primary (bold) name, any further lines are softer,
         and whichever line IS the scientific name is italicised."""
+        if getattr(self, "_meta_collapsed", False):
+            self._rebuild_meta_html()
+            return
         while self._name_holder.count():
             it = self._name_holder.takeAt(0)
             w = it.widget()
@@ -887,31 +1121,11 @@ class PictureCard(QFrame):
         return ("", False)
 
     def _refresh_crop_mark(self):
-        """The right-aligned '⌗ Crop' mark on the filename line (plus a 📝 when a
-        preview card carries a description). Crop is its own signal — no '#' stamp
-        on the framed image."""
-        marks = []
-        if getattr(self._item, "has_crop", False):
-            marks.append("⌗ Crop")
-        if self._show_status and self._item.description:
-            if self._notes_editable():
-                # A clickable link → the Headline/Description editor; the label
-                # renders as rich text once it contains the anchor.
-                marks.append('<a href="notes" style="text-decoration:none;"'
-                             ' title="Edit headline / description">📝</a>')
-            else:
-                marks.append("📝")   # read-only host: an indicator, not a link
-        # A fresh DxO/LR render is sitting on disk that the master doesn't track yet
-        # (found by the focus-in scan). A "+ JPG" link in the same green as the JPG
-        # file token — reads as "add the JPG" — → registers it in the master.
-        if getattr(self._item, "has_pending_render", False):
-            names = getattr(self._item, "pending_render_names", []) or []
-            plural = "s" if len(names) != 1 else ""
-            marks.append(
-                f'<a href="render" style="color:#2e7d32;text-decoration:none;'
-                f'font-weight:700;" title="New render{plural} on disk, not in the '
-                f'master yet — click to add">+ JPG</a>')
-        self._lbl_crop.setText("&nbsp;&nbsp;".join(marks))
+        """The right-aligned '⌗ Crop' / 📝 / '+ JPG' marks on the filename line."""
+        if getattr(self, "_meta_collapsed", False):
+            self._rebuild_meta_html()
+            return
+        self._lbl_crop.setText("&nbsp;&nbsp;".join(self._crop_marks_list()))
         self._lbl_crop.setToolTip("This picture carries a crop" if getattr(
             self._item, "has_crop", False) else "")
 
@@ -993,10 +1207,11 @@ class PictureCard(QFrame):
         """Re-read every field from the (live) item and repaint — used after an
         external edit such as a species commit or a GPS backfill."""
         if self._framed:
-            self._populate_name_lines()
+            self._populate_name_lines()   # collapsed mode: rebuilds the whole meta label
             self._frame_color = self._item.color
             self._update_thumb_style()          # repaints the frame colour
-            self._lbl_key.setText(self._key_line_text())
+            if self._lbl_key is not None:
+                self._lbl_key.setText(self._key_line_text())
             self._refresh_crop_mark()
             self._stars.set_rating(self._item.rating)
             self._color_sel.set_color(self._item.color)
@@ -1041,6 +1256,9 @@ class PictureCard(QFrame):
     def _refresh_location_line(self):
         """Set the location line from the live item; muted grey when there's no
         place/GPS, normal green when there is."""
+        if getattr(self, "_meta_collapsed", False):
+            self._rebuild_meta_html()
+            return
         if self._lbl_location is None:
             return
         text = self._item.location_line()
