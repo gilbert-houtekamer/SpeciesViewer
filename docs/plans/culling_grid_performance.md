@@ -52,6 +52,21 @@ Not doing now: step 4 (full widget virtualization) — step 6 lowers the per-car
 cost enough that building a whole day stays affordable at today's day sizes;
 revisit step 4 only when a day genuinely runs into the thousands.
 
+### Step 8 — SHIPPED `c6a30eb` (2026-09-05), live-tested OK
+
+`defer_thumb=True` on `PictureCard` + `request_thumb_if_needed()` /
+`release_thumb()`; `ImagePreviewDialog._load_visible_thumbs()` drives it from
+the scrollbar (debounced 90 ms) and after every build / reflow / resize.
+`_THUMB_WARM = 100` kept warm. **Plus progressive reveal:** the first batch
+(100) builds behind the modal wait dialog, `_reveal_partial()` shows the grid
+and hands back control, the rest build **hidden + out of the layout** (batches
+of 30), and `_finalize_load` places the backlog in one frozen pass. First cut
+(reveal by adding to a *live* `QGridLayout` per batch) was **quadratic** —
+re-flow + badge reposition for every card every batch — and made a ~2200-pic
+day *slower* (30 s → 45 s); the hidden-backlog version lands at **~15 s to a
+usable grid, first screenful live in ~1.5 s**. `_grid_busy` stays True through
+the background build so a filter keystroke is still deferred to `_finalize_load`.
+
 | Step | What | State |
 |------|------|-------|
 | **1** | Open into a "Start with" subset + counts bar | **SHIPPED** |
@@ -65,9 +80,9 @@ revisit step 4 only when a day genuinely runs into the thousands.
 | — | Build-time instrumentation in the log (`built in N s … card build / layout / other`) | **SHIPPED** — leave it, it's cheap and useful |
 | **4** | Viewport virtualization (recycle ~40 cards) | not started — the real first-open fix; own branch; can KEEP `QGridLayout` (it's not the bottleneck) |
 | 5 | Cheaper card (one custom-painted widget) | not started — only if 6 falls short |
-| **6** | Cheaper card, tiered: Tier 1 paint stars/swatches + one shared floating editor on the focused card; Tier 2 collapse text into one rich-text label + painted corner badges | not started — **AGREED, second**; Tier 1 ≈ 33→19 objects/card, Tier 2 ≈ →~7; bounded to `PictureCard`, helps every viewer |
+| **6** | Cheaper card, tiered: Tier 1 paint stars/swatches + one shared floating editor on the focused card; Tier 2 collapse text into one rich-text label + painted corner badges | **IN PROGRESS 2026-09-05** (branch `sv_cheaper_card`); Tier 1 ≈ 33→19 objects/card, Tier 2 ≈ →~7; bounded to `PictureCard`, helps every viewer |
 | 7 | Hoist per-widget stylesheets into one shared sheet | **DONE for StarWidget/ColorSelector (`f638ea1`) — no measurable gain, don't bother with the rest** |
-| **8** | Viewport thumbnail loading — request thumbnails only for cards in/near the viewport (+~100 warm), release far ones back to the cache | not started — **AGREED, first**; the biggest *felt* win for culling; decoupled from step 4 |
+| **8** | Viewport thumbnail loading + progressive grid reveal | **SHIPPED `c6a30eb`** — ~2200-pic day ~30 s → ~15 s to a usable grid, first screenful ~1.5 s |
 | — | Persistent process-level `ThumbCache` (module singleton, keep byte budget) | not started — cheap; immunises 2nd+ open in a session from cold OS-file-cache |
 | — | Preview-cache size cap (% of free disk, LRU to fit) | requested 2026-09-02 — `utils/preview_cache` hygiene, separate follow-up |
 
