@@ -861,65 +861,73 @@ class PictureCard(QFrame):
                     self._thumb.add_badge(_corner_badge(txt, bold=(datum == "format")), pos)
         self.update_rate_display(item.rate)
 
-        # meta lines: up to three species-name lines per the display profile —
-        # deduped, the scientific one italic, the sex/age/plumage suffix on the
-        # primary (first) line. Held in a sub-layout so a refresh can rebuild them.
-        meta = QWidget()
-        ml = QVBoxLayout(meta)
-        ml.setContentsMargins(10, 8, 10, 2)
-        ml.setSpacing(1)
-        self._name_holder = QVBoxLayout()
-        self._name_holder.setContentsMargins(0, 0, 0, 0)
-        self._name_holder.setSpacing(1)
-        self._name_labels = []
-        ml.addLayout(self._name_holder)
-        self._populate_name_lines()
-        # location line (preview/culling only): place name or "No GPS data available"
-        self._lbl_location = None
-        if getattr(item, "show_location_line", False):
-            self._lbl_location = QLabel()
-            self._lbl_location.setWordWrap(True)
-            ml.addWidget(self._lbl_location)
-            self._refresh_location_line()
-        # filename + file-types (left, mono, JPG token greened) with a right-aligned
-        # "⌗ Crop" mark. Crop is its own concept (independent of JPG), so the format
-        # reads off the corner and no '#' is stamped on framed thumbnails.
-        key_row = QHBoxLayout()
-        key_row.setContentsMargins(0, 0, 0, 0)
-        key_row.setSpacing(8)
-        self._lbl_key = QLabel(self._key_line_text())
-        self._lbl_key.setStyleSheet(f"color:{_INK_SOFT}; font-family:Consolas,monospace; font-size:9.5px;")
-        self._lbl_key.setWordWrap(True)
-        self._lbl_key.setToolTip(self._item.key)
-        key_row.addWidget(self._lbl_key, 1)
-        self._lbl_crop = QLabel()
-        self._lbl_crop.setStyleSheet(f"color:{_FRAME}; font-family:Consolas,monospace;"
-                                     f" font-size:9.5px; font-weight:700;")
-        # 📝 on this line is a link to the Headline/Description editor (⌗ Crop is
-        # not — it's just a marker).
-        self._lbl_crop.setTextInteractionFlags(
-            Qt.TextInteractionFlag.LinksAccessibleByMouse)
-        self._lbl_crop.linkActivated.connect(self._on_crop_link)
-        key_row.addWidget(self._lbl_crop, 0,
-                          Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
-        ml.addLayout(key_row)
-        self._refresh_crop_mark()
-        # origin tag only when kinds are mixed (Trip+Master) or a master/album ref
-        from_album = getattr(item, "from_album", False)
-        if self._from_master or self._show_kind_tag or from_album:
-            res = item.exif.jpg_dimensions or item.exif.dimensions
-            origin = "Album" if from_album else ("master" if self._from_master else "trip")
-            tag = QLabel(f"— from {origin} ({res}) —" if res else f"— from {origin} —")
-            # Green/bold marks the pictures that belong to what you opened —
-            # this album, or this trip — so they read at a glance among the
-            # plain grey "— from master —" references beside them. Same cue in
-            # both viewers: green means "one of mine".
-            if from_album or not self._from_master:
-                tag.setStyleSheet("color:#2e7d32; font-size:9px; font-style:italic; font-weight:bold;")
-            else:
-                tag.setStyleSheet("color:#888; font-size:9px; font-style:italic;")
-            ml.addWidget(tag)
-        outer.addWidget(meta)
+        # meta text: name lines + location + filename/marks + origin tag.
+        # Culling grid (show_status): ONE rich-text label — the grid builds
+        # thousands and this block was 4-7 QLabels + 3 sub-layouts + a wrapper.
+        # Species viewers (few cards) keep the multi-label layout, whose refresh
+        # only rebuilds the name sub-layout.
+        self._meta_collapsed = self._show_status
+        if self._meta_collapsed:
+            self._name_holder = None
+            self._name_labels = []
+            self._lbl_location = self._lbl_key = self._lbl_crop = None
+            self._lbl_meta = QLabel()
+            self._lbl_meta.setTextFormat(Qt.TextFormat.RichText)
+            self._lbl_meta.setWordWrap(True)
+            self._lbl_meta.setContentsMargins(10, 8, 10, 2)
+            self._lbl_meta.setTextInteractionFlags(
+                Qt.TextInteractionFlag.LinksAccessibleByMouse)
+            self._lbl_meta.linkActivated.connect(self._on_crop_link)
+            self._lbl_name = self._lbl_meta   # external code may reference _lbl_name
+            outer.addWidget(self._lbl_meta)
+            self._rebuild_meta_html()
+        else:
+            self._lbl_meta = None
+            meta = QWidget()
+            ml = QVBoxLayout(meta)
+            ml.setContentsMargins(10, 8, 10, 2)
+            ml.setSpacing(1)
+            self._name_holder = QVBoxLayout()
+            self._name_holder.setContentsMargins(0, 0, 0, 0)
+            self._name_holder.setSpacing(1)
+            self._name_labels = []
+            ml.addLayout(self._name_holder)
+            self._populate_name_lines()
+            self._lbl_location = None
+            if getattr(item, "show_location_line", False):
+                self._lbl_location = QLabel()
+                self._lbl_location.setWordWrap(True)
+                ml.addWidget(self._lbl_location)
+                self._refresh_location_line()
+            key_row = QHBoxLayout()
+            key_row.setContentsMargins(0, 0, 0, 0)
+            key_row.setSpacing(8)
+            self._lbl_key = QLabel(self._key_line_text())
+            self._lbl_key.setStyleSheet(f"color:{_INK_SOFT}; font-family:Consolas,monospace; font-size:9.5px;")
+            self._lbl_key.setWordWrap(True)
+            self._lbl_key.setToolTip(self._item.key)
+            key_row.addWidget(self._lbl_key, 1)
+            self._lbl_crop = QLabel()
+            self._lbl_crop.setStyleSheet(f"color:{_FRAME}; font-family:Consolas,monospace;"
+                                         f" font-size:9.5px; font-weight:700;")
+            self._lbl_crop.setTextInteractionFlags(
+                Qt.TextInteractionFlag.LinksAccessibleByMouse)
+            self._lbl_crop.linkActivated.connect(self._on_crop_link)
+            key_row.addWidget(self._lbl_crop, 0,
+                              Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+            ml.addLayout(key_row)
+            self._refresh_crop_mark()
+            from_album = getattr(item, "from_album", False)
+            if self._from_master or self._show_kind_tag or from_album:
+                res = item.exif.jpg_dimensions or item.exif.dimensions
+                origin = "Album" if from_album else ("master" if self._from_master else "trip")
+                tag = QLabel(f"— from {origin} ({res}) —" if res else f"— from {origin} —")
+                if from_album or not self._from_master:
+                    tag.setStyleSheet("color:#2e7d32; font-size:9px; font-style:italic; font-weight:bold;")
+                else:
+                    tag.setStyleSheet("color:#888; font-size:9px; font-style:italic;")
+                ml.addWidget(tag)
+            outer.addWidget(meta)
 
         # controls: clickable stars (left) + colour dots (right)
         controls = QWidget()
@@ -970,10 +978,82 @@ class PictureCard(QFrame):
             self._thumb_loaded = True
             item.request_thumbnail(target_w, self.set_thumbnail)
 
+    @staticmethod
+    def _esc(s: str) -> str:
+        return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    def _crop_marks_list(self) -> list:
+        """'⌗ Crop' / 📝 / '+ JPG' marks for the filename line — shared by the
+        collapsed meta label and the multi-label layout's _lbl_crop."""
+        marks = []
+        if getattr(self._item, "has_crop", False):
+            marks.append("⌗ Crop")
+        if self._show_status and self._item.description:
+            if self._notes_editable():
+                marks.append('<a href="notes" style="text-decoration:none;"'
+                             ' title="Edit headline / description">📝</a>')
+            else:
+                marks.append("📝")
+        if getattr(self._item, "has_pending_render", False):
+            names = getattr(self._item, "pending_render_names", []) or []
+            plural = "s" if len(names) != 1 else ""
+            marks.append(
+                f'<a href="render" style="color:#2e7d32;text-decoration:none;'
+                f'font-weight:700;" title="New render{plural} on disk, not in the '
+                f'master yet — click to add">+ JPG</a>')
+        return marks
+
+    def _rebuild_meta_html(self) -> None:
+        """Compose the culling card's whole meta block — name lines, location,
+        filename + marks, origin tag — into the one rich-text label."""
+        if getattr(self, "_lbl_meta", None) is None:
+            return
+        it = self._item
+        lines = getattr(it, "display_lines", None) or [
+            ((it.display_name or it.key)
+             + (getattr(it, "qualifier_suffix", "") or ""), False)]
+        name_bits = []
+        for i, (text, is_sci) in enumerate(lines):
+            esc = self._esc(text)
+            if i == 0:
+                name_bits.append(
+                    f'<span style="color:{_INK};font-weight:600;font-size:14px;">{esc}</span>')
+            else:
+                st = f"color:{_INK_SOFT};font-size:11px;" + ("font-style:italic;" if is_sci else "")
+                name_bits.append(f'<span style="{st}">{esc}</span>')
+        bits = ["<br>".join(name_bits)]
+        if getattr(it, "show_location_line", False):
+            loc = it.location_line()
+            col = "#999999" if loc == "No GPS data available" else "#2e7d32"
+            bits.append(f'<span style="color:{col};font-size:9px;font-style:italic;">'
+                        f'{self._esc(loc)}</span>')
+        line = (f'<span style="color:{_INK_SOFT};font-family:Consolas,monospace;'
+                f'font-size:9px;">{self._key_line_text()}</span>')
+        marks = self._crop_marks_list()
+        if marks:
+            line += (f'&nbsp;&nbsp;<span style="color:{_FRAME};'
+                     f'font-family:Consolas,monospace;font-size:9px;font-weight:700;">'
+                     + "&nbsp;&nbsp;".join(marks) + '</span>')
+        bits.append(line)
+        from_album = getattr(it, "from_album", False)
+        if self._from_master or self._show_kind_tag or from_album:
+            res = it.exif.jpg_dimensions or it.exif.dimensions
+            origin = "Album" if from_album else ("master" if self._from_master else "trip")
+            txt = f"— from {origin} ({res}) —" if res else f"— from {origin} —"
+            mine = from_album or not self._from_master
+            st = ("color:#2e7d32;font-size:9px;font-style:italic;font-weight:bold;"
+                  if mine else "color:#888888;font-size:9px;font-style:italic;")
+            bits.append(f'<span style="{st}">{self._esc(txt)}</span>')
+        self._lbl_meta.setText("<br>".join(bits))
+        self._lbl_meta.setToolTip(it.key)
+
     def _populate_name_lines(self) -> None:
         """(Re)build the framed card's name lines from the item's display_lines:
         the first line is the primary (bold) name, any further lines are softer,
         and whichever line IS the scientific name is italicised."""
+        if getattr(self, "_meta_collapsed", False):
+            self._rebuild_meta_html()
+            return
         while self._name_holder.count():
             it = self._name_holder.takeAt(0)
             w = it.widget()
@@ -1041,31 +1121,11 @@ class PictureCard(QFrame):
         return ("", False)
 
     def _refresh_crop_mark(self):
-        """The right-aligned '⌗ Crop' mark on the filename line (plus a 📝 when a
-        preview card carries a description). Crop is its own signal — no '#' stamp
-        on the framed image."""
-        marks = []
-        if getattr(self._item, "has_crop", False):
-            marks.append("⌗ Crop")
-        if self._show_status and self._item.description:
-            if self._notes_editable():
-                # A clickable link → the Headline/Description editor; the label
-                # renders as rich text once it contains the anchor.
-                marks.append('<a href="notes" style="text-decoration:none;"'
-                             ' title="Edit headline / description">📝</a>')
-            else:
-                marks.append("📝")   # read-only host: an indicator, not a link
-        # A fresh DxO/LR render is sitting on disk that the master doesn't track yet
-        # (found by the focus-in scan). A "+ JPG" link in the same green as the JPG
-        # file token — reads as "add the JPG" — → registers it in the master.
-        if getattr(self._item, "has_pending_render", False):
-            names = getattr(self._item, "pending_render_names", []) or []
-            plural = "s" if len(names) != 1 else ""
-            marks.append(
-                f'<a href="render" style="color:#2e7d32;text-decoration:none;'
-                f'font-weight:700;" title="New render{plural} on disk, not in the '
-                f'master yet — click to add">+ JPG</a>')
-        self._lbl_crop.setText("&nbsp;&nbsp;".join(marks))
+        """The right-aligned '⌗ Crop' / 📝 / '+ JPG' marks on the filename line."""
+        if getattr(self, "_meta_collapsed", False):
+            self._rebuild_meta_html()
+            return
+        self._lbl_crop.setText("&nbsp;&nbsp;".join(self._crop_marks_list()))
         self._lbl_crop.setToolTip("This picture carries a crop" if getattr(
             self._item, "has_crop", False) else "")
 
@@ -1147,10 +1207,11 @@ class PictureCard(QFrame):
         """Re-read every field from the (live) item and repaint — used after an
         external edit such as a species commit or a GPS backfill."""
         if self._framed:
-            self._populate_name_lines()
+            self._populate_name_lines()   # collapsed mode: rebuilds the whole meta label
             self._frame_color = self._item.color
             self._update_thumb_style()          # repaints the frame colour
-            self._lbl_key.setText(self._key_line_text())
+            if self._lbl_key is not None:
+                self._lbl_key.setText(self._key_line_text())
             self._refresh_crop_mark()
             self._stars.set_rating(self._item.rating)
             self._color_sel.set_color(self._item.color)
@@ -1195,6 +1256,9 @@ class PictureCard(QFrame):
     def _refresh_location_line(self):
         """Set the location line from the live item; muted grey when there's no
         place/GPS, normal green when there is."""
+        if getattr(self, "_meta_collapsed", False):
+            self._rebuild_meta_html()
+            return
         if self._lbl_location is None:
             return
         text = self._item.location_line()
