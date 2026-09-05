@@ -67,6 +67,37 @@ day *slower* (30 s → 45 s); the hidden-backlog version lands at **~15 s to a
 usable grid, first screenful live in ~1.5 s**. `_grid_busy` stays True through
 the background build so a filter keystroke is still deferred to `_finalize_load`.
 
+### Step 6 — tiers 1 + 2a SHIPPED `d56569e` (2026-09-05), live-tested "a lot faster"
+
+Branch `sv_cheaper_card`, merged to `SpeciesViewer03`, branch deleted. Scoped
+to a **framed card with `show_status`** (the culling / preview grid only) —
+the species viewers and the legacy layout keep the real widgets untouched.
+
+- **Tier 1** (`e14ded5`): new `_ControlStrip(QWidget)` paints `★★★☆☆` + five
+  colour dots and hit-tests clicks (star → set rating, dot → toggle, dbl-click
+  dot → `color_double_clicked`). Replaces `StarWidget` + `ColorSelector`
+  (−13 widgets, −2 layouts, −17 signal/eventfilter connections/card). In the
+  `show_status` branch `_stars` and `_color_sel` both alias the one strip, so
+  `refresh()` / `update_*_display` drive it unchanged. **Not** the "one shared
+  floating editor" from the original sketch — a per-card painted strip with
+  hit-testing was simpler and covers every real interaction. Missing: the
+  star hover-preview (light-gold fill following the pointer).
+- **Tier 2a** (`4779750`): `_rebuild_meta_html()` composes name lines +
+  location + filename/marks + origin tag into **one rich-text `QLabel`**
+  (`_lbl_meta`, with `setContentsMargins` so the `meta` wrapper + its layout
+  go too). `_populate_name_lines` / `_refresh_crop_mark` /
+  `_refresh_location_line` delegate to it in collapsed mode. 📝 and `+ JPG`
+  links stay live via `linkActivated`. −1 wrapper, −3 layouts, −3..5 labels.
+
+Net: a culling card **~33 → ~12–14 objects**. `card build` ~11–13 ms → ~6 ms
+after tier 1, lower again after 2a.
+
+**Tier 2b (still open):** paint the corner badges (rate / attn / lock / colour
+dot / format) in `_FramedPhoto.paintEvent` instead of positioned child
+`QLabel`s — removes ~4 more labels + the `reposition()` on every resize (which
+is what the live-layout passes pay). Needs `_FramedPhoto` to take the badge
+data + hit-test the clickable attention badge (`status_clicked`).
+
 | Step | What | State |
 |------|------|-------|
 | **1** | Open into a "Start with" subset + counts bar | **SHIPPED** |
@@ -80,9 +111,10 @@ the background build so a filter keystroke is still deferred to `_finalize_load`
 | — | Build-time instrumentation in the log (`built in N s … card build / layout / other`) | **SHIPPED** — leave it, it's cheap and useful |
 | **4** | Viewport virtualization (recycle ~40 cards) | not started — the real first-open fix; own branch; can KEEP `QGridLayout` (it's not the bottleneck) |
 | 5 | Cheaper card (one custom-painted widget) | not started — only if 6 falls short |
-| **6** | Cheaper card, tiered: Tier 1 paint stars/swatches + one shared floating editor on the focused card; Tier 2 collapse text into one rich-text label + painted corner badges | **IN PROGRESS 2026-09-05** (branch `sv_cheaper_card`); Tier 1 ≈ 33→19 objects/card, Tier 2 ≈ →~7; bounded to `PictureCard`, helps every viewer |
+| **6** | Cheaper card: T1 painted `_ControlStrip` (stars+dots), T2a one rich-text meta label, T2b paint the corner badges | **T1 + T2a SHIPPED `d56569e`** (culling card ~33→~12–14 objects, live-tested "a lot faster"); **T2b open** — paint corner badges + drop `_FramedPhoto.reposition()` |
 | 7 | Hoist per-widget stylesheets into one shared sheet | **DONE for StarWidget/ColorSelector (`f638ea1`) — no measurable gain, don't bother with the rest** |
 | **8** | Viewport thumbnail loading + progressive grid reveal | **SHIPPED `c6a30eb`** — ~2200-pic day ~30 s → ~15 s to a usable grid, first screenful ~1.5 s |
+| **8b** | Progressive reveal for the `_build_missing_batch` filter-widen path too | not started — a 3-card view (e.g. GPS-missing) widened to All still blocks ~40 s; apply step 8's deferred-backlog + reveal here |
 | — | Persistent process-level `ThumbCache` (module singleton, keep byte budget) | not started — cheap; immunises 2nd+ open in a session from cold OS-file-cache |
 | — | Preview-cache size cap (% of free disk, LRU to fit) | requested 2026-09-02 — `utils/preview_cache` hygiene, separate follow-up |
 
