@@ -431,8 +431,14 @@ class PictureCard(QFrame):
     def __init__(self, item: PictureItem, card_width: int, parent=None,
                  *, show_status: bool = False, show_kind_tag: bool = False,
                  framed: bool = False, viewer_key: str = "species",
-                 thumb_aspect: float = 1.5):
+                 thumb_aspect: float = 1.5, defer_thumb: bool = False):
         super().__init__(parent)
+        # defer_thumb: don't request the thumbnail in the constructor — the host
+        # (the culling grid) calls request_thumb_if_needed() once the card is in
+        # or near the viewport, so opening a 500-picture day fires ~40 decodes,
+        # not 500. Default off: every other viewer loads eagerly as before.
+        self._defer_thumb = defer_thumb
+        self._thumb_loaded = False
         # Width/height the framed thumbnail area reserves. Default 3:2; the
         # culling grid passes the day's own sampled aspect (usually 4:3) so a
         # single-camera trip fits with no letterbox bands.
@@ -490,7 +496,9 @@ class PictureCard(QFrame):
         self._thumb.setFixedHeight(max(60, self._thumb_target_w * 2 // 3))
         self._update_thumb_style()
         vbox.addWidget(self._thumb)
-        item.request_thumbnail(self._thumb_target_w, self.set_thumbnail)
+        if not defer_thumb:
+            self._thumb_loaded = True
+            item.request_thumbnail(self._thumb_target_w, self.set_thumbnail)
 
         # Species name (+ compact sex/age/plumage suffix, e.g. "fuut ♀ br.")
         self._lbl_name = QLabel((item.display_name or item.key)
@@ -804,7 +812,9 @@ class PictureCard(QFrame):
 
         self._update_frame_style()   # base surface + selection border
         self._update_thumb_style()   # paints the frame colour from the label
-        item.request_thumbnail(target_w, self.set_thumbnail)
+        if not self._defer_thumb:
+            self._thumb_loaded = True
+            item.request_thumbnail(target_w, self.set_thumbnail)
 
     def _populate_name_lines(self) -> None:
         """(Re)build the framed card's name lines from the item's display_lines:
@@ -1155,7 +1165,30 @@ class PictureCard(QFrame):
         self._cursor = active
         self._update_frame_style()
 
+    def request_thumb_if_needed(self):
+        """Ask the provider for this card's thumbnail — idempotent. The culling
+        grid calls this as a card scrolls into (or near) the viewport, having
+        passed defer_thumb=True so the initial build did no thumbnail work."""
+        if self._thumb_loaded:
+            return
+        self._thumb_loaded = True
+        self._item.request_thumbnail(self._thumb_target_w, self.set_thumbnail)
+
+    def release_thumb(self):
+        """Drop the pixmap back to a placeholder — called when the card scrolls
+        far out of view so a huge day's grid keeps RAM flat. The scaled pixmap
+        stays in the collection's ThumbCache, so scrolling back is a cache hit
+        (synchronous), not a re-decode."""
+        if not self._thumb_loaded:
+            return
+        self._thumb_loaded = False
+        self._thumb.setPixmap(QPixmap())
+        self._thumb.setText("…" if self._framed else "")
+        self._update_thumb_style()
+
     def set_thumbnail(self, px: QPixmap):
+        if getattr(self, "_defer_thumb", False) and not self._thumb_loaded:
+            return  # a late async delivery for a card we've since released
         if px.isNull():
             self._thumb.setText("(no image)")
             self._update_thumb_style()

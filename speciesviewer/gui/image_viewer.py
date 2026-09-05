@@ -329,6 +329,10 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._resize_timer.setSingleShot(True)
         self._resize_timer.setInterval(160)
         self._resize_timer.timeout.connect(self._on_resize_settled)
+        self._thumb_scan_timer = QTimer(self)  # debounce scroll → viewport thumb load (step 8)
+        self._thumb_scan_timer.setSingleShot(True)
+        self._thumb_scan_timer.setInterval(90)
+        self._thumb_scan_timer.timeout.connect(self._load_visible_thumbs)
         self._built_card_w = -1
         self._pending_find = None
         self._find_min_chars = 2            # don't search on a single character
@@ -614,6 +618,11 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         _scroll_vbox.addStretch(1)
         self.scroll_area.setWidget(_scroll_content)
         layout.addWidget(self.scroll_area)
+        # Step 8: as the grid scrolls, (re)load thumbnails for the cards now in
+        # view and release the ones far from it. Debounced so a flick doesn't
+        # thrash the loader.
+        self.scroll_area.verticalScrollBar().valueChanged.connect(
+            lambda _v: self._thumb_scan_timer.start())
 
         # ── Initial filter cascade ─────────────────────────────────────────
         base = set(self._base_keys())
@@ -1144,8 +1153,47 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         if not self._cards or self._grid_busy:
             return
         if abs(self._grid_card_width() - self._built_card_w) <= 6:
+            self._schedule_thumb_scan()   # taller/shorter window → different rows in view
             return
         self._rebuild_grid_from_keys([c.upn_key for c in self._cards])
+
+    # ── Step 8: viewport thumbnail loading ─────────────────────────────────────
+    _THUMB_WARM = 100   # first N visible cards stay loaded regardless of scroll
+
+    def _schedule_thumb_scan(self):
+        """Run a viewport thumbnail pass on the next tick — used after a build /
+        reflow / resize, when card geometry is only final once the event loop
+        has processed the pending layout."""
+        QTimer.singleShot(0, self._load_visible_thumbs)
+
+    def _load_visible_thumbs(self):
+        """Request thumbnails for the cards in or near the viewport (plus the
+        first _THUMB_WARM, kept warm for a quick scroll back to the top) and
+        release the rest back to the ThumbCache, so opening a big day fires a
+        few dozen decodes instead of hundreds and grid RAM stays flat."""
+        if not self._cards:
+            return
+        # Runs during a hard build once _reveal_partial has shown the grid, so
+        # the visible screenful gets its thumbnails while the rest still builds.
+        if self._grid_busy and not getattr(self, "_revealed", False):
+            return
+        sb = self.scroll_area.verticalScrollBar()
+        vp_top = sb.value()
+        vp_bot = vp_top + self.scroll_area.viewport().height()
+        row_h = max(1, self._cards[0].height())
+        band = row_h * 2                       # ~2 rows of prefetch each side
+        lo, hi = vp_top - band, vp_bot + band
+        want = 0
+        for i, card in enumerate(self._cards):
+            y0 = card.y()
+            near = i < self._THUMB_WARM or (y0 + card.height() >= lo and y0 <= hi)
+            if near:
+                card.request_thumb_if_needed()
+                want += 1
+            else:
+                card.release_thumb()
+        logger.debug("viewport thumbs: %d/%d loaded (scroll %d)",
+                     want, len(self._cards), vp_top)
 
     def _clear_grid(self):
         self._collection.cancel_pending_loads()  # drop in-flight thumbnail loads
@@ -1189,7 +1237,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         so it's never briefly a top-level window before the layout takes it."""
         card = PictureCard(item, card_w, self.grid_widget, show_status=show_status,
                            framed=True, viewer_key="preview",
-                           thumb_aspect=self._card_aspect())
+                           thumb_aspect=self._card_aspect(), defer_thumb=True)
         card.card_clicked.connect(self._on_card_cursor)
         card.card_double_clicked.connect(self._open_large_view)
         card.card_right_clicked.connect(self._on_card_context_menu)
@@ -1221,10 +1269,13 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         scratch. Used on open, on a column-count / card-width change, and after a
         master change. Routine colour-filter changes go through _show_filtered
         (show/hide), which never destroys."""
-        # Freeze painting for the whole batched build so the grid doesn't reflow
-        # visibly as cards + thumbnails stream in (re-enabled in _finalize_load
-        # and the empty-grid return below). The wait dialog covers the wait.
+        # Progressive reveal (step 8 follow-up): build the first batch behind the
+        # modal wait dialog, then _reveal_partial() shows the grid + hands control
+        # back while the rest streams in below. Thumbnails are deferred (step 8),
+        # so the earlier "freeze painting for the whole build" jitter is gone.
         self._grid_busy = True
+        self._revealed = False
+        self._deferred_cards = []   # (idx, card) built in the background, placed at finalize
         import time as _t
         self._build_t0 = _t.monotonic()
         self._t_construct = self._t_layout = 0.0
@@ -1258,11 +1309,11 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._build_next_batch()
 
     def _build_next_batch(self):
-        # Bigger batches = fewer event-loop yields between them; each yield does a
-        # deferred layout pass + wait-dialog pulse, which measured as ~100 ms and
-        # was most of the "other" time in the build log. The wait dialog is modal,
-        # so a ~1 s freeze per batch is fine.
-        BATCH = 100
+        # First batch is big (100) so _reveal_partial fires in one shot behind
+        # the modal wait dialog. After the reveal the grid is live, so batches
+        # drop to 30 — the event loop gets a turn ~3x/s and scrolling / rating
+        # keys stay responsive while the backlog builds.
+        BATCH = 30 if self._revealed else 100
         import time as _t
         # Preview (fpr) hosts always show the status/📝/📍 row; a collection can
         # opt in too (the culling grid does — it carries species/desc/GPS itself).
@@ -1278,23 +1329,58 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             _c0 = _t.perf_counter()
             card = self._make_card(item, card_w, show_status)
             _c1 = _t.perf_counter()
-            self.grid_layout.addWidget(card, r, col, 1, span)
+            if self._revealed:
+                # Background phase: build the card hidden and OUT of the layout.
+                # Adding to a growing QGridLayout with painting live re-flows
+                # every card (and re-positions every badge) on every batch —
+                # quadratic, and it made the total build slower, not faster.
+                # _finalize_load places the whole backlog in one frozen pass.
+                card.setParent(self.grid_widget)
+                card.hide()
+                self._deferred_cards.append((idx, card))
+            else:
+                self.grid_layout.addWidget(card, r, col, 1, span)
+                self._cards.append(card)
             self._t_construct = getattr(self, "_t_construct", 0.0) + (_c1 - _c0)
             self._t_layout = getattr(self, "_t_layout", 0.0) + (_t.perf_counter() - _c1)
-            self._cards.append(card)
             self._cards_by_key[item.key] = card
             self._build_index += 1
         if self._build_index < n:
+            if not self._revealed:
+                self._reveal_partial()   # show the first batch, hand back control
             QTimer.singleShot(0, self._build_next_batch)
         else:
             self._finalize_load()
 
+    def _reveal_partial(self):
+        """Show the grid with the first batch built and let the user start
+        culling; the rest of the cards keep building in the background (the
+        _build_next_batch timer chain). _grid_busy stays True so a filter change
+        is still deferred until the whole set exists."""
+        self._revealed = True
+        self.grid_widget.setUpdatesEnabled(True)
+        self.grid_widget.update()
+        self.wait_dialog.close()
+        self._schedule_thumb_scan()   # load thumbnails for the revealed screenful
+
     def _finalize_load(self):
+        # Place the background-built backlog in ONE frozen pass (one re-flow for
+        # the lot, not one per batch).
+        deferred = getattr(self, "_deferred_cards", None)
+        if deferred:
+            self.grid_widget.setUpdatesEnabled(False)
+            for idx, card in deferred:
+                r, col, span, _cw = self._placement[idx]
+                self.grid_layout.addWidget(card, r, col, 1, span)
+                card.show()
+                self._cards.append(card)
+            self._deferred_cards = []
         self.grid_widget.setUpdatesEnabled(True)
         self.grid_widget.update()
         self.cancel_button.setEnabled(False)
         self.wait_dialog.close()
         self._grid_busy = False
+        self._revealed = False   # hard build done; next lazy build starts fresh
         tc = getattr(self._collection, "_thumb_cache", None)
         if tc is not None and self._cards:
             import time as _t
@@ -1319,6 +1405,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         if getattr(self, "_pending_filter", False):
             self._pending_filter = False
             QTimer.singleShot(0, self._apply_filters)
+        else:
+            self._schedule_thumb_scan()   # load the thumbnails now actually on screen
 
     # ── Show/hide filtering (Step 3): build each card once, then toggle ──────
     def _show_filtered(self, visible_keys):
@@ -1445,6 +1533,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.grid_widget.update()
         sb = self.scroll_area.verticalScrollBar()
         QTimer.singleShot(0, lambda: sb.setValue(min(keep_scroll, sb.maximum())))
+        self._schedule_thumb_scan()   # the visible set changed — reload its thumbnails
 
     def cancel_scan(self):
         self.cancelled = True
