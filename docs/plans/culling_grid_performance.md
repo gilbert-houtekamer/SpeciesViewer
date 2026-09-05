@@ -32,6 +32,26 @@ Tried and **did not help** (kept anyway, harmless):
 **To move first-open, next time:** step 6 (~30–40 % off card build, bounded to
 `PictureCard`) or step 4 (the real fix). Not worth trip time.
 
+---
+
+## RESUMING 2026-09-05 — agreed direction
+
+Discussed the object budget (see "The measured problem" + step 6 below). Decision:
+
+1. **Step 8 first** — viewport thumbnail loading (only request the thumbnails
+   for cards in/near the viewport, ~100 always warm). Simplest, and it's the
+   biggest win *for culling specifically* — a 500-pic day paints its structure
+   at once instead of firing 500 decode requests. In-repo precedent already
+   exists: `FilmstripWidget._load_visible` in `gui/large_image_view.py`.
+2. **Then step 6, Tier 1 + Tier 2** — paint the stars/swatches + one shared
+   floating editor that re-parents onto the focused card (Tier 1), then collapse
+   the text labels into one rich-text `QLabel` and paint the corner badges
+   (Tier 2). These help *every* `PictureCard` viewer, not just culling.
+
+Not doing now: step 4 (full widget virtualization) — step 6 lowers the per-card
+cost enough that building a whole day stays affordable at today's day sizes;
+revisit step 4 only when a day genuinely runs into the thousands.
+
 | Step | What | State |
 |------|------|-------|
 | **1** | Open into a "Start with" subset + counts bar | **SHIPPED** |
@@ -44,9 +64,10 @@ Tried and **did not help** (kept anyway, harmless):
 | — | Look & Feel: "Culling grid" section (columns / fill % / Start-with default) | **SHIPPED** |
 | — | Build-time instrumentation in the log (`built in N s … card build / layout / other`) | **SHIPPED** — leave it, it's cheap and useful |
 | **4** | Viewport virtualization (recycle ~40 cards) | not started — the real first-open fix; own branch; can KEEP `QGridLayout` (it's not the bottleneck) |
-| 5 | Cheaper card (one custom-painted widget) | not started — only if 4 falls short |
-| **6** | Lazy controls (paint stars/swatches, real widgets on hover) | not started — **the next cheap-ish lever**, ~30–40 % off card build, bounded to `PictureCard` |
+| 5 | Cheaper card (one custom-painted widget) | not started — only if 6 falls short |
+| **6** | Cheaper card, tiered: Tier 1 paint stars/swatches + one shared floating editor on the focused card; Tier 2 collapse text into one rich-text label + painted corner badges | not started — **AGREED, second**; Tier 1 ≈ 33→19 objects/card, Tier 2 ≈ →~7; bounded to `PictureCard`, helps every viewer |
 | 7 | Hoist per-widget stylesheets into one shared sheet | **DONE for StarWidget/ColorSelector (`f638ea1`) — no measurable gain, don't bother with the rest** |
+| **8** | Viewport thumbnail loading — request thumbnails only for cards in/near the viewport (+~100 warm), release far ones back to the cache | not started — **AGREED, first**; the biggest *felt* win for culling; decoupled from step 4 |
 | — | Persistent process-level `ThumbCache` (module singleton, keep byte budget) | not started — cheap; immunises 2nd+ open in a session from cold OS-file-cache |
 | — | Preview-cache size cap (% of free disk, LRU to fit) | requested 2026-09-02 — `utils/preview_cache` hygiene, separate follow-up |
 
@@ -298,13 +319,72 @@ uses `PictureCard`. Do only if 3 + 4 are not enough.
 
 ---
 
-## Step 6 — lazy controls   (scoped version of 5)
+## Step 6 — cheaper card, tiered   (scoped version of 5)   (AGREED — do after step 8)
 
-`StarWidget` (6 widgets) + `ColorSelector` (7 swatches) are ~40 % of the
-per-card widget count and carry the heaviest stylesheets. Draw them as flat
-glyphs in the card's `paintEvent`; instantiate the real interactive widgets only
-when a card is hovered / is the cursor card. Keeps `c`/`s` keys and
-double-click-swatch working. Lower risk than step 5.
+### Why it's safe: keyboard editing never touches the control widgets
+
+`handle_cull_key` (`gui/viewer_keys.py`) writes rating/colour **through the
+`PictureItem`** and then calls `refresh_key(key)` so the card repaints. It never
+reads or pokes a `StarWidget`/`ColorSelector`. The star + swatch *widgets* exist
+almost entirely for **mouse** editing — and you only mouse-edit the card you are
+pointing at, one at a time. So ~99 % of on-screen cards carry ~14 interactive
+widgets they never use.
+
+### Per-card object budget (framed culling card, `show_status=True`)
+
+| Group | Objects |
+|---|---|
+| card frame + `_pframe` + `meta` + `controls` wrappers | 4 widgets |
+| `_thumb` (`_FramedPhoto`) | 1 widget |
+| corner badges (rate / attn / format / colour-dot…) | ~4–5 QLabels, hand-positioned on every resize |
+| name lines + location + filename + crop mark | ~5–6 QLabels |
+| `StarWidget` | 1 widget + 1 layout + **5 buttons** + 5 event-filters + 5 connections |
+| `ColorSelector` | 1 widget + 1 layout + **5 swatches** + 10 connections |
+| layouts | ~8 |
+| signal connections | ~25 |
+
+≈ **25 widgets + 8 layouts + ~25 connections**, all torn down + rebuilt on a
+hard build. `StarWidget` + `ColorSelector` = **~14 widgets (10 buttons)** — the
+biggest single chunk and the heaviest to set up.
+
+### Tier 1 — paint the controls, hydrate the focused card
+
+- Draw `★★★☆☆` and the five colour dots as flat glyphs in the card's
+  `paintEvent` (read straight off the `PictureItem`; repaint on `refresh_key`).
+- Keep **one** shared real `StarWidget` + `ColorSelector` for the whole grid,
+  re-parented / repositioned onto whichever card is hovered or is the keyboard
+  cursor — not one instance per card, and not created-per-hover.
+- Double-click-swatch ("set + drop from filter") becomes a hit-tested region on
+  the painted dots, or is only live on the hydrated focused card.
+- Keyboard paths (`q w e r t`, `1`–`5`, `Ctrl+1`–`5`, `0`, `s`, `c`) unchanged.
+- **Effect:** card ≈ 33 → **~19 objects**; ~40 % off first-open build; bounded to
+  `PictureCard`; near-zero behaviour change.
+
+### Tier 2 — collapse the text + paint the badges
+
+- Name lines + location + filename + crop mark → **one rich-text `QLabel`**
+  (`<span style=…>` runs + `<br>`). The 📝 and ⌗ links stay as `<a href>`
+  (`QLabel.linkActivated` already carries them).
+- Paint the corner badges in the thumbnail's `paintEvent` instead of positioned
+  child `QLabel`s → drops ~5 widgets + the reposition-on-resize work.
+- HTML/CSS helps **here only** — it removes label objects + layouts + style
+  parses. It does nothing for the stars/swatches (interaction targets, not
+  text), and a rich-text `QLabel` still builds an internal `QTextDocument`, so
+  treat it as "fewer objects, same per-object cost" — which is the point, since
+  object *count* is the bottleneck.
+- **Effect:** card ≈ 19 → **~7 objects**.
+
+Rough first-open, ~900-pic day: ~14 s today → ~7–9 s (Tier 1) → ~4–5 s (Tier 2).
+Full custom paint (step 5) would reach ~1–2 objects/card but reimplements wrap /
+hover / tooltips / a11y by hand across every viewer — only if 6 falls short.
+
+### Regression surface
+
+`PictureCard` is shared by the Trip / Master / Album species viewers, the
+culling preview, and (indirectly) the large-viewer filmstrip. Gate the painted
+path on `framed` (+ maybe `show_status`) so the legacy stacked layout is
+untouched, and smoke-test each viewer: hover-to-edit, keyboard edit, selection
+ring, cursor ring, tooltips, the 📝 / ⌗ links, frozen-day read-only.
 
 ---
 
@@ -314,6 +394,55 @@ Every star button / swatch / label calls `setStyleSheet("…")` individually →
 parses that CSS per widget. Move to `setObjectName` + one dialog- or app-level
 stylesheet with selectors, parsed once. ~15–25 % off build time, low risk,
 helps every path. Good to fold into step 3 or 5.
+
+---
+
+## Step 8 — viewport thumbnail loading   (AGREED — do first)
+
+**Idea (user, 2026-09-05):** building the cards is one cost; firing a thumbnail
+request from every card is another. On a 500-pic day the second one is what
+makes "open" feel slow. Decouple them: a card that isn't near the viewport gets
+a placeholder (grey box + filename), and asks for its thumbnail only when it
+scrolls into range.
+
+**Precedent already in the repo:** `FilmstripWidget._load_visible`
+(`gui/large_image_view.py`) — from the vertical/horizontal scrollbar `value()` +
+`viewport()` size + a fixed item stride, compute the visible index range, pad by
+`_PREFETCH`, and call `request_load()` on those cells only. Cells carry a
+`_requested` flag so repeated calls are idempotent. The grid is the 2-D version:
+`row_stride = card_h + gap`, `first_row = bar.value() // row_stride`,
+`first_idx = first_row * columns`, pad by a row or two each side.
+
+**What it needs in `ImagePreviewDialog` / `PictureCard`:**
+- The grid already has a **fixed row height** (step 2A) and a **global column
+  count** (`grid_columns`), so the row-stride math is exact — no per-card
+  measuring.
+- `PictureCard`: split "build the widget" from "request the thumbnail". A new
+  `request_thumb_if_needed()` (idempotent) and, optionally, `release_thumb()`
+  that drops the pixmap back to the `ThumbCache` and restores the placeholder.
+- Dialog: connect `scrollArea.verticalScrollBar().valueChanged` (debounced, like
+  `_on_resize_settled`) → `_load_visible_thumbs()`; also call it once after a
+  hard build, a soft re-flow (`_show_filtered`), and a resize settle.
+- **~100 always warm:** never release the first N cards of the current visible
+  key list (covers the top of the grid + a resumed cull's whole "Unrated"
+  subset when it's small), and keep a generous prefetch band (± ~2 rows) so
+  normal-speed scrolling never shows a placeholder. Fast flings may flash grey
+  briefly — the on-disk cache (2C) makes the catch-up quick.
+- Interaction with step 3's lazy card build: unchanged. Cards are still built
+  once and re-flowed; this only gates the *thumbnail request* per card.
+- Interaction with the RAM/disk caches (2B/2C): unchanged — this rides on top,
+  it just changes *when* `request_thumbnail` is called and lets far cards return
+  their pixmap to the byte-budgeted cache so a huge day's grid stays flat in RAM.
+
+**Effect:** first open paints the grid structure immediately; the visible ~40
+thumbnails stream in; the rest load on scroll. Biggest *felt* speed-up for
+culling, and it caps grid RAM regardless of day size. Independently shippable
+without step 4's widget recycling.
+
+**Watch in testing:** placeholder → image swap must not shift row height (fixed
+thumb height from step 2A already handles this); the filmstrip in the large
+viewer already does its own lazy load, so no conflict; check the "Start with:
+Unrated" open still shows its (small) subset fully loaded with no grey.
 
 ---
 
