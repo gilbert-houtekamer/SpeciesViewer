@@ -1159,6 +1159,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
 
     # ── Step 8: viewport thumbnail loading ─────────────────────────────────────
     _THUMB_WARM = 100   # first N visible cards stay loaded regardless of scroll
+    _REVEAL_N = 120     # cards placed in the first (progressive-reveal) screenful
 
     def _schedule_thumb_scan(self):
         """Run a viewport thumbnail pass on the next tick — used after a build /
@@ -1434,9 +1435,12 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         missing = [k for k in self._show_order if k not in self._cards_by_key]
         if missing:
             # Lazy build (batched, cancellable) — hidden, NOT in the layout; the
-            # re-flow places them.
+            # re-flow places them. Progressive reveal (step 8b): after the first
+            # batch, show the first screenful and hand back control while the
+            # rest builds — a 3-card view widened to All used to block ~40 s.
             self._build_queue = list(missing)
             self._build_qi = 0
+            self._revealed = False
             self.cancelled = False
             self.cancel_button.setEnabled(True)
             if not self.wait_dialog.isVisible():
@@ -1454,7 +1458,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 QTimer.singleShot(0, self._apply_filters)
 
     def _build_missing_batch(self):
-        BATCH = 100
+        BATCH = 30 if self._revealed else 100
         show_status = self.fpr is not None or getattr(self._collection, "show_status_badges", False)
         card_w = self._grid_card_width()
         q = self._build_queue
@@ -1472,6 +1476,15 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             card.hide()
             self._cards_by_key[k] = card
         if not self.cancelled and self._build_qi < len(q):
+            if not self._revealed:
+                # First batch done — place the first screenful and hand back
+                # control; the rest keep building hidden. Selection is restored
+                # (the final reflow re-intersects it with the full visible set).
+                saved_sel = set(self._selected_keys)
+                self._reflow_visible(self._show_order[:self._REVEAL_N])
+                self._selected_keys = saved_sel
+                self._update_selection_display()
+                self._reveal_partial()
             QTimer.singleShot(0, self._build_missing_batch)
             return
         n_built = self._build_qi
@@ -1482,6 +1495,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.cancel_button.setEnabled(False)
         self.wait_dialog.close()
         self._grid_busy = False
+        self._revealed = False
         tc = getattr(self._collection, "_thumb_cache", None)
         if tc is not None:
             import time as _t
