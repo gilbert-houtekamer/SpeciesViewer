@@ -67,36 +67,36 @@ day *slower* (30 s → 45 s); the hidden-backlog version lands at **~15 s to a
 usable grid, first screenful live in ~1.5 s**. `_grid_busy` stays True through
 the background build so a filter keystroke is still deferred to `_finalize_load`.
 
-### Step 6 — tiers 1 + 2a SHIPPED `d56569e` (2026-09-05), live-tested "a lot faster"
+### Step 6 — Tier 1 KEPT; Tier 2a REVERTED `40021e6` (2026-09-06)
 
-Branch `sv_cheaper_card`, merged to `SpeciesViewer03`, branch deleted. Scoped
-to a **framed card with `show_status`** (the culling / preview grid only) —
-the species viewers and the legacy layout keep the real widgets untouched.
+Branch `sv_cheaper_card` (merged `d56569e`, deleted). Scoped to a **framed card
+with `show_status`** (culling / preview grid only).
 
-- **Tier 1** (`e14ded5`): new `_ControlStrip(QWidget)` paints `★★★☆☆` + five
-  colour dots and hit-tests clicks (star → set rating, dot → toggle, dbl-click
+- **Tier 1 — KEPT** (`e14ded5`): `_ControlStrip(QWidget)` paints `★★★☆☆` +
+  five colour dots and hit-tests clicks (star → rating, dot → toggle, dbl-click
   dot → `color_double_clicked`). Replaces `StarWidget` + `ColorSelector`
-  (−13 widgets, −2 layouts, −17 signal/eventfilter connections/card). In the
-  `show_status` branch `_stars` and `_color_sel` both alias the one strip, so
-  `refresh()` / `update_*_display` drive it unchanged. **Not** the "one shared
-  floating editor" from the original sketch — a per-card painted strip with
-  hit-testing was simpler and covers every real interaction. Missing: the
-  star hover-preview (light-gold fill following the pointer).
-- **Tier 2a** (`4779750`): `_rebuild_meta_html()` composes name lines +
-  location + filename/marks + origin tag into **one rich-text `QLabel`**
-  (`_lbl_meta`, with `setContentsMargins` so the `meta` wrapper + its layout
-  go too). `_populate_name_lines` / `_refresh_crop_mark` /
-  `_refresh_location_line` delegate to it in collapsed mode. 📝 and `+ JPG`
-  links stay live via `linkActivated`. −1 wrapper, −3 layouts, −3..5 labels.
+  (−13 widgets, −2 layouts, −17 connections/card). `_stars` / `_color_sel`
+  alias the one strip so `refresh()` / `update_*_display` are unchanged.
+  Missing: the star hover-preview.
+- **Tier 2a — REVERTED** (`4779750` in, `40021e6` out). One rich-text `QLabel`
+  for the whole meta block **made the full build much slower, not faster**:
+  a `QLabel` in rich-text mode builds a `QTextDocument` and re-lays it out on
+  `setText` *and* on every `sizeHint()` — and `QGridLayout` queries sizeHint
+  a lot. Measured on a 2155-pic day: `card build` **~6 ms → ~31 ms/card**
+  (84 s total, was ~30 s), and a pure re-flow of 2401 cards went **~1 s → ~10 s**.
+  The plain multi-`QLabel` meta block (cheap sizeHint) was never the problem —
+  it's restored.
 
-Net: a culling card **~33 → ~12–14 objects**. `card build` ~11–13 ms → ~6 ms
-after tier 1, lower again after 2a.
+**Lesson:** per-widget shaving on the *text* block is not the lever. The plain
+labels are cheap; the expensive things were the 10 control buttons (Tier 1
+fixed that) and — on a full build — the `QGridLayout` re-flow itself
+(`other` = 17 s for 2155 cards). That re-flow is **step 4** (drop the giant
+`QGridLayout`), which the plan always called the real fix.
 
-**Tier 2b (still open):** paint the corner badges (rate / attn / lock / colour
-dot / format) in `_FramedPhoto.paintEvent` instead of positioned child
-`QLabel`s — removes ~4 more labels + the `reposition()` on every resize (which
-is what the live-layout passes pay). Needs `_FramedPhoto` to take the badge
-data + hit-test the clickable attention badge (`status_clicked`).
+**Tier 2b (paint the corner badges) — on hold.** Would shave ~4 more labels +
+the `reposition()` cost, but leaves the `QGridLayout` re-flow untouched and
+carries the rich-text-`QLabel`-shaped risk (custom paint + hit-test the
+clickable attention badge). Only worth it if step 4 is off the table.
 
 | Step | What | State |
 |------|------|-------|
@@ -109,12 +109,12 @@ data + hit-test the clickable attention badge (`status_clicked`).
 | — | Preview dialog: taskbar button + `⤢` reset-size + reject a saved geometry small in both dims | **SHIPPED** |
 | — | Look & Feel: "Culling grid" section (columns / fill % / Start-with default) | **SHIPPED** |
 | — | Build-time instrumentation in the log (`built in N s … card build / layout / other`) | **SHIPPED** — leave it, it's cheap and useful |
-| **4** | Viewport virtualization (recycle ~40 cards) | not started — the real first-open fix; own branch; can KEEP `QGridLayout` (it's not the bottleneck) |
-| 5 | Cheaper card (one custom-painted widget) | not started — only if 6 falls short |
-| **6** | Cheaper card: T1 painted `_ControlStrip` (stars+dots), T2a one rich-text meta label, T2b paint the corner badges | **T1 + T2a SHIPPED `d56569e`** (culling card ~33→~12–14 objects, live-tested "a lot faster"); **T2b open** — paint corner badges + drop `_FramedPhoto.reposition()` |
+| **4** | Viewport virtualization (recycle ~40 cards, drop the giant `QGridLayout` for manual layout) | **not started — now the clear next lever.** Kills the `other` re-flow time AND caps the build regardless of day size. Own branch, ~1–2 sessions. |
+| 5 | Cheaper card (one custom-painted widget) | not started — only if 4 + 6-T1 fall short |
+| **6** | Cheaper card: T1 painted `_ControlStrip` (stars+dots) — **KEPT**; T2a rich-text meta label — **REVERTED** (slower); T2b paint corner badges — **on hold** | T1 shipped `e14ded5`; T2a in `4779750` / out `40021e6` |
 | 7 | Hoist per-widget stylesheets into one shared sheet | **DONE for StarWidget/ColorSelector (`f638ea1`) — no measurable gain, don't bother with the rest** |
 | **8** | Viewport thumbnail loading + progressive grid reveal | **SHIPPED `c6a30eb`** — ~2200-pic day ~30 s → ~15 s to a usable grid, first screenful ~1.5 s |
-| **8b** | Progressive reveal for the `_build_missing_batch` filter-widen path too | not started — a 3-card view (e.g. GPS-missing) widened to All still blocks ~40 s; apply step 8's deferred-backlog + reveal here |
+| **8b** | Progressive reveal for the `_build_missing_batch` filter-widen path too | **SHIPPED `3c7f702`** — 3-card no-GPS view widened to All: ~40 s blocked → ~2 s to a usable grid |
 | — | Persistent process-level `ThumbCache` (module singleton, keep byte budget) | not started — cheap; immunises 2nd+ open in a session from cold OS-file-cache |
 | — | Preview-cache size cap (% of free disk, LRU to fit) | requested 2026-09-02 — `utils/preview_cache` hygiene, separate follow-up |
 
