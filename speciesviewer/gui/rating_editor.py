@@ -53,6 +53,11 @@ _INK_SOFT = theme.INK_SOFT
 _LINE = theme.LINE
 _SURFACE = theme.SURFACE
 
+# Fixed height of the framed culling card's meta block (3 name lines + location
+# + filename line + margins). Reserved so a recycled card in the virtualised
+# grid never changes the row height. Eyeball-tweakable.
+_META_H = 92
+
 
 # ── Standalone rate recomputation ─────────────────────────────────────────────
 
@@ -526,6 +531,13 @@ class _ControlStrip(QWidget):
                 return
 
     # external sync — mirrors StarWidget.set_rating / ColorSelector.set_color
+    def set_editable(self, can_rate: bool, can_color: bool):
+        if (can_rate, can_color) != (self._can_rate, self._can_color):
+            self._can_rate, self._can_color = can_rate, can_color
+            self.setCursor(Qt.CursorShape.PointingHandCursor if (can_rate or can_color)
+                           else Qt.CursorShape.ArrowCursor)
+            self.update()
+
     def set_rating(self, n):
         n = max(0, min(5, int(n or 0)))
         if n != self._rating:
@@ -817,36 +829,39 @@ class PictureCard(QFrame):
         outer.addWidget(self._pframe)
 
         # corners — datum per position from this viewer's configurable set. The
-        # committed lock (species) and the Attention flag (preview) auto-override
-        # the top-right corner, whatever datum is configured there.
-        from gui.card_layout import corner_config, render_datum
+        # committed lock and the Attention flag auto-override the top-right
+        # corner. Badge WIDGETS are created here once; their per-picture CONTENT
+        # is (re)set by _apply_framed_item() so a recycled card (rebind) can
+        # swap pictures without rebuilding. Assumes the day's frozen state is
+        # constant for the life of the card (the grid rebuilds if it changes).
+        from gui.card_layout import corner_config
         self._corner_cfg = corner_config(self._viewer_key)
         self._rate_lbl = _corner_badge("", rate=True)   # updated by update_rate_display
         self._colour_dot = None
         self._attn_badge = None
+        self._text_badges = {}   # pos -> (QLabel, datum) for the generic text datums
+        frozen = getattr(item, "frozen", False)
 
         for pos in ("tl", "bl", "br", "tr"):
             datum = self._corner_cfg.get(pos, "none")
-            if pos == "tr" and getattr(item, "frozen", False):
+            if pos == "tr" and frozen:
                 lock = _corner_badge("🔒", bold=True)
                 lock.setToolTip("This day is committed — Reset the trip to unlock it.")
                 self._thumb.add_badge(lock, "tr")
                 continue
             if pos == "tr" and self._show_status:
-                text, _clickable = self._attn_badge_spec()
-                self._attn_badge = _corner_badge(text or "", attn=True)
+                self._attn_badge = _corner_badge("", attn=True)
                 self._attn_badge.setCursor(Qt.CursorShape.PointingHandCursor)
                 self._attn_badge.mousePressEvent = \
                     lambda e: self.status_clicked.emit(self.upn_key)
                 self._thumb.add_badge(self._attn_badge, "tr")
-                self._attn_badge.setVisible(bool(text))   # hide the empty pill
                 continue
             if datum == "none":
                 continue
             if datum == "rate":
                 self._thumb.add_badge(self._rate_lbl, pos)
             elif datum == "lock":
-                if getattr(item, "frozen", False):
+                if frozen:
                     lk = _corner_badge("🔒", bold=True)
                     lk.setToolTip("This day is committed — Reset the trip to unlock it.")
                     self._thumb.add_badge(lk, pos)
@@ -854,12 +869,10 @@ class PictureCard(QFrame):
                 self._colour_dot = QLabel()
                 self._colour_dot.setFixedSize(15, 15)
                 self._thumb.add_badge(self._colour_dot, pos)
-                self._paint_colour_dot()
             else:
-                txt = render_datum(datum, item)
-                if txt is not None:
-                    self._thumb.add_badge(_corner_badge(txt, bold=(datum == "format")), pos)
-        self.update_rate_display(item.rate)
+                badge = _corner_badge("", bold=(datum == "format"))
+                self._text_badges[pos] = (badge, datum)
+                self._thumb.add_badge(badge, pos)
 
         # meta lines: up to three species-name lines per the display profile —
         # deduped, the scientific one italic, the sex/age/plumage suffix on the
@@ -904,6 +917,13 @@ class PictureCard(QFrame):
                           Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
         ml.addLayout(key_row)
         self._refresh_crop_mark()
+        if self._show_status:
+            # Virtualised culling grid positions cards by hand → every card must
+            # be the same height. The variable part is the 1-3 name lines;
+            # reserve a fixed block (name at top, stretch fills the rest) so a
+            # recycled card never changes the row height.
+            ml.addStretch(1)
+            meta.setFixedHeight(_META_H)
         # origin tag only when kinds are mixed (Trip+Master) or a master/album ref
         from_album = getattr(item, "from_album", False)
         if self._from_master or self._show_kind_tag or from_album:
@@ -964,11 +984,76 @@ class PictureCard(QFrame):
             cl.addWidget(self._color_sel)
         outer.addWidget(controls)
 
-        self._update_frame_style()   # base surface + selection border
-        self._update_thumb_style()   # paints the frame colour from the label
+        self._apply_framed_item(item)   # fill every per-picture field
         if not self._defer_thumb:
             self._thumb_loaded = True
             item.request_thumbnail(target_w, self.set_thumbnail)
+
+    def _apply_framed_item(self, item) -> None:
+        """Set every per-picture field on an already-built framed card — the
+        thumbnail, name lines, location, filename + marks, corner badges, the
+        stars/dots strip, the frame colour, and the selection/cursor state
+        (both cleared). Called at the end of _build_framed_ui and by rebind().
+
+        Invariant: the badge STRUCTURE is fixed at build (same corner_cfg, same
+        show_status, same frozen state), so only content is touched here."""
+        self._item = item
+        self.upn_key = item.key
+        self._from_master = getattr(item, "from_master", False)
+        self._frame_color = item.color
+        self._selected = False
+        self._cursor = False
+
+        # meta text
+        self._populate_name_lines()
+        if getattr(self, "_lbl_key", None) is not None:
+            self._lbl_key.setText(self._key_line_text())
+            self._lbl_key.setToolTip(item.key)
+        self._refresh_crop_mark()
+        self._refresh_location_line()
+
+        # corner badges — generic text datums (format / date / …); the rate,
+        # attention and colour-dot badges have their own refreshers below.
+        from gui.card_layout import render_datum
+        for _pos, (badge, datum) in getattr(self, "_text_badges", {}).items():
+            txt = render_datum(datum, item)
+            badge.setText(txt or "")
+            badge.setVisible(bool(txt))
+        self.update_rate_display(item.rate)     # _rate_lbl
+        self._refresh_framed_status()           # _attn_badge + location + reposition
+
+        # stars / colour dots
+        greyed = (("Blue", "Purple")
+                  if item.has_jpg and not getattr(item, "discard_allowed", False)
+                  else ())
+        if getattr(self, "_ctrl_strip", None) is not None:
+            self._ctrl_strip.set_editable(item.can_edit_rating, item.can_edit_color)
+            self._ctrl_strip.set_rating(item.rating)
+            self._ctrl_strip.set_color(item.color)
+            self._ctrl_strip.set_disabled_colors(greyed)
+        else:
+            self._stars.set_rating(item.rating)
+            self._stars.setEnabled(item.can_edit_rating)
+            self._color_sel.set_color(item.color)
+            self._color_sel.setEnabled(item.can_edit_color)
+            self._color_sel.set_disabled_colors(greyed, _DISCARD_GREYED_TIP if greyed else "")
+
+        # thumbnail — drop the old pixmap; the caller re-requests (viewport path)
+        self._thumb_loaded = False
+        self._thumb.setPixmap(QPixmap())
+        self._thumb.setText("…")
+
+        self._update_thumb_style()   # frame colour + colour dot
+        self._update_frame_style()   # base surface + (cleared) selection border
+        self.setToolTip(item.display_name or item.key)
+        if isinstance(self._thumb, _FramedPhoto):
+            self._thumb.reposition()
+
+    def rebind(self, item) -> None:
+        """Recycle this already-built framed culling card onto a different
+        picture — the virtualised grid's pool swaps data instead of rebuilding
+        widgets. `show_status` framed cards only."""
+        self._apply_framed_item(item)
 
     def _populate_name_lines(self) -> None:
         """(Re)build the framed card's name lines from the item's display_lines:
