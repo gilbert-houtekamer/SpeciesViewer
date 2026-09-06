@@ -341,18 +341,84 @@ positioning) rather than push this further.
 
 ---
 
-## Step 4 — viewport virtualization   (own branch — the real fix)
+## Step 4 — viewport virtualization   (branch `sv_grid_virtualize`, 2026-09-06 — the real fix)
 
-Only ever build ~40 card widgets; recycle them from a pool as the user scrolls;
-the filter just swaps the backing key list. Open, filter, and scroll all become
-instant and memory stays flat whether the day is 300 or 30,000 pictures.
+Only ever build ~40–60 card widgets; recycle them from a pool as the user
+scrolls; a filter just swaps the backing key list. Open, filter, scroll and
+delete all become instant and RAM stays flat whether the day is 300 or 30,000
+pictures.
 
-Needs: a manual-layout scroll area (drop the giant `QGridLayout`), a card
-`rebind(item)` method (swap data without rebuilding sub-widgets), a small widget
-pool. Several days of work + careful testing across every viewer that shares
-`PictureCard` (Trip / Master / Album species viewers, culling preview, large
-viewer filmstrip). This is the answer that truly scales; aligns with the
-"efficient, scalable, big-master" direction.
+### Scope
+
+**Culling `ImagePreviewDialog` (`gui/image_viewer.py`) ONLY** — same call as
+step 3. The Trip/Master/Album species grid in `rating_editor.py` keeps its
+`QGridLayout` (one species, ~35 cards — no benefit, big regression surface).
+`PictureCard` gains a `rebind(item)` method used only by the culling dialog;
+`_FramedPhoto` / `_ControlStrip` unchanged.
+
+### Model (replaces `_cards` / `_cards_by_key` / `_placement` / `grid_layout`)
+
+- `self._order: list[str]` — the visible keys in display order. The **single
+  source of truth**; nav / selection / keyboard key off it.
+- `self._sel_keys: set[str]`, `self._cursor_key: str | None` — by key, not widget.
+- `self._pool: list[PictureCard]` — a fixed set, `(visible_rows + ~3 buffer) ×
+  columns`, all children of `grid_widget`, built once. `grid_widget` is a plain
+  `QWidget` with **no layout**, `setFixedSize(cols·cw + gaps, rows·ch + gaps)`
+  where `rows = ceil(len(order)/cols)` — its size drives the scrollbar.
+- `_relayout()` — the heart. From the scrollbar value compute the first visible
+  row → first index; for each pool card `i`, target `idx = first_idx + i`; if in
+  range → `card.rebind(order[idx])`, `card.move(col·(cw+gap), row·(ch+gap))`,
+  `card.show()`, `card.set_selected(key in _sel_keys)`,
+  `card.set_cursor_focus(key == _cursor_key)`; else `card.hide()`. Called on
+  scroll (debounced ~30 ms), filter change, resize-settle, delete, column change.
+- `PictureCard.rebind(item)` — swap `_item` / `upn_key`, clear `_selected` /
+  `_cursor`, run the existing refresh helpers (`_populate_name_lines`,
+  `_update_thumb_style`, `_ControlStrip.set_rating/set_color`,
+  `set_disabled_colors`, corner badges, `update_rate_display`,
+  `_refresh_framed_status`), `release_thumb()` then request via the viewport
+  path. No widget creation.
+- Keyboard nav / `_cull_set_cursor(key)` → set `_cursor_key`, scroll so its row
+  is visible (`scrollbar.setValue`), `_relayout`. `ensureWidgetVisible` → "scroll
+  to index" math. Delete-live → drop key from `_order`, `_relayout`.
+
+### What goes away
+
+`_rebuild_grid_from_keys`, `_build_next_batch`, `_finalize_load`,
+`_show_filtered`, `_build_missing_batch`, `_reflow_visible`, `_drop_card_live`'s
+cell-shuffle, `_grid_placement`, `_grid_busy` / `_pending_filter`,
+`_deferred_cards`, **and the whole step 8 / 8b progressive-reveal machinery**
+(`_reveal_partial`, `_revealed`, `_REVEAL_N`) — virtualization makes open
+instant, so there is nothing to reveal progressively. `_apply_filters` just sets
+`_order` and calls `_relayout`. `_load_visible_thumbs` collapses to "request the
+bound cards' thumbs" (they're all near the viewport by construction).
+
+### Two decisions (need a call before building)
+
+1. **Uniform card height.** Manual positioning needs every card the same
+   height. The only variable part is the 1–3 species-name lines. Options:
+   (a) **reserve a fixed 3-line meta area** — tidy aligned rows, a little extra
+   whitespace on single-name cards; (b) measure the tallest of the first ~50
+   cards and clip anything taller. → lean (a).
+2. **Delete the step 8 / 8b code** (recommended — ~80 lines of now-pointless
+   complexity) vs. leave it dormant behind a flag.
+
+### Build order
+
+1. `PictureCard.rebind(item)` + an isolated test (rebind a card through several
+   items, assert every field updates, no stale state). No behaviour change.
+2. The swap: pool + `_relayout` + scroll/resize/keyboard/selection/delete wiring,
+   replacing the methods listed above. One big commit on the branch, heavy
+   manual testing (F5): open, scroll fast, filter cycle, `g`/`h`, arrow-nav to
+   off-screen rows, range-select `[`…`]`, double-click-swatch drop, delete,
+   column change, resize, large-view open/close repaint, "Start with" subsets.
+3. Delete the dead step 8/8b code; update this doc.
+
+### Risks
+
+Cursor/scroll off-by-one (cards misplaced or cursor lost on nav); `rebind`
+missing a field → stale data on a recycled card; selection across filter
+changes; the large-view "occluded card repaint" contract (`_notify_large_view`
+must `_relayout`, not poke one widget); the uniform-height visual change.
 
 ---
 
