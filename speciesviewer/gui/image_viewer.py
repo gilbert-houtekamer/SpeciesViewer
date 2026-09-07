@@ -297,7 +297,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._order: list[str] = []
         self._pool: list[PictureCard] = []
         self._bound: dict[str, PictureCard] = {}
-        self._card_h = 0                # measured once from the first pool card
+        self._card_h = 0                # measured from a pool card; re-measured on a width change
+        self._pool_w = 0               # card width the pool cards are currently fitted to
         self._first_row = -1           # first grid row currently bound (scroll cache)
         self.cancelled = False
         self._active_filter = None
@@ -1150,6 +1151,12 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         destroyed; a column change just needs a few more."""
         if not self._order:
             return
+        cw = self._grid_card_width()
+        if self._pool and cw != self._pool_w:
+            for c in self._pool:
+                c.set_card_width(cw)          # re-fit the thumb to the new width (4:3)
+            self._card_h = 0                  # → re-measure the row height below
+        self._pool_w = cw
         ncols = max(1, self.columns)
         want = ncols * (self._visible_rows() + 2 * self._POOL_BUFFER_ROWS)
         want = min(want, len(self._order) + ncols)   # never more than the set + a row
@@ -1195,6 +1202,14 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         ncols = max(1, self.columns)
         gap = self._GRID_GAP
         cw = self._grid_card_width()
+        if self._pool and cw != self._pool_w:
+            for c in self._pool:
+                c.set_card_width(cw)
+            self._pool_w = cw
+            self._card_h = 0
+        if self._card_h == 0 and self._pool:
+            self._pool[0].adjustSize()
+            self._card_h = max(120, self._pool[0].sizeHint().height())
         ch = self._card_h or 300
         total_rows = (len(self._order) + ncols - 1) // ncols
         self.grid_widget.setFixedSize(ncols * cw + (ncols - 1) * gap,

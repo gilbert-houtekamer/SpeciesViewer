@@ -1299,6 +1299,23 @@ class PictureCard(QFrame):
         self._thumb_loaded = True   # a forced reload counts as "wanted"
         self._item.request_thumbnail(self._thumb_target_w, self.set_thumbnail)
 
+    def set_card_width(self, card_width: int) -> None:
+        """Re-fit the framed thumbnail to a new card width (the grid narrowed or
+        the column count changed) so the reserved 4:3-ish aspect ratio holds.
+        The virtualised culling pool calls this on its cards; a freshly built
+        card gets the right size straight from the constructor."""
+        if not self._framed:
+            return
+        tw = max(80, card_width - 20)
+        if tw == self._thumb_target_w:
+            return
+        self._thumb_target_w = tw
+        self._thumb_fixed_h = max(70, round(tw / self._thumb_aspect))
+        self._thumb.setFixedHeight(self._thumb_fixed_h)
+        self._thumb_loaded = False          # the cached pixmap is the wrong width now
+        self._thumb.setPixmap(QPixmap())
+        self._thumb.setText("…")
+
     def _refresh_location_line(self):
         """Set the location line from the live item; muted grey when there's no
         place/GPS, normal green when there is."""
