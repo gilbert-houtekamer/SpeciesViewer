@@ -53,10 +53,10 @@ _INK_SOFT = theme.INK_SOFT
 _LINE = theme.LINE
 _SURFACE = theme.SURFACE
 
-# Fixed height of the framed culling card's meta block (3 name lines + location
+# Fixed height of the framed culling card's meta block (name lines + location
 # + filename line + margins). Reserved so a recycled card in the virtualised
 # grid never changes the row height. Eyeball-tweakable.
-_META_H = 92
+_META_H = 80
 
 
 # ── Standalone rate recomputation ─────────────────────────────────────────────
@@ -884,7 +884,14 @@ class PictureCard(QFrame):
         self._name_holder = QVBoxLayout()
         self._name_holder.setContentsMargins(0, 0, 0, 0)
         self._name_holder.setSpacing(1)
+        self._meta_fixed = self._show_status   # 3 reusable name labels, fixed height
         self._name_labels = []
+        if self._meta_fixed:
+            for _ in range(3):
+                lbl = QLabel()
+                lbl.setWordWrap(True)
+                self._name_holder.addWidget(lbl)
+                self._name_labels.append(lbl)
         ml.addLayout(self._name_holder)
         self._populate_name_lines()
         # location line (preview/culling only): place name or "No GPS data available"
@@ -1056,33 +1063,47 @@ class PictureCard(QFrame):
         self._apply_framed_item(item)
 
     def _populate_name_lines(self) -> None:
-        """(Re)build the framed card's name lines from the item's display_lines:
-        the first line is the primary (bold) name, any further lines are softer,
-        and whichever line IS the scientific name is italicised."""
+        """Fill the framed card's name lines from the item's display_lines: the
+        first line is the primary (bold) name, further lines softer, the
+        scientific one italic. show_status cards keep 3 fixed labels (blanked
+        when unused) so a recycled card's rebind() does no widget churn; other
+        framed cards rebuild the labels each call."""
+        lines = getattr(self._item, "display_lines", None)
+        if not lines:
+            name = self._item.display_name or self._item.key
+            suffix = getattr(self._item, "qualifier_suffix", "") or ""
+            lines = [((name + suffix).strip(), False)]
+
+        def _css(i, is_sci):
+            base = (f"color:{_INK}; font-weight:600; font-size:14px;" if i == 0
+                    else f"color:{_INK_SOFT}; font-size:11.5px;")
+            return base + (" font-style:italic;" if is_sci else "")
+
+        if getattr(self, "_meta_fixed", False):
+            for i, lbl in enumerate(self._name_labels):        # exactly 3, pre-built
+                if i < len(lines):
+                    text, is_sci = lines[i]
+                    lbl.setText(text)
+                    lbl.setStyleSheet(_css(i, is_sci))
+                    lbl.setVisible(True)
+                else:
+                    lbl.setText("")
+                    lbl.setVisible(False)
+            self._lbl_name = self._name_labels[0]
+            return
+
         while self._name_holder.count():
             it = self._name_holder.takeAt(0)
             w = it.widget()
             if w:
                 w.deleteLater()
         self._name_labels = []
-        lines = getattr(self._item, "display_lines", None)
-        if not lines:
-            name = self._item.display_name or self._item.key
-            suffix = getattr(self._item, "qualifier_suffix", "") or ""
-            lines = [((name + suffix).strip(), False)]
         for i, (text, is_sci) in enumerate(lines):
             lbl = QLabel(text)
             lbl.setWordWrap(True)
-            if i == 0:
-                css = f"color:{_INK}; font-weight:600; font-size:14px;"
-            else:
-                css = f"color:{_INK_SOFT}; font-size:11.5px;"
-            if is_sci:
-                css += " font-style:italic;"
-            lbl.setStyleSheet(css)
+            lbl.setStyleSheet(_css(i, is_sci))
             self._name_holder.addWidget(lbl)
             self._name_labels.append(lbl)
-        # Keep _lbl_name pointing at the primary line for any external reference.
         self._lbl_name = self._name_labels[0] if self._name_labels else QLabel()
 
     def _update_frame_color(self):
@@ -1275,6 +1296,7 @@ class PictureCard(QFrame):
         """Re-request the thumbnail — used when the underlying image changed (a new
         render switched the source to a JPG, or a re-crop), unlike refresh() which
         only repaints text/widgets."""
+        self._thumb_loaded = True   # a forced reload counts as "wanted"
         self._item.request_thumbnail(self._thumb_target_w, self.set_thumbnail)
 
     def _refresh_location_line(self):

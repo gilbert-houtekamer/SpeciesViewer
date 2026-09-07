@@ -289,19 +289,17 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # which the species-name path already sets).
         self._day_edited = False
 
-        # Grid state
-        self._cards: list[PictureCard] = []          # currently VISIBLE, in order
-        self._cards_by_key: dict[str, PictureCard] = {}  # EVERY card built this session
-        self._build_index = 0
-        self._placement: list = []
+        # Grid state (Step 4 — viewport virtualization). `_order` is the single
+        # source of truth: the visible keys in display order. A fixed `_pool` of
+        # PictureCards is positioned by hand and recycled via card.rebind() as
+        # the user scrolls; `_bound` maps key -> the pool card currently showing
+        # it (only for on-screen keys). No QGridLayout, no per-key card store.
+        self._order: list[str] = []
+        self._pool: list[PictureCard] = []
+        self._bound: dict[str, PictureCard] = {}
+        self._card_h = 0                # measured once from the first pool card
+        self._first_row = -1           # first grid row currently bound (scroll cache)
         self.cancelled = False
-        # Show/hide filtering (Step 3): a filter change re-flows the layout and
-        # toggles visibility instead of destroying + rebuilding every card.
-        self._grid_busy = False        # a hard build or a lazy build is running
-        self._pending_filter = False   # a filter change arrived mid-build; re-apply after
-        self._show_order: list[str] = []
-        self._build_queue: list[str] = []
-        self._build_qi = 0
         self._active_filter = None
         self.warnings_only = False
         self.no_gps_only = False
@@ -329,11 +327,10 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._resize_timer.setSingleShot(True)
         self._resize_timer.setInterval(160)
         self._resize_timer.timeout.connect(self._on_resize_settled)
-        self._thumb_scan_timer = QTimer(self)  # debounce scroll → viewport thumb load (step 8)
-        self._thumb_scan_timer.setSingleShot(True)
-        self._thumb_scan_timer.setInterval(90)
-        self._thumb_scan_timer.timeout.connect(self._load_visible_thumbs)
-        self._built_card_w = -1
+        self._scroll_timer = QTimer(self)   # debounce scroll → re-bind the card pool
+        self._scroll_timer.setSingleShot(True)
+        self._scroll_timer.setInterval(15)
+        self._scroll_timer.timeout.connect(self._on_grid_scrolled)
         self._pending_find = None
         self._find_min_chars = 2            # don't search on a single character
         # Multi-select state
@@ -607,22 +604,17 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         _scroll_vbox = QVBoxLayout(_scroll_content)
         _scroll_vbox.setContentsMargins(0, 0, 0, 0)
         _scroll_vbox.setSpacing(0)
+        # Step 4: plain canvas, no layout — the card pool is positioned by hand
+        # (_relayout) and grid_widget is pinned to the full virtual size so the
+        # scrollbar spans the whole set while only ~50 cards exist.
         self.grid_widget = QWidget()
-        self.grid_layout = QGridLayout(self.grid_widget)
-        self.grid_layout.setSpacing(6)
-        # Without this the default layout margins (~9 px each side) ate into the
-        # width _grid_placement budgeted from the viewport, so the last column
-        # was always clipped on the right.
-        self.grid_layout.setContentsMargins(0, 0, 0, 0)
         _scroll_vbox.addWidget(self.grid_widget)
         _scroll_vbox.addStretch(1)
         self.scroll_area.setWidget(_scroll_content)
         layout.addWidget(self.scroll_area)
-        # Step 8: as the grid scrolls, (re)load thumbnails for the cards now in
-        # view and release the ones far from it. Debounced so a flick doesn't
-        # thrash the loader.
+        # As the grid scrolls, re-bind the pool to the rows now in view.
         self.scroll_area.verticalScrollBar().valueChanged.connect(
-            lambda _v: self._thumb_scan_timer.start())
+            lambda _v: self._scroll_timer.start())
 
         # ── Initial filter cascade ─────────────────────────────────────────
         base = set(self._base_keys())
@@ -951,7 +943,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         cards and re-apply the filter, so one placed from the map drops out of the
         📍 'missing GPS' subset (and the title recounts) instead of lingering."""
         for k in keys:
-            card = self._cards_by_key.get(k)
+            card = self._bound.get(k)
             if card:
                 card.refresh()
             self._notify_large_view(k)
@@ -1092,13 +1084,15 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     # lands on the SAME value — the on-disk thumbnail cache (step 2C) is keyed by
     # width, and a 1-px drift would miss every entry and force a full re-decode.
     _CARD_W_STEP = 16
+    _GRID_GAP = 6            # px between cards (was QGridLayout.spacing())
+    _POOL_BUFFER_ROWS = 4   # extra card rows kept in the pool above + below the viewport
 
     def _grid_card_width(self) -> int:
         """Card width ≈ (viewport × fill%) ÷ columns, snapped to `_CARD_W_STEP`
         so it's stable across small window-size changes and reopens (which is
         what lets the thumbnail cache hit)."""
         ncols = max(1, self.columns)
-        spacing = self.grid_layout.spacing()
+        spacing = self._GRID_GAP
         vw = self.scroll_area.viewport().width()
         if vw < 120:                     # not laid out yet — sane fallback
             vw = 1100
@@ -1111,21 +1105,6 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         usable = int(vw * pct / 100) - sb - 6
         raw = max(160, (usable - spacing * (ncols - 1)) // ncols)
         return max(160, (raw // self._CARD_W_STEP) * self._CARD_W_STEP)
-
-    def _apply_grid_width(self):
-        """Pin the grid to exactly columns × card_w + gaps so it can never be
-        wider than the viewport (no clipped last column, no horizontal
-        scrollbar), regardless of column-stretch rounding."""
-        ncols = max(1, self.columns)
-        spacing = self.grid_layout.spacing()
-        cw = self._grid_card_width()
-        self.grid_widget.setFixedWidth(ncols * cw + (ncols - 1) * spacing)
-
-    def _grid_placement(self, total: int):
-        """(row, col, span=1, card_w) for each of `total` positions."""
-        ncols = max(1, self.columns)
-        card_w = self._grid_card_width()
-        return [(idx // ncols, idx % ncols, 1, card_w) for idx in range(total)]
 
     def _reset_window_size(self):
         """Snap the window back to ~92% of the screen — the first-open default —
@@ -1146,69 +1125,140 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             t.start()
 
     def _on_resize_settled(self):
-        """The window stopped resizing — rebuild the visible grid at the new
-        card width if it moved enough to matter (a warm cache makes this cheap).
-        Also settles the first-open case where the viewport wasn't final when
-        the initial build ran."""
-        if not self._cards or self._grid_busy:
+        """Window stopped resizing — re-fit the card width and re-lay the pool.
+        Also settles the first-open case where the viewport wasn't final yet."""
+        if not self._order:
             return
-        if abs(self._grid_card_width() - self._built_card_w) <= 6:
-            self._schedule_thumb_scan()   # taller/shorter window → different rows in view
-            return
-        self._rebuild_grid_from_keys([c.upn_key for c in self._cards])
+        self._card_h = 0          # width changed → card height may have too
+        self._first_row = -1      # force a full re-bind
+        self._rebuild_pool_if_needed()
+        self._relayout(force=True)
 
-    # ── Step 8: viewport thumbnail loading ─────────────────────────────────────
-    _THUMB_WARM = 100   # first N visible cards stay loaded regardless of scroll
-    _REVEAL_N = 120     # cards placed in the first (progressive-reveal) screenful
+    # ── Step 4: viewport virtualization ──────────────────────────────────────
+    def _on_grid_scrolled(self):
+        """Debounced scrollbar handler — re-bind the pool when the first visible
+        row changed."""
+        self._relayout()
 
-    def _schedule_thumb_scan(self):
-        """Run a viewport thumbnail pass on the next tick — used after a build /
-        reflow / resize, when card geometry is only final once the event loop
-        has processed the pending layout."""
-        QTimer.singleShot(0, self._load_visible_thumbs)
+    def _visible_rows(self) -> int:
+        ch = self._card_h or 300
+        return self.scroll_area.viewport().height() // max(1, ch + self._GRID_GAP) + 2
 
-    def _load_visible_thumbs(self):
-        """Request thumbnails for the cards in or near the viewport (plus the
-        first _THUMB_WARM, kept warm for a quick scroll back to the top) and
-        release the rest back to the ThumbCache, so opening a big day fires a
-        few dozen decodes instead of hundreds and grid RAM stays flat."""
-        if not self._cards:
+    def _rebuild_pool_if_needed(self):
+        """Grow the card pool to cover the viewport + buffer. Cards are built
+        once (seeded on any key — _relayout rebinds them immediately) and never
+        destroyed; a column change just needs a few more."""
+        if not self._order:
             return
-        # Runs during a hard build once _reveal_partial has shown the grid, so
-        # the visible screenful gets its thumbnails while the rest still builds.
-        if self._grid_busy and not getattr(self, "_revealed", False):
+        ncols = max(1, self.columns)
+        want = ncols * (self._visible_rows() + 2 * self._POOL_BUFFER_ROWS)
+        want = min(want, len(self._order) + ncols)   # never more than the set + a row
+        while len(self._pool) < want:
+            seed = self._order[min(len(self._pool), len(self._order) - 1)]
+            self._pool.append(self._new_pool_card(seed))
+        if self._card_h == 0 and self._pool:
+            self._pool[0].adjustSize()
+            self._card_h = max(120, self._pool[0].sizeHint().height())
+            want = ncols * (self._visible_rows() + 2 * self._POOL_BUFFER_ROWS)
+            want = min(want, len(self._order) + ncols)
+            while len(self._pool) < want:
+                seed = self._order[min(len(self._pool), len(self._order) - 1)]
+                self._pool.append(self._new_pool_card(seed))
+
+    def _new_pool_card(self, seed_key: str) -> "PictureCard":
+        show_status = self.fpr is not None or getattr(self._collection, "show_status_badges", False)
+        item = self._collection.item_for_key(seed_key)
+        card = PictureCard(item, self._grid_card_width(), self.grid_widget,
+                           show_status=show_status, framed=True, viewer_key="preview",
+                           thumb_aspect=self._card_aspect(), defer_thumb=True)
+        card.card_clicked.connect(self._on_card_cursor)
+        card.card_double_clicked.connect(self._open_large_view)
+        card.card_right_clicked.connect(self._on_card_context_menu)
+        card.status_clicked.connect(self._open_species_dialog)
+        card.notes_clicked.connect(self._edit_headline_description)
+        card.render_clicked.connect(self._register_pending_render)
+        card.color_double_committed.connect(self._on_swatch_double_committed)
+        card.card_changed.connect(self._note_collection_write)
+        card.hide()
+        return card
+
+    def _relayout(self, *, force: bool = False):
+        """Position + rebind the pool for the current scroll window. `_bound`
+        maps each on-screen key to its pool card afterwards."""
+        if not self._order:
+            for c in self._pool:
+                c.hide()
+            self._bound = {}
+            self.grid_widget.setFixedSize(10, 10)
+            self._empty_grid_notice()
             return
+        ncols = max(1, self.columns)
+        gap = self._GRID_GAP
+        cw = self._grid_card_width()
+        ch = self._card_h or 300
+        total_rows = (len(self._order) + ncols - 1) // ncols
+        self.grid_widget.setFixedSize(ncols * cw + (ncols - 1) * gap,
+                                      total_rows * (ch + gap) + 1)
         sb = self.scroll_area.verticalScrollBar()
         vp_top = sb.value()
-        vp_bot = vp_top + self.scroll_area.viewport().height()
-        row_h = max(1, self._cards[0].height())
-        band = row_h * 2                       # ~2 rows of prefetch each side
-        lo, hi = vp_top - band, vp_bot + band
-        want = 0
-        for i, card in enumerate(self._cards):
-            y0 = card.y()
-            near = i < self._THUMB_WARM or (y0 + card.height() >= lo and y0 <= hi)
-            if near:
+        first_row = max(0, (vp_top - self._POOL_BUFFER_ROWS * (ch + gap)) // (ch + gap))
+        if not force and first_row == self._first_row:
+            return
+        self._first_row = first_row
+        first_idx = first_row * ncols
+        new_bound = {}
+        for slot, card in enumerate(self._pool):
+            idx = first_idx + slot
+            if idx >= len(self._order):
+                card.hide()
+                continue
+            key = self._order[idx]
+            row, col = divmod(idx, ncols)
+            try:
+                card.rebind(self._collection.item_for_key(key))
+            except (KeyError, ValueError):
+                card.hide()
+                continue
+            card.setFixedWidth(cw)
+            card.move(col * (cw + gap), row * (ch + gap))
+            card.set_selected(key in self._selected_keys)
+            card.set_cursor_focus(key == self._last_clicked_key)
+            card.show()
+            new_bound[key] = card
+        self._bound = new_bound
+        self._request_visible_thumbs()
+
+    def _request_visible_thumbs(self):
+        """Every bound card is near the viewport by construction — load them;
+        release everything else in the pool back to the ThumbCache."""
+        bound = set(self._bound.values())
+        for card in self._pool:
+            if card in bound:
                 card.request_thumb_if_needed()
-                want += 1
             else:
                 card.release_thumb()
-        logger.debug("viewport thumbs: %d/%d loaded (scroll %d)",
-                     want, len(self._cards), vp_top)
 
-    def _clear_grid(self):
-        self._collection.cancel_pending_loads()  # drop in-flight thumbnail loads
-        for c in range(10):  # reset all possible column stretch values (spinner max = 10)
-            self.grid_layout.setColumnStretch(c, 0)
-        while self.grid_layout.count():
-            self.grid_layout.takeAt(0)
-        # Destroy EVERY built card, not just the ones still in the layout — the
-        # show/hide filter parks filtered-out cards outside the layout (see
-        # _reflow_visible), and they must not leak on a hard rebuild.
-        for card in list(self._cards_by_key.values()):
-            card.deleteLater()
-        self._cards_by_key.clear()
-        self._cards.clear()
+    def _row_of_key(self, key: str) -> int:
+        try:
+            return self._order.index(key) // max(1, self.columns)
+        except ValueError:
+            return -1
+
+    def _scroll_to_key(self, key: str):
+        """Scroll the minimum amount to bring `key`'s row fully into view."""
+        row = self._row_of_key(key)
+        if row < 0:
+            return
+        ch = self._card_h or 300
+        gap = self._GRID_GAP
+        y0 = row * (ch + gap)
+        y1 = y0 + ch
+        sb = self.scroll_area.verticalScrollBar()
+        vp_h = self.scroll_area.viewport().height()
+        if y0 < sb.value():
+            sb.setValue(y0)
+        elif y1 > sb.value() + vp_h:
+            sb.setValue(min(sb.maximum(), y1 - vp_h))
 
     def _card_aspect(self) -> float:
         """Width/height to reserve for every card's thumbnail — sampled once
@@ -1232,22 +1282,42 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._card_aspect_cache = a
         return a
 
-    def _make_card(self, item, card_w, show_status):
-        """Build one PictureCard and wire its signals — shared by the hard
-        rebuild and the show/hide filter's lazy build. Parented to grid_widget
-        so it's never briefly a top-level window before the layout takes it."""
-        card = PictureCard(item, card_w, self.grid_widget, show_status=show_status,
-                           framed=True, viewer_key="preview",
-                           thumb_aspect=self._card_aspect(), defer_thumb=True)
-        card.card_clicked.connect(self._on_card_cursor)
-        card.card_double_clicked.connect(self._open_large_view)
-        card.card_right_clicked.connect(self._on_card_context_menu)
-        card.status_clicked.connect(self._open_species_dialog)
-        card.notes_clicked.connect(self._edit_headline_description)
-        card.render_clicked.connect(self._register_pending_render)
-        card.color_double_committed.connect(self._on_swatch_double_committed)
-        card.card_changed.connect(self._note_collection_write)
-        return card
+    def _set_grid_keys(self, keys, *, reset_selection: bool = False, keep_scroll: bool = True):
+        """Point the virtualised grid at `keys` (already the desired subset).
+        The collection sorts them; the pool re-binds. No card is destroyed."""
+        import time as _t
+        t0 = _t.monotonic()
+        tc = getattr(self._collection, "_thumb_cache", None)
+        if tc is not None:
+            tc.reset_stats()
+        self.cancelled = False
+        self.cancel_button.setEnabled(False)
+        self.wait_dialog.close()
+        self._collection.cancel_pending_loads()
+        self._collection.rebuild(list(keys))
+        self._order = [self._collection.item(i).key
+                       for i in range(len(self._collection))]
+        if reset_selection:
+            self._selected_keys.clear()
+            self._bracket_left = self._bracket_right = None
+            self._last_clicked_key = None
+        else:
+            order_set = set(self._order)
+            self._selected_keys &= order_set
+            if self._last_clicked_key not in order_set:
+                self._last_clicked_key = None
+        keep = self.scroll_area.verticalScrollBar().value() if keep_scroll else 0
+        self._first_row = -1
+        self._rebuild_pool_if_needed()
+        self._relayout(force=True)
+        sb = self.scroll_area.verticalScrollBar()
+        sb.setValue(min(keep, sb.maximum()))
+        self._relayout(force=True)
+        self._update_selection_display()
+        if tc is not None and self._order:
+            logger.info("Culling grid: %d pictures in %.2f s — %s",
+                        len(self._order), _t.monotonic() - t0,
+                        tc.stats_line(len(self._bound)))
 
     def _empty_grid_notice(self):
         """The message shown when a filter / radio narrows the grid to nothing —
@@ -1266,290 +1336,20 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             QMessageBox.warning(self, "No Images", "No pictures found, or none selected.")
 
     def _rebuild_grid_from_keys(self, keys):
-        """HARD rebuild — destroy every card and build the given keys from
-        scratch. Used on open, on a column-count / card-width change, and after a
-        master change. Routine colour-filter changes go through _show_filtered
-        (show/hide), which never destroys."""
-        # Progressive reveal (step 8 follow-up): build the first batch behind the
-        # modal wait dialog, then _reveal_partial() shows the grid + hands control
-        # back while the rest streams in below. Thumbnails are deferred (step 8),
-        # so the earlier "freeze painting for the whole build" jitter is gone.
-        self._grid_busy = True
-        self._revealed = False
-        self._deferred_cards = []   # (idx, card) built in the background, placed at finalize
-        import time as _t
-        self._build_t0 = _t.monotonic()
-        self._t_construct = self._t_layout = 0.0
-        tc = getattr(self._collection, "_thumb_cache", None)
-        if tc is not None:
-            tc.reset_stats()
-        self.grid_widget.setUpdatesEnabled(False)
-        self._clear_grid()
-        self._selected_keys.clear()
-        self._bracket_left = None
-        self._bracket_right = None
-        self._last_clicked_key = None
-        self._update_selection_display()
-        self.cancelled = False
-        self._collection.rebuild(list(keys))
-        self._build_index = 0
-        n = len(self._collection)
-        if n == 0:
-            self.grid_widget.setUpdatesEnabled(True)
-            self._grid_busy = False
-            self._empty_grid_notice()
-            return
-        self._apply_grid_width()
-        self._built_card_w = self._grid_card_width()
-        self._placement = self._grid_placement(n)
-        for c in range(self.columns):
-            self.grid_layout.setColumnStretch(c, 1)
-        self.cancel_button.setEnabled(True)
-        if not self.wait_dialog.isVisible():
-            self.wait_dialog.show()
-        self._build_next_batch()
+        """Open / master-change entry — point the virtualised grid at `keys` and
+        clear any selection (a fresh set)."""
+        self._set_grid_keys(keys, reset_selection=True)
 
-    def _build_next_batch(self):
-        # First batch is big (100) so _reveal_partial fires in one shot behind
-        # the modal wait dialog. After the reveal the grid is live, so batches
-        # drop to 30 — the event loop gets a turn ~3x/s and scrolling / rating
-        # keys stay responsive while the backlog builds.
-        BATCH = 30 if self._revealed else 100
-        import time as _t
-        # Preview (fpr) hosts always show the status/📝/📍 row; a collection can
-        # opt in too (the culling grid does — it carries species/desc/GPS itself).
-        show_status = self.fpr is not None or getattr(self._collection, "show_status_badges", False)
-        n = len(self._collection)
-        for _ in range(BATCH):
-            if self.cancelled or self._build_index >= n:
-                self._finalize_load()
-                return
-            idx = self._build_index
-            item = self._collection.item(idx)
-            r, col, span, card_w = self._placement[idx]
-            _c0 = _t.perf_counter()
-            card = self._make_card(item, card_w, show_status)
-            _c1 = _t.perf_counter()
-            if self._revealed:
-                # Background phase: build the card hidden and OUT of the layout.
-                # Adding to a growing QGridLayout with painting live re-flows
-                # every card (and re-positions every badge) on every batch —
-                # quadratic, and it made the total build slower, not faster.
-                # _finalize_load places the whole backlog in one frozen pass.
-                card.setParent(self.grid_widget)
-                card.hide()
-                self._deferred_cards.append((idx, card))
-            else:
-                self.grid_layout.addWidget(card, r, col, 1, span)
-                self._cards.append(card)
-            self._t_construct = getattr(self, "_t_construct", 0.0) + (_c1 - _c0)
-            self._t_layout = getattr(self, "_t_layout", 0.0) + (_t.perf_counter() - _c1)
-            self._cards_by_key[item.key] = card
-            self._build_index += 1
-        if self._build_index < n:
-            if not self._revealed:
-                self._reveal_partial()   # show the first batch, hand back control
-            QTimer.singleShot(0, self._build_next_batch)
-        else:
-            self._finalize_load()
-
-    def _reveal_partial(self):
-        """Show the grid with the first batch built and let the user start
-        culling; the rest of the cards keep building in the background (the
-        _build_next_batch timer chain). _grid_busy stays True so a filter change
-        is still deferred until the whole set exists."""
-        self._revealed = True
-        self.grid_widget.setUpdatesEnabled(True)
-        self.grid_widget.update()
-        self.wait_dialog.close()
-        self._schedule_thumb_scan()   # load thumbnails for the revealed screenful
-
-    def _finalize_load(self):
-        # Place the background-built backlog in ONE frozen pass (one re-flow for
-        # the lot, not one per batch).
-        deferred = getattr(self, "_deferred_cards", None)
-        if deferred:
-            self.grid_widget.setUpdatesEnabled(False)
-            for idx, card in deferred:
-                r, col, span, _cw = self._placement[idx]
-                self.grid_layout.addWidget(card, r, col, 1, span)
-                card.show()
-                self._cards.append(card)
-            self._deferred_cards = []
-        self.grid_widget.setUpdatesEnabled(True)
-        self.grid_widget.update()
-        self.cancel_button.setEnabled(False)
-        self.wait_dialog.close()
-        self._grid_busy = False
-        self._revealed = False   # hard build done; next lazy build starts fresh
-        tc = getattr(self._collection, "_thumb_cache", None)
-        if tc is not None and self._cards:
-            import time as _t
-            dt = _t.monotonic() - getattr(self, "_build_t0", _t.monotonic())
-            tcon = getattr(self, "_t_construct", 0.0)
-            tlay = getattr(self, "_t_layout", 0.0)
-            other = max(0.0, dt - tcon - tlay)
-            logger.info(
-                "Culling grid built in %.1f s: %s  ·  card build %.1f s "
-                "(disk-load %.1f s of that), layout %.1f s, other %.1f s",
-                dt, tc.stats_line(len(self._cards)), tcon,
-                tc.stat_disk_ms / 1000, tlay, other)
-        # Restore the scroll position after a rebuild meant to keep the user's place
-        # (a delete): the grid rebuilds from the top, so without this it snaps up and
-        # the app looks like it 'lost its location'. Deferred one tick so the final
-        # layout geometry (and the scrollbar range) is settled before we clamp.
-        pos = getattr(self, "_restore_scroll", None)
-        if pos is not None:
-            self._restore_scroll = None
-            sb = self.scroll_area.verticalScrollBar()
-            QTimer.singleShot(0, lambda: sb.setValue(min(pos, sb.maximum())))
-        if getattr(self, "_pending_filter", False):
-            self._pending_filter = False
-            QTimer.singleShot(0, self._apply_filters)
-        else:
-            self._schedule_thumb_scan()   # load the thumbnails now actually on screen
-
-    # ── Show/hide filtering (Step 3): build each card once, then toggle ──────
     def _show_filtered(self, visible_keys):
-        """Apply the current filter WITHOUT destroying cards: build any not-yet-
-        seen card once (lazily), then re-flow the layout to the visible set and
-        hide the rest. A colour-filter cycle after the first pass is pure
-        show/hide — no widget churn, no thumbnail re-decode."""
-        if self._grid_busy:
-            self._pending_filter = True
-            return
-        if not self._cards_by_key:
-            # Nothing built yet (shouldn't normally happen — the initial open
-            # goes through the hard path) — fall back to a full build.
-            self._rebuild_grid_from_keys(visible_keys)
-            return
-        self._grid_busy = True
-        import time as _t
-        self._build_t0 = _t.monotonic()
-        tc = getattr(self._collection, "_thumb_cache", None)
-        if tc is not None:
-            tc.reset_stats()
-        self._collection.rebuild(list(visible_keys))
-        self._show_order = [self._collection.item(i).key
-                            for i in range(len(self._collection))]
-        missing = [k for k in self._show_order if k not in self._cards_by_key]
-        if missing:
-            # Lazy build (batched, cancellable) — hidden, NOT in the layout; the
-            # re-flow places them. Progressive reveal (step 8b): after the first
-            # batch, show the first screenful and hand back control while the
-            # rest builds — a 3-card view widened to All used to block ~40 s.
-            self._build_queue = list(missing)
-            self._build_qi = 0
-            self._revealed = False
-            self.cancelled = False
-            self.cancel_button.setEnabled(True)
-            if not self.wait_dialog.isVisible():
-                self.wait_dialog.show()
-            self.grid_widget.setUpdatesEnabled(False)
-            self._build_missing_batch()
-        else:
-            self._reflow_visible(self._show_order)
-            self._grid_busy = False
-            dt = _t.monotonic() - self._build_t0
-            logger.debug("Culling filter: re-flow only, %d shown in %.2f s",
-                         len(self._cards), dt)
-            if getattr(self, "_pending_filter", False):
-                self._pending_filter = False
-                QTimer.singleShot(0, self._apply_filters)
-
-    def _build_missing_batch(self):
-        BATCH = 30 if self._revealed else 100
-        show_status = self.fpr is not None or getattr(self._collection, "show_status_badges", False)
-        card_w = self._grid_card_width()
-        q = self._build_queue
-        for _ in range(BATCH):
-            if self.cancelled or self._build_qi >= len(q):
-                break
-            k = q[self._build_qi]
-            self._build_qi += 1
-            try:
-                item = self._collection.item_for_key(k)
-            except (KeyError, ValueError):
-                continue
-            card = self._make_card(item, card_w, show_status)
-            card.setParent(self.grid_widget)
-            card.hide()
-            self._cards_by_key[k] = card
-        if not self.cancelled and self._build_qi < len(q):
-            if not self._revealed:
-                # First batch done — place the first screenful and hand back
-                # control; the rest keep building hidden. Selection is restored
-                # (the final reflow re-intersects it with the full visible set).
-                saved_sel = set(self._selected_keys)
-                self._reflow_visible(self._show_order[:self._REVEAL_N])
-                self._selected_keys = saved_sel
-                self._update_selection_display()
-                self._reveal_partial()
-            QTimer.singleShot(0, self._build_missing_batch)
-            return
-        n_built = self._build_qi
-        self._build_queue = []
-        self._reflow_visible(self._show_order)
-        self.grid_widget.setUpdatesEnabled(True)
-        self.grid_widget.update()
-        self.cancel_button.setEnabled(False)
-        self.wait_dialog.close()
-        self._grid_busy = False
-        self._revealed = False
-        tc = getattr(self._collection, "_thumb_cache", None)
-        if tc is not None:
-            import time as _t
-            dt = _t.monotonic() - getattr(self, "_build_t0", _t.monotonic())
-            logger.info("Culling filter: +%d new card(s) in %.1f s, %d shown — %s",
-                        n_built, dt, len(self._cards), tc.stats_line(n_built))
+        """Filter-change entry — point the grid at `visible_keys`, keeping the
+        (still-valid) selection and the scroll position."""
+        self._set_grid_keys(visible_keys, reset_selection=False)
         if getattr(self, "_pending_filter", False):
             self._pending_filter = False
-            QTimer.singleShot(0, self._apply_filters)
-
-    def _reflow_visible(self, ordered):
-        """Lay out exactly `ordered` (in order), hide every other built card, and
-        keep _cards / selection / placement in step. No widget creation."""
-        base_set = set(self._base_keys())
-        # Prune cards for pictures that left the day (a delete).
-        for k in [k for k in self._cards_by_key if k not in base_set]:
-            self._cards_by_key.pop(k).deleteLater()
-        ordered = [k for k in ordered if k in self._cards_by_key]
-
-        keep_scroll = self.scroll_area.verticalScrollBar().value()
-        self.grid_widget.setUpdatesEnabled(False)
-        # Detach every card from the layout and hide it.
-        for card in self._cards_by_key.values():
-            self.grid_layout.removeWidget(card)
-            card.hide()
-        if not ordered:
-            self._cards = []
-            self._placement = []
-            self.grid_widget.setUpdatesEnabled(True)
-            self._empty_grid_notice()
-            return
-        self._apply_grid_width()
-        self._built_card_w = self._grid_card_width()
-        ncols = max(1, self.columns)
-        for c in range(self.columns):
-            self.grid_layout.setColumnStretch(c, 1)
-        for i, k in enumerate(ordered):
-            card = self._cards_by_key[k]
-            self.grid_layout.addWidget(card, i // ncols, i % ncols, 1, 1)
-            card.show()
-        self._cards = [self._cards_by_key[k] for k in ordered]
-        self._placement = self._grid_placement(len(ordered))
-        self._selected_keys &= set(ordered)
-        self._bracket_left = self._bracket_right = None
-        if self._last_clicked_key not in self._cards_by_key:
-            self._last_clicked_key = None
-        self._update_selection_display()
-        self.grid_widget.setUpdatesEnabled(True)
-        self.grid_widget.update()
-        sb = self.scroll_area.verticalScrollBar()
-        QTimer.singleShot(0, lambda: sb.setValue(min(keep_scroll, sb.maximum())))
-        self._schedule_thumb_scan()   # the visible set changed — reload its thumbnails
 
     def cancel_scan(self):
+        # Virtualised grid has no long build to cancel; kept for the toolbar
+        # button's signal.
         self.cancelled = True
         self.cancel_button.setEnabled(False)
 
@@ -1557,10 +1357,13 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.columns = value
         set_setting("culling", "grid_columns", value)   # global — every day opens the same
         self._update_title_for_filter()
-        # Card width changed → hard rebuild the visible set at the new width
-        # (hidden cards are rebuilt lazily on the next filter widen).
-        if self._cards and not self._grid_busy:
-            self._rebuild_grid_from_keys([c.upn_key for c in self._cards])
+        if not self._order:
+            return
+        # New column count → new card width + height + pool size.
+        self._card_h = 0
+        self._first_row = -1
+        self._rebuild_pool_if_needed()
+        self._relayout(force=True)
 
     # ── Card actions ────────────────────────────────────────────────────────
     def _frozen_day_blocked(self):
@@ -1593,24 +1396,24 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.species_dialog.show()
 
     def _on_card_cursor(self, key):
-        prev = self._cards_by_key.get(self._last_clicked_key) if self._last_clicked_key else None
+        prev = self._bound.get(self._last_clicked_key) if self._last_clicked_key else None
         if prev:
             prev.set_cursor_focus(False)
         self._last_clicked_key = key
-        card = self._cards_by_key.get(key)
+        card = self._bound.get(key)
         if card:
             card.set_cursor_focus(True)
 
     def _open_large_view(self, key):
-        prev = self._cards_by_key.get(self._last_clicked_key) if self._last_clicked_key else None
+        prev = self._bound.get(self._last_clicked_key) if self._last_clicked_key else None
         if prev:
             prev.set_cursor_focus(False)
         self._last_clicked_key = key
-        card = self._cards_by_key.get(key)
+        card = self._bound.get(key)
         if card:
             card.set_cursor_focus(True)
         from gui.large_image_view import LargeImageView
-        keys = [c.upn_key for c in self._cards]
+        keys = list(self._order)
         if key not in keys:
             return
         # Single instance — close any open large view first.
@@ -1642,7 +1445,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # already refreshes the active card, but a card's coloured frame can fail
         # to repaint while the grid is occluded by the large view; refreshing on
         # close (now that the grid is visible again) guarantees it reflects edits.
-        for card in self._cards:
+        for card in list(self._bound.values()):
             try:
                 card.refresh()
             except RuntimeError:
@@ -1654,7 +1457,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # badges (preview keeps capture order, so no re-sort).
         self._day_edited = True     # non-frozen day: offer a re-read on close
         self._note_collection_write()   # large-view edit also defers its CSV write
-        card = self._cards_by_key.get(key)
+        card = self._bound.get(key)
         if card:
             card.refresh()
 
@@ -1662,7 +1465,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # A crop was applied in the large view — the card must RE-DECODE, not just
         # repaint its frame (which is all _on_large_view_changed does).
         self._day_edited = True     # non-frozen day: offer a re-read on close
-        card = self._cards_by_key.get(key)
+        card = self._bound.get(key)
         if card:
             try:
                 card.reload_thumbnail()
@@ -1672,11 +1475,11 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     def _on_large_view_navigated(self, key):
         # Sync the grid cursor to the large view's current picture so the user
         # can see exactly where they are in the contact sheet.
-        prev = self._cards_by_key.get(self._last_clicked_key) if self._last_clicked_key else None
+        prev = self._bound.get(self._last_clicked_key) if self._last_clicked_key else None
         if prev:
             prev.set_cursor_focus(False)
         self._last_clicked_key = key
-        card = self._cards_by_key.get(key)
+        card = self._bound.get(key)
         if card:
             card.set_cursor_focus(True)
             self.scroll_area.ensureWidgetVisible(card)
@@ -1698,7 +1501,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     def refresh_after_species_change(self, updated_upns):
         """Called by SpeciesInfoDialog after a commit: repaint affected cards
         and mark the dialog so closeEvent can offer to re-run Read & Summarize."""
-        for card in self._cards:
+        for card in list(self._bound.values()):
             if card.upn_key in updated_upns:
                 card.refresh()
         if updated_upns:
@@ -1707,7 +1510,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     # ── Multi-select ────────────────────────────────────────────────────────
 
     def _update_selection_display(self):
-        for c in self._cards:
+        for c in list(self._bound.values()):
             c.set_selected(c.upn_key in self._selected_keys)
         n = len(self._selected_keys)
         self._sel_bar.setVisible(n > 0)
@@ -1715,7 +1518,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._sel_label.setText(f"{n} picture{'s' if n != 1 else ''} selected")
 
     def _selection_from_brackets(self) -> set:
-        order = [c.upn_key for c in self._cards]
+        order = list(self._order)
         left, right = self._bracket_left, self._bracket_right
         if left is None and right is None:
             return set()
@@ -1897,7 +1700,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # parent= → pictures that just got a headline but have no subject are
         # offered the landscape marker (the headline alone shows nowhere).
         for written in apply_headline_description_to(items, values, parent=self):
-            card = self._cards_by_key.get(written.key)
+            card = self._bound.get(written.key)
             if card is not None:
                 card.refresh()
 
@@ -1978,9 +1781,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # changes (delete / move) drop the file from the master; the card is refreshed
         # on the next open — the status line says what happened.
         try:
-            # Keep the user's place: the grid rebuilds from the top, so remember the
-            # scroll position for _finalize_load to restore (same as the delete path).
-            self._restore_scroll = self.scroll_area.verticalScrollBar().value()
+            # _set_grid_keys keeps the scroll position across the rebuild.
             attach = getattr(self._collection, "_attach_sibling_jpgs", None)
             if callable(attach):
                 attach()   # "Add new renders" wrote a JPG on disk — pick it up now
@@ -2183,24 +1984,29 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
 
             # Repaint after the write, not between writes.
             for k in key_list:
-                card = self._cards_by_key.get(k)
+                card = self._bound.get(k)
                 if card:
                     card.refresh()
                 self._notify_large_view(k)
             progress.setValue(len(key_list) + 1)
 
     def _cull_set_cursor(self, key):
-        prev = self._cards_by_key.get(self._last_clicked_key) if self._last_clicked_key else None
+        prev = self._bound.get(self._last_clicked_key) if self._last_clicked_key else None
         if prev:
             prev.set_cursor_focus(False)
         self._last_clicked_key = key
-        c = self._cards_by_key.get(key)
+        # The target row may be off-screen (keyboard nav) — scroll it in. If that
+        # moved the viewport, _relayout re-binds; otherwise just ring the card.
+        before = self.scroll_area.verticalScrollBar().value()
+        self._scroll_to_key(key)
+        if self.scroll_area.verticalScrollBar().value() != before or key not in self._bound:
+            self._relayout(force=True)
+        c = self._bound.get(key)
         if c:
             c.set_cursor_focus(True)
-            self.scroll_area.ensureWidgetVisible(c)
 
     def _cull_refresh_key(self, key):
-        c = self._cards_by_key.get(key)
+        c = self._bound.get(key)
         if c:
             c.refresh()
         self._notify_large_view(key)
@@ -2211,37 +2017,24 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         filter, drop it from the grid live (no full rebuild) so the user can
         keep going and watch the "N of M" count fall — no Refresh, no wait."""
         self._note_collection_write()    # the write is deferred — start the flush debounce
-        if key not in self._cards_by_key:
+        if key not in self._order:
             return
         if key in set(self._visible_keys()):
             return                       # still in scope (e.g. no colour filter on)
         self._drop_card_live(key)
 
     def _drop_card_live(self, key):
-        """Hide one card from the visible grid and re-flow the survivors in
-        place — the card stays in _cards_by_key (its picture is still in the day,
-        it just left the active filter), so re-widening the filter shows it again
-        with no rebuild."""
-        card = self._cards_by_key.get(key)
-        if card is None:
+        """A picture left the active filter (e.g. double-click-a-swatch to tag +
+        move on) — pull it out of `_order` and re-lay the pool. It's still in
+        the day, so re-widening the filter brings it back with no rebuild."""
+        if key not in self._order:
             return
-        try:
-            idx = self._cards.index(card)
-        except ValueError:
-            return
-        self._cards.pop(idx)
+        self._order.remove(key)
         self._selected_keys.discard(key)
         if self._last_clicked_key == key:
             self._last_clicked_key = None
-        self.grid_layout.removeWidget(card)
-        card.hide()
-        # Re-flow only the cards AFTER the gap — the ones before keep their cell.
-        ncols = max(1, self.columns)
-        for i in range(idx, len(self._cards)):
-            c = self._cards[i]
-            self.grid_layout.removeWidget(c)
-            self.grid_layout.addWidget(c, i // ncols, i % ncols, 1, 1)
-        self._placement = self._grid_placement(len(self._cards))
+        self._first_row = -1
+        self._relayout(force=True)
         self._update_selection_display()
         self._update_title_for_filter()
         self._notify_large_view(key)
@@ -2279,7 +2072,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             return
         image_changed = getattr(coll, "_image_changed", set())
         for k in changed:
-            card = self._cards_by_key.get(k)
+            card = self._bound.get(k)
             if card:
                 card.refresh()
                 if k in image_changed:
@@ -2397,7 +2190,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         if not hasattr(self._collection, "create_blog_jpg"):
             return
         keys = keys if keys else self._cull_keys_target()
-        order = [c.upn_key for c in self._cards]
+        order = list(self._order)
         ordered = [k for k in order if k in keys] or list(keys)
         created_paths, skipped, no_raw, failed, made = [], 0, 0, 0, []
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -2418,7 +2211,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             QApplication.restoreOverrideCursor()
         # Repaint the cards that gained a JPG (the filename line + JPG tag follow).
         for k in made:
-            card = self._cards_by_key.get(k)
+            card = self._bound.get(k)
             if card:
                 card.refresh()
         from gui.create_jpg_result import show_create_jpg_result
@@ -2429,7 +2222,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         and write the location into each picture's XMP. Dedup-by-distance + the
         Nominatim throttle live in run_geolocate_batch."""
         keys = keys if keys else self._cull_keys_target()
-        order = [c.upn_key for c in self._cards]
+        order = list(self._order)
         ordered = [k for k in order if k in keys] or list(keys)
         targets = []
         for k in ordered:
@@ -2476,7 +2269,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         if not written:
             return
         for k in written:
-            card = self._cards_by_key.get(k)
+            card = self._bound.get(k)
             if card:
                 card.refresh()
             self._notify_large_view(k)
@@ -2500,7 +2293,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             fields = read.get(os.path.normcase(os.path.normpath(str(src))), {})
             if fields:
                 self._collection.note_location_written(k, fields)
-            card = self._cards_by_key.get(k)
+            card = self._bound.get(k)
             if card:
                 card.refresh()
             self._notify_large_view(k)
@@ -2535,7 +2328,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         n = write_location_batch(files, changed, overwrite=True)
         for k in keys:
             self._collection.note_location_written(k, changed)
-            card = self._cards_by_key.get(k)
+            card = self._bound.get(k)
             if card:
                 card.refresh()
             self._notify_large_view(k)
@@ -2587,7 +2380,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 write_location_batch(files, fields, overwrite=True)
                 self._collection.note_location_written(k, fields)
             self._collection.note_gps_written(k, clip["lat"], clip["lon"])
-            card = self._cards_by_key.get(k)
+            card = self._bound.get(k)
             if card:
                 card.refresh()
             self._notify_large_view(k)
@@ -2609,7 +2402,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self.refresh_from_disk()
             event.accept()
             return
-        if handle_cull_key(event, order=[c.upn_key for c in self._cards],
+        if handle_cull_key(event, order=list(self._order),
                            current_key=self._last_clicked_key,
                            item_for_key=self._collection.item_for_key,
                            set_cursor=self._cull_set_cursor,
@@ -2618,7 +2411,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                            open_rating=self._cull_open_rating):
             event.accept()
             return
-        if handle_grid_arrows(event, order=[c.upn_key for c in self._cards],
+        if handle_grid_arrows(event, order=list(self._order),
                               current_key=self._last_clicked_key,
                               columns=self.columns, set_cursor=self._cull_set_cursor):
             event.accept()
@@ -2634,7 +2427,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         if (event.key() == Qt.Key.Key_A
                 and (event.modifiers() & Qt.KeyboardModifier.ControlModifier)
                 and not text_input_focused()):
-            self._selected_keys = {c.upn_key for c in self._cards}
+            self._selected_keys = set(self._order)
             self._update_selection_display()
             event.accept()
             return
@@ -2706,7 +2499,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             return
         if not self.isVisible():
             return
-        visible_keys = [c.upn_key for c in self._cards]
+        visible_keys = list(self._order)
         if not visible_keys:
             return
 
@@ -2785,7 +2578,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         if not updated_keys:
             return
         logger.info(f"No-GPS refresh: {len(updated_keys)} picture(s) now have GPS after Lightroom edit.")
-        for card in self._cards:
+        for card in list(self._bound.values()):
             if card.upn_key in updated_keys:
                 card.refresh()
         # Persist so the fix survives dialog close and reaches downstream steps.
@@ -2839,7 +2632,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             return
         after = set(pend)
         for k in before | after:
-            card = self._cards_by_key.get(k)
+            card = self._bound.get(k)
             if card:
                 card.refresh()
         gained = after - before
@@ -3050,10 +2843,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
 
     def _reapply_filter(self):
         """Rebuild the grid for the current combined filter (after a delete the
-        displayed set must reflect the same radio + colour + find, minus the removed
-        pictures). Remembers the scroll position so the grid keeps the user's place
-        instead of snapping to the top (restored in _finalize_load)."""
-        self._restore_scroll = self.scroll_area.verticalScrollBar().value()
+        displayed set must reflect the same radio + colour + find, minus the
+        removed pictures). _set_grid_keys keeps the scroll position."""
         self._apply_filters()
 
     def has_unsaved_edits(self) -> bool:
