@@ -1455,6 +1455,29 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         dlg.finished.connect(lambda _=0: self._on_large_view_closed())
         dlg.show()
 
+    def _open_quick_view(self):
+        """'z' — a zoomable look at the camera JPEG only (no RAW decode, no
+        panel). ←/→ step, Esc closes; on close the grid cursor moves to the
+        last picture shown. Does not touch the large view."""
+        order = list(self._order)
+        if not order:
+            return
+        key = self._last_clicked_key if self._last_clicked_key in order else order[0]
+        existing = getattr(self, "_quick_view", None)
+        if existing is not None:
+            try:
+                existing.close()
+            except RuntimeError:
+                pass
+        from gui.quick_viewer import QuickViewer
+        dlg = QuickViewer(self, self._collection, order, order.index(key))
+        dlg.navigated.connect(self._cull_set_cursor)
+        dlg.finished.connect(lambda _=0: setattr(self, "_quick_view", None))
+        self._quick_view = dlg
+        dlg.show()
+        dlg.activateWindow()
+        dlg.setFocus()
+
     def _on_large_view_closed(self):
         # Repaint every card from the live provider. Per-edit picture_changed
         # already refreshes the active card, but a card's coloured frame can fail
@@ -2437,6 +2460,10 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             return
         if event.key() == Qt.Key.Key_L and not text_input_focused():
             self._cull_geolocate()
+            event.accept()
+            return
+        if event.key() == Qt.Key.Key_Z and not text_input_focused():
+            self._open_quick_view()
             event.accept()
             return
         if (event.key() == Qt.Key.Key_A

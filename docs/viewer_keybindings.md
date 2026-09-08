@@ -103,6 +103,13 @@ culling.
 | `c` | Open the **rating / colour** dialog |
 | `f` | **Full resolution** — pre-decode to the 1:1 cache |
 | `l` | **Get location** — reverse-geocode GPS → write `Location/City/State/Country` to the XMP |
+| `z` | **Quick view** — the camera JPEG only, zoomable; `←`/`→` step, `Esc` closes (moves the cursor to where you stopped) |
+
+`z` opens a stripped-down viewer — just the camera's embedded JPEG, no RAW
+decode and no metadata panel, so it appears instantly. It exists for a fast
+"zoom in to check the species" without the Large Image View's startup cost.
+Scroll to zoom, double-click for 1:1, drag to pan. Nothing is written; on close
+the only change is the grid cursor lands on the last picture you looked at.
 
 `l` reverse-geocodes each picture's GPS (OpenStreetMap/Nominatim, English) and
 writes the place name into the XMP. It's throttled and **deduplicated by
