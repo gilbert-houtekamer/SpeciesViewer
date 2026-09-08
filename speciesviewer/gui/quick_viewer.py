@@ -3,12 +3,14 @@
 Opened with `z` from the culling grid. It shows only the camera's own embedded
 JPEG (the ~3200×2400 the OM-1 writes) — no RAW decode, no metadata panel, no
 species editor — so it appears instantly. `←` / `→` step through the pictures,
-`Esc` closes. On close the caller moves its cursor to whichever picture was
-last shown; nothing else changes.
+`Esc` closes. The same culling keys as the grid work here — `1`–`5` colour,
+`q w e r t` / `Ctrl+1`–`5` stars, `0` clear — each writes and advances, so you
+can cull while pixel-peeping. On close the caller moves its cursor to the last
+picture shown and repaints any card it changed; nothing else changes.
 
 Deliberately NOT the Large Image View: that one is powerful but pays a startup
-cost this view exists to skip. It reuses only `_FullResView` (the zoom/pan
-viewport) from there.
+cost this view exists to skip. It reuses `_FullResView` (the zoom/pan viewport)
+and `handle_cull_key` (the shared culling key handler) from elsewhere.
 """
 
 from pathlib import Path
@@ -24,6 +26,7 @@ from gui.preview_extract import extract_preview_bytes
 
 class QuickViewer(QDialog):
     navigated = pyqtSignal(str)   # key last shown — the caller moves its cursor here
+    edited = pyqtSignal(set)      # keys whose rating/colour changed — caller repaints them
 
     def __init__(self, parent, collection, keys, index: int):
         super().__init__(parent)
@@ -31,6 +34,7 @@ class QuickViewer(QDialog):
         self._keys = list(keys)
         self._index = max(0, min(index, len(self._keys) - 1)) if self._keys else 0
         self._cur_key = None
+        self._edited: set[str] = set()
 
         self.setWindowFlag(Qt.WindowType.Window, True)
         self.setModal(False)
@@ -96,20 +100,46 @@ class QuickViewer(QDialog):
         self._index = max(0, min(self._index + delta, len(self._keys) - 1))
         self._load()
 
+    def _goto_key(self, key: str):
+        """handle_cull_key's advance-after-edit → step to `key` and load it."""
+        try:
+            self._index = self._keys.index(key)
+        except ValueError:
+            return
+        self._load()
+
+    def _mark_edited(self, key: str):
+        """handle_cull_key's refresh callback — fires after a successful write."""
+        self._edited.add(key)
+
     # ── keys ─────────────────────────────────────────────────────────────────
     def keyPressEvent(self, e):
         k = e.key()
         if k == Qt.Key.Key_Escape:
             self.close()
-        elif k in (Qt.Key.Key_Left, Qt.Key.Key_Up):
+            return
+        if k in (Qt.Key.Key_Left, Qt.Key.Key_Up):
             self._go(-1)
-        elif k in (Qt.Key.Key_Right, Qt.Key.Key_Down):
+            return
+        if k in (Qt.Key.Key_Right, Qt.Key.Key_Down):
             self._go(1)
-        else:
-            super().keyPressEvent(e)
+            return
+        # Colour / star keys — same handler the grid uses: write then advance.
+        from gui.viewer_keys import handle_cull_key
+        if self._keys and handle_cull_key(
+                e, order=list(self._keys),
+                current_key=self._keys[self._index],
+                item_for_key=self._collection.item_for_key,
+                set_cursor=self._goto_key,
+                refresh_key=self._mark_edited,
+                open_species=None, open_rating=None):
+            return
+        super().keyPressEvent(e)
 
     def closeEvent(self, e):
         self._loader.cancel_all()
+        if self._edited:
+            self.edited.emit(set(self._edited))
         if self._cur_key:
             self.navigated.emit(self._cur_key)
         super().closeEvent(e)

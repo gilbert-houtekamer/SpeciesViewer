@@ -1472,11 +1472,20 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         from gui.quick_viewer import QuickViewer
         dlg = QuickViewer(self, self._collection, order, order.index(key))
         dlg.navigated.connect(self._cull_set_cursor)
+        dlg.edited.connect(self._on_quick_view_edited)
         dlg.finished.connect(lambda _=0: setattr(self, "_quick_view", None))
         self._quick_view = dlg
         dlg.show()
         dlg.activateWindow()
         dlg.setFocus()
+
+    def _on_quick_view_edited(self, keys):
+        """Rating/colour set from the quick viewer — same follow-up as an edit
+        made on a card: repaint it, start the CSV-flush debounce."""
+        for k in keys:
+            self._cull_refresh_key(k)
+        if keys:
+            self._note_collection_write()
 
     def _on_large_view_closed(self):
         # Repaint every card from the live provider. Per-edit picture_changed
