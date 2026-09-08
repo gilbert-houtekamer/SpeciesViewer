@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from pathlib import Path
 
@@ -68,6 +69,46 @@ def _source_xmp_for(jpg_path: Path):
 
 def _norm(p) -> str:
     return os.path.normcase(os.path.normpath(str(p)))
+
+
+# exiftool without -n prints GPS as "16 deg 31' 3.46\" S" (the sidecar cache
+# reads it that way). Parse it back to a signed decimal so the GPS map can be
+# built from the rows the cache ALREADY read — no second exiftool pass.
+_DMS_RE = re.compile(
+    r"(-?\d+(?:\.\d+)?)\s*deg\s*(\d+(?:\.\d+)?)'\s*(\d+(?:\.\d+)?)\"?\s*([NSEW])?",
+    re.IGNORECASE)
+
+
+def _dms_to_dd(token) -> float | None:
+    s = str(token or "").strip()
+    if not s:
+        return None
+    m = _DMS_RE.search(s)
+    if m:
+        deg, minutes, sec, hemi = m.groups()
+        deg_f = float(deg)
+        dd = abs(deg_f) + float(minutes) / 60.0 + float(sec) / 3600.0
+        h = (hemi or "").upper()
+        if h in ("S", "W") or (not h and deg_f < 0):
+            dd = -dd
+        return dd
+    try:                       # already a bare decimal ("-16.5176")
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _gps_from_row(row) -> tuple | None:
+    """(lat, lon) from a cached sidecar row's GPS strings, or None."""
+    if not row:
+        return None
+    pos = str(row.get("GPSPosition") or "").strip()
+    if pos and "," in pos:
+        lat_s, lon_s = (t.strip() for t in pos.split(",", 1))
+    else:
+        lat_s, lon_s = row.get("GPSLatitude"), row.get("GPSLongitude")
+    lat, lon = _dms_to_dd(lat_s), _dms_to_dd(lon_s)
+    return (lat, lon) if (lat is not None and lon is not None) else None
 
 
 def _read_sidecar_rows(xmp_paths: list, *, quiet_stats: dict | None = None) -> tuple[dict, dict]:
@@ -610,23 +651,37 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         return gained
 
     def _build_gps_map(self) -> dict[str, tuple]:
-        """{stem: (lat, lon)} for every stem with GPS in any source file.
-        Uses gps_source() (XMP preferred, else RAW) so the RAW's EXIF GPS is
-        found even when the XMP sidecar has none (common before geocoding)."""
-        from gui.geolocate import batch_gps
-        src_by_stem = {
-            s: (g.get("xmp") or g.get("jpg") or g.get("raw"))
-            for s, g in self._groups.items()
-        }
-        src_by_stem = {s: p for s, p in src_by_stem.items() if p}
-        if not src_by_stem:
-            return {}
-        gps_result = batch_gps([str(p) for p in src_by_stem.values()])
-        out = {}
-        for s, p in src_by_stem.items():
-            ll = gps_result.get(os.path.normcase(os.path.normpath(str(p))))
-            if ll:
-                out[s] = ll
+        """{stem: (lat, lon)} for every stem with GPS.
+
+        Fast path: `_read_sidecar_rows` just read every `.xmp` WITH the GPS tags
+        into `self._rows`, so parse those — no second exiftool pass over the
+        same files (that pass was the whole "8 s before the grid shows", and on
+        a day with no GPS it read ~1800 files to learn nothing). Only groups
+        with NO `.xmp` at all (a JPG-only DxO render) fall back to a batched
+        exiftool read of the jpg/raw — the same source the old code used for
+        them, and normally a handful.
+        """
+        out: dict[str, tuple] = {}
+        need_read: dict[str, Path] = {}
+        for s, g in self._groups.items():
+            xmp = g.get("xmp")
+            if xmp:
+                ll = _gps_from_row(self._rows.get(_norm(xmp)))
+                if ll:
+                    out[s] = ll
+                # xmp present, no GPS in it → "no GPS" at the culling stage,
+                # exactly what the old exiftool read of that same .xmp returned.
+            else:
+                src = g.get("jpg") or g.get("raw")
+                if src:
+                    need_read[s] = Path(src)
+        if need_read:
+            from gui.geolocate import batch_gps
+            res = batch_gps([str(p) for p in need_read.values()])
+            for s, p in need_read.items():
+                ll = res.get(_norm(p))
+                if ll:
+                    out[s] = ll
         return out
 
     _PLACE_FALLBACK_KEYS = ("Location", "City", "Municipality", "State")
@@ -636,10 +691,16 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         stems whose .xmp row carries NO place text — chiefly JPG-only pictures (their
         location lives in the JPG, not an .xmp). One batched exiftool call, and only for
         the stems that need it, so a fully-sidecar'd album pays nothing. This keeps the
-        card's location line off the raw-coordinate fallback when a name is on disk."""
+        card's location line off the raw-coordinate fallback when a name is on disk.
+
+        Skips stems with no coordinate: the location line pairs a place name WITH
+        the coords, so a name on a GPS-less picture never shows anyway — and a
+        fresh un-geocoded day is otherwise ~1800 fruitless RAW reads."""
         from gui.geolocate import read_location_fields_batch
         need = {}
         for s, g in self._groups.items():
+            if s not in self._gps_by_stem:
+                continue
             xmp = g.get("xmp")
             row = self._rows.get(_norm(xmp), {}) if xmp else {}
             if not any(str(row.get(k, "") or "").strip() for k in self._PLACE_FALLBACK_KEYS):
