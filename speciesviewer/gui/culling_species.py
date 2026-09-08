@@ -82,11 +82,16 @@ def load_species_classification():
     # Fresh per-instance dicts (the class-level ones are shared) so we don't
     # inherit or pollute another load.
     sc.sc_dict, sc.dutch_dict, sc.english_dict = {}, {}, {}
+    import time as _time
+    _t0 = _time.perf_counter()
     try:
         sc.readSpeciesCollection(path)
     except Exception as e:
         logger.warning(f"Could not read species collection {path}: {e}")
         return None
+    logger.info("load_species_classification: %d species from %s in %.2f s",
+                len(sc.sc_dict), os.path.basename(os.path.dirname(os.path.dirname(path))),
+                _time.perf_counter() - _t0)
     # readSpeciesCollection already records this; kept explicit because the
     # path chosen above is the contract this loader advertises.
     sc._source_path = path

@@ -220,14 +220,19 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self.fpr = None
 
         # ── Provider collection ────────────────────────────────────────────
+        import time as _time
+        _t_coll = _time.perf_counter()
         self._loader = AsyncImageLoader(self)
         if self._injected_collection is not None:
             self._collection = self._injected_collection
         elif self.fpr is not None:
             self._collection = PreviewCollection(self.fpr, loader=self._loader)
         else:
+            _t_disc = _time.perf_counter()
             paths = (self._file_list if self._file_list is not None
                      else self.discover_images(image_dir))
+            logger.info("ImagePreviewDialog: discover_images %.2f s (%d files)",
+                        _time.perf_counter() - _t_disc, len(paths))
             # Ingested-but-not-yet-read folder: if the files have XMP sidecars,
             # use the sidecar-backed collection (reads species/rating/colour).
             # readonly=True keeps display intact but disables all write-back
@@ -243,6 +248,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             else:
                 self._collection = FileListPreviewCollection(
                     paths, cache_root=self.cache_dir, loader=self._loader)
+        logger.info("ImagePreviewDialog: collection ready %.2f s",
+                    _time.perf_counter() - _t_coll)
 
         # Hand the precomputed "#" crop flags to a collection that can use them
         # (the metadata-less file-list mode). No-op for the others.
@@ -695,6 +702,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         if self._start_bar is not None:
             self._start_bar.setVisible(self._start_bar_active)
         self._update_title_for_filter()
+        logger.info("ImagePreviewDialog: __init__ total %.2f s (grid build follows)",
+                    _time.perf_counter() - _t_coll)
         if initial_keys is not None:
             QTimer.singleShot(0, lambda: self._rebuild_grid_from_keys(initial_keys))
         else:
@@ -780,6 +789,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
     def _colour_counts(self) -> dict:
         """{'Grey': n, 'Red': n, …} over the whole day — how many pictures carry
         each label. In-memory colour lookups, cheap even on a 1000+ picture day."""
+        import time as _time
+        _t0 = _time.perf_counter()
         coll = self._collection
         out = {}
         for name in ("Grey", "Red", "Yellow", "Green", "Blue", "Purple"):
@@ -787,6 +798,9 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 out[name] = len(coll.color_keys({name}))
             except Exception:
                 out[name] = 0
+        dt = _time.perf_counter() - _t0
+        if dt > 0.05:
+            logger.info("_colour_counts: %.2f s over 6×%d keys", dt, len(coll.all_keys()))
         return out
 
     def _init_start_subset(self):

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from pathlib import Path
 
 from PyQt6.QtGui import QImage
@@ -492,6 +493,17 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         # N2040705_DxO.jpg becomes its OWN picture, splitting one shot into two
         # and inflating the count. (At pure ingest there are no such suffixes,
         # so this is a no-op there.)
+        # Phase timing for the "8 s before the grid shows" investigation — one
+        # summary line at the end of __init__.
+        _phase: list[tuple[str, float]] = []
+        _t = time.perf_counter()
+
+        def _mark(label: str):
+            nonlocal _t
+            now = time.perf_counter()
+            _phase.append((label, (now - _t) * 1000))
+            _t = now
+
         self._groups: dict[str, dict] = {}
         for p in paths:
             p = Path(p)
@@ -514,6 +526,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
                         grp["xmp"] = src
         # Drop groups that ended up with no image file (e.g. a stray .xmp passed in).
         self._groups = {s: g for s, g in self._groups.items() if g.get("raw") or g.get("jpg")}
+        _mark("group")
         self._crop_cache: dict = {}      # stem -> normalised crop | None (cleared on refresh)
         self._jpg_dims_cache: dict = {}  # jpg path -> "WxH" (header read, for the crop size cue)
         self._created_blog_jpgs: set = set()  # stems whose <stem>.jpg WE baked (safe to overwrite)
@@ -532,27 +545,42 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         self._sc_loaded = False
         self._image_changed: set = set() # stems whose IMAGE changed at last refresh()
         self._attach_sibling_jpgs()
+        _mark("attach_sibling_jpgs")
         # Baseline image signatures (source file + mtime + .dop mtime) so refresh()
         # can tell a re-crop / new render (re-decode needed) from a text-only edit.
         self._image_sigs: dict = {s: self._image_sig(s) for s in self._groups}
+        _mark("image_sigs")
+        _stats: dict = {}
         self._rows, self._caches = _read_sidecar_rows(
-            [g["xmp"] for g in self._groups.values() if g.get("xmp")])
+            [g["xmp"] for g in self._groups.values() if g.get("xmp")],
+            quiet_stats=_stats)
+        _mark("read_sidecar_rows" + (f" [{_stats.get('cached', '?')} cached, "
+                                     f"{_stats.get('stale', '?')} via exiftool]"
+                                     if _stats else ""))
         # Colour/rating are stored in the DxO .dop (the write channel; the .xmp is
         # off by default), so seed the display rows from there — else a colour set
         # last session would silently read back as the sidecar's stale value.
         self._dop_mtimes: dict = {}   # stem -> last-seen .dop mtime_ns (overlay gate)
         self._overlay_dop_color_rating()
+        _mark("overlay_dop_color_rating")
         # Batch-read GPS from each picture's best source (XMP if present, else
         # RAW). At the culling stage GPS lives in the RAW's EXIF, not the XMP
         # sidecar, so the sidecar cache alone can't populate the GPS badge. One
         # exiftool call covers all files; we keep the coordinates (not just
         # presence) so the card's location line can show them with no extra I/O.
         self._gps_by_stem: dict[str, tuple] = self._build_gps_map()
+        _mark("build_gps_map")
         # Place names for stems whose .xmp row has none — chiefly JPG-only pictures,
         # whose location lives in the JPG itself, not an .xmp sidecar. Without this the
         # card's location line falls back to raw coordinates for them.
         self._place_by_stem: dict[str, dict] = self._build_place_map()
+        _mark("build_place_map")
         self.rebuild()
+        _mark("rebuild")
+        total = sum(ms for _, ms in _phase)
+        logger.info("SidecarCollection built: %d pictures in %.2f s  ·  %s",
+                    len(self._groups), total / 1000,
+                    ", ".join(f"{lbl} {ms:.0f}ms" for lbl, ms in _phase if ms >= 1))
 
     def _attach_sibling_jpgs(self) -> set:
         """Fold any *.jpg/*.jpeg in the picture folders onto its UPN group — a DxO
