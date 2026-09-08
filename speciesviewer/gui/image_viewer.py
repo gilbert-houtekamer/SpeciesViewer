@@ -1881,42 +1881,22 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         item0 = self._collection.item_for_key(next(iter(keys)))
         if not getattr(item0, "can_edit_species", False):
             return
-        from gui.culling_species import CullingSpeciesDialog
-        # Pre-fill from what the selection already carries. A fast guide names one
-        # frame of a burst; selecting the burst afterwards should offer that name
-        # rather than a blank field. One distinct name → offer it (flagged when
-        # not every picture has it); several → list them and keep the field blank
-        # so a stray Enter can't overwrite the odd one out.
-        current, preset_summary = "", ""
-        if len(keys) == 1:
-            current = item0.species
-        else:
-            named = []
-            for k in keys:
-                try:
-                    s = (self._collection.item_for_key(k).species or "").strip()
-                except (ValueError, KeyError):
-                    s = ""
-                if s:
-                    named.append(s)
-            distinct = sorted(set(named))
-            if len(distinct) == 1:
-                current = distinct[0]
-                if len(named) < len(keys):
-                    preset_summary = (f"★ {distinct[0]} — set on "
-                                      f"{len(named)} of {len(keys)}; the rest are blank")
-            elif len(distinct) > 1:
-                preset_summary = ("Mixed — " + ", ".join(distinct)
-                                  + f"  ({len(named)} of {len(keys)} named)")
-        # How many of these are landscapes today — naming a species replaces the
-        # marker, so the editor warns rather than silently un-landscaping them.
-        n_landscape = 0
-        for k in keys:
+        from gui.culling_species import CullingSpeciesDialog, species_prefill_for_keys
+
+        def _species_of(k):
             try:
-                if self._collection.item_for_key(k).is_blog_extra:
-                    n_landscape += 1
+                return self._collection.item_for_key(k).species or ""
             except (ValueError, KeyError):
-                pass
+                return ""
+
+        def _is_landscape(k):
+            try:
+                return bool(self._collection.item_for_key(k).is_blog_extra)
+            except (ValueError, KeyError):
+                return False
+
+        current, preset_summary, n_landscape = species_prefill_for_keys(
+            keys, _species_of, _is_landscape)
         dlg = CullingSpeciesDialog(self._culling_sc(), current, len(keys), self,
                                    n_landscape=n_landscape,
                                    preset_summary=preset_summary)

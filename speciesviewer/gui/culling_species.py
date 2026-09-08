@@ -29,6 +29,45 @@ from gui import theme
 
 logger = logging.getLogger("speciesviewer")
 
+
+def species_prefill_for_keys(keys, species_of, is_landscape=None):
+    """(current_name, preset_summary, n_landscape) to seed a multi-picture
+    Set-species dialog. Shared by the grid and the large viewer so the two
+    can't drift.
+
+    - One picture selected → offer its own species.
+    - Several, one distinct species among them → offer that name; flag when not
+      every picture has it ("★ … — set on N of M; the rest are blank").
+    - Several distinct → keep the field blank, list them, so a stray Enter
+      can't overwrite the odd one out.
+
+    species_of(key)   -> the picture's current species text ('' if none)
+    is_landscape(key) -> bool, optional (naming a species clears the marker)
+    """
+    keys = list(keys)
+    if len(keys) == 1:
+        return ((species_of(keys[0]) or "").strip(), "", 0)
+    named = [s for s in ((species_of(k) or "").strip() for k in keys) if s]
+    distinct = sorted(set(named))
+    current, summary = "", ""
+    if len(distinct) == 1:
+        current = distinct[0]
+        if len(named) < len(keys):
+            summary = (f"★ {distinct[0]} — set on {len(named)} of {len(keys)}; "
+                       f"the rest are blank")
+    elif len(distinct) > 1:
+        summary = ("Mixed — " + ", ".join(distinct)
+                   + f"  ({len(named)} of {len(keys)} named)")
+    n_landscape = 0
+    if is_landscape is not None:
+        for k in keys:
+            try:
+                if is_landscape(k):
+                    n_landscape += 1
+            except Exception:
+                pass
+    return (current, summary, n_landscape)
+
 # Biota vocabulary — mono micro-labels + chip-style recents, so this culling
 # species popup reads as one system with the large-viewer SpeciesInfoPanel.
 # (Mirrors species_editor's _MICRO / _RECENT_CHIP; kept local rather than

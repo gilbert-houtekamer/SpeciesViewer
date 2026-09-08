@@ -2679,15 +2679,31 @@ class LargeImageView(QDialog):
         item0 = self._collection.item_for_key(next(iter(keys)))
         if not getattr(item0, "can_edit_species", False):
             return
-        from gui.culling_species import CullingSpeciesDialog
+        from gui.culling_species import CullingSpeciesDialog, species_prefill_for_keys
         host = self.parent()
         sc = host._culling_sc() if hasattr(host, "_culling_sc") else None
-        # Pre-fill with the species of the picture being viewed (helps when
-        # re-tagging a group that's mostly the same species), else the single
-        # selected picture's species.
-        current = ((self._item.species if self._item is not None else "")
-                   or (item0.species if len(keys) == 1 else ""))
-        dlg = CullingSpeciesDialog(sc, current, len(keys), self)
+
+        def _species_of(k):
+            try:
+                return self._collection.item_for_key(k).species or ""
+            except (ValueError, KeyError):
+                return ""
+
+        def _is_landscape(k):
+            try:
+                return bool(self._collection.item_for_key(k).is_blog_extra)
+            except (ValueError, KeyError):
+                return False
+
+        # Same prefill the grid uses: one distinct name among the selection is
+        # offered even when only one picture carries it (a guide frame naming a
+        # burst), flagged as "set on N of M"; several distinct names keep the
+        # field blank.
+        current, preset_summary, n_landscape = species_prefill_for_keys(
+            keys, _species_of, _is_landscape)
+        dlg = CullingSpeciesDialog(sc, current, len(keys), self,
+                                   n_landscape=n_landscape,
+                                   preset_summary=preset_summary)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             name = dlg.chosen_name()
             for k in keys:
