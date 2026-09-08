@@ -6,31 +6,36 @@ a Brazil day (1194 pictures).
 
 ---
 
-## STATUS — PAUSED 2026-09-02 at a good-enough state
+## STATUS — DONE 2026-09-07 (step 4 shipped)
 
-All of steps 1–3 + 2C + the follow-ups below are **merged to `SpeciesViewer03`**
-(latest `f638ea1`, branch `sv_culling_grid_showhide` deleted).
+All of steps 1–3, 2C, 8, 8b, step 6 Tier 1, and **step 4 (viewport
+virtualization)** are merged to `SpeciesViewer03` (latest `24b3000`). The
+culling grid now builds a fixed ~50-card pool and recycles it via
+`PictureCard.rebind()` — open / filter / scroll / delete / resize are O(pool),
+not O(day). User, after hands-on testing: *"significant improvement"*.
 
-**Bottom line (measured, user-confirmed):**
-- **Filter-cycling within a session** (`g` / `h` / grey / find) — **fast**, show/hide,
-  no rebuild, no decode. This is the daily loop and it works.
-- **First open / reopen** of a ~900-pic day — **~14 s** (~8–9 s into the Unrated
-  subset). NOT improved by the cheap levers. It is the raw cost of building
-  **~30 Qt objects per card** (13 buttons, ~8 labels, ~8 layouts, ~18 signal
-  connections, event filters). ~11 ms/card, scales with object count.
-- 2C works (`0 decoded` on warm reopens); it only removed the decode, which was
-  never the bottleneck. Cold OS-file-cache can still spike disk-load to ~6 s on
-  the first open of a day per boot.
+Reverted along the way: step 6 Tier 2a (one rich-text `QLabel` for the meta
+block) — a `QTextDocument` re-lays out on every `sizeHint()` and `QGridLayout`
+asks constantly, so it made a full 2155-pic build *slower* (`card build`
+6 → 31 ms/card). The plain multi-`QLabel` block is cheap; Tier 1's
+`_ControlStrip` (10 buttons → 1 painted widget) was the real win there.
 
-Tried and **did not help** (kept anyway, harmless):
-- Build batch 20 → 100: "other" −1.5 s only; the residue is the deferred
-  `QGridLayout` geometry pass (it moved out of `layout=0.0` into "other").
-- Hoisting `StarWidget` / `ColorSelector` stylesheets to one parse each: **no
-  measurable dent** — Qt's CSS parse of a tiny sheet is cheap; the cost is the
-  object count, not parsing.
+Nothing open. Possible future polish (not planned): the pool re-binds every
+slot on a first-visible-row change — a ring that re-binds only `ncols` per row
+is the optimisation if fast scroll ever feels heavy; `_META_H` = 80 px is
+eyeball-tuned; step 6 Tier 2b (paint the corner badges) and the star
+hover-preview were dropped as not worth the risk once step 4 landed.
 
-**To move first-open, next time:** step 6 (~30–40 % off card build, bounded to
-`PictureCard`) or step 4 (the real fix). Not worth trip time.
+### Original bottom line (2026-09-02, kept for context)
+
+- **Filter-cycling within a session** (`g` / `h` / grey / find) — fast (step 3).
+- **First open / reopen** of a ~900-pic day was **~14 s** — the raw cost of
+  building **~30 Qt objects per card**, ~11 ms/card. Step 4 removes this
+  entirely by never building more than the pool.
+- 2C (on-disk thumbs) works (`0 decoded` warm); cold OS-file-cache can still
+  spike disk-load to ~6 s on the first open of a day per boot.
+- Didn't help (harmless, kept): build batch 20 → 100; hoisting
+  `StarWidget` / `ColorSelector` stylesheets to one parse.
 
 ---
 
@@ -109,7 +114,7 @@ clickable attention badge). Only worth it if step 4 is off the table.
 | — | Preview dialog: taskbar button + `⤢` reset-size + reject a saved geometry small in both dims | **SHIPPED** |
 | — | Look & Feel: "Culling grid" section (columns / fill % / Start-with default) | **SHIPPED** |
 | — | Build-time instrumentation in the log (`built in N s … card build / layout / other`) | **SHIPPED** — leave it, it's cheap and useful |
-| **4** | Viewport virtualization (recycle ~40 cards, drop the giant `QGridLayout` for manual layout) | **not started — now the clear next lever.** Kills the `other` re-flow time AND caps the build regardless of day size. Own branch, ~1–2 sessions. |
+| **4** | Viewport virtualization (fixed ~50-card pool, `rebind()`, drop `QGridLayout` for manual layout) | **SHIPPED `24b3000`** (branch `sv_grid_virtualize` merged, deleted). User hands-on: "significant improvement". Open / filter / delete / resize now O(pool), any day size. ~480 lines deleted incl. all of step 8/8b. |
 | 5 | Cheaper card (one custom-painted widget) | not started — only if 4 + 6-T1 fall short |
 | **6** | Cheaper card: T1 painted `_ControlStrip` (stars+dots) — **KEPT**; T2a rich-text meta label — **REVERTED** (slower); T2b paint corner badges — **on hold** | T1 shipped `e14ded5`; T2a in `4779750` / out `40021e6` |
 | 7 | Hoist per-widget stylesheets into one shared sheet | **DONE for StarWidget/ColorSelector (`f638ea1`) — no measurable gain, don't bother with the rest** |
@@ -341,7 +346,16 @@ positioning) rather than push this further.
 
 ---
 
-## Step 4 — viewport virtualization   (branch `sv_grid_virtualize`, 2026-09-06 — the real fix)
+## Step 4 — viewport virtualization   (SHIPPED `24b3000`, 2026-09-07 — the real fix)
+
+Branch `sv_grid_virtualize` merged to `SpeciesViewer03` and deleted after the
+user's hands-on testing ("significant improvement"). Built in 2 slices +
+1 fix: `009980d` rebind() infra, `d66f7e1` the layout swap, `397c4ad` the
+resize aspect re-fit. As-built matches the plan below; the notes there stand as
+the reference for how it works. Follow-ups if ever needed: the pool re-binds
+*all* slots on a first-visible-row change (a ring that only re-binds `ncols`
+per row is the optimisation if scroll ever feels heavy); `_META_H` = 80 px is
+eyeball-tuned; species viewers still use `QGridLayout` (out of scope, fine).
 
 Only ever build ~40–60 card widgets; recycle them from a pool as the user
 scrolls; a filter just swaps the backing key list. Open, filter, scroll and
