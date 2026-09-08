@@ -408,6 +408,15 @@ class PictureCollection(ABC):
         the engine doesn't support species editing (e.g. Rating Editor)."""
         return None
 
+    def no_species_keys(self) -> list[str]:
+        """UPNs with NO species attempt at all — neither a resolved name nor a
+        flagged one. The complement of species_keys(); used by the ⚠ button's
+        right-click 'No species yet' filter. Requires species_keys()."""
+        if not (hasattr(self, "species_keys") and hasattr(self, "all_keys")):
+            return []
+        tried = set(self.species_keys())
+        return [k for k in self.all_keys() if k not in tried]
+
     def file_directory(self, key: str) -> str:
         """Return the directory path of the representative file, or ''."""
         return ""

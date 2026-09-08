@@ -208,14 +208,14 @@ These four are **mutually exclusive** — exactly one is active:
 
 | Button | Shows |
 |---|---|
-| **⚠️** | Only pictures with incorrect species information |
+| **⚠️** | Only pictures with a wrong / unresolved species name. **Right-click it** to switch the button to **No species yet** — the pictures with nothing tagged at all. Left-click always returns to the wrong-name set. |
 | **📍** | Only pictures **without** GPS coordinates |
 | **All** | Everything |
 | **Species** | Only pictures that **have** a species — i.e. what an add-to-master commit would take |
 
-> **A greyed filter button is information.** These grey out when their filter
-> would be empty, so a day with no warnings and no missing GPS shows two greyed
-> icons at a glance — a clean-day signal you can read without clicking.
+> **A greyed filter button is information.** 📍 greys out when no picture is
+> missing GPS. ⚠️ stays available even on a warning-free day, because its
+> right-click **No species yet** is still useful there.
 
 ### The filters that combine
 

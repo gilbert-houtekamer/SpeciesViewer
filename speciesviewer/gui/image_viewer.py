@@ -311,8 +311,10 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._active_filter = None
         self.warnings_only = False
         self.no_gps_only = False
+        self.no_species_only = False
         self.show_all = False
         self.species_only = False
+        self._warn_mode = "warnings"   # which set the ⚠ button shows (see _warnings_menu)
         self._start_species = start_species
         self._start_no_gps = start_no_gps
         self._find_query = ""
@@ -401,13 +403,22 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self.warnings_btn = QPushButton("⚠️")
         self.warnings_btn.setFixedSize(24, 24)
         self.warnings_btn.setCheckable(True)
-        self.warnings_btn.setToolTip("Show only pictures with incorrect species information")
+        self._WARN_TIPS = {
+            "warnings": "Show only pictures with a wrong / unresolved species name"
+                        "\n(right-click for more)",
+            "no_species": "Showing pictures with no species assigned yet"
+                          "\n(right-click to switch back)",
+        }
+        self.warnings_btn.setToolTip(self._WARN_TIPS["warnings"])
         self.warnings_btn.setStyleSheet("""
             QPushButton { border: 2px solid #FFA500; border-radius: 4px; background: transparent; padding: 0; }
             QPushButton:checked { background: #FFA500; color: #16241f; }
             QPushButton:disabled { border-color: #CCCCCC; color: #BBBBBB; }
         """)
         self.warnings_btn.clicked.connect(self.on_warnings_toggled)
+        # Right-click → pick which "species needs attention" set the button shows.
+        self.warnings_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.warnings_btn.customContextMenuRequested.connect(self._warnings_menu)
         controls_layout.addWidget(self.warnings_btn)
 
         self.no_gps_btn = QPushButton("📍")
@@ -634,8 +645,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             if not no_gps_keys:
                 self.no_gps_btn.setEnabled(False)
         else:
-            if not warnings_keys:
-                self.warnings_btn.setEnabled(False)
+            # Stays enabled even with zero warnings — its right-click menu also
+            # offers "No species yet", which is useful on a warning-free day.
             if not no_gps_keys:
                 self.no_gps_btn.setEnabled(False)
 
@@ -765,6 +776,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             return []  # clean day, nothing until a radio or a search is chosen
         if f == "species" and hasattr(coll, "species_keys"):
             keys &= set(coll.species_keys())
+        elif f == "no_species" and hasattr(coll, "no_species_keys"):
+            keys &= set(coll.no_species_keys())
         elif f == "warnings":
             keys &= set(coll.warning_keys())
         elif f == "no_gps":
@@ -872,13 +885,38 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         self._active_filter = name
         self.warnings_only = (name == "warnings")
         self.no_gps_only = (name == "no_gps")
+        self.no_species_only = (name == "no_species")
         self.species_only = (name == "species")
         self.show_all = (name == "all")
         self._apply_filters()
 
     def on_warnings_toggled(self):
+        # Left-click activates whatever mode the ⚠ button is set to (its
+        # right-click menu switches between "warnings" and "no_species").
         if self.warnings_btn.isChecked():
-            self._set_radio("warnings")
+            self._set_radio(self._warn_mode)
+
+    def _warnings_menu(self, pos):
+        """Right-click the ⚠ button → choose which 'species needs attention'
+        set it shows: a wrong / unresolved name, or no species assigned yet."""
+        from PyQt6.QtWidgets import QMenu
+        if not hasattr(self._collection, "species_keys"):
+            return
+        menu = QMenu(self)
+        opts = [("warnings", "Wrong / unresolved species"),
+                ("no_species", "No species yet")]
+        for mode, label in opts:
+            act = menu.addAction(label)
+            act.setCheckable(True)
+            act.setChecked(self._warn_mode == mode)
+            act.triggered.connect(lambda _=False, m=mode: self._set_warn_mode(m))
+        menu.exec(self.warnings_btn.mapToGlobal(pos))
+
+    def _set_warn_mode(self, mode):
+        self._warn_mode = mode
+        self.warnings_btn.setToolTip(self._WARN_TIPS[mode])
+        self.warnings_btn.setChecked(True)
+        self._set_radio(mode)
 
     def on_no_gps_toggled(self):
         if self.no_gps_btn.isChecked():
@@ -1025,6 +1063,12 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         base = set(self._base_keys())
         return len([k for k in self._collection.species_keys() if k in base])
 
+    def _no_species_count(self) -> int:
+        if not hasattr(self._collection, "no_species_keys"):
+            return 0
+        base = set(self._base_keys())
+        return len([k for k in self._collection.no_species_keys() if k in base])
+
     def _present_count(self) -> int | None:
         """How many pictures in the current base still have a file on disk; None
         in no-metadata mode (those keys are discovered files, always present)."""
@@ -1079,6 +1123,9 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         if self._active_filter == "warnings":
             n = self._warnings_count()
             radio = f"{n} warning{'s' if n != 1 else ''}"
+        elif self._active_filter == "no_species":
+            n = self._no_species_count()
+            radio = f"{n} with no species yet"
         elif self._active_filter == "no_gps":
             radio = f"{self._no_gps_count()} missing GPS"
         elif self._active_filter == "species":
@@ -1357,6 +1404,9 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             return  # an overlay narrowed it to nothing — empty grid, no popup
         if self.warnings_only:
             QMessageBox.information(self, "No Warnings", "All provided species information is correct.")
+        elif self.no_species_only:
+            QMessageBox.information(self, "All identified",
+                                   "Every picture has a species (or a flagged name).")
         elif self.no_gps_only:
             QMessageBox.information(self, "No Missing GPS", "All pictures have GPS coordinates.")
         elif self.species_only:
