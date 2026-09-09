@@ -641,7 +641,15 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         no_gps_keys = [k for k in self._collection.no_gps_keys() if k in base]
 
         if not self.fpr:
-            self.warnings_btn.setEnabled(False)
+            # No pipeline → no "warnings", but the ⚠ button's other job —
+            # "No species yet" — works off species_keys(), which the culling
+            # collection has. So keep it live, defaulted to that mode.
+            if hasattr(self._collection, "species_keys"):
+                self._warn_mode = "no_species"
+                self.warnings_btn.setToolTip(
+                    "Show only pictures with no species assigned yet")
+            else:
+                self.warnings_btn.setEnabled(False)
             if not no_gps_keys:
                 self.no_gps_btn.setEnabled(False)
         else:
@@ -909,12 +917,18 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             act = menu.addAction(label)
             act.setCheckable(True)
             act.setChecked(self._warn_mode == mode)
-            act.triggered.connect(lambda _=False, m=mode: self._set_warn_mode(m))
+            if mode == "warnings" and not self.fpr:
+                act.setEnabled(False)   # no pipeline → no "warnings" set
+            else:
+                act.triggered.connect(lambda _=False, m=mode: self._set_warn_mode(m))
         menu.exec(self.warnings_btn.mapToGlobal(pos))
 
     def _set_warn_mode(self, mode):
         self._warn_mode = mode
-        self.warnings_btn.setToolTip(self._WARN_TIPS[mode])
+        if not self.fpr:
+            self.warnings_btn.setToolTip("Show only pictures with no species assigned yet")
+        else:
+            self.warnings_btn.setToolTip(self._WARN_TIPS[mode])
         self.warnings_btn.setChecked(True)
         self._set_radio(mode)
 
@@ -1115,6 +1129,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             radio = ""
             if self._active_filter == "no_gps":
                 radio = f"{self._no_gps_count()} missing GPS"
+            elif self._active_filter == "no_species":
+                radio = f"{self._no_species_count()} with no species yet"
             elif self._active_filter == "all":
                 radio = self._all_pictures_suffix(total, shown)
             suffix = " · ".join(p for p in ([radio] + overlays) if p)
