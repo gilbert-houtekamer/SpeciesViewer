@@ -511,6 +511,18 @@ class MainWindow(QMainWindow):
         populate_trip_overview(self)
 
     def closeEvent(self, event):
+        # A culling / preview grid open over a day buffers its day-CSV writes
+        # (rating / colour / species are debounced). Closing the MAIN window
+        # DESTROYS that child dialog without sending it a closeEvent, so those
+        # edits were being lost. Close each one explicitly FIRST — that runs its
+        # own closeEvent (flush + learned species + refresh_day_health) — before
+        # we tear down the app and the shared exiftool writer below.
+        for w in list(QApplication.topLevelWidgets()):
+            if w is not self and w.isVisible() and hasattr(w, "_flush_collection_csv"):
+                try:
+                    w.close()
+                except RuntimeError:
+                    pass
         # logger.info("Close and save screen sizes")
         _config["layout"]["split_sizes_vertical"] = ",".join(str(s) for s in self.vsplitter.sizes())
         _config["layout"]["split_sizes_horizontal"] = ",".join(str(s) for s in self.hsplitter.sizes())
