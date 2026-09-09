@@ -1100,9 +1100,11 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
 
     # ── image + write helpers ───────────────────────────────────────────────
     def _source_file(self, stem: str):
-        """Best display source: JPG (fast) if present, else the RAW (embedded preview)."""
+        """Best display source: JPG (fast) if present, else the RAW (embedded
+        preview). Always a Path (or None) — callers do `.parent` on it."""
         g = self._groups.get(stem, {})
-        return g.get("jpg") or g.get("raw")
+        src = g.get("jpg") or g.get("raw")
+        return Path(src) if src else None
 
     def _cache_dir_for(self, src: Path) -> Path:
         return self._cache_root if self._cache_root else preview_cache_dir_for(src.parent)
@@ -1166,8 +1168,10 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
             logger.warning(f"Create JPG failed for {raw.name}: {e}")
             return {"status": "failed", "reason": str(e)}
         # Track it as ours + reflect it so the card and a re-run see the new JPG.
+        # NOTE: g["jpg"] / g["raw"] are Path objects everywhere else in this
+        # collection (_source_file → file_directory → src.parent) — keep it a Path.
         self._created_blog_jpgs.add(key)
-        g["jpg"] = str(out)
+        g["jpg"] = out
         self._jpg_dims_cache.pop(str(out), None)
         self._image_sigs[key] = self._image_sig(key)   # display source is now the JPG
         self._drop_thumb_caches(key)
