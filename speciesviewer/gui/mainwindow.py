@@ -514,12 +514,17 @@ class MainWindow(QMainWindow):
         # A culling / preview grid open over a day buffers its day-CSV writes
         # (rating / colour / species are debounced). Closing the MAIN window
         # DESTROYS that child dialog without sending it a closeEvent, so those
-        # edits were being lost. Close each one explicitly FIRST — that runs its
-        # own closeEvent (flush + learned species + refresh_day_health) — before
-        # we tear down the app and the shared exiftool writer below.
+        # edits were being lost. Close each one explicitly FIRST — its own
+        # closeEvent flushes the CSV + saves learned species + refreshes the
+        # health row. `_suppress_rerun` keeps it from ALSO kicking off the async
+        # Read & Summarize: that opens its own window mid-shutdown and the app
+        # then never quits. The edits are safe in data_files.csv; re-run Read &
+        # Summarize for the day (or close just the grid, not the app) to push
+        # them through the pipeline.
         for w in list(QApplication.topLevelWidgets()):
             if w is not self and w.isVisible() and hasattr(w, "_flush_collection_csv"):
                 try:
+                    w._suppress_rerun = True
                     w.close()
                 except RuntimeError:
                     pass
@@ -537,6 +542,10 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         super().closeEvent(event)
+        # Force the process to end: a lingering QThreadPool / QFileSystemWatcher
+        # (image loader, sidecar watch) can otherwise keep app.exec() spinning
+        # after the last window is gone.
+        QApplication.instance().quit()
     
     _MODE_STACK_INDEX = {MODE_DAY: 0, MODE_TRIP: 1, MODE_ALBUM: 2, MODE_UNFILED: 3}
 
