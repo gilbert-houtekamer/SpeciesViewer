@@ -80,6 +80,18 @@ _RECENT_CHIP = (
     f" border:1px solid {theme.LINE}; border-radius:12px; padding:3px 11px; text-align:left; }}"
     f"QPushButton:hover {{ border-color:{theme.ACCENT}; color:{theme.ACCENT}; }}")
 
+# Sex / age / plumage toggle buttons. Without an explicit :checked rule a
+# stylesheet'd QPushButton shows NO difference between on and off — the user
+# clicks "male", nothing visibly changes, and it looks stuck. Solid accent
+# fill when checked makes the toggle unmistakable (and :checked:hover keeps
+# the app-level :hover from washing it out).
+QUAL_BTN_QSS = (
+    "QPushButton { padding: 2px 6px; }"
+    f"QPushButton:checked {{ background:{theme.ACCENT}; color:{theme.ACCENT_INK};"
+    f" border:1px solid {theme.ACCENT}; font-weight:600; }}"
+    f"QPushButton:checked:hover {{ background:{theme.ACCENT_HOVER};"
+    f" border-color:{theme.ACCENT_HOVER}; }}")
+
 
 def gbif_match(name, timeout=6.0):
     """Look a name up in the GBIF species-match API with a short, explicit
@@ -533,6 +545,7 @@ class QualifierDialog(QDialog):
                 b = QPushButton(label)
                 b.setCheckable(True)
                 b.setChecked(canon == preset.get(gi))
+                b.setStyleSheet(QUAL_BTN_QSS)
                 b.clicked.connect(
                     lambda _c, g=gi, bb=b: self._single_select(g, bb))
                 row.addWidget(b)
@@ -825,7 +838,7 @@ class CullingSpeciesWidget(QWidget):
                 b = QPushButton(label)
                 b.setCheckable(True)
                 b.setChecked(canon == preset)
-                b.setStyleSheet("QPushButton { padding: 2px 6px; }")
+                b.setStyleSheet(QUAL_BTN_QSS)
                 b.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
                 b.clicked.connect(
                     lambda _checked, g=gi, bb=b: self._on_qualifier_clicked(g, bb))

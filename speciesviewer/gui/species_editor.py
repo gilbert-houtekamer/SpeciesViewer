@@ -273,8 +273,11 @@ class SpeciesInfoPanel(QWidget):
                 b = QPushButton(label)
                 b.setCheckable(True)
                 b.setChecked(canon == preset)
-                # Compact so all three fit the narrow embedded right-panel.
-                b.setStyleSheet("QPushButton { padding: 2px 6px; }")
+                # Compact so all three fit the narrow embedded right-panel;
+                # QUAL_BTN_QSS gives the checked state a solid accent fill so a
+                # toggled qualifier is unmistakable (and can be seen to clear).
+                from gui.culling_species import QUAL_BTN_QSS
+                b.setStyleSheet(QUAL_BTN_QSS)
                 b.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
                 b.clicked.connect(
                     lambda _checked, g=gi, bb=b: self._on_qualifier_clicked(g, bb))
