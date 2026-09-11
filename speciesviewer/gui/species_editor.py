@@ -215,10 +215,16 @@ class SpeciesInfoPanel(QWidget):
             layout.addWidget(QLabel(f"<b>{n} pictures selected:</b> {preview}"))
 
         # ── Subject field ─────────────────────────────────────────────────────
+        _preset_summary = ""
         if n == 1:
             initial = fpr.getSubject(file_paths[0].name) if fpr else ""
         else:
-            initial = ""
+            # Same as the grid / culling dialog: if one distinct species is
+            # already on the selection (a guide frame naming a burst), offer it
+            # here — flagged "★ … — set on N of M" when not every picture has it.
+            from gui.culling_species import species_prefill_for_keys
+            initial, _preset_summary, _ = species_prefill_for_keys(
+                range(n), lambda i: species_names[i] if i < len(species_names) else "")
         # Keep only the species name in the field; any qualifier already stored
         # (juv / male / …) pre-selects the toggle row below.
         name_only, self._preset_qualifiers = _subject_name_and_quals(initial)
@@ -227,6 +233,11 @@ class SpeciesInfoPanel(QWidget):
         self._initial_species_name = name_only
         self.subject_field = LabeledTextFieldQt("Suggested species name:", value=name_only)
         layout.addWidget(self.subject_field)
+        if _preset_summary:
+            _psum = QLabel(_preset_summary)
+            _psum.setWordWrap(True)
+            _psum.setStyleSheet(f"color:{theme.WARN}; font-size:11px;")
+            layout.addWidget(_psum)
 
         # Immediate as-you-type suggestions — a contains-match auto-complete over
         # every NL / EN / scientific species name, mirroring the culling dialog
