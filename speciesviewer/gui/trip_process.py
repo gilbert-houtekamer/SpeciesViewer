@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox,
     QTabWidget, QWidget, QVBoxLayout, QComboBox, QLineEdit, QFormLayout, QSizePolicy, QFileDialog, QDateEdit, QTextEdit,
     QTableWidget, QTableWidgetItem, QAbstractItemView, QStyledItemDelegate, QMessageBox, QFrame, QApplication,
-    QListWidget, QListWidgetItem)
+    QListWidget, QListWidgetItem, QScrollArea)
 from PyQt6.QtGui import QFont, QGuiApplication, QColor
 from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
 import logging
@@ -796,10 +796,38 @@ class ReadSDCardDialog(QDialog):
         self.logger = parent.logger
         self.setWindowTitle("Read card into unfiled" if unfiled_mode else
                             "Copy Day from Card" if days_mode else "Read SD-cards")
+        # A plain QDialog gets only a close button on Windows; min/max lets you
+        # deliberately go full-screen for a big card instead of the dialog
+        # having to guess a size that works for every case.
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMinMaxButtonsHint)
         self.resize(700, 320)
 
-        layout = QVBoxLayout(self)
+        # Two tabs instead of one ever-growing column: "Input" (source, dest,
+        # prefix, options — set once, rarely revisited) and "SD card" (the day
+        # table, camera-clock warning, live progress and the read result —
+        # everything that changes once you press Scan/Read). Splitting them
+        # means neither tab alone needs anywhere near the height the combined
+        # stack did, and each is wrapped in its own scroll area (see
+        # _scrollable) so a card with many days or a long warning still never
+        # gets clipped — see _fit_to_content.
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 12, 12)
+        self.tabs = QTabWidget()
+        outer_layout.addWidget(self.tabs, 1)
+
+        def _scrollable(inner: QWidget) -> QScrollArea:
+            sc = QScrollArea()
+            sc.setWidgetResizable(True)
+            sc.setFrameShape(QFrame.Shape.NoFrame)
+            sc.setWidget(inner)
+            return sc
+
+        tab1 = QWidget()
+        layout = QVBoxLayout(tab1)
+        layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(14)
+        self.tabs.addTab(_scrollable(tab1), "Input")
+        self._tab_input = tab1
         layout.addWidget(HTMLLabel(
             "<p><b>Read a card into the unfiled inbox</b><br>"
             "Copy pictures from a card into <i>&lt;year&gt; unfiled</i>, sorted into "
@@ -1013,15 +1041,27 @@ class ReadSDCardDialog(QDialog):
         input_layout.addWidget(self.recull_checkbox)
         self._refresh_recull()
 
-        # Live progress log inside this (green) block, so a long copy is visible at
-        # a glance — "running while you fetch a cup of tea". Hidden when idle; the
-        # one-line result still lands in the status line at the very bottom.
+        layout.addWidget(self.input_frame)
+        layout.addStretch(1)
+
+        # ── Tab 2: "SD card" — the day picker, camera-clock warning, live
+        # progress, and the eventual read result. Everything Scan/Read change,
+        # which is why on_scan/on_read switch to it automatically.
+        tab2 = QWidget()
+        card_layout = QVBoxLayout(tab2)
+        card_layout.setContentsMargins(12, 12, 12, 12)
+        card_layout.setSpacing(10)
+        self.tabs.addTab(_scrollable(tab2), "SD card")
+        self._tab_card = tab2
+
+        # Live progress, so a long scan/copy is visible at a glance — "running
+        # while you fetch a cup of tea". Hidden when idle; the one-line result
+        # still lands in the status line below.
         self.progress_label = QLabel("")
         self.progress_label.setWordWrap(True)
         self.progress_label.setStyleSheet("font-style: italic;")
         self.progress_label.setVisible(False)
-        input_layout.addWidget(self.progress_label)
-        layout.addWidget(self.input_frame)
+        card_layout.addWidget(self.progress_label)
 
         # ── Day picker: "Scan days" lists each capture-day on the card with its
         # file count so you can untick days you don't want before copying. Its own
@@ -1074,16 +1114,16 @@ class ReadSDCardDialog(QDialog):
         self.clock_note.setVisible(False)
         days_layout.addWidget(self.clock_note)
         self.days_container.setVisible(False)
-        layout.addWidget(self.days_container)
+        card_layout.addWidget(self.days_container)
 
         # Extra vertical space (when the dialog is enlarged) collects here, so the
         # blocks stay compact at the top and the buttons stay at the bottom rather
         # than the widgets spreading apart.
-        layout.addStretch(1)
+        card_layout.addStretch(1)
 
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
-        layout.addWidget(self.status_label)
+        card_layout.addWidget(self.status_label)
 
         # "What to do next" note after a read. Colours come from the theme: the
         # hard-coded pale-blue card was invisible on the dark theme — a white box
@@ -1096,7 +1136,7 @@ class ReadSDCardDialog(QDialog):
             f"background:{theme.ACCENT_SOFT}; border:1px solid {theme.ACCENT_SOFT_BORDER};"
             f"color:{theme.ACCENT_INK_SOFT}; border-radius:4px;"
             "padding:6px; font-size:11px;")
-        layout.addWidget(self.pl_hint)
+        card_layout.addWidget(self.pl_hint)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
@@ -1128,7 +1168,12 @@ class ReadSDCardDialog(QDialog):
         btn_row.addWidget(self.pl_btn)
         btn_row.addWidget(self.geotag_btn)
         btn_row.addWidget(self.close_btn)
-        layout.addLayout(btn_row)
+        outer_layout.addLayout(btn_row)
+        self._btn_row = btn_row   # used by _fit_to_content to size around it
+        # Connected only now that _tab_input/_tab_card/_btn_row all exist —
+        # QTabWidget.addTab() above fires currentChanged as soon as the first
+        # tab is added, which is long before those exist.
+        self.tabs.currentChanged.connect(lambda _i: self._fit_to_content())
 
         self._last_targets = []     # picture paths from the most recent read
         self._last_dest = ""        # destination root (used as preview cache dir)
@@ -1148,6 +1193,12 @@ class ReadSDCardDialog(QDialog):
         self.geotag_btn.clicked.connect(self.on_geotag_from_tracklog)
         self.close_btn.clicked.connect(self.reject)
         self._close_connected = True   # True = Close, False = Cancel
+
+        # Without this the dialog opens at the hardcoded resize(700, 320)
+        # above and stays there until something else (Scan, a tab switch)
+        # happens to trigger a resize — the Input tab's fields and checkboxes
+        # don't actually fit in 320px, so it opened clipped every time.
+        self._fit_to_content()
 
     def on_open_in_photolab(self):
         """Open the day just read in DxO PhotoLab, so IT authors the .dop files.
@@ -1609,6 +1660,7 @@ class ReadSDCardDialog(QDialog):
         if not source or not os.path.isdir(source):
             self.source_field.show_hint("Please select a valid source folder.")
             return
+        self.tabs.setCurrentIndex(1)   # the day table/progress live there
         self.scan_btn.setEnabled(False)
         self.read_btn.setEnabled(False)
         self._log_phase("Scanning the card for capture days — grouping by file "
@@ -1633,6 +1685,7 @@ class ReadSDCardDialog(QDialog):
             return
         self._populate_days(days)
         self._check_camera_clock(days)
+        self._fit_to_content()
         # The unfiled inbox is per YEAR, and until the card is scanned we only know
         # today's year — a card shot last December would otherwise land in the wrong
         # one. Now that the dates are known, re-point at the year they are in.
@@ -1724,15 +1777,43 @@ class ReadSDCardDialog(QDialog):
         self.days_container.setEnabled(True)   # a fresh scan re-enables a greyed block
         self._refresh_all_days_checkbox()
         self._size_days_table()
-        # Grow the dialog so the (now visible) day table fits without the user
-        # having to drag it taller; keep the current width.
-        self.layout().activate()
-        # Never ask for less than the layout can actually take. sizeHint() alone
-        # produced "QWindowsWindow::setGeometry: Unable to set geometry … minimum
-        # size 543x614 … mintrack(837, 977)" — Qt clamped the request and warned,
-        # because the row of buttons and the PhotoLab hint make the real minimum
-        # taller than the hint suggested.
-        want_h = max(self.sizeHint().height(), self.minimumSizeHint().height())
+        self._fit_to_content()
+
+    def _fit_to_content(self):
+        """Grow the dialog to fit whatever is currently visible, but stop at a
+        comfortable ceiling — each tab's own scroll area (see __init__)
+        absorbs whatever doesn't fit, rather than the window growing without
+        limit.
+
+        Sized to the CURRENTLY ACTIVE tab only, not both combined — that is
+        the whole point of splitting Input from SD card. Called whenever that
+        could have changed: after the day table is (re)filled, after the
+        camera-clock warning is shown/hidden (on_scan_finished checks the
+        clock after populating days, so sizing only at the first point left
+        the warning box clipped), after a read finishes, and whenever the
+        active tab itself changes (see the tabs.currentChanged connection).
+
+        sizeHint() is not used for the height here: QScrollArea's own
+        sizeHint() does not simply track its content (Qt caps it internally),
+        so the dialog's height is built by hand instead — the active tab's
+        own content widget's real sizeHint() (unaffected by the scroll area
+        wrapping it), the tab bar, and the button row below it."""
+        active = self._tab_card if self.tabs.currentIndex() == 1 else self._tab_input
+        active.layout().activate()
+        content_h = active.sizeHint().height()
+        chrome_h = (self.tabs.tabBar().sizeHint().height()
+                    + self._btn_row.sizeHint().height()
+                    + self.layout().spacing() * 2 + 16)
+        want_h = max(content_h + chrome_h, self.minimumSizeHint().height())
+
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        if screen is not None:
+            # A warning box AND a finished-read summary AND the day table
+            # together can exceed most screens; growing to fit all of it at
+            # once made the dialog take over the screen instead of fitting in
+            # it. 80% leaves room to see it's a dialog, not the whole app.
+            cap = int(screen.availableGeometry().height() * 0.8)
+            want_h = min(want_h, max(cap, chrome_h + 150))
         want_w = max(self.width(), self.minimumSizeHint().width())
         self._resize_within_screen(want_w, want_h)
 
@@ -1989,6 +2070,11 @@ class ReadSDCardDialog(QDialog):
             self.logger.info(f"✅ Read complete. {text}")
 
     def on_read(self):
+        # status_label/progress_label live on the "SD card" tab (everything
+        # Read reports lands there, success or failure), so switch to it up
+        # front — otherwise a validation error below would set text on a tab
+        # that isn't showing.
+        self.tabs.setCurrentIndex(1)
         # Backstop for the disabled button: a prefix that failed the allow-list
         # must never reach target_name, whatever route got here.
         raw_prefix = self.prefix_field.get_text() or ""
@@ -2180,6 +2266,7 @@ class ReadSDCardDialog(QDialog):
             self.logger.warning(f"❌ Card read failed: {error}")
             self.status_label.setText(f"❌ {error}")
             self._set_progress("")
+            self._fit_to_content()
             return
         # Held on the dialog because the final "Done" line is written by
         # whichever phase finishes last (here, or _add_location_names) — every
@@ -2269,6 +2356,7 @@ class ReadSDCardDialog(QDialog):
                 "crops you set before that live in the .xmp only. "
                 "Best done with PhotoLab closed while you cull.")
             self.pl_hint.setVisible(True)
+        self._fit_to_content()
 
         # On an abort, don't auto-run the network geocode or grey the day list —
         # leave it ready for a re-read to finish the rest.
