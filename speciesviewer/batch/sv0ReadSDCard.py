@@ -46,7 +46,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from utils.disk_space import check_free_space
@@ -613,26 +613,62 @@ def _read_capture_datetimes(files, log, progress_cb=None) -> dict[str, datetime]
     return result
 
 
-def _build_buckets(files, tz_offset_hours, cache: "_CardCache | None", log) -> dict[str, str]:
+def _build_buckets(files, tz_offset_hours, cache: "_CardCache | None", log,
+                    include_dates=None) -> dict[str, str]:
     """{normalised path: 'YYYY-MM-DD'} for all files.
 
     Dates come from the card cache where available; only cache-miss files go
-    through exiftool.  Falls back to file mtime when exiftool has no date."""
+    through exiftool.  Falls back to file mtime when exiftool has no date.
+
+    include_dates, when given, is the set of days the caller actually wants
+    (see copy_card). A cache-miss file whose cheap file-mtime day is more than
+    one calendar day from every wanted day cannot become a wanted day after a
+    real EXIF read either — mtime is already the camera's own clock at write
+    time (see scan_days), so the two dates only ever drift by clock skew or a
+    near-midnight shot, never by more than about a day. Such a file is bucketed
+    from mtime alone and skipped from the exiftool batch entirely: it was going
+    to be filtered out downstream regardless, so reading its real date would
+    only have confirmed the exclusion. A file within that margin still goes
+    through exiftool, so a real boundary case is never resolved by mtime."""
     offset = timedelta(hours=tz_offset_hours or 0)
     buckets:   dict[str, str]      = {}
     need_exif: list[Path]          = []
     cached_dt: dict[str, datetime] = {}
 
+    near_dates = None
+    if include_dates:
+        near_dates = set()
+        for d in include_dates:
+            try:
+                day = date.fromisoformat(d)
+            except ValueError:
+                near_dates.add(d)          # e.g. UNKNOWN_DATE_DIR — no neighbours
+                continue
+            for delta in (-1, 0, 1):
+                near_dates.add((day + timedelta(days=delta)).isoformat())
+
+    skipped_far = 0
     for f in files:
         entry = cache.get(f) if cache else None
         if entry and (date_str := entry.get("capture_date")):
             buckets[_norm(f)] = date_str
-        else:
-            need_exif.append(f)
+            continue
+        if near_dates is not None:
+            try:
+                mtime_day = (datetime.fromtimestamp(f.stat().st_mtime) + offset) \
+                    .strftime("%Y-%m-%d")
+            except OSError:
+                mtime_day = None
+            if mtime_day is not None and mtime_day not in near_dates:
+                buckets[_norm(f)] = mtime_day
+                skipped_far += 1
+                continue
+        need_exif.append(f)
 
-    hits = len(files) - len(need_exif)
+    hits = len(files) - len(need_exif) - skipped_far
     log.info(f"{len(files)} picture(s) on the card: {hits} already have a known "
-             f"date, {len(need_exif)} need to be read from EXIF.")
+             f"date, {skipped_far} are clearly outside the selected day(s) "
+             f"(from file date), {len(need_exif)} need to be read from EXIF.")
     if need_exif:
         from engine.exifcache import _fmt_duration
 
@@ -1147,7 +1183,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     # Cache reduces exiftool to only new/changed files; updated below after copy.
     if bucket_by_date or include_dates is not None or include_names:
         buckets, cached_dates_for_new = _build_buckets(
-            files, tz_offset_hours, cache, log)
+            files, tz_offset_hours, cache, log, include_dates=include_dates)
     else:
         buckets = {}
         cached_dates_for_new = {}
