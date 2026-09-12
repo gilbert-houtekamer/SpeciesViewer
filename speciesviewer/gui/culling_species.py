@@ -981,8 +981,12 @@ class CullingSpeciesWidget(QWidget):
             elif sci:
                 self.feedback.setText(f"✓ added to your species list: <b>{sci}</b>")
             else:
-                self.feedback.setText(f"✓ found in GBIF: <b>{gname}</b> "
-                                      f"(couldn't add locally) — will be stored")
+                # Reached only when GBIF's match was too weak even for the
+                # fuzzy=True add above (confidence < 90) — genuinely too
+                # uncertain to auto-correct, not a failure on our end.
+                self.feedback.setText(
+                    f"✓ GBIF knows <b>{gname}</b> — type it exactly to add it "
+                    f"to your species list (stored as typed for now)")
             self._is_known = True
             return sci or ""
         if status == "unreachable":
@@ -1004,7 +1008,14 @@ class CullingSpeciesWidget(QWidget):
         if sc is None:
             return None
         try:
-            sci = sc.getSpecies(name)  # local-then-GBIF; addSpecies() on a GBIF hit
+            # fuzzy=True: this is a user-confirmed GBIF hit (the caller already
+            # showed "found in GBIF"), not a batch guess, so a confidently
+            # corrected typo (FUZZY match, confidence >= 90 — see
+            # getKnownSpecies' GUI branch) should add, same as species_editor.py
+            # already does for its own species field. Without this, a name GBIF
+            # only fuzzy-matched (the common case for a typo) always failed to
+            # add here even though the check above had just confirmed it.
+            sci = sc.getSpecies(name, fuzzy=True)  # local-then-GBIF; addSpecies() on a GBIF hit
         except Exception as e:
             logger.warning(f"GBIF add failed for '{name}': {e}")
             return None
