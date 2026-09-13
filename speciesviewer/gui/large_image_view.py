@@ -675,6 +675,24 @@ class _FullResView(QScrollArea):
         self.verticalScrollBar().setValue(int(fy * new_h - ay))
         self._emit_point()
 
+    def restore_view(self, scale: float, hscroll: int, vscroll: int):
+        """Restore an EXACT prior view (scale + scroll position), bypassing
+        set_image's normal fit / carry-zoom-and-recenter logic. For a caller
+        that remembers a per-picture view state (see QuickViewer) — set_image
+        alone has no memory of where a specific picture was framed, only
+        "current zoom, recentred on the new image", which is right for
+        stepping through a burst but wrong for returning to a picture you
+        deliberately panned."""
+        if self._pixmap.isNull():
+            return
+        self._scale = max(self._fit_scale(), min(1.0, scale))
+        self._fit = abs(self._scale - self._fit_scale()) < 1e-4
+        self._zoom_locked = not self._fit
+        self._render_scaled()
+        self.horizontalScrollBar().setValue(hscroll)
+        self.verticalScrollBar().setValue(vscroll)
+        self._emit_point()
+
     def wheelEvent(self, event):
         if not self._zoomable or self._pixmap.isNull():
             return super().wheelEvent(event)

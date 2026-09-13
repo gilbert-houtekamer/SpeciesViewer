@@ -24,6 +24,13 @@ start/end, exactly like the grid and the Large Image View: resolved locally
 selection_changed, so the grid's EXISTING selection highlighting and
 bulk-action menu (Set exposure/rating/species for N pictures) just work on
 whatever range you marked here — no new UI, reuses the grid's own handler.
+
+Remembers each picture's own zoom + pan (per key, this session only) and
+restores it exactly on return. _FullResView's own default — keep the current
+zoom, recentre on the new image — is right for stepping through a burst at a
+steady magnification, but it has no memory of where YOU panned to on a given
+picture, so leaving a carefully-framed shot and coming back showed a
+different, re-centred crop instead. See restore_view in large_image_view.py.
 """
 
 from pathlib import Path
@@ -52,6 +59,7 @@ class QuickViewer(QDialog):
         self._edited: set[str] = set()
         self._bracket_left: str | None = None
         self._bracket_right: str | None = None
+        self._view_state: dict[str, tuple] = {}   # key -> (scale, hscroll, vscroll)
 
         self.setWindowFlag(Qt.WindowType.Window, True)
         self.setModal(False)
@@ -91,6 +99,16 @@ class QuickViewer(QDialog):
             self.setWindowTitle("Quick view")
             self._view.set_message("Nothing to show.")
             return
+        # Remember exactly how the picture we're LEAVING was framed (zoom +
+        # pan) before switching self._cur_key away from it, so returning to it
+        # later restores this instead of _FullResView's normal "keep zoom,
+        # recentre" default — see _show.
+        if self._cur_key is not None and not self._view._pixmap.isNull():
+            self._view_state[self._cur_key] = (
+                self._view._scale,
+                self._view.horizontalScrollBar().value(),
+                self._view.verticalScrollBar().value(),
+            )
         key = self._keys[self._index]
         self._cur_key = key
         self.setWindowTitle(f"Quick view — {key}  ({self._index + 1} of {len(self._keys)})")
@@ -136,6 +154,9 @@ class QuickViewer(QDialog):
             from gui.exposure_widget import format_ev
             overlay += f"  ·  {format_ev(round(self._cur_ev * 3))} suggested"
         self._view.set_image(px, (0.5, 0.5), overlay=overlay)
+        saved = self._view_state.get(key)
+        if saved is not None:
+            self._view.restore_view(*saved)
 
     def _apply_frame_color(self, color: str):
         css = color_to_css(color)
