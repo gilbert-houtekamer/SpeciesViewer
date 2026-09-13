@@ -273,6 +273,33 @@ def forget_recent_species(name: str):
     update_cache_gui_section(_RECENT_SECTION, _RECENT_KEY, recent[:_RECENT_MAX])
 
 
+def recent_display_label(sc, raw_name: str) -> str:
+    """Best-effort display label for a recents entry.
+
+    A brand-new species has to be TYPED as its scientific name (GBIF only
+    matches scientific names), so that is what gets stored in the recents
+    list — but a scientific name is the last thing you want to read off a
+    button for every later picture of the same species. This resolves it
+    through the species collection to the same NL/EN/Sci display profile the
+    grid and large-viewer cards already use, so the button reads "jaguar"
+    even though "panthera onca" is what was actually typed (and is still
+    what gets committed — see _build_recent_buttons). Falls back to the raw
+    name unchanged when it doesn't resolve (collection not loaded, or a name
+    typed but never actually looked up)."""
+    if sc is None or not raw_name:
+        return raw_name
+    try:
+        sci = sc.getKnownSpecies(raw_name.strip().lower(), False, LookUpInGBIF=False)
+    except Exception:
+        sci = ""
+    props = sc.sc_dict.get(sci) if sci else None
+    if not props:
+        return raw_name
+    from utils.name_profile import effective_profile, name_for
+    row = {"en": props.get("EnglishName", ""), "nl": props.get("DutchName", ""), "sci": sci}
+    return name_for(row, effective_profile()) or raw_name
+
+
 # ── species qualifiers (sex / age / plumage) ──────────────────────────────────
 # A qualifier is a token stored alongside the species name in XMP:Subject, e.g.
 # "blauwborst, female". The pipeline's specieslib.getBirdInfo is the parser-of-
@@ -891,9 +918,13 @@ class CullingSpeciesWidget(QWidget):
         for widget in (self._recent_sep, self._recent_label, self._recent_container):
             widget.setVisible(bool(recent))
         for i, name in enumerate(recent):
-            b = QPushButton(name)
+            label = recent_display_label(self._sc, name)
+            b = QPushButton(label)
             b.setStyleSheet(_RECENT_CHIP)
-            b.setToolTip(f"Click to set “{name}”; right-click to remove from recents")
+            tip = f"Click to set “{name}”; right-click to remove from recents"
+            if label != name:
+                tip = f"Click to set “{name}” (shown as “{label}”); right-click to remove"
+            b.setToolTip(tip)
             b.clicked.connect(lambda _=False, nm=name: self._commit(nm))
             b.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             b.customContextMenuRequested.connect(
