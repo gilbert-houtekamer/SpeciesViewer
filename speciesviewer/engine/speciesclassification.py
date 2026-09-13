@@ -609,7 +609,16 @@ class SpeciesClassification:
                         else:
                             timesoort = time.time() - timesoort
                             logger.info(f"""The species "{subject}" is not found in the GBIF database as a scientific name, took {timesoort:.3f} seconds.""")
-                            _NAMES_NOT_FOUND.add(subject)
+                            # Only blacklist when GBIF found NOTHING at all. A
+                            # FUZZY match GBIF DID offer here (just rejected by
+                            # strict batch-mode rules) must stay retryable by a
+                            # later interactive fuzzy=True call in this same
+                            # process — the guard above wraps the WHOLE lookup,
+                            # so blacklisting a typo here silently blocked every
+                            # later "Validate"/"Check online" attempt for it too,
+                            # even though GBIF would have confidently corrected it.
+                            if not (gbif.get('matchType') == 'FUZZY' and gbif.get('species')):
+                                _NAMES_NOT_FOUND.add(subject)
                     else: # GUI
                         # The batch branch above reassigns timesoort to the
                         # elapsed time; this one never did, so it logged the
