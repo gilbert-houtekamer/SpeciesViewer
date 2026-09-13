@@ -11,6 +11,11 @@ picture shown and repaints any card it changed; nothing else changes.
 Deliberately NOT the Large Image View: that one is powerful but pays a startup
 cost this view exists to skip. It reuses `_FullResView` (the zoom/pan viewport)
 and `handle_cull_key` (the shared culling key handler) from elsewhere.
+
+Displays (never sets) any exposure suggestion already recorded for the
+picture — see gui/exposure_render — so pixel-peeping here shows what
+PhotoLab/Lightroom will actually render. No slider here; that stays in the
+Large Image View. A picture with no suggestion pays nothing extra.
 """
 
 from pathlib import Path
@@ -34,6 +39,7 @@ class QuickViewer(QDialog):
         self._keys = list(keys)
         self._index = max(0, min(index, len(self._keys) - 1)) if self._keys else 0
         self._cur_key = None
+        self._cur_ev = 0.0
         self._edited: set[str] = set()
 
         self.setWindowFlag(Qt.WindowType.Window, True)
@@ -72,6 +78,16 @@ class QuickViewer(QDialog):
         if not raw:
             self._view.set_message("No RAW file for this picture.")
             return
+        # Any exposure suggestion already set (large viewer / grid batch) is
+        # applied on display, so QuickViewer shows what PhotoLab/Lightroom will
+        # actually render rather than the untouched embed. Zero extra cost for
+        # the normal case of no suggestion — apply_exposure_to_pixmap
+        # short-circuits and returns the pixmap unchanged when ev is 0.
+        try:
+            item = self._collection.item_for_key(key)
+            self._cur_ev = getattr(item, "exposure", 0.0) or 0.0
+        except (ValueError, KeyError):
+            self._cur_ev = 0.0
         self._view.set_message("Reading the camera's JPEG…")
         self._loader.cancel_all()
         raw_s = str(raw)
@@ -91,8 +107,13 @@ class QuickViewer(QDialog):
         if px is None or px.isNull():
             self._view.set_message("This RAW carries no embedded JPEG.")
             return
-        self._view.set_image(px, (0.5, 0.5),
-                             overlay=f"camera JPEG {px.width()}×{px.height()}")
+        from gui.exposure_render import apply_exposure_to_pixmap
+        px = apply_exposure_to_pixmap(px, self._cur_ev)
+        overlay = f"camera JPEG {px.width()}×{px.height()}"
+        if self._cur_ev:
+            from gui.exposure_widget import format_ev
+            overlay += f"  ·  {format_ev(round(self._cur_ev * 3))} suggested"
+        self._view.set_image(px, (0.5, 0.5), overlay=overlay)
 
     def _go(self, delta: int):
         if not self._keys:
