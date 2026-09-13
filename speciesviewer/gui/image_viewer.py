@@ -1553,6 +1553,11 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         dlg = QuickViewer(self, self._collection, order, order.index(key))
         dlg.navigated.connect(self._cull_set_cursor)
         dlg.edited.connect(self._on_quick_view_edited)
+        # [ / ] in the quick viewer mark a range exactly like the grid's own —
+        # reuse the SAME handler the large viewer's selection_changed already
+        # uses, so the grid's selection highlighting and bulk-action menu just
+        # work on whatever range was marked while pixel-peeping.
+        dlg.selection_changed.connect(self._on_large_view_selection_changed)
         dlg.finished.connect(lambda _=0: setattr(self, "_quick_view", None))
         self._quick_view = dlg
         dlg.show()
