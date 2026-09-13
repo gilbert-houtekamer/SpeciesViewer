@@ -26,7 +26,7 @@ from PyQt6.QtGui import QImage
 
 from gui.picture_provider import (
     PictureItem, PictureCollection, ExifSummary, PixmapCallback, exif_from_rows,
-    sweep_dop, apply_crop, crop_for, jpg_is_crop_by_size)
+    sweep_dop, apply_crop, crop_for, exposure_for, jpg_is_crop_by_size)
 from gui.image_loader import AsyncImageLoader
 from gui.rating_editor import _compute_rate
 from engine.exif_writer import exiftool_write
@@ -339,6 +339,19 @@ class PreviewItem(PictureItem):
 
     def set_crop(self, crop: dict):
         return self._c.set_crop(self._key, crop)
+
+    # exposure suggestion — same carve-out as crop.
+    @property
+    def can_set_exposure(self) -> bool:
+        return (not self._c.read_only
+                and self._c._crop_source(self._key) is not None)
+
+    @property
+    def exposure(self) -> float:
+        return self._c._exposure_for(self._key) or 0.0
+
+    def set_exposure(self, value: float) -> None:
+        return self._c.set_exposure(self._key, value)
 
 
 class PreviewCollection(PictureCollection):
@@ -1183,6 +1196,33 @@ class PreviewCollection(PictureCollection):
         self._img_sigs[upn_key] = self._img_sig(upn_key)
         self._drop_thumb_caches(upn_key)   # a crop can land in the .xmp, which the sig doesn't see
         return res
+
+    def _exposure_for(self, upn_key: str):
+        """Current suggested exposure (EV) for the UPN's croppable base (RAW or
+        original camera JPG), from its .dop (preferred) or .xmp. Mirrors the
+        crop reader exactly — no cache here (crop_for/exposure_for are cheap
+        sidecar reads, and this collection has no per-stem crop cache either;
+        _crop_for-style caching lives in sidecar_provider, the other engine)."""
+        base = self._crop_source(upn_key)
+        if base is None:
+            return None
+        return exposure_for(base, self._xmp_for(upn_key))
+
+    def set_exposure(self, upn_key: str, exposure: float):
+        """Write a suggested exposure (EV) to the UPN's source sidecars (.dop +
+        .xmp), creating the .xmp if missing — the exposure mirror of set_crop.
+        Returns the sidecarlib result, or None."""
+        if self.read_only:
+            logger.warning(f"set_exposure refused for {upn_key}: collection is read-only.")
+            return None
+        raw = self._crop_source(upn_key)
+        if not raw:
+            return None
+        if raw.suffix.lower() in (".heic", ".heif"):
+            logger.info(f"set_exposure: no develop step for a HEIC-only picture ({upn_key}).")
+            return None
+        from engine.sidecarlib import suggest_exposure
+        return suggest_exposure(str(raw), exposure)
 
     def create_blog_jpg(self, upn_key: str) -> dict:
         """Bake a website-ready JPG beside the RAW from the camera's embedded

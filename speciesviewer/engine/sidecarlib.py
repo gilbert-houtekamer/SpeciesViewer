@@ -513,6 +513,40 @@ def suggest_crop(raw_path, crop, angle=None):
     return res
 
 
+def suggest_exposure(raw_path, exposure):
+    """Write a suggested exposure adjustment (EV, Lightroom's Exposure2012
+    scale) to the DxO .dop (when PhotoLab has already authored one — see
+    ensure_dop, never created) and the Lightroom .xmp, so the next edit in
+    either app opens with it. Mirrors suggest_crop exactly — see there and
+    utils/sidecar_policy for why both channels are written unconditionally.
+    `exposure` is a float EV; 0.0 clears back to no adjustment. Returns a dict
+    describing what was written/created."""
+    res = {"dop": False, "xmp": False, "dop_created": False, "xmp_created": False}
+
+    dop_before = os.path.exists(str(raw_path) + ".dop")
+    dop_path = ensure_dop(raw_path)
+    res["dop_created"] = bool(dop_path) and not dop_before
+    if dop_path:
+        try:
+            res["dop"] = write_dop_edits(dop_path, exposure=exposure)
+        except Exception as e:
+            logger.warning(f"suggest_exposure: DOP write failed for {dop_path}: {e}")
+
+    if os.path.splitext(str(raw_path))[1].lower() in (".jpg", ".jpeg"):
+        return res   # JPG source: .dop only, no <stem>.xmp convention
+
+    xmp_before = os.path.exists(os.path.splitext(str(raw_path))[0] + ".xmp")
+    xmp_path = ensure_xmp(raw_path)
+    res["xmp_created"] = bool(xmp_path) and not xmp_before
+    if xmp_path:
+        try:
+            res["xmp"] = write_xmp_edits(xmp_path, exposure=exposure)
+        except Exception as e:
+            logger.warning(f"suggest_exposure: XMP write failed for {xmp_path}: {e}")
+
+    return res
+
+
 def _has_edits(data):
     """True if the sidecar has any non-default crop, exposure, or angle."""
     if data["exposure"] is not None and data["exposure"] != 0.0:

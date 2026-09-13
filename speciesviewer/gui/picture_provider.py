@@ -75,6 +75,29 @@ def apply_crop(img, crop):
     return img.copy(int(x), int(y), int(cw), int(ch))
 
 
+def exposure_for(raw_path, xmp_path=None):
+    """Current suggested exposure (EV, Lightroom's Exposure2012 scale) from a
+    RAW's DxO .dop (preferred) else its Lightroom .xmp, or None. Mirrors
+    crop_for exactly — same reader (engine/sidecarlib), same precedence."""
+    from pathlib import Path
+    exposure = None
+    if raw_path:
+        dop = Path(str(raw_path) + ".dop")
+        if dop.exists():
+            try:
+                from engine.sidecarlib import read_dop_overrides
+                exposure = read_dop_overrides(str(dop)).get("exposure")
+            except Exception:
+                exposure = None
+    if exposure is None and xmp_path and Path(xmp_path).exists():
+        try:
+            from engine.sidecarlib import read_xmp_edits
+            exposure = read_xmp_edits(str(xmp_path)).get("exposure")
+        except Exception:
+            exposure = None
+    return exposure
+
+
 def crop_for(raw_path, xmp_path=None):
     """Normalised crop {left,top,width,height} (0–1) from a RAW's DxO .dop
     (preferred — the cropping tool) else the Lightroom .xmp, or None. Uses
@@ -357,6 +380,18 @@ class PictureItem(ABC):
     def set_crop(self, crop: dict) -> None:
         raise NotImplementedError
 
+    # ── exposure suggestion (RAW only; seeds PhotoLab/Lightroom) ─────────────
+    # Same shape as crop: a suggestion written to the sidecar(s), not a pixel
+    # edit this app itself develops. `exposure` is the current EV (0.0 = none
+    # set), used to pre-fill the large viewer's control and to render its live
+    # preview (see gui/exposure_render.py). Gated by can_set_exposure.
+    @property
+    def exposure(self) -> float:
+        return 0.0
+
+    def set_exposure(self, value: float) -> None:
+        raise NotImplementedError
+
     # ── capability flags (UI greys unsupported ops) ──────────────────────────
     # Instances override these; class defaults are the safe read-only case.
     can_edit_species: bool = False
@@ -365,6 +400,7 @@ class PictureItem(ABC):
     can_edit_rating: bool = False
     can_edit_color: bool = False
     can_set_crop: bool = False
+    can_set_exposure: bool = False
 
 
 class PictureCollection(ABC):

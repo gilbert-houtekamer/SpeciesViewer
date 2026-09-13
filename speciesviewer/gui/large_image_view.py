@@ -783,6 +783,7 @@ class LargeImageView(QDialog):
         self._geo_key = f"{settings_key}Large"
         self._item = None
         self._pixmap = QPixmap()
+        self._fit_base_img = None   # unadjusted decode, for cheap exposure re-renders
         self._load_token = 0
         self._original_description = ""
         self._original_headline = ""
@@ -816,6 +817,15 @@ class LargeImageView(QDialog):
             f"font-family:{_MONO}; font-size:12px; color:{theme.INK_SOFT};")
         top_bar_row.addWidget(self._titlebar_lbl)
         top_bar_row.addStretch()
+        # Exposure suggestion — a live-previewed EV nudge for PhotoLab/Lightroom,
+        # same sidecar mechanism as Crop (see gui/exposure_widget.py + engine/
+        # sidecarlib.suggest_exposure). Sits left of Crop per the intended
+        # reading order: "adjust the light, then the frame."
+        from gui.exposure_widget import ExposureWidget
+        self._exposure_widget = ExposureWidget(0.0)
+        self._exposure_widget.live.connect(self._on_exposure_live)
+        self._exposure_widget.committed.connect(self._on_exposure_committed)
+        top_bar_row.addWidget(self._exposure_widget)
         # Crop tool — draw a suggested crop on the full frame for PhotoLab/LR.
         self._crop_btn = QToolButton()
         self._crop_btn.setAutoRaise(True)
@@ -936,6 +946,7 @@ class LargeImageView(QDialog):
         # full sensor it decodes to. The 1:1 point persists across the group.
         self._fullres_point = (0.5, 0.5)
         self._fr_loader = AsyncImageLoader(self)
+        self._fullres_base_img = None   # unadjusted decode, for cheap exposure re-renders
         self._fullres_view = _FullResView()
         self._fullres_view.point_changed.connect(self._on_fullres_point_changed)
         # Third tab: the CAMERA's own JPEG, lifted straight out of the RAW.
@@ -952,6 +963,8 @@ class LargeImageView(QDialog):
         self._embed_view.point_changed.connect(self._on_fullres_point_changed)
         self._embed_loader = AsyncImageLoader(self)
         self._embed_key = None          # which picture the tab currently holds
+        self._embed_base_img = None     # unadjusted decode, for cheap exposure re-renders
+        self._embed_overlay = ""
         self._view_tabs = QTabWidget()
         # Tab order: Fit, then the Camera JPEG (the quick zoom — where a Fit
         # double-click lands), then the slower full-sensor decode last. Referenced
@@ -1322,6 +1335,7 @@ class LargeImageView(QDialog):
 
     def _on_embedded_pixmap(self, px, sensor: str):
         if px is None or px.isNull():
+            self._embed_base_img = None
             self._view_tabs.setTabText(self._TAB_EMBED, "Camera JPEG")
             self._embed_view.set_message("This RAW carries no embedded JPEG.")
             return
@@ -1342,7 +1356,25 @@ class LargeImageView(QDialog):
         overlay = f"{model} · camera JPEG {w}×{h}" if model else f"Camera JPEG {w}×{h}"
         if sensor_long and long_edge < sensor_long * 0.9:
             overlay += f"  ·  preview only — {self._fullres_scale_label()} tab decodes the full sensor"
-        self._embed_view.set_image(px, self._fullres_point, overlay=overlay)
+        # Kept UNADJUSTED — _render_embedded re-applies the LUT from here on every
+        # exposure-slider tick, instead of re-extracting + re-decoding the RAW's
+        # embedded JPEG each time (the expensive ~50-70ms part; the LUT itself is
+        # a few ms — see gui/exposure_render.py).
+        self._embed_base_img = px
+        self._embed_overlay = overlay
+        self._render_embedded(self._exposure_widget.value_ev)
+
+    def _render_embedded(self, ev: float):
+        """(Re)draw the Camera-JPEG tab from the cached unadjusted embed at the
+        given EV. No-op if nothing has been decoded yet (e.g. the tab hasn't
+        been opened for this picture)."""
+        img = getattr(self, "_embed_base_img", None)
+        if img is None or img.isNull():
+            return
+        from gui.exposure_render import apply_exposure_to_pixmap
+        shown = apply_exposure_to_pixmap(img, ev)
+        self._embed_view.set_image(shown, self._fullres_point,
+                                   overlay=getattr(self, "_embed_overlay", ""))
 
     def _on_fullres_point_changed(self, fx, fy):
         self._fullres_point = (fx, fy)
@@ -1460,9 +1492,63 @@ class LargeImageView(QDialog):
 
     def _on_fullres_pixmap(self, px):
         if px is None or px.isNull():
+            self._fullres_base_img = None
             self._fullres_view.set_message("Could not decode full resolution.")
             return
-        self._fullres_view.set_image(px, self._fullres_point)
+        # Kept UNADJUSTED — same reasoning as _embed_base_img: re-applying the
+        # LUT on an exposure-slider tick is cheap regardless of image size, but
+        # re-running the RAW decode per tick would not be.
+        self._fullres_base_img = px
+        self._render_fullres(self._exposure_widget.value_ev)
+
+    def _render_fullres(self, ev: float):
+        """(Re)draw the 80%/full-res tab from the cached unadjusted decode at
+        the given EV. No-op if nothing has been decoded yet."""
+        img = getattr(self, "_fullres_base_img", None)
+        if img is None or img.isNull():
+            return
+        from gui.exposure_render import apply_exposure_to_pixmap
+        self._fullres_view.set_image(apply_exposure_to_pixmap(img, ev), self._fullres_point)
+
+    # ── Exposure suggestion ──────────────────────────────────────────────────
+    def _on_exposure_live(self, ev: float):
+        """Cheap re-render of whichever tab is showing, from its cached
+        UNADJUSTED base image (a LUT pass, a few ms — see
+        gui/exposure_render.py) — so this can run on every slider tick. No
+        sidecar write here; see _on_exposure_committed."""
+        if getattr(self, "_view_tabs", None) is None:
+            return
+        if getattr(self, "_crop_mode", False):
+            # Crop mode shows the RAW uncropped frame via its own pixmap
+            # assignment (_on_uncropped_for_crop), bypassing _fit_base_img —
+            # rendering from that (stale) cache here would replace the frame
+            # you're actively drawing a rectangle on with a wrong image.
+            return
+        idx = self._view_tabs.currentIndex()
+        if idx == self._TAB_FIT:
+            self._render_fit(ev)
+        elif idx == self._TAB_EMBED:
+            self._render_embedded(ev)
+        elif idx == self._TAB_FULLRES:
+            self._render_fullres(ev)
+
+    def _on_exposure_committed(self, ev: float):
+        """Persist the exposure suggestion to this picture's sidecars. Also
+        re-renders (in case committed fires without a preceding live tick,
+        e.g. a keyboard nudge with no drag)."""
+        if self._item is None or not getattr(self._item, "can_set_exposure", False):
+            return
+        try:
+            res = self._item.set_exposure(ev)
+        except Exception as e:
+            logger.warning(f"Exposure: could not write suggestion: {e}")
+            return
+        self._on_exposure_live(ev)
+        if res:
+            created = [k.upper() for k in ("dop", "xmp") if res.get(f"{k}_created")]
+            extra = f"  (created {', '.join(created)})" if created else ""
+            logger.info(f"Exposure suggestion ({ev:+.2f} EV) written to "
+                        f"PhotoLab + Lightroom sidecars.{extra}")
 
     # ── Crop tool ─────────────────────────────────────────────────────────────
     def _update_crop_btn(self):
@@ -1950,6 +2036,21 @@ class LargeImageView(QDialog):
         except (ValueError, KeyError):
             return
         self._item = item
+        # Drop the cached unadjusted base images from whatever picture this was
+        # showing before — otherwise a slider drag landing in the narrow window
+        # before the new picture's async decode completes would live-render the
+        # PREVIOUS picture over the "Reading…" message.
+        self._fit_base_img = None
+        self._embed_base_img = None
+        self._fullres_base_img = None
+        # Sync the exposure control to THIS picture before triggering the async
+        # embed load below — _on_embedded_pixmap reads the widget's current
+        # value to render with, so it must already be right by the time that
+        # callback fires. set_value_ev is silent (no live/committed signal),
+        # so this never triggers a spurious re-write of the picture we're
+        # leaving.
+        self._exposure_widget.setEnabled(getattr(item, "can_set_exposure", False))
+        self._exposure_widget.set_value_ev(getattr(item, "exposure", 0.0) or 0.0)
         # The Camera-JPEG tab holds one picture at a time; flipping to another must
         # re-read it (and re-label the tab) rather than leave the previous frame up.
         if getattr(self, "_embed_key", None) != key:
@@ -2100,12 +2201,26 @@ class LargeImageView(QDialog):
     def _on_pixmap(self, token, pixmap):
         if token != self._load_token:
             return
-        self._pixmap = pixmap if (pixmap is not None and not pixmap.isNull()) else QPixmap()
-        self._image_label.setText("") if self._pixmap.isNull() else None
-        if self._pixmap.isNull():
+        # Kept UNADJUSTED — _render_fit re-applies the LUT from here on every
+        # exposure-slider tick, same reasoning as _embed_base_img/
+        # _fullres_base_img. This is the Fit tab: the FIRST thing shown when a
+        # picture opens, so it must carry the exposure suggestion too, not
+        # only the Camera-JPEG/80% tabs.
+        self._fit_base_img = pixmap if (pixmap is not None and not pixmap.isNull()) else None
+        self._render_fit(self._exposure_widget.value_ev)
+
+    def _render_fit(self, ev: float):
+        """(Re)draw the Fit tab from the cached unadjusted decode at the given
+        EV. No-op (shows "(no image)") when nothing decoded."""
+        base = getattr(self, "_fit_base_img", None)
+        if base is None:
+            self._pixmap = QPixmap()
             self._image_label.setText("(no image)")
-        else:
-            self._fit_pixmap()
+            return
+        from gui.exposure_render import apply_exposure_to_pixmap
+        self._pixmap = apply_exposure_to_pixmap(base, ev)
+        self._image_label.setText("")
+        self._fit_pixmap()
 
     # ── Species section rebuild ───────────────────────────────────────────────
 

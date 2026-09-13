@@ -27,7 +27,7 @@ from PyQt6.QtGui import QImage
 
 from gui.picture_provider import (PictureItem, PictureCollection, ExifSummary,
                                   PixmapCallback, sweep_dop, apply_crop, crop_for,
-                                  jpg_is_crop_by_size)
+                                  exposure_for, jpg_is_crop_by_size)
 from gui.image_loader import AsyncImageLoader
 from gui.master_ops import MasterCardOpsMixin
 from gui.preview_provider import cached_jpg_for, preview_cache_dir_for
@@ -204,6 +204,9 @@ class SidecarItem(PictureItem):
         # the viewer changes nothing itself (the virtual-trip case).
         self.can_set_crop = ((not collection.readonly or collection.allow_crop)
                              and bool(collection._groups.get(stem, {}).get("raw")))
+        # Same carve-out as crop — a suggestion written to the RAW's sidecars,
+        # not a pixel edit this app develops itself.
+        self.can_set_exposure = self.can_set_crop
         if collection.readonly:
             # allow_edit is the rating/colour/description carve-out (see collection):
             # these write to the master's sidecars, which is exactly what an album
@@ -429,6 +432,15 @@ class SidecarItem(PictureItem):
         """Write the suggested crop to this picture's sidecars (see collection)."""
         return self._c.set_crop(self._stem, crop)
 
+    @property
+    def exposure(self) -> float:
+        return self._c._exposure_for(self._stem) or 0.0
+
+    def set_exposure(self, value: float) -> None:
+        """Write the suggested exposure (EV) to this picture's sidecars (see
+        collection)."""
+        return self._c.set_exposure(self._stem, value)
+
     # write ops → the sidecar
     def set_rating(self, value: int) -> None:
         self._c.write_tag(self._stem, "XMP:Rating", str(int(value)), "Rating")
@@ -569,6 +581,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         self._groups = {s: g for s, g in self._groups.items() if g.get("raw") or g.get("jpg")}
         _mark("group")
         self._crop_cache: dict = {}      # stem -> normalised crop | None (cleared on refresh)
+        self._exposure_cache: dict = {}  # stem -> EV float | None (cleared on refresh)
         self._jpg_dims_cache: dict = {}  # jpg path -> "WxH" (header read, for the crop size cue)
         self._created_blog_jpgs: set = set()  # stems whose <stem>.jpg WE baked (safe to overwrite)
         # {file path -> {NLSoortNaam,...}} + profile, so the caption follows the
@@ -1014,6 +1027,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         from gui import geolocate
         geolocate._LOCATION_READ_CACHE.clear()
         self._crop_cache.clear()         # a re-crop in PhotoLab/LR must re-read
+        self._exposure_cache.clear()     # ditto for an exposure change made externally
         # A render (PhotoLab _DxO.jpg, LR/v5 export) may have appeared — fold it in
         # (switches the display source RAW→JPG, caught by the image signature too).
         self._attach_sibling_jpgs()
@@ -1352,6 +1366,36 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         self._crop_cache.pop(stem, None)
         self._image_sigs[stem] = self._image_sig(stem)
         self._drop_thumb_caches(stem)   # a crop can land in the .xmp, which the sig doesn't see
+        return res
+
+    def _exposure_for(self, stem: str):
+        """Current suggested exposure (EV) from the PhotoLab .dop (preferred) or
+        the Lightroom .xmp, else None. Mirrors _crop_for exactly, including the
+        per-stem cache (cleared on refresh())."""
+        if stem in self._exposure_cache:
+            return self._exposure_cache[stem]
+        g = self._groups.get(stem, {})
+        exposure = exposure_for(g.get("raw"), g.get("xmp"))
+        self._exposure_cache[stem] = exposure
+        return exposure
+
+    def set_exposure(self, stem: str, exposure: float):
+        """Write a suggested exposure (EV) to the picture's DxO .dop and
+        Lightroom .xmp (creating the .xmp if missing) — the exposure mirror of
+        set_crop. Invalidates the cached exposure so the next read (the large
+        viewer re-opening this picture, or a repeat Set Exposure) sees it.
+        Returns the sidecarlib result dict, or None if there's no RAW."""
+        raw = self.raw_path(stem)
+        if not raw:
+            return None
+        from engine.sidecarlib import suggest_exposure
+        res = suggest_exposure(str(raw), exposure)
+        g = self._groups.get(stem, {})
+        if res and res.get("xmp_created") and "xmp" not in g:
+            xmp = Path(raw).with_suffix(".xmp")
+            if xmp.exists():
+                g["xmp"] = xmp
+        self._exposure_cache.pop(stem, None)
         return res
 
     # ── master inventory binding (album day viewer) ───────────────────────────

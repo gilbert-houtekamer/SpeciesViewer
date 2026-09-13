@@ -113,6 +113,15 @@ class RatingEditorItem(PictureItem):
             return False
         return self._c.raw_path(self._key) is not None
 
+    # exposure suggestion — same carve-out as crop.
+    @property
+    def can_set_exposure(self) -> bool:
+        return self.can_set_crop
+
+    @property
+    def exposure(self) -> float:
+        return self._c.exposure_recorded(self._key) or 0.0
+
     @property
     def _row(self) -> dict:
         return self._c._upn_row(self._key)
@@ -260,6 +269,13 @@ class RatingEditorItem(PictureItem):
         if not self.can_set_crop:
             return None
         return self._c.set_crop(self._key, crop)
+
+    def set_exposure(self, value: float) -> None:
+        """Write the suggested exposure to this trip picture's RAW sidecars (see
+        the collection). No-op past a read-only / master card."""
+        if not self.can_set_exposure:
+            return None
+        return self._c.set_exposure(self._key, value)
 
     # async image
     def request_thumbnail(self, target_w: int, on_ready: PixmapCallback) -> None:
@@ -1154,6 +1170,25 @@ class RatingEditorCollection(PictureCollection):
         res = suggest_crop(str(raw), crop)
         self._crop_flag_cache.pop(upn_key, None)   # crop marker must re-evaluate
         return res
+
+    def set_exposure(self, upn_key: str, exposure: float):
+        """Write a suggested exposure (EV) to a TRIP picture's DxO .dop /
+        Lightroom .xmp — the exposure mirror of set_crop. Master cards are
+        read-only here. Returns sidecarlib's result dict, or None."""
+        if upn_key in self._master_keys:
+            return None
+        raw = self.raw_path(upn_key)
+        if not raw:
+            return None
+        from engine.sidecarlib import suggest_exposure
+        return suggest_exposure(str(raw), exposure)
+
+    def exposure_recorded(self, upn_key: str):
+        """Current suggested exposure (EV) from the RAW's DxO .dop, or None.
+        Mirrors crop_recorded's own (deliberately .dop-only, no .xmp fallback)
+        lookup exactly, for consistency within this provider."""
+        from gui.picture_provider import exposure_for
+        return exposure_for(self.raw_path(upn_key))
 
     def crop_recorded(self, upn_key: str) -> bool:
         """True when this picture has a crop rectangle in its RAW's DxO .dop /
