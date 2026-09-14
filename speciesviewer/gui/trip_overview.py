@@ -62,12 +62,16 @@ STATE_COLUMNS = [
 ]
 STATE_LABELS = [c["label"] for c in STATE_COLUMNS]
 
-# Back up (💾) is a row action like Geotag and Sync Sidecars, not a pipeline
-# step — it writes one ZIP of the day's WORK to a spare card and never touches a
-# RAW. It sits LAST because that is where it falls in the day's timeline: the
-# evening job, after everything else has been done.
+# Metadata back up (💾) is a row action like Geotag and Sync Sidecars, not a
+# pipeline step — it writes one ZIP of the day's WORK to a spare card and
+# never touches a RAW. It sits LAST because that is where it falls in the
+# day's timeline: the evening job, after everything else has been done.
+# RAW backup (💿) sits right after it — the other half of "protect today's
+# work": a plain folder copy of the day's PICTURES to a spare card/HDD. Same
+# timeline slot, same "row action, not a pipeline step" reasoning.
 TRANSLATIONS_COL = STATE_COL_START + len(STATE_COLUMNS)
 BACKUP_COL = TRANSLATIONS_COL + 1
+RAW_BACKUP_COL = BACKUP_COL + 1
 
 
 # A day without JPGs can never grow a blog, so that 🚫 cell is dead (not
@@ -406,6 +410,54 @@ def _format_backup_item(day_dir):
     return item
 
 
+def _format_raw_backup_item(day_dir, trip_name: str, total_pictures: int):
+    """Build the RAW backup (💿) cell for one day, as "💿 copied/total".
+
+    Unlike the Metadata backup cell beside it, this is NOT a true current/
+    stale check — it never compares file content, size or date, only COUNTS.
+    A real per-file check would mean stat-ing every picture at the
+    destination on every repaint, which is real, repeated I/O for a
+    2000-picture day; a plain directory-listing count is one syscall
+    regardless of how many files are in it, so it stays cheap at any trip
+    size. Good enough for "does this look backed up at a glance?" — the copy
+    itself still does the real, file-level check (size + mtime) when it runs.
+    """
+    from PyQt6.QtGui import QColor
+    from gui.overview_table import action_cell
+    from gui.raw_backup_dialog import raw_backup_location
+    dest = raw_backup_location()
+    if not dest:
+        item = action_cell("💿", "Copy this day's pictures to a RAW backup — "
+                                 "no location chosen yet. Opens so you can pick one.")
+        item.setForeground(QColor(theme.INK_FAINT))
+        return item
+    if total_pictures == 0:
+        item = action_cell("💿", "Nothing to copy — this day has no files.")
+        item.setForeground(QColor(theme.INK_FAINT))
+        return item
+    from engine.raw_backup import count_copied
+    copied = count_copied(day_dir, dest, trip_name)
+    label = f"💿 {copied}/{total_pictures}"
+    if copied == 0:
+        item = action_cell(label, "This day has never been copied to the RAW "
+                                  "backup location. Click to copy it.")
+        item.setForeground(QColor(theme.WARN))
+        return item
+    if copied < total_pictures:
+        item = action_cell(label, f"{copied} of {total_pictures} picture file(s) are at the "
+                                  f"RAW backup location — a file-count check only (the .trash "
+                                  f"and Blue-skip options can make this not land on an exact "
+                                  f"match even when a day is fully handled). Click to copy "
+                                  f"what's missing.")
+        item.setForeground(QColor(theme.WARN))
+        return item
+    item = action_cell(label, f"{copied} of {total_pictures} picture file(s) are at the RAW "
+                              f"backup location — this day looks fully copied. Click to "
+                              f"check again or add more (e.g. from .trash).")
+    item.setForeground(QColor(theme.DONE_FG))
+    return item
+
+
 def _format_geotag_item(day_name, gpslogs_root):
     """Build the Geotag (🛰️) cell for one day.
 
@@ -719,10 +771,10 @@ def populate_trip_overview(self):
         ["Day", "Pictures", "JPEG\nFiles", "GPS", "Geo-\ntag", "Sync\nSidecars",
          "In\nBlog"]
         + self.state_labels
-        + ["Trans-\nlations", "Back\nup"]
+        + ["Trans-\nlations", "Metadata\nbackup", "RAW\nbackup"]
     )
-    assert STATE_COL_START + len(self.state_labels) + 2 == len(header_labels), (
-        f"trip_table column count {STATE_COL_START + len(self.state_labels) + 2} != "
+    assert STATE_COL_START + len(self.state_labels) + 3 == len(header_labels), (
+        f"trip_table column count {STATE_COL_START + len(self.state_labels) + 3} != "
         f"{len(header_labels)} header labels — column layout drifted.")
     # Shared with Unfiled/Days/Album — see gui/overview_table.py. The four
     # non-default arguments are what keeps this table behaving exactly as it did:
@@ -735,7 +787,8 @@ def populate_trip_overview(self):
         header_labels, rows=len(image_days),
         # Pictures, JPEG Files and GPS auto-size to their content (short glyph
         # markers like "N ✅" or "📍 3" that don't fit a stretched column).
-        fit_columns=(1, 2, GPS_COL, GEOTAG_COL, BACKUP_COL, translations_col, inblog_col),
+        fit_columns=(1, 2, GPS_COL, GEOTAG_COL, BACKUP_COL, RAW_BACKUP_COL,
+                    translations_col, inblog_col),
         min_section=None, row_height=None,
         select="cells", edit_cells=False, row_header=True)
 
@@ -775,6 +828,8 @@ def populate_trip_overview(self):
         sync_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self.trip_table.setItem(i, SYNC_COL, sync_item)
         self.trip_table.setItem(i, BACKUP_COL, _format_backup_item(day))
+        self.trip_table.setItem(i, RAW_BACKUP_COL,
+                                _format_raw_backup_item(day, image_root.name, total))
 
         # Match statemachine folder
         review_day = review_root / day.name

@@ -902,7 +902,7 @@ class MainWindow(QMainWindow):
 
     def handle_trip_table_double_click(self, row, column):
         from gui.trip_overview import (GPS_COL, GEOTAG_COL, SYNC_COL, BACKUP_COL,
-                                       STATE_COL_START, STATE_COLUMNS)
+                                       RAW_BACKUP_COL, STATE_COL_START, STATE_COLUMNS)
         # Translations column: open the per-day validation panel. No separate
         # Progress column exists (see trip_overview.state_cell_symbol) — this is
         # the first trailing non-action column after the 3 state columns.
@@ -913,9 +913,11 @@ class MainWindow(QMainWindow):
                 self.open_translation_validator(day_item.text())
             return
         # Ignore the Day column / headers, and anything past Translations —
-        # except Back up, which now sits last (it is the evening job, so that is
-        # where it belongs in the day's timeline) and is still clickable.
-        if (column > translations_col and column != BACKUP_COL) or column < 1:
+        # except the two backup columns, which now sit last (they are the
+        # evening job, so that is where they belong in the day's timeline)
+        # and are still clickable.
+        if (column > translations_col and column not in (BACKUP_COL, RAW_BACKUP_COL)) \
+                or column < 1:
             return
 
         day_item = self.trip_table.item(row, 0)
@@ -1003,6 +1005,21 @@ class MainWindow(QMainWindow):
             BackupWorkDialog(self, trip_days, trip_root=str(trip_root)).exec()
             sm = StateMachine(str(trip_root), str(review_day), readState=True)
             self.refresh_trip_row(sm, day_str)
+
+        # RAW backup column — a plain folder copy of the day's PICTURES to a
+        # spare card/HDD (the other half of "protect today's work" beside
+        # Back up above). No day is pre-ticked: unlike the ZIP's manifest,
+        # knowing which days still need copying would mean stat-ing every
+        # picture at the destination up front — see _format_raw_backup_item.
+        # A run can copy several days at once, not just the one clicked, so a
+        # single-row refresh (like Back up's) is not enough — the whole
+        # overview is repainted once the dialog closes.
+        elif column == RAW_BACKUP_COL:
+            from gui.raw_backup_dialog import RawBackupDialog
+            picture_root = Path(new_dir).parent
+            trip_days = sorted(d for d in picture_root.iterdir() if d.is_dir())
+            RawBackupDialog(self, trip_days, trip_name=picture_root.name).exec()
+            populate_trip_overview(self)
 
         # Batch action
         else:
