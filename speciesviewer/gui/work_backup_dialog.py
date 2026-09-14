@@ -108,12 +108,11 @@ class _BackupWorker(QObject):
 
 
 class BackupWorkDialog(QDialog):
-    def __init__(self, parent, day_dirs, preselect=None, trip_root=""):
+    def __init__(self, parent, day_dirs, trip_root=""):
         super().__init__(parent)
         self.setWindowTitle("Back up the day's work")
         self._trip_root = str(trip_root or "")
         self._day_dirs = [Path(d) for d in day_dirs]
-        self._preselect = str(preselect) if preselect else ""
         self._rows: list[dict] = []
         self._thread = None
         self.resize(760, 480)
@@ -172,8 +171,11 @@ class BackupWorkDialog(QDialog):
     # ── list ──────────────────────────────────────────────────────────────
 
     def _reload(self):
-        """Rebuild from disk. Days that need a backup are pre-ticked, so the
-        common case — 'back up whatever changed today' — is one click."""
+        """Rebuild from disk. Every day that needs a backup (never backed up,
+        or changed since) is pre-ticked — trip-wide, not just the day the
+        dialog was opened from — so the common case, 'back up whatever
+        changed', is one click regardless of which day's row you opened this
+        from."""
         dest = backup_location()
         self._rows = []
         for d in self._day_dirs:
@@ -194,8 +196,6 @@ class BackupWorkDialog(QDialog):
             tick = QTableWidgetItem()
             tick.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
             want = r["state"] in ("never", "stale")
-            if self._preselect:
-                want = str(r["dir"]) == self._preselect and n_files > 0
             tick.setCheckState(Qt.CheckState.Checked if want else Qt.CheckState.Unchecked)
             self._table.setItem(i, 0, tick)
             self._table.setItem(i, 1, QTableWidgetItem(r["dir"].name))
@@ -204,7 +204,6 @@ class BackupWorkDialog(QDialog):
             item = QTableWidgetItem(f"{state} — {r['reason']}" if r["reason"] else state)
             self._table.setItem(i, 3, item)
         self._table.blockSignals(False)
-        self._preselect = ""      # only steers the first build
         self._update_summary()
 
     def _checked(self) -> list[int]:

@@ -992,15 +992,15 @@ class MainWindow(QMainWindow):
             # Read & Summarize runs again.
             self._run_trip_geotag(day_str)
 
-        # Back up column — one ZIP of this day's WORK to a spare card. Opens the
-        # picker with this day ticked, so a single click backs up the day you
-        # clicked, and the other days are one tick away. Modal, then the row is
-        # repainted so the glyph shows the new state.
+        # Back up column — one ZIP per day's WORK to a spare card. Opens the
+        # picker with every day that NEEDS a backup already ticked (trip-wide,
+        # not just the day you clicked) — the common case, "back up whatever
+        # changed", is one click regardless of which row you opened this from.
+        # Modal, then the row is repainted so the glyph shows the new state.
         elif column == BACKUP_COL:
             from gui.work_backup_dialog import BackupWorkDialog
             trip_days = sorted(d for d in Path(new_dir).parent.iterdir() if d.is_dir())
-            BackupWorkDialog(self, trip_days, preselect=str(new_dir),
-                             trip_root=str(trip_root)).exec()
+            BackupWorkDialog(self, trip_days, trip_root=str(trip_root)).exec()
             sm = StateMachine(str(trip_root), str(review_day), readState=True)
             self.refresh_trip_row(sm, day_str)
 
