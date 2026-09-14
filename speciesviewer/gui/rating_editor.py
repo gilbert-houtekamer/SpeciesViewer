@@ -2122,23 +2122,62 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             set_setting("ratingeditor", "delete_preview",
                         "yes" if dlg.show_preview_pref() else "no")
 
+        # Moving files (esp. over a network/Dropbox path) can take a while — a
+        # cancelable wait dialog so the app doesn't look stuck, and the user can
+        # stop partway (whatever already moved stays moved, in .trash). Keep it
+        # open (autoClose/autoReset off — Qt's default hides it the instant the
+        # value hits the max) through the CSV write-back and the card rebuild
+        # too: those run after the last file move and were finishing invisibly
+        # before, which is why the dialog looked done well before the app was.
+        total_work = len(trip_deletable) + len(master_deletable)
+        progress = QProgressDialog(
+            f"Moving {total_work} picture{'s' if total_work != 1 else ''} to .trash…",
+            "Cancel", 0, total_work, self)
+        progress.setWindowTitle(f"Delete {color}")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(300)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setValue(0)
+
+        def _tick(base_offset):
+            def cb(done, _total_local):
+                progress.setValue(base_offset + done)
+                QApplication.processEvents()
+                return not progress.wasCanceled()
+            return cb
+
         deleted = 0
         if trip_deletable and self._trip_root is not None:
             _t, _p, deleted = self._collection.delete_trip_keys(
-                trip_deletable, self._trip_root / ".trash", day_hint=day or "")
+                trip_deletable, self._trip_root / ".trash", day_hint=day or "",
+                progress_cb=_tick(0))
         m_deleted = 0
-        for k in list(master_deletable):
-            try:
-                self._collection.delete_master_picture(k)
-                m_deleted += 1
-            except Exception as e:
-                logger.error(f"Master delete {k} failed: {e}")
-        logger.info(f"Batch delete {color}: {deleted} trip + {m_deleted} master picture(s) removed.")
+        if not progress.wasCanceled():
+            master_tick = _tick(len(trip_deletable))
+            for i, k in enumerate(list(master_deletable)):
+                if progress.wasCanceled():
+                    break
+                try:
+                    self._collection.delete_master_picture(k)
+                    m_deleted += 1
+                except Exception as e:
+                    logger.error(f"Master delete {k} failed: {e}")
+                master_tick(i + 1, len(master_deletable))
+        was_cancelled = progress.wasCanceled()
+        logger.info(f"Batch delete {color}: {deleted} trip + {m_deleted} master picture(s) removed"
+                    f"{' (cancelled)' if was_cancelled else ''}.")
         parts = [p for p in (f"{deleted} trip" if deleted else "",
                              f"{m_deleted} master" if m_deleted else "") if p]
+        cancelled_note = " (cancelled — the rest were left alone)" if was_cancelled else ""
         self._status.setText(
-            f"Deleted {' + '.join(parts) or '0'} {color.lower()} picture(s).")
+            f"Deleted {' + '.join(parts) or '0'} {color.lower()} picture(s){cancelled_note}.")
+        if not was_cancelled:
+            progress.setLabelText("Refreshing the view…")
+            progress.setCancelButton(None)
+            QApplication.processEvents()
         self._rebuild_cards()
+        progress.close()
 
     # ── Initialisation helpers ────────────────────────────────────────────────
 

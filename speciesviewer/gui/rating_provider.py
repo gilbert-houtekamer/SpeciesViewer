@@ -1570,7 +1570,7 @@ class RatingEditorCollection(PictureCollection):
         self._persist_upn(upn_key, wrote_file)
 
     def delete_by_color(self, color: str, trash_root: Path,
-                        day_hint: str = "") -> tuple[int, int, int]:
+                        day_hint: str = "", progress_cb=None) -> tuple[int, int, int]:
         """Move all trip UPNs with the given color label to trash.
 
         Returns (total_matching, protected_count, deleted_count).
@@ -1579,7 +1579,7 @@ class RatingEditorCollection(PictureCollection):
         trash_root/<day>/<key>/<file> with day from _upn_day_map or day_hint.
         """
         matching, _ = self.color_matches(color)
-        return self.delete_trip_keys(matching, trash_root, day_hint)
+        return self.delete_trip_keys(matching, trash_root, day_hint, progress_cb)
 
     def color_matches(self, color: str, species: str | None = None,
                       day: str | None = None) -> tuple[list[str], list[str]]:
@@ -1616,25 +1616,34 @@ class RatingEditorCollection(PictureCollection):
         return trip_keys, master_keys
 
     def delete_trip_keys(self, keys, trash_root: Path,
-                         day_hint: str = "") -> tuple[int, int, int]:
+                         day_hint: str = "", progress_cb=None) -> tuple[int, int, int]:
         """Move the given TRIP UPNs to the trip trash. Returns
         (total, protected, deleted). JPG-bearing UPNs are skipped (HARD
         INVARIANT). Master keys must NOT be passed here — delete those via
-        delete_master_picture."""
+        delete_master_picture.
+
+        `progress_cb(done, total)`, if given, is called after every key — same
+        contract as PreviewCollection.delete_keys. Returning False stops the
+        loop early; work already moved stays moved."""
         import shutil
         matching = list(keys)
         protected = 0
         deleted = 0
         srcs = []
+        total = len(matching)
         days_to_persist: set[str] = set()
-        for key in matching:
+        for i, key in enumerate(matching):
             if self.jpg_path(key):
                 protected += 1
+                if progress_cb and progress_cb(i + 1, total) is False:
+                    break
                 continue
             if self.is_frozen_day(key):
                 # A committed day is immutable — never trash its files (the caller
                 # already filters, this is the last-line guard). See day_freeze.py.
                 protected += 1
+                if progress_cb and progress_cb(i + 1, total) is False:
+                    break
                 continue
             upn_row = self.fpr.upn.UniquePictureName_dict.get(key, {})
             files = upn_row.get("Files", [])
@@ -1668,6 +1677,8 @@ class RatingEditorCollection(PictureCollection):
             if self._day_objects and day in self._day_objects:
                 days_to_persist.add(day)
             deleted += 1
+            if progress_cb and progress_cb(i + 1, total) is False:
+                break
         from utils.preview_cache import drop_for_files
         drop_for_files(srcs)     # the RAWs are gone; their cached previews are junk
         for day in days_to_persist:

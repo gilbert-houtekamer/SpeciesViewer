@@ -1622,13 +1622,17 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         drop_for_files(srcs)     # the RAW is gone; its cached preview is now junk
         return moved
 
-    def delete_by_color(self, color: str, trash_root: Path) -> tuple[int, int, int]:
+    def delete_by_color(self, color: str, trash_root: Path,
+                        progress_cb=None) -> tuple[int, int, int]:
         """Move all stems with the given color label to trash.
 
         Returns (total_matching, protected_count, deleted_count).
         Stems that have a JPG are skipped (HARD INVARIANT).
         Files go to trash_root/<stem>/<filename>.
-        """
+
+        `progress_cb(done, total)`, if given, is called after every stem — see
+        PreviewCollection.delete_keys for the same contract. Returning False
+        stops the loop early; work already moved stays moved."""
         import shutil
         wanted = color.lower()
         matching = [s for s in self.all_keys()
@@ -1636,10 +1640,13 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         protected = 0
         deleted = 0
         srcs = []
-        for stem in matching:
+        total = len(matching)
+        for i, stem in enumerate(matching):
             grp = self._groups.get(stem, {})
             if grp.get("jpg"):
                 protected += 1
+                if progress_cb and progress_cb(i + 1, total) is False:
+                    break
                 continue
             upn_dir = trash_root / stem
             upn_dir.mkdir(parents=True, exist_ok=True)
@@ -1658,6 +1665,8 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
             if grp.get("xmp"):
                 self._rows.pop(_norm(grp["xmp"]), None)
             deleted += 1
+            if progress_cb and progress_cb(i + 1, total) is False:
+                break
         from utils.preview_cache import drop_for_files
         drop_for_files(srcs)     # the RAWs are gone; their cached previews are junk
         return len(matching), protected, deleted

@@ -1311,7 +1311,8 @@ class PreviewCollection(PictureCollection):
         return {"jpg_created": True, "baked_jpg": True, "jpg": str(out)}
 
     def delete_keys(self, keys, trash_root: Path,
-                    allow_jpg_keys: frozenset = frozenset()) -> tuple[int, int]:
+                    allow_jpg_keys: frozenset = frozenset(),
+                    progress_cb=None) -> tuple[int, int]:
         """Move the given UPN keys to trash → (protected_count, deleted_count).
 
         A JPG-bearing key is skipped (default HARD INVARIANT: never trash a
@@ -1319,7 +1320,12 @@ class PreviewCollection(PictureCollection):
         trip-culling carve-out (a JPG not published in a blog may be culled). The
         default empty set keeps every caller strict. Both day CSVs are written once
         at the end. Shared by delete_by_color (colour cull) and the right-click
-        Delete (arbitrary selection)."""
+        Delete (arbitrary selection).
+
+        `progress_cb(done, total)`, if given, is called after every key (moved,
+        skipped, or protected) — a slow move (network drive, big batch) gets a
+        wait dialog with a real cancel point. Returning False from it stops the
+        loop early; work already moved stays moved (recoverable via .trash)."""
         import shutil
         if self.read_only:
             logger.warning("delete_keys refused: collection is read-only.")
@@ -1327,11 +1333,16 @@ class PreviewCollection(PictureCollection):
         protected = 0
         deleted = 0
         srcs = []
-        for key in keys:
+        total = len(keys)
+        for i, key in enumerate(keys):
             if key not in self.fpr.upn.UniquePictureName_dict:
+                if progress_cb and progress_cb(i + 1, total) is False:
+                    break
                 continue
             if self.jpg_path(key) and key not in allow_jpg_keys:
                 protected += 1
+                if progress_cb and progress_cb(i + 1, total) is False:
+                    break
                 continue
             upn_dir = trash_root / key
             upn_dir.mkdir(parents=True, exist_ok=True)
@@ -1353,6 +1364,8 @@ class PreviewCollection(PictureCollection):
             sweep_dop(raw_src, upn_dir)
             self.fpr.upn.UniquePictureName_dict.pop(key, None)
             deleted += 1
+            if progress_cb and progress_cb(i + 1, total) is False:
+                break
         from utils.preview_cache import drop_for_files
         drop_for_files(srcs)     # the RAWs are gone; their cached previews are junk
         if deleted:
@@ -1364,11 +1377,13 @@ class PreviewCollection(PictureCollection):
         return protected, deleted
 
     def delete_by_color(self, color: str, trash_root: Path,
-                        allow_jpg_keys: frozenset = frozenset()) -> tuple[int, int, int]:
+                        allow_jpg_keys: frozenset = frozenset(),
+                        progress_cb=None) -> tuple[int, int, int]:
         """Move all UPNs with the given color label to trash.
 
         Returns (total_matching, protected_count, deleted_count). Same JPG carve-out
-        as delete_keys (see it). Caller supplies trash_root = <trip_root>/.trash/<day>.
+        and `progress_cb` as delete_keys (see it). Caller supplies
+        trash_root = <trip_root>/.trash/<day>.
         """
         if self.read_only:
             logger.warning(f"delete_by_color refused ({color}): collection is read-only.")
@@ -1376,7 +1391,7 @@ class PreviewCollection(PictureCollection):
         wanted = color.lower()
         matching = [k for k in self.all_keys()
                     if (self.fpr.getColor(self.rep_filename(k)) or "").lower() == wanted]
-        protected, deleted = self.delete_keys(matching, trash_root, allow_jpg_keys)
+        protected, deleted = self.delete_keys(matching, trash_root, allow_jpg_keys, progress_cb)
         return len(matching), protected, deleted
 
     def trash_upn(self, key: str, trash_dir) -> list | None:

@@ -2971,16 +2971,46 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             return
 
         trash_root = self._color_delete_trash_root()
+        # Moving files (esp. over a network/Dropbox path) can take a while — a
+        # cancelable wait dialog so the app doesn't look stuck, and the user can
+        # stop partway (whatever already moved stays moved, in .trash). Keep it
+        # open (autoClose/autoReset off — Qt's default hides it the instant the
+        # value hits the max) through the CSV write-back and the grid rebuild
+        # too: those run after the last file move and were finishing invisibly
+        # before, which is why the dialog looked done well before the app was.
+        progress = QProgressDialog(
+            f"Moving {n} picture{'s' if n != 1 else ''} to .trash…",
+            "Cancel", 0, n, self)
+        progress.setWindowTitle(f"Delete {color}")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(300)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setValue(0)
+
+        def _tick(done, _total):
+            progress.setValue(done)
+            QApplication.processEvents()
+            return not progress.wasCanceled()
+
         if allow_jpg_keys:
             _total, _prot, deleted = self._collection.delete_by_color(
-                color, trash_root, allow_jpg_keys=frozenset(allow_jpg_keys))
+                color, trash_root, allow_jpg_keys=frozenset(allow_jpg_keys), progress_cb=_tick)
         else:
-            _total, _prot, deleted = self._collection.delete_by_color(color, trash_root)
+            _total, _prot, deleted = self._collection.delete_by_color(
+                color, trash_root, progress_cb=_tick)
+        was_cancelled = progress.wasCanceled()
         logger.info(f"Batch delete {color}: {deleted} picture(s) moved to trash "
-                    f"({len(blogged)} kept — in a blog).")
+                    f"({len(blogged)} kept — in a blog)"
+                    f"{' (cancelled)' if was_cancelled else ''}.")
         if deleted:
             self._day_edited = True     # non-frozen day: offer a re-read on close
+        if not was_cancelled:
+            progress.setLabelText("Refreshing the view…")
+            progress.setCancelButton(None)
+            QApplication.processEvents()
         self._reapply_filter()
+        progress.close()
 
     def _delete_keys_ui(self, keys):
         """Right-click Delete: trash the given keys (the clicked picture, or the whole
