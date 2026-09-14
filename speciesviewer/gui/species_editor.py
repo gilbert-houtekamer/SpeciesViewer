@@ -7,7 +7,7 @@ import weakref
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QScrollArea, QWidget, QGridLayout, QSpinBox, QPushButton,
-    QSizePolicy, QTextEdit, QComboBox, QDialogButtonBox, QCompleter,
+    QSizePolicy, QTextEdit, QComboBox, QDialogButtonBox, QCompleter, QCheckBox,
     QLabel, QMessageBox, QSlider, QHBoxLayout, QProgressDialog, QFrame, QMenu)
 from PyQt6.QtCore import Qt, QTimer, QSize, pyqtSignal
 from PyQt6.QtGui import QCursor
@@ -15,7 +15,7 @@ from PyQt6.QtGui import QCursor
 from widgets.trip_widgets import LabeledTextFieldQt
 from engine.filepicture import FilePicture, format_subject_for_xmp
 from engine.speciesclassification import Level, SpeciesClassification
-from utils.config import _config
+from utils.config import _config, get_setting, set_setting
 from gui import theme
 from utils.raw_extensions import RAW_OR_HEIC
 
@@ -71,6 +71,24 @@ def _sc_usable(sc) -> bool:
     Suggest/Validate/the unknown-species guard must degrade instead of crashing
     on ``dict.getSpecies`` / ``dict.sc_dict``."""
     return hasattr(sc, "getSpecies") and hasattr(sc, "sc_dict")
+
+
+def _trip_species_candidates(fpr) -> list[str]:
+    """Every distinct NL/EN/Sci species name already recorded on THIS trip's
+    pictures — a much smaller, more relevant set than the full species
+    reference collection (species_name_candidates / fpr.sc, ~30k entries)
+    once a trip has been running a while. Read straight off the trip's own
+    picture records (WetSoortNaam/NLSoortNaam/EngSoortNaam), not the
+    reference collection, so it only ever contains names actually seen here.
+    Backs the "look in trip names" completer toggle."""
+    names = set()
+    upn_dict = getattr(getattr(fpr, "upn", None), "UniquePictureName_dict", None) or {}
+    for row in upn_dict.values():
+        for key in ("NLSoortNaam", "EngSoortNaam", "WetSoortNaam"):
+            v = (row.get(key) or "").strip()
+            if v:
+                names.add(v)
+    return sorted(names)
 
 
 def getCorrectionScopeOptions(file_path: Path) -> dict[str, list[Path]]:
@@ -232,7 +250,45 @@ class SpeciesInfoPanel(QWidget):
         # empty: the picture may already have a species the field is not showing.
         self._initial_species_name = name_only
         self.subject_field = LabeledTextFieldQt("Suggested species name:", value=name_only)
-        layout.addWidget(self.subject_field)
+        # "look in trip names" rides the same row as the field — the field
+        # still gets the lion's share of the width (stretch factor 1), the
+        # checkbox just its own compact size. Narrows the as-you-type
+        # suggestions to species already recorded on THIS trip instead of the
+        # full ~30k reference collection — most useful well into a trip, once
+        # most of what you need is already here; a brand-new trip has nothing
+        # to narrow to yet, hence off by default. Persists across sessions
+        # (utils.config), independent of this one dialog instance.
+        field_row = QHBoxLayout()
+        # LabeledTextFieldQt's own layout carries Qt's default margins, so its
+        # widget extends a few px below its actual field — enough to throw off
+        # the bottom-alignment below. Zeroed here rather than in the shared
+        # widget class, which other dialogs rely on looking as it does.
+        self.subject_field.layout().setContentsMargins(0, 0, 0, 0)
+        field_row.addWidget(self.subject_field, 1)
+        self._trip_only_check = QCheckBox("look in trip names")
+        self._trip_only_check.setToolTip(
+            "Only suggest species already recorded on this trip, instead of "
+            "the full species reference list — much shorter once the trip "
+            "has a while of pictures behind it.")
+        self._trip_only_check.setChecked(
+            get_setting("Species", "completer_trip_only", fallback="no") == "yes")
+        self._trip_only_check.toggled.connect(self._on_trip_only_toggled)
+        # subject_field stacks its own label above its field internally, so
+        # the row's height is set by that whole block — bottom-align the
+        # checkbox so it sits level with the INPUT box, not the "Suggested
+        # species name:" caption above it. A few px of trailing space nudges
+        # it up further still: the field is drawn inside a bordered box, so
+        # its own bottom edge sits below the box's visible border/padding,
+        # while the checkbox's flat text has no such padding of its own.
+        check_col = QVBoxLayout()
+        check_col.setContentsMargins(0, 0, 0, 0)
+        check_col.setSpacing(0)
+        check_col.addWidget(self._trip_only_check)
+        check_col.addSpacing(4)
+        field_row.addLayout(check_col)
+        field_row.setAlignment(check_col, Qt.AlignmentFlag.AlignBottom)
+        layout.addLayout(field_row)
+
         if _preset_summary:
             _psum = QLabel(_preset_summary)
             _psum.setWordWrap(True)
@@ -363,8 +419,12 @@ class SpeciesInfoPanel(QWidget):
             self._completer = None
             return
         try:
-            from gui.culling_species import species_name_candidates
-            names = species_name_candidates(fpr.sc)
+            if getattr(self, "_trip_only_check", None) is not None \
+                    and self._trip_only_check.isChecked():
+                names = _trip_species_candidates(fpr)
+            else:
+                from gui.culling_species import species_name_candidates
+                names = species_name_candidates(fpr.sc)
         except Exception as e:
             logger.warning(f"Could not build species auto-complete list: {e}")
             self._completer = None
@@ -376,6 +436,10 @@ class SpeciesInfoPanel(QWidget):
         # subject_field.field is a QLineEdit (single-line, not multiline).
         self.subject_field.field.setCompleter(completer)
         self._completer = completer
+
+    def _on_trip_only_toggled(self, checked: bool):
+        set_setting("Species", "completer_trip_only", "yes" if checked else "no")
+        self._attach_species_completer()
 
     # ── Suggest ───────────────────────────────────────────────────────────────
 
