@@ -176,6 +176,12 @@ Select one or more cards and a **selection bar** appears:
 | **Move to species…** | Reassign the selection to a *different existing* species — the two swans mislabelled among the ducks. Constrained to the trip's species list: no new species, no GBIF lookup. |
 | **Clear selection** | |
 
+> **"look in trip names"** in the Set species dialog narrows its as-you-type
+> suggestions to species already recorded on this trip, instead of the full
+> ~30k-entry reference list — much shorter once a trip has a few days behind
+> it. Off by default (a brand-new trip has nothing to narrow to yet);
+> remembers your last choice across sessions.
+
 ### When things are locked
 
 Two independent locks hide the editing actions, each with a banner saying so:
