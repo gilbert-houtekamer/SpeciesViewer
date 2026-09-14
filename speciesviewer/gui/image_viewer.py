@@ -2014,7 +2014,13 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             path = self._collection.rep_full_path(k)
             if path:
                 file_paths.append(path)
-                species_names.append(self.fpr.getSpeciesName(path.name) or "")
+                # getSubject (the raw, literal XMP:Subject) — not getSpeciesName,
+                # which prefers NLSoortNaam and would silently swap in the Dutch
+                # name here while the single-picture prefill (below, in
+                # SpeciesInfoPanel) uses getSubject directly. The two disagreed
+                # for any picture whose resolved NL/EN names differ from what was
+                # actually typed/committed.
+                species_names.append(self.fpr.getSubject(path.name) or "")
                 error_msgs.append(self.fpr.getErrorMsg(path.name) or "")
         if not file_paths:
             return

@@ -3549,7 +3549,12 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             path = self._rep_file_path(key)
             if path:
                 file_paths.append(path)
-                species_names.append(self.fpr.getSpeciesName(path.name) or "")
+                # getSubject (the raw, literal XMP:Subject) — not getSpeciesName,
+                # which prefers NLSoortNaam and would silently swap in the Dutch
+                # name here while the single-picture prefill (SpeciesInfoPanel)
+                # uses getSubject directly. See image_viewer.py's twin of this
+                # function for the bug this fixed.
+                species_names.append(self.fpr.getSubject(path.name) or "")
                 error_msgs.append(self.fpr.getErrorMsg(path.name) or "")
         if not file_paths:
             return
