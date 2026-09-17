@@ -1332,6 +1332,23 @@ class ReadSDCardDialog(QDialog):
         if self._tracklog_thread is not None and self._tracklog_thread.isRunning():
             self._tracklog_thread.wait(5000)
 
+    # Independent taskbar entry: Windows hides any window with a native
+    # "owner" HWND from the taskbar regardless of Qt's WindowType, and this
+    # dialog keeps its Qt parent intentionally — see
+    # gui.window_state.give_independent_taskbar_entry for why that's patched
+    # after the fact instead of restructuring the parent/child relationship.
+    # Worth having here specifically because Read SD-cards now runs
+    # non-modal (see on_view above), so it's exactly the kind of long-lived
+    # window you want to find again while working elsewhere.
+    def showEvent(self, event):
+        super().showEvent(event)
+        if getattr(self, "_taskbar_fix_scheduled", False):
+            return
+        self._taskbar_fix_scheduled = True
+        from PyQt6.QtCore import QTimer
+        from gui.window_state import give_independent_taskbar_entry
+        QTimer.singleShot(0, lambda: give_independent_taskbar_entry(self))
+
     def closeEvent(self, event):
         self._stop_worker()
         super().closeEvent(event)

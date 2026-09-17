@@ -6,9 +6,53 @@ machine config is the right home. The clamp keeps a remembered geometry from
 landing off-screen (e.g. a laptop undocked from a second monitor).
 """
 
+import sys
+
 from PyQt6.QtGui import QGuiApplication
 
 from utils.config import save_window_state, get_window_state
+
+
+def give_independent_taskbar_entry(widget):
+    """Force a real Windows taskbar entry for a top-level SV window that is
+    still a Qt child of whatever opened it (the grid, the main window, ...).
+
+    Windows hides ANY window from the taskbar if it has a native "owner"
+    HWND, regardless of Qt's WindowType — confirmed live: a window whose Qt
+    type was explicitly set to Window (not Dialog) still came up with
+    APPWINDOW=NO and a non-zero owner HWND once it had a Qt parent. The
+    other way to fix this — construct these windows with no Qt parent at
+    all — reopens the parent/child lifecycle trouble this app has been bitten
+    by before (dangling windows, lost auto-close-with-opener), so instead
+    this leaves the Qt object graph completely untouched and patches the
+    native window style directly after the fact. Windows-only; a no-op
+    everywhere else, and fails silently if anything here goes wrong — the
+    worst case is today's behaviour (no separate taskbar entry), never a
+    crash or a leaked/dangling window.
+
+    Call once from the widget's showEvent (after super().showEvent(event)),
+    deferred via QTimer.singleShot(0, ...) so it runs after the window is
+    actually on screen, not synchronously inside the event handler.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        hwnd = int(widget.winId())
+        GWL_EXSTYLE = -20
+        WS_EX_APPWINDOW = 0x00040000
+        exstyle = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        if exstyle & WS_EX_APPWINDOW:
+            return  # already set — e.g. a re-entrant show after our own hide/show below
+        user32.SetWindowLongW(hwnd, GWL_EXSTYLE, exstyle | WS_EX_APPWINDOW)
+        # The taskbar only re-evaluates grouping on a hide/show cycle after
+        # the style changes — a bare SetWindowPos/SWP_FRAMECHANGED does not
+        # trigger it in testing.
+        widget.hide()
+        widget.show()
+    except Exception:
+        pass
 
 
 def restore_window(dialog, key, default_size=None):

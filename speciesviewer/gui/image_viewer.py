@@ -3104,6 +3104,19 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             f"Dropbox mid-sync. Close whatever has the .xmp open and set the "
             f"label again; the retry already waited a moment and still failed.")
 
+    # Independent taskbar entry: Windows hides any window with a native
+    # "owner" HWND from the taskbar regardless of Qt's WindowType, and this
+    # dialog keeps its Qt parent intentionally — see
+    # gui.window_state.give_independent_taskbar_entry for why that's patched
+    # after the fact instead of restructuring the parent/child relationship.
+    def showEvent(self, event):
+        super().showEvent(event)
+        if getattr(self, "_taskbar_fix_scheduled", False):
+            return
+        self._taskbar_fix_scheduled = True
+        from gui.window_state import give_independent_taskbar_entry
+        QTimer.singleShot(0, lambda: give_independent_taskbar_entry(self))
+
     def closeEvent(self, event):
         save_window(self, self._geo_key, cols=self.columns)
         self._collection.cancel_pending_loads()

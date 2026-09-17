@@ -1567,33 +1567,18 @@ class MapView(QDialog):
                         vp.height() - self._attr.height())
         self._attr.raise_()
 
-    # TEMPORARY — diagnosing why Qt.WindowType.Window doesn't get this dialog
-    # its own taskbar entry on Windows. Prints the actual native window
-    # style Windows assigned it, plus whether it has a native "owner" HWND
-    # (owned windows are hidden from the taskbar regardless of Qt's flags).
-    # Remove once diagnosed.
+    # Independent taskbar entry: Windows hides any window with a native
+    # "owner" HWND from the taskbar regardless of Qt's WindowType, and this
+    # dialog keeps its Qt parent (the grid) intentionally — see
+    # gui.window_state.give_independent_taskbar_entry for why that's patched
+    # after the fact instead of restructuring the parent/child relationship.
     def showEvent(self, event):
         super().showEvent(event)
-        QTimer.singleShot(150, self._DEBUG_taskbar_style)
-
-    def _DEBUG_taskbar_style(self):
-        try:
-            import ctypes
-            user32 = ctypes.windll.user32
-            hwnd = int(self.winId())
-            GWL_EXSTYLE = -20
-            WS_EX_APPWINDOW = 0x00040000
-            WS_EX_TOOLWINDOW = 0x00000080
-            GW_OWNER = 4
-            exstyle = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-            owner = user32.GetWindow(hwnd, GW_OWNER)
-            print(f"[taskbar-debug] MapView hwnd={hwnd:#x} exstyle={exstyle:#010x} "
-                  f"APPWINDOW={'yes' if exstyle & WS_EX_APPWINDOW else 'NO'} "
-                  f"TOOLWINDOW={'yes' if exstyle & WS_EX_TOOLWINDOW else 'no'} "
-                  f"owner_hwnd={owner:#x} qtFlags={int(self.windowFlags()):#x}",
-                  flush=True)
-        except Exception as e:
-            print(f"[taskbar-debug] failed: {e!r}", flush=True)
+        if getattr(self, "_taskbar_fix_scheduled", False):
+            return
+        self._taskbar_fix_scheduled = True
+        from gui.window_state import give_independent_taskbar_entry
+        QTimer.singleShot(0, lambda: give_independent_taskbar_entry(self))
 
 
 # Single all-species trip layer colour (teal). Not in _PALETTE, so it never
@@ -3020,3 +3005,16 @@ class TripMapView(QDialog):
                 self._strip.refresh_item(key)
             except Exception:
                 pass
+
+    # Independent taskbar entry: Windows hides any window with a native
+    # "owner" HWND from the taskbar regardless of Qt's WindowType, and this
+    # dialog keeps its Qt parent (the grid) intentionally — see
+    # gui.window_state.give_independent_taskbar_entry for why that's patched
+    # after the fact instead of restructuring the parent/child relationship.
+    def showEvent(self, event):
+        super().showEvent(event)
+        if getattr(self, "_taskbar_fix_scheduled", False):
+            return
+        self._taskbar_fix_scheduled = True
+        from gui.window_state import give_independent_taskbar_entry
+        QTimer.singleShot(0, lambda: give_independent_taskbar_entry(self))
