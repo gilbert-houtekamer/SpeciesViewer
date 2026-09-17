@@ -789,9 +789,15 @@ class LargeImageView(QDialog):
         # delete_requested). Off for read-only / non-culling hosts, so there is no
         # menu item that does nothing.
         self._allow_delete = bool(allow_delete)
-        self.setWindowFlags(self.windowFlags()
-                            | Qt.WindowType.WindowMinimizeButtonHint
-                            | Qt.WindowType.WindowMaximizeButtonHint)
+        # Own taskbar button — a minimised large view must be findable. ORing
+        # Qt.WindowType.Window onto a QDialog's existing flags does nothing
+        # (Qt.WindowType.Dialog is defined as 0x2 | Window, so the bit is
+        # already set) — the type has to be replaced outright.
+        self.setWindowFlags(Qt.WindowType.Window
+                            | Qt.WindowType.WindowTitleHint
+                            | Qt.WindowType.WindowSystemMenuHint
+                            | Qt.WindowType.WindowMinMaxButtonsHint
+                            | Qt.WindowType.WindowCloseButtonHint)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._collection = collection
         self._keys = list(keys)

@@ -2572,12 +2572,15 @@ class ReadSDCardDialog(QDialog):
         # on an all-RAW card showed "232 pictures" and an empty grid.
         dlg = ImagePreviewDialog(self.passed_parent, collection=collection, mode="all",
                                  cache_root=cache_root, source_label="SD-card read — culling")
-        # This dialog is launched from the Read SD-cards dialog, which runs
-        # application-modal (.exec()). A modal window blocks input to every other
-        # window EXCEPT one that is itself modal and higher on the modal stack —
-        # so without this the grid appears but can't be scrolled or closed. Making
-        # it modal puts it on top and lets it receive input.
-        dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
+        # If THIS Read SD-cards dialog is itself modal — still true for the one
+        # remaining caller that opens it from inside another modal dialog (see
+        # work_restore_dialog.py) — a modal window blocks input to every other
+        # window EXCEPT one that is itself modal and higher on the modal stack,
+        # so without this the grid would appear but couldn't be scrolled or
+        # closed. Everywhere else, Read SD-cards is non-modal now, so the grid
+        # stays non-modal too and behaves like any other SV window.
+        if self.windowModality() != Qt.WindowModality.NonModal:
+            dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
         dlg.finished.connect(lambda *_: setattr(self, "_preview_dlg", None))
         self._preview_dlg = dlg
         dlg.show()

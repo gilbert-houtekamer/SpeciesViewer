@@ -141,11 +141,17 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         # metadata-less caption can follow the preference instead of the sci folder.
         self._name_hints = name_hints or {}
         self._name_profile = name_profile or ""
-        self.setWindowFlags(self.windowFlags()
-                            | Qt.WindowType.Window        # own taskbar button — a minimised
-                                                          # preview window must be findable
-                            | Qt.WindowType.WindowMinimizeButtonHint
-                            | Qt.WindowType.WindowMaximizeButtonHint)
+        # Own taskbar button — a minimised preview window must be findable.
+        # ORing Qt.WindowType.Window onto a QDialog's existing flags does
+        # NOTHING (Qt.WindowType.Dialog is defined as 0x2 | Window, so the
+        # bit is already set) — the type has to be replaced outright to
+        # actually drop the Dialog type and get independent taskbar/Alt-Tab
+        # treatment on Windows.
+        self.setWindowFlags(Qt.WindowType.Window
+                            | Qt.WindowType.WindowTitleHint
+                            | Qt.WindowType.WindowSystemMenuHint
+                            | Qt.WindowType.WindowMinMaxButtonsHint
+                            | Qt.WindowType.WindowCloseButtonHint)
         self.mode = mode
         self.trip_root_dir = trip_root_dir
         self.main_window = parent

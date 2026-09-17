@@ -1618,9 +1618,15 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._view_read_only = self._album_mode   # until a load says otherwise
         self.setWindowTitle(f"{self._scope_label} Species Viewer"
                             if self._album_mode else "Trip Species Viewer")
-        self.setWindowFlags(self.windowFlags()
-                            | Qt.WindowType.WindowMinimizeButtonHint
-                            | Qt.WindowType.WindowMaximizeButtonHint)
+        # Own taskbar button — a minimised rating editor must be findable.
+        # ORing Qt.WindowType.Window onto a QDialog's existing flags does
+        # nothing (Qt.WindowType.Dialog is defined as 0x2 | Window, so the
+        # bit is already set) — the type has to be replaced outright.
+        self.setWindowFlags(Qt.WindowType.Window
+                            | Qt.WindowType.WindowTitleHint
+                            | Qt.WindowType.WindowSystemMenuHint
+                            | Qt.WindowType.WindowMinMaxButtonsHint
+                            | Qt.WindowType.WindowCloseButtonHint)
         # No root in master mode: the master needs no trip and no album.
         self._trip_root = Path(trip_root_dir) if trip_root_dir else None
         self._initial_day = day_str

@@ -93,6 +93,12 @@ class MainWindow(QMainWindow):
         self.logger = None
         # False until the window is fully assembled — see sync_yellow_to_mode.
         self._ui_ready = False
+        # Label of the one long-running operation (SD-card read, a backup)
+        # allowed to run at a time, or None. These dialogs run their real
+        # work on a QThread and are non-modal, so nothing else stops two of
+        # them stepping on the same files — this replaces the accidental
+        # mutex .exec() used to provide. See _try_start_background_op.
+        self._busy_operation: str | None = None
 
         root_field = QLineEdit()  # Shared reference across tabs
         root_field.setText(_config["trip"]["tripbiotadatabase"])        
@@ -900,6 +906,24 @@ class MainWindow(QMainWindow):
         root = resolve_trip_picture_root(trip_root, kind="trip") if trip_root else ""
         return Path(root) if root else Path(_config.get("project", "picturedirectory")).parent
 
+    def _try_start_background_op(self, label: str) -> bool:
+        """Gate the handful of dialogs (SD-card read, the two backups) that
+        do real work on a QThread and are shown non-modally — nothing else
+        stops two of them running at once and stepping on the same files,
+        which .exec()'s accidental app-wide block used to prevent. Returns
+        False (and tells the user) if another one is already running."""
+        if self._busy_operation is not None:
+            QMessageBox.information(
+                self, "Busy",
+                f"{self._busy_operation} is already running — wait for it "
+                f"to finish before starting {label.lower()}.")
+            return False
+        self._busy_operation = label
+        return True
+
+    def _end_background_op(self):
+        self._busy_operation = None
+
     def handle_trip_table_double_click(self, row, column):
         from gui.trip_overview import (GPS_COL, GEOTAG_COL, SYNC_COL, BACKUP_COL,
                                        RAW_BACKUP_COL, STATE_COL_START, STATE_COLUMNS)
@@ -998,13 +1022,24 @@ class MainWindow(QMainWindow):
         # picker with every day that NEEDS a backup already ticked (trip-wide,
         # not just the day you clicked) — the common case, "back up whatever
         # changed", is one click regardless of which row you opened this from.
-        # Modal, then the row is repainted so the glyph shows the new state.
+        # Non-modal (the ZIP work runs on its own QThread) so the rest of SV
+        # stays usable while it runs; the row is repainted once it closes.
         elif column == BACKUP_COL:
             from gui.work_backup_dialog import BackupWorkDialog
+            if not self._try_start_background_op("Back up work"):
+                return
             trip_days = sorted(d for d in Path(new_dir).parent.iterdir() if d.is_dir())
-            BackupWorkDialog(self, trip_days, trip_root=str(trip_root)).exec()
-            sm = StateMachine(str(trip_root), str(review_day), readState=True)
-            self.refresh_trip_row(sm, day_str)
+            dlg = BackupWorkDialog(self, trip_days, trip_root=str(trip_root))
+            self._backup_work_dlg = dlg  # keep alive while non-modal
+
+            def _on_backup_finished(*_a, _trip_root=trip_root, _review_day=review_day, _day_str=day_str):
+                self._end_background_op()
+                sm2 = StateMachine(str(_trip_root), str(_review_day), readState=True)
+                self.refresh_trip_row(sm2, _day_str)
+                self._backup_work_dlg = None
+
+            dlg.finished.connect(_on_backup_finished)
+            dlg.show()
 
         # RAW backup column — a plain folder copy of the day's PICTURES to a
         # spare card/HDD (the other half of "protect today's work" beside
@@ -1013,13 +1048,24 @@ class MainWindow(QMainWindow):
         # picture at the destination up front — see _format_raw_backup_item.
         # A run can copy several days at once, not just the one clicked, so a
         # single-row refresh (like Back up's) is not enough — the whole
-        # overview is repainted once the dialog closes.
+        # overview is repainted once the dialog closes. Non-modal (the copy
+        # runs on its own QThread) so the rest of SV stays usable meanwhile.
         elif column == RAW_BACKUP_COL:
             from gui.raw_backup_dialog import RawBackupDialog
+            if not self._try_start_background_op("RAW backup"):
+                return
             picture_root = Path(new_dir).parent
             trip_days = sorted(d for d in picture_root.iterdir() if d.is_dir())
-            RawBackupDialog(self, trip_days, trip_name=picture_root.name).exec()
-            populate_trip_overview(self)
+            dlg = RawBackupDialog(self, trip_days, trip_name=picture_root.name)
+            self._raw_backup_dlg = dlg  # keep alive while non-modal
+
+            def _on_raw_backup_finished(*_a):
+                self._end_background_op()
+                populate_trip_overview(self)
+                self._raw_backup_dlg = None
+
+            dlg.finished.connect(_on_raw_backup_finished)
+            dlg.show()
 
         # Batch action
         else:

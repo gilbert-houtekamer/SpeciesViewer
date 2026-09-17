@@ -1206,9 +1206,15 @@ class MapView(QDialog):
         self._strip_coll = None                        # its collection (for large view)
         self.setWindowTitle("Species distribution map" if highlight_upns is not None
                             else "Master species distribution map")
-        self.setWindowFlags(self.windowFlags()
-                            | Qt.WindowType.WindowMinimizeButtonHint
-                            | Qt.WindowType.WindowMaximizeButtonHint)
+        # Own taskbar button — a minimised map must be findable. ORing
+        # Qt.WindowType.Window onto a QDialog's existing flags does nothing
+        # (Qt.WindowType.Dialog is defined as 0x2 | Window, so the bit is
+        # already set) — the type has to be replaced outright.
+        self.setWindowFlags(Qt.WindowType.Window
+                            | Qt.WindowType.WindowTitleHint
+                            | Qt.WindowType.WindowSystemMenuHint
+                            | Qt.WindowType.WindowMinMaxButtonsHint
+                            | Qt.WindowType.WindowCloseButtonHint)
         self.resize(1000, 760)
 
         lay = QVBoxLayout(self)
@@ -1560,6 +1566,34 @@ class MapView(QDialog):
         self._attr.move(vp.width() - self._attr.width(),
                         vp.height() - self._attr.height())
         self._attr.raise_()
+
+    # TEMPORARY — diagnosing why Qt.WindowType.Window doesn't get this dialog
+    # its own taskbar entry on Windows. Prints the actual native window
+    # style Windows assigned it, plus whether it has a native "owner" HWND
+    # (owned windows are hidden from the taskbar regardless of Qt's flags).
+    # Remove once diagnosed.
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(150, self._DEBUG_taskbar_style)
+
+    def _DEBUG_taskbar_style(self):
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            hwnd = int(self.winId())
+            GWL_EXSTYLE = -20
+            WS_EX_APPWINDOW = 0x00040000
+            WS_EX_TOOLWINDOW = 0x00000080
+            GW_OWNER = 4
+            exstyle = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            owner = user32.GetWindow(hwnd, GW_OWNER)
+            print(f"[taskbar-debug] MapView hwnd={hwnd:#x} exstyle={exstyle:#010x} "
+                  f"APPWINDOW={'yes' if exstyle & WS_EX_APPWINDOW else 'NO'} "
+                  f"TOOLWINDOW={'yes' if exstyle & WS_EX_TOOLWINDOW else 'no'} "
+                  f"owner_hwnd={owner:#x} qtFlags={int(self.windowFlags()):#x}",
+                  flush=True)
+        except Exception as e:
+            print(f"[taskbar-debug] failed: {e!r}", flush=True)
 
 
 # Single all-species trip layer colour (teal). Not in _PALETTE, so it never
@@ -1964,9 +1998,15 @@ class TripMapView(QDialog):
                             and bool(self._trip_root)
                             and hasattr(collection, "trash_upn"))
         self.setWindowTitle(title)
-        self.setWindowFlags(self.windowFlags()
-                            | Qt.WindowType.WindowMinimizeButtonHint
-                            | Qt.WindowType.WindowMaximizeButtonHint)
+        # Own taskbar button — a minimised map must be findable. ORing
+        # Qt.WindowType.Window onto a QDialog's existing flags does nothing
+        # (Qt.WindowType.Dialog is defined as 0x2 | Window, so the bit is
+        # already set) — the type has to be replaced outright.
+        self.setWindowFlags(Qt.WindowType.Window
+                            | Qt.WindowType.WindowTitleHint
+                            | Qt.WindowType.WindowSystemMenuHint
+                            | Qt.WindowType.WindowMinMaxButtonsHint
+                            | Qt.WindowType.WindowCloseButtonHint)
         self.resize(1000, 760)
 
         self._ghosts = 0                   # index rows whose files are gone

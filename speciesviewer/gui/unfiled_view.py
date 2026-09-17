@@ -225,8 +225,16 @@ def open_unfiled_inbox(main_window):
 
 
 def read_card_into_unfiled(main_window):
-    """Read a card into the unfiled inbox — no trip is chosen or claimed."""
+    """Read a card into the unfiled inbox — no trip is chosen or claimed.
+    Non-modal — the copy runs on its own QThread — so the rest of SV stays
+    usable while it runs."""
     if not ensure_currentpictures_root(main_window):
         return
     from gui.trip_process import ReadSDCardDialog
-    ReadSDCardDialog(main_window, None, unfiled_mode=True).exec()
+    if not main_window._try_start_background_op("Read SD-cards"):
+        return
+    dlg = ReadSDCardDialog(main_window, None, unfiled_mode=True)
+    main_window._read_sdcard_dlg = dlg  # keep alive while non-modal
+    dlg.finished.connect(lambda *_: (main_window._end_background_op(),
+                                     setattr(main_window, "_read_sdcard_dlg", None)))
+    dlg.show()

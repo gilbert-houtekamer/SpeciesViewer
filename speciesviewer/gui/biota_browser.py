@@ -252,9 +252,15 @@ class BiotaBrowserDialog(MasterCardMenuMixin, QDialog):
         self._read_only_scope = read_only_scope
         self._cache_name = cache_name
         self.setWindowTitle(f"Biota Browser — {self._scope_title}")
-        self.setWindowFlags(self.windowFlags()
-                            | Qt.WindowType.WindowMinimizeButtonHint
-                            | Qt.WindowType.WindowMaximizeButtonHint)
+        # Own taskbar button — a minimised Biota Browser must be findable.
+        # ORing Qt.WindowType.Window onto a QDialog's existing flags does
+        # nothing (Qt.WindowType.Dialog is defined as 0x2 | Window, so the
+        # bit is already set) — the type has to be replaced outright.
+        self.setWindowFlags(Qt.WindowType.Window
+                            | Qt.WindowType.WindowTitleHint
+                            | Qt.WindowType.WindowSystemMenuHint
+                            | Qt.WindowType.WindowMinMaxButtonsHint
+                            | Qt.WindowType.WindowCloseButtonHint)
         self._geo_key = "BiotaBrowser"
         _st = restore_window(self, self._geo_key, default_size=(1180, 780))
         self.columns = max(2, min(8, _st["cols"])) if _st["cols"] else 5

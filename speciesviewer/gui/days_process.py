@@ -73,9 +73,16 @@ def register_existing_day(main_window):
 def copy_day_from_card(main_window):
     """Copy pictures off a card into YYYY-MM-DD folder(s) and register them as
     Days. Reuses the SD-card ingest dialog in 'days mode' (date-bucketing on;
-    registers the created date folders when the copy finishes)."""
+    registers the created date folders when the copy finishes). Non-modal —
+    the copy runs on its own QThread — so the rest of SV stays usable."""
     from gui.trip_process import ReadSDCardDialog
-    ReadSDCardDialog(main_window, None, days_mode=True).exec()
+    if not main_window._try_start_background_op("Read SD-cards"):
+        return
+    dlg = ReadSDCardDialog(main_window, None, days_mode=True)
+    main_window._read_sdcard_dlg = dlg  # keep alive while non-modal
+    dlg.finished.connect(lambda *_: (main_window._end_background_op(),
+                                     setattr(main_window, "_read_sdcard_dlg", None)))
+    dlg.show()
 
 
 def _config_lastdir(main_window):

@@ -245,7 +245,19 @@ def build_menu_spec(main_window):
         title="Read SD-cards",
         showsubdirectory=False,
     )
-    read_sdcard.callback = lambda: ReadSDCardDialog(main_window, read_sdcard).exec()
+    def _open_read_sdcard():
+        # Non-modal: the copy/scan run on their own QThread (see
+        # ReadSDCardDialog), so there's no reason to freeze the rest of SV
+        # while a card reads. _try_start_background_op stops a second one
+        # (any of the three read modes) starting at the same time.
+        if not main_window._try_start_background_op("Read SD-cards"):
+            return
+        dlg = ReadSDCardDialog(main_window, read_sdcard)
+        main_window._read_sdcard_dlg = dlg  # keep alive while non-modal
+        dlg.finished.connect(lambda *_: (main_window._end_background_op(),
+                                         setattr(main_window, "_read_sdcard_dlg", None)))
+        dlg.show()
+    read_sdcard.callback = _open_read_sdcard
 
     # ── The other ingest lane: a card whose trip is not decided yet. Copies into
     # <CurrentPictures>/<year>/<year> unfiled/YYYY-MM-DD and claims nothing — no
