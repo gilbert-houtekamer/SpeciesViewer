@@ -741,6 +741,27 @@ reads <em>No current work planned</em>.</p>
     library on every publish — which also covers a plain trip's <em>Publish Day</em>, the case that
     had no refresh path at all. Only the text assets: the ~14 MB of category JPGs in the same folder
     are already on every site and change by hand.</li>
+  <li><strong>Keep working during a card read or a backup</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-09-17) — Read SD-cards, Back up work
+    and RAW backup all copy on a background thread already, but the dialog itself opened
+    <em>application-modal</em>, freezing the whole app — main window included — until it
+    closed. All three now open non-modal: you can keep culling a different day, or open the
+    grid/map/rating editor, while one runs. A small guard on the main window
+    (<code>_try_start_background_op</code>) stops two of them running at once against each
+    other, replacing the accidental mutex the modal block used to provide.</li>
+  <li><strong>The grid, map, large view, rating editor and Biota Browser now get their own
+    taskbar entry</strong> <span class="tag-shipped">SHIPPED</span> (2026-09-17) — clicking
+    the taskbar icon used to only ever bring back the main window; every other open SV window
+    was invisible to it, unlike Outlook's message windows. Two layered causes: Qt's
+    <code>Dialog</code> type already includes the <code>Window</code> bit, so the obvious
+    one-line flag fix (<code>windowFlags() | Qt.WindowType.Window</code>) silently does
+    nothing — and even with the type genuinely replaced with <code>Window</code>, Windows
+    still hides a window from the taskbar if it has a native "owner" HWND, which these have
+    on purpose (they keep their Qt parent; restructuring that relationship has caused real
+    trouble here before). Fixed by patching the native <code>WS_EX_APPWINDOW</code> style
+    directly once each window is shown (<code>gui.window_state.give_independent_taskbar_entry</code>)
+    — Windows-only, fails silently, and never touches the Qt parent/child relationship at
+    all.</li>
 </ul>
 <h3>Parked (by design)</h3>
 <ul>
