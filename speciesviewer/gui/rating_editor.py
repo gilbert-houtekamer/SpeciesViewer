@@ -3940,9 +3940,10 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             event.accept()
             return
         k = event.key()
-        if k == Qt.Key.Key_BracketLeft:          # [ — set left bracket at cursor
+        if k == Qt.Key.Key_BracketLeft:          # [ — start a NEW selection here
             if self._last_clicked_key:
                 self._bracket_left = self._last_clicked_key
+                self._bracket_right = None       # drop any stale right edge
                 self._selected_keys = self._selection_from_brackets()
                 self._update_selection_display()
         elif k == Qt.Key.Key_BracketRight:       # ] — set right bracket at cursor

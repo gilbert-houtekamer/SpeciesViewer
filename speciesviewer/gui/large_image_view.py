@@ -1984,6 +1984,7 @@ class LargeImageView(QDialog):
             return
         if k == Qt.Key.Key_BracketLeft and not desc_focused and self._keys:
             self._bracket_left = self._keys[self._index]
+            self._bracket_right = None           # drop any stale right edge — start a NEW selection
             self._selected_keys = self._selection_from_brackets()
             self._update_selection_display()
             event.accept()
