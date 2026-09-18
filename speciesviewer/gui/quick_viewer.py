@@ -8,6 +8,13 @@ species editor — so it appears instantly. `←` / `→` step through the pictu
 can cull while pixel-peeping. On close the caller moves its cursor to the last
 picture shown and repaints any card it changed; nothing else changes.
 
+A picture with no RAW/embedded JPEG but a video file plays instead (QMediaPlayer
++ QVideoWidget, `Space` toggles play/pause) — the one place in the app a movie
+is actually watched rather than shown as a single frame; the grid only ever
+shows a static frame grab (see gui/preview_extract.extract_video_frame_bytes),
+since decoding video for every visible card would be the exact cost the grid's
+viewport virtualization was built to avoid.
+
 Deliberately NOT the Large Image View: that one is powerful but pays a startup
 cost this view exists to skip. It reuses `_FullResView` (the zoom/pan viewport)
 and `handle_cull_key` (the shared culling key handler) from elsewhere.
@@ -35,9 +42,11 @@ different, re-centred crop instead. See restore_view in large_image_view.py.
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal
 from PyQt6.QtGui import QImage
-from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QWidget
+from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PyQt6.QtMultimediaWidgets import QVideoWidget
+from PyQt6.QtWidgets import QApplication, QDialog, QStackedWidget, QVBoxLayout, QWidget
 
 from gui.image_loader import AsyncImageLoader
 from gui.large_image_view import _FullResView, color_to_css
@@ -75,12 +84,26 @@ class QuickViewer(QDialog):
         self._frame.setObjectName("qvFrame")
         frame_lay = QVBoxLayout(self._frame)
         frame_lay.setContentsMargins(4, 4, 4, 4)
+
+        # A movie has no embedded JPEG to pixel-peep — it plays instead, in the
+        # same popup. One stacked page each, so switching between a still and a
+        # video key is a page-flip, not a teardown/rebuild.
+        self._stack = QStackedWidget()
         self._view = _FullResView(zoomable=True)
         # The scroll area must not eat the arrow keys — they navigate, they don't
         # pan (drag pans). Keep focus on the dialog.
         self._view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        frame_lay.addWidget(self._view)
+        self._stack.addWidget(self._view)
+        self._video_widget = QVideoWidget()
+        self._video_widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._stack.addWidget(self._video_widget)
+        frame_lay.addWidget(self._stack)
         lay.addWidget(self._frame)
+
+        self._player = QMediaPlayer(self)
+        self._audio_out = QAudioOutput(self)
+        self._player.setAudioOutput(self._audio_out)
+        self._player.setVideoOutput(self._video_widget)
 
         self._loader = AsyncImageLoader(self)
 
@@ -97,6 +120,7 @@ class QuickViewer(QDialog):
     def _load(self):
         if not self._keys:
             self.setWindowTitle("Quick view")
+            self._stack.setCurrentWidget(self._view)
             self._view.set_message("Nothing to show.")
             return
         # Remember exactly how the picture we're LEAVING was framed (zoom +
@@ -109,18 +133,16 @@ class QuickViewer(QDialog):
                 self._view.horizontalScrollBar().value(),
                 self._view.verticalScrollBar().value(),
             )
+        self._player.stop()   # never keep playing behind whatever loads next
         key = self._keys[self._index]
         self._cur_key = key
         self.setWindowTitle(f"Quick view — {key}  ({self._index + 1} of {len(self._keys)})")
-        raw = self._collection.raw_path(key)
-        if not raw:
-            self._view.set_message("No RAW file for this picture.")
-            return
         # Any exposure suggestion already set (large viewer / grid batch) is
         # applied on display, so QuickViewer shows what PhotoLab/Lightroom will
         # actually render rather than the untouched embed. Zero extra cost for
         # the normal case of no suggestion — apply_exposure_to_pixmap
-        # short-circuits and returns the pixmap unchanged when ev is 0.
+        # short-circuits and returns the pixmap unchanged when ev is 0. Read
+        # regardless of still/video so the colour border applies to both.
         try:
             item = self._collection.item_for_key(key)
             self._cur_ev = getattr(item, "exposure", 0.0) or 0.0
@@ -128,6 +150,21 @@ class QuickViewer(QDialog):
         except (ValueError, KeyError):
             self._cur_ev = 0.0
             self._apply_frame_color("")
+
+        raw = self._collection.raw_path(key)
+        if not raw:
+            # No RAW/embedded JPEG to pixel-peep — a movie plays instead of
+            # showing a blank card, wherever the engine exposes one.
+            video_path_fn = getattr(self._collection, "video_path", None)
+            video = video_path_fn(key) if video_path_fn else None
+            if video is not None:
+                self._show_video(video)
+                return
+            self._stack.setCurrentWidget(self._view)
+            self._view.set_message("No RAW file for this picture.")
+            return
+
+        self._stack.setCurrentWidget(self._view)
         self._view.set_message("Reading the camera's JPEG…")
         self._loader.cancel_all()
         raw_s = str(raw)
@@ -140,6 +177,11 @@ class QuickViewer(QDialog):
             return img if not img.isNull() else None
 
         self._loader.request(produce, lambda px, k=key: self._show(px, k))
+
+    def _show_video(self, path: Path):
+        self._stack.setCurrentWidget(self._video_widget)
+        self._player.setSource(QUrl.fromLocalFile(str(path)))
+        self._player.play()
 
     def _show(self, px, key):
         if key != self._cur_key:
@@ -212,6 +254,12 @@ class QuickViewer(QDialog):
         if k == Qt.Key.Key_Escape:
             self.close()
             return
+        if k == Qt.Key.Key_Space and self._stack.currentWidget() is self._video_widget:
+            if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+                self._player.pause()
+            else:
+                self._player.play()
+            return
         if k in (Qt.Key.Key_Left, Qt.Key.Key_Up):
             self._go(-1)
             return
@@ -240,6 +288,7 @@ class QuickViewer(QDialog):
 
     def closeEvent(self, e):
         self._loader.cancel_all()
+        self._player.stop()
         if self._edited:
             self.edited.emit(set(self._edited))
         if self._cur_key:

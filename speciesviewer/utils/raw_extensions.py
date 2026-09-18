@@ -100,6 +100,14 @@ SIDECAR = frozenset({".xmp", ".dop"})
 #: Anything we can display.
 PICTURE = RAW_OR_HEIC | JPEG | OTHER_IMAGE
 
+# --- video -------------------------------------------------------------------
+# Deliberately its own set, not folded into PICTURE: a video needs a frame grab
+# or a media player, never a plain image decode, so every caller that branches
+# on "can I just open this as an image" needs to know the difference. Kept to
+# what sv0ReadSDCard.py actually ingests off a card today rather than every
+# container format that exists.
+VIDEO = frozenset({".mov", ".mp4"})
+
 
 def bare(exts) -> frozenset:
     """The same set without the leading dots.
@@ -162,3 +170,7 @@ def is_jpeg(p) -> bool:
 def is_picture(p) -> bool:
     """True for anything we can display, raw or rendered."""
     return ext_of(p) in PICTURE
+
+
+def is_video(p) -> bool:
+    return ext_of(p) in VIDEO

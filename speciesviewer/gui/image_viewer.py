@@ -15,7 +15,7 @@ from gui.image_loader import AsyncImageLoader
 from gui.preview_provider import PreviewCollection, FileListPreviewCollection, preview_cache_dir_for
 from gui.master_ops import MasterCardMenuMixin
 from gui.rating_editor import PictureCard
-from utils.raw_extensions import RAW_OR_HEIC
+from utils.raw_extensions import RAW_OR_HEIC, VIDEO
 from utils.config import get_setting, set_setting, get_int_setting
 
 logger = logging.getLogger("speciesviewer")
@@ -1360,21 +1360,37 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
 
     def _card_aspect(self) -> float:
         """Width/height to reserve for every card's thumbnail — sampled once
-        from the day's own images (usually 4:3), so a single-camera trip fits
-        with no side bands. Cached; 3:2 fallback."""
+        from the day's own STILLS (usually 4:3), so a single-camera trip fits
+        with no side bands. Cached; 3:2 fallback.
+
+        Movies are skipped while sampling rather than counted against the 8-item
+        budget: no-species pictures sort first, and a movie has no species until
+        it's identified, so a day with a handful of unfiled clips could hand the
+        whole grid a 16:9 baseline off the first 8 keys — every 4:3 photo then
+        rendered with wide side bands, even after filtering the movies out (the
+        aspect is sampled once and cached, not recomputed per filter)."""
         a = getattr(self, "_card_aspect_cache", None)
         if a is not None:
             return a
         a = 1.5
         sampled = ""
-        for k in self._base_keys()[:8]:
+        checked = 0
+        for k in self._base_keys():
+            if checked >= 8:
+                break
             try:
-                sampled = self._collection.item_for_key(k).exif.dimensions
+                item = self._collection.item_for_key(k)
+                exts = {"." + e.lower() for e in (getattr(item, "file_exts", None) or [])}
+                if exts and exts <= VIDEO:
+                    continue   # video-only picture — not representative of the day's stills
+                checked += 1
+                sampled = item.exif.dimensions
                 w, h = (int(x) for x in sampled.lower().split("x")[:2])
                 if w > 0 and h > 0:
                     a = round(max(0.6, min(2.2, w / h)), 3)
                     break
             except Exception:
+                checked += 1
                 continue
         logger.debug("Culling grid card aspect: %.3f (from '%s')", a, sampled)
         self._card_aspect_cache = a

@@ -495,6 +495,36 @@ def extract_preview_to(src: Path, cache_path: Path) -> bool:
         return False
 
 
+def extract_video_frame_bytes(src: Path, quality: int = 90) -> bytes | None:
+    """A representative frame of a video, as JPEG bytes, or None if it cannot be
+    read. Uses cv2 (already a project dependency — see gui/fullres.py) rather
+    than ffmpeg or a new library: VideoCapture opens the container, reads the
+    first decodable frame, and imencode does the JPEG — no temp file, no
+    subprocess.
+
+    Deliberately outside `_lock`: this is a different decoder entirely (not the
+    shared exiftool), so it must not queue behind RAW preview extraction."""
+    import cv2
+    cap = cv2.VideoCapture(str(src))
+    try:
+        if not cap.isOpened():
+            logger.warning(f"Could not open {src.name} as a video.")
+            return None
+        ok, frame = cap.read()
+        if not ok or frame is None:
+            logger.warning(f"{src.name}: no readable video frame.")
+            return None
+        ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+        if not ok:
+            return None
+        return buf.tobytes()
+    except Exception as e:
+        logger.warning(f"Video frame extraction failed for {src.name}: {e}")
+        return None
+    finally:
+        cap.release()
+
+
 @atexit.register
 def _shutdown():
     with _lock:

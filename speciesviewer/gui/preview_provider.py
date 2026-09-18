@@ -34,11 +34,12 @@ from engine.sidecarlib import push_metadata_to_dop
 from utils.sidecar_policy import (
     color_rating_to_xmp_enabled, color_rating_to_dop_enabled,
 )
-from utils.raw_extensions import RAW, DXO_RAW, bare
+from utils.raw_extensions import RAW, DXO_RAW, VIDEO, bare
 
 logger = logging.getLogger("speciesviewer")
 
 _RAW_EXTS = RAW  # canonical table; was missing .cr3/.dng/.raf — see utils/raw_extensions.py
+_VIDEO_EXTS = VIDEO  # canonical table — see utils/raw_extensions.py
 
 
 def preview_cache_dir_for(src_folder: Path) -> Path:
@@ -95,6 +96,17 @@ def cached_jpg_for(src: Path | None, cache_dir: Path) -> Path | None:
             return cache
         except Exception as e:
             logger.warning(f"HEIC decode failed for {src.name}: {e}")
+            return None
+    if src.suffix.lower() in _VIDEO_EXTS:
+        from gui.preview_extract import extract_video_frame_bytes
+        data = extract_video_frame_bytes(src)
+        if data is None:
+            return None
+        try:
+            cache.write_bytes(data)
+            return cache
+        except Exception as e:
+            logger.warning(f"Could not write video-frame preview cache {cache.name}: {e}")
             return None
     # One shared, serialised exiftool — never a per-RAW process storm (which
     # intermittently yielded an empty preview → blank cards).
@@ -566,6 +578,18 @@ class PreviewCollection(PictureCollection):
                     return p
         return None
 
+    def video_path(self, key: str) -> Path | None:
+        """Absolute path of the UPN's video file, if it has one. QuickViewer's
+        hook for playing a movie instead of showing a still — only relevant when
+        raw_path() is None (a UPN with a RAW/JPG plays neither)."""
+        for fname in self._files(key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if frow and ("." + frow.get("WindowsExtension", "").lower()) in _VIDEO_EXTS:
+                p = Path(frow.get("WindowsFileName", ""))
+                if p.exists():
+                    return p
+        return None
+
     def gps_source(self, upn_key: str):
         return self.rep_full_path(upn_key)
 
@@ -991,12 +1015,14 @@ class PreviewCollection(PictureCollection):
 
     def _source_file(self, upn_key: str) -> Path | None:
         """Best display source: the BestJPG render (the DxO `_DxO.jpg` crop) >
-        any JPG > RAW > HEIC. Honours the pipeline's already-computed BestJPG so
-        the card shows the processed crop, not the untouched original that merely
-        happens to come first in the Files list."""
+        any JPG > RAW > HEIC > video. Honours the pipeline's already-computed
+        BestJPG so the card shows the processed crop, not the untouched original
+        that merely happens to come first in the Files list. Video is last: a
+        UPN with any still at all shows the still, and a frame grab only stands
+        in for a picture that is otherwise blank."""
         best_name = (self.fpr.upn.UniquePictureName_dict
                      .get(upn_key, {}).get("BestJPG") or "").strip().lower()
-        best = jpg = raw = heic = None
+        best = jpg = raw = heic = video = None
         for fname in self._files(upn_key):
             frow = self.fpr.fi.files_dict.get(fname)
             if not frow:
@@ -1014,7 +1040,9 @@ class PreviewCollection(PictureCollection):
                 raw = p
             elif ext == "heic" and heic is None:
                 heic = p
-        return best or jpg or raw or heic
+            elif ("." + ext) in _VIDEO_EXTS and video is None:
+                video = p
+        return best or jpg or raw or heic or video
 
     def _raw_path(self, upn_key: str) -> Path | None:
         for fname in self._files(upn_key):
