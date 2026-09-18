@@ -3931,10 +3931,16 @@ class CountSpeciesDialog(BaseTripModuleDialog):
             subdirectory=False
         )
 
-        self.resize(1100, 750)
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        if screen is not None:
+            avail = screen.availableGeometry()
+            self.resize(int(avail.width() * 0.9), int(avail.height() * 0.9))
+        else:
+            self.resize(1100, 750)
         # Report viewer setup
         self.report_viewer = QTextEdit()
         self.report_viewer.setReadOnly(True)
+        self.report_viewer.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         font = QFont("Courier New")
         font.setStyleHint(QFont.StyleHint.Monospace)
         self.report_viewer.setFont(font)

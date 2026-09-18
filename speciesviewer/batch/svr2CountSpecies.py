@@ -211,11 +211,11 @@ def scanSpecies(sc, speciesname, report):
                     # A JPG exists, it just carries no stars. In the
                     # colours-only culling workflow that is normal (Blue/Purple
                     # and unlabelled keeps score zero), and the picture is there
-                    # to publish - so this is NOT "Needed". Needed means no JPG
+                    # to publish - so this is NOT "No JPG". No JPG means no JPG
                     # at all: only RAW or HEIC.
                     data_line += '   j'
                 elif scientific not in reference_names:
-                    data_line += '   Needed     '
+                    data_line += '   No JPG     '
                 print(data_line, file=report)
         else:
             scanSpecies(sc, leaf, report)
@@ -228,7 +228,7 @@ def print_headers(sc, report):
     print(f'Legend per day:  F = first day, RAW only (no JPG yet)  x = RAW only (JPG exists on earlier day)', file=report)
     print(f'                 j = JPG exists but unrated            2..5 = best star rating that day', file=report)
     print(f'Summary:         # = days seen, Best = overall best rating (j = JPG exists but unrated)', file=report)
-    print(f'                 Needed = new species with no JPG at all yet, only RAW or HEIC\n', file=report)
+    print(f'                 No JPG = new species with no JPG at all yet, only RAW or HEIC\n', file=report)
     counter = 0
     header_line = ' '.ljust(36+40) + 'New '
     for header in headers:
