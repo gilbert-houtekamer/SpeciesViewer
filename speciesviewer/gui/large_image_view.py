@@ -1999,6 +1999,10 @@ class LargeImageView(QDialog):
             self._clear_selection()
             event.accept()
             return
+        if k == Qt.Key.Key_X and not desc_focused:
+            self._cull_set_color_quick("Blue")
+            event.accept()
+            return
         if (k == Qt.Key.Key_D and not desc_focused
                 and event.modifiers() & Qt.KeyboardModifier.ControlModifier
                 and self._selected_keys):
@@ -2759,6 +2763,27 @@ class LargeImageView(QDialog):
             self._refresh_strip_items(k)
         for k in changed:
             self.picture_changed.emit(k)
+
+    def _cull_set_color_quick(self, color: str):
+        """Stamp `color` onto the selection (else the current picture) in one
+        write per picture, no dialog — 'x' for prepping a batch as Blue
+        before deleting. Rating is left untouched."""
+        keys = set(self._selected_keys) or ({self._item.key} if self._item else set())
+        if not keys or self._collection is None:
+            return
+        key_list = list(keys)
+        cur_key = self._item.key if self._item else None
+        for k in key_list:
+            try:
+                item = self._collection.item_for_key(k)
+                item.set_color(color)
+            except (ValueError, KeyError):
+                continue
+            self._refresh_strip_items(k)
+        for k in key_list:
+            self.picture_changed.emit(k)
+        if cur_key in key_list:
+            self._load_current()
 
     def _batch_species(self, keys=None):
         # Default to the selection bar's target: whatever's multi-selected, else

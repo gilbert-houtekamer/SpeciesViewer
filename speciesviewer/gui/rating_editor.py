@@ -3822,6 +3822,28 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         if keys:
             self._open_batch_rate_dialog(keys)
 
+    def _cull_set_color_quick(self, color: str):
+        """Stamp `color` onto the selection (else the focused picture), no
+        dialog — 'x' for prepping a batch as Blue before deleting. Rating is
+        left untouched."""
+        keys = self._cull_keys_target()
+        if not keys or self._collection is None:
+            return
+        apply = getattr(self._collection, "apply", None)
+        for k in keys:
+            try:
+                if apply is not None:
+                    apply(k, new_color=color)
+                else:
+                    item = self._collection.item(self._collection.index_of(k))
+                    item.set_color(color)
+            except (ValueError, IndexError):
+                continue
+            card = self._cards_by_key.get(k)
+            if card:
+                card.refresh()
+        self._resort_if_needed()
+
     def _cull_full_res(self, keys=None):
         """Pre-decode the selection (else focused picture) to the full-res cache,
         skipping Blue/Purple."""
@@ -3937,6 +3959,10 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 and (event.modifiers() & Qt.KeyboardModifier.ControlModifier)
                 and not text_input_focused()):
             self._clear_selection()
+            event.accept()
+            return
+        if event.key() == Qt.Key.Key_X and not text_input_focused():
+            self._cull_set_color_quick("Blue")
             event.accept()
             return
         k = event.key()

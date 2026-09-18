@@ -104,7 +104,7 @@ culling.
 | `f` | **Full resolution** — pre-decode to the 1:1 cache |
 | `l` | **Get location** — reverse-geocode GPS → write `Location/City/State/Country` to the XMP |
 | `z` | **Quick view** — the camera JPEG only, zoomable; `←`/`→` step, `Esc` closes |
-| `x` | Set colour to **Blue** — no dialog, one write. *Species Image Preview grid only, for now.* |
+| `x` | Set colour to **Blue** — no dialog, one write |
 
 `z` opens a stripped-down viewer — just the camera's embedded JPEG, no RAW
 decode and no metadata panel, so it appears instantly. It exists for a fast
@@ -124,9 +124,7 @@ with no GPS (or nowhere to write) are skipped.
 `x` is a shortcut for the common "prep this batch for delete" step: select a
 range with `[` … `]`, press `x` to stamp them all **Blue** in one write, then
 delete the Blue-tagged pictures from the toolbar — no rating/colour dialog in
-between. Rating is left untouched. Unlike the rest of this page it currently
-only works in the Species Image Preview grid, not the Rating Editor or Large
-Image View.
+between. Rating is left untouched.
 
 Notes:
 - Keys are ignored while a **text field** (description or species name) has
