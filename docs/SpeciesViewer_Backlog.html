@@ -762,6 +762,18 @@ reads <em>No current work planned</em>.</p>
     directly once each window is shown (<code>gui.window_state.give_independent_taskbar_entry</code>)
     — Windows-only, fails silently, and never touches the Qt parent/child relationship at
     all.</li>
+  <li><strong>Movies in the Species Image Preview</strong> <span class="tag-shipped">SHIPPED</span>
+    (2026-09-18) — a day with <code>.mov</code>/<code>.mp4</code> files showed them as blank
+    "(no image)" cards: the whole preview pipeline only ever looked for a JPG/RAW/HEIC source.
+    Worse, a movie sorts first (no species yet), so it could get sampled as the day's card aspect —
+    every 4:3 photo then rendered with wide side margins that stuck even after filtering the movies
+    back out, since the aspect is cached once per day-view. Movie cards now show a real frame grab
+    (<code>cv2.VideoCapture</code>, already a project dependency — no ffmpeg install needed), the
+    aspect sample now skips video-only pictures, and pressing <code>z</code> on a movie plays it in
+    QuickViewer (<code>QMediaPlayer</code> + <code>QVideoWidget</code>, bundled with the PyQt6
+    already installed — <code>Space</code> pauses/resumes) instead of the usual embedded-JPEG
+    pixel-peek. The grid itself stays static-frame-only by design — decoding live video for every
+    visible card would undo the point of the grid's viewport virtualization.</li>
 </ul>
 <h3>Parked (by design)</h3>
 <ul>
