@@ -774,6 +774,24 @@ reads <em>No current work planned</em>.</p>
     already installed — <code>Space</code> pauses/resumes) instead of the usual embedded-JPEG
     pixel-peek. The grid itself stays static-frame-only by design — decoding live video for every
     visible card would undo the point of the grid's viewport virtualization.</li>
+  <li><strong>Movies keep their species and get a real capture date</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-09-18) — a species set on a movie survived the
+    session but not a re-read: <code>engine/filepicture.py</code>'s list of file types a keyword is
+    actually written to had no video extensions, so the name landed in <code>data_pictures.csv</code>
+    only, and the next Read &amp; Summarize rebuilt that CSV from disk and lost it. Fixed the same
+    way HEIC-only pictures already are — the keyword goes straight into the movie file itself
+    (exiftool-confirmed against a real camera .MOV). Separately, a movie carries no
+    <code>EXIF:DateTimeOriginal</code> at all (that's stills-only) — its date lives in
+    <code>QuickTime:CreateDate</code> instead, now read and merged in as a fallback. Even with that
+    fixed, the per-picture summary (<code>projectlib.py</code>'s <code>findRawOrJPGItem</code>) still
+    only looked at ORF/NEF/NRW/HEIC/JPG/JPEG when rolling a date into a picture's one-row summary, so
+    a video-only picture's date stayed blank — and a blank capture time sorts a picture to the very
+    end of the grid, hundreds of cards past where that day's shooting actually clusters. That's what
+    had looked like the movies "disappearing" after a re-run: not lost, just sorted off-screen.
+    MOV/MP4 are now accepted as a last-resort date source too, so a movie sorts into its correct
+    chronological place next to the stills shot around it. Verified against a real 7-movie day: a
+    species survives a full <code>data_files.csv</code>&#8594;<code>data_pictures.csv</code> rebuild,
+    and the movies now show their capture date and interleave correctly with that day's photos.</li>
 </ul>
 <h3>Parked (by design)</h3>
 <ul>
