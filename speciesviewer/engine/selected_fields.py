@@ -77,6 +77,12 @@ SELECTED_FIELDS = [
     "-description",
     "-XMP:Headline",
     "-DateTimeOriginal",
+    # QuickTime movies (.mov/.mp4) carry no EXIF:DateTimeOriginal at all — their
+    # capture time lives here instead. Read unconditionally (cheap: exiftool
+    # simply omits it for a file that has none) rather than branching sv2's scan
+    # on extension, and merged onto DateTimeOriginal in sv2ReadDirExif.py only
+    # when the file had none of its own.
+    "-QuickTime:CreateDate",
 ]
 
 COLUMN_NAMES = {

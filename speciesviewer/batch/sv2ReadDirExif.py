@@ -244,6 +244,17 @@ def main(args, config):
                     selected_field == "-imagesize" and "Composite:ImageSize_1" in d
                 ):
                     row["ImageSize"] = d["Composite:ImageSize_1"]
+                elif (
+                    selected_field == "-DateTimeOriginal"
+                    and "QuickTime:CreateDate" in d
+                ):
+                    # A movie has no EXIF:DateTimeOriginal of its own — this is
+                    # the only date it carries. Verified against this camera's
+                    # own stills (2026-09-18): QuickTime:CreateDate lines up with
+                    # a neighbouring photo's DateTimeOriginal to the minute, i.e.
+                    # it's written in local camera time already, not UTC — no
+                    # timezone conversion needed here.
+                    row["EXIF:DateTimeOriginal"] = d["QuickTime:CreateDate"]
 
             # One focus distance, whatever the maker called it. Canon writes a range
             # and Sony an exiftool composite, neither of which lands in the loop

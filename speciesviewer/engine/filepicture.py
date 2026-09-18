@@ -15,7 +15,7 @@ import subprocess
 import json
 import ast
 import pdb  # For debugging
-from utils.raw_extensions import DXO_RAW, RAW_OR_HEIC, bare
+from utils.raw_extensions import DXO_RAW, RAW_OR_HEIC, VIDEO, bare
 
 
 logger = logging.getLogger("speciesviewer")
@@ -42,11 +42,14 @@ def ensure_list(subject):
     
 
 # File types the species keyword is written to: the XMP sidecar (canonical),
-# JPGs (so shared/exported copies carry the name for friends) and sidecar-less
-# images (HEIC/PNG). RAW files are skipped — their XMP sidecar holds the keyword,
-# so embedding in the raw is redundant — and the DxO .dop is skipped because it
-# is a database with no XMP:Subject (writing there only produced a warning).
-_SUBJECT_WRITE_EXT = {"xmp", "jpg", "jpeg", "heic", "heif", "png"}
+# JPGs (so shared/exported copies carry the name for friends), sidecar-less
+# images (HEIC/PNG) and movies (MOV/MP4 — same reasoning as HEIC: there is no
+# RAW+sidecar pipeline for video, so the keyword goes straight into the file,
+# confirmed writable 2026-09-18 with exiftool against a real camera .MOV).
+# RAW files are skipped — their XMP sidecar holds the keyword, so embedding in
+# the raw is redundant — and the DxO .dop is skipped because it is a database
+# with no XMP:Subject (writing there only produced a warning).
+_SUBJECT_WRITE_EXT = {"xmp", "jpg", "jpeg", "heic", "heif", "png"} | bare(VIDEO)
 
 
 def format_subject_for_xmp(subject_text):

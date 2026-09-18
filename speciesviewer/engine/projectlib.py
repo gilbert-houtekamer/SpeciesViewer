@@ -637,8 +637,15 @@ class Project:
     # first look for a CameraRaw format ("ORF", "NEF", "NRW", "HEIC")
     def findAnySourceItem(self, filelist, column):
         return self.findBestItem(filelist, column, ("ORF", "NEF", "NRW", "HEIC", "JPG", "JPEG", "XMP"))
+    # MOV/MP4 trail the stills on purpose: a mixed UPN (never happens today, but
+    # nothing stops it) should still prefer the camera original. For a video-only
+    # UPN every still type misses, so this is the only way it gets a
+    # DateTimeOriginal/CameraModel/etc. at all — without it, a movie's UPN row
+    # carries no date, which is invisible (no card badge) rather than obviously
+    # wrong, so it went unnoticed until a real video UPN existed to show it.
     def findRawOrJPGItem(self, filelist, column):
-        return self.findBestItem(filelist, column, ("ORF", "NEF", "NRW", "HEIC", "JPG", "JPEG"))
+        return self.findBestItem(filelist, column,
+                                 ("ORF", "NEF", "NRW", "HEIC", "JPG", "JPEG", "MOV", "MP4"))
     def findCameraOrXMPItem(self, filelist, column):
         return self.findBestItem(filelist, column, ("ORF", "NEF", "NRW", "HEIC", "XMP"))
     def findCameraItem(self, filelist, column):
