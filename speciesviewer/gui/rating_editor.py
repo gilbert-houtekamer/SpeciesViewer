@@ -1778,21 +1778,6 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             comp.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
         self._species_combo.currentIndexChanged.connect(self._on_species_changed)
         top.addWidget(self._species_combo)
-        # Name-language profile — which of NL/EN/Sci reads out under each picture
-        # (a fallback chain, so e.g. EN/Sci never shows Dutch). Seeded from the
-        # effective profile; this combo is a per-session override.
-        from utils.name_profile import profile_keys, profile_short_label
-        self._lang_combo = QComboBox()
-        for _key in profile_keys():
-            self._lang_combo.addItem(profile_short_label(_key), _key)
-        self._lang_combo.setFixedWidth(92)
-        self._lang_combo.setToolTip("Which name shows under each picture "
-                                    "(name-language profile)")
-        _li = self._lang_combo.findData(self._species_lang)
-        if _li >= 0:
-            self._lang_combo.setCurrentIndex(_li)
-        self._lang_combo.currentIndexChanged.connect(self._on_lang_changed)
-        top.addWidget(self._lang_combo)
         top.addSpacing(12)
 
         # Camera filter — narrow the grid to one camera body (populated from the
@@ -1889,8 +1874,11 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         top.addWidget(self._col_spinner)
         top.addSpacing(8)
 
-        self._del_blue_btn = QPushButton("✖ Blue")
-        self._del_blue_btn.setFixedSize(66, 24)
+        # Compact — just the glyph, colour-coded; the tooltip carries the full
+        # "Delete all X-tagged pictures" wording so shrinking these costs no
+        # information, only the toolbar's width on a smaller screen.
+        self._del_blue_btn = QPushButton("✖")
+        self._del_blue_btn.setFixedSize(28, 24)
         self._del_blue_btn.setToolTip("Delete all Blue-tagged pictures (move to trash)")
         self._del_blue_btn.setStyleSheet("""
             QPushButton { border: 1px solid #1E90FF; border-radius: 3px;
@@ -1901,8 +1889,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._del_blue_btn.clicked.connect(lambda: self._batch_delete_color("Blue"))
         top.addWidget(self._del_blue_btn)
 
-        self._del_purple_btn = QPushButton("✖ Purple")
-        self._del_purple_btn.setFixedSize(76, 24)
+        self._del_purple_btn = QPushButton("✖")
+        self._del_purple_btn.setFixedSize(28, 24)
         self._del_purple_btn.setToolTip("Delete all Purple-tagged pictures (move to trash)")
         self._del_purple_btn.setStyleSheet("""
             QPushButton { border: 1px solid #9370DB; border-radius: 3px;
@@ -2969,6 +2957,13 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
     def _rebuild_cards(self):
         if not self.fpr or self._collection is None:
             return
+        # Immediate feedback: the combo/checkbox/etc. that triggered this
+        # already show the NEW selection by the time we get here, but the
+        # grid itself still shows the OLD pictures until the filter + rebind
+        # below finish. Say so and force a paint first, so a species change
+        # never feels unregistered while it runs.
+        self._status.setText("Loading…")
+        QApplication.processEvents()
         self._clear_grid()
         self._selected_keys.clear()
         self._bracket_left = None
@@ -3273,28 +3268,6 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # (blockSignals inside keeps this from re-triggering a rebuild).
         self._populate_camera_combo()
         self._rebuild_cards()
-
-    def _on_lang_changed(self, _idx: int):
-        old_selection = self._species_combo.currentData()  # name in old language, or None
-        self._species_lang = self._lang_combo.currentData()   # profile key
-        self._populate_species_combo()  # rebuilds cards showing All species
-
-        if old_selection is None or not self.fpr:
-            return
-
-        # Find the same species in the new language by matching any name field
-        new_selection = None
-        for upn_row in self.fpr.upn.UniquePictureName_dict.values():
-            if (upn_row.get("NLSoortNaam") == old_selection
-                    or upn_row.get("EngSoortNaam") == old_selection
-                    or upn_row.get("WetSoortNaam") == old_selection):
-                new_selection = self._species_name(upn_row)
-                break
-
-        if new_selection:
-            idx = self._species_combo.findData(new_selection)
-            if idx >= 0:
-                self._species_combo.setCurrentIndex(idx)
 
     def _on_columns_changed(self, value: int):
         self.columns = value
@@ -4101,6 +4074,43 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         from gui.geolocate import run_geolocate_batch
         run_geolocate_batch(self, targets)
 
+    def _open_quick_view(self):
+        """'z' — a zoomable look at the camera JPEG only (no RAW decode, no
+        panel). Arrow keys step, Esc closes; on close the grid cursor moves
+        to the last picture shown. Ported from image_viewer.py's culling
+        grid, which already offers this."""
+        order = list(self._order)
+        if not order:
+            return
+        key = self._last_clicked_key if self._last_clicked_key in order else order[0]
+        existing = getattr(self, "_quick_view", None)
+        if existing is not None:
+            try:
+                existing.close()
+            except RuntimeError:
+                pass
+        from gui.quick_viewer import QuickViewer
+        dlg = QuickViewer(self, self._collection, order, order.index(key),
+                          initial_brackets=(self._bracket_left, self._bracket_right))
+        dlg.navigated.connect(self._cull_set_cursor)
+        dlg.edited.connect(self._on_quick_view_edited)
+        dlg.selection_changed.connect(self._on_large_view_selection_changed)
+        dlg.finished.connect(lambda _=0: setattr(self, "_quick_view", None))
+        self._quick_view = dlg
+        dlg.show()
+        dlg.activateWindow()
+        dlg.setFocus()
+
+    def _on_quick_view_edited(self, keys):
+        """Rating/colour set from the quick viewer — same follow-up as an
+        edit made on a card: repaint it, then re-sort if the new Rate moved
+        it (apply() already writes through immediately, so no debounce is
+        needed here — unlike image_viewer.py's culling grid)."""
+        for k in keys:
+            self._cull_refresh_key(k)
+        if keys:
+            self._resort_if_needed()
+
     def keyPressEvent(self, event):
         from gui.viewer_keys import handle_cull_key, handle_grid_arrows, text_input_focused
         if handle_cull_key(event, order=self._order,
@@ -4123,6 +4133,10 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             return
         if event.key() == Qt.Key.Key_L and not text_input_focused():
             self._cull_geolocate()
+            event.accept()
+            return
+        if event.key() == Qt.Key.Key_Z and not text_input_focused():
+            self._open_quick_view()
             event.accept()
             return
         if (event.key() == Qt.Key.Key_A
