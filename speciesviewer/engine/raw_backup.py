@@ -16,8 +16,10 @@ RAWs never change once written.
 
 from __future__ import annotations
 
+import json
 import logging
 import shutil
+from datetime import datetime
 from pathlib import Path
 
 from engine.handling import deriveUniquePictureName
@@ -25,10 +27,15 @@ from engine.handling import deriveUniquePictureName
 logger = logging.getLogger("speciesviewer")
 
 TRASH_DIRNAME = ".trash"
-# Trashed files land one level deeper than a live day (.trash/<day>/<UPN>/<file>
-# — see gui.preview_provider.delete_keys) — mirrored under this subfolder in the
-# backup so a restore can tell "kept" from "already deleted" apart at a glance.
+# Mirrored under this subfolder in the backup so a restore can tell "kept"
+# from "already deleted" apart at a glance.
 TRASH_SUBDIR = "_trash"
+# Where a colour-delete actually puts .trash depends on HOW the day was
+# culled (see gui.image_viewer._color_delete_trash_root): a day culled before
+# it belonged to a full trip gets .trash INSIDE the day folder itself; once
+# it's part of a trip (the normal case here), deletes go to
+# <trip_root>/.trash/<day> instead. A day can carry either — or, if it was
+# culled in stages, both — so scan BOTH rather than guessing one.
 
 
 def raw_backup_dest(dest_root, trip_name: str, day_name: str) -> Path:
@@ -76,17 +83,33 @@ def _day_blue_stems(day_dir: Path) -> set[str]:
 
 
 def scan_day_for_raw_backup(day_dir, *, include_trash: bool = False,
-                            exclude_blue: bool = False) -> list[tuple[Path, Path]]:
-    """[(source_path, path_relative_to_the_backup_day_folder), ...] for one day.
+                            exclude_blue: bool = False, trip_root=None
+                            ) -> tuple[list[tuple[Path, Path]], dict]:
+    """[(source_path, path_relative_to_the_backup_day_folder), ...] for one day,
+    plus a stats dict ({"folder_total": N, "excluded_blue": N}) describing the
+    plain day folder BEFORE trash is added — the same counts a persisted
+    backup-status record needs (see backup_status()), at no extra cost since
+    the Blue lookup already runs to build the file list itself.
 
     Everything in the day folder is included — RAW/HEIC, .xmp/.dop sidecars,
     JPGs, blog.ini, all of it — matching a plain folder copy. `exclude_blue`
     drops every file belonging to a Blue-labelled UPN (the discard-candidate
     colour); Purple is untouched, matching Blue's narrower "not yet deleted,
     but going" meaning in this backup's context. `include_trash` adds the
-    day's already-deleted pictures from .trash alongside the kept ones."""
+    day's already-deleted pictures alongside the kept ones, checked at BOTH
+    places a colour-delete can have put them — see TRASH_DIRNAME above; pass
+    `trip_root` (the trip repo, not the picture root) to also cover the
+    in-trip location."""
     day_dir = Path(day_dir)
     blue = _day_blue_stems(day_dir) if exclude_blue else set()
+
+    try:
+        all_main = sorted(p for p in day_dir.iterdir() if p.is_file())
+    except OSError:
+        all_main = []
+    main_entries = ([p for p in all_main if deriveUniquePictureName(p.name) not in blue]
+                     if blue else all_main)
+    stats = {"folder_total": len(all_main), "excluded_blue": len(all_main) - len(main_entries)}
 
     def _files_of(folder: Path) -> list[Path]:
         try:
@@ -97,18 +120,26 @@ def scan_day_for_raw_backup(day_dir, *, include_trash: bool = False,
             return entries
         return [p for p in entries if deriveUniquePictureName(p.name) not in blue]
 
-    out: list[tuple[Path, Path]] = [(p, Path(p.name)) for p in _files_of(day_dir)]
+    out: list[tuple[Path, Path]] = [(p, Path(p.name)) for p in main_entries]
     if include_trash:
-        trash_day = day_dir.parent / TRASH_DIRNAME / day_dir.name
-        if trash_day.is_dir():
+        trash_dirs = [day_dir / TRASH_DIRNAME]
+        if trip_root:
+            trash_dirs.append(Path(trip_root) / TRASH_DIRNAME / day_dir.name)
+        seen_upns: set[str] = set()
+        for trash_day in trash_dirs:
+            if not trash_day.is_dir():
+                continue
             try:
                 upn_dirs = sorted(p for p in trash_day.iterdir() if p.is_dir())
             except OSError:
                 upn_dirs = []
             for upn_dir in upn_dirs:
+                if upn_dir.name in seen_upns:
+                    continue  # same UPN trashed in both places — count it once
+                seen_upns.add(upn_dir.name)
                 out.extend((p, Path(TRASH_SUBDIR) / upn_dir.name / p.name)
                            for p in _files_of(upn_dir))
-    return out
+    return out, stats
 
 
 def count_copied(day_dir, dest_root, trip_name: str) -> int:
@@ -128,19 +159,23 @@ def count_copied(day_dir, dest_root, trip_name: str) -> int:
 
 
 def copy_day_raw(day_dir, dest_root, trip_name: str, *, include_trash: bool = False,
-                 exclude_blue: bool = False, progress=None, should_cancel=None) -> dict:
+                 exclude_blue: bool = False, trip_root=None,
+                 progress=None, should_cancel=None) -> dict:
     """Copy one day's picture files into <dest_root>/<trip_name>/<day>/.
 
     Skips a file already at the destination with matching size+mtime.
     progress(done, total, filename), if given, is called before each file;
     should_cancel(), if given, is checked between files — whatever copied
     before a cancel is simply left there (nothing to undo; it's a copy, the
-    source is never touched).
+    source is never touched). `trip_root`, if given, lets `include_trash`
+    also find deletes made after the day joined a full trip — see
+    scan_day_for_raw_backup.
     """
     day_dir = Path(day_dir)
     dest_day = raw_backup_dest(dest_root, trip_name, day_dir.name)
-    pairs = scan_day_for_raw_backup(
-        day_dir, include_trash=include_trash, exclude_blue=exclude_blue)
+    pairs, stats = scan_day_for_raw_backup(
+        day_dir, include_trash=include_trash, exclude_blue=exclude_blue,
+        trip_root=trip_root)
     total = len(pairs)
     copied = skipped = failed = 0
     bytes_copied = 0
@@ -173,4 +208,149 @@ def copy_day_raw(day_dir, dest_root, trip_name: str, *, include_trash: bool = Fa
                     f"{bytes_copied/1024/1024:.1f} MB → {dest_day}")
     return {"day": day_dir.name, "total": total, "copied": copied,
             "skipped": skipped, "failed": failed, "bytes": bytes_copied,
-            "errors": errors, "dest": str(dest_day)}
+            "errors": errors, "dest": str(dest_day),
+            "folder_total": stats["folder_total"], "excluded_blue": stats["excluded_blue"],
+            "include_trash": include_trash, "exclude_blue": exclude_blue}
+
+
+# ── Remembered status, across sessions ──────────────────────────────────────
+#
+# The picker table and the trip overview both used to show "copied/total" —
+# a plain file count at the destination vs. the day folder — which never
+# lands on an exact match once Blue-skip or .trash is in play, even on a day
+# that is genuinely fully handled. That's the confusion this replaces: each
+# "Copy selected" run now records what it actually did, per day, in
+# admin/raw_backup_state.json (in the TRIP repo, not the backup destination —
+# so status reads back even when the destination card/drive isn't attached).
+# backup_status() below turns that record into one of four words, using only
+# the day's current plain file count (which callers already have) — no
+# destination access, no XMP reads, same spirit as the Work Backup's own
+# "folder vs manifest" staleness rule (deletions count as a change too).
+
+STATE_FILENAME = "raw_backup_state.json"
+
+
+def _state_path(trip_root) -> Path:
+    return Path(trip_root) / "admin" / STATE_FILENAME
+
+
+def load_backup_state(trip_root) -> dict:
+    """day name -> record of that day's last RAW-backup run. Empty if none has
+    ever run, or the file can't be read — callers fall back to 'not_copied'
+    (or, at the picker, a legacy destination check) either way."""
+    p = _state_path(trip_root)
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_backup_state(trip_root, state: dict):
+    p = _state_path(trip_root)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+    tmp.replace(p)
+
+
+def record_backup_run(trip_root, result: dict) -> dict:
+    """Fold one day's copy_day_raw() result into the persisted state and save
+    it. Called once per day, right after that day's copy finishes, so a
+    cancelled run still keeps whatever days it did complete."""
+    state = load_backup_state(trip_root)
+    state[result["day"]] = {
+        "ran_at": datetime.now().isoformat(timespec="seconds"),
+        "folder_total": result["folder_total"],
+        "include_trash": result["include_trash"],
+        "exclude_blue": result["exclude_blue"],
+        "copied": result["copied"],
+        "skipped": result["skipped"],
+        "excluded_blue": result["excluded_blue"],
+        "failed": result["failed"],
+    }
+    save_backup_state(trip_root, state)
+    return state[result["day"]]
+
+
+def backup_status(day_name: str, current_total: int, state: dict) -> str:
+    """'not_copied' | 'compact' | 'full' | 'incomplete' — from the persisted
+    record alone. 'compact' = the last run excluded both Blue and .trash
+    (keepers only); including either makes it 'full'. 'incomplete' = the
+    day's plain file count has changed since that run (grown OR shrunk —
+    culling is mostly deleting, so a shrink counts as a change same as a
+    grow) — UNLESS the shrink is exactly the Blue count that run already
+    knew about and left out on purpose: a compact backup's Blue-marked
+    pictures getting colour-deleted afterwards (moved out of the day folder)
+    is the expected, harmless case, not something newly missing, so it's
+    still 'compact' rather than a false 'incomplete'."""
+    rec = state.get(day_name)
+    if rec is None:
+        return "not_copied"
+    compact = bool(rec.get("exclude_blue")) and not rec.get("include_trash")
+    recorded_total = rec.get("folder_total")
+    if current_total != recorded_total:
+        if compact and current_total == recorded_total - rec.get("excluded_blue", 0):
+            return "compact"
+        return "incomplete"
+    return "compact" if compact else "full"
+
+
+def backup_status_verified(day_name: str, current_total: int, state: dict,
+                           dest_root: str, trip_name: str) -> str:
+    """backup_status(), plus one thing a pure state lookup can't catch: files
+    deleted from the destination AFTER a backup ran (a card reformatted, a day
+    folder dragged to Trash on the drive itself). The recorded state has no
+    way to know that happened — it would otherwise keep reporting 'compact'/
+    'full' forever, which is exactly the wrong failure mode for a backup tool.
+
+    Only checked when the destination ROOT is currently reachable, so a day
+    whose card just isn't plugged in right now still shows its remembered
+    status for free, same as backup_status() alone — this is one extra
+    is_dir()-and-peek per TRACKED day, not a full listing, and only paid at
+    all when the drive is already known to be present."""
+    status = backup_status(day_name, current_total, state)
+    if status in ("compact", "full") and dest_root and Path(dest_root).is_dir():
+        dest_day = raw_backup_dest(dest_root, trip_name, day_name)
+        try:
+            has_files = dest_day.is_dir() and any(dest_day.iterdir())
+        except OSError:
+            has_files = False
+        if not has_files:
+            return "missing"
+    return status
+
+
+def write_backup_report(trip_root, trip_name: str, dest: str, results: list[dict]) -> Path:
+    """Write metadata/reports/RAW backup report.txt — modeled on Count
+    Species' 'Species overview.txt': plain text, regenerated fresh each run.
+    Covers only the day(s) THIS run touched (matches what backup_status()
+    can cheaply know) rather than re-scanning the whole trip."""
+    reports_dir = Path(trip_root) / "metadata" / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    report_path = reports_dir / "RAW backup report.txt"
+    lines = [
+        f"RAW backup report for {trip_name}",
+        f"Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        f"Backup location: {dest}",
+        "",
+        "compact = kept pictures only (Blue and already-deleted skipped)",
+        "full    = everything, including Blue and/or already-deleted pictures",
+        "",
+    ]
+    tot_copied = tot_skipped = tot_blue = tot_failed = 0
+    for r in results:
+        mode = "compact" if r.get("exclude_blue") and not r.get("include_trash") else "full"
+        lines.append(
+            f"{r['day']}: {mode} — {r['copied']} copied, {r['skipped']} already there, "
+            f"{r.get('excluded_blue', 0)} excluded (Blue), {r['failed']} failed")
+        tot_copied += r["copied"]
+        tot_skipped += r["skipped"]
+        tot_blue += r.get("excluded_blue", 0)
+        tot_failed += r["failed"]
+    lines.append("")
+    lines.append(f"Totals: {tot_copied} copied, {tot_skipped} already there, "
+                 f"{tot_blue} excluded (Blue), {tot_failed} failed.")
+    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return report_path

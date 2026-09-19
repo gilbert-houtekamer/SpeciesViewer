@@ -10,6 +10,11 @@ knows nothing about ratings or species.
 
 Runs on a worker thread — a day can be gigabytes, and the window must not
 freeze while that copies.
+
+Each run remembers what it did per day (engine.raw_backup.record_backup_run)
+and writes a plain-text summary to metadata/reports/RAW backup report.txt —
+see format_raw_backup_status for how that turns into the Compact/Full/
+Incomplete status shown here and in the trip overview.
 """
 
 from pathlib import Path
@@ -32,6 +37,49 @@ from gui.widgets import wrapped
 CONFIG_SECTION = "rawbackup"
 CONFIG_KEY = "location"
 
+# Shared with gui.trip_overview's RAW backup column, so the picker and the
+# overview always say the same thing about the same day. Word choice over
+# numbers on purpose — see engine.raw_backup.backup_status: the old "X/Y"
+# file count never landed on an exact match once Blue-skip or .trash were in
+# play, even on a day that was genuinely fully handled, which is exactly what
+# was confusing about it.
+_STATUS_LABELS = {"not_copied": "Not copied", "compact": "Compact",
+                  "full": "Full", "incomplete": "Incomplete", "legacy": "Copied",
+                  "missing": "Missing"}
+
+
+def format_raw_backup_status(status: str, rec: dict | None, current_total: int) -> tuple[str, str, str]:
+    """(label, tooltip, colour_key) for one day's remembered RAW-backup
+    status. colour_key is 'done' | 'warn' | 'faint' — the caller maps it to
+    its own theme constant (QColor isn't available outside a GUI context)."""
+    label = _STATUS_LABELS[status]
+    if status == "not_copied":
+        return (label, "This day has never been copied to the RAW backup "
+                       "location. Click to copy it.", "warn")
+    if status == "legacy":
+        return (label, "Files are at the RAW backup location from before this "
+                       "app tracked backup details (or a manual copy). Click "
+                       "to copy again and start tracking its status.", "done")
+    if status == "missing":
+        was = rec.get("copied", 0) if rec else 0
+        return (label, f"This day WAS backed up ({was} file(s) recorded), but "
+                       f"nothing is at the destination now — deleted from the "
+                       f"drive? Click to copy it again.", "warn")
+    if status == "incomplete":
+        was = rec.get("folder_total", "?") if rec else "?"
+        return (label, f"This day has changed since the last backup ({was} → "
+                       f"{current_total} file(s)). Click to back up what's "
+                       f"missing.", "warn")
+    if status == "compact":
+        return (label, f"Backed up (compact): {rec.get('copied', 0)} file(s) "
+                       f"copied last run, {rec.get('excluded_blue', 0)} "
+                       f"Blue-marked skipped. Kept pictures only — click to "
+                       f"add Blue/.trash too, or to check for new pictures.",
+               "done")
+    # "full"
+    return (label, f"Backed up (full): {rec.get('copied', 0)} file(s) copied "
+                   f"last run, including Blue and/or already-deleted "
+                   f"pictures. Click to check again.", "done")
 
 def raw_backup_location() -> str:
     return _config.get(CONFIG_SECTION, CONFIG_KEY, fallback="").strip()
@@ -48,11 +96,12 @@ class _RawBackupWorker(QObject):
     progress = pyqtSignal(int, int, str, int, int)   # file i/total, name, day i/total
     finished = pyqtSignal(dict, str)
 
-    def __init__(self, day_dirs, dest, trip_name, include_trash, exclude_blue):
+    def __init__(self, day_dirs, dest, trip_name, trip_root, include_trash, exclude_blue):
         super().__init__()
         self._days = day_dirs
         self._dest = dest
         self._trip_name = trip_name
+        self._trip_root = trip_root
         self._include_trash = include_trash
         self._exclude_blue = exclude_blue
         self._cancel = False
@@ -62,7 +111,8 @@ class _RawBackupWorker(QObject):
 
     def run(self):
         out = {"days": len(self._days), "copied": 0, "skipped": 0, "failed": 0,
-               "bytes": 0, "results": [], "errors": [], "cancelled": False}
+               "bytes": 0, "results": [], "errors": [], "cancelled": False,
+               "report_path": ""}
         # A RAW backup to a slow SD card can run for minutes with no keyboard/
         # mouse activity — exactly what Windows' own idle-sleep timer watches
         # for, and it has no way to know a background thread is still copying.
@@ -77,6 +127,7 @@ class _RawBackupWorker(QObject):
                         day, self._dest, self._trip_name,
                         include_trash=self._include_trash,
                         exclude_blue=self._exclude_blue,
+                        trip_root=self._trip_root,
                         progress=lambda i, t, name, di=di: self.progress.emit(
                             i, t, name, di, len(self._days)),
                         should_cancel=lambda: self._cancel)
@@ -86,16 +137,24 @@ class _RawBackupWorker(QObject):
                     out["bytes"] += res["bytes"]
                     out["errors"].extend(res["errors"])
                     out["results"].append(res)
+                    # Remembered per day, immediately — a cancelled run still
+                    # keeps whatever days it did finish (see engine.raw_backup).
+                    rb.record_backup_run(self._trip_root, res)
+                if out["results"]:
+                    report_path = rb.write_backup_report(
+                        self._trip_root, self._trip_name, self._dest, out["results"])
+                    out["report_path"] = str(report_path)
                 self.finished.emit(out, "")
             except Exception as e:
                 self.finished.emit(out, str(e))
 
 
 class RawBackupDialog(QDialog):
-    def __init__(self, parent, day_dirs, trip_name: str = ""):
+    def __init__(self, parent, day_dirs, trip_name: str = "", trip_root: str = ""):
         super().__init__(parent)
         self.setWindowTitle("Back up pictures (RAW backup)")
         self._trip_name = trip_name
+        self._trip_root = trip_root
         self._day_dirs = [Path(d) for d in day_dirs]
         self._rows: list[dict] = []
         self._thread = None
@@ -137,7 +196,7 @@ class RawBackupDialog(QDialog):
         outer.addLayout(opts_row)
 
         self._table = QTableWidget(0, 4)
-        self._table.setHorizontalHeaderLabels(["", "Day", "Pictures", "Already copied"])
+        self._table.setHorizontalHeaderLabels(["", "Day", "Pictures", "Backup status"])
         self._table.verticalHeader().setVisible(False)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -151,6 +210,12 @@ class RawBackupDialog(QDialog):
 
         self._summary = QLabel("")
         self._summary.setWordWrap(True)
+        # Rich text only kicks in when a message actually embeds an <a href>
+        # (the finished-report link below) — Qt's default AutoText leaves
+        # plain progress messages alone.
+        self._summary.setOpenExternalLinks(False)
+        self._summary.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        self._summary.linkActivated.connect(self._open_report_link)
         outer.addWidget(self._summary)
 
         btns = QHBoxLayout()
@@ -187,21 +252,27 @@ class RawBackupDialog(QDialog):
 
     def _reload(self):
         """Rebuild from disk. Nothing is pre-ticked (unlike the Metadata
-        backup) — the "Already copied" count is a plain file count, not a
-        true current/stale check, so a full match does not by itself mean
-        this day needs no more attention (e.g. it may have grown since). The
-        count is cheap either way — one directory listing per day, the same
-        one the overview column pays — so it's shown here too rather than
-        making the user switch back to the overview to see it."""
+        backup) — status here comes from the remembered state (see
+        engine.raw_backup.backup_status), which only says a day is CURRENT
+        when its file count still matches what the last run saw; a day that
+        grew since then comes back 'Incomplete' rather than looking done.
+        One JSON read for the whole table, not a per-day destination scan —
+        status shows even when the backup drive isn't attached, except for a
+        day with no recorded run, where a plain destination check is the only
+        way to notice a pre-existing (legacy/manual) copy."""
         dest = raw_backup_location()
+        state = rb.load_backup_state(self._trip_root) if self._trip_root else {}
         self._rows = []
         for d in self._day_dirs:
             try:
                 total = sum(1 for p in d.iterdir() if p.is_file())
             except OSError:
                 total = 0
-            copied = rb.count_copied(d, dest, self._trip_name) if dest else 0
-            self._rows.append({"dir": d, "total": total, "copied": copied})
+            status = rb.backup_status_verified(d.name, total, state, dest, self._trip_name)
+            rec = state.get(d.name)
+            if status == "not_copied" and dest and rb.count_copied(d, dest, self._trip_name) > 0:
+                status = "legacy"
+            self._rows.append({"dir": d, "total": total, "status": status, "rec": rec})
 
         self._table.blockSignals(True)
         self._table.setRowCount(len(self._rows))
@@ -215,15 +286,18 @@ class RawBackupDialog(QDialog):
             n_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self._table.setItem(i, 2, n_item)
 
-            copied_item = QTableWidgetItem(
-                f"{r['copied']}/{r['total']}" if dest else "—")
-            copied_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            if dest and r["total"] > 0:
-                if r["copied"] >= r["total"]:
-                    copied_item.setForeground(QColor(theme.DONE_FG))
-                elif r["copied"] > 0:
-                    copied_item.setForeground(QColor(theme.WARN))
-            self._table.setItem(i, 3, copied_item)
+            if dest:
+                label, tooltip, color_key = format_raw_backup_status(r["status"], r["rec"], r["total"])
+            else:
+                label, tooltip, color_key = "—", "", None
+            status_item = QTableWidgetItem(label)
+            status_item.setToolTip(tooltip)
+            status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            if color_key == "done":
+                status_item.setForeground(QColor(theme.DONE_FG))
+            elif color_key == "warn":
+                status_item.setForeground(QColor(theme.WARN))
+            self._table.setItem(i, 3, status_item)
         self._table.blockSignals(False)
         self._update_summary()
 
@@ -277,7 +351,7 @@ class RawBackupDialog(QDialog):
 
         self._thread = QThread()
         self._worker = _RawBackupWorker(
-            days, dest, self._trip_name,
+            days, dest, self._trip_name, self._trip_root,
             self._trash_box.isChecked(), self._blue_box.isChecked())
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
@@ -298,6 +372,13 @@ class RawBackupDialog(QDialog):
     def _on_progress(self, i, total, name, day_i, day_total):
         self._summary.setText(f"Day {day_i}/{day_total} — file {i}/{total}: {name}…")
 
+    def _open_report_link(self, href: str):
+        # A browser tab, not whatever the OS has associated with .txt — same
+        # reasoning as opening a blog's HTML in a real browser rather than an
+        # editor. See utils.open_path.open_in_browser.
+        from utils.open_path import open_in_browser
+        open_in_browser(href)
+
     def _on_finished(self, out, error):
         self._thread.quit()
         self._thread.wait()
@@ -314,6 +395,11 @@ class RawBackupDialog(QDialog):
                f"({out['skipped']} already there, unchanged).")
         if out.get("cancelled"):
             msg += " Cancelled — the rest were left alone."
+        if out.get("report_path"):
+            # Qt's default link blue is unreadable on this app's dark theme —
+            # same accent create_jpg_result.py uses for its own links.
+            msg += (f' <a href="{out["report_path"]}" '
+                    f'style="color:{theme.READY_FG}">View the report</a>')
         self._reload()
         if out.get("failed"):
             detail = "\n".join(out["errors"][:5])

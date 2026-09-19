@@ -415,21 +415,25 @@ def _format_backup_item(day_dir):
     return item
 
 
-def _format_raw_backup_item(day_dir, trip_name: str, total_pictures: int):
-    """Build the RAW backup (💿) cell for one day, as "💿 copied/total".
+def _format_raw_backup_item(day_dir, trip_name: str, total_pictures: int, state: dict):
+    """Build the RAW backup (💿) cell for one day, from the REMEMBERED status
+    (engine.raw_backup.backup_status_verified) rather than a live count — see
+    format_raw_backup_status for the Compact/Full/Incomplete/Missing wording,
+    shared with the RawBackupDialog picker so the two never disagree.
 
-    Unlike the Metadata backup cell beside it, this is NOT a true current/
-    stale check — it never compares file content, size or date, only COUNTS.
-    A real per-file check would mean stat-ing every picture at the
-    destination on every repaint, which is real, repeated I/O for a
-    2000-picture day; a plain directory-listing count is one syscall
-    regardless of how many files are in it, so it stays cheap at any trip
-    size. Good enough for "does this look backed up at a glance?" — the copy
-    itself still does the real, file-level check (size + mtime) when it runs.
+    `state` is loaded ONCE for the whole table by the caller (one JSON read,
+    not one per day) — see populate_trip_overview. Beyond that, status needs
+    no destination access for a TRACKED day unless the destination is
+    currently reachable at all (in which case a cheap presence check catches
+    a day deleted from the drive after the fact — see backup_status_verified)
+    — a day with no recorded run still needs one legacy destination count,
+    same cost the old per-day check always paid, but now only for days not
+    yet tracked.
     """
     from PyQt6.QtGui import QColor
     from gui.overview_table import action_cell
-    from gui.raw_backup_dialog import raw_backup_location
+    from gui.raw_backup_dialog import raw_backup_location, format_raw_backup_status
+    from engine.raw_backup import backup_status_verified, count_copied
     dest = raw_backup_location()
     if not dest:
         item = action_cell("💿", "Copy this day's pictures to a RAW backup — "
@@ -440,26 +444,16 @@ def _format_raw_backup_item(day_dir, trip_name: str, total_pictures: int):
         item = action_cell("💿", "Nothing to copy — this day has no files.")
         item.setForeground(QColor(theme.INK_FAINT))
         return item
-    from engine.raw_backup import count_copied
-    copied = count_copied(day_dir, dest, trip_name)
-    label = f"💿 {copied}/{total_pictures}"
-    if copied == 0:
-        item = action_cell(label, "This day has never been copied to the RAW "
-                                  "backup location. Click to copy it.")
+    status = backup_status_verified(day_dir.name, total_pictures, state, dest, trip_name)
+    rec = state.get(day_dir.name)
+    if status == "not_copied" and count_copied(day_dir, dest, trip_name) > 0:
+        status = "legacy"
+    label, tooltip, color_key = format_raw_backup_status(status, rec, total_pictures)
+    item = action_cell(f"💿 {label}", tooltip)
+    if color_key == "done":
+        item.setForeground(QColor(theme.DONE_FG))
+    elif color_key == "warn":
         item.setForeground(QColor(theme.WARN))
-        return item
-    if copied < total_pictures:
-        item = action_cell(label, f"{copied} of {total_pictures} picture file(s) are at the "
-                                  f"RAW backup location — a file-count check only (the .trash "
-                                  f"and Blue-skip options can make this not land on an exact "
-                                  f"match even when a day is fully handled). Click to copy "
-                                  f"what's missing.")
-        item.setForeground(QColor(theme.WARN))
-        return item
-    item = action_cell(label, f"{copied} of {total_pictures} picture file(s) are at the RAW "
-                              f"backup location — this day looks fully copied. Click to "
-                              f"check again or add more (e.g. from .trash).")
-    item.setForeground(QColor(theme.DONE_FG))
     return item
 
 
@@ -771,6 +765,10 @@ def populate_trip_overview(self):
     # to know where to look for each day's log.
     from utils.config import get_gpslogs_root
     gpslogs_root = get_gpslogs_root()
+    # RAW-backup status likewise: one JSON read for the whole table, not one
+    # destination scan per day — see _format_raw_backup_item.
+    from engine.raw_backup import load_backup_state
+    raw_backup_state = load_backup_state(trip_root)
 
     # +1 for Translations, +1 for the trailing In-Blog column. Translations and
     # In-Blog are LAST on purpose so the state-column indices (and the
@@ -831,9 +829,18 @@ def populate_trip_overview(self):
         # enumeration already returned. Same entries (files AND subfolders,
         # like glob("*")) as plain Path objects, just listed the fast way.
         with os.scandir(day) as _it:
-            day_files = [Path(e.path) for e in _it]
+            day_entries = list(_it)
+        day_files = [Path(e.path) for e in day_entries]
         total, jpgs = count_files(day, files=day_files)
         pictures = _count_pictures(day, files=day_files)
+        # RAW-backup status needs a FILES-only count — engine.raw_backup scans
+        # with is_file(), so a day with a stray subfolder (e.g. a .trash left
+        # inside the day itself, from a card-cull done before this became a
+        # full trip) must not count it as "one more file" or the status
+        # falsely reads 'Incomplete' forever. DirEntry.is_file() reuses the
+        # scandir() attributes (no extra stat), so this stays free — unlike
+        # Path.is_file() on an already-converted day_files entry.
+        raw_backup_total = sum(1 for e in day_entries if e.is_file())
         health = _day_health(review_root / day.name)
 
         self.trip_table.setItem(i, 0, QTableWidgetItem(day.name))
@@ -853,7 +860,8 @@ def populate_trip_overview(self):
         self.trip_table.setItem(i, SYNC_COL, sync_item)
         self.trip_table.setItem(i, BACKUP_COL, _format_backup_item(day))
         self.trip_table.setItem(i, RAW_BACKUP_COL,
-                                _format_raw_backup_item(day, image_root.name, total))
+                                _format_raw_backup_item(day, image_root.name, raw_backup_total,
+                                                        raw_backup_state))
 
         # Match statemachine folder
         review_day = review_root / day.name

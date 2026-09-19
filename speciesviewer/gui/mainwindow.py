@@ -1076,7 +1076,8 @@ class MainWindow(QMainWindow):
                 return
             picture_root = Path(new_dir).parent
             trip_days = sorted(d for d in picture_root.iterdir() if d.is_dir())
-            dlg = RawBackupDialog(self, trip_days, trip_name=picture_root.name)
+            dlg = RawBackupDialog(self, trip_days, trip_name=picture_root.name,
+                                  trip_root=str(trip_root))
             self._raw_backup_dlg = dlg  # keep alive while non-modal
 
             def _on_raw_backup_finished(*_a):
