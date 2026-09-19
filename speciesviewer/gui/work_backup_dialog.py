@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
 from engine import work_backup as wb
 from utils.config import _config, persist_config
 from utils.disk_space import check_free_space, human_bytes
+from utils.keep_awake import prevent_sleep
 from gui.widgets import wrapped
 
 CONFIG_SECTION = "backup"
@@ -65,46 +66,50 @@ class _BackupWorker(QObject):
         self._cancel = True
 
     def run(self):
-        try:
-            out = wb.backup_days(
-                self._days, self._dest, skip_unchanged=False,
-                progress=lambda d, t, n: self.progress.emit(d, t, n),
-                should_cancel=lambda: self._cancel)
-            trip_name = self._days[0].parent.name if self._days else ""
-            trip_folder = Path(self._dest) / trip_name if trip_name else Path(self._dest)
+        # A trip's worth of ZIPs onto a slow card can run long enough with no
+        # keyboard/mouse activity to trip Windows' own idle-sleep timer, which
+        # has no way to know a background thread is still writing.
+        with prevent_sleep():
+            try:
+                out = wb.backup_days(
+                    self._days, self._dest, skip_unchanged=False,
+                    progress=lambda d, t, n: self.progress.emit(d, t, n),
+                    should_cancel=lambda: self._cancel)
+                trip_name = self._days[0].parent.name if self._days else ""
+                trip_folder = Path(self._dest) / trip_name if trip_name else Path(self._dest)
 
-            # The day ZIPs are not a restore on their own: they hold every
-            # culling decision and no lifer verdicts. This is the other half —
-            # trip.ini, the species collection and the lifer baseline — and it
-            # is kilobytes, so it is rewritten every run and can never be out of
-            # step with the days beside it.
-            if self._trip_root:
-                # Refuse rather than write the WRONG trip's lifer baseline into
-                # this folder — a mistake that would only surface at restore.
-                ok, why = wb.trip_matches_days(self._trip_root, self._days)
-                if not ok:
-                    out["identity"] = {"written": False, "reason": why, "path": None}
-                else:
-                    # Fill in the filename prefix for trips read before it was
-                    # recorded — otherwise the finished trips, the ones most
-                    # likely to need restoring, would never carry one.
-                    wb.ensure_trip_prefix(self._trip_root, self._days)
-                    wb.ensure_trip_tz_offset(self._trip_root)
-                    out["identity"] = wb.backup_trip_identity(
-                        self._trip_root, trip_folder,
-                        master_root=_config.get("master", "masterbiotadatabase", fallback=""),
-                        master_web_root=_config.get("master", "masterbiotawebroot", fallback=""))
-            out["tracklogs"] = wb.backup_tracklogs(
-                _config.get("gpslogs", "rootdirectory", fallback=""), trip_folder)
+                # The day ZIPs are not a restore on their own: they hold every
+                # culling decision and no lifer verdicts. This is the other half —
+                # trip.ini, the species collection and the lifer baseline — and it
+                # is kilobytes, so it is rewritten every run and can never be out of
+                # step with the days beside it.
+                if self._trip_root:
+                    # Refuse rather than write the WRONG trip's lifer baseline into
+                    # this folder — a mistake that would only surface at restore.
+                    ok, why = wb.trip_matches_days(self._trip_root, self._days)
+                    if not ok:
+                        out["identity"] = {"written": False, "reason": why, "path": None}
+                    else:
+                        # Fill in the filename prefix for trips read before it was
+                        # recorded — otherwise the finished trips, the ones most
+                        # likely to need restoring, would never carry one.
+                        wb.ensure_trip_prefix(self._trip_root, self._days)
+                        wb.ensure_trip_tz_offset(self._trip_root)
+                        out["identity"] = wb.backup_trip_identity(
+                            self._trip_root, trip_folder,
+                            master_root=_config.get("master", "masterbiotadatabase", fallback=""),
+                            master_web_root=_config.get("master", "masterbiotawebroot", fallback=""))
+                out["tracklogs"] = wb.backup_tracklogs(
+                    _config.get("gpslogs", "rootdirectory", fallback=""), trip_folder)
 
-            # The GUI cache travels too: not needed by a restore (the manifest
-            # already carries the prefix) but it turns a reconstruction into a
-            # comparison if one is ever needed. svconfig.ini is deliberately
-            # left behind — it holds the SFTP password.
-            out["settings"] = wb.copy_settings_snapshot(trip_folder)
-            self.finished.emit(out, "")
-        except Exception as e:
-            self.finished.emit({}, str(e))
+                # The GUI cache travels too: not needed by a restore (the manifest
+                # already carries the prefix) but it turns a reconstruction into a
+                # comparison if one is ever needed. svconfig.ini is deliberately
+                # left behind — it holds the SFTP password.
+                out["settings"] = wb.copy_settings_snapshot(trip_folder)
+                self.finished.emit(out, "")
+            except Exception as e:
+                self.finished.emit({}, str(e))
 
 
 class BackupWorkDialog(QDialog):

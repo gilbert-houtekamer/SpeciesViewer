@@ -26,6 +26,7 @@ from engine import raw_backup as rb
 from gui import theme
 from utils.config import _config, persist_config
 from utils.disk_space import human_bytes
+from utils.keep_awake import prevent_sleep
 from gui.widgets import wrapped
 
 CONFIG_SECTION = "rawbackup"
@@ -62,27 +63,32 @@ class _RawBackupWorker(QObject):
     def run(self):
         out = {"days": len(self._days), "copied": 0, "skipped": 0, "failed": 0,
                "bytes": 0, "results": [], "errors": [], "cancelled": False}
-        try:
-            for di, day in enumerate(self._days, 1):
-                if self._cancel:
-                    out["cancelled"] = True
-                    break
-                res = rb.copy_day_raw(
-                    day, self._dest, self._trip_name,
-                    include_trash=self._include_trash,
-                    exclude_blue=self._exclude_blue,
-                    progress=lambda i, t, name, di=di: self.progress.emit(
-                        i, t, name, di, len(self._days)),
-                    should_cancel=lambda: self._cancel)
-                out["copied"] += res["copied"]
-                out["skipped"] += res["skipped"]
-                out["failed"] += res["failed"]
-                out["bytes"] += res["bytes"]
-                out["errors"].extend(res["errors"])
-                out["results"].append(res)
-            self.finished.emit(out, "")
-        except Exception as e:
-            self.finished.emit(out, str(e))
+        # A RAW backup to a slow SD card can run for minutes with no keyboard/
+        # mouse activity — exactly what Windows' own idle-sleep timer watches
+        # for, and it has no way to know a background thread is still copying.
+        # Without this, sleep can cut the copy off mid-file.
+        with prevent_sleep():
+            try:
+                for di, day in enumerate(self._days, 1):
+                    if self._cancel:
+                        out["cancelled"] = True
+                        break
+                    res = rb.copy_day_raw(
+                        day, self._dest, self._trip_name,
+                        include_trash=self._include_trash,
+                        exclude_blue=self._exclude_blue,
+                        progress=lambda i, t, name, di=di: self.progress.emit(
+                            i, t, name, di, len(self._days)),
+                        should_cancel=lambda: self._cancel)
+                    out["copied"] += res["copied"]
+                    out["skipped"] += res["skipped"]
+                    out["failed"] += res["failed"]
+                    out["bytes"] += res["bytes"]
+                    out["errors"].extend(res["errors"])
+                    out["results"].append(res)
+                self.finished.emit(out, "")
+            except Exception as e:
+                self.finished.emit(out, str(e))
 
 
 class RawBackupDialog(QDialog):
