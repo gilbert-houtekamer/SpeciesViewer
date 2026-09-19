@@ -105,6 +105,7 @@ class ManageCachesDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Manage Caches")
         self.setMinimumWidth(680)
+        self._preview_scan_cache: dict | None = None
         self._build_ui()
         # Scanning every cache (and every website's upload list) can take a
         # moment. Show the window with a status message and force it to
@@ -451,18 +452,29 @@ class ManageCachesDialog(QDialog):
         count, total = fullres_cache_stats()
         return count, total, str(fullres_cache_dir())
 
+    def _preview_scan(self) -> dict:
+        """One walk of the preview-cache tree, shared by the three stats below
+        for the lifetime of a single _refresh() — this cache can be 100k+
+        files, and asking for its total, low-res and stale counts separately
+        used to mean three full tree walks per open instead of one."""
+        if self._preview_scan_cache is None:
+            from utils.preview_cache import scan, PREVIEW_TTL_DAYS
+            from gui.fullres import _SMALL_PREVIEW_BYTES
+            self._preview_scan_cache = scan(PREVIEW_TTL_DAYS, small_bytes=_SMALL_PREVIEW_BYTES)
+        return self._preview_scan_cache
+
     def _preview_stats(self) -> tuple[int, int, str]:
-        from gui.fullres import preview_cache_stats, preview_cache_root
-        count, total = preview_cache_stats()
-        return count, total, str(preview_cache_root())
+        from gui.fullres import preview_cache_root
+        rep = self._preview_scan()
+        return rep["total_count"], rep["total_bytes"], str(preview_cache_root())
 
     def _small_preview_stats(self) -> tuple[int, int]:
-        from gui.fullres import small_preview_stats
-        return small_preview_stats()
+        rep = self._preview_scan()
+        return rep["small_count"], rep["small_bytes"]
 
     def _stale_preview_stats(self) -> tuple[int, int]:
-        from utils.preview_cache import stats
-        return stats()
+        rep = self._preview_scan()
+        return len(rep["files"]), rep["bytes"]
 
     def _exif_file(self) -> str:
         """Live path to exif_cache.json (recomputed so it tracks relocations)."""
@@ -512,6 +524,7 @@ class ManageCachesDialog(QDialog):
     # ── refresh ───────────────────────────────────────────────────────────────
 
     def _refresh(self) -> None:
+        self._preview_scan_cache = None   # one fresh preview-cache walk this cycle
         pie_sizes = [0.0] * len(_SLICE_NAMES)
         for row in self._rows:
             count, total, path = row["stat_fn"]()

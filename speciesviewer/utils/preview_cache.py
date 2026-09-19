@@ -169,18 +169,34 @@ def _source_stems(folder: Path) -> set[str]:
         return set()
 
 
-def scan(ttl_days: int = PREVIEW_TTL_DAYS) -> dict:
+def scan(ttl_days: int = PREVIEW_TTL_DAYS, small_bytes: int | None = None) -> dict:
     """What a prune WOULD remove — a dry run, so the count can be shown before
     anything is deleted.
 
+    Also tallies the plain totals Manage Caches wants (every cached file, and
+    the low-res subset under `small_bytes`) in the SAME walk, since it already
+    stats every file here — asking for those separately used to cost two more
+    full tree walks of what can be a 100k-file cache.
+
     Returns {"files": [Path], "bytes": int, "expired": int, "orphaned": int,
-             "dead_dirs": [Path]}. A file can be both expired and orphaned; it is
-    counted under `orphaned`, which is the more specific reason."""
+             "dead_dirs": [Path], "total_count": int, "total_bytes": int,
+             "small_count": int, "small_bytes": int}. A file can be both
+    expired and orphaned; it is counted under `orphaned`, the more specific
+    reason. `total_*`/`small_*` are 0 unless `small_bytes` is given."""
     root = cache_root()
-    out = {"files": [], "bytes": 0, "expired": 0, "orphaned": 0, "dead_dirs": []}
+    out = {"files": [], "bytes": 0, "expired": 0, "orphaned": 0, "dead_dirs": [],
+           "total_count": 0, "total_bytes": 0, "small_count": 0, "small_bytes": 0}
     if not root.is_dir():
         return out
     cutoff = time.time() - ttl_days * 86400
+
+    def _tally(sz: int) -> None:
+        out["total_count"] += 1
+        out["total_bytes"] += sz
+        if small_bytes is not None and sz < small_bytes:
+            out["small_count"] += 1
+            out["small_bytes"] += sz
+
     for cache_dir in root.iterdir():
         if not cache_dir.is_dir():
             continue
@@ -190,16 +206,25 @@ def scan(ttl_days: int = PREVIEW_TTL_DAYS) -> dict:
         # are merely OFFLINE costs no data, but it silently throws away a warm cache
         # that then has to be re-extracted picture by picture. If the drive itself
         # is not mounted we cannot conclude anything, so we conclude nothing.
+        # The previews still sit on THIS machine's disk either way, so they still
+        # count toward the plain totals — only the stale/orphan verdict is skipped.
         if src is not None and not _drive_mounted(src):
+            for f in cache_dir.glob("*.jpg"):
+                try:
+                    _tally(f.stat().st_size)
+                except OSError:
+                    continue
             continue
         # The whole folder is dead: its source is gone (a deleted/retired trip).
         if src is not None and not src.is_dir():
             dead = list(cache_dir.glob("*.jpg"))
             for f in dead:
                 try:
-                    out["bytes"] += f.stat().st_size
+                    sz = f.stat().st_size
                 except OSError:
                     continue
+                _tally(sz)
+                out["bytes"] += sz
                 out["files"].append(f)
                 out["orphaned"] += 1
             if dead:
@@ -211,6 +236,7 @@ def scan(ttl_days: int = PREVIEW_TTL_DAYS) -> dict:
                 st = f.stat()
             except OSError:
                 continue
+            _tally(st.st_size)
             orphan = stems is not None and f.stem.lower() not in stems
             if not orphan and st.st_mtime >= cutoff:
                 continue
