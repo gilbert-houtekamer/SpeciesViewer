@@ -127,25 +127,46 @@ def observed_prefix(names) -> str:
 
 
 def scan_day(day_dir) -> dict:
-    """What the day holds right now. Read-only; no side effects."""
+    """What the day holds right now. Read-only; no side effects.
+
+    Uses os.scandir() rather than Path.iterdir(): on Windows a DirEntry's
+    is_file()/stat() reuse the attributes the directory enumeration already
+    returned (no extra per-file syscall), where the same calls on a bare Path
+    handed back by iterdir() each re-stat the file. For a day with thousands
+    of RAWs this used to mean thousands of avoidable round-trips — real cost
+    on a synced/network drive, which is exactly what a trip's picture folder
+    often is. The payload files' stats are kept in `_stat_cache` so
+    build_manifest() can reuse them too — see its docstring."""
     day_dir = Path(day_dir)
     work, jpgs, extras, raws = [], [], [], []
+    stat_cache: dict[str, dict] = {}
     try:
-        entries = sorted(day_dir.iterdir())
+        with os.scandir(day_dir) as it:
+            entries = sorted(it, key=lambda e: e.name)
     except OSError:
         entries = []
-    for p in entries:
-        if not p.is_file():
+    for entry in entries:
+        if not entry.is_file():
             continue
-        ext = p.suffix.lower()
+        ext = os.path.splitext(entry.name)[1].lower()
         if ext in WORK_EXTS:
-            work.append(p)
+            bucket = work
         elif ext in JPG_EXTS:
-            jpgs.append(p)
+            bucket = jpgs
         elif ext in SOURCE_EXTS:
-            raws.append(p.name)
-        elif p.name.lower() in EXTRA_NAMES:
-            extras.append(p)
+            raws.append(entry.name)   # name only — never stat'd, never in the ZIP
+            continue
+        elif entry.name.lower() in EXTRA_NAMES:
+            bucket = extras
+        else:
+            continue
+        p = Path(entry.path)
+        bucket.append(p)
+        try:
+            st = entry.stat()
+            stat_cache[entry.name] = {"size": st.st_size, "mtime_ns": st.st_mtime_ns}
+        except OSError:
+            pass
     payload = work + jpgs + extras
     return {
         "day": day_dir.name,
@@ -155,6 +176,7 @@ def scan_day(day_dir) -> dict:
         # Derived from the PICTURES only — a loose blog.ini carries no prefix
         # and would drag the common start down to nothing.
         "prefix": observed_prefix([p.name for p in work + jpgs] + raws),
+        "_stat_cache": stat_cache,
     }
 
 
@@ -163,14 +185,26 @@ def _file_stat(p: Path) -> dict:
     return {"size": st.st_size, "mtime_ns": st.st_mtime_ns}
 
 
-def build_manifest(scan: dict, previous: dict | None = None) -> dict:
+def build_manifest(scan: dict, previous: dict | None = None,
+                   stat_cache: dict | None = None) -> dict:
     """`previous` is the manifest being replaced, used only to carry forward
     raws_initial — how many pictures this day EVER held. Today's picture list
     shrinks as culling proceeds, so without a high-water mark there is nothing
     left to say how many were thrown away, and a restore cannot tell you how
-    many of the card's pictures it is about to leave behind."""
+    many of the card's pictures it is about to leave behind.
+
+    `stat_cache` (scan_day()'s `_stat_cache`) lets a read-only caller — the
+    overview's backup-status check, which runs on every startup for every
+    day — skip a second stat() per payload file. The actual ZIP write
+    (backup_day()) never passes it: the manifest it writes must describe
+    what was ACTUALLY zipped, stat'd fresh at that moment, not what scan_day()
+    saw earlier."""
     files = {}
     for p in scan["payload"]:
+        cached = stat_cache.get(p.name) if stat_cache else None
+        if cached is not None:
+            files[p.name] = cached
+            continue
         try:
             files[p.name] = _file_stat(p)
         except OSError:
@@ -280,7 +314,7 @@ def day_status(day_dir, dest_dir) -> dict:
     if old is None:
         return {"state": "never", "reason": "no backup yet", "scan": scan,
                 "zip": zp, "changed": len(scan["payload"])}
-    now = build_manifest(scan)
+    now = build_manifest(scan, stat_cache=scan.get("_stat_cache"))
     changed = 0
     for name, meta in now["files"].items():
         if name.lower() in DERIVED_NAMES:

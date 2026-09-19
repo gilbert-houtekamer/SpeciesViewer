@@ -146,8 +146,8 @@ def start_main():
         # e.g. this machine's config carrying sizes saved on a bigger monitor.
         # Same off-screen guard the per-dialog geometry already gets.
         clamp_to_visible_screen(main_window)
-       
-        # main_window.init_panels()  # ✅ Safe moment — QApplication fully live        
+
+        # main_window.init_panels()  # ✅ Safe moment — QApplication fully live
 
     # Show the splash for at least MIN_SPLASH_MS (so it never just flashes),
     # then proceed as soon as the master DB warm-up actually finishes rather
@@ -179,8 +179,8 @@ def main():
         app.setPalette(theme.build_palette())
     app.setStyleSheet(build_base_qss())  # ch.15 global QSS theme, Phase 1 — see gui/theme.py
     ex = start_main()
-    # print("QApplication exists in TripCreationDialog?", QApplication.instance()) 
-    sys.exit(app.exec())    
+    # print("QApplication exists in TripCreationDialog?", QApplication.instance())
+    sys.exit(app.exec())
 
 if __name__ == "__main__":
     main()

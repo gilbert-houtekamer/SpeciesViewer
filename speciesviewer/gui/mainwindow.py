@@ -816,7 +816,7 @@ class MainWindow(QMainWindow):
                                        state_cell_symbol, _verified_crc_set,
                                        _format_translations_item,
                                        _format_total_files_item, _format_gps_item,
-                                       count_files)
+                                       count_files, _count_pictures, _day_health)
 
         trip_root = Path(_config.get("trip", "tripbiotadatabase"))
         review_root = trip_root / "metadata" / "review"
@@ -833,11 +833,14 @@ class MainWindow(QMainWindow):
         if row is not None:
             image_root = self._trip_picture_root()
             day_path = image_root / day_name
+            day_files = list(day_path.glob("*"))
+            pictures = _count_pictures(day_path, files=day_files)
+            health = _day_health(review_day)
             self.trip_table.setItem(
-                row, 1, _format_total_files_item(day_path, review_root))
+                row, 1, _format_total_files_item(pictures, health))
             self.trip_table.setItem(
-                row, GPS_COL, _format_gps_item(day_path, review_root))
-            _total, jpgs = count_files(day_path)
+                row, GPS_COL, _format_gps_item(pictures, health))
+            _total, jpgs = count_files(day_path, files=day_files)
             jpgs_item = QTableWidgetItem(str(jpgs))
             jpgs_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.trip_table.setItem(row, 2, jpgs_item)

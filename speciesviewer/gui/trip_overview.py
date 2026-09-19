@@ -1,5 +1,6 @@
 import csv
 import logging
+import os
 
 from fastcrc import crc32
 from PyQt6.QtCore import Qt
@@ -283,11 +284,15 @@ def _format_translations_item(review_day_path, verified_crcs):
         counts, none_tooltip="Write Summary not yet run for this day.")
 
 
-def _count_pictures(day_path):
+def _count_pictures(day_path, files=None):
     """Distinct UniquePictureNames among the day folder's own picture files
     (top level only) — the picture count, matching what PhotoLab shows. A RAW
     and its XMP sidecar / DxO render share one UPN, so they count once (not as
-    separate files)."""
+    separate files).
+
+    `files` lets a caller that already listed the folder (e.g. the bulk
+    populate loop, which also needs the plain file/JPG counts) pass that
+    listing in rather than have this glob the same folder again."""
     from engine.filecsv import deriveUniquePictureName
     # Count only primary images, not sidecars: an orphan .xmp/.dop is not a
     # picture, and a present one shares its RAW's UPN anyway — and PICTURE
@@ -300,7 +305,7 @@ def _count_pictures(day_path):
     # 377 rows for. Same table as everyone else now.
     primary = PICTURE
     upns = set()
-    for f in day_path.glob("*"):
+    for f in (files if files is not None else day_path.glob("*")):
         if f.is_file() and f.suffix.lower() in primary:
             u = (deriveUniquePictureName(f.name) or "").strip()
             if u:
@@ -308,14 +313,14 @@ def _count_pictures(day_path):
     return len(upns)
 
 
-def _format_total_files_item(day_path, review_root):
-    """Build the Pictures cell with the species-health marker and tooltip.
-    Re-used by refresh_day_health so the trip-overview row updates after the
-    image preview dialog fixes a species issue. Shows the picture (UPN)
-    count, not the raw file count. GPS has its own column/cell — see
-    _format_gps_item — this cell no longer carries a GPS glyph."""
-    total = _count_pictures(day_path)
-    health = _day_health(review_root / day_path.name)
+def _format_total_files_item(pictures, health):
+    """Build the Pictures cell with the species-health marker and tooltip,
+    from a precomputed picture count and _day_health() result (or None). Both
+    are cheap to recompute for one day — refresh_day_health does exactly
+    that — but the bulk populate loop computes them once per day and shares
+    them with _format_gps_item rather than re-reading the same folder/CSVs
+    for each cell."""
+    total = pictures
     if health is None:
         text = str(total)
         tooltip = "Read Directory not yet run for this day."
@@ -341,17 +346,17 @@ def _format_total_files_item(day_path, review_root):
     return item
 
 
-def _format_gps_item(day_path, review_root):
+def _format_gps_item(pictures, health):
     """Build the GPS cell — styled to match the Album overview's GPS column
     (✅ vs an amber '📍 N missing' count) instead of Trip's old binary
-    📍/❓ glyph, for real visual parity, not just relocation."""
+    📍/❓ glyph — from the same precomputed picture count and _day_health()
+    result _format_total_files_item uses (see its docstring)."""
     from PyQt6.QtGui import QColor
-    health = _day_health(review_root / day_path.name)
     if health is None:
         item = QTableWidgetItem("")
         item.setToolTip("Read Directory not yet run for this day.")
     else:
-        total = _count_pictures(day_path)
+        total = pictures
         _warnings, no_gps, _obscured = health
         if no_gps == 0:
             item = QTableWidgetItem("✅")
@@ -520,9 +525,11 @@ def refresh_day_health(main_window, day_name):
     for row in range(table.rowCount()):
         cell = table.item(row, 0)
         if cell and cell.text() == day_name:
-            new_item = _format_total_files_item(day_path, review_root)
+            pictures = _count_pictures(day_path)
+            health = _day_health(review_root / day_name)
+            new_item = _format_total_files_item(pictures, health)
             table.setItem(row, 1, new_item)
-            gps_item = _format_gps_item(day_path, review_root)
+            gps_item = _format_gps_item(pictures, health)
             table.setItem(row, GPS_COL, gps_item)
             logger.debug(
                 f"refresh_day_health: row {row} for {day_name} → "
@@ -593,13 +600,16 @@ def _day_health(review_day_path):
     return warnings, no_gps, obscured
 
 
-def count_files(path):
+def count_files(path, files=None):
     """(total file count, JPG count) for a day folder — a raw filesystem glob,
     not CSV-derived, so it reflects files added since the last Read Directory
     (e.g. a JPG just exported from DxO PhotoLab). Shared by populate and
     refresh_trip_row so a Read & Summarize re-run actually updates the JPEG
-    Files cell instead of leaving it at whatever it read the first time."""
-    all_files = list(path.glob("*"))
+    Files cell instead of leaving it at whatever it read the first time.
+
+    `files` lets a caller that already listed the folder pass it in — see
+    _count_pictures."""
+    all_files = files if files is not None else list(path.glob("*"))
     jpg_files = [f for f in all_files if f.suffix.lower() == ".jpg"]
     return len(all_files), len(jpg_files)
 
@@ -811,15 +821,29 @@ def populate_trip_overview(self):
         _paint_blog_state_excluded(row, day_name)
 
     for i, day in enumerate(image_days):
-        total, jpgs = count_files(day)
+        # ONE folder listing and ONE data_files.csv/data_pictures.csv read per
+        # day, shared by the Pictures, JPEG Files and GPS cells below — these
+        # used to glob the same folder 3x and parse the same two CSVs up to
+        # 2x each, which was real cost multiplied by every day in the trip.
+        # os.scandir(), not day.glob("*") — pathlib's glob compiles and runs a
+        # pattern match per entry even for a bare "*" and re-stats every
+        # result; scandir's DirEntry reuses the attributes Windows' directory
+        # enumeration already returned. Same entries (files AND subfolders,
+        # like glob("*")) as plain Path objects, just listed the fast way.
+        with os.scandir(day) as _it:
+            day_files = [Path(e.path) for e in _it]
+        total, jpgs = count_files(day, files=day_files)
+        pictures = _count_pictures(day, files=day_files)
+        health = _day_health(review_root / day.name)
+
         self.trip_table.setItem(i, 0, QTableWidgetItem(day.name))
-        self.trip_table.setItem(i, 1, _format_total_files_item(day, review_root))
+        self.trip_table.setItem(i, 1, _format_total_files_item(pictures, health))
 
         jpgs_item = QTableWidgetItem(str(jpgs))
         jpgs_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.trip_table.setItem(i, 2, jpgs_item)
 
-        self.trip_table.setItem(i, GPS_COL, _format_gps_item(day, review_root))
+        self.trip_table.setItem(i, GPS_COL, _format_gps_item(pictures, health))
         self.trip_table.setItem(i, GEOTAG_COL, _format_geotag_item(day.name, gpslogs_root))
 
         # Sync Sidecars column — not persisted, starts as ⚪
