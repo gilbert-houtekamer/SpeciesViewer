@@ -658,7 +658,31 @@ class PreviewCollection(PictureCollection):
             return [str(raw.with_suffix(".xmp"))]
         return []
 
+    # Location text lives in data_files.csv as these XMP:<field> columns —
+    # Read Directory already wrote them, so read_location() below is a plain
+    # in-memory lookup instead of an exiftool spawn per picture. CountryCode
+    # is not one of the CSV's columns, so it always comes back empty here
+    # (nothing in this collection's display reads it).
+    _LOC_XMP_KEYS = {"Location": "XMP:Location", "City": "XMP:City",
+                     "Municipality": "XMP:Municipality", "State": "XMP:State",
+                     "Country": "XMP:Country"}
+
     def read_location(self, upn_key: str) -> dict:
+        """Location text from the in-memory file rows data_files.csv already
+        loaded — no exiftool spawn per navigation step, unlike a fresh read
+        of the file (~0.3-0.8s, the dominant cost of stepping through the
+        large viewer on a big day). Falls back to a direct file read only
+        when the CSV has nothing for any of the UPN's files (e.g. a file
+        added since the last Read Directory)."""
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            d = {field: frow.get(xmp_key) or ""
+                for field, xmp_key in self._LOC_XMP_KEYS.items()}
+            d["CountryCode"] = ""
+            if any(d.values()):
+                return d
         from gui.geolocate import read_location_fields
         for f in (self.location_targets(upn_key) or [self.rep_full_path(upn_key)]):
             if f and Path(f).exists():
@@ -666,6 +690,29 @@ class PreviewCollection(PictureCollection):
                 if any(d.values()):
                     return d
         return {}
+
+    def note_location_written(self, upn_key: str, fields: dict, protect=()) -> None:
+        """An Edit/Get-location write just put these place fields into the
+        UPN's XMP — patch the in-memory file rows so read_location() (which
+        reads from here now, not a fresh exiftool spawn) reflects the write
+        immediately rather than showing the pre-write value until the next
+        Read Directory. `protect` names fields whose pre-existing value must
+        be kept (a coarse reverse-geocode must not overwrite a hand-entered
+        Location) — same contract as sidecar_provider's."""
+        protect = set(protect)
+        for fname in self._files(upn_key):
+            frow = self.fpr.fi.files_dict.get(fname)
+            if not frow:
+                continue
+            for field, value in fields.items():
+                if not value:
+                    continue
+                xmp_key = self._LOC_XMP_KEYS.get(field)
+                if xmp_key is None:
+                    continue   # CountryCode — not a CSV column, nothing to patch
+                if field in protect and (frow.get(xmp_key) or "").strip():
+                    continue
+                frow[xmp_key] = value
 
     # ── helpers shared with items ─────────────────────────────────────────
     def _files(self, upn_key: str) -> list[str]:

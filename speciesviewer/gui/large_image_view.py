@@ -240,6 +240,19 @@ class _CollapsibleSection(QWidget):
 
 # ── Filmstrip ──────────────────────────────────────────────────────────────────
 
+class _StripPlaceholder(QWidget):
+    """Cheap stand-in for a not-yet-materialized _StripItem — same fixed size
+    so the strip's scroll geometry is correct from the start, but none of the
+    frame/thumbnail/corner-badge sub-widgets that made building one per
+    picture up front cost seconds on a big day. FilmstripWidget._materialize
+    swaps it for a real _StripItem the first time its picture actually needs
+    to be shown (current picture, or scrolled into view)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(_ITEM_W, _ITEM_H)
+
+
 class _StripItem(QWidget):
     """One thumbnail cell in the filmstrip — compact, colour-bordered."""
     tapped = pyqtSignal(str)         # emits key on left click
@@ -430,14 +443,15 @@ class FilmstripWidget(QWidget):
         strip_layout.setContentsMargins(2, 0, 2, 0)
         strip_layout.setSpacing(_ITEM_GAP)
 
+        # Placeholders for every key — cheap enough that building thousands of
+        # them costs nothing worth measuring, unlike the real _StripItem this
+        # used to build for every one of them (frame + thumbnail slot + corner
+        # badges each), which is what made opening a 2000+ picture day's
+        # filmstrip cost seconds before the window could even paint. Swapped
+        # for the real thing on demand — see _materialize.
+        self._selected_keys: set[str] = set()
         for key in self._keys:
-            try:
-                item = collection.item_for_key(key)
-            except (ValueError, KeyError):
-                continue
-            cell = _StripItem(item, self._strip, viewer_key=self._viewer_key)
-            cell.tapped.connect(self.item_clicked)
-            cell.right_clicked.connect(self.item_right_clicked)
+            cell = _StripPlaceholder(self._strip)
             strip_layout.addWidget(cell)
             self._cells[key] = cell
 
@@ -452,6 +466,34 @@ class FilmstripWidget(QWidget):
 
         # Load initially-visible cells once the layout has settled.
         QTimer.singleShot(0, self._load_visible)
+
+    def _materialize(self, key: str):
+        """Ensure `key` has a real _StripItem, upgrading its placeholder in
+        place if this is the first time it actually needs to be shown.
+        `layout.replaceWidget` swaps it in at the exact same layout slot the
+        placeholder held — same fixed size, so no repositioning is needed —
+        which is what lets this stay a plain QBoxLayout instead of the
+        absolute-positioning a full virtualized view would need. Returns the
+        cell (real or, if the key can't be resolved, the untouched
+        placeholder) or None if `key` isn't in this strip at all."""
+        cell = self._cells.get(key)
+        if cell is None or isinstance(cell, _StripItem):
+            return cell
+        try:
+            item = self._collection.item_for_key(key)
+        except (ValueError, KeyError):
+            return cell
+        real = _StripItem(item, self._strip, viewer_key=self._viewer_key)
+        real.tapped.connect(self.item_clicked)
+        real.right_clicked.connect(self.item_right_clicked)
+        self._strip.layout().replaceWidget(cell, real)
+        cell.deleteLater()
+        self._cells[key] = real
+        if key == self._current_key:
+            real.set_current(True)
+        if key in self._selected_keys:
+            real.set_selected(True)
+        return real
 
     def remove_keys(self, keys):
         """Drop the cells for `keys` (deleted pictures) and shrink the strip."""
@@ -478,32 +520,40 @@ class FilmstripWidget(QWidget):
 
     def set_current(self, key: str, index: int, total: int):
         """Highlight `key`, scroll it into view, update the counter."""
-        if self._current_key and self._current_key in self._cells:
-            self._cells[self._current_key].set_current(False)
+        old = self._cells.get(self._current_key) if self._current_key else None
+        if isinstance(old, _StripItem):
+            old.set_current(False)
         self._current_key = key
-        if key in self._cells:
-            cell = self._cells[key]
+        cell = self._materialize(key)
+        if isinstance(cell, _StripItem):
             cell.set_current(True)
             QTimer.singleShot(0, lambda: self._sa.ensureWidgetVisible(cell))
         self._pos_lbl.setText(f"{index + 1} of {total}")
 
     def refresh_item(self, key: str, reload_image: bool = False):
         """Repaint a cell's stars + colour border after an edit; reload_image=True
-        also re-decodes its thumbnail (an external re-crop / new render)."""
-        if key not in self._cells:
+        also re-decodes its thumbnail (an external re-crop / new render). A
+        cell still showing its placeholder has nothing to repaint — it picks
+        up fresh data the moment it's materialized anyway."""
+        cell = self._cells.get(key)
+        if not isinstance(cell, _StripItem):
             return
         try:
             item = self._collection.item_for_key(key)
         except (ValueError, KeyError):
             return
-        self._cells[key].refresh_from(item)
+        cell.refresh_from(item)
         if reload_image:
-            self._cells[key].reload_thumbnail()
+            cell.reload_thumbnail()
 
     def set_selected(self, keys: set):
-        """Update selection highlight on all cells."""
+        """Update selection highlight on all materialized cells, and remember
+        the set so a cell materialized later (scrolled into view) starts with
+        the right highlight instead of none."""
+        self._selected_keys = set(keys)
         for k, cell in self._cells.items():
-            cell.set_selected(k in keys)
+            if isinstance(cell, _StripItem):
+                cell.set_selected(k in self._selected_keys)
 
     # ── Lazy loading ───────────────────────────────────────────────────────────
 
@@ -524,9 +574,9 @@ class FilmstripWidget(QWidget):
         first = max(0, vp_lo  // stride - _PREFETCH)
         last  = min(len(self._keys) - 1, vp_hi // stride + _PREFETCH)
         for i in range(first, last + 1):
-            key = self._keys[i]
-            if key in self._cells:
-                self._cells[key].request_load()
+            cell = self._materialize(self._keys[i])
+            if isinstance(cell, _StripItem):
+                cell.request_load()
 
 
 class _FullResView(QScrollArea):
@@ -2068,6 +2118,17 @@ class LargeImageView(QDialog):
         except (ValueError, KeyError):
             return
         self._item = item
+
+        # Immediate visual feedback: the synchronous work below (species
+        # panel rebuild, EXIF/location display) can take a while, and
+        # leaving the PREVIOUS picture on screen with no cue makes a
+        # navigation look unregistered — the exact "no feedback" complaint.
+        # Clear it and force a paint before doing that work, same fix as the
+        # slow dialogs elsewhere in the app.
+        self._pixmap = QPixmap()
+        self._image_label.setText("Loading…")
+        QApplication.processEvents()
+
         # Drop the cached unadjusted base images from whatever picture this was
         # showing before — otherwise a slider drag landing in the narrow window
         # before the new picture's async decode completes would live-render the
