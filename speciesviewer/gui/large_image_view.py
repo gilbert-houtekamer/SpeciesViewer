@@ -2831,10 +2831,15 @@ class LargeImageView(QDialog):
     def _cull_set_color_quick(self, color: str):
         """Stamp `color` onto the selection (else the current picture) in one
         write per picture, no dialog — 'x' for prepping a batch as Blue
-        before deleting. Rating is left untouched."""
+        before deleting. Rating is left untouched. Then advances past
+        whatever was stamped: one picture forward for a lone focus (same as
+        the digit colour keys), or past the END of a selected group, clearing
+        the selection so the next key press lands on a single fresh picture
+        instead of re-acting on the group."""
         keys = set(self._selected_keys) or ({self._item.key} if self._item else set())
         if not keys or self._collection is None:
             return
+        had_selection = bool(self._selected_keys)
         key_list = list(keys)
         cur_key = self._item.key if self._item else None
         for k in key_list:
@@ -2846,7 +2851,13 @@ class LargeImageView(QDialog):
             self._refresh_strip_items(k)
         for k in key_list:
             self.picture_changed.emit(k)
-        if cur_key in key_list:
+        order = self._keys
+        idx_max = max((order.index(k) for k in key_list if k in order), default=None)
+        if idx_max is not None:
+            if had_selection:
+                self._clear_selection()
+            self._cull_set_cursor(order[min(idx_max + 1, len(order) - 1)])
+        elif cur_key in key_list:
             self._load_current()
 
     def _batch_species(self, keys=None):

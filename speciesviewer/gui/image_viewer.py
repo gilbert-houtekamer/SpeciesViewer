@@ -2379,10 +2379,15 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
 
     def _cull_set_color_quick(self, color: str):
         """Stamp `color` onto the selection (else the focused picture) in one
-        write, no dialog — 'x' for prepping a batch as Blue before deleting."""
+        write, no dialog — 'x' for prepping a batch as Blue before deleting —
+        then advances past whatever it just stamped: one picture forward for
+        a lone focus (same as the digit colour keys), or past the END of a
+        selected group, clearing the selection so the next key press lands on
+        a single fresh picture instead of re-acting on the group."""
         keys = self._cull_keys_target()
         if not keys or self._collection is None:
             return
+        had_selection = bool(self._selected_keys)
         key_list = list(keys)
         batched = getattr(self._collection, "apply_many", None)
         if batched is not None:
@@ -2399,6 +2404,12 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             if card:
                 card.refresh()
             self._notify_large_view(k)
+        order = list(self._order)
+        idx_max = max((order.index(k) for k in key_list if k in order), default=None)
+        if idx_max is not None:
+            if had_selection:
+                self._clear_selection()
+            self._cull_set_cursor(order[min(idx_max + 1, len(order) - 1)])
 
     def _cull_full_res(self, keys=None):
         """Pre-decode the selection (else focused picture) to the full-res cache,

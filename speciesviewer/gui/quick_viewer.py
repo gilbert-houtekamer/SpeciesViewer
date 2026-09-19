@@ -4,9 +4,10 @@ Opened with `z` from the culling grid. It shows only the camera's own embedded
 JPEG (the ~3200×2400 the OM-1 writes) — no RAW decode, no metadata panel, no
 species editor — so it appears instantly. `←` / `→` step through the pictures,
 `Esc` closes. The same culling keys as the grid work here — `1`–`5` colour,
-`q w e r t` / `Ctrl+1`–`5` stars, `0` clear — each writes and advances, so you
-can cull while pixel-peeping. On close the caller moves its cursor to the last
-picture shown and repaints any card it changed; nothing else changes.
+`q w e r t` / `Ctrl+1`–`5` stars, `0` clear, `x` quick-Blue — each writes and
+advances, so you can cull while pixel-peeping. On close the caller moves its
+cursor to the last picture shown and repaints any card it changed; nothing
+else changes.
 
 A picture with no RAW/embedded JPEG but a video file plays instead (QMediaPlayer
 + QVideoWidget, `Space` toggles play/pause) — the one place in the app a movie
@@ -281,6 +282,23 @@ class QuickViewer(QDialog):
             self._bracket_right = self._keys[self._index]
             self.selection_changed.emit(
                 self._selection_from_brackets(), self._bracket_left, self._bracket_right)
+            return
+        # 'x' — quick-stamp Blue and advance, same as the grid's shortcut and
+        # the same gate/advance rule as the digit colour keys below (only
+        # advance if the picture could actually carry the colour).
+        if k == Qt.Key.Key_X and self._keys:
+            key = self._keys[self._index]
+            applied = False
+            try:
+                item = self._collection.item_for_key(key)
+                if getattr(item, "can_edit_color", False):
+                    item.set_color("Blue")
+                    applied = True
+            except (ValueError, KeyError):
+                applied = False
+            if applied:
+                self._mark_edited(key)
+                self._goto_key(self._keys[min(self._index + 1, len(self._keys) - 1)])
             return
         # Colour / star keys — same handler the grid uses: write then advance.
         from gui.viewer_keys import handle_cull_key

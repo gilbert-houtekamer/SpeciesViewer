@@ -104,16 +104,16 @@ culling.
 | `f` | **Full resolution** — pre-decode to the 1:1 cache |
 | `l` | **Get location** — reverse-geocode GPS → write `Location/City/State/Country` to the XMP |
 | `z` | **Quick view** — the camera JPEG only, zoomable; `←`/`→` step, `Esc` closes |
-| `x` | Set colour to **Blue** — no dialog, one write |
+| `x` | Set colour to **Blue** — no dialog, one write, then moves on (see below) |
 
 `z` opens a stripped-down viewer — just the camera's embedded JPEG, no RAW
 decode and no metadata panel, so it appears instantly. It exists for a fast
 "zoom in to check the species" without the Large Image View's startup cost.
 Scroll to zoom, double-click for 1:1, drag to pan. The **same culling keys as
 the grid** work here — `1`–`5` colour, `q w e r t` / `Ctrl+1`–`5` stars, `0`
-clear — each writes and steps to the next picture, so you can cull while
-pixel-peeping. On close the grid cursor lands on the last picture you looked
-at and any card you changed repaints; nothing else changes.
+clear, `x` quick-Blue — each writes and steps to the next picture, so you can
+cull while pixel-peeping. On close the grid cursor lands on the last picture
+you looked at and any card you changed repaints; nothing else changes.
 
 `l` reverse-geocodes each picture's GPS (OpenStreetMap/Nominatim, English) and
 writes the place name into the XMP. It's throttled and **deduplicated by
@@ -122,9 +122,11 @@ distance** — consecutive shots within ~100 m of the last fix reuse it — so
 with no GPS (or nowhere to write) are skipped.
 
 `x` is a shortcut for the common "prep this batch for delete" step: select a
-range with `[` … `]`, press `x` to stamp them all **Blue** in one write, then
-delete the Blue-tagged pictures from the toolbar — no rating/colour dialog in
-between. Rating is left untouched.
+range with `[` … `]`, press `x` to stamp them all **Blue** in one write and
+move the cursor past the group (clearing the selection), then delete the
+Blue-tagged pictures from the toolbar — no rating/colour dialog in between.
+With nothing selected, `x` stamps just the focused picture and advances to
+the next one, same as the digit colour keys. Rating is left untouched.
 
 Notes:
 - Keys are ignored while a **text field** (description or species name) has

@@ -3965,12 +3965,17 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
     def _cull_set_color_quick(self, color: str):
         """Stamp `color` onto the selection (else the focused picture), no
         dialog — 'x' for prepping a batch as Blue before deleting. Rating is
-        left untouched."""
+        left untouched. Then advances past whatever was stamped: one picture
+        forward for a lone focus (same as the digit colour keys), or past the
+        END of a selected group, clearing the selection so the next key press
+        lands on a single fresh picture instead of re-acting on the group."""
         keys = self._cull_keys_target()
         if not keys or self._collection is None:
             return
+        had_selection = bool(self._selected_keys)
+        key_list = list(keys)
         apply = getattr(self._collection, "apply", None)
-        for k in keys:
+        for k in key_list:
             try:
                 if apply is not None:
                     apply(k, new_color=color)
@@ -3982,7 +3987,14 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             card = self._bound.get(k)
             if card:
                 card.refresh()
-        self._resort_if_needed()
+        order = self._order
+        idx_max = max((order.index(k) for k in key_list if k in order), default=None)
+        target = order[min(idx_max + 1, len(order) - 1)] if idx_max is not None else None
+        self._resort_if_needed(focus_key=target)
+        if target is not None:
+            if had_selection:
+                self._clear_selection()
+            self._cull_set_cursor(target)
 
     def _cull_full_res(self, keys=None):
         """Pre-decode the selection (else focused picture) to the full-res cache,
