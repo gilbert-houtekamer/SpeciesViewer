@@ -517,6 +517,23 @@ class MainWindow(QMainWindow):
         populate_trip_overview(self)
 
     def closeEvent(self, event):
+        # Shutdown below can take a moment (flushing any open culling grids,
+        # stopping the persistent exiftool writer) with nothing on screen to
+        # say so — same problem, and same fix, as the slow dialogs: show a
+        # message and force it to paint before doing the actual work.
+        closing_lbl = QLabel("Closing Species Viewer…")
+        closing_lbl.setWindowFlag(Qt.WindowType.FramelessWindowHint)
+        closing_lbl.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
+        closing_lbl.setStyleSheet(
+            f"background: {theme.SURFACE}; color: {theme.INK}; "
+            f"padding: 18px; font-size: 13px; border: 1px solid {theme.INK_FAINT};")
+        closing_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        closing_lbl.adjustSize()
+        geo = self.frameGeometry()
+        closing_lbl.move(geo.center() - closing_lbl.rect().center())
+        closing_lbl.show()
+        QApplication.processEvents()
+
         # A culling / preview grid open over a day buffers its day-CSV writes
         # (rating / colour / species are debounced). Closing the MAIN window
         # DESTROYS that child dialog without sending it a closeEvent, so those

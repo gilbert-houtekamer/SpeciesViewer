@@ -1,6 +1,7 @@
 import logging
 import sys
 import threading
+import time
 from pathlib import Path
 
 # Ensure both the project root and qt/ are on sys.path regardless of CWD
@@ -18,7 +19,7 @@ from utils.config import _config
 from gui.theme import build_base_qss
 
 
-def _warm_master_db_in_background() -> None:
+def _warm_master_db_in_background(done_event: threading.Event) -> None:
     """Run MasterDB.ensure_fresh() on a daemon thread during splash so the
     cold-rebuild cost (~6s when the master CSVs have changed) is paid while
     the user is already waiting, instead of when they later open the Rating
@@ -32,11 +33,14 @@ def _warm_master_db_in_background() -> None:
 
     Concurrency with the lazy open is handled by MasterDB._build_lock + the
     double-checked is_stale() inside ensure_fresh().
+
+    `done_event` is set in every exit path (success, skip or failure) so the
+    splash can wait for the real warm-up instead of a guessed flat delay.
     """
     def _run():
         # Diagnostic prints go straight to stderr so they survive
-        # init_logger()'s handler.clear() + mode="w" reset at t=2s; the
-        # post-init logger.info also writes to studio.log.
+        # init_logger()'s handler.clear() + mode="w" reset once the main
+        # window starts; the post-init logger.info also writes to studio.log.
         def diag(msg):
             if _config.get("Global", "debug_tools", fallback="no") == "yes":
                 print(f"[splash-warm] {msg}", file=sys.stderr, flush=True)
@@ -65,6 +69,8 @@ def _warm_master_db_in_background() -> None:
         except Exception as e:
             diag(f"warm FAILED: {e!r}")
             logger.warning(f"Splash-time master DB warm failed: {e}")
+        finally:
+            done_event.set()
 
     threading.Thread(target=_run, name="MasterDBWarm", daemon=True).start()
 
@@ -103,7 +109,8 @@ def start_main():
     # Warm the master SQLite cache in the background while the splash is up.
     # If the master CSVs changed since last launch this avoids paying the ~6s
     # rebuild later, when the user opens Rating Editor → Trip+Master.
-    _warm_master_db_in_background()
+    _warm_done = threading.Event()
+    _warm_master_db_in_background(_warm_done)
 
     # 🪄 Launch main app window after splash
     def launch_main_window():
@@ -142,7 +149,24 @@ def start_main():
        
         # main_window.init_panels()  # ✅ Safe moment — QApplication fully live        
 
-    QTimer.singleShot(2000, launch_main_window)  # ⏱️ Delay splash by 2 sec
+    # Show the splash for at least MIN_SPLASH_MS (so it never just flashes),
+    # then proceed as soon as the master DB warm-up actually finishes rather
+    # than a flat, guessed delay. MAX_WAIT_MS is a safety net in case the
+    # warm-up thread wedges — the app still starts, just without the head
+    # start on the master DB rebuild.
+    MIN_SPLASH_MS = 500
+    MAX_WAIT_MS = 10_000
+    _splash_start = time.monotonic()
+
+    def _wait_for_warm():
+        elapsed_ms = (time.monotonic() - _splash_start) * 1000
+        ready = _warm_done.is_set() or elapsed_ms >= MAX_WAIT_MS
+        if ready and elapsed_ms >= MIN_SPLASH_MS:
+            launch_main_window()
+        else:
+            QTimer.singleShot(50, _wait_for_warm)
+
+    QTimer.singleShot(MIN_SPLASH_MS, _wait_for_warm)
 
     # sys.exit(app.exec())  # 🧠 Start the Qt event loop
 
