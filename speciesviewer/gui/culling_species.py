@@ -369,11 +369,13 @@ _TAXON_INDEX: dict = {"key": None, "up": {}, "level": {}, "alias": {}, "checked"
 _TAXON_RECHECK_SECONDS = 2.0   # do not stat 30 files on every keystroke
 
 
-def _taxon_sources() -> list:
+def _taxon_sources(include_master: bool = True) -> list:
     from pathlib import Path
+    bases = [_config.get("trip", "tripbiotadatabase", fallback="")]
+    if include_master:
+        bases.append(_config.get("master", "masterbiotadatabase", fallback=""))
     out = []
-    for base in (_config.get("trip", "tripbiotadatabase", fallback=""),
-                 _config.get("master", "masterbiotadatabase", fallback="")):
+    for base in bases:
         if not base:
             continue
         md = Path(base) / "metadata"
@@ -384,6 +386,37 @@ def _taxon_sources() -> list:
         if rev.is_dir():
             out.extend(sorted(rev.glob("*/species.csv")))
     return out
+
+
+def trip_species_names() -> list[str]:
+    """Every distinct NL/EN/Sci name at species level, across every species tree
+    THIS TRIP has ever written — metadata/active/species.csv for committed days
+    plus metadata/review/<day>/species.csv for days still in progress. This
+    accumulates over the whole trip, unlike fpr.upn (which FilePicture.readTripDay
+    narrows to whichever single day is currently open) — so this is the right
+    source for a genuinely trip-wide species suggestion, e.g. the "look in trip
+    names" completer toggle.
+
+    The master is deliberately EXCLUDED — unlike _taxon_index()/taxon_lineage(),
+    which want every taxon ever seen anywhere to classify a congener, "look in
+    trip names" promises species seen on THIS trip, and a returning trip (say,
+    a second visit to Brazil) would otherwise suggest the whole master's life
+    list, defeating the point of a short, trip-relevant list."""
+    import csv as _csv
+    names = set()
+    for p in _taxon_sources(include_master=False):
+        try:
+            with open(p, newline="", encoding="utf-8") as fh:
+                for r in _csv.DictReader(fh, delimiter=";"):
+                    if str(r.get("Level") or "").rsplit(".", 1)[-1].upper() != "SPECIES":
+                        continue
+                    for col in ("ScientificName", "DutchName", "EnglishName"):
+                        v = (r.get(col) or "").strip()
+                        if v:
+                            names.add(v)
+        except OSError as e:
+            logger.warning(f"trip_species_names: cannot read {p}: {e}")
+    return sorted(names)
 
 
 def _taxon_index() -> dict:

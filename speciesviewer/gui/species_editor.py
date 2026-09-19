@@ -73,22 +73,22 @@ def _sc_usable(sc) -> bool:
     return hasattr(sc, "getSpecies") and hasattr(sc, "sc_dict")
 
 
-def _trip_species_candidates(fpr) -> list[str]:
-    """Every distinct NL/EN/Sci species name already recorded on THIS trip's
-    pictures — a much smaller, more relevant set than the full species
-    reference collection (species_name_candidates / fpr.sc, ~30k entries)
-    once a trip has been running a while. Read straight off the trip's own
-    picture records (WetSoortNaam/NLSoortNaam/EngSoortNaam), not the
-    reference collection, so it only ever contains names actually seen here.
-    Backs the "look in trip names" completer toggle."""
-    names = set()
-    upn_dict = getattr(getattr(fpr, "upn", None), "UniquePictureName_dict", None) or {}
-    for row in upn_dict.values():
-        for key in ("NLSoortNaam", "EngSoortNaam", "WetSoortNaam"):
-            v = (row.get(key) or "").strip()
-            if v:
-                names.add(v)
-    return sorted(names)
+def _trip_species_candidates() -> list[str]:
+    """Every distinct NL/EN/Sci species name already recorded on THIS trip — a
+    much smaller, more relevant set than the full species reference collection
+    (species_name_candidates / fpr.sc, ~30k entries) once a trip has been
+    running a while. Backs the "look in trip names" completer toggle.
+
+    Reads the trip's species TREES (metadata/active + every metadata/review/
+    <day>), not fpr.upn: FilePicture.readMaster loads the trip-wide picture
+    inventory, but the image_viewer always follows it with readTripDay, which
+    overwrites fpr.upn with just the ONE day currently open. Using fpr.upn
+    here silently narrowed "look in trip names" down to a single day — it
+    found a same-day-earlier species but nothing from any other day, worst
+    for exactly the case (going back to an early day, deep into a trip) where
+    the wide list matters most."""
+    from gui.culling_species import trip_species_names
+    return trip_species_names()
 
 
 def getCorrectionScopeOptions(file_path: Path) -> dict[str, list[Path]]:
@@ -421,7 +421,7 @@ class SpeciesInfoPanel(QWidget):
         try:
             if getattr(self, "_trip_only_check", None) is not None \
                     and self._trip_only_check.isChecked():
-                names = _trip_species_candidates(fpr)
+                names = _trip_species_candidates()
             else:
                 from gui.culling_species import species_name_candidates
                 names = species_name_candidates(fpr.sc)
