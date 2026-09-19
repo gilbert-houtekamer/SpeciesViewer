@@ -1544,6 +1544,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         dlg = LargeImageView(self, self._collection, keys, keys.index(key),
                              settings_key="SpeciesPreview", auto_advance=True,
                              initial_selection=set(self._selected_keys),
+                             initial_brackets=(self._bracket_left, self._bracket_right),
                              allow_delete=hasattr(self._collection, "delete_keys"))
         dlg.picture_changed.connect(self._on_large_view_changed)
         dlg.picture_image_changed.connect(self._on_large_view_image_changed)
@@ -1572,7 +1573,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             except RuntimeError:
                 pass
         from gui.quick_viewer import QuickViewer
-        dlg = QuickViewer(self, self._collection, order, order.index(key))
+        dlg = QuickViewer(self, self._collection, order, order.index(key),
+                          initial_brackets=(self._bracket_left, self._bracket_right))
         dlg.navigated.connect(self._cull_set_cursor)
         dlg.edited.connect(self._on_quick_view_edited)
         # [ / ] in the quick viewer mark a range exactly like the grid's own —
@@ -1638,10 +1640,14 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             card.set_cursor_focus(True)
             self.scroll_area.ensureWidgetVisible(card)
 
-    def _on_large_view_selection_changed(self, keys: set):
+    def _on_large_view_selection_changed(self, keys: set, bracket_left=None, bracket_right=None):
+        # Adopt the child viewer's [ / ] state too, not just the resulting
+        # selection — otherwise a range opened here and closed in the Large
+        # Image View / Quick Viewer (or vice versa) would lose its open
+        # bracket the moment focus came back to the grid.
         self._selected_keys = keys
-        self._bracket_left = None
-        self._bracket_right = None
+        self._bracket_left = bracket_left
+        self._bracket_right = bracket_right
         self._update_selection_display()
 
     def _on_large_view_delete(self, dlg, keys: set):
@@ -2695,10 +2701,9 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             event.accept()
             return
         k = event.key()
-        if k == Qt.Key.Key_BracketLeft:          # [ — start a NEW selection here
+        if k == Qt.Key.Key_BracketLeft:          # [ — set/move left bracket at cursor
             if self._last_clicked_key:
                 self._bracket_left = self._last_clicked_key
-                self._bracket_right = None       # drop any stale right edge
                 self._selected_keys = self._selection_from_brackets()
                 self._update_selection_display()
         elif k == Qt.Key.Key_BracketRight:       # ] — set right bracket at cursor

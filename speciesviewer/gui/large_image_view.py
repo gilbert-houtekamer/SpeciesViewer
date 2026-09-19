@@ -778,12 +778,17 @@ class LargeImageView(QDialog):
     picture_navigated = pyqtSignal(str)  # key — emitted when ←/→ moves to a new picture
     species_committed = pyqtSignal(set)  # upns — emitted after a species commit in the panel
     dxo_launched      = pyqtSignal(str)  # raw path — opened in DxO; host watches its folder for the render
-    selection_changed = pyqtSignal(set)  # keys — emitted whenever filmstrip selection changes
+    # keys, bracket_left, bracket_right — emitted whenever filmstrip selection
+    # changes; the brackets travel too so a [ / ] range can be opened in one
+    # viewer and closed in another (grid, Large Image View, Quick Viewer all
+    # share the same [ / ] administration).
+    selection_changed = pyqtSignal(set, object, object)
     delete_requested  = pyqtSignal(set)  # keys — right-click Delete on a filmstrip cell
 
     def __init__(self, parent, collection, keys, index, *,
                  settings_key="LargeImageView", auto_advance=True,
-                 initial_selection: set | None = None, allow_delete: bool = False):
+                 initial_selection: set | None = None, allow_delete: bool = False,
+                 initial_brackets: tuple | None = None):
         super().__init__(parent)
         # Whether the filmstrip offers a right-click Delete (the host must handle
         # delete_requested). Off for read-only / non-culling hosts, so there is no
@@ -813,8 +818,7 @@ class LargeImageView(QDialog):
         self._original_headline = ""
         self._panel_first_show = True
         self._selected_keys: set[str] = set(initial_selection) if initial_selection else set()
-        self._bracket_left:  str | None = None
-        self._bracket_right: str | None = None
+        self._bracket_left, self._bracket_right = initial_brackets if initial_brackets else (None, None)
         self._crop_mode = False
         self._crop_overlay = None
 
@@ -1984,7 +1988,6 @@ class LargeImageView(QDialog):
             return
         if k == Qt.Key.Key_BracketLeft and not desc_focused and self._keys:
             self._bracket_left = self._keys[self._index]
-            self._bracket_right = None           # drop any stale right edge — start a NEW selection
             self._selected_keys = self._selection_from_brackets()
             self._update_selection_display()
             event.accept()
@@ -2707,7 +2710,7 @@ class LargeImageView(QDialog):
             self._apply_all_btn.setStyleSheet(
                 "font-size: 10px; color: #555; padding: 1px 4px; margin-top: 2px;")
         self._sync_species_all_box()
-        self.selection_changed.emit(set(self._selected_keys))
+        self.selection_changed.emit(set(self._selected_keys), self._bracket_left, self._bracket_right)
 
     def _clear_selection(self):
         self._selected_keys.clear()

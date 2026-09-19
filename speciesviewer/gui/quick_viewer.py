@@ -31,6 +31,9 @@ start/end, exactly like the grid and the Large Image View: resolved locally
 selection_changed, so the grid's EXISTING selection highlighting and
 bulk-action menu (Set exposure/rating/species for N pictures) just work on
 whatever range you marked here — no new UI, reuses the grid's own handler.
+The caller seeds `initial_brackets` from its own [ / ] state and adopts
+whatever this view reports back, so a range can be opened in the grid and
+closed here, or vice versa.
 
 Remembers each picture's own zoom + pan (per key, this session only) and
 restores it exactly on return. _FullResView's own default — keep the current
@@ -56,9 +59,13 @@ from gui.preview_extract import extract_preview_bytes
 class QuickViewer(QDialog):
     navigated = pyqtSignal(str)   # key last shown — the caller moves its cursor here
     edited = pyqtSignal(set)      # keys whose rating/colour changed — caller repaints them
-    selection_changed = pyqtSignal(set)   # a [ / ] range was marked — caller adopts it
+    # keys, bracket_left, bracket_right — a [ / ] range was marked, caller
+    # adopts both the resulting selection and the brackets themselves, so the
+    # grid, Quick Viewer and Large Image View all share one [ / ] administration.
+    selection_changed = pyqtSignal(set, object, object)
 
-    def __init__(self, parent, collection, keys, index: int):
+    def __init__(self, parent, collection, keys, index: int,
+                 initial_brackets: tuple | None = None):
         super().__init__(parent)
         self._collection = collection
         self._keys = list(keys)
@@ -66,8 +73,7 @@ class QuickViewer(QDialog):
         self._cur_key = None
         self._cur_ev = 0.0
         self._edited: set[str] = set()
-        self._bracket_left: str | None = None
-        self._bracket_right: str | None = None
+        self._bracket_left, self._bracket_right = initial_brackets if initial_brackets else (None, None)
         self._view_state: dict[str, tuple] = {}   # key -> (scale, hscroll, vscroll)
 
         self.setWindowFlag(Qt.WindowType.Window, True)
@@ -268,11 +274,13 @@ class QuickViewer(QDialog):
             return
         if k == Qt.Key.Key_BracketLeft and self._keys:
             self._bracket_left = self._keys[self._index]
-            self.selection_changed.emit(self._selection_from_brackets())
+            self.selection_changed.emit(
+                self._selection_from_brackets(), self._bracket_left, self._bracket_right)
             return
         if k == Qt.Key.Key_BracketRight and self._keys:
             self._bracket_right = self._keys[self._index]
-            self.selection_changed.emit(self._selection_from_brackets())
+            self.selection_changed.emit(
+                self._selection_from_brackets(), self._bracket_left, self._bracket_right)
             return
         # Colour / star keys — same handler the grid uses: write then advance.
         from gui.viewer_keys import handle_cull_key

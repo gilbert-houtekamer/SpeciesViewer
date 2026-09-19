@@ -3276,7 +3276,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             return
         dlg = LargeImageView(self, self._collection, keys, keys.index(upn_key),
                              settings_key=self._geo_key, auto_advance=True,
-                             initial_selection=set(self._selected_keys))
+                             initial_selection=set(self._selected_keys),
+                             initial_brackets=(self._bracket_left, self._bracket_right))
         dlg.picture_changed.connect(self._on_large_view_changed)
         dlg.picture_image_changed.connect(self._on_large_view_image_changed)
         dlg.picture_navigated.connect(self._on_large_view_navigated)
@@ -3326,10 +3327,13 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             card.set_cursor_focus(True)
             self._scroll.ensureWidgetVisible(card)
 
-    def _on_large_view_selection_changed(self, keys: set):
+    def _on_large_view_selection_changed(self, keys: set, bracket_left=None, bracket_right=None):
+        # Adopt the Large Image View's [ / ] state too, not just the resulting
+        # selection — otherwise a range opened there and continued back in the
+        # grid would lose its open bracket.
         self._selected_keys = keys
-        self._bracket_left = None
-        self._bracket_right = None
+        self._bracket_left = bracket_left
+        self._bracket_right = bracket_right
         self._update_selection_display()
 
     # ── Multi-select ────────────────────────────────────────────────────────
@@ -3966,10 +3970,9 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             event.accept()
             return
         k = event.key()
-        if k == Qt.Key.Key_BracketLeft:          # [ — start a NEW selection here
+        if k == Qt.Key.Key_BracketLeft:          # [ — set/move left bracket at cursor
             if self._last_clicked_key:
                 self._bracket_left = self._last_clicked_key
-                self._bracket_right = None       # drop any stale right edge
                 self._selected_keys = self._selection_from_brackets()
                 self._update_selection_display()
         elif k == Qt.Key.Key_BracketRight:       # ] — set right bracket at cursor
