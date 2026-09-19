@@ -18,12 +18,12 @@ import os
 
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
-    QPushButton, QCompleter, QFrame, QWidget, QMenu, QMessageBox, QSizePolicy)
+    QPushButton, QCompleter, QFrame, QWidget, QMenu, QMessageBox, QSizePolicy, QCheckBox)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QCursor
 
 from engine.speciesclassification import SpeciesClassification, Level
-from utils.config import _config
+from utils.config import _config, get_setting, set_setting
 from utils.gui_config import get_cache_gui_section, update_cache_gui_section
 from gui import theme
 
@@ -846,21 +846,29 @@ class CullingSpeciesWidget(QWidget):
         # exactly what's in the field. "Check online" and the resolution feedback
         # below it also act on this typed name only.
         self.field = QLineEdit(name_only)
-        if sc is not None:
-            completer = QCompleter(species_name_candidates(sc), self)
-            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-            completer.setFilterMode(Qt.MatchFlag.MatchContains)
-            completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
-            self.field.setCompleter(completer)
-            self._completer = completer
-        else:
-            self._completer = None
+        self._completer = None
 
         entry_row = QHBoxLayout()
         entry_row.addWidget(self.field, 1)
+        # Shared setting with the pipeline's species editor (species_editor.py) —
+        # one user preference, same key, so it doesn't reset between the two
+        # dialogs. Narrows the completer to species already on THIS trip instead
+        # of the ~30k full reference collection; useful once a trip has a few
+        # days behind it, so off by default on a brand-new trip.
+        self._trip_only_check = QCheckBox("trip names")
+        self._trip_only_check.setToolTip(
+            "Only suggest species already recorded on this trip, instead of "
+            "the full species reference list. Culling runs before this day is "
+            "read, so its own pictures aren't counted yet — every other day "
+            "already committed or in review is.")
+        self._trip_only_check.setChecked(
+            get_setting("Species", "completer_trip_only", fallback="no") == "yes")
+        self._trip_only_check.toggled.connect(self._on_trip_only_toggled)
+        entry_row.addWidget(self._trip_only_check)
         self.ok_btn = QPushButton("Set species")
         entry_row.addWidget(self.ok_btn)
         layout.addLayout(entry_row)
+        self._attach_completer()
 
         self.feedback = QLabel("")
         self.feedback.setWordWrap(True)
@@ -938,6 +946,27 @@ class CullingSpeciesWidget(QWidget):
         # and a focused field would swallow them on every rebuild.
         if not embedded:
             self.field.setFocus()
+
+    def _attach_completer(self):
+        """(Re)build the field's contains-match auto-complete popup — the full
+        NL/EN/Sci reference collection, or (checkbox on) just the species
+        already known on this trip. No-op when no species collection loaded."""
+        sc = self._sc
+        if sc is None:
+            self._completer = None
+            return
+        names = trip_species_names() if self._trip_only_check.isChecked() \
+            else species_name_candidates(sc)
+        completer = QCompleter(names, self)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self.field.setCompleter(completer)
+        self._completer = completer
+
+    def _on_trip_only_toggled(self, checked: bool):
+        set_setting("Species", "completer_trip_only", "yes" if checked else "no")
+        self._attach_completer()
 
     def _build_recent_buttons(self):
         """(Re)fill the recent-species grid from the persisted list. Two columns,
@@ -1085,11 +1114,7 @@ class CullingSpeciesWidget(QWidget):
             return None
         if not sci:
             return None
-        if self._completer is not None:
-            try:
-                self._completer.model().setStringList(species_name_candidates(sc))
-            except Exception:
-                pass
+        self._attach_completer()   # refresh so the just-learned name matches too
         # Saved here, but as an APPEND of just this species and its missing
         # ancestors — not the whole 2 MB rewrite this used to do per species,
         # in Dropbox. Naming a species the collection did not know is a
