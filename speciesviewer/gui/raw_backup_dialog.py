@@ -167,6 +167,14 @@ class RawBackupDialog(QDialog):
         btns.addWidget(self._close_btn)
         outer.addLayout(btns)
 
+        # Counting "already copied" files at the destination for every day
+        # can take a moment. Show the window with a status message and force
+        # it to actually paint before running the (blocking) scan — a
+        # deferred QTimer.singleShot(0, ...) call still raced the first paint
+        # and lost, leaving a blank window the whole time.
+        self._summary.setText("Collecting picture counts from all days…")
+        self.show()
+        QApplication.processEvents()
         self._reload()
 
     # ── list ──────────────────────────────────────────────────────────────

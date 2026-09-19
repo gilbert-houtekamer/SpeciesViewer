@@ -22,9 +22,10 @@ from pathlib import Path
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPainter, QPen, QBrush
 from PyQt6.QtWidgets import (
-    QAbstractItemView, QDialog, QDialogButtonBox, QFileDialog, QGroupBox,
-    QHBoxLayout, QHeaderView, QLabel, QMessageBox, QPushButton, QSizePolicy,
-    QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
+    QAbstractItemView, QApplication, QDialog, QDialogButtonBox, QFileDialog,
+    QGroupBox, QHBoxLayout, QHeaderView, QLabel, QMessageBox, QPushButton,
+    QSizePolicy, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout,
+    QWidget,
 )
 
 _COLORS = [
@@ -105,12 +106,23 @@ class ManageCachesDialog(QDialog):
         self.setWindowTitle("Manage Caches")
         self.setMinimumWidth(680)
         self._build_ui()
+        # Scanning every cache (and every website's upload list) can take a
+        # moment. Show the window with a status message and force it to
+        # actually paint before running the (blocking) scan — a deferred
+        # QTimer.singleShot(0, ...) call still raced the first paint and lost,
+        # leaving a blank white window the whole time.
+        self._status_lbl.setText("Collecting cache statistics…")
+        self.show()
+        QApplication.processEvents()
         self._refresh()
 
     # ── UI construction ───────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
         outer = QVBoxLayout(self)
+        self._status_lbl = QLabel("")
+        self._status_lbl.setStyleSheet("color: grey; font-style: italic;")
+        outer.addWidget(self._status_lbl)
         self._tabs = QTabWidget()
         outer.addWidget(self._tabs)
 
@@ -528,6 +540,7 @@ class ManageCachesDialog(QDialog):
         self._pie.set_values(pie_sizes)
         self._clear_all_btn.setEnabled(any(r["_total"] > 0 for r in self._rows))
         self._refresh_uploads()
+        self._status_lbl.setText("")
 
     # ── clear actions ─────────────────────────────────────────────────────────
 

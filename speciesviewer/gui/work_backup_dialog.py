@@ -166,6 +166,14 @@ class BackupWorkDialog(QDialog):
         btns.addWidget(self._close_btn)
         outer.addLayout(btns)
 
+        # Comparing every day's folder against its ZIP manifest can take a
+        # moment for a long trip. Show the window with a status message and
+        # force it to actually paint before running the (blocking) scan — a
+        # deferred QTimer.singleShot(0, ...) call still raced the first paint
+        # and lost, leaving a blank window the whole time.
+        self._summary.setText("Collecting metadata from all days…")
+        self.show()
+        QApplication.processEvents()
         self._reload()
 
     # ── list ──────────────────────────────────────────────────────────────
