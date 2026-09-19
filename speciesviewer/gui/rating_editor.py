@@ -1653,6 +1653,15 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         _st = restore_window(self, self._geo_key, default_size=(1000, 720))
         if _st["cols"]:
             self.columns = max(1, min(8, _st["cols"]))
+        # Cap width at 95% of this screen — a persisted geometry from a wider
+        # monitor could otherwise leave the dialog uncomfortably wide on a
+        # laptop; restore_window's own clamp only guarantees it fits on
+        # SOME screen, not that it's a sane fraction of this one.
+        _scr = QGuiApplication.screenAt(self.pos()) or QGuiApplication.primaryScreen()
+        if _scr is not None:
+            _max_w = int(_scr.availableGeometry().width() * 0.95)
+            if self.width() > _max_w:
+                self.resize(_max_w, self.height())
         self._order: list[str] = []           # full display-order key list
         self._pool: list[PictureCard] = []     # reusable card widgets
         self._bound: dict[str, PictureCard] = {}  # key -> pool card, on-screen only
@@ -1843,7 +1852,11 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         if not self._album_mode:
             self._refresh_btn.hide()
             self._regen_btn.hide()
-        top.addStretch()
+        # Was addStretch() — split the toolbar into a left-justified and a
+        # right-justified group, which reads as a stray gap once the dialog
+        # is capped to a sane width instead of stretching across a wide
+        # screen. A plain spacing keeps every control in one reading order.
+        top.addSpacing(12)
 
         self._jpg_btn = QPushButton("JPG only")
         self._jpg_btn.setCheckable(True)
