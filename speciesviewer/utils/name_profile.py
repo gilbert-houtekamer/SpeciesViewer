@@ -13,8 +13,12 @@ The chains are chosen so "English / …" never silently falls back to Dutch — 
 American reader lands on English/Scientific — while an African bird with no
 Dutch name simply drops the empty line.
 
-Precedence: a per-trip / per-virttrip override wins over the global default (set
-in Global Settings). A viewer's own combo is a per-session override on top.
+One setting, global (Global Settings ▸ Preferred names), used identically by
+every viewer. There used to be a per-trip/per-virttrip override on top of it,
+set once at trip creation — dropped because it went stale the moment you
+changed your global preference later, and half the viewers ignored it anyway
+(it never touched the website, so no real per-trip need was actually being
+served by keeping it).
 
 Scope: this governs the DISPLAY name only. It does NOT touch the website output,
 species-name suggestions, or any editing — purely which language reads out. The
@@ -94,14 +98,10 @@ def set_global_profile(key: str) -> None:
         set_setting("Global", "names_profile", key)
 
 
-def effective_profile(override: str | None = None) -> str:
-    """Resolve the profile to use: an explicit override (a trip/virttrip setting
-    or a per-view combo choice) wins; an empty / 'default' / unknown override
-    falls through to the global default."""
-    o = (override or "").strip()
-    o = _ALIASES.get(o, o)
-    if o and o != "default" and o in NAME_PROFILES:
-        return o
+def effective_profile() -> str:
+    """The profile every viewer should use — currently just the global
+    default. Kept as its own name (rather than every caller reading
+    global_profile() directly) in case a real per-scope need shows up again."""
     return global_profile()
 
 

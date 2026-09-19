@@ -67,7 +67,6 @@ def generate_virttrip_ini(
     message_en: str,
     logger,
     source_trip_id: str = "",
-    name_profile: str = "",
 ):
     ini_path = os.path.join(trip_root, "virttrip.ini")
 
@@ -101,7 +100,6 @@ web_slug = {web_slug}
 source_trip_id = {source_trip_id}
 fromdate = {from_date}
 todate = {to_date}
-name_profile = {name_profile}
 oneblog = day
 
 [trip_text]
@@ -684,21 +682,6 @@ class VirtualTripCreationDialog(QDialog):
         from gui.range_check_view import check_range_row
         layout2.addLayout(check_range_row(self, self.date_field, "album"))
 
-        layout2.addWidget(HTMLLabel(
-            "<p><b>Preferred names</b><br>"
-            "Which of Dutch / English / Scientific reads out as the label under each "
-            "picture in this album's viewers (a fallback chain). Leave on "
-            "<i>Default</i> to follow the global setting.</p>"))
-        from utils.name_profile import profile_keys, profile_label
-        self.name_profile_combo = QComboBox()
-        self.name_profile_combo.addItem("Default (global setting)", "")
-        for _k in profile_keys():
-            self.name_profile_combo.addItem(profile_label(_k), _k)
-        _np = (trip_data.get("name_profile") or "").strip()
-        _npi = self.name_profile_combo.findData(_np)
-        self.name_profile_combo.setCurrentIndex(_npi if _npi >= 0 else 0)
-        layout2.addWidget(self.name_profile_combo)
-
         tabs.addTab(tab2, "Images && Dates")
 
         # ── Tab 3: Trip Text ───────────────────────────────────────────────────
@@ -1111,7 +1094,6 @@ class VirtualTripCreationDialog(QDialog):
             self.title_en_field.get_text(),
             self.message_en_field.get_text(),
             self.logger,
-            name_profile=self.name_profile_combo.currentData() or "",
         )
 
 

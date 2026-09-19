@@ -234,11 +234,9 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
     if not file_list:
         return
     # The species names per JPG let the caption follow the name-language profile
-    # instead of the metadata-less viewer's scientific folder name. The profile is
-    # this virtual trip's override (virttrip.ini) or the global default.
+    # instead of the metadata-less viewer's scientific folder name — the global
+    # default, same as every other viewer.
     from utils.name_profile import effective_profile
-    from utils.virttrip_config import read_virttrip_ini
-    _vt_override = ((read_virttrip_ini(str(virttrip_root)) or {}).get("name_profile") or "").strip()
     # Read-only for rating/colour/species/files — these are the master's pictures.
     # The one exception is geotagging: "Get GPS from location" is how a picture that
     # only ever had a written place ("Helgoland") gets a coordinate at all.
@@ -259,7 +257,7 @@ def _open_day_viewer(parent, day_dir: Path, jpeg_only: bool, virttrip_root: Path
         allow_edit=parent._master_is_editable(),
         crop_hints=crop_hints,
         name_hints=name_hints,
-        name_profile=effective_profile(_vt_override),
+        name_profile=effective_profile(),
     )
     # Bind the master DB + this day's rows so the right-click card menu offers the full
     # master surface (sex/age/plumage, pin best-JPG, delete-JPG, move-to-species, add

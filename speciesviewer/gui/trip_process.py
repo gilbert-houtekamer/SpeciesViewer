@@ -34,7 +34,6 @@ def generate_trip_ini(
     message_en: str,
     logger,
     picture_root_abs: str = "",
-    name_profile: str = "",
 ):
     import os
     from datetime import datetime
@@ -86,7 +85,6 @@ web_slug = {web_slug}
 picture_root = {picture_root}
 fromdate = {from_date}
 todate = {to_date}
-name_profile = {name_profile}
 oneblog = day
 
 [trip_text]
@@ -259,23 +257,6 @@ class TripCreationDialog(QDialog):
         layout2.addWidget(self.date_field)
         from gui.range_check_view import check_range_row
         layout2.addLayout(check_range_row(self, self.date_field, "trip"))
-
-        info_label24 = HTMLLabel(
-            "<p><b>Preferred names</b><br>"
-            "Which of Dutch / English / Scientific reads out as the label under each "
-            "picture in this trip's viewers (a fallback chain). Leave on "
-            "<i>Default</i> to follow the global setting — handy to pick "
-            "<i>English / Scientific</i> for a trip outside Europe.</p>")
-        layout2.addWidget(info_label24)
-        from utils.name_profile import profile_keys, profile_label
-        self.name_profile_combo = QComboBox()
-        self.name_profile_combo.addItem("Default (global setting)", "")
-        for _k in profile_keys():
-            self.name_profile_combo.addItem(profile_label(_k), _k)
-        _np = (trip_data.get("name_profile") or "").strip()
-        _npi = self.name_profile_combo.findData(_np)
-        self.name_profile_combo.setCurrentIndex(_npi if _npi >= 0 else 0)
-        layout2.addWidget(self.name_profile_combo)
 
         tabs.addTab(tab2, "Images && Dates")
 
@@ -631,7 +612,6 @@ class TripCreationDialog(QDialog):
             message_en,
             self.logger,
             picture_root_abs=picture_root_abs,
-            name_profile=self.name_profile_combo.currentData() or "",
         )
         return True
 

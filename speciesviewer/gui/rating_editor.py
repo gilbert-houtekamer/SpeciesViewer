@@ -1669,11 +1669,10 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._pool_w = 0     # card width the pool cards are currently fitted to
         self._first_row = -1  # first grid row currently bound (scroll cache)
         self._jpg_only = True
-        # Which name-language profile the captions use. Starts at the effective
-        # default (a per-trip override wins over the global setting); the combo is
-        # a per-session override on top.
+        # Which name-language profile the captions use — the global default,
+        # same as every other viewer (no per-trip override; see name_profile.py).
         from utils.name_profile import effective_profile
-        self._species_lang = effective_profile(self._trip_name_profile_override())
+        self._species_lang = effective_profile()
         # One async image loader for the dialog's lifetime; each collection
         # shares it so cancel_pending_loads() always targets the live loader.
         self._loader = AsyncImageLoader(self)
@@ -2675,28 +2674,6 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         name = f" · {self._album_name}" if self._album_name else ""
         self.setWindowTitle(
             f"{self._scope_label} Species Viewer{name} · {source_note}")
-
-    def _trip_name_profile_override(self) -> str | None:
-        """The per-trip / per-virttrip name-profile override (from trip.ini's
-        name_profile), or None to fall back to the global default. Set in Create
-        Trip ▸ Images & dates."""
-        root = str(getattr(self, "_trip_root", "") or "")
-        if not root:
-            return None
-        from utils.name_profile import NAME_PROFILES
-        key = ""
-        try:
-            from utils.trip_config import read_trip_ini
-            key = ((read_trip_ini(root) or {}).get("name_profile") or "").strip()
-        except Exception:
-            key = ""
-        if not key:                       # a virtual trip has virttrip.ini instead
-            try:
-                from utils.virttrip_config import read_virttrip_ini
-                key = ((read_virttrip_ini(root) or {}).get("name_profile") or "").strip()
-            except Exception:
-                key = ""
-        return key if key in NAME_PROFILES else None
 
     def _species_name(self, upn_row: dict) -> str:
         from utils.name_profile import name_for

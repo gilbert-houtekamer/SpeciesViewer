@@ -107,8 +107,6 @@ def read_trip_ini(trip_root: str):
         # Lifecycle milestone, stamped by Retire Trip to Album; read by the
         # menu-gating predicates (Delete Trip enables only once it is set).
         "retired_to_album": parser.get("trip_config", "retired_to_album", fallback=""),
-        # Per-trip name-language override (empty = follow the global default)
-        "name_profile": parser.get("trip_config", "name_profile", fallback=""),
         "title_nl": parser.get("trip_text", "title_nl", fallback=""),
         "message_nl": parser.get("trip_text", "message_nl", fallback=""),
         "title_en": parser.get("trip_text", "title_en", fallback=""),
