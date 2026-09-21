@@ -139,6 +139,127 @@ def verify_trip(identity_zip, trip_root) -> tuple[bool, str, dict]:
     return True, "", info
 
 
+def restore_trip_identity(identity_zip, trip_root, logger_=None) -> dict:
+    """Put the card's trip ZIP back INTO the trip: species collection, lifer
+    baseline, translation cache.
+
+    Until this existed the identity ZIP was only ever READ — `verify_trip`
+    checks the trip id in its manifest and nothing unpacked it — so coming home
+    silently threw away every species name the trip had learned. That is not
+    recoverable by re-running: the pipeline's only GBIF call is
+    `name_backbone(scientificName=…)`, which matches SCIENTIFIC names, so an
+    English or Dutch name typed on the trip ("crab-eating fox") can never be
+    resolved again once the collection holding it is gone.
+
+    MERGE, never replace, and the CARD wins on conflict — it is the machine the
+    work was done on. The baseline is put back only when the trip has none: it
+    is written once and must never be regenerated from a partial master.
+
+    Best-effort per part, and it never raises. The day ZIPs are the
+    irreplaceable half of a restore; a species list that failed to merge must
+    not stop them going in.
+    """
+    log = logger_ or logger
+    out = {"collection": None, "baseline": "", "transcache": None, "errors": []}
+    if identity_zip is None or not trip_root:
+        out["errors"].append("no trip identity ZIP on the card")
+        return out
+    from engine import trip_transfer
+
+    # Three independent parts: one failing must not cost the other two.
+    try:
+        out["collection"] = trip_transfer.merge_species_collection(
+            str(identity_zip), str(trip_root))
+        c = out["collection"]
+        if c:
+            log.info(f"Restore: species list merged — {c['total']} species "
+                     f"({c['from_zip']} from the card, {c['kept_local']} only "
+                     f"here, {c['overridden']} where the card's version won).")
+    except Exception as e:
+        out["errors"].append(f"species list: {e}")
+        log.warning(f"Restore: could not merge the species list: {e}")
+
+    try:
+        out["baseline"] = trip_transfer.restore_baseline(
+            str(identity_zip), str(trip_root))
+        if out["baseline"] == "restored":
+            log.info("Restore: lifer baseline put back from the card.")
+    except Exception as e:
+        out["errors"].append(f"lifer baseline: {e}")
+        log.warning(f"Restore: could not restore the lifer baseline: {e}")
+
+    try:
+        out["transcache"] = trip_transfer.merge_transcache(
+            str(identity_zip), str(trip_root))
+        t = out["transcache"]
+        if t:
+            log.info(f"Restore: translations merged — {t['added']} added, "
+                     f"{t['updated']} updated, {t['kept_verified']} "
+                     f"hand-verified ones kept.")
+    except Exception as e:
+        out["errors"].append(f"translations: {e}")
+        log.warning(f"Restore: could not merge the translation cache: {e}")
+
+    return out
+
+
+def restore_tracklogs(card_trip_dir, gpslogs_root, logger_=None) -> dict:
+    """Copy the card's `tracklogs/` folder back into the local GPS log folder.
+
+    The mirror of `work_backup.backup_tracklogs`, and the same reasoning: the
+    logs live in one folder on one machine and nowhere else, and every day not
+    yet geotagged depends on them. Copies only what is missing or different on
+    size+mtime, and NEVER deletes or overwrites with an older file of the same
+    size — a tracklog is append-only in practice, so same size + same mtime
+    means same file.
+
+    Returns `reason` when it did nothing, so the caller can say WHY rather than
+    reporting a silent zero.
+    """
+    import shutil
+    log = logger_ or logger
+    out = {"copied": 0, "skipped": 0, "bytes": 0, "reason": "", "found": 0}
+    src_root = Path(card_trip_dir) / wb.TRACKLOG_SUBDIR
+    if not src_root.is_dir():
+        out["reason"] = "the card holds no tracklogs folder"
+        return out
+    found = [p for p in sorted(src_root.rglob("*"))
+             if p.is_file() and p.suffix.lower() in wb.TRACKLOG_EXTS]
+    out["found"] = len(found)
+    if not found:
+        out["reason"] = f"no tracklog files in {src_root}"
+        return out
+    if not gpslogs_root:
+        # Deliberately NOT invented a destination: the GPS log folder is a
+        # machine-wide setting, and dropping tracklogs somewhere else would
+        # leave two half-folders. Name the card path so they can be taken by
+        # hand, and say what to set.
+        out["reason"] = (f"no GPS log folder is configured on this machine, so "
+                         f"{len(found)} tracklog(s) were left on the card at "
+                         f"{src_root}")
+        return out
+    dest_root = Path(gpslogs_root)
+    for src in found:
+        target = dest_root / src.relative_to(src_root)
+        try:
+            st = src.stat()
+            if target.exists():
+                ts = target.stat()
+                if ts.st_size == st.st_size and int(ts.st_mtime) == int(st.st_mtime):
+                    out["skipped"] += 1
+                    continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, target)
+            out["copied"] += 1
+            out["bytes"] += st.st_size
+        except OSError as e:
+            log.warning(f"Restore: could not copy tracklog {src.name}: {e}")
+    if out["copied"]:
+        log.info(f"Restore: {out['copied']} tracklog(s) copied back, "
+                 f"{out['bytes']/1024:.0f} KB.")
+    return out
+
+
 # ── planning a day ────────────────────────────────────────────────────────────
 
 def plan_day(zip_path, day_dir) -> dict:

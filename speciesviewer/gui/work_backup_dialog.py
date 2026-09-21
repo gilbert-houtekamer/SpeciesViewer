@@ -319,8 +319,15 @@ class BackupWorkDialog(QDialog):
             # but not the lifer verdicts.
             msg += f" ⚠️ Trip identity NOT saved — {ident.get('reason', 'no trip')}."
         tl = out.get("tracklogs") or {}
-        if tl.get("copied"):
-            msg += f" {tl['copied']} tracklog(s) copied."
+        if tl.get("copied") or tl.get("skipped"):
+            msg += (f" {tl['copied']} tracklog(s) copied"
+                    + (f", {tl['skipped']} already on the card." if tl.get("skipped")
+                       else "."))
+        else:
+            # Never silent: the GPS logs live in one folder on one machine, and
+            # a backup that skipped them while reporting success is how they get
+            # lost.
+            msg += f" ⚠️ No tracklogs backed up — {tl.get('reason', 'none found')}."
         self._reload()
         if out.get("failed") or out.get("errors"):
             detail = "\n".join(out.get("errors", [])[:5])

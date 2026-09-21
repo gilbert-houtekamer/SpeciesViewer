@@ -619,13 +619,21 @@ def backup_tracklogs(gpslogs_root, dest_trip_dir, logger_=None) -> dict:
 
     Only files that changed are re-copied, on size + mtime, so a nightly run
     over an unchanged folder does nothing.
+
+    `reason` says why nothing was copied. It used to return a silent zero when
+    no GPS log folder was configured, and the dialog only ever reported a
+    non-zero count — so on a laptop without a [gpslogs] section the tracklogs
+    were left behind and the backup still said it had succeeded.
     """
     log = logger_ or logger
-    out = {"copied": 0, "skipped": 0, "bytes": 0}
+    out = {"copied": 0, "skipped": 0, "bytes": 0, "reason": "", "found": 0}
     if not gpslogs_root:
+        out["reason"] = ("no GPS log folder is configured on this machine — set "
+                         "[gpslogs] rootdirectory so the tracklogs travel too")
         return out
     src_root = Path(gpslogs_root)
     if not src_root.is_dir():
+        out["reason"] = f"the GPS log folder {src_root} does not exist"
         return out
     dest = Path(dest_trip_dir) / TRACKLOG_SUBDIR
     for src in sorted(src_root.rglob("*")):
@@ -645,9 +653,12 @@ def backup_tracklogs(gpslogs_root, dest_trip_dir, logger_=None) -> dict:
             out["bytes"] += st.st_size
         except OSError as e:
             log.warning(f"Backup: could not copy tracklog {src.name}: {e}")
+    out["found"] = out["copied"] + out["skipped"]
     if out["copied"]:
         log.info(f"Backed up {out['copied']} tracklog(s), "
                  f"{out['bytes']/1024:.0f} KB.")
+    elif not out["found"]:
+        out["reason"] = f"no tracklog files found in {src_root}"
     return out
 
 

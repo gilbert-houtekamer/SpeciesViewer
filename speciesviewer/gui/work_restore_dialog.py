@@ -430,6 +430,12 @@ class RestoreWorkDialog(QDialog):
                 for k in ("written", "identical", "kept"):
                     totals[k] += res[k]
                 totals["days"] += 1
+            # The identity ZIP has been verified but never unpacked. Merge it
+            # now, with the days: the species list is the half of the trip that
+            # NOTHING can rediscover — a vernacular name typed on the trip has
+            # no way back once the collection holding it is gone.
+            ident = wr.restore_trip_identity(self._trip["identity"], self._trip_root)
+            tracks = wr.restore_tracklogs(self._trip["path"], _gpslogs_root())
         except Exception as e:
             QApplication.restoreOverrideCursor()
             QMessageBox.warning(self, "Restore work from a card",
@@ -455,7 +461,9 @@ class RestoreWorkDialog(QDialog):
             self, "Restore work from a card",
             f"{totals['days']} day(s): {totals['written']} file(s) written, "
             f"{totals['identical']} already identical (left untouched), "
-            f"{totals['kept']} kept as they were.\n\n{cull_line}")
+            f"{totals['kept']} kept as they were."
+            f"\n\n{_identity_line(ident)}\n{_tracklog_line(tracks)}"
+            f"\n\n{cull_line}")
 
     def _check_pictures(self):
         """Read-only comparison of the pictures on disk against the backup."""
@@ -494,6 +502,49 @@ class RestoreWorkDialog(QDialog):
             ("Some days could not be compared — see the details.\n\n" if refused else "")
             + "Nothing was changed. Removing the culled pictures is not done here.")
         box.exec()
+
+
+def _gpslogs_root():
+    """Where this machine keeps its GPS tracklogs, or "" when unset. Read here
+    rather than passed in: the restore dialog is opened with a trip, and the
+    log folder is machine-wide state that has nothing to do with which trip."""
+    try:
+        from utils.config import get_gpslogs_root
+        return get_gpslogs_root() or ""
+    except Exception:
+        return ""
+
+
+def _identity_line(ident):
+    """One sentence on what came back out of the trip ZIP."""
+    if not ident:
+        return "Trip identity: nothing to merge."
+    c = ident.get("collection")
+    bits = []
+    if c:
+        bits.append(f"species list merged to {c['total']} species "
+                    f"({c['kept_local']} kept from this machine"
+                    + (f", {c['overridden']} taken from the card"
+                       if c["overridden"] else "") + ")")
+    if ident.get("baseline") == "restored":
+        bits.append("lifer baseline restored")
+    t = ident.get("transcache")
+    if t and (t["added"] or t["updated"]):
+        bits.append(f"{t['added'] + t['updated']} translation(s) merged")
+    line = "Trip identity: " + ("; ".join(bits) if bits
+                                else "nothing new to merge")
+    if ident.get("errors"):
+        line += f" — ⚠️ {'; '.join(ident['errors'])}"
+    return line + "."
+
+
+def _tracklog_line(tracks):
+    if not tracks:
+        return "GPS tracklogs: nothing to restore."
+    if tracks.get("copied") or tracks.get("skipped"):
+        return (f"GPS tracklogs: {tracks['copied']} copied back, "
+                f"{tracks['skipped']} already there.")
+    return f"GPS tracklogs: ⚠️ {tracks.get('reason', 'none found')}."
 
 
 def plan_zip(trip_entry, day):
