@@ -3752,9 +3752,23 @@ class CreateBlogDialog(QDialog):
 
 
 class BaseTripModuleDialog(QDialog):
-    def __init__(self, parent, menu_spec, title, info_text, subdirectory=True):
-        super().__init__(parent)
+    def __init__(self, parent, menu_spec, title, info_text, subdirectory=True,
+                 independent=False):
+        # independent=True makes this a window in its own right: minimize and
+        # maximize buttons, its own taskbar entry, and no Qt parent — so it does
+        # NOT float above the main window and can stay open next to the Trip
+        # overview. The price is lifetime: with no Qt parent, the CALLER must
+        # hold a reference or Python collects the dialog the moment show()
+        # returns. passed_parent still points at the main window, which is what
+        # BatchModuleRunner and the overview refreshes actually need.
+        super().__init__(None if independent else parent)
         self.setWindowTitle(title)
+        if independent:
+            self.setWindowFlags(Qt.WindowType.Window
+                                | Qt.WindowType.WindowMinimizeButtonHint
+                                | Qt.WindowType.WindowMaximizeButtonHint
+                                | Qt.WindowType.WindowCloseButtonHint)
+            self.setSizeGripEnabled(True)
         self.resize(600, 250)
 
         self.logger = logging.getLogger("speciesviewer")
@@ -3908,7 +3922,8 @@ class CountSpeciesDialog(BaseTripModuleDialog):
             menu_spec,
             title="Count Species",
             info_text="Count the different number of species picture in the trip.",
-            subdirectory=False
+            subdirectory=False,
+            independent=True,
         )
 
         screen = self.screen() or QGuiApplication.primaryScreen()

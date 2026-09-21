@@ -38,6 +38,7 @@ total_species = 0
 total_new = 0
 topics_skipped = 0
 jpgneeded = 0
+legacy_days = []         # days summarized before the #Keep column existed
 reference_names = set()  # lowercase ScientificNames that are already in the master collection
 
 # read parameters, but will be overwritten probably
@@ -56,7 +57,7 @@ def scan_files(directory, search_string, report, sc=None):
     that must be visible rather than merely plausible.
     """
     global topics_skipped
-    print(f"File stats GPS and location data:\n\nFile           Count  NoGPS   Noloc  NoCity  NoSpec    Good     Bad  NoColor", file=report)
+    print(f"File stats GPS and location data:\n\nFile           Count  NoGPS   Noloc  NoCity  NoSpec    Good     Bad Unrated", file=report)
     days_total = 0
     days_missing = []
     records = sc.sc_dict if sc is not None else {}
@@ -110,10 +111,16 @@ def scan_files(directory, search_string, report, sc=None):
                             # get species info
                             for subsequent_line in lines[i+3:]:
                                 if subsequent_line.strip():  # Check if the line is non-empty
-                                    # numbers fixed
-                                    numbers = re.findall(r'(\d+)', subsequent_line[0:30])
-                                    # names not in same way
-                                    tokens = re.split(r'[()/]', subsequent_line[31:])
+                                    # Split on the boundary between the numeric
+                                    # columns and the name, rather than on fixed
+                                    # offsets: #Keep was added at the end of the
+                                    # numeric block, so a summary written before
+                                    # that change simply yields one number less.
+                                    m = re.match(r'\s*((?:\d+\s+)+)(\S.*)$', subsequent_line)
+                                    if not m:
+                                        continue
+                                    numbers = m.group(1).split()
+                                    tokens = re.split(r'[()/]', m.group(2))
                                     # Lowercased throughout: the taxonomy lookup
                                     # tests the lowered name, so the dict must be
                                     # keyed the same way or a capitalised name in
@@ -152,6 +159,7 @@ def scanSpecies(sc, speciesname, report):
                 has_jpg = False
                 if sc.sc_dict[sc.sc_dict[species['Up']]['Up']]['Up'] != 'aves' and not subheaderdone:
                     print(f"\nOther animals and plants:\n", file=report)
+                    print(column_header(), file=report)
                     counter = 1
                     newcounter = 1
                     subheaderdone = True
@@ -174,6 +182,7 @@ def scanSpecies(sc, speciesname, report):
                 # whole trip and can be read back without column arithmetic.
                 total_species += 1
                 seen = 0
+                pics = 0
                 # run by file for which we have data
                 days_line = ""
                 for header in headers:
@@ -181,8 +190,15 @@ def scanSpecies(sc, speciesname, report):
                     summary = ''
                     for info in result_dict[scientific]:
                         if info[0] == header:
-                    # if header in result_dict[species['ScientificName']][0]:
-                    #     info = result_dict[species['ScientificName']][header]
+                            # Pics: #Keep (Good + Unrated) when the day summary
+                            # has that column; otherwise #Raw, which also counts
+                            # the Blue/Purple ones. Say which, below the table.
+                            if len(info[1]) > 5:
+                                pics += int(info[1][5])
+                            else:
+                                pics += int(info[1][0])
+                                if info[0] not in legacy_days:
+                                    legacy_days.append(info[0])
                             if info[1][1] > '0':        # JPGs
                                 has_jpg = True
                                 if info[1][2] > '0':    # best rating
@@ -204,7 +220,7 @@ def scanSpecies(sc, speciesname, report):
                     else:
                         days_line += '.  '
 
-                data_line += f"{days_line} {seen:3} "               
+                data_line += f"{days_line}{seen:4}{pics:7} "               
                 if best_rating > 0:
                     data_line += f" {best_rating:3}"
                 elif has_jpg:
@@ -221,20 +237,27 @@ def scanSpecies(sc, speciesname, report):
             scanSpecies(sc, leaf, report)
     return
 
+def column_header():
+    """The column header for the species table. Printed once at the top and
+    again above 'Other animals and plants', which restarts its own numbering."""
+    header_line = ' '.ljust(36+40) + 'New '
+    for header in headers:
+        header_line += header[-2:] + ' '
+    header_line += ' Days   Pics    Best'
+    return header_line
+
 # caller
 def print_headers(sc, report):
     global subheaderdone
     print(f'\n\n', file=report)
     print(f'Legend per day:  F = first day, RAW only (no JPG yet)  x = RAW only (JPG exists on earlier day)', file=report)
     print(f'                 j = JPG exists but unrated            2..5 = best star rating that day', file=report)
-    print(f'Summary:         # = days seen, Best = overall best rating (j = JPG exists but unrated)', file=report)
+    print(f'Summary:         Days = days the species was seen', file=report)
+    print(f'                 Pics = pictures kept over all days (Good + Unrated, i.e. not Blue/Purple)', file=report)
+    print(f'                 Best = overall best rating (j = JPG exists but unrated)', file=report)
     print(f'                 No JPG = new species with no JPG at all yet, only RAW or HEIC\n', file=report)
     counter = 0
-    header_line = ' '.ljust(36+40) + 'New '
-    for header in headers:
-        header_line += header[-2:] + ' '
-    header_line += '    #    Best'
-    print(header_line, file=report)
+    print(column_header(), file=report)
 
     subheaderdone = False
     scanSpecies(sc, 'biota', report)
@@ -244,7 +267,8 @@ def print_headers(sc, report):
 def main(args, config):
     global starttime, SpeciesDebug, reference_names
     global result_dict, headers, counter, newcounter, jpgneeded
-    global total_species, total_new, topics_skipped
+    global total_species, total_new, topics_skipped, legacy_days
+    legacy_days = []
     result_dict = {}
     headers = []
     counter = 1
@@ -364,6 +388,11 @@ def main(args, config):
         # print in order classification
         report.write("\nThe species found below, showing birds first.")
         print_headers(sc, report)
+        if legacy_days:
+            print(f"\nPics is exact except for {', '.join(legacy_days)}: those day "
+                  f"summaries predate the Pics column, so for them every picture is "
+                  f"counted, Blue/Purple included. Re-run Read & Summarize for those "
+                  f"days to make Pics exact.", file=report)
         if jpgneeded:
             print(f"\nThere are {jpgneeded} species that have no JPGs on the first occurrence of that species.", file=report)
         # The machine-readable bottom line, and the one worth reading first.

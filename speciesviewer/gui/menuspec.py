@@ -513,7 +513,18 @@ def build_menu_spec(main_window):
             'after_msg': "✅ Species report will be shown."
         }
     )
-    count_species.callback = lambda: CountSpeciesDialog(main_window, count_species).exec()
+    def _show_count_species():
+        # show(), not exec(): the report window is independent, so the Trip
+        # overview stays clickable and you can chase a day's species errors
+        # with the report still open beside it. main_window keeps the only
+        # reference — the dialog has no Qt parent to keep it alive.
+        dlg = CountSpeciesDialog(main_window, count_species)
+        main_window._count_species_dialog = dlg
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
+
+    count_species.callback = _show_count_species
 
     manage_blogs = MenuSpec(
         callback=lambda: BlogAdminDialog(main_window).exec(),

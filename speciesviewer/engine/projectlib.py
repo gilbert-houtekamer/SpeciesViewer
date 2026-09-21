@@ -1073,12 +1073,17 @@ class Project:
                 else:
                     # species given, make sure we add it to dictionary 
                     if upn['WetSoortNaam'] not in SpeciesJPGCount:
-                        SpeciesJPGCount[upn['WetSoortNaam']] = [0,0,0,0]
-                    pictures, jpgs, starred, yellow_or_red = SpeciesJPGCount[upn['WetSoortNaam']]
+                        SpeciesJPGCount[upn['WetSoortNaam']] = [0,0,0,0,0]
+                    pictures, jpgs, starred, yellow_or_red, keep = SpeciesJPGCount[upn['WetSoortNaam']]
                     if upn['Label'] in ["Red", "Yellow"]: yellow_or_red += 1
                     if upn['BestJPG'] != "": jpgs += 1
                     if upn['Rating'] > starred: starred = upn['Rating'] 
-                    SpeciesJPGCount[upn['WetSoortNaam']] = [pictures+1, jpgs, starred, yellow_or_red]
+                    # #Keep = the pictures this day would survive culling:
+                    # Good (Red/Yellow/Green) + Unrated. Exactly the complement
+                    # of the day's "Duplicate or bad quality" (Blue/Purple)
+                    # count, so the two always add up to #Raw.
+                    if upn['Label'] not in ["Blue", "Purple"]: keep += 1
+                    SpeciesJPGCount[upn['WetSoortNaam']] = [pictures+1, jpgs, starred, yellow_or_red, keep]
             # report
             if processedUPNs:
                 logger.info("")
@@ -1107,11 +1112,11 @@ class Project:
                 # verify if JPGs are present for each species
                 if len(SpeciesJPGCount) > 0:
                     print("\nSpecies specified in this dir:\n", file=sf)
-                    print(f" #Raw  #JPG  Best Color    old Name                             (Engels/Nederlands)", file=sf)
+                    print(f" #Raw  #JPG  Best Color    old  #Keep Name                             (Engels/Nederlands)", file=sf)
                     for species in SpeciesJPGCount:
-                        pictures, jpgcount, starred, yellow_or_red = SpeciesJPGCount[species]
+                        pictures, jpgcount, starred, yellow_or_red, keep = SpeciesJPGCount[species]
                         knownjpg = sp.species_dict[species]['iPicturesWithJPGsCollection']
-                        print(f"{pictures:5} {jpgcount:5} {starred:5} {yellow_or_red:5} {knownjpg:6} {species:32} ({sp.species_dict[species]['EnglishName']} / {sp.species_dict[species]['DutchName']})", file=sf)
+                        print(f"{pictures:5} {jpgcount:5} {starred:5} {yellow_or_red:5} {knownjpg:6} {keep:6} {species:32} ({sp.species_dict[species]['EnglishName']} / {sp.species_dict[species]['DutchName']})", file=sf)
 
         return 0
 
