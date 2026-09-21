@@ -39,6 +39,7 @@ from configparser import ConfigParser
 from datetime import datetime
 from pathlib import Path
 
+from utils.ini_io import read_ini
 from utils.trip_config import read_trip_ini
 from utils.trip_identity import resolve, resolve_trip_picture_root
 
@@ -48,6 +49,13 @@ MANIFEST_NAME = "export.ini"
 FORMAT_VERSION = "1"
 
 TRIP_INI_REL   = "trip.ini"
+# trip.ini keys that describe THIS MACHINE rather than the trip. The same trip
+# is routinely a "2026 Brazil" folder on one machine and "2026 Brazilie" on
+# another, and each machine's master sits at its own path — so extracting the
+# other machine's trip.ini wholesale points the trip at folders that do not
+# exist here, and the days look like they have vanished. On an UPDATE the local
+# value wins; on a fresh import there is no local value and the ZIP's is used.
+MACHINE_LOCAL_KEYS = ("master_repository_disk", "picture_root", "created")
 COLLECTION_REL = "metadata/active/speciescollection.csv"
 BASELINE_REL   = "metadata/initialize/master_species_baseline.csv"
 TRANSCACHE_REL = "admin/TransCache.csv"
@@ -307,9 +315,26 @@ def _backup(dest_root, rel):
 def restore_identity(zip_path, dest_root):
     """Extract trip.ini + the trip images into dest_root, backing up what is
     already there. Runs BEFORE the repository is built: sv1MakeReposity reads
-    trip.ini, exactly as Create Trip writes it before running the batch."""
+    trip.ini, exactly as Create Trip writes it before running the batch.
+
+    Everything about the TRIP comes from the ZIP — that is the point, and it is
+    how picture_prefix and tz_offset find their way home. But MACHINE_LOCAL_KEYS
+    are put back afterwards when this machine already had them: they name where
+    the master and the pictures live HERE, and the other machine's answers are
+    wrong here by construction.
+    """
     os.makedirs(dest_root, exist_ok=True)
     restored, backups = [], []
+    # Read the RAW [trip_config] before the extract overwrites it.
+    # read_trip_ini returns a fixed whitelist that does not carry
+    # master_repository_disk or created, so it cannot be used here.
+    keep = {}
+    local_ini = ConfigParser()
+    read_ini(local_ini, os.path.join(dest_root, TRIP_INI_REL))
+    for key in MACHINE_LOCAL_KEYS:
+        value = local_ini.get("trip_config", key, fallback="").strip()
+        if value:
+            keep[key] = value
     with zipfile.ZipFile(zip_path, "r") as zf:
         names = zf.namelist()
         targets = [TRIP_INI_REL] + [
@@ -323,6 +348,16 @@ def restore_identity(zip_path, dest_root):
                 backups.append(b)
             zf.extract(rel, dest_root)
             restored.append(rel)
+    if keep and TRIP_INI_REL in restored:
+        from utils.trip_config import set_trip_flag
+        for key, value in keep.items():
+            try:
+                set_trip_flag(dest_root, key, value)
+            except Exception as e:
+                logger.warning(f"trip_transfer: could not keep this machine's "
+                               f"{key}={value}: {e}")
+        logger.info("Import: kept this machine's "
+                    + ", ".join(f"{k}={v}" for k, v in keep.items()) + ".")
     return restored, backups
 
 
