@@ -636,7 +636,19 @@ class Project:
 
     # first look for a CameraRaw format ("ORF", "NEF", "NRW", "HEIC")
     def findAnySourceItem(self, filelist, column):
-        return self.findBestItem(filelist, column, ("ORF", "NEF", "NRW", "HEIC", "JPG", "JPEG", "XMP"))
+        # MOV/MP4 belong in "any source" and were missing: this feeds the UPN's
+        # GPSPosition / GPSAltitude / GPSProcessingMethod, so a VIDEO-ONLY
+        # picture ended up with an empty GPSPosition however good the fix in the
+        # file was, and Count Species reported it as "no GPS". The large viewer
+        # disagreed, because exif_from_rows falls back to the FILE row's
+        # Composite:GPSPosition — which had the coordinate all along.
+        # Appended LAST for the same reason findRawOrJPGItem does it (see below):
+        # a mixed UPN still prefers the camera original, and an XMP still wins
+        # for GPS because that is where a hand-placed fix is written. Adding to
+        # the end of the list can only fill a value that was previously empty.
+        return self.findBestItem(filelist, column,
+                                 ("ORF", "NEF", "NRW", "HEIC", "JPG", "JPEG", "XMP",
+                                  "MOV", "MP4"))
     # MOV/MP4 trail the stills on purpose: a mixed UPN (never happens today, but
     # nothing stops it) should still prefer the camera original. For a video-only
     # UPN every still type misses, so this is the only way it gets a
