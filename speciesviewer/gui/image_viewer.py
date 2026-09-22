@@ -1287,7 +1287,6 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 c.hide()
             self._bound = {}
             self.grid_widget.setFixedSize(10, 10)
-            self._empty_grid_notice()
             return
         ncols = max(1, self.columns)
         gap = self._GRID_GAP
@@ -1435,6 +1434,11 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         sb.setValue(min(keep, sb.maximum()))
         self._relayout(force=True)
         self._update_selection_display()
+        if not self._order:
+            # Once per REBUILD, not once per layout pass — see _relayout. The
+            # notice is an answer to "you asked for a filter and it matched
+            # nothing", and that question is asked here, not by the layout.
+            self._empty_grid_notice()
         if tc is not None and self._order:
             logger.info("Culling grid: %d pictures in %.2f s — %s",
                         len(self._order), _t.monotonic() - t0,
@@ -1442,7 +1446,12 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
 
     def _empty_grid_notice(self):
         """The message shown when a filter / radio narrows the grid to nothing —
-        silent for a colour/find/JPG overlay, a short dialog for the radios."""
+        silent for a colour/find/JPG overlay, a short dialog for the radios.
+
+        Called once per rebuild, from _set_grid_keys. It used to hang off
+        _relayout, which runs twice per rebuild (once to lay out, once after the
+        scroll position is restored) and again on every resize — so the dialog
+        came up twice, and a resize behind it could raise another."""
         self.cancel_button.setEnabled(False)
         self.wait_dialog.close()
         if self._color_filter or self._find_query or self._findfile_query or self._jpg_only:
