@@ -1600,10 +1600,13 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         if not keys:
             return
         if what == "species_quick":
+            written = self._cull_quick_species(keys, parent=qv)
             # Only a dialog-free write consumes the range; a fallback to the
             # dialog leaves it marked, so a cancel doesn't lose the selection.
-            if self._cull_quick_species(keys, parent=qv) and qv is not None:
+            if written and qv is not None:
                 qv.clear_brackets()
+                qv.flash(f"Species name set for {written} "
+                         f"picture{'s' if written != 1 else ''}")
         elif what == "species":
             self._open_species_dialog_for_keys(keys, parent=qv)
         elif what == "rating":
@@ -2444,23 +2447,24 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         window is open, so falling back to it here would act on the wrong
         picture.
 
-        Returns True only when it wrote without a dialog — the caller uses
-        that to decide whether the selection was consumed."""
+        Returns the number of pictures written without a dialog (0 when it
+        fell back to one, or wrote nothing) — the caller uses that both to tell
+        whether the selection was consumed and to report what happened."""
         keys = keys if keys else self._cull_keys_target()
         if not keys:
-            return False
+            return 0
         from gui.culling_species import quick_species_subject
         subject = quick_species_subject(keys, self._species_subject_of)
         if not subject:
             self._open_species_dialog_for_keys(set(keys), parent=parent)
-            return False
+            return 0
         n = len(keys)
         if self.fpr:
             if self._frozen_day_blocked():
-                return False
+                return 0
             paths = [p for p in (self._collection.rep_full_path(k) for k in keys) if p]
             if not paths:
-                return False
+                return 0
             updated, files_written = self.fpr.updateSubjects(paths, subject)
             # A commit that writes nothing is a failed commit and has to look
             # like one — the same rule the Set-species panel states, and there
@@ -2472,14 +2476,15 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                     parent or self, "Species not stored",
                     f"Nothing was written to disk, so '{subject}' is NOT stored "
                     f"on these {n} pictures. See the log.")
-                return False
+                return 0
             logger.info(f"Quick species 'a': {subject!r} → {len(updated)} picture(s), "
                         f"{files_written} file(s) written.")
             self.refresh_after_species_change(updated)
+            n = len(updated)
         else:
             item0 = self._collection.item_for_key(next(iter(keys)))
             if not getattr(item0, "can_edit_species", False):
-                return False
+                return 0
             key_list = list(keys)
             # One exiftool call for the whole selection, same as the dialog's
             # commit — twenty-two pictures one at a time is twenty-two spawns.
@@ -2489,7 +2494,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                     batched(key_list, "XMP:Subject", subject, "Subject")
                 except Exception as e:
                     logger.error(f"Quick species 'a' (batched) failed: {e}")
-                    return False
+                    return 0
             else:
                 for k in key_list:
                     try:
@@ -2504,7 +2509,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         from gui.culling_species import remember_species_from_subject
         remember_species_from_subject(subject)
         self._clear_selection()
-        return True
+        return n
 
     def _cull_set_color_quick(self, color: str):
         """Stamp `color` onto the selection (else the focused picture) in one

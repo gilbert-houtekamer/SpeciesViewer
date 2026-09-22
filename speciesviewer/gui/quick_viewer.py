@@ -9,6 +9,10 @@ advances, so you can cull while pixel-peeping. On close the caller moves its
 cursor to the last picture shown and repaints any card it changed; nothing
 else changes.
 
+A command that writes without opening anything — `a` — reports itself in a
+top-right badge, in the same style as the top-left interaction hint, which
+clears on the next key. See flash().
+
 `a` (quick species), `s` (species dialog) and `c` (rating dialog) work here too,
 but they are the caller's to run — this view owns no species or rating UI, and
 building one would be the startup cost it exists to skip. They travel up as
@@ -61,10 +65,11 @@ from PyQt6.QtCore import Qt, QUrl, pyqtSignal
 from PyQt6.QtGui import QImage
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtMultimediaWidgets import QVideoWidget
-from PyQt6.QtWidgets import QApplication, QDialog, QStackedWidget, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (QApplication, QDialog, QLabel, QStackedWidget,
+                             QVBoxLayout, QWidget)
 
 from gui.image_loader import AsyncImageLoader
-from gui.large_image_view import _FullResView, color_to_css
+from gui.large_image_view import BADGE_CSS, _FullResView, color_to_css
 from gui.preview_extract import extract_preview_bytes
 from utils.name_profile import all_names_ordered
 
@@ -128,6 +133,15 @@ class QuickViewer(QDialog):
         self._stack.addWidget(self._video_widget)
         frame_lay.addWidget(self._stack)
         lay.addWidget(self._frame)
+
+        # Top-right transient message, in the same badge style as the top-left
+        # interaction hint. Parented to the frame rather than to the image
+        # view's viewport so it is equally visible over a video page, which is
+        # a different widget in the stack — a write you can't see reported is
+        # the whole problem this solves.
+        self._flash = QLabel(self._frame)
+        self._flash.setStyleSheet(BADGE_CSS)
+        self._flash.hide()
 
         self._player = QMediaPlayer(self)
         self._audio_out = QAudioOutput(self)
@@ -288,6 +302,37 @@ class QuickViewer(QDialog):
         except (ValueError, KeyError):
             pass
 
+    def flash(self, text: str):
+        """Show a one-line message in the top-right corner until the next key.
+
+        For the commands that write without opening anything — 'a' above all.
+        A dialog reports its own result and then goes away, which is itself the
+        acknowledgement; 'a' has neither, and silence after a write that
+        touched thirty pictures is indistinguishable from a key that did
+        nothing. Deliberately not on a timer: it clears when you move on, so it
+        is still there if you looked away."""
+        text = (text or "").strip()
+        if not text:
+            self._clear_flash()
+            return
+        self._flash.setText(text)
+        self._flash.adjustSize()
+        self._position_flash()
+        self._flash.show()
+        self._flash.raise_()
+
+    def _clear_flash(self):
+        self._flash.hide()
+
+    def _position_flash(self):
+        m = 8   # same inset as the hint/overlay badges in _FullResView
+        self._flash.move(max(m, self._frame.width() - self._flash.width() - m), m)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if not self._flash.isHidden():
+            self._position_flash()
+
     def clear_brackets(self):
         """Drop the [ / ] range after an action consumed it, so the next key
         press lands on one fresh picture rather than re-acting on the group —
@@ -353,6 +398,10 @@ class QuickViewer(QDialog):
 
     # ── keys ─────────────────────────────────────────────────────────────────
     def keyPressEvent(self, e):
+        # The message reports what the LAST command did, so it must not outlive
+        # the next one. Cleared before the key is acted on, so a command that
+        # raises a new message still leaves it standing.
+        self._clear_flash()
         k = e.key()
         if k == Qt.Key.Key_Escape:
             self.close()

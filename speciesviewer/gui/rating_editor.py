@@ -3987,22 +3987,23 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
 
         `keys` / `parent` are for the Quick view, which has its own cursor and
         must say what it means: this grid's cursor is not updated while that
-        window is open. Returns True only when it wrote without a dialog."""
+        window is open. Returns the number of pictures written without a
+        dialog (0 when it fell back to one, or wrote nothing)."""
         keys = keys if keys else self._cull_keys_target()
         if not keys:
-            return False
+            return 0
         if not self.fpr:
             self._open_species_dialog_for_keys(set(keys), parent=parent)
-            return False
+            return 0
         from gui.culling_species import quick_species_subject
         subject = quick_species_subject(keys, self._species_subject_of)
         if not subject:
             self._open_species_dialog_for_keys(set(keys), parent=parent)
-            return False
+            return 0
         n = len(keys)
         paths = [p for p in (self._rep_file_path(k) for k in keys) if p]
         if not paths:
-            return False
+            return 0
         updated, files_written = self.fpr.updateSubjects(paths, subject)
         # A commit that writes nothing is a failed commit and has to look like
         # one — there is no status line here to carry it, so say it out loud.
@@ -4013,7 +4014,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 parent or self, "Species not stored",
                 f"Nothing was written to disk, so '{subject}' is NOT stored on "
                 f"these {n} pictures. See the log.")
-            return False
+            return 0
         logger.info(f"Quick species 'a': {subject!r} → {len(updated)} picture(s), "
                     f"{files_written} file(s) written.")
         # Trip scope persists through the per-day objects, not the panel — same
@@ -4028,7 +4029,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         from gui.culling_species import remember_species_from_subject
         remember_species_from_subject(subject)
         self._clear_selection()
-        return True
+        return len(updated)
 
     def _cull_set_color_quick(self, color: str):
         """Stamp `color` onto the selection (else the focused picture), no
@@ -4194,10 +4195,13 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         if not keys:
             return
         if what == "species_quick":
+            written = self._cull_quick_species(keys, parent=qv)
             # Only a dialog-free write consumes the range; a fallback to the
             # dialog leaves it marked, so a cancel doesn't lose the selection.
-            if self._cull_quick_species(keys, parent=qv) and qv is not None:
+            if written and qv is not None:
                 qv.clear_brackets()
+                qv.flash(f"Species name set for {written} "
+                         f"picture{'s' if written != 1 else ''}")
         elif what == "species":
             self._open_species_dialog_for_keys(keys, parent=qv)
         elif what == "rating":

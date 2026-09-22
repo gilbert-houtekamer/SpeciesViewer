@@ -579,6 +579,14 @@ class FilmstripWidget(QWidget):
                 cell.request_load()
 
 
+# The corner-badge look used over an image: the interaction hint (top-left) and
+# the source/size overlay (bottom-left) here, and the Quick view's transient
+# message (top-right). Module-level so the three cannot drift apart — they sit
+# over the same picture and a second style would read as a second kind of thing.
+BADGE_CSS = ("QLabel{background:rgba(0,0,0,150);color:#eee;"
+             "padding:2px 7px;border-radius:3px;font-size:11px;}")
+
+
 class _FullResView(QScrollArea):
     """A viewport onto a full-resolution image. Drag with the left button to pan;
     the viewport-centre position is reported (normalised) so the host can keep the
@@ -616,13 +624,11 @@ class _FullResView(QScrollArea):
         self._hint = None          # top-left: how to zoom/pan
         if self._zoomable:
             self._label.mouseDoubleClickEvent = self._on_double_click
-            badge_css = ("QLabel{background:rgba(0,0,0,150);color:#eee;"
-                         "padding:2px 7px;border-radius:3px;font-size:11px;}")
             self._overlay = QLabel(self.viewport())
-            self._overlay.setStyleSheet(badge_css)
+            self._overlay.setStyleSheet(BADGE_CSS)
             self._overlay.hide()
             self._hint = QLabel(self.viewport())
-            self._hint.setStyleSheet(badge_css)
+            self._hint.setStyleSheet(BADGE_CSS)
             self._hint.setText("Scroll to zoom · double-click for 1:1 · drag to pan")
             self._hint.hide()
 

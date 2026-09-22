@@ -147,7 +147,15 @@ handler. Two things follow from that:
 The Quick view's title carries **every name the picture has** — Dutch, English
 and scientific, ordered by your Preferred-names profile, with the sex/age
 suffix — so an `a` or `s` there is visible without a panel, and the name can be
-checked against a field guide in either language. A successful dialog-free `a` also clears the `[` … `]` range,
+checked against a field guide in either language.
+
+`a` also reports itself in a **top-right badge** — *"Species name set for 23
+pictures"* — in the same style as the top-left interaction hint. It clears on
+the next key, typically the `←` / `→` that moves you on, rather than on a
+timer, so it is still there if you looked away. `s` and `c` get no badge: their
+dialogs report their own result and then close, which is the acknowledgement.
+`a` has neither, and silence after a write that touched thirty pictures is
+indistinguishable from a key that did nothing. A successful dialog-free `a` also clears the `[` … `]` range,
 so the next key press lands on one fresh picture instead of re-acting on the
 group; a fall-back to the dialog leaves the range marked, so cancelling doesn't
 lose your selection.
