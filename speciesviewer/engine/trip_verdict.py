@@ -48,7 +48,11 @@ SUMMARY_FIELDS = ["trip_id", "trip_name", "fromdate", "todate",
 _TOTALS_RE = re.compile(r"^Totals:\s*(\d+)\s+species,\s*(\d+)\s+new", re.M)
 _DAYS_RE = re.compile(r"^Days:\s*(\d+)\s+of\s+(\d+)\s+summarized", re.M)
 _GENERATED_RE = re.compile(r"^Generated\s+(.+)$", re.M)
-_BASELINE_RE = re.compile(r"^Lifer baseline:\s*(.+)$", re.M)
+# The note wraps after its first sentence, the rest indented as a continuation
+# (svr2CountSpecies) — so this takes the following indented lines too and the
+# text is rejoined below. Without that, everything after the first "." would be
+# lost, and a future regex over the note would silently stop matching.
+_BASELINE_RE = re.compile(r"^Lifer baseline:\s*(.+(?:\n[ \t]+\S.*)*)$", re.M)
 # The three ways a baseline can be arrived at, in the wording svr2CountSpecies
 # prints. The time part is optional: a reconstructed baseline is stamped with
 # whatever the trip recorded, which may be a bare date.
@@ -80,7 +84,9 @@ def parse_report(path):
     days = _DAYS_RE.search(text)
     generated = _GENERATED_RE.search(text)
     note = _BASELINE_RE.search(text)
-    note_text = note.group(1).strip() if note else ""
+    # Rejoin the wrapped note into one line, so the regexes below (and anything
+    # later) see the sentence pair exactly as it used to be written.
+    note_text = " ".join(note.group(1).split()) if note else ""
     dated = _DATED_RE.search(note_text)
     frozen_at = _BASELINE_DATE_RE.search(note_text)
     if dated:

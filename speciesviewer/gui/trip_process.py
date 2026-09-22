@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
     QTabWidget, QWidget, QVBoxLayout, QComboBox, QLineEdit, QFormLayout, QSizePolicy, QFileDialog, QDateEdit, QTextEdit,
     QTableWidget, QTableWidgetItem, QAbstractItemView, QStyledItemDelegate, QMessageBox, QFrame, QApplication,
     QListWidget, QListWidgetItem, QScrollArea)
-from PyQt6.QtGui import QFont, QGuiApplication, QColor
+from PyQt6.QtGui import QFont, QFontMetrics, QGuiApplication, QColor
 from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
 import logging
 import re
@@ -3924,6 +3924,19 @@ class WriteCommitDialog(BaseTripModuleDialog):
         # self.dialog.exec()
 
 class CountSpeciesDialog(BaseTripModuleDialog):
+    # Width in characters BEFORE a report exists — the window opens empty and is
+    # refitted to the real thing by _fit_to_report() the moment one loads. Wide
+    # enough for the legend block, so the empty window is not a slot.
+    _REPORT_COLS = 110
+    # Dialog margins + the viewer's frame + the vertical scrollbar (the report is
+    # always long enough to have one). Measured against a real window rather than
+    # guessed: 90 left a visible strip of dead space down the right.
+    _REPORT_CHROME_PX = 70
+    # Air past the longest line, so the text does not touch the scrollbar. Small
+    # on purpose — the report is monospace, so the longest line IS the width;
+    # anything more is empty window.
+    _REPORT_SLACK = 1.01
+
     def __init__(self, parent, menu_spec):
         super().__init__(
             parent,
@@ -3934,18 +3947,29 @@ class CountSpeciesDialog(BaseTripModuleDialog):
             independent=True,
         )
 
+        # The report is monospace and never wraps, so the window it wants is a
+        # CHARACTER COUNT, not a fraction of the screen. Sized to the screen it
+        # was right on a laptop and far too wide on a 4K desktop — the same 90%
+        # meaning two different things. _REPORT_COLS is what the report actually
+        # needs, measured in the viewer's OWN font so it holds at any DPI or
+        # display scaling, and capped below so it can never exceed the screen.
+        font = QFont("Courier New")
+        font.setStyleHint(QFont.StyleHint.Monospace)
+        fm = QFontMetrics(font)
+        # A real run of characters, not averageCharWidth(): that rounds down,
+        # and 200 columns of rounding is a visibly short window.
+        want_w = fm.horizontalAdvance("0" * self._REPORT_COLS) + self._REPORT_CHROME_PX
         screen = self.screen() or QGuiApplication.primaryScreen()
         if screen is not None:
             avail = screen.availableGeometry()
-            self.resize(int(avail.width() * 0.9), int(avail.height() * 0.9))
+            self.resize(min(want_w, int(avail.width() * 0.95)),
+                        int(avail.height() * 0.9))
         else:
-            self.resize(1100, 750)
+            self.resize(min(want_w, 1400), 750)
         # Report viewer setup
         self.report_viewer = QTextEdit()
         self.report_viewer.setReadOnly(True)
         self.report_viewer.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
-        font = QFont("Courier New")
-        font.setStyleHint(QFont.StyleHint.Monospace)
         self.report_viewer.setFont(font)
         self.report_viewer.setMinimumHeight(500)
         self.report_viewer.setSizePolicy(
@@ -3966,6 +3990,34 @@ class CountSpeciesDialog(BaseTripModuleDialog):
         button_layout.addWidget(copy_button)
         self.layout().addLayout(button_layout)
 
+    def _fit_to_report(self, text: str):
+        """Size the window to the report that just loaded: its longest line plus
+        a few percent of air, measured in the viewer's own font.
+
+        A constant cannot do this. The species table is 100 + 3 x (trip days)
+        characters wide — 76 of names, 4 for "New ", 3 per day, 20 for the
+        summary columns — so a two-week trip and a five-week trip want visibly
+        different windows. One number left either dead space down the right or a
+        horizontal scrollbar, depending on the trip.
+
+        The cap is what keeps a laptop honest: on a narrow screen the window
+        stops at 95% of the available width and the report scrolls, which is the
+        right answer there and costs the big screen nothing.
+        """
+        lines = text.splitlines()
+        if not lines:
+            return
+        cols = max(len(ln) for ln in lines)
+        cols = int(cols * self._REPORT_SLACK) + 1
+        fm = self.report_viewer.fontMetrics()
+        want = fm.horizontalAdvance("0" * cols) + self._REPORT_CHROME_PX
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        if screen is not None:
+            want = min(want, int(screen.availableGeometry().width() * 0.95))
+        # Height is left alone: the report is long whatever its width, and the
+        # user may have set it deliberately.
+        self.resize(max(want, 600), self.height())
+
     def on_write(self):
         if self.subdirectory:
             selected_subdir = self.subdir_dropdown.currentText()
@@ -3979,6 +4031,7 @@ class CountSpeciesDialog(BaseTripModuleDialog):
                     with open(report_path, "r", encoding="utf-8") as f:
                         content = f.read()
                         self.report_viewer.setPlainText(content)
+                        self._fit_to_report(content)
                 else:
                     self.report_viewer.setPlainText("⚠️ Report file not found.")
             except Exception as e:

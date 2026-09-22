@@ -323,6 +323,11 @@ def main(args, config):
         except Exception as e:
             logger.warning(f"svr2CountSpecies: could not read trip.ini: {e}")
 
+    # Each note below wraps after its first sentence, with the rest indented as a
+    # continuation. Unwrapped, this one line was ~200 characters and set the width
+    # of the whole report viewer on its own — wider than the species table that
+    # the report is actually for. trip_verdict._BASELINE_RE reads the
+    # continuation back, so the parsed note is still the whole sentence pair.
     dated_names = None
     if MyProject.Trip and fromdate:
         dated_names, dated_topics = engine.species_baseline.collect_species_before(
@@ -331,7 +336,8 @@ def main(args, config):
         reference_names = dated_names
         reference_note = (f"Lifer baseline: everything the master has a picture of from "
                           f"before {fromdate[:10]}, the trip's start date "
-                          f"({len(reference_names)} species). Recomputed on every run, so "
+                          f"({len(reference_names)} species).\n"
+                          f"    Recomputed on every run, so "
                           f"merging this trip — or an older one — cannot change it.")
     else:
         baseline_file = (engine.species_baseline.baseline_path(MyProject.getRepositoryPath())
@@ -342,7 +348,8 @@ def main(args, config):
             how = (f"reconstructed afterwards from {origin}" if origin
                    else "frozen at trip creation")
             reference_note = (f"Lifer baseline: master as of {meta.get('taken_at', 'unknown date')}, "
-                              f"{how} ({len(reference_names)} species). No trip start date "
+                              f"{how} ({len(reference_names)} species).\n"
+                              f"    No trip start date "
                               f"available, so an older trip merged after this one was set up "
                               f"would show up as new here.")
         else:
@@ -355,12 +362,14 @@ def main(args, config):
                 names, _zero, _topic = engine.species_baseline.collect_species_from_csv(ref_csv)
                 reference_names = names
                 reference_note = (f"Lifer baseline: the master AS IT IS TODAY "
-                                  f"({len(reference_names)} species). Species already merged "
+                                  f"({len(reference_names)} species).\n"
+                                  f"    Species already merged "
                                   f"into the master do not count as new.")
             else:
                 logger.warning(f"svr2CountSpecies: reference file not found: {ref_csv}")
                 reference_note = ("Lifer baseline: NONE FOUND — every species below is "
-                                  "reported as new. Do not trust the New column.")
+                                  "reported as new.\n"
+                                  "    Do not trust the New column.")
 
     # make output file
     reports_dir = Path(config.get("repository","BiotaDatabase")) / "metadata" / "reports"
