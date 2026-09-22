@@ -82,8 +82,17 @@ and are deliberately not backed up. Day ZIPs alone would restore the culling and
 lose every lifer verdict, which is why both artifacts are required for a real
 restore.
 
-Fold `D:\gpslogs` (1.3 MB, 4 files) into the trip ZIP: tracklogs exist only on
-the laptop and geotagging depends on them.
+Fold the tracklogs in beside the trip ZIP: they exist only on the laptop and
+geotagging depends on them. They go in their own `tracklogs/` folder rather than
+inside a ZIP, because they are already small and are useful to grab by hand.
+
+**Where they live is a derived path, not a setting.**
+`<CurrentPictures>/gpslogs/<year>/<yyyymmdd>.log`. `get_gpslogs_root()` computes
+it from a root that is always configured; `[gpslogs] rootdirectory` remains as
+an override but is normally absent. The earlier design made it a required
+per-machine key, and a machine that lacked it had no tracklog folder at all — so
+the backup skipped the logs and the restore had nowhere to put them, both
+without a word.
 
 ## The deletion signal (Gilbert's insight)
 
@@ -155,6 +164,9 @@ invariant should be visible.)
 1. Read the cards normally → all RAWs land in day folders, including the
    culled ones.
 2. Unzip each day ZIP into its matching day folder.
+2b. **Merge the trip identity ZIP** — species collection, lifer baseline,
+   translation cache — and copy the `tracklogs/` folder back. See "What the
+   first real restore taught" below for why this is a step and not a footnote.
 3. **Reconcile and report:** *"202 RAWs on disk, 152 in the backup — 50 were
    deleted during culling."* With the list, and one button to remove them.
 
@@ -166,6 +178,45 @@ shape whatever the reasoning.
 
 **Restore gets tested before departure, not after.** A backup nobody has
 restored from is a belief rather than a backup.
+
+## What the first real restore taught (Brazil, 2026-09-21)
+
+The first restore of a whole trip onto another machine found three things no
+amount of rehearsal on a short trip had.
+
+**"Restore work from a card" never unpacked the identity ZIP.** It read the ZIP
+— `verify_trip` checks the trip id in its manifest — and stopped there. Merging
+it was a *separate menu item* (Import Trip) that nothing told you to run, so the
+species collection, lifer baseline and translation cache rode home on the card
+and were dropped on arrival. Cost: 179 pictures over 7 days with no species.
+
+> **Rule: a step that reads an artifact to validate it must also be the step
+> that uses it.** Two menu items where the user thinks there is one is not a
+> workflow, it is a trap with a manual.
+
+**Some species names cannot be rebuilt — ever.** The pipeline's only GBIF call
+is `name_backbone(scientificName=…)`, which matches *scientific* names. A
+vernacular name resolves only out of a local `speciescollection.csv`. So
+"crab-eating fox" and "argentine black and white tegu" — and a Dutch name from a
+guide, "krabbenetende vos", that GBIF does not carry at all — had no path back
+once the collection holding them was gone. No master snapshot on disk had ever
+contained them. **Treat a hand-added vernacular name as irreplaceable work, like
+a rating or a crop.**
+
+**Importing a trip.ini wholesale broke the destination machine.** `trip.ini`
+carries both trip facts and machine facts. Importing the laptop's copy set
+`picture_root` to its folder name (`2026 Brazilie` vs `2026 Brazil` here) and
+`master_repository_disk` to the laptop's master — so every day vanished from the
+overview. `MACHINE_LOCAL_KEYS` are now read before the extract and written back
+after it. Nothing was lost, but "all my days are gone" is an expensive way to
+learn it.
+
+**A same-size/same-mtime skip is wrong across filesystems.** exFAT (the card)
+stores mtime at 2-second resolution; NTFS and APFS keep sub-second. A
+round-tripped file compares as changed, so restoring 30 tracklogs of which 3
+were already byte-identical copied 29 and skipped 1 — and the nightly backup had
+been rewriting ~20 MB of tracklogs every run. `same_file()` allows 2 seconds,
+the FAT rule.
 
 ## Learned while building
 
@@ -186,6 +237,10 @@ and the settings copy, but *not* the trip ZIP (`svr6ExportTrip`). Without it a
 restore has the culling but no trip.ini, no species collection and no lifer
 baseline. Folding the export into the same run is small and belongs with the
 backup, not with the restore.
+
+> Closed on the backup side straight away — and then found still open on the
+> *restore* side a month later, which is the entry above. Writing an artifact
+> and consuming it are two gaps, and closing one reads like closing both.
 
 ## Decided
 

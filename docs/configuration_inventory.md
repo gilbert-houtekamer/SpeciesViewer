@@ -121,6 +121,8 @@ text. The work-backup written to a camera card therefore copies
 | `[caches]` | cache-root overrides | Where the app-data caches actually live |
 | `[WindowState]` | `<dialog>_x/_y/_w/_h`, `_vsplit`, `_hsplit` | Per-dialog geometry, one entry per window |
 | `[PhotoSorter]` | `last_source_folder`, `last_dest_folder` | Last SD-card and destination paths |
+| `[currentpictures]` | `rootdirectory` | The working-picture root (e.g. `D:\CurrentPictures`). A trip.ini stores `picture_root` RELATIVE to this, so the trip stays portable between machines whose absolute paths differ |
+| `[gpslogs]` | `rootdirectory` | **Optional override.** GPS tracklogs live in `<CurrentPictures>/gpslogs/<year>/<yyyymmdd>.log` and `get_gpslogs_root()` derives that path, so this key is normally absent. Set it only to put the logs somewhere else |
 
 ## Ephemeral — rewritten before it is read
 
