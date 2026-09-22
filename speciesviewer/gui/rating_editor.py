@@ -3697,7 +3697,9 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         self._status.setText(f"Added {' and '.join(parts)} to the {noun}.")
         self._rebuild_cards()
 
-    def _open_species_dialog_for_keys(self, keys: set):
+    def _open_species_dialog_for_keys(self, keys: set, parent=None):
+        # `parent` overrides this grid as the dialog's parent — the Quick view
+        # passes itself, so the dialog is its child and can't open behind it.
         if not self.fpr or not keys:
             return
         from gui.species_editor import SpeciesInfoPanel
@@ -3716,7 +3718,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 error_msgs.append(self.fpr.getErrorMsg(path.name) or "")
         if not file_paths:
             return
-        dlg = QDialog(self)
+        dlg = QDialog(parent or self)
         dlg.setWindowTitle(f"Set species — {len(file_paths)} picture{'s' if len(file_paths) != 1 else ''}")
         dlg.setMinimumWidth(600)
         dlg_layout = QVBoxLayout(dlg)
@@ -3727,6 +3729,7 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         panel.committed.connect(lambda upns: (
             self._collection.persist_after_species_change(upns)
             if self._collection is not None else None,
+            self._refresh_quick_view(),
             self._clear_selection(), dlg.accept()))
         dlg_layout.addWidget(panel)
         cancel_btn = QPushButton("Cancel")
@@ -3846,12 +3849,12 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             return None
         return combo.currentText().strip() or None
 
-    def _open_batch_rate_dialog(self, keys: set):
+    def _open_batch_rate_dialog(self, keys: set, parent=None):
         if not keys or self._collection is None:
             return
         from PyQt6.QtWidgets import QDialog, QVBoxLayout, QDialogButtonBox
         n = len(keys)
-        dlg = QDialog(self)
+        dlg = QDialog(parent or self)
         dlg.setWindowTitle(f"Set rating / color — {n} picture{'s' if n != 1 else ''}")
         layout = QVBoxLayout(dlg)
         layout.addWidget(QLabel(f"Apply to {n} picture{'s' if n != 1 else ''}:"))
@@ -3961,6 +3964,71 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         keys = self._cull_keys_target()
         if keys:
             self._open_batch_rate_dialog(keys)
+
+    def _species_subject_of(self, key):
+        """This picture's stored species subject, read the way the Set-species
+        dialog reads it — getSubject (the literal XMP:Subject), not
+        getSpeciesName, which would hand back the resolved Dutch name."""
+        if not self.fpr:
+            return ""
+        path = self._rep_file_path(key)
+        return (self.fpr.getSubject(path.name) or "") if path else ""
+
+    def _cull_quick_species(self, keys=None, parent=None):
+        """'a' — the dialog-free half of 's': copy the species the selection
+        already agrees on onto every picture in it, in one batched write.
+        Sex/age/plumage ride along, because a qualifier lives in the subject
+        string next to the name ("greater ani, male").
+
+        Whenever the selection does NOT say one unambiguous thing — nothing
+        named, several different names, or just one picture to act on — this
+        opens the regular Set-species dialog instead, so 'a' is never a guess.
+        Same rule as the preview grid; quick_species_subject() owns it.
+
+        `keys` / `parent` are for the Quick view, which has its own cursor and
+        must say what it means: this grid's cursor is not updated while that
+        window is open. Returns True only when it wrote without a dialog."""
+        keys = keys if keys else self._cull_keys_target()
+        if not keys:
+            return False
+        if not self.fpr:
+            self._open_species_dialog_for_keys(set(keys), parent=parent)
+            return False
+        from gui.culling_species import quick_species_subject
+        subject = quick_species_subject(keys, self._species_subject_of)
+        if not subject:
+            self._open_species_dialog_for_keys(set(keys), parent=parent)
+            return False
+        n = len(keys)
+        paths = [p for p in (self._rep_file_path(k) for k in keys) if p]
+        if not paths:
+            return False
+        updated, files_written = self.fpr.updateSubjects(paths, subject)
+        # A commit that writes nothing is a failed commit and has to look like
+        # one — there is no status line here to carry it, so say it out loud.
+        if files_written == 0:
+            logger.error(f"Quick species 'a': wrote 0 files for {n} picture(s); "
+                         f"{subject!r} is NOT on disk.")
+            QMessageBox.warning(
+                parent or self, "Species not stored",
+                f"Nothing was written to disk, so '{subject}' is NOT stored on "
+                f"these {n} pictures. See the log.")
+            return False
+        logger.info(f"Quick species 'a': {subject!r} → {len(updated)} picture(s), "
+                    f"{files_written} file(s) written.")
+        # Trip scope persists through the per-day objects, not the panel — same
+        # caveat the Set-species commit above carries.
+        if self._collection is not None:
+            self._collection.persist_after_species_change(updated)
+        for k in keys:
+            card = self._bound.get(k)
+            if card:
+                card.refresh()
+        # The dialogs bump the recents on commit; 'a' has no dialog to do it.
+        from gui.culling_species import remember_species_from_subject
+        remember_species_from_subject(subject)
+        self._clear_selection()
+        return True
 
     def _cull_set_color_quick(self, color: str):
         """Stamp `color` onto the selection (else the focused picture), no
@@ -4093,15 +4161,49 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                 pass
         from gui.quick_viewer import QuickViewer
         dlg = QuickViewer(self, self._collection, order, order.index(key),
-                          initial_brackets=(self._bracket_left, self._bracket_right))
+                          initial_brackets=(self._bracket_left, self._bracket_right),
+                          initial_selection=set(self._selected_keys))
         dlg.navigated.connect(self._cull_set_cursor)
         dlg.edited.connect(self._on_quick_view_edited)
         dlg.selection_changed.connect(self._on_large_view_selection_changed)
+        dlg.action_requested.connect(self._on_quick_view_action)
         dlg.finished.connect(lambda _=0: setattr(self, "_quick_view", None))
         self._quick_view = dlg
         dlg.show()
         dlg.activateWindow()
         dlg.setFocus()
+
+    def _refresh_quick_view(self):
+        """Repaint the Quick view if it is open — its title carries the species,
+        and the Set-species dialog is non-modal, so a commit can land while that
+        window is still the one in front."""
+        qv = getattr(self, "_quick_view", None)
+        if qv is not None:
+            try:
+                qv.refresh_current()
+            except RuntimeError:
+                pass   # quick view was closed/destroyed
+
+    def _on_quick_view_action(self, what: str, keys: set):
+        """'a' / 's' / 'c' pressed in the Quick view. That window owns no
+        species or rating UI — it runs on THIS grid's handlers, on the keys it
+        sent up (its cursor, not ours), with itself as the dialog's parent so
+        nothing opens behind it. Twin of the culling grid's handler."""
+        qv = getattr(self, "_quick_view", None)
+        keys = set(keys)
+        if not keys:
+            return
+        if what == "species_quick":
+            # Only a dialog-free write consumes the range; a fallback to the
+            # dialog leaves it marked, so a cancel doesn't lose the selection.
+            if self._cull_quick_species(keys, parent=qv) and qv is not None:
+                qv.clear_brackets()
+        elif what == "species":
+            self._open_species_dialog_for_keys(keys, parent=qv)
+        elif what == "rating":
+            self._open_batch_rate_dialog(keys, parent=qv)
+        if qv is not None:
+            qv.refresh_current()
 
     def _on_quick_view_edited(self, keys):
         """Rating/colour set from the quick viewer — same follow-up as an
@@ -4121,7 +4223,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                            set_cursor=self._cull_set_cursor,
                            refresh_key=self._cull_refresh_key,
                            open_species=self._cull_open_species,
-                           open_rating=self._cull_open_rating):
+                           open_rating=self._cull_open_rating,
+                           quick_species=self._cull_quick_species):
             event.accept()
             return
         if handle_grid_arrows(event, order=self._order,

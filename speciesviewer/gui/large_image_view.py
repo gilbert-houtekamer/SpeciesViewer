@@ -2012,7 +2012,8 @@ class LargeImageView(QDialog):
                 set_cursor=self._cull_set_cursor,
                 refresh_key=self._refresh_strip_items,
                 open_species=self._batch_species,
-                open_rating=self._cull_open_rating):
+                open_rating=self._cull_open_rating,
+                quick_species=self._cull_quick_species):
             event.accept()
             return
         k = event.key()
@@ -2909,6 +2910,84 @@ class LargeImageView(QDialog):
         row.addWidget(cancel_btn)
         layout.addLayout(row)
         dlg.exec()  # modal — prevents the panel from z-fighting with the main viewer
+
+    def _species_subject_of(self, key):
+        """This picture's stored species subject — the literal XMP:Subject via
+        getSubject in pipeline mode, the collection's own species in culling
+        mode. Deliberately NOT item.species here: in pipeline mode that is the
+        RESOLVED display name (Dutch, under most name profiles), and copying a
+        resolved name onto a burst would write a different string than the one
+        the guide frame actually carries."""
+        ctx = self._collection.species_editor_context(key)
+        if ctx is None:
+            try:
+                return self._collection.item_for_key(key).species or ""
+            except (ValueError, KeyError):
+                return ""
+        fpr, fps = ctx
+        if not fps or fpr is None:
+            return ""
+        return fpr.getSubject(Path(fps[0]).name) or ""
+
+    def _cull_quick_species(self, keys=None):
+        """'a' — the dialog-free half of 's': copy the species the selection
+        already agrees on onto every picture in it, in one batched write.
+        Sex/age/plumage ride along, because a qualifier lives in the subject
+        string next to the name ("greater ani, male").
+
+        Whenever the selection does NOT say one unambiguous thing — nothing
+        named, several different names, or only the one picture on screen —
+        this opens the regular Set species dialog instead, so 'a' is never a
+        guess. Same rule as the two grids; quick_species_subject() owns it."""
+        if keys is None:
+            keys = set(self._selected_keys) or ({self._item.key} if self._item else set())
+        if not keys:
+            return
+        # The dialogs bump the recents on commit; 'a' has no dialog to do it,
+        # and a name used on a burst is exactly the one that should be at the
+        # top of the quick-pick list next time.
+        from gui.culling_species import (quick_species_subject,
+                                         remember_species_from_subject)
+        subject = quick_species_subject(keys, self._species_subject_of)
+        if not subject:
+            self._batch_species(keys)
+            return
+        n = len(keys)
+        fpr, file_paths = None, []
+        for k in keys:
+            ctx = self._collection.species_editor_context(k)
+            if ctx is None:
+                continue
+            f, fps = ctx
+            if fpr is None:
+                fpr = f
+            file_paths.extend(fps)
+        if not fpr or not file_paths:
+            # Sidecar / culling mode — write straight to XMP:Subject.
+            for k in keys:
+                try:
+                    self._collection.item_for_key(k).set_species(subject)
+                except Exception as e:
+                    logger.error(f"Quick species 'a' failed for {k}: {e}")
+            logger.info(f"Quick species 'a': {subject!r} → {n} picture(s).")
+            remember_species_from_subject(subject)
+            self._on_species_committed(set(keys))
+            return
+        updated, files_written = fpr.updateSubjects(file_paths, subject)
+        # A commit that writes nothing is a failed commit and has to look like
+        # one — there is no status line here to carry it.
+        if files_written == 0:
+            logger.error(f"Quick species 'a': wrote 0 files for {n} picture(s); "
+                         f"{subject!r} is NOT on disk.")
+            QMessageBox.warning(
+                self, "Species not stored",
+                f"Nothing was written to disk, so '{subject}' is NOT stored on "
+                f"these {n} pictures. See the log.")
+            return
+        logger.info(f"Quick species 'a': {subject!r} → {len(updated)} picture(s), "
+                    f"{files_written} file(s) written.")
+        remember_species_from_subject(subject)
+        self._on_species_committed(updated)
 
     def _batch_species_culling(self, keys):
         """fpr-free species assignment for the culling viewer: the smart culling

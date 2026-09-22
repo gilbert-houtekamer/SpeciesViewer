@@ -55,7 +55,7 @@ species…" for bulk edits over a multi-selection.
 | `Space` | Move to the next picture (no change) |
 | `←` / `→` | Previous / next picture (Large Image View) |
 | Mouse wheel | Over the image in the Large Image View: up → next, down → previous |
-| `f` | Large Image View: toggle the **100% (full-resolution)** tab |
+| `f` | Large Image View: toggle **Fit ⇄ Camera JPEG** (the quick zoom double-click uses). The **100%** tab is a third tab, reached by clicking it |
 | Double-click image | Large Image View: open the 100% tab centred on the clicked spot |
 
 ## 100% (full-resolution) view — Large Image View
@@ -95,11 +95,26 @@ discovery** of a RAW — write the crop before the folder is opened in PhotoLab,
 force a "read from sidecar" there. The tool is offered for RAW pictures during
 culling.
 
+## Filtering and refresh (Species Image Preview only)
+
+Unlike everything above, these three are **not** shared — they exist only in the
+Species Image Preview grid, which is the one that carries the colour-filter bar.
+
+| Key | Action |
+|-----|--------|
+| `g` | Toggle the **keepers** filter — Red + Yellow + Green in one grid rebuild; press again to clear it |
+| `h` | Clear the colour filter |
+| `F5` | Re-read the day **from disk** and repaint the grid |
+
+`g` exists because picking the three keeper colours from the toolbar is three
+separate grid rebuilds; `g` is one.
+
 ## Dialogs (apply to the selection, else the focused picture)
 
 | Key | Action |
 |-----|--------|
 | `s` | Open the **species** dialog |
+| `a` | **Quick species** — copy the species the selection already agrees on, no dialog (falls back to `s`) |
 | `c` | Open the **rating / colour** dialog |
 | `f` | **Full resolution** — pre-decode to the 1:1 cache |
 | `l` | **Get location** — reverse-geocode GPS → write `Location/City/State/Country` to the XMP |
@@ -114,6 +129,48 @@ the grid** work here — `1`–`5` colour, `q w e r t` / `Ctrl+1`–`5` stars, `
 clear, `x` quick-Blue — each writes and steps to the next picture, so you can
 cull while pixel-peeping. On close the grid cursor lands on the last picture
 you looked at and any card you changed repaints; nothing else changes.
+
+`a`, `s` and `c` work in the Quick view too. The view itself owns no species or
+rating UI — building one would be exactly the startup cost it exists to skip —
+so it hands the action up to the grid that opened it, which runs its own
+handler. Two things follow from that:
+
+- Any dialog opens **as a child of the Quick view**, so it can't end up behind
+  it. The Quick view stays open underneath.
+- They act on the `[` … `]` **range** when one is marked, else on whatever the
+  grid already had selected when you pressed `z` (a `Ctrl+A` or a click
+  selection counts — it needn't be bracket-made), else on the picture on
+  screen. Marking a fresh range here replaces the inherited one. That's
+  deliberately unlike `x` and the digit keys, which are write-and-advance keys
+  and always act on just the current picture.
+
+The Quick view's title carries **every name the picture has** — Dutch, English
+and scientific, ordered by your Preferred-names profile, with the sex/age
+suffix — so an `a` or `s` there is visible without a panel, and the name can be
+checked against a field guide in either language. A successful dialog-free `a` also clears the `[` … `]` range,
+so the next key press lands on one fresh picture instead of re-acting on the
+group; a fall-back to the dialog leaves the range marked, so cancelling doesn't
+lose your selection.
+
+`a` is `s` minus the dialog, for the one case that needs no decision. Name one
+guide frame of a burst, select the burst with `[` … `]`, press `a`: the name is
+copied onto all of them in one batched write. Any **sex / age / plumage**
+qualifier rides along — it lives in the subject string next to the name
+(`greater ani, male`) — so the whole burst gets the attribute too.
+
+A name applied with `a` is bumped to the front of the **recent species**
+quick-pick list, exactly as a dialog commit would — the qualifier is stripped
+first, so a token like `juv` never lands in the list as if it were a species.
+
+`a` opens the regular **Set species** dialog instead whenever the selection
+doesn't say one unambiguous thing:
+
+- **nothing** in the selection is named — there'd be nothing to copy;
+- **several different** names among them;
+- the names agree but the **qualifiers don't** (`greater ani, male` beside
+  `greater ani, female`) — picking a sex for the whole burst is a decision, not
+  a keystroke;
+- only **one** picture is targeted — there's nothing to copy it onto.
 
 `l` reverse-geocodes each picture's GPS (OpenStreetMap/Nominatim, English) and
 writes the place name into the XMP. It's throttled and **deduplicated by

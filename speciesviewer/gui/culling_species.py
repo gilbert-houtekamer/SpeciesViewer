@@ -68,6 +68,38 @@ def species_prefill_for_keys(keys, species_of, is_landscape=None):
                 pass
     return (current, summary, n_landscape)
 
+
+def quick_species_subject(keys, species_of) -> str:
+    """The one subject that quick-'a' may copy across `keys` without asking —
+    or "" when there is nothing safe to copy and the dialog must open instead.
+
+    'a' is 's' minus the dialog, for the one case that needs no decision: the
+    selection already agrees on a species and the rest are blank, so all the
+    dialog could do is re-type what is already there. The usual shape is a
+    burst where one guide frame was named and the other twenty were not.
+
+    Returns "" — meaning "open the regular Set species dialog" — when:
+      - fewer than two pictures: there is nothing to copy ONTO;
+      - no picture carries a species: there is nothing to copy FROM;
+      - the named pictures disagree.
+
+    Qualifiers are part of the subject string, so they ride along for free —
+    "greater ani, male" copies the sex with the name. They also count towards
+    disagreement on purpose: "greater ani, male" next to "greater ani, female"
+    is NOT one setting, and silently picking a sex for the whole burst would be
+    a data change nobody asked for. That pair opens the dialog.
+
+    Shares its "what is this selection already saying?" reading with
+    species_prefill_for_keys() above, which seeds the dialog with the same
+    agreed name — the two must not drift apart.
+    """
+    keys = list(keys)
+    if len(keys) < 2:
+        return ""
+    named = {s for s in ((species_of(k) or "").strip() for k in keys) if s}
+    return next(iter(named)) if len(named) == 1 else ""
+
+
 # Biota vocabulary — mono micro-labels + chip-style recents, so this culling
 # species popup reads as one system with the large-viewer SpeciesInfoPanel.
 # (Mirrors species_editor's _MICRO / _RECENT_CHIP; kept local rather than
@@ -262,6 +294,20 @@ def remember_recent_species(name: str):
     recent = [r for r in load_recent_species() if r.lower() != name.lower()]
     recent.insert(0, name)
     update_cache_gui_section(_RECENT_SECTION, _RECENT_KEY, recent[:_RECENT_MAX])
+
+
+def remember_species_from_subject(subject: str):
+    """LRU-bump the species carried by a stored subject — qualifiers stripped.
+
+    Every route that commits a species has to do this, or the name stops rising
+    in the quick-pick list exactly when it is being used most. The dialogs do it
+    themselves; the dialog-free 'a' key has no dialog to do it for it, so it
+    calls this. Qualifiers are stripped for the same reason the Set-species
+    panel strips them: a token like "juv" must never leak into the recents as
+    if it were a species."""
+    name, _quals = split_species_qualifiers(subject or "")
+    if name.strip():
+        remember_recent_species(name.strip())
 
 
 def forget_recent_species(name: str):

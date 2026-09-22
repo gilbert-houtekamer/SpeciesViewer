@@ -10,6 +10,10 @@ Bindings (applied to the focused/current picture, then advance to the next):
   Ctrl+0              clear rating
   1 … 5               set colour          (Red Yellow Green Blue Purple)
   0                   clear colour
+  s                   open the species dialog
+  a                   copy the species the selection already agrees on (no dialog),
+                      falling back to the 's' dialog when that is ambiguous
+  c                   open the rating / colour dialog
   Space               next picture (no change)
 Keys are ignored while a text field (description / species) has focus.
 """
@@ -44,6 +48,8 @@ def parse_cull_key(event):
         return ("next", None)
     if not ctrl and k == Qt.Key.Key_S:
         return ("species", None)
+    if not ctrl and k == Qt.Key.Key_A:
+        return ("species_quick", None)
     if not ctrl and k == Qt.Key.Key_C:
         return ("rating_dialog", None)
     if ctrl and k in _DIGIT:
@@ -60,7 +66,7 @@ def parse_cull_key(event):
 
 
 def handle_cull_key(event, *, order, current_key, item_for_key, set_cursor, refresh_key,
-                    open_species=None, open_rating=None) -> bool:
+                    open_species=None, open_rating=None, quick_species=None) -> bool:
     """Apply a culling key to the current picture and advance. Returns True if the
     event was a culling key (and is now consumed), False to let the caller handle it.
 
@@ -71,6 +77,9 @@ def handle_cull_key(event, *, order, current_key, item_for_key, set_cursor, refr
     refresh_key  - key -> repaint that picture's card/thumbnail after an edit
     open_species - callback for 's' (open the species dialog for the selection/current)
     open_rating  - callback for 'c' (open the rating/colour dialog likewise)
+    quick_species- callback for 'a' (copy the selection's agreed species without a
+                   dialog; it decides for itself when to fall back to open_species).
+                   A viewer that doesn't supply one falls through to 's'.
     """
     if text_input_focused():
         return False
@@ -81,6 +90,13 @@ def handle_cull_key(event, *, order, current_key, item_for_key, set_cursor, refr
     if action == "species":
         if open_species:
             open_species()
+        return True
+    if action == "species_quick":
+        # 'a' degrades to 's' rather than doing nothing: a viewer that hasn't
+        # wired the quick path yet should still name the selection.
+        cb = quick_species or open_species
+        if cb:
+            cb()
         return True
     if action == "rating_dialog":
         if open_rating:

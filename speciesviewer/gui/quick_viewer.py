@@ -9,6 +9,17 @@ advances, so you can cull while pixel-peeping. On close the caller moves its
 cursor to the last picture shown and repaints any card it changed; nothing
 else changes.
 
+`a` (quick species), `s` (species dialog) and `c` (rating dialog) work here too,
+but they are the caller's to run — this view owns no species or rating UI, and
+building one would be the startup cost it exists to skip. They travel up as
+action_requested(what, keys) and the grid runs its OWN handler, parenting any
+dialog to this window so it can't open behind it. The keys travel WITH the
+request on purpose: `navigated` only fires on close, so the caller's cursor is
+stale the whole time this view is open and must not be used to decide what an
+action applies to. Like the grid's `s`/`c`, they act on the `[` / `]` range when
+one is marked, else the picture on screen — unlike `x` and the digit keys, which
+are per-picture write-and-advance keys and always act on just the current one.
+
 A picture with no RAW/embedded JPEG but a video file plays instead (QMediaPlayer
 + QVideoWidget, `Space` toggles play/pause) — the one place in the app a movie
 is actually watched rather than shown as a single frame; the grid only ever
@@ -55,6 +66,7 @@ from PyQt6.QtWidgets import QApplication, QDialog, QStackedWidget, QVBoxLayout, 
 from gui.image_loader import AsyncImageLoader
 from gui.large_image_view import _FullResView, color_to_css
 from gui.preview_extract import extract_preview_bytes
+from utils.name_profile import all_names_ordered
 
 
 class QuickViewer(QDialog):
@@ -64,9 +76,13 @@ class QuickViewer(QDialog):
     # adopts both the resulting selection and the brackets themselves, so the
     # grid, Quick Viewer and Large Image View all share one [ / ] administration.
     selection_changed = pyqtSignal(set, object, object)
+    # 'a' / 's' / 'c' — what to do, and the keys to do it to. See the module
+    # docstring for why the keys are carried rather than looked up by the caller.
+    action_requested = pyqtSignal(str, set)
 
     def __init__(self, parent, collection, keys, index: int,
-                 initial_brackets: tuple | None = None):
+                 initial_brackets: tuple | None = None,
+                 initial_selection: set | None = None):
         super().__init__(parent)
         self._collection = collection
         self._keys = list(keys)
@@ -75,6 +91,12 @@ class QuickViewer(QDialog):
         self._cur_ev = 0.0
         self._edited: set[str] = set()
         self._bracket_left, self._bracket_right = initial_brackets if initial_brackets else (None, None)
+        # The caller's live selection, which is NOT always bracket-derived —
+        # Ctrl+A, a click-drag or a context menu all fill it with no [ / ] set.
+        # Inheriting only the brackets meant 'a' fell back to the single picture
+        # on screen and silently ignored a range the user could see highlighted
+        # in the grid behind this window.
+        self._selection: set = set(initial_selection or ())
         self._view_state: dict[str, tuple] = {}   # key -> (scale, hscroll, vscroll)
 
         self.setWindowFlag(Qt.WindowType.Window, True)
@@ -143,7 +165,7 @@ class QuickViewer(QDialog):
         self._player.stop()   # never keep playing behind whatever loads next
         key = self._keys[self._index]
         self._cur_key = key
-        self.setWindowTitle(f"Quick view — {key}  ({self._index + 1} of {len(self._keys)})")
+        self._refresh_title()
         # Any exposure suggestion already set (large viewer / grid batch) is
         # applied on display, so QuickViewer shows what PhotoLab/Lightroom will
         # actually render rather than the untouched embed. Zero extra cost for
@@ -215,6 +237,80 @@ class QuickViewer(QDialog):
         else:
             self._frame.setStyleSheet("")
 
+    def _species_line(self, key: str) -> str:
+        """EVERY name the picture has — Dutch, English and scientific — ordered
+        by the active name profile, with the sex/age/plumage suffix on the
+        primary one. The same all_names_ordered() the Large Image View's name
+        block and the species page use, so the three read alike.
+
+        All three rather than just the profile's primary: this view is where a
+        bird gets identified against a field guide, and the guide is as likely
+        to be in English as in Dutch. A scientific name is capitalised to the
+        "Genus species" convention — the resolver returns it lower-case."""
+        try:
+            item = self._collection.item_for_key(key)
+        except (ValueError, KeyError):
+            return ""
+        triple = getattr(item, "name_triple", None) or {"sci": getattr(item, "sci_name", "")}
+        row = {"nl": triple.get("nl", ""), "en": triple.get("en", ""),
+               "sci": triple.get("sci", "")}
+        lines = [t for t in all_names_ordered(row, getattr(item, "name_profile", "")) if t[0]]
+        if not lines:
+            # No triple (a culling-stage sidecar knows only what was typed).
+            return (getattr(item, "species", "") or "").strip()
+        names = [(t[0].upper() + t[1:]) if is_sci else t for t, is_sci in lines]
+        return "  ·  ".join(names) + (getattr(item, "qualifier_suffix", "") or "")
+
+    def _refresh_title(self):
+        """Title = key · every name · position. The names are here because this
+        view has no panel of any kind: without them, naming a picture with 'a'
+        or 's' would change nothing you can see, and a write you can't see is a
+        write you don't trust."""
+        key = self._cur_key
+        if not key:
+            self.setWindowTitle("Quick view")
+            return
+        names = self._species_line(key)
+        who = f"{key}  —  {names}" if names else key
+        self.setWindowTitle(f"Quick view — {who}  ({self._index + 1} of {len(self._keys)})")
+
+    def refresh_current(self):
+        """Re-read the picture on screen after the CALLER changed it (a species
+        or rating set through action_requested) — title and colour border only.
+        Deliberately not a reload: the pixels did not change, and re-extracting
+        the embedded JPEG would undo the zoom and pan the user is working at."""
+        if not self._cur_key:
+            return
+        self._refresh_title()
+        try:
+            item = self._collection.item_for_key(self._cur_key)
+            self._apply_frame_color(getattr(item, "color", "") or "")
+        except (ValueError, KeyError):
+            pass
+
+    def clear_brackets(self):
+        """Drop the [ / ] range after an action consumed it, so the next key
+        press lands on one fresh picture rather than re-acting on the group —
+        the same rule the grid's quick-colour key follows."""
+        self._bracket_left = self._bracket_right = None
+        self._selection = set()
+        self.selection_changed.emit(set(), None, None)
+
+    def _action_keys(self) -> set:
+        """What 'a' / 's' / 'c' act on: the marked [ / ] range, else the
+        selection inherited from the caller (which may have been made by
+        Ctrl+A or by clicking, with no brackets at all), else the picture on
+        screen. Mirrors the grid's _cull_keys_target()."""
+        keys_in_view = set(self._keys)
+        return (self._selection_from_brackets()
+                or (self._selection & keys_in_view)
+                or ({self._keys[self._index]} if self._keys else set()))
+
+    def _request(self, what: str):
+        keys = self._action_keys()
+        if keys:
+            self.action_requested.emit(what, keys)
+
     def _go(self, delta: int):
         if not self._keys:
             return
@@ -273,15 +369,16 @@ class QuickViewer(QDialog):
         if k in (Qt.Key.Key_Right, Qt.Key.Key_Down):
             self._go(1)
             return
-        if k == Qt.Key.Key_BracketLeft and self._keys:
-            self._bracket_left = self._keys[self._index]
+        if k in (Qt.Key.Key_BracketLeft, Qt.Key.Key_BracketRight) and self._keys:
+            if k == Qt.Key.Key_BracketLeft:
+                self._bracket_left = self._keys[self._index]
+            else:
+                self._bracket_right = self._keys[self._index]
+            # A fresh [ / ] range replaces whatever selection was inherited from
+            # the caller — marking a range here is an explicit "this, not that".
+            self._selection = self._selection_from_brackets()
             self.selection_changed.emit(
-                self._selection_from_brackets(), self._bracket_left, self._bracket_right)
-            return
-        if k == Qt.Key.Key_BracketRight and self._keys:
-            self._bracket_right = self._keys[self._index]
-            self.selection_changed.emit(
-                self._selection_from_brackets(), self._bracket_left, self._bracket_right)
+                set(self._selection), self._bracket_left, self._bracket_right)
             return
         # 'x' — quick-stamp Blue and advance, same as the grid's shortcut and
         # the same gate/advance rule as the digit colour keys below (only
@@ -308,7 +405,9 @@ class QuickViewer(QDialog):
                 item_for_key=self._collection.item_for_key,
                 set_cursor=self._goto_key,
                 refresh_key=self._mark_edited,
-                open_species=None, open_rating=None):
+                open_species=lambda: self._request("species"),
+                open_rating=lambda: self._request("rating"),
+                quick_species=lambda: self._request("species_quick")):
             return
         super().keyPressEvent(e)
 

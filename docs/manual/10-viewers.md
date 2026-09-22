@@ -267,13 +267,14 @@ Not prescriptive, but this is the order the filters are built for:
 
 Double-click any card. One picture, as big as the window, with a filmstrip.
 
-Its two tabs, the 100% view and the crop tool are documented in detail in
-[viewer_keybindings.md](../viewer_keybindings.md); in summary:
+Its three tabs, the full-resolution view and the crop tool are documented in
+detail in [viewer_keybindings.md](../viewer_keybindings.md); in summary:
 
 | Feature | Notes |
 |---|---|
 | **Fit** tab | The embedded preview, fitted to the window |
-| **100%** tab (`f`) | Decoded from the RAW at full sensor resolution — the embedded preview is only ~3200×2400. Lazily decoded, then cached. |
+| **Camera JPEG** tab | The JPEG the camera itself wrote inside the RAW — on the Nikons full size, and it appears instantly. `f` toggles Fit ⇄ this tab, and a double-click on the Fit image lands here. |
+| **100%** tab | Decoded from the RAW at full sensor resolution — the embedded preview is only ~3200×2400. Lazily decoded, then cached. Click the tab to open it; its label shows the configured render scale. |
 | **✂ Crop** | Rough-cut a crop to hand to PhotoLab / Lightroom as a starting point. Aspect locked to the camera's nominal ratio. |
 | Navigation | `←` / `→` / `Space` / mouse wheel |
 
