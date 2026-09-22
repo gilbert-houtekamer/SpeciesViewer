@@ -1021,6 +1021,13 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 card.refresh()
             self._notify_large_view(k)
         self._apply_filters()
+        if keys:
+            # A map placement is an edit like any other. The coordinate is in the
+            # XMP on disk immediately, but data_files.csv learns it only from a
+            # Read & Summarize — so without this flag the viewer closed without
+            # offering that re-run, and the day's GPS count (and anything built
+            # from the CSVs) stayed as if the placement never happened.
+            self._day_edited = True
 
     def _clear_find_silently(self, except_mode=None):
         """Clear the Find boxes without re-triggering their handlers (used when

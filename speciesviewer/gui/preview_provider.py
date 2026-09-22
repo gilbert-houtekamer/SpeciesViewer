@@ -601,7 +601,20 @@ class PreviewCollection(PictureCollection):
     def gps_cached(self, upn_key: str):
         """(lat, lon) parsed from the in-memory file rows' Composite:GPSPosition —
         no file read — so the map plots a whole day without an exiftool spawn per
-        picture. Same DMS→decimal parse the master DB uses."""
+        picture. Same DMS→decimal parse the master DB uses.
+
+        A coordinate WE wrote this session wins over the row. The rows come from
+        the last Read & Summarize and know nothing about a paste or a map
+        placement until the next one; the override was written to the XMP on
+        disk seconds ago. Without this the map rebuilt itself from the stale
+        rows every time it re-opened, and a picture you had just placed was back
+        in the no-GPS tray as if nothing had happened — the sidecar collection
+        never had the bug because ITS note_gps_written writes into the very dict
+        this reads, and only this one kept the two apart.
+        """
+        override = getattr(self, "_gps_override", {}).get(upn_key)
+        if override:
+            return override
         from engine.geo import parse_gps_dms
         for fname in self._files(upn_key):
             frow = self.fpr.fi.files_dict.get(fname)

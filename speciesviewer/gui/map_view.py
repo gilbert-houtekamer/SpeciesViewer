@@ -2345,16 +2345,21 @@ class TripMapView(QDialog):
             act = menu.addAction(line)
             act.setEnabled(False)
         menu.addSeparator()
+        # What the menu acts on: the whole tray selection when this picture is
+        # part of it. Resolved up here because BOTH placement actions need to
+        # say how many they will place.
+        sel = self._tray_selection(key)
         est = self._estimate_position(key) if has_time else None
         place_act = None
         if est is not None:
             label = {"high": "confident", "medium": "approximate",
                      "low": "rough guess"}.get(est["conf"], "")
             place_act = menu.addAction(
-                f"📍 Suggest a position — {label} (between photos before/after)")
+                f"📍 Suggest a position — {label} (between photos before/after)"
+                if len(sel) == 1 else
+                f"📍 Suggest a position — {label} (place all {len(sel)} selected)")
         # The other half of the problem: no timestamp to interpolate from, or no
         # neighbours — but you WROTE DOWN where you were. Name it and we look it up.
-        sel = self._tray_selection(key)
         find_act = menu.addAction(
             "🔎 Find a place by name…" if len(sel) == 1 else
             f"🔎 Find a place by name… (place all {len(sel)} selected)")
@@ -2367,7 +2372,7 @@ class TripMapView(QDialog):
             del_act = menu.addAction("Delete… (move to trash)")
         chosen = menu.exec(global_pos)
         if place_act is not None and chosen == place_act:
-            self._suggest_position(key, est)
+            self._suggest_position(key, est, sel)
         elif chosen == find_act:
             self._find_place(sel)
         elif chosen == zoom_act and has_time:
@@ -2419,15 +2424,28 @@ class TripMapView(QDialog):
                  f"<i>place</i> is — drag the pin if the picture was taken somewhere "
                  f"else nearby.")
 
-    def _suggest_position(self, key: str, est: dict):
+    def _suggest_position(self, key: str, est: dict, keys: list[str] | None = None):
         """Show the estimate as a coloured preview (green time-neighbours + a
         confidence-coloured DRAGGABLE pin), frame it, and open the inline confirm
-        bar. The pin can be nudged onto the exact spot before committing."""
+        bar. The pin can be nudged onto the exact spot before committing.
+
+        Two different things, deliberately: the estimate is computed from ONE
+        picture — `key`, the one right-clicked — because a time interpolation
+        needs one capture time, not five. But what gets PLACED is the whole
+        selection, exactly as dragging the selection onto the map places all of
+        it. Placing only the picture the estimate came from, while four others
+        sat selected, was the odd one out among every other placement route."""
+        targets = [k for k in (keys or [key]) if k in self._nogps_keys] or [key]
+        note = est["detail"]
+        if len(targets) > 1:
+            # Say out loud that the spot came from one of them — the others are
+            # being placed on the strength of a neighbour's timestamp.
+            note += (f"<br>Estimated from {key} — all {len(targets)} selected "
+                     f"pictures will be placed here.")
         self._map.show_geotag_preview(est["neighbours"],
                                       (est["lat"], est["lon"]), est["conf"])
         self._map.focus_area(list(est["neighbours"]) + [(est["lat"], est["lon"])])
-        self._begin_confirm("place", [key], est["lat"], est["lon"],
-                            note=est["detail"])
+        self._begin_confirm("place", targets, est["lat"], est["lon"], note=note)
 
     def _estimate_position(self, key: str):
         """Estimate a no-GPS picture's location by TIME-interpolating between the
