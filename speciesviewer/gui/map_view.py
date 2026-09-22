@@ -1747,6 +1747,8 @@ class NoGpsTray(QWidget):
             self._obj_to_key[cell] = k
         self._resize_strip()
         self._body.setWidget(self._strip)
+        # The wheel has to steer the only axis this strip has — see eventFilter.
+        self._body.viewport().installEventFilter(self)
         v.addWidget(self._body)
         self._body.setVisible(False)
 
@@ -1853,6 +1855,18 @@ class NoGpsTray(QWidget):
     # ── drag ─────────────────────────────────────────────────────────────────
     def eventFilter(self, obj, ev):
         t = ev.type()
+        if t == QEvent.Type.Wheel:
+            # One row of thumbnails, so a vertical wheel has nowhere to go: the
+            # vertical bar is off and the gesture only nudged the view a couple
+            # of pixels. Steer it to the horizontal bar instead, one thumbnail
+            # per notch, which is the movement the strip actually has.
+            d = ev.angleDelta()
+            step = d.y() or d.x()
+            if step:
+                bar = self._body.horizontalScrollBar()
+                pitch = self._cell_w + 6          # cell + layout spacing
+                bar.setValue(bar.value() - round(step / 120.0 * pitch))
+            return True
         if t == QEvent.Type.ContextMenu:
             key = self._obj_to_key.get(obj)
             if key is not None:
@@ -1910,18 +1924,52 @@ class NoGpsTray(QWidget):
         return [k for k in self._keys if k in self._selected]
 
     def remove_keys(self, keys):
-        """Drop placed pictures out of the tray (after a successful geotag)."""
-        for k in keys:
+        """Drop placed pictures out of the tray (after a successful geotag) and
+        land on what FOLLOWED them.
+
+        Without the scroll, placing fifteen pictures cost you thirty: the strip
+        shrank by fifteen cells under a scroll offset that stayed put, so the
+        left edge ended up fifteen further along than the run you had just
+        dealt with, and fifteen unplaced pictures slid past unseen. The next
+        one to deal with is the one that took the first removed cell's place,
+        so that is what gets put back on the left edge."""
+        order = [k for k in self._keys if k in self._cells]
+        gone = [k for k in keys if k in self._cells]
+        if not gone:
+            return
+        landing = min(order.index(k) for k in gone)
+        for k in gone:
             cell = self._cells.pop(k, None)
             if cell is not None:
                 self._obj_to_key.pop(cell, None)
                 self._hl.removeWidget(cell)
                 cell.deleteLater()
             self._selected.discard(k)
+        # Placed pictures are gone for good — keep the order list in step so
+        # index arithmetic above stays honest on the next call.
+        self._keys = [k for k in self._keys if k in self._cells]
         self._resize_strip()
         self._refresh_header()
         if not self._cells:
             self.emptied.emit()
+            return
+        self._hl.activate()          # positions are stale until the layout reruns
+        nxt = self._keys[min(landing, len(self._keys) - 1)]
+        self._current_key = nxt
+        self._range_start = None     # the old '[' anchor may have just been placed
+        cell = self._cells.get(nxt)
+        if cell is not None:
+            self._body.horizontalScrollBar().setValue(max(0, cell.x() - 4))
+
+    def tray_keys(self) -> list:
+        """The pictures still in the strip, in strip order — what a peek steps
+        through. Reads the live cells, so one already placed can never show up."""
+        return [k for k in self._keys if k in self._cells]
+
+    def current_key(self):
+        """The last-clicked thumbnail — the reference a keyboard action acts
+        from, the way a right-click acts from the cell under the pointer."""
+        return self._current_key if self._current_key in self._cells else None
 
 
 class TripMapView(QDialog):
@@ -2122,9 +2170,21 @@ class TripMapView(QDialog):
         b.addWidget(self._bar_label, 1)
         self._bar_ok = QPushButton("Place here")
         self._bar_ok.setDefault(True)
+        # Filled in the accent so it reads as the primary action — the one the
+        # bar's own text says Enter will press. A button that IS the Enter key
+        # should not look like the Cancel beside it.
+        self._bar_ok.setStyleSheet(
+            f"QPushButton {{ background:{theme.ACCENT}; color:{theme.ACCENT_INK};"
+            f" border:1px solid {theme.ACCENT}; font-weight:600; padding:3px 14px; }}"
+            f"QPushButton:hover {{ background:{theme.ACCENT_HOVER};"
+            f" border-color:{theme.ACCENT_HOVER}; }}")
         self._bar_ok.clicked.connect(self._confirm_accept)
         b.addWidget(self._bar_ok)
         bar_cancel = QPushButton("Cancel")
+        # Enter belongs to "Place here" wherever focus sits. Without this, a
+        # Cancel that happened to have focus would swallow it (Qt gives every
+        # QPushButton in a dialog autoDefault) and reject the placement.
+        bar_cancel.setAutoDefault(False)
         bar_cancel.clicked.connect(self._confirm_cancel)
         b.addWidget(bar_cancel)
         self._bar.setVisible(False)
@@ -2355,14 +2415,14 @@ class TripMapView(QDialog):
             label = {"high": "confident", "medium": "approximate",
                      "low": "rough guess"}.get(est["conf"], "")
             place_act = menu.addAction(
-                f"📍 Suggest a position — {label} (between photos before/after)"
+                f"📍 Suggest a position  (p) — {label} (between photos before/after)"
                 if len(sel) == 1 else
-                f"📍 Suggest a position — {label} (place all {len(sel)} selected)")
+                f"📍 Suggest a position  (p) — {label} (place all {len(sel)} selected)")
         # The other half of the problem: no timestamp to interpolate from, or no
         # neighbours — but you WROTE DOWN where you were. Name it and we look it up.
         find_act = menu.addAction(
-            "🔎 Find a place by name…" if len(sel) == 1 else
-            f"🔎 Find a place by name… (place all {len(sel)} selected)")
+            "🔎 Find a place by name…  (n)" if len(sel) == 1 else
+            f"🔎 Find a place by name…  (n) (place all {len(sel)} selected)")
         zoom_act = menu.addAction("Zoom map to around this time" if has_time
                                   else "Zoom to around this time — no timestamp")
         zoom_act.setEnabled(has_time)   # a screenshot with no capture time can't bracket
@@ -2379,6 +2439,119 @@ class TripMapView(QDialog):
             self._zoom_to_time(key)
         elif del_act is not None and chosen == del_act:
             self._delete_picture(key)
+
+    # ── keyboard shortcuts (this dialog only) ────────────────────────────────
+    def _tray_keyboard_target(self):
+        """(reference picture, pictures to place) for the p / n shortcuts.
+
+        A right-click names its own reference — the cell under the pointer. A
+        keystroke has to work one out: the last-clicked thumbnail when it is
+        part of the selection, else the first selected, else just the
+        last-clicked one on its own. Same shape as _tray_selection()."""
+        if self._tray is None:
+            return (None, [])
+        try:
+            sel = [k for k in self._tray.selected_keys() if k in self._nogps_keys]
+        except AttributeError:
+            sel = []
+        cur = self._tray.current_key()
+        if sel:
+            return (cur if cur in sel else sel[0], sel)
+        return (cur, [cur]) if cur in self._nogps_keys else (None, [])
+
+    def _peek_tray(self):
+        """`z` — a look at the no-GPS pictures in the Quick view, READ-ONLY.
+
+        The strip's thumbnails are small and a place often only comes back to
+        you once you can see the bird: "what was this?" is the question, not
+        "what should this be". So it opens in peek mode — arrows, zoom, Esc —
+        and every culling key is off, because pressing 'x' or '3' by habit
+        while geotagging would label a picture you were only checking.
+
+        It steps through the WHOLE strip, not just the selection: you are
+        reminding yourself where a run was taken, and the neighbours are the
+        context that answers it."""
+        if self._tray is None:
+            return
+        keys = self._tray.tray_keys()
+        if not keys:
+            return
+        ref, _sel = self._tray_keyboard_target()
+        start = keys.index(ref) if ref in keys else 0
+        existing = getattr(self, "_peek", None)
+        if existing is not None:
+            try:
+                existing.close()
+            except RuntimeError:
+                pass
+        from gui.quick_viewer import QuickViewer
+        dlg = QuickViewer(self, self._coll, keys, start, read_only=True)
+        dlg.finished.connect(lambda _=0: setattr(self, "_peek", None))
+        self._peek = dlg
+        dlg.show()
+        dlg.activateWindow()
+        dlg.setFocus()
+
+    def keyPressEvent(self, ev):
+        """Keyboard for the no-GPS strip, so a run can be placed without ever
+        reaching for the mouse.
+
+        `p` suggests a position, `n` finds a place by name, `z` peeks at the
+        picture full-size — the three menu-or-mouse actions worth a key, because
+        they are the ones you use over and over working down the tray. None of
+        them COMMITS anything: p and n land in the draggable pin + confirm bar
+        every other placement route uses, and z is read-only.
+
+        `Enter` and `Esc` then finish the job, and belong to the PENDING
+        placement while one is up: Esc must cancel that placement, not close the
+        whole map the way this dialog's own Esc does.
+
+        Map-dialog only, and never while a text field has focus — the
+        place-search box is full of letters."""
+        from gui.viewer_keys import text_input_focused
+        k = ev.key()
+        if self._pending and not text_input_focused():
+            # A pending placement owns Enter and Esc for as long as it is up.
+            # Esc especially: the dialog's own Esc closes the whole map, which
+            # is not what "cancel this placement" should do.
+            if k in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self._confirm_accept()
+                ev.accept()
+                return
+            if k == Qt.Key.Key_Escape:
+                self._confirm_cancel()
+                ev.accept()
+                return
+        if (k == Qt.Key.Key_Z
+                and not ev.modifiers() & Qt.KeyboardModifier.ControlModifier
+                and not text_input_focused()):
+            self._peek_tray()
+            ev.accept()
+            return
+        if (k in (Qt.Key.Key_P, Qt.Key.Key_N)
+                and not ev.modifiers() & Qt.KeyboardModifier.ControlModifier
+                and not text_input_focused()):
+            ref, keys = self._tray_keyboard_target()
+            if not ref:
+                QMessageBox.information(
+                    self, "Place pictures",
+                    "Select one or more pictures in the no-GPS strip first.")
+                ev.accept()
+                return
+            if k == Qt.Key.Key_N:
+                self._find_place(keys)
+            else:
+                est = self._estimate_position(ref)
+                if est is None:
+                    QMessageBox.information(
+                        self, "Suggest a position",
+                        f"Can't suggest a spot for {ref}: it has no capture time, "
+                        f"or there is no GPS'd photo to bracket it against.")
+                else:
+                    self._suggest_position(ref, est, keys)
+            ev.accept()
+            return
+        super().keyPressEvent(ev)
 
     def _tray_selection(self, key: str) -> list[str]:
         """The tray pictures a menu action should act on: the whole current
@@ -2638,6 +2811,11 @@ class TripMapView(QDialog):
         self._bar_ok.setText("Place here" if mode == "place" else "Move here")
         self._refresh_bar()
         self._bar.setVisible(True)
+        # Focus the button, so the ring shows WHERE Enter will land as well as
+        # the bar saying so. The pin stays draggable — this takes the keyboard,
+        # not the mouse.
+        self._bar_ok.setDefault(True)
+        self._bar_ok.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _refresh_bar(self):
         p = self._pending
@@ -2651,7 +2829,8 @@ class TripMapView(QDialog):
             bits.append(p["note"])
         if p["warnings"]:
             bits.append(p["warnings"])
-        bits.append("Drag the pin on the map to adjust.")
+        bits.append("Drag the pin on the map to adjust  ·  "
+                    "<b>Enter</b> places  ·  <b>Esc</b> cancels.")
         self._bar_label.setText("<br>".join(bits))
 
     def _on_pin_nudged(self, lat: float, lon: float):

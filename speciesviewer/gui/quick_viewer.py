@@ -13,6 +13,11 @@ A command that writes without opening anything — `a` — reports itself in a
 top-right badge, in the same style as the top-left interaction hint, which
 clears on the next key. See flash().
 
+With ``read_only=True`` it is a PEEK: arrows, zoom and Esc, nothing else. The
+map opens it that way — there the job is geotagging, the question is only "what
+was this?", and a stray `x` or `3` would label a picture you were checking. An
+editing key pressed there says so in the badge rather than doing nothing.
+
 `a` (quick species), `s` (species dialog), `c` (rating dialog) and the four
 copy/paste keys (Ctrl+C/V for a species name, Ctrl+Shift+C/V for GPS + place)
 work here too,
@@ -89,8 +94,14 @@ class QuickViewer(QDialog):
 
     def __init__(self, parent, collection, keys, index: int,
                  initial_brackets: tuple | None = None,
-                 initial_selection: set | None = None):
+                 initial_selection: set | None = None,
+                 read_only: bool = False):
         super().__init__(parent)
+        # Peek mode: look, don't touch. Opened from the map, where the job is
+        # geotagging and the question is only "what WAS this?" — every culling
+        # key is off there, because a stray 'x' or '3' while placing pictures
+        # would label a picture you were only checking.
+        self._read_only = bool(read_only)
         self._collection = collection
         self._keys = list(keys)
         self._index = max(0, min(index, len(self._keys) - 1)) if self._keys else 0
@@ -288,7 +299,8 @@ class QuickViewer(QDialog):
             return
         names = self._species_line(key)
         who = f"{key}  —  {names}" if names else key
-        self.setWindowTitle(f"Quick view — {who}  ({self._index + 1} of {len(self._keys)})")
+        what = "Quick view (peek)" if self._read_only else "Quick view"
+        self.setWindowTitle(f"{what} — {who}  ({self._index + 1} of {len(self._keys)})")
 
     def refresh_current(self):
         """Re-read the picture on screen after the CALLER changed it (a species
@@ -419,6 +431,17 @@ class QuickViewer(QDialog):
             return
         if k in (Qt.Key.Key_Right, Qt.Key.Key_Down):
             self._go(1)
+            return
+        if self._read_only:
+            # Navigation and zoom are all this mode has. An editing key is not
+            # silently swallowed — say why, or it reads as a broken keyboard.
+            from gui.viewer_keys import parse_cull_key
+            if (parse_cull_key(e) is not None
+                    or k in (Qt.Key.Key_X, Qt.Key.Key_BracketLeft,
+                             Qt.Key.Key_BracketRight)):
+                self.flash("Peek only — this view can't change pictures")
+                return
+            super().keyPressEvent(e)
             return
         if k in (Qt.Key.Key_BracketLeft, Qt.Key.Key_BracketRight) and self._keys:
             if k == Qt.Key.Key_BracketLeft:

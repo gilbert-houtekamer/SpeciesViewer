@@ -145,6 +145,46 @@ location-writing plumbing, so a paste there reports *"Nowhere to write GPS on
 these pictures"* rather than pretending. Species copy and paste work there
 normally.
 
+## The map's no-GPS strip
+
+Separate from the picture viewers above: these work in the **Map** dialog, on
+the strip of pictures that have no coordinates yet.
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+A` | Select every picture still in the strip |
+| `[` / `]` | Select the range between two thumbnails |
+| `p` | **Suggest a position** — interpolated from the photos taken before and after |
+| `n` | **Find a place by name…** |
+| `z` | **Peek** — the picture full-size, read-only |
+| `Enter` | **Place here** — confirm the pending placement |
+| `Esc` | Cancel the pending placement (and, with none pending, close the map) |
+| Mouse wheel | Scroll the strip **sideways**, one thumbnail per notch (it is one row; there is no other direction to go) |
+
+`p` and `n` act on the selection, using the last-clicked thumbnail as the
+reference — the keyboard equivalent of the cell under the pointer when you
+right-click. Neither **commits** anything: both land in the same draggable pin
+and *Place here / Cancel* bar as every other placement route, so the spot is
+still yours to nudge or reject. `p` estimates from **one** picture (a time
+interpolation needs one capture time) but places **all** of them, and the
+confirm bar names which picture the estimate came from.
+
+`z` opens the Quick view in **peek** mode: arrows, zoom, `Esc`, and nothing
+else. Every culling key is off there — while geotagging, an `x` or a `3`
+pressed out of habit would label a picture you were only checking — and one
+pressed anyway says so in the badge rather than doing nothing. It steps through
+the whole strip, not just the selection, because the neighbours are usually
+what remind you where a run was taken.
+
+When the confirm bar opens, **Place here** takes the focus and is filled in the
+accent colour, and the bar itself says *Enter places · Esc cancels* — so a whole
+run can go `[` … `]` → `p` → `Enter` without touching the mouse. The pin stays
+draggable throughout; taking the keyboard doesn't take the mouse.
+
+After a placement the strip **lands on the picture that followed the ones you
+placed**, back at the left edge. (It used to keep its scroll position while the
+content shrank underneath it, so placing fifteen skipped fifteen more.)
+
 ## Filtering and refresh (Species Image Preview only)
 
 Unlike everything above, these three are **not** shared — they exist only in the
