@@ -99,8 +99,12 @@ class _BackupWorker(QObject):
                             self._trip_root, trip_folder,
                             master_root=_config.get("master", "masterbiotadatabase", fallback=""),
                             master_web_root=_config.get("master", "masterbiotawebroot", fallback=""))
-                out["tracklogs"] = wb.backup_tracklogs(
-                    _config.get("gpslogs", "rootdirectory", fallback=""), trip_folder)
+                # get_gpslogs_root(), not a raw _config lookup: it carries the
+                # <CurrentPictures>/gpslogs fallback, so a machine with no
+                # [gpslogs] section still backs its tracklogs up instead of
+                # silently leaving them behind.
+                from utils.config import get_gpslogs_root
+                out["tracklogs"] = wb.backup_tracklogs(get_gpslogs_root(), trip_folder)
 
                 # The GUI cache travels too: not needed by a restore (the manifest
                 # already carries the prefix) but it turns a reconstruction into a

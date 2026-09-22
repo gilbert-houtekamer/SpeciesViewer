@@ -134,13 +134,24 @@ def get_currentpictures_root() -> str:
     return _config.get("currentpictures", "rootdirectory", fallback="").strip()
 
 def get_gpslogs_root() -> str:
-    """The per-machine base folder holding one GPS tracklog per capture day,
-    named `<root>/<year>/<yyyymmdd>.log` (or `.gpx`) — the convention
-    engine.tracklog_geotag.find_day_tracklog looks for. Empty when not
-    configured, in which case the auto-discovery/silent geotag pass is
-    simply unavailable (the manual "Geotag from tracklog…" flow still works
-    by browsing to a file directly)."""
-    return _config.get("gpslogs", "rootdirectory", fallback="").strip()
+    """The base folder holding one GPS tracklog per capture day, named
+    `<root>/<year>/<yyyymmdd>.log` (or `.gpx`) — the convention
+    engine.tracklog_geotag.find_day_tracklog looks for.
+
+    `[gpslogs] rootdirectory` when set, else **`<CurrentPictures>/gpslogs`**,
+    which is the convention the machines actually follow. The fallback exists
+    because a machine with no [gpslogs] section had no tracklog folder at all:
+    the backup then skipped the logs and the restore had nowhere to put them,
+    both silently. Deriving it from a root that IS always configured means the
+    logs have a home on every machine without a second per-machine key.
+
+    Still "" only when neither is configured, in which case auto-discovery is
+    unavailable and "Geotag from tracklog…" is used by browsing to a file."""
+    configured = _config.get("gpslogs", "rootdirectory", fallback="").strip()
+    if configured:
+        return configured
+    pictures = get_currentpictures_root()
+    return str(Path(pictures) / "gpslogs") if pictures else ""
 
 # 🔄 Optional: Upgrade logic
 def upgrade_config_if_needed(latest_version=1.1):

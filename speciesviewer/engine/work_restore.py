@@ -243,11 +243,9 @@ def restore_tracklogs(card_trip_dir, gpslogs_root, logger_=None) -> dict:
         target = dest_root / src.relative_to(src_root)
         try:
             st = src.stat()
-            if target.exists():
-                ts = target.stat()
-                if ts.st_size == st.st_size and int(ts.st_mtime) == int(st.st_mtime):
-                    out["skipped"] += 1
-                    continue
+            if target.exists() and wb.same_file(target.stat(), st):
+                out["skipped"] += 1
+                continue
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, target)
             out["copied"] += 1

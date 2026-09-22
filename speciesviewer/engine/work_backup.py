@@ -458,6 +458,8 @@ def backup_days(day_dirs, dest_dir, skip_unchanged=True,
 # ── Trip identity ─────────────────────────────────────────────────────────────
 
 TRACKLOG_SUBDIR = "tracklogs"
+# Tolerance when comparing mtimes across filesystems — see same_file().
+FS_TIME_SLOP = 2
 TRACKLOG_EXTS = {".gpx", ".log", ".nmea", ".txt", ".fit"}
 
 
@@ -609,6 +611,18 @@ def backup_trip_identity(trip_root, dest_trip_dir, master_root="",
             "missing": info.get("missing", []), "reason": ""}
 
 
+def same_file(a, b) -> bool:
+    """Same size, and same mtime to within FS_TIME_SLOP seconds.
+
+    NOT exact mtime equality: the card is exFAT, which stores mtime at 2-second
+    resolution, while NTFS/APFS keep sub-second. A file copied either way comes
+    back rounded, so an exact test called 29 of 30 unchanged tracklogs "changed"
+    and re-copied 20 MB that was already there. Two seconds is the FAT rule and
+    is far below the interval at which a tracklog is actually rewritten.
+    """
+    return a.st_size == b.st_size and abs(a.st_mtime - b.st_mtime) <= FS_TIME_SLOP
+
+
 def backup_tracklogs(gpslogs_root, dest_trip_dir, logger_=None) -> dict:
     """Copy the GPS tracklogs in beside the trip ZIP.
 
@@ -628,8 +642,9 @@ def backup_tracklogs(gpslogs_root, dest_trip_dir, logger_=None) -> dict:
     log = logger_ or logger
     out = {"copied": 0, "skipped": 0, "bytes": 0, "reason": "", "found": 0}
     if not gpslogs_root:
-        out["reason"] = ("no GPS log folder is configured on this machine — set "
-                         "[gpslogs] rootdirectory so the tracklogs travel too")
+        out["reason"] = ("no GPS log folder on this machine — logs live in "
+                         "<CurrentPictures>/gpslogs, so set [currentpictures] "
+                         "rootdirectory (or [gpslogs] rootdirectory to override)")
         return out
     src_root = Path(gpslogs_root)
     if not src_root.is_dir():
@@ -642,11 +657,9 @@ def backup_tracklogs(gpslogs_root, dest_trip_dir, logger_=None) -> dict:
         target = dest / src.relative_to(src_root)
         try:
             st = src.stat()
-            if target.exists():
-                ts = target.stat()
-                if ts.st_size == st.st_size and int(ts.st_mtime) == int(st.st_mtime):
-                    out["skipped"] += 1
-                    continue
+            if target.exists() and same_file(target.stat(), st):
+                out["skipped"] += 1
+                continue
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, target)
             out["copied"] += 1
