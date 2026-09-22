@@ -433,32 +433,82 @@ def ensure_dop(raw_path):
     return dop_path if os.path.exists(dop_path) else None
 
 
+def sidecar_opts(out_pattern: str = "%d%f.xmp") -> list:
+    """The exiftool options that create one XMP sidecar per RAW.
+
+    THE one recipe. It used to live in batch/sv0ReadSDCard.py, because ingest was
+    the only thing that ever authored a sidecar, while ensure_xmp below kept a
+    near-copy that had quietly drifted: it lacked the DateTimeOriginal-with-offset
+    expression, so a sidecar created here was blind to the camera's UTC offset and
+    the tracklog geotag had to guess it. Two hand-maintained copies of a fact about
+    the world is the same mistake the raw-extension table exists to prevent, so
+    there is now one, HERE (engine is the layer batch imports, not the reverse),
+    and sv0ReadSDCard imports it.
+
+    ``out_pattern`` is exiftool's -o target; the default writes beside the RAW.
+    """
+    return ["-tagsfromfile", "@", "-xmp:all<all",
+            "-XMP-exif:SubjectDistance<Olympus:FocusDistance#",
+            "-XMP-exif:DateTimeOriginal<${DateTimeOriginal}${OffsetTimeOriginal}",
+            "-o", out_pattern]
+
+
+def existing_xmp(raw_path):
+    """The RAW's sidecar path if one is already on disk, else None. Creates nothing."""
+    base = os.path.splitext(str(raw_path))[0]
+    for existing in (base + ".xmp", base + ".XMP"):
+        if os.path.exists(existing):
+            return existing
+    return None
+
+
+def ensure_xmps(raw_paths):
+    """Create a `.xmp` sidecar for every RAW in `raw_paths` that lacks one.
+
+    Batched sibling of ensure_xmp, and for the same reason the culling grid is
+    batched: an exiftool run costs ~270 ms almost entirely in spawning the
+    process, so twenty-two pictures one at a time is six seconds of startup for a
+    write that takes no time. exiftool takes any number of files per run.
+
+    Returns {str(raw_path): str(xmp_path)} for every RAW that HAS a sidecar
+    afterwards — created now or already there. A RAW missing from the result is
+    one whose sidecar could not be created; the caller decides what that means.
+    """
+    paths = [str(p) for p in raw_paths]
+    out, todo = {}, []
+    for rp in paths:
+        found = existing_xmp(rp)
+        if found:
+            out[rp] = found
+        else:
+            todo.append(rp)
+    if todo:
+        try:
+            from engine.exif_writer import run_exiftool_files
+            run_exiftool_files(sidecar_opts(), todo)
+        except Exception as e:
+            logger.warning(f"ensure_xmps: could not create {len(todo)} sidecar(s): {e}")
+        for rp in todo:
+            found = existing_xmp(rp)
+            if found:
+                out[rp] = found
+            else:
+                logger.warning(f"ensure_xmps: no sidecar for {rp} after exiftool ran")
+    return out
+
+
 def ensure_xmp(raw_path):
     """Return the RAW's `.xmp` sidecar path, CREATING a minimal one if missing.
 
     Unlike the .dop (see ensure_dop — a from-scratch .dop is impossible because
     PhotoLab matches by a UUID we cannot compute), an .xmp is always safe to
     author: every tool that reads .xmp treats a fresh sidecar as authoritative.
-    When none exists we create it exactly the way ingest does — exiftool copies
-    the RAW's own metadata into `<stem>.xmp` — so write_xmp_edits below has a
-    real rdf:Description to patch. Returns the path, or None if creation failed.
+    When none exists we create it exactly the way ingest does — same recipe, one
+    function (sidecar_opts): exiftool copies the RAW's own metadata into
+    `<stem>.xmp` — so write_xmp_edits below has a real rdf:Description to patch.
+    Returns the path, or None if creation failed.
     """
-    base = os.path.splitext(str(raw_path))[0]
-    for existing in (base + ".xmp", base + ".XMP"):
-        if os.path.exists(existing):
-            return existing
-
-    xmp_path = base + ".xmp"
-    try:
-        from engine.exif_writer import run_exiftool_files
-        run_exiftool_files(
-            ["-tagsfromfile", "@", "-xmp:all<all",
-             "-XMP-exif:SubjectDistance<Olympus:FocusDistance#", "-o", "%d%f.xmp"],
-            [str(raw_path)])
-    except Exception as e:
-        logger.warning(f"ensure_xmp: could not create sidecar for {raw_path}: {e}")
-        return None
-    return xmp_path if os.path.exists(xmp_path) else None
+    return ensure_xmps([raw_path]).get(str(raw_path))
 
 
 def suggest_crop(raw_path, crop, angle=None):

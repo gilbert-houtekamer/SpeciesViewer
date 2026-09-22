@@ -2294,10 +2294,18 @@ class ReadSDCardDialog(QDialog):
         carried = summary.get("sidecars_copied", 0)
         carried_txt = (f" {carried} existing sidecar(s) carried across with their "
                        f"pictures." if carried else "")
+        # A RAW with no sidecar has nowhere to keep a species, a star or a crop,
+        # so a read that leaves some behind (the sidecar phase is the last one and
+        # is skipped on cancel) must SAY so here, not only in the log — that is
+        # how 678 of one day's RAWs came home bare and unnoticed (2026-09-21).
+        bare_raws = summary.get("sidecars_missing", 0)
+        bare_txt = (f" ⚠️ {bare_raws} RAW(s) have NO sidecar — species, ratings and "
+                    f"crops cannot be stored for them. Read the card again to "
+                    f"finish the job." if bare_raws else "")
         tail = (f"skipped {summary.get('skipped', 0)}{deselected_txt}{culled_txt}, "
                 f"failed {summary.get('failed', 0)} "
                 f"of {summary.get('total', 0)} pictures; "
-                f"{summary.get('sidecars', 0)} sidecar(s).{carried_txt}")
+                f"{summary.get('sidecars', 0)} sidecar(s).{carried_txt}{bare_txt}")
         cancelled = getattr(self, "_cancelled", False)
         # The copy is only the first phase: when "Add location names" is ticked, a
         # reverse-geocode run follows and keeps writing for another minute. Saying

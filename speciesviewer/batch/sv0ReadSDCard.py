@@ -785,21 +785,13 @@ def scan_days(source, tz_offset_hours=0.0, use_card_cache=True, logger=None):
 
 # ── XMP sidecars ─────────────────────────────────────────────────────────────
 
-def sidecar_opts(out_pattern: str = "%d%f.xmp") -> list:
-    """The exiftool options that create one XMP sidecar per RAW.
-
-    A function rather than an inline list so the per-body camera checklist
-    (tools/svr_camera_checklist.py) can run the REAL tag expressions against a
-    corpus file, writing to a scratch directory instead of beside the source.
-    A checklist that retyped these would drift from what ingest actually does and
-    would then certify a body on the strength of a copy — which is the same
-    mistake as a second hard-coded extension list.
-
-    ``out_pattern`` is exiftool's -o target; the default writes beside the RAW."""
-    return ["-tagsfromfile", "@", "-xmp:all<all",
-            "-XMP-exif:SubjectDistance<Olympus:FocusDistance#",
-            "-XMP-exif:DateTimeOriginal<${DateTimeOriginal}${OffsetTimeOriginal}",
-            "-o", out_pattern]
+# The exiftool recipe that creates a sidecar lives in engine.sidecarlib — ONE
+# definition, shared with the species commit, which now authors a sidecar for a
+# RAW that never got one (see FilePicture.updateSubjects). Re-exported under this
+# module's name because the per-body camera checklist (tools/svr_camera_checklist.py)
+# runs the REAL expressions ingest uses against a corpus file; a checklist that
+# retyped them would certify a body on the strength of a copy.
+from engine.sidecarlib import sidecar_opts   # noqa: F401  (re-export)
 
 
 def _write_sidecars(raw_paths, log, progress_cb=None) -> int:
@@ -1414,9 +1406,10 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
 
     # ── XMP sidecars ──────────────────────────────────────────────────────
     summary["sidecars"] = 0
+    summary["sidecars_missing"] = 0
+    raw_targets = [t for t in targets if Path(t).suffix.lower() in RAW_EXTENSIONS]
     if (write_sidecars and not summary["error"]
             and not (should_cancel and should_cancel())):
-        raw_targets = [t for t in targets if Path(t).suffix.lower() in RAW_EXTENSIONS]
         if raw_targets:
             n_xmp = len(raw_targets)
             if progress:
@@ -1443,6 +1436,20 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                     progress(total, total, f"Caching XMP metadata… {folder.name}")
                 build_cache_for_folder(folder, xmps)
 
+    # ── Did every RAW end up with a sidecar? ──────────────────────────────
+    # This phase is the LAST one and it is gated three ways — the checkbox, an
+    # earlier error, and cancel — so it is the phase most likely to be skipped,
+    # and skipping it used to be invisible: "…; 0 sidecar(s)." at INFO reads
+    # exactly like a clean run with nothing to do. On 2026-09-21 that left 678
+    # RAWs of one Brazil day with no sidecar, which is not a cosmetic loss: a
+    # species named on such a picture has no file to be written to, and was
+    # silently dropped at the next Read & Summarize. Count what is actually on
+    # disk and say so — the count is the invariant, not the intention.
+    if raw_targets:
+        summary["sidecars_missing"] = sum(
+            1 for t in raw_targets if not Path(t).with_suffix(".xmp").exists()
+            and not Path(t).with_suffix(".XMP").exists())
+
     line = (
         f"Card read summary — copied {summary['copied']} (of which {summary['renamed']} renamed), "
         f"skipped {summary['skipped']}, deselected {summary['deselected']}, "
@@ -1451,12 +1458,18 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     )
     # A run that lost files must never end on a plain INFO line that reads the
     # same as a clean one — see the matching ⚠️ marker in the Read dialog.
+    if summary["sidecars_missing"]:
+        line += (f" ⚠️ {summary['sidecars_missing']} RAW(s) have NO .xmp sidecar — "
+                 f"species, ratings and crops have nowhere to be stored for them. "
+                 f"Re-read the card, or run tools/svr_sidecar_heal.py.")
     if summary["error"]:
         log.error(f"❌ {line} ABORTED: {summary['error']}")
     elif summary["failed"]:
         names = ", ".join(summary["failed_names"][:5])
         more = " …" if len(summary["failed_names"]) > 5 else ""
         log.warning(f"⚠️ {line} FAILED file(s): {names}{more}")
+    elif summary["sidecars_missing"]:
+        log.warning(f"⚠️ {line}")
     else:
         log.info(line)
     summary["targets"] = targets

@@ -980,10 +980,15 @@ class PreviewCollection(PictureCollection):
         by_src = {}
         if to_read:
             try:
-                out = subprocess.run(
-                    ["exiftool", "-j", "-q", "-XMP:Label", "-XMP:Rating"]
-                    + [str(xmp) for _k, xmp, _mt in to_read],
-                    capture_output=True, text=True, encoding="utf-8", timeout=60).stdout
+                # Through an argfile, never the command line: "only sidecars whose
+                # mtime changed" is normally a handful, but it is a whole day the
+                # first time a folder is seen — 678 sidecars created at once
+                # overflowed Windows' ~32 KB command line and this refresh died
+                # with WinError 206, silently and on every pass (2026-09-22).
+                from engine.exif_writer import run_exiftool_files
+                out = run_exiftool_files(
+                    ["-j", "-q", "-XMP:Label", "-XMP:Rating"],
+                    [str(xmp) for _k, xmp, _mt in to_read], timeout=60).stdout
                 rows = json.loads(out) if out.strip() else []
                 by_src = {os.path.normcase(os.path.normpath(r.get("SourceFile", ""))): r for r in rows}
             except Exception as e:

@@ -15,7 +15,7 @@ import subprocess
 import json
 import ast
 import pdb  # For debugging
-from utils.raw_extensions import DXO_RAW, RAW_OR_HEIC, VIDEO, bare
+from utils.raw_extensions import DXO_RAW, RAW, RAW_OR_HEIC, VIDEO, bare
 
 
 logger = logging.getLogger("speciesviewer")
@@ -50,6 +50,10 @@ def ensure_list(subject):
 # the raw is redundant — and the DxO .dop is skipped because it is a database
 # with no XMP:Subject (writing there only produced a warning).
 _SUBJECT_WRITE_EXT = {"xmp", "jpg", "jpeg", "heic", "heif", "png"} | bare(VIDEO)
+
+# The RAW extensions, bare, for "which file does this picture's sidecar belong
+# beside?". From the one table, like every other extension test in the tree.
+_RAW_EXT = bare(RAW)
 
 
 def format_subject_for_xmp(subject_text):
@@ -405,6 +409,20 @@ class FilePicture:
         upn_object = self.replaceUPNSubject(upn_name, original_subject, corrected_subject, sc_object)
         return upn_object, files_written
 
+    def _raw_for_upn(self, upn_name):
+        """The RAW file of a picture, as a Path — or None if it has none.
+
+        Used to decide WHERE to author a missing .xmp: a sidecar belongs beside
+        its RAW and is named after it. Extensions come from the one table
+        (utils.raw_extensions) — never a literal list here.
+        """
+        for frow in self.fi.files_dict.values():
+            if frow["UniquePictureName"] != upn_name:
+                continue
+            if frow.get("WindowsExtension", "").lower() in _RAW_EXT:
+                return Path(frow["WindowsFileName"])
+        return None
+
     def updateSubjects(self, filenames, corrected_subject):
         """Batched multi-picture version of updateSubject: write the SAME
         `corrected_subject` to many pictures with just TWO exiftool calls (one
@@ -437,6 +455,7 @@ class FilePicture:
         targets = []            # (file_key, Path, original_subject)
         seen = set()
         updated_upns = set()
+        sidecarless = []        # pictures with no file the keyword can go in
         for fn in filenames:
             name = Path(fn).name
             if name not in self.fi.files_dict:
@@ -444,6 +463,7 @@ class FilePicture:
             upn_name = self.fi.files_dict[name]["UniquePictureName"]
             orig = self.getSubject(name)
             updated_upns.add(upn_name)
+            n_before = len(targets)
             for f, frow in self.fi.files_dict.items():
                 if frow["UniquePictureName"] != upn_name:
                     continue
@@ -457,8 +477,36 @@ class FilePicture:
                     continue
                 seen.add(key)
                 targets.append((f, fp, orig))
+            if len(targets) == n_before:
+                sidecarless.append(upn_name)
+
+        # 1b) Pictures with NO file the keyword can go in: a RAW straight off the
+        #     card that has never been culled, so no sidecar was ever written
+        #     beside it. Every filter above passes over it (a RAW is deliberately
+        #     never written into), the commit updated only the CSV, and the next
+        #     Read & Summarize — which re-reads the files on disk — dropped the
+        #     name again. Silently: 7 of 8 pictures in one selection, and the day
+        #     had 678 such RAWs (2026-09-22). Author the sidecar here, exactly the
+        #     way ingest does, so the name lands where every later step reads it.
+        #     Not for a CLEAR: creating a sidecar to record the absence of a
+        #     species would invent a file to hold nothing.
+        created_paths = []
+        if sidecarless and corrected_subject != "":
+            raws = [r for r in (self._raw_for_upn(u) for u in sidecarless) if r]
+            if raws:
+                from engine.sidecarlib import ensure_xmps
+                created = ensure_xmps(raws)
+                created_paths = [Path(x) for x in created.values()]
+                if len(created) < len(raws):
+                    logger.warning(f"Species commit: {len(raws) - len(created)} "
+                                   f"picture(s) have no sidecar and one could not "
+                                   f"be created — the name was NOT written to disk.")
+                else:
+                    logger.info(f"Species commit: {len(created)} picture(s) had no "
+                                f"file to hold the name; wrote their .xmp sidecar.")
 
         files_written = 0
+        write_paths = list(created_paths)
         if targets:
             # 2) ONE batched read of the on-disk XMP:Subject for the guard.
             current_by_path = {}
@@ -479,7 +527,6 @@ class FilePicture:
             #    files to actually write. The CSV cache is updated for every
             #    pre-filtered target regardless (mirrors replaceFileSubject, which
             #    sets files_dict[...] even when the on-disk write is skipped).
-            write_paths = []
             for f, fp, orig in targets:
                 current = current_by_path.get(
                     os.path.normcase(os.path.normpath(str(fp))), [])
@@ -495,12 +542,15 @@ class FilePicture:
                     write_paths.append(fp)
                 self.fi.files_dict[f]['XMP:Subject'] = corrected_subject
 
-            # 4) ONE batched write of the identical new subject to the whole set.
-            if write_paths:
-                run_exiftool_files(
-                    [f"-XMP:Subject={correct_for_xmp}", "-overwrite_original"],
-                    write_paths)
-                files_written = len(write_paths)
+        # 4) ONE batched write of the identical new subject to the whole set —
+        #    the files already carrying the old value, plus any sidecar just
+        #    created for a RAW that had none (nothing to guard there: the file
+        #    did not exist a moment ago).
+        if write_paths:
+            run_exiftool_files(
+                [f"-XMP:Subject={correct_for_xmp}", "-overwrite_original"],
+                write_paths)
+            files_written = len(write_paths)
 
         # 5) Update each UPN object once (same fields replaceUPNSubject sets), then
         #    persist the CSV + summary ONCE for the whole batch.

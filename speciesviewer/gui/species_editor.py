@@ -752,7 +752,24 @@ class SpeciesInfoPanel(QWidget):
         logger.info(f"✅ {files_written} file(s) rewritten on disk across "
                     f"{len(updated_upns)} picture(s).")
 
-        self._safe_status(f"✅ Done — {n} file{'s' if n != 1 else ''} updated.")
+        # Report what reached the DISK, not what was selected. The two used to be
+        # the same number by assumption: a picture with no sidecar had nowhere to
+        # write, yet the commit still said "✅ Done — 8 files updated" and the name
+        # lived only in the CSV until the next Read threw it away. A commit that
+        # writes nothing is a failed commit and has to look like one.
+        if files_written == 0 and clearing:
+            # Nothing on disk held a species — the clear has nothing to do, which
+            # is an outcome, not a failure.
+            self._safe_status("Nothing to clear — no file on disk held a species.")
+        elif files_written == 0:
+            self._safe_status("❌ Nothing was written to disk — the name is NOT "
+                              "stored. See the log.")
+            logger.error(f"Species commit wrote 0 files for {n} picture(s); "
+                         f"the name is not on disk.")
+        else:
+            self._safe_status(
+                f"✅ Done — {n} picture{'s' if n != 1 else ''}, "
+                f"{files_written} file{'s' if files_written != 1 else ''} written.")
         QApplication.processEvents()
 
         # A commit is a decision, not a keystroke: if this named a species the

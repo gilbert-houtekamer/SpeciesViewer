@@ -19,7 +19,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import exiftool
 import logging
-from utils.raw_extensions import RAW, JPEG, CAMERA_PHOTO, bare
+from utils.raw_extensions import (RAW, JPEG, CAMERA_PHOTO, PICTURE,
+                                  SIDECAR, VIDEO, bare)
 
 # add directory to python path (only when run as executable)
 if __name__ == "__main__":
@@ -38,7 +39,20 @@ import engine.statemachine
 import engine.exifcache as exifcache
 from utils.ini_io import read_ini
 
-IGNOREEXTENSIONS = ['txt', 'ico', 'html']
+# What a day folder may contribute to the trip data: pictures, video, and the
+# sidecars that belong to one. From the ONE table (utils/raw_extensions.py).
+#
+# This used to be a three-item DENY list ('txt', 'ico', 'html'), which meant any
+# other file dropped into a day folder became a picture — with no image, no GPS
+# and no species. A manifest.json copied in from the laptop duly turned up in the
+# culling grid as a card titled "manifest", flagged for missing GPS (2026-09-22).
+# A deny list cannot be complete; the question "is this a picture?" already has an
+# answer in one place.
+#
+# An allow list CAN be too narrow, though, and that is how 218 Nikon .nrw raws
+# were once left behind in silence — so everything it rejects is counted and
+# reported, exactly as the card ingest reports what it did not copy.
+KNOWN_EXTENSIONS = bare(PICTURE | VIDEO | SIDECAR)
 
 
 def _append_dop_rows(all_rows, root, recurse):
@@ -135,8 +149,12 @@ def main(args, config):
             raise SVException(f"Directory {MyProject.getProjectPath()} cannot be found, or refers to a file.")
 
         logger.info(f"Reading directories (takes about 1 minute for every 4000 files)...")
-        file_extension_count = {}        
-         
+        file_extension_count = {}
+        # Files the allow list rejected: {ext: count}, plus the first few names,
+        # so "not a picture" is always something you can look at and judge.
+        ignored_extensions: dict = {}
+        ignored_names: list = []
+
         # EXIF read via the global cache (engine/exifcache.py). Immutable files
         # (RAW/HEIC) and untouched mutable sidecars are served from cache; only
         # new or edited files are sent to exiftool. --no-cache reproduces the
@@ -275,13 +293,19 @@ def main(args, config):
             row["WindowsFileName"] = (
                 row["File:Directory"] + "/" + row["File:FileName"]
             )
-            # do not introduce noise
-            if row["WindowsExtension"] not in IGNOREEXTENSIONS:
+            # do not introduce noise: only pictures, video and their sidecars
+            # become rows. Anything else is counted and named below.
+            if row["WindowsExtension"] in KNOWN_EXTENSIONS:
                 all_rows.append(row)
                 # maintain counters per type
                 file_extension_count[extension[1:].lower()] = (
                     file_extension_count.get(extension[1:].lower(), 0) + 1
                 )
+            else:
+                key = row["WindowsExtension"] or "(no extension)"
+                ignored_extensions[key] = ignored_extensions.get(key, 0) + 1
+                if len(ignored_names) < 10:
+                    ignored_names.append(row["File:FileName"])
 
         # GPS backfill.
         #
@@ -582,6 +606,16 @@ def main(args, config):
     logger.info(f"The files counted by filetype are:")
     for extent, count in file_extension_count.items():
         logger.info(f"   {extent.upper()} files: {count}")
+    # Never silently: a file left out of the trip data is named here, because the
+    # cost of a wrong allow list is invisible otherwise (see KNOWN_EXTENSIONS).
+    if ignored_extensions:
+        listed = ", ".join(f"{n} .{ext}" for ext, n in
+                           sorted(ignored_extensions.items(), key=lambda kv: (-kv[1], kv[0])))
+        logger.warning(f"⚠️ Not read as pictures: {listed} — e.g. "
+                       f"{', '.join(ignored_names[:5])}. These file types are not "
+                       f"pictures, video or sidecars, so they are not part of the "
+                       f"trip data. If one of them should be, say so — the list of "
+                       f"known types lives in utils/raw_extensions.py.")
     logger.info("")
 
     totaltime = time.time() - starttime

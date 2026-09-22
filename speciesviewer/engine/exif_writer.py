@@ -169,13 +169,15 @@ def exiftool_write_batch(items, *, overwrite_original: bool = True) -> int:
             pass
 
 
-def run_exiftool_files(option_args, files, *, pre_args=None):
+def run_exiftool_files(option_args, files, *, pre_args=None, timeout=None):
     """Run exiftool with `option_args` over many `files`, passing EVERYTHING
     (options + file paths) through a -@ argfile. This avoids the OS command-line
     length limit (~32 KB on Windows) that silently breaks a single exiftool call
     over hundreds of files — the cause of '0 sidecars' on a big card. `pre_args`
-    go on the command line BEFORE -@ (e.g. ["-config", path]). Returns the
-    CompletedProcess (stdout/stderr captured)."""
+    go on the command line BEFORE -@ (e.g. ["-config", path]). `timeout` is passed
+    to subprocess (None = wait, as a batch write should); give it a value when the
+    caller is the GUI thread, where a wedged exiftool would freeze the window.
+    Returns the CompletedProcess (stdout/stderr captured)."""
     files = [str(f) for f in files]
     fd, arg_path = tempfile.mkstemp(prefix="exiftool_files_", suffix=".txt", text=False)
     try:
@@ -185,7 +187,7 @@ def run_exiftool_files(option_args, files, *, pre_args=None):
         cmd = (["exiftool"] + list(pre_args or [])
                + ["-charset", "utf8", "-charset", "filename=utf8", "-@", arg_path])
         return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                              text=True, encoding="utf-8")
+                              text=True, encoding="utf-8", timeout=timeout)
     finally:
         try:
             os.remove(arg_path)

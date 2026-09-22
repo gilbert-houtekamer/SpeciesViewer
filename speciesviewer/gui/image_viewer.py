@@ -2779,14 +2779,17 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             return
 
         try:
-            result = subprocess.run(
-                ["exiftool", "-G", "-json", "-q",
+            # Argfile, not the command line: all_probes is every picture in the day
+            # that still has no GPS, which on a freshly read day is all of them —
+            # far past Windows' ~32 KB limit (see run_exiftool_files, and the
+            # WinError 206 that killed the sibling refresh in preview_provider).
+            from engine.exif_writer import run_exiftool_files
+            result = run_exiftool_files(
+                ["-G", "-json", "-q",
                  "-Composite:GPSPosition",
                  "-EXIF:GPSLatitude", "-EXIF:GPSLongitude",
-                 "-XMP:GPSLatitude", "-XMP:GPSLongitude"]
-                + [str(p) for p in all_probes],
-                capture_output=True, text=True, encoding="utf-8", timeout=30,
-            )
+                 "-XMP:GPSLatitude", "-XMP:GPSLongitude"],
+                [str(p) for p in all_probes], timeout=30)
         except Exception as e:
             logger.warning(f"No-GPS refresh: exiftool call failed: {e}")
             return
