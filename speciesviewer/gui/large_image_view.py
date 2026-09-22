@@ -1859,6 +1859,11 @@ class LargeImageView(QDialog):
         if src:
             self._collection.note_location_written(key, read_location_fields(src))
         self._show_location(key)
+        # Tell the host, the way a rating or a crop here already does: it is the
+        # grid that owns the day and offers the Read & Summarize on close, and
+        # place text written from this window is no less an edit than one made
+        # from a card.
+        self.picture_changed.emit(key)
 
     def _edit_location_current(self):
         """Manually type the location for the picture on screen — for places
@@ -1886,6 +1891,7 @@ class LargeImageView(QDialog):
         n = write_location_batch(files, changed, overwrite=True)
         self._collection.note_location_written(key, changed)   # keep cached row fresh
         self._show_location(key)
+        self.picture_changed.emit(key)   # the host owns the day — see _after_geocode
         place = changed.get("Location") or changed.get("City") or ""
         logger.info(f"Edit location: wrote {place!r} to {n} file(s) for this picture.")
 

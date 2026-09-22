@@ -1021,13 +1021,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                 card.refresh()
             self._notify_large_view(k)
         self._apply_filters()
-        if keys:
-            # A map placement is an edit like any other. The coordinate is in the
-            # XMP on disk immediately, but data_files.csv learns it only from a
-            # Read & Summarize — so without this flag the viewer closed without
-            # offering that re-run, and the day's GPS count (and anything built
-            # from the CSVs) stayed as if the placement never happened.
-            self._day_edited = True
+        self._note_location_written(keys)
 
     def _clear_find_silently(self, except_mode=None):
         """Clear the Find boxes without re-triggering their handlers (used when
@@ -2607,9 +2601,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             n, msg = clip.paste_gps_into(self._collection, keys,
                                          refresh_key=self._cull_refresh_key)
             if n:
-                # Same reason a species/rating edit flags the day: the cards and
-                # the in-memory collection know, data_files.csv on disk does not.
-                self._day_edited = True
+                self._note_location_written(keys)
                 for k in keys:
                     self._notify_large_view(k)
             logger.info(f"Paste GPS ({len(keys)} picture{plural}): {msg}")
@@ -2761,10 +2753,28 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             if card:
                 card.refresh()
             self._notify_large_view(k)
+        self._note_location_written(written)
         # A picture that just gained GPS leaves the "missing GPS" filter.
         if self.no_gps_only:
             self._apply_filters()
         self._refresh_open_map()     # the map shows them now, not on the next re-open
+
+    def _note_location_written(self, keys):
+        """Flag the day after anything wrote LOCATION or GPS straight into the
+        XMP — Get location, Edit location, GPS-from-place, paste GPS, a map
+        placement.
+
+        The place text and the coordinate are on disk the moment they are
+        written, but data_files.csv learns them only from a Read & Summarize.
+        Without the flag the viewer closes without offering that re-run, so the
+        trip overview keeps reporting the old GPS/location counts and anything
+        built from the CSVs is written from stale rows.
+
+        Every one of those routes has forgotten this at least once — the map
+        placement did, and Get location did. Call this and it cannot happen
+        again."""
+        if keys:
+            self._day_edited = True
 
     def _refresh_location_after_geocode(self, keys):
         """After 'Get location' wrote place text into the XMP, refresh the cards'
@@ -2785,6 +2795,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             if card:
                 card.refresh()
             self._notify_large_view(k)
+        self._note_location_written(list(src_by_key))
 
     def _edit_location(self, keys):
         """Manually type a Location (and City/State/Country) into the XMP for the
@@ -2820,6 +2831,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             if card:
                 card.refresh()
             self._notify_large_view(k)
+        self._note_location_written(keys)
         place = changed.get("Location") or changed.get("City") or ""
         logger.info(f"Edit location: wrote {place!r} to {n} file(s) "
                     f"across {len(keys)} picture(s).")
