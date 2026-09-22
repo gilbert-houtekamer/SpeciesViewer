@@ -3974,6 +3974,56 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         path = self._rep_file_path(key)
         return (self.fpr.getSubject(path.name) or "") if path else ""
 
+    def _ordered(self, keys):
+        """`keys` in this grid's display order, with anything no longer on
+        screen dropped. A selection is a set, so it has no order of its own —
+        any rule that means "the first one" needs this first."""
+        wanted = set(keys)
+        out = [k for k in self._order if k in wanted]
+        return out or list(keys)
+
+    def _write_species_to_keys(self, keys, subject: str, parent=None) -> int:
+        """Write `subject` to every key and report how many pictures it reached
+        (0 = nothing landed).
+
+        The one write shared by the two dialog-free species routes — 'a' (the
+        subject the selection already agreed on) and Ctrl+V (the subject in the
+        clipboard). Twin of the culling grid's."""
+        keys = list(keys)
+        if not keys or not self.fpr:
+            return 0
+        n = len(keys)
+        paths = [p for p in (self._rep_file_path(k) for k in keys) if p]
+        if not paths:
+            return 0
+        updated, files_written = self.fpr.updateSubjects(paths, subject)
+        # A commit that writes nothing is a failed commit and has to look like
+        # one — there is no status line here to carry it, so say it out loud.
+        if files_written == 0:
+            logger.error(f"Species write: 0 files for {n} picture(s); "
+                         f"{subject!r} is NOT on disk.")
+            QMessageBox.warning(
+                parent or self, "Species not stored",
+                f"Nothing was written to disk, so '{subject}' is NOT stored on "
+                f"these {n} pictures. See the log.")
+            return 0
+        logger.info(f"Species write: {subject!r} -> {len(updated)} picture(s), "
+                    f"{files_written} file(s) written.")
+        # Trip scope persists through the per-day objects, not the panel — same
+        # caveat the Set-species commit above carries.
+        if self._collection is not None:
+            self._collection.persist_after_species_change(updated)
+        for k in keys:
+            card = self._bound.get(k)
+            if card:
+                card.refresh()
+        # The dialogs bump the recents on commit; these dialog-free routes have
+        # no dialog to do it.
+        from gui.culling_species import remember_species_from_subject
+        remember_species_from_subject(subject)
+        self._clear_selection()
+        return len(updated)
+
     def _cull_quick_species(self, keys=None, parent=None):
         """'a' — the dialog-free half of 's': copy the species the selection
         already agrees on onto every picture in it, in one batched write.
@@ -3987,8 +4037,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
 
         `keys` / `parent` are for the Quick view, which has its own cursor and
         must say what it means: this grid's cursor is not updated while that
-        window is open. Returns the number of pictures written without a
-        dialog (0 when it fell back to one, or wrote nothing)."""
+        window is open. Returns the number of pictures written without a dialog
+        (0 when it fell back to one, or wrote nothing)."""
         keys = keys if keys else self._cull_keys_target()
         if not keys:
             return 0
@@ -4000,36 +4050,53 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         if not subject:
             self._open_species_dialog_for_keys(set(keys), parent=parent)
             return 0
-        n = len(keys)
-        paths = [p for p in (self._rep_file_path(k) for k in keys) if p]
-        if not paths:
-            return 0
-        updated, files_written = self.fpr.updateSubjects(paths, subject)
-        # A commit that writes nothing is a failed commit and has to look like
-        # one — there is no status line here to carry it, so say it out loud.
-        if files_written == 0:
-            logger.error(f"Quick species 'a': wrote 0 files for {n} picture(s); "
-                         f"{subject!r} is NOT on disk.")
-            QMessageBox.warning(
-                parent or self, "Species not stored",
-                f"Nothing was written to disk, so '{subject}' is NOT stored on "
-                f"these {n} pictures. See the log.")
-            return 0
-        logger.info(f"Quick species 'a': {subject!r} → {len(updated)} picture(s), "
-                    f"{files_written} file(s) written.")
-        # Trip scope persists through the per-day objects, not the panel — same
-        # caveat the Set-species commit above carries.
-        if self._collection is not None:
-            self._collection.persist_after_species_change(updated)
-        for k in keys:
-            card = self._bound.get(k)
-            if card:
-                card.refresh()
-        # The dialogs bump the recents on commit; 'a' has no dialog to do it.
-        from gui.culling_species import remember_species_from_subject
-        remember_species_from_subject(subject)
-        self._clear_selection()
-        return len(updated)
+        return self._write_species_to_keys(keys, subject, parent=parent)
+
+    def _on_clipboard(self, what: str, keys=None, parent=None) -> str:
+        """The four copy/paste keys. Returns a one-line message for the caller
+        to show — the Quick view badges it, this grid logs it. Twin of the
+        culling grid's, sharing the same buffers, which is what lets a name be
+        copied in one viewer and pasted in another."""
+        keys = list(keys) if keys else list(self._cull_keys_target())
+        if not keys:
+            return ""
+        from gui import viewer_clipboard as clip
+        if what == "copy_species":
+            subject = clip.copy_species_from(keys, self._species_subject_of)
+            if not subject:
+                return ("Nothing to copy — no species on these pictures, "
+                        "or more than one between them.")
+            logger.info(f"Copied species {subject!r} — Ctrl+V pastes it.")
+            return f"Copied species: {subject}"
+        if what == "paste_species":
+            subject = clip.species_buffer()
+            if not subject:
+                return "Nothing copied yet — Ctrl+C copies a species first."
+            n = self._write_species_to_keys(keys, subject, parent=parent)
+            if not n:
+                return ""      # _write_species_to_keys already said why
+            return f"Species name set for {n} picture{'s' if n != 1 else ''}"
+        if what == "copy_gps":
+            # A copy is singular, so a selection has to resolve to ONE picture:
+            # the first in DISPLAY order that actually has a fix.
+            for k in self._ordered(keys):
+                msg = clip.copy_gps_from(self._collection, k)
+                if msg:
+                    return msg
+            return "No GPS on these pictures to copy."
+        if what == "paste_gps":
+            n, msg = clip.paste_gps_into(self._collection, keys,
+                                         refresh_key=self._cull_refresh_key)
+            logger.info(f"Paste GPS: {msg}")
+            return msg
+        return ""
+
+    def _cull_clipboard(self, what: str):
+        """The copy/paste keys pressed in this grid. The grid shows its own
+        result, so only the message goes to the log."""
+        msg = self._on_clipboard(what)
+        if msg:
+            logger.info(msg)
 
     def _cull_set_color_quick(self, color: str):
         """Stamp `color` onto the selection (else the focused picture), no
@@ -4206,6 +4273,12 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             self._open_species_dialog_for_keys(keys, parent=qv)
         elif what == "rating":
             self._open_batch_rate_dialog(keys, parent=qv)
+        else:
+            # The four clipboard actions. The Quick view shows nothing of its
+            # own for a write, so its badge is the only acknowledgement there is.
+            msg = self._on_clipboard(what, keys=keys, parent=qv)
+            if qv is not None and msg:
+                qv.flash(msg)
         if qv is not None:
             qv.refresh_current()
 
@@ -4228,7 +4301,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                            refresh_key=self._cull_refresh_key,
                            open_species=self._cull_open_species,
                            open_rating=self._cull_open_rating,
-                           quick_species=self._cull_quick_species):
+                           quick_species=self._cull_quick_species,
+                           clipboard=self._cull_clipboard):
             event.accept()
             return
         if handle_grid_arrows(event, order=self._order,

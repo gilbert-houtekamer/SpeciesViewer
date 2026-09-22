@@ -14,6 +14,8 @@ Bindings (applied to the focused/current picture, then advance to the next):
   a                   copy the species the selection already agrees on (no dialog),
                       falling back to the 's' dialog when that is ambiguous
   c                   open the rating / colour dialog
+  Ctrl+C / Ctrl+V     copy / paste the species name (trip-wide buffer)
+  Ctrl+Shift+C / +V   copy / paste GPS + place (trip-wide buffer)
   Space               next picture (no change)
 Keys are ignored while a text field (description / species) has focus.
 """
@@ -43,7 +45,16 @@ def text_input_focused() -> bool:
 def parse_cull_key(event):
     """Map a key event to ('rating', n) | ('color', name) | ('next', None) | None."""
     k = event.key()
-    ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+    mods = event.modifiers()
+    ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
+    shift = bool(mods & Qt.KeyboardModifier.ShiftModifier)
+    # Copy/paste. Tested before the bare-letter bindings below so Ctrl+C is a
+    # copy and not the rating dialog, and before the Ctrl+digit ratings so the
+    # shift variants can't be read as an unmodified key.
+    if ctrl and k == Qt.Key.Key_C:
+        return ("copy_gps" if shift else "copy_species", None)
+    if ctrl and k == Qt.Key.Key_V:
+        return ("paste_gps" if shift else "paste_species", None)
     if k == Qt.Key.Key_Space and not ctrl:
         return ("next", None)
     if not ctrl and k == Qt.Key.Key_S:
@@ -66,7 +77,8 @@ def parse_cull_key(event):
 
 
 def handle_cull_key(event, *, order, current_key, item_for_key, set_cursor, refresh_key,
-                    open_species=None, open_rating=None, quick_species=None) -> bool:
+                    open_species=None, open_rating=None, quick_species=None,
+                    clipboard=None) -> bool:
     """Apply a culling key to the current picture and advance. Returns True if the
     event was a culling key (and is now consumed), False to let the caller handle it.
 
@@ -80,6 +92,10 @@ def handle_cull_key(event, *, order, current_key, item_for_key, set_cursor, refr
     quick_species- callback for 'a' (copy the selection's agreed species without a
                    dialog; it decides for itself when to fall back to open_species).
                    A viewer that doesn't supply one falls through to 's'.
+    clipboard    - callback(what) for the four copy/paste keys, `what` being one
+                   of copy_species / paste_species / copy_gps / paste_gps. A
+                   viewer that doesn't supply one simply ignores them, rather
+                   than letting Ctrl+C fall through to something unrelated.
     """
     if text_input_focused():
         return False
@@ -101,6 +117,13 @@ def handle_cull_key(event, *, order, current_key, item_for_key, set_cursor, refr
     if action == "rating_dialog":
         if open_rating:
             open_rating()
+        return True
+    if action in ("copy_species", "paste_species", "copy_gps", "paste_gps"):
+        # Consumed either way: a viewer without a clipboard must still swallow
+        # Ctrl+C rather than pass it to a parent that might do something else
+        # with it entirely.
+        if clipboard:
+            clipboard(action)
         return True
     if not order:
         return True

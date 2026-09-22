@@ -2019,7 +2019,8 @@ class LargeImageView(QDialog):
                 refresh_key=self._refresh_strip_items,
                 open_species=self._batch_species,
                 open_rating=self._cull_open_rating,
-                quick_species=self._cull_quick_species):
+                quick_species=self._cull_quick_species,
+                clipboard=self._cull_clipboard):
             event.accept()
             return
         k = event.key()
@@ -2935,29 +2936,30 @@ class LargeImageView(QDialog):
             return ""
         return fpr.getSubject(Path(fps[0]).name) or ""
 
-    def _cull_quick_species(self, keys=None):
-        """'a' — the dialog-free half of 's': copy the species the selection
-        already agrees on onto every picture in it, in one batched write.
-        Sex/age/plumage ride along, because a qualifier lives in the subject
-        string next to the name ("greater ani, male").
+    def _clipboard_keys(self):
+        """What the dialog-free keys act on here: the marked selection, else the
+        picture on screen. Mirrors the grids' _cull_keys_target()."""
+        return set(self._selected_keys) or ({self._item.key} if self._item else set())
 
-        Whenever the selection does NOT say one unambiguous thing — nothing
-        named, several different names, or only the one picture on screen —
-        this opens the regular Set species dialog instead, so 'a' is never a
-        guess. Same rule as the two grids; quick_species_subject() owns it."""
-        if keys is None:
-            keys = set(self._selected_keys) or ({self._item.key} if self._item else set())
+    def _ordered(self, keys):
+        """`keys` in filmstrip order, with anything no longer present dropped.
+        A selection is a set and has no order of its own — any rule that means
+        "the first one" needs this first."""
+        wanted = set(keys)
+        out = [k for k in self._keys if k in wanted]
+        return out or list(keys)
+
+    def _write_species_to_keys(self, subject: str, keys) -> int:
+        """Write `subject` to every key and report how many pictures it reached
+        (0 = nothing landed).
+
+        The one write shared by the two dialog-free species routes — 'a' (the
+        subject the selection already agreed on) and Ctrl+V (the subject in the
+        clipboard)."""
+        from gui.culling_species import remember_species_from_subject
+        keys = list(keys)
         if not keys:
-            return
-        # The dialogs bump the recents on commit; 'a' has no dialog to do it,
-        # and a name used on a burst is exactly the one that should be at the
-        # top of the quick-pick list next time.
-        from gui.culling_species import (quick_species_subject,
-                                         remember_species_from_subject)
-        subject = quick_species_subject(keys, self._species_subject_of)
-        if not subject:
-            self._batch_species(keys)
-            return
+            return 0
         n = len(keys)
         fpr, file_paths = None, []
         for k in keys:
@@ -2974,26 +2976,90 @@ class LargeImageView(QDialog):
                 try:
                     self._collection.item_for_key(k).set_species(subject)
                 except Exception as e:
-                    logger.error(f"Quick species 'a' failed for {k}: {e}")
-            logger.info(f"Quick species 'a': {subject!r} → {n} picture(s).")
+                    logger.error(f"Species write failed for {k}: {e}")
+                    return 0
+            logger.info(f"Species write: {subject!r} -> {n} picture(s).")
             remember_species_from_subject(subject)
             self._on_species_committed(set(keys))
-            return
+            return n
         updated, files_written = fpr.updateSubjects(file_paths, subject)
         # A commit that writes nothing is a failed commit and has to look like
         # one — there is no status line here to carry it.
         if files_written == 0:
-            logger.error(f"Quick species 'a': wrote 0 files for {n} picture(s); "
+            logger.error(f"Species write: 0 files for {n} picture(s); "
                          f"{subject!r} is NOT on disk.")
             QMessageBox.warning(
                 self, "Species not stored",
                 f"Nothing was written to disk, so '{subject}' is NOT stored on "
                 f"these {n} pictures. See the log.")
-            return
-        logger.info(f"Quick species 'a': {subject!r} → {len(updated)} picture(s), "
+            return 0
+        logger.info(f"Species write: {subject!r} -> {len(updated)} picture(s), "
                     f"{files_written} file(s) written.")
         remember_species_from_subject(subject)
         self._on_species_committed(updated)
+        return len(updated)
+
+    def _cull_quick_species(self, keys=None):
+        """'a' — the dialog-free half of 's': copy the species the selection
+        already agrees on onto every picture in it, in one batched write.
+        Sex/age/plumage ride along, because a qualifier lives in the subject
+        string next to the name ("greater ani, male").
+
+        Whenever the selection does NOT say one unambiguous thing — nothing
+        named, several different names, or only the one picture on screen —
+        this opens the regular Set species dialog instead, so 'a' is never a
+        guess. Same rule as the two grids; quick_species_subject() owns it."""
+        if keys is None:
+            keys = self._clipboard_keys()
+        if not keys:
+            return 0
+        from gui.culling_species import quick_species_subject
+        subject = quick_species_subject(keys, self._species_subject_of)
+        if not subject:
+            self._batch_species(keys)
+            return 0
+        return self._write_species_to_keys(subject, keys)
+
+    def _cull_clipboard(self, what: str):
+        """The four copy/paste keys. The buffers are the ones the grids use, so
+        a name copied here pastes there and in any other day's viewer.
+
+        This window already shows its own result — the name block repaints, the
+        location line updates — so the message only goes to the log."""
+        keys = self._clipboard_keys()
+        if not keys:
+            return
+        from gui import viewer_clipboard as clip
+        msg = ""
+        if what == "copy_species":
+            subject = clip.copy_species_from(keys, self._species_subject_of)
+            msg = (f"Copied species: {subject}" if subject else
+                   "Nothing to copy — no species on these pictures, "
+                   "or more than one between them.")
+        elif what == "paste_species":
+            subject = clip.species_buffer()
+            if not subject:
+                msg = "Nothing copied yet — Ctrl+C copies a species first."
+            else:
+                n = self._write_species_to_keys(subject, keys)
+                msg = (f"Species name set for {n} picture{'s' if n != 1 else ''}"
+                       if n else "")
+        elif what == "copy_gps":
+            # A copy is singular, so a selection has to resolve to ONE picture:
+            # the first in filmstrip order that actually has a fix.
+            for k in self._ordered(keys):
+                msg = clip.copy_gps_from(self._collection, k)
+                if msg:
+                    break
+            else:
+                msg = "No GPS on these pictures to copy."
+        elif what == "paste_gps":
+            _n, msg = clip.paste_gps_into(self._collection, keys,
+                                          refresh_key=self._refresh_strip_items)
+            if self._item is not None:
+                self._show_location(self._item.key)
+        if msg:
+            logger.info(msg)
 
     def _batch_species_culling(self, keys):
         """fpr-free species assignment for the culling viewer: the smart culling

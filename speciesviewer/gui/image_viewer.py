@@ -1590,6 +1590,14 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         dlg.activateWindow()
         dlg.setFocus()
 
+    def _cull_clipboard(self, what: str):
+        """Ctrl+C / Ctrl+V / Ctrl+Shift+C / Ctrl+Shift+V pressed in this grid.
+        The grid shows its own result (a name under the card, a GPS badge), so
+        only the message goes to the log."""
+        msg = self._on_clipboard(what)
+        if msg:
+            logger.info(msg)
+
     def _on_quick_view_action(self, what: str, keys: set):
         """'a' / 's' / 'c' pressed in the Quick view. That window owns no
         species or rating UI — it runs on THIS grid's handlers, on the keys it
@@ -1611,6 +1619,12 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             self._open_species_dialog_for_keys(keys, parent=qv)
         elif what == "rating":
             self._open_batch_rate_dialog(keys, parent=qv)
+        else:
+            # The four clipboard actions. The Quick view shows nothing of its
+            # own for a write, so its badge is the only acknowledgement there is.
+            msg = self._on_clipboard(what, keys=keys, parent=qv)
+            if qv is not None and msg:
+                qv.flash(msg)
         if qv is not None:
             qv.refresh_current()
 
@@ -1809,7 +1823,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         act_copy_gps = menu.addAction("Copy GPS + place  (this picture)")
         act_copy_gps.setEnabled(bool(item and getattr(item, "has_gps", False)))
         act_paste_gps = menu.addAction(f"Paste GPS + place  ({lbl})")
-        act_paste_gps.setEnabled(getattr(self, "_gps_clipboard", None) is not None)
+        from gui.viewer_clipboard import gps_buffer
+        act_paste_gps.setEnabled(gps_buffer() is not None)
         # Use ONE picture as the album's cover. Only offered when there is an
         # album to update and this picture has a JPG to make it from — a menu
         # entry that cannot do anything is worse than no entry.
@@ -2406,6 +2421,14 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         return set(self._selected_keys) or (
             {self._last_clicked_key} if self._last_clicked_key else set())
 
+    def _ordered(self, keys):
+        """`keys` in the grid's display order, with anything no longer on
+        screen dropped. A selection is a set, so it has no order of its own —
+        any rule that means "the first one" needs this first."""
+        wanted = set(keys)
+        out = [k for k in self._order if k in wanted]
+        return out or list(keys)
+
     def _cull_open_species(self):
         keys = self._cull_keys_target()
         if keys:
@@ -2429,34 +2452,17 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         except (ValueError, KeyError):
             return ""
 
-    def _cull_quick_species(self, keys=None, parent=None):
-        """'a' — the dialog-free half of 's': copy the species the selection
-        already agrees on onto every picture in it, in one batched write.
+    def _write_species_to_keys(self, keys, subject: str, parent=None) -> int:
+        """Write `subject` to every key, in as few exiftool calls as the engine
+        allows, and report how many pictures it reached (0 = nothing landed).
 
-        The burst workflow this is for: name one guide frame, select the burst
-        with [ … ], press 'a'. Sex/age/plumage ride along, because a qualifier
-        lives in the subject string next to the name ("greater ani, male").
-
-        Whenever the selection does NOT say one unambiguous thing — nothing
-        named, several different names, or just one picture to act on — this
-        opens the regular Set-species dialog instead, so 'a' is never a guess.
-        quick_species_subject() owns that rule.
-
-        `keys` / `parent` are for the Quick view, which has its own cursor and
-        must say what it means: this grid's cursor is not updated while that
-        window is open, so falling back to it here would act on the wrong
-        picture.
-
-        Returns the number of pictures written without a dialog (0 when it
-        fell back to one, or wrote nothing) — the caller uses that both to tell
-        whether the selection was consumed and to report what happened."""
-        keys = keys if keys else self._cull_keys_target()
+        The one write shared by the two dialog-free species routes — 'a' (the
+        subject the selection already agreed on) and Ctrl+V (the subject in the
+        clipboard). They differ only in where the string comes from; having two
+        copies of the write is how the two would come to disagree about
+        sidecar-authoring, the recents bump or the zero-files guard."""
+        keys = list(keys)
         if not keys:
-            return 0
-        from gui.culling_species import quick_species_subject
-        subject = quick_species_subject(keys, self._species_subject_of)
-        if not subject:
-            self._open_species_dialog_for_keys(set(keys), parent=parent)
             return 0
         n = len(keys)
         if self.fpr:
@@ -2470,46 +2476,129 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             # like one — the same rule the Set-species panel states, and there
             # is no status line here to carry it, so it has to be a message box.
             if files_written == 0:
-                logger.error(f"Quick species 'a': wrote 0 files for {n} picture(s); "
+                logger.error(f"Species write: 0 files for {n} picture(s); "
                              f"{subject!r} is NOT on disk.")
                 QMessageBox.warning(
                     parent or self, "Species not stored",
                     f"Nothing was written to disk, so '{subject}' is NOT stored "
                     f"on these {n} pictures. See the log.")
                 return 0
-            logger.info(f"Quick species 'a': {subject!r} → {len(updated)} picture(s), "
+            logger.info(f"Species write: {subject!r} -> {len(updated)} picture(s), "
                         f"{files_written} file(s) written.")
             self.refresh_after_species_change(updated)
             n = len(updated)
         else:
-            item0 = self._collection.item_for_key(next(iter(keys)))
+            item0 = self._collection.item_for_key(keys[0])
             if not getattr(item0, "can_edit_species", False):
                 return 0
-            key_list = list(keys)
             # One exiftool call for the whole selection, same as the dialog's
             # commit — twenty-two pictures one at a time is twenty-two spawns.
             batched = getattr(self._collection, "write_tag_many", None)
             if batched is not None:
                 try:
-                    batched(key_list, "XMP:Subject", subject, "Subject")
+                    batched(keys, "XMP:Subject", subject, "Subject")
                 except Exception as e:
-                    logger.error(f"Quick species 'a' (batched) failed: {e}")
+                    logger.error(f"Species write (batched) failed: {e}")
                     return 0
             else:
-                for k in key_list:
+                for k in keys:
                     try:
                         self._collection.item_for_key(k).set_species(subject)
                     except Exception as e:
-                        logger.error(f"Quick species 'a' failed for {k}: {e}")
-            logger.info(f"Quick species 'a': {subject!r} → {n} picture(s).")
-            self.refresh_after_species_change(set(key_list))
-        # The dialogs bump the recents on commit; 'a' has no dialog to do it,
-        # and a name used on a burst is exactly the one that should be at the
-        # top of the quick-pick list next time.
+                        logger.error(f"Species write failed for {k}: {e}")
+            logger.info(f"Species write: {subject!r} -> {n} picture(s).")
+            self.refresh_after_species_change(set(keys))
+        # The dialogs bump the recents on commit; these dialog-free routes have
+        # no dialog to do it, and a name used on a burst is exactly the one that
+        # should be at the top of the quick-pick list next time.
         from gui.culling_species import remember_species_from_subject
         remember_species_from_subject(subject)
         self._clear_selection()
         return n
+
+    def _cull_quick_species(self, keys=None, parent=None):
+        """'a' — the dialog-free half of 's': copy the species the selection
+        already agrees on onto every picture in it, in one batched write.
+
+        The burst workflow this is for: name one guide frame, select the burst
+        with [ ... ], press 'a'. Sex/age/plumage ride along, because a qualifier
+        lives in the subject string next to the name ("greater ani, male").
+
+        Whenever the selection does NOT say one unambiguous thing — nothing
+        named, several different names, or just one picture to act on — this
+        opens the regular Set-species dialog instead, so 'a' is never a guess.
+        quick_species_subject() owns that rule.
+
+        `keys` / `parent` are for the Quick view, which has its own cursor and
+        must say what it means: this grid's cursor is not updated while that
+        window is open, so falling back to it here would act on the wrong
+        picture.
+
+        Returns the number of pictures written without a dialog (0 when it fell
+        back to one, or wrote nothing) — the caller uses that both to tell
+        whether the selection was consumed and to report what happened."""
+        keys = keys if keys else self._cull_keys_target()
+        if not keys:
+            return 0
+        from gui.culling_species import quick_species_subject
+        subject = quick_species_subject(keys, self._species_subject_of)
+        if not subject:
+            self._open_species_dialog_for_keys(set(keys), parent=parent)
+            return 0
+        return self._write_species_to_keys(keys, subject, parent=parent)
+
+    def _on_clipboard(self, what: str, keys=None, parent=None) -> str:
+        """The four copy/paste keys. Returns a one-line message for the caller
+        to show — the Quick view badges it, a grid logs it.
+
+        A grid also SHOWS the result: a pasted name appears under the card, a
+        pasted fix lights the GPS badge. The messages here are therefore mostly
+        for the cases where nothing visible happens — an empty buffer, a picture
+        with no GPS, a collection with nowhere to write."""
+        keys = list(keys) if keys else list(self._cull_keys_target())
+        if not keys:
+            return ""
+        from gui import viewer_clipboard as clip
+        plural = "s" if len(keys) != 1 else ""
+        if what == "copy_species":
+            subject = clip.copy_species_from(keys, self._species_subject_of)
+            if not subject:
+                return ("Nothing to copy — no species on these pictures, "
+                        "or more than one between them.")
+            logger.info(f"Copied species {subject!r} — Ctrl+V pastes it.")
+            return f"Copied species: {subject}"
+        if what == "paste_species":
+            subject = clip.species_buffer()
+            if not subject:
+                return "Nothing copied yet — Ctrl+C copies a species first."
+            n = self._write_species_to_keys(keys, subject, parent=parent)
+            if not n:
+                return ""      # _write_species_to_keys already said why
+            return f"Species name set for {n} picture{'s' if n != 1 else ''}"
+        if what == "copy_gps":
+            # A copy is singular, so a selection has to resolve to ONE picture.
+            # Take the first in DISPLAY order that actually has a fix: `keys`
+            # comes from a set and has no order of its own, and the grid cursor
+            # is stale whenever the Quick view is driving this. Picking the
+            # first picture that can answer is deterministic either way, and on
+            # a range it means "the place this group was taken".
+            for k in self._ordered(keys):
+                msg = clip.copy_gps_from(self._collection, k)
+                if msg:
+                    return msg
+            return "No GPS on these pictures to copy."
+        if what == "paste_gps":
+            n, msg = clip.paste_gps_into(self._collection, keys,
+                                         refresh_key=self._cull_refresh_key)
+            if n:
+                # Same reason a species/rating edit flags the day: the cards and
+                # the in-memory collection know, data_files.csv on disk does not.
+                self._day_edited = True
+                for k in keys:
+                    self._notify_large_view(k)
+            logger.info(f"Paste GPS ({len(keys)} picture{plural}): {msg}")
+            return msg
+        return ""
 
     def _cull_set_color_quick(self, color: str):
         """Stamp `color` onto the selection (else the focused picture) in one
@@ -2720,64 +2809,20 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                     f"across {len(keys)} picture(s).")
 
     # ── Copy / paste GPS + place ──────────────────────────────────────────────
-    _PLACE_FIELDS = ("Location", "City", "State", "Country", "CountryCode", "Municipality")
-
     def _copy_gps(self, key):
-        """Copy GPS coordinates + location text from one picture to a clipboard,
-        so it can be pasted onto isolated no-GPS shots nearby."""
-        latlon = self._collection.gps(key)
-        if not latlon:
-            logger.info("Copy GPS: this picture has no GPS to copy.")
-            return
-        try:
-            fields = self._collection.read_location(key) or {}
-        except Exception:
-            fields = {}
-        self._gps_clipboard = {"lat": latlon[0], "lon": latlon[1], "fields": fields}
-        try:
-            name = self._collection.item_for_key(key).display_name or key
-        except (ValueError, KeyError):
-            name = key
-        place = fields.get("Location") or fields.get("City") or ""
-        logger.info(f"Copied GPS {latlon[0]:.6f}, {latlon[1]:.6f}"
-                    f"{(' + ' + place) if place else ''} from {name} — "
-                    f"right-click another picture to Paste GPS + place.")
+        """Context-menu "Copy GPS + place". Same buffer as Ctrl+Shift+C — the
+        menu and the key are two doors into one drawer, and two drawers is how
+        you end up copying with the menu and pasting something else with the
+        key."""
+        from gui import viewer_clipboard as clip
+        msg = clip.copy_gps_from(self._collection, key)
+        logger.info(msg or "Copy GPS: this picture has no GPS to copy.")
 
     def _paste_gps(self, keys):
-        """Write the copied GPS + place into each target picture's XMP (RAW
-        untouched), refresh the cards, and clear their missing-GPS flag."""
-        clip = getattr(self, "_gps_clipboard", None)
-        if not clip:
-            logger.info("Paste GPS: nothing copied yet — Copy GPS from a picture first.")
-            return
-        from gui.geolocate import write_gps, write_location_batch
-        fields = clip.get("fields") or {}
-        has_place = any(fields.get(f) for f in self._PLACE_FIELDS)
-        n = 0
-        for k in keys:
-            files = self._collection.location_targets(k)
-            if not files:
-                continue
-            write_gps(files, clip["lat"], clip["lon"])
-            if has_place:
-                write_location_batch(files, fields, overwrite=True)
-                self._collection.note_location_written(k, fields)
-            self._collection.note_gps_written(k, clip["lat"], clip["lon"])
-            card = self._bound.get(k)
-            if card:
-                card.refresh()
-            self._notify_large_view(k)
-            n += 1
-        if n:
-            # The in-memory collection (and the card) already reflect the fix —
-            # note_gps_written() keeps that in a side set rather than the
-            # pipeline's file rows — but data_files.csv on disk does not, so the
-            # trip-overview GPS count stays stale until a Read & Summarize
-            # re-run rewrites it. Flag the day so closeEvent offers that re-run,
-            # same as a species/rating/crop/delete edit already does.
-            self._day_edited = True
-        logger.info(f"Pasted GPS {clip['lat']:.6f}, {clip['lon']:.6f}"
-                    f"{' + place' if has_place else ''} into {n} picture(s).")
+        """Context-menu "Paste GPS + place" — the menu door onto Ctrl+Shift+V."""
+        msg = self._on_clipboard("paste_gps", keys=keys)
+        if msg:
+            logger.info(msg)
 
     def keyPressEvent(self, event):
         from gui.viewer_keys import handle_cull_key, handle_grid_arrows, text_input_focused
@@ -2792,7 +2837,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                            refresh_key=self._cull_refresh_key,
                            open_species=self._cull_open_species,
                            open_rating=self._cull_open_rating,
-                           quick_species=self._cull_quick_species):
+                           quick_species=self._cull_quick_species,
+                           clipboard=self._cull_clipboard):
             event.accept()
             return
         if handle_grid_arrows(event, order=list(self._order),

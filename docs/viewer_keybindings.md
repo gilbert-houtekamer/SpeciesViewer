@@ -95,6 +95,56 @@ discovery** of a RAW — write the crop before the folder is opened in PhotoLab,
 force a "read from sidecar" there. The tool is offered for RAW pictures during
 culling.
 
+## Copy and paste (all viewers)
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+C` | Copy the species name |
+| `Ctrl+V` | Paste it onto the selection (else the focused picture) |
+| `Ctrl+Shift+C` | Copy GPS + place |
+| `Ctrl+Shift+V` | Paste GPS + place likewise |
+
+The two buffers are **trip-wide**: they live in the app, not in a viewer, so a
+name or a fix copied while culling 2026-09-13 pastes straight into 2026-09-14.
+They last for the session and are not written to disk — copying a name again is
+cheap, and a coordinate pasted from a buffer restored weeks later would be a
+data-integrity bug wearing a convenience's clothes.
+
+What travels is the **stored subject**, not the displayed name: `greater ani,
+male`, so the sex/age/plumage qualifier goes with it, exactly as it does for
+`a`. Pasting the resolved Dutch display name would write a different string
+than the source picture carries.
+
+`Ctrl+C` with several pictures selected copies the species they **agree** on. If
+they disagree it copies nothing and **leaves the buffer alone** — a copy that
+silently picked one of two names would be worse than one that refuses, because
+the wrong name then travels to every later paste. Blank pictures among named
+ones don't count as disagreement.
+
+`Ctrl+Shift+C` is singular by nature, so on a selection it takes the first
+picture **in display order** that actually has a fix — on a range, that reads as
+"the place this group was taken".
+
+`Ctrl+V` writes exactly like `a` does, through the same path: one batched
+exiftool call, a sidecar authored where a RAW has none, the name bumped to the
+front of the **recent species** list, and a message box if nothing reached the
+disk.
+
+The Species Image Preview's right-click **Copy GPS + place** / **Paste GPS +
+place** use the same buffer as the keys — the menu and the key are two doors
+into one drawer.
+
+A paste writes the **whole selection in one pair of exiftool calls**, not one
+pair per picture, so twelve pictures cost the same two calls as three hundred.
+(The right-click paste used to do it per picture; it now goes through the same
+batched path.) The cursor shows a wait while it writes.
+
+**Where paste-GPS does nothing:** the **Rating Editor** can copy GPS but not
+paste it. Its collection keeps coordinates in memory for the map but has no
+location-writing plumbing, so a paste there reports *"Nowhere to write GPS on
+these pictures"* rather than pretending. Species copy and paste work there
+normally.
+
 ## Filtering and refresh (Species Image Preview only)
 
 Unlike everything above, these three are **not** shared — they exist only in the
@@ -115,6 +165,8 @@ separate grid rebuilds; `g` is one.
 |-----|--------|
 | `s` | Open the **species** dialog |
 | `a` | **Quick species** — copy the species the selection already agrees on, no dialog (falls back to `s`) |
+| `Ctrl+C` / `Ctrl+V` | **Copy / paste a species name** between pictures — and between days |
+| `Ctrl+Shift+C` / `Ctrl+Shift+V` | **Copy / paste GPS + place** likewise |
 | `c` | Open the **rating / colour** dialog |
 | `f` | **Full resolution** — pre-decode to the 1:1 cache |
 | `l` | **Get location** — reverse-geocode GPS → write `Location/City/State/Country` to the XMP |

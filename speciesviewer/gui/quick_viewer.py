@@ -13,7 +13,9 @@ A command that writes without opening anything — `a` — reports itself in a
 top-right badge, in the same style as the top-left interaction hint, which
 clears on the next key. See flash().
 
-`a` (quick species), `s` (species dialog) and `c` (rating dialog) work here too,
+`a` (quick species), `s` (species dialog), `c` (rating dialog) and the four
+copy/paste keys (Ctrl+C/V for a species name, Ctrl+Shift+C/V for GPS + place)
+work here too,
 but they are the caller's to run — this view owns no species or rating UI, and
 building one would be the startup cost it exists to skip. They travel up as
 action_requested(what, keys) and the grid runs its OWN handler, parenting any
@@ -456,7 +458,8 @@ class QuickViewer(QDialog):
                 refresh_key=self._mark_edited,
                 open_species=lambda: self._request("species"),
                 open_rating=lambda: self._request("rating"),
-                quick_species=lambda: self._request("species_quick")):
+                quick_species=lambda: self._request("species_quick"),
+                clipboard=self._request):
             return
         super().keyPressEvent(e)
 
