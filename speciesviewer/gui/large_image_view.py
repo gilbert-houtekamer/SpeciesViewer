@@ -30,7 +30,8 @@ from PyQt6.QtGui import (
     QIcon, QFont)
 from PyQt6.QtCore import Qt, QTimer, QSize, pyqtSignal
 
-from gui.rating_editor import StarWidget, ColorSelector, COLOR_HEX, _FramedPhoto, _corner_badge
+from gui.rating_editor import (StarWidget, ColorSelector, COLOR_HEX, _FramedPhoto,
+                               _corner_badge, stamp_play_marker)
 from gui import theme
 from gui.image_loader import AsyncImageLoader
 from gui.window_state import restore_window, save_window, clamp_to_visible_screen
@@ -357,6 +358,8 @@ class _StripItem(QWidget):
                 _THUMB_W - 4, _THUMB_H - 4,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation)
+            if getattr(self._item, "is_video", False):
+                scaled = stamp_play_marker(scaled)   # same cue as the grid card
             self._thumb_lbl.setPixmap(scaled)
 
     def refresh_from(self, item):
@@ -1016,7 +1019,7 @@ class LargeImageView(QDialog):
         self._image_label = QLabel()
         self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._image_label.setMinimumSize(1, 1)
-        self._image_label.mousePressEvent = lambda _e: self.setFocus()
+        self._image_label.mousePressEvent = self._on_fit_click
         self._image_label.mouseDoubleClickEvent = self._on_fit_double_click
         frame_l.addWidget(self._image_label)
         stage_h.addWidget(self._img_frame)
@@ -1362,11 +1365,79 @@ class LargeImageView(QDialog):
         fy = (posf.y() - oy) / max(1, pm.height())
         return (min(1.0, max(0.0, fx)), min(1.0, max(0.0, fy)))
 
+    def _on_fit_click(self, _e):
+        """Click on the Fit picture. Normally just takes focus back from whatever
+        field had it; on a MOVIE it starts playback, because a play symbol you can
+        click is the one affordance everybody already knows."""
+        self.setFocus()
+        if getattr(self._item, "is_video", False):
+            self._play_current_video()
+
     def _on_fit_double_click(self, e):
         # Double-click the photo → the Camera JPEG tab (opens fit, wheel-zooms to
         # 1:1). Remember the clicked spot so a later 80% visit centres there.
+        if getattr(self._item, "is_video", False):
+            return          # a movie has no RAW to zoom into; the click plays it
         self._fullres_point = self._fit_click_to_point(e.position())
         self._view_tabs.setCurrentIndex(self._TAB_EMBED)
+
+    def _play_current_video(self):
+        """Play the movie this picture IS, in the Quick view.
+
+        Handing off rather than building a second player here is deliberate: the
+        Quick view already has one (QMediaPlayer with sound, Space to pause), so a
+        movie plays in exactly ONE kind of window wherever you start from — and
+        this dialog's Space is long since taken by 'next picture'. The whole key
+        list goes with it, positioned on this picture, so the arrows keep working
+        there exactly as they do here. No-op on a still."""
+        if self._item is None or not getattr(self._item, "is_video", False):
+            return
+        existing = getattr(self, "_quick_view", None)
+        if existing is not None:
+            try:
+                existing.close()            # never two players at once
+            except RuntimeError:
+                pass
+        from gui.quick_viewer import QuickViewer
+        dlg = QuickViewer(self, self._collection, list(self._keys), self._index)
+        dlg.edited.connect(self._on_quick_view_edited)
+        dlg.action_requested.connect(self._on_quick_view_action)
+        dlg.finished.connect(lambda _=0: setattr(self, "_quick_view", None))
+        self._quick_view = dlg
+        dlg.show()
+        dlg.activateWindow()
+        dlg.setFocus()
+
+    def _on_quick_view_edited(self, keys):
+        """A rating or colour set in the Quick view we opened — repaint here and
+        tell the host, exactly as an edit made in this dialog would."""
+        for k in keys:
+            self.refresh_external(k)
+            self.picture_changed.emit(k)
+
+    def _on_quick_view_action(self, _what, _keys):
+        """'s' / 'a' / 'c' and the copy-paste keys pressed in the player we opened.
+
+        Deliberately NOT wired through to this dialog's own handlers: those act on
+        the picture THIS window is showing, while the player can have stepped on to
+        another one — and a species or a GPS written to the wrong picture is a data
+        bug, not a cosmetic one. Rating and colour keys do work there (they carry
+        their own target and come back through `edited`), so this says which half
+        is which rather than letting a key do nothing at all."""
+        qv = getattr(self, "_quick_view", None)
+        if qv is not None:
+            qv.flash("Naming and copy/paste live in the viewer behind this one.")
+
+    def _close_quick_view(self):
+        """Shut any Quick view we opened, so a movie can't go on playing (with
+        sound) behind a viewer that has closed."""
+        qv = getattr(self, "_quick_view", None)
+        self._quick_view = None
+        if qv is not None:
+            try:
+                qv.close()
+            except RuntimeError:
+                pass
 
     def _on_view_tab_changed(self, idx):
         if idx in (self._TAB_EMBED, self._TAB_FULLRES):
@@ -1376,6 +1447,14 @@ class LargeImageView(QDialog):
             self._load_fullres()
         elif idx == self._TAB_EMBED:
             self._load_embedded()
+
+    def _no_raw_message(self) -> str:
+        """What the zoom tabs say when there is no RAW behind the picture. A movie
+        is not a missing file, so it does not get the same sentence — it gets told
+        what to do instead."""
+        if getattr(self._item, "is_video", False):
+            return "This is a movie — press v, or click the picture, to play it."
+        return "No RAW file for this picture."
 
     def _load_embedded(self):
         """Show the camera's own embedded JPEG at 1:1 — no decode, no cache.
@@ -1396,7 +1475,7 @@ class LargeImageView(QDialog):
         raw = self._collection.raw_path(key)
         if not raw:
             self._view_tabs.setTabText(self._TAB_EMBED, "Camera JPEG")
-            self._embed_view.set_message("No RAW file for this picture.")
+            self._embed_view.set_message(self._no_raw_message())
             return
         self._embed_view.set_message("Reading the camera's JPEG…")
         self._embed_loader.cancel_all()
@@ -1557,7 +1636,7 @@ class LargeImageView(QDialog):
             return
         raw = self._collection.raw_path(key)
         if not raw:
-            self._fullres_view.set_message("No RAW file for this picture.")
+            self._fullres_view.set_message(self._no_raw_message())
             return
         self._fullres_view.set_message("Decoding high resolution…")
         cache_root = str(self._fullres_cache_dir())
@@ -2016,7 +2095,7 @@ class LargeImageView(QDialog):
             self._next()
             event.accept()
             return
-        from gui.viewer_keys import handle_cull_key
+        from gui.viewer_keys import handle_cull_key, handle_video_key
         if self._keys and handle_cull_key(
                 event, order=list(self._keys),
                 current_key=self._keys[self._index],
@@ -2040,6 +2119,16 @@ class LargeImageView(QDialog):
             return
         if k == Qt.Key.Key_L and not desc_focused:
             self._geolocate_current()
+            event.accept()
+            return
+        # 'v' for video — the same key, from the same definition, as in both
+        # grids. It guards on text_input_focused() rather than desc_focused
+        # because the headline is a QLineEdit, and typing "vink" in it must not
+        # start a movie.
+        if handle_video_key(event,
+                            current_key=self._keys[self._index] if self._keys else None,
+                            item_for_key=self._collection.item_for_key,
+                            play=lambda _k: self._play_current_video()):
             event.accept()
             return
         if k in (Qt.Key.Key_Left, Qt.Key.Key_Right,
@@ -3383,6 +3472,16 @@ class LargeImageView(QDialog):
             scaled = self._pixmap.scaled(avail_w, avail_h,
                                          Qt.AspectRatioMode.KeepAspectRatio,
                                          Qt.TransformationMode.SmoothTransformation)
+        video = getattr(self._item, "is_video", False)
+        self._image_label.setCursor(Qt.CursorShape.PointingHandCursor if video
+                                    else Qt.CursorShape.ArrowCursor)
+        if video:
+            # Stamped on the FITTED pixmap, not on self._pixmap: the badge is sized
+            # to the picture it is drawn on, and a frame is ~3200 px wide while the
+            # stage shows maybe 900 — stamping before the scale would shrink it to
+            # a speck. Re-stamped on every fit (resize, exposure re-render), which
+            # costs one small paint on a pixmap we were about to hand over anyway.
+            scaled = stamp_play_marker(scaled)
         self._image_label.setPixmap(scaled)
         self._image_label.setMaximumSize(scaled.size())
         if self._crop_mode:
@@ -3436,6 +3535,7 @@ class LargeImageView(QDialog):
         self._fit_pixmap()
 
     def closeEvent(self, event):
+        self._close_quick_view()
         self._save_description()
         self._save_headline()
         # Species named through the inline species panel were buffered, not

@@ -4287,6 +4287,12 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         dlg.activateWindow()
         dlg.setFocus()
 
+    def _play_video(self, _key):
+        """'v' — the Quick view is the one window in the app with a player, and it
+        starts playing a movie of its own accord, so playing one IS opening it on
+        this picture. 'z' opens the same window for anything, movie or not."""
+        self._open_quick_view()
+
     def _refresh_quick_view(self):
         """Repaint the Quick view if it is open — its title carries the species,
         and the Set-species dialog is non-modal, so a commit can land while that
@@ -4339,7 +4345,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             self._resort_if_needed()
 
     def keyPressEvent(self, event):
-        from gui.viewer_keys import handle_cull_key, handle_grid_arrows, text_input_focused
+        from gui.viewer_keys import (handle_cull_key, handle_grid_arrows,
+                                     handle_video_key, text_input_focused)
         if handle_cull_key(event, order=self._order,
                            current_key=self._last_clicked_key,
                            item_for_key=self._collection.item_for_key,
@@ -4367,6 +4374,11 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
             return
         if event.key() == Qt.Key.Key_Z and not text_input_focused():
             self._open_quick_view()
+            event.accept()
+            return
+        if handle_video_key(event, current_key=self._last_clicked_key,
+                            item_for_key=self._collection.item_for_key,
+                            play=self._play_video):
             event.accept()
             return
         if (event.key() == Qt.Key.Key_A

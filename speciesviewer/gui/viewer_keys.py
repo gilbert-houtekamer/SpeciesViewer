@@ -164,6 +164,36 @@ def handle_cull_key(event, *, order, current_key, item_for_key, set_cursor, refr
     return True
 
 
+def handle_video_key(event, *, current_key, item_for_key, play) -> bool:
+    """'v' — play the movie under the cursor. Returns True if the key was 'v'.
+
+    ONE definition for all three viewers (both grids and the Large Image View),
+    so the key cannot come to mean subtly different things in each. It is
+    consumed whether or not the picture is a movie: a 'v' that silently falls
+    through to something unrelated in one viewer and not in another is exactly
+    the drift this module exists to prevent. On a still it does nothing.
+
+    Not 'p' (the star alias for 0) and not Space (which means 'next' here and in
+    the grids), so this is the one free, mnemonic key left.
+
+    play - callback(key) that starts playback for that picture
+    """
+    if text_input_focused() or event.key() != Qt.Key.Key_V:
+        return False
+    if event.modifiers() & (Qt.KeyboardModifier.ControlModifier
+                            | Qt.KeyboardModifier.AltModifier):
+        return False          # Ctrl+V is paste — leave the modified forms alone
+    if not current_key:
+        return True
+    try:
+        item = item_for_key(current_key)
+    except Exception:
+        return True
+    if getattr(item, "is_video", False):
+        play(current_key)
+    return True
+
+
 def handle_grid_arrows(event, *, order, current_key, columns, set_cursor) -> bool:
     """Move the grid cursor: Left/Right by one, Up/Down by a full row
     (`columns`), Ctrl+Home/Ctrl+End to the first/last picture. Returns True if

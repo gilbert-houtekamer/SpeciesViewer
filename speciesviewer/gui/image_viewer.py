@@ -1568,6 +1568,12 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         dlg.finished.connect(lambda _=0: self._on_large_view_closed())
         dlg.show()
 
+    def _play_video(self, _key):
+        """'v' — the Quick view is the one window in the app with a player, and it
+        starts playing a movie of its own accord, so playing one IS opening it on
+        this picture. 'z' opens the same window for anything, movie or not."""
+        self._open_quick_view()
+
     def _open_quick_view(self):
         """'z' — a zoomable look at the camera JPEG only (no RAW decode, no
         panel). ←/→ step, Esc closes; on close the grid cursor moves to the
@@ -2853,7 +2859,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             logger.info(msg)
 
     def keyPressEvent(self, event):
-        from gui.viewer_keys import handle_cull_key, handle_grid_arrows, text_input_focused
+        from gui.viewer_keys import (handle_cull_key, handle_grid_arrows,
+                                     handle_video_key, text_input_focused)
         if event.key() == Qt.Key.Key_F5:
             self.refresh_from_disk()
             event.accept()
@@ -2884,6 +2891,11 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             return
         if event.key() == Qt.Key.Key_Z and not text_input_focused():
             self._open_quick_view()
+            event.accept()
+            return
+        if handle_video_key(event, current_key=self._last_clicked_key,
+                            item_for_key=self._collection.item_for_key,
+                            play=self._play_video):
             event.accept()
             return
         if event.key() == Qt.Key.Key_X and not text_input_focused():
