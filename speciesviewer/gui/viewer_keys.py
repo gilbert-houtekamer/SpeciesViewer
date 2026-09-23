@@ -78,7 +78,7 @@ def parse_cull_key(event):
 
 def handle_cull_key(event, *, order, current_key, item_for_key, set_cursor, refresh_key,
                     open_species=None, open_rating=None, quick_species=None,
-                    clipboard=None) -> bool:
+                    clipboard=None, after_edit=None) -> bool:
     """Apply a culling key to the current picture and advance. Returns True if the
     event was a culling key (and is now consumed), False to let the caller handle it.
 
@@ -92,6 +92,11 @@ def handle_cull_key(event, *, order, current_key, item_for_key, set_cursor, refr
     quick_species- callback for 'a' (copy the selection's agreed species without a
                    dialog; it decides for itself when to fall back to open_species).
                    A viewer that doesn't supply one falls through to 's'.
+    after_edit   - callback(key) fired only when a rating/colour was actually
+                   written, after the repaint and the advance. A grid sorted by
+                   Rate uses it to re-sort, so a keyboard edit reorders the grid
+                   exactly as clicking a star does; a viewer in file order
+                   simply leaves it unset.
     clipboard    - callback(what) for the four copy/paste keys, `what` being one
                    of copy_species / paste_species / copy_gps / paste_gps. A
                    viewer that doesn't supply one simply ignores them, rather
@@ -154,6 +159,8 @@ def handle_cull_key(event, *, order, current_key, item_for_key, set_cursor, refr
     if applied:
         refresh_key(cur)
         advance()
+        if after_edit:
+            after_edit(cur)
     return True
 
 

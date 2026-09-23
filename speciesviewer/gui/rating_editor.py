@@ -3950,6 +3950,13 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         if c:
             c.refresh()
 
+    def _cull_after_key_edit(self, _key: str):
+        """A rating or colour set from the keyboard changed this picture's Rate,
+        so the grid's order may have changed too — re-sort exactly as clicking a
+        star on the card does. The cursor has already advanced to the next
+        picture in the pre-sort order, so keep THAT one in view."""
+        self._resort_if_needed(focus_key=self._last_clicked_key)
+
     def _cull_keys_target(self):
         """Selection if any, else the focused picture — what 's'/'c' act on."""
         return set(self._selected_keys) or (
@@ -4302,7 +4309,8 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
                            open_species=self._cull_open_species,
                            open_rating=self._cull_open_rating,
                            quick_species=self._cull_quick_species,
-                           clipboard=self._cull_clipboard):
+                           clipboard=self._cull_clipboard,
+                           after_edit=self._cull_after_key_edit):
             event.accept()
             return
         if handle_grid_arrows(event, order=self._order,
