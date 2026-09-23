@@ -28,7 +28,7 @@ from PyQt6.QtWidgets import (
     QMenu, QScrollArea, QApplication, QLineEdit, QListWidget, QListWidgetItem)
 from PyQt6.QtGui import (QPixmap, QPainter, QColor, QBrush, QPen, QFont,
                          QPainterPath, QPolygonF, QDrag, QLinearGradient,
-                         QShortcut, QKeySequence)
+                         QShortcut, QKeySequence, QDesktopServices)
 from PyQt6.QtCore import Qt, QPointF, QUrl, QTimer, pyqtSignal, QMimeData, QEvent
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
@@ -425,6 +425,12 @@ class TileMapView(QGraphicsView):
         lonw = [(p["lon"], p.get("count", 1)) for p in pts]
         return (self._weighted_pct(latw, 0.02), self._weighted_pct(latw, 0.98),
                 self._weighted_pct(lonw, 0.02), self._weighted_pct(lonw, 0.98))
+
+    def view_center(self) -> tuple:
+        """(lat, lon, zoom) of what the canvas is showing right now — for handing
+        this view to another map. Note the order: the canvas keeps its centre as
+        (lon, lat), every URL wants lat first."""
+        return (self._center[1], self._center[0], self._z)
 
     def fit_to_points(self):
         """Choose zoom + center so the (core) points are visible (world view when
@@ -1174,6 +1180,15 @@ class _MapPhotoStrip(QScrollArea):
             t.refresh()
 
 
+def open_in_google_maps(map_widget) -> None:
+    """Open the browser on Google Maps, centred where this map is centred and at
+    the same zoom. Our canvas is for finding and organising pictures; Google's is
+    where the place names can be read and copied (for the website text), which a
+    drawn tile cannot give."""
+    lat, lon, z = map_widget.view_center()
+    QDesktopServices.openUrl(QUrl(f"https://www.google.com/maps/@{lat:.6f},{lon:.6f},{z}z"))
+
+
 class MapView(QDialog):
     """Framed window around the map canvas — up to 4 species overlaid, each its
     own colour, with a legend, an "Add species…" picker, Fit, and the required
@@ -1248,6 +1263,11 @@ class MapView(QDialog):
                                "views (F5)")
         refresh_btn.clicked.connect(self._refresh)
         h.addWidget(refresh_btn)
+        gmaps_btn = QPushButton("Google Maps")
+        gmaps_btn.setToolTip("Open this same view in Google Maps in your browser — "
+                             "where place names can be read and copied")
+        gmaps_btn.clicked.connect(lambda: open_in_google_maps(self._map))
+        h.addWidget(gmaps_btn)
         fit_btn = QPushButton("Fit")
         fit_btn.setToolTip("Zoom to fit all points")
         fit_btn.clicked.connect(self._map_fit)
@@ -2135,6 +2155,11 @@ class TripMapView(QDialog):
         self._basemap_combo.currentIndexChanged.connect(self._on_basemap_changed)
         h.addWidget(self._basemap_combo)
         h.addSpacing(8)
+        gmaps_btn = QPushButton("Google Maps")
+        gmaps_btn.setToolTip("Open this same view in Google Maps in your browser — "
+                             "where place names can be read and copied")
+        gmaps_btn.clicked.connect(lambda: open_in_google_maps(self._map))
+        h.addWidget(gmaps_btn)
         fit_btn = QPushButton("Fit")
         fit_btn.setToolTip("Zoom to fit all points")
         fit_btn.clicked.connect(lambda: self._map.fit_to_points())
