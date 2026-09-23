@@ -352,11 +352,25 @@ class FilePicture:
 
 
     # the UPN update is only reflected in the data_pictures file and the internal structures 
+    def _reset_qualifier_fields(self, upn_object, subject):
+        """Re-derive a picture's sex / age / plumage columns from its subject.
+
+        The pipeline fills malefemale / ageintext / summerwinter from XMP:Subject
+        (projectlib), and everything downstream — the card's ♂ / juv. suffix, the
+        website caption — reads those columns, not the subject. So a commit that
+        changes the subject must re-derive them here; otherwise correcting ♂ to ♀
+        leaves the old sex on the card and in data_pictures.csv until the next
+        Read & Summarize."""
+        sp = self.sp if hasattr(self.sp, "getBirdInfo") else Species(None)
+        (upn_object["malefemale"], upn_object["ageintext"],
+         upn_object["summerwinter"]) = sp.getBirdInfo(subject or "")
+
     def replaceUPNSubject(self, filename, original_subject, correct_subject, sc_object):
         upn_object = self.upn.UniquePictureName_dict[Path(filename).name]
         if upn_object != None:
             upn_object['subject'] = correct_subject
             upn_object['errormessage'] = ''   # missing species issue fixed, clear error message
+            self._reset_qualifier_fields(upn_object, correct_subject)
             if sc_object is not None:
                 upn_object['NLSoortNaam'] = sc_object['DutchName']
                 upn_object['EngSoortNaam'] = sc_object['EnglishName']
@@ -560,6 +574,7 @@ class FilePicture:
                 continue
             upn_object['subject'] = corrected_subject
             upn_object['errormessage'] = ''
+            self._reset_qualifier_fields(upn_object, corrected_subject)
             if sc_object is not None:
                 upn_object['NLSoortNaam'] = sc_object['DutchName']
                 upn_object['EngSoortNaam'] = sc_object['EnglishName']

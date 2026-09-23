@@ -3765,9 +3765,16 @@ class RatingEditorDialog(MasterCardMenuMixin, QDialog):
         # Same Trip-scope persistence caveat as Move-to-species: the panel's
         # updateSubjects can't write the merged path-less CSVs, so route through
         # the per-day objects here.
+        # Repaint the grid before clearing the selection: a commit can add or
+        # change the sex/age/plumage suffix on the card's name line, and without
+        # this the cards kept the pre-commit name until something else (closing
+        # the large viewer) repainted them. _sync_all_cards, not the selected
+        # keys — an error-correction commit can touch pictures beyond the
+        # selection, and a repaint is text-only.
         panel.committed.connect(lambda upns: (
             self._collection.persist_after_species_change(upns)
             if self._collection is not None else None,
+            self._sync_all_cards(),
             self._refresh_quick_view(),
             self._clear_selection(), dlg.accept()))
         dlg_layout.addWidget(panel)
