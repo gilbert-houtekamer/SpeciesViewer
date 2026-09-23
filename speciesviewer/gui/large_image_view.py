@@ -161,6 +161,24 @@ class _KVRow(QWidget):
         return self._v.text()
 
 
+def _cropped_size_text(item) -> str:
+    """Pixel size of the cropped frame, e.g. "3132x2543" — the crop rectangle
+    applied to the picture's full dimensions. "" when either is unknown (a baked
+    render keeps no readable rectangle), so the crop row falls back to the bare
+    ⌗ marker."""
+    rect = getattr(item, "crop_rect", None)
+    if not rect:
+        return ""
+    dims = (getattr(item, "exif", None).dimensions or "") if getattr(item, "exif", None) else ""
+    try:
+        w, h = (int(v) for v in dims.lower().split("x")[:2])
+    except Exception:
+        return ""
+    cw = round(float(rect.get("width", 1.0)) * w)
+    ch = round(float(rect.get("height", 1.0)) * h)
+    return f"{cw}x{ch}" if cw > 0 and ch > 0 else ""
+
+
 class _CollapsibleSection(QWidget):
     """A metadata-panel section with a clickable mono header that collapses its
     body. The picture drives the window height; when the panel is short the user
@@ -2288,7 +2306,8 @@ class LargeImageView(QDialog):
             _full += "  (" + " · ".join(exts) + ")"
         self._file_key_lbl.setToolTip(_full)
         _crop = getattr(item, "has_crop", False)
-        self._file_crop_lbl.setText("⌗ Crop" if _crop else "")
+        self._file_crop_lbl.setText(("⌗ Crop  " + _cropped_size_text(item)).rstrip()
+                                    if _crop else "")
         self._file_crop_lbl.setVisible(_crop)
         self._explorer_btn.setEnabled(bool(dir_path))
         raw = self._collection.raw_path(key)

@@ -298,6 +298,10 @@ class PreviewItem(PictureItem):
         return self._c.crop_present(self._key)
 
     @property
+    def crop_rect(self) -> dict | None:
+        return self._c.crop_rect(self._key)
+
+    @property
     def file_exts(self) -> list[str]:
         files = self._row.get("Files", [])
         exts = ({Path(f).suffix.lstrip(".").upper() for f in files if f}
@@ -1247,11 +1251,17 @@ class PreviewCollection(PictureCollection):
         call, then a free size-cue fallback: a baked DxO/LR render keeps no
         readable rectangle, so a JPG much smaller than its RAW is taken as a crop
         (jpg_is_crop_by_size) — the same rule the trip/master viewers use."""
-        base = self._crop_source(upn_key)
-        if base is not None and crop_for(base, self._xmp_for(upn_key)) is not None:
+        if self.crop_rect(upn_key) is not None:
             return True
         row = self.fpr.upn.UniquePictureName_dict.get(upn_key, {})
         return jpg_is_crop_by_size(row.get("ImageSize", ""), row.get("JPGSize", ""))
+
+    def crop_rect(self, upn_key: str):
+        """The crop rectangle {left,top,width,height} (0-1) from the croppable
+        BASE's .dop/.xmp, or None. crop_present's readable half — the large
+        viewer prints the cropped pixel size from it."""
+        base = self._crop_source(upn_key)
+        return crop_for(base, self._xmp_for(upn_key)) if base is not None else None
 
     def request_raw_uncropped(self, upn_key: str, on_ready: PixmapCallback) -> None:
         """The full uncropped frame — the canvas the crop tool draws on (bypasses

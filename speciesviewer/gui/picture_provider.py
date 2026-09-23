@@ -302,6 +302,14 @@ class PictureItem(ABC):
     def has_crop(self) -> bool:         # True → card shows a ⌗ (crop present: ours or PhotoLab/LR)
         return False
 
+    @property
+    def crop_rect(self) -> dict | None:
+        """The crop rectangle itself, normalised {left,top,width,height} (0-1), so
+        the large viewer can print the cropped pixel size next to the ⌗ marker.
+        None when no rectangle is readable — has_crop can still be True then (a
+        baked render is recognised by its size alone)."""
+        return None
+
     # ── location line (grid card, opt-in) ────────────────────────────────────
     # show_location_line → the card draws a place line under the species name.
     # The data must be free (already loaded), so only providers that carry it

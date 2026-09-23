@@ -103,6 +103,12 @@ class RatingEditorItem(PictureItem):
         return self._c.crop_recorded(self._key)
 
     @property
+    def crop_rect(self) -> dict | None:
+        """The rectangle behind has_crop, for the large viewer's cropped-size
+        line. None for the size-cue case (a baked render keeps no rectangle)."""
+        return self._c.crop_rect(self._key)
+
+    @property
     def can_set_crop(self) -> bool:
         """A crop suggestion is written to the RAW's DxO .dop / Lightroom .xmp for
         PhotoLab to open with, so it needs a writable trip picture that has a RAW.
@@ -1230,6 +1236,13 @@ class RatingEditorCollection(PictureCollection):
         lookup exactly, for consistency within this provider."""
         from gui.picture_provider import exposure_for
         return exposure_for(self.raw_path(upn_key))
+
+    def crop_rect(self, upn_key: str):
+        """The crop rectangle {left,top,width,height} (0-1) from the RAW's DxO
+        .dop / Lightroom .xmp, or None — crop_recorded's readable half, read the
+        same (.dop-preferred) way."""
+        from gui.picture_provider import crop_for
+        return crop_for(self.raw_path(upn_key))
 
     def crop_recorded(self, upn_key: str) -> bool:
         """True when this picture has a crop rectangle in its RAW's DxO .dop /

@@ -376,6 +376,12 @@ class SidecarItem(PictureItem):
         return self._c._crop_by_size(self._stem)
 
     @property
+    def crop_rect(self) -> dict | None:
+        # Same cached read as has_crop — None for the size-cue case (a baked
+        # render keeps no rectangle).
+        return self._c._crop_for(self._stem)
+
+    @property
     def place_fields(self) -> dict:
         r = self._row
         base = {k: str(r.get(k, "") or "")
