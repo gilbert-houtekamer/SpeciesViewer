@@ -57,6 +57,7 @@ species…" for bulk edits over a multi-selection.
 | Mouse wheel | Over the image in the Large Image View: up → next, down → previous |
 | `f` | Large Image View: toggle **Fit ⇄ Camera JPEG** (the quick zoom double-click uses). The **100%** tab is a third tab, reached by clicking it |
 | Double-click image | Large Image View: open the 100% tab centred on the clicked spot |
+| `v` | **Play the movie** — in the grids and the Large Image View alike. On a movie, clicking the picture plays it too |
 
 ## 100% (full-resolution) view — Large Image View
 
@@ -211,6 +212,7 @@ separate grid rebuilds; `g` is one.
 | `f` | **Full resolution** — pre-decode to the 1:1 cache |
 | `l` | **Get location** — reverse-geocode GPS → write `Location/City/State/Country` to the XMP |
 | `z` | **Quick view** — the camera JPEG only, zoomable; `←`/`→` step, `Esc` closes |
+| `v` | **Play the movie** under the cursor, in the Quick view (with sound; `Space` pauses). Does nothing on a still |
 | `x` | Set colour to **Blue** — no dialog, one write, then moves on (see below) |
 
 `z` opens a stripped-down viewer — just the camera's embedded JPEG, no RAW
