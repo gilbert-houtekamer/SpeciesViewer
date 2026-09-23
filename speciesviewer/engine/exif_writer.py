@@ -76,7 +76,15 @@ def _write_via_persistent(filepath, args) -> bool:
         # check_execute=False, so a failure is reported in the text rather than
         # raised. "0 image files updated" is a failure with a zero exit code —
         # exactly the kind that would otherwise pass unnoticed.
-        if "updated" not in out or out.strip().startswith("Error"):
+        #
+        # "created" counts as success: writing the FIRST tag to a picture that
+        # has no sidecar yet makes one, and exiftool then says "1 image files
+        # created" with no "updated" anywhere in it. Treating that as a failure
+        # logged a write that had in fact landed as if it were lost, and sent the
+        # caller off to redo it in a fresh subprocess — on every first edit of
+        # every JPG/PNG card. Rare while only RAWs (which arrive with a sidecar)
+        # reached the grid; routine now that they are not the only cards.
+        if ("updated" not in out and "created" not in out) or out.strip().startswith("Error"):
             logger.warning(f"persistent exiftool write did not update "
                            f"{Path(filepath).name}: {out.strip()[:200]}")
             return False

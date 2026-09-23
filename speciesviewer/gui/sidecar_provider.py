@@ -37,12 +37,28 @@ from utils.sidecar_policy import (
     color_rating_to_xmp_enabled, color_rating_to_dop_enabled,
 )
 from engine.handling import deriveUniquePictureName
-from utils.raw_extensions import RAW
+from utils.raw_extensions import RAW, JPEG, OTHER_IMAGE, RAW_OR_HEIC
 
 logger = logging.getLogger("speciesviewer")
 
 _RAW_EXTS = RAW  # canonical table — see utils/raw_extensions.py
-_JPG_EXTS = {".jpg", ".jpeg"}
+# The undeveloped ORIGINAL of a picture — what goes in the group's "raw" slot.
+# A HEIC is one: it is the capture, its metadata lives in a .xmp beside it, and
+# PhotoLab develops it into a .jpg exactly as it does an ORF. So it groups like a
+# RAW, NOT like a JPG — put it in the "jpg" slot instead and it would count as a
+# finished render in the JPG-only overlay and inherit the "a JPG is the finished
+# asset" delete protection, both of which would be lies about an undeveloped file.
+# Deliberately NOT the same set as _RAW_EXTS: crop-to-.dop (request_image) stays
+# RAW-only, because a HEIC has no develop step for a .dop to describe and SV must
+# never invent one.
+_SOURCE_EXTS = RAW_OR_HEIC  # canonical table — see utils/raw_extensions.py
+# What a card can show WITHOUT a develop step — the group's "jpg". PNG belongs
+# here, with TIFF: Qt decodes them and a phone screenshot is a finished picture
+# exactly as a JPEG is, so leaving them out only meant they vanished. HEIC does
+# NOT belong here, however finished it is: Qt cannot decode HEIC at all
+# (QImageReader.supportedImageFormats() has no entry for it), so a HEIC card
+# would be a permanently grey tile. See CARD_EXTENSIONS on SidecarCollection.
+_JPG_EXTS = JPEG | OTHER_IMAGE  # canonical table — see utils/raw_extensions.py
 
 # Render-suffix markers (lowercased) that deriveUniquePictureName strips. Used to
 # rebuild the SOURCE stem so a render's sidecar — named after the source, not the
@@ -497,6 +513,15 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
     # virtual-trip preview can't, so it leaves this False).
     show_status_badges = True
 
+    # Exactly the extensions __init__ can turn into a card: anything else
+    # contributes no "raw" and no "jpg" to its group, and the group is then
+    # dropped as imageless. Published so a CALLER can ask instead of keeping its
+    # own list — Read SD-cards filtered by the much wider PICTURE table and
+    # handed over 279 HEICs plus 7 PNGs that were discarded here in silence,
+    # reporting "460 copied" and then showing 49. A caller that filters by this
+    # set can still discard files, but it now knows which, and can say so.
+    CARD_EXTENSIONS = frozenset(_SOURCE_EXTS | _JPG_EXTS)
+
     # Class-level defaults, mirroring PreviewCollection, so the flags can be read off
     # the class and never come back missing on an instance built by an older caller.
     read_only = False
@@ -568,7 +593,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
             p = Path(p)
             ext = p.suffix.lower()
             grp = self._groups.setdefault(deriveUniquePictureName(p.name), {})
-            if ext in _RAW_EXTS:
+            if ext in _SOURCE_EXTS:
                 grp["raw"] = p
             elif ext in _JPG_EXTS:
                 grp.setdefault("jpg", p)

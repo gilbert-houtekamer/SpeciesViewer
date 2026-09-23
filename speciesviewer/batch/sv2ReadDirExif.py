@@ -30,6 +30,7 @@ if __name__ == "__main__":
     sys.path.append(modpath)
 
 from engine import COLUMN_NAMES, SELECTED_FIELDS, SVException
+from engine.capture_time import capture_datetime_str
 import engine.projectlib
 from engine.focus_distance import focus_distance
 from engine.handling import deriveUniquePictureName, relativize_path
@@ -262,17 +263,6 @@ def main(args, config):
                     selected_field == "-imagesize" and "Composite:ImageSize_1" in d
                 ):
                     row["ImageSize"] = d["Composite:ImageSize_1"]
-                elif (
-                    selected_field == "-DateTimeOriginal"
-                    and "QuickTime:CreateDate" in d
-                ):
-                    # A movie has no EXIF:DateTimeOriginal of its own — this is
-                    # the only date it carries. Verified against this camera's
-                    # own stills (2026-09-18): QuickTime:CreateDate lines up with
-                    # a neighbouring photo's DateTimeOriginal to the minute, i.e.
-                    # it's written in local camera time already, not UTC — no
-                    # timezone conversion needed here.
-                    row["EXIF:DateTimeOriginal"] = d["QuickTime:CreateDate"]
 
             # One focus distance, whatever the maker called it. Canon writes a range
             # and Sony an exiftool composite, neither of which lands in the loop
@@ -282,6 +272,16 @@ def main(args, config):
             merged_distance = focus_distance(d)
             if merged_distance:
                 row["MakerNotes:FocusDistance"] = merged_distance
+
+            # One capture time, chosen by ONE rule for photos and movies alike
+            # (engine.capture_time). A movie carries no EXIF:DateTimeOriginal,
+            # and the QuickTime tag a phone fills is not the one a camera fills
+            # — picking between them here, rather than trusting whichever the
+            # loop above happened to copy, is what keeps a movie in the right
+            # day folder and in the right place in the day's chronology. An
+            # unparseable placeholder ("0000:00:00 00:00:00") becomes "", never
+            # a date-shaped string that crashes a later step.
+            row["EXIF:DateTimeOriginal"] = capture_datetime_str(d)
 
             # find unique identifier for all files based on a file click
             row["UniquePictureName"] = deriveUniquePictureName(

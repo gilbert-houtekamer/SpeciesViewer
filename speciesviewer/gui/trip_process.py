@@ -8,6 +8,7 @@ import logging
 import re
 import sys, os, shutil, time
 from datetime import datetime
+from collections import Counter
 from pathlib import Path
 import webbrowser
 from gui.batch import BatchModuleRunner  # Assuming batch handler is here
@@ -1081,7 +1082,12 @@ class ReadSDCardDialog(QDialog):
         self.days_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.days_table.horizontalHeader().setStretchLastSection(True)
         self.days_table.itemChanged.connect(self._on_day_item_changed)
-        days_layout.addWidget(self.days_table)
+        # Vertical Expanding + the stretch below: a taller dialog becomes more
+        # visible days rather than empty space under the block. How far it may
+        # grow is bounded in _size_days_table (never past the rows it has).
+        self.days_table.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                      QSizePolicy.Policy.Expanding)
+        days_layout.addWidget(self.days_table, 1)
         # Camera-clock check, filled by _check_camera_clock after a scan. Hidden
         # unless there is something to say — a note that is always there stops
         # being read.
@@ -1094,7 +1100,12 @@ class ReadSDCardDialog(QDialog):
         self.clock_note.setVisible(False)
         days_layout.addWidget(self.clock_note)
         self.days_container.setVisible(False)
-        card_layout.addWidget(self.days_container)
+        # Most of a manual enlargement goes to the day table (stretch 4 against
+        # the trailing stretch 1 below), which is what a big screen is for. Not
+        # all of it: the trailing stretch must keep a share, or once the table
+        # hits its row-count ceiling the leftover would have nowhere to go and
+        # would open a gap inside the block instead.
+        card_layout.addWidget(self.days_container, 4)
 
         # Extra vertical space (when the dialog is enlarged) collects here, so the
         # blocks stay compact at the top and the buttons stay at the bottom rather
@@ -1948,20 +1959,32 @@ class ReadSDCardDialog(QDialog):
         table.blockSignals(False)
 
     def _size_days_table(self):
-        """Make the day table exactly tall enough for its rows, up to a cap (then
-        it scrolls), so the dialog sizes itself to fit the days found. Heights are
-        measured (resizeRowsToContents), not estimated — styled rows can be much
-        taller than the default section size, which previously clipped the table."""
+        """Give the day table a floor and a ceiling rather than one fixed height,
+        so enlarging the dialog shows more days.
+
+        Floor — the first 8 days, or all of them when there are fewer: the height
+        the dialog opens at, unchanged from when the table could not grow. A card
+        with 24 days on it still opens compact instead of filling the screen.
+
+        Ceiling — exactly the rows it has: dragging the dialog taller reveals real
+        days and then stops, so the table never becomes a tall empty box below the
+        last day. Between the two, the layout decides (see the stretch factors
+        where days_table and days_container are added).
+
+        Heights are measured (resizeRowsToContents), not estimated — styled rows
+        can be much taller than the default section size, which previously
+        clipped the table."""
         rows = self.days_table.rowCount()
         if rows == 0:
             return
         self.days_table.resizeRowsToContents()
         header = self.days_table.horizontalHeader()
         header_h = max(header.height(), header.sizeHint().height())
-        frame = 2 * self.days_table.frameWidth()
-        visible = min(rows, 8)                        # show up to 8 days, then scroll
-        body = sum(self.days_table.rowHeight(i) for i in range(visible))
-        self.days_table.setFixedHeight(header_h + body + frame + 2)
+        chrome = 2 * self.days_table.frameWidth() + 2
+        heights = [self.days_table.rowHeight(i) for i in range(rows)]
+        floor_rows = min(rows, 8)
+        self.days_table.setMinimumHeight(header_h + sum(heights[:floor_rows]) + chrome)
+        self.days_table.setMaximumHeight(header_h + sum(heights) + chrome)
 
     def _on_all_days_clicked(self):
         """Master checkbox: tick all days unless they're all ticked (then clear)."""
@@ -2560,12 +2583,31 @@ class ReadSDCardDialog(QDialog):
         from gui.image_viewer import ImagePreviewDialog
         from gui.sidecar_provider import SidecarCollection
         from gui.preview_provider import preview_cache_dir_for
-        # Only formats the grid can render (still images + RAW); skip video.
-        viewable_exts = PICTURE  # canonical table — see utils/raw_extensions.py
-        paths = [p for p in self._last_targets if Path(p).suffix.lower() in viewable_exts]
+        # What the grid can actually put on a card — ASK the collection rather
+        # than filtering by the much wider PICTURE table. Filtering by PICTURE
+        # handed it .heic/.tif files it drops as imageless, so a card read of an
+        # iPhone reported "460 copied" and then showed 49 with no explanation.
+        card_exts = SidecarCollection.CARD_EXTENSIONS
+        pictures = [p for p in self._last_targets
+                    if Path(p).suffix.lower() in PICTURE]   # canonical table
+        paths = [p for p in pictures if Path(p).suffix.lower() in card_exts]
+        # Say what is being left out, by format and count. Silence here is what
+        # made the missing pictures look like data loss rather than a viewer limit.
+        skipped = Counter(Path(p).suffix.lower().lstrip(".").upper()
+                          for p in pictures if Path(p).suffix.lower() not in card_exts)
+        note = ""
+        if skipped:
+            kinds = ", ".join(f"{n} {ext}" for ext, n in sorted(skipped.items()))
+            note = (f"  ⚠ Not shown in the culling viewer ({kinds}) — they are "
+                    f"copied and will appear after Read Directory; only this "
+                    f"grid cannot display them.")
         if not paths:
-            self.status_label.setText("No viewable pictures to preview.")
+            self.status_label.setText(
+                f"No pictures this viewer can display.{note}"
+                if skipped else "No viewable pictures to preview.")
             return
+        if note:
+            self.status_label.setText(f"Showing {len(paths)} picture(s).{note}")
         # Keep the preview cache OUT of the project tree — inside it, the cache
         # folder shows up as a 'day' in the trip overview and would be scanned by
         # Read Directory. Park it in the per-user app dir instead.

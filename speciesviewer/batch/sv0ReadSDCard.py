@@ -50,7 +50,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from utils.disk_space import check_free_space
-from utils.raw_extensions import RAW
+from utils.raw_extensions import RAW, RAW_OR_HEIC
 
 UNKNOWN_DATE_DIR = "unknown-date"
 
@@ -89,6 +89,14 @@ else:
 # saying nothing. The pipeline itself needs no change: engine.exifcache filters
 # by a DENY list, and nrw is not on it, so exiftool reads these normally.
 RAW_EXTENSIONS = RAW  # canonical table — see utils/raw_extensions.py
+# Everything that gets a .xmp sidecar written for it. A HEIC belongs here: it is
+# an undeveloped original whose species, rating, colour and crop have nowhere
+# else to live, and SV's own sidecar recipe (engine.sidecarlib.sidecar_opts)
+# works on one unchanged — verified on an iPhone 16 Pro file, which produced a
+# sidecar carrying DateTimeOriginal WITH its UTC offset, GPS and Model, and
+# round-tripped Rating / Label / Subject / Description. Without this the HEIC
+# was the one picture format you could see but not annotate.
+SIDECAR_EXTENSIONS = RAW_OR_HEIC  # canonical table — see utils/raw_extensions.py
 PICTURE_EXTENSIONS = RAW_EXTENSIONS | {
     ".jpg", ".jpeg", ".heic", ".heif", ".png", ".tif", ".tiff",       # stills
     ".mp4", ".mov",                                                    # video
@@ -540,8 +548,10 @@ class _DestIndex:
 # ── EXIF date helpers ─────────────────────────────────────────────────────────
 
 def _read_capture_datetimes(files, log, progress_cb=None) -> dict[str, datetime]:
-    """{normalised path: datetime} from EXIF DateTimeOriginal, split across N
-    parallel exiftool workers (auto_worker_count — see project_exif_parallelism).
+    """{normalised path: datetime} from the file's own capture time, split across
+    N parallel exiftool workers (auto_worker_count — see project_exif_parallelism).
+    The tag order is engine.capture_time's, so a movie is dated by its QuickTime
+    tags rather than dropping through to mtime.
     Files without a readable date are omitted (caller falls back to file mtime).
     exiftool is imported lazily so copy_card stays usable without it for the
     no-bucketing path.
@@ -561,6 +571,7 @@ def _read_capture_datetimes(files, log, progress_cb=None) -> dict[str, datetime]
     try:
         import exiftool
         from engine.exifcache import COMMON_ARGS, auto_worker_count
+        from engine.capture_time import EXIFTOOL_ARGS as CAPTURE_ARGS, capture_datetime
         total = len(files)
         workers = auto_worker_count(total)
         # This pass is fast (a single tag, not a full copy) — one update per
@@ -586,14 +597,17 @@ def _read_capture_datetimes(files, log, progress_cb=None) -> dict[str, datetime]
                         batch = work.get_nowait()
                     except queue.Empty:
                         return
-                    for meta in et.get_metadata(batch, params=["-DateTimeOriginal"]):
+                    for meta in et.get_metadata(batch, params=CAPTURE_ARGS):
                         src = meta.get("SourceFile")
-                        dt_str = meta.get("EXIF:DateTimeOriginal", "")
-                        if src and dt_str:
-                            try:
-                                dt = datetime.strptime(dt_str[:19], "%Y:%m:%d %H:%M:%S")
-                            except ValueError:
-                                continue
+                        # One rule for photos and movies (engine.capture_time):
+                        # a movie has no EXIF:DateTimeOriginal, so without this
+                        # every .mov/.mp4 fell through to file mtime and its day
+                        # folder was decided by the file system rather than by
+                        # the camera. Also rejects "0000:00:00 00:00:00", which
+                        # would otherwise parse as nothing and land the file in
+                        # UNKNOWN rather than on its real day.
+                        dt = capture_datetime(meta)
+                        if src and dt is not None:
                             with lock:
                                 result[_norm(src)] = dt
                     with lock:
@@ -1407,7 +1421,7 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
     # ── XMP sidecars ──────────────────────────────────────────────────────
     summary["sidecars"] = 0
     summary["sidecars_missing"] = 0
-    raw_targets = [t for t in targets if Path(t).suffix.lower() in RAW_EXTENSIONS]
+    raw_targets = [t for t in targets if Path(t).suffix.lower() in SIDECAR_EXTENSIONS]
     if (write_sidecars and not summary["error"]
             and not (should_cancel and should_cancel())):
         if raw_targets:

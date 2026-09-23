@@ -78,10 +78,12 @@ SELECTED_FIELDS = [
     "-XMP:Headline",
     "-DateTimeOriginal",
     # QuickTime movies (.mov/.mp4) carry no EXIF:DateTimeOriginal at all — their
-    # capture time lives here instead. Read unconditionally (cheap: exiftool
-    # simply omits it for a file that has none) rather than branching sv2's scan
-    # on extension, and merged onto DateTimeOriginal in sv2ReadDirExif.py only
-    # when the file had none of its own.
+    # capture time lives in these two instead. Read unconditionally (cheap:
+    # exiftool simply omits them for a file that has none) rather than branching
+    # sv2's scan on extension, and reduced to one date by engine.capture_time,
+    # which knows that CreationDate is the phone's real capture moment and
+    # CreateDate the camera's — and, on a phone, sometimes only the export date.
+    "-QuickTime:CreationDate",
     "-QuickTime:CreateDate",
 ]
 

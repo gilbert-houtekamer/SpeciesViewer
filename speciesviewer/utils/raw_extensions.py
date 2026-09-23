@@ -64,8 +64,14 @@ RAW = frozenset({
 # Deliberately NOT part of RAW, and deliberately its own name rather than being folded
 # into JPEG. PhotoLab 9 does accept HEIC as input, but treats it essentially as a JPG.
 # Whether HEIC is a "raw" for our purposes — specifically whether it has anywhere
-# durable to store a rating — is the open question in backlog ch.7. There will be more
-# HEIC over time, so it gets one place to be answered rather than twenty.
+# durable to store a rating — was the open question in backlog ch.7. ANSWERED
+# 2026-09-23: yes. engine.sidecarlib.sidecar_opts(), the recipe already used for
+# every RAW, works on a HEIC unchanged — verified on an iPhone 16 Pro file, which
+# produced a .xmp carrying DateTimeOriginal WITH its UTC offset, GPS and Model,
+# and round-tripped Rating / Label / Subject / Description through exiftool. So a
+# HEIC groups and is annotated exactly like a RAW (see RAW_OR_HEIC, and
+# sv0ReadSDCard.SIDECAR_EXTENSIONS), while staying OUT of the RAW-only paths that
+# assume a develop step: it has no .dop and SV must never invent one.
 HEIC = frozenset({".heic", ".heif"})
 
 JPEG = frozenset({".jpg", ".jpeg"})

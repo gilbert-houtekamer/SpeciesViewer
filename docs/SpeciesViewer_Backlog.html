@@ -106,6 +106,39 @@ reads <em>No current work planned</em>.</p>
 </ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>A movie's capture time comes from the movie</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-09-23) — one rule for photos and movies alike,
+    <code>engine.capture_time</code>, used by both the card read's day bucketing and
+    <code>data_files.csv</code>. A movie carries no <code>EXIF:DateTimeOriginal</code>, and the
+    QuickTime tag a phone fills is not the one a camera fills: an iPhone writes the true moment in
+    <code>CreationDate</code> (with an explicit UTC offset) while its <code>CreateDate</code> is
+    UTC — and on 101 movies in the library not the capture date at all but the iCloud
+    <em>export</em> date, off by up to three months. A camera writes <code>CreateDate</code> in
+    local time and no <code>CreationDate</code>, so it is the last resort. Placeholder dates
+    (<code>0000:00:00 00:00:00</code>, 14 files here) are treated as absent instead of being
+    written to the CSV, where they became a crash in the next step to parse a date. Audited over
+    the whole Brazil trip: of 18,684 files exactly 7 moved day — the 7 camera movies whose mtime
+    had been rewritten to the work-restore date, now filed on their real capture day.</li>
+  <li><strong>The culling grid no longer discards pictures in silence</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-09-23) — <em>View pictures</em> filtered by the
+    wide <code>PICTURE</code> table and handed them to a collection that could only represent
+    RAW+JPG, so an iPhone card reported “460 copied” and then showed 49 cards with no explanation.
+    <code>SidecarCollection.CARD_EXTENSIONS</code> now publishes what the grid can actually show,
+    the caller asks instead of keeping its own list, and anything still left out is named by
+    format and count in the status line. HEIC and PNG/TIFF then joined the grid (see ch.7), so on
+    that same card all 335 pictures now appear.</li>
+  <li><strong>The day-picker table grows with the dialog</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-09-23) — it was pinned by
+    <code>setFixedHeight()</code> to 8 rows however large the window was made. It now has a floor
+    (the first 8 days, so the dialog still opens compact) and a ceiling (exactly the rows it has,
+    so it never becomes a tall empty box), and the layout fills the space between. A 24-day card
+    shows all 24 on a big screen and opens unchanged on the laptop.</li>
+  <li><strong>A first sidecar write is no longer reported as a failure</strong>
+    <span class="tag-bug">BUG</span> fixed (2026-09-23) — writing the first tag to a picture with
+    no <code>.xmp</code> yet makes one, and exiftool then says “1 image files created” with no
+    “updated” in it. <code>exif_writer</code> accepted only “updated”, so a write that had landed
+    was logged as lost and needlessly redone in a fresh subprocess. Rare while only sidecar-bearing
+    RAWs reached the grid; routine once JPG/PNG/HEIC cards did.</li>
   <li><strong>GPM on a southern/western trip</strong> <span class="tag-shipped">VERIFIED</span> —
     copy/paste GPS + place keeps the hemisphere sign in all four quadrants, confirmed live
     (2026-07-31): NE Sri Lanka, SE South Africa, NW Tucson, SW Brazil. A repeatable headless
@@ -470,13 +503,33 @@ reads <em>No current work planned</em>.</p>
 <h2>7. Rating &amp; Website</h2>
 <h3>To do</h3>
 <ul>
-  <li><span class="tag-open">NEEDS DECISION</span> <strong>HEIC / PNG sidecar capture</strong> —
-    formats with no writable sidecar, so rating/colour can't be stored durably; needs a user call
-    between a separate <code>.xmp</code> alongside the HEIC, patching the <code>.dop</code>, or
-    writing directly into the HEIC.</li>
+  <li><span class="tag-bug">BUG</span> <strong>A PNG shows “(no image)” in the pipeline day
+    viewer</strong> — the culling grid renders PNGs now, but
+    <code>rating_provider.jpg_path()</code> hard-codes <code>(".jpg", ".jpeg")</code>, so a
+    PNG-only UPN resolves to no image source at all and the card comes up empty (seen 2026-09-23
+    on <em>2026 Brazilie - IMG_6023.PNG</em>). Not a blind widening: <code>jpg_path()</code> also
+    means “is there a finished render?” — it gates the crop overlay — so it needs the same
+    source/render split already applied in <code>sidecar_provider</code>
+    (<code>_SOURCE_EXTS</code> vs <code>_JPG_EXTS</code>).</li>
+  <li><span class="tag-open">OPEN</span> <strong>Canon <code>.HIF</code> is invisible</strong> —
+    now that the sidecar question is answered, the remaining work is one entry: <code>.hif</code>
+    appears nowhere in the extension table or the code, so such a file is not even offered as a
+    card. Adding it to <code>HEIC</code> widens what gets ingested, so it is a deliberate change
+    rather than a typo fix.</li>
 </ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>HEIC / PNG sidecar capture — ANSWERED</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-09-23) — the question was whether a HEIC has
+    anywhere durable to store a rating. It does, and no new mechanism was needed:
+    <code>engine.sidecarlib.sidecar_opts()</code>, the recipe already used for every RAW, works on
+    a HEIC unchanged. Verified on an iPhone 16 Pro file — the sidecar carried
+    <code>DateTimeOriginal</code> <em>with</em> its UTC offset, GPS and Model, and round-tripped
+    Rating / Label / Subject / Description. A HEIC now groups and is annotated exactly like a RAW
+    (<code>sv0ReadSDCard.SIDECAR_EXTENSIONS</code>, <code>RAW_OR_HEIC</code>) while staying out of
+    the RAW-only paths that assume a develop step: it gets no <code>.dop</code> and SV still never
+    invents one. The answer is recorded on the <code>HEIC</code> set in
+    <code>utils/raw_extensions.py</code>, where the question was posed.</li>
   <li><strong>Rating-formula tuning</strong> <span class="tag-shipped">VERIFIED</span>
     (18 August 2026) — finished, applied to the real master and validated. The Rate formula decides
     which picture of a species the website shows, which is why it was held back deliberately until
@@ -1880,8 +1933,10 @@ can fail at any one of them while working at the other three:</p>
 <p><span class="tag-new">NEW</span> Three known trouble spots, all in the decode path:</p>
 <ul>
   <li><strong>Canon CR3</strong> — a different container from CR2; needs a recent LibRaw. Canon
-    also produces HEIF (<code>.HIF</code>) on some bodies, which collides with the unresolved HEIC
-    sidecar question in ch.7 — a HEIF original has nowhere durable to store a rating.</li>
+    also produces HEIF (<code>.HIF</code>) on some bodies. The sidecar half is now settled
+    (ch.7: a HEIC/HEIF original stores its rating in a plain <code>.xmp</code>); what remains is
+    that <code>.hif</code> is absent from the extension table entirely, so such a file is never
+    even seen.</li>
   <li><strong>Nikon High Efficiency NEF</strong> (the HE / HE* modes on Z bodies) — compressed
     with a scheme that older LibRaw builds cannot read at all.</li>
   <li><strong>Sony lossless-compressed ARW</strong> — several generations of compression, added

@@ -34,7 +34,7 @@ from engine.sidecarlib import push_metadata_to_dop
 from utils.sidecar_policy import (
     color_rating_to_xmp_enabled, color_rating_to_dop_enabled,
 )
-from utils.raw_extensions import RAW, DXO_RAW, VIDEO, bare
+from utils.raw_extensions import RAW, DXO_RAW, VIDEO, bare, HEIC, JPEG, OTHER_IMAGE
 
 logger = logging.getLogger("speciesviewer")
 
@@ -68,7 +68,12 @@ def cached_jpg_for(src: Path | None, cache_dir: Path) -> Path | None:
     virtual-trip modes decode identically. Returns None if nothing loadable."""
     if src is None or not src.exists():
         return None
-    if src.suffix.lower() in (".jpg", ".jpeg"):
+    # Formats Qt decodes on its own are handed back as-is — every caller loads
+    # the result with QImage(), which reads PNG and TIFF as happily as JPEG.
+    # Sending a PNG down the RAW-extractor path instead (which is what happened
+    # until the culling grid started accepting them) produces "Unsupported file
+    # format or not RAW file" and a permanently grey card.
+    if src.suffix.lower() in JPEG | OTHER_IMAGE:
         return src
     from utils import preview_cache
     # Records WHICH source folder this cache folder belongs to (the hash is
@@ -79,7 +84,10 @@ def cached_jpg_for(src: Path | None, cache_dir: Path) -> Path | None:
     if cache.exists():
         preview_cache.touch(cache)   # LRU: a preview you still look at never ages out
         return cache
-    if src.suffix.lower() == ".heic":
+    # HEIC *and* HEIF — from the canonical table, because this branch used to
+    # test ".heic" alone and a .heif was therefore handed to the RAW extractor,
+    # which has no preview to find and returns None: a permanently grey card.
+    if src.suffix.lower() in HEIC:
         try:
             import pillow_heif
             pillow_heif.register_heif_opener()
