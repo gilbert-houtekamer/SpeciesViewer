@@ -19,8 +19,8 @@ from PyQt6.QtWidgets import (
     QProgressDialog, QRadioButton, QButtonGroup, QMessageBox, QStyle, QCompleter,
 )
 from PyQt6.QtGui import (QPixmap, QImage, QGuiApplication, QIcon, QPainter, QColor,
-                         QPen, QFont)
-from PyQt6.QtCore import (Qt, QTimer, QSize, QRect, QEvent, pyqtSignal, QObject,
+                         QPen, QFont, QPolygon)
+from PyQt6.QtCore import (Qt, QTimer, QSize, QRect, QPoint, QEvent, pyqtSignal, QObject,
                           QRunnable, QThreadPool)
 
 from engine.filepicture import FilePicture
@@ -375,6 +375,40 @@ def stamp_crop_marker(px: QPixmap) -> QPixmap:
     p.setFont(f)
     p.setPen(QColor(255, 255, 255))
     p.drawText(QRect(3, 3, s, s), Qt.AlignmentFlag.AlignCenter, "#")
+    p.end()
+    return out
+
+
+def stamp_play_marker(px: QPixmap) -> QPixmap:
+    """Return a copy of the thumbnail with a play symbol over its centre — the cue
+    that this card is a MOVIE, and that the picture on it is one grabbed frame
+    rather than a photograph somebody composed.
+
+    Painted onto the pixmap rather than added as a corner badge for two reasons:
+    the corners are configurable per viewer (card_layout.corner_config), so a
+    corner is exactly where this must NOT live; and every grid in the app shares
+    this card, so one stamp here is the whole feature everywhere.
+
+    Sized from the thumbnail, so it stays about a quarter of the frame at any
+    column count, over a translucent disc so the white triangle survives a pale
+    sky as readably as a dark forest."""
+    if px.isNull():
+        return px
+    out = QPixmap(px)   # detach (COW) so the loader's cached pixmap isn't scribbled on
+    d = max(22, min(56, min(out.width(), out.height()) // 4))
+    cx, cy = out.width() // 2, out.height() // 2
+    p = QPainter(out)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(0, 0, 0, 120))
+    p.drawEllipse(QRect(cx - d // 2, cy - d // 2, d, d))
+    p.setBrush(QColor(255, 255, 255, 235))
+    s = max(4, d // 3)
+    # Nudged right of true centre: a triangle's visual centre of mass sits left
+    # of its bounding box, so a mathematically centred one looks off to the left.
+    p.drawPolygon(QPolygon([QPoint(cx - s // 2 + 1, cy - s),
+                            QPoint(cx - s // 2 + 1, cy + s),
+                            QPoint(cx + s, cy)]))
     p.end()
     return out
 
@@ -1471,12 +1505,15 @@ class PictureCard(QFrame):
             self._thumb.setText("(no image)")
             self._update_thumb_style()
             return
+        video = getattr(self._item, "is_video", False)
         if self._framed:
             # Keep the reserved height; scale a too-tall (portrait) thumb down to
             # fit so the row height never shifts during load.
             fh = getattr(self, "_thumb_fixed_h", self._thumb.height())
             if fh > 0 and px.height() > fh:
                 px = px.scaledToHeight(fh, Qt.TransformationMode.SmoothTransformation)
+            if video:                      # stamp AFTER scaling, or it scales too
+                px = stamp_play_marker(px)
             self._thumb.setPixmap(px)
             self._update_thumb_style()
             return
@@ -1484,6 +1521,8 @@ class PictureCard(QFrame):
         self._thumb.setFixedHeight(px.height() + 6)   # +6 for the 3px frame border
         if getattr(self._item, "has_crop", False):
             px = stamp_crop_marker(px)
+        if video:
+            px = stamp_play_marker(px)
         self._thumb.setPixmap(px)
         self._update_thumb_style()
 

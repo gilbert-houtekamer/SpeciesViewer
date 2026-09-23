@@ -517,7 +517,14 @@ def extract_video_frame_bytes(src: Path, quality: int = 90) -> bytes | None:
         ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
         if not ok:
             return None
-        return buf.tobytes()
+        data = buf.tobytes()
+        # Obey the same cache rule as every other preview. A 4K movie hands back a
+        # 3840x2160, ~1.5 MB frame, and this was the one path that wrote such a
+        # thing to the preview cache verbatim while every RAW embed was capped at
+        # max_long_edge. normalise_jpeg_bytes returns None when nothing needs
+        # doing, so a small frame costs no re-encode.
+        max_edge, q = preview_limits()
+        return normalise_jpeg_bytes(data, max_edge, q) or data
     except Exception as e:
         logger.warning(f"Video frame extraction failed for {src.name}: {e}")
         return None

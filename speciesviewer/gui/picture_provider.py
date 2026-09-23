@@ -350,6 +350,21 @@ class PictureItem(ABC):
         return []                       # "what files exist" hint on the card
 
     @property
+    def is_video(self) -> bool:
+        """True when what this card shows is a MOVIE: the UPN carries a video file
+        and no still. Derived from file_exts here so every provider gets the same
+        answer without each one re-deciding it.
+
+        The "and no still" half matters. A day's videos arrive as their own UPNs,
+        so in practice a video UPN is video-only — but a mixed UPN would display
+        its camera original (projectlib orders stills ahead of MOV/MP4), and
+        marking that card as a movie would be a lie about the picture on it."""
+        from utils.raw_extensions import is_video, is_picture
+        exts = self.file_exts or []
+        return (any(is_video(e) for e in exts)
+                and not any(is_picture(e) for e in exts))
+
+    @property
     def from_master(self) -> bool:      # True → reference picture pulled from the
         return False                    # master DB (shown greyed, read-only)
 

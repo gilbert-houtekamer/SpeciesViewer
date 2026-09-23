@@ -25,14 +25,14 @@ from PyQt6.QtGui import QImage
 from gui.picture_provider import (
     PictureItem, PictureCollection, ExifSummary, PixmapCallback, exif_from_rows, sweep_dop)
 from gui.image_loader import AsyncImageLoader
-from gui.preview_provider import preview_cache_dir_for
+from gui.preview_provider import preview_cache_dir_for, cached_jpg_for
 from gui.rating_editor import _compute_rate, _safe_int
 from engine.exif_writer import exiftool_write
 from engine.sidecarlib import push_metadata_to_dop
 from utils.sidecar_policy import (
     color_rating_to_xmp_enabled, color_rating_to_dop_enabled,
 )
-from utils.raw_extensions import RAW, DXO_RAW, bare
+from utils.raw_extensions import RAW, DXO_RAW, bare, is_video
 
 _DXO_RAW_EXTS = bare(DXO_RAW)  # canonical table — see utils/raw_extensions.py
 
@@ -1086,6 +1086,42 @@ class RatingEditorCollection(PictureCollection):
                 return p
         return None
 
+    def video_path(self, upn_key: str) -> Path | None:
+        """Absolute path of the UPN's movie file, if it has one — master-aware
+        exactly like raw_path(). A day's videos come in as their own UPNs, so
+        this is normally the UPN's only camera file."""
+        row = self._upn_row(upn_key)
+        files_dict = self._files_dict_for(upn_key)
+        files = row.get("Files", [])
+        if not isinstance(files, list):
+            return None
+        master = upn_key in self._master_keys
+        rel_dir = ((row.get("TargetPath") or row.get("BestJPGPathName") or "").strip()
+                   if master else "")
+        for fname in files:
+            frow = files_dict.get(fname)
+            if not frow:
+                continue
+            if not is_video(frow.get("WindowsExtension", "")):
+                continue
+            if master and self._master_root is not None and rel_dir:
+                p = self._master_root / rel_dir / fname
+            else:
+                p = Path(frow.get("WindowsFileName", ""))
+            if p.exists():
+                return p
+        return None
+
+    def _video_thumb_path(self, upn_key: str) -> Path | None:
+        """Cached JPEG frame grabbed from the UPN's movie, or None. Goes through
+        the same cached_jpg_for() the culling grid uses, into the same preview
+        cache, so a movie decoded in one viewer is already decoded for the other
+        — and the frame ages out under the same LRU as every other preview."""
+        v = self.video_path(upn_key)
+        if v is None:
+            return None
+        return cached_jpg_for(v, preview_cache_dir_for(v.parent))
+
     def file_directory(self, upn_key: str) -> str:
         """Absolute directory holding the UPN's files (master-aware). Prefers an
         existing image file so 'open in Explorer' lands in the right folder."""
@@ -1118,7 +1154,12 @@ class RatingEditorCollection(PictureCollection):
             return jpg
         if self._jpg_only:
             return None
-        return self._raw_thumb_path(upn_key)
+        # Video LAST, and only once the stills have come up empty: a video UPN
+        # has neither a JPG nor a RAW, and a mixed one should still show the
+        # photograph. Without this a movie card was simply blank — the culling
+        # grid grabbed a frame, this viewer did not (backlog: MOV in the
+        # Species Viewer, 2026-09-23).
+        return self._raw_thumb_path(upn_key) or self._video_thumb_path(upn_key)
 
     def display_path(self, upn_key: str) -> Path | None:
         """Synchronous best-display path (JPG or extracted RAW thumb) — used by
