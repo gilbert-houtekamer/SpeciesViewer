@@ -503,6 +503,19 @@ reads <em>No current work planned</em>.</p>
 <h2>7. Rating &amp; Website</h2>
 <h3>To do</h3>
 <ul>
+  <li><span class="tag-progress">IN PROGRESS</span> <strong>HEIC metadata: finish the single
+    source</strong> — the model is settled (2026-09-24): a HEIC is a JPG, not a RAW, and every
+    field SpeciesViewer stores is a standard XMP/IPTC field that Lightroom and PhotoLab can read
+    AND write, so <em>the HEIC itself is the only possible truth</em> and a sidecar can never be
+    authoritative for any of it. An earlier idea of splitting fields by consumer (rating/colour in
+    the HEIC, species/caption in a sidecar) is dead: there is no SpeciesViewer-only field to split
+    on. The rollup half is done (below). What remains: drop the <code>.xmp</code> that ingest now
+    writes for a HEIC, route <code>SidecarCollection</code>'s reads AND writes for a HEIC into the
+    file (the pipeline viewer already does this via <code>_write_into_heic</code>), and give the
+    tracklog geotag and the sidecar cache a HEIC path — both assume a <code>.xmp</code> exists. No
+    capability is lost: GPS, <code>DateTimeOriginal</code> and every annotation field round-trip
+    into a HEIC (verified, 13 fields; only <code>IPTC:Keywords</code> will not, as HEIF has no
+    IPTC block — <code>XMP:Subject</code> covers it and is what LR/PL use).</li>
   <li><span class="tag-bug">BUG</span> <strong>A PNG shows “(no image)” in the pipeline day
     viewer</strong> — the culling grid renders PNGs now, but
     <code>rating_provider.jpg_path()</code> hard-codes <code>(".jpg", ".jpeg")</code>, so a
@@ -519,6 +532,25 @@ reads <em>No current work planned</em>.</p>
 </ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>A HEIC-only picture's own metadata now reaches the picture</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-09-24) — <code>findXMPItem</code> was
+    <code>findBestItem(files, column, ("XMP", "JPG"))</code> and is used for species, rating,
+    description, headline and all four location fields. A HEIC is none of those types, so for a
+    HEIC-only picture every one of them read empty — even though <code>sv2ReadDirExif</code> had
+    read the values into <code>data_files.csv</code> perfectly well. Only <code>Label</code> had
+    the fallback, because May's HEIC work stopped there. Measured on the master: of 392 HEIC-only
+    pictures, 67 carried a species in the file, 10 a rating, 1 a colour — all invisible. The
+    fallback is additive by construction (<code>findBestItem</code> returns the first non-empty
+    match, so a sidecar always wins), which is what makes it safe where a HEIC sits beside an
+    xmp/jpg. Dry-run over all 75,110 pictures before applying: 68 species, 47 colours, 10 ratings
+    and 8 captions gained, and <em>no non-empty value overridden anywhere</em>.</li>
+  <li><strong>“0” and “” now mean the same non-rating</strong> <span class="tag-bug">BUG</span>
+    fixed (2026-09-24) — the waarneming.nl default (<em>no rating and no colour ⇒ Green</em>)
+    tested <code>Rating == ""</code> while <code>computeRating</code> two hundred lines below
+    already tested <code>in ['0', '']</code>. So a picture whose sidecar spelled its non-rating as
+    <code>0</code> silently missed the Green default: 47 pictures in the master. It had to be
+    reconciled regardless, because a HEIC states its non-rating as <code>"0"</code>, so those
+    pictures would have joined them the moment the rollup could see a HEIC.</li>
   <li><strong>HEIC / PNG sidecar capture — ANSWERED</strong>
     <span class="tag-shipped">SHIPPED</span> (2026-09-23) — the question was whether a HEIC has
     anywhere durable to store a rating. It does, and no new mechanism was needed:
@@ -879,6 +911,23 @@ list</em> that sat here has shipped and now lives under <strong>4. Trip-to-Maste
 Pipeline</strong>, where it belongs. It also retires the planned <strong>GBIF lookup
 disk-cache</strong>: a species is saved the moment it is learned, so there is nothing left
 to re-look-up.</p>
+<h3>Done</h3>
+<ul>
+  <li><strong>The EXIF cache served a stale HEIC forever</strong> <span class="tag-bug">BUG</span>
+    fixed (2026-09-24) — <code>heic</code> sat in <code>IMMUTABLE_EXTENSIONS</code>, whose key is
+    <code>name|size</code> with no mtime, on the premise that the bytes never change. That premise
+    is false for a HEIC: its rating, colour, species and caption live INSIDE the file, and
+    SpeciesViewer, Lightroom and PhotoLab all write them there. Worse, such an edit is routinely
+    size-neutral — changing a rating from 4 to 1 rewrote the bytes and left the size identical to
+    the byte, so <code>partition()</code> reported a hit and kept serving the old value: proven
+    with the file saying <code>Rating: 2</code> while the cache said <code>5</code>, and Read
+    Directory copying the 5 into <code>data_files.csv</code> indefinitely.
+    <code>_write_into_heic</code>'s own docstring had said it “abandons the old HEIC immutable
+    convention”, but the cache was never reconciled with it. <code>heic</code> is now in the
+    mutable bucket (<code>path+size+mtime</code>) and must never go back; the comment there says
+    why. Cost: a master HEIC's entry no longer serves its trip copy, i.e. a one-off re-read of a
+    few hundred files. The field fingerprint is unchanged, so nothing else re-reads.</li>
+</ul>
 <h3>Parked</h3>
 <ul>
   <li><span class="tag-parked">PAUSED</span> General micro-perf sweep — the real value is the

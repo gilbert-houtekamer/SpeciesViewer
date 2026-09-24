@@ -664,13 +664,26 @@ class Project:
         return self.findBestItem(filelist, column, ("ORF", "NEF", "NRW", "HEIC"))
     # check for manual input by PhotoMechanic or Lightroom (mostly)
     def findXMPItem(self, filelist, column):
-        return self.findBestItem(filelist, column, ("XMP", "JPG"))
-    # Colour label: prefer an XMP/JPG sidecar value, else fall back to the HEIC
-    # (or PNG) itself. SpeciesViewer now writes colour into HEIC-only pictures,
-    # and Lightroom/DxO embed it there too, so the HEIC carries the truth when
-    # no sidecar does. Kept separate from findXMPItem so its other callers
-    # (subject/description/headline/…) are unaffected.
-    def findColorLabelItem(self, filelist, column):
+        """An annotation value for the picture: a sidecar/JPG value if there is
+        one, else the HEIC's (or PNG's) own.
+
+        A RAW keeps its rating, colour, species and caption in a sidecar, so
+        XMP/JPG is the whole story for one. A HEIC does not: it carries them
+        INSIDE the file, which is where SpeciesViewer writes them and where
+        Lightroom and PhotoLab both read and write them (see the HEIC set in
+        utils/raw_extensions.py). Looking only at XMP/JPG therefore threw away
+        everything a HEIC-only picture knew about itself — measured on the master
+        before this changed: of 392 HEIC-only pictures, 67 carried a species in
+        the file, 10 a rating and 1 a colour, all invisible to the rollup even
+        though sv2ReadDirExif had read them into data_files.csv correctly. Only
+        Label had the fallback (as findColorLabelItem, folded in here) because
+        May's HEIC work stopped there.
+
+        The fallback can only ADD: findBestItem returns the first non-empty match,
+        so a sidecar value always wins and no existing value can change. That is
+        what makes this safe on the 11 pictures where a HEIC sits beside an
+        xmp/jpg.
+        """
         val = self.findBestItem(filelist, column, ("XMP", "JPG"))
         if val == "":
             val = self.findBestItem(filelist, column, ("HEIC", "PNG"))
@@ -761,10 +774,22 @@ class Project:
         # fill stuff from the EXIF from the files       
         upn["subject"] =           self.findXMPItem(files, "XMP:Subject")
         if upn["subject"] == "":    # for waarneming.nl
+            # Note: a HEIC cannot hold IPTC at all (HEIF has no IPTC block —
+            # the one field of thirteen that would not round-trip into one), so
+            # for a HEIC-only picture this line can never supply anything. Its
+            # species comes from XMP:Subject above, which is also the field
+            # Lightroom and PhotoLab read and write.
             upn["subject"] =       self.findXMPItem(files, "IPTC:Keywords")
         upn["Rating"] =            self.findXMPItem(files, "XMP:Rating")
-        upn["Label"] =             self.findColorLabelItem(files, "XMP:Label")
-        if upn["Rating"] == "" and upn["Label"] == "":  # for waarneming.nl
+        upn["Label"] =             self.findXMPItem(files, "XMP:Label")
+        # "0" is unrated, exactly as "" is — computeRating already treats the two
+        # as one ('XMP:Rating' in ['0', ''], below), and this guard did not, so a
+        # picture whose sidecar spelled its non-rating as 0 silently missed the
+        # Green default that an empty one got. 47 pictures in the master are in
+        # that position today. It had to be reconciled here anyway: a HEIC states
+        # its non-rating as "0", so once the rollup can see a HEIC (findXMPItem)
+        # those pictures would have joined them.
+        if upn["Rating"] in ("", "0") and upn["Label"] == "":  # for waarneming.nl
             upn["Label"] = "Green"
         if upn["ImageSize"] == "": upn["ImageSize"] = self.findCameraOrXMPItem(files, "ImageSize")
         # Phone/compact JPGs have no RAW/HEIC/XMP source, so ImageSize stayed

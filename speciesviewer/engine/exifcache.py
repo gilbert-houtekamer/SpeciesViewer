@@ -67,7 +67,21 @@ COMMON_ARGS = ["-G", "-charset", "utf8", "-charset", "filename=utf8"]
 # recreatable from the RAW (PhotoLab regenerates them for free), so we don't
 # read or store them in the master (DENY below). They're cleaned locally by the
 # normal trip-delete (recreatable, RAW is in the master).
-IMMUTABLE_EXTENSIONS = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf", "heic"}
+#
+# heic is NOT here either, and must never be put back. A RAW's metadata lives in
+# a sidecar, so the RAW's own bytes really are constant — but a HEIC carries its
+# rating, colour, species and caption INSIDE the file, and SpeciesViewer,
+# Lightroom and PhotoLab all write them there (preview_provider._write_into_heic;
+# see the HEIC set in utils/raw_extensions.py). A name+size key cannot see such
+# an edit, and the edits are routinely size-neutral: changing a rating from 4 to
+# 1 rewrote the bytes and left the size identical to the byte, so partition()
+# reported a HIT and served the old rating forever — the file said 2, the cache
+# said 5, and Read Directory kept copying the stale value into data_files.csv.
+# In the mutable bucket the path+size+mtime key catches it. The cost is losing
+# cross-copy reuse for HEIC (a master HEIC's entry no longer serves its trip
+# copy), which is a re-read of a few hundred files and the right trade for not
+# serving a value the file no longer holds.
+IMMUTABLE_EXTENSIONS = {"orf", "nef", "cr2", "cr3", "arw", "rw2", "raf"}
 # exiftool does NOT emit rows for these in a recursive scan (verified: 1482 .dop
 # and the .ini files produced 0 rows on Kreta). Never feed them — an explicit
 # file list would otherwise create spurious rows the dir-scan never produced.
