@@ -115,7 +115,7 @@ text. The work-backup written to a camera card therefore copies
 | `[websettings]` | `Sftppwd`, `base_url` | **The credential.** Why this file never leaves the machine |
 | `[fullres]` | `algorithm`, `fbdd`, `bright`, `denoise`, `scale` | RAW decode quality for the 100% view |
 | `[preview]` | `max_long_edge` (3200), `quality` (90) | Size the embedded camera previews are normalised to. `0` = keep whatever the camera embedded |
-| `[createjpg]` | `max_long_edge` (2000) | Longest edge a Create-JPG bake may have **for a HEIC/HEIF source only** — an iPhone frame is 5712×4284 and a website picture does not want 24 MP. `0` = no cap. Set in **Look & Feel ▸ Make JPG — phone pictures**. A PNG is left alone (screenshots are already small) and a RAW keeps its embedded-preview size |
+| `[createjpg]` | `resize_above` (3200), `max_long_edge` (2000) | Create JPG resamples only when the longest edge (after any crop) exceeds `resize_above`, and then down to `max_long_edge`. The GAP is the point: nothing between them is touched, so an OM-1's 3200 px preview and a phone screenshot are kept as-is while an iPhone frame (5712) and a 45 MP body are reduced. No per-format exception. `resize_above = 0` never resamples. Set in **Look & Feel ▸ Make JPG — resize** |
 | `[avibase]` | `source_format`, `phone_layout`, `first_column_lang`, `columns` | Excel checklist export, plus the per-list column map in `[avibase_columns]` |
 | `[masterdb]` | `pending_warn_seconds`, `checkpoint_debounce_seconds` | SQLite write-queue behaviour |
 | `[performance]` | `exif_workers` | Parallel exiftool workers. `auto` ≈ physical cores, capped 16. Hardware-dependent, hence machine scope |

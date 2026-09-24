@@ -2679,6 +2679,7 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
         order = list(self._order)
         ordered = [k for k in order if k in keys] or list(keys)
         created_paths, skipped, no_raw, failed, made = [], 0, 0, 0, []
+        already_jpg = 0
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             for k in ordered:
@@ -2691,6 +2692,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
                     skipped += 1
                 elif st == "no_raw":
                     no_raw += 1
+                elif st == "already_jpg":
+                    already_jpg += 1
                 else:
                     failed += 1
         finally:
@@ -2701,7 +2704,8 @@ class ImagePreviewDialog(MasterCardMenuMixin, QDialog):
             if card:
                 card.refresh()
         from gui.create_jpg_result import show_create_jpg_result
-        show_create_jpg_result(self, created_paths, skipped, no_raw, failed)
+        show_create_jpg_result(self, created_paths, skipped, no_raw, failed,
+                               already_jpg)
 
     def _cull_geolocate(self, keys=None):
         """Reverse-geocode the selection (else focused picture) in display order

@@ -1384,6 +1384,13 @@ class PreviewCollection(PictureCollection):
         # picture, i.e. refused the one case that most wants a website JPG.
         raw = self.raw_path(upn_key) or self._self_describing_source(upn_key)
         if raw is None:
+            # Its only file IS a JPG: nothing to bake, and saying "no RAW"
+            # about it was true and useless. Never an in-place resize — a derived
+            # file must not overwrite its source, and <stem>.jpg IS the source here
+            # (Windows ignores the case difference).
+            j = self.jpg_path(upn_key)
+            if j is not None:
+                return {"status": "already_jpg", "jpg": str(j)}
             return {"status": "no_raw"}
         if self.jpg_path(upn_key) is not None:
             return {"status": "skipped", "jpg": str(self.jpg_path(upn_key))}
@@ -1420,7 +1427,8 @@ class PreviewCollection(PictureCollection):
         # JPG write the very same <stem>.jpg for the very same picture, so if only
         # one of them honoured the HEIC size cap that file's resolution would
         # depend on which button had last been pressed. It decodes the HEIC at full
-        # resolution, crops, and caps the RESULT (see create_jpg_max_edge).
+        # resolution, crops, and resamples the RESULT only if it is oversized
+        # (see create_jpg_resize_rule).
         from gui.preview_extract import bake_blog_jpg
         try:
             baked_size = bake_blog_jpg(heic, out, crop)

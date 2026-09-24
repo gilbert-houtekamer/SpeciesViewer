@@ -1214,6 +1214,12 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         g = self._groups.get(key, {})
         raw = g.get("raw")
         if not raw or not Path(raw).exists():
+            # Its only file IS a JPG: nothing to bake, and saying "no RAW"
+            # about it was true and useless. Never an in-place resize — a derived
+            # file must not overwrite its source, and <stem>.jpg IS the source here
+            # (Windows ignores the case difference).
+            if g.get("jpg"):
+                return {"status": "already_jpg", "jpg": str(g["jpg"])}
             return {"status": "no_raw"}
         raw = Path(raw)
         out = raw.with_suffix(".jpg")   # <stem>.jpg beside the RAW

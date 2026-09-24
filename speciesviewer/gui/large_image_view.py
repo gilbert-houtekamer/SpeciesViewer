@@ -1894,6 +1894,7 @@ class LargeImageView(QDialog):
             self, created,
             skipped=1 if st == "skipped" else 0,
             no_raw=1 if st == "no_raw" else 0,
+            already_jpg=1 if st == "already_jpg" else 0,
             failed=1 if st == "failed" else 0)
         if st == "created":
             # Re-decode here + in the host grid to the freshly-cropped JPG.

@@ -57,9 +57,31 @@ class LookFeelDialog(QDialog):
         self.setWindowTitle("Look & Feel")
         self.setMinimumWidth(420)
 
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(16, 14, 16, 14)
-        lay.setSpacing(6)
+        # TWO COLUMNS. The dialog had grown tall enough to be awkward on a laptop
+        # (colours, theme, four corner pickers, the culling grid and now Make JPG
+        # in one stack), so the settings that are about a VIEWER's contents move
+        # to a second column, leaving appearance on the left. `lay` stays the name
+        # every _build_* section adds itself to, so each one keeps choosing its
+        # own column by which layout it is handed.
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(16, 14, 16, 14)
+        outer.setSpacing(6)
+        cols = QHBoxLayout()
+        cols.setSpacing(22)
+        left = QVBoxLayout(); left.setSpacing(6)
+        right = QVBoxLayout(); right.setSpacing(6)
+        # Stretch 0 and a trailing stretch: each column keeps its NATURAL width
+        # and any extra goes to the right edge, rather than the columns growing to
+        # match each other. The dialog asks for ~1300x480 (left 578 + right 668 +
+        # spacing) where the single stack asked for ~500x930 — checked with
+        # minimumSizeHint, since a layout minimum silently overrules resize()
+        # (see gui.widgets.wrapped). Every paragraph here wraps, so no label is
+        # what sets that width: it is genuinely two columns side by side.
+        cols.addLayout(left, 0)
+        cols.addLayout(right, 0)
+        cols.addStretch(1)
+        outer.addLayout(cols, 1)
+        lay = left
 
         intro = QLabel(
             "The colour of the picture labels — Red, Yellow, Green, Blue, Purple — "
@@ -101,15 +123,18 @@ class LookFeelDialog(QDialog):
         (self._dark_rb if theme.is_dark() else self._light_rb).setChecked(True)
 
         self._build_corner_section(lay)
-        self._build_culling_section(lay)
-        self._build_createjpg_section(lay)
+        lay.addStretch(1)
+
+        self._build_culling_section(right, first=True)
+        self._build_createjpg_section(right)
+        right.addStretch(1)
 
         note = QLabel("↻  Colour scheme + theme apply after restarting SpeciesViewer; "
                       "card corners + culling-grid settings apply the next time you "
                       "open a viewer.")
         note.setWordWrap(True)
         note.setStyleSheet(f"color:{theme.INK_SOFT}; font-size:11px; padding-top:6px;")
-        lay.addWidget(note)
+        outer.addWidget(note)
 
         btns = QHBoxLayout()
         btns.addStretch(1)
@@ -120,7 +145,7 @@ class LookFeelDialog(QDialog):
         save.clicked.connect(self._save)
         btns.addWidget(cancel)
         btns.addWidget(save)
-        lay.addLayout(btns)
+        outer.addLayout(btns)
 
     # ── Card corners — per-viewer configurable corner set + frame colour ──────
     def _build_corner_section(self, lay):
@@ -172,10 +197,13 @@ class LookFeelDialog(QDialog):
         self._load_corners(self._cc_current)
 
     # ── Culling grid — images per row, grid width, "Start with" default ──────
-    def _build_culling_section(self, lay):
-        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color:{theme.LINE}; margin:6px 0;")
-        lay.addWidget(sep)
+    def _build_culling_section(self, lay, *, first: bool = False):
+        # `first`: the top of a COLUMN wants no divider above it — a rule that only
+        # showed up once the dialog stopped being one stack.
+        if not first:
+            sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+            sep.setStyleSheet(f"color:{theme.LINE}; margin:6px 0;")
+            lay.addWidget(sep)
         lay.addWidget(_section("CULLING GRID"))
 
         g = QGridLayout()
@@ -208,39 +236,52 @@ class LookFeelDialog(QDialog):
         gwrap = QWidget(); gwrap.setLayout(g); lay.addWidget(gwrap)
 
     def _build_createjpg_section(self, lay):
-        """The one size decision Create JPG makes, where it can be seen.
+        """The two numbers Make JPG resizes by, where they can be seen.
 
-        It was a config key only. That is fine for a machine setting nobody
-        changes, but this one governs how big a phone picture arrives on the
-        website, so it belongs in front of him rather than in an .ini."""
+        Config keys only would be fine for a machine setting nobody touches, but
+        these decide how big a picture arrives on the website, and the pair only
+        makes sense read together — so they sit side by side."""
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
         sep.setStyleSheet(f"color:{theme.LINE}; margin:6px 0;")
         lay.addWidget(sep)
-        lay.addWidget(_section("MAKE JPG — PHONE PICTURES"))
+        lay.addWidget(_section("MAKE JPG — RESIZE"))
 
         g = QGridLayout()
         g.setContentsMargins(0, 4, 0, 0)
         g.setHorizontalSpacing(14); g.setVerticalSpacing(6)
-        g.addWidget(QLabel("Resize a HEIC down to:"), 0, 0)
+
+        g.addWidget(QLabel("Resize if longer than:"), 0, 0)
+        self._cj_above = QSpinBox()
+        self._cj_above.setRange(0, 12000)
+        self._cj_above.setSingleStep(100)
+        self._cj_above.setSuffix(" px")
+        self._cj_above.setSpecialValueText("Never resize")      # 0
+        self._cj_above.setValue(max(0, min(12000,
+                               get_int_setting("createjpg", "resize_above", 3200))))
+        g.addWidget(self._cj_above, 0, 1)
+
+        g.addWidget(QLabel("Down to:"), 1, 0)
         self._cj_max = QSpinBox()
-        self._cj_max.setRange(0, 12000)
+        self._cj_max.setRange(200, 12000)
         self._cj_max.setSingleStep(100)
         self._cj_max.setSuffix(" px")
-        self._cj_max.setSpecialValueText("Don't resize")   # 0
-        self._cj_max.setValue(max(0, min(12000,
-                              get_int_setting("createjpg", "max_long_edge", 2000))))
-        g.addWidget(self._cj_max, 0, 1)
+        self._cj_max.setValue(max(200, min(12000,
+                             get_int_setting("createjpg", "max_long_edge", 2000))))
+        g.addWidget(self._cj_max, 1, 1)
+
         gwrap = QWidget(); gwrap.setLayout(g); lay.addWidget(gwrap)
 
-        note = QLabel("An iPhone frame is 5712 × 4284 — far more than a web page "
-                      "needs. Applies to the longest edge of a HEIC only, after "
-                      "any crop. A RAW keeps its full size, and a PNG is left "
-                      "alone.")
+        note = QLabel(
+            "Longest edge, measured after any crop. The gap between the two "
+            "matters: a picture between them is left exactly as the camera made "
+            "it, so an OM-1's 3200 px preview and a phone screenshot are never "
+            "resampled, while an iPhone frame (5712 px) and a 45 MP body are.")
         note.setWordWrap(True)
         note.setStyleSheet(f"color:{theme.INK_SOFT}; font-size:11px; padding:2px 0 0 0;")
         lay.addWidget(note)
 
     def _save_createjpg(self):
+        set_setting("createjpg", "resize_above", self._cj_above.value())
         set_setting("createjpg", "max_long_edge", self._cj_max.value())
 
     def _save_culling(self):

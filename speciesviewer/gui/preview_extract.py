@@ -381,24 +381,28 @@ def normalise_jpeg_bytes(data: bytes, max_edge: int, quality: int) -> bytes | No
         return out.getvalue()
 
 
-def create_jpg_max_edge() -> int:
-    """Longest edge a Create-JPG bake may have for a HEIC/HEIF source, from
-    `[createjpg] max_long_edge`; 0 turns the cap off.
+def create_jpg_resize_rule() -> tuple[int, int]:
+    """(resize_above, max_long_edge) for a Create-JPG bake, from `[createjpg]`.
 
-    HEIC ONLY, and the reason is the phone: an iPhone 16 Pro frame is 5712x4284,
-    and a website picture does not want 24 megapixels.
+    THE rule, in his words: "if the long side is larger than 3200, rescale to a
+    max of 2000". Two numbers, not one, and the gap between them is the point —
+    a 2000 cap on its own would resample a 2400px frame down to 2000 for almost
+    no saving while throwing away detail, so nothing between the target and the
+    threshold is touched at all.
 
-    Not a PNG — a screenshot is already small (his PNGs are ~1200px), so a cap
-    could only ever shrink the odd tall one for no benefit; he asked for it not to
-    be capped and he is right. Not a RAW either: that bake comes from the camera's
-    embedded preview (or a full decode) and is the picture's usable image, so it
-    has to match what every other body gives.
+    It needs no per-format exception, which is why it replaced a HEIC-only cap:
+      * iPhone HEIC 5712 long  -> over 3200, resampled to 2000
+      * Sony A1     8640 long  -> over 3200, resampled ("it gives more room to crop")
+      * OM-1 ORF    3200 long  -> NOT over 3200, left exactly as the camera embedded it
+      * a PNG screenshot ~2600 -> left alone, with no rule about PNG anywhere
+    `resize_above = 0` turns resampling off entirely.
     """
     try:
         from utils.config import _config
-        return _config.getint("createjpg", "max_long_edge", fallback=2000)
+        return (_config.getint("createjpg", "resize_above", fallback=3200),
+                _config.getint("createjpg", "max_long_edge", fallback=2000))
     except Exception:
-        return 2000
+        return 3200, 2000
 
 
 def bake_blog_jpg(src: Path, out: Path, crop: dict | None, *,
@@ -415,11 +419,9 @@ def bake_blog_jpg(src: Path, out: Path, crop: dict | None, *,
 
     Two lanes, chosen by the source:
       * self-describing (HEIC/HEIF/PNG) — opened DIRECTLY at full resolution.
-        A HEIC is then capped to create_jpg_max_edge() AFTER cropping, so the cap
-        applies to what is actually written rather than to the frame it came from.
-        A PNG is not capped (see create_jpg_max_edge).
-      * anything else (a RAW) — its embedded preview, else a full LibRaw decode,
-        uncapped.
+      * anything else (a RAW) — its embedded preview, else a full LibRaw decode.
+    Either way the result is resampled only if it is over the threshold (see
+    create_jpg_resize_rule), judged after the crop.
 
     Returns the written image's (width, height) — callers log it, and for a
     capped HEIC it is the only place the final size is known.
@@ -429,11 +431,9 @@ def bake_blog_jpg(src: Path, out: Path, crop: dict | None, *,
     """
     from io import BytesIO
     from PIL import Image
-    from utils.raw_extensions import SELF_DESCRIBING, HEIC
+    from utils.raw_extensions import SELF_DESCRIBING
 
-    ext = src.suffix.lower()
-    own = ext in SELF_DESCRIBING          # opened directly by Pillow
-    capped = ext in HEIC                  # ...but only a HEIC is resized
+    own = src.suffix.lower() in SELF_DESCRIBING   # opened directly by Pillow
     if own:
         import pillow_heif
         pillow_heif.register_heif_opener()   # no-op for PNG, required for HEIC
@@ -454,10 +454,11 @@ def bake_blog_jpg(src: Path, out: Path, crop: dict | None, *,
         ch = max(1, min(h - y, round(crop.get("height", 1.0) * h)))
         im = im.crop((x, y, x + cw, y + ch))
 
-    if capped:
-        cap = create_jpg_max_edge()
-        if cap > 0 and max(im.size) > cap:
-            im.thumbnail((cap, cap), Image.Resampling.LANCZOS)
+    # Resample only what is genuinely oversized — see create_jpg_resize_rule.
+    # After the crop, so the rule judges what is actually being written.
+    above, target = create_jpg_resize_rule()
+    if above > 0 and target > 0 and max(im.size) > above:
+        im.thumbnail((target, target), Image.Resampling.LANCZOS)
 
     # Temp + replace: this file becomes the picture's usable image and something
     # may already be reading the previous one.

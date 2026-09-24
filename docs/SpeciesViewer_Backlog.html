@@ -538,12 +538,73 @@ reads <em>No current work planned</em>.</p>
         <code>&lt;stem&gt;.jpg</code> for the same picture and their sizes must not depend on
         which button was pressed last.</li>
     </ul>
-    A HEIC bake is capped to <code>[createjpg] max_long_edge</code> (default 2000) AFTER
-    cropping, so the cap applies to what is written. Settable in <strong>Look &amp; Feel ▸ Make
-    JPG — phone pictures</strong>, where 0 reads “Don't resize”. A PNG is deliberately NOT capped
-    (a screenshot is already small) and a RAW keeps its embedded-preview size. Measured: an
-    iPhone HEIC 4284×5712 → 1500×2000 (567 KB), a PNG 1206×2622 unchanged, an ORF unchanged at
-    3200×2400. Annotations still round-trip for all four source types.</li>
+    Sizing is <strong>one rule with two numbers</strong>, in his words: “if the long side is
+    larger than 3200, rescale to a max of 2000”. The GAP between them is the point — a single
+    2000 cap would resample a 2400 px frame for almost no saving while throwing away detail, so
+    nothing between target and threshold is touched. That removed every per-format exception:
+    an OM-1's 3200 px embed and a PNG screenshot are left exactly as they are, with no rule
+    about either. Both numbers live in <strong>Look &amp; Feel ▸ Make JPG — resize</strong>
+    (threshold 0 reads “Never resize”), which also became a two-column dialog: it had grown too
+    tall in one stack, so viewer-content settings moved to a second column beside appearance
+    (~1300×480, where the stack was ~500×930). Measured across every body:
+    OM-1 3200×2400 → unchanged; PNG 1206×2622 → unchanged; iPhone HEIC 4284×5712 → 1500×2000;
+    Nikon D500 3712×5568 → 1333×2000; Panasonic G9 II 5776×4336 → 2000×1501; Canon R5
+    8192×5464 → 2000×1334; Sony A1 8640×5760 → 2000×1333.</li>
+  <li><strong>A JPG-only picture is told so, and never resized in place</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-09-24) — Create JPG reported “without a RAW”
+    about a picture whose only file IS a JPG, which is true and useless. It now says “already a
+    JPG — nothing to bake”. Resizing it in place was considered and rejected by him outright:
+    the output name <code>&lt;stem&gt;.jpg</code> IS the source (Windows ignores the case
+    difference), so it would overwrite an original — “I would never do an update in place”. A
+    suffixed copy (<code>_sv</code>) was his own alternative and his own verdict was that it is
+    not worth the work. Verified the source JPG stays byte-identical.</li>
+  <li><strong>A PNG is now shown as if it were a JPG, and Create JPG works on a
+    phone picture</strong> <span class="tag-shipped">SHIPPED</span> (2026-09-24) — his ask:
+    “PNG should be shown as if it was a JPG. That does not make it suitable for websites, but
+    bring them on par with HEICs.” Three things were in the way:
+    <ul>
+      <li><code>preview_provider._source_file</code> tested <code>ext == "heic"</code>, a literal
+        that left a PNG (and a <code>.heif</code>) with NO display source at all — the card read
+        “(no image)” however loadable the file was. <code>rating_provider</code> had no HEIC or
+        PNG source either, so the Rating Editor showed neither. Both now resolve a
+        self-describing picture and route it through the same
+        <code>cached_jpg_for()</code> as every other viewer.</li>
+      <li>A PNG had been put in the group's “finished render” slot, because it needs no develop
+        step to be DISPLAYED. That made it count as a web-ready JPG: the JPG-only overlay listed
+        it, the “a JPG is the finished asset” delete protection covered it, and Create JPG
+        refused it as already having one. It now sits in the SOURCE slot beside RAW and HEIC —
+        displayable is not the same as web-ready.</li>
+      <li>Create JPG could not bake a HEIC or PNG at all. It asks
+        <code>extract_preview_bytes()</code> for an embedded JPEG and then
+        <code>decode_preview_jpeg()</code> via LibRaw, and a HEIC has neither an embed nor a
+        LibRaw reader — so it reported “no preview, and the RAW could not be decoded” about a
+        file Pillow opens without complaint. Worse, that block existed in THREE copies (culling
+        grid, day viewer, rating editor), which is how one gap became three. There is now one
+        bake, <code>preview_extract.bake_blog_jpg</code>, and all three call it — as does the
+        crop tool's <code>_bake_heic_crop</code>, since both write the very same
+        <code>&lt;stem&gt;.jpg</code> for the same picture and their sizes must not depend on
+        which button was pressed last.</li>
+    </ul>
+    Sizing is <strong>one rule with two numbers</strong>, in his words: “if the long side is
+    larger than 3200, rescale to a max of 2000”. The GAP between them is the point — a single
+    2000 cap would resample a 2400 px frame for almost no saving while throwing away detail, so
+    nothing between target and threshold is touched. That removed every per-format exception:
+    an OM-1's 3200 px embed and a PNG screenshot are left exactly as they are, with no rule
+    about either. Both numbers live in <strong>Look &amp; Feel ▸ Make JPG — resize</strong>
+    (threshold 0 reads “Never resize”), which also became a two-column dialog: it had grown too
+    tall in one stack, so viewer-content settings moved to a second column beside appearance
+    (~1300×480, where the stack was ~500×930). Measured across every body:
+    OM-1 3200×2400 → unchanged; PNG 1206×2622 → unchanged; iPhone HEIC 4284×5712 → 1500×2000;
+    Nikon D500 3712×5568 → 1333×2000; Panasonic G9 II 5776×4336 → 2000×1501; Canon R5
+    8192×5464 → 2000×1334; Sony A1 8640×5760 → 2000×1333.</li>
+  <li><strong>A JPG-only picture is told so, and never resized in place</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-09-24) — Create JPG reported “without a RAW”
+    about a picture whose only file IS a JPG, which is true and useless. It now says “already a
+    JPG — nothing to bake”. Resizing it in place was considered and rejected by him outright:
+    the output name <code>&lt;stem&gt;.jpg</code> IS the source (Windows ignores the case
+    difference), so it would overwrite an original — “I would never do an update in place”. A
+    suffixed copy (<code>_sv</code>) was his own alternative and his own verdict was that it is
+    not worth the work. Verified the source JPG stays byte-identical.</li>
   <li><span class="tag-open">NEEDS DECISION</span> <strong>A RAW's Create JPG is 3200–8640 px
     depending on the body</strong> — raised by him on 2026-09-24 (“do you also resize RAWs that
     are larger than say 2200 pixels?”). Today: no. The code's stated reason was that a RAW bake

@@ -24,9 +24,16 @@ def _open_link(href: str) -> None:
         open_path(href)        # open the folder
 
 
-def show_create_jpg_result(parent, created, skipped=0, no_raw=0, failed=0) -> None:
+def show_create_jpg_result(parent, created, skipped=0, no_raw=0, failed=0,
+                           already_jpg=0) -> None:
     """Small modal summarising a Create-JPG run. `created` is the list of written
-    JPG paths; the rest are counts."""
+    JPG paths; the rest are counts.
+
+    `already_jpg` is separate from `no_raw` on purpose. A picture whose only file
+    IS a JPG used to be reported as "without a RAW", which is true and useless —
+    there is nothing to bake because the JPG already is the thing Create JPG
+    makes. It is not an error and not a failure to fix.
+    """
     created = [str(p) for p in created]
     dlg = QDialog(parent)
     dlg.setWindowTitle("Create JPG")
@@ -59,8 +66,10 @@ def show_create_jpg_result(parent, created, skipped=0, no_raw=0, failed=0) -> No
             lines.append(f'<a href="{folder}" style="color:{link}">{folder}</a>')
     if skipped:
         lines.append(f"Skipped {skipped} (already had a JPG)")
+    if already_jpg:
+        lines.append(f"{already_jpg} already a JPG — nothing to bake")
     if no_raw:
-        lines.append(f"{no_raw} without a RAW")
+        lines.append(f"{no_raw} with no RAW or phone picture to bake from")
     if failed:
         lines.append(f"{failed} failed (no embedded preview?)")
     if not lines:

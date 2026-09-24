@@ -1327,6 +1327,13 @@ class RatingEditorCollection(PictureCollection):
         # without the fallback Create JPG refused every phone picture as "no_raw".
         raw = self.raw_path(upn_key) or self.self_describing_path(upn_key)
         if raw is None:
+            # Its only file IS a JPG: nothing to bake, and saying "no RAW"
+            # about it was true and useless. Never an in-place resize — a derived
+            # file must not overwrite its source, and <stem>.jpg IS the source here
+            # (Windows ignores the case difference).
+            j = self.jpg_path(upn_key)
+            if j is not None:
+                return {"status": "already_jpg", "jpg": str(j)}
             return {"status": "no_raw"}
         if self.jpg_path(upn_key) is not None and upn_key not in self._blog_jpgs:
             return {"status": "skipped", "jpg": str(self.jpg_path(upn_key))}
