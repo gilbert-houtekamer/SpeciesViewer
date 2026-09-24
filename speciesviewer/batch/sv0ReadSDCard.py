@@ -50,7 +50,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from utils.disk_space import check_free_space
-from utils.raw_extensions import RAW, RAW_OR_HEIC
+from utils.raw_extensions import RAW, SELF_DESCRIBING
 
 UNKNOWN_DATE_DIR = "unknown-date"
 
@@ -89,14 +89,21 @@ else:
 # saying nothing. The pipeline itself needs no change: engine.exifcache filters
 # by a DENY list, and nrw is not on it, so exiftool reads these normally.
 RAW_EXTENSIONS = RAW  # canonical table — see utils/raw_extensions.py
-# Everything that gets a .xmp sidecar written for it. A HEIC belongs here: it is
-# an undeveloped original whose species, rating, colour and crop have nowhere
-# else to live, and SV's own sidecar recipe (engine.sidecarlib.sidecar_opts)
-# works on one unchanged — verified on an iPhone 16 Pro file, which produced a
-# sidecar carrying DateTimeOriginal WITH its UTC offset, GPS and Model, and
-# round-tripped Rating / Label / Subject / Description. Without this the HEIC
-# was the one picture format you could see but not annotate.
-SIDECAR_EXTENSIONS = RAW_OR_HEIC  # canonical table — see utils/raw_extensions.py
+# Everything that gets a .xmp sidecar written for it — RAW only.
+#
+# A HEIC does NOT, and this is deliberate: it was briefly given one (2026-09-23)
+# on the reasoning that a sidecar is where annotations belong, and that was the
+# wrong way round. PhotoLab expects a HEIC's properties INSIDE the file, exactly
+# as for a JPG, Lightroom embeds them there too, and every field SpeciesViewer
+# stores is a standard XMP field both of them can read AND write. A sidecar would
+# therefore be a SECOND copy of facts the file already owns, and the reader that
+# prefers it would shadow whatever PhotoLab had just written. So the HEIC is the
+# one truth (see _SELF_DESCRIBING in gui/sidecar_provider.py and the HEIC set in
+# utils/raw_extensions.py), and nothing here creates a sidecar for it.
+#
+# The sidecars written for HEICs during that one day are harmless — they carry
+# only date and GPS, never an annotation — and are ignored from here on.
+SIDECAR_EXTENSIONS = RAW  # canonical table — see utils/raw_extensions.py
 PICTURE_EXTENSIONS = RAW_EXTENSIONS | {
     ".jpg", ".jpeg", ".heic", ".heif", ".png", ".tif", ".tiff",       # stills
     ".mp4", ".mov",                                                    # video
@@ -1449,6 +1456,33 @@ def copy_card(source, dest, prefix="", bucket_by_date=False, tz_offset_hours=0.0
                 if progress:
                     progress(total, total, f"Caching XMP metadata… {folder.name}")
                 build_cache_for_folder(folder, xmps)
+
+    # ── Metadata cache for pictures that ARE their own sidecar ────────────
+    # A HEIC/PNG keeps its annotations inside the file, so there is no sidecar to
+    # cache — cache the PICTURE's metadata instead, into the same per-folder cache
+    # under the same mtime_ns rule (engine.sidecar_cache is path-agnostic, and its
+    # mtime key catches an edit to the file correctly). Without this the culling
+    # viewer re-read every HEIC through exiftool on first open: 279 of them on one
+    # iPhone card, which is the whole reason this cache exists.
+    #
+    # Outside the sidecar gate above on purpose: nothing is written here, it is a
+    # read, so it should not depend on the "write XMP sidecars" checkbox.
+    own_targets = [t for t in targets
+                   if Path(t).suffix.lower() in SELF_DESCRIBING]
+    if own_targets and not summary["error"] and not (should_cancel and should_cancel()):
+        from engine.sidecar_cache import build_cache_for_folder
+        own_by_folder: dict[Path, list[Path]] = {}
+        for t in own_targets:
+            own_by_folder.setdefault(Path(t).parent, []).append(Path(t))
+        for folder, files in own_by_folder.items():
+            if progress:
+                progress(total, total, f"Caching picture metadata… {folder.name}")
+            try:
+                build_cache_for_folder(folder, files)
+            except Exception as e:
+                # A cache is an optimisation; failing to build one must never
+                # cost us the card read that has already copied every file.
+                log.warning(f"Could not cache picture metadata for {folder.name}: {e}")
 
     # ── Did every RAW end up with a sidecar? ──────────────────────────────
     # This phase is the LAST one and it is gated three ways — the checkbox, an

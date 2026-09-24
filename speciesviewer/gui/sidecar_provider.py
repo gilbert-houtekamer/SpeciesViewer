@@ -37,7 +37,8 @@ from utils.sidecar_policy import (
     color_rating_to_xmp_enabled, color_rating_to_dop_enabled,
 )
 from engine.handling import deriveUniquePictureName
-from utils.raw_extensions import RAW, JPEG, OTHER_IMAGE, RAW_OR_HEIC
+from utils.raw_extensions import (RAW, JPEG, OTHER_IMAGE, RAW_OR_HEIC,
+                                  SELF_DESCRIBING)
 
 logger = logging.getLogger("speciesviewer")
 
@@ -52,6 +53,9 @@ _RAW_EXTS = RAW  # canonical table — see utils/raw_extensions.py
 # RAW-only, because a HEIC has no develop step for a .dop to describe and SV must
 # never invent one.
 _SOURCE_EXTS = RAW_OR_HEIC  # canonical table — see utils/raw_extensions.py
+# Where a picture's annotations live when they are NOT in a sidecar — the whole
+# rationale is on the set itself in the canonical table.
+_SELF_DESCRIBING = SELF_DESCRIBING  # canonical table — see utils/raw_extensions.py
 # What a card can show WITHOUT a develop step — the group's "jpg". PNG belongs
 # here, with TIFF: Qt decodes them and a phone screenshot is a finished picture
 # exactly as a JPEG is, so leaving them out only meant they vanished. HEIC does
@@ -242,7 +246,7 @@ class SidecarItem(PictureItem):
 
     @property
     def _row(self) -> dict:
-        return self._c._rows.get(_norm(self._grp.get("xmp", "")), {})
+        return self._c._rows.get(_norm(self._grp.get("meta", "")), {})
 
     # identity
     @property
@@ -610,6 +614,23 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
                         grp["xmp"] = src
         # Drop groups that ended up with no image file (e.g. a stray .xmp passed in).
         self._groups = {s: g for s, g in self._groups.items() if g.get("raw") or g.get("jpg")}
+        # "meta" = the file this picture's ANNOTATIONS live in, which is not always
+        # a sidecar (see _SELF_DESCRIBING). Everything that reads or writes a
+        # rating, colour, species, caption or place goes through this; everything
+        # that means the SIDECAR FILE itself — delete/trash, crop, exposure, the
+        # .dop recipe — keeps using "xmp", because a HEIC is not a sidecar and must
+        # not be trashed as one.
+        #
+        # For a self-describing file the file WINS over any .xmp beside it. That is
+        # the whole point: a stray sidecar (ingest briefly wrote one for every HEIC
+        # on 2026-09-23) must not shadow what PhotoLab and Lightroom read and write
+        # inside the file. Such sidecars are simply ignored from here on.
+        for g in self._groups.values():
+            own = g.get("raw") or g.get("jpg")
+            if own is not None and Path(own).suffix.lower() in _SELF_DESCRIBING:
+                g["meta"] = own
+            elif g.get("xmp"):
+                g["meta"] = g["xmp"]
         _mark("group")
         self._crop_cache: dict = {}      # stem -> normalised crop | None (cleared on refresh)
         self._exposure_cache: dict = {}  # stem -> EV float | None (cleared on refresh)
@@ -637,7 +658,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         _mark("image_sigs")
         _stats: dict = {}
         self._rows, self._caches = _read_sidecar_rows(
-            [g["xmp"] for g in self._groups.values() if g.get("xmp")],
+            [g["meta"] for g in self._groups.values() if g.get("meta")],
             quiet_stats=_stats)
         _mark("read_sidecar_rows" + (f" [{_stats.get('cached', '?')} cached, "
                                      f"{_stats.get('stale', '?')} via exiftool]"
@@ -708,7 +729,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         out: dict[str, tuple] = {}
         need_read: dict[str, Path] = {}
         for s, g in self._groups.items():
-            xmp = g.get("xmp")
+            xmp = g.get("meta")
             if xmp:
                 ll = _gps_from_row(self._rows.get(_norm(xmp)))
                 if ll:
@@ -745,7 +766,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         for s, g in self._groups.items():
             if s not in self._gps_by_stem:
                 continue
-            xmp = g.get("xmp")
+            xmp = g.get("meta")
             row = self._rows.get(_norm(xmp), {}) if xmp else {}
             if not any(str(row.get(k, "") or "").strip() for k in self._PLACE_FALLBACK_KEYS):
                 src = g.get("jpg") or g.get("raw") or xmp
@@ -768,7 +789,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         self._order = sorted(stems, key=self._capture_key)
 
     def _capture_key(self, stem: str):
-        row = self._rows.get(_norm(self._groups.get(stem, {}).get("xmp", "")), {})
+        row = self._rows.get(_norm(self._groups.get(stem, {}).get("meta", "")), {})
         dt = row.get("DateTimeOriginal", "")
         return (0, dt, stem) if dt else (1, "", stem)
 
@@ -799,7 +820,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
     def _species_of(self, stem: str) -> str:
         """The sidecar's Subject text for this stem (the card's species line), or ''
         when the group has no XMP / no tag."""
-        xmp = self._groups.get(stem, {}).get("xmp")
+        xmp = self._groups.get(stem, {}).get("meta")
         if not xmp:
             return ""
         return _subject_to_text(self._rows.get(_norm(xmp), {}).get("Subject"))
@@ -856,7 +877,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         return raw if raw and Path(raw).exists() else None
 
     def gps_source(self, key: str):
-        return self._groups.get(key, {}).get("xmp") or self._source_file(key)
+        return self._groups.get(key, {}).get("meta") or self._source_file(key)
 
     def gps(self, key: str):
         from gui.geolocate import gps_decimal
@@ -877,7 +898,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         if self.readonly and not self.allow_geotag:
             return []
         g = self._groups.get(key, {})
-        return [g[k] for k in ("xmp", "jpg") if g.get(k)]
+        return [g[k] for k in ("meta", "jpg") if g.get(k)]
 
     def gps_is_derived(self, key: str) -> bool:
         """True when a HUMAN placed this coordinate (map drag / copy-paste-GPS /
@@ -887,7 +908,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         if key in getattr(self, "_pasted_gps", ()):
             return True
         g = self._groups.get(key, {})
-        xmp = g.get("xmp")
+        xmp = g.get("meta")
         if xmp:
             row = self._rows.get(_norm(xmp), {})
             for k in ("GPSProcessingMethod", "EXIF:GPSProcessingMethod",
@@ -904,7 +925,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         batched sidecar-cache read; writes keep it fresh via note_location_written.
         Falls back to a direct read only for a JPG-only group with no sidecar."""
         g = self._groups.get(key, {})
-        xmp = g.get("xmp")
+        xmp = g.get("meta")
         if xmp:
             r = self._rows.get(_norm(xmp), {})
             return {k: str(r.get(k, "") or "") for k in self._LOC_KEYS}
@@ -941,7 +962,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         # to be current, and everything that trusts the cache keeps reporting the
         # picture as having no GPS long after it does.
         g = self._groups.get(key, {})
-        xmp = g.get("xmp")
+        xmp = g.get("meta")
         if xmp:
             xmp = Path(xmp)
             cache = self._caches.get(xmp.parent)
@@ -969,7 +990,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
     def _row_snapshot(self) -> dict:
         snap = {}
         for stem, g in self._groups.items():
-            xmp = g.get("xmp")
+            xmp = g.get("meta")
             if xmp:
                 r = self._rows.get(_norm(xmp), {})
                 snap[stem] = tuple(str(r.get(k, "") or "") for k in self._REFRESH_FIELDS)
@@ -1045,7 +1066,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         changed (so the host re-decodes those, not every refreshed card)."""
         text_before = self._row_snapshot()
         self._rows, self._caches = _read_sidecar_rows(
-            [g["xmp"] for g in self._groups.values() if g.get("xmp")])
+            [g["meta"] for g in self._groups.values() if g.get("meta")])
         # Colour/rating live in the DxO .dop (PhotoLab's channel), NOT the .xmp,
         # unless the user opted into the .xmp channel — so the .xmp rows just read
         # carry a STALE Label/Rating. Overlay the .dop's values (our write channel
@@ -1098,8 +1119,11 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         that doesn't go through a temp+rename (which the folder watch would miss)."""
         out = []
         for g in self._groups.values():
-            if g.get("xmp"):
-                out.append(str(g["xmp"]))
+            # "meta", not "xmp": for a HEIC the file Lightroom/PhotoLab edit IS
+            # the HEIC, so watching only sidecars would miss every external edit
+            # to one.
+            if g.get("meta"):
+                out.append(str(g["meta"]))
             raw = g.get("raw")
             if raw:
                 dop = Path(str(raw) + ".dop")
@@ -1115,7 +1139,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         reverse-geocode must not overwrite a hand-entered Location), so the cache
         must keep the row's existing value rather than adopt the proposed one."""
         g = self._groups.get(key, {})
-        xmp = g.get("xmp")
+        xmp = g.get("meta")
         protect = set(protect)
         if not xmp:
             # JPG-only picture: no .xmp row to patch — keep the card's location line
@@ -1370,7 +1394,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
         jpg = g.get("jpg")
         if not jpg:
             return False
-        xmp = g.get("xmp")
+        xmp = g.get("meta")
         row = self._rows.get(_norm(xmp), {}) if xmp else {}
         w, h = row.get("ImageWidth"), row.get("ImageHeight")
         raw_dims = f"{w}x{h}" if w and h else ""
@@ -1802,29 +1826,34 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
                     and stem in self._master_upn):
                 self._mirror_description_to_master(stem, value)
 
-        suppress = is_colorrating and not color_rating_to_xmp_enabled()
+        gate_off = is_colorrating and not color_rating_to_xmp_enabled()
 
-        # Resolve every sidecar, creating the path for a group that has none.
-        targets = []
+        # Resolve every annotation target, creating the path for a group that has
+        # none. The .xmp colour/rating gate is decided PER FILE, not once for the
+        # batch: a selection can mix RAWs (gated — the value lives in their .dop)
+        # with HEICs (never gated — the file is the only channel they have). One
+        # flag for the whole batch would have silently dropped every HEIC colour
+        # in a mixed selection.
+        targets, deferred = [], []
         for stem in stems:
             grp = self._groups.get(stem, {})
-            xmp = grp.get("xmp")
+            xmp = grp.get("meta")
+            own = xmp is not None and Path(xmp).suffix.lower() in _SELF_DESCRIBING
             if xmp is None:
                 src = self._source_file(stem)
                 if not src:
                     continue
                 xmp = Path(src).with_suffix(".xmp")
-                if not suppress:
+                if not gate_off:
                     grp["xmp"] = xmp
-            targets.append(Path(xmp))
+                    grp["meta"] = xmp
+            (deferred if (gate_off and not own) else targets).append(Path(xmp))
 
-        if suppress:
-            # Value lives in the .dop; keep it in memory so this session shows it.
-            for xmp in targets:
-                self._rows.setdefault(_norm(xmp), {"SourceFile": str(xmp)})[row_key] = value
-            return len(targets)
+        # Gated value lives in the .dop; keep it in memory so this session shows it.
+        for xmp in deferred:
+            self._rows.setdefault(_norm(xmp), {"SourceFile": str(xmp)})[row_key] = value
         if not targets:
-            return 0
+            return len(deferred)
 
         from engine.exif_writer import run_exiftool_files
         try:
@@ -1857,7 +1886,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
             touched.add(folder)
         for folder in touched:
             self._caches[folder].save()      # once per folder, not once per file
-        return len(targets)
+        return len(targets) + len(deferred)
 
     def apply_many(self, upn_keys, *, new_stars: int | None = None,
                    new_color: str | None = None, progress=None) -> int:
@@ -1954,11 +1983,18 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
                 # re-crop and needlessly re-decode this card's thumbnail.
                 self._image_sigs[stem] = self._image_sig(stem)
 
-        # .xmp sidecar: colour/rating is gated (default off); text always writes.
-        suppress = is_colorrating and not color_rating_to_xmp_enabled()
-
         grp = self._groups.get(stem, {})
-        xmp = grp.get("xmp")
+        xmp = grp.get("meta")
+        # A self-describing file (HEIC/PNG) IS the channel — the value goes into
+        # the picture, which is where PhotoLab and Lightroom look. The .xmp gate
+        # below must not apply to it: that gate exists because PL mistreats
+        # colour/rating in a RAW's .xmp, and with it on, a HEIC's colour would be
+        # kept in memory for the session and then lost, having reached nothing.
+        own = xmp is not None and Path(xmp).suffix.lower() in _SELF_DESCRIBING
+
+        # .xmp sidecar: colour/rating is gated (default off); text always writes.
+        suppress = is_colorrating and not color_rating_to_xmp_enabled() and not own
+
         if xmp is None:
             # No sidecar yet (e.g. a JPG-only group) — drop one beside the source.
             src = self._source_file(stem)
@@ -1971,6 +2007,7 @@ class SidecarCollection(MasterCardOpsMixin, PictureCollection):
             xmp = Path(src).with_suffix(".xmp")
             if not suppress:
                 grp["xmp"] = xmp
+                grp["meta"] = xmp
         if suppress:
             # Colour/rating in .xmp suppressed: keep the value in memory so the
             # current culling session still shows it (it's live in the .dop).

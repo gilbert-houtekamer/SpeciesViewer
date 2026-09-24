@@ -306,6 +306,7 @@ def batch_datetime_gps(paths):
         return {}
     out = run_exiftool_files(
         ["-n", "-G", "-j", "-EXIF:DateTimeOriginal", "-XMP:DateTimeOriginal",
+         "-EXIF:OffsetTimeOriginal", "-XMP:OffsetTimeOriginal",
          "-Composite:GPSLatitude", "-Composite:GPSLongitude",
          "-XMP:GPSLatitude", "-XMP:GPSLongitude",
          "-Composite:GPSAltitude", "-XMP:GPSAltitude"], paths).stdout
@@ -318,13 +319,29 @@ def batch_datetime_gps(paths):
         # A RAW/JPG reports its date under EXIF; a plain .xmp sidecar (this
         # handler's usual input — see batch_gps's identical GPS split above)
         # has no EXIF group at all and reports it under XMP instead.
-        date = r.get("EXIF:DateTimeOriginal", r.get("XMP:DateTimeOriginal"))
+        date = str(r.get("EXIF:DateTimeOriginal",
+                         r.get("XMP:DateTimeOriginal")) or "")
+        # Re-attach the camera's UTC offset when the date arrives bare.
+        #
+        # A sidecar's XMP:DateTimeOriginal already carries it — sidecar_opts writes
+        # "2026:08:14 10:34:01+01:00" on purpose, because the tracklog geotag reads
+        # the sidecar and needs to know what the camera's clock meant. A file read
+        # DIRECTLY has no such luxury: EXIF keeps the offset in its own tag
+        # (OffsetTimeOriginal, EXIF 2.31), so the date came back as 19 bare
+        # characters. That is not cosmetic — auto_geotag_entries takes the offset
+        # FROM the date string, so a HEIC day was reported "no offset" and skipped
+        # in full, which is how a phone day silently got no tracklog GPS at all.
+        if date and len(date) <= 19:
+            off = (r.get("EXIF:OffsetTimeOriginal")
+                   or r.get("XMP:OffsetTimeOriginal") or "")
+            if off:
+                date = f"{date}{off}"
         key = os.path.normcase(os.path.normpath(r.get("SourceFile", "")))
         try:
             cur_alt = float(alt) if alt is not None else None
         except (TypeError, ValueError):
             cur_alt = None
-        res[key] = {"date": str(date or ""),
+        res[key] = {"date": date,
                    "has_gps": lat is not None and lon is not None,
                    "cur_alt": cur_alt}
     return res

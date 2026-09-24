@@ -76,6 +76,25 @@ HEIC = frozenset({".heic", ".heif"})
 
 JPEG = frozenset({".jpg", ".jpeg"})
 
+#: Pictures that hold their OWN annotations — rating, colour, species, caption,
+#: place — instead of delegating them to a .xmp beside them.
+#:
+#: A RAW delegates: PhotoLab and Lightroom both keep a RAW's edits in a sidecar and
+#: leave the RAW's bytes alone. A HEIC does not, and treating it as though it did is
+#: what did not work out in practice — PhotoLab expects a HEIC's properties INSIDE
+#: the file, exactly as for a JPG, and Lightroom embeds them there too. Every field
+#: SpeciesViewer stores is a standard XMP field that both can read AND write, so no
+#: field is left that a sidecar could own; this is a property of the FILE, not a
+#: per-field split (that was worked through and abandoned — there is nothing to
+#: split on). Hence: one truth, in the picture.
+#:
+#: PNG is included for the same reason and because the pipeline viewer already
+#: treats it so (preview_provider._heic_only_upn / _write_into_heic take heic and
+#: png). TIFF is NOT: it can carry XMP, but nothing else in the app treats it this
+#: way and only 8 exist on disk, so it keeps the sidecar path until there is a
+#: reason to change it.
+SELF_DESCRIBING = HEIC | {".png"}
+
 # Rendered formats that are viewable but are never a camera original.
 OTHER_IMAGE = frozenset({".png", ".tif", ".tiff"})
 

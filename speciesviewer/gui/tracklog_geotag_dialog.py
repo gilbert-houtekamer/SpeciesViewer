@@ -378,6 +378,7 @@ def open_tracklog_geotag_for_folder(parent, folder: str):
     that day's auto-detected log file when one exists."""
     from pathlib import Path
     from gui.trip_process import _PL_RAW_EXTS
+    from utils.raw_extensions import SELF_DESCRIBING
     from gui.geolocate import batch_datetime_gps
     from engine.tracklog_geotag import FilesSource, find_day_tracklogs
     from utils.config import get_gpslogs_root
@@ -385,11 +386,21 @@ def open_tracklog_geotag_for_folder(parent, folder: str):
     folder_path = Path(folder)
     xmps = []
     for p in folder_path.iterdir():
-        if p.is_file() and p.suffix.lower() in _PL_RAW_EXTS and p.with_suffix(".xmp").exists():
+        if not p.is_file():
+            continue
+        # A RAW is stamped through its sidecar; a HEIC/PNG keeps its GPS in the
+        # picture, so IT is the target. Without the second branch a phone day had
+        # nothing to geotag at all — every file was skipped for lacking a .xmp it
+        # is never going to have.
+        ext = p.suffix.lower()
+        if ext in _PL_RAW_EXTS and p.with_suffix(".xmp").exists():
             xmps.append((p.stem, str(p.with_suffix(".xmp"))))
+        elif ext in SELF_DESCRIBING:
+            xmps.append((p.stem, str(p)))
     if not xmps:
         QMessageBox.information(parent, "Geotag from Tracklog",
-                                "No RAW+XMP pictures in this day to geotag.")
+                                "No pictures in this day can be geotagged — a RAW "
+                                "needs its .xmp sidecar first.")
         return
     meta = batch_datetime_gps([x[1] for x in xmps])
     entries, files_by_key = [], {}

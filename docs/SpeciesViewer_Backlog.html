@@ -503,19 +503,6 @@ reads <em>No current work planned</em>.</p>
 <h2>7. Rating &amp; Website</h2>
 <h3>To do</h3>
 <ul>
-  <li><span class="tag-progress">IN PROGRESS</span> <strong>HEIC metadata: finish the single
-    source</strong> — the model is settled (2026-09-24): a HEIC is a JPG, not a RAW, and every
-    field SpeciesViewer stores is a standard XMP/IPTC field that Lightroom and PhotoLab can read
-    AND write, so <em>the HEIC itself is the only possible truth</em> and a sidecar can never be
-    authoritative for any of it. An earlier idea of splitting fields by consumer (rating/colour in
-    the HEIC, species/caption in a sidecar) is dead: there is no SpeciesViewer-only field to split
-    on. The rollup half is done (below). What remains: drop the <code>.xmp</code> that ingest now
-    writes for a HEIC, route <code>SidecarCollection</code>'s reads AND writes for a HEIC into the
-    file (the pipeline viewer already does this via <code>_write_into_heic</code>), and give the
-    tracklog geotag and the sidecar cache a HEIC path — both assume a <code>.xmp</code> exists. No
-    capability is lost: GPS, <code>DateTimeOriginal</code> and every annotation field round-trip
-    into a HEIC (verified, 13 fields; only <code>IPTC:Keywords</code> will not, as HEIF has no
-    IPTC block — <code>XMP:Subject</code> covers it and is what LR/PL use).</li>
   <li><span class="tag-bug">BUG</span> <strong>A PNG shows “(no image)” in the pipeline day
     viewer</strong> — the culling grid renders PNGs now, but
     <code>rating_provider.jpg_path()</code> hard-codes <code>(".jpg", ".jpeg")</code>, so a
@@ -532,6 +519,48 @@ reads <em>No current work planned</em>.</p>
 </ul>
 <h3>Done</h3>
 <ul>
+  <li><strong>HEIC metadata: one truth, in the picture</strong>
+    <span class="tag-shipped">SHIPPED</span> (2026-09-24) — a HEIC is a JPG, not a RAW. Every
+    field SpeciesViewer stores is a standard XMP field that Lightroom and PhotoLab can read AND
+    write, so the file is the only possible truth and a sidecar can never be authoritative for
+    any of it. (An idea of splitting fields by consumer — rating/colour in the HEIC, species and
+    caption in a sidecar — was worked through and abandoned: there is no SpeciesViewer-only field
+    to split on.) What changed:
+    <ul>
+      <li><code>SELF_DESCRIBING</code> joins the canonical extension table: the pictures that
+        hold their own annotations (HEIC, HEIF, PNG). TIFF deliberately stays out — it can carry
+        XMP, but nothing else in the app treats it so and only 8 exist on disk.</li>
+      <li><code>SidecarCollection</code> gained one concept, <code>grp["meta"]</code> — the file
+        a picture's annotations live in, which is the <code>.xmp</code> for a RAW and the file
+        itself for a HEIC. The ~11 sites that meant “where the truth is” now use it; the ones
+        that mean “the sidecar FILE” (trash, crop, exposure, the <code>.dop</code> recipe) still
+        use <code>xmp</code>, because a HEIC is not a sidecar and must not be trashed as one.
+        For a self-describing file the FILE wins over any stray <code>.xmp</code> beside it —
+        that is the whole point, or a leftover sidecar would shadow what PhotoLab just wrote.</li>
+      <li>The <code>.xmp</code> colour/rating gate (default off, because PL mistreats those in a
+        RAW's sidecar) no longer applies to a self-describing file, where the file is the only
+        channel there is — with the gate on, a HEIC's colour was held in memory for the session
+        and then lost. In <code>write_tag_many</code> that decision is now PER FILE, not once for
+        the batch, so a mixed RAW+HEIC selection no longer drops every HEIC colour.</li>
+      <li>Ingest stops writing a <code>.xmp</code> for a HEIC, and instead caches the PICTURE's
+        metadata into the same per-folder cache (which is path-agnostic and keyed on
+        <code>mtime_ns</code>, so it invalidates correctly on an edit). Without that the culling
+        viewer re-read every HEIC through exiftool on first open — 279 on one iPhone card.</li>
+      <li>The tracklog geotag reaches a HEIC at last. It never could: both target builders
+        required a RAW <em>and</em> an existing <code>.xmp</code>, so a phone day had nothing to
+        geotag. They now stamp a self-describing file directly. That exposed a second, sharper
+        bug — <code>batch_datetime_gps</code> returned a bare 19-character date for a file read
+        directly, because EXIF keeps the UTC offset in its own tag while a sidecar has it baked
+        into <code>XMP:DateTimeOriginal</code>. <code>auto_geotag_entries</code> takes the offset
+        FROM that string, so a HEIC day was reported “no offset” and skipped in full. The offset
+        is now re-attached.</li>
+    </ul>
+    Verified on real files: HEIC, PNG, JPG and ORF+XMP all round-trip rating, colour and species,
+    read back from a fresh collection — and exiftool confirms each value landed in the right
+    place (inside the HEIC and the PNG, in the sidecar for the ORF and the JPG, with the ORF's own
+    bytes untouched). No <code>.xmp</code> is created beside a HEIC any more. The geotag wrote
+    <code>16°44'54.78"S, 56°51'30.06"W</code> into a HEIC from that day's tracklog, stamped
+    MANUAL.</li>
   <li><strong>A HEIC-only picture's own metadata now reaches the picture</strong>
     <span class="tag-shipped">SHIPPED</span> (2026-09-24) — <code>findXMPItem</code> was
     <code>findBestItem(files, column, ("XMP", "JPG"))</code> and is used for species, rating,

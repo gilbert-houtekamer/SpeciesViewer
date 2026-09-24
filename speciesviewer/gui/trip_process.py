@@ -20,7 +20,7 @@ from widgets.trip_widgets import (LabeledTextFieldQt, DateRangeFieldQt, Director
 from engine.translatelib import CachedTranslate
 from utils.gui_config import update_cache_gui_section, get_cache_gui_section
 from gui.trip_overview import populate_trip_overview
-from utils.raw_extensions import RAW, DXO_RAW, PICTURE
+from utils.raw_extensions import RAW, DXO_RAW, PICTURE, SELF_DESCRIBING
 
 def generate_trip_ini(
     trip_root: str,
@@ -1259,9 +1259,18 @@ class ReadSDCardDialog(QDialog):
         xmps = []
         for t in targets:
             p = Path(t)
-            if p.suffix.lower() in _PL_RAW_EXTS and p.with_suffix(".xmp").exists():
-                day = p.parent.name if days_registry.is_day_folder_name(p.parent.name) else None
-                xmps.append((p.stem, str(p.with_suffix(".xmp")), day))
+            ext = p.suffix.lower()
+            # Same rule as the day-folder dialog: a RAW is stamped through its
+            # sidecar, a HEIC/PNG in the picture itself (that is where its GPS
+            # lives, and where PhotoLab and Lightroom read it).
+            if ext in _PL_RAW_EXTS and p.with_suffix(".xmp").exists():
+                target = str(p.with_suffix(".xmp"))
+            elif ext in SELF_DESCRIBING:
+                target = str(p)
+            else:
+                continue
+            day = p.parent.name if days_registry.is_day_folder_name(p.parent.name) else None
+            xmps.append((p.stem, target, day))
         if not xmps:
             return [], {}
         from gui.geolocate import batch_datetime_gps
