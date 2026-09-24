@@ -274,7 +274,7 @@ class FilePicture:
                     return True
             return False
         except Exception as e:
-            logger.warning("Error in filteredFile for {filename} error {e}")
+            logger.warning(f"Error in filteredFile for {filename} error {e}")
             return True
 
     

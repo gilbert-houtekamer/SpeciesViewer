@@ -1104,9 +1104,15 @@ def formatToken(tokenno, MyProject, species_param, file, picture):
                 workstr += '          <table class="w3-table w3-hoverable">\n'
                 workstr += '            <tr class="w3-win8-olive">\n'
                 if blog["SelectedGroup"] == '':
-                    workstr += f'              <th>' + title + '</th><td><a href="' + targetlink + '">' + blog["title_" + language] + '</td>\n'
+                    workstr += '              <th>' + title + '</th><td><a href="' + targetlink + '">' + blog["title_" + language] + '</a></td>\n'
                 else:
-                    workstr += f'              <th>' + title + '</th><td><a href="{logname}-'+language+'.html">' + blog["title_" + language] + '</td>\n'
+                    # Name the href like targetlink above, so ONE f-string owns the
+                    # substitution. The f used to sit on the '<th>' fragment, which
+                    # holds no placeholder, while the '{logname}' sat in a plain
+                    # literal beside it — so every day title on the blog index linked
+                    # to the file "{logname}-nl.html", which cannot exist.
+                    daylink = f'{logname}-{language}.html'
+                    workstr += '              <th>' + title + '</th><td><a href="' + daylink + '">' + blog["title_" + language] + '</a></td>\n'
                 workstr += '            </tr>\n'
                 workstr += '            <tr>\n'
                 workstr += '              <th></th><td>' + blog["message_" + language] + '</td>\n'
