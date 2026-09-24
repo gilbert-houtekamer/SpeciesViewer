@@ -390,6 +390,14 @@ def create_jpg_resize_rule() -> tuple[int, int]:
     no saving while throwing away detail, so nothing between the target and the
     threshold is touched at all.
 
+    Both numbers are measured on the bake's OWN long edge, i.e. AFTER the crop,
+    because that is what the website serves. The usual Create-JPG picture is a
+    crop and lands nowhere near 3200; the threshold is there for the frame a bird
+    happens to fill, where an uncropped A1 would otherwise put 8640px on a web
+    page. SV is not the tool for a high-quality 8000x6000 render -- that is what
+    DxO PhotoLab is for -- so keep this a threshold on the result and do not
+    reintroduce per-camera logic.
+
     It needs no per-format exception, which is why it replaced a HEIC-only cap:
       * iPhone HEIC 5712 long  -> over 3200, resampled to 2000
       * Sony A1     8640 long  -> over 3200, resampled ("it gives more room to crop")
