@@ -2541,6 +2541,41 @@ bare decode. For these bodies the denoise step exists, and <strong>the HE decode
 SpeciesViewer's alone</strong>: it does not propagate into the pipeline.</p>
 
 
+<h3>Canon&rsquo;s <code>.HIF</code> &mdash; a file we would not even see</h3>
+
+<p><span class="tag-open">OPEN</span> <span class="tag-new">NEW 24 Sep</span> Some Canon bodies
+write stills as HEIF, with the extension <code>.HIF</code>. SpeciesViewer does not merely handle
+such a file badly &mdash; it never sees it. <code>.hif</code> appears <strong>nowhere</strong> in
+the tree: not in the canonical extension table, not in a single line of code. Ingest, Read
+Directory and the viewers all classify by the on-disk extension, so a card holding
+<code>.HIF</code> files reads as an empty card, with nothing said about why.</p>
+
+<p><strong>Why it is worth having is not the obvious reason.</strong> No camera in the library
+writes one, and there is not a single <code>.HIF</code> to be found &mdash; nought in the master
+alongside its 403 <code>.HEIC</code> files, and nought in the 45-file test corpus. The case is a
+<em>fellow birder&rsquo;s</em> file: pictures handed over at the end of a shared day, from a body
+nobody in this library owns. That is the same shape as the iPhone HEICs of chapter 7 &mdash; a
+picture that arrives from someone else&rsquo;s camera and has to be filed with the day it belongs
+to.</p>
+
+<p><strong>The hard half is already done.</strong> A <code>.HIF</code> is a HEIF, the same
+container as a <code>.HEIC</code>, and chapter 7 settled what that means: such a file is
+<em>self-describing</em>, holding its own rating, colour, species and caption inside itself
+rather than delegating them to a sidecar. The write channel, the cache rules and the grouping all
+exist and are live-proven on 461 real files. So this is a table entry and a proof, not a new
+mechanism: add <code>.hif</code> beside <code>.heic</code> and <code>.heif</code> in
+<code>utils/raw_extensions.py</code> &mdash; and <em>only</em> there, per the invariant that no
+extension is ever hard-coded at a call site &mdash; then verify the three things that can still
+differ per format: that exiftool reads the capture date, that a preview can be extracted, and
+that a rating and a colour round-trip back out of the file.</p>
+
+<p class="note"><strong>What makes this a decision rather than a task.</strong> Widening the
+extension table widens what <em>ingest accepts</em>: a folder or card that produced nothing before
+would start producing pictures, which is a change in behaviour for every existing lane, not only
+for the one new file. And it cannot be verified without a sample &mdash; there is nothing to test
+against in the corpus or the master, so the first step is asking the birder who has one for a
+single file, exactly as the two hand-added Nikon Z 8 frames were sourced for the corpus above.</p>
+
 <h2 id="empty-card">22. Emptying a card, safely</h2>
 
 <p>Chapter 18 settled that <strong>the cards keep the pictures</strong>: there are plenty of them,
