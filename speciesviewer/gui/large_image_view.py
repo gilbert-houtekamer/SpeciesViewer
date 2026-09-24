@@ -581,7 +581,28 @@ class FilmstripWidget(QWidget):
     def _on_scrolled(self, _):
         self._load_visible()
 
+    def resizeEvent(self, event):
+        """A resize changes how many cells fit, so re-run the visible sweep.
+        Without this the strip stays stuck with whatever fitted at build time:
+        the one-shot sweep runs before the window has been laid out, when the
+        viewport is still effectively zero-sized, so only the _PREFETCH margin
+        (5 cells) ever appeared until the user scrolled."""
+        super().resizeEvent(event)
+        self._load_visible()
+
+    def showEvent(self, event):
+        """Same reason, for the strip that starts hidden (the other
+        orientation): it may already have its final size when it is shown, so
+        no resize follows to trigger the sweep."""
+        super().showEvent(event)
+        self._load_visible()
+
     def _load_visible(self):
+        # A resize can reach us while the constructor is still running (the
+        # minimum size is set before the scroll area exists) — nothing to sweep
+        # yet, the one-shot sweep at the end of __init__ covers it.
+        if not hasattr(self, "_sa"):
+            return
         if self._orientation == Qt.Orientation.Vertical:
             bar    = self._sa.verticalScrollBar()
             vp_lo  = bar.value()
